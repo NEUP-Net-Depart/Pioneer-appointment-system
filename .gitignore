@@ -1,0 +1,10 @@
+backend/data/repair.sqlite
+backend/data/repair.sqlite-shm
+backend/data/repair.sqlite-wal
+backend/data/attachments/
+backend/data/users.json
+backend/data/appointments.json
+node_modules/
+backend/.env
+backend-server.log
+backend-server.error.log

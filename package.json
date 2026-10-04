@@ -1,0 +1,14 @@
+{
+  "name": "pioneer-repair-booking",
+  "version": "0.2.0",
+  "private": true,
+  "description": "先锋硬件部前后端分离项目",
+  "scripts": {
+    "start": "npm --prefix backend start",
+    "start:backend": "npm --prefix backend start",
+    "migrate:pii-key": "npm --prefix backend run migrate:pii-key"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}
