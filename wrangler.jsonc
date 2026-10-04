@@ -8,7 +8,7 @@
   "d1_databases": [{
     "binding": "DB",
     "database_name": "pioneer-appointments",
-    "database_id": "00000000-0000-0000-0000-000000000000",
+    "database_id": "f607819a-83a6-4217-8618-5d4fd18e8bac",
     "migrations_dir": "migrations"
   }],
   "r2_buckets": [{ "binding": "ATTACHMENTS", "bucket_name": "pioneer-attachments" }],
