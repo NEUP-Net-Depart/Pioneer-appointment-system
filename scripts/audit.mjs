@@ -44,7 +44,7 @@ function visit(path) {
 }
 for (const entry of ['frontend/user/main.js','frontend/staff/main.js','functions/api/[[path]].js']) visit(resolve(root, entry));
 for (const path of graph.keys()) assert.ok(visited.has(path), `Unreachable runtime module: ${relative(root, path)}`);
-for (const path of ['README.md','PROJECT_FILES.md','docs/requirements.md','wrangler.jsonc','.dev.vars.example']) {
+for (const path of ['README.md','docs/operations.md','docs/requirements.md','wrangler.jsonc','.dev.vars.example']) {
   assert.ok(!forbidden.test(await readFile(join(root, path), 'utf8')), `Retired configuration in ${path}`);
 }
 console.log(`Architecture audit passed: ${graph.size} reachable modules; SQL boundaries, runtime dependencies and retired paths checked.`);
