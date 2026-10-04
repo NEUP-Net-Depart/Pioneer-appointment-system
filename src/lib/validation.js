@@ -47,6 +47,10 @@ export function appointmentQuery(input) {
 }
 export function liveQuery(input) {
   const query = { date: input.date || '', campus: input.campus || '', timeSlot: input.timeSlot || '', appointmentId: input.appointmentId || '', studentId: account(input.studentId) };
+  if (query.appointmentId || query.studentId) {
+    const credential = credentials(input);
+    query.appointmentId = credential.id; query.studentId = credential.studentId;
+  }
   if (query.date && !validDate(query.date)) fail(400, '日期不正确');
   if (query.campus && !['南湖','浑南'].includes(query.campus)) fail(400, '校区不正确');
   if (query.timeSlot) { query.timeSlot = normalizeTimeSlot(query.timeSlot); if (!query.timeSlot) fail(400, '时段不正确'); }

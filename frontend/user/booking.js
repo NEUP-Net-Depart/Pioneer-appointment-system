@@ -1,6 +1,7 @@
 import { $, showToast } from '/shared/utils.js';
 import { apiJson } from '/shared/api.js';
 import { uploadAttachments } from '/shared/attachments.js';
+import { startVisiblePolling } from '/shared/polling.js';
 import { normalizeTimeSlot } from '/shared/constants.js';
 import { addDays, serviceDay, dateKey, nowIso, timeLabel } from '/shared/time.js';
 
@@ -51,8 +52,7 @@ export function initBooking({ appointments, onCreated }) {
   const form = $('#booking-form'); configureDateRange();
   ['campus', 'timeSlot'].forEach(name => $(`[name="${name}"]`).addEventListener('change', () => { updateCapacity(); updateLiveSummary(); }));
   $('[name="date"]').addEventListener('change', event => { const value = event.currentTarget.value; if (value && !serviceDay(value)) { event.currentTarget.value = ''; showToast('可预约日期仅限周一至周四'); } updateCapacity(); updateLiveSummary(); });
-  updateCapacity(); updateLiveSummary();
-  const liveTimer = setInterval(() => { updateCapacity(); updateLiveSummary(); }, 10000); window.addEventListener('beforeunload', () => clearInterval(liveTimer));
+  startVisiblePolling(() => { updateCapacity(); return updateLiveSummary(); });
   $('#agreement-link').addEventListener('click', event => { event.preventDefault(); $('#agreement-modal').hidden = false; });
   $('#close-agreement').addEventListener('click', () => $('#agreement-modal').hidden = true);
   $('#agree-modal').addEventListener('click', () => { $('#agreement-modal').hidden = true; $('[name="agreement"]').checked = true; });

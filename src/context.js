@@ -32,9 +32,9 @@ export function createContext(request, env) {
   return {
     request, url, query: Object.fromEntries(url.searchParams), services, authenticate,
     async role(minimum) { return requireRole(await authenticate(), minimum); },
-    async limit(scope = 'guest') {
+    async limit(scope, options) {
       // Supplied by Cloudflare on the edge. Missing IPs share a conservative bucket in local dev.
-      await services.limits.check(request.headers.get('CF-Connecting-IP') || 'unknown', scope);
+      await services.limits.check(request.headers.get('CF-Connecting-IP') || 'unknown', scope, options);
     }
   };
 }

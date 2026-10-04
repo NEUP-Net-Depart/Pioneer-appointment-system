@@ -1,5 +1,8 @@
 export function rateLimitRepository(db) {
   return {
+    async count(key, now) {
+      return (await db.prepare('SELECT count FROM rate_limits WHERE key=? AND expires_at>?').bind(key, now).first())?.count ?? 0;
+    },
     async increment(key, now, seconds) {
       const results = await db.batch([
         db.prepare(`INSERT INTO rate_limits(key,count,expires_at) VALUES (?,1,?)

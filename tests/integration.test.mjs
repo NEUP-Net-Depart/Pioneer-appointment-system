@@ -230,6 +230,53 @@ test('D1 rate limits survive separate requests and do not trust forwarded IPs', 
   for (let n = 0; n < 20; n++) await api('/api/auth/login', { method: 'POST', body: { account: 'nobody', password }, headers: { 'X-Real-IP': `fake-${n}` } }, 401);
   await api('/api/auth/login', { method: 'POST', body: { account: 'nobody', password } }, 429);
 });
+
+test('write, lookup and upload limits are independent and shared by their routes', async () => {
+  const item = await book(); // One write request in the shared IP bucket.
+  const base = `/api/appointments/${item.id}/attachments`;
+  const lookup = `/api/appointments/lookup?appointmentId=${item.id}&studentId=${item.studentId}`;
+  for (let n = 1; n < 30; n++) {
+    const path = n % 2 ? '/api/appointments' : `/api/appointments/${item.id}/status`;
+    await api(path, { method: n % 2 ? 'POST' : 'PATCH', body: { status: 'invalid' } }, 400);
+  }
+  await api('/api/appointments', { method: 'POST', body: draft() }, 429);
+  await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', body: {} }, 429);
+  for (let n = 0; n < 30; n++) {
+    const paths = [lookup, `${base}?studentId=${item.studentId}`, `${base}/missing?studentId=${item.studentId}`];
+    await api(paths[n % 3], {}, n % 3 === 2 ? 404 : 200);
+  }
+  for (const path of [lookup, `${base}?studentId=${item.studentId}`, `${base}/missing?studentId=${item.studentId}`]) await api(path, {}, 429);
+  for (let n = 0; n < 15; n++) await api(base, { method: 'POST', body: {} }, 400);
+  await api(base, { method: 'POST', body: {} }, 429);
+  await login(); // Login still has its own quota.
+});
+
+test('valid live polling does not consume quota; credential guessing shares the lookup limit', async () => {
+  const item = await book();
+  const snapshot = () => db.prepare('SELECT * FROM rate_limits ORDER BY key').all();
+  const before = await snapshot();
+  const path = `/api/live/summary?appointmentId=${item.id}&studentId=${item.studentId}`;
+  for (let n = 0; n < 181; n++) await api(path);
+  await api(`/api/live/summary?date=${item.date}&campus=${encodeURIComponent(item.campus)}`);
+  await api('/api/live/summary?date=invalid', {}, 400);
+  await api(`/api/live/summary?appointmentId=${item.id}`, {}, 400);
+  await api(`/api/live/summary?studentId=${item.studentId}`, {}, 400);
+  assert.deepEqual((await snapshot()).results, before.results);
+  const lookup = `/api/appointments/lookup?appointmentId=${item.id}&studentId=${item.studentId}`;
+  await api(lookup); // Interactive lookups and failed queue credentials share 30 attempts.
+  for (let n = 0; n < 29; n++) await api(`/api/live/summary?appointmentId=${item.id}&studentId=999999`, {}, 404);
+  const exhausted = (await snapshot()).results;
+  for (const blocked of [path, path.replace(item.studentId, '999999')]) await api(blocked, {}, 429);
+  await api(`/api/live/summary?date=${item.date}`); // Public capacity still works.
+  assert.deepEqual((await snapshot()).results, exhausted);
+  await api(lookup, {}, 429);
+  await db.prepare('UPDATE rate_limits SET expires_at=0').run();
+  await api(path); // Expired quota no longer blocks valid polls or triggers writes.
+  const expired = (await snapshot()).results;
+  assert.ok(expired.every(row => row.expires_at === 0));
+  await api(path);
+  assert.deepEqual((await snapshot()).results, expired);
+});
 test('Shanghai dates stay correct at UTC day boundaries', () => {
   assert.equal(dateKey(new Date('2026-10-04T15:59:59Z')), '2026-10-04');
   assert.equal(dateKey(new Date('2026-10-04T16:01:00Z')), '2026-10-05');

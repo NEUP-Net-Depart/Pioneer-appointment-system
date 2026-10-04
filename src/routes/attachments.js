@@ -11,11 +11,11 @@ export const attachmentRoutes = [
     return json(result, 201);
   }],
   ['GET', /^\/api\/appointments\/([^/]+)\/attachments$/, async (context, match) => {
-    await context.limit();
+    await context.limit('lookup');
     return json(await context.services.attachments.list(decodeURIComponent(match[1]), await context.authenticate(), account(context.query.studentId)));
   }],
   ['GET', /^\/api\/appointments\/([^/]+)\/attachments\/([^/]+)$/, async (context, match) => {
-    await context.limit();
+    await context.limit('lookup');
     const file = await context.services.attachments.download(decodeURIComponent(match[1]), decodeURIComponent(match[2]), await context.authenticate(), account(context.query.studentId));
     return new Response(file.body, { headers: { ...securityHeaders, 'Content-Type': file.metadata.mimeType, 'Content-Length': String(file.size),
       'Content-Disposition': `attachment; filename="attachment"; filename*=UTF-8''${encodeURIComponent(file.metadata.filename)}` } });

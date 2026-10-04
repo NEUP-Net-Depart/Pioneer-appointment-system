@@ -81,3 +81,33 @@ test('shared requests isolate guest pages from staff JWT and clear revoked sessi
     await apiFetch('/api/auth/me'); assert.equal(values.size, 0); assert.deepEqual(events, ['auth-expired']);
   } finally { globalThis.fetch = oldFetch; delete globalThis.sessionStorage; delete globalThis.window; }
 });
+
+test('visible polling pauses in background, refreshes on return and disposes cleanly', async () => {
+  const saved = Object.fromEntries(['document','window','setInterval','clearInterval'].map(key => [key, globalThis[key]]));
+  const listeners = new Map(), windowListeners = new Map(), timers = new Map();
+  let nextTimer = 0, calls = 0;
+  globalThis.document = { hidden: false, addEventListener: (name, callback) => listeners.set(name, callback), removeEventListener: name => listeners.delete(name) };
+  globalThis.window = { addEventListener: (name, callback) => windowListeners.set(name, callback), removeEventListener: name => windowListeners.delete(name) };
+  globalThis.setInterval = (callback, interval) => { assert.equal(interval, 30000); timers.set(++nextTimer, callback); return nextTimer; };
+  globalThis.clearInterval = id => timers.delete(id);
+  try {
+    const { startVisiblePolling } = await import('../shared/polling.js');
+    let dispose = startVisiblePolling(() => { calls++; });
+    await Promise.resolve();
+    assert.equal(calls, 1); assert.equal(timers.size, 1);
+    const oldTick = [...timers.values()][0]; oldTick(); await Promise.resolve();
+    assert.equal(calls, 2);
+    globalThis.document.hidden = true; listeners.get('visibilitychange')();
+    assert.equal(timers.size, 0); oldTick(); await Promise.resolve(); assert.equal(calls, 2);
+    globalThis.document.hidden = false; listeners.get('visibilitychange')(); await Promise.resolve();
+    assert.equal(calls, 3); assert.equal(timers.size, 1);
+    dispose(); assert.equal(timers.size, 0); assert.equal(listeners.size, 0); assert.equal(windowListeners.size, 0);
+    // Lookup replaces its previous subscription on each render.
+    for (let n = 0; n < 3; n++) { dispose = startVisiblePolling(() => { calls++; }); await Promise.resolve(); dispose(); }
+    assert.equal(timers.size, 0); assert.equal(listeners.size, 0);
+    globalThis.document.hidden = true; dispose = startVisiblePolling(() => { calls++; });
+    assert.equal(timers.size, 0); assert.equal(calls, 6); dispose();
+  } finally {
+    for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete globalThis[key]; else globalThis[key] = value; }
+  }
+});
