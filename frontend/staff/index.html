@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#102a43" />
+  <title>先锋硬件部 · 工作人员工作台</title>
+  <link rel="icon" href="/assets/organization-logo.jpg" type="image/jpeg" />
+  <link rel="stylesheet" href="/shared/styles.css" />
+</head>
+<body>
+  <section class="login-view" id="login-view">
+    <div class="login-panel">
+      <div class="login-brand"><img class="organization-logo" src="/assets/organization-logo.jpg" alt="先锋网络中心 Logo" /><div><strong>先锋硬件部</strong><small>免费维修预约系统</small></div></div>
+      <div class="login-signal" aria-label="系统状态"><span class="signal-led"></span><span>服务节点在线</span><code>PX-HW / 2.0</code><i></i><span>南湖 · 浑南</span></div>
+      <p class="eyebrow">STAFF ACCESS · ACCOUNT LOGIN</p>
+      <h1>工作人员登录</h1>
+      <p class="login-lead">普通用户无需注册即可预约；维修人员和管理者从这里进入工作区。</p>
+      <form class="login-form" id="login-form">
+        <label>账号 / 学号 <i>*</i><input id="login-id" required placeholder="请输入账号或学号" autocomplete="username" /></label>
+        <label>密码 <i>*</i><input id="login-password" type="password" required placeholder="请输入密码" autocomplete="current-password" /></label>
+        <button class="primary-btn" type="submit">进入系统 <span>→</span></button>
+      </form>
+      <p class="login-message" id="login-message" role="status" aria-live="polite" hidden></p>
+      <a class="text-btn register-cancel" href="/">返回用户预约</a>
+      <div class="login-hint" id="login-hint"><span>访客可直接预约</span><small>预约后使用预约编号 + 学号查询进度。</small></div>
+    </div>
+  </section>
+
+
+<div id="app-shell" hidden>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="/staff/" aria-label="工作人员首页">
+        <img class="organization-logo" src="/assets/organization-logo.jpg" alt="先锋网络中心 Logo" />
+        <span><strong>先锋硬件部</strong><small>维修预约系统</small></span>
+      </a>
+      <nav class="main-nav" aria-label="主导航">
+        <button class="nav-link" data-view-link="staff" data-role-allow="technician,admin">维修后台</button>
+        <button class="nav-link" data-view-link="stats" data-role-allow="admin">统计分析</button>
+        <button class="nav-link" data-view-link="users" data-role-allow="admin">账号管理</button>
+      </nav>
+      <div class="account-area"><span class="service-status"><span class="status-dot"></span>周一至周四 19:00–21:00</span><span class="account-role" id="account-role">工作人员</span><button class="logout-btn" id="logout-btn" type="button" hidden>退出</button></div>
+    </div>
+  </header>
+
+<main>
+<section class="view" data-view="pending-access"><div class="content-shell"><h1>账号等待授权</h1><p>请联系管理者分配维修人员权限。</p></div></section>
+    <section class="view" id="staff-view" data-view="staff">
+        <div class="page-intro staff-intro"><div><p class="eyebrow">SERVICE DESK · 03</p><h1>维修工作台</h1><p>今日预约、接单与维修记录集中管理。</p></div><button class="secondary-btn" id="export-csv" data-role-allow="admin" type="button">↓ 导出 CSV</button></div>
+      <div class="content-shell staff-shell">
+        <div class="metrics-row"><div class="metric"><span>全部预约</span><strong id="metric-total">0</strong></div><div class="metric"><span>待审核 / 待接单</span><strong id="metric-pending">0</strong></div><div class="metric"><span>维修中</span><strong id="metric-progress">0</strong></div><div class="metric accent"><span>已完成</span><strong id="metric-done">0</strong></div></div>
+        <div class="toolbar"><div class="filter-tabs" role="tablist"><button class="filter-tab is-active" data-filter="all">全部 <span id="count-all">0</span></button><button class="filter-tab" data-filter="pending">待审核 / 待接单 <span id="count-pending">0</span></button><button class="filter-tab" data-filter="in_progress">维修中 <span id="count-progress">0</span></button><button class="filter-tab" data-filter="completed">已完成 <span id="count-done">0</span></button></div><div class="staff-filters"><select id="staff-campus-filter" aria-label="按校区筛选"><option value="all">全部校区</option><option>南湖</option><option>浑南</option></select><input id="staff-date-filter" type="date" aria-label="按日期筛选" /><button id="staff-clear-filters" class="filter-clear" type="button">清除</button><input id="staff-search" class="staff-search" placeholder="搜索姓名、学号、校区或编号" /></div></div>
+        <div class="table-wrap"><table><thead><tr><th>预约信息</th><th>设备</th><th>期望时段</th><th>状态</th><th>维修记录</th><th></th></tr></thead><tbody id="appointments-table"></tbody></table><div id="staff-empty" class="table-empty" hidden>暂无符合条件的预约</div></div>
+      </div>
+    </section>
+
+    <section class="view" id="stats-view" data-view="stats">
+      <div class="page-intro stats-intro"><div><p class="eyebrow">ADMIN INSIGHTS · 04</p><h1>维修统计</h1><p>按日期、故障类型、校区和维修人员查看服务情况。</p></div><div class="stats-filters"><label class="stats-range-label">统计范围<select id="stats-range"><option value="7">最近 7 天</option><option value="30">最近 30 天</option><option value="all">全部记录</option></select></label><label class="stats-day-label">查看单日<input id="stats-day" type="date" /></label><button class="filter-clear" id="stats-clear-day" type="button">清除日期</button></div></div>
+      <div class="content-shell stats-shell">
+        <div class="metrics-row stats-metrics"><div class="metric"><span>预约总数</span><strong id="stats-total">0</strong></div><div class="metric"><span>已完成维修</span><strong id="stats-completed">0</strong></div><div class="metric"><span>完成率</span><strong id="stats-rate">0%</strong></div><div class="metric accent"><span>爽约率</span><strong id="stats-no-show">0%</strong></div></div>
+        <div class="stats-grid">
+          <section class="stats-panel stats-wide"><div class="stats-panel-heading"><div><span class="section-index">01</span><h2>每日维修人数</h2></div><span class="panel-caption"><i class="legend-dot booked"></i>预约 <i class="legend-dot finished"></i>完成</span></div><div class="daily-chart" id="daily-chart"></div></section>
+          <section class="stats-panel"><div class="stats-panel-heading"><div><span class="section-index">02</span><h2>故障分类</h2></div><span class="panel-caption">按已完成数</span></div><div class="bar-list" id="fault-chart"></div></section>
+          <section class="stats-panel"><div class="stats-panel-heading"><div><span class="section-index">03</span><h2>校区分布</h2></div><span class="panel-caption">南湖 / 浑南</span></div><div class="campus-list" id="campus-chart"></div></section>
+          <section class="stats-panel stats-wide"><div class="stats-panel-heading"><div><span class="section-index">04</span><h2>维修人员工作量</h2></div><span class="panel-caption">已接单或完成</span></div><div class="workload-table" id="technician-chart"></div></section>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="users-view" data-view="users">
+        <div class="page-intro staff-intro"><div><p class="eyebrow">TEAM ADMIN · 05</p><h1>账号与权限管理</h1><p>工作人员账号以基础角色创建，再按权限升级为维修人员或管理者。</p></div><button class="secondary-btn" id="reset-user-form" type="button">清空表单</button></div>
+      <div class="content-shell users-shell">
+        <div class="user-create-panel"><div><span class="section-index">01</span><h2>新增工作人员账号</h2><p>账号使用工作人员本人学号，初始为基础角色，创建后可在列表中分配维修人员权限。</p></div><form id="user-form" class="user-form"><input id="user-account" inputmode="numeric" pattern="[0-9]{6,20}" required placeholder="学号，例如 20251010" /><input id="user-name" required placeholder="姓名" /><select id="user-campus" required><option value="">所属校区</option><option>南湖</option><option>浑南</option></select><input id="user-password" required placeholder="初始密码（至少 8 位）" /><button class="primary-btn" type="submit">创建工作人员账号</button></form></div>
+        <div class="user-list-heading"><div><span class="section-index">02</span><h2>账号列表</h2></div><input id="user-search" class="staff-search" placeholder="搜索学号、姓名或校区" /></div>
+        <div class="table-wrap"><table><thead><tr><th>账号</th><th>姓名</th><th>权限</th><th>校区</th><th>状态</th><th>工作量</th><th>操作</th></tr></thead><tbody id="users-table"></tbody></table><div id="users-empty" class="table-empty" hidden>暂无账号</div></div>
+      </div>
+    </section>
+</main>
+  <div class="modal-backdrop" id="detail-modal" hidden><div class="modal detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-title"><button class="modal-close" id="close-detail" type="button" aria-label="关闭">×</button><p class="eyebrow">APPOINTMENT DETAIL</p><h2 id="detail-title">预约详情</h2><div class="detail-summary" id="detail-summary"></div><div class="detail-grid"><label>状态<select id="detail-status"></select></label><label>维修人员<input id="detail-assigned" placeholder="输入账号或姓名" /></label></div><label class="detail-note-label">维修记录<textarea id="detail-repair-note" rows="4" placeholder="记录检测、维修、更换部件和烤机结果"></textarea></label><div class="modal-actions"><button class="secondary-btn" id="cancel-detail" type="button">取消</button><button class="primary-btn" id="save-detail" type="button">保存记录</button></div></div></div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+<script type="module" src="/staff/main.js"></script>
+</body>
+</html>

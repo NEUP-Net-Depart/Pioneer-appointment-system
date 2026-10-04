@@ -1,14 +1,34 @@
 {
-  "name": "pioneer-repair-booking",
-  "version": "0.2.0",
+  "name": "pioneer-appointment-system",
+  "version": "1.0.0",
   "private": true,
-  "description": "先锋硬件部前后端分离项目",
-  "scripts": {
-    "start": "npm --prefix backend start",
-    "start:backend": "npm --prefix backend start",
-    "migrate:pii-key": "npm --prefix backend run migrate:pii-key"
-  },
+  "type": "module",
+  "description": "Single Cloudflare Pages project with D1 and R2",
   "engines": {
-    "node": ">=22.5"
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "npm run build && wrangler pages dev dist --port 8788",
+    "setup:local": "node scripts/setup-local.mjs",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "db:seed": "node scripts/seed.mjs",
+    "check": "node scripts/check.mjs",
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "deploy": "node scripts/deploy.mjs",
+    "deploy:preview": "node scripts/deploy.mjs --preview",
+    "smoke": "node scripts/smoke.mjs",
+    "lint": "eslint . --max-warnings 0",
+    "audit:architecture": "node scripts/audit.mjs",
+    "db:verify": "node scripts/verify-migrations.mjs",
+    "verify": "npm run lint && npm run audit:architecture && npm run check && npm test && npm run db:verify"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.12.0",
+    "globals": "17.13.0",
+    "miniflare": "5.20261001.0-alpha",
+    "wrangler": "4.147.0"
   }
 }
