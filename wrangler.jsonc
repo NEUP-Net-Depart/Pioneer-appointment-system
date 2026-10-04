@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pioneer-appointment-system",
+  "pages_build_output_dir": "./dist",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "limits": { "cpu_ms": 1000 },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "pioneer-appointments",
+    "database_id": "00000000-0000-0000-0000-000000000000",
+    "migrations_dir": "migrations"
+  }],
+  "r2_buckets": [{ "binding": "ATTACHMENTS", "bucket_name": "pioneer-attachments" }],
+  "env": {
+    "preview": {
+      "d1_databases": [{
+        "binding": "DB",
+        "database_name": "pioneer-appointments-preview",
+        "database_id": "00000000-0000-0000-0000-000000000000",
+        "migrations_dir": "migrations"
+      }],
+      "r2_buckets": [{ "binding": "ATTACHMENTS", "bucket_name": "pioneer-attachments-preview" }]
+    }
+  }
+}
