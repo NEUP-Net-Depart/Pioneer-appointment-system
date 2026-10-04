@@ -1,0 +1,50 @@
+name: Clean expired attachments
+on:
+  schedule:
+    # Sunday 19:17 UTC = Monday 03:17 Asia/Shanghai.
+    - cron: '17 19 * * 0'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to clean
+        type: choice
+        default: both
+        options: [both, production, preview]
+      dry_run:
+        description: Only inspect candidates (no deletions)
+        type: boolean
+        default: true
+permissions:
+  contents: read
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [production, preview]
+    concurrency:
+      group: attachments-cleanup-${{ matrix.environment }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Clean attachments
+        if: github.event_name == 'schedule' || inputs.environment == 'both' || inputs.environment == matrix.environment
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TARGET_ENVIRONMENT: ${{ matrix.environment }}
+          APPLY_CLEANUP: ${{ github.event_name == 'schedule' || !inputs.dry_run }}
+          WRANGLER_SEND_METRICS: 'false'
+        shell: bash
+        run: |
+          args=(--dry-run)
+          if [[ "$APPLY_CLEANUP" == "true" ]]; then args=(--apply); fi
+          if [[ "$TARGET_ENVIRONMENT" == "preview" ]]; then args+=(--preview); fi
+          npm run attachments:cleanup -- "${args[@]}"

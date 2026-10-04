@@ -19,7 +19,7 @@ try {
   assert.ok(schema.success && keys.success);
   assert.deepEqual(keys.results, [], 'D1 foreign key violations');
   const names = new Set(schema.results.map(row => row.name));
-  for (const name of ['users','appointments','appointment_attachments','rate_limits','appointment_capacity_insert','appointment_capacity_update','idx_active_student_slot','idx_active_queue']) assert.ok(names.has(name), `Missing D1 schema object: ${name}`);
+  for (const name of ['users','appointments','appointment_attachments','rate_limits','storage_quota','attachment_storage','attachment_storage_reserve','attachment_storage_release','idx_attachment_expiry','idx_storage_expiry','idx_storage_pending','appointment_capacity_insert','appointment_capacity_update','idx_active_student_slot','idx_active_queue']) assert.ok(names.has(name), `Missing D1 schema object: ${name}`);
   assert.ok(!names.has('idx_appointments_queue'), 'Superseded queue index still exists');
   console.log('All D1 migrations applied to fresh state; re-application and foreign keys verified.');
 } finally { await rm(path, { recursive: true, force: true }); }

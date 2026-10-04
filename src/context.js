@@ -12,6 +12,7 @@ import { statsService } from './services/stats.js';
 import { userService } from './services/users.js';
 import { exportService } from './services/export.js';
 import { rateLimitService } from './services/rate-limits.js';
+import { storageLimit } from './lib/env.js';
 
 export function createContext(request, env) {
   // Request-scoped D1 session, explicitly injected into D1 repositories. No startup I/O.
@@ -20,7 +21,7 @@ export function createContext(request, env) {
   const services = {
     auth: authService(users, env.JWT_SECRET), users: userService(users),
     appointments: appointmentService(appointments, users, env.PII_ENCRYPTION_KEY),
-    attachments: attachmentService(appointments, attachmentRepository(db), env.ATTACHMENTS),
+    attachments: attachmentService(appointments, attachmentRepository(db), env.ATTACHMENTS, storageLimit(env)),
     queue: queueService(appointments, queueRepository(db)), stats: statsService(statsRepository(db)),
     export: exportService(appointments, env.PII_ENCRYPTION_KEY),
     limits: rateLimitService(rateLimitRepository(db), env.JWT_SECRET),

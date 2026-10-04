@@ -12,9 +12,12 @@
 - `src/lib/`：scrypt、JWT、AES-256-GCM、请求/附件校验、响应和 CSV 编码。
 - `migrations/0001_initial.sql`：用户、预约、附件、限流表及唯一索引、容量触发器。
 - `migrations/0002_query_indexes.sql`：查询索引与替代索引的清理。
+- `migrations/0003_attachment_storage.sql`：180 天过期回填、附件容量和持久化对象记录、原子计数触发器。
 - `wrangler.jsonc`、`.dev.vars.example`：Pages、D1、R2、密钥配置。
 - `scripts/`：构建、初始化、部署、lint/架构审计、语法/编译检查、隔离 migration 验证和 HTTP 自检。
+- `scripts/cleanup-attachments.mjs`、`cloudflare-d1.mjs`：按环境进行附件清理，默认 dry-run；复用 D1 仓库，经 Wrangler 删除 R2 对象。
 - `tests/`、`.github/workflows/check.yml`：前端结构与 workerd/D1/R2 自动化回归。
+- `.github/workflows/cleanup-attachments.yml`：每周一北京时间 03:17 清理附件，支持手动执行与环境选择。
 - `public/`：Pages 路由、安全响应头、404。
 - `README.md`：完整部署顺序、外部 DNS、Secrets、Preview、API 和运维说明。
 - `docs/requirements.md`：业务背景和后续规划。

@@ -5,6 +5,7 @@
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat"],
   "limits": { "cpu_ms": 1000 },
+  "vars": { "MAX_R2_BYTES": "8589934592" },
   "d1_databases": [{
     "binding": "DB",
     "database_name": "pioneer-appointments",
@@ -14,6 +15,7 @@
   "r2_buckets": [{ "binding": "ATTACHMENTS", "bucket_name": "pioneer-attachments" }],
   "env": {
     "preview": {
+      "vars": { "MAX_R2_BYTES": "536870912" },
       "d1_databases": [{
         "binding": "DB",
         "database_name": "pioneer-appointments-preview",

@@ -159,8 +159,8 @@ npm run deploy:preview
 - 用户查询/取消/附件仍使用“预约编号 + 学号”。用户页请求不携带工作人员 JWT；工作人员会话仅保存在 sessionStorage，预约和账号列表仅保存在内存。
 - 限流记录存放 D1，跨实例共享；采用 Cloudflare 提供的 IP 的 HMAC 值，不信任 X-Real-IP。每个 IP 分别计数：登录 20 次/15 分钟；预约查询、附件列表与下载共用查询额度 30 次/分钟；创建预约、修改状态共用写入额度 30 次/分钟；附件上传 15 次/分钟。
 - `/api/live/summary` 的公开名额查询不写入 D1 限流表；个人排队查询先检查查询额度，凭证错误时计入查询额度，正常轮询不增加计数。用户预约页与查询页每 30 秒刷新实时信息，标签页隐藏时停止轮询，恢复可见后立即刷新。
-- 附件支持 JPG、PNG、WEBP、PDF、UTF-8 TXT，单文件 5 MB；校验 MIME 和文件签名，D1 只保存 R2 object key 与元数据。下载携带安全响应头，CSV 防公式注入。
-- D1 与 R2 无跨服务事务：R2 写入后 D1 失败会补偿删除对象；补偿删除失败会记录 object key，保留原请求失败；极端中断仍可能留下不可见孤立对象，运维清理前应比对 D1 元数据。当前业务没有删除预约/附件的公开 API，不增加删除功能。无公开 R2 URL。
+- 附件支持 JPG、PNG、WEBP、PDF、UTF-8 TXT，单文件 5 MB；校验 MIME 和文件签名，D1 保存 R2 object key、元数据及容量记录。附件自上传起保留 180 天，访客和工作人员的列表、查询与下载均排除过期附件。下载携带安全响应头，CSV 防公式注入。
+- 上传前在 D1 原子预留实际字节数并保存持久化对象记录；生产上限 8 GiB，Preview 上限 512 MiB。D1 与 R2 无跨服务事务：上传或元数据保存失败后补偿删除，确认 R2 删除后才释放额度；补偿失败和请求中断留下的预留会被清理任务重试。过期但尚未删除的对象继续占额度。没有公开删除 API 或公开 R2 URL。
 
 ## API
 
@@ -182,7 +182,54 @@ npm run deploy:preview
 | PATCH / DELETE | `/api/users/:account` | 管理低于自身且非保护账号 |
 | GET | `/api/export/appointments.csv` | admin+ 导出 |
 
-附件上传 JSON 为 `{studentId, filename, mimeType, data}`，data 为标准 base64；工作人员凭 JWT 可省略 studentId。用户附件 GET 使用 `?studentId=...`。错误为 JSON，常见状态：400 输入错误、401 会话失效、403 权限不足、404 不存在、409 冲突、413 请求体过大、415 类型错误、429 限流。
+附件上传 JSON 为 `{studentId, filename, mimeType, data}`，data 为标准 base64；工作人员凭 JWT 可省略 studentId。用户附件 GET 使用 `?studentId=...`。上传、附件列表和预约查询中的附件元数据包含 UTC ISO 格式的 `createdAt`、`expiresAt`，过期下载返回 404。错误为 JSON，常见状态：400 输入错误、401 会话失效、403 权限不足、404 不存在、409 冲突、413 请求体过大、415 类型错误、429 限流、507 附件存储空间已满。
+
+## 附件容量与过期运维
+
+`wrangler.jsonc` 中的非 Secret 变量 `MAX_R2_BYTES` 按实际字节数限额：生产 `8589934592`（8 GiB），Preview `536870912`（512 MiB）。可在对应 Pages 环境覆盖，必须是正整数十进制字符串且不超过 JavaScript 安全整数；非法值拒绝服务。未设置时默认 8 GiB，Preview 应保留自己的变量配置。
+
+R2 Standard 的免费存储按账号共享的 10 GB-month/月计算，不是桶的硬配额；两环境当前上限合计约 9.13 GB。应用计数涵盖这两个桶中的已登记附件、未完成上传和补偿失败对象，不涵盖账号其他桶、此前账期用量或操作费用。不要绕过应用上传对象；存量孤立对象须在启用配额前核对。[R2 定价](https://developers.cloudflare.com/r2/pricing/)
+
+### 已有项目上线顺序
+
+1. 暂停附件上传，备份 D1，并将 R2 `appointments/` 下的 object key、实际大小与历史附件元数据比对。对已确认的历史孤立对象先备份并清理，修正大小不一致的记录。历史存储若已超过上限，应用会拒绝新上传，直到清理后有余量。
+2. 对生产和 Preview 分别应用迁移，再部署新代码；沿用原代码的部署窗口必须保持上传暂停，避免旧版本绕过容量记录。
+3. 启用下面的生命周期规则和 GitHub Secrets，先 dry-run 查看清理候选，再手动执行清理，核对 `storage_quota.used_bytes` 与 `attachment_storage` 中大小之和一致，最后恢复上传。
+
+```bash
+npm run db:migrate:remote
+npx wrangler d1 migrations apply DB --remote --env preview
+npm run deploy
+npm run deploy:preview
+```
+
+新增迁移按原 `created_at + 180 天` 回填旧附件，已超过期限的附件上线后立即停止展示和下载。`storage_quota` 初始化包含全部旧附件；`attachment_storage` 同时记录 pending（上传预留）、complete（已保存元数据）、deleting（清理中/等待重试）对象，额度在对象记录删除时由 D1 触发器释放一次。上传补偿先原子标记 deleting 并移除可见元数据，再删除 R2 和释放额度，确保 D1 已提交但响应丢失时的补偿失败也能在下一次清理中重试。不要直接修改计数或删除这些表的记录来腾额度。
+
+### R2 生命周期与每周清理
+
+为两个桶的 `appointments/` 前缀增加 180 天删除规则；先查看已有规则，已有同名规则时核对并更新，保留其他规则：
+
+```bash
+npx wrangler r2 bucket lifecycle list pioneer-attachments
+npx wrangler r2 bucket lifecycle add pioneer-attachments delete-old-attachments appointments/ --expire-days 180
+npx wrangler r2 bucket lifecycle list pioneer-attachments-preview
+npx wrangler r2 bucket lifecycle add pioneer-attachments-preview delete-old-attachments appointments/ --expire-days 180
+```
+
+生命周期删除有延迟，也不会同步 D1 元数据或计数；到期访问由应用立即拦截，容量必须等对象确认删除后释放。[R2 生命周期](https://developers.cloudflare.com/r2/buckets/object-lifecycles/)
+
+在 GitHub 仓库 Settings → Secrets and variables → Actions 配置 `CLOUDFLARE_ACCOUNT_ID`、`CLOUDFLARE_API_TOKEN`；Token 需对应账号的 D1 编辑与 Workers R2 Storage 写入权限。`.github/workflows/cleanup-attachments.yml` 合入默认分支后，每周一北京时间 03:17（周日 19:17 UTC）清理生产和 Preview，同一环境任务串行，失败会显示为 Actions 失败。手动 Run workflow 可选择环境，默认 dry-run；取消 dry-run 才会实际删除。
+
+本地运维终端设置上述两项环境变量后，可使用相同脚本：
+
+```bash
+npm run attachments:cleanup -- --dry-run
+npm run attachments:cleanup -- --dry-run --preview
+npm run attachments:cleanup -- --apply
+npm run attachments:cleanup -- --apply --preview
+```
+
+不带参数也是 dry-run。脚本每批处理 100 条，删除过期附件和超过 24 小时的未完成预留；先确认桶存在，再删除 R2 对象，随后原子删除元数据与释放额度。生命周期已删除的对象可重复删除。单条失败保留记录和额度，继续处理其他对象，任务最终返回失败；可手动重跑，下一周也会重试。首次清理的历史积压较多时，可分次重跑。公开仓库 60 天无活动时 GitHub 会停用定时工作流，需要重新启用；R2 生命周期仍独立生效。[GitHub 定时工作流](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
 
 ## 自检与运维
 
@@ -199,9 +246,9 @@ npm run smoke -- https://repair.example.edu
 
 项目使用 JavaScript，没有 TypeScript 编译任务；语法、ESLint、真实 Workers bundle 与运行时集成测试共同验证。架构审计中的旧关键字只用于拒绝规则，测试中的旧路径只用于断言 404。
 
-测试覆盖双入口/依赖图、敏感文件不公开、用户 JWT 隔离、加密往返、上海日界线、25 个并发请求仅成功 20 个、最后一名额竞争、跨校区重复、恢复容量检查、多人抢单、状态/RBAC、会话撤销、R2 字节往返与失败补偿、SQL 筛选/排队/统计、分页 CSV 和持久化限流。不执行实际浏览器自动化。
+测试覆盖双入口/依赖图、敏感文件不公开、用户 JWT 隔离、加密往返、上海日界线、25 个并发请求仅成功 20 个、最后一名额竞争、跨校区重复、恢复容量检查、多人抢单、状态/RBAC、会话撤销、R2 字节往返、并发容量预留与失败补偿、旧附件迁移、过期过滤、清理分页与失败重试、dry-run、SQL 筛选/排队/统计、分页 CSV、分类限流与后台轮询暂停。不执行实际浏览器自动化。
 
-`migrations/0001_initial.sql` 定义 schema、唯一索引和容量触发器；`0002_query_indexes.sql` 添加 SQL 查询所需索引并移除被替代的队列索引。已应用的 migration 不修改，通过后续编号 SQL 演进；应用代码不负责执行迁移。
+`migrations/0001_initial.sql` 定义 schema、唯一索引和预约容量触发器；`0002_query_indexes.sql` 添加 SQL 查询索引；`0003_attachment_storage.sql` 回填附件过期时间、初始化容量记录及预留/释放触发器。已应用的 migration 不修改，通过后续编号 SQL 演进；应用代码不负责执行迁移。
 
 部署后先确认 `/api/health` 返回 `database: d1`、`attachments: r2`，再使用真实域名做一条预约、附件、接单、查询闭环。云端部署、资源权限、DNS 和证书需在实际 Cloudflare 账号上验证；本地测试不替代这些检查。
 

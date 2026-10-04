@@ -7,8 +7,15 @@ import { hashPassword } from '../src/lib/passwords.js';
 import { signToken } from '../src/lib/jwt.js';
 import { config, wrangler } from '../scripts/cli.mjs';
 import { dateKey, addDays, serviceDay, formatDate } from '../shared/time.js';
+import { attachmentRepository } from '../src/db/attachments.js';
+import { appointmentRepository } from '../src/db/appointments.js';
+import { attachmentService } from '../src/services/attachments.js';
+import { storageLimit } from '../src/lib/env.js';
+import { cleanupAttachments } from '../scripts/cleanup-attachments.mjs';
+import { cloudflareClient } from '../scripts/cloudflare-d1.mjs';
 
 let mf, db, bucket;
+const MAX_R2_BYTES = 8589934592;
 const password = 'integration-test-password-only';
 const JWT_SECRET = randomBytes(48).toString('base64url');
 const PII_ENCRYPTION_KEY = randomBytes(32).toString('hex');
@@ -32,33 +39,37 @@ async function addUser(account, role = 'technician') {
   await db.prepare('INSERT INTO users(account,name,role,campus,password_hash,created_at) VALUES (?,?,?,?,?,?)').bind(account, `人员${account}`, role, '南湖', hashPassword(password), dateKey()).run();
   return login(account);
 }
+async function applyMigration(database, file) {
+  const sql = (await readFile(`migrations/${file}`, 'utf8')).replace(/--[^\n]*/g, '');
+  const statements = []; let buffer = '';
+  for (const line of sql.split('\n')) {
+    buffer = `${buffer}\n${line}`.trim();
+    if (buffer && (buffer.startsWith('CREATE TRIGGER') ? line.trim() === 'END;' : line.trim().endsWith(';'))) {
+      statements.push(buffer); buffer = '';
+    }
+  }
+  assert.equal(buffer, '', `Incomplete migration: ${file}`);
+  await database.batch(statements.map(sql => database.prepare(sql)));
+}
 before(async () => {
   const cfg = await config();
   wrangler(['pages','functions','build','functions','--outdir','.wrangler/test-build','--compatibility-date',cfg.compatibility_date,'--compatibility-flags',...cfg.compatibility_flags]);
   mf = new Miniflare({ telemetry: { enabled: false }, workers: [{ config: {
     name: 'pioneer-tests', compatibilityDate: cfg.compatibility_date, compatibilityFlags: cfg.compatibility_flags,
     manifest: { mainModule: 'index.js', modules: { 'index.js': { type: 'esm', contents: await readFile('.wrangler/test-build/index.js', 'utf8') } } },
-    env: { DB: { type: 'd1', id: 'test-db' }, ATTACHMENTS: { type: 'r2', name: 'test-attachments' },
+    env: { DB: { type: 'd1', id: 'test-db' }, MIGRATION_DB: { type: 'd1', id: 'migration-db' }, ATTACHMENTS: { type: 'r2', name: 'test-attachments' },
       JWT_SECRET: { type: 'text', value: JWT_SECRET }, PII_ENCRYPTION_KEY: { type: 'text', value: PII_ENCRYPTION_KEY } }
   } }] });
   db = await mf.getD1Database('DB'); bucket = await mf.getR2Bucket('ATTACHMENTS');
   for (const file of (await readdir('migrations')).filter(name => name.endsWith('.sql')).sort()) {
-    const sql = (await readFile(`migrations/${file}`, 'utf8')).replace(/--[^\n]*/g, '');
-    const statements = []; let buffer = '';
-    for (const line of sql.split('\n')) {
-      buffer = `${buffer}\n${line}`.trim();
-      if (buffer && (buffer.startsWith('CREATE TRIGGER') ? line.trim() === 'END;' : line.trim().endsWith(';'))) {
-        statements.push(buffer); buffer = '';
-      }
-    }
-    assert.equal(buffer, '', `Incomplete migration: ${file}`);
-    await db.batch(statements.map(sql => db.prepare(sql)));
+    await applyMigration(db, file);
   }
   await db.prepare('INSERT INTO users(account,name,role,campus,protected,password_hash,created_at) VALUES (?,?,?,?,?,?,?)').bind('root001', '系统负责人', 'superadmin', '南湖 / 浑南', 1, hashPassword(password), dateKey()).run();
 });
 after(async () => { await mf?.dispose(); });
 beforeEach(async () => {
-  await db.batch(['DELETE FROM appointment_attachments','DELETE FROM appointments',"DELETE FROM users WHERE protected=0",'DELETE FROM rate_limits'].map(sql => db.prepare(sql)));
+  await db.batch(['DELETE FROM attachment_storage','DELETE FROM appointment_attachments','DELETE FROM appointments',"DELETE FROM users WHERE protected=0",'DELETE FROM rate_limits'].map(sql => db.prepare(sql)));
+  await db.prepare('UPDATE storage_quota SET used_bytes=0 WHERE id=1').run();
   const objects = await bucket.list();
   if (objects.objects.length) await bucket.delete(objects.objects.map(object => object.key));
 });
@@ -192,6 +203,8 @@ test('R2 upload/download preserves bytes, enforces credentials and hides storage
   const base = `/api/appointments/${item.id}/attachments`;
   const attachment = await api(base, { method: 'POST', body: input }, 201);
   assert.equal(attachment.filename, '维修记录.txt'); assert.ok(!attachment.objectKey);
+  assert.equal(Date.parse(attachment.expiresAt) - Date.parse(attachment.createdAt), 180 * 86400000);
+  assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, bytes.length);
   assert.equal((await bucket.list()).objects.length, 1);
   await api(base, {}, 404);
   await api(base, { method: 'POST', body: { ...input, studentId: '999999' } }, 404);
@@ -213,6 +226,8 @@ test('R2 write is compensated when D1 metadata fails', async () => {
   try {
     await api(`/api/appointments/${item.id}/attachments`, { method: 'POST', body: { studentId: item.studentId, filename: 'a.txt', mimeType: 'text/plain', data: 'dGVzdA==' } }, 500);
     assert.equal((await bucket.list()).objects.length, 0);
+    assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 0);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM attachment_storage').first()).n, 0);
   } finally { await db.prepare('DROP TRIGGER test_attachment_failure').run(); }
 });
 test('statistics and CSV reflect completed jobs and survive staff deletion', async () => {
@@ -229,6 +244,206 @@ test('statistics and CSV reflect completed jobs and survive staff deletion', asy
 test('D1 rate limits survive separate requests and do not trust forwarded IPs', async () => {
   for (let n = 0; n < 20; n++) await api('/api/auth/login', { method: 'POST', body: { account: 'nobody', password }, headers: { 'X-Real-IP': `fake-${n}` } }, 401);
   await api('/api/auth/login', { method: 'POST', body: { account: 'nobody', password } }, 429);
+});
+
+test('concurrent uploads atomically reserve the last bytes and reject excess before R2 writes', async () => {
+  const item = await book();
+  await db.prepare('UPDATE storage_quota SET used_bytes=?').bind(MAX_R2_BYTES - 4).run();
+  const input = { studentId: item.studentId, filename: 'a.txt', mimeType: 'text/plain', data: 'dGVzdA==' };
+  const responses = await Promise.all(Array.from({ length: 10 }, () => request(`/api/appointments/${item.id}/attachments`, { method: 'POST', body: input })));
+  assert.equal(responses.filter(response => response.status === 201).length, 1);
+  assert.equal(responses.filter(response => response.status === 507).length, 9);
+  assert.equal((await responses.find(response => response.status === 507).json()).error, '附件存储空间已满');
+  assert.equal((await bucket.list()).objects.length, 1);
+  assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, MAX_R2_BYTES);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM attachment_storage').first()).n, 1);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointment_attachments').first()).n, 1);
+});
+
+test('failed R2 puts release quota only after confirmed compensation; failed compensation is retried', async () => {
+  const item = await book(), repository = attachmentRepository(db);
+  const input = { filename: 'a.txt', mimeType: 'text/plain', bytes: Buffer.from('test') };
+  const appointments = appointmentRepository(db);
+  const failingPut = attachmentService(appointments, repository, {
+    async put() { throw new Error('put failed'); }, delete: key => bucket.delete(key)
+  }, MAX_R2_BYTES);
+  await assert.rejects(failingPut.upload(item.id, input, null, item.studentId), /put failed/);
+  assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 0);
+  const ambiguousPut = attachmentService(appointments, repository, {
+    async put(...args) { await bucket.put(...args); throw new Error('put response lost'); },
+    async delete() { throw new Error('delete failed'); }
+  }, MAX_R2_BYTES);
+  await assert.rejects(ambiguousPut.upload(item.id, input, null, item.studentId), /put response lost/);
+  assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 4);
+  assert.equal((await bucket.list()).objects.length, 1);
+  assert.equal((await db.prepare('SELECT state FROM attachment_storage').first()).state, 'deleting');
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointment_attachments').first()).n, 0);
+  // R2 can delete successfully while the D1 response fails. Retain quota for retry.
+  const failed = await cleanupAttachments({ ...repository, async release() { throw new Error('D1 failure'); } }, key => bucket.delete(key), { apply: true, onError() {} });
+  assert.equal(failed.failed, 1); assert.equal((await bucket.list()).objects.length, 0);
+  assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 4);
+  assert.equal((await db.prepare('SELECT state FROM attachment_storage').first()).state, 'deleting');
+  const retry = await cleanupAttachments(repository, key => bucket.delete(key), { apply: true });
+  assert.equal(retry.deleted, 1); assert.equal(retry.failed, 0);
+  assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 0);
+  assert.equal((await cleanupAttachments(repository, key => bucket.delete(key), { apply: true })).deleted, 0);
+});
+
+test('expired attachments disappear for guests and staff without releasing quota until physical deletion', async () => {
+  const item = await book(), token = await login(), base = `/api/appointments/${item.id}/attachments`;
+  const file = await api(base, { method: 'POST', body: { studentId: item.studentId, filename: 'a.txt', mimeType: 'text/plain', data: 'dGVzdA==' } }, 201);
+  const expires = new Date().toISOString();
+  await db.batch([
+    db.prepare('UPDATE appointment_attachments SET expires_at=?').bind(expires),
+    db.prepare('UPDATE attachment_storage SET expires_at=?').bind(expires)
+  ]);
+  for (const options of [{}, { token }]) {
+    assert.deepEqual((await api(`${base}?studentId=${item.studentId}`, options)).items, []);
+    await api(`${base}/${file.id}?studentId=${item.studentId}`, options, 404);
+  }
+  assert.deepEqual((await api(`/api/appointments/lookup?appointmentId=${item.id}&studentId=${item.studentId}`)).attachments, []);
+  assert.equal((await bucket.list()).objects.length, 1);
+  assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 4);
+  const repository = attachmentRepository(db);
+  const dryRun = await cleanupAttachments(repository, () => assert.fail('dry-run must not delete'));
+  assert.equal(dryRun.scanned, 1); assert.equal(dryRun.deleted, 0); assert.equal(dryRun.dryRun, true);
+  assert.equal((await db.prepare('SELECT state FROM attachment_storage').first()).state, 'complete');
+  const result = await cleanupAttachments(repository, key => bucket.delete(key), { apply: true });
+  assert.equal(result.deleted, 1); assert.equal(result.failed, 0);
+  assert.equal((await bucket.list()).objects.length, 0);
+  assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 0);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointment_attachments').first()).n, 0);
+});
+
+test('cleanup paginates past failed objects, handles lifecycle deletions and releases each allocation once', async () => {
+  const item = await book();
+  const created = new Date(Date.now() - 181 * 86400000).toISOString(), expires = new Date(Date.now() - 86400000).toISOString();
+  const statements = [];
+  for (let n = 0; n < 105; n++) {
+    const id = `cleanup-${String(n).padStart(3, '0')}`, key = `appointments/${item.id}/${id}`;
+    statements.push(db.prepare("INSERT INTO attachment_storage VALUES (?,?,1,'complete',?,?)").bind(id, key, created, expires));
+    statements.push(db.prepare("INSERT INTO appointment_attachments(id,appointment_id,filename,mime_type,size,object_key,created_at,expires_at) VALUES (?,?,'a.txt','text/plain',1,?,?,?)").bind(id, item.id, key, created, expires));
+  }
+  await db.batch(statements);
+  const repository = attachmentRepository(db);
+  const first = await cleanupAttachments(repository, async key => {
+    if (key.endsWith('cleanup-000')) throw new Error('R2 failure');
+    await bucket.delete(key); // Already absent, as after lifecycle deletion.
+  }, { apply: true, onError() {} });
+  assert.deepEqual(first, { scanned: 105, deleted: 104, failed: 1, dryRun: false });
+  assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 1);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointment_attachments').first()).n, 1);
+  const second = await cleanupAttachments(repository, key => bucket.delete(key), { apply: true });
+  assert.equal(second.deleted, 1);
+  assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 0);
+  assert.equal((await cleanupAttachments(repository, key => bucket.delete(key), { apply: true })).deleted, 0);
+});
+
+test('storage limits validate configuration and honor the smaller Preview quota', async () => {
+  assert.equal(storageLimit({}), MAX_R2_BYTES);
+  for (const value of ['', '0', '-1', '1.5', 'NaN', '9007199254740992', 1024]) assert.throws(() => storageLimit({ MAX_R2_BYTES: value }), /Invalid/);
+  const cfg = await config();
+  assert.equal(storageLimit(cfg.vars), MAX_R2_BYTES);
+  const previewLimit = storageLimit(cfg.env.preview.vars);
+  assert.equal(previewLimit, 536870912);
+  const item = await book();
+  await db.prepare('UPDATE storage_quota SET used_bytes=?').bind(previewLimit - 1).run();
+  const service = attachmentService(appointmentRepository(db), attachmentRepository(db), bucket, previewLimit);
+  await assert.rejects(service.upload(item.id, { filename: 'a.txt', mimeType: 'text/plain', bytes: Buffer.from('test') }, null, item.studentId), error => error.status === 507);
+  assert.equal((await bucket.list()).objects.length, 0);
+});
+
+test('historical attachments migrate from original timestamps and initialize quota exactly once', async () => {
+  const legacy = await mf.getD1Database('MIGRATION_DB');
+  await applyMigration(legacy, '0001_initial.sql'); await applyMigration(legacy, '0002_query_indexes.sql');
+  const item = await book(), row = await db.prepare('SELECT * FROM appointments WHERE id=?').bind(item.id).first();
+  const columns = Object.keys(row);
+  await legacy.prepare(`INSERT INTO appointments(${columns.join(',')}) VALUES (${columns.map(() => '?').join(',')})`).bind(...Object.values(row)).run();
+  const oldCreated = '2026-01-01T12:34:56.123Z', recentCreated = new Date().toISOString();
+  for (const [id, size, created] of [['old', 5, oldCreated], ['recent', 6, recentCreated]]) {
+    await legacy.prepare("INSERT INTO appointment_attachments VALUES (?,?,'a.txt','text/plain',?,?,?)").bind(id, item.id, size, `appointments/${item.id}/${id}`, created).run();
+  }
+  await applyMigration(legacy, '0003_attachment_storage.sql');
+  const migrated = (await legacy.prepare('SELECT id,expires_at FROM appointment_attachments ORDER BY id').all()).results;
+  assert.deepEqual(migrated, [
+    { id: 'old', expires_at: new Date(Date.parse(oldCreated) + 180 * 86400000).toISOString() },
+    { id: 'recent', expires_at: new Date(Date.parse(recentCreated) + 180 * 86400000).toISOString() }
+  ]);
+  assert.equal((await legacy.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 11);
+  const repository = attachmentRepository(legacy);
+  assert.deepEqual((await repository.list(item.id, new Date().toISOString())).map(file => file.id), ['recent']);
+  const cleanup = await cleanupAttachments(repository, async () => {}, { apply: true });
+  assert.equal(cleanup.deleted, 1);
+  assert.equal((await legacy.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 6);
+  assert.deepEqual((await legacy.prepare('PRAGMA foreign_key_check').all()).results, []);
+});
+
+test('HTTP D1 maintenance adapter reuses real repositories and rejects API errors', async () => {
+  const item = await book(), repository = attachmentRepository(db);
+  const createdAt = new Date(Date.now() - 2 * 86400000).toISOString();
+  await repository.reserve({ id: 'abandoned', objectKey: `appointments/${item.id}/abandoned`, size: 4, createdAt, expiresAt: new Date(Date.now() + 178 * 86400000).toISOString() }, MAX_R2_BYTES);
+  const account = 'a'.repeat(32), token = 'test-only-api-token';
+  const client = cloudflareClient(account, token, async (url, options) => {
+    assert.equal(options.headers.Authorization, `Bearer ${token}`);
+    if (url.endsWith('/r2/buckets/test-bucket')) return Response.json({ success: true, result: { name: 'test-bucket' } });
+    assert.equal(url, `https://api.cloudflare.com/client/v4/accounts/${account}/d1/database/test-database/query`);
+    const { batch } = JSON.parse(options.body);
+    assert.ok(batch.every(item => item.params.every(value => typeof value === 'string')));
+    const result = await db.batch(batch.map(item => db.prepare(item.sql).bind(...item.params)));
+    return Response.json({ success: true, result });
+  });
+  await client.checkBucket('test-bucket');
+  const remoteRepository = attachmentRepository(client.database('test-database'));
+  const result = await cleanupAttachments(remoteRepository, key => bucket.delete(key), { apply: true });
+  assert.equal(result.deleted, 1); assert.equal(result.failed, 0);
+  assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 0);
+  for (const response of [() => new Response('', { status: 403 }), () => Response.json({ success: false }), () => Response.json({ success: true, result: [{ success: false }] })]) {
+    const failing = cloudflareClient(account, token, async () => response()).database('test-database');
+    await assert.rejects(failing.prepare('SELECT 1').first(), /Cloudflare|D1/);
+  }
+  assert.throws(() => cloudflareClient('', ''), /CLOUDFLARE/);
+});
+
+test('metadata failure with unsuccessful R2 compensation keeps an invisible counted object', async () => {
+  const item = await book(), repository = attachmentRepository(db);
+  await db.prepare("CREATE TRIGGER test_attachment_failure BEFORE INSERT ON appointment_attachments BEGIN SELECT RAISE(ABORT,'test failure'); END").run();
+  try {
+    const service = attachmentService(appointmentRepository(db), repository, {
+      put: (...args) => bucket.put(...args), async delete() { throw new Error('R2 delete unavailable'); }
+    }, MAX_R2_BYTES);
+    await assert.rejects(service.upload(item.id, { filename: 'a.txt', mimeType: 'text/plain', bytes: Buffer.from('test') }, null, item.studentId));
+    assert.equal((await bucket.list()).objects.length, 1);
+    assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 4);
+    assert.equal((await db.prepare('SELECT state FROM attachment_storage').first()).state, 'deleting');
+    assert.deepEqual((await service.list(item.id, null, item.studentId)).items, []);
+  } finally { await db.prepare('DROP TRIGGER test_attachment_failure').run(); }
+});
+
+test('lost metadata responses leave failed compensation hidden and immediately retryable', async () => {
+  const item = await book(), repository = attachmentRepository(db);
+  for (const failure of ['delete', 'release']) {
+    const service = attachmentService(appointmentRepository(db), {
+      ...repository,
+      async create(value) { await repository.create(value); throw new Error('D1 response lost after commit'); },
+      async release(id) { if (failure === 'release') throw new Error('D1 release unavailable'); await repository.release(id); }
+    }, {
+      put: (...args) => bucket.put(...args),
+      async delete(key) { if (failure === 'delete') throw new Error('R2 delete unavailable'); await bucket.delete(key); }
+    }, MAX_R2_BYTES);
+    await assert.rejects(service.upload(item.id, { filename: 'a.txt', mimeType: 'text/plain', bytes: Buffer.from('test') }, null, item.studentId), /D1 response lost after commit/);
+    const allocation = await db.prepare('SELECT * FROM attachment_storage').first();
+    assert.equal(allocation.state, 'deleting');
+    assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 4);
+    assert.equal((await bucket.list()).objects.length, failure === 'delete' ? 1 : 0);
+    const base = `/api/appointments/${item.id}/attachments`;
+    assert.deepEqual((await api(`${base}?studentId=${item.studentId}`)).items, []);
+    await api(`${base}/${allocation.id}?studentId=${item.studentId}`, {}, 404);
+    const result = await cleanupAttachments(repository, key => bucket.delete(key), { apply: true });
+    assert.equal(result.deleted, 1); assert.equal(result.failed, 0);
+    assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 0);
+    assert.equal((await bucket.list()).objects.length, 0);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointment_attachments').first()).n, 0);
+  }
 });
 
 test('write, lookup and upload limits are independent and shared by their routes', async () => {
