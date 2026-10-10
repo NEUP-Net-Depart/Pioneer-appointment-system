@@ -50,7 +50,7 @@ export function activationService(repository,users,key){
       const whitelist=await repository.findWhitelist(studentId);
       if(!whitelist || whitelist.status!=='open' || (whitelist.expectedName && whitelist.expectedName!==name) || await users.find(studentId))fail(400,'当前资料无法提交激活申请，请联系管理员核实');
       const receipt=issueAccessToken(),id=crypto.randomUUID();
-      if(!await repository.submit({id,studentId,name,homeCampus:input.homeCampus,contact:encryptText(contact,key),passwordHash:hashPassword(password),receiptHash:receipt.hash,createdAt:nowIso()},whitelist.revision))fail(409,'资格已更新，请联系管理员');
+      if(!await repository.submit({id,studentId,name,homeCampus:input.homeCampus,contact:await encryptText(contact,key),passwordHash:hashPassword(password),receiptHash:receipt.hash,createdAt:nowIso()},whitelist.revision))fail(409,'资格已更新，请联系管理员');
       return {id,receipt:receipt.token,status:'pending'};
     },
     async status(id,receipt){
@@ -61,7 +61,8 @@ export function activationService(repository,users,key){
     },
     async requests(actor){
       requireRole(actor,'admin');
-      return {items:(await repository.listRequests()).filter(item=>inScope(actor,item)).map(item=>({...item,contact:decryptText(item.contact,key)}))};
+      const items = (await repository.listRequests()).filter(item=>inScope(actor,item));
+      return {items:await Promise.all(items.map(async item=>({...item,contact:await decryptText(item.contact,key)})))};
     },
     async review(input,actor){
       requireRole(actor,'admin');

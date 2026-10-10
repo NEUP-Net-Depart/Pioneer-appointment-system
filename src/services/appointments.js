@@ -6,20 +6,21 @@ import { guestAppointment } from './access.js';
 import { appointmentTransitions } from '../../shared/constants.js';
 import { appointmentScope,requireRole,requireAppointmentAccess,requireCampus } from './permissions.js';
 
-export function presentAppointment(item, encryptionKey) {
-  return { ...item, phone: decryptText(item.phone, encryptionKey), social: decryptText(item.social, encryptionKey) };
+export async function presentAppointment(item, encryptionKey) {
+  const [phone, social] = await Promise.all([decryptText(item.phone, encryptionKey), decryptText(item.social, encryptionKey)]);
+  return { ...item, phone, social };
 }
 export function appointmentService(appointments, users, encryptionKey) {
   const present = item => presentAppointment(item, encryptionKey);
   return {
     async list(query,user) {
       const result = await appointments.list(query,appointmentScope(user));
-      const items=result.items.map(item=>{
+      const items=await Promise.all(result.items.map(async item=>{
         if(user.role==='technician' && item.assignedTo!==user.account) {
           return Object.fromEntries(['id','revision','campus','date','timeSlot','deviceType','brand','deviceModel','faultType','status','assignedTo','createdAt'].map(key=>[key,item[key]]));
         }
         return present(item);
-      });
+      }));
       return { ...result,items };
     },
     async create(data) {
@@ -28,11 +29,12 @@ export function appointmentService(appointments, users, encryptionKey) {
       if (!serviceDay(data.date)) fail(400, '预约日期必须为周一至周四');
       const instant = nowIso();
       const credential = issueAccessToken();
+      const [phone, social] = await Promise.all([encryptText(data.phone, encryptionKey), encryptText(data.social, encryptionKey)]);
       const item = { ...data, status: 'pending', assignedTo: '', repairNote: '', createdAt: instant,
         agreementAt: instant, agreementVersion: data.agreementVersion || 'v1.0',
         accessTokenHash: credential.hash, credentialRotatedAt: instant,
-        phone: encryptText(data.phone, encryptionKey), social: encryptText(data.social, encryptionKey) };
-      return { ...present(await appointments.create(item)), accessToken: credential.token };
+        phone, social };
+      return { ...await present(await appointments.create(item)), accessToken: credential.token };
     },
     async lookup(id, accessToken) {
       return present(await guestAppointment(appointments,id,accessToken));
@@ -81,7 +83,7 @@ export function appointmentService(appointments, users, encryptionKey) {
       if (!Object.keys(patch).length) fail(400, '没有可更新的字段');
       const updated = await appointments.update(item, patch);
       if (!updated) fail(409, '预约已被其他工作人员修改，请刷新后重试');
-      return present(updated);
+      return await present(updated);
     }
   };
 }

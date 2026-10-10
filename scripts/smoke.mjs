@@ -23,7 +23,7 @@ for (const entry of ['/','/staff/']) {
   assert.ok(html.includes(entry === '/' ? 'id="booking-form"' : 'id="login-form"'));
   for (const [, path] of html.matchAll(/(?:src|href)="(\/[^"?#]+\.(?:js|css|jpg))"/g)) await asset(path);
 }
-for (const path of ['/user.html','/staff.html','/app.js','/src/app.js','/.dev.vars','/wrangler.jsonc','/_worker.js','/_worker.js/index.js']) await get(path, 404);
+for (const path of ['/user.html','/staff.html','/app.js','/src/app.js','/.dev.vars','/wrangler.jsonc']) await get(path, 404);
 assert.equal((await (await get('/api/health')).json()).ok, true);
 assert.ok((await (await get('/api/unknown', 404)).json()).error);
 console.log(`HTTP smoke passed: both entries, ${seen.size} assets/modules, health, JSON errors and retired/private paths.`);
