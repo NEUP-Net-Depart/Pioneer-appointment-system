@@ -1,67 +1,54 @@
-import { $, $$, showToast, escapeHtml } from '/shared/utils.js';
-import { apiJson } from '/shared/api.js';
-import { initEnrollment } from './enrollment.js';
-
-const roleNames = { technician: '维修人员', admin: '管理者', superadmin: '最高权限者' };
-import { roleLevel } from '/shared/constants.js';
-
-
-export function initUsers() {
-  const users = [];
-  const enrollment=initEnrollment();
-  let generation = 0;
-  const currentRole = () => sessionStorage.getItem('pioneerRole') || '';
-  const isSuperAdmin = () => currentRole() === 'superadmin';
-  const canManage = user => !user.protected && roleLevel[currentRole()] > (roleLevel[user.role] ?? 99);
-  async function syncUsers() {
-    const current = ++generation;
-    try {
-      const payload = await apiJson('/api/users');
-      if (current !== generation) return;
-      users.splice(0, users.length, ...payload.items); render();
-    } catch (error) { if (current === generation) showToast(error.message || '无法连接服务器'); }
+import {$,$$,showToast,escapeHtml} from '/shared/utils.js';
+import {apiJson} from '/shared/api.js';
+import {roleLevel,roleLabels,CAMPUSES} from '/shared/constants.js';
+import {initEnrollment} from './enrollment.js';
+export function initUsers(){
+  const enrollment=initEnrollment({onAccountsChanged:()=>syncUsers()});let users=[],generation=0,editing;
+  const currentRole=()=>sessionStorage.getItem('pioneerRole') || '';
+  const canManage=user=>!user.protected && roleLevel[currentRole()]>roleLevel[user.role];
+  async function syncUsers(){
+    const current=++generation;
+    try{const result=await apiJson('/api/users');if(current!==generation)return;users=result.items;render();}
+    catch(error){if(current===generation)showToast(error.message);}
   }
-  function render() {
-    const query = $('#user-search').value.trim().toLowerCase();
-    const rows = users.filter(user => !query || [user.account, user.name, user.homeCampus, roleNames[user.role] || user.role].some(value => String(value).toLowerCase().includes(query)));
-    $('#users-table').innerHTML = rows.map(user => {
-      const workload = user.workload;
-
-      const roleCell = (isSuperAdmin() && canManage(user)) ? `<select class="user-role-select" data-role-account="${escapeHtml(user.account)}"><option value="${user.role}" selected>${roleNames[user.role]}</option>${user.role !== 'technician' ? '<option value="technician">维修人员</option>' : ''}${isSuperAdmin() && user.role !== 'admin' ? '<option value="admin">管理员</option>' : ''}</select>` : `<span class="user-role">${roleNames[user.role] || user.role}</span>`;
-
-      const actions = user.protected ? '<span class="cell-muted">系统保护</span>' : canManage(user) ? `<button class="record-btn" data-toggle-user="${escapeHtml(user.account)}">${user.status === 'enabled' ? '停用' : '启用'}</button><button class="record-btn user-action" data-reset-user="${escapeHtml(user.account)}">重置密码</button>` : '<button class="record-btn permission-denied" data-permission-denied="true">权限不足</button>';
-      return `<tr><td><span class="person-name">${escapeHtml(user.account)}</span><span class="person-code">创建于 ${escapeHtml(user.createdAt || '未记录')}</span></td><td>${escapeHtml(user.name)}</td><td>${roleCell}</td><td>${escapeHtml(user.homeCampus)}<span class="person-code">授权 ${escapeHtml(user.authorizedCampuses.join(" / "))}</span></td><td><span class="user-status ${user.status === 'enabled' ? 'is-active' : 'is-disabled'}">${user.status === 'enabled' ? '启用' : '已停用'}</span></td><td>${workload} 条记录</td><td>${actions}</td></tr>`;
-    }).join('');
-    $('#users-empty').hidden = rows.length > 0;
-    $$('[data-toggle-user]').forEach(button => button.addEventListener('click', async () => {
-      const user = users.find(item => item.account === button.dataset.toggleUser);
-      if (!user) return;
-      try {
-        await apiJson(`/api/users/${encodeURIComponent(user.account)}`, { method: 'PATCH', json: { status: user.status === 'enabled' ? 'disabled' : 'enabled' } });
-        await syncUsers(); showToast(user.status === 'enabled' ? '账号已停用' : '账号已启用');
-      } catch (error) { showToast(error.message); }
-    }));
-    $$('[data-reset-user]').forEach(button => button.addEventListener('click', async () => {
-      const password = window.prompt('请输入新的初始密码（至少 8 位）');
-      if (!password) return;
-      try {
-        await apiJson(`/api/users/${encodeURIComponent(button.dataset.resetUser)}`, { method: 'PATCH', json: { password } });
-        showToast('密码已重置');
-      } catch (error) { showToast(error.message); }
-    }));
-
-    $$('[data-permission-denied]').forEach(button => button.addEventListener('click', () => showToast('权限不足：只能管理权限低于自己的账号')));
-    $$('.user-role-select').forEach(select => select.addEventListener('change', async () => {
-      const user = users.find(item => item.account === select.dataset.roleAccount);
-      if (!user || !isSuperAdmin()) return;
-      try {
-        const updated = await apiJson(`/api/users/${encodeURIComponent(user.account)}`, { method: 'PATCH', json: { role: select.value } });
-        await syncUsers(); showToast(`${user.account} 已更新为${roleNames[updated.role]}`);
-      } catch (error) { showToast(error.message); render(); }
-    }));
+  function editUser(user){
+    editing=user;
+    $('#edit-user-title').textContent=`编辑 ${user.account}`;
+    $('#edit-user-name').value=user.name;
+    $('#edit-user-role').innerHTML=Object.entries(roleLabels).filter(([role])=>roleLevel[role]<roleLevel[currentRole()]).map(([role,label])=>`<option value="${role}">${label}</option>`).join('');
+    $('#edit-user-role').value=user.role;$('#edit-home-campus').value=user.homeCampus;
+    const allowed=JSON.parse(sessionStorage.getItem('pioneerCampuses') || '[]');
+    $('#edit-campus-grants').innerHTML=CAMPUSES.map(campus=>`<label class="checkbox-label"><input type="checkbox" name="editCampus" value="${campus}" ${user.authorizedCampuses.includes(campus) ? 'checked' : ''} ${allowed.includes(campus) ? '' : 'disabled'} /> ${campus}</label>`).join('');
+    $('#edit-user-password').value='';$('#user-edit-modal').hidden=false;$('#edit-user-name').focus();
   }
-
-  $('#user-search').addEventListener('input', render);
-  render();
-  return { refresh:()=>Promise.all([syncUsers(),enrollment.refresh()]), clear() {enrollment.clear(); generation++; users.splice(0); render(); } };
+  function render(){
+    const query=$('#user-search').value.trim().toLowerCase();
+    const rows=users.filter(user=>!query || [user.account,user.name,user.homeCampus,...user.authorizedCampuses,roleLabels[user.role]].some(value=>value.toLowerCase().includes(query)));
+    $('#users-table').innerHTML=rows.map(user=>`<tr><td><span class="person-name">${escapeHtml(user.account)}</span><span class="person-code">创建于 ${escapeHtml(user.createdAt)}</span></td><td>${escapeHtml(user.name)}</td><td>${roleLabels[user.role]}</td><td>所属 ${escapeHtml(user.homeCampus)}<span class="person-code">授权 ${escapeHtml(user.authorizedCampuses.join(' / '))}</span></td><td><span class="user-status ${user.status==='enabled' ? 'is-active' : 'is-disabled'}">${user.status==='enabled' ? '启用' : '已停用'}</span></td><td>${user.workload} 条记录</td><td>${user.protected ? '系统保护 · 本人可在个人设置改密' : canManage(user) ? `<button class="record-btn" data-edit-user="${user.account}">编辑权限</button><button class="record-btn" data-toggle-user="${user.account}">${user.status==='enabled' ? '停用' : '恢复'}</button><button class="record-btn" data-reset-user="${user.account}">重置密码</button>` : '本人账号 · 个人设置'}</td></tr>`).join('');
+    $('#users-empty').hidden=rows.length>0;
+    $$('[data-edit-user]').forEach(button=>button.addEventListener('click',()=>editUser(users.find(user=>user.account===button.dataset.editUser))));
+    $$('[data-toggle-user]').forEach(button=>button.addEventListener('click',async()=>{
+      const user=users.find(item=>item.account===button.dataset.toggleUser);button.disabled=true;
+      try{await apiJson(`/api/users/${encodeURIComponent(user.account)}`,{method:'PATCH',json:{status:user.status==='enabled' ? 'disabled' : 'enabled'}});await syncUsers();showToast('账号状态已更新，旧会话已撤销');}
+      catch(error){showToast(error.message);}
+      finally{button.disabled=false;}
+    }));
+    $$('[data-reset-user]').forEach(button=>button.addEventListener('click',()=>{editUser(users.find(user=>user.account===button.dataset.resetUser));$('#edit-user-password').focus();}));
+  }
+  function close(){editing=undefined;$('#edit-user-password').value='';$('#user-edit-modal').hidden=true;}
+  $('#user-edit-form').addEventListener('submit',async event=>{
+    event.preventDefault();if(!editing)return;
+    const button=event.currentTarget.querySelector('[type=submit]');button.disabled=true;
+    try{
+      const password=$('#edit-user-password').value;
+      await apiJson(`/api/users/${encodeURIComponent(editing.account)}`,{method:'PATCH',json:{name:$('#edit-user-name').value.trim(),role:$('#edit-user-role').value,homeCampus:$('#edit-home-campus').value,authorizedCampuses:$$('[name=editCampus]:checked').map(input=>input.value),...(password ? {password} : {})}});
+      close();await syncUsers();showToast('账号与校区授权已更新，旧会话已撤销');
+    }catch(error){showToast(error.message);}
+    finally{button.disabled=false;}
+  });
+  $('#close-user-edit').addEventListener('click',close);$('#cancel-user-edit').addEventListener('click',close);
+  $('#user-edit-modal').addEventListener('click',event=>{if(event.target.id==='user-edit-modal')close();});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape')close();});
+  $('#user-search').addEventListener('input',render);render();
+  return{refresh:()=>Promise.all([syncUsers(),enrollment.refresh()]),clear(){generation++;enrollment.clear();users=[];close();render();}};
 }

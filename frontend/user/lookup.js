@@ -1,3 +1,4 @@
+import {uploadAttachments} from '/shared/attachments.js';
 import { attachmentSize,attachmentUrl } from '/shared/attachments.js';
 import { $,$$,showToast,escapeHtml } from '/shared/utils.js';
 import { apiJson,apiFetch } from '/shared/api.js';
@@ -6,7 +7,7 @@ import { statusLabels,statusClass } from '/shared/constants.js';
 import { startVisiblePolling } from '/shared/polling.js';
 import { savedAppointments,saveAppointment,privateLink,parsePrivateLink,credentialHeaders } from './credentials.js';
 
-export function initLookup(appointments) {
+export function initLookup(appointments,{onPrivateLink=()=>{}}={}) {
   let stopPolling,generation=0;
   const root=$('#lookup-results');
   async function read(entry) {
@@ -14,9 +15,19 @@ export function initLookup(appointments) {
   }
   function render(list,failed=[]) {
     stopPolling?.();
-    root.innerHTML=list.map(item=>`<article class="appointment-card"><div><h3>${escapeHtml(item.deviceType)} · ${escapeHtml(item.brand)} ${escapeHtml(item.deviceModel)}</h3><span class="code">预约编号 <strong>${escapeHtml(item.id)}</strong></span><div class="appointment-meta"><span>${escapeHtml(item.campus)}</span><span>${formatDate(item.date)}</span><span>${escapeHtml(item.timeSlot)}</span></div><div class="queue-info" data-queue-id="${escapeHtml(item.id)}">正在读取排队位置…</div>${item.repairNote ? `<p class="record-note"><b>维修结果：</b>${escapeHtml(item.repairNote)}</p>` : ''}<div class="appointment-attachments">${(item.attachments || []).map(file=>`<button type="button" class="attachment-link" data-file="${escapeHtml(file.id)}" data-appointment="${escapeHtml(item.id)}">${escapeHtml(file.filename)} <small>${attachmentSize(file.size)}</small></button>`).join('')}</div><button class="text-btn" data-copy-link="${escapeHtml(item.id)}">复制私人查询链接</button></div><div class="appointment-status"><span class="status-pill ${statusClass[item.status]}">${statusLabels[item.status]}</span><time>提交于 ${formatDate(item.createdAt)}</time>${['pending','awaiting_claim'].includes(item.status) ? `<button class="cancel-link" data-cancel="${escapeHtml(item.id)}">取消预约</button>` : ''}</div></article>`).join('');
+    root.innerHTML=list.map(item=>`<article class="appointment-card"><div><h3>${escapeHtml(item.deviceType)} · ${escapeHtml(item.brand)} ${escapeHtml(item.deviceModel)}</h3><span class="code">预约编号 <strong>${escapeHtml(item.id)}</strong></span><div class="appointment-meta"><span>${escapeHtml(item.campus)}</span><span>${formatDate(item.date)}</span><span>${escapeHtml(item.timeSlot)}</span></div><div class="queue-info" data-queue-id="${escapeHtml(item.id)}">正在读取排队位置…</div>${item.repairNote ? `<p class="record-note"><b>维修结果：</b>${escapeHtml(item.repairNote)}</p>` : ''}<div class="appointment-attachments">${(item.attachments || []).map(file=>`<button type="button" class="attachment-link" data-file="${escapeHtml(file.id)}" data-appointment="${escapeHtml(item.id)}">${escapeHtml(file.filename)} <small>${attachmentSize(file.size)}</small></button>`).join('')}</div><div class="attachment-upload"><label>补充附件（单个不超过 5 MB）<input type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf,text/plain" data-upload-input="${escapeHtml(item.id)}" aria-label="为 ${escapeHtml(item.id)} 选择附件" /></label><button class="secondary-btn" type="button" data-upload="${escapeHtml(item.id)}">上传附件</button></div><button class="text-btn" data-copy-link="${escapeHtml(item.id)}">复制私人查询链接</button></div><div class="appointment-status"><span class="status-pill ${statusClass[item.status]}">${statusLabels[item.status]}</span><time>提交于 ${formatDate(item.createdAt)}</time>${['pending','awaiting_claim'].includes(item.status) ? `<button class="cancel-link" data-cancel="${escapeHtml(item.id)}">取消预约</button>` : ''}</div></article>`).join('');
     if (!list.length && !failed.length) root.innerHTML='<div class="empty-state"><span class="empty-icon">⌕</span><h2>此浏览器暂无预约</h2><p>预约成功后会自动出现在这里。其他设备可打开私人查询链接。</p></div>';
     if (failed.length) root.innerHTML+=failed.map(({entry,message})=>`<div class="empty-state"><h2>${escapeHtml(entry.id)} 暂时无法读取</h2><p>${escapeHtml(message)}。如凭证遗失或失效，请联系工作人员人工核验后重新签发。</p></div>`).join('');
+    $$('[data-upload]').forEach(button=>button.addEventListener('click',async()=>{
+      const item=list.find(entry=>entry.id===button.dataset.upload);
+      const files=[...$(`[data-upload-input="${CSS.escape(item.id)}"]`).files];
+      if(!files.length){showToast('请先选择附件');return;}
+      if(files.some(file=>file.size>5*1024*1024)){showToast('单个附件不能超过 5 MB');return;}
+      button.disabled=true;
+      try{await uploadAttachments(item,files);Object.assign(item,await read(item));render(list,failed);showToast('附件已上传');}
+      catch(error){showToast(error.message);}
+      finally{button.disabled=false;}
+    }));
     $$('[data-copy-link]').forEach(button=>button.addEventListener('click',async()=>{
       const item=list.find(entry=>entry.id===button.dataset.copyLink);
       try { await navigator.clipboard.writeText(privateLink(item));showToast('私人链接已复制，请勿转发给他人'); }
@@ -37,7 +48,7 @@ export function initLookup(appointments) {
       button.disabled=true;
       try {
         await apiJson(`/api/appointments/${encodeURIComponent(item.id)}/status`,{method:'PATCH',headers:credentialHeaders(item),json:{status:'cancelled'}});
-        await refresh();showToast('预约已取消');
+        Object.assign(item,await read(item));render(list,failed);showToast('预约已取消');
       } catch(error) {showToast(error.message);}
       finally {button.disabled=false;}
     }));
@@ -75,9 +86,12 @@ export function initLookup(appointments) {
   });
   $('#refresh-my-appointments').addEventListener('click',refresh);
   const initial=location.hash;
-  if(initial) {
+  function consumePrivateLink(){
+    const fragment=location.hash;if(!fragment)return;
     history.replaceState(null,'',location.pathname+location.search);
-    importLink(location.origin+'/'+initial).catch(error=>showToast(error.message));
-  } else render([]);
+    importLink(location.origin+'/'+fragment).then(onPrivateLink).catch(error=>showToast(error.message));
+  }
+  window.addEventListener('hashchange',consumePrivateLink);
+  if(initial) consumePrivateLink();else render([]);
   return {refresh,hasPrivateLink:!!initial};
 }

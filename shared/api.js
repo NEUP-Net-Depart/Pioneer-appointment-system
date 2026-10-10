@@ -1,7 +1,7 @@
 let staffSession = false;
 export function useStaffSession() { staffSession = true; }
 export function clearSession() {
-  ['pioneerRole','pioneerAccount','pioneerToken'].forEach(key => sessionStorage.removeItem(key));
+  ['pioneerRole','pioneerAccount','pioneerToken','pioneerCampuses'].forEach(key => sessionStorage.removeItem(key));
 }
 export async function apiFetch(input, { json, ...options } = {}) {
   const headers = new Headers(options.headers || {});

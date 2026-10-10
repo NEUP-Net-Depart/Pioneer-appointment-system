@@ -2,7 +2,6 @@ import { fail } from '../lib/http.js';
 import { signToken, verifyToken, TOKEN_TTL_SECONDS } from '../lib/jwt.js';
 import { verifyPassword,hashPassword } from '../lib/passwords.js';
 import { account,passwordInput } from '../lib/validation.js';
-import { roleLevel } from '../../shared/constants.js';
 
 export function authService(users, secret) {
   return {
@@ -17,7 +16,8 @@ export function authService(users, secret) {
     async login(input) {
       const user = await users.find(account(input.account));
       if (typeof input.password !== 'string' || input.password.length > 128 || user?.status !== 'enabled' || !verifyPassword(input.password, user.passwordHash)) fail(401, '账号或密码不正确');
-      return { account: user.account, role: user.role, permissions: Object.keys(roleLevel).filter(role => roleLevel[role] <= roleLevel[user.role]), token: signToken(user, secret), expiresIn: TOKEN_TTL_SECONDS };
+      return {account:user.account,name:user.name,role:user.role,status:user.status,homeCampus:user.homeCampus,authorizedCampuses:user.authorizedCampuses,
+        token:signToken(user,secret),expiresIn:TOKEN_TTL_SECONDS};
     },
     async logout(user) { await users.revokeTokens(user.account); return { ok: true }; },
     async changePassword(input,user) {

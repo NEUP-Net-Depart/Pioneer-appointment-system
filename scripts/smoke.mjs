@@ -12,7 +12,7 @@ async function asset(path) {
   const response = await get(path);
   if (path.endsWith('.js')) {
     assert.ok(response.headers.get('content-type')?.includes('javascript'), `${path} is not JavaScript`);
-    for (const [, dependency] of (await response.text()).matchAll(/(?:from\s+|import\s*)['"]([^'"]+)['"]/g)) {
+    for (const [, dependency] of (await response.text()).matchAll(/(?:from\s+|import\s+)['"]([^'"]+)['"]/g)) {
       await asset(new URL(dependency, new URL(path, base)).pathname);
     }
   }

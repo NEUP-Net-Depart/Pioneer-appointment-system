@@ -24,9 +24,6 @@ export function appointmentRepository(db) {
       ]);
       return results.at(-1).results.length>0;
     },
-    async findQueueEntry(id) {
-      return db.prepare('SELECT id,student_id AS studentId,campus,date,time_slot AS timeSlot,created_at AS createdAt,status FROM appointments WHERE id=?').bind(id).first();
-    },
     async list(query,{campuses,technician}) {
       const campusScope=campuses.length ? `campus IN (${campuses.map(()=>'?').join(',')})` : '0';
       const scope=campusScope+(technician ? " AND (assigned_to=? OR (assigned_to IS NULL AND status IN ('pending','awaiting_claim')))" : '');

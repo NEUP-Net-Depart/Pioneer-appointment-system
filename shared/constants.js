@@ -2,6 +2,11 @@ export const SLOT_CAPACITY = 20;
 export const TIME_SLOTS = ['19:00–20:00', '20:00–21:00'];
 export const roleLevel = { technician: 1, admin: 2, superadmin: 3 };
 export const CAMPUSES = ['南湖', '浑南'];
+export const roleLabels = {technician:'维修人员',admin:'管理员',superadmin:'最高权限者'};
+export const appointmentTransitions = {
+  pending:['claimed','awaiting_claim'],awaiting_claim:['claimed'],
+  claimed:['in_progress','completed','no_show','no_repair'],in_progress:['completed','no_show','no_repair']
+};
 export const statusLabels = {
   pending: '待审核', awaiting_claim: '待接单', claimed: '已接单', in_progress: '维修中',
   completed: '已完成', cancelled: '已取消', no_show: '爽约', no_repair: '无法维修'

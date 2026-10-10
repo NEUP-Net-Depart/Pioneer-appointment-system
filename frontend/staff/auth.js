@@ -1,7 +1,6 @@
 import { $, $$, showToast } from '/shared/utils.js';
 import { apiFetch, apiJson, clearSession } from '/shared/api.js';
-import { roleLevel } from '/shared/constants.js';
-const labels = { technician: '维修人员', admin: '管理者', superadmin: '最高权限者' };
+import { roleLevel,roleLabels } from '/shared/constants.js';
 
 export function initAuth({ onLogin, onLogout }) {
   function message(value = '') { $('#login-message').textContent = value; $('#login-message').hidden = !value; }
@@ -12,9 +11,10 @@ export function initAuth({ onLogin, onLogout }) {
   function enter(payload) {
     sessionStorage.setItem('pioneerRole', payload.role);
     sessionStorage.setItem('pioneerAccount', payload.account);
+    sessionStorage.setItem('pioneerCampuses',JSON.stringify(payload.authorizedCampuses));
     if (payload.token) sessionStorage.setItem('pioneerToken', payload.token);
     $('#login-view').hidden = true; $('#app-shell').hidden = false; $('#logout-btn').hidden = false;
-    $('#account-role').textContent = `${labels[payload.role]} · ${payload.account}`;
+    $('#account-role').textContent = `${roleLabels[payload.role]} · ${payload.account}`;
     $$('[data-role-allow]').forEach(element => {
       element.hidden = !element.dataset.roleAllow.split(',').some(role => roleLevel[payload.role] >= roleLevel[role]);
     });

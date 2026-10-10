@@ -23,13 +23,16 @@
     "lint": "eslint . --max-warnings 0",
     "audit:architecture": "node scripts/audit.mjs",
     "db:verify": "node scripts/verify-migrations.mjs",
-    "verify": "npm run lint && npm run audit:architecture && npm run check && npm test && npm run db:verify"
+    "verify": "npm run lint && npm run audit:architecture && npm run check && npm test && npm run db:verify && npm run test:e2e",
+    "test:e2e": "node scripts/test-e2e.mjs",
+    "preview:local": "node scripts/test-e2e.mjs --serve"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@playwright/test": "1.64.0",
     "eslint": "10.12.0",
     "globals": "17.13.0",
-    "miniflare": "5.20261001.0-alpha",
-    "wrangler": "4.147.0"
+    "miniflare": "5.20261006.1-alpha",
+    "wrangler": "4.149.0"
   }
 }

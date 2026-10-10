@@ -8,7 +8,7 @@
   <link rel="icon" href="/assets/organization-logo.jpg" type="image/jpeg" />
   <link rel="stylesheet" href="/shared/styles.css" />
 </head>
-<body class="user-mode">
+<body class="user-mode"><header class="topbar"><div class="topbar-inner"><a class="brand" href="/"><img class="organization-logo" src="/assets/organization-logo.jpg" alt="先锋网络中心 Logo" /><span><strong>先锋硬件部</strong><small>免费维修预约系统</small></span></a><nav class="main-nav" aria-label="学生预约导航"><button class="nav-link is-active" type="button" data-view-link="booking">预约维修</button><button class="nav-link" type="button" data-view-link="lookup">我的预约</button></nav><a class="staff-entry-link" href="/staff/">工作人员登录</a></div></header>
 <main>
     <section class="view is-active" id="booking-view" data-view="booking">
       <div class="hero-band">
@@ -63,7 +63,7 @@
               <label>期望日期 <i>*</i><input name="date" type="date" required /></label>
             </div>
             <div class="form-grid two-cols compact-gap">
-              <label>期望时段 <i>*</i><select name="timeSlot" required><option value="">请选择服务时段</option><option>19:00–20:00</option><option>20:00–21:00</option></select><small class="field-hint" id="slot-capacity">请选择校区和日期查看剩余名额</small></label>
+              <label>期望时段 <i>*</i><select name="timeSlot" required><option value="">请选择服务时段</option><option value="19:00–20:00">19:00–20:00</option><option value="20:00–21:00">20:00–21:00</option></select><small class="field-hint" id="slot-capacity">请选择校区和日期查看剩余名额</small></label>
               <label>故障描述<textarea name="issue" rows="3" placeholder="选填，请描述设备的异常现象、已尝试的处理方式等"></textarea></label>
             </div>
             <label class="wide-field">备注（选填）<textarea name="note" maxlength="500" rows="2" placeholder="其他需要说明的情况"></textarea></label>
@@ -72,7 +72,7 @@
           <div class="agreement-block">
             <label class="check-row"><input type="checkbox" name="agreement" required /><span class="check-box"></span><span>我已阅读并同意<a href="#agreement" id="agreement-link">《免费维修免责与行为操守协议》</a>，确认设备中的重要数据已完成备份。</span></label>
           </div>
-          <div class="form-actions"><p>提交后会生成唯一预约编号，请妥善保存。</p><button class="primary-btn" type="submit">提交预约 <span>→</span></button></div>
+          <div class="form-actions"><p>提交后自动保存在此浏览器，可在“我的预约”查看。</p><button class="primary-btn" type="submit">提交预约 <span>→</span></button></div>
         </form>
 
         <section class="success-panel" id="success-panel" hidden>

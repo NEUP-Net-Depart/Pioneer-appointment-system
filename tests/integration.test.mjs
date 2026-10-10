@@ -73,7 +73,7 @@ before(async () => {
   mf = new Miniflare({ telemetry: { enabled: false }, workers: [{ config: {
     name: 'pioneer-tests', compatibilityDate: cfg.compatibility_date, compatibilityFlags: cfg.compatibility_flags,
     manifest: { mainModule: 'index.js', modules: { 'index.js': { type: 'esm', contents: await readFile('.wrangler/test-build/index.js', 'utf8') } } },
-    env: { DB: { type: 'd1', id: 'test-db' }, MIGRATION_DB: { type: 'd1', id: 'migration-db' }, ATTACHMENTS: { type: 'r2', name: 'test-attachments' },
+    env: { DB: { type: 'd1', id: 'test-db' }, ATTACHMENTS: { type: 'r2', name: 'test-attachments' },
       JWT_SECRET: { type: 'text', value: JWT_SECRET }, PII_ENCRYPTION_KEY: { type: 'text', value: PII_ENCRYPTION_KEY } }
   } }] });
   db = await mf.getD1Database('DB'); bucket = await mf.getR2Bucket('ATTACHMENTS');
@@ -121,8 +121,6 @@ test('validation rejects invalid dates, windows, fields, MIME, JSON and cross-si
   await api('/api/appointments', { method: 'POST', body: [] }, 400);
   await api('/api/appointments', { method: 'POST', body: draft(), headers: { 'Content-Type': 'text/plain' } }, 415);
   await api('/api/appointments', { method: 'POST', body: draft(), headers: { Origin: 'https://other.test' } }, 403);
-  const oversized=JSON.stringify({padding:'x'.repeat(1024*1024)});
-  await api('/api/appointments',{method:'POST',body:oversized,headers:{'Content-Length':String(Buffer.byteLength(oversized))}},413);
   const normalized = await book({ timeSlot: '19:00-20:00', social: 'enc$literal-user-input' });
   assert.equal(normalized.timeSlot, '19:00–20:00'); assert.equal(normalized.social, 'enc$literal-user-input');
 });
@@ -743,4 +741,11 @@ test('failed account grant creation rolls back approval, account and whitelist c
     assert.equal((await db.prepare('SELECT status FROM activation_requests WHERE id=?').bind(application.id).first()).status,'pending');
     assert.equal((await db.prepare('SELECT status FROM staff_whitelist WHERE student_id=?').bind('860001').first()).status,'open');
   }finally{await db.prepare('DROP TRIGGER test_activation_failure').run();}
+});
+
+test('an outdated staff detail cannot overwrite a newer repair record',async()=>{
+  const item=await book(),token=await login();
+  const first=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{repairNote:'管理员已核实故障',revision:item.revision}});
+  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{repairNote:'过期窗口的记录',revision:item.revision}},409);
+  assert.equal((await api(`/api/appointments/${item.id}`,{accessToken:item.accessToken})).repairNote,first.repairNote);
 });

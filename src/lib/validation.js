@@ -29,7 +29,8 @@ export function appointmentPatch(input) {
   for (const [key, max] of [['assignedTo', 80], ['repairNote', 3000]]) {
     if (input[key] !== undefined) patch[key] = stringField(input[key], key, max);
   }
-  return { patch };
+  if (input.revision!==undefined && (!Number.isInteger(input.revision) || input.revision<0)) fail(400,'预约版本不正确');
+  return {patch,revision:input.revision};
 }
 export function appointmentQuery(input) {
   const query = { q: stringField(input.q, '搜索内容', 120), campus: input.campus || '', date: input.date || '', status: input.status || 'all' };

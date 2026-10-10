@@ -8,6 +8,8 @@
 
 - [业务规则与权限](docs/requirements.md)
 - [工作人员白名单与自主激活](docs/staff-activation.md)
+- [数据库结构](docs/data-model.md)、[学生预约凭证](docs/student-access.md)
+- [Preview 验收](docs/preview-acceptance.md)：本地隔离环境和完整业务流程
 - [部署与运维](docs/operations.md)：生产、Preview、域名、附件清理和备份
 
 ## Cloudflare 架构
@@ -39,6 +41,7 @@ flowchart LR
 
 ```bash
 npm ci
+npx playwright install chromium
 npm run setup:local
 npm run dev
 ```
@@ -68,11 +71,13 @@ npm run dev
 ```bash
 npm run verify             # CI：lint、架构审计、编译、测试、迁移验证
 npm test                   # 隔离的 workerd + D1 + R2 集成测试及前端结构测试
+npm run test:e2e           # 新建临时 D1/R2，运行 Chromium 业务与手机端测试后清理
+npm run preview:local      # 同一隔离环境，供手动验收；停止后清理临时数据
 npm run smoke              # 先启动 npm run dev，再检查页面与 API
 npm run smoke -- https://repair.example.edu
 ```
 
-其他命令见 [package.json](package.json)。自动化测试覆盖权限、会话、预约并发、附件容量与清理等，不包含实际浏览器操作；线上资源和业务流程需另行验收。
+其他命令见 [package.json](package.json)。`verify` 包含实际 Chromium 浏览器验收，覆盖预约、私人链接、附件补传、账号激活、接单、权限变更、凭证补发、密码修改、会话撤销和手机端交互。浏览器测试使用随机密钥及全新本地资源，截图和失败追踪位于忽略的 `output/playwright/`；云端 Preview 和线上域名仍需单独验收。
 
 ## API 速查
 
@@ -83,8 +88,11 @@ npm run smoke -- https://repair.example.edu
 | GET | `/api/health` | 检查 D1 和 R2 |
 | POST | `/api/auth/login`、`/api/auth/logout` | 登录、撤销会话 |
 | GET | `/api/auth/me` | 当前账号 |
+| PATCH / POST | `/api/auth/password` / `/api/auth/revoke` | 本人改密 / 撤销全部会话 |
+| POST / GET | `/api/activation` / `/api/activation/:id` | 提交激活 / 凭私人回执查审核状态 |
 | GET / POST | `/api/appointments` | 登录账号列表查询 / 访客创建 |
-| GET | `/api/appointments/:id` | 访客查询 |
+| GET | `/api/appointments/:id` | 学生凭访问凭证查询 |
+| POST | `/api/appointments/:id/credential` | 管理员人工核验后重签学生凭证 |
 | PATCH | `/api/appointments/:id/status` | 状态、接单、维修记录或访客取消 |
 | GET / POST | `/api/appointments/:id/attachments` | 附件列表 / 上传 |
 | GET | `/api/appointments/:id/attachments/:attachmentId` | 附件下载 |
@@ -92,6 +100,9 @@ npm run smoke -- https://repair.example.edu
 | GET | `/api/stats/summary`、`/api/stats/fault-types` | admin+ 统计 |
 | GET | `/api/users` | admin+ 账号列表 |
 | PATCH | `/api/users/:account` | 管理低于自身且非保护账号 |
+| GET / POST | `/api/staff-whitelist` / `/api/staff-whitelist/import` | 名册列表 / CSV 批量导入 |
+| PATCH | `/api/staff-whitelist/:studentId` | 撤销或恢复激活资格 |
+| GET / POST | `/api/activation-requests` / `/api/activation-requests/review` | 申请列表 / 核验后批量审批或拒绝 |
 | GET | `/api/export/appointments.csv` | admin+ 导出 |
 
 预约列表支持 `q/campus/date/status` 筛选；统计支持 `range=7/30/all` 和可选 `day`。个人排队查询使用 `appointmentId` 和 `X-Appointment-Token` 请求头；公开名额查询支持 `date/campus/timeSlot`。
