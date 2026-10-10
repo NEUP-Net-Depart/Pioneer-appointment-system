@@ -18,6 +18,8 @@ permissions:
   contents: read
 jobs:
   cleanup:
+    # Enable the schedule only after the new environment has been accepted.
+    if: github.event_name == 'workflow_dispatch' || vars.ATTACHMENT_MAINTENANCE_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:

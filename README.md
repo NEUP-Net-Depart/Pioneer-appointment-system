@@ -4,7 +4,7 @@
 
 一个 Cloudflare Pages 项目托管用户端 `/`、工作人员端 `/staff/` 和同源 `/api/*`。D1 保存业务数据，私有 R2 保存附件，应用使用 JWT/RBAC 鉴权。
 
-> `main` 是生产分支。日常修改在开发分支完成；向 `main` 推送或执行生产部署前，须获得明确确认。
+> `dev` 是 Preview 分支，`main` 是 Production 分支。日常修改和验收先推送到 `dev`；确认通过后再 rebase 到 `main`。向 `main` 推送或执行生产部署前，须获得明确确认。
 
 - [业务规则与权限](docs/requirements.md)
 - [工作人员白名单与自主激活](docs/staff-activation.md)
@@ -22,7 +22,7 @@ flowchart LR
   Functions -->|DB 绑定| D1[(D1：工作人员账号、白名单、激活申请、预约、元数据、限流)]
   Functions -->|ATTACHMENTS 绑定| R2[(私有 R2：附件)]
   Secrets[Pages Secrets：JWT 与 PII 密钥] -.-> Functions
-  Actions[GitHub Actions：每周清理] --> D1
+  Actions[GitHub Actions：授权后每周清理] --> D1
   Actions --> R2
 ```
 
@@ -31,9 +31,9 @@ flowchart LR
 | 环境 | 发布分支 | 资源与配置 |
 |---|---|---|
 | 生产 | `main` | `wrangler.jsonc` 顶层 D1/R2、Production Secrets |
-| 预览 | `preview`（仓库部署脚本） | `env.preview` 独立 D1/R2、Preview Secrets |
+| 预览 | `dev` | `env.preview` 独立 D1/R2、Preview Secrets |
 
-两个环境属于同一 Pages 项目，数据、附件和密钥分别配置。GitHub Actions 负责检查和附件定时清理；R2 生命周期独立删除过期对象，D1 元数据与额度由清理任务同步。
+两个环境属于同一 Pages 项目，数据、附件和密钥分别配置。GitHub Actions 负责检查，附件定时清理须在验收及维护授权后启用；R2 生命周期由操作者配置，D1 元数据与额度由清理任务同步。
 
 ## 本地运行
 
@@ -73,11 +73,14 @@ npm run verify             # CI：lint、架构审计、编译、测试、迁移
 npm test                   # 隔离的 workerd + D1 + R2 集成测试及前端结构测试
 npm run test:e2e           # 新建临时 D1/R2，运行 Chromium 业务与手机端测试后清理
 npm run preview:local      # 同一隔离环境，供手动验收；停止后清理临时数据
+npm run release:plan       # 仅打印生产发布计划；加 -- --preview 查看 Preview
 npm run smoke              # 先启动 npm run dev，再检查页面与 API
 npm run smoke -- https://repair.example.edu
 ```
 
 其他命令见 [package.json](package.json)。`verify` 包含实际 Chromium 浏览器验收，覆盖预约、私人链接、附件补传、账号激活、接单、权限变更、凭证补发、密码修改、会话撤销和手机端交互。浏览器测试使用随机密钥及全新本地资源，截图和失败追踪位于忽略的 `output/playwright/`；云端 Preview 和线上域名仍需单独验收。
+
+远程迁移、root 初始化和部署命令默认只打印本地计划。实际执行需要明确的人为授权、匹配环境的执行参数和干净的审查提交，具体步骤及[发布记录](docs/release-record.md)见[重建发布流程](docs/operations.md)。发布不隐式执行迁移。
 
 ## API 速查
 

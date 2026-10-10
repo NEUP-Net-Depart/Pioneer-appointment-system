@@ -44,3 +44,13 @@ studentId,expectedName,expectedRole,authorizedCampuses
 本地测试验证 Pages Functions、D1/R2 业务和浏览器行为。云端 Preview 还须检查实际绑定、独立 Secrets、HTTPS、CPU 预算及公网链路。按 [重建发布流程](operations.md) 获得明确发布授权后部署到独立 Preview，重复上表并记录验收地址、提交、时间和结果。
 
 Production 从空 D1/R2 初始化，只导入真实工作人员白名单，不复制 Preview 数据、附件、会话或密钥。云端发布与资源重建不属于上述本地命令。
+
+## 已完成的云端自动验收（2026-10-11）
+
+首次完整验收使用 https://preview.pioneer-appointment-system.pages.dev。后续 `dev` 分支的验收入口为 https://dev.pioneer-appointment-system.pages.dev，工作人员入口为 `/staff/`，统一激活入口为 `/staff/?activate=1`。部署及完整结果见 [发布记录](release-record.md)。
+
+两条现有浏览器业务场景复制到本机忽略目录运行，延长公网超时，并去掉仅用于本地模拟客户端 IP 的 `CF-Connecting-IP` 请求头；业务操作与断言保持相同。所有请求直接到实际 HTTPS Preview，未替换 API 响应。两条场景全部通过，桌面及 390px 手机截图已检查。
+
+Preview 留有独立验收资料：两个受保护 root、一个已激活测试部员、三条预约及两个 TXT 附件。当前 root 登录资料 `preview-v2-login.txt` 已迁至仓库外的本机受限归档目录，不进入 Git，路径由操作者在交付时提供。学生私人凭证只在各测试浏览器本地保存，工作人员不得使用业务编号代替学生访问凭证。
+
+项目所有者已确认 Preview 验收通过并明确批准 Production 发布，生产上线及空业务状态复核已完成，见 [发布记录](release-record.md)。旧资源删除仍须另行明确批准。

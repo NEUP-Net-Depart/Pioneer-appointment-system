@@ -8,21 +8,21 @@
   "vars": { "MAX_R2_BYTES": "8589934592" },
   "d1_databases": [{
     "binding": "DB",
-    "database_name": "pioneer-appointments",
-    "database_id": "f607819a-83a6-4217-8618-5d4fd18e8bac",
+    "database_name": "pioneer-appointments-production-v2",
+    "database_id": "dd501f89-b431-462f-b9ec-403c25a27895",
     "migrations_dir": "migrations"
   }],
-  "r2_buckets": [{ "binding": "ATTACHMENTS", "bucket_name": "pioneer-attachments" }],
+  "r2_buckets": [{ "binding": "ATTACHMENTS", "bucket_name": "pioneer-attachments-production-v2" }],
   "env": {
     "preview": {
       "vars": { "MAX_R2_BYTES": "536870912" },
       "d1_databases": [{
         "binding": "DB",
-        "database_name": "pioneer-appointments-preview",
-        "database_id": "4e30f54b-564e-4801-87e0-ea3a7a85d510",
+        "database_name": "pioneer-appointments-preview-v2",
+        "database_id": "aa6fc47a-3677-4888-b104-bf6e2eee6a20",
         "migrations_dir": "migrations"
       }],
-      "r2_buckets": [{ "binding": "ATTACHMENTS", "bucket_name": "pioneer-attachments-preview" }]
+      "r2_buckets": [{ "binding": "ATTACHMENTS", "bucket_name": "pioneer-attachments-preview-v2" }]
     }
   }
 }

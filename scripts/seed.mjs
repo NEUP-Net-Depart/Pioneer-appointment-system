@@ -5,9 +5,17 @@ import { fileURLToPath } from 'node:url';
 import { hashPassword } from '../src/lib/passwords.js';
 import { dateKey } from '../shared/time.js';
 import { localVars, root, wrangler, remoteConfig } from './cli.mjs';
+import {remoteOptions,requireRemoteApproval} from './release-guard.mjs';
+import {releasePlan,assertCleanRelease} from './release-plan.mjs';
 
-export async function seed({ remote = false, preview = false } = {}) {
-  if (remote) await remoteConfig(preview);
+export async function seed({ remote = false, preview = false,execute=false,approval } = {}) {
+  if (remote){
+    requireRemoteApproval({preview,execute,approval});
+    const plan=await releasePlan('initialize-protected-roots',{preview});
+    console.log(JSON.stringify({...plan,mode:execute ? 'approved-execution' : 'plan-only'},null,2));
+    if(!execute)return;
+    assertCleanRelease(plan);await remoteConfig();
+  }
   const vars = remote ? process.env : await localVars();
   const rows = ['root001','root002'].map((account, index) => {
     const password = vars[`${account.toUpperCase()}_PASSWORD`];
@@ -23,5 +31,8 @@ export async function seed({ remote = false, preview = false } = {}) {
   finally { await rm(path, { force: true }); }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  await seed({ remote: process.argv.includes('--remote'), preview: process.argv.includes('--preview') });
+  const remote=process.argv.includes('--remote');
+  const options=remoteOptions(process.argv.slice(2).filter(arg=>arg!=='--remote'));
+  if(!remote && (options.execute || options.approval))throw new Error('Local seeding does not accept remote approval flags.');
+  await seed({remote,...options});
 }

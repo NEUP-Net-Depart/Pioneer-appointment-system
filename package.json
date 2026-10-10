@@ -12,7 +12,7 @@
     "dev": "npm run build && wrangler pages dev dist --port 8788",
     "setup:local": "node scripts/setup-local.mjs",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
-    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "db:migrate:remote": "node scripts/migrate-remote.mjs",
     "db:seed": "node scripts/seed.mjs",
     "attachments:cleanup": "node scripts/cleanup-attachments.mjs",
     "check": "node scripts/check.mjs",
@@ -25,7 +25,8 @@
     "db:verify": "node scripts/verify-migrations.mjs",
     "verify": "npm run lint && npm run audit:architecture && npm run check && npm test && npm run db:verify && npm run test:e2e",
     "test:e2e": "node scripts/test-e2e.mjs",
-    "preview:local": "node scripts/test-e2e.mjs --serve"
+    "preview:local": "node scripts/test-e2e.mjs --serve",
+    "release:plan": "node scripts/release-plan.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
