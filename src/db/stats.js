@@ -1,8 +1,9 @@
 export function statsRepository(db) {
   return {
-    async aggregate({ start, day }) {
-      const where = day ? 'date=?' : start ? 'date>=?' : '1=1';
-      const args = day ? [day] : start ? [start] : [];
+    async aggregate({start,day,campuses:authorizedCampuses}) {
+      const campusScope=authorizedCampuses.length ? `campus IN (${authorizedCampuses.map(()=>'?').join(',')})` : '0';
+      const where=campusScope+(day ? ' AND date=?' : start ? ' AND date>=?' : '');
+      const args=[...authorizedCampuses,...(day ? [day] : start ? [start] : [])];
       const sql = [
         `SELECT COUNT(*) AS total,COUNT(CASE WHEN status='completed' THEN 1 END) AS completed,COUNT(CASE WHEN status='no_show' THEN 1 END) AS noShow FROM appointments WHERE ${where}`,
         `SELECT date,COUNT(*) AS total,COUNT(CASE WHEN status='completed' THEN 1 END) AS completed FROM appointments WHERE ${where} GROUP BY date ORDER BY date`,

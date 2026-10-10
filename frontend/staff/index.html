@@ -38,7 +38,7 @@
       <nav class="main-nav" aria-label="主导航">
         <button class="nav-link" data-view-link="staff" data-role-allow="technician,admin">维修后台</button>
         <button class="nav-link" data-view-link="stats" data-role-allow="admin">统计分析</button>
-        <button class="nav-link" data-view-link="users" data-role-allow="admin">账号管理</button>
+        <button class="nav-link" data-view-link="users" data-role-allow="admin">账号管理</button><button class="nav-link" data-view-link="settings" data-role-allow="technician">个人设置</button>
       </nav>
       <div class="account-area"><span class="service-status"><span class="status-dot"></span>周一至周四 19:00–21:00</span><span class="account-role" id="account-role">工作人员</span><button class="logout-btn" id="logout-btn" type="button" hidden>退出</button></div>
     </div>
@@ -76,7 +76,7 @@
         <div class="table-wrap"><table><thead><tr><th>账号</th><th>姓名</th><th>权限</th><th>校区</th><th>状态</th><th>工作量</th><th>操作</th></tr></thead><tbody id="users-table"></tbody></table><div id="users-empty" class="table-empty" hidden>暂无账号</div></div>
       </div>
     </section>
-</main>
+<section class="view" id="settings-view" data-view="settings"><div class="page-intro"><p class="eyebrow">PERSONAL SETTINGS</p><h1>个人设置</h1><p id="profile-info"></p></div><div class="content-shell"><div class="user-create-panel"><div><h2>修改密码</h2><p>修改后所有设备都需要重新登录。</p></div><form id="password-form" class="login-form"><label>当前密码<input id="current-password" type="password" required autocomplete="current-password" /></label><label>新密码<input id="new-password" type="password" required minlength="8" maxlength="128" autocomplete="new-password" /></label><label>确认新密码<input id="confirm-password" type="password" required minlength="8" maxlength="128" autocomplete="new-password" /></label><button class="primary-btn" type="submit">修改密码并退出</button></form></div><button id="revoke-sessions" class="secondary-btn" type="button">撤销所有登录会话</button></div></section></main>
   <div class="modal-backdrop" id="detail-modal" hidden><div class="modal detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-title"><button class="modal-close" id="close-detail" type="button" aria-label="关闭">×</button><p class="eyebrow">APPOINTMENT DETAIL</p><h2 id="detail-title">预约详情</h2><div class="detail-summary" id="detail-summary"></div><div class="detail-grid"><label>状态<select id="detail-status"></select></label><label>维修人员<input id="detail-assigned" placeholder="输入账号或姓名" /></label></div><label class="detail-note-label">维修记录<textarea id="detail-repair-note" rows="4" placeholder="记录检测、维修、更换部件和烤机结果"></textarea></label><div class="modal-actions"><button class="secondary-btn" id="cancel-detail" type="button">取消</button><button class="primary-btn" id="save-detail" type="button">保存记录</button></div></div></div>
 </div>
 <div class="toast" id="toast" role="status"></div>

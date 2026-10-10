@@ -3,8 +3,8 @@ import { newUserInput, userPatch } from '../lib/validation.js';
 
 export const userRoutes = [
   ['GET', /^\/api\/users$/, async context => {
-    await context.role('admin');
-    return json(await context.services.users.list());
+    const actor=await context.role('admin');
+    return json(await context.services.users.list(actor));
   }],
   ['POST', /^\/api\/users$/, async context => {
     const actor = await context.role('admin');

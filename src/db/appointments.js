@@ -27,16 +27,18 @@ export function appointmentRepository(db) {
     async findQueueEntry(id) {
       return db.prepare('SELECT id,student_id AS studentId,campus,date,time_slot AS timeSlot,created_at AS createdAt,status FROM appointments WHERE id=?').bind(id).first();
     },
-    async list(query) {
-      const scope = '1=1';
-      const scopeArgs = [];
+    async list(query,{campuses,technician}) {
+      const campusScope=campuses.length ? `campus IN (${campuses.map(()=>'?').join(',')})` : '0';
+      const scope=campusScope+(technician ? " AND (assigned_to=? OR (assigned_to IS NULL AND status IN ('pending','awaiting_claim')))" : '');
+      const scopeArgs=[...campuses,...(technician ? [technician] : [])];
       const where = [scope], args = [...scopeArgs];
       for (const key of ['campus','date']) if (query[key]) { where.push(`${key}=?`); args.push(query[key]); }
       if (query.status === 'pending') where.push("status IN ('pending','awaiting_claim')");
       else if (query.status !== 'all') { where.push('status=?'); args.push(query.status); }
       if (query.q) {
-        where.push("(instr(lower(name),?)>0 OR instr(student_id,?)>0 OR instr(id,?)>0 OR instr(lower(device_model),?)>0 OR instr(campus,?)>0)");
-        args.push(...Array(5).fill(query.q.toLowerCase()));
+        where.push("(instr(id,?)>0 OR instr(lower(device_model),?)>0 OR instr(campus,?)>0 OR ((?='' OR assigned_to=?) AND (instr(lower(name),?)>0 OR instr(student_id,?)>0)))");
+        const text=query.q.toLowerCase();
+        args.push(text,text,text,technician,technician,text,text);
       }
       const [items, counts] = await db.batch([
         db.prepare(`SELECT * FROM appointments WHERE ${where.join(' AND ')} ORDER BY created_at DESC,id DESC`).bind(...args),
@@ -63,10 +65,11 @@ export function appointmentRepository(db) {
       }
       return fromRow(await db.prepare(`UPDATE appointments SET ${fields.join(',')},revision=revision+1 WHERE id=? AND revision=? RETURNING *`).bind(...args, item.id, item.revision).first());
     },
-    async exportPage(cursor = null, limit = 200) {
-      const where = cursor ? 'WHERE created_at<? OR (created_at=? AND id<?)' : '';
-      const args = cursor ? [cursor.createdAt, cursor.createdAt, cursor.id, limit] : [limit];
-      return (await db.prepare(`SELECT * FROM appointments ${where} ORDER BY created_at DESC,id DESC LIMIT ?`).bind(...args).all()).results.map(fromRow);
+    async exportPage(cursor,limit,campuses) {
+      const campusScope=campuses.length ? `campus IN (${campuses.map(()=>'?').join(',')})` : '0';
+      const where=campusScope+(cursor ? ' AND (created_at<? OR (created_at=? AND id<?))' : '');
+      const args=[...campuses,...(cursor ? [cursor.createdAt,cursor.createdAt,cursor.id] : []),limit];
+      return (await db.prepare(`SELECT * FROM appointments WHERE ${where} ORDER BY created_at DESC,id DESC LIMIT ?`).bind(...args).all()).results.map(fromRow);
     }
   };
 }

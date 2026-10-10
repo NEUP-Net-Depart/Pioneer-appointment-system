@@ -4,13 +4,14 @@ import { initAuth } from './auth.js';
 import { initStaff } from './staff.js';
 import { initStats } from './stats.js';
 import { initUsers } from './users.js';
+import { initSettings } from './settings.js';
 
 useStaffSession();
-const controllers = { staff: initStaff(), stats: initStats(), users: initUsers() };
+const controllers = { staff: initStaff(), stats: initStats(), users: initUsers(), settings:initSettings() };
 let role = '', activeView = 'staff';
 function refresh() {
   if (!role) return;
-  if (activeView !== 'staff' && !['admin', 'superadmin'].includes(role)) return;
+  if (!['staff','settings'].includes(activeView) && !['admin', 'superadmin'].includes(role)) return;
   controllers[activeView]?.refresh();
 }
 const switchView = initNavigation(view => { activeView = view; refresh(); });

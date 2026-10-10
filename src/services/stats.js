@@ -1,10 +1,12 @@
 import { addDays, dateKey } from '../../shared/time.js';
+import { requireRole } from './permissions.js';
 
 export function statsService(stats) {
   return {
-    async summary({ range, day }) {
+    async summary({ range, day },actor) {
+      requireRole(actor,'admin');
       const start = day || range === 'all' ? '' : addDays(dateKey(), -(Number(range) - 1));
-      const result = await stats.aggregate({ start, day });
+      const result = await stats.aggregate({start,day,campuses:actor.authorizedCampuses});
       const { total, completed, noShow } = result.summary;
       return { range, day, total, completed, noShow,
         completionRate: total ? Math.round(completed / total * 100) : 0, noShowRate: total ? Math.round(noShow / total * 100) : 0,

@@ -1,9 +1,9 @@
 import { fail } from '../lib/http.js';
 import { encryptText, decryptText } from '../lib/privacy.js';
-import { roleLevel } from '../../shared/constants.js';
 import { addDays, dateKey, nowIso, serviceDay } from '../../shared/time.js';
 import { issueAccessToken } from '../lib/access-tokens.js';
 import { guestAppointment } from './access.js';
+import { appointmentScope,requireRole,requireAppointmentAccess,requireCampus } from './permissions.js';
 
 export function presentAppointment(item, encryptionKey) {
   return { ...item, phone: decryptText(item.phone, encryptionKey), social: decryptText(item.social, encryptionKey) };
@@ -15,9 +15,15 @@ const transitions = {
 export function appointmentService(appointments, users, encryptionKey) {
   const present = item => presentAppointment(item, encryptionKey);
   return {
-    async list(query) {
-      const result = await appointments.list(query);
-      return { ...result, items: result.items.map(present) };
+    async list(query,user) {
+      const result = await appointments.list(query,appointmentScope(user));
+      const items=result.items.map(item=>{
+        if(user.role==='technician' && item.assignedTo!==user.account) {
+          return Object.fromEntries(['id','campus','date','timeSlot','deviceType','brand','deviceModel','faultType','status','assignedTo','createdAt'].map(key=>[key,item[key]]));
+        }
+        return present(item);
+      });
+      return { ...result,items };
     },
     async create(data) {
       const today = dateKey();
@@ -37,7 +43,7 @@ export function appointmentService(appointments, users, encryptionKey) {
     async recover(id, input, actor) {
       const item = await appointments.find(id);
       if (!item) fail(404,'预约不存在');
-      if (roleLevel[actor.role]<2) fail(403,'仅管理员可重签凭证');
+      requireRole(actor,'admin');requireAppointmentAccess(actor,item);
       if (input.identityVerified!==true || typeof input.reason!=='string' || input.reason.trim().length<8 || input.reason.length>300) fail(400,'请确认已人工核验身份，并记录至少 8 字的核验说明');
       const credential=issueAccessToken();
       if (!await appointments.rotateCredential(item,credential.hash,actor.account,input.reason.trim(),nowIso())) fail(409,'预约已更新，请刷新后重试');
@@ -53,7 +59,7 @@ export function appointmentService(appointments, users, encryptionKey) {
         if (!['pending','awaiting_claim'].includes(item.status)) fail(409, '当前状态不能取消');
         patch = { status: 'cancelled' };
       } else {
-        if ((roleLevel[user?.role] ?? -1) < 1) fail(403, '没有执行此操作的权限');
+        requireAppointmentAccess(user,item,{claim:input.status==='claimed'});
         if (patch.assignedTo) {
           let assignee = await users.find(patch.assignedTo.toLowerCase());
           if (!assignee) {
@@ -61,7 +67,8 @@ export function appointmentService(appointments, users, encryptionKey) {
             if (matches.length > 1) fail(400, '有多个同名工作人员，请输入学号');
             assignee = matches[0];
           }
-          if (assignee?.status !== 'enabled' || (roleLevel[assignee.role] ?? -1) < 1) fail(400, '维修人员账号不存在或未启用');
+          if (assignee?.status !== 'enabled') fail(400,'维修人员账号不存在或未启用');
+          requireCampus(assignee,item.campus);
           patch.assignedTo = assignee.account;
         }
         if (user.role === 'technician') {

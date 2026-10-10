@@ -1,7 +1,7 @@
 import { fail } from '../lib/http.js';
-import { roleLevel } from '../../shared/constants.js';
 import { nowIso } from '../../shared/time.js';
 import { guestAppointment } from './access.js';
+import { requireAppointmentAccess } from './permissions.js';
 
 function metadata(item) {
   return { id: item.id, appointmentId: item.appointmentId, filename: item.filename, mimeType: item.mimeType, size: item.size, createdAt: item.createdAt, expiresAt: item.expiresAt };
@@ -9,10 +9,9 @@ function metadata(item) {
 export function attachmentService(appointments, attachments, bucket, maxBytes) {
   async function authorize(id, user, accessToken) {
     if (!user) { await guestAppointment(appointments,id,accessToken); return; }
-    const item = await appointments.findQueueEntry(id);
+    const item = await appointments.find(id);
     if (!item) fail(404, '预约或附件不存在');
-    const staff = user && (roleLevel[user.role] ?? -1) >= 1;
-    if (!staff) fail(404, '预约或附件不存在');
+    requireAppointmentAccess(user,item);
   }
   return {
     async list(id, user, accessToken) {

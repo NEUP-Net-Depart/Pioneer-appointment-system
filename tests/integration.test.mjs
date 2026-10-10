@@ -13,6 +13,7 @@ import { attachmentService } from '../src/services/attachments.js';
 import { storageLimit } from '../src/lib/env.js';
 import { cleanupAttachments } from '../scripts/cleanup-attachments.mjs';
 import { cloudflareClient } from '../scripts/cloudflare-d1.mjs';
+import { userRepository } from '../src/db/users.js';
 
 let mf, db, bucket;
 const MAX_R2_BYTES = 8589934592;
@@ -66,6 +67,7 @@ before(async () => {
     await applyMigration(db, file);
   }
   await db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,protected,password_hash,created_at) VALUES (?,?,?,?,?,?,?)').bind('root001', '系统负责人', 'superadmin', '南湖', 1, hashPassword(password), dateKey()).run();
+  await db.batch(['南湖','浑南'].map(campus=>db.prepare('INSERT INTO staff_campus_grants VALUES (?,?)').bind('root001',campus)));
 });
 after(async () => { await mf?.dispose(); });
 beforeEach(async () => {
@@ -105,7 +107,8 @@ test('validation rejects invalid dates, windows, fields, MIME, JSON and cross-si
   await api('/api/appointments', { method: 'POST', body: [] }, 400);
   await api('/api/appointments', { method: 'POST', body: draft(), headers: { 'Content-Type': 'text/plain' } }, 415);
   await api('/api/appointments', { method: 'POST', body: draft(), headers: { Origin: 'https://other.test' } }, 403);
-  await api('/api/appointments', { method: 'POST', body: { padding: 'x'.repeat(1024 * 1024) } }, 413);
+  const oversized=JSON.stringify({padding:'x'.repeat(1024*1024)});
+  await api('/api/appointments',{method:'POST',body:oversized,headers:{'Content-Length':String(Buffer.byteLength(oversized))}},413);
   const normalized = await book({ timeSlot: '19:00-20:00', social: 'enc$literal-user-input' });
   assert.equal(normalized.timeSlot, '19:00–20:00'); assert.equal(normalized.social, 'enc$literal-user-input');
 });
@@ -203,6 +206,8 @@ test('R2 upload/download preserves bytes, enforces credentials and hides storage
   assert.equal(response.status, 200); assert.ok(response.headers.get('content-disposition').includes("filename*=UTF-8''"));
   assert.deepEqual(Buffer.from(await response.arrayBuffer()), bytes);
   const token = await addUser('500001');
+  await api(`${base}/${attachment.id}`,{token},403);
+  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{status:'claimed'}});
   assert.equal((await request(`${base}/${attachment.id}`, { token })).status, 200);
   await api(base, { accessToken:item.accessToken, method: 'POST', body: { ...input, mimeType: 'text/html' } }, 400);
   await api(base, { accessToken:item.accessToken, method: 'POST', body: { ...input, mimeType: 'image/png' } }, 400);
@@ -574,4 +579,70 @@ test('long account fields are rejected instead of silently changing identity', a
   const root = await login();
   await api('/api/users', { method: 'POST', token: root, body: { account: '8'.repeat(21), name: '测试人员', homeCampus: '南湖', authorizedCampuses: ['南湖'], password } }, 400);
   await api('/api/users', { method: 'POST', token: root, body: { account: '800001', name: '名'.repeat(81), homeCampus: '南湖', authorizedCampuses: ['南湖'], password } }, 400);
+});
+
+test('technicians see campus summaries before claiming and only their own private records after',async()=>{
+  const own=await book(),other=await book(),foreign=await book({campus:'浑南'});
+  const token=await addUser('710001'),colleague=await addUser('710002');
+  const listed=await api('/api/appointments',{token});
+  assert.equal((await api(`/api/appointments?q=${own.studentId}`,{token})).items.length,0);
+  assert.equal(listed.counts.all,2);assert.ok(!listed.items.some(item=>item.id===foreign.id));
+  for(const item of listed.items){for(const field of ['studentId','name','phone','social','issue','serial','note','agreementAt','repairNote'])assert.ok(!Object.hasOwn(item,field),field);}
+  await api(`/api/appointments/${foreign.id}/status`,{method:'PATCH',token,body:{status:'claimed'}},403);
+  await api(`/api/appointments/${own.id}/attachments`,{token,accessToken:own.accessToken},403);
+  await api(`/api/appointments/${other.id}/status`,{method:'PATCH',token:colleague,body:{status:'claimed'}});
+  await api(`/api/appointments/${own.id}/status`,{method:'PATCH',token,body:{status:'claimed'}});
+  const after=await api('/api/appointments',{token});
+  assert.deepEqual(after.items.map(item=>item.id),[own.id]);assert.equal(after.items[0].social,'wechat-private');
+  await api(`/api/appointments/${other.id}/attachments`,{token},403);
+  await api(`/api/appointments/${other.id}/status`,{method:'PATCH',token,body:{repairNote:'越权修改'}},403);
+  await api(`/api/appointments/${own.id}/status`,{method:'PATCH',token,body:{assignedTo:'710002'}},403);
+});
+
+test('admin campus grants constrain list, attachments, recovery, dispatch, statistics, export and account management',async()=>{
+  const root=await login(),admin=await addUser('720001','admin');
+  const local=await book(),foreign=await book({campus:'浑南'});
+  assert.deepEqual((await api('/api/appointments',{token:admin})).items.map(item=>item.id),[local.id]);
+  assert.equal((await api('/api/appointments?campus=浑南',{token:admin})).items.length,0);
+  assert.equal((await api('/api/stats/summary?range=all',{token:admin})).total,1);
+  const csv=await request('/api/export/appointments.csv',{token:admin});
+  const text=await csv.text();assert.ok(text.includes(local.id) && !text.includes(foreign.id));
+  await api(`/api/appointments/${foreign.id}/attachments`,{token:admin},403);
+  await api(`/api/appointments/${foreign.id}/credential`,{method:'POST',token:admin,body:{identityVerified:true,reason:'已当面核验学生证和联系方式'}},403);
+  await api(`/api/appointments/${foreign.id}/status`,{method:'PATCH',token:admin,body:{status:'claimed'}},403);
+  await addUser('720002');
+  await api('/api/users/720002',{method:'PATCH',token:root,body:{authorizedCampuses:['浑南']}});
+  await api('/api/users/720002',{method:'PATCH',token:admin,body:{status:'disabled'}},403);
+  await api(`/api/appointments/${local.id}/status`,{method:'PATCH',token:admin,body:{assignedTo:'720002'}},403);
+  await api('/api/users/720001',{method:'PATCH',token:root,body:{authorizedCampuses:['浑南']}});
+  await api('/api/auth/me',{token:admin},401);
+  const changed=await login('720001');
+  const info=await api('/api/auth/me',{token:changed});assert.equal(info.homeCampus,'南湖');assert.deepEqual(info.authorizedCampuses,['浑南']);
+  assert.deepEqual((await api('/api/appointments',{token:changed})).items.map(item=>item.id),[foreign.id]);
+});
+
+test('self password change includes protected root, checks current password and revokes all sessions',async()=>{
+  const root=await login(),second=await login();
+  await api('/api/auth/password',{method:'PATCH',token:root,body:{currentPassword:'wrong',newPassword:'new-root-password'}},400);
+  await api('/api/auth/password',{method:'PATCH',token:root,body:{currentPassword:password,newPassword:'new-root-password'}});
+  try{
+    await api('/api/auth/me',{token:root},401);await api('/api/auth/me',{token:second},401);
+    await api('/api/auth/login',{method:'POST',body:{account:'root001',password}},401);
+    const fresh=await login('root001','new-root-password');
+    assert.equal((await db.prepare('SELECT protected FROM staff_accounts WHERE account=?').bind('root001').first()).protected,1);
+    await api('/api/auth/revoke',{method:'POST',token:fresh});await api('/api/auth/me',{token:fresh},401);
+  }finally{await db.prepare('UPDATE staff_accounts SET password_hash=? WHERE account=?').bind(hashPassword(password),'root001').run();}
+});
+
+test('stale concurrent account updates cannot replace campus grants or restore revoked privileges',async()=>{
+  await addUser('730001');
+  const repository=userRepository(db),original=await repository.find('730001');
+  const results=await Promise.all([
+    repository.update(original,{authorizedCampuses:['浑南']}),
+    repository.update(original,{authorizedCampuses:['南湖','浑南'],role:'admin'})
+  ]);
+  assert.equal(results.filter(Boolean).length,1);
+  const winner=results.find(Boolean),stored=await repository.find('730001');
+  assert.deepEqual(stored.authorizedCampuses,winner.authorizedCampuses);assert.equal(stored.role,winner.role);
+  assert.equal(stored.tokenVersion,original.tokenVersion+1);
 });
