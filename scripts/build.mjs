@@ -1,8 +1,7 @@
 import { cp, mkdir, readdir, rm, stat } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { root,config,wrangler } from './cli.mjs';
 
-const root = fileURLToPath(new URL('..', import.meta.url));
 const out = resolve(root, 'dist');
 if (out !== join(root, 'dist')) throw new Error('Unsafe output directory');
 await rm(out, { recursive: true, force: true });
@@ -16,4 +15,8 @@ for (const name of await readdir(join(root, 'frontend/user'))) {
   if (!(await stat(join(root, 'frontend/user', name))).isFile()) continue;
   await cp(join(root, 'frontend/user', name), join(out, name === 'index.html' ? name : `user/${name}`));
 }
-console.log('Built dist/: / and /staff/ with shared modules; Functions remain outside public assets.');
+// Pages Git builds otherwise compile Functions with their own Wrangler version.
+// The reserved Worker directory keeps the same bundle in local and cloud builds.
+const cfg=await config();
+wrangler(['pages','functions','build','functions','--outdir',join(out,'_worker.js'),'--compatibility-date',cfg.compatibility_date,'--compatibility-flags',...cfg.compatibility_flags]);
+console.log('Built dist/: / and /staff/ with a private Worker compiled by the pinned Wrangler.');

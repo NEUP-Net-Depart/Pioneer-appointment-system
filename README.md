@@ -35,6 +35,8 @@ flowchart LR
 
 两个环境属于同一 Pages 项目，数据、附件和密钥分别配置。GitHub Actions 负责检查，附件定时清理须在验收及维护授权后启用；R2 生命周期由操作者配置，D1 元数据与额度由清理任务同步。
 
+`npm run build` 使用仓库固定版本的 Wrangler 将 `functions/` 编译到 Pages 保留目录 `dist/_worker.js/`。本地、CLI 和 Git 自动发布使用同一份 Worker，静态资源中不发布该目录；实际产物的加密、权限及附件行为由集成测试和浏览器测试验证。
+
 ## 本地运行
 
 需要 Node.js 22+，在仓库根目录执行：

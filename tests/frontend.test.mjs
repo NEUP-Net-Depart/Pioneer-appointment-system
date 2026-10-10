@@ -28,7 +28,7 @@ test('each HTML entry contains only its own features and valid assets with uniqu
 });
 test('all frontend module imports resolve; user graph cannot reach staff modules', async () => {
   const graph = new Map();
-  for (const path of (await files('dist')).filter(path => path.endsWith('.js'))) {
+  for (const path of (await files('dist')).filter(path => path.endsWith('.js') && !path.replaceAll('\\','/').startsWith('dist/_worker.js/'))) {
     const source = await readFile(path, 'utf8');
     const imports = [...source.matchAll(/(?:from\s+|import\s+)['"]([^'"]+)['"]/g)].map(([, specifier]) => resolve(specifier.startsWith('/') ? 'dist' + specifier : join(dirname(path), specifier)));
     for (const dependency of imports) await access(dependency);
@@ -64,6 +64,7 @@ test('public output excludes server source, secrets, old entrypoints and build t
   for (const path of ['dist/user.html','dist/staff.html','dist/app.js']) assert.ok(!output.includes(path));
   const routes = JSON.parse(await readFile('dist/_routes.json', 'utf8'));
   assert.deepEqual(routes.include, ['/api','/api/*']);
+  await access('dist/_worker.js/index.js');
   await access('dist/404.html');
 });
 test('shared requests isolate guest pages from staff JWT and clear revoked sessions', async () => {

@@ -74,3 +74,11 @@ Preview 当前 root 登录资料为归档目录 `credentials/preview-v2-login.tx
 Production 当前 root 登录资料为归档目录 `credentials/production-v2-login.txt`，已包含 `root001` 线上本人改密后的当前密码。密钥保管文件为 `credentials/cloud-production-v2-secrets.json`；不得公开或提交。完整执行报告和最终只读计数为归档目录 `audit/production-v2-business-check.json` 与 `audit/production-v2-final-counts.json`。归档限制为本机操作者和 SYSTEM 访问，具体路径由操作者在交付时提供。
 
 本机每阶段保留一个提交，统一采用历史 `[refactor]` / `[feat]` 命名；阶段六位于 `dev`。按所有者 2026-10-11 最新要求，整理和清理后只推送 `dev`，`main` 的 rebase 和推送等待另行确认；未创建 PR。提交映射、Git 恢复包、推送与 CI / dev Preview 的复核结果保存在仓库外归档目录，详细恢复安排见 [流程结束状态](operations.md#7-本次发布结束状态)。旧 D1/R2 和现有项目、域名均保留。
+
+## dev Git 发布构建复核
+
+首次整理后的 `dev` 提交为 `46b4532988de9b7614e7d84d78b07c2406341dfe`，GitHub CI [38076519513](https://github.com/NEUP-Net-Depart/Pioneer-appointment-system/actions/runs/38076519513) 完整通过。Pages Git 部署 `c481be7e-7c84-4aa4-9ce9-81a2b1f546fd` 和复核重试 `bcae35a7-7723-4cf2-ac07-77134faa5e89` 均完成上传，但加密资料读取返回 500。相同 Preview D1 在首次 CLI 部署中仍正常，本机归档密钥能解密现有资料；复写同一 Preview PII 密钥后仍复现，Production 配置和部署未改动。
+
+云端 Git 日志显示内部 Functions 编译器为 Wrangler 3.114.17，仓库与已验收 CLI 发布使用 4.149.0。后续单独用 `[fix]` 提交统一构建：通过仓库固定版本预编译 `functions/`，生成 Pages 保留的 `dist/_worker.js/`，让 Git 发布采用相同 Worker；集成与浏览器测试检查实际发布产物，HTTP smoke 增加保留 Worker 路径不可公开读取的断言。[Pages Advanced mode](https://developers.cloudflare.com/pages/functions/advanced-mode/)、[Functions build](https://developers.cloudflare.com/workers/wrangler/commands/pages/#pages-functions-build)
+
+本节是构建差异的审计记录，不改变阶段提交、数据库结构、访问凭证或 UI。修复后的提交、CI、部署和复核结果由操作者保存在本机归档 `audit/dev-publish-result.json`；`main` 仍等待项目所有者确认。

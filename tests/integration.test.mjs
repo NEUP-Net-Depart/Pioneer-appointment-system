@@ -5,7 +5,7 @@ import { randomBytes, createHmac } from 'node:crypto';
 import { Miniflare } from 'miniflare';
 import { hashPassword } from '../src/lib/passwords.js';
 import { signToken } from '../src/lib/jwt.js';
-import { config, wrangler } from '../scripts/cli.mjs';
+import { config } from '../scripts/cli.mjs';
 import { dateKey, addDays, serviceDay, formatDate } from '../shared/time.js';
 import { attachmentRepository } from '../src/db/attachments.js';
 import { appointmentRepository } from '../src/db/appointments.js';
@@ -69,10 +69,9 @@ async function applyMigration(database, file) {
 }
 before(async () => {
   const cfg = await config();
-  wrangler(['pages','functions','build','functions','--outdir','.wrangler/test-build','--compatibility-date',cfg.compatibility_date,'--compatibility-flags',...cfg.compatibility_flags]);
   mf = new Miniflare({ telemetry: { enabled: false }, workers: [{ config: {
     name: 'pioneer-tests', compatibilityDate: cfg.compatibility_date, compatibilityFlags: cfg.compatibility_flags,
-    manifest: { mainModule: 'index.js', modules: { 'index.js': { type: 'esm', contents: await readFile('.wrangler/test-build/index.js', 'utf8') } } },
+    manifest: { mainModule: 'index.js', modules: { 'index.js': { type: 'esm', contents: await readFile('dist/_worker.js/index.js', 'utf8') } } },
     env: { DB: { type: 'd1', id: 'test-db' }, ATTACHMENTS: { type: 'r2', name: 'test-attachments' },
       JWT_SECRET: { type: 'text', value: JWT_SECRET }, PII_ENCRYPTION_KEY: { type: 'text', value: PII_ENCRYPTION_KEY } }
   } }] });
