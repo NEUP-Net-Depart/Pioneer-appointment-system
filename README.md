@@ -75,7 +75,7 @@ npm run smoke -- https://repair.example.edu
 
 ## API 速查
 
-工作人员请求使用 `Authorization: Bearer <JWT>`；访客以预约编号和学号查询、取消或访问附件。用户端请求不携带工作人员 JWT。
+工作人员请求使用 `Authorization: Bearer <JWT>`；访客凭浏览器自动保存的随机访问凭证查询、取消或访问附件，详见 [学生访问机制](docs/student-access.md)。用户端请求不携带工作人员 JWT。
 
 | 方法 | 路径 | 用途 |
 |---|---|---|
@@ -83,16 +83,16 @@ npm run smoke -- https://repair.example.edu
 | POST | `/api/auth/login`、`/api/auth/logout` | 登录、撤销会话 |
 | GET | `/api/auth/me` | 当前账号 |
 | GET / POST | `/api/appointments` | 登录账号列表查询 / 访客创建 |
-| GET | `/api/appointments/lookup?appointmentId=...&studentId=...` | 访客查询 |
+| GET | `/api/appointments/:id` | 访客查询 |
 | PATCH | `/api/appointments/:id/status` | 状态、接单、维修记录或访客取消 |
 | GET / POST | `/api/appointments/:id/attachments` | 附件列表 / 上传 |
 | GET | `/api/appointments/:id/attachments/:attachmentId` | 附件下载 |
 | GET | `/api/live/summary` | 名额和个人排队位置 |
 | GET | `/api/stats/summary`、`/api/stats/fault-types` | admin+ 统计 |
-| GET / POST | `/api/users` | admin+ 账号列表 / 新建基础账号 |
-| PATCH / DELETE | `/api/users/:account` | 管理低于自身且非保护账号 |
+| GET / POST | `/api/users` | admin+ 账号列表 / 新建工作人员账号 |
+| PATCH | `/api/users/:account` | 管理低于自身且非保护账号 |
 | GET | `/api/export/appointments.csv` | admin+ 导出 |
 
-预约列表支持 `q/campus/date/status` 筛选；统计支持 `range=7/30/all` 和可选 `day`。个人排队查询使用 `appointmentId`、`studentId`；公开名额查询支持 `date/campus/timeSlot`。
+预约列表支持 `q/campus/date/status` 筛选；统计支持 `range=7/30/all` 和可选 `day`。个人排队查询使用 `appointmentId` 和 `X-Appointment-Token` 请求头；公开名额查询支持 `date/campus/timeSlot`。
 
-附件上传 JSON 为 `{studentId, filename, mimeType, data}`，`data` 是标准 base64；工作人员凭 JWT 可省略 `studentId`。访客附件 GET 使用 `?studentId=...`，取消预约提交 `{status: 'cancelled', studentId}`。附件元数据含 UTC ISO 格式的 `createdAt`、`expiresAt`；过期下载返回 404，容量不足返回 507。其他输入和错误处理见 [校验规则](src/lib/validation.js)、[附件校验](src/lib/attachment-input.js) 及 [路由](src/routes/)。
+附件上传 JSON 为 `{filename, mimeType, data}`，`data` 是标准 base64。访客的查询、取消、排队及附件 API 均须提供 `X-Appointment-Token`；工作人员凭 JWT 访问。私人查询链接将凭证放在 URL fragment，浏览器只保存编号和凭证。

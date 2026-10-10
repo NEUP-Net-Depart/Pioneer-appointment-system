@@ -111,3 +111,20 @@ test('visible polling pauses in background, refreshes on return and disposes cle
     for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete globalThis[key]; else globalThis[key] = value; }
   }
 });
+
+test('guest browser saves credentials without PII and private links stay in the fragment',async()=>{
+  const values=new Map();
+  globalThis.localStorage={getItem:key=>values.get(key),setItem:(key,value)=>values.set(key,value)};
+  globalThis.location={origin:'https://app.test'};
+  try{
+    const {saveAppointment,savedAppointments,privateLink,parsePrivateLink}=await import('../frontend/user/credentials.js');
+    const entry={id:'020261012-01',accessToken:'a'.repeat(43),studentId:'123456',name:'私密姓名'};
+    assert.equal(saveAppointment(entry),true);
+    assert.deepEqual(savedAppointments(),[{id:entry.id,accessToken:entry.accessToken}]);
+    assert.equal(new URL(privateLink(entry)).search,'');
+    assert.deepEqual(parsePrivateLink(privateLink(entry)),savedAppointments()[0]);
+    assert.equal(parsePrivateLink('https://other.test/#appointment='+entry.id+'&access='+entry.accessToken),null);
+    values.set('pioneerAppointmentAccess','{bad');assert.deepEqual(savedAppointments(),[]);
+    globalThis.localStorage.setItem=()=>{throw new Error('blocked');};assert.equal(saveAppointment(entry),false);
+  }finally{delete globalThis.localStorage;delete globalThis.location;}
+});

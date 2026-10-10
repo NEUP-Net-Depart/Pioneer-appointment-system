@@ -3,6 +3,7 @@ import { encryptText, decryptText } from '../lib/privacy.js';
 import { roleLevel } from '../../shared/constants.js';
 import { addDays, dateKey, nowIso, serviceDay } from '../../shared/time.js';
 import { issueAccessToken } from '../lib/access-tokens.js';
+import { guestAppointment } from './access.js';
 
 export function presentAppointment(item, encryptionKey) {
   return { ...item, phone: decryptText(item.phone, encryptionKey), social: decryptText(item.social, encryptionKey) };
@@ -30,16 +31,23 @@ export function appointmentService(appointments, users, encryptionKey) {
         phone: encryptText(data.phone, encryptionKey), social: encryptText(data.social, encryptionKey) };
       return { ...present(await appointments.create(item)), accessToken: credential.token };
     },
-    async lookup({ id, studentId }) {
-      const item = await appointments.find(id);
-      if (!item || item.studentId !== studentId) fail(404, '预约编号或学号不匹配');
-      return present(item);
+    async lookup(id, accessToken) {
+      return present(await guestAppointment(appointments,id,accessToken));
     },
-    async update(id, { patch: input, studentId }, user) {
+    async recover(id, input, actor) {
       const item = await appointments.find(id);
+      if (!item) fail(404,'预约不存在');
+      if (roleLevel[actor.role]<2) fail(403,'仅管理员可重签凭证');
+      if (input.identityVerified!==true || typeof input.reason!=='string' || input.reason.trim().length<8 || input.reason.length>300) fail(400,'请确认已人工核验身份，并记录至少 8 字的核验说明');
+      const credential=issueAccessToken();
+      if (!await appointments.rotateCredential(item,credential.hash,actor.account,input.reason.trim(),nowIso())) fail(409,'预约已更新，请刷新后重试');
+      return { id:item.id,accessToken:credential.token };
+    },
+    async update(id, { patch: input }, user, accessToken) {
+      const item = user ? await appointments.find(id) : await guestAppointment(appointments,id,accessToken);
       if (!item) fail(404, '预约不存在');
-      const guestCancel = !user && input.status === 'cancelled' && item.studentId === studentId;
-      if (!user && !guestCancel) fail(401, '请使用预约编号和学号查询后再操作');
+      const guestCancel = !user && input.status === 'cancelled';
+      if (!user && !guestCancel) fail(403, '学生仅可取消待接单预约');
       let patch = { ...input };
       if (guestCancel) {
         if (!['pending','awaiting_claim'].includes(item.status)) fail(409, '当前状态不能取消');

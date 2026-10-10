@@ -11,6 +11,19 @@ function fromRow(row) {
 export function appointmentRepository(db) {
   return {
     async find(id) { return fromRow(await db.prepare('SELECT * FROM appointments WHERE id=?').bind(id).first()); },
+    async findByCredential(id, hash) {
+      return fromRow(await db.prepare('SELECT * FROM appointments WHERE id=? AND access_token_hash=?').bind(id,hash).first());
+    },
+    async rotateCredential(item, hash, actor, reason, instant) {
+      const results = await db.batch([
+        db.prepare(`INSERT INTO credential_recoveries(id,appointment_id,actor,reason,created_at)
+          SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM appointments WHERE id=? AND revision=?)`)
+          .bind(crypto.randomUUID(),item.id,actor,reason,instant,item.id,item.revision),
+        db.prepare('UPDATE appointments SET access_token_hash=?,credential_rotated_at=?,revision=revision+1 WHERE id=? AND revision=? RETURNING id')
+          .bind(hash,instant,item.id,item.revision)
+      ]);
+      return results.at(-1).results.length>0;
+    },
     async findQueueEntry(id) {
       return db.prepare('SELECT id,student_id AS studentId,campus,date,time_slot AS timeSlot,created_at AS createdAt,status FROM appointments WHERE id=?').bind(id).first();
     },

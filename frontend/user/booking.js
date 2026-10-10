@@ -1,5 +1,6 @@
 import { $, showToast } from '/shared/utils.js';
 import { apiJson } from '/shared/api.js';
+import { saveAppointment,privateLink } from './credentials.js';
 import { uploadAttachments } from '/shared/attachments.js';
 import { startVisiblePolling } from '/shared/polling.js';
 import { normalizeTimeSlot } from '/shared/constants.js';
@@ -58,7 +59,7 @@ export function initBooking({ appointments, onCreated }) {
   $('#agree-modal').addEventListener('click', () => { $('#agreement-modal').hidden = true; $('[name="agreement"]').checked = true; });
   $('#agreement-modal').addEventListener('click', event => { if (event.target.id === 'agreement-modal') $('#agreement-modal').hidden = true; });
   $('#new-booking').addEventListener('click', () => { form.reset(); configureDateRange(); updateCapacity(); updateLiveSummary(); form.hidden = false; $('.section-heading').hidden = false; $('#success-panel').hidden = true; });
-  $('#copy-code').addEventListener('click', async () => { try { await navigator.clipboard.writeText($('#success-code').textContent); showToast('预约编号已复制'); } catch { showToast('请手动记录预约编号'); } });
+  $('#copy-code').addEventListener('click', async () => { try { await navigator.clipboard.writeText($('#success-private-link').href); showToast('私人链接已复制，请勿转发给他人'); } catch { showToast('请保留成功页中的私人链接'); } });
   form.addEventListener('submit', async event => {
     event.preventDefault();
     if (!form.checkValidity()) { form.reportValidity(); return; }
@@ -75,6 +76,9 @@ export function initBooking({ appointments, onCreated }) {
     delete payload.agreement;
     try {
       const appointment = await apiJson('/api/appointments', { method: 'POST', json: payload });
+      const saved=saveAppointment(appointment);
+      $('#success-private-link').href=privateLink(appointment);
+      $('#credential-save-message').textContent=saved ? '凭证已自动保存在此浏览器，可直接打开“我的预约”。' : '此浏览器无法保存凭证，请保留私人查询链接。';
       if (files.length) {
         try { await uploadAttachments(appointment, files); }
         catch (error) { showToast(`预约已提交，但${error.message}`); }

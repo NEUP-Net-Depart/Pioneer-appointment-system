@@ -22,8 +22,8 @@ const PII_ENCRYPTION_KEY = randomBytes(32).toString('hex');
 const date = [0,1,2,3].map(n => addDays(dateKey(), n)).find(serviceDay);
 let serial = 200000;
 const draft = (patch = {}) => ({ studentId: String(++serial), name: '测试同学', campus: '南湖', phone: '13800138000', social: 'wechat-private', deviceType: '笔记本电脑', brand: '联想', deviceModel: 'ThinkPad', warranty: '否', date, timeSlot: '19:00–20:00', faultType: '蓝屏', issue: '', agreementAt: new Date().toISOString(), ...patch });
-async function request(path, { method = 'GET', body, token, headers = {} } = {}) {
-  return mf.dispatchFetch(`https://app.test${path}`, { method, headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...headers }, ...(body !== undefined ? { body: typeof body === 'string' ? body : JSON.stringify(body) } : {}) });
+async function request(path, { method = 'GET', body, token, accessToken, headers = {} } = {}) {
+  return mf.dispatchFetch(`https://app.test${path}`, { method, headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(accessToken ? {'X-Appointment-Token':accessToken} : {}), ...headers }, ...(body !== undefined ? { body: typeof body === 'string' ? body : JSON.stringify(body) } : {}) });
 }
 async function api(path, options, status = 200) {
   const response = await request(path, options);
@@ -87,13 +87,13 @@ test('guest booking, encrypted contacts, lookup, queue and cancellation', async 
   assert.match(item.id, /^0\d{8}-01$/);
   const row = await db.prepare('SELECT phone,social FROM appointments WHERE id=?').bind(item.id).first();
   assert.match(row.phone, /^enc\$/); assert.match(row.social, /^enc\$/); assert.ok(!row.social.includes('wechat-private'));
-  const found = await api(`/api/appointments/lookup?appointmentId=${item.id}&studentId=${item.studentId}`);
+  const found = await api(`/api/appointments/${item.id}`,{accessToken:item.accessToken});
   assert.equal(found.social, 'wechat-private'); assert.equal(found.phone, '13800138000');
-  await api(`/api/appointments/lookup?appointmentId=${item.id}&studentId=999999`, {}, 404);
+  await api(`/api/appointments/${item.id}`,{accessToken:'x'.repeat(43)},404);
   await api('/api/appointments', {}, 401);
-  const live = await api(`/api/live/summary?appointmentId=${item.id}&studentId=${item.studentId}`);
+  const live = await api(`/api/live/summary?appointmentId=${item.id}`,{accessToken:item.accessToken});
   assert.equal(live.position, 1); assert.equal(live.capacity, 20); assert.equal(live.slotTotal, 1);
-  const cancelled = await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', body: { status: 'cancelled', studentId: item.studentId, assignedTo: 'root001', repairNote: 'injection' } });
+  const cancelled = await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', accessToken:item.accessToken, body: { status: 'cancelled', studentId: item.studentId, assignedTo: 'root001', repairNote: 'injection' } });
   assert.equal(cancelled.status, 'cancelled'); assert.equal(cancelled.assignedTo, ''); assert.equal(cancelled.repairNote, '');
   assert.ok((await book({ studentId: item.studentId })).id.endsWith('-02'));
 });
@@ -140,7 +140,7 @@ test('simultaneous claims have one winner; technician ownership and transitions 
   assert.ok(results.some(r => [403,409].includes(r.status)));
   const winner = results.findIndex(r => r.status === 200), token = tokens[winner];
   await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token: tokens[1-winner], body: { status: 'completed' } }, 403);
-  await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', body: { status: 'cancelled', studentId: item.studentId } }, 409);
+  await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', accessToken:item.accessToken, body: { status: 'cancelled', studentId: item.studentId } }, 409);
   await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token, body: { assignedTo: '' } }, 403);
   await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token, body: { status: 'pending' } }, 409);
   await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token, body: { status: 'in_progress' } });
@@ -190,30 +190,30 @@ test('R2 upload/download preserves bytes, enforces credentials and hides storage
   const bytes = Buffer.from('附件中文测试\nrepair notes');
   const input = { studentId: item.studentId, filename: '../维修记录.txt', mimeType: 'text/plain', data: bytes.toString('base64') };
   const base = `/api/appointments/${item.id}/attachments`;
-  const attachment = await api(base, { method: 'POST', body: input }, 201);
+  const attachment = await api(base, { accessToken:item.accessToken, method: 'POST', body: input }, 201);
   assert.equal(attachment.filename, '维修记录.txt'); assert.ok(!attachment.objectKey);
   assert.equal(Date.parse(attachment.expiresAt) - Date.parse(attachment.createdAt), 180 * 86400000);
   assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, bytes.length);
   assert.equal((await bucket.list()).objects.length, 1);
   await api(base, {}, 404);
-  await api(base, { method: 'POST', body: { ...input, studentId: '999999' } }, 404);
-  await api(`${base}/${attachment.id}?studentId=999999`, {}, 404);
-  await api(`/api/appointments/${other.id}/attachments/${attachment.id}?studentId=${other.studentId}`, {}, 404);
-  const response = await request(`${base}/${attachment.id}?studentId=${item.studentId}`);
+  await api(base, { accessToken:other.accessToken, method: 'POST', body: { ...input, studentId: '999999' } }, 404);
+  await api(`${base}/${attachment.id}`,{accessToken:other.accessToken},404);
+  await api(`/api/appointments/${other.id}/attachments/${attachment.id}`,{accessToken:other.accessToken},404);
+  const response = await request(`${base}/${attachment.id}`,{accessToken:item.accessToken});
   assert.equal(response.status, 200); assert.ok(response.headers.get('content-disposition').includes("filename*=UTF-8''"));
   assert.deepEqual(Buffer.from(await response.arrayBuffer()), bytes);
   const token = await addUser('500001');
   assert.equal((await request(`${base}/${attachment.id}`, { token })).status, 200);
-  await api(base, { method: 'POST', body: { ...input, mimeType: 'text/html' } }, 400);
-  await api(base, { method: 'POST', body: { ...input, mimeType: 'image/png' } }, 400);
-  await api(base, { method: 'POST', body: { ...input, data: '%%%=' } }, 400);
-  await api(base, { method: 'POST', body: { ...input, data: Buffer.alloc(5 * 1024 * 1024 + 1, 65).toString('base64') } }, 400);
+  await api(base, { accessToken:item.accessToken, method: 'POST', body: { ...input, mimeType: 'text/html' } }, 400);
+  await api(base, { accessToken:item.accessToken, method: 'POST', body: { ...input, mimeType: 'image/png' } }, 400);
+  await api(base, { accessToken:item.accessToken, method: 'POST', body: { ...input, data: '%%%=' } }, 400);
+  await api(base, { accessToken:item.accessToken, method: 'POST', body: { ...input, data: Buffer.alloc(5 * 1024 * 1024 + 1, 65).toString('base64') } }, 400);
 });
 test('R2 write is compensated when D1 metadata fails', async () => {
   const item = await book();
   await db.prepare("CREATE TRIGGER test_attachment_failure BEFORE INSERT ON appointment_attachments BEGIN SELECT RAISE(ABORT,'test failure'); END").run();
   try {
-    await api(`/api/appointments/${item.id}/attachments`, { method: 'POST', body: { studentId: item.studentId, filename: 'a.txt', mimeType: 'text/plain', data: 'dGVzdA==' } }, 500);
+    await api(`/api/appointments/${item.id}/attachments`, { accessToken:item.accessToken, method: 'POST', body: { studentId: item.studentId, filename: 'a.txt', mimeType: 'text/plain', data: 'dGVzdA==' } }, 500);
     assert.equal((await bucket.list()).objects.length, 0);
     assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 0);
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM attachment_storage').first()).n, 0);
@@ -239,7 +239,7 @@ test('concurrent uploads atomically reserve the last bytes and reject excess bef
   const item = await book();
   await db.prepare('UPDATE storage_quota SET used_bytes=?').bind(MAX_R2_BYTES - 4).run();
   const input = { studentId: item.studentId, filename: 'a.txt', mimeType: 'text/plain', data: 'dGVzdA==' };
-  const responses = await Promise.all(Array.from({ length: 10 }, () => request(`/api/appointments/${item.id}/attachments`, { method: 'POST', body: input })));
+  const responses = await Promise.all(Array.from({ length: 10 }, () => request(`/api/appointments/${item.id}/attachments`, {accessToken:item.accessToken,method: 'POST', body: input })));
   assert.equal(responses.filter(response => response.status === 201).length, 1);
   assert.equal(responses.filter(response => response.status === 507).length, 9);
   assert.equal((await responses.find(response => response.status === 507).json()).error, '附件存储空间已满');
@@ -256,13 +256,13 @@ test('failed R2 puts release quota only after confirmed compensation; failed com
   const failingPut = attachmentService(appointments, repository, {
     async put() { throw new Error('put failed'); }, delete: key => bucket.delete(key)
   }, MAX_R2_BYTES);
-  await assert.rejects(failingPut.upload(item.id, input, null, item.studentId), /put failed/);
+  await assert.rejects(failingPut.upload(item.id, input, null, item.accessToken), /put failed/);
   assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 0);
   const ambiguousPut = attachmentService(appointments, repository, {
     async put(...args) { await bucket.put(...args); throw new Error('put response lost'); },
     async delete() { throw new Error('delete failed'); }
   }, MAX_R2_BYTES);
-  await assert.rejects(ambiguousPut.upload(item.id, input, null, item.studentId), /put response lost/);
+  await assert.rejects(ambiguousPut.upload(item.id, input, null, item.accessToken), /put response lost/);
   assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 4);
   assert.equal((await bucket.list()).objects.length, 1);
   assert.equal((await db.prepare('SELECT state FROM attachment_storage').first()).state, 'deleting');
@@ -280,17 +280,17 @@ test('failed R2 puts release quota only after confirmed compensation; failed com
 
 test('expired attachments disappear for guests and staff without releasing quota until physical deletion', async () => {
   const item = await book(), token = await login(), base = `/api/appointments/${item.id}/attachments`;
-  const file = await api(base, { method: 'POST', body: { studentId: item.studentId, filename: 'a.txt', mimeType: 'text/plain', data: 'dGVzdA==' } }, 201);
+  const file = await api(base, { accessToken:item.accessToken, method: 'POST', body: { studentId: item.studentId, filename: 'a.txt', mimeType: 'text/plain', data: 'dGVzdA==' } }, 201);
   const expires = new Date().toISOString();
   await db.batch([
     db.prepare('UPDATE appointment_attachments SET expires_at=?').bind(expires),
     db.prepare('UPDATE attachment_storage SET expires_at=?').bind(expires)
   ]);
-  for (const options of [{}, { token }]) {
-    assert.deepEqual((await api(`${base}?studentId=${item.studentId}`, options)).items, []);
-    await api(`${base}/${file.id}?studentId=${item.studentId}`, options, 404);
+  for (const options of [{accessToken:item.accessToken}, { token }]) {
+    assert.deepEqual((await api(base,options)).items, []);
+    await api(`${base}/${file.id}`,options,404);
   }
-  assert.deepEqual((await api(`/api/appointments/lookup?appointmentId=${item.id}&studentId=${item.studentId}`)).attachments, []);
+  assert.deepEqual((await api(`/api/appointments/${item.id}`,{accessToken:item.accessToken})).attachments, []);
   assert.equal((await bucket.list()).objects.length, 1);
   assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 4);
   const repository = attachmentRepository(db);
@@ -338,7 +338,7 @@ test('storage limits validate configuration and honor the smaller Preview quota'
   const item = await book();
   await db.prepare('UPDATE storage_quota SET used_bytes=?').bind(previewLimit - 1).run();
   const service = attachmentService(appointmentRepository(db), attachmentRepository(db), bucket, previewLimit);
-  await assert.rejects(service.upload(item.id, { filename: 'a.txt', mimeType: 'text/plain', bytes: Buffer.from('test') }, null, item.studentId), error => error.status === 507);
+  await assert.rejects(service.upload(item.id, { filename: 'a.txt', mimeType: 'text/plain', bytes: Buffer.from('test') }, null, item.accessToken), error => error.status === 507);
   assert.equal((await bucket.list()).objects.length, 0);
 });
 
@@ -388,11 +388,11 @@ test('metadata failure with unsuccessful R2 compensation keeps an invisible coun
     const service = attachmentService(appointmentRepository(db), repository, {
       put: (...args) => bucket.put(...args), async delete() { throw new Error('R2 delete unavailable'); }
     }, MAX_R2_BYTES);
-    await assert.rejects(service.upload(item.id, { filename: 'a.txt', mimeType: 'text/plain', bytes: Buffer.from('test') }, null, item.studentId));
+    await assert.rejects(service.upload(item.id, { filename: 'a.txt', mimeType: 'text/plain', bytes: Buffer.from('test') }, null, item.accessToken));
     assert.equal((await bucket.list()).objects.length, 1);
     assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 4);
     assert.equal((await db.prepare('SELECT state FROM attachment_storage').first()).state, 'deleting');
-    assert.deepEqual((await service.list(item.id, null, item.studentId)).items, []);
+    assert.deepEqual((await service.list(item.id, null, item.accessToken)).items, []);
   } finally { await db.prepare('DROP TRIGGER test_attachment_failure').run(); }
 });
 
@@ -407,14 +407,14 @@ test('lost metadata responses leave failed compensation hidden and immediately r
       put: (...args) => bucket.put(...args),
       async delete(key) { if (failure === 'delete') throw new Error('R2 delete unavailable'); await bucket.delete(key); }
     }, MAX_R2_BYTES);
-    await assert.rejects(service.upload(item.id, { filename: 'a.txt', mimeType: 'text/plain', bytes: Buffer.from('test') }, null, item.studentId), /D1 response lost after commit/);
+    await assert.rejects(service.upload(item.id, { filename: 'a.txt', mimeType: 'text/plain', bytes: Buffer.from('test') }, null, item.accessToken), /D1 response lost after commit/);
     const allocation = await db.prepare('SELECT * FROM attachment_storage').first();
     assert.equal(allocation.state, 'deleting');
     assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 4);
     assert.equal((await bucket.list()).objects.length, failure === 'delete' ? 1 : 0);
     const base = `/api/appointments/${item.id}/attachments`;
-    assert.deepEqual((await api(`${base}?studentId=${item.studentId}`)).items, []);
-    await api(`${base}/${allocation.id}?studentId=${item.studentId}`, {}, 404);
+    assert.deepEqual((await api(base,{accessToken:item.accessToken})).items, []);
+    await api(`${base}/${allocation.id}`,{accessToken:item.accessToken},404);
     const result = await cleanupAttachments(repository, key => bucket.delete(key), { apply: true });
     assert.equal(result.deleted, 1); assert.equal(result.failed, 0);
     assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 0);
@@ -426,7 +426,7 @@ test('lost metadata responses leave failed compensation hidden and immediately r
 test('write, lookup and upload limits are independent and shared by their routes', async () => {
   const item = await book(); // One write request in the shared IP bucket.
   const base = `/api/appointments/${item.id}/attachments`;
-  const lookup = `/api/appointments/lookup?appointmentId=${item.id}&studentId=${item.studentId}`;
+  const lookup = `/api/appointments/${item.id}`;
   for (let n = 1; n < 30; n++) {
     const path = n % 2 ? '/api/appointments' : `/api/appointments/${item.id}/status`;
     await api(path, { method: n % 2 ? 'POST' : 'PATCH', body: { status: 'invalid' } }, 400);
@@ -434,41 +434,30 @@ test('write, lookup and upload limits are independent and shared by their routes
   await api('/api/appointments', { method: 'POST', body: draft() }, 429);
   await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', body: {} }, 429);
   for (let n = 0; n < 30; n++) {
-    const paths = [lookup, `${base}?studentId=${item.studentId}`, `${base}/missing?studentId=${item.studentId}`];
-    await api(paths[n % 3], {}, n % 3 === 2 ? 404 : 200);
+    const paths = [lookup, base, `${base}/missing`];
+    await api(paths[n % 3], {accessToken:item.accessToken}, n % 3 === 2 ? 404 : 200);
   }
-  for (const path of [lookup, `${base}?studentId=${item.studentId}`, `${base}/missing?studentId=${item.studentId}`]) await api(path, {}, 429);
-  for (let n = 0; n < 15; n++) await api(base, { method: 'POST', body: {} }, 400);
-  await api(base, { method: 'POST', body: {} }, 429);
+  for (const path of [lookup, base, `${base}/missing`]) await api(path, {}, 429);
+  for (let n = 0; n < 15; n++) await api(base, { accessToken:item.accessToken, method: 'POST', body: {} }, 400);
+  await api(base, { accessToken:item.accessToken, method: 'POST', body: {} }, 429);
   await login(); // Login still has its own quota.
 });
 
-test('valid live polling does not consume quota; credential guessing shares the lookup limit', async () => {
-  const item = await book();
-  const snapshot = () => db.prepare('SELECT * FROM rate_limits ORDER BY key').all();
-  const before = await snapshot();
-  const path = `/api/live/summary?appointmentId=${item.id}&studentId=${item.studentId}`;
-  for (let n = 0; n < 181; n++) await api(path);
-  await api(`/api/live/summary?date=${item.date}&campus=${encodeURIComponent(item.campus)}`);
-  await api('/api/live/summary?date=invalid', {}, 400);
-  await api(`/api/live/summary?appointmentId=${item.id}`, {}, 400);
-  await api(`/api/live/summary?studentId=${item.studentId}`, {}, 400);
-  assert.deepEqual((await snapshot()).results, before.results);
-  const lookup = `/api/appointments/lookup?appointmentId=${item.id}&studentId=${item.studentId}`;
-  await api(lookup); // Interactive lookups and failed queue credentials share 30 attempts.
-  for (let n = 0; n < 29; n++) await api(`/api/live/summary?appointmentId=${item.id}&studentId=999999`, {}, 404);
-  const exhausted = (await snapshot()).results;
-  for (const blocked of [path, path.replace(item.studentId, '999999')]) await api(blocked, {}, 429);
-  await api(`/api/live/summary?date=${item.date}`); // Public capacity still works.
-  assert.deepEqual((await snapshot()).results, exhausted);
-  await api(lookup, {}, 429);
+test('valid live polling does not consume quota; guessing shares the lookup limit',async()=>{
+  const item=await book(),path=`/api/live/summary?appointmentId=${item.id}`;
+  const snapshot=async()=>(await db.prepare('SELECT * FROM rate_limits ORDER BY key').all()).results;
+  const before=await snapshot();
+  for(let n=0;n<181;n++)await api(path,{accessToken:item.accessToken});
+  await api(`/api/live/summary?date=${item.date}`);
+  assert.deepEqual(await snapshot(),before);
+  await api(`/api/appointments/${item.id}`,{accessToken:item.accessToken});
+  for(let n=0;n<29;n++)await api(path,{accessToken:'x'.repeat(43)},404);
+  await api(path,{accessToken:item.accessToken},429);
+  await api(`/api/live/summary?date=${item.date}`);
   await db.prepare('UPDATE rate_limits SET expires_at=0').run();
-  await api(path); // Expired quota no longer blocks valid polls or triggers writes.
-  const expired = (await snapshot()).results;
-  assert.ok(expired.every(row => row.expires_at === 0));
-  await api(path);
-  assert.deepEqual((await snapshot()).results, expired);
+  await api(path,{accessToken:item.accessToken});
 });
+
 test('Shanghai dates stay correct at UTC day boundaries', () => {
   assert.equal(dateKey(new Date('2026-10-04T15:59:59Z')), '2026-10-04');
   assert.equal(dateKey(new Date('2026-10-04T16:01:00Z')), '2026-10-05');
@@ -478,12 +467,38 @@ test('Shanghai dates stay correct at UTC day boundaries', () => {
   assert.equal(serviceDay('2026-10-04'), false);
 });
 
+test('only the matching credential grants guest access and recovery revokes every old route',async()=>{
+  const item=await book(),other=await book(),root=await login();
+  const file=await api(`/api/appointments/${item.id}/attachments`,{method:'POST',accessToken:item.accessToken,body:{filename:'a.txt',mimeType:'text/plain',data:'dGVzdA=='}},201);
+  const paths=[`/api/appointments/${item.id}`,`/api/appointments/${item.id}/attachments`,`/api/appointments/${item.id}/attachments/${file.id}`,`/api/live/summary?appointmentId=${item.id}`];
+  for(const path of paths){
+    await api(path,{accessToken:other.accessToken},404);
+    await api(path,{},404);
+  }
+  await api(`/api/appointments/${item.id}?studentId=${item.studentId}`,{},404);
+  await api(`/api/appointments/${item.id}?accessToken=${item.accessToken}`,{},404);
+  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',body:{studentId:item.studentId,status:'cancelled'}},404);
+  await api(`/api/live/summary?studentId=${item.studentId}`,{},400);
+  const technician=await addUser('690001');
+  await api(`/api/appointments/${item.id}/credential`,{method:'POST',token:technician,body:{}},403);
+  await api(`/api/appointments/${item.id}/credential`,{method:'POST',token:root,body:{identityVerified:false,reason:'已当面核验学生证和联系方式'}},400);
+  const recovered=await api(`/api/appointments/${item.id}/credential`,{method:'POST',token:root,body:{identityVerified:true,reason:'已当面核验学生证和联系方式'}});
+  assert.notEqual(item.accessToken,recovered.accessToken);
+  for(const path of paths)await api(path,{accessToken:item.accessToken},404);
+  await api(`/api/appointments/${item.id}`,{accessToken:recovered.accessToken});
+  assert.equal((await request(`/api/appointments/${item.id}/attachments/${file.id}`,{accessToken:recovered.accessToken})).status,200);
+  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',accessToken:item.accessToken,body:{status:'cancelled'}},404);
+  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',accessToken:recovered.accessToken,body:{status:'cancelled'}});
+  const audit=await db.prepare('SELECT * FROM credential_recoveries').first();
+  assert.equal(audit.actor,'root001');assert.ok(!JSON.stringify(audit).includes(recovered.accessToken));
+});
+
 test('two requests for the final slot have one winner and cancellation releases capacity', async () => {
   for (let n = 0; n < 19; n++) await book();
   const attempts = await Promise.all([draft(), draft()].map(body => request('/api/appointments', { method: 'POST', body })));
   assert.deepEqual(attempts.map(response => response.status).sort(), [201,409]);
   const winner = await attempts.find(response => response.status === 201).json();
-  await api(`/api/appointments/${winner.id}/status`, { method: 'PATCH', body: { status: 'cancelled', studentId: winner.studentId } });
+  await api(`/api/appointments/${winner.id}/status`, { method: 'PATCH', accessToken:winner.accessToken, body: { status: 'cancelled', studentId: winner.studentId } });
   await book();
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM appointments WHERE status NOT IN ('cancelled','no_show')").first()).n, 20);
 });
@@ -508,15 +523,15 @@ test('SQL queue counts use campus/slot scopes, deterministic ties and active sta
   const ended = await book();
   await api(`/api/appointments/${ended.id}/status`, { method: 'PATCH', token: root, body: { status: 'no_show' } });
   await db.prepare('UPDATE appointments SET created_at=? WHERE id IN (?,?)').bind('2026-10-04T16:00:00.000Z', first.id, second.id).run();
-  const summary = await api(`/api/live/summary?appointmentId=${second.id}&studentId=${second.studentId}`);
+  const summary = await api(`/api/live/summary?appointmentId=${second.id}`,{accessToken:second.accessToken});
   assert.equal(summary.dayTotal, 4); assert.equal(summary.campusDayTotal, 3); assert.equal(summary.slotTotal, 2);
   assert.equal(summary.queueTotal, 2); assert.equal(summary.ahead, 1); assert.equal(summary.position, 2);
   assert.deepEqual(summary.slots, { '19:00–20:00': 2, '20:00–21:00': 1 });
   await api(`/api/appointments/${first.id}/status`, { method: 'PATCH', token: root, body: { status: 'completed' } });
-  assert.equal((await api(`/api/live/summary?appointmentId=${second.id}&studentId=${second.studentId}`)).ahead, 1);
+  assert.equal((await api(`/api/live/summary?appointmentId=${second.id}`,{accessToken:second.accessToken})).ahead, 1);
   await api(`/api/appointments/${first.id}/status`, { method: 'PATCH', token: root, body: { status: 'cancelled' } });
-  assert.equal((await api(`/api/live/summary?appointmentId=${second.id}&studentId=${second.studentId}`)).position, 1);
-  assert.equal((await api(`/api/live/summary?appointmentId=${first.id}&studentId=${first.studentId}`)).position, null);
+  assert.equal((await api(`/api/live/summary?appointmentId=${second.id}`,{accessToken:second.accessToken})).position, 1);
+  assert.equal((await api(`/api/live/summary?appointmentId=${first.id}`,{accessToken:first.accessToken})).position, null);
 });
 
 test('SQL statistics aggregate date windows and workload without reading contact ciphertext', async () => {

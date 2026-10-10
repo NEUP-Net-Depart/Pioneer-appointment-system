@@ -32,6 +32,7 @@ export function createContext(request, env) {
   const url = new URL(request.url);
   return {
     request, url, query: Object.fromEntries(url.searchParams), services, authenticate,
+    accessToken: request.headers.get('X-Appointment-Token') || '',
     async role(minimum) { return requireRole(await authenticate(), minimum); },
     async limit(scope, options) {
       // Supplied by Cloudflare on the edge. Missing IPs share a conservative bucket in local dev.

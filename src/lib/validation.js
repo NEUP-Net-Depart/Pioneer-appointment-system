@@ -8,12 +8,6 @@ export function stringField(value, name, max, required = false) {
   if (typeof value !== 'string' || value.length > max || (required && !value.trim())) fail(400, `${name} 格式不正确或超过 ${max} 字符`);
   return value.trim();
 }
-export function credentials(input) {
-  const id = stringField(input.appointmentId, '预约编号', 40, true);
-  const studentId = account(input.studentId);
-  if (!/^\d{6,20}$/.test(studentId)) fail(400, '请提供正确的预约编号和学号');
-  return { id, studentId };
-}
 export function bookingInput(input) {
   const limits = { studentId: 20, name: 80, college: 120, campus: 20, phone: 30, social: 120, deviceType: 80, brand: 80, deviceModel: 120, serial: 120, warranty: 20, faultType: 80, issue: 10000, liquidDrop: 20, date: 10, timeSlot: 40, note: 500, agreementAt: 40, agreementVersion: 20 };
   const required = new Set(['studentId','name','campus','social','deviceType','brand','deviceModel','warranty','date','timeSlot','faultType','agreementAt']);
@@ -35,7 +29,7 @@ export function appointmentPatch(input) {
   for (const [key, max] of [['assignedTo', 80], ['repairNote', 3000]]) {
     if (input[key] !== undefined) patch[key] = stringField(input[key], key, max);
   }
-  return { patch, studentId: account(input.studentId) };
+  return { patch };
 }
 export function appointmentQuery(input) {
   const query = { q: stringField(input.q, '搜索内容', 120), campus: input.campus || '', date: input.date || '', status: input.status || 'all' };
@@ -46,11 +40,9 @@ export function appointmentQuery(input) {
   return query;
 }
 export function liveQuery(input) {
-  const query = { date: input.date || '', campus: input.campus || '', timeSlot: input.timeSlot || '', appointmentId: input.appointmentId || '', studentId: account(input.studentId) };
-  if (query.appointmentId || query.studentId) {
-    const credential = credentials(input);
-    query.appointmentId = credential.id; query.studentId = credential.studentId;
-  }
+  const query = { date:input.date || '',campus:input.campus || '',timeSlot:input.timeSlot || '',appointmentId:input.appointmentId || '' };
+  if (input.studentId!==undefined) fail(400,'学号不能用作查询凭证');
+  if (query.appointmentId) query.appointmentId=stringField(query.appointmentId,'预约编号',40,true);
   if (query.date && !validDate(query.date)) fail(400, '日期不正确');
   if (query.campus && !['南湖','浑南'].includes(query.campus)) fail(400, '校区不正确');
   if (query.timeSlot) { query.timeSlot = normalizeTimeSlot(query.timeSlot); if (!query.timeSlot) fail(400, '时段不正确'); }

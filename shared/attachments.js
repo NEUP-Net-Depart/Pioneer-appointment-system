@@ -2,9 +2,9 @@ import { apiJson } from './api.js';
 export function attachmentSize(size) {
   return size < 1024 * 1024 ? `${Math.max(1, Math.round(size / 1024))} KB` : `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
-export function attachmentUrl(appointmentId, id, studentId) {
+export function attachmentUrl(appointmentId, id) {
   const path = `/api/appointments/${encodeURIComponent(appointmentId)}/attachments/${encodeURIComponent(id)}`;
-  return studentId ? `${path}?studentId=${encodeURIComponent(studentId)}` : path;
+  return path;
 }
 export async function uploadAttachments(appointment, files) {
   for (const file of files) {
@@ -15,7 +15,7 @@ export async function uploadAttachments(appointment, files) {
       reader.readAsDataURL(file);
     });
     await apiJson(`/api/appointments/${encodeURIComponent(appointment.id)}/attachments`, {
-      method: 'POST', json: { studentId: appointment.studentId, filename: file.name, mimeType: file.type, data }
+      method: 'POST', headers: { 'X-Appointment-Token':appointment.accessToken }, json: { filename:file.name,mimeType:file.type,data }
     });
   }
 }

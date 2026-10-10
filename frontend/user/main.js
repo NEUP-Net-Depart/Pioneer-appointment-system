@@ -1,7 +1,10 @@
 import { initNavigation } from '/shared/navigation.js';
 import { initBooking } from './booking.js';
 import { initLookup } from './lookup.js';
-const appointments = [];
-initNavigation();
-initBooking({ appointments });
-initLookup(appointments);
+const appointments=[];
+const lookup=initLookup(appointments);
+let importing=lookup.hasPrivateLink;
+const switchView=initNavigation(view=>{if(view==='lookup' && !importing)lookup.refresh();});
+initBooking({appointments});
+if(lookup.hasPrivateLink) switchView('lookup');
+importing=false;

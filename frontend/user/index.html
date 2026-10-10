@@ -76,19 +76,19 @@
         </form>
 
         <section class="success-panel" id="success-panel" hidden>
-          <div class="success-icon">✓</div><p class="eyebrow">FREE SERVICE BOOKING</p><h2>预约已提交</h2><p class="success-copy">维修人员会在服务时间内确认。请记下预约编号，查询时同时输入学号。</p>
-          <div class="booking-code"><span>预约编号</span><strong id="success-code">020261003-01</strong><button id="copy-code" type="button" title="复制预约编号">复制</button></div>
-          <p class="success-summary" id="success-summary"></p><p class="free-note">本服务不收取任何费用，配件及耗材需由机主自行准备。</p>
+          <div class="success-icon">✓</div><p class="eyebrow">FREE SERVICE BOOKING</p><h2>预约已提交</h2><p class="success-copy">维修人员会在服务时间内确认。预约已自动保存在此浏览器，无需另设密码或记录查询码。</p>
+          <div class="booking-code"><span>预约编号</span><strong id="success-code">020261003-01</strong><button id="copy-code" type="button" title="复制私人链接">复制</button></div>
+          <p class="success-summary" id="success-summary"></p><p id="credential-save-message" role="status"></p><a id="success-private-link" class="text-btn" href="/">打开私人查询链接</a><p class="free-note">本服务不收取任何费用，配件及耗材需由机主自行准备。</p>
           <div class="success-actions"><button class="secondary-btn" type="button" data-view-link="lookup">查看我的预约</button><button class="text-btn" id="new-booking" type="button">再预约一台设备</button></div>
         </section>
       </div>
     </section>
 
     <section class="view" id="lookup-view" data-view="lookup">
-      <div class="page-intro"><p class="eyebrow">MY APPOINTMENT · 02</p><h1>查询维修进度</h1><p>无需登录，使用预约编号和学号查看最新处理状态与维修记录。</p></div>
+      <div class="page-intro"><p class="eyebrow">MY APPOINTMENT · 02</p><h1>我的预约</h1><p>无需登录，直接查看此浏览器保存的预约及排队进度。</p></div>
       <div class="content-shell lookup-shell">
-        <form id="lookup-form" class="lookup-form"><label><span>预约编号</span><input id="lookup-id" required placeholder="例如 020261004-01" autocomplete="off" /></label><label><span>学号</span><input id="lookup-student-id" inputmode="numeric" pattern="[0-9]{6,20}" required placeholder="请输入预约时填写的学号" autocomplete="off" /></label><button class="primary-btn" type="submit">查询 <span>⌕</span></button></form>
-        <div id="lookup-results" class="lookup-results"><div class="empty-state"><span class="empty-icon">⌕</span><h2>输入凭证开始查询</h2><p>请输入预约编号和学号，查看预约状态与排队位置。</p></div></div>
+        <button class="secondary-btn" id="refresh-my-appointments" type="button">刷新我的预约</button><form id="lookup-form" class="lookup-form"><label><span>在其他设备访问</span><input id="lookup-link" type="text" required placeholder="粘贴私人查询链接" autocomplete="off" /></label><button class="primary-btn" type="submit">打开链接</button></form><p>凭证遗失请联系工作人员人工核验后重新签发。私人链接可访问预约和附件，请勿转发。</p>
+        <div id="lookup-results" class="lookup-results"><div class="empty-state"><span class="empty-icon">⌕</span><h2>输入凭证开始查询</h2><p>预约成功后自动保存，或打开私人查询链接。</p></div></div>
       </div>
     </section>
 
