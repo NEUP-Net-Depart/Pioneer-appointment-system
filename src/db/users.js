@@ -27,14 +27,6 @@ export function userRepository(db) {
         (SELECT COUNT(*) FROM appointments WHERE assigned_to=staff_accounts.account) AS workload
         FROM staff_accounts ORDER BY role DESC,name`).all()).results.map(publicUser);
     },
-    async create(item) {
-      await db.batch([
-        db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES (?,?,?,?,?,?)')
-          .bind(item.account,item.name,item.role,item.homeCampus,item.passwordHash,item.createdAt),
-        ...item.authorizedCampuses.map(campus => db.prepare('INSERT INTO staff_campus_grants(account,campus) VALUES (?,?)').bind(item.account,campus))
-      ]);
-      return publicUserView(await find(item.account));
-    },
     async update(target, patch, { selfPassword = false } = {}) {
       const fields = [], args = [];
       for (const [key,column] of Object.entries({ role:'role',status:'status',name:'name',homeCampus:'home_campus',passwordHash:'password_hash' })) {

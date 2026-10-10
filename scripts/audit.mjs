@@ -19,7 +19,7 @@ for (const path of runtime) {
   assert.ok(!forbidden.test(source), `Retired architecture in ${path}`);
   if (!path.endsWith('.js')) continue;
   const imports = [];
-  for (const [, specifier] of source.matchAll(/(?:from\s+|import\s*)['"]([^'"]+)['"]/g)) {
+  for (const [, specifier] of source.matchAll(/(?:from\s+|import\s+)['"]([^'"]+)['"]/g)) {
     if (specifier.startsWith('node:')) {
       assert.ok(['node:crypto', 'node:buffer'].includes(specifier) && path.startsWith(join('src', 'lib')), `Unsupported runtime dependency in ${path}`);
       continue;

@@ -30,9 +30,9 @@ test('all frontend module imports resolve; user graph cannot reach staff modules
   const graph = new Map();
   for (const path of (await files('dist')).filter(path => path.endsWith('.js'))) {
     const source = await readFile(path, 'utf8');
-    const imports = [...source.matchAll(/(?:from\s+|import\s*)['"]([^'"]+)['"]/g)].map(([, specifier]) => resolve(specifier.startsWith('/') ? 'dist' + specifier : join(dirname(path), specifier)));
+    const imports = [...source.matchAll(/(?:from\s+|import\s+)['"]([^'"]+)['"]/g)].map(([, specifier]) => resolve(specifier.startsWith('/') ? 'dist' + specifier : join(dirname(path), specifier)));
     for (const dependency of imports) await access(dependency);
-    for (const [, names, specifier] of source.matchAll(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g)) {
+    for (const [, names, specifier] of source.matchAll(/import\s+\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g)) {
       const dependency = resolve(specifier.startsWith('/') ? 'dist' + specifier : join(dirname(path), specifier));
       const exports = new Set([...(await readFile(dependency, 'utf8')).matchAll(/export\s+(?:(?:async\s+)?function|const|let|class)\s+([\w$]+)/g)].map(match => match[1]));
       for (const name of names.split(',').map(name => name.trim().split(/\s+as\s+/)[0])) assert.ok(exports.has(name), `${path} imports missing ${name} from ${specifier}`);

@@ -41,6 +41,20 @@ async function addUser(account, role = 'technician') {
   await db.prepare('INSERT INTO staff_campus_grants VALUES (?,?)').bind(account,'南湖').run();
   return login(account);
 }
+async function whitelistStaff(studentId,{name='',role='technician',authorizedCampuses=['南湖']}={}){
+  const token=await login();
+  await api('/api/staff-whitelist/import',{method:'POST',token,body:{csv:`studentId,expectedName\n${studentId},${name}`,expectedRole:role,authorizedCampuses}});
+  return token;
+}
+async function applyStaff(studentId,patch={}){
+  return api('/api/activation',{method:'POST',body:{studentId,name:`人员${studentId}`,homeCampus:'南湖',contact:'wechat-member',password,...patch}},201);
+}
+async function activateStaff(studentId,{name=`人员${studentId}`,role='technician',authorizedCampuses=['南湖']}={}){
+  const token=await whitelistStaff(studentId,{name,role,authorizedCampuses});
+  const application=await applyStaff(studentId,{name});
+  await api('/api/activation-requests/review',{method:'POST',token,body:{ids:[application.id],status:'approved',identityVerified:true,reviewNote:'已当面核验部员身份和学生证'}});
+  return (await api('/api/users',{token})).items.find(user=>user.account===studentId);
+}
 async function applyMigration(database, file) {
   const sql = (await readFile(`migrations/${file}`, 'utf8')).replace(/--[^\n]*/g, '');
   const statements = []; let buffer = '';
@@ -153,7 +167,7 @@ test('simultaneous claims have one winner; technician ownership and transitions 
 });
 test('staff account model separates role, status, home campus and grants', async () => {
   const root = await login();
-  const created = await api('/api/users', { method:'POST',token:root,body:{account:'400001',name:'测试人员',homeCampus:'南湖',authorizedCampuses:['浑南'],password} },201);
+  const created=await activateStaff('400001',{name:'测试人员',authorizedCampuses:['浑南']});
   assert.equal(created.role,'technician'); assert.equal(created.status,'enabled');
   assert.equal(created.homeCampus,'南湖'); assert.deepEqual(created.authorizedCampuses,['浑南']);
   assert.ok(!created.passwordHash);
@@ -575,10 +589,12 @@ test('CSV streams multiple D1 pages without omitting or duplicating tied timesta
   assert.ok(ids.includes('"history-0000"') && ids.includes('"history-0204"'));
 });
 
-test('long account fields are rejected instead of silently changing identity', async () => {
-  const root = await login();
-  await api('/api/users', { method: 'POST', token: root, body: { account: '8'.repeat(21), name: '测试人员', homeCampus: '南湖', authorizedCampuses: ['南湖'], password } }, 400);
-  await api('/api/users', { method: 'POST', token: root, body: { account: '800001', name: '名'.repeat(81), homeCampus: '南湖', authorizedCampuses: ['南湖'], password } }, 400);
+test('retired creation API is removed and activation rejects oversized identity fields',async()=>{
+  const root=await login();
+  await api('/api/users',{method:'POST',token:root,body:{}},404);
+  for(const patch of [{studentId:'8'.repeat(21)},{name:'名'.repeat(81)}]){
+    await api('/api/activation',{method:'POST',body:{studentId:'800001',name:'测试人员',homeCampus:'南湖',contact:'联系管理员核验',password,...patch}},400);
+  }
 });
 
 test('technicians see campus summaries before claiming and only their own private records after',async()=>{
@@ -645,4 +661,86 @@ test('stale concurrent account updates cannot replace campus grants or restore r
   const winner=results.find(Boolean),stored=await repository.find('730001');
   assert.deepEqual(stored.authorizedCampuses,winner.authorizedCampuses);assert.equal(stored.role,winner.role);
   assert.equal(stored.tokenVersion,original.tokenVersion+1);
+});
+
+test('whitelist application is separate from login and approval atomically installs only roster grants',async()=>{
+  const token=await whitelistStaff('810001',{name:'真实部员',authorizedCampuses:['浑南']});
+  const application=await applyStaff('810001',{name:'真实部员',role:'superadmin',authorizedCampuses:['南湖','浑南'],protected:true});
+  await api('/api/auth/login',{method:'POST',body:{account:'810001',password}},401);
+  assert.equal(await db.prepare('SELECT * FROM staff_accounts WHERE account=?').bind('810001').first(),null);
+  const stored=await db.prepare('SELECT * FROM activation_requests WHERE id=?').bind(application.id).first();
+  assert.ok(stored.password_hash.startsWith('scrypt$'));assert.ok(!stored.contact.includes('wechat-member'));
+  assert.ok(!stored.receipt_hash.includes(application.receipt));
+  await api(`/api/activation/${application.id}`,{},404);
+  assert.equal((await api(`/api/activation/${application.id}`,{headers:{'X-Activation-Receipt':application.receipt}})).status,'pending');
+  await api('/api/activation-requests/review',{method:'POST',token,body:{ids:[application.id],status:'approved',reviewNote:'已当面核验部员身份和学生证'}},400);
+  await api('/api/activation-requests/review',{method:'POST',token,body:{ids:[application.id],status:'approved',identityVerified:true,reviewNote:'已当面核验部员身份和学生证'}});
+  const user=await api('/api/auth/me',{token:await login('810001')});
+  assert.equal(user.role,'technician');assert.deepEqual(user.authorizedCampuses,['浑南']);assert.equal(user.homeCampus,'南湖');
+  assert.equal((await db.prepare('SELECT status FROM staff_whitelist WHERE student_id=?').bind('810001').first()).status,'activated');
+  assert.equal((await db.prepare('SELECT password_hash FROM activation_requests WHERE id=?').bind(application.id).first()).password_hash,'');
+  await api('/api/activation',{method:'POST',body:{studentId:'810001',name:'真实部员',homeCampus:'南湖',contact:'私密联系方式',password}},400);
+});
+
+test('concurrent activation submissions and approvals have exactly one winner',async()=>{
+  const token=await whitelistStaff('820001');
+  const body={studentId:'820001',name:'真实部员',homeCampus:'南湖',contact:'wechat-member',password};
+  const submitted=await Promise.all([request('/api/activation',{method:'POST',body}),request('/api/activation',{method:'POST',body})]);
+  assert.deepEqual(submitted.map(response=>response.status).sort(),[201,409]);
+  const application=await submitted.find(response=>response.status===201).json();
+  const review={ids:[application.id],status:'approved',identityVerified:true,reviewNote:'已当面核验部员身份和学生证'};
+  const results=await Promise.all([request('/api/activation-requests/review',{method:'POST',token,body:review}),request('/api/activation-requests/review',{method:'POST',token,body:review})]);
+  assert.deepEqual(results.map(response=>response.status).sort(),[200,409]);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM staff_accounts WHERE account=?').bind('820001').first()).n,1);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM staff_campus_grants WHERE account=?').bind('820001').first()).n,1);
+});
+
+test('identity mismatch, duplicate pending attempts, rejection and reapplication do not reserve a staff account',async()=>{
+  const token=await whitelistStaff('830001',{name:'真实部员'});
+  await api('/api/activation',{method:'POST',body:{studentId:'830001',name:'冒名部员',homeCampus:'南湖',contact:'伪造联系',password}},400);
+  const first=await applyStaff('830001',{name:'真实部员'});
+  await api('/api/activation',{method:'POST',body:{studentId:'830001',name:'真实部员',homeCampus:'南湖',contact:'其他联系',password}},409);
+  await api('/api/activation-requests/review',{method:'POST',token,body:{ids:[first.id],status:'rejected',reviewNote:'申请人未通过线下身份核验'}});
+  const second=await applyStaff('830001',{name:'真实部员'});assert.notEqual(first.id,second.id);
+  assert.equal((await api(`/api/activation/${first.id}`,{headers:{'X-Activation-Receipt':first.receipt}})).status,'rejected');
+  await api('/api/auth/login',{method:'POST',body:{account:'830001',password}},401);
+  await api('/api/staff-whitelist/830001',{method:'PATCH',token,body:{status:'revoked'}});
+  assert.equal((await api(`/api/activation/${second.id}`,{headers:{'X-Activation-Receipt':second.receipt}})).status,'rejected');
+  await api('/api/activation-requests/review',{method:'POST',token,body:{ids:[second.id],status:'approved',identityVerified:true,reviewNote:'已当面核验部员身份和学生证'}},409);
+});
+
+test('CSV import validates the entire roster, handles quoted cells and never overwrites existing eligibility',async()=>{
+  const token=await login();
+  const csv='\uFEFFstudentId,expectedName,expectedRole,authorizedCampuses\r\n840001,"张三,成员",technician,南湖|浑南\r\n840002,李四,admin,浑南';
+  const result=await api('/api/staff-whitelist/import',{method:'POST',token,body:{csv}});assert.equal(result.imported.length,2);
+  assert.equal((await api('/api/staff-whitelist',{token})).items.find(item=>item.studentId==='840001').expectedName,'张三,成员');
+  assert.equal((await api('/api/staff-whitelist/import',{method:'POST',token,body:{csv}})).skipped.length,2);
+  for(const invalid of ['studentId\n840003\nBAD','studentId\n840003\n840003','studentId,expectedRole\n840003,superadmin','studentId,name\n840003,张三','studentId\n"840003']){
+    await api('/api/staff-whitelist/import',{method:'POST',token,body:{csv:invalid,authorizedCampuses:['南湖']}},400);
+  }
+  assert.equal(await db.prepare('SELECT student_id FROM staff_whitelist WHERE student_id=?').bind('840003').first(),null);
+});
+
+test('activation management rejects role and campus escalation and supports batch review',async()=>{
+  const root=await login(),admin=await addUser('850001','admin'),technician=await addUser('850002');
+  await api('/api/staff-whitelist',{token:technician},403);
+  await api('/api/activation-requests',{token:technician},403);
+  await api('/api/staff-whitelist/import',{method:'POST',token:admin,body:{csv:'studentId\n850003',expectedRole:'admin',authorizedCampuses:['南湖']}},403);
+  await api('/api/staff-whitelist/import',{method:'POST',token:admin,body:{csv:'studentId\n850003',authorizedCampuses:['浑南']}},403);
+  await api('/api/staff-whitelist/import',{method:'POST',token:root,body:{csv:'studentId\n850003\n850004',authorizedCampuses:['浑南']}});
+  const first=await applyStaff('850003'),second=await applyStaff('850004');
+  await api('/api/activation-requests/review',{method:'POST',token:admin,body:{ids:[first.id],status:'approved',identityVerified:true,reviewNote:'已当面核验部员身份和学生证'}},403);
+  const result=await api('/api/activation-requests/review',{method:'POST',token:root,body:{ids:[first.id,second.id],status:'approved',identityVerified:true,reviewNote:'已分别当面核验两名部员和学生证'}});
+  assert.equal(result.applied.length,2);await login('850003');await login('850004');
+});
+
+test('failed account grant creation rolls back approval, account and whitelist consumption together',async()=>{
+  const token=await whitelistStaff('860001'),application=await applyStaff('860001');
+  await db.prepare("CREATE TRIGGER test_activation_failure BEFORE INSERT ON staff_campus_grants WHEN NEW.account='860001' BEGIN SELECT RAISE(ABORT,'test failure'); END").run();
+  try{
+    await api('/api/activation-requests/review',{method:'POST',token,body:{ids:[application.id],status:'approved',identityVerified:true,reviewNote:'已当面核验部员身份和学生证'}},500);
+    assert.equal(await db.prepare('SELECT account FROM staff_accounts WHERE account=?').bind('860001').first(),null);
+    assert.equal((await db.prepare('SELECT status FROM activation_requests WHERE id=?').bind(application.id).first()).status,'pending');
+    assert.equal((await db.prepare('SELECT status FROM staff_whitelist WHERE student_id=?').bind('860001').first()).status,'open');
+  }finally{await db.prepare('DROP TRIGGER test_activation_failure').run();}
 });

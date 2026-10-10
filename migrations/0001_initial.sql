@@ -7,7 +7,9 @@ CREATE TABLE staff_accounts (
   protected INTEGER NOT NULL DEFAULT 0 CHECK(protected IN (0,1)),
   password_hash TEXT NOT NULL, token_version INTEGER NOT NULL DEFAULT 0 CHECK(token_version>=0),
   revision INTEGER NOT NULL DEFAULT 0 CHECK(revision>=0), created_at TEXT NOT NULL,
-  CHECK(protected=0 OR (role='superadmin' AND status='enabled'))
+  CHECK(protected=0 OR (role='superadmin' AND status='enabled')),
+  CHECK((protected=1 AND account IN ('root001','root002')) OR
+    (protected=0 AND length(account) BETWEEN 6 AND 20 AND account NOT GLOB '*[^0-9]*'))
 );
 CREATE TABLE staff_campus_grants (
   account TEXT NOT NULL REFERENCES staff_accounts(account) ON DELETE CASCADE,
@@ -40,6 +42,22 @@ CREATE TABLE activation_requests (
 CREATE UNIQUE INDEX idx_one_pending_activation ON activation_requests(student_id) WHERE status='pending';
 CREATE UNIQUE INDEX idx_one_approved_activation ON activation_requests(student_id) WHERE status='approved';
 CREATE INDEX idx_activation_status ON activation_requests(status,created_at,id);
+-- One review UPDATE atomically creates the account and its grants or rolls back.
+CREATE TRIGGER activation_approve AFTER UPDATE OF status ON activation_requests
+WHEN OLD.status='pending' AND NEW.status='approved'
+BEGIN
+  SELECT RAISE(ABORT,'ACTIVATION_CONFLICT') WHERE NOT EXISTS (
+    SELECT 1 FROM staff_whitelist WHERE student_id=NEW.student_id AND status='open'
+      AND (expected_name='' OR expected_name=NEW.name)
+  ) OR NOT EXISTS (SELECT 1 FROM whitelist_campus_grants WHERE student_id=NEW.student_id);
+  INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at)
+    SELECT NEW.student_id,NEW.name,expected_role,NEW.home_campus,NEW.password_hash,NEW.reviewed_at
+    FROM staff_whitelist WHERE student_id=NEW.student_id;
+  INSERT INTO staff_campus_grants(account,campus)
+    SELECT NEW.student_id,campus FROM whitelist_campus_grants WHERE student_id=NEW.student_id;
+  UPDATE staff_whitelist SET status='activated',revision=revision+1 WHERE student_id=NEW.student_id;
+  UPDATE activation_requests SET password_hash='' WHERE id=NEW.id;
+END;
 CREATE TABLE appointments (
   id TEXT PRIMARY KEY, student_id TEXT NOT NULL, name TEXT NOT NULL,
   college TEXT NOT NULL DEFAULT '', campus TEXT NOT NULL CHECK(campus IN ('南湖','浑南')),

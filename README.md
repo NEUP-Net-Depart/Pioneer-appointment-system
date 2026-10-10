@@ -7,6 +7,7 @@
 > `main` 是生产分支。日常修改在开发分支完成；向 `main` 推送或执行生产部署前，须获得明确确认。
 
 - [业务规则与权限](docs/requirements.md)
+- [工作人员白名单与自主激活](docs/staff-activation.md)
 - [部署与运维](docs/operations.md)：生产、Preview、域名、附件清理和备份
 
 ## Cloudflare 架构
@@ -89,7 +90,7 @@ npm run smoke -- https://repair.example.edu
 | GET | `/api/appointments/:id/attachments/:attachmentId` | 附件下载 |
 | GET | `/api/live/summary` | 名额和个人排队位置 |
 | GET | `/api/stats/summary`、`/api/stats/fault-types` | admin+ 统计 |
-| GET / POST | `/api/users` | admin+ 账号列表 / 新建工作人员账号 |
+| GET | `/api/users` | admin+ 账号列表 |
 | PATCH | `/api/users/:account` | 管理低于自身且非保护账号 |
 | GET | `/api/export/appointments.csv` | admin+ 导出 |
 

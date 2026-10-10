@@ -1,6 +1,7 @@
 import { initNavigation } from '/shared/navigation.js';
 import { useStaffSession } from '/shared/api.js';
 import { initAuth } from './auth.js';
+import { initActivation } from './activation.js';
 import { initStaff } from './staff.js';
 import { initStats } from './stats.js';
 import { initUsers } from './users.js';
@@ -15,7 +16,7 @@ function refresh() {
   controllers[activeView]?.refresh();
 }
 const switchView = initNavigation(view => { activeView = view; refresh(); });
-initAuth({
+if(!initActivation()) initAuth({
   onLogin(nextRole) {
     role = nextRole;
     Object.values(controllers).forEach(controller => controller.clear());

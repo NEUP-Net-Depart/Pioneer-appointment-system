@@ -1,7 +1,6 @@
 import { fail } from '../lib/http.js';
 import { hashPassword } from '../lib/passwords.js';
 import { roleLevel } from '../../shared/constants.js';
-import { dateKey } from '../../shared/time.js';
 import { canManageAccount,requireGrantScope,requireRole } from './permissions.js';
 
 export function userService(users) {
@@ -15,12 +14,6 @@ export function userService(users) {
     async list(actor) {
       requireRole(actor,'admin');
       return {items:(await users.list()).filter(user=>actor.role==='superadmin' || canManageAccount(actor,user) || user.account===actor.account)};
-    },
-    async create(input, actor) {
-      if (await users.find(input.account)) fail(409, '学号已存在');
-      if (roleLevel[input.role] >= roleLevel[actor.role]) fail(403, '只能创建权限低于自己的账号');
-      requireGrantScope(actor,input.authorizedCampuses);
-      return users.create({ ...input, passwordHash: hashPassword(input.password), createdAt: dateKey() });
     },
     async update(id, input, actor) {
       const target = await manageable(id, actor), patch = { ...input };

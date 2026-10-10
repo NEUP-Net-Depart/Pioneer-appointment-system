@@ -1,5 +1,6 @@
 import { $, $$, showToast, escapeHtml } from '/shared/utils.js';
 import { apiJson } from '/shared/api.js';
+import { initEnrollment } from './enrollment.js';
 
 const roleNames = { technician: '维修人员', admin: '管理者', superadmin: '最高权限者' };
 import { roleLevel } from '/shared/constants.js';
@@ -7,6 +8,7 @@ import { roleLevel } from '/shared/constants.js';
 
 export function initUsers() {
   const users = [];
+  const enrollment=initEnrollment();
   let generation = 0;
   const currentRole = () => sessionStorage.getItem('pioneerRole') || '';
   const isSuperAdmin = () => currentRole() === 'superadmin';
@@ -58,19 +60,8 @@ export function initUsers() {
       } catch (error) { showToast(error.message); render(); }
     }));
   }
-  $('#user-form').addEventListener('submit', async event => {
-    event.preventDefault();
-    const account = $('#user-account').value.trim();
-    if (!/^\d{6,20}$/.test(account)) { showToast('学号应为 6 至 20 位数字'); return; }
-    if (users.some(user => user.account === account)) { showToast('学号已存在'); return; }
-    const draft = { account, name: $('#user-name').value.trim(), homeCampus: $('#user-campus').value, authorizedCampuses: [$('#user-campus').value], password: $('#user-password').value };
-    try {
-      await apiJson('/api/users', { method: 'POST', json: draft });
-      $('#user-form').reset(); await syncUsers(); showToast('维修人员账号已创建');
-    } catch (error) { showToast(error.message); }
-  });
+
   $('#user-search').addEventListener('input', render);
-  $('#reset-user-form').addEventListener('click', () => $('#user-form').reset());
   render();
-  return { refresh: syncUsers, clear() { generation++; users.splice(0); render(); } };
+  return { refresh:()=>Promise.all([syncUsers(),enrollment.refresh()]), clear() {enrollment.clear(); generation++; users.splice(0); render(); } };
 }

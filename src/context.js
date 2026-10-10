@@ -6,6 +6,8 @@ import { statsRepository } from './db/stats.js';
 import { rateLimitRepository } from './db/rate-limits.js';
 import { authService } from './services/auth.js';
 import { requireRole } from './services/permissions.js';
+import { activationRepository } from './db/activation.js';
+import { activationService } from './services/activation.js';
 import { appointmentService } from './services/appointments.js';
 import { attachmentService } from './services/attachments.js';
 import { queueService } from './services/queue.js';
@@ -21,6 +23,7 @@ export function createContext(request, env) {
   const users = userRepository(db), appointments = appointmentRepository(db);
   const services = {
     auth: authService(users, env.JWT_SECRET), users: userService(users),
+    activation: activationService(activationRepository(db),users,env.PII_ENCRYPTION_KEY),
     appointments: appointmentService(appointments, users, env.PII_ENCRYPTION_KEY),
     attachments: attachmentService(appointments, attachmentRepository(db), env.ATTACHMENTS, storageLimit(env)),
     queue: queueService(appointments, queueRepository(db)), stats: statsService(statsRepository(db)),

@@ -57,13 +57,6 @@ export function passwordInput(value) {
   if (typeof value !== 'string' || value.length < 8 || value.length > 128) fail(400, '密码长度应为 8 至 128 位');
   return value;
 }
-export function newUserInput(input) {
-  const id = account(input.account), name = stringField(input.name, '姓名', 80, true);
-  if (!/^\d{6,20}$/.test(id) || name.length < 2 || !CAMPUSES.includes(input.homeCampus)) fail(400, '学号、姓名或校区不符合要求');
-  const role = input.role || 'technician';
-  if (!Object.hasOwn(roleLevel,role)) fail(400, '角色不正确');
-  return { account:id,name,homeCampus:input.homeCampus,authorizedCampuses:campusGrants(input.authorizedCampuses),role,password:passwordInput(input.password) };
-}
 export function campusGrants(value) {
   if (!Array.isArray(value) || !value.length || value.length>2 || value.some(campus => !CAMPUSES.includes(campus)) || new Set(value).size!==value.length) fail(400,'请选择有效的授权校区');
   return [...value].sort();
