@@ -2,6 +2,7 @@ import { fail } from '../lib/http.js';
 import { encryptText, decryptText } from '../lib/privacy.js';
 import { roleLevel } from '../../shared/constants.js';
 import { addDays, dateKey, nowIso, serviceDay } from '../../shared/time.js';
+import { issueAccessToken } from '../lib/access-tokens.js';
 
 export function presentAppointment(item, encryptionKey) {
   return { ...item, phone: decryptText(item.phone, encryptionKey), social: decryptText(item.social, encryptionKey) };
@@ -13,20 +14,21 @@ const transitions = {
 export function appointmentService(appointments, users, encryptionKey) {
   const present = item => presentAppointment(item, encryptionKey);
   return {
-    async list(query, user) {
-      const result = await appointments.list(query, user.role === 'student' ? user.account : '');
+    async list(query) {
+      const result = await appointments.list(query);
       return { ...result, items: result.items.map(present) };
     },
-    async create(data, user) {
+    async create(data) {
       const today = dateKey();
       if (data.date < today || data.date > addDays(today, 3)) fail(400, '预约日期必须为今天起 3 天内');
       if (!serviceDay(data.date)) fail(400, '预约日期必须为周一至周四');
-      if (user?.role === 'student' && (data.studentId !== user.account || data.name !== user.name)) fail(403, '只能为当前登录学生提交预约');
       const instant = nowIso();
+      const credential = issueAccessToken();
       const item = { ...data, status: 'pending', assignedTo: '', repairNote: '', createdAt: instant,
         agreementAt: instant, agreementVersion: data.agreementVersion || 'v1.0',
+        accessTokenHash: credential.hash, credentialRotatedAt: instant,
         phone: encryptText(data.phone, encryptionKey), social: encryptText(data.social, encryptionKey) };
-      return present(await appointments.create(item));
+      return { ...present(await appointments.create(item)), accessToken: credential.token };
     },
     async lookup({ id, studentId }) {
       const item = await appointments.find(id);
@@ -37,10 +39,9 @@ export function appointmentService(appointments, users, encryptionKey) {
       const item = await appointments.find(id);
       if (!item) fail(404, '预约不存在');
       const guestCancel = !user && input.status === 'cancelled' && item.studentId === studentId;
-      const studentCancel = user?.role === 'student' && item.studentId === user.account && input.status === 'cancelled';
       if (!user && !guestCancel) fail(401, '请使用预约编号和学号查询后再操作');
       let patch = { ...input };
-      if (guestCancel || studentCancel) {
+      if (guestCancel) {
         if (!['pending','awaiting_claim'].includes(item.status)) fail(409, '当前状态不能取消');
         patch = { status: 'cancelled' };
       } else {
@@ -52,7 +53,7 @@ export function appointmentService(appointments, users, encryptionKey) {
             if (matches.length > 1) fail(400, '有多个同名工作人员，请输入学号');
             assignee = matches[0];
           }
-          if (!assignee?.active || (roleLevel[assignee.role] ?? -1) < 1) fail(400, '维修人员账号不存在或未启用');
+          if (assignee?.status !== 'enabled' || (roleLevel[assignee.role] ?? -1) < 1) fail(400, '维修人员账号不存在或未启用');
           patch.assignedTo = assignee.account;
         }
         if (user.role === 'technician') {

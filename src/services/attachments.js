@@ -9,7 +9,7 @@ export function attachmentService(appointments, attachments, bucket, maxBytes) {
   async function authorize(id, user, studentId) {
     const item = await appointments.findQueueEntry(id);
     if (!item) fail(404, '预约或附件不存在');
-    const staff = user && ((roleLevel[user.role] ?? -1) >= 1 || (user.role === 'student' && user.account === item.studentId));
+    const staff = user && (roleLevel[user.role] ?? -1) >= 1;
     if (!staff && !(!user && studentId === item.studentId)) fail(404, '预约或附件不存在');
   }
   return {

@@ -6,7 +6,7 @@ const columns = {
   agreementAt: 'agreement_at', agreementVersion: 'agreement_version'
 };
 function fromRow(row) {
-  return row ? { id: row.id, revision: row.revision, ...Object.fromEntries(Object.entries(columns).map(([key, column]) => [key, row[column]])) } : null;
+  return row ? { id: row.id, revision: row.revision, ...Object.fromEntries(Object.entries(columns).map(([key, column]) => [key, row[column] ?? ''])) } : null;
 }
 export function appointmentRepository(db) {
   return {
@@ -14,9 +14,9 @@ export function appointmentRepository(db) {
     async findQueueEntry(id) {
       return db.prepare('SELECT id,student_id AS studentId,campus,date,time_slot AS timeSlot,created_at AS createdAt,status FROM appointments WHERE id=?').bind(id).first();
     },
-    async list(query, studentId = '') {
-      const scope = studentId ? 'student_id=?' : '1=1';
-      const scopeArgs = studentId ? [studentId] : [];
+    async list(query) {
+      const scope = '1=1';
+      const scopeArgs = [];
       const where = [scope], args = [...scopeArgs];
       for (const key of ['campus','date']) if (query[key]) { where.push(`${key}=?`); args.push(query[key]); }
       if (query.status === 'pending') where.push("status IN ('pending','awaiting_claim')");
@@ -37,16 +37,16 @@ export function appointmentRepository(db) {
     async create(item) {
       const prefix = `${item.campus === '浑南' ? '1' : '0'}${item.date.replaceAll('-', '')}-`;
       // One D1 statement allocates the ID and runs capacity/uniqueness constraints atomically.
-      const row = await db.prepare(`INSERT INTO appointments(id,${Object.values(columns).join(',')})
-        SELECT ? || printf('%02d',COALESCE(MAX(CAST(substr(id,instr(id,'-')+1) AS INTEGER)),0)+1),${Object.keys(columns).map(() => '?').join(',')}
+      const row = await db.prepare(`INSERT INTO appointments(id,${Object.values(columns).join(',')},access_token_hash,credential_rotated_at)
+        SELECT ? || printf('%02d',COALESCE(MAX(CAST(substr(id,instr(id,'-')+1) AS INTEGER)),0)+1),${Object.keys(columns).map(() => '?').join(',')},?,?
         FROM appointments WHERE campus=? AND date=? RETURNING *`)
-        .bind(prefix, ...Object.keys(columns).map(key => item[key]), item.campus, item.date).first();
+        .bind(prefix, ...Object.keys(columns).map(key => key === 'assignedTo' ? item[key] || null : item[key]), item.accessTokenHash,item.credentialRotatedAt,item.campus, item.date).first();
       return fromRow(row);
     },
     async update(item, patch) {
       const fields = [], args = [];
       for (const [key, column] of Object.entries({ status: 'status', assignedTo: 'assigned_to', repairNote: 'repair_note' })) {
-        if (patch[key] !== undefined) { fields.push(`${column}=?`); args.push(patch[key]); }
+        if (patch[key] !== undefined) { fields.push(`${column}=?`); args.push(key === 'assignedTo' ? patch[key] || null : patch[key]); }
       }
       return fromRow(await db.prepare(`UPDATE appointments SET ${fields.join(',')},revision=revision+1 WHERE id=? AND revision=? RETURNING *`).bind(...args, item.id, item.revision).first());
     },

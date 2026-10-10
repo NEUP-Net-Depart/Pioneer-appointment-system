@@ -3,7 +3,7 @@ import { appointmentQuery, appointmentPatch, bookingInput, credentials, liveQuer
 
 export const appointmentRoutes = [
   ['GET', /^\/api\/appointments$/, async context => {
-    const user = await context.role('student');
+    const user = await context.role('technician');
     return json(await context.services.appointments.list(appointmentQuery(context.query), user));
   }],
   ['POST', /^\/api\/appointments$/, async context => {

@@ -45,7 +45,7 @@
   </header>
 
 <main>
-<section class="view" data-view="pending-access"><div class="content-shell"><h1>账号等待授权</h1><p>请联系管理者分配维修人员权限。</p></div></section>
+
     <section class="view" id="staff-view" data-view="staff">
         <div class="page-intro staff-intro"><div><p class="eyebrow">SERVICE DESK · 03</p><h1>维修工作台</h1><p>今日预约、接单与维修记录集中管理。</p></div><button class="secondary-btn" id="export-csv" data-role-allow="admin" type="button">↓ 导出 CSV</button></div>
       <div class="content-shell staff-shell">
@@ -69,9 +69,9 @@
     </section>
 
     <section class="view" id="users-view" data-view="users">
-        <div class="page-intro staff-intro"><div><p class="eyebrow">TEAM ADMIN · 05</p><h1>账号与权限管理</h1><p>工作人员账号以基础角色创建，再按权限升级为维修人员或管理者。</p></div><button class="secondary-btn" id="reset-user-form" type="button">清空表单</button></div>
+        <div class="page-intro staff-intro"><div><p class="eyebrow">TEAM ADMIN · 05</p><h1>账号与权限管理</h1><p>管理工作人员角色、账号状态与校区授权。</p></div><button class="secondary-btn" id="reset-user-form" type="button">清空表单</button></div>
       <div class="content-shell users-shell">
-        <div class="user-create-panel"><div><span class="section-index">01</span><h2>新增工作人员账号</h2><p>账号使用工作人员本人学号，初始为基础角色，创建后可在列表中分配维修人员权限。</p></div><form id="user-form" class="user-form"><input id="user-account" inputmode="numeric" pattern="[0-9]{6,20}" required placeholder="学号，例如 20251010" /><input id="user-name" required placeholder="姓名" /><select id="user-campus" required><option value="">所属校区</option><option>南湖</option><option>浑南</option></select><input id="user-password" required placeholder="初始密码（至少 8 位）" /><button class="primary-btn" type="submit">创建工作人员账号</button></form></div>
+        <div class="user-create-panel"><div><span class="section-index">01</span><h2>新增工作人员账号</h2><p>工作人员使用学号登录，所属校区与授权校区分别管理。</p></div><form id="user-form" class="user-form"><input id="user-account" inputmode="numeric" pattern="[0-9]{6,20}" required placeholder="学号，例如 20251010" /><input id="user-name" required placeholder="姓名" /><select id="user-campus" required><option value="">所属校区</option><option>南湖</option><option>浑南</option></select><input id="user-password" required placeholder="初始密码（至少 8 位）" /><button class="primary-btn" type="submit">创建工作人员账号</button></form></div>
         <div class="user-list-heading"><div><span class="section-index">02</span><h2>账号列表</h2></div><input id="user-search" class="staff-search" placeholder="搜索学号、姓名或校区" /></div>
         <div class="table-wrap"><table><thead><tr><th>账号</th><th>姓名</th><th>权限</th><th>校区</th><th>状态</th><th>工作量</th><th>操作</th></tr></thead><tbody id="users-table"></tbody></table><div id="users-empty" class="table-empty" hidden>暂无账号</div></div>
       </div>

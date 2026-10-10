@@ -16,7 +16,7 @@ flowchart LR
   Browser[浏览器] --> Pages[Cloudflare Pages]
   Pages --> Static[静态资源：用户端 / 与工作人员端 /staff/]
   Pages -->|/api/*| Functions[Pages Functions]
-  Functions -->|DB 绑定| D1[(D1：账号、预约、元数据、限流)]
+  Functions -->|DB 绑定| D1[(D1：工作人员账号、白名单、激活申请、预约、元数据、限流)]
   Functions -->|ATTACHMENTS 绑定| R2[(私有 R2：附件)]
   Secrets[Pages Secrets：JWT 与 PII 密钥] -.-> Functions
   Actions[GitHub Actions：每周清理] --> D1
@@ -60,7 +60,7 @@ npm run dev
 | [migrations/](migrations/)、[wrangler.jsonc](wrangler.jsonc) | 数据库结构、Pages 配置与 D1/R2 绑定 |
 | [scripts/](scripts/)、[tests/](tests/) | 构建、部署、运维和自动化检查 |
 
-构建仅向 `dist/` 复制前端和 [public/](public/) 静态资源，Functions 单独随 Pages 发布。SQL 查询、统计和并发约束由 D1 执行；运行时不迁移数据库或初始化账号。已应用的迁移不得修改，结构调整追加编号 SQL。
+构建仅向 `dist/` 复制前端和 [public/](public/) 静态资源，Functions 单独随 Pages 发布。SQL 查询、统计和并发约束由 D1 执行；运行时不迁移数据库或初始化账号。当前为破坏性重建版本，只提供全新初始迁移；旧测试数据库须显式重建。正式上线后的变更再追加迁移。
 
 ## 常用检查
 

@@ -1,5 +1,5 @@
 import { fail } from './http.js';
-import { normalizeTimeSlot, statusLabels } from '../../shared/constants.js';
+import { normalizeTimeSlot, statusLabels, CAMPUSES, roleLevel } from '../../shared/constants.js';
 import { validDate } from '../../shared/time.js';
 
 export const account = value => String(value ?? '').trim().toLowerCase();
@@ -67,15 +67,22 @@ export function passwordInput(value) {
 }
 export function newUserInput(input) {
   const id = account(input.account), name = stringField(input.name, '姓名', 80, true);
-  if (!/^\d{6,20}$/.test(id) || name.length < 2 || !['南湖','浑南'].includes(input.campus)) fail(400, '学号、姓名或校区不符合要求');
-  return { account: id, name, campus: input.campus, password: passwordInput(input.password) };
+  if (!/^\d{6,20}$/.test(id) || name.length < 2 || !CAMPUSES.includes(input.homeCampus)) fail(400, '学号、姓名或校区不符合要求');
+  const role = input.role || 'technician';
+  if (!Object.hasOwn(roleLevel,role)) fail(400, '角色不正确');
+  return { account:id,name,homeCampus:input.homeCampus,authorizedCampuses:campusGrants(input.authorizedCampuses),role,password:passwordInput(input.password) };
+}
+export function campusGrants(value) {
+  if (!Array.isArray(value) || !value.length || value.length>2 || value.some(campus => !CAMPUSES.includes(campus)) || new Set(value).size!==value.length) fail(400,'请选择有效的授权校区');
+  return [...value].sort();
 }
 export function userPatch(input) {
   const patch = {};
   if (input.password !== undefined) patch.password = passwordInput(input.password);
-  if (input.active !== undefined) { if (typeof input.active !== 'boolean') fail(400, '账号状态必须是布尔值'); patch.active = input.active; }
+  if (input.status !== undefined) { if (!['enabled','disabled'].includes(input.status)) fail(400, '账号状态不正确'); patch.status = input.status; }
   if (input.name !== undefined) { patch.name = stringField(input.name, '姓名', 80, true); if (patch.name.length < 2) fail(400, '姓名格式不正确'); }
-  if (input.campus !== undefined) { if (!['南湖','浑南','南湖 / 浑南'].includes(input.campus)) fail(400, '校区不正确'); patch.campus = input.campus; }
-  if (input.role !== undefined) patch.role = input.role;
+  if (input.homeCampus !== undefined) { if (!CAMPUSES.includes(input.homeCampus)) fail(400, '校区不正确'); patch.homeCampus = input.homeCampus; }
+  if (input.authorizedCampuses !== undefined) patch.authorizedCampuses = campusGrants(input.authorizedCampuses);
+  if (input.role !== undefined) { if (!Object.hasOwn(roleLevel,input.role)) fail(400,'角色不正确'); patch.role = input.role; }
   return patch;
 }

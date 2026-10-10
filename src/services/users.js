@@ -12,26 +12,21 @@ export function userService(users) {
   }
   return {
     async list() { return { items: await users.list() }; },
-    async create(input) {
+    async create(input, actor) {
       if (await users.find(input.account)) fail(409, '学号已存在');
-      return users.create({ ...input, role: 'student', passwordHash: hashPassword(input.password), createdAt: dateKey() });
+      if (roleLevel[input.role] >= roleLevel[actor.role]) fail(403, '只能创建权限低于自己的账号');
+      return users.create({ ...input, passwordHash: hashPassword(input.password), createdAt: dateKey() });
     },
     async update(id, input, actor) {
       const target = await manageable(id, actor), patch = { ...input };
       if (patch.role !== undefined) {
-        const allowed = actor.role === 'superadmin' ? ['student','technician','admin'] : target.role === 'student' ? ['technician'] : [];
-        if (!allowed.includes(patch.role)) fail(403, '权限不足：当前账号只能将学生提升为维修人员');
+        if (!Object.hasOwn(roleLevel,patch.role) || roleLevel[patch.role] >= roleLevel[actor.role]) fail(403, '只能设置低于自身的角色');
       }
       if (patch.password !== undefined) { patch.passwordHash = hashPassword(patch.password); delete patch.password; }
       if (!Object.keys(patch).length) fail(400, '没有可更新的字段');
       const updated = await users.update(target, patch);
       if (!updated) fail(409, '账号已被其他操作修改，请刷新');
       return updated;
-    },
-    async delete(id, actor) {
-      const target = await manageable(id, actor);
-      if (!await users.delete(target)) fail(409, '账号已被其他操作修改，请刷新');
-      return { ok: true, account: target.account, message: '账号已删除，历史预约记录保留' };
     }
   };
 }

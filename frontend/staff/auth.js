@@ -1,7 +1,7 @@
 import { $, $$, showToast } from '/shared/utils.js';
 import { apiFetch, apiJson, clearSession } from '/shared/api.js';
 import { roleLevel } from '/shared/constants.js';
-const labels = { student: '基础工作人员', technician: '维修人员', admin: '管理者', superadmin: '最高权限者' };
+const labels = { technician: '维修人员', admin: '管理者', superadmin: '最高权限者' };
 
 export function initAuth({ onLogin, onLogout }) {
   function message(value = '') { $('#login-message').textContent = value; $('#login-message').hidden = !value; }

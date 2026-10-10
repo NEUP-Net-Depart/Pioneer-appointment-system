@@ -9,7 +9,7 @@ useStaffSession();
 const controllers = { staff: initStaff(), stats: initStats(), users: initUsers() };
 let role = '', activeView = 'staff';
 function refresh() {
-  if (!role || role === 'student') return;
+  if (!role) return;
   if (activeView !== 'staff' && !['admin', 'superadmin'].includes(role)) return;
   controllers[activeView]?.refresh();
 }
@@ -18,7 +18,7 @@ initAuth({
   onLogin(nextRole) {
     role = nextRole;
     Object.values(controllers).forEach(controller => controller.clear());
-    switchView(role === 'student' ? 'pending-access' : 'staff');
+    switchView('staff');
   },
   onLogout() {
     role = '';

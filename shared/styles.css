@@ -58,8 +58,6 @@ html,body{max-width:100%;overflow-x:hidden}
 .stats-filters{display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end}
 .stats-day-label{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}
 .stats-day-label input{border:1px solid var(--line);background:#fff;padding:9px 10px;color:var(--ink)}
-.student-register-form{margin-top:18px}
-.student-register-form .register-cancel{grid-column:1/-1;justify-self:center}
 .topbar{isolation:isolate}
 .topbar:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;background:linear-gradient(90deg,transparent 0%,rgba(72,201,192,.75) 24%,rgba(255,90,54,.85) 68%,transparent 100%);opacity:.7;pointer-events:none}
 .brand{position:relative}

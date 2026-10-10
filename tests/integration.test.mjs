@@ -36,7 +36,8 @@ async function login(account = 'root001', suppliedPassword = password) {
   return (await api('/api/auth/login', { method: 'POST', body: { account, password: suppliedPassword } })).token;
 }
 async function addUser(account, role = 'technician') {
-  await db.prepare('INSERT INTO users(account,name,role,campus,password_hash,created_at) VALUES (?,?,?,?,?,?)').bind(account, `人员${account}`, role, '南湖', hashPassword(password), dateKey()).run();
+  await db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES (?,?,?,?,?,?)').bind(account, `人员${account}`, role, '南湖', hashPassword(password), dateKey()).run();
+  await db.prepare('INSERT INTO staff_campus_grants VALUES (?,?)').bind(account,'南湖').run();
   return login(account);
 }
 async function applyMigration(database, file) {
@@ -64,11 +65,11 @@ before(async () => {
   for (const file of (await readdir('migrations')).filter(name => name.endsWith('.sql')).sort()) {
     await applyMigration(db, file);
   }
-  await db.prepare('INSERT INTO users(account,name,role,campus,protected,password_hash,created_at) VALUES (?,?,?,?,?,?,?)').bind('root001', '系统负责人', 'superadmin', '南湖 / 浑南', 1, hashPassword(password), dateKey()).run();
+  await db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,protected,password_hash,created_at) VALUES (?,?,?,?,?,?,?)').bind('root001', '系统负责人', 'superadmin', '南湖', 1, hashPassword(password), dateKey()).run();
 });
 after(async () => { await mf?.dispose(); });
 beforeEach(async () => {
-  await db.batch(['DELETE FROM attachment_storage','DELETE FROM appointment_attachments','DELETE FROM appointments',"DELETE FROM users WHERE protected=0",'DELETE FROM rate_limits'].map(sql => db.prepare(sql)));
+  await db.batch(['DELETE FROM credential_recoveries','DELETE FROM activation_requests','DELETE FROM staff_whitelist','DELETE FROM attachment_storage','DELETE FROM appointment_attachments','DELETE FROM appointments',"DELETE FROM staff_accounts WHERE protected=0",'DELETE FROM rate_limits'].map(sql => db.prepare(sql)));
   await db.prepare('UPDATE storage_quota SET used_bytes=0 WHERE id=1').run();
   const objects = await bucket.list();
   if (objects.objects.length) await bucket.delete(objects.objects.map(object => object.key));
@@ -147,29 +148,28 @@ test('simultaneous claims have one winner; technician ownership and transitions 
   assert.equal(done.repairNote, '已完成测试');
   await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token, body: { status: 'claimed' } }, 409);
 });
-test('account lifecycle, RBAC, role revocation, password reset and protected root', async () => {
+test('staff account model separates role, status, home campus and grants', async () => {
   const root = await login();
-  const created = await api('/api/users', { method: 'POST', token: root, body: { account: '400001', name: '测试人员', campus: '南湖', password, role: 'superadmin', protected: true } }, 201);
-  assert.equal(created.role, 'student'); assert.equal(created.protected, false); assert.ok(!created.passwordHash);
-  const student = await login('400001');
-  await api('/api/users', { token: student }, 403);
-  await api('/api/users/400001', { method: 'PATCH', token: root, body: { role: 'technician' } });
-  await api('/api/auth/me', { token: student }, 401);
-  const technician = await login('400001');
-  await api('/api/stats/summary', { token: technician }, 403);
-  const admin = await addUser('400002', 'admin');
-  await api('/api/users/400001', { method: 'PATCH', token: admin, body: { role: 'admin' } }, 403);
-  await api('/api/users/root001', { method: 'DELETE', token: root }, 403);
-  await api('/api/users/root001', { method: 'PATCH', token: root, body: { password: 'different-password' } }, 403);
-  await api('/api/users/400001', { method: 'PATCH', token: root, body: { password: 'new-test-password' } });
-  await api('/api/auth/me', { token: technician }, 401);
-  await api('/api/auth/login', { method: 'POST', body: { account: '400001', password } }, 401);
-  const updated = await login('400001', 'new-test-password');
-  await api('/api/users/400001', { method: 'PATCH', token: root, body: { active: false } });
-  await api('/api/auth/me', { token: updated }, 401);
-  await api('/api/users/400001', { method: 'DELETE', token: root });
-  await api('/api/auth/login', { method: 'POST', body: { account: '400001', password: 'new-test-password' } }, 401);
+  const created = await api('/api/users', { method:'POST',token:root,body:{account:'400001',name:'测试人员',homeCampus:'南湖',authorizedCampuses:['浑南'],password} },201);
+  assert.equal(created.role,'technician'); assert.equal(created.status,'enabled');
+  assert.equal(created.homeCampus,'南湖'); assert.deepEqual(created.authorizedCampuses,['浑南']);
+  assert.ok(!created.passwordHash);
+  const technician=await login('400001');
+  await api('/api/users',{token:technician},403);
+  await api('/api/stats/summary',{token:technician},403);
+  await api('/api/users/400001',{method:'PATCH',token:root,body:{role:'admin'}});
+  await api('/api/auth/me',{token:technician},401);
+  const admin=await login('400001');
+  await api('/api/users/root001',{method:'DELETE',token:root},404);
+  await api('/api/users/root001',{method:'PATCH',token:root,body:{password:'different-password'}},403);
+  await api('/api/users/400001',{method:'PATCH',token:root,body:{status:'disabled'}});
+  await api('/api/auth/me',{token:admin},401);
+  await api('/api/auth/login',{method:'POST',body:{account:'400001',password}},401);
+  await api('/api/users/400001',{method:'PATCH',token:root,body:{status:'enabled',password:'new-test-password'}});
+  await login('400001','new-test-password');
+  await api('/api/users/400001',{method:'PATCH',token:root,body:{role:'student'}},400);
 });
+
 test('JWT signatures, expiry, exact format and logout revocation', async () => {
   const token = await login();
   await api('/api/auth/me', { token });
@@ -184,17 +184,6 @@ test('JWT signatures, expiry, exact format and logout revocation', async () => {
   await api('/api/auth/me', { token: expired }, 401);
   await api('/api/auth/logout', { method: 'POST', token });
   await api('/api/auth/me', { token }, 401);
-});
-test('basic staff cannot see or mutate another student reservation', async () => {
-  const token = await addUser('700001', 'student');
-  const own = await book({ studentId: '700001', name: '人员700001' });
-  const other = await book();
-  const listed = await api('/api/appointments', { token });
-  assert.deepEqual(listed.items.map(item => item.id), [own.id]);
-  await api(`/api/appointments/${other.id}/status`, { method: 'PATCH', token, body: { status: 'cancelled', studentId: other.studentId } }, 403);
-  await api(`/api/appointments/${other.id}/attachments?studentId=${other.studentId}`, { token }, 404);
-  await api('/api/appointments', { method: 'POST', token, body: draft() }, 403);
-  await api(`/api/appointments/${own.id}/status`, { method: 'PATCH', token, body: { status: 'cancelled' } });
 });
 test('R2 upload/download preserves bytes, enforces credentials and hides storage keys', async () => {
   const item = await book(), other = await book();
@@ -230,12 +219,12 @@ test('R2 write is compensated when D1 metadata fails', async () => {
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM attachment_storage').first()).n, 0);
   } finally { await db.prepare('DROP TRIGGER test_attachment_failure').run(); }
 });
-test('statistics and CSV reflect completed jobs and survive staff deletion', async () => {
+test('statistics and CSV retain history when staff is disabled', async () => {
   const root = await login(), technician = await addUser('600001');
   const item = await book({ name: '=SUM(1,1)' });
   await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token: technician, body: { status: 'claimed' } });
   await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token: technician, body: { status: 'completed', repairNote: '完成' } });
-  await api('/api/users/600001', { method: 'DELETE', token: root });
+  await api('/api/users/600001', { method: 'PATCH', token: root, body: { status: 'disabled' } });
   const stats = await api('/api/stats/summary?range=all', { token: root });
   assert.equal(stats.completed, 1); assert.equal(stats.faults['蓝屏'], 1); assert.equal(stats.technicians['600001'].completed, 1);
   const response = await request('/api/export/appointments.csv', { token: root });
@@ -353,29 +342,17 @@ test('storage limits validate configuration and honor the smaller Preview quota'
   assert.equal((await bucket.list()).objects.length, 0);
 });
 
-test('historical attachments migrate from original timestamps and initialize quota exactly once', async () => {
-  const legacy = await mf.getD1Database('MIGRATION_DB');
-  await applyMigration(legacy, '0001_initial.sql'); await applyMigration(legacy, '0002_query_indexes.sql');
-  const item = await book(), row = await db.prepare('SELECT * FROM appointments WHERE id=?').bind(item.id).first();
-  const columns = Object.keys(row);
-  await legacy.prepare(`INSERT INTO appointments(${columns.join(',')}) VALUES (${columns.map(() => '?').join(',')})`).bind(...Object.values(row)).run();
-  const oldCreated = '2026-01-01T12:34:56.123Z', recentCreated = new Date().toISOString();
-  for (const [id, size, created] of [['old', 5, oldCreated], ['recent', 6, recentCreated]]) {
-    await legacy.prepare("INSERT INTO appointment_attachments VALUES (?,?,'a.txt','text/plain',?,?,?)").bind(id, item.id, size, `appointments/${item.id}/${id}`, created).run();
-  }
-  await applyMigration(legacy, '0003_attachment_storage.sql');
-  const migrated = (await legacy.prepare('SELECT id,expires_at FROM appointment_attachments ORDER BY id').all()).results;
-  assert.deepEqual(migrated, [
-    { id: 'old', expires_at: new Date(Date.parse(oldCreated) + 180 * 86400000).toISOString() },
-    { id: 'recent', expires_at: new Date(Date.parse(recentCreated) + 180 * 86400000).toISOString() }
-  ]);
-  assert.equal((await legacy.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 11);
-  const repository = attachmentRepository(legacy);
-  assert.deepEqual((await repository.list(item.id, new Date().toISOString())).map(file => file.id), ['recent']);
-  const cleanup = await cleanupAttachments(repository, async () => {}, { apply: true });
-  assert.equal(cleanup.deleted, 1);
-  assert.equal((await legacy.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 6);
-  assert.deepEqual((await legacy.prepare('PRAGMA foreign_key_check').all()).results, []);
+test('fresh schema rejects retired roles and constrains activation and credentials', async () => {
+  const columns=(await db.prepare('PRAGMA table_info(staff_accounts)').all()).results.map(row=>row.name);
+  assert.ok(!columns.includes('campus') && !columns.includes('active'));
+  await assert.rejects(addUser('700001','student'),/CHECK constraint/);
+  const item=await book();
+  const row=await db.prepare('SELECT access_token_hash FROM appointments WHERE id=?').bind(item.id).first();
+  assert.match(row.access_token_hash,/^[a-f0-9]{64}$/);
+  assert.equal(item.accessToken.length,43);
+  assert.ok(!JSON.stringify(item).includes(row.access_token_hash));
+  assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes,0);
+  assert.deepEqual((await db.prepare('PRAGMA foreign_key_check').all()).results,[]);
 });
 
 test('HTTP D1 maintenance adapter reuses real repositories and rejects API errors', async () => {
@@ -511,7 +488,7 @@ test('two requests for the final slot have one winner and cancellation releases 
   assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM appointments WHERE status NOT IN ('cancelled','no_show')").first()).n, 20);
 });
 
-test('SQL staff filters preserve literal searches, status groups, totals and student scope', async () => {
+test('SQL staff filters preserve literal searches, status groups and totals', async () => {
   const root = await login();
   const first = await book({ deviceModel: 'A%_Device' }), second = await book({ campus: '浑南' });
   await api(`/api/appointments/${first.id}/status`, { method: 'PATCH', token: root, body: { status: 'awaiting_claim' } });
@@ -521,8 +498,6 @@ test('SQL staff filters preserve literal searches, status groups, totals and stu
   assert.deepEqual(filtered.counts, { all: 2, pending: 1, in_progress: 0, completed: 1 });
   assert.equal((await api('/api/appointments?q=no-match', { token: root })).items.length, 0);
   for (const query of ['status=invalid','date=2026-02-30','campus=invalid']) await api(`/api/appointments?${query}`, { token: root }, 400);
-  const student = await addUser(first.studentId, 'student');
-  assert.equal((await api('/api/appointments', { token: student })).counts.all, 1);
 });
 
 test('SQL queue counts use campus/slot scopes, deterministic ties and active status rules', async () => {
@@ -569,7 +544,7 @@ test('CSV streams multiple D1 pages without omitting or duplicating tied timesta
   const root = await login(), template = await book();
   const columns = (await db.prepare('PRAGMA table_info(appointments)').all()).results.map(row => row.name);
   // Generate history directly in D1; cancelled records do not consume live capacity.
-  const select = columns.map(column => column === 'id' ? '?' : column === 'status' ? "'cancelled'" : column).join(',');
+  const select = columns.map(column => column === 'id' ? '?' : column === 'status' ? "'cancelled'" : column === 'access_token_hash' ? 'lower(hex(randomblob(32)))' : column).join(',');
   await db.batch(Array.from({ length: 205 }, (_, n) => db.prepare(`INSERT INTO appointments(${columns.join(',')}) SELECT ${select} FROM appointments WHERE id=?`).bind(`history-${String(n).padStart(4, '0')}`, template.id)));
   const response = await request('/api/export/appointments.csv', { token: root });
   assert.equal(response.status, 200);
@@ -582,6 +557,6 @@ test('CSV streams multiple D1 pages without omitting or duplicating tied timesta
 
 test('long account fields are rejected instead of silently changing identity', async () => {
   const root = await login();
-  await api('/api/users', { method: 'POST', token: root, body: { account: '8'.repeat(21), name: '测试人员', campus: '南湖', password } }, 400);
-  await api('/api/users', { method: 'POST', token: root, body: { account: '800001', name: '名'.repeat(81), campus: '南湖', password } }, 400);
+  await api('/api/users', { method: 'POST', token: root, body: { account: '8'.repeat(21), name: '测试人员', homeCampus: '南湖', authorizedCampuses: ['南湖'], password } }, 400);
+  await api('/api/users', { method: 'POST', token: root, body: { account: '800001', name: '名'.repeat(81), homeCampus: '南湖', authorizedCampuses: ['南湖'], password } }, 400);
 });
