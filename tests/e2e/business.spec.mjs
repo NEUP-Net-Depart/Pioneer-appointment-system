@@ -17,11 +17,11 @@ async function booking(page,studentId,{file=true}={}){
   if(file)await page.locator('#appointment-attachments').setInputFiles({name:'故障描述.txt',mimeType:'text/plain',buffer:Buffer.from('browser attachment')});
   await page.locator('.check-box').click();await page.locator('#booking-form [type=submit]').click();
   await expect(page.locator('#success-panel')).toBeVisible();
-  return {id:await page.locator('#success-code').textContent(),link:await page.locator('#success-private-link').getAttribute('href')};
+  return {id:await page.locator('#success-code').textContent(),link:await page.locator('#success-link-fallback').inputValue()};
 }
 async function application(page,studentId,name){
   await page.goto('/staff/?activate=1');
-  for(const [id,value] of Object.entries({'activation-student-id':studentId,'activation-name':name,'activation-contact':'核验微信号','activation-password':memberPassword,'activation-confirm':memberPassword}))await page.locator('#'+id).fill(value);
+  for(const [id,value] of Object.entries({'activation-student-id':studentId,'activation-name':name,'activation-password':memberPassword,'activation-confirm':memberPassword}))await page.locator('#'+id).fill(value);
   await page.locator('#activation-campus').selectOption('南湖');await page.locator('#activation-form [type=submit]').click();
   await expect(page.locator('#activation-status')).toContainText('等待管理员');
 }
@@ -37,7 +37,7 @@ test('student booking, private links, whitelist activation, staff permissions, r
   for(const page of [student,root,member,privatePage])page.on('pageerror',error=>errors.push(error.message));
   try{
     const item=await booking(student,'20269901');
-    await expect(student.locator('#credential-save-message')).toContainText('自动保存在此浏览器');
+    await expect(student.locator('#credential-save-message')).toBeHidden();
     await student.reload();await student.getByRole('button',{name:'我的预约',exact:true}).click();
     await expect(student.locator('#lookup-results')).toContainText(item.id);
     await expect(student.locator('[data-queue-id]')).toContainText('当前第');

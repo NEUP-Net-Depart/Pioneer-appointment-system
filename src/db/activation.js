@@ -6,7 +6,7 @@ function whitelist(row){
   return row ? {studentId:row.student_id,expectedName:row.expected_name,expectedRole:row.expected_role,status:row.status,authorizedCampuses:JSON.parse(row.campuses),revision:row.revision,createdAt:row.created_at} : null;
 }
 function application(row){
-  return row ? {id:row.id,studentId:row.student_id,name:row.name,homeCampus:row.home_campus,contact:row.contact,
+  return row ? {id:row.id,studentId:row.student_id,name:row.name,homeCampus:row.home_campus,
     status:row.status,reviewNote:row.review_note,reviewedBy:row.reviewed_by,reviewedAt:row.reviewed_at,createdAt:row.created_at,
     expectedRole:row.expected_role,expectedName:row.expected_name,authorizedCampuses:JSON.parse(row.campuses),
     whitelistStatus:row.whitelist_status,whitelistRevision:row.whitelist_revision} : null;
@@ -33,9 +33,9 @@ export function activationRepository(db){
     },
     async submit(input,whitelistRevision){
       const row=await db.prepare(`INSERT INTO activation_requests(id,student_id,name,home_campus,contact,password_hash,receipt_hash,created_at)
-        SELECT ?,?,?,?,?,?,?,? FROM staff_whitelist w WHERE student_id=? AND status='open' AND revision=?
+        SELECT ?,?,?,?,'',?,?,? FROM staff_whitelist w WHERE student_id=? AND status='open' AND revision=?
         AND NOT EXISTS(SELECT 1 FROM staff_accounts WHERE account=w.student_id) RETURNING id`)
-        .bind(input.id,input.studentId,input.name,input.homeCampus,input.contact,input.passwordHash,input.receiptHash,input.createdAt,input.studentId,whitelistRevision).first();
+        .bind(input.id,input.studentId,input.name,input.homeCampus,input.passwordHash,input.receiptHash,input.createdAt,input.studentId,whitelistRevision).first();
       return row?.id;
     },
     async publicStatus(id,receiptHash){

@@ -10,7 +10,7 @@ export function initActivation(){
   function render(item){
     $('#activation-result').hidden=false;
     $('#activation-status').textContent=labels[item.status];
-    const note=item.reviewNote || (item.status==='pending' ? '审核通过前不能登录工作人员系统。' : '');
+    const note=item.reviewNote || '';
     $('#activation-note').textContent=note;$('#activation-note').hidden=!note;
     $('#activation-form').hidden=item.status!=='rejected';
     $('#activation-login').hidden=item.status!=='approved';
@@ -26,7 +26,7 @@ export function initActivation(){
     const form=event.currentTarget,button=form.querySelector('[type=submit]');
     button.disabled=true;
     try{
-      const item=await apiJson('/api/activation',{method:'POST',json:{studentId:$('#activation-student-id').value.trim(),name:$('#activation-name').value.trim(),homeCampus:$('#activation-campus').value,contact:$('#activation-contact').value.trim(),password:$('#activation-password').value}});
+      const item=await apiJson('/api/activation',{method:'POST',json:{studentId:$('#activation-student-id').value.trim(),name:$('#activation-name').value.trim(),homeCampus:$('#activation-campus').value,password:$('#activation-password').value}});
       receipt={id:item.id,receipt:item.receipt};
       try{localStorage.setItem(KEY,JSON.stringify(receipt));}catch{showToast('申请已提交，浏览器无法保存回执，请联系管理员了解审核进度');}
       form.reset();render(item);

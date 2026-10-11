@@ -23,7 +23,7 @@ export function createContext(request, env) {
   const users = userRepository(db), appointments = appointmentRepository(db);
   const services = {
     auth: authService(users, env.JWT_SECRET), users: userService(users),
-    activation: activationService(activationRepository(db),users,env.PII_ENCRYPTION_KEY),
+    activation: activationService(activationRepository(db),users),
     appointments: appointmentService(appointments, users, env.PII_ENCRYPTION_KEY),
     attachments: attachmentService(appointments, attachmentRepository(db), env.ATTACHMENTS, storageLimit(env)),
     queue: queueService(appointments, queueRepository(db)), stats: statsService(statsRepository(db)),

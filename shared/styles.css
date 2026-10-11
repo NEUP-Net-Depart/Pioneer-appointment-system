@@ -112,6 +112,15 @@ td{transition:background .18s}
 
 
 /* Staff and guest workflows share the existing palette and surfaces. */
+.login-links{display:flex;flex-wrap:wrap;gap:12px;margin-top:20px}
+.login-links a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 16px;border-radius:4px;text-decoration:none}
+.login-links .register-cancel{border:1px solid var(--line);background:#fff;color:var(--muted)}
+.login-links .register-cancel:hover{background:var(--soft);color:var(--navy-2)}
+.record-actions{display:flex;flex-wrap:wrap;gap:10px}
+.record-actions .record-btn{display:inline-flex;align-items:center;justify-content:center;min-width:56px;min-height:36px;padding:6px 12px;border:1px solid var(--line);border-radius:4px;background:#fff;color:var(--navy-2);text-decoration:none;white-space:nowrap}
+.record-actions [data-claim]{border-color:#c5e2e0;background:#e2f1f1;color:#0e5b64}
+.record-actions .record-btn:hover{border-color:var(--cyan);background:var(--soft)}
+.record-actions [data-claim]:hover{background:#d3eae8}
 [hidden]{display:none!important}
 button:disabled{cursor:wait;opacity:.65}
 .login-form select,.login-form textarea,.recovery-panel input[type=text],.recovery-panel textarea,.review-actions textarea{display:block;width:100%;min-width:0;border:1px solid #c4d7de;border-radius:4px;background:#fff;color:var(--ink);padding:11px 12px;margin-top:8px}
@@ -126,6 +135,7 @@ button:disabled{cursor:wait;opacity:.65}
 .recovery-panel .checkbox-label{display:flex}
 .recovery-panel h3{margin:0}
 #activation-view .login-panel{max-width:580px;margin:30px auto;overflow:visible}
+#activation-form>label:has(#activation-campus){grid-column:1/-1}
 #activation-result{padding:18px 0}
 #lookup-form{grid-template-columns:1fr auto;margin-top:22px}
 .attachment-link{border:0;background:none;color:var(--navy-2);text-decoration:underline;padding:6px 8px 6px 0;text-align:left}

@@ -15,7 +15,7 @@ async function check(dir) {
 for (const dir of ['frontend','shared','src','functions','scripts','tests']) await check(join(root, dir));
 const user = await readFile(join(root, 'frontend/user/index.html'), 'utf8');
 const staff = await readFile(join(root, 'frontend/staff/index.html'), 'utf8');
-if (user.includes('id="login-view"') || user.includes('id="staff-view"') || staff.includes('id="booking-form"') || staff.includes('id="lookup-form"')) throw new Error('Frontend boundaries violated');
+if (user.includes('id="login-view"') || user.includes('id="staff-view"') || staff.includes('id="booking-form"') || staff.includes('id="lookup-results"')) throw new Error('Frontend boundaries violated');
 const cfg = await config();
 wrangler(['pages','functions','build','functions','--outdir','.wrangler/build','--compatibility-date',cfg.compatibility_date,'--compatibility-flags',...cfg.compatibility_flags]);
 console.log('Syntax, frontend boundaries and Pages Functions build passed.');

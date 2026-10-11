@@ -13,10 +13,10 @@ async function files(dir) {
 }
 test('each HTML entry contains only its own features and valid assets with unique IDs', async () => {
   const user = await readFile('dist/index.html', 'utf8'), staff = await readFile('dist/staff/index.html', 'utf8');
-  assert.ok(user.includes('id="booking-form"') && user.includes('id="lookup-form"'));
+  assert.ok(user.includes('id="booking-form"') && user.includes('id="lookup-results"'));
   assert.ok(!user.includes('id="login-view"') && !user.includes('id="staff-view"'));
   assert.ok(staff.includes('id="login-form"') && staff.includes('id="users-table"'));
-  assert.ok(!staff.includes('id="booking-form"') && !staff.includes('id="lookup-form"'));
+  assert.ok(!staff.includes('id="booking-form"') && !staff.includes('id="lookup-results"'));
   for (const html of [user, staff]) {
     assert.ok(!/[?&]mode=/.test(html));
     const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);

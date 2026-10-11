@@ -47,7 +47,7 @@ async function whitelistStaff(studentId,{name='',role='technician',authorizedCam
   return token;
 }
 async function applyStaff(studentId,patch={}){
-  return api('/api/activation',{method:'POST',body:{studentId,name:`人员${studentId}`,homeCampus:'南湖',contact:'wechat-member',password,...patch}},201);
+  return api('/api/activation',{method:'POST',body:{studentId,name:`人员${studentId}`,homeCampus:'南湖',password,...patch}},201);
 }
 async function activateStaff(studentId,{name=`人员${studentId}`,role='technician',authorizedCampuses=['南湖']}={}){
   const token=await whitelistStaff(studentId,{name,role,authorizedCampuses});
@@ -616,7 +616,7 @@ test('retired creation API is removed and activation rejects oversized identity 
   const root=await login();
   await api('/api/users',{method:'POST',token:root,body:{}},404);
   for(const patch of [{studentId:'8'.repeat(21)},{name:'名'.repeat(81)}]){
-    await api('/api/activation',{method:'POST',body:{studentId:'800001',name:'测试人员',homeCampus:'南湖',contact:'联系管理员核验',password,...patch}},400);
+    await api('/api/activation',{method:'POST',body:{studentId:'800001',name:'测试人员',homeCampus:'南湖',password,...patch}},400);
   }
 });
 
@@ -688,11 +688,12 @@ test('stale concurrent account updates cannot replace campus grants or restore r
 
 test('whitelist application is separate from login and approval atomically installs only roster grants',async()=>{
   const token=await whitelistStaff('810001',{name:'真实部员',authorizedCampuses:['浑南']});
-  const application=await applyStaff('810001',{name:'真实部员',role:'superadmin',authorizedCampuses:['南湖','浑南'],protected:true});
+  const application=await applyStaff('810001',{name:'真实部员',contact:'不再收集的联系方式',role:'superadmin',authorizedCampuses:['南湖','浑南'],protected:true});
   await api('/api/auth/login',{method:'POST',body:{account:'810001',password}},401);
   assert.equal(await db.prepare('SELECT * FROM staff_accounts WHERE account=?').bind('810001').first(),null);
   const stored=await db.prepare('SELECT * FROM activation_requests WHERE id=?').bind(application.id).first();
-  assert.ok(stored.password_hash.startsWith('scrypt$'));assert.ok(!stored.contact.includes('wechat-member'));
+  assert.ok(stored.password_hash.startsWith('scrypt$'));assert.equal(stored.contact,'');
+  assert.ok(!(await api('/api/activation-requests',{token})).items.some(item=>Object.hasOwn(item,'contact')));
   assert.ok(!stored.receipt_hash.includes(application.receipt));
   await api(`/api/activation/${application.id}`,{},404);
   assert.equal((await api(`/api/activation/${application.id}`,{headers:{'X-Activation-Receipt':application.receipt}})).status,'pending');
@@ -704,12 +705,12 @@ test('whitelist application is separate from login and approval atomically insta
   assert.equal(user.role,'technician');assert.deepEqual(user.authorizedCampuses,['浑南']);assert.equal(user.homeCampus,'南湖');
   assert.equal((await db.prepare('SELECT status FROM staff_whitelist WHERE student_id=?').bind('810001').first()).status,'activated');
   assert.equal((await db.prepare('SELECT password_hash FROM activation_requests WHERE id=?').bind(application.id).first()).password_hash,'');
-  await api('/api/activation',{method:'POST',body:{studentId:'810001',name:'真实部员',homeCampus:'南湖',contact:'私密联系方式',password}},400);
+  await api('/api/activation',{method:'POST',body:{studentId:'810001',name:'真实部员',homeCampus:'南湖',password}},400);
 });
 
 test('concurrent activation submissions and approvals have exactly one winner',async()=>{
   const token=await whitelistStaff('820001');
-  const body={studentId:'820001',name:'真实部员',homeCampus:'南湖',contact:'wechat-member',password};
+  const body={studentId:'820001',name:'真实部员',homeCampus:'南湖',password};
   const submitted=await Promise.all([request('/api/activation',{method:'POST',body}),request('/api/activation',{method:'POST',body})]);
   assert.deepEqual(submitted.map(response=>response.status).sort(),[201,409]);
   const application=await submitted.find(response=>response.status===201).json();
@@ -722,9 +723,9 @@ test('concurrent activation submissions and approvals have exactly one winner',a
 
 test('identity mismatch, duplicate pending attempts, rejection and reapplication do not reserve a staff account',async()=>{
   const token=await whitelistStaff('830001',{name:'真实部员'});
-  await api('/api/activation',{method:'POST',body:{studentId:'830001',name:'冒名部员',homeCampus:'南湖',contact:'伪造联系',password}},400);
+  await api('/api/activation',{method:'POST',body:{studentId:'830001',name:'冒名部员',homeCampus:'南湖',password}},400);
   const first=await applyStaff('830001',{name:'真实部员'});
-  await api('/api/activation',{method:'POST',body:{studentId:'830001',name:'真实部员',homeCampus:'南湖',contact:'其他联系',password}},409);
+  await api('/api/activation',{method:'POST',body:{studentId:'830001',name:'真实部员',homeCampus:'南湖',password}},409);
   await api('/api/activation-requests/review',{method:'POST',token,body:{ids:[first.id],status:'rejected',reviewNote:'  '}});
   const second=await applyStaff('830001',{name:'真实部员'});assert.notEqual(first.id,second.id);
   assert.equal((await api(`/api/activation/${first.id}`,{headers:{'X-Activation-Receipt':first.receipt}})).status,'rejected');
