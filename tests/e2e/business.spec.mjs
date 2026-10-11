@@ -167,7 +167,10 @@ test('student booking, private links, whitelist activation, staff permissions, r
     await expect(root.locator('[data-application]')).toHaveCount(1);
     await root.locator('#select-pending').check();await root.locator('#verify-identities').check();
     await root.locator('#review-note').fill('已当面逐一核验部员身份及学生证');
-    await root.locator('#approve-applications').click();await expect(root.locator('#applications-table')).toContainText('已通过');
+    await root.locator('#approve-applications').click();
+    await expect(root.locator('#applications-table tr')).toHaveCount(0);
+    await expect(root.locator('#applications-empty')).toBeVisible();
+    await expect(root.locator('#whitelist-table')).not.toContainText('20268801');
     await capture(root,'admin-accounts');
     await member.locator('#refresh-activation').click();await expect(member.locator('#activation-status')).toContainText('审核已通过');
     await login(member,'20268801',memberPassword);

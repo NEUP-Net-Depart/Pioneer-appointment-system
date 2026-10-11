@@ -9,9 +9,9 @@ export function initEnrollment({onAccountsChanged=()=>{}}={}){
     try{
       const [whitelist,applications]=await Promise.all([apiJson('/api/staff-whitelist'),apiJson('/api/activation-requests')]);
       if(current!==generation)return;
-      requests=applications.items;
+      requests=applications.items.filter(item=>item.status!=='approved');
       $('#select-pending').checked=false;
-      $('#whitelist-table').innerHTML=whitelist.items.map(item=>`<tr><td>${escapeHtml(item.studentId)}</td><td>${escapeHtml(item.expectedName || '核验时确认')}</td><td>${roleNames[item.expectedRole]}</td><td>${escapeHtml(item.authorizedCampuses.join(' / '))}</td><td>${statusNames[item.status]}</td><td>${item.status==='activated' ? '' : `<button class="record-btn" data-whitelist="${escapeHtml(item.studentId)}" data-next-status="${item.status==='open' ? 'revoked' : 'open'}">${item.status==='open' ? '撤销资格' : '恢复资格'}</button>`}</td></tr>`).join('');
+      $('#whitelist-table').innerHTML=whitelist.items.filter(item=>item.status==='open').map(item=>`<tr><td>${escapeHtml(item.studentId)}</td><td>${escapeHtml(item.expectedName || '核验时确认')}</td><td>${roleNames[item.expectedRole]}</td><td>${escapeHtml(item.authorizedCampuses.join(' / '))}</td><td>${statusNames[item.status]}</td><td>${item.status==='activated' ? '' : `<button class="record-btn" data-whitelist="${escapeHtml(item.studentId)}" data-next-status="${item.status==='open' ? 'revoked' : 'open'}">${item.status==='open' ? '撤销资格' : '恢复资格'}</button>`}</td></tr>`).join('');
       $('#applications-table').innerHTML=requests.map(item=>`<tr><td>${item.status==='pending' ? `<input type="checkbox" data-application="${item.id}" aria-label="选择 ${escapeHtml(item.studentId)}" />` : ''}</td><td>${escapeHtml(item.studentId)}<span class="person-code">${escapeHtml(item.name)}</span></td><td>${escapeHtml(item.homeCampus)}<span class="person-code">${roleNames[item.expectedRole]} · 授权 ${escapeHtml(item.authorizedCampuses.join(' / '))}</span></td><td>${statusNames[item.status]}<span class="person-code">${escapeHtml(item.reviewNote)}</span></td></tr>`).join('');
       $('#applications-empty').hidden=requests.length>0;
       $$('[data-whitelist]').forEach(button=>button.addEventListener('click',async()=>{
