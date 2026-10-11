@@ -112,6 +112,50 @@ test('visible polling pauses in background, refreshes on return and disposes cle
   }
 });
 
+test('view navigation resets scroll without introducing a moving transition', async () => {
+  const saved = { document: globalThis.document, window: globalThis.window };
+  const views = ['booking', 'lookup'].map(view => ({
+    dataset: { view },
+    classList: { toggle() {} }
+  }));
+  const links = ['booking', 'lookup'].map(view => ({
+    dataset: { viewLink: view },
+    hidden: false,
+    classList: { toggle() {} },
+    addEventListener() {}
+  }));
+  const scrolls = [];
+  globalThis.document = {
+    querySelector(selector) {
+      if (selector === '[data-view="lookup"]') return views[1];
+      if (selector === '[data-view-link="lookup"]') return links[1];
+      return null;
+    },
+    querySelectorAll(selector) {
+      if (selector === '.view') return views;
+      if (selector === '[data-view-link]') return links;
+      return [];
+    }
+  };
+  globalThis.window = { scrollTo: options => scrolls.push(options) };
+  try {
+    const { initNavigation } = await import(`../shared/navigation.js?stability=${Date.now()}`);
+    initNavigation()('lookup');
+    assert.deepEqual(scrolls, [{ top: 0, behavior: 'auto' }]);
+  } finally {
+    if (saved.document === undefined) delete globalThis.document; else globalThis.document = saved.document;
+    if (saved.window === undefined) delete globalThis.window; else globalThis.window = saved.window;
+  }
+});
+
+test('layout stability rules keep dynamic regions and view transitions fixed', async () => {
+  const styles = await readFile('shared/styles.css', 'utf8');
+  assert.match(styles, /html\{scrollbar-gutter:stable\}/);
+  assert.match(styles, /#live-updated\{min-width:140px;text-align:right\}/);
+  assert.match(styles, /@keyframes view-enter\{from\{opacity:0\}to\{opacity:1\}\}/);
+  assert.doesNotMatch(styles, /@keyframes view-enter\{from\{opacity:0;transform:translateY\(8px\)/);
+});
+
 test('guest browser saves credentials without PII and private links stay in the fragment',async()=>{
   const values=new Map();
   globalThis.localStorage={getItem:key=>values.get(key),setItem:(key,value)=>values.set(key,value)};
