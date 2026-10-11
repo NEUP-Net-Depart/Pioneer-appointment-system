@@ -24,7 +24,9 @@ const JWT_SECRET = randomBytes(48).toString('base64url');
 const PII_ENCRYPTION_KEY = randomBytes(32).toString('hex');
 const date = [0,1,2,3].map(n => addDays(dateKey(), n)).find(serviceDay);
 let serial = 200000;
-const draft = (patch = {}) => ({ studentId: String(++serial), name: '测试同学', campus: '南湖', phone: '13800138000', social: 'wechat-private', deviceType: '笔记本电脑', brand: '联想', deviceModel: 'ThinkPad', warranty: '否', date, timeSlot: '19:00–20:00', faultType: '蓝屏', issue: '', agreementAt: new Date().toISOString(), ...patch });
+const signature = [[[0.1,0.1],[0.2,0.3],[0.3,0.2],[0.4,0.4],[0.5,0.2],[0.6,0.3],[0.7,0.1],[0.8,0.4]]];
+const photo = { filename: 'computer.png', mimeType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=' };
+const draft = (patch = {}) => ({ signature, studentId: String(++serial), name: '测试同学', campus: '南湖', phone: '13800138000', social: 'wechat-private', deviceType: '笔记本电脑', brand: '联想', deviceModel: 'ThinkPad', warranty: '否', date, timeSlot: '19:00–20:00', faultType: '蓝屏', issue: '', agreementAt: new Date().toISOString(), ...patch });
 async function request(path, { method = 'GET', body, token, accessToken, headers = {} } = {}) {
   return mf.dispatchFetch(`https://app.test${path}`, { method, headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(accessToken ? {'X-Appointment-Token':accessToken} : {}), ...headers }, ...(body !== undefined ? { body: typeof body === 'string' ? body : JSON.stringify(body) } : {}) });
 }
@@ -33,6 +35,11 @@ async function api(path, options, status = 200) {
   const body = await response.json();
   assert.equal(response.status, status, JSON.stringify(body));
   return body;
+}
+async function intake(item, token) {
+  const front = await api(`/api/appointments/${item.id}/attachments`, {method:'POST',token,body:{...photo,purpose:'intake_front'}},201);
+  const back = await api(`/api/appointments/${item.id}/attachments`, {method:'POST',token,body:{...photo,purpose:'intake_back'}},201);
+  return {frontPhotoId:front.id,backPhotoId:back.id};
 }
 const book = patch => api('/api/appointments', { method: 'POST', body: draft(patch) }, 201);
 async function login(account = 'root001', suppliedPassword = password) {
@@ -102,7 +109,7 @@ test('health verifies D1 schema and R2; API paths return JSON and security heade
 });
 test('guest booking, encrypted contacts, lookup, queue and cancellation', async () => {
   const item = await book();
-  assert.match(item.id, /^0\d{8}-01$/);
+  assert.match(item.id, /^reverse0\d{8}-01$/);
   const row = await db.prepare('SELECT phone,social FROM appointments WHERE id=?').bind(item.id).first();
   assert.match(row.phone, /^enc\$/); assert.match(row.social, /^enc\$/); assert.ok(!row.social.includes('wechat-private'));
   const found = await api(`/api/appointments/${item.id}`,{accessToken:item.accessToken});
@@ -177,7 +184,8 @@ test('reactivating cancelled appointments still enforces D1 capacity and duplica
 test('simultaneous sign-ins have one winner; technician ownership and transitions hold', async () => {
   const item = await book();
   const tokens = await Promise.all([addUser('300001'), addUser('300002')]);
-  const results = await Promise.all(tokens.map(token => request(`/api/appointments/${item.id}/status`, { method: 'PATCH', token, body: { status: 'in_progress' } })));
+  const photos = await Promise.all(tokens.map(token => intake(item, token)));
+  const results = await Promise.all(tokens.map((token, index) => request(`/api/appointments/${item.id}/status`, { method: 'PATCH', token, body: { status: 'in_progress', ...photos[index] } })));
   assert.equal(results.filter(r => r.status === 200).length, 1);
   assert.ok(results.some(r => [403,409].includes(r.status)));
   const winner = results.findIndex(r => r.status === 200), token = tokens[winner];
@@ -246,7 +254,7 @@ test('R2 upload/download preserves bytes, enforces credentials and hides storage
   assert.deepEqual(Buffer.from(await response.arrayBuffer()), bytes);
   const token = await addUser('500001');
   await api(`${base}/${attachment.id}`,{token},403);
-  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{status:'in_progress'}});
+  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{status:'in_progress',...await intake(item, token)}});
   assert.equal((await request(`${base}/${attachment.id}`, { token })).status, 200);
   await api(base, { accessToken:item.accessToken, method: 'POST', body: { ...input, mimeType: 'text/html' } }, 400);
   await api(base, { accessToken:item.accessToken, method: 'POST', body: { ...input, mimeType: 'image/png' } }, 400);
@@ -266,7 +274,7 @@ test('R2 write is compensated when D1 metadata fails', async () => {
 test('statistics and CSV retain history when staff is disabled', async () => {
   const root = await login(), technician = await addUser('600001');
   const item = await book({ name: '=SUM(1,1)' });
-  await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token: technician, body: { status: 'in_progress' } });
+  await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token: technician, body: { status:'in_progress',...await intake(item, technician) } });
   await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token: technician, body: { status: 'completed', outcome: 'repaired', repairNote: '完成' } });
   await api('/api/users/600001', { method: 'PATCH', token: root, body: { status: 'disabled' } });
   const stats = await api('/api/stats/summary?range=all', { token: root });
@@ -570,7 +578,7 @@ test('SQL queue counts use campus/slot scopes, deterministic ties and active sta
   assert.equal(summary.dayTotal, 5); assert.equal(summary.campusDayTotal, 4); assert.equal(summary.slotTotal, 3);
   assert.equal(summary.queueTotal, 2); assert.equal(summary.ahead, 1); assert.equal(summary.position, 2);
   assert.deepEqual(summary.slots, { '19:00–20:00': 3, '20:00–21:00': 1 });
-  await api(`/api/appointments/${first.id}/status`, { method: 'PATCH', token: root, body: { status: 'in_progress' } });
+  await api(`/api/appointments/${first.id}/status`, { method: 'PATCH', token: root, body: { status:'in_progress',...await intake(first, root) } });
   await api(`/api/appointments/${first.id}/status`, { method: 'PATCH', token: root, body: { status: 'completed', outcome: 'repaired', repairNote: '已修复' } });
   assert.equal((await api(`/api/live/summary?appointmentId=${second.id}`,{accessToken:second.accessToken})).ahead, 0);
   await api(`/api/appointments/${first.id}/status`, { method: 'PATCH', token: root, body: { action: 'correct', status: 'completed', outcome: 'cancelled' } });
@@ -631,8 +639,8 @@ test('technicians see campus summaries before claiming and only their own privat
   for(const item of listed.items){for(const field of ['studentId','name','phone','social','issue','serial','note','agreementAt','repairNote'])assert.ok(!Object.hasOwn(item,field),field);}
   await api(`/api/appointments/${foreign.id}/status`,{method:'PATCH',token,body:{status:'in_progress'}},403);
   await api(`/api/appointments/${own.id}/attachments`,{token,accessToken:own.accessToken},403);
-  await api(`/api/appointments/${other.id}/status`,{method:'PATCH',token:colleague,body:{status:'in_progress'}});
-  await api(`/api/appointments/${own.id}/status`,{method:'PATCH',token,body:{status:'in_progress'}});
+  await api(`/api/appointments/${other.id}/status`,{method:'PATCH',token:colleague,body:{status:'in_progress',...await intake(other, colleague)}});
+  await api(`/api/appointments/${own.id}/status`,{method:'PATCH',token,body:{status:'in_progress',...await intake(own, token)}});
   const after=await api('/api/appointments',{token});
   assert.deepEqual(after.items.map(item=>item.id),[own.id]);assert.equal(after.items[0].social,'wechat-private');
   await api(`/api/appointments/${other.id}/attachments`,{token},403);
@@ -776,7 +784,7 @@ test('failed account grant creation rolls back approval, account and whitelist c
 
 test('an outdated staff detail cannot overwrite a newer repair record',async()=>{
   const item=await book(),token=await login();
-  const started=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{status:'in_progress',revision:item.revision}});
+  const started=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{status:'in_progress',...await intake(item, token),revision:item.revision}});
   const first=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{repairNote:'管理员已核实故障',revision:started.revision}});
   await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{repairNote:'过期窗口的记录',revision:started.revision}},409);
   assert.equal((await api(`/api/appointments/${item.id}`,{accessToken:item.accessToken})).repairNote,first.repairNote);
@@ -791,7 +799,7 @@ test('three-step workflow records the actor and server time, requires a result a
     assert.equal(item.status,'booked');assert.equal(item.outcome,null);assert.equal(item.startedAt,null);assert.equal(item.completedAt,null);
     await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{status:'in_progress',startedAt:'2000-01-01T00:00:00Z'}},400);
     await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{status:'in_progress',assignedTo:'root001'}},403);
-    const started=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{status:'in_progress',revision:item.revision}});
+    const started=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{status:'in_progress',...await intake(item, token),revision:item.revision}});
     assert.equal(started.assignedTo,'870001');assert.ok(Number.isFinite(Date.parse(started.startedAt)));
     for(const body of [{status:'completed'},{status:'completed',outcome},{status:'completed',outcome,repairNote:'  '},{status:'completed',outcome:'legacy_unknown',repairNote:'不能填写历史结果'}]){
       await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body},400);
@@ -814,7 +822,7 @@ test('three-step workflow records the actor and server time, requires a result a
 test('automatic no-shows honor 21:30 Shanghai, dry-run, missed days, active repairs and idempotency',async()=>{
   const waiting=await book(),past=await book(),active=await book(),future=await book();
   const token=await login();
-  await api(`/api/appointments/${active.id}/status`,{method:'PATCH',token,body:{status:'in_progress'}});
+  await api(`/api/appointments/${active.id}/status`,{method:'PATCH',token,body:{status:'in_progress',...await intake(active, token)}});
   await db.prepare('UPDATE appointments SET date=? WHERE id=?').bind(addDays(date,-1),past.id).run();
   await db.prepare('UPDATE appointments SET date=? WHERE id=?').bind(addDays(date,1),future.id).run();
   const repository=appointmentRepository(db);
@@ -852,7 +860,7 @@ test('queries and writes catch up missed automatic endings; unauthorized credent
 test('admin corrections preserve start on reopening, validate reassignment and clear fields on undoing sign-in',async()=>{
   const item=await book(),root=await login(),tech=await addUser('870002');
   await addUser('870003');
-  const started=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:tech,body:{status:'in_progress'}});
+  const started=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:tech,body:{status:'in_progress',...await intake(item, tech)}});
   const done=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:tech,body:{status:'completed',outcome:'unrepaired',repairNote:'未能修复'}});
   await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:tech,body:{action:'correct',outcome:'repaired',repairNote:'越权纠错'}},403);
   const fixed=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:root,body:{action:'correct',outcome:'repaired',repairNote:'复测已修复',revision:done.revision}});
@@ -906,7 +914,7 @@ test('workflow migration preserves populated legacy records, credentials, attach
 test('finished repairs and no-shows retain capacity while restoring a cancellation checks capacity',async()=>{
   const items=[];for(let n=0;n<10;n++)items.push(await book());
   const token=await login();
-  await api(`/api/appointments/${items[0].id}/status`,{method:'PATCH',token,body:{status:'in_progress'}});
+  await api(`/api/appointments/${items[0].id}/status`,{method:'PATCH',token,body:{status:'in_progress',...await intake(items[0], token)}});
   await api(`/api/appointments/${items[0].id}/status`,{method:'PATCH',token,body:{status:'completed',outcome:'not_needed',repairNote:'无需维修'}});
   await api('/api/appointments',{method:'POST',body:draft()},409);
   await appointmentRepository(db).endNoShows(date,new Date().toISOString(),{id:items[1].id});
@@ -927,4 +935,75 @@ test('correcting legacy results preserves missing times and disabled historical 
   await api('/api/users/870004',{method:'PATCH',token:root,body:{status:'enabled'}});
   const resumed=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:root,body:{action:'correct',status:'in_progress'}});
   assert.equal(resumed.startedAt,null);assert.equal(resumed.completedAt,null);assert.equal(resumed.outcome,null);
+});
+
+
+test('booking requires nonblank bounded handwriting and persists agreement signature', async () => {
+  for (const invalid of [undefined, [], [[[0.1,0.1],[0.1,0.1]]], [[[2,0],[0,0]]]]) {
+    await api('/api/appointments', {method:'POST',body:draft({signature:invalid})}, 400);
+  }
+  const item = await book();
+  assert.deepEqual(JSON.parse(item.signature), signature);
+  const stored = await db.prepare('SELECT signature,agreement_at FROM appointments WHERE id=?').bind(item.id).first();
+  assert.deepEqual(JSON.parse(stored.signature), signature);
+  assert.equal(stored.agreement_at, item.createdAt);
+});
+
+test('sign-in requires two purpose-matched photos uploaded by the signing technician', async () => {
+  const item = await book(), other = await book(), token = await addUser('880001'), colleague = await addUser('880002'), root = await login();
+  const change = (body, expected=400) => api(`/api/appointments/${item.id}/status`, {method:'PATCH',token,body:{status:'in_progress',...body}}, expected);
+  await change({});
+  await api(`/api/appointments/${item.id}/attachments`, {method:'POST',accessToken:item.accessToken,body:{...photo,purpose:'intake_front'}}, 401);
+  await api(`/api/appointments/${item.id}/attachments`, {method:'POST',token,body:{filename:'fake.txt',mimeType:'text/plain',data:'dGVzdA==',purpose:'intake_front'}}, 400);
+  const wrongActor = await intake(item, colleague);
+  await change(wrongActor);
+  const wrongOrder = await intake(other, token);
+  await change(wrongOrder);
+  const photos = await intake(item, token);
+  await change({frontPhotoId:photos.frontPhotoId});
+  await change({frontPhotoId:photos.backPhotoId,backPhotoId:photos.frontPhotoId});
+  await change({frontPhotoId:photos.frontPhotoId,backPhotoId:photos.frontPhotoId});
+  await api(`/api/appointments/${item.id}/status`, {method:'PATCH',token:root,body:{action:'correct',status:'in_progress',assignedTo:'880001'}}, 409);
+  assert.equal((await appointmentRepository(db).find(item.id)).status, 'booked');
+  const started = await change(photos, 200);
+  assert.equal(started.assignedTo, '880001'); assert.equal(started.frontPhotoId, photos.frontPhotoId); assert.equal(started.backPhotoId, photos.backPhotoId);
+  assert.equal(started.repairNumber, null);
+});
+
+test('repair numbers use completion day and independent campus sequences rather than booking suffixes', async () => {
+  const first = await book(), second = await book(), third = await book(), foreign = await book({campus:'浑南'}), root = await login();
+  const repository = appointmentRepository(db), users = userRepository(db), actor = await users.find('root001');
+  for (const item of [first,second,third,foreign]) await api(`/api/appointments/${item.id}/status`, {method:'PATCH',token:root,body:{status:'in_progress',...await intake(item,root)}});
+  // UTC 16:01 is the next business day in Shanghai.
+  const nextDay = addDays(dateKey(), 1), instant = new Date(`${nextDay}T00:01:00+08:00`);
+  const service = appointmentService(repository, users, PII_ENCRYPTION_KEY, () => instant);
+  const finish = item => service.update(item.id, {patch:{status:'completed',outcome:'repaired',repairNote:'检测完成'}}, actor);
+  const doneSecond = await finish(second), doneFirst = await finish(first), doneForeign = await finish(foreign);
+  assert.equal(doneSecond.repairNumber, `0${nextDay.replaceAll('-','')}-01`);
+  assert.equal(doneFirst.repairNumber, `0${nextDay.replaceAll('-','')}-02`);
+  assert.equal(doneForeign.repairNumber, `1${nextDay.replaceAll('-','')}-01`);
+  assert.notEqual(doneSecond.repairNumber, second.id.replace('reverse',''));
+  assert.equal(doneSecond.id, second.id);
+  const later = appointmentService(repository, users, PII_ENCRYPTION_KEY, () => new Date(`${addDays(nextDay,1)}T00:01:00+08:00`));
+  const doneThird = await later.update(third.id, {patch:{status:'completed',outcome:'not_needed',repairNote:'无需处理'}}, actor);
+  assert.equal(doneThird.repairNumber, `0${addDays(nextDay,1).replaceAll('-','')}-01`);
+  await assert.rejects(finish(second), error => error.status === 409);
+  const corrected = await service.update(second.id, {action:'correct',patch:{status:'completed',outcome:'unrepaired',repairNote:'复核'}}, actor);
+  assert.equal(corrected.repairNumber, doneSecond.repairNumber);
+  const search = await api(`/api/appointments?q=${doneSecond.repairNumber}`, {token:root});
+  assert.deepEqual(search.items.map(item=>item.id), [second.id]);
+  assert.ok((await (await request('/api/export/appointments.csv',{token:root})).text()).includes(doneSecond.repairNumber));
+});
+
+test('concurrent completions allocate unique numbers and stale retries do not consume sequence', async () => {
+  const root = await login(), items = await Promise.all([book(),book(),book()]);
+  for (const item of items) Object.assign(item, await api(`/api/appointments/${item.id}/status`, {method:'PATCH',token:root,body:{status:'in_progress',...await intake(item,root)}}));
+  const finish = item => request(`/api/appointments/${item.id}/status`, {method:'PATCH',token:root,body:{status:'completed',outcome:'repaired',repairNote:'已修复',revision:item.revision}});
+  const responses = await Promise.all([finish(items[0]),finish(items[0]),finish(items[1])]);
+  assert.deepEqual(responses.map(r=>r.status).sort(), [200,200,409]);
+  const numbers = [];
+  for (const response of responses) if (response.status === 200) numbers.push((await response.json()).repairNumber);
+  assert.equal(new Set(numbers).size, 2);
+  assert.deepEqual(numbers.map(n=>n.split('-')[1]).sort(), ['01','02']);
+  const last = await finish(items[2]);assert.equal(last.status, 200);assert.ok((await last.json()).repairNumber.endsWith('-03'));
 });

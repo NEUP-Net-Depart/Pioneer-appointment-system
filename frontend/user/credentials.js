@@ -1,5 +1,5 @@
 const KEY='pioneerAppointmentAccess';
-const valid = entry => entry && typeof entry.id==='string' && /^[01]\d{8}-\d{2,}$/.test(entry.id) && /^[A-Za-z0-9_-]{43}$/.test(entry.accessToken || '');
+const valid = entry => entry && typeof entry.id==='string' && /^(?:reverse)?[01]\d{8}-\d{2,}$/.test(entry.id) && /^[A-Za-z0-9_-]{43}$/.test(entry.accessToken || '');
 export function savedAppointments() {
   try {
     const entries=JSON.parse(localStorage.getItem(KEY) || '[]');

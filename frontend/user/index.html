@@ -49,7 +49,7 @@
             <label class="wide-field">备注（选填）<textarea name="note" maxlength="500" rows="2" placeholder="其他需要说明的情况"></textarea></label>
             <label class="wide-field attachment-field">故障照片或相关文件（选填）<input id="appointment-attachments" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,text/plain" multiple /><small class="field-hint">支持 JPG、PNG、WEBP、PDF、TXT，单个文件不超过 5 MB。</small></label>
           </div>
-          <div class="agreement-block">
+          <div class="agreement-block"><p id="signature-status" role="status">同意协议后需手写本人姓名，请提前准备。</p>
             <label class="check-row"><input type="checkbox" name="agreement" required /><span class="check-box"></span><span>我已阅读并同意<a href="#agreement" id="agreement-link">《免费维修免责与行为操守协议》</a>，确认设备中的重要数据已完成备份。</span></label>
           </div>
           <div class="form-actions"><button class="primary-btn" type="submit">提交预约 <span>→</span></button></div>
@@ -73,7 +73,8 @@
     </section>
 
 </main>
-  <div class="modal-backdrop" id="agreement-modal" hidden><div class="modal" role="dialog" aria-modal="true" aria-labelledby="agreement-title"><button class="modal-close" id="close-agreement" type="button" aria-label="关闭">×</button><p class="eyebrow">FREE SERVICE AGREEMENT</p><h2 id="agreement-title">免费维修免责与行为操守协议</h2><div class="modal-body"><p>1. 本服务为免费、自愿的互助维修，不收取任何费用。</p><p>2. 维修人员会尽力维修，但不保证一定能修好；维修方不承担数据丢失责任。</p><p>3. 配件及耗材由机主自行准备，中心不提供代购。</p><p>4. 在保设备建议先前往官方售后，避免影响保修。</p><p>5. 请如实描述故障并遵守现场秩序，不翻阅个人文件与聊天记录。</p></div><button class="primary-btn" id="agree-modal" type="button">我已了解</button></div></div>
+  <div class="modal-backdrop" id="signature-modal" hidden><div class="modal" role="dialog" aria-modal="true" aria-labelledby="signature-title"><h2 id="signature-title">请手写本人姓名</h2><p>请确认已阅读并同意维修协议、已备份重要数据。用手指、触控笔或鼠标在下方签名，签名将随预约保存。</p><canvas id="signature-canvas" width="900" height="360" aria-label="手写签名区域"></canvas><div class="modal-actions"><button id="clear-signature" type="button" class="secondary-btn">清空重写</button><button id="cancel-signature" type="button" class="secondary-btn">取消</button><button id="confirm-signature" type="button" class="primary-btn">确认签名并同意</button></div></div></div>
+  <div class="modal-backdrop" id="agreement-modal" hidden><div class="modal" role="dialog" aria-modal="true" aria-labelledby="agreement-title"><button class="modal-close" id="close-agreement" type="button" aria-label="关闭">×</button><p class="eyebrow">FREE SERVICE AGREEMENT</p><h2 id="agreement-title">免费维修免责与行为操守协议</h2><div class="modal-body"><p>1. 本服务为免费、自愿的互助维修，不收取任何费用。</p><p>2. 维修人员会尽力维修，但不保证一定能修好；维修方不承担数据丢失责任。</p><p>3. 配件及耗材由机主自行准备，中心不提供代购。</p><p>4. 在保设备建议先前往官方售后，避免影响保修。</p><p>5. 请如实描述故障并遵守现场秩序，不翻阅个人文件与聊天记录。</p></div><button class="primary-btn" id="agree-modal" type="button">我已同意协议，去签名</button></div></div>
 <div class="toast" id="toast" role="status"></div>
 <script type="module" src="/user/main.js"></script>
 </body>

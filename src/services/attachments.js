@@ -4,7 +4,7 @@ import { guestAppointment } from './access.js';
 import { requireAppointmentAccess } from './permissions.js';
 
 function metadata(item) {
-  return { id: item.id, appointmentId: item.appointmentId, filename: item.filename, mimeType: item.mimeType, size: item.size, createdAt: item.createdAt, expiresAt: item.expiresAt };
+  return { id: item.id, appointmentId: item.appointmentId, filename: item.filename, mimeType: item.mimeType, size: item.size, createdAt: item.createdAt, expiresAt: item.expiresAt, purpose: item.purpose, uploadedBy: item.uploadedBy };
 }
 export function attachmentService(appointments, attachments, bucket, maxBytes) {
   async function authorize(id, user, accessToken) {
@@ -19,13 +19,18 @@ export function attachmentService(appointments, attachments, bucket, maxBytes) {
       return { items: (await attachments.list(id, nowIso())).map(metadata) };
     },
     async upload(id, input, user, accessToken) {
-      await authorize(id, user, accessToken);
+      if (input.purpose && input.purpose !== 'general') {
+        const appointment = await appointments.find(id);
+        if (!appointment) fail(404, '预约不存在');
+        requireAppointmentAccess(user, appointment, { start: true });
+        if (appointment.status !== 'booked') fail(409, '当前预约不能上传签到照片');
+      } else await authorize(id, user, accessToken);
       const attachmentId = crypto.randomUUID();
       const objectKey = `appointments/${id}/${attachmentId}`;
       const { filename, mimeType, bytes } = input;
       const createdAt = nowIso();
       const expiresAt = new Date(Date.parse(createdAt) + 180 * 86400000).toISOString();
-      const item = { id: attachmentId, appointmentId: id, filename, mimeType, size: bytes.length, objectKey, createdAt, expiresAt };
+      const item = { id: attachmentId, appointmentId: id, filename, mimeType, size: bytes.length, objectKey, createdAt, expiresAt, purpose: input.purpose || 'general', uploadedBy: user?.account || null };
       if (!await attachments.reserve(item, maxBytes)) fail(507, '附件存储空间已满');
       try {
         await bucket.put(objectKey, bytes, { httpMetadata: { contentType: mimeType } });

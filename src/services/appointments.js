@@ -48,6 +48,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       const timestamp = instant.toISOString(), credential = issueAccessToken();
       const [phone, social] = await Promise.all([encryptText(data.phone, encryptionKey), encryptText(data.social, encryptionKey)]);
       const item = { ...data, status: 'booked', assignedTo: '', repairNote: '', outcome: null, startedAt: null, completedAt: null,
+        repairNumber: null, frontPhotoId: null, backPhotoId: null,
         createdAt: timestamp, agreementAt: timestamp, agreementVersion: data.agreementVersion || 'v1.0',
         accessTokenHash: credential.hash, credentialRotatedAt: timestamp, phone, social };
       return { ...await present(await appointments.create(item)), accessToken: credential.token };
@@ -75,14 +76,17 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       await expire(instant, { id });
       item = user ? await appointments.find(id) : await guestAppointment(appointments, id, accessToken);
       if (revision !== undefined && revision !== item.revision) fail(409, '预约已更新，请刷新后重试');
+      if ((input.frontPhotoId !== undefined || input.backPhotoId !== undefined) &&
+          (action === 'correct' || input.status !== 'in_progress')) fail(400, '签到照片只能在签到时记录');
       let patch;
       if (action === 'correct') {
         requireRole(user, 'admin'); requireAppointmentAccess(user, item);
         const status = input.status || item.status;
+        if (status === 'in_progress' && (item.status === 'booked' || ['cancelled','no_show'].includes(item.outcome))) fail(409, '请先恢复为已预约，再通过签到上传照片并开始维修');
         patch = { ...input, status };
         if (status === 'booked') {
           if (instant.getTime() >= Date.parse(noShowDeadline(item.date))) fail(409, '已过自动结束时间，不能恢复为已预约');
-          patch = { status, assignedTo: '', startedAt: null, completedAt: null, outcome: null, repairNote: '' };
+          patch = { status, assignedTo: '', startedAt: null, completedAt: null, outcome: null, repairNote: '', frontPhotoId: null, backPhotoId: null };
         } else {
           const account = input.assignedTo ?? item.assignedTo;
           if (account) patch.assignedTo = status === 'in_progress' || account !== item.assignedTo ? await assignee(account, item.campus) : account;
@@ -111,7 +115,8 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
         if (input.assignedTo !== undefined) fail(403, '维修人员由签到记录，转派请使用管理员纠错');
         if (starting) {
           if (input.outcome !== undefined) fail(400, '开始维修不能填写结束结果');
-          patch = { status: 'in_progress', assignedTo: user.account, startedAt: timestamp, completedAt: null, outcome: null };
+          if (!await appointments.intakePhotos(item.id, user.account, input.frontPhotoId, input.backPhotoId, timestamp)) fail(400, '请由本次签到人员上传电脑正面和反面照片');
+          patch = { status: 'in_progress', assignedTo: user.account, startedAt: timestamp, completedAt: null, outcome: null, frontPhotoId: input.frontPhotoId, backPhotoId: input.backPhotoId };
         } else if (item.status === 'booked' && input.status === 'completed' && input.outcome === 'cancelled') {
           requireRole(user, 'admin');
           patch = { status: 'completed', outcome: 'cancelled', completedAt: timestamp };
@@ -122,6 +127,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
           patch = { repairNote: input.repairNote };
         } else fail(409, '当前状态不能执行此操作，修正记录请使用管理员纠错');
       }
+      if (patch.status === 'completed' && repairOutcomes.includes(patch.outcome) && !item.repairNumber) patch.repairNumberDate = dateKey(instant);
       const updated = await appointments.update(item, patch);
       if (!updated) fail(409, '预约已被其他工作人员修改，请刷新后重试');
       return present(updated);

@@ -72,5 +72,5 @@ try{
       child.once('error',reject);child.once('exit',code=>resolve(code ?? 1));
     });
   }
-}finally{await stopServer();await rm(dir,{recursive:true,force:true});}
+}finally{await stopServer();await rm(dir,{recursive:true,force:true,maxRetries:10,retryDelay:200});}
 process.exitCode=exitCode;

@@ -19,5 +19,8 @@ export function attachmentInput(body) {
     'text/plain': () => { try { new TextDecoder('utf-8', { fatal: true }).decode(bytes); return !bytes.includes(0); } catch { return false; } }
   };
   if (!valid[mimeType]()) fail(400, '附件内容与文件类型不匹配');
-  return { filename, mimeType, bytes };
+  const purpose = body.purpose || 'general';
+  if (!['general', 'intake_front', 'intake_back'].includes(purpose)) fail(400, '附件用途不正确');
+  if (purpose !== 'general' && !mimeType.startsWith('image/')) fail(400, '签到照片必须为图片');
+  return { filename, mimeType, bytes, purpose };
 }

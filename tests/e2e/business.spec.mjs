@@ -15,7 +15,15 @@ async function booking(page,studentId,{file=true}={}){
   for(const [name,value] of Object.entries({campus:'南湖',deviceType:'笔记本电脑',warranty:'否',faultType:'蓝屏',timeSlot:'19:00–20:00'}))await page.locator(`[name="${name}"]`).selectOption(value);
   await page.locator('[name=date]').fill(date);
   if(file)await page.locator('#appointment-attachments').setInputFiles({name:'故障描述.txt',mimeType:'text/plain',buffer:Buffer.from('browser attachment')});
-  await page.locator('.check-box').click();await page.locator('#booking-form [type=submit]').click();
+  await page.locator('.check-box').click();
+  await expect(page.locator('#signature-modal')).toBeVisible();
+  await page.locator('#confirm-signature').click();await expect(page.locator('#signature-modal')).toBeVisible();
+  const box=await page.locator('#signature-canvas').boundingBox();
+  await page.mouse.move(box.x+30,box.y+30);await page.mouse.down();
+  await page.mouse.move(box.x+160,box.y+80,{steps:15});await page.mouse.move(box.x+70,box.y+110,{steps:15});await page.mouse.up();
+  expect(await page.locator('#signature-modal .modal').evaluate(element=>element.scrollWidth<=element.clientWidth)).toBe(true);
+  await capture(page, 'signature-' + studentId);
+  await page.locator('#confirm-signature').click();await page.locator('#booking-form [type=submit]').click();
   await expect(page.locator('#success-panel')).toBeVisible();
   return {id:await page.locator('#success-code').textContent(),link:await page.locator('#success-link-fallback').inputValue()};
 }
@@ -77,6 +85,11 @@ test('student booking, private links, whitelist activation, staff permissions, r
     const staffToken=await member.evaluate(()=>sessionStorage.getItem('pioneerToken'));
     expect((await contexts[2].request.get(`/api/appointments/${item.id}/attachments`,{headers:{Authorization:'Bearer '+staffToken}})).status()).toBe(403);
     await member.locator(`[data-start="${item.id}"]`).click();
+    await expect(member.locator('#intake-modal')).toBeVisible();
+    await expect(member.locator('#appointments-table')).not.toContainText('浏览器测试同学');
+    for(const side of ['front','back'])await member.locator('#intake-'+side).setInputFiles({name:side+'.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=','base64')});
+    await capture(member,'technician-intake-photos');
+    await member.locator('#confirm-intake').click();await expect(member.locator('#intake-modal')).toBeHidden();
     await expect(member.locator('#appointments-table')).toContainText('浏览器测试同学');
     await expect(member.locator('#detail-modal')).toBeVisible();await expect(member.locator('#detail-summary')).toContainText('e2e-private-contact');
     await expect(member.locator('#recovery-panel')).toBeHidden();await expect(member.locator('#detail-assigned')).toHaveAttribute('readonly','');
@@ -90,6 +103,7 @@ test('student booking, private links, whitelist activation, staff permissions, r
     await member.locator('#complete-detail').click();await expect(member.locator('#detail-modal')).toBeHidden();
     await student.locator('#refresh-my-appointments').click();await expect(student.locator('#lookup-results')).toContainText('修复成功');
     await expect(student.locator('[data-cancel]')).toHaveCount(0);
+    await expect(student.locator('#lookup-results')).toContainText('维修单号');
 
     await root.getByRole('button',{name:'维修后台',exact:true}).click();await root.locator(`[data-detail="${item.id}"]`).click();
     await root.locator('#correction-panel summary').click();

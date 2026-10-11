@@ -1,6 +1,7 @@
 import { fail } from './http.js';
 import { normalizeTimeSlot, statusLabels, outcomeLabels, CAMPUSES, roleLevel } from '../../shared/constants.js';
 import { validDate } from '../../shared/time.js';
+import { validSignature } from '../../shared/signature.js';
 
 export const account = value => String(value ?? '').trim().toLowerCase();
 export function stringField(value, name, max, required = false) {
@@ -18,12 +19,18 @@ export function bookingInput(input) {
   data.timeSlot = normalizeTimeSlot(data.timeSlot);
   if (!data.timeSlot) fail(400, '预约时段不正确');
   if (!Number.isFinite(Date.parse(data.agreementAt))) fail(400, '协议记录不正确');
+  if (!validSignature(input.signature)) fail(400, '请阅读协议并完成本人手写签名');
+  data.signature = JSON.stringify(input.signature);
   return data;
 }
 export function appointmentPatch(input) {
   const patch = {};
   if (input.action !== undefined && input.action !== 'correct') fail(400, '操作不正确');
   if (input.startedAt !== undefined || input.completedAt !== undefined) fail(400, '维修时间由系统记录');
+  if (input.repairNumber !== undefined) fail(400, '维修单号由系统生成');
+  for (const key of ['frontPhotoId', 'backPhotoId']) {
+    if (input[key] !== undefined) patch[key] = stringField(input[key], key, 80, true);
+  }
   if (input.outcome !== undefined) {
     if (!Object.hasOwn(outcomeLabels, input.outcome) || input.outcome === 'legacy_unknown') fail(400, '结束结果不正确');
     patch.outcome = input.outcome;

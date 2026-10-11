@@ -1,5 +1,5 @@
 function fromRow(row) {
-  return row ? { id: row.id, appointmentId: row.appointment_id, filename: row.filename, mimeType: row.mime_type, size: row.size, createdAt: row.created_at, expiresAt: row.expires_at, objectKey: row.object_key } : null;
+  return row ? { id: row.id, appointmentId: row.appointment_id, filename: row.filename, mimeType: row.mime_type, size: row.size, createdAt: row.created_at, expiresAt: row.expires_at, objectKey: row.object_key, purpose: row.purpose, uploadedBy: row.uploaded_by } : null;
 }
 const cleanupCondition = "(state='deleting' OR (state='complete' AND expires_at<=?) OR (state='pending' AND created_at<=?))";
 export function attachmentRepository(db) {
@@ -11,9 +11,9 @@ export function attachmentRepository(db) {
     },
     async create(item) {
       const results = await db.batch([
-        db.prepare(`INSERT INTO appointment_attachments(id,appointment_id,filename,mime_type,size,object_key,created_at,expires_at)
-          SELECT ?,?,?,?,?,?,?,? FROM attachment_storage WHERE id=? AND state='pending' RETURNING *`)
-          .bind(item.id, item.appointmentId, item.filename, item.mimeType, item.size, item.objectKey, item.createdAt, item.expiresAt, item.id),
+        db.prepare(`INSERT INTO appointment_attachments(id,appointment_id,filename,mime_type,size,object_key,created_at,expires_at,purpose,uploaded_by)
+          SELECT ?,?,?,?,?,?,?,?,?,? FROM attachment_storage WHERE id=? AND state='pending' RETURNING *`)
+          .bind(item.id, item.appointmentId, item.filename, item.mimeType, item.size, item.objectKey, item.createdAt, item.expiresAt, item.purpose || 'general', item.uploadedBy || null, item.id),
         db.prepare(`UPDATE attachment_storage SET state='complete' WHERE id=? AND state='pending'
           AND EXISTS(SELECT 1 FROM appointment_attachments WHERE id=?)`).bind(item.id, item.id)
       ]);

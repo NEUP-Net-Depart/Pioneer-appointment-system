@@ -1,4 +1,5 @@
 import { $, showToast } from '/shared/utils.js';
+import { initSignature } from './signature.js';
 import { apiJson } from '/shared/api.js';
 import { saveAppointment,privateLink } from './credentials.js';
 import { uploadAttachments } from '/shared/attachments.js';
@@ -52,12 +53,13 @@ async function updateLiveSummary() {
 
 export function initBooking({ appointments, onCreated }) {
   const form = $('#booking-form'); configureDateRange();
+  const signature = initSignature();
   ['campus', 'timeSlot'].forEach(name => $(`[name="${name}"]`).addEventListener('change', () => { updateCapacity(); updateLiveSummary(); }));
   $('[name="date"]').addEventListener('change', event => { const value = event.currentTarget.value; if (value && !serviceDay(value)) { event.currentTarget.value = ''; showToast('可预约日期仅限周一至周四'); } updateCapacity(); updateLiveSummary(); });
   startVisiblePolling(() => { updateCapacity(); return updateLiveSummary(); });
   $('#agreement-link').addEventListener('click', event => { event.preventDefault(); $('#agreement-modal').hidden = false; });
   $('#close-agreement').addEventListener('click', () => $('#agreement-modal').hidden = true);
-  $('#agree-modal').addEventListener('click', () => { $('#agreement-modal').hidden = true; $('[name="agreement"]').checked = true; });
+  $('#agree-modal').addEventListener('click', () => { $('#agreement-modal').hidden = true; signature.open(); });
   $('#agreement-modal').addEventListener('click', event => { if (event.target.id === 'agreement-modal') $('#agreement-modal').hidden = true; });
   $('#copy-code').addEventListener('click', async () => {
     const link = $('#success-link-fallback');
@@ -66,6 +68,7 @@ export function initBooking({ appointments, onCreated }) {
   });
   form.addEventListener('submit', async event => {
     event.preventDefault();
+    if (!signature.value()) { signature.open(); return; }
     if (!form.checkValidity()) { form.reportValidity(); return; }
     const data = Object.fromEntries(new FormData(form).entries());
     data.timeSlot = normalizeTimeSlot(data.timeSlot);
@@ -76,7 +79,7 @@ export function initBooking({ appointments, onCreated }) {
     const submit = form.querySelector('[type=submit]');
     if (submit.disabled) return;
     submit.disabled = true;
-    const payload = { ...data, agreementAt: nowIso(), agreementVersion: 'v1.0' };
+    const payload = { ...data, agreementAt: nowIso(), agreementVersion: 'v1.0', signature: signature.value() };
     delete payload.agreement;
     try {
       const appointment = await apiJson('/api/appointments', { method: 'POST', json: payload });

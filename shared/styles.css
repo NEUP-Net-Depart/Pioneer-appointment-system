@@ -162,3 +162,13 @@ html{scrollbar-gutter:stable}
 #detail-times{color:var(--muted);font-size:12px;line-height:1.8;overflow-wrap:anywhere}
 #correction-panel summary{cursor:pointer;font-weight:700;color:var(--navy)}
 .detail-modal .modal-actions{flex-wrap:wrap}
+
+#signature-canvas, #detail-signature { display: block; width: 100%; height: auto; border: 1px solid #bcc9cf; border-radius: 12px; background: #fff; }
+#signature-canvas { touch-action: none; cursor: crosshair; }
+#signature-modal, #intake-modal { z-index: 50; }
+#signature-modal .modal-actions, #intake-modal .modal-actions { flex-wrap: wrap; }
+.intake-photos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.intake-photos label { min-width: 0; }
+.intake-photos input { max-width: 100%; }
+.intake-photos img { width: 100%; max-height: 200px; object-fit: contain; }
+@media (max-width: 600px) { .intake-photos { grid-template-columns: 1fr; } }

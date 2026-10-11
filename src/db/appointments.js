@@ -1,16 +1,26 @@
+import { dateKey } from '../../shared/time.js';
 const columns = {
   studentId: 'student_id', name: 'name', college: 'college', campus: 'campus', phone: 'phone', social: 'social',
   deviceType: 'device_type', brand: 'brand', deviceModel: 'device_model', serial: 'serial', warranty: 'warranty',
   faultType: 'fault_type', issue: 'issue', liquidDrop: 'liquid_drop', date: 'date', timeSlot: 'time_slot', note: 'note',
   status: 'status', assignedTo: 'assigned_to', repairNote: 'repair_note', createdAt: 'created_at',
   outcome: 'outcome', startedAt: 'started_at', completedAt: 'completed_at',
-  agreementAt: 'agreement_at', agreementVersion: 'agreement_version'
+  agreementAt: 'agreement_at', agreementVersion: 'agreement_version', signature: 'signature',
+  repairNumber: 'repair_number', frontPhotoId: 'front_photo_id', backPhotoId: 'back_photo_id'
 };
 function fromRow(row) {
-  return row ? { id: row.id, revision: row.revision, ...Object.fromEntries(Object.entries(columns).map(([key, column]) => [key, row[column] ?? (['outcome','startedAt','completedAt'].includes(key) ? null : '')])) } : null;
+  return row ? { id: row.id, revision: row.revision, ...Object.fromEntries(Object.entries(columns).map(([key, column]) => [key, row[column] ?? (['outcome','startedAt','completedAt','repairNumber','frontPhotoId','backPhotoId'].includes(key) ? null : '')])) } : null;
 }
 export function appointmentRepository(db) {
   return {
+    async intakePhotos(id, account, front, back, now) {
+      if (!front || !back || front === back) return false;
+      const row = await db.prepare(`SELECT COUNT(*) AS total FROM appointment_attachments
+        WHERE appointment_id=? AND uploaded_by=? AND expires_at>? AND mime_type LIKE 'image/%'
+        AND ((id=? AND purpose='intake_front') OR (id=? AND purpose='intake_back'))`)
+        .bind(id, account, now, front, back).first();
+      return row.total === 2;
+    },
     async countNoShows(beforeDate) {
       return (await db.prepare("SELECT COUNT(*) AS total FROM appointments WHERE status='booked' AND date<=?").bind(beforeDate).first()).total;
     },
@@ -42,9 +52,9 @@ export function appointmentRepository(db) {
       for (const key of ['campus','date']) if (query[key]) { where.push(`${key}=?`); args.push(query[key]); }
       if (query.status !== 'all') { where.push('status=?'); args.push(query.status); }
       if (query.q) {
-        where.push("(instr(id,?)>0 OR instr(lower(device_model),?)>0 OR instr(campus,?)>0 OR ((?='' OR (assigned_to=? AND status<>'booked')) AND (instr(lower(name),?)>0 OR instr(student_id,?)>0)))");
+        where.push("(instr(id,?)>0 OR instr(repair_number,?)>0 OR instr(lower(device_model),?)>0 OR instr(campus,?)>0 OR ((?='' OR (assigned_to=? AND status<>'booked')) AND (instr(lower(name),?)>0 OR instr(student_id,?)>0)))");
         const text=query.q.toLowerCase();
-        args.push(text,text,text,technician,technician,text,text);
+        args.push(text,text,text,text,technician,technician,text,text);
       }
       const [items, counts] = await db.batch([
         db.prepare(`SELECT * FROM appointments WHERE ${where.join(' AND ')} ORDER BY created_at DESC,id DESC`).bind(...args),
@@ -56,18 +66,23 @@ export function appointmentRepository(db) {
       return { items: items.results.map(fromRow), counts: { all: allCount, ...totals } };
     },
     async create(item) {
-      const prefix = `${item.campus === '浑南' ? '1' : '0'}${item.date.replaceAll('-', '')}-`;
+      const prefix = `reverse${item.campus === '浑南' ? '1' : '0'}${dateKey(new Date(item.createdAt)).replaceAll('-', '')}-`;
       // One D1 statement allocates the ID and runs capacity/uniqueness constraints atomically.
       const row = await db.prepare(`INSERT INTO appointments(id,${Object.values(columns).join(',')},access_token_hash,credential_rotated_at)
         SELECT ? || printf('%02d',COALESCE(MAX(CAST(substr(id,instr(id,'-')+1) AS INTEGER)),0)+1),${Object.keys(columns).map(() => '?').join(',')},?,?
-        FROM appointments WHERE campus=? AND date=? RETURNING *`)
-        .bind(prefix, ...Object.keys(columns).map(key => key === 'assignedTo' ? item[key] || null : item[key]), item.accessTokenHash,item.credentialRotatedAt,item.campus, item.date).first();
+        FROM appointments WHERE id LIKE ? RETURNING *`)
+        .bind(prefix, ...Object.keys(columns).map(key => key === 'assignedTo' ? item[key] || null : item[key] ?? null), item.accessTokenHash,item.credentialRotatedAt,`${prefix}%`).first();
       return fromRow(row);
     },
     async update(item, patch) {
       const fields = [], args = [];
-      for (const [key, column] of Object.entries({ status: 'status', assignedTo: 'assigned_to', repairNote: 'repair_note', outcome: 'outcome', startedAt: 'started_at', completedAt: 'completed_at' })) {
+      for (const [key, column] of Object.entries({ status: 'status', assignedTo: 'assigned_to', repairNote: 'repair_note', outcome: 'outcome', startedAt: 'started_at', completedAt: 'completed_at', frontPhotoId: 'front_photo_id', backPhotoId: 'back_photo_id' })) {
         if (patch[key] !== undefined) { fields.push(`${column}=?`); args.push(key === 'assignedTo' ? patch[key] || null : patch[key]); }
+      }
+      if (patch.repairNumberDate && !item.repairNumber) {
+        const prefix = `${item.campus === '浑南' ? '1' : '0'}${patch.repairNumberDate.replaceAll('-', '')}-`;
+        fields.push("repair_number=? || printf('%02d',(SELECT COALESCE(MAX(CAST(substr(repair_number,instr(repair_number,'-')+1) AS INTEGER)),0)+1 FROM appointments WHERE repair_number LIKE ?))");
+        args.push(prefix, `${prefix}%`);
       }
       return fromRow(await db.prepare(`UPDATE appointments SET ${fields.join(',')},revision=revision+1 WHERE id=? AND revision=? RETURNING *`).bind(...args, item.id, item.revision).first());
     },
