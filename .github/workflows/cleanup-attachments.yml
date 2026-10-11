@@ -17,15 +17,50 @@ on:
 permissions:
   contents: read
 jobs:
+  dispatch-maintenance:
+    # Schedules run on the default branch (dev); credentials remain main-only.
+    if: github.event_name == 'schedule' && vars.ATTACHMENT_MAINTENANCE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch scheduled cleanup on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run cleanup-attachments.yml --repo "$GITHUB_REPOSITORY" --ref main -f environment=both -f dry_run=false
+  select-targets:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      environments: ${{ steps.targets.outputs.environments }}
+    steps:
+      - name: Validate maintenance branch and select environments
+        id: targets
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::Run maintenance workflows from main. Scheduled runs dispatch to main automatically."
+            exit 1
+          fi
+          case "$TARGET_ENVIRONMENT" in
+            both) echo 'environments=["production","preview"]' >> "$GITHUB_OUTPUT" ;;
+            production|preview) printf 'environments=["%s"]\n' "$TARGET_ENVIRONMENT" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::Choose production, preview, or both."; exit 1 ;;
+          esac
   cleanup:
-    # Enable the schedule only after the new environment has been accepted.
-    if: github.event_name == 'workflow_dispatch' || vars.ATTACHMENT_MAINTENANCE_ENABLED == 'true'
+    needs: select-targets
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    environment: ${{ matrix.environment == 'production' && 'production' || 'preview-maintenance' }}
     strategy:
       fail-fast: false
       matrix:
-        environment: [production, preview]
+        environment: ${{ fromJSON(needs.select-targets.outputs.environments) }}
     concurrency:
       group: attachments-cleanup-${{ matrix.environment }}
       cancel-in-progress: false
@@ -37,12 +72,11 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Clean attachments
-        if: github.event_name == 'schedule' || inputs.environment == 'both' || inputs.environment == matrix.environment
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets[matrix.environment == 'production' && 'CLOUDFLARE_API_TOKEN' || 'CLOUDFLARE_PREVIEW_MAINTENANCE_API_TOKEN'] }}
           TARGET_ENVIRONMENT: ${{ matrix.environment }}
-          APPLY_CLEANUP: ${{ github.event_name == 'schedule' || !inputs.dry_run }}
+          APPLY_CLEANUP: ${{ !inputs.dry_run }}
           WRANGLER_SEND_METRICS: 'false'
         shell: bash
         run: |

@@ -4,7 +4,9 @@
 
 项目由一个 Cloudflare Pages 项目组成，包含用户端 `/`、工作人员端 `/staff/` 和同源 `/api/*`。Pages Functions 执行业务逻辑，D1 保存业务数据，私有 R2 保存附件。项目没有独立的 Cloudflare Worker；应用使用自身的 JWT/RBAC 鉴权，不依赖 Cloudflare Access。
 
-GitHub Actions 在推送 `main` 后自动发布 Production，在推送 `dev` 后自动发布 Preview；也可以选择 `dev` 手动运行工作流。两个环境使用独立的 D1、R2 和 Secrets。发布顺序固定为验证、数据库迁移、Pages 发布和 HTTP 检查。
+GitHub Actions 在所有仓库内分支推送后运行验证：`main` 自动发布 Production，其他分支自动发布各自的 Preview 地址，也可以选择非 `main` 分支手动运行。所有 Preview 分支共用测试 D1、私有 R2 和 Pages Secrets，与 Production 分开。只有 `dev` 自动迁移共享测试库，功能分支只发布和检查自己的网址；Production 继续在迁移成功后发布。
+
+发布、迁移和维护凭证分别保存在 GitHub Environments 中。附件清理和无人到场预约处理从 `main` 执行；默认分支 `dev` 上的定时入口使用 GitHub 内置 Token 派发任务，Preview 维护使用独立的受限环境和凭证。
 
 - [业务规则与权限](docs/requirements.md)
 - [工作人员白名单与自主激活](docs/staff-activation.md)
@@ -32,7 +34,7 @@ flowchart LR
 | 环境 | 分支 | D1 | R2 | 限额 |
 |---|---|---|---|---|
 | Production | `main` | `pioneer-appointments-production-v2` | `pioneer-attachments-production-v2` | 8 GiB |
-| Preview | `dev` | `pioneer-appointments-preview-v2` | `pioneer-attachments-preview-v2` | 512 MiB |
+| Preview | 所有非 `main` 分支 | `pioneer-appointments-preview-v2` | `pioneer-attachments-preview-v2` | 512 MiB |
 
 绑定名固定为 `DB` 和 `ATTACHMENTS`。JWT 签名密钥和联系方式加密密钥分别配置在两个 Pages 环境的 Secrets 中。
 

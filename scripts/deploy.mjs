@@ -9,4 +9,5 @@ if(options.execute){
   await import('./build.mjs');
   // Migration and root initialization are separate, reviewed operations.
   wrangler(['pages','deploy','dist','--project-name',plan.project,'--branch',plan.branch,'--commit-hash',plan.commit]);
+  console.log(`Pages ${plan.environment}: ${plan.siteUrl}`);
 }
