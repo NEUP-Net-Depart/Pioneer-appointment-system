@@ -4,7 +4,7 @@
 
 项目由一个 Cloudflare Pages 项目组成，包含用户端 `/`、工作人员端 `/staff/` 和同源 `/api/*`。Pages Functions 执行业务逻辑，D1 保存业务数据，私有 R2 保存附件。项目没有独立的 Cloudflare Worker；应用使用自身的 JWT/RBAC 鉴权，不依赖 Cloudflare Access。
 
-`dev` 发布 Preview，`main` 发布 Production。两个环境使用独立的 D1、R2 和 Secrets。
+GitHub Actions 在推送 `main` 后自动发布 Production；选择 `dev` 手动运行工作流发布 Preview。两个环境使用独立的 D1、R2 和 Secrets。发布顺序固定为验证、数据库迁移、Pages 发布和 HTTP 检查。
 
 - [业务规则与权限](docs/requirements.md)
 - [工作人员白名单与自主激活](docs/staff-activation.md)
@@ -23,6 +23,7 @@ flowchart LR
   Functions -->|ATTACHMENTS| R2[(私有 R2)]
   Secrets[Pages Secrets] -.-> Functions
   Actions[GitHub Actions] --> D1
+  Actions -->|迁移成功后发布| Pages
   Actions --> R2
 ```
 

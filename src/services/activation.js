@@ -66,9 +66,9 @@ export function activationService(repository,users,key){
     },
     async review(input,actor){
       requireRole(actor,'admin');
-      const ids=input.ids,status=input.status,note=stringField(input.reviewNote,'审核说明',300,true);
+      const ids=input.ids,status=input.status,note=stringField(input.reviewNote,'审核说明',300);
       if(!Array.isArray(ids) || !ids.length || ids.length>100 || new Set(ids).size!==ids.length || ids.some(id=>typeof id!=='string' || id.length>40) || !['approved','rejected'].includes(status))fail(400,'审核申请或状态不正确');
-      if(status==='approved' && (input.identityVerified!==true || note.length<8))fail(400,'审批前必须逐人核验身份，并填写至少 8 字的说明');
+      if(status==='approved' && input.identityVerified!==true)fail(400,'审批前必须逐人核验身份');
       const items=[];
       for(const id of ids){
         const item=await repository.findRequest(id);

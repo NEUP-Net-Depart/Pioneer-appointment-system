@@ -1,6 +1,6 @@
 -- Read-only checks after applying the initial migration and seeding roots.
 -- Expected before launch: accounts=2, enabled protected roots=2, grants=4,
--- every business count=0, used_bytes=0, one initial migration, no FK errors.
+-- every business count=0, used_bytes=0, all numbered migrations, no FK errors.
 SELECT COUNT(*) AS staff_accounts,
   COUNT(CASE WHEN protected=1 AND role='superadmin' AND status='enabled' THEN 1 END) AS enabled_protected_roots
   FROM staff_accounts;

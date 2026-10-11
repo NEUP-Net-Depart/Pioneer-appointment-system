@@ -10,7 +10,8 @@ export function initActivation(){
   function render(item){
     $('#activation-result').hidden=false;
     $('#activation-status').textContent=labels[item.status];
-    $('#activation-note').textContent=item.reviewNote || '审核通过前不能登录工作人员系统。';
+    const note=item.reviewNote || (item.status==='pending' ? '审核通过前不能登录工作人员系统。' : '');
+    $('#activation-note').textContent=note;$('#activation-note').hidden=!note;
     $('#activation-form').hidden=item.status!=='rejected';
     $('#activation-login').hidden=item.status!=='approved';
   }

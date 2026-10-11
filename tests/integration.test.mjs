@@ -73,7 +73,7 @@ before(async () => {
   mf = new Miniflare({ telemetry: { enabled: false }, workers: [{ config: {
     name: 'pioneer-tests', compatibilityDate: cfg.compatibility_date, compatibilityFlags: cfg.compatibility_flags,
     manifest: { mainModule: 'index.js', modules: { 'index.js': { type: 'esm', contents: await readFile('.wrangler/test-build/index.js', 'utf8') } } },
-    env: { DB: { type: 'd1', id: 'test-db' }, ATTACHMENTS: { type: 'r2', name: 'test-attachments' },
+    env: { DB: { type: 'd1', id: 'test-db' }, CAPACITY_UPGRADE_DB: { type: 'd1', id: 'capacity-upgrade-db' }, ATTACHMENTS: { type: 'r2', name: 'test-attachments' },
       JWT_SECRET: { type: 'text', value: JWT_SECRET }, PII_ENCRYPTION_KEY: { type: 'text', value: PII_ENCRYPTION_KEY } }
   } }] });
   db = await mf.getD1Database('DB'); bucket = await mf.getR2Bucket('ATTACHMENTS');
@@ -108,7 +108,7 @@ test('guest booking, encrypted contacts, lookup, queue and cancellation', async 
   await api(`/api/appointments/${item.id}`,{accessToken:'x'.repeat(43)},404);
   await api('/api/appointments', {}, 401);
   const live = await api(`/api/live/summary?appointmentId=${item.id}`,{accessToken:item.accessToken});
-  assert.equal(live.position, 1); assert.equal(live.capacity, 20); assert.equal(live.slotTotal, 1);
+  assert.equal(live.position, 1); assert.equal(live.capacity, 10); assert.equal(live.slotTotal, 1);
   const cancelled = await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', accessToken:item.accessToken, body: { status: 'cancelled', studentId: item.studentId, assignedTo: 'root001', repairNote: 'injection' } });
   assert.equal(cancelled.status, 'cancelled'); assert.equal(cancelled.assignedTo, ''); assert.equal(cancelled.repairNote, '');
   assert.ok((await book({ studentId: item.studentId })).id.endsWith('-02'));
@@ -125,14 +125,38 @@ test('validation rejects invalid dates, windows, fields, MIME, JSON and cross-si
   assert.equal(normalized.timeSlot, '19:00–20:00'); assert.equal(normalized.social, 'enc$literal-user-input');
 });
 test('simultaneous reservations cannot exceed capacity and retain sequential unique IDs', async () => {
-  const results = await Promise.all(Array.from({ length: 25 }, () => request('/api/appointments', { method: 'POST', body: draft() })));
-  assert.equal(results.filter(r => r.status === 201).length, 20);
+  const results = await Promise.all(Array.from({ length: 15 }, () => request('/api/appointments', { method: 'POST', body: draft() })));
+  assert.equal(results.filter(r => r.status === 201).length, 10);
   assert.equal(results.filter(r => r.status === 409).length, 5);
-  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointments').first()).n, 20);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointments').first()).n, 10);
   const ids = (await db.prepare('SELECT id FROM appointments ORDER BY id').all()).results.map(row => row.id);
-  assert.equal(new Set(ids).size, 20); assert.ok(ids.at(-1).endsWith('-20'));
+  assert.equal(new Set(ids).size, 10); assert.ok(ids.at(-1).endsWith('-10'));
   const live = await api(`/api/live/summary?date=${date}&campus=${encodeURIComponent('南湖')}`);
-  assert.equal(live.slots['19:00–20:00'], 20);
+  assert.equal(live.slots['19:00–20:00'], 10);
+});
+
+test('capacity migration preserves existing bookings and enforces ten on new or restored reservations', async () => {
+  const legacy = await mf.getD1Database('CAPACITY_UPGRADE_DB');
+  await applyMigration(legacy, '0001_initial.sql');
+  const insert = (n, campus = '南湖', slot = '19:00–20:00') => legacy.prepare(`INSERT INTO appointments
+    (id,student_id,name,campus,social,device_type,brand,device_model,warranty,fault_type,date,time_slot,status,
+      access_token_hash,credential_rotated_at,created_at,agreement_at,agreement_version)
+    VALUES (?,?, '测试同学',?, 'wechat','笔记本电脑','联想','ThinkPad','否','蓝屏',?,?,'pending',?,?,?,?,'v1')`)
+    .bind(`legacy-${n}`, String(900000 + n), campus, date, slot, n.toString(16).padStart(64, '0'), date, date, date);
+  await legacy.batch(Array.from({ length: 11 }, (_, n) => insert(n)));
+  await applyMigration(legacy, '0002_slot_capacity.sql');
+  assert.equal((await legacy.prepare('SELECT COUNT(*) AS n FROM appointments').first()).n, 11);
+  await legacy.prepare("UPDATE appointments SET status='completed',repair_note='已修复' WHERE id='legacy-0'").run();
+  assert.equal((await legacy.prepare("SELECT repair_note FROM appointments WHERE id='legacy-0'").first()).repair_note, '已修复');
+  await assert.rejects(insert(11).run(), /SLOT_FULL/);
+  await legacy.prepare("UPDATE appointments SET status='cancelled' WHERE id='legacy-0'").run();
+  await assert.rejects(legacy.prepare("UPDATE appointments SET status='pending' WHERE id='legacy-0'").run(), /SLOT_FULL/);
+  await legacy.prepare("UPDATE appointments SET status='no_show' WHERE id='legacy-1'").run();
+  await legacy.prepare("UPDATE appointments SET status='pending' WHERE id='legacy-0'").run();
+  await insert(12, '浑南').run();
+  await insert(13, '南湖', '20:00–21:00').run();
+  await assert.rejects(legacy.prepare("UPDATE appointments SET campus='南湖' WHERE id='legacy-12'").run(), /SLOT_FULL/);
+  await assert.rejects(legacy.prepare("UPDATE appointments SET time_slot='19:00–20:00' WHERE id='legacy-13'").run(), /SLOT_FULL/);
 });
 test('duplicate check spans campuses and is atomic', async () => {
   const input = draft();
@@ -142,9 +166,10 @@ test('duplicate check spans campuses and is atomic', async () => {
 test('reactivating cancelled appointments still enforces D1 capacity and duplicate constraints', async () => {
   const root = await login(), old = await book();
   await api(`/api/appointments/${old.id}/status`, { method: 'PATCH', token: root, body: { status: 'cancelled' } });
-  await book({ studentId: old.studentId });
+  const replacement = await book({ studentId: old.studentId });
   await api(`/api/appointments/${old.id}/status`, { method: 'PATCH', token: root, body: { status: 'pending' } }, 409);
-  for (let n = 0; n < 19; n++) await book();
+  await api(`/api/appointments/${replacement.id}/status`, { method: 'PATCH', token: root, body: { status: 'cancelled' } });
+  for (let n = 0; n < 10; n++) await book();
   await api(`/api/appointments/${old.id}/status`, { method: 'PATCH', token: root, body: { status: 'pending' } }, 409);
 });
 test('simultaneous claims have one winner; technician ownership and transitions hold', async () => {
@@ -511,13 +536,13 @@ test('only the matching credential grants guest access and recovery revokes ever
 });
 
 test('two requests for the final slot have one winner and cancellation releases capacity', async () => {
-  for (let n = 0; n < 19; n++) await book();
+  for (let n = 0; n < 9; n++) await book();
   const attempts = await Promise.all([draft(), draft()].map(body => request('/api/appointments', { method: 'POST', body })));
   assert.deepEqual(attempts.map(response => response.status).sort(), [201,409]);
   const winner = await attempts.find(response => response.status === 201).json();
   await api(`/api/appointments/${winner.id}/status`, { method: 'PATCH', accessToken:winner.accessToken, body: { status: 'cancelled', studentId: winner.studentId } });
   await book();
-  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM appointments WHERE status NOT IN ('cancelled','no_show')").first()).n, 20);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM appointments WHERE status NOT IN ('cancelled','no_show')").first()).n, 10);
 });
 
 test('SQL staff filters preserve literal searches, status groups and totals', async () => {
@@ -672,7 +697,9 @@ test('whitelist application is separate from login and approval atomically insta
   await api(`/api/activation/${application.id}`,{},404);
   assert.equal((await api(`/api/activation/${application.id}`,{headers:{'X-Activation-Receipt':application.receipt}})).status,'pending');
   await api('/api/activation-requests/review',{method:'POST',token,body:{ids:[application.id],status:'approved',reviewNote:'已当面核验部员身份和学生证'}},400);
-  await api('/api/activation-requests/review',{method:'POST',token,body:{ids:[application.id],status:'approved',identityVerified:true,reviewNote:'已当面核验部员身份和学生证'}});
+  await api('/api/activation-requests/review',{method:'POST',token,body:{ids:[application.id],status:'approved',identityVerified:true,reviewNote:'x'.repeat(301)}},400);
+  await api('/api/activation-requests/review',{method:'POST',token,body:{ids:[application.id],status:'approved',identityVerified:true}});
+  assert.equal((await api(`/api/activation/${application.id}`,{headers:{'X-Activation-Receipt':application.receipt}})).reviewNote,'');
   const user=await api('/api/auth/me',{token:await login('810001')});
   assert.equal(user.role,'technician');assert.deepEqual(user.authorizedCampuses,['浑南']);assert.equal(user.homeCampus,'南湖');
   assert.equal((await db.prepare('SELECT status FROM staff_whitelist WHERE student_id=?').bind('810001').first()).status,'activated');
@@ -686,7 +713,7 @@ test('concurrent activation submissions and approvals have exactly one winner',a
   const submitted=await Promise.all([request('/api/activation',{method:'POST',body}),request('/api/activation',{method:'POST',body})]);
   assert.deepEqual(submitted.map(response=>response.status).sort(),[201,409]);
   const application=await submitted.find(response=>response.status===201).json();
-  const review={ids:[application.id],status:'approved',identityVerified:true,reviewNote:'已当面核验部员身份和学生证'};
+  const review={ids:[application.id],status:'approved',identityVerified:true,reviewNote:'已核验'};
   const results=await Promise.all([request('/api/activation-requests/review',{method:'POST',token,body:review}),request('/api/activation-requests/review',{method:'POST',token,body:review})]);
   assert.deepEqual(results.map(response=>response.status).sort(),[200,409]);
   assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM staff_accounts WHERE account=?').bind('820001').first()).n,1);
@@ -698,9 +725,10 @@ test('identity mismatch, duplicate pending attempts, rejection and reapplication
   await api('/api/activation',{method:'POST',body:{studentId:'830001',name:'冒名部员',homeCampus:'南湖',contact:'伪造联系',password}},400);
   const first=await applyStaff('830001',{name:'真实部员'});
   await api('/api/activation',{method:'POST',body:{studentId:'830001',name:'真实部员',homeCampus:'南湖',contact:'其他联系',password}},409);
-  await api('/api/activation-requests/review',{method:'POST',token,body:{ids:[first.id],status:'rejected',reviewNote:'申请人未通过线下身份核验'}});
+  await api('/api/activation-requests/review',{method:'POST',token,body:{ids:[first.id],status:'rejected',reviewNote:'  '}});
   const second=await applyStaff('830001',{name:'真实部员'});assert.notEqual(first.id,second.id);
   assert.equal((await api(`/api/activation/${first.id}`,{headers:{'X-Activation-Receipt':first.receipt}})).status,'rejected');
+  assert.equal((await api(`/api/activation/${first.id}`,{headers:{'X-Activation-Receipt':first.receipt}})).reviewNote,'');
   await api('/api/auth/login',{method:'POST',body:{account:'830001',password}},401);
   await api('/api/staff-whitelist/830001',{method:'PATCH',token,body:{status:'revoked'}});
   assert.equal((await api(`/api/activation/${second.id}`,{headers:{'X-Activation-Receipt':second.receipt}})).status,'rejected');

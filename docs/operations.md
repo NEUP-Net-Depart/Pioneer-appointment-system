@@ -61,6 +61,28 @@ npm run release:plan
 
 ## 远程迁移、root 初始化和发布
 
+### GitHub Actions 统一发布
+
+[Cloudflare MVP checks](../.github/workflows/check.yml) 对所有推送和 PR 运行本地验证，发布行为如下：
+
+| 触发方式 | 目标 | 行为 |
+|---|---|---|
+| 推送 `main` | Production | 验证通过后自动迁移、发布和检查 |
+| Actions 中选择 `dev`，点击 Run workflow | Preview | 验证通过后迁移、发布和检查 |
+| 推送 `dev` 或其他分支、PR | 无远程发布 | 仅验证 |
+
+工作流先运行 `npm run verify`，再在同一发布任务内依次执行 D1 迁移、Pages 发布和 HTTP smoke。迁移失败不会发布，发布失败不会继续检查。同一环境的发布串行执行，不中断正在进行的迁移。
+
+GitHub 仓库 Secrets 需要 `CLOUDFLARE_ACCOUNT_ID`、`CLOUDFLARE_API_TOKEN`。Token 需要目标账号的 D1 Edit 和 Cloudflare Pages Edit 权限；现有附件维护任务还使用 R2 权限。Pages 的 `JWT_SECRET`、`PII_ENCRYPTION_KEY` 继续按 Production/Preview 分别保存在 Cloudflare。
+
+GitHub Environments 配置 `production`、`preview`，分别只允许 `main`、`dev` 发布，并配置环境变量 `SITE_URL`：Production 为 `https://pioneer-appointment-system.pages.dev`，Preview 为 `https://dev.pioneer-appointment-system.pages.dev`。Production 不设置额外的必需审批人，以保持推送 `main` 后自动运行。
+
+在 Cloudflare Pages 项目的 Git 构建设置中关闭 Production 自动部署和 Preview 自动部署，由 Actions 统一发布；保留 Git 关联、Production 分支 `main` 和两套绑定。否则 Pages 的独立自动部署可能抢在数据库迁移完成前上线。
+
+迁移文件只追加、不修改已执行文件。迁移执行时旧版本仍在提供服务，SQL 必须与旧版本兼容；删除字段等破坏性变化应拆成先扩展、再切换应用、最后清理的多次发布。Pages 发布失败后已执行的 D1 迁移保留，重跑工作流会跳过已应用迁移。工作流不初始化或重置 root 账号。
+
+### 本地手动操作
+
 远程命令默认只打印计划。执行时必须使用对应环境的授权参数；不要把 Preview 参数用于 Production。
 
 ### Preview
@@ -97,7 +119,7 @@ npm run deploy -- --execute --approve-production
 npm run smoke -- https://<production-domain>
 ```
 
-首次使用新数据库时只应用 `migrations/0001_initial.sql`。上线后的结构变化追加新的编号迁移，不修改已应用文件。旧结构数据库不能直接套用当前初始迁移。
+首次使用新数据库时按编号顺序应用 `migrations/` 下的全部迁移。已有数据库应用尚未执行的迁移；`0002_slot_capacity.sql` 将每校区每时段的新预约上限改为 10 人，并允许继续处理原有预约。上线后的结构变化追加新的编号迁移，不修改已应用文件。旧结构数据库不能直接套用当前初始迁移。
 
 迁移和 seed 不由 Pages Functions 自动执行。初始化后可用 [release-checks.sql](release-checks.sql) 做只读计数检查；Production 应只有两个受保护 root、四条校区授权和空业务表。
 

@@ -8,38 +8,18 @@
   <link rel="icon" href="/assets/organization-logo.jpg" type="image/jpeg" />
   <link rel="stylesheet" href="/shared/styles.css" />
 </head>
-<body class="user-mode"><header class="topbar"><div class="topbar-inner"><a class="brand" href="/"><img class="organization-logo" src="/assets/organization-logo.jpg" alt="先锋网络中心 Logo" /><span><strong>先锋硬件部</strong><small>免费维修预约系统</small></span></a><nav class="main-nav" aria-label="学生预约导航"><button class="nav-link is-active" type="button" data-view-link="booking">预约维修</button><button class="nav-link" type="button" data-view-link="lookup">我的预约</button></nav><a class="staff-entry-link" href="/staff/">工作人员登录</a></div></header>
+<body class="user-mode"><header class="topbar"><div class="topbar-inner"><a class="brand" href="/"><img class="organization-logo" src="/assets/organization-logo.jpg" alt="先锋网络中心 Logo" /><span><strong>先锋硬件部</strong><small>免费维修预约系统</small></span></a><nav class="main-nav" aria-label="学生预约导航"><button class="nav-link is-active" type="button" data-view-link="booking">预约维修</button><button class="nav-link" type="button" data-view-link="lookup">我的预约</button></nav></div></header>
 <main>
     <section class="view is-active" id="booking-view" data-view="booking">
-      <div class="hero-band">
-        <div class="hero-copy">
-          <p class="eyebrow">HARDWARE SUPPORT · 01</p>
-          <h1>让设备维修，<br /><em>有迹可循。</em></h1>
-          <p class="hero-subtitle">免费提交设备信息与期望时间，维修人员会在服务时间内确认接单。</p>
-          <div class="hero-facts">
-            <span><b>01</b> 填写信息</span><span><b>02</b> 预约时段</span><span><b>03</b> 免费维修</span>
-          </div>
-          <div class="hero-status"><span class="signal-led"></span><span>预约服务节点正常运行</span><code>LIVE / 10S</code></div>
-        </div>
-        <div class="hero-note">
-          <img class="user-service-logo" src="/assets/organization-logo.jpg" alt="先锋网络中心 Logo" />
-          <span class="note-label">今日服务提示</span>
-          <strong>请提前备份重要数据</strong>
-          <p>服务时间为周一至周四 19:00–21:00。请备份数据并携带设备、电源；配件及耗材需由机主自行准备。</p>
-          <span class="note-rule"></span>
-          <span class="note-meta">先锋网络中心 · 硬件部</span>
-        </div>
-      </div>
-
       <div class="content-shell">
-        <div class="live-summary live-summary-top" id="live-summary" aria-live="polite"><div><span>本校区当天预约</span><strong id="live-day-count">—</strong><small id="live-day-label">请选择校区</small></div><div><span>本校区当前时段</span><strong id="live-campus-count">—</strong><small id="live-campus-label">请选择校区和时段</small></div><div><span>当前时段剩余名额</span><strong id="live-slot-count">—</strong><small>每校区每时段最多 20 人</small></div><em id="live-updated">等待选择校区</em></div>
+        <div class="live-summary live-summary-top" id="live-summary" aria-live="polite"><div><span>本校区当天预约</span><strong id="live-day-count">—</strong><small id="live-day-label">请选择校区</small></div><div><span>本校区当前时段</span><strong id="live-campus-count">—</strong><small id="live-campus-label">请选择校区和时段</small></div><div><span>当前时段剩余名额</span><strong id="live-slot-count">—</strong><small>每校区每时段最多 10 人</small></div><em id="live-updated">等待选择校区</em></div>
         <div class="section-heading">
           <div><span class="section-index">01</span><h2>填写预约信息</h2></div>
           <span class="required-note"><i>*</i> 为必填项</span>
         </div>
         <form id="booking-form" class="booking-form" novalidate>
           <div class="form-block">
-            <div class="block-heading"><span>机主信息</span><small>用于联系与核验</small></div>
+            <div class="block-heading"><span>机主信息</span></div>
             <div class="form-grid four-cols">
               <label>学号 <i>*</i><input name="studentId" required placeholder="例如 20240101" autocomplete="off" /></label>
               <label>姓名 <i>*</i><input name="name" required placeholder="请输入姓名" autocomplete="name" /></label>
@@ -49,7 +29,7 @@
             <div class="form-grid two-cols compact-gap"><label>学院 / 专业<input name="college" maxlength="120" placeholder="例如 信息学院" /></label><label>QQ / 微信 <i>*</i><input name="social" required maxlength="120" placeholder="请输入 QQ 或微信号" /></label></div>
           </div>
           <div class="form-block">
-            <div class="block-heading"><span>设备与故障</span><small>描述越具体，准备越充分</small></div>
+            <div class="block-heading"><span>设备与故障</span></div>
             <div class="form-grid four-cols">
               <label>设备类型 <i>*</i><select name="deviceType" required><option value="">请选择设备类型</option><option>笔记本电脑</option><option>台式电脑</option><option>显示器</option><option>打印机</option><option>其他外设</option></select></label>
               <label>品牌 <i>*</i><input name="brand" required maxlength="80" placeholder="例如 联想 / Dell" /></label>
@@ -67,12 +47,12 @@
               <label>故障描述<textarea name="issue" rows="3" placeholder="选填，请描述设备的异常现象、已尝试的处理方式等"></textarea></label>
             </div>
             <label class="wide-field">备注（选填）<textarea name="note" maxlength="500" rows="2" placeholder="其他需要说明的情况"></textarea></label>
-            <label class="wide-field attachment-field">故障照片或相关文件（选填）<input id="appointment-attachments" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,text/plain" multiple /><small class="field-hint">支持 JPG、PNG、WEBP、PDF、TXT，单个文件不超过 5 MB。附件自上传起保留 180 天。</small></label>
+            <label class="wide-field attachment-field">故障照片或相关文件（选填）<input id="appointment-attachments" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,text/plain" multiple /><small class="field-hint">支持 JPG、PNG、WEBP、PDF、TXT，单个文件不超过 5 MB。</small></label>
           </div>
           <div class="agreement-block">
             <label class="check-row"><input type="checkbox" name="agreement" required /><span class="check-box"></span><span>我已阅读并同意<a href="#agreement" id="agreement-link">《免费维修免责与行为操守协议》</a>，确认设备中的重要数据已完成备份。</span></label>
           </div>
-          <div class="form-actions"><p>提交后自动保存在此浏览器，可在“我的预约”查看。</p><button class="primary-btn" type="submit">提交预约 <span>→</span></button></div>
+          <div class="form-actions"><button class="primary-btn" type="submit">提交预约 <span>→</span></button></div>
         </form>
 
         <section class="success-panel" id="success-panel" hidden>
@@ -85,7 +65,7 @@
     </section>
 
     <section class="view" id="lookup-view" data-view="lookup">
-      <div class="page-intro"><p class="eyebrow">MY APPOINTMENT · 02</p><h1>我的预约</h1><p>无需登录，直接查看此浏览器保存的预约及排队进度。</p></div>
+      <div class="page-intro"><p class="eyebrow">MY APPOINTMENT · 02</p><h1>我的预约</h1></div>
       <div class="content-shell lookup-shell">
         <button class="secondary-btn" id="refresh-my-appointments" type="button">刷新我的预约</button><form id="lookup-form" class="lookup-form"><label><span>在其他设备访问</span><input id="lookup-link" type="text" required placeholder="粘贴私人查询链接" autocomplete="off" /></label><button class="primary-btn" type="submit">打开链接</button></form><p>凭证遗失请联系工作人员人工核验后重新签发。私人链接可访问预约和附件，请勿转发。</p>
         <div id="lookup-results" class="lookup-results"><div class="empty-state"><span class="empty-icon">⌕</span><h2>输入凭证开始查询</h2><p>预约成功后自动保存，或打开私人查询链接。</p></div></div>
