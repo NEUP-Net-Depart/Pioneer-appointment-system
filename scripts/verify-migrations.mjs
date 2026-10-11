@@ -14,9 +14,9 @@ try {
   const args = ['d1','migrations','apply','DB','--local','--persist-to',path];
   wrangler(args);
   wrangler(args); // The migration ledger must make the second application a no-op.
-  const [schema, keys] = JSON.parse(wrangler(['d1','execute','DB','--local','--persist-to',path,'--json','--command',
-    "SELECT name FROM sqlite_schema WHERE type IN ('table','trigger','index') ORDER BY name; PRAGMA foreign_key_check;"], { capture: true }));
-  assert.ok(schema.success && keys.success);
+  const [schema, keys, capacities] = JSON.parse(wrangler(['d1','execute','DB','--local','--persist-to',path,'--json','--command',
+    "SELECT name FROM sqlite_schema WHERE type IN ('table','trigger','index') ORDER BY name; PRAGMA foreign_key_check; SELECT campus,time_slot,capacity,revision FROM slot_capacities ORDER BY campus,time_slot;"], { capture: true }));
+  assert.ok(schema.success && keys.success && capacities.success);
   assert.deepEqual(keys.results, [], 'D1 foreign key violations');
   const names = new Set(schema.results.map(row => row.name));
   for (const name of ['staff_accounts','staff_campus_grants','staff_whitelist','whitelist_campus_grants','activation_requests','credential_recoveries','appointments','appointment_attachments','rate_limits','storage_quota','attachment_storage','attachment_storage_reserve','attachment_storage_release','idx_attachment_expiry','idx_storage_expiry','idx_storage_pending','appointment_capacity_insert','appointment_capacity_update','idx_active_student_slot','idx_active_queue']) assert.ok(names.has(name), `Missing D1 schema object: ${name}`);
@@ -24,6 +24,9 @@ try {
   assert.ok(names.has('idx_one_pending_activation') && names.has('idx_one_approved_activation'),'Missing activation uniqueness constraints');
   assert.ok(names.has('idx_repair_number'), 'Missing repair number uniqueness index');
   assert.ok(names.has('idx_booked_expiry'),'Missing booked expiry index');
+  assert.ok(names.has('slot_capacities'), 'Missing campus/slot capacity settings');
+  assert.equal(capacities.results.length, 4);
+  assert.ok(capacities.results.every(row => row.capacity === 10 && row.revision === 0), 'Default capacity settings changed');
   assert.ok(!names.has('users') && !names.has('idx_appointments_queue') && !names.has('appointments_new') && !names.has('appointment_attachments_new') && !names.has('credential_recoveries_new'),'Retired or temporary schema still exists');
   console.log('All D1 migrations applied to fresh state; re-application and foreign keys verified.');
 } finally { await rm(path, { recursive: true, force: true }); }

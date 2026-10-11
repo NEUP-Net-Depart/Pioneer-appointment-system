@@ -4,6 +4,7 @@ import { attachmentRepository } from './db/attachments.js';
 import { queueRepository } from './db/queue.js';
 import { statsRepository } from './db/stats.js';
 import { rateLimitRepository } from './db/rate-limits.js';
+import { slotCapacityRepository } from './db/slot-capacities.js';
 import { authService } from './services/auth.js';
 import { requireRole } from './services/permissions.js';
 import { activationRepository } from './db/activation.js';
@@ -15,6 +16,7 @@ import { statsService } from './services/stats.js';
 import { userService } from './services/users.js';
 import { exportService } from './services/export.js';
 import { rateLimitService } from './services/rate-limits.js';
+import { slotCapacityService } from './services/slot-capacities.js';
 import { storageLimit } from './lib/env.js';
 
 export function createContext(request, env) {
@@ -29,6 +31,7 @@ export function createContext(request, env) {
     queue: queueService(appointments, queueRepository(db)), stats: statsService(statsRepository(db), appointments),
     export: exportService(appointments, env.PII_ENCRYPTION_KEY),
     limits: rateLimitService(rateLimitRepository(db), env.JWT_SECRET),
+    slotCapacities: slotCapacityService(slotCapacityRepository(db)),
     async health() { await Promise.all([users.health(), env.ATTACHMENTS.list({ limit: 1 })]); return { ok: true, service: 'pioneer-repair-api', database: 'd1', attachments: 'r2' }; }
   };
   let authentication;

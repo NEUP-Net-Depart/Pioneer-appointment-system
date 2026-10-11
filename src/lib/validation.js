@@ -67,6 +67,14 @@ export function statsQuery(input) {
   if (!['7','30','all'].includes(range) || (day && !validDate(day))) fail(400, '统计范围或日期不正确');
   return { range, day };
 }
+export function slotCapacityInput(input) {
+  if (!CAMPUSES.includes(input.campus)) fail(400, '校区不正确');
+  const timeSlot = normalizeTimeSlot(stringField(input.timeSlot, '时段', 40, true));
+  if (!timeSlot) fail(400, '时段不正确');
+  if (!Number.isSafeInteger(input.capacity) || input.capacity < 0) fail(400, '预约人数必须为非负安全整数');
+  if (!Number.isSafeInteger(input.revision) || input.revision < 0) fail(400, '配置版本不正确');
+  return { campus: input.campus, timeSlot, capacity: input.capacity, revision: input.revision };
+}
 export function passwordInput(value) {
   if (typeof value !== 'string' || value.length < 8 || value.length > 128) fail(400, '密码长度应为 8 至 128 位');
   return value;

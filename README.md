@@ -105,6 +105,7 @@ npm run release:plan
 | GET / POST | `/api/appointments/:id/attachments` | 附件列表 / 上传 |
 | GET | `/api/appointments/:id/attachments/:attachmentId` | 附件下载 |
 | GET | `/api/live/summary` | 公开名额和个人排队信息 |
+| GET / PATCH | `/api/slot-capacities` | admin+ 查询 / 更新授权校区的时段人数配置 |
 | GET | `/api/stats/summary`、`/api/stats/fault-types` | admin+ 统计 |
 | GET | `/api/users` | admin+ 账号列表 |
 | PATCH | `/api/users/:account` | 管理低于自身且非保护账号 |
@@ -113,3 +114,9 @@ npm run release:plan
 | GET | `/api/export/appointments.csv` | admin+ 导出 |
 
 学生的查询、取消、排队和附件接口都要求预约访问凭证；预约编号仅用于展示和业务沟通，不能单独访问敏感数据。
+
+管理员可在工作人员端“个人设置 → 预约人数设置”调整容量，业务规则见 [预约规则](docs/requirements.md#预约规则)。
+
+`GET /api/slot-capacities` 返回 `{ items: [{ campus, timeSlot, capacity, revision }] }`，只包含授权校区。PATCH 接受单项同形对象，capacity 为非负安全整数，revision 必须匹配当前版本；成功返回更新项并递增 revision，冲突返回 409，权限不足返回 403。
+
+`GET /api/live/summary` 返回各时段占用人数 `slots` 和容量 `slotCapacities`；选校区时返回该校区数据，否则汇总两个校区。`capacity` 与 `slotTotal` 使用相同筛选范围：选时段时返回该时段容量，否则合计两个时段；凭预约查询时默认采用该预约的校区、时段。暂停或满额时预约写入返回 409。

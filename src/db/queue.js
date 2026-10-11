@@ -12,14 +12,16 @@ export function queueRepository(db) {
         COUNT(CASE WHEN ${campusCondition} AND time_slot='20:00–21:00' THEN 1 END) AS secondSlot
         FROM appointments WHERE date=? AND ${occupied}`)
         .bind(campus, campus, campus, campus, timeSlot, timeSlot, campus, campus, campus, campus, date);
-      const statements = [counts];
+      const capacities = db.prepare(`SELECT time_slot,SUM(capacity) AS capacity FROM slot_capacities
+        WHERE ${campusCondition} GROUP BY time_slot`).bind(campus, campus);
+      const statements = [counts, capacities];
       if (current) statements.push(db.prepare(`SELECT COUNT(*) AS queueTotal,
         COUNT(CASE WHEN created_at<? OR (created_at=? AND id<?) THEN 1 END) AS ahead,
         COUNT(CASE WHEN id=? THEN 1 END) AS present
         FROM appointments WHERE date=? AND campus=? AND time_slot=? AND ${active}`)
         .bind(current.createdAt, current.createdAt, current.id, current.id, current.date, current.campus, current.timeSlot));
       const result = await db.batch(statements);
-      return { counts: result[0].results[0], queue: current ? result[1].results[0] : null };
+      return { counts: result[0].results[0], capacities: result[1].results, queue: current ? result[2].results[0] : null };
     }
   };
 }
