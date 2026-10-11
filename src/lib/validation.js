@@ -1,5 +1,5 @@
 import { fail } from './http.js';
-import { normalizeTimeSlot, statusLabels, CAMPUSES, roleLevel } from '../../shared/constants.js';
+import { normalizeTimeSlot, statusLabels, outcomeLabels, CAMPUSES, roleLevel } from '../../shared/constants.js';
 import { validDate } from '../../shared/time.js';
 
 export const account = value => String(value ?? '').trim().toLowerCase();
@@ -22,6 +22,12 @@ export function bookingInput(input) {
 }
 export function appointmentPatch(input) {
   const patch = {};
+  if (input.action !== undefined && input.action !== 'correct') fail(400, '操作不正确');
+  if (input.startedAt !== undefined || input.completedAt !== undefined) fail(400, '维修时间由系统记录');
+  if (input.outcome !== undefined) {
+    if (!Object.hasOwn(outcomeLabels, input.outcome) || input.outcome === 'legacy_unknown') fail(400, '结束结果不正确');
+    patch.outcome = input.outcome;
+  }
   if (input.status !== undefined) {
     if (!Object.hasOwn(statusLabels, input.status)) fail(400, '状态不正确');
     patch.status = input.status;
@@ -30,7 +36,7 @@ export function appointmentPatch(input) {
     if (input[key] !== undefined) patch[key] = stringField(input[key], key, max);
   }
   if (input.revision!==undefined && (!Number.isInteger(input.revision) || input.revision<0)) fail(400,'预约版本不正确');
-  return {patch,revision:input.revision};
+  return {patch,revision:input.revision,action:input.action};
 }
 export function appointmentQuery(input) {
   const query = { q: stringField(input.q, '搜索内容', 120), campus: input.campus || '', date: input.date || '', status: input.status || 'all' };

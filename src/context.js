@@ -26,7 +26,7 @@ export function createContext(request, env) {
     activation: activationService(activationRepository(db),users),
     appointments: appointmentService(appointments, users, env.PII_ENCRYPTION_KEY),
     attachments: attachmentService(appointments, attachmentRepository(db), env.ATTACHMENTS, storageLimit(env)),
-    queue: queueService(appointments, queueRepository(db)), stats: statsService(statsRepository(db)),
+    queue: queueService(appointments, queueRepository(db)), stats: statsService(statsRepository(db), appointments),
     export: exportService(appointments, env.PII_ENCRYPTION_KEY),
     limits: rateLimitService(rateLimitRepository(db), env.JWT_SECRET),
     async health() { await Promise.all([users.health(), env.ATTACHMENTS.list({ limit: 1 })]); return { ok: true, service: 'pioneer-repair-api', database: 'd1', attachments: 'r2' }; }

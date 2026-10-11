@@ -24,7 +24,8 @@ export function userRepository(db) {
     async list() {
       return (await db.prepare(`SELECT staff_accounts.*,
         (SELECT json_group_array(campus) FROM staff_campus_grants WHERE account=staff_accounts.account) AS campuses,
-        (SELECT COUNT(*) FROM appointments WHERE assigned_to=staff_accounts.account) AS workload
+        (SELECT COUNT(*) FROM appointments WHERE assigned_to=staff_accounts.account AND
+          (status='in_progress' OR (status='completed' AND outcome IN ('repaired','unrepaired','not_needed','legacy_unknown')))) AS workload
         FROM staff_accounts ORDER BY role DESC,name`).all()).results.map(publicUser);
     },
     async update(target, patch, { selfPassword = false } = {}) {

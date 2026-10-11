@@ -14,6 +14,15 @@ export function dateKey(instant = new Date()) {
 export const nowIso = () => new Date().toISOString();
 export const epochSeconds = () => Math.floor(Date.now() / 1000);
 export const timeLabel = (instant = new Date()) => businessClock.format(instant);
+export const noShowDeadline = date => `${date}T21:30:00+08:00`;
+export const slotDeadline = (date, slot) => `${date}T${slot.split('–')[1]}:00+08:00`;
+export function expiredBookingDate(instant = new Date()) {
+  const today = dateKey(instant);
+  return instant.getTime() >= Date.parse(noShowDeadline(today)) ? today : addDays(today, -1);
+}
+export function formatInstant(value) {
+  return value ? `${formatDate(value)} ${timeLabel(new Date(value))}` : '未记录';
+}
 
 // UTC here is only a timezone-independent calendar calculator, not the business timezone.
 const calendar = key => new Date(`${key}T00:00:00Z`);

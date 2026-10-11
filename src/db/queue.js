@@ -1,4 +1,5 @@
-const active = "status NOT IN ('cancelled','no_show')";
+const occupied = "NOT (status='completed' AND outcome='cancelled')";
+const active = "status IN ('booked','in_progress')";
 export function queueRepository(db) {
   return {
     async summary({ date, campus, timeSlot }, current) {
@@ -9,7 +10,7 @@ export function queueRepository(db) {
         COUNT(CASE WHEN ${slotCondition} THEN 1 END) AS slotTotal,
         COUNT(CASE WHEN ${campusCondition} AND time_slot='19:00–20:00' THEN 1 END) AS firstSlot,
         COUNT(CASE WHEN ${campusCondition} AND time_slot='20:00–21:00' THEN 1 END) AS secondSlot
-        FROM appointments WHERE date=? AND ${active}`)
+        FROM appointments WHERE date=? AND ${occupied}`)
         .bind(campus, campus, campus, campus, timeSlot, timeSlot, campus, campus, campus, campus, date);
       const statements = [counts];
       if (current) statements.push(db.prepare(`SELECT COUNT(*) AS queueTotal,

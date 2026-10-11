@@ -1,0 +1,50 @@
+name: End unattended appointments
+on:
+  schedule:
+    # 13:35 UTC = 21:35 Asia/Shanghai; catch up missed days too.
+    - cron: '35 13 * * *'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to process
+        type: choice
+        default: both
+        options: [both, production, preview]
+      dry_run:
+        description: Only inspect eligible appointments
+        type: boolean
+        default: true
+permissions:
+  contents: read
+jobs:
+  end-no-shows:
+    if: github.event_name == 'workflow_dispatch' || vars.BOOKING_MAINTENANCE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [production, preview]
+    concurrency:
+      group: appointments-end-no-shows-${{ matrix.environment }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: End appointments
+        if: github.event_name == 'schedule' || inputs.environment == 'both' || inputs.environment == matrix.environment
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TARGET_ENVIRONMENT: ${{ matrix.environment }}
+          APPLY_ENDINGS: ${{ github.event_name == 'schedule' || !inputs.dry_run }}
+        shell: bash
+        run: |
+          args=(--dry-run)
+          if [[ "$APPLY_ENDINGS" == "true" ]]; then args=(--apply); fi
+          if [[ "$TARGET_ENVIRONMENT" == "preview" ]]; then args+=(--preview); fi
+          npm run appointments:end-no-shows -- "${args[@]}"

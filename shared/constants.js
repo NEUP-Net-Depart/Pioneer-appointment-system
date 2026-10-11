@@ -4,17 +4,18 @@ export const roleLevel = { technician: 1, admin: 2, superadmin: 3 };
 export const CAMPUSES = ['南湖', '浑南'];
 export const roleLabels = {technician:'维修人员',admin:'管理员',superadmin:'最高权限者'};
 export const appointmentTransitions = {
-  pending:['claimed','awaiting_claim'],awaiting_claim:['claimed'],
-  claimed:['in_progress','completed','no_show','no_repair'],in_progress:['completed','no_show','no_repair']
+  booked: ['in_progress', 'completed'], in_progress: ['completed']
 };
 export const statusLabels = {
-  pending: '待审核', awaiting_claim: '待接单', claimed: '已接单', in_progress: '维修中',
-  completed: '已完成', cancelled: '已取消', no_show: '爽约', no_repair: '无法维修'
+  booked: '已预约', in_progress: '维修中', completed: '已结束'
 };
 export const statusClass = {
-  pending: 'status-pending', awaiting_claim: 'status-pending', claimed: 'status-progress',
-  in_progress: 'status-progress', completed: 'status-completed', cancelled: 'status-pending',
-  no_show: 'status-pending', no_repair: 'status-pending'
+  booked: 'status-pending', in_progress: 'status-progress', completed: 'status-completed'
+};
+export const repairOutcomes = ['repaired', 'unrepaired', 'not_needed'];
+export const outcomeLabels = {
+  repaired: '修复成功', unrepaired: '未修复', not_needed: '无需维修',
+  cancelled: '已取消', no_show: '未到场', legacy_unknown: '历史未分类'
 };
 export function normalizeTimeSlot(value) {
   const match = String(value ?? '').trim().replace(/：/g, ':').match(/^(\d{1,2})\s*:\s*(\d{2})\s*[‐‑‒–—−-]\s*(\d{1,2})\s*:\s*(\d{2})$/);

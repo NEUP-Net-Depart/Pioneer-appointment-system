@@ -155,3 +155,10 @@ html{scrollbar-gutter:stable}
   html{scroll-behavior:auto}
   *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
 }
+/* Repair results and the separate administrator correction form share the existing field style. */
+#repair-result-field{display:block;color:#415563;font-size:12px;margin-top:16px}
+#detail-outcome,#correction-panel select{display:block;width:100%;margin-top:8px;border:1px solid #c4d7de;border-radius:4px;background:#fff;color:var(--ink);padding:10px 11px;outline:none}
+#detail-outcome:focus,#correction-panel select:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(72,201,192,.16)}
+#detail-times{color:var(--muted);font-size:12px;line-height:1.8;overflow-wrap:anywhere}
+#correction-panel summary{cursor:pointer;font-weight:700;color:var(--navy)}
+.detail-modal .modal-actions{flex-wrap:wrap}

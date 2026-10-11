@@ -4,7 +4,7 @@ import { saveAppointment,privateLink } from './credentials.js';
 import { uploadAttachments } from '/shared/attachments.js';
 import { startVisiblePolling } from '/shared/polling.js';
 import { normalizeTimeSlot } from '/shared/constants.js';
-import { addDays, serviceDay, dateKey, nowIso, timeLabel } from '/shared/time.js';
+import { addDays, serviceDay, dateKey, nowIso, timeLabel, slotDeadline } from '/shared/time.js';
 
 function configureDateRange() {
   const input = $('input[name="date"]'); const today = dateKey();
@@ -32,7 +32,8 @@ async function updateLiveSummary() {
     for (const option of select.options) {
       if (!option.value) continue;
       const remaining = Math.max(0, summary.capacity - (summary.slots[option.value] || 0));
-      option.disabled = !remaining; option.textContent = `${option.value} · 剩余 ${remaining} 名`;
+      const ended = Date.parse(slotDeadline(date, option.value)) <= Date.now();
+      option.disabled = ended || !remaining; option.textContent = ended ? `${option.value} · 时段已结束` : `${option.value} · 剩余 ${remaining} 名`;
     }
     $('#slot-capacity').textContent = timeSlot ? `该校区该时段还可预约 ${Math.max(0, summary.capacity - summary.slotTotal)} 人` : `每个校区每个时段最多 ${summary.capacity} 人`;
     $('#live-day-count').textContent = summary.campusDayTotal;

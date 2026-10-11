@@ -1,11 +1,13 @@
 import { guestAppointment } from './access.js';
-import { dateKey } from '../../shared/time.js';
+import { dateKey, expiredBookingDate, nowIso } from '../../shared/time.js';
 import { SLOT_CAPACITY, TIME_SLOTS } from '../../shared/constants.js';
 
 export function queueService(appointments, queue) {
   return {
     async summary(query, accessToken) {
-      const current = query.appointmentId ? await guestAppointment(appointments,query.appointmentId,accessToken) : null;
+      let current = query.appointmentId ? await guestAppointment(appointments,query.appointmentId,accessToken) : null;
+      await appointments.endNoShows(expiredBookingDate(), nowIso(), current ? {id:current.id} : {});
+      if (current) current = await appointments.find(current.id);
       const date = query.date || current?.date || dateKey();
       const selection = { date, campus: query.campus || current?.campus || '', timeSlot: query.timeSlot || current?.timeSlot || '' };
       const { counts, queue: position } = await queue.summary(selection, current);

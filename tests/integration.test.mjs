@@ -9,6 +9,8 @@ import { config, wrangler } from '../scripts/cli.mjs';
 import { dateKey, addDays, serviceDay, formatDate } from '../shared/time.js';
 import { attachmentRepository } from '../src/db/attachments.js';
 import { appointmentRepository } from '../src/db/appointments.js';
+import { appointmentService } from '../src/services/appointments.js';
+import { endNoShows } from '../scripts/end-no-shows.mjs';
 import { attachmentService } from '../src/services/attachments.js';
 import { storageLimit } from '../src/lib/env.js';
 import { cleanupAttachments } from '../scripts/cleanup-attachments.mjs';
@@ -73,7 +75,7 @@ before(async () => {
   mf = new Miniflare({ telemetry: { enabled: false }, workers: [{ config: {
     name: 'pioneer-tests', compatibilityDate: cfg.compatibility_date, compatibilityFlags: cfg.compatibility_flags,
     manifest: { mainModule: 'index.js', modules: { 'index.js': { type: 'esm', contents: await readFile('.wrangler/test-build/index.js', 'utf8') } } },
-    env: { DB: { type: 'd1', id: 'test-db' }, CAPACITY_UPGRADE_DB: { type: 'd1', id: 'capacity-upgrade-db' }, ATTACHMENTS: { type: 'r2', name: 'test-attachments' },
+    env: { DB: { type: 'd1', id: 'test-db' }, CAPACITY_UPGRADE_DB: { type: 'd1', id: 'capacity-upgrade-db' }, WORKFLOW_UPGRADE_DB: { type: 'd1', id: 'workflow-upgrade-db' }, ATTACHMENTS: { type: 'r2', name: 'test-attachments' },
       JWT_SECRET: { type: 'text', value: JWT_SECRET }, PII_ENCRYPTION_KEY: { type: 'text', value: PII_ENCRYPTION_KEY } }
   } }] });
   db = await mf.getD1Database('DB'); bucket = await mf.getR2Bucket('ATTACHMENTS');
@@ -109,8 +111,8 @@ test('guest booking, encrypted contacts, lookup, queue and cancellation', async 
   await api('/api/appointments', {}, 401);
   const live = await api(`/api/live/summary?appointmentId=${item.id}`,{accessToken:item.accessToken});
   assert.equal(live.position, 1); assert.equal(live.capacity, 10); assert.equal(live.slotTotal, 1);
-  const cancelled = await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', accessToken:item.accessToken, body: { status: 'cancelled', studentId: item.studentId, assignedTo: 'root001', repairNote: 'injection' } });
-  assert.equal(cancelled.status, 'cancelled'); assert.equal(cancelled.assignedTo, ''); assert.equal(cancelled.repairNote, '');
+  const cancelled = await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', accessToken:item.accessToken, body: { status: 'completed', outcome: 'cancelled', studentId: item.studentId, assignedTo: 'root001', repairNote: 'injection' } });
+  assert.equal(cancelled.status, 'completed'); assert.equal(cancelled.outcome, 'cancelled'); assert.equal(cancelled.assignedTo, ''); assert.equal(cancelled.repairNote, '');
   assert.ok((await book({ studentId: item.studentId })).id.endsWith('-02'));
 });
 test('validation rejects invalid dates, windows, fields, MIME, JSON and cross-site writes', async () => {
@@ -165,28 +167,28 @@ test('duplicate check spans campuses and is atomic', async () => {
 });
 test('reactivating cancelled appointments still enforces D1 capacity and duplicate constraints', async () => {
   const root = await login(), old = await book();
-  await api(`/api/appointments/${old.id}/status`, { method: 'PATCH', token: root, body: { status: 'cancelled' } });
+  await api(`/api/appointments/${old.id}/status`, { method: 'PATCH', token: root, body: { status: 'completed', outcome: 'cancelled' } });
   const replacement = await book({ studentId: old.studentId });
-  await api(`/api/appointments/${old.id}/status`, { method: 'PATCH', token: root, body: { status: 'pending' } }, 409);
-  await api(`/api/appointments/${replacement.id}/status`, { method: 'PATCH', token: root, body: { status: 'cancelled' } });
+  await api(`/api/appointments/${old.id}/status`, { method: 'PATCH', token: root, body: { action: 'correct', status: 'booked' } }, 409);
+  await api(`/api/appointments/${replacement.id}/status`, { method: 'PATCH', token: root, body: { status: 'completed', outcome: 'cancelled' } });
   for (let n = 0; n < 10; n++) await book();
-  await api(`/api/appointments/${old.id}/status`, { method: 'PATCH', token: root, body: { status: 'pending' } }, 409);
+  await api(`/api/appointments/${old.id}/status`, { method: 'PATCH', token: root, body: { action: 'correct', status: 'booked' } }, 409);
 });
-test('simultaneous claims have one winner; technician ownership and transitions hold', async () => {
+test('simultaneous sign-ins have one winner; technician ownership and transitions hold', async () => {
   const item = await book();
   const tokens = await Promise.all([addUser('300001'), addUser('300002')]);
-  const results = await Promise.all(tokens.map(token => request(`/api/appointments/${item.id}/status`, { method: 'PATCH', token, body: { status: 'claimed' } })));
+  const results = await Promise.all(tokens.map(token => request(`/api/appointments/${item.id}/status`, { method: 'PATCH', token, body: { status: 'in_progress' } })));
   assert.equal(results.filter(r => r.status === 200).length, 1);
   assert.ok(results.some(r => [403,409].includes(r.status)));
   const winner = results.findIndex(r => r.status === 200), token = tokens[winner];
   await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token: tokens[1-winner], body: { status: 'completed' } }, 403);
-  await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', accessToken:item.accessToken, body: { status: 'cancelled', studentId: item.studentId } }, 409);
+  await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', accessToken:item.accessToken, body: { status: 'completed', outcome: 'cancelled', studentId: item.studentId } }, 409);
   await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token, body: { assignedTo: '' } }, 403);
-  await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token, body: { status: 'pending' } }, 409);
-  await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token, body: { status: 'in_progress' } });
-  const done = await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token, body: { status: 'completed', repairNote: '已完成测试' } });
+  await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token, body: { action: 'correct', status: 'booked' } }, 403);
+  await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token, body: { status: 'in_progress' } }, 409);
+  const done = await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token, body: { status: 'completed', outcome: 'repaired', repairNote: '已完成测试' } });
   assert.equal(done.repairNote, '已完成测试');
-  await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token, body: { status: 'claimed' } }, 409);
+  await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token, body: { status: 'in_progress' } }, 409);
 });
 test('staff account model separates role, status, home campus and grants', async () => {
   const root = await login();
@@ -244,7 +246,7 @@ test('R2 upload/download preserves bytes, enforces credentials and hides storage
   assert.deepEqual(Buffer.from(await response.arrayBuffer()), bytes);
   const token = await addUser('500001');
   await api(`${base}/${attachment.id}`,{token},403);
-  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{status:'claimed'}});
+  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{status:'in_progress'}});
   assert.equal((await request(`${base}/${attachment.id}`, { token })).status, 200);
   await api(base, { accessToken:item.accessToken, method: 'POST', body: { ...input, mimeType: 'text/html' } }, 400);
   await api(base, { accessToken:item.accessToken, method: 'POST', body: { ...input, mimeType: 'image/png' } }, 400);
@@ -264,8 +266,8 @@ test('R2 write is compensated when D1 metadata fails', async () => {
 test('statistics and CSV retain history when staff is disabled', async () => {
   const root = await login(), technician = await addUser('600001');
   const item = await book({ name: '=SUM(1,1)' });
-  await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token: technician, body: { status: 'claimed' } });
-  await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token: technician, body: { status: 'completed', repairNote: '完成' } });
+  await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token: technician, body: { status: 'in_progress' } });
+  await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token: technician, body: { status: 'completed', outcome: 'repaired', repairNote: '完成' } });
   await api('/api/users/600001', { method: 'PATCH', token: root, body: { status: 'disabled' } });
   const stats = await api('/api/stats/summary?range=all', { token: root });
   assert.equal(stats.completed, 1); assert.equal(stats.faults['蓝屏'], 1); assert.equal(stats.technicians['600001'].completed, 1);
@@ -519,7 +521,7 @@ test('only the matching credential grants guest access and recovery revokes ever
   }
   await api(`/api/appointments/${item.id}?studentId=${item.studentId}`,{},404);
   await api(`/api/appointments/${item.id}?accessToken=${item.accessToken}`,{},404);
-  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',body:{studentId:item.studentId,status:'cancelled'}},404);
+  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',body:{studentId:item.studentId,status:'completed',outcome:'cancelled'}},404);
   await api(`/api/live/summary?studentId=${item.studentId}`,{},400);
   const technician=await addUser('690001');
   await api(`/api/appointments/${item.id}/credential`,{method:'POST',token:technician,body:{}},403);
@@ -529,8 +531,8 @@ test('only the matching credential grants guest access and recovery revokes ever
   for(const path of paths)await api(path,{accessToken:item.accessToken},404);
   await api(`/api/appointments/${item.id}`,{accessToken:recovered.accessToken});
   assert.equal((await request(`/api/appointments/${item.id}/attachments/${file.id}`,{accessToken:recovered.accessToken})).status,200);
-  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',accessToken:item.accessToken,body:{status:'cancelled'}},404);
-  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',accessToken:recovered.accessToken,body:{status:'cancelled'}});
+  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',accessToken:item.accessToken,body:{status:'completed',outcome:'cancelled'}},404);
+  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',accessToken:recovered.accessToken,body:{status:'completed',outcome:'cancelled'}});
   const audit=await db.prepare('SELECT * FROM credential_recoveries').first();
   assert.equal(audit.actor,'root001');assert.ok(!JSON.stringify(audit).includes(recovered.accessToken));
 });
@@ -540,19 +542,18 @@ test('two requests for the final slot have one winner and cancellation releases 
   const attempts = await Promise.all([draft(), draft()].map(body => request('/api/appointments', { method: 'POST', body })));
   assert.deepEqual(attempts.map(response => response.status).sort(), [201,409]);
   const winner = await attempts.find(response => response.status === 201).json();
-  await api(`/api/appointments/${winner.id}/status`, { method: 'PATCH', accessToken:winner.accessToken, body: { status: 'cancelled', studentId: winner.studentId } });
+  await api(`/api/appointments/${winner.id}/status`, { method: 'PATCH', accessToken:winner.accessToken, body: { status: 'completed', outcome: 'cancelled', studentId: winner.studentId } });
   await book();
-  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM appointments WHERE status NOT IN ('cancelled','no_show')").first()).n, 10);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM appointments WHERE NOT (status='completed' AND outcome='cancelled')").first()).n, 10);
 });
 
 test('SQL staff filters preserve literal searches, status groups and totals', async () => {
   const root = await login();
   const first = await book({ deviceModel: 'A%_Device' }), second = await book({ campus: '浑南' });
-  await api(`/api/appointments/${first.id}/status`, { method: 'PATCH', token: root, body: { status: 'awaiting_claim' } });
-  await api(`/api/appointments/${second.id}/status`, { method: 'PATCH', token: root, body: { status: 'completed' } });
-  const filtered = await api(`/api/appointments?${new URLSearchParams({ q: '%_', campus: '南湖', date, status: 'pending' })}`, { token: root });
+  await api(`/api/appointments/${second.id}/status`, { method: 'PATCH', token: root, body: { status: 'completed', outcome: 'cancelled' } });
+  const filtered = await api(`/api/appointments?${new URLSearchParams({ q: '%_', campus: '南湖', date, status: 'booked' })}`, { token: root });
   assert.deepEqual(filtered.items.map(item => item.id), [first.id]);
-  assert.deepEqual(filtered.counts, { all: 2, pending: 1, in_progress: 0, completed: 1 });
+  assert.deepEqual(filtered.counts, { all: 2, booked: 1, in_progress: 0, completed: 1 });
   assert.equal((await api('/api/appointments?q=no-match', { token: root })).items.length, 0);
   for (const query of ['status=invalid','date=2026-02-30','campus=invalid']) await api(`/api/appointments?${query}`, { token: root }, 400);
 });
@@ -563,15 +564,16 @@ test('SQL queue counts use campus/slot scopes, deterministic ties and active sta
   await book({ campus: '浑南' });
   await book({ timeSlot: '20:00–21:00' });
   const ended = await book();
-  await api(`/api/appointments/${ended.id}/status`, { method: 'PATCH', token: root, body: { status: 'no_show' } });
+  await db.prepare("UPDATE appointments SET status='completed',outcome='no_show' WHERE id=?").bind(ended.id).run();
   await db.prepare('UPDATE appointments SET created_at=? WHERE id IN (?,?)').bind('2026-10-04T16:00:00.000Z', first.id, second.id).run();
   const summary = await api(`/api/live/summary?appointmentId=${second.id}`,{accessToken:second.accessToken});
-  assert.equal(summary.dayTotal, 4); assert.equal(summary.campusDayTotal, 3); assert.equal(summary.slotTotal, 2);
+  assert.equal(summary.dayTotal, 5); assert.equal(summary.campusDayTotal, 4); assert.equal(summary.slotTotal, 3);
   assert.equal(summary.queueTotal, 2); assert.equal(summary.ahead, 1); assert.equal(summary.position, 2);
-  assert.deepEqual(summary.slots, { '19:00–20:00': 2, '20:00–21:00': 1 });
-  await api(`/api/appointments/${first.id}/status`, { method: 'PATCH', token: root, body: { status: 'completed' } });
-  assert.equal((await api(`/api/live/summary?appointmentId=${second.id}`,{accessToken:second.accessToken})).ahead, 1);
-  await api(`/api/appointments/${first.id}/status`, { method: 'PATCH', token: root, body: { status: 'cancelled' } });
+  assert.deepEqual(summary.slots, { '19:00–20:00': 3, '20:00–21:00': 1 });
+  await api(`/api/appointments/${first.id}/status`, { method: 'PATCH', token: root, body: { status: 'in_progress' } });
+  await api(`/api/appointments/${first.id}/status`, { method: 'PATCH', token: root, body: { status: 'completed', outcome: 'repaired', repairNote: '已修复' } });
+  assert.equal((await api(`/api/live/summary?appointmentId=${second.id}`,{accessToken:second.accessToken})).ahead, 0);
+  await api(`/api/appointments/${first.id}/status`, { method: 'PATCH', token: root, body: { action: 'correct', status: 'completed', outcome: 'cancelled' } });
   assert.equal((await api(`/api/live/summary?appointmentId=${second.id}`,{accessToken:second.accessToken})).position, 1);
   assert.equal((await api(`/api/live/summary?appointmentId=${first.id}`,{accessToken:first.accessToken})).position, null);
 });
@@ -581,14 +583,14 @@ test('SQL statistics aggregate date windows and workload without reading contact
   await addUser('650001');
   const recent = await book({ faultType: '蓝屏' }), older = await book({ faultType: '硬盘' }), skipped = await book();
   const today = dateKey(), past = addDays(today, -31);
-  await db.prepare("UPDATE appointments SET date=?,status='completed',assigned_to='650001',social='unreadable' WHERE id=?").bind(today, recent.id).run();
-  await db.prepare("UPDATE appointments SET date=?,status='completed',assigned_to='650001' WHERE id=?").bind(past, older.id).run();
-  await db.prepare("UPDATE appointments SET date=?,status='no_show' WHERE id=?").bind(today, skipped.id).run();
+  await db.prepare("UPDATE appointments SET date=?,status='completed',outcome='repaired',assigned_to='650001',social='unreadable' WHERE id=?").bind(today, recent.id).run();
+  await db.prepare("UPDATE appointments SET date=?,status='completed',outcome='legacy_unknown',assigned_to='650001' WHERE id=?").bind(past, older.id).run();
+  await db.prepare("UPDATE appointments SET date=?,status='completed',outcome='no_show' WHERE id=?").bind(today, skipped.id).run();
   const current = await api('/api/stats/summary?range=7', { token: root });
   assert.equal(current.total, 2); assert.equal(current.completed, 1); assert.equal(current.noShow, 1);
   assert.deepEqual(current.daily, { [today]: { total: 2, completed: 1 } });
   assert.deepEqual(current.faults, { '蓝屏': 1 });
-  assert.deepEqual(current.technicians, { '650001': { claimed: 1, completed: 1 } });
+  assert.deepEqual(current.technicians, { '650001': { started: 1, completed: 1 } });
   const selected = await api(`/api/stats/summary?range=7&day=${past}`, { token: root });
   assert.equal(selected.total, 1); assert.deepEqual(selected.faults, { '硬盘': 1 });
   const all = await api('/api/stats/summary?range=all', { token: root });
@@ -601,7 +603,7 @@ test('CSV streams multiple D1 pages without omitting or duplicating tied timesta
   const root = await login(), template = await book();
   const columns = (await db.prepare('PRAGMA table_info(appointments)').all()).results.map(row => row.name);
   // Generate history directly in D1; cancelled records do not consume live capacity.
-  const select = columns.map(column => column === 'id' ? '?' : column === 'status' ? "'cancelled'" : column === 'access_token_hash' ? 'lower(hex(randomblob(32)))' : column).join(',');
+  const select = columns.map(column => column === 'id' ? '?' : column === 'status' ? "'completed'" : column === 'outcome' ? "'cancelled'" : column === 'access_token_hash' ? 'lower(hex(randomblob(32)))' : column).join(',');
   await db.batch(Array.from({ length: 205 }, (_, n) => db.prepare(`INSERT INTO appointments(${columns.join(',')}) SELECT ${select} FROM appointments WHERE id=?`).bind(`history-${String(n).padStart(4, '0')}`, template.id)));
   const response = await request('/api/export/appointments.csv', { token: root });
   assert.equal(response.status, 200);
@@ -627,10 +629,10 @@ test('technicians see campus summaries before claiming and only their own privat
   assert.equal((await api(`/api/appointments?q=${own.studentId}`,{token})).items.length,0);
   assert.equal(listed.counts.all,2);assert.ok(!listed.items.some(item=>item.id===foreign.id));
   for(const item of listed.items){for(const field of ['studentId','name','phone','social','issue','serial','note','agreementAt','repairNote'])assert.ok(!Object.hasOwn(item,field),field);}
-  await api(`/api/appointments/${foreign.id}/status`,{method:'PATCH',token,body:{status:'claimed'}},403);
+  await api(`/api/appointments/${foreign.id}/status`,{method:'PATCH',token,body:{status:'in_progress'}},403);
   await api(`/api/appointments/${own.id}/attachments`,{token,accessToken:own.accessToken},403);
-  await api(`/api/appointments/${other.id}/status`,{method:'PATCH',token:colleague,body:{status:'claimed'}});
-  await api(`/api/appointments/${own.id}/status`,{method:'PATCH',token,body:{status:'claimed'}});
+  await api(`/api/appointments/${other.id}/status`,{method:'PATCH',token:colleague,body:{status:'in_progress'}});
+  await api(`/api/appointments/${own.id}/status`,{method:'PATCH',token,body:{status:'in_progress'}});
   const after=await api('/api/appointments',{token});
   assert.deepEqual(after.items.map(item=>item.id),[own.id]);assert.equal(after.items[0].social,'wechat-private');
   await api(`/api/appointments/${other.id}/attachments`,{token},403);
@@ -648,7 +650,7 @@ test('admin campus grants constrain list, attachments, recovery, dispatch, stati
   const text=await csv.text();assert.ok(text.includes(local.id) && !text.includes(foreign.id));
   await api(`/api/appointments/${foreign.id}/attachments`,{token:admin},403);
   await api(`/api/appointments/${foreign.id}/credential`,{method:'POST',token:admin,body:{identityVerified:true,reason:'已当面核验学生证和联系方式'}},403);
-  await api(`/api/appointments/${foreign.id}/status`,{method:'PATCH',token:admin,body:{status:'claimed'}},403);
+  await api(`/api/appointments/${foreign.id}/status`,{method:'PATCH',token:admin,body:{status:'in_progress'}},403);
   await addUser('720002');
   await api('/api/users/720002',{method:'PATCH',token:root,body:{authorizedCampuses:['浑南']}});
   await api('/api/users/720002',{method:'PATCH',token:admin,body:{status:'disabled'}},403);
@@ -774,7 +776,155 @@ test('failed account grant creation rolls back approval, account and whitelist c
 
 test('an outdated staff detail cannot overwrite a newer repair record',async()=>{
   const item=await book(),token=await login();
-  const first=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{repairNote:'管理员已核实故障',revision:item.revision}});
-  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{repairNote:'过期窗口的记录',revision:item.revision}},409);
+  const started=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{status:'in_progress',revision:item.revision}});
+  const first=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{repairNote:'管理员已核实故障',revision:started.revision}});
+  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{repairNote:'过期窗口的记录',revision:started.revision}},409);
   assert.equal((await api(`/api/appointments/${item.id}`,{accessToken:item.accessToken})).repairNote,first.repairNote);
+});
+
+test('three-step workflow records the actor and server time, requires a result and excludes exceptions from repair success',async()=>{
+  const token=await addUser('870001'),root=await login();
+  for(const outcome of ['repaired','unrepaired','not_needed']){
+    // Isolate result-validation scenarios from the separately tested IP write quota.
+    await db.prepare('DELETE FROM rate_limits').run();
+    const item=await book();
+    assert.equal(item.status,'booked');assert.equal(item.outcome,null);assert.equal(item.startedAt,null);assert.equal(item.completedAt,null);
+    await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{status:'in_progress',startedAt:'2000-01-01T00:00:00Z'}},400);
+    await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{status:'in_progress',assignedTo:'root001'}},403);
+    const started=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{status:'in_progress',revision:item.revision}});
+    assert.equal(started.assignedTo,'870001');assert.ok(Number.isFinite(Date.parse(started.startedAt)));
+    for(const body of [{status:'completed'},{status:'completed',outcome},{status:'completed',outcome,repairNote:'  '},{status:'completed',outcome:'legacy_unknown',repairNote:'不能填写历史结果'}]){
+      await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body},400);
+    }
+    const done=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{status:'completed',outcome,repairNote:'检测与维修结果',revision:started.revision}});
+    assert.equal(done.startedAt,started.startedAt);assert.ok(Date.parse(done.completedAt)>=Date.parse(done.startedAt));
+    await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{repairNote:'维修人员不能修改已结束记录'}},409);
+  }
+  const cancelled=await book();
+  await api(`/api/appointments/${cancelled.id}/status`,{method:'PATCH',accessToken:cancelled.accessToken,body:{status:'completed',outcome:'cancelled'}});
+  const legacy=await book();
+  await db.prepare("UPDATE appointments SET status='completed',outcome='legacy_unknown' WHERE id=?").bind(legacy.id).run();
+  const stats=await api('/api/stats/summary',{token:root});
+  assert.equal(stats.completed,4);assert.equal(stats.classified,3);assert.equal(stats.repaired,1);assert.equal(stats.repairSuccessRate,33);
+  assert.deepEqual(stats.technicians['870001'],{started:3,completed:3});
+  const csv=await (await request('/api/export/appointments.csv',{token:root})).text();
+  assert.ok(csv.includes('结束结果') && csv.includes('开始时间(UTC)') && csv.includes('修复成功') && csv.includes('历史未分类'));
+});
+
+test('automatic no-shows honor 21:30 Shanghai, dry-run, missed days, active repairs and idempotency',async()=>{
+  const waiting=await book(),past=await book(),active=await book(),future=await book();
+  const token=await login();
+  await api(`/api/appointments/${active.id}/status`,{method:'PATCH',token,body:{status:'in_progress'}});
+  await db.prepare('UPDATE appointments SET date=? WHERE id=?').bind(addDays(date,-1),past.id).run();
+  await db.prepare('UPDATE appointments SET date=? WHERE id=?').bind(addDays(date,1),future.id).run();
+  const repository=appointmentRepository(db);
+  const before=new Date(`${date}T21:29:59.999+08:00`),at=new Date(`${date}T21:30:00+08:00`);
+  assert.equal((await endNoShows(repository,{now:before})).eligible,1);
+  assert.equal((await repository.find(past.id)).status,'booked');
+  assert.equal((await endNoShows(repository,{apply:true,now:before})).ended,1);
+  assert.equal((await repository.find(waiting.id)).status,'booked');
+  assert.equal((await endNoShows(repository,{apply:true,now:at})).ended,1);
+  const ended=await repository.find(waiting.id);
+  assert.equal(ended.outcome,'no_show');assert.equal(ended.completedAt,at.toISOString());assert.equal(ended.assignedTo,'');assert.equal(ended.startedAt,null);
+  assert.equal((await repository.find(active.id)).status,'in_progress');assert.equal((await repository.find(future.id)).status,'booked');
+  assert.equal((await endNoShows(repository,{apply:true,now:at})).ended,0);
+  assert.equal((await repository.find(waiting.id)).revision,ended.revision);
+  const live=await api(`/api/live/summary?appointmentId=${waiting.id}`,{accessToken:waiting.accessToken});
+  assert.equal(live.position,null);assert.equal(live.slotTotal,2);assert.equal(live.queueTotal,1);
+});
+
+test('queries and writes catch up missed automatic endings; unauthorized credentials cannot alter records',async()=>{
+  const item=await book(),repository=appointmentRepository(db),users=userRepository(db);
+  const after=new Date(`${date}T21:30:00+08:00`);
+  const service=appointmentService(repository,users,PII_ENCRYPTION_KEY,()=>after);
+  await assert.rejects(service.lookup(item.id,'x'.repeat(43)),error=>error.status===404);
+  assert.equal((await repository.find(item.id)).status,'booked');
+  const ended=await service.lookup(item.id,item.accessToken);
+  assert.equal(ended.status,'completed');assert.equal(ended.outcome,'no_show');
+  await assert.rejects(service.update(item.id,{patch:{status:'in_progress'}},await users.find('root001')),error=>error.status===409);
+  const another=await book();
+  const listed=await service.list({status:'all'},await users.find('root001'));
+  assert.equal(listed.items.find(row=>row.id===another.id).outcome,'no_show');
+  const expired=appointmentService(repository,users,PII_ENCRYPTION_KEY,()=>new Date(`${date}T20:00:00+08:00`));
+  await assert.rejects(expired.create(draft()),error=>error.status===400 && error.message.includes('时段已经结束'));
+});
+
+test('admin corrections preserve start on reopening, validate reassignment and clear fields on undoing sign-in',async()=>{
+  const item=await book(),root=await login(),tech=await addUser('870002');
+  await addUser('870003');
+  const started=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:tech,body:{status:'in_progress'}});
+  const done=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:tech,body:{status:'completed',outcome:'unrepaired',repairNote:'未能修复'}});
+  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:tech,body:{action:'correct',outcome:'repaired',repairNote:'越权纠错'}},403);
+  const fixed=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:root,body:{action:'correct',outcome:'repaired',repairNote:'复测已修复',revision:done.revision}});
+  assert.equal(fixed.completedAt,done.completedAt);assert.equal(fixed.startedAt,started.startedAt);
+  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:root,body:{action:'correct',assignedTo:'missing'}},400);
+  const resumed=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:root,body:{action:'correct',status:'in_progress',assignedTo:'870003'}});
+  assert.equal(resumed.startedAt,started.startedAt);assert.equal(resumed.completedAt,null);assert.equal(resumed.outcome,null);assert.equal(resumed.assignedTo,'870003');
+  const reset=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:root,body:{action:'correct',status:'booked'}});
+  for(const key of ['startedAt','completedAt','outcome'])assert.equal(reset[key],null);
+  assert.equal(reset.assignedTo,'');assert.equal(reset.repairNote,'');
+  const service=appointmentService(appointmentRepository(db),userRepository(db),PII_ENCRYPTION_KEY,()=>new Date(`${date}T21:30:00+08:00`));
+  await assert.rejects(service.update(item.id,{action:'correct',patch:{status:'booked'}},await userRepository(db).find('root001')),error=>error.status===409);
+});
+
+test('workflow migration preserves populated legacy records, credentials, attachments, quota and foreign keys',async()=>{
+  const legacy=await mf.getD1Database('WORKFLOW_UPGRADE_DB');
+  await applyMigration(legacy,'0001_initial.sql');await applyMigration(legacy,'0002_slot_capacity.sql');
+  await legacy.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES ('900001','历史人员','technician','南湖','hash','2026-10-01')").run();
+  const statuses=['pending','awaiting_claim','claimed','in_progress','completed','cancelled','no_show','no_repair'];
+  for(const [n,status] of statuses.entries()){
+    await legacy.prepare(`INSERT INTO appointments(id,student_id,name,campus,phone,social,device_type,brand,device_model,warranty,fault_type,date,time_slot,status,assigned_to,repair_note,access_token_hash,credential_rotated_at,revision,created_at,agreement_at,agreement_version)
+      VALUES (?,?,'历史同学','南湖','enc$phone','enc$social','电脑','品牌','型号','否','蓝屏',?,'19:00–20:00',?,'900001','原始维修记录',?,'2026-10-01',7,'2026-10-01','2026-10-01','v1')`)
+      .bind(`workflow-${n}`,String(n===6 ? 910000 : 910000+n),date,status,n.toString(16).padStart(64,'0')).run();
+  }
+  await legacy.prepare("INSERT INTO attachment_storage VALUES ('file','private/key',4,'complete','2026-10-01','2027-10-01')").run();
+  await legacy.prepare("INSERT INTO appointment_attachments VALUES ('file','workflow-0','历史.txt','text/plain',4,'private/key','2026-10-01','2027-10-01')").run();
+  await legacy.prepare("INSERT INTO credential_recoveries VALUES ('recovery','workflow-0','900001','原始核验说明','2026-10-01')").run();
+  const original=(await legacy.prepare('SELECT * FROM appointments ORDER BY id').all()).results;
+  await applyMigration(legacy,'0003_three_step_workflow.sql');
+  const mapped=(await legacy.prepare('SELECT * FROM appointments ORDER BY id').all()).results;
+  assert.equal(mapped.length,8);
+  for(const [n,row] of mapped.entries()){
+    const {status,...rest}=original[n];
+    for(const [key,value] of Object.entries(rest))assert.equal(row[key],value,`${row.id}.${key}`);
+    assert.equal(row.status,n<2 ? 'booked' : n<4 ? 'in_progress' : 'completed');
+    assert.equal(row.outcome,({completed:'legacy_unknown',cancelled:'cancelled',no_show:'no_show',no_repair:'unrepaired'})[status] || null);
+    assert.equal(row.started_at,null);assert.equal(row.completed_at,null);
+  }
+  assert.equal((await legacy.prepare('SELECT COUNT(*) AS n FROM appointment_attachments').first()).n,1);
+  assert.equal((await legacy.prepare('SELECT reason FROM credential_recoveries').first()).reason,'原始核验说明');
+  assert.equal((await legacy.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes,4);
+  assert.deepEqual((await legacy.prepare('PRAGMA foreign_key_check').all()).results,[]);
+  await assert.rejects(legacy.prepare("UPDATE appointments SET status='pending' WHERE id='workflow-0'").run());
+  await assert.rejects(legacy.prepare("UPDATE appointments SET outcome='repaired' WHERE id='workflow-0'").run());
+  await assert.rejects(legacy.prepare("UPDATE appointments SET status='booked',outcome=NULL WHERE id='workflow-6'").run(),/UNIQUE/);
+  await legacy.prepare("DELETE FROM attachment_storage WHERE id='file'").run();
+  assert.equal((await legacy.prepare('SELECT COUNT(*) AS n FROM appointment_attachments').first()).n,0);
+  assert.equal((await legacy.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes,0);
+});
+
+test('finished repairs and no-shows retain capacity while restoring a cancellation checks capacity',async()=>{
+  const items=[];for(let n=0;n<10;n++)items.push(await book());
+  const token=await login();
+  await api(`/api/appointments/${items[0].id}/status`,{method:'PATCH',token,body:{status:'in_progress'}});
+  await api(`/api/appointments/${items[0].id}/status`,{method:'PATCH',token,body:{status:'completed',outcome:'not_needed',repairNote:'无需维修'}});
+  await api('/api/appointments',{method:'POST',body:draft()},409);
+  await appointmentRepository(db).endNoShows(date,new Date().toISOString(),{id:items[1].id});
+  await api('/api/appointments',{method:'POST',body:draft()},409);
+  await api(`/api/appointments/${items[2].id}/status`,{method:'PATCH',accessToken:items[2].accessToken,body:{status:'completed',outcome:'cancelled'}});
+  await book();
+  await api(`/api/appointments/${items[2].id}/status`,{method:'PATCH',token,body:{action:'correct',status:'in_progress',assignedTo:'root001'}},409);
+  assert.equal((await api(`/api/appointments/${items[2].id}`,{accessToken:items[2].accessToken})).outcome,'cancelled');
+});
+
+test('correcting legacy results preserves missing times and disabled historical assignees',async()=>{
+  const item=await book(),root=await login();await addUser('870004');
+  await db.prepare("UPDATE appointments SET status='completed',outcome='legacy_unknown',assigned_to='870004',repair_note='旧维修说明' WHERE id=?").bind(item.id).run();
+  await api('/api/users/870004',{method:'PATCH',token:root,body:{status:'disabled'}});
+  const corrected=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:root,body:{action:'correct',outcome:'repaired',repairNote:'管理员核对旧记录确认已修复'}});
+  assert.equal(corrected.assignedTo,'870004');assert.equal(corrected.startedAt,null);assert.equal(corrected.completedAt,null);
+  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:root,body:{action:'correct',status:'in_progress'}},400);
+  await api('/api/users/870004',{method:'PATCH',token:root,body:{status:'enabled'}});
+  const resumed=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:root,body:{action:'correct',status:'in_progress'}});
+  assert.equal(resumed.startedAt,null);assert.equal(resumed.completedAt,null);assert.equal(resumed.outcome,null);
 });

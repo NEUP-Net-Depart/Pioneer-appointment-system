@@ -3,13 +3,23 @@ const columns = {
   deviceType: 'device_type', brand: 'brand', deviceModel: 'device_model', serial: 'serial', warranty: 'warranty',
   faultType: 'fault_type', issue: 'issue', liquidDrop: 'liquid_drop', date: 'date', timeSlot: 'time_slot', note: 'note',
   status: 'status', assignedTo: 'assigned_to', repairNote: 'repair_note', createdAt: 'created_at',
+  outcome: 'outcome', startedAt: 'started_at', completedAt: 'completed_at',
   agreementAt: 'agreement_at', agreementVersion: 'agreement_version'
 };
 function fromRow(row) {
-  return row ? { id: row.id, revision: row.revision, ...Object.fromEntries(Object.entries(columns).map(([key, column]) => [key, row[column] ?? ''])) } : null;
+  return row ? { id: row.id, revision: row.revision, ...Object.fromEntries(Object.entries(columns).map(([key, column]) => [key, row[column] ?? (['outcome','startedAt','completedAt'].includes(key) ? null : '')])) } : null;
 }
 export function appointmentRepository(db) {
   return {
+    async countNoShows(beforeDate) {
+      return (await db.prepare("SELECT COUNT(*) AS total FROM appointments WHERE status='booked' AND date<=?").bind(beforeDate).first()).total;
+    },
+    async endNoShows(beforeDate, instant, { id, campuses } = {}) {
+      const where = ["status='booked'", 'date<=?'], args = [instant, beforeDate];
+      if (id) { where.push('id=?'); args.push(id); }
+      if (campuses) { where.push(campuses.length ? `campus IN (${campuses.map(() => '?').join(',')})` : '0'); args.push(...campuses); }
+      return db.prepare(`UPDATE appointments SET status='completed',outcome='no_show',completed_at=?,revision=revision+1 WHERE ${where.join(' AND ')}`).bind(...args).run();
+    },
     async find(id) { return fromRow(await db.prepare('SELECT * FROM appointments WHERE id=?').bind(id).first()); },
     async findByCredential(id, hash) {
       return fromRow(await db.prepare('SELECT * FROM appointments WHERE id=? AND access_token_hash=?').bind(id,hash).first());
@@ -26,20 +36,19 @@ export function appointmentRepository(db) {
     },
     async list(query,{campuses,technician}) {
       const campusScope=campuses.length ? `campus IN (${campuses.map(()=>'?').join(',')})` : '0';
-      const scope=campusScope+(technician ? " AND (assigned_to=? OR (assigned_to IS NULL AND status IN ('pending','awaiting_claim')))" : '');
+      const scope=campusScope+(technician ? " AND (assigned_to=? OR status='booked')" : '');
       const scopeArgs=[...campuses,...(technician ? [technician] : [])];
       const where = [scope], args = [...scopeArgs];
       for (const key of ['campus','date']) if (query[key]) { where.push(`${key}=?`); args.push(query[key]); }
-      if (query.status === 'pending') where.push("status IN ('pending','awaiting_claim')");
-      else if (query.status !== 'all') { where.push('status=?'); args.push(query.status); }
+      if (query.status !== 'all') { where.push('status=?'); args.push(query.status); }
       if (query.q) {
-        where.push("(instr(id,?)>0 OR instr(lower(device_model),?)>0 OR instr(campus,?)>0 OR ((?='' OR assigned_to=?) AND (instr(lower(name),?)>0 OR instr(student_id,?)>0)))");
+        where.push("(instr(id,?)>0 OR instr(lower(device_model),?)>0 OR instr(campus,?)>0 OR ((?='' OR (assigned_to=? AND status<>'booked')) AND (instr(lower(name),?)>0 OR instr(student_id,?)>0)))");
         const text=query.q.toLowerCase();
         args.push(text,text,text,technician,technician,text,text);
       }
       const [items, counts] = await db.batch([
         db.prepare(`SELECT * FROM appointments WHERE ${where.join(' AND ')} ORDER BY created_at DESC,id DESC`).bind(...args),
-        db.prepare(`SELECT COUNT(*) AS allCount, COUNT(CASE WHEN status IN ('pending','awaiting_claim') THEN 1 END) AS pending,
+        db.prepare(`SELECT COUNT(*) AS allCount, COUNT(CASE WHEN status='booked' THEN 1 END) AS booked,
           COUNT(CASE WHEN status='in_progress' THEN 1 END) AS in_progress, COUNT(CASE WHEN status='completed' THEN 1 END) AS completed
           FROM appointments WHERE ${scope}`).bind(...scopeArgs)
       ]);
@@ -57,7 +66,7 @@ export function appointmentRepository(db) {
     },
     async update(item, patch) {
       const fields = [], args = [];
-      for (const [key, column] of Object.entries({ status: 'status', assignedTo: 'assigned_to', repairNote: 'repair_note' })) {
+      for (const [key, column] of Object.entries({ status: 'status', assignedTo: 'assigned_to', repairNote: 'repair_note', outcome: 'outcome', startedAt: 'started_at', completedAt: 'completed_at' })) {
         if (patch[key] !== undefined) { fields.push(`${column}=?`); args.push(key === 'assignedTo' ? patch[key] || null : patch[key]); }
       }
       return fromRow(await db.prepare(`UPDATE appointments SET ${fields.join(',')},revision=revision+1 WHERE id=? AND revision=? RETURNING *`).bind(...args, item.id, item.revision).first());

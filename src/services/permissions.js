@@ -18,10 +18,10 @@ export function canManageAccount(actor, target) {
   return !target.protected && roleLevel[target.role]<roleLevel[actor.role] &&
     target.authorizedCampuses.length>0 && target.authorizedCampuses.every(campus=>actor.authorizedCampuses.includes(campus));
 }
-export function requireAppointmentAccess(user, item, { claim = false } = {}) {
+export function requireAppointmentAccess(user, item, { start = false } = {}) {
   requireCampus(user,item.campus);
-  if (user.role==='technician' && item.assignedTo!==user.account &&
-      !(claim && !item.assignedTo && ['pending','awaiting_claim'].includes(item.status))) fail(403,'只能访问自己接单的预约');
+  if (user.role==='technician' && (item.status==='booked' || item.assignedTo!==user.account) &&
+      !(start && item.status === 'booked')) fail(403,'只能访问本人维修的预约');
 }
 export function appointmentScope(user) {
   requireRole(user,'technician');

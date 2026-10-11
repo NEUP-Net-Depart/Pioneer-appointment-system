@@ -1,15 +1,13 @@
 import {attachmentSize,attachmentUrl} from '/shared/attachments.js';
 import {$,$$,showToast,escapeHtml} from '/shared/utils.js';
 import {apiFetch,apiJson} from '/shared/api.js';
-import {formatDate} from '/shared/time.js';
-import {statusLabels,statusClass,appointmentTransitions,roleLevel} from '/shared/constants.js';
+import {formatDate,formatInstant} from '/shared/time.js';
+import {statusLabels,statusClass,outcomeLabels,repairOutcomes,roleLevel} from '/shared/constants.js';
 export function initStaff(){
   let activeFilter='all',generation=0,searchTimer,detailItem;
   let appointments=[],counts={};
   const admin=()=>roleLevel[sessionStorage.getItem('pioneerRole')]>=2;
   const owns=item=>item.assignedTo===sessionStorage.getItem('pioneerAccount');
-  const choices=item=>admin() ? Object.keys(statusLabels) : [...new Set([item.status,...(appointmentTransitions[item.status] || [])])];
-  const options=item=>choices(item).map(status=>`<option value="${status}" ${status===item.status ? 'selected' : ''}>${statusLabels[status]}</option>`).join('');
   async function refresh(){
     const current=++generation;
     const query=new URLSearchParams({status:activeFilter,q:$('#staff-search').value.trim(),campus:$('#staff-campus-filter').value,date:$('#staff-date-filter').value});
@@ -20,8 +18,9 @@ export function initStaff(){
     }catch(error){if(current===generation)showToast(error.message);}
   }
   async function patch(item,input){
-    await apiJson(`/api/appointments/${encodeURIComponent(item.id)}/status`,{method:'PATCH',json:{...input,revision:item.revision}});
+    const updated=await apiJson(`/api/appointments/${encodeURIComponent(item.id)}/status`,{method:'PATCH',json:{...input,revision:item.revision}});
     await refresh();
+    return updated;
   }
   async function openAttachment(item,id){
     const response=await apiFetch(attachmentUrl(item.id,id));
@@ -41,40 +40,68 @@ export function initStaff(){
     if(detailItem!==item)return;
     $('#detail-summary').innerHTML=`<strong>${escapeHtml(item.name)} · ${escapeHtml(item.id)}</strong><span>${escapeHtml(item.studentId)} · ${escapeHtml(item.campus)} · ${formatDate(item.date)} ${escapeHtml(item.timeSlot)}</span><span>${escapeHtml(item.deviceType)} · ${escapeHtml(item.brand)} ${escapeHtml(item.deviceModel)} · 保修 ${escapeHtml(item.warranty)}</span><span>QQ / 微信：${escapeHtml(item.social)} · 手机：${escapeHtml(item.phone || '未填写')}</span><p>${escapeHtml(item.issue || '未填写故障描述')}</p>${item.note ? `<p>备注：${escapeHtml(item.note)}</p>` : ''}<div class="detail-attachments">${files.map(file=>`<button class="attachment-link" data-attachment-id="${file.id}" type="button">${escapeHtml(file.filename)} <small>${attachmentSize(file.size)}</small></button>`).join('')}</div>`;
     $$('[data-attachment-id]',$('#detail-summary')).forEach(button=>button.addEventListener('click',()=>openAttachment(item,button.dataset.attachmentId).catch(error=>showToast(error.message))));
-    $('#detail-status').innerHTML=options(item);$('#detail-assigned').value=item.assignedTo;
-    $('#detail-assigned').readOnly=!admin();$('#detail-repair-note').value=item.repairNote;
+    $('#detail-state').textContent=statusLabels[item.status]+(item.outcome ? ` · ${outcomeLabels[item.outcome]}` : '');
+    $('#detail-assigned').value=item.assignedTo;$('#detail-repair-note').value=item.repairNote;
+    $('#detail-repair-note').readOnly=item.status!=='in_progress' && !admin();
+    $('#detail-times').textContent=`开始：${formatInstant(item.startedAt)} · 结束：${formatInstant(item.completedAt)}`;
+    $('#detail-outcome').innerHTML='<option value="">请选择维修结果</option>'+repairOutcomes.map(value=>`<option value="${value}" ${item.outcome===value ? 'selected' : ''}>${outcomeLabels[value]}</option>`).join('');
+    $('#repair-result-field').hidden=item.status!=='in_progress';
+    $('#save-detail').hidden=item.status!=='in_progress';$('#complete-detail').hidden=item.status!=='in_progress';
+    $('#start-detail').hidden=item.status!=='booked';
+    $('#correction-panel').hidden=!admin();$('#correction-panel').open=false;
+    $('#correction-status').innerHTML=Object.entries(statusLabels).map(([value,label])=>`<option value="${value}" ${value===item.status ? 'selected' : ''}>${label}</option>`).join('');
+    $('#correction-assigned').value=item.assignedTo;
+    $('#correction-outcome').innerHTML='<option value="">保留现有结果</option>'+Object.entries(outcomeLabels).filter(([value])=>value!=='legacy_unknown').map(([value,label])=>`<option value="${value}" ${value===item.outcome ? 'selected' : ''}>${label}</option>`).join('');
     $('#recovery-panel').hidden=!admin();$('#recovery-result').hidden=true;$('#recovered-link').value='';
     $('#recovery-verified').checked=false;$('#recovery-reason').value='';
-    $('#detail-modal').hidden=false;$('#detail-status').focus();
+    $('#detail-modal').hidden=false;$('#close-detail').focus();
   }
   function render(){
-    for(const [suffix,key] of [['total','all'],['pending','pending'],['progress','in_progress'],['done','completed']])$('#metric-'+suffix).textContent=counts[key] || 0;
-    for(const [suffix,key] of [['all','all'],['pending','pending'],['progress','in_progress'],['done','completed']])$('#count-'+suffix).textContent=counts[key] || 0;
+    for(const [suffix,key] of [['total','all'],['booked','booked'],['progress','in_progress'],['done','completed']])$('#metric-'+suffix).textContent=counts[key] || 0;
+    for(const [suffix,key] of [['all','all'],['booked','booked'],['progress','in_progress'],['done','completed']])$('#count-'+suffix).textContent=counts[key] || 0;
     $('#appointments-table').innerHTML=appointments.map(item=>{
-      const canDetail=admin() || owns(item),claimable=!item.assignedTo && ['pending','awaiting_claim'].includes(item.status);
-      const status=canDetail ? `<select class="status-select" data-id="${item.id}" aria-label="修改 ${item.id} 状态">${options(item)}</select>` : `<span class="status-pill ${statusClass[item.status]}">${statusLabels[item.status]}</span>`;
-      return `<tr><td><span class="person-name">${escapeHtml(item.name || '待接单预约')}</span><span class="person-code">${escapeHtml(item.studentId || '')} · ${item.id}</span></td><td>${escapeHtml(item.deviceType)}<span class="person-code">${escapeHtml(item.campus)} · ${escapeHtml(item.brand)} ${escapeHtml(item.deviceModel)}</span></td><td>${formatDate(item.date)}<span class="person-code">${escapeHtml(item.timeSlot)}</span></td><td>${status}</td><td>${escapeHtml(item.repairNote || item.faultType || '暂无记录')}</td><td><div class="record-actions">${claimable ? `<button class="record-btn" data-claim="${item.id}">接单</button>` : ''}${canDetail ? `<button class="record-btn" data-detail="${item.id}">详情</button>` : ''}</div></td></tr>`;
+      const canDetail=admin() || (item.status!=='booked' && owns(item));
+      const status=`<span class="status-pill ${statusClass[item.status]}">${statusLabels[item.status]}</span>${item.outcome ? `<span class="person-code">${outcomeLabels[item.outcome]}</span>` : ''}`;
+      return `<tr><td><span class="person-name">${escapeHtml(item.name || '等待到场')}</span><span class="person-code">${escapeHtml(item.studentId || '')} · ${item.id}</span></td><td>${escapeHtml(item.deviceType)}<span class="person-code">${escapeHtml(item.campus)} · ${escapeHtml(item.brand)} ${escapeHtml(item.deviceModel)}</span></td><td>${formatDate(item.date)}<span class="person-code">${escapeHtml(item.timeSlot)}</span></td><td>${status}</td><td>${escapeHtml(item.repairNote || item.faultType || '暂无记录')}</td><td><div class="record-actions">${item.status==='booked' ? `<button class="record-btn" data-start="${item.id}">签到并开始维修</button>` : ''}${canDetail && item.status==='in_progress' ? `<button class="record-btn" data-finish="${item.id}">填写结果并结束</button>` : ''}${canDetail ? `<button class="record-btn" data-detail="${item.id}">详情</button>` : ''}</div></td></tr>`;
     }).join('');
     $('#staff-empty').hidden=appointments.length>0;
-    $$('[data-claim]').forEach(button=>button.addEventListener('click',async()=>{
-      const item=appointments.find(entry=>entry.id===button.dataset.claim);button.disabled=true;
-      try{await patch(item,{status:'claimed',assignedTo:sessionStorage.getItem('pioneerAccount')});showToast('已成功接单');}
-      catch(error){showToast(error.message);}
+    $$('[data-start]').forEach(button=>button.addEventListener('click',async()=>{
+      const item=appointments.find(entry=>entry.id===button.dataset.start);button.disabled=true;
+      try{const updated=await patch(item,{status:'in_progress'});await openDetail(updated);showToast('已签到并开始维修');}
+      catch(error){showToast(error.message);await refresh();}
       finally{button.disabled=false;}
     }));
     $$('[data-detail]').forEach(button=>button.addEventListener('click',()=>openDetail(appointments.find(entry=>entry.id===button.dataset.detail))));
-    $$('.status-select').forEach(select=>select.addEventListener('change',async()=>{
-      const item=appointments.find(entry=>entry.id===select.dataset.id),previous=item.status;
-      select.disabled=true;
-      try{await patch(item,{status:select.value});showToast('状态已更新');}
-      catch(error){select.value=previous;showToast(error.message);}
-      finally{select.disabled=false;}
-    }));
+    $$('[data-finish]').forEach(button=>button.addEventListener('click',()=>openDetail(appointments.find(entry=>entry.id===button.dataset.finish))));
   }
   $('#save-detail').addEventListener('click',async()=>{
     if(!detailItem)return;
     const button=$('#save-detail');button.disabled=true;
-    try{await patch(detailItem,{status:$('#detail-status').value,assignedTo:$('#detail-assigned').value.trim(),repairNote:$('#detail-repair-note').value.trim()});close();showToast('维修记录已保存');}
+    try{await patch(detailItem,{repairNote:$('#detail-repair-note').value.trim()});close();showToast('维修说明已保存');}
+    catch(error){showToast(error.message);}
+    finally{button.disabled=false;}
+  });
+  $('#complete-detail').addEventListener('click',async()=>{
+    if(!detailItem)return;
+    const outcome=$('#detail-outcome').value,repairNote=$('#detail-repair-note').value.trim();
+    if(!outcome || !repairNote){showToast('请选择维修结果并填写维修说明');return;}
+    const button=$('#complete-detail');button.disabled=true;
+    try{await patch(detailItem,{status:'completed',outcome,repairNote});close();showToast('维修已结束');}
+    catch(error){showToast(error.message);}
+    finally{button.disabled=false;}
+  });
+  $('#start-detail').addEventListener('click',async()=>{
+    if(!detailItem)return;
+    const button=$('#start-detail');button.disabled=true;
+    try{await openDetail(await patch(detailItem,{status:'in_progress'}));showToast('已签到并开始维修');}
+    catch(error){showToast(error.message);}
+    finally{button.disabled=false;}
+  });
+  $('#apply-correction').addEventListener('click',async()=>{
+    if(!detailItem || !window.confirm('确认修正此记录？撤回签到会清空人员、时间和维修说明。'))return;
+    const button=$('#apply-correction');button.disabled=true;
+    const outcome=$('#correction-outcome').value;
+    try{await patch(detailItem,{action:'correct',status:$('#correction-status').value,assignedTo:$('#correction-assigned').value.trim(),repairNote:$('#detail-repair-note').value.trim(),...(outcome ? {outcome} : {})});close();showToast('记录已修正');}
     catch(error){showToast(error.message);}
     finally{button.disabled=false;}
   });
