@@ -32,7 +32,9 @@ jobs:
     if: github.ref == 'refs/heads/dev' && ((github.event_name == 'push' && github.event.deleted != true) || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: preview-migrations
+    environment:
+      name: preview-migrations
+      deployment: false
     concurrency:
       group: cloudflare-preview-migrations
       cancel-in-progress: false
