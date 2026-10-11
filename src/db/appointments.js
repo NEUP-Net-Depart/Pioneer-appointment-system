@@ -66,12 +66,12 @@ export function appointmentRepository(db) {
       return { items: items.results.map(fromRow), counts: { all: allCount, ...totals } };
     },
     async create(item) {
-      const prefix = `reverse${item.campus === '浑南' ? '1' : '0'}${dateKey(new Date(item.createdAt)).replaceAll('-', '')}-`;
+      const prefix = `reserve${item.campus === '浑南' ? '1' : '0'}${dateKey(new Date(item.createdAt)).replaceAll('-', '')}-`;
       // One D1 statement allocates the ID and runs capacity/uniqueness constraints atomically.
       const row = await db.prepare(`INSERT INTO appointments(id,${Object.values(columns).join(',')},access_token_hash,credential_rotated_at)
         SELECT ? || printf('%02d',COALESCE(MAX(CAST(substr(id,instr(id,'-')+1) AS INTEGER)),0)+1),${Object.keys(columns).map(() => '?').join(',')},?,?
-        FROM appointments WHERE id LIKE ? RETURNING *`)
-        .bind(prefix, ...Object.keys(columns).map(key => key === 'assignedTo' ? item[key] || null : item[key] ?? null), item.accessTokenHash,item.credentialRotatedAt,`${prefix}%`).first();
+        FROM appointments WHERE id LIKE ? OR id LIKE ? RETURNING *`)
+        .bind(prefix, ...Object.keys(columns).map(key => key === 'assignedTo' ? item[key] || null : item[key] ?? null), item.accessTokenHash,item.credentialRotatedAt,`${prefix}%`,`${prefix.replace('reserve','reverse')}%`).first();
       return fromRow(row);
     },
     async update(item, patch) {

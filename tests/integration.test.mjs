@@ -109,7 +109,7 @@ test('health verifies D1 schema and R2; API paths return JSON and security heade
 });
 test('guest booking, encrypted contacts, lookup, queue and cancellation', async () => {
   const item = await book();
-  assert.match(item.id, /^reverse0\d{8}-01$/);
+  assert.match(item.id, /^reserve0\d{8}-01$/);
   const row = await db.prepare('SELECT phone,social FROM appointments WHERE id=?').bind(item.id).first();
   assert.match(row.phone, /^enc\$/); assert.match(row.social, /^enc\$/); assert.ok(!row.social.includes('wechat-private'));
   const found = await api(`/api/appointments/${item.id}`,{accessToken:item.accessToken});
@@ -982,7 +982,7 @@ test('repair numbers use completion day and independent campus sequences rather 
   assert.equal(doneSecond.repairNumber, `0${nextDay.replaceAll('-','')}-01`);
   assert.equal(doneFirst.repairNumber, `0${nextDay.replaceAll('-','')}-02`);
   assert.equal(doneForeign.repairNumber, `1${nextDay.replaceAll('-','')}-01`);
-  assert.notEqual(doneSecond.repairNumber, second.id.replace('reverse',''));
+  assert.notEqual(doneSecond.repairNumber, second.id.replace('reserve',''));
   assert.equal(doneSecond.id, second.id);
   const later = appointmentService(repository, users, PII_ENCRYPTION_KEY, () => new Date(`${addDays(nextDay,1)}T00:01:00+08:00`));
   const doneThird = await later.update(third.id, {patch:{status:'completed',outcome:'not_needed',repairNote:'无需处理'}}, actor);
