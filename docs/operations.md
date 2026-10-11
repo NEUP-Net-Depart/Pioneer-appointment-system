@@ -63,7 +63,7 @@ npm run release:plan
 
 ### GitHub Actions 统一发布
 
-[Cloudflare MVP checks](../.github/workflows/check.yml) 对所有推送和 PR 运行本地验证，发布行为如下：
+[Cloudflare CI and release](../.github/workflows/check.yml) 对所有推送和 PR 运行本地验证，发布行为如下：
 
 | 触发方式 | 目标 | 行为 |
 |---|---|---|

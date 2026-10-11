@@ -1,4 +1,4 @@
-name: Cloudflare MVP checks
+name: Cloudflare CI and release
 on:
   push:
   pull_request:
