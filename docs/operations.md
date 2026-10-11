@@ -68,14 +68,15 @@ npm run release:plan
 | 触发方式 | 目标 | 行为 |
 |---|---|---|
 | 推送 `main` | Production | 验证通过后自动迁移、发布和检查 |
+| 推送 `dev` | Preview | 验证通过后自动迁移、发布和检查 |
 | Actions 中选择 `dev`，点击 Run workflow | Preview | 验证通过后迁移、发布和检查 |
-| 推送 `dev` 或其他分支、PR | 无远程发布 | 仅验证 |
+| 推送其他分支或 PR | 无远程发布 | 仅验证 |
 
 工作流先运行 `npm run verify`，再在同一发布任务内依次执行 D1 迁移、Pages 发布和 HTTP smoke。迁移失败不会发布，发布失败不会继续检查。同一环境的发布串行执行，不中断正在进行的迁移。
 
 GitHub 仓库 Secrets 需要 `CLOUDFLARE_ACCOUNT_ID`、`CLOUDFLARE_API_TOKEN`。Token 需要目标账号的 D1 Edit 和 Cloudflare Pages Edit 权限；现有附件维护任务还使用 R2 权限。Pages 的 `JWT_SECRET`、`PII_ENCRYPTION_KEY` 继续按 Production/Preview 分别保存在 Cloudflare。
 
-GitHub Environments 配置 `production`、`preview`，分别只允许 `main`、`dev` 发布，并配置环境变量 `SITE_URL`：Production 为 `https://pioneer-appointment-system.pages.dev`，Preview 为 `https://dev.pioneer-appointment-system.pages.dev`。Production 不设置额外的必需审批人，以保持推送 `main` 后自动运行。
+GitHub Environments 配置 `production`、`preview`，分别只允许 `main`、`dev` 发布，并配置环境变量 `SITE_URL`：Production 为 `https://pioneer-appointment-system.pages.dev`，Preview 为 `https://dev.pioneer-appointment-system.pages.dev`。Production 和 Preview 不设置额外的必需审批人，以保持推送 `main` 或 `dev` 后自动运行。
 
 在 Cloudflare Pages 项目的 Git 构建设置中关闭 Production 自动部署和 Preview 自动部署，由 Actions 统一发布；保留 Git 关联、Production 分支 `main` 和两套绑定。否则 Pages 的独立自动部署可能抢在数据库迁移完成前上线。
 

@@ -10,14 +10,15 @@ const bindings=(id,bucket)=>({d1_databases:[{binding:'DB',database_name:bucket,d
 const cfg=()=>({name:'existing-pages',...bindings('11111111-1111-4111-8111-111111111111','production-private'),env:{preview:bindings('22222222-2222-4222-8222-222222222222','preview-private')}});
 
 const ciEnv=(event,branch)=>({GITHUB_ACTIONS:'true',GITHUB_EVENT_NAME:event,GITHUB_REF:`refs/heads/${branch}`,CLOUDFLARE_ACCOUNT_ID:'test-account',CLOUDFLARE_API_TOKEN:'test-token',SITE_URL:'https://example.test'});
-test('CI releases restrict production to main pushes and preview to manual dev runs',()=>{
+test('CI releases restrict production to main pushes and preview to dev pushes or manual runs',()=>{
   assert.equal(ciReleaseTarget(ciEnv('push','main')),'production');
+  assert.equal(ciReleaseTarget(ciEnv('push','dev')),'preview');
   assert.equal(ciReleaseTarget(ciEnv('workflow_dispatch','dev')),'preview');
-  for(const [event,branch] of [['push','dev'],['workflow_dispatch','main'],['workflow_dispatch','feature'],['pull_request','main']])assert.throws(()=>ciReleaseTarget(ciEnv(event,branch)));
+  for(const [event,branch] of [['workflow_dispatch','main'],['workflow_dispatch','feature'],['pull_request','main']])assert.throws(()=>ciReleaseTarget(ciEnv(event,branch)));
   assert.throws(()=>ciReleaseTarget({...ciEnv('push','main'),GITHUB_ACTIONS:'false'}));
 });
 test('CI uses matching target flags and migrates before publishing and smoke testing',()=>{
-  for(const [event,branch,target] of [['push','main','production'],['workflow_dispatch','dev','preview']]){
+  for(const [event,branch,target] of [['push','main','production'],['push','dev','preview'],['workflow_dispatch','dev','preview']]){
     const calls=[];
     runCiRelease(ciEnv(event,branch),(script,args)=>{calls.push([script,args]);return {status:0};});
     const args=[...(target==='preview' ? ['--preview'] : []),'--execute',`--approve-${target}`];

@@ -6,8 +6,9 @@ import {root} from './cli.mjs';
 export function ciReleaseTarget(env){
   if(env.GITHUB_ACTIONS!=='true')throw new Error('CI releases must run in GitHub Actions.');
   if(env.GITHUB_EVENT_NAME==='push' && env.GITHUB_REF==='refs/heads/main')return 'production';
+  if(env.GITHUB_EVENT_NAME==='push' && env.GITHUB_REF==='refs/heads/dev')return 'preview';
   if(env.GITHUB_EVENT_NAME==='workflow_dispatch' && env.GITHUB_REF==='refs/heads/dev')return 'preview';
-  throw new Error('Only pushes to main or manual runs on dev may release.');
+  throw new Error('Only pushes to main, or pushes or manual runs on dev, may release.');
 }
 export function runCiRelease(env=process.env,run=(script,args)=>spawnSync(process.execPath,[resolve(root,'scripts',script),...args],{cwd:root,env,stdio:'inherit'})){
   const target=ciReleaseTarget(env);
