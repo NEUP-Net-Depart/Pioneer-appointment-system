@@ -34,7 +34,9 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       const result = await appointments.list(query, scope);
       const items = await Promise.all(result.items.map(async item => {
         if (user.role === 'technician' && (item.status === 'booked' || item.assignedTo !== user.account)) {
-          return Object.fromEntries(['id','revision','campus','date','timeSlot','deviceType','brand','deviceModel','faultType','status','createdAt'].map(key => [key, item[key]]));
+          // Technicians need identity fields to locate a person at the desk. Contact data,
+          // signatures and attachments remain hidden until the booking is claimed.
+          return Object.fromEntries(['id','revision','campus','date','timeSlot','studentId','name','deviceType','brand','deviceModel','faultType','status','createdAt'].map(key => [key, item[key]]));
         }
         return present(item);
       }));
