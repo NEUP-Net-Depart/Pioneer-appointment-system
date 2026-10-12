@@ -58,11 +58,13 @@ export function appointmentRepository(db) {
       const filteredWhere = where.join(' AND '), filteredArgs = [...args];
       if (query.status !== 'all') { where.push('status=?'); args.push(query.status); }
       // Only fixed expressions reach ORDER BY; query values are validated at the route.
-      const sortColumns = { createdAt: ['created_at'], date: ['date','time_slot'], status: ["CASE status WHEN 'booked' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END"], campus: ['campus','date','time_slot'] };
-      const direction = query.direction === 'asc' ? 'ASC' : 'DESC';
-      const order = (sortColumns[query.sort] || sortColumns.createdAt).map(column => `${column} ${direction}`).join(',');
+      const sortColumns = { createdAt: ['created_at'], date: ['date','time_slot'], status: ["CASE status WHEN 'booked' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END"], campus: ['campus'] };
+      const sorts = query.sorts ?? [{key:query.sort || 'createdAt',direction:query.direction || 'desc'}];
+      if (query.sorts === undefined && query.sort === 'campus') sorts.push({key:'date',direction:query.direction || 'desc'});
+      const order = sorts.flatMap(item => (sortColumns[item.key] || []).map(column => `${column} ${item.direction === 'asc' ? 'ASC' : 'DESC'}`));
+      order.push('created_at DESC','id DESC');
       const [items, counts, filteredCounts] = await db.batch([
-        db.prepare(`SELECT * FROM appointments WHERE ${where.join(' AND ')} ORDER BY ${order},created_at DESC,id DESC`).bind(...args),
+        db.prepare(`SELECT * FROM appointments WHERE ${where.join(' AND ')} ORDER BY ${order.join(',')}`).bind(...args),
         db.prepare(`SELECT COUNT(*) AS allCount, COUNT(CASE WHEN status='booked' THEN 1 END) AS booked,
           COUNT(CASE WHEN status='in_progress' THEN 1 END) AS in_progress, COUNT(CASE WHEN status='completed' THEN 1 END) AS completed
           FROM appointments WHERE ${scope}`).bind(...scopeArgs),

@@ -53,6 +53,15 @@ export function appointmentQuery(input) {
   if (query.status !== 'all' && !Object.hasOwn(statusLabels, query.status)) fail(400, '状态不正确');
   if (query.timeSlot) { query.timeSlot = normalizeTimeSlot(query.timeSlot); if (!query.timeSlot) fail(400, '时段不正确'); }
   if (!['createdAt','date','status','campus'].includes(query.sort) || !['asc','desc'].includes(query.direction)) fail(400, '排序方式不正确');
+  if (input.sorts !== undefined) {
+    const value = stringField(input.sorts, '组合排序', 120);
+    query.sorts = value ? value.split(',').map(part => {
+      const [key,direction,...extra] = part.split(':');
+      if (!['createdAt','date','status','campus'].includes(key) || !['asc','desc'].includes(direction) || extra.length) fail(400, '组合排序方式不正确');
+      return { key,direction };
+    }) : [];
+    if (query.sorts.length > 4 || new Set(query.sorts.map(item => item.key)).size !== query.sorts.length) fail(400, '组合排序字段不能重复');
+  }
   return query;
 }
 export function liveQuery(input) {

@@ -10,7 +10,7 @@ import {statusLabels,statusClass,outcomeLabels,repairOutcomes,roleLevel} from '/
 export function initStaff(){
   let activeFilter='all',generation=0,searchTimer,detailItem;
   let appointments=[],counts={},filteredCounts={};
-  const menus=initColumnMenus((sort,direction)=>{ $('#staff-sort').value=sort;$('#staff-direction').value=direction;refreshList(); });
+  const menus=initColumnMenus(()=>refreshList());
   const overview=initOverview(selection=>{
     $('#staff-campus-filter').value=selection.campus;$('#staff-date-filter').value=selection.date;$('#staff-slot-filter').value=selection.timeSlot;
     $('#staff-search').value='';activeFilter='all';updateFilterButtons();refreshList();
@@ -32,7 +32,7 @@ export function initStaff(){
   async function refreshList(){
     menus.update(activeFilter);
     const current=++generation;
-    const query=new URLSearchParams({status:activeFilter,q:$('#staff-search').value.trim(),campus:$('#staff-campus-filter').value,date:$('#staff-date-filter').value,timeSlot:$('#staff-slot-filter').value,sort:$('#staff-sort').value,direction:$('#staff-direction').value});
+    const query=new URLSearchParams({status:activeFilter,q:$('#staff-search').value.trim(),campus:$('#staff-campus-filter').value,date:$('#staff-date-filter').value,timeSlot:$('#staff-slot-filter').value,sorts:menus.query()});
     try{
       const result=await apiJson(`/api/appointments?${query}`);
       if(current!==generation)return;
@@ -142,12 +142,11 @@ export function initStaff(){
     $$('.filter-tab').forEach(item=>{const selected=item.dataset.filter===activeFilter;item.classList.toggle('is-active',selected);item.setAttribute('aria-pressed',String(selected));});
   }
   $('#staff-search').addEventListener('input',()=>{clearTimeout(searchTimer);searchTimer=setTimeout(refreshList,200);});
-  for(const id of ['staff-campus-filter','staff-date-filter','staff-slot-filter','staff-sort','staff-direction']) $('#'+id).addEventListener('change',refreshList);
+  for(const id of ['staff-campus-filter','staff-date-filter','staff-slot-filter']) $('#'+id).addEventListener('change',refreshList);
   $('#staff-refresh').addEventListener('click',refresh);
-  $('#staff-clear-date').addEventListener('click',()=>{ $('#staff-date-filter').value='';refreshList(); });
   $('#staff-clear-filters').addEventListener('click',()=>{
-    clearTimeout(searchTimer);$('#staff-campus-filter').value='all';$('#staff-date-filter').value='';$('#staff-search').value='';$('#staff-slot-filter').value='';$('#staff-sort').value='date';$('#staff-direction').value='asc';activeFilter='all';
-    menus.close();updateFilterButtons();refreshList();
+    clearTimeout(searchTimer);$('#staff-campus-filter').value='all';$('#staff-date-filter').value='';$('#staff-search').value='';$('#staff-slot-filter').value='';activeFilter='all';
+    menus.reset();updateFilterButtons();refreshList();
   });
   $('#close-detail').addEventListener('click',close);$('#cancel-detail').addEventListener('click',close);
   $('#detail-modal').addEventListener('click',event=>{if(event.target.id==='detail-modal')close();});
@@ -160,6 +159,6 @@ export function initStaff(){
   });
   render();
   return{refresh,clear(){generation++;clearTimeout(searchTimer);appointments=[];counts={};filteredCounts={};activeFilter='all';
-    $('#staff-campus-filter').value='all';$('#staff-date-filter').value='';$('#staff-slot-filter').value='';$('#staff-search').value='';$('#staff-sort').value='date';$('#staff-direction').value='asc';
-    menus.close();updateFilterButtons();overview.clear();intake.close();close();render();}};
+    $('#staff-campus-filter').value='all';$('#staff-date-filter').value='';$('#staff-slot-filter').value='';$('#staff-search').value='';
+    menus.reset();updateFilterButtons();overview.clear();intake.close();close();render();}};
 }

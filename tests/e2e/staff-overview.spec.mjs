@@ -37,15 +37,16 @@ for (const width of [320,390,768,1440]) {
     await expect(page.locator('#staff-empty')).toBeVisible();
     await page.locator('#staff-menu-status [data-menu-close]').last().click();
     await page.locator('[data-column-menu=campus]').click();
-    const sortRequest=page.waitForRequest(request => request.url().includes('/api/appointments?') && new URL(request.url()).searchParams.get('sort')==='campus' && new URL(request.url()).searchParams.get('direction')==='desc');
-    await page.locator('[data-column-sort=campus][data-direction=desc]').click();
-    await sortRequest;
-    await expect(page.locator('th[data-sort-column=campus]')).toHaveAttribute('aria-sort','descending');
     await page.keyboard.press('Escape');
     await expect(page.locator('[data-column-menu=campus]')).toBeFocused();
+    const sortRequest=page.waitForRequest(request => request.url().includes('/api/appointments?') && new URL(request.url()).searchParams.get('sorts')==='campus:desc');
+    await page.locator('[data-column-sort=campus]').click();
+    await page.locator('[data-column-sort=campus]').click();
+    await sortRequest;
+    await expect(page.locator('th[data-sort-column=campus]')).toHaveAttribute('aria-sort','descending');
     await page.locator('#staff-clear-filters').click();
     await expect(page.locator('#staff-slot-filter')).toHaveValue('');
-    await expect(page.locator('#staff-sort')).toHaveValue('date');
+    await expect(page.locator('#staff-sort-summary')).toContainText('点击列名');
     await expect(page.locator('[data-filter=all]')).toHaveAttribute('aria-pressed','true');
     for(const selector of ['.staff-overview','.staff-record-tools','.staff-appointments-wrap']) {
       const box=await page.locator(selector).boundingBox();expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(width);
@@ -84,7 +85,8 @@ test('column filters compose, stay visible in the headers and fit a narrow scree
   await page.locator('#staff-menu-campus [data-menu-close]').last().click();
   await expect(page.locator('[data-column-summary=campus]')).toHaveText('南湖');
   await page.locator('[data-column-menu=date]').click();
-  await page.locator('#staff-date-filter').fill('2026-10-13');
+  await page.locator('#staff-date-manual').fill('2026-10-13');
+  await page.locator('#staff-date-manual').press('Enter');
   await page.locator('#staff-slot-filter').selectOption(slots[1]);
   await expect(page.locator('[data-column-summary=date]')).toContainText('10/13');
   const box=await page.locator('#staff-menu-date').boundingBox();
@@ -96,4 +98,42 @@ test('column filters compose, stay visible in the headers and fit a narrow scree
   await page.keyboard.press('Escape');
   await expect(page.locator('#staff-menu-date')).toBeHidden();
   await expect(page.locator('#staff-menu-shade')).toBeHidden();
+});
+
+test('column clicks cycle independently and preserve multi-sort priority', async ({page}) => {
+  await loginMock(page);
+  const choose=async(key,sorts)=>{
+    const request=page.waitForRequest(r=>r.url().includes('/api/appointments?') && new URL(r.url()).searchParams.get('sorts')===sorts);
+    await page.locator(`[data-column-sort=${key}]`).click();await request;
+  };
+  await choose('campus','campus:asc');
+  await choose('date','campus:asc,date:asc');
+  await choose('campus','campus:desc,date:asc');
+  await expect(page.locator('[data-sort-marker=date]')).toHaveText('↑2');
+  await choose('campus','date:asc');
+  await expect(page.locator('[data-sort-marker=date]')).toHaveText('↑1');
+  await choose('date','date:desc');await choose('date','');
+  await expect(page.locator('[data-sort-marker=date]')).toBeHidden();
+});
+
+test('desktop uses available width and offers a centered calendar with direct and keyboard selection', async ({page}) => {
+  await page.setViewportSize({width:1920,height:1080});await loginMock(page);
+  const shell=await page.locator('.staff-shell').boundingBox();expect(shell.width).toBeGreaterThan(1800);
+  await page.locator('[data-column-menu=date]').click();
+  const box=await page.locator('#staff-menu-date').boundingBox();expect(box.width).toBeGreaterThan(700);
+  expect(Math.abs(box.x+box.width/2-960)).toBeLessThan(10);expect(Math.abs(box.y+box.height/2-540)).toBeLessThan(1);
+  await page.locator('#staff-calendar-year').selectOption('2026');await page.locator('#staff-calendar-month').selectOption('10');
+  await page.locator('[data-calendar-date="2026-10-13"]').click();
+  await expect(page.locator('#staff-date-filter')).toHaveValue('2026-10-13');
+  await page.keyboard.press('ArrowRight');await page.keyboard.press('Enter');
+  await expect(page.locator('#staff-date-filter')).toHaveValue('2026-10-14');
+  await page.locator('#staff-calendar-next').click();await expect(page.locator('#staff-calendar-month')).toHaveValue('11');
+  await page.locator('#staff-calendar-prev').click();await expect(page.locator('#staff-calendar-month')).toHaveValue('10');
+  await page.locator('#staff-date-manual').fill('2026-02-30');await page.locator('#staff-date-manual').press('Enter');
+  await expect(page.locator('#staff-date-manual')).toHaveAttribute('aria-invalid','true');await expect(page.locator('#staff-date-filter')).toHaveValue('2026-10-14');
+  await page.locator('#staff-date-manual').fill('2026/10/15');await page.locator('#staff-date-manual').press('Enter');
+  await expect(page.locator('[data-column-summary=date]')).toContainText('2026/10/15');
+  await page.screenshot({path:'output/playwright/staff-calendar-1920.png'});
+  await page.locator('#staff-menu-date [data-menu-close]').last().click();
+  await page.screenshot({path:'output/playwright/staff-workbench-1920.png',fullPage:true});
 });

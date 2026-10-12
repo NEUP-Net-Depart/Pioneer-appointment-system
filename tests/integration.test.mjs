@@ -587,6 +587,15 @@ test('staff sorting and slot filters compose while contextual counts ignore only
   assert.equal((await api('/api/appointments?sort=status&direction=desc', { token })).items[0].id, later.id);
   assert.equal((await api('/api/appointments?sort=campus&direction=asc', { token })).items.at(-1).id, other.id);
   assert.ok(first.id);
+  const composed = await api('/api/appointments?sorts=campus:asc,date:desc', { token });
+  assert.deepEqual(composed.items.map(item => item.id), [later.id, first.id, other.id]);
+  const dateFirst = await api('/api/appointments?sorts=date:desc,campus:asc', { token });
+  assert.equal(dateFirst.items[0].id, later.id);
+  await db.prepare('UPDATE appointments SET created_at=? WHERE id=?').bind('2099-01-01T00:00:00.000Z', other.id).run();
+  assert.equal((await api('/api/appointments?sorts=', { token })).items[0].id, other.id);
+  for (const sorts of ['campus:asc,campus:desc','date:invalid','id:asc','date:asc:desc','date:asc,','created_at DESC:asc']) {
+    await api(`/api/appointments?${new URLSearchParams({sorts})}`, { token }, 400);
+  }
   for (const query of ['sort=invalid','sort=created_at%20DESC','direction=invalid','timeSlot=invalid']) await api(`/api/appointments?${query}`, { token }, 400);
 });
 
