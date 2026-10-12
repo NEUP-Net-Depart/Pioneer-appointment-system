@@ -8,12 +8,12 @@ import { availableSlots, bookingDates, slotAvailability } from '/shared/booking-
 const weekday = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', weekday: 'short' });
 const dayLabel = date => `${weekday.format(new Date(`${date}T12:00:00+08:00`))} · ${Number(date.slice(5, 7))}/${Number(date.slice(8))}`;
 
-function updateCount(count, remaining, animate = true) {
+function updateCount(count, remaining) {
   const value = String(remaining ?? 0), previous = count.dataset.value || '0';
-  if (count.dataset.value === value && animate) return;
+  if (count.dataset.value === value) return;
   count.getAnimations({ subtree: true }).forEach(animation => animation.cancel());
   count.dataset.value = value;
-  if (!animate || remaining === undefined || matchMedia('(prefers-reduced-motion: reduce)').matches || previous === value) {
+  if (remaining === undefined || matchMedia('(prefers-reduced-motion: reduce)').matches || previous === value) {
     count.textContent = value; return;
   }
   // Expose the real count immediately; decorative reels never affect validation.
@@ -73,7 +73,7 @@ export function initSlotPicker() {
   function selected(button, value) {
     button.setAttribute('aria-pressed', String(button.dataset.campus === value || button.dataset.date === value || button.dataset.slot === value));
   }
-  function showRemaining(button, remaining, label, animate) {
+  function showRemaining(button, remaining, label) {
     const detail = button.querySelector('.booking-remaining');
     let count = detail.querySelector('.booking-remaining-count');
     if (label) {
@@ -84,10 +84,10 @@ export function initSlotPicker() {
         count = document.createElement('span'); count.className = 'booking-remaining-count';
         detail.replaceChildren('剩余 ', count, ' 名');
       }
-      updateCount(count, remaining, animate);
+      updateCount(count, remaining);
     }
   }
-  function render({ animate = true } = {}) {
+  function render() {
     $('#booking-picker').setAttribute('aria-busy', String(refreshing));
     const currentDates = bookingDates();
     for (const cache of campusSummaries.values()) for (const date of cache.keys()) if (!currentDates.includes(date)) cache.delete(date);
@@ -107,7 +107,7 @@ export function initSlotPicker() {
       const remaining = summary ? availableSlots(date).reduce((total, slot) => total + slotAvailability(summary, date, slot).remaining, 0) : 0;
       button.disabled = refreshing || !summary || remaining === 0;
       button.dataset.loading = String(refreshing && (!summary || remaining > 0));
-      showRemaining(button, summary ? remaining : undefined, summary && remaining === 0 ? availableSlots(date).every(slot => summary.slotCapacities[slot] === 0) ? '暂停预约' : '预约已满' : summary === null ? '读取失败' : undefined, animate);
+      showRemaining(button, summary ? remaining : undefined, summary && remaining === 0 ? availableSlots(date).every(slot => summary.slotCapacities[slot] === 0) ? '暂停预约' : '预约已满' : summary === null ? '读取失败' : undefined);
     }
     $('#booking-empty').hidden = dates.length > 0;
     $('#booking-slot-panel').hidden = !dateInput.value;
@@ -122,7 +122,7 @@ export function initSlotPicker() {
       const availability = summary && slotAvailability(summary, dateInput.value, slot);
       button.disabled = refreshing || !availability || availability.disabled;
       button.dataset.loading = String(refreshing && (!availability || !availability.disabled));
-      showRemaining(button, availability?.remaining, availability?.disabled ? availability.label : summary === null ? '读取失败' : undefined, animate);
+      showRemaining(button, availability?.remaining, availability?.disabled ? availability.label : summary === null ? '读取失败' : undefined);
       const capacity = button.querySelector('.booking-slot-limit');
       const capacityLabel = `最多 ${availability?.capacity ?? '-'} 人`;
       if (capacity.textContent !== capacityLabel) capacity.textContent = capacityLabel;
@@ -155,7 +155,7 @@ export function initSlotPicker() {
     summaries = campusSummaries.get(value);
     updated.textContent = campusUpdated.get(value) || '更新于 --:--';
     retry.hidden = true;
-    render({ animate: false }); void refresh();
+    render(); void refresh();
   }
   for (const campus of CAMPUSES) {
     const button = choiceButton(campus, 'campus', `${campus}校区`);
@@ -174,7 +174,7 @@ export function initSlotPicker() {
     if (!button || button.disabled) return;
     const changedDate = dateInput.value !== button.dataset.date;
     if (changedDate) slotInput.value = '';
-    dateInput.value = button.dataset.date; notice = ''; render({ animate: !changedDate });
+    dateInput.value = button.dataset.date; notice = ''; render();
     void refresh({ date: dateInput.value });
   });
   slots.addEventListener('click', async event => {

@@ -150,14 +150,15 @@ test('switching campuses displays cached counts until fresh availability arrives
   await expect(page.locator('#booking-picker')).toHaveAttribute('aria-busy', 'true');
   await expect(day(page)).toContainText('剩余 18 名');
   await expect(slot(page)).toContainText('剩余 8 名');
-  await expect(day(page).locator('.booking-count-reel')).toHaveCount(0);
+  await expect(day(page).locator('.booking-count-reel')).toHaveCount(1);
+  const cachedReel = await day(page).locator('.booking-count-reel').elementHandle();
   await expect(day(page)).toBeDisabled();
   await expect(slot(page)).toBeDisabled();
   await page.locator('#booking-form [type=submit]').click();
   await expect(page.locator('#booking-selection')).toContainText('等待名额确认');
   release();
   await expect(day(page)).toBeEnabled();
-  await expect(day(page).locator('.booking-count-reel')).toHaveCount(0);
+  expect(await day(page).locator('.booking-count-reel').evaluate((element, original) => element === original, cachedReel)).toBe(true);
   changed = true;
   await page.locator('[data-campus="浑南"]').click();
   await expect(day(page)).toBeEnabled();
@@ -175,7 +176,7 @@ test('switching campuses displays cached counts until fresh availability arrives
   gate = new Promise(resolve => { release = resolve; });
   await page.locator('[data-date="2026-10-13"]').click();
   await expect(slot(page)).toContainText('剩余 10 名');
-  await expect(slot(page).locator('.booking-count-reel')).toHaveCount(0);
+  await expect(slot(page).locator('.booking-count-reel')).toHaveCount(1);
   release();
   await expect(slot(page)).toContainText('预约已满');
 });
