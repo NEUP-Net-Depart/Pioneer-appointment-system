@@ -53,10 +53,9 @@
             </div>
             <div class="form-grid three-cols compact-gap">
               <label>是否在保 <i>*</i><select name="warranty" required aria-describedby="warranty-advice"><option value="">请选择</option><option>是</option><option>否</option><option>不清楚</option></select><small class="field-hint booking-warranty-advice" id="warranty-advice" hidden>保修期内建议优先联系官方售后，避免影响保修权益。</small></label>
-              <label>故障类型 <i>*</i><select name="faultType" required aria-describedby="thermal-advice"><option value="">请选择故障类型</option><option>清灰换硅脂</option><option>换硬盘</option><option>换内存</option><option>系统问题</option><option>蓝屏</option><option>黑屏</option><option>网络问题</option><option>其他</option></select></label>
+              <label>故障类型 <i>*</i><select name="faultType" required aria-describedby="thermal-advice"><option value="">请选择故障类型</option><option>清灰换硅脂</option><option>换硬盘</option><option>换内存</option><option>系统问题</option><option>蓝屏</option><option>黑屏</option><option>网络问题</option><option>其他</option></select><small class="field-hint booking-advice" id="thermal-advice" role="status" hidden><span>提供免费普通硅脂或自带</span><span>如您的设备使用液金散热或你不确定，请在备注中说明，维修前由工作人员确认。</span></small></label>
               <label>是否进液 / 摔过 <i>*</i><select name="liquidDrop" required><option>否</option><option>是</option><option>不清楚</option></select></label>
             </div>
-            <div class="booking-advice" id="thermal-advice" role="status" hidden><p>清灰换硅脂提供普通硅脂，无需自备。</p><p>如设备使用液金散热或你不确定，请在备注中说明，维修前由工作人员确认。</p></div>
             <div class="compact-gap">
               <div><label>故障描述<textarea name="issue" maxlength="10000" rows="3" aria-describedby="issue-count" placeholder="选填，请描述设备的异常现象、已尝试的处理方式等"></textarea></label><p class="booking-character-count" id="issue-count">0 / 10000 字</p></div>
             </div>
