@@ -6,7 +6,7 @@ export function initBookingFloat(picker) {
   let passed = false, selection, leaving;
 
   function render() {
-    if (passed && selection) {
+    if (passed) {
       if (leaving) {
         const { opacity, transform } = getComputedStyle(button);
         leaving.cancel(); leaving = undefined;
@@ -53,10 +53,12 @@ export function initBookingFloat(picker) {
         if (meta.textContent !== detail) meta.textContent = detail;
         if (time.textContent !== slot) time.textContent = slot;
       } else if (!issue) selection = false;
+      meta.hidden = !selection;
+      if (!selection) time.textContent = '请先选择时间';
       if (state.textContent !== issue) state.textContent = issue;
       state.hidden = !issue;
       panel.classList.toggle('is-invalid', Boolean(issue));
-      button.setAttribute('aria-label', `已选预约：${meta.textContent} · ${time.textContent}${issue ? `，${issue}` : ''}，点击返回时间选择器`);
+      button.setAttribute('aria-label', `${selection ? `已选预约：${meta.textContent} · ${time.textContent}` : '请先选择时间'}${issue ? `，${issue}` : ''}，点击返回时间选择器`);
       render();
     },
     dispose() {
