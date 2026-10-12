@@ -253,3 +253,20 @@ test('top bars align brand and navigation to opposite edges at desktop widths an
     }
   }
 });
+
+test('staff top section shares column edges and spacing from narrow screens to ultrawide', async ({page}) => {
+  await loginMock(page);
+  for(const width of [320,390,768,1440,1920,2864]) {
+    await page.setViewportSize({width,height:1000});
+    await page.locator('.topbar').scrollIntoViewIfNeeded();
+    const title=await page.locator('#staff-view .staff-intro').boundingBox(),metrics=await page.locator('.staff-shell .metrics-row').boundingBox(),overview=await page.locator('.staff-overview').boundingBox();
+    expect(Math.abs(title.x-metrics.x)).toBeLessThan(1);expect(Math.abs(metrics.x-overview.x)).toBeLessThan(1);
+    expect(Math.abs(title.width-metrics.width)).toBeLessThan(1);
+    const brand=await page.locator('.topbar .brand').boundingBox();
+    if(width>760)expect(Math.abs(brand.x-title.x)).toBeLessThan(1);
+    const button=await page.locator('#export-csv').boundingBox();
+    expect(Math.abs(button.x+button.width-title.x-title.width)).toBeLessThan(1);
+    await expect(page.locator('#staff-view .staff-intro')).toHaveCSS('background-image','none');
+    if([390,1920,2864].includes(width))await page.screenshot({path:`output/playwright/staff-top-${width}.png`,animations:'disabled',style:'#toast { display: none !important; }'});
+  }
+});

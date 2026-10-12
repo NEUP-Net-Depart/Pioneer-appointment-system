@@ -201,12 +201,13 @@ html{scrollbar-gutter:stable}
 .staff-slot-track i { display: block; height: 100%; background: #7894a3; }
 .staff-overview-footnote { color: var(--muted); font-size: 11px; margin: 12px 0 0; }
 /* Staff records use the same column controls at every viewport size. */
-#staff-view .staff-intro { padding-top: 32px; padding-bottom: 32px; align-items: center; }
-#staff-view .staff-intro .eyebrow { display: none; }
+#staff-view .staff-intro { display: flex; padding: 0 0 24px; align-items: center; gap: 24px; background: none; border: 0; }
 #staff-view .staff-intro h1 { font-size: 30px; letter-spacing: -.03em; }
-#staff-view .staff-intro p { margin-bottom: 0; }
-.staff-shell { max-width: 1920px; padding: 28px clamp(24px, 3vw, 56px) 64px; }
-#staff-view .staff-intro { padding-left: clamp(24px, 3vw, 56px); padding-right: clamp(24px, 3vw, 56px); }
+#staff-view .staff-intro p { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+#staff-view .staff-intro .secondary-btn { flex-shrink: 0; margin: 0; padding: 10px 16px; min-height: 40px; border: 1px solid var(--line); border-radius: 9px; background: #fff; box-shadow: none; color: var(--ink); font-size: 12px; }
+#staff-view .staff-intro .secondary-btn:hover { background: #edf2f5; border-color: #bacbd4; }
+.staff-shell { max-width: 1920px; padding: 32px clamp(24px, 3vw, 56px) 64px; }
+.staff-mode .topbar-inner { max-width: 1920px; padding-left: clamp(24px, 3vw, 56px); padding-right: clamp(24px, 3vw, 56px); }
 .staff-shell .metrics-row { box-shadow: none; border-radius: 12px; }
 .staff-shell .metric { padding: 18px 22px; }
 .staff-shell .metric strong { font-size: 26px; }
@@ -313,11 +314,12 @@ html{scrollbar-gutter:stable}
   .staff-appointments-wrap th:nth-child(7) { width: 15%; }
 }
 @media(max-width: 760px) {
-  #staff-view .staff-intro { display: flex; padding: 24px 20px; gap: 14px; }
+  #staff-view .staff-intro { display: flex; padding: 0 0 20px; gap: 14px; }
   #staff-view .staff-intro h1 { font-size: 24px; }
   #staff-view .staff-intro p { font-size: 12px; }
   #staff-view .staff-intro > div { min-width: 0; }
-  #staff-view .staff-intro .secondary-btn { border: 0; border-radius: 8px; background: #fff; font-size: 12px; padding: 10px; white-space: nowrap; }
+  #staff-view .staff-intro .secondary-btn { padding: 9px 10px; white-space: nowrap; }
+  .staff-mode .topbar-inner { padding-left: 16px; padding-right: 16px; }
   .staff-shell { padding: 24px 16px 48px; }
   .staff-shell .metrics-row { display: grid; grid-template-columns: repeat(4,1fr); border: 0; background: transparent; gap: 8px; }
   .staff-shell .metric { padding: 12px 4px; border: 0; border-radius: 8px; background: #fff; }
