@@ -25,7 +25,7 @@ try {
   assert.ok(names.has('idx_repair_number'), 'Missing repair number uniqueness index');
   assert.ok(names.has('idx_booked_expiry'),'Missing booked expiry index');
   assert.ok(names.has('slot_capacities'), 'Missing campus/slot capacity settings');
-  assert.equal(capacities.results.length, 12);
+  assert.equal(capacities.results.length, 4);
   assert.ok(capacities.results.every(row => row.capacity === 10 && row.revision === 0), 'Default capacity settings changed');
   assert.ok(!names.has('users') && !names.has('idx_appointments_queue') && !names.has('appointments_new') && !names.has('appointment_attachments_new') && !names.has('credential_recoveries_new'),'Retired or temporary schema still exists');
   console.log('All D1 migrations applied to fresh state; re-application and foreign keys verified.');

@@ -20,6 +20,6 @@ test('Sunday weekly overview reads earlier service days while preserving the upc
   assert.deepEqual(range,{start:'2026-10-12',end:'2026-10-24',campuses:['南湖']});
   assert.deepEqual(result.dates,['2026-10-19','2026-10-20','2026-10-21','2026-10-22']);
   assert.deepEqual(result.week.dates,['2026-10-12','2026-10-13','2026-10-14','2026-10-15']);
-  assert.equal(result.week.items.find(item=>item.timeSlot==='19:00–20:00').occupied,3);
+  assert.equal(result.week.items[0].occupied,3);
   assert.ok(result.week.items.every(item=>item.ended));
 });

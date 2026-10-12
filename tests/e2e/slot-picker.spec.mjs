@@ -1,11 +1,11 @@
 import { test, expect } from '@playwright/test';
 
-const firstSlot = '19:30–20:00', secondSlot = '20:30–21:00';
+const firstSlot = '19:00–20:00', secondSlot = '20:00–21:00';
 const day = page => page.locator('[data-date="2026-10-12"]');
 const slot = (page, value = firstSlot) => page.locator(`[data-slot="${value}"]`);
 function summary(campus, date) {
   return {
-    date, slotCapacities: { '19:00–19:30': 0, '20:00–20:30': 0, [firstSlot]: campus === '浑南' ? 5 : 10, [secondSlot]: 10 },
+    date, slotCapacities: { [firstSlot]: campus === '浑南' ? 5 : 10, [secondSlot]: 10 },
     slots: { [firstSlot]: date === '2026-10-12' ? 2 : 0, [secondSlot]: 0 }
   };
 }
@@ -34,7 +34,7 @@ test('dates show availability immediately, campus controls sync, and selections 
   await page.keyboard.press('Enter');
   await expect(slot(page)).toContainText('剩余 8 名');
   await slot(page).click();
-  await expect(page.locator('#booking-selection')).toContainText('已选：南湖 · 周一 · 10/12 · 19:30–20:00');
+  await expect(page.locator('#booking-selection')).toContainText('已选：南湖 · 周一 · 10/12 · 19:00–20:00');
   await page.locator('[data-campus="浑南"]').click();
   await expect(page.locator('[name=campus]')).toHaveValue('浑南');
   await expect(page.locator('[name=timeSlot]')).toHaveValue('');
@@ -234,7 +234,7 @@ test('loading starts at zero, counts roll in place and refreshes preserve select
   await setup(page, undefined, async (route, query) => {
     await gate;
     const data = summary(query.get('campus'), query.get('date'));
-    if (largeCounts) data.slotCapacities = { ...data.slotCapacities, [firstSlot]: 1000, [secondSlot]: 1000 };
+    if (largeCounts) data.slotCapacities = { [firstSlot]: 1000, [secondSlot]: 1000 };
     await route.fulfill({ json: data });
   });
   const count = day(page).locator('.booking-remaining');
@@ -287,7 +287,7 @@ test('cached options select immediately while background reads reconcile full sl
   await setup(page, undefined, async (route, query) => {
     const date = query.get('date'), data = summary(query.get('campus'), date);
     if (date === '2026-10-12') data.slots = { [firstSlot]: 10, [secondSlot]: 10 };
-    if (date === '2026-10-15') data.slotCapacities = { ...data.slotCapacities, [firstSlot]: 0, [secondSlot]: 0 };
+    if (date === '2026-10-15') data.slotCapacities = { [firstSlot]: 0, [secondSlot]: 0 };
     if (filled && date === '2026-10-13') data.slots[firstSlot] = 10;
     await gate;
     await route.fulfill({ json: data });
@@ -331,7 +331,7 @@ for (const count of [1, 2, 3, 4]) {
     await expect(page.locator('#booking-days button').first()).toBeEnabled();
     expect(await page.evaluate(() => scrollY)).toBe(initialScroll);
     await page.locator('#booking-days button').first().click();
-    await expect(slot(page)).toBeEnabled();
+    await expect(page.locator('#booking-slots button').first()).toBeEnabled();
     const geometry = await page.locator('#booking-picker').evaluate(element => {
       const rect = element.getBoundingClientRect();
       const days = [...document.querySelectorAll('#booking-days button')].map(button => button.getBoundingClientRect().top);
@@ -410,7 +410,7 @@ for (const width of [320, 390, 1440]) {
     await expect(floating).toBeHidden();
     await passPicker();
     await expect(floating).toBeVisible();
-    await expect(button).toHaveAccessibleName('已选预约：南湖 · 周一 · 10/12 · 19:30–20:00，点击返回时间选择器');
+    await expect(button).toHaveAccessibleName('已选预约：南湖 · 周一 · 10/12 · 19:00–20:00，点击返回时间选择器');
     await expect(floating.locator('.booking-float-particles i')).toHaveCount(6);
     await button.evaluate(async element => {
       await Promise.all(element.parentElement.getAnimations({ subtree: true }).map(animation => animation.finished.catch(() => {})));

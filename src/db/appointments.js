@@ -52,21 +52,19 @@ export function appointmentRepository(db) {
       for (const [key,column] of [['campus','campus'],['date','date'],['timeSlot','time_slot']]) if (query[key]) { where.push(`${column}=?`); args.push(query[key]); }
       if (query.dateFrom && query.dateTo) { where.push('date>=? AND date<=?'); args.push(query.dateFrom,query.dateTo); }
       if (query.q) {
-        where.push("(instr(lower(id),?)>0 OR instr(lower(COALESCE(repair_number,'')),?)>0 OR instr(lower(device_model),?)>0 OR instr(campus,?)>0 OR instr(lower(name),?)>0 OR instr(student_id,?)>0)");
+        where.push("(instr(id,?)>0 OR instr(repair_number,?)>0 OR instr(lower(device_model),?)>0 OR instr(campus,?)>0 OR ((?='' OR (assigned_to=? AND status<>'booked')) AND (instr(lower(name),?)>0 OR instr(student_id,?)>0)))");
         const text=query.q.toLowerCase();
-        args.push(text,text,text,text,text,text);
+        args.push(text,text,text,text,technician,technician,text,text);
       }
       const filteredWhere = where.join(' AND '), filteredArgs = [...args];
       if (query.status === 'pending') where.push("status IN ('booked','in_progress')");
       else if (query.status !== 'all') { where.push('status=?'); args.push(query.status); }
       // Only fixed expressions reach ORDER BY; query values are validated at the route.
-      const slotOrder = "CASE time_slot WHEN '19:00–19:30' THEN 1 WHEN '19:30–20:00' THEN 2 WHEN '19:00–20:00' THEN 2 WHEN '20:00–20:30' THEN 3 WHEN '20:30–21:00' THEN 4 WHEN '20:00–21:00' THEN 4 ELSE 9 END";
-      const sortColumns = { createdAt: ['created_at'], date: ['date',slotOrder], status: ["CASE status WHEN 'booked' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END"], campus: ['campus'] };
+      const sortColumns = { createdAt: ['created_at'], date: ['date','time_slot'], status: ["CASE status WHEN 'booked' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END"], campus: ['campus'] };
       const sorts = query.sorts ?? [{key:query.sort || 'createdAt',direction:query.direction || 'desc'}];
       if (query.sorts === undefined && query.sort === 'campus') sorts.push({key:'date',direction:query.direction || 'desc'});
       const order = sorts.flatMap(item => (sortColumns[item.key] || []).map(column => `${column} ${item.direction === 'asc' ? 'ASC' : 'DESC'}`));
-      if(!sorts.length)order.push('date ASC',`${slotOrder} ASC`,"CAST(substr(id,instr(id,'-')+1) AS INTEGER) ASC",'created_at ASC','id ASC');
-      else order.push('created_at DESC','id DESC');
+      order.push('created_at DESC','id DESC');
       const [items, counts, filteredCounts] = await db.batch([
         db.prepare(`SELECT * FROM appointments WHERE ${where.join(' AND ')} ORDER BY ${order.join(',')}`).bind(...args),
         db.prepare(`SELECT COUNT(*) AS allCount, COUNT(CASE WHEN status='booked' THEN 1 END) AS booked,

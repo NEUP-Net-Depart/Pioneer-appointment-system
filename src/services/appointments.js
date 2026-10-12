@@ -35,7 +35,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       const week = weekRange(start);
       const { totals, capacities } = await appointments.overview(week.start, end, campuses);
       const dates = Array.from({ length: 7 }, (_, index) => addDays(start, index)).filter(serviceDay);
-      const makeItems = days => campuses.flatMap(campus => days.flatMap(date => [...TIME_SLOTS,...['19:00–20:00','20:00–21:00'].filter(slot=>totals.some(row=>row.campus===campus && row.date===date && row.time_slot===slot))].map(timeSlot => {
+      const makeItems = days => campuses.flatMap(campus => days.flatMap(date => TIME_SLOTS.map(timeSlot => {
         const total = totals.find(row => row.campus === campus && row.date === date && row.time_slot === timeSlot);
         const capacity = capacities.find(row => row.campus === campus && row.time_slot === timeSlot)?.capacity ?? 0;
         const occupied = total?.occupied ?? 0;
@@ -52,9 +52,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       const result = await appointments.list(query, scope);
       const items = await Promise.all(result.items.map(async item => {
         if (user.role === 'technician' && (item.status === 'booked' || item.assignedTo !== user.account)) {
-          // Technicians need identity fields to locate a person at the desk. Contact data,
-          // signatures and attachments remain hidden until the booking is claimed.
-          return Object.fromEntries(['id','revision','campus','date','timeSlot','studentId','name','deviceType','brand','deviceModel','faultType','status','createdAt'].map(key => [key, item[key]]));
+          return Object.fromEntries(['id','revision','campus','date','timeSlot','deviceType','brand','deviceModel','faultType','status','createdAt'].map(key => [key, item[key]]));
         }
         return present(item);
       }));
