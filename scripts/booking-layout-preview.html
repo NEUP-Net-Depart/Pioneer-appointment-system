@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>预约选择器 · 本地布局调试</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#eef2f5;color:#102a43;font:14px/1.6 "Microsoft YaHei",sans-serif}main{max-width:1600px;padding:24px;margin:auto}h1{font-size:22px;margin:0}p{color:#637887;margin:6px 0 18px}.panel{padding:16px;background:#fff;border:1px solid #dce5ea;border-radius:12px;margin-top:12px}.controls{display:flex;flex-wrap:wrap;align-items:center;gap:14px}label{display:flex;align-items:center;gap:8px}select,input,button{font:inherit;border:1px solid #c5d4dc;border-radius:6px;padding:7px 10px;background:#fff;color:#102a43}input{width:90px}button{cursor:pointer}button:disabled{opacity:.5;cursor:wait}#metrics,#update-status{color:#526a7b;font-size:12px}.stage{overflow:auto;padding:16px 0 40px}iframe{display:block;box-sizing:content-box;border:1px solid #c5d4dc;border-radius:12px;background:#fff;box-shadow:0 14px 40px #102a4310;margin:0 auto}table{border-collapse:collapse;margin-top:12px;width:100%;max-width:650px;text-align:left}th,td{padding:6px 10px;border-bottom:1px solid #edf1f4}caption{text-align:left;color:#637887;font-size:12px}#ratio{color:#637887} @media(max-width:600px){main{padding:12px}label{flex-wrap:wrap}th,td{padding:6px 4px}input{width:76px}}
+  </style>
+</head>
+<body><main>
+  <h1>预约选择器 · 本地布局调试</h1>
+  <p>实时调整当前预览，保留已填内容和有效选择。名额均为模拟数据，预约提交已禁用。</p>
+  <div class="panel controls">
+    <label>模拟今天<select id="days"><option value="4" selected>周一 · 可选周一至周四</option><option value="3">周二 · 可选周二至周四</option><option value="2">周三 · 可选周三、周四</option><option value="1">周四 · 仅可选周四</option><option value="friday">周五 · 仅可选下周一</option><option value="saturday">周六 · 可选下周一、周二</option><option value="sunday">周日 · 可选下周一至周三</option></select></label>
+    <label>时段数量<select id="slots"><option value="2">2 个 · 当前配置</option><option value="4">4 个 · 拆分示例</option></select></label>
+    <button id="choose" type="button" disabled>展开第一个日期</button><span id="update-status" role="status">正在读取预览…</span>
+  </div>
+  <div class="panel controls">
+    <label>设备比例<select id="device"><option value="320,568">手机 · 320 × 568</option><option value="375,667">手机 · 375 × 667</option><option value="390,844" selected>手机 · 390 × 844</option><option value="430,932">手机 · 430 × 932</option><option value="1024,768">桌面 · 4:3</option><option value="1280,720">桌面 · 16:9</option><option value="1440,900">桌面 · 16:10</option><option value="custom">自定义</option></select></label>
+    <label>宽度<input id="width" type="number" min="280" max="2560" value="390">px</label>
+    <label>高度<input id="height" type="number" min="360" max="1600" value="844">px</label><span id="ratio"></span>
+  </div>
+  <div class="panel">
+    <div class="controls"><label>配置校区<select id="capacity-campus"><option>南湖</option><option>浑南</option></select></label><label>作用日期<select id="capacity-date"><option value="*">所有可选日期</option></select></label><button id="reset-capacity" type="button">恢复此范围默认名额</button></div>
+    <table><caption>总名额为 0 表示暂停预约；剩余人数为 0 表示已满。具体日期配置优先于“所有可选日期”。</caption><thead><tr><th>时段</th><th>总名额</th><th>剩余人数</th></tr></thead><tbody id="capacity-rows"></tbody></table>
+  </div>
+  <div id="metrics" role="status"></div><div class="stage"><iframe id="preview" title="预约页面设备预览"></iframe></div>
+</main>
+<script type="module">
+import { bookingDates } from '/scenario/4/2/shared/booking-slots.js';
+const $=selector=>document.querySelector(selector);
+const frame=$('#preview'),days=$('#days'),slots=$('#slots'),device=$('#device'),width=$('#width'),height=$('#height'),metrics=$('#metrics'),campus=$('#capacity-campus'),date=$('#capacity-date'),rows=$('#capacity-rows');
+const scenarioInstant=value=>'2026-10-'+({friday:16,saturday:17,sunday:18}[value]||16-Number(value))+'T12:00:00+08:00';
+const config={days:4,instant:scenarioInstant('4'),slotCount:2,overrides:{}};
+let observer,ready=false,revision=0;
+const timeSlots=()=>config.slotCount===4?['19:00–19:30','19:30–20:00','20:00–20:30','20:30–21:00']:['19:00–20:00','20:00–21:00'];
+const key=(day,slot)=>JSON.stringify([campus.value,day,slot]);
+function counts(slot,index){return config.overrides[key(date.value,slot)]||config.overrides[key('*',slot)]||{capacity:10,remaining:10-index-(campus.value==='浑南'?3:1)};}
+function measure(){const picker=frame.contentDocument?.querySelector('#booking-picker');if(!picker)return;const rect=picker.getBoundingClientRect();metrics.textContent='容器高度 '+Math.round(rect.height)+' px / 屏幕高度 '+frame.height+' px · 容器顶部 '+Math.round(rect.top)+' px · '+(rect.top>=-1&&rect.bottom<=Number(frame.height)?'整个容器在一屏内':'可手动滚动查看');}
+function resize(){const w=Math.min(2560,Math.max(280,Number(width.value)||390)),h=Math.min(1600,Math.max(360,Number(height.value)||844));frame.width=w;frame.height=h;$('#ratio').textContent='宽高比 '+(w/h).toFixed(2);requestAnimationFrame(measure);}
+async function update(){if(!ready)return;const current=++revision;$('#update-status').textContent='正在应用配置…';await frame.contentWindow.__bookingPreviewApply(structuredClone(config));if(current===revision){$('#update-status').textContent='配置已实时应用';measure();}}
+function renderDates(){const selected=date.value;date.replaceChildren(new Option('所有可选日期','*'));for(const day of bookingDates(new Date(config.instant))){const label=new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',month:'numeric',day:'numeric',weekday:'short'}).format(new Date(day+'T12:00:00+08:00'));date.add(new Option(label,day));}if([...date.options].some(option=>option.value===selected))date.value=selected;}
+function renderCounts(){rows.replaceChildren();timeSlots().forEach((slot,index)=>{const tr=document.createElement('tr'),label=document.createElement('td');label.textContent=slot;tr.append(label);const values=counts(slot,index);for(const field of ['capacity','remaining']){const td=document.createElement('td'),input=document.createElement('input');input.type='number';input.min='0';input.max=field==='capacity'?'1000':String(values.capacity);input.value=values[field];input.setAttribute('aria-label',slot+(field==='capacity'?'总名额':'剩余人数'));input.dataset.field=field;input.addEventListener('input',()=>{if(input.value===''||!Number.isFinite(input.valueAsNumber))return;const value={...counts(slot,index),[field]:Math.max(0,Math.min(field==='capacity'?1000:counts(slot,index).capacity,Math.floor(input.valueAsNumber)))};value.remaining=Math.min(value.remaining,value.capacity);config.overrides[key(date.value,slot)]=value;const remainingInput=tr.querySelector('[data-field=remaining]');remainingInput.max=value.capacity;remainingInput.value=value.remaining;input.value=value[field];void update();});td.append(input);tr.append(td);}rows.append(tr);});}
+device.addEventListener('change',()=>{if(device.value==='custom')return;[width.value,height.value]=device.value.split(',');resize();});
+for(const control of [width,height])control.addEventListener('input',()=>{device.value='custom';resize();});
+days.addEventListener('change',()=>{config.instant=scenarioInstant(days.value);config.days=bookingDates(new Date(config.instant)).length;renderDates();renderCounts();void update();});
+slots.addEventListener('change',()=>{config.slotCount=Number(slots.value);renderCounts();void update();});
+for(const control of [campus,date])control.addEventListener('change',renderCounts);
+$('#reset-capacity').addEventListener('click',()=>{for(const slot of timeSlots())delete config.overrides[key(date.value,slot)];renderCounts();void update();});
+$('#choose').addEventListener('click',()=>frame.contentDocument?.querySelector('#booking-days button:not(:disabled)')?.click());
+frame.addEventListener('load',async()=>{await frame.contentWindow.__bookingPreviewReady;ready=true;$('#choose').disabled=false;observer=new MutationObserver(measure);observer.observe(frame.contentDocument.querySelector('#booking-picker'),{subtree:true,childList:true,attributes:true,characterData:true});frame.contentWindow.addEventListener('scroll',measure);frame.contentWindow.addEventListener('resize',measure);await update();});
+renderDates();renderCounts();resize();frame.src='/scenario/4/2/';
+</script></body></html>
