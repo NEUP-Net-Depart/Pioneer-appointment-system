@@ -572,6 +572,47 @@ test('SQL staff filters preserve literal searches, status groups and totals', as
   for (const query of ['status=invalid','date=2026-02-30','campus=invalid']) await api(`/api/appointments?${query}`, { token: root }, 400);
 });
 
+test('staff sorting and slot filters compose while contextual counts ignore only the status tab', async () => {
+  const token = await login();
+  const first = await book(), later = await book({ timeSlot: '20:00–21:00' }), other = await book({ campus: '浑南' });
+  await db.prepare("UPDATE appointments SET status='completed',outcome='cancelled' WHERE id=?").bind(later.id).run();
+  const sorted = await api('/api/appointments?sort=date&direction=asc', { token });
+  assert.deepEqual(sorted.items.map(item => item.timeSlot), ['19:00–20:00','19:00–20:00','20:00–21:00']);
+  const reverse = await api('/api/appointments?sort=date&direction=desc', { token });
+  assert.equal(reverse.items[0].id, later.id);
+  const filtered = await api(`/api/appointments?${new URLSearchParams({ campus:'南湖',date,timeSlot:'20:00–21:00',status:'booked',sort:'status',direction:'asc' })}`, { token });
+  assert.equal(filtered.items.length, 0);
+  assert.deepEqual(filtered.filteredCounts, { all:1,booked:0,in_progress:0,completed:1 });
+  assert.equal(filtered.counts.all, 3);
+  assert.equal((await api('/api/appointments?sort=status&direction=desc', { token })).items[0].id, later.id);
+  assert.equal((await api('/api/appointments?sort=campus&direction=asc', { token })).items.at(-1).id, other.id);
+  assert.ok(first.id);
+  for (const query of ['sort=invalid','sort=created_at%20DESC','direction=invalid','timeSlot=invalid']) await api(`/api/appointments?${query}`, { token }, 400);
+});
+
+test('staff overview uses real capacity and cancellation rules without exposing student data or other campuses', async () => {
+  const root = await login(), tech = await addUser('650018');
+  const active = await book(), finished = await book(), cancelled = await book();
+  await book({ campus:'浑南' });
+  await db.prepare("UPDATE appointments SET status='in_progress',assigned_to='650018' WHERE id=?").bind(active.id).run();
+  await db.prepare("UPDATE appointments SET status='completed',outcome='repaired' WHERE id=?").bind(finished.id).run();
+  await db.prepare("UPDATE appointments SET status='completed',outcome='cancelled' WHERE id=?").bind(cancelled.id).run();
+  await configureCapacity(root, 1);
+  const result = await api('/api/appointments/overview', { token:tech });
+  assert.deepEqual(result.campuses, ['南湖']);
+  assert.equal(result.start, dateKey()); assert.equal(result.end, addDays(dateKey(),6));
+  assert.ok(result.dates.every(serviceDay));
+  const slot = result.items.find(item => item.date===date && item.timeSlot==='19:00–20:00');
+  assert.equal(slot.occupied,2); assert.equal(slot.remaining,0); assert.equal(slot.capacity,1);
+  assert.equal(slot.booked,0); assert.equal(slot.inProgress,1);
+  assert.ok(result.items.every(item => item.campus==='南湖' && !('name' in item) && !('studentId' in item) && !('social' in item)));
+  await configureCapacity(root,0);
+  const paused = await api('/api/appointments/overview', { token:root });
+  assert.equal(paused.items.find(item => item.campus==='南湖' && item.date===date && item.timeSlot==='19:00–20:00').capacity,0);
+  assert.ok(paused.items.some(item => item.campus==='浑南' && item.occupied===1));
+  await api('/api/appointments/overview', {},401);
+});
+
 test('SQL queue counts use campus/slot scopes, deterministic ties and active status rules', async () => {
   const root = await login();
   const first = await book(), second = await book();

@@ -47,9 +47,28 @@
     <section class="view" id="staff-view" data-view="staff">
         <div class="page-intro staff-intro"><div><p class="eyebrow">SERVICE DESK · 03</p><h1>维修工作台</h1><p>签到、维修与结果记录集中管理。</p></div><button class="secondary-btn" id="export-csv" data-role-allow="admin" type="button">↓ 导出 CSV</button></div>
       <div class="content-shell staff-shell">
-        <div class="metrics-row"><div class="metric"><span>全部预约</span><strong id="metric-total">0</strong></div><div class="metric"><span>已预约</span><strong id="metric-booked">0</strong></div><div class="metric"><span>维修中</span><strong id="metric-progress">0</strong></div><div class="metric accent"><span>已结束</span><strong id="metric-done">0</strong></div></div>
-        <div class="toolbar"><div class="filter-tabs" role="tablist"><button class="filter-tab is-active" data-filter="all">全部 <span id="count-all">0</span></button><button class="filter-tab" data-filter="booked">已预约 <span id="count-booked">0</span></button><button class="filter-tab" data-filter="in_progress">维修中 <span id="count-progress">0</span></button><button class="filter-tab" data-filter="completed">已结束 <span id="count-done">0</span></button></div><div class="staff-filters"><select id="staff-campus-filter" aria-label="按校区筛选"><option value="all">全部校区</option><option>南湖</option><option>浑南</option></select><input id="staff-date-filter" type="date" aria-label="按日期筛选" /><button id="staff-clear-filters" class="filter-clear" type="button">清除</button><input id="staff-search" class="staff-search" placeholder="搜索姓名、学号、校区或编号" /></div></div>
-        <div class="table-wrap"><table><thead><tr><th>预约信息</th><th>设备</th><th>期望时段</th><th>状态</th><th>维修记录</th><th></th></tr></thead><tbody id="appointments-table"></tbody></table><div id="staff-empty" class="table-empty" hidden>暂无符合条件的预约</div></div>
+        <p class="staff-metrics-caption">授权范围内的全部记录</p><div class="metrics-row"><div class="metric"><span>全部预约</span><strong id="metric-total">0</strong></div><div class="metric"><span>已预约</span><strong id="metric-booked">0</strong></div><div class="metric"><span>维修中</span><strong id="metric-progress">0</strong></div><div class="metric accent"><span>已结束</span><strong id="metric-done">0</strong></div></div>
+        <section class="staff-overview" aria-labelledby="staff-overview-title">
+          <div class="staff-overview-heading"><div><p class="staff-kicker">未来 7 天</p><h2 id="staff-overview-title">近期预约概览</h2></div><button class="secondary-btn" id="staff-refresh" type="button">刷新数据</button></div>
+          <div id="staff-overview-dates" class="staff-overview-dates" role="group" aria-label="概览日期"></div>
+          <p id="staff-overview-state" class="staff-overview-state" role="status">登录后读取近期预约</p>
+          <div id="staff-overview-campuses" class="staff-overview-campuses"></div>
+          <p class="staff-overview-footnote">名额按未取消的预约统计，已结束仍占名额。点击时段查看预约；概览不受下方列表筛选影响。</p>
+        </section>
+        <section class="staff-list-controls" aria-labelledby="staff-list-title">
+          <div class="staff-list-heading"><h2 id="staff-list-title">预约记录</h2><p id="staff-list-summary" role="status">读取预约记录</p></div>
+          <div class="staff-query-grid">
+            <label>校区<select id="staff-campus-filter"><option value="all">全部校区</option><option>南湖</option><option>浑南</option></select></label>
+            <label>预约日期<input id="staff-date-filter" type="date" /></label>
+            <label>预约时段<select id="staff-slot-filter"><option value="">全部时段</option><option>19:00–20:00</option><option>20:00–21:00</option></select></label>
+            <label class="staff-query-search">搜索<input id="staff-search" class="staff-search" placeholder="姓名、学号、设备型号或单号" /></label>
+          </div>
+          <div class="staff-query-bottom">
+            <div class="filter-tabs" role="group" aria-label="预约状态"><button class="filter-tab is-active" data-filter="all" aria-pressed="true">全部 <span id="count-all">0</span></button><button class="filter-tab" data-filter="booked" aria-pressed="false">已预约 <span id="count-booked">0</span></button><button class="filter-tab" data-filter="in_progress" aria-pressed="false">维修中 <span id="count-progress">0</span></button><button class="filter-tab" data-filter="completed" aria-pressed="false">已结束 <span id="count-done">0</span></button></div>
+            <div class="staff-sort-controls"><label>排序<select id="staff-sort"><option value="date">预约时间</option><option value="createdAt">提交时间</option><option value="status">状态</option><option value="campus">校区</option></select></label><select id="staff-direction" aria-label="排序方向"><option value="asc">升序</option><option value="desc">降序</option></select><button id="staff-clear-filters" class="filter-clear" type="button">重置</button></div>
+          </div>
+        </section>
+        <p class="staff-table-hint">横向滑动查看完整记录</p><div class="table-wrap staff-appointments-wrap"><table><thead><tr><th>预约信息</th><th>校区</th><th>设备</th><th>预约时间</th><th>状态</th><th>维修记录</th><th>操作</th></tr></thead><tbody id="appointments-table"></tbody></table><div id="staff-empty" class="table-empty" hidden>暂无符合条件的预约</div></div>
       </div>
     </section>
 
