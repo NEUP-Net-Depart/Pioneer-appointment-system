@@ -1,11 +1,12 @@
 import { fail } from '../lib/http.js';
 import { requireRole, requireGrantScope } from './permissions.js';
+import { TIME_SLOTS } from '../../shared/constants.js';
 
 export function slotCapacityService(repository) {
   return {
     async list(actor) {
       requireRole(actor, 'admin');
-      return { items: await repository.list(actor.authorizedCampuses) };
+      return { items: (await repository.list(actor.authorizedCampuses)).filter(item => TIME_SLOTS.includes(item.timeSlot)) };
     },
     async update(input, actor) {
       requireGrantScope(actor, [input.campus]);

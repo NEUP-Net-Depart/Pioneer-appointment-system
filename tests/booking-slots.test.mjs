@@ -10,14 +10,14 @@ test('booking dates preserve the four-day Shanghai window and Monday to Thursday
 });
 
 test('slots disappear at their existing end deadline, and fully ended days disappear', () => {
-  assert.deepEqual(availableSlots('2026-10-12', new Date('2026-10-12T19:59:59+08:00')), ['19:00–20:00', '20:00–21:00']);
-  assert.deepEqual(availableSlots('2026-10-12', new Date('2026-10-12T20:00:00+08:00')), ['20:00–21:00']);
+  assert.deepEqual(availableSlots('2026-10-12', new Date('2026-10-12T19:59:59+08:00')), ['19:30–20:00', '20:00–20:30', '20:30–21:00']);
+  assert.deepEqual(availableSlots('2026-10-12', new Date('2026-10-12T20:00:00+08:00')), ['20:00–20:30', '20:30–21:00']);
   assert.deepEqual(availableSlots('2026-10-12', new Date('2026-10-12T21:00:00+08:00')), []);
   assert.deepEqual(bookingDates(new Date('2026-10-15T21:00:00+08:00')), []);
 });
 
 test('availability distinguishes open, paused, full, overbooked and expired slots', () => {
-  const date = '2026-10-12', slot = '19:00–20:00', now = new Date(`${date}T12:00:00+08:00`);
+  const date = '2026-10-12', slot = '19:00–19:30', now = new Date(`${date}T12:00:00+08:00`);
   const summary = (capacity, occupied) => ({ slotCapacities: { [slot]: capacity }, slots: { [slot]: occupied } });
   assert.deepEqual(slotAvailability(summary(10, 3), date, slot, now), { capacity: 10, remaining: 7, ended: false, disabled: false, label: '剩余 7 名' });
   assert.equal(slotAvailability(summary(0, 0), date, slot, now).label, '暂停预约');

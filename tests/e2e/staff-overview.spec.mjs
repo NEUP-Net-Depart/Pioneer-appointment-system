@@ -98,6 +98,21 @@ for(const width of [320,1440]) {
   });
 }
 
+test('half-hour filters retain historical slots and Chinese composition sends only the completed search', async ({page})=>{
+  await page.clock.install({time:new Date('2026-10-12T04:00:00Z')});await loginMock(page);
+  await page.locator('[data-column-menu=date]').click();
+  expect(await page.locator('#staff-slot-filter option').allTextContents()).toEqual(['全部时段','19:00–19:30','19:30–20:00','20:00–20:30','20:30–21:00','19:00–20:00','20:00–21:00']);
+  const filterRequest=page.waitForRequest(r=>r.url().includes('/api/appointments?') && new URL(r.url()).searchParams.get('timeSlot')==='19:30–20:00');
+  await page.locator('#staff-slot-filter').selectOption('19:30–20:00');await filterRequest;
+  await page.locator('#staff-menu-date [data-menu-close]').last().click();
+  const searches=[];page.on('request',r=>{if(r.url().includes('/api/appointments?'))searches.push(new URL(r.url()).searchParams.get('q'));});
+  const search=page.locator('#staff-search');
+  await search.dispatchEvent('compositionstart');await search.fill('张');await page.clock.runFor(300);
+  expect(searches).toEqual([]);
+  await search.fill('张同学');await search.dispatchEvent('compositionend');await page.clock.runFor(300);
+  await expect.poll(()=>searches).toEqual(['张同学']);
+});
+
 test('a single authorized campus and failed overview refresh keep the last visible data', async ({page}) => {
   await loginMock(page,['南湖']);
   await expect(page.locator('#staff-campus-filter option').filter({hasText:'浑南'})).toHaveJSProperty('hidden',true);

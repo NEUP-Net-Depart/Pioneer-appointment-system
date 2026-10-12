@@ -10,11 +10,12 @@ export function queueService(appointments, queue) {
       if (current) current = await appointments.find(current.id);
       const date = query.date || current?.date || dateKey();
       const selection = { date, campus: query.campus || current?.campus || '', timeSlot: query.timeSlot || current?.timeSlot || '' };
-      const { counts, capacities, queue: position } = await queue.summary(selection, current);
-      const slotCapacities = Object.fromEntries(TIME_SLOTS.map(slot => [slot, capacities.find(row => row.time_slot === slot)?.capacity ?? 0]));
-      const capacity = selection.timeSlot ? slotCapacities[selection.timeSlot] : Object.values(slotCapacities).reduce((sum, value) => sum + value, 0);
+      const { counts, slots, capacities, queue: position } = await queue.summary(selection, current);
+      const allSlotCapacities = Object.fromEntries(capacities.map(row => [row.time_slot, Number(row.capacity)]));
+      const slotCapacities = Object.fromEntries(TIME_SLOTS.map(slot => [slot, allSlotCapacities[slot] ?? 0]));
+      const capacity = selection.timeSlot ? (allSlotCapacities[selection.timeSlot] ?? 0) : Object.values(slotCapacities).reduce((sum, value) => sum + value, 0);
       return { date, dayTotal: counts.dayTotal, campusDayTotal: counts.campusDayTotal, slotTotal: counts.slotTotal, capacity, slotCapacities,
-        slots: { [TIME_SLOTS[0]]: counts.firstSlot, [TIME_SLOTS[1]]: counts.secondSlot },
+        slots: Object.fromEntries([...TIME_SLOTS, '19:00–20:00', '20:00–21:00'].map(slot => [slot, Number(slots.find(row => row.time_slot === slot)?.total || 0)])),
         ahead: position?.present ? position.ahead : null, position: position?.present ? position.ahead + 1 : null,
         queueTotal: position ? position.queueTotal : counts.slotTotal };
     }

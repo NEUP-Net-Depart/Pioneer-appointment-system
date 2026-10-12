@@ -6,8 +6,9 @@ import {attachmentSize,attachmentUrl} from '/shared/attachments.js';
 import {$,$$,showToast,escapeHtml} from '/shared/utils.js';
 import {apiFetch,apiJson} from '/shared/api.js';
 import {formatDate,formatInstant} from '/shared/time.js';
-import {statusLabels,statusClass,outcomeLabels,repairOutcomes,roleLevel} from '/shared/constants.js';
+import {statusLabels,statusClass,outcomeLabels,repairOutcomes,roleLevel,TIME_SLOTS} from '/shared/constants.js';
 export function initStaff(){
+  $('#staff-slot-filter').innerHTML='<option value="">全部时段</option>'+[...TIME_SLOTS,'19:00–20:00','20:00–21:00'].map(slot=>`<option>${slot}</option>`).join('');
   let activeFilter='all',generation=0,searchTimer,detailItem;
   let appointments=[],counts={},filteredCounts={};
   const menus=initColumnMenus(()=>refreshList());
@@ -144,7 +145,10 @@ export function initStaff(){
     menus.update(activeFilter);
     $$('.filter-tab').forEach(item=>{const selected=item.dataset.filter===activeFilter;item.classList.toggle('is-active',selected);item.setAttribute('aria-pressed',String(selected));});
   }
-  $('#staff-search').addEventListener('input',()=>{clearTimeout(searchTimer);searchTimer=setTimeout(refreshList,200);});
+  let composing=false;
+  $('#staff-search').addEventListener('compositionstart',()=>{composing=true;clearTimeout(searchTimer);});
+  $('#staff-search').addEventListener('compositionend',()=>{composing=false;clearTimeout(searchTimer);searchTimer=setTimeout(refreshList,100);});
+  $('#staff-search').addEventListener('input',()=>{if(composing)return;clearTimeout(searchTimer);searchTimer=setTimeout(refreshList,200);});
   for(const id of ['staff-campus-filter','staff-date-filter','staff-slot-filter']) $('#'+id).addEventListener('change',refreshList);
   $('#staff-refresh').addEventListener('click',refresh);
   $('#staff-clear-filters').addEventListener('click',()=>{
