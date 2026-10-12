@@ -279,9 +279,6 @@ html{scrollbar-gutter:stable}
 .staff-column-menu select, .staff-column-menu input { display: block; width: 100%; min-width: 0; height: 42px; border: 1px solid var(--line); border-radius: 8px; background: #f8fafb; color: var(--ink); font-size: 13px; padding: 9px 10px; margin-top: 6px; }
 .staff-menu-caption { color: var(--muted); font-size: 12px; margin: 0 0 14px; }
 .staff-menu-heading .staff-menu-caption { margin: 6px 0 0; }
-.staff-date-shortcuts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; }
-.staff-date-shortcuts button { min-height: 36px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--muted); font-size: 12px; }
-.staff-date-shortcuts button.is-active { background: #eaf1f4; border-color: #9eb5c2; color: var(--ink); }
 .staff-date-message { min-height: 16px; margin: -6px 0 0; color: #b03b30; font-size: 11px; }
 .staff-calendar-selection { color: var(--ink); font-size: 12px; margin: 10px 0 0; }
 .staff-column-menu button:focus-visible { outline: 2px solid #0e6874; outline-offset: 2px; }

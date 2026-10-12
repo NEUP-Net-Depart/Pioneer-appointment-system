@@ -121,7 +121,7 @@ test('column filters compose, stay visible in the headers and fit a narrow scree
   const box=await page.locator('#staff-menu-date').boundingBox();
   expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(320);expect(box.y+box.height).toBeLessThanOrEqual(700);
   await page.screenshot({path:'output/playwright/staff-column-menu-320.png',style:'#toast { display: none !important; }'});
-  await page.locator('#staff-clear-date').click();
+  await page.locator('[data-nearby-date="2026-10-13"]').click();
   await expect(page.locator('#staff-date-filter')).toHaveValue('');
   await expect(page.locator('#staff-slot-filter')).toHaveValue(slots[1]);
   await page.keyboard.press('Escape');
@@ -172,30 +172,26 @@ test('compact date filter focuses today and preserves a collapsed historical fil
   await expect(page.locator('#staff-calendar-selection')).toHaveText('已选 2026 / 09 / 10');
 });
 
-test('nearest work shortcut selects the next Monday to Thursday across weekends and years', async ({page}) => {
-  await page.clock.install({time:new Date('2026-10-11T16:30:00Z')});
+test('date filter toggles on repeat clicks and keyboard activation while preserving other filters', async ({page}) => {
+  await page.clock.install({time:new Date('2026-10-12T04:00:00Z')});
   await loginMock(page);
   await page.locator('[data-column-menu=date]').click();
   await page.locator('#staff-slot-filter').selectOption(slots[1]);
-  const shortcut=page.locator('[data-date-shortcut=nextWork]');
-  await expect(shortcut).toHaveText('最近工作');
-  for (const [instant,expected] of [
-    ['2026-10-11T16:30:00Z','2026-10-13'],
-    ['2026-10-13T04:00:00Z','2026-10-14'],
-    ['2026-10-14T04:00:00Z','2026-10-15'],
-    ['2026-10-15T04:00:00Z','2026-10-19'],
-    ['2026-10-16T04:00:00Z','2026-10-19'],
-    ['2026-10-17T04:00:00Z','2026-10-19'],
-    ['2026-10-18T04:00:00Z','2026-10-19'],
-    ['2026-12-31T04:00:00Z','2027-01-04']
-  ]) {
-    await page.clock.setSystemTime(new Date(instant));
-    await shortcut.click();
-    await expect(page.locator('#staff-date-filter')).toHaveValue(expected);
+  const day=page.locator('[data-nearby-date="2026-10-13"]');
+  await day.click();await expect(page.locator('#staff-date-filter')).toHaveValue('2026-10-13');
+  await expect(day).toHaveAttribute('aria-pressed','true');
+  for(const activate of [()=>day.click(),()=>day.press('Enter'),()=>day.press('Space')]) {
+    const request=page.waitForRequest(r=>r.url().includes('/api/appointments?') && new URL(r.url()).searchParams.get('date')==='');
+    await activate();await request;
+    await expect(page.locator('#staff-date-filter')).toHaveValue('');
+    await expect(day).toHaveAttribute('aria-pressed','false');await expect(day).toBeFocused();
+    await expect(page.locator('#staff-calendar-selection')).toHaveText('全部日期');
     await expect(page.locator('#staff-slot-filter')).toHaveValue(slots[1]);
-    await expect(shortcut).toHaveAttribute('aria-pressed','true');
-    await expect(page.locator('#staff-calendar-selection')).toHaveText('已选 '+expected.replaceAll('-',' / '));
+    await day.click();
   }
+  await page.locator('[data-nearby-date="2026-10-14"]').click();
+  await expect(page.locator('#staff-date-filter')).toHaveValue('2026-10-14');
+  await expect(day).toHaveAttribute('aria-pressed','false');
 });
 
 test('nearby date choices stay within the booking window across weekdays and year end', async ({page}) => {
