@@ -53,6 +53,8 @@ npm run dev
 
 `.dev.vars`、`.wrangler/`、`dist/` 和测试输出均不提交。停止本地服务不会影响任何远程资源。
 
+预约布局模拟：运行 `npm run preview:booking-layout`，打开 `http://127.0.0.1:8790/`，可调整日期、时段、屏幕尺寸和名额；使用模拟数据并禁用提交，不进入正式构建。回归检查运行 `npm run test:booking-layout`。
+
 ## 代码结构
 
 | 位置 | 职责 |
