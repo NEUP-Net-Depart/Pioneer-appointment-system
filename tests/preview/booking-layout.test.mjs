@@ -187,12 +187,15 @@ test('local debugger updates layout and availability without reloading the booki
     assert.deepEqual(errors, []);
     await page.screenshot({ path: 'output/playwright/live-layout-debugger.png', fullPage: true });
     const selectedColors = new Set();
-    for (const device of ['1440,900', '375,667']) {
+    for (const device of ['1440,900', '320,568', '375,667', '430,932', '768,1024']) {
       for (const slotCount of ['2', '4']) {
         for (const days of ['1', '2', '3', '4']) {
           await page.goto(url);
           await expect(page.locator('#update-status')).toHaveText('配置已实时应用');
-          await page.locator('#device').selectOption(device);
+          if (device === '768,1024') {
+            await page.locator('#width').fill('768');
+            await page.locator('#height').fill('1024');
+          } else await page.locator('#device').selectOption(device);
           await page.locator('#slots').selectOption(slotCount);
           await page.locator('#days').selectOption(days);
           await expect(page.locator('#update-status')).toHaveText('配置已实时应用');
@@ -202,6 +205,19 @@ test('local debugger updates layout and availability without reloading the booki
           await expect(preview.locator('#booking-picker')).toHaveAttribute('aria-busy', 'false');
           const after = await preview.locator('#booking-picker').boundingBox();
           assert.ok(Math.abs(before.height - after.height) < 1, `${device}, ${days} days, ${slotCount} slots: selecting a date must not resize the picker (${before.height} → ${after.height})`);
+          const labelsFit = await preview.locator('#booking-days button').evaluateAll(buttons => buttons.every(button => ['strong', 'small'].every(selector => {
+            const text = button.querySelector(selector).getBoundingClientRect();
+            return [[.1, .1], [.9, .1], [.1, .9], [.9, .9]].every(([x, y]) =>
+              globalThis.document.elementFromPoint(text.x + text.width * x, text.y + text.height * y)?.closest('button') === button);
+          })));
+          assert.ok(labelsFit, `${device}, ${days} days: shaped labels must fit inside their own click region`);
+          if (days === '3' || days === '4') {
+            const bottomGap = await preview.locator('#booking-days button').nth(2).evaluate(button => {
+              return button.getBoundingClientRect().bottom - button.querySelector('small').getBoundingClientRect().bottom;
+            });
+            assert.ok(bottomGap >= 13.5, `${device}: bottom date counts need at least 14px of breathing room`);
+          }
+          if (device === '375,667' && slotCount === '4') await preview.locator('#booking-picker').screenshot({ path: `output/playwright/unified-mobile-${days}-days.png`, animations: 'disabled' });
           const color = await preview.locator('#booking-days [aria-pressed=true]').evaluate(async button => {
             await Promise.all(button.getAnimations().map(animation => animation.finished.catch(() => {})));
             return globalThis.getComputedStyle(button).backgroundColor;
