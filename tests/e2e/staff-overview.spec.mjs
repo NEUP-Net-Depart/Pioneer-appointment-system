@@ -16,7 +16,7 @@ async function loginMock(page, campuses=['南湖','浑南']) {
   await expect(page.locator('.staff-campus-panel')).toHaveCount(campuses.length);
 }
 
-for (const width of [320,1440]) {
+for (const width of [320,390,768,1440]) {
   test(`overview and unified filters fit ${width}px and drill down into the right campus/date/slot`, async ({page}) => {
     await page.setViewportSize({width,height:1000});
     await loginMock(page);
@@ -32,19 +32,26 @@ for (const width of [320,1440]) {
     await expect(page.locator('#staff-slot-filter')).toHaveValue(slots[1]);
     await expect(page.locator('#count-all')).toHaveText('2');
     await expect(page.locator('#metric-total')).toHaveText('12');
+    await page.locator('[data-column-menu=status]').click();
     await page.locator('[data-filter=completed]').click();
     await expect(page.locator('#staff-empty')).toBeVisible();
-    await page.locator('#staff-sort').selectOption('campus');
-    await page.locator('#staff-direction').selectOption('desc');
+    await page.locator('#staff-menu-status [data-menu-close]').last().click();
+    await page.locator('[data-column-menu=campus]').click();
+    const sortRequest=page.waitForRequest(request => request.url().includes('/api/appointments?') && new URL(request.url()).searchParams.get('sort')==='campus' && new URL(request.url()).searchParams.get('direction')==='desc');
+    await page.locator('[data-column-sort=campus][data-direction=desc]').click();
+    await sortRequest;
+    await expect(page.locator('th[data-sort-column=campus]')).toHaveAttribute('aria-sort','descending');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-column-menu=campus]')).toBeFocused();
     await page.locator('#staff-clear-filters').click();
     await expect(page.locator('#staff-slot-filter')).toHaveValue('');
     await expect(page.locator('#staff-sort')).toHaveValue('date');
     await expect(page.locator('[data-filter=all]')).toHaveAttribute('aria-pressed','true');
-    for(const selector of ['.staff-overview','.staff-query-grid','.staff-query-bottom']) {
+    for(const selector of ['.staff-overview','.staff-record-tools','.staff-appointments-wrap','.staff-appointments-wrap table']) {
       const box=await page.locator(selector).boundingBox();expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(width);
     }
     await page.locator('#staff-overview-title').scrollIntoViewIfNeeded();
-    await page.screenshot({path:`output/playwright/staff-overview-${width}.png`,fullPage:true,style:'#toast { visibility: hidden; }'});
+    await page.screenshot({path:`output/playwright/staff-overview-${width}.png`,fullPage:true,style:'#toast { display: none !important; }'});
   });
 }
 
@@ -55,4 +62,26 @@ test('a single authorized campus and failed overview refresh keep the last visib
   await page.locator('#staff-refresh').click();
   await expect(page.locator('#staff-overview-state')).toContainText('保留上次数据');
   await expect(page.locator('.staff-campus-panel')).toHaveCount(1);
+});
+
+test('column filters compose, stay visible in the headers and fit a narrow screen', async ({page}) => {
+  await page.setViewportSize({width:320,height:700});
+  await loginMock(page);
+  await page.locator('[data-column-menu=campus]').click();
+  await page.locator('#staff-campus-filter').selectOption('南湖');
+  await page.locator('#staff-menu-campus [data-menu-close]').last().click();
+  await expect(page.locator('[data-column-summary=campus]')).toHaveText('南湖');
+  await page.locator('[data-column-menu=date]').click();
+  await page.locator('#staff-date-filter').fill('2026-10-13');
+  await page.locator('#staff-slot-filter').selectOption(slots[1]);
+  await expect(page.locator('[data-column-summary=date]')).toContainText('10/13');
+  const box=await page.locator('#staff-menu-date').boundingBox();
+  expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(320);expect(box.y+box.height).toBeLessThanOrEqual(700);
+  await page.screenshot({path:'output/playwright/staff-column-menu-320.png',style:'#toast { display: none !important; }'});
+  await page.locator('#staff-clear-date').click();
+  await expect(page.locator('#staff-date-filter')).toHaveValue('');
+  await expect(page.locator('#staff-slot-filter')).toHaveValue(slots[1]);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#staff-menu-date')).toBeHidden();
+  await expect(page.locator('#staff-menu-shade')).toBeHidden();
 });
