@@ -131,29 +131,100 @@ test('a delayed response for the previous campus cannot replace current availabi
   await expect(page.locator('[name=campus]')).toHaveValue('浑南');
 });
 
-test('availability refreshes only on choices, without timers or visibility refreshes', async ({ page }) => {
-  const requests = [];
+test('switching campuses displays cached counts until fresh availability arrives', async ({ page }) => {
+  let release, gate = Promise.resolve(), changed = false, changedDate = false;
   await setup(page, undefined, async (route, query) => {
-    requests.push({ campus: query.get('campus'), date: query.get('date') });
-    await route.fulfill({ json: summary(query.get('campus'), query.get('date')) });
+    await gate;
+    const data = summary(query.get('campus'), query.get('date'));
+    if (changed && query.get('campus') === '南湖' && (query.get('date') === '2026-10-12' || changedDate)) data.slots[firstSlot] = 10;
+    await route.fulfill({ json: data });
   });
-  await expect(day(page)).toBeEnabled();
-  expect(requests).toHaveLength(4);
-  await page.clock.fastForward(5 * 60 * 1000);
-  await page.evaluate(() => {
-    document.dispatchEvent(new Event('visibilitychange'));
-    window.dispatchEvent(new Event('focus'));
-  });
-  expect(requests).toHaveLength(4);
   await day(page).click();
-  await expect(slot(page)).toBeEnabled();
-  expect(requests).toHaveLength(5);
   await slot(page).click();
   await expect(page.locator('[name=timeSlot]')).toHaveValue(firstSlot);
-  expect(requests).toHaveLength(6);
   await page.locator('[data-campus="浑南"]').click();
   await expect(day(page)).toBeEnabled();
-  expect(requests).toHaveLength(10);
+  await expect(day(page)).toContainText('剩余 13 名');
+  gate = new Promise(resolve => { release = resolve; });
+  await page.locator('[data-campus="南湖"]').click();
+  await expect(page.locator('#booking-picker')).toHaveAttribute('aria-busy', 'true');
+  await expect(day(page)).toContainText('剩余 18 名');
+  await expect(slot(page)).toContainText('剩余 8 名');
+  await expect(day(page).locator('.booking-count-reel')).toHaveCount(0);
+  await expect(day(page)).toBeDisabled();
+  await expect(slot(page)).toBeDisabled();
+  await page.locator('#booking-form [type=submit]').click();
+  await expect(page.locator('#booking-selection')).toContainText('等待名额确认');
+  release();
+  await expect(day(page)).toBeEnabled();
+  await expect(day(page).locator('.booking-count-reel')).toHaveCount(0);
+  changed = true;
+  await page.locator('[data-campus="浑南"]').click();
+  await expect(day(page)).toBeEnabled();
+  gate = new Promise(resolve => { release = resolve; });
+  await page.locator('[name=campus]').selectOption('南湖');
+  await expect(day(page)).toContainText('剩余 18 名');
+  await expect(slot(page)).toContainText('剩余 8 名');
+  release();
+  await expect(day(page)).toContainText('剩余 10 名');
+  await expect(day(page).locator('.booking-count-reel')).toHaveCount(1);
+  await expect(slot(page)).toContainText('预约已满');
+  await expect(slot(page)).toBeDisabled();
+  await expect(page.locator('[name=timeSlot]')).toHaveValue('');
+  changedDate = true;
+  gate = new Promise(resolve => { release = resolve; });
+  await page.locator('[data-date="2026-10-13"]').click();
+  await expect(slot(page)).toContainText('剩余 10 名');
+  await expect(slot(page).locator('.booking-count-reel')).toHaveCount(0);
+  release();
+  await expect(slot(page)).toContainText('预约已满');
+});
+
+test('availability polls every 30 seconds, keeps unchanged digits still, and pauses in hidden tabs', async ({ page }) => {
+  const requests = [];
+  let changed = false;
+  await setup(page, undefined, async (route, query) => {
+    requests.push({ campus: query.get('campus'), date: query.get('date') });
+    const data = summary(query.get('campus'), query.get('date'));
+    if (changed) data.slots[firstSlot] += 2;
+    await route.fulfill({ json: data });
+  });
+  await expect(day(page)).toBeEnabled();
+  expect(requests).toHaveLength(4);
+  const originalReel = await day(page).locator('.booking-count-reel').elementHandle();
+  await page.clock.fastForward(29000);
+  expect(requests).toHaveLength(4);
+  await page.clock.fastForward(1000);
+  await expect.poll(() => requests.length).toBe(8);
+  await expect(day(page)).toBeEnabled();
+  expect(await day(page).locator('.booking-count-reel').evaluate((element, original) => element === original, originalReel)).toBe(true);
+  changed = true;
+  await page.clock.fastForward(30000);
+  await expect(day(page)).toContainText('剩余 16 名');
+  expect(requests).toHaveLength(12);
+  expect(await day(page).locator('.booking-count-reel').evaluate((element, original) => element === original, originalReel)).toBe(false);
+  await expect(day(page).locator('.booking-count-value')).toHaveText('16');
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await page.clock.fastForward(60000);
+  expect(requests).toHaveLength(12);
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect.poll(() => requests.length).toBe(16);
+  await expect(day(page)).toBeEnabled();
+  await day(page).click();
+  await expect(slot(page)).toBeEnabled();
+  expect(requests).toHaveLength(17);
+  await slot(page).click();
+  await expect(page.locator('[name=timeSlot]')).toHaveValue(firstSlot);
+  expect(requests).toHaveLength(18);
+  await page.locator('[data-campus="浑南"]').click();
+  await expect(day(page)).toBeEnabled();
+  expect(requests).toHaveLength(22);
   expect(requests.slice(-4).every(request => request.campus === '浑南')).toBe(true);
 });
 
