@@ -211,11 +211,39 @@ test('local debugger updates layout and availability without reloading the booki
               globalThis.document.elementFromPoint(text.x + text.width * x, text.y + text.height * y)?.closest('button') === button);
           })));
           assert.ok(labelsFit, `${device}, ${days} days: shaped labels must fit inside their own click region`);
+          const textGaps = await preview.locator('#booking-days button').evaluateAll(buttons => buttons.map(button => {
+            return button.querySelector('small').getBoundingClientRect().top - button.querySelector('strong').getBoundingClientRect().bottom;
+          }));
+          assert.ok(textGaps.every(gap => gap >= 9.5), `${device}, ${days} days: every date needs at least 10px before the remaining count (${textGaps})`);
+          if (device !== '1440,900') {
+            for (const button of await preview.locator('#booking-days button').all()) {
+              await button.click();
+              await expect(button).toHaveAttribute('aria-pressed', 'true');
+              await expect(preview.locator('#booking-picker')).toHaveAttribute('aria-busy', 'false');
+              const marker = await button.evaluate(button => {
+                const heading = button.querySelector('strong'), weekday = button.querySelector('.booking-weekday');
+                const text = globalThis.document.createRange(); text.selectNodeContents(weekday);
+                const rect = text.getBoundingClientRect(), style = globalThis.getComputedStyle(weekday, '::after');
+                const left = rect.right + parseFloat(style.marginLeft), right = left + parseFloat(style.width);
+                return { outer: globalThis.getComputedStyle(heading, '::after').content, content: style.content,
+                  fits: [left + 1, right - 1].every(x => globalThis.document.elementFromPoint(x, rect.top + rect.height / 2)?.closest('button') === button) };
+              });
+              assert.equal(marker.outer, 'none');
+              assert.equal(marker.content, '"✓"');
+              assert.ok(marker.fits, `${device}, ${days} days: every selected marker must stay inside its shape`);
+            }
+          }
           if (days === '3' || days === '4') {
             const bottomGap = await preview.locator('#booking-days button').nth(2).evaluate(button => {
               return button.getBoundingClientRect().bottom - button.querySelector('small').getBoundingClientRect().bottom;
             });
             assert.ok(bottomGap >= 13.5, `${device}: bottom date counts need at least 14px of breathing room`);
+            if (device !== '1440,900') {
+              const textGap = await preview.locator('#booking-days button').nth(2).evaluate(button => {
+                return button.querySelector('small').getBoundingClientRect().top - button.querySelector('strong').getBoundingClientRect().bottom;
+              });
+              assert.ok(textGap >= 9.5, `${device}: bottom date and remaining count need at least 10px between them`);
+            }
           }
           if (device === '375,667' && slotCount === '4') await preview.locator('#booking-picker').screenshot({ path: `output/playwright/unified-mobile-${days}-days.png`, animations: 'disabled' });
           const color = await preview.locator('#booking-days [aria-pressed=true]').evaluate(async button => {

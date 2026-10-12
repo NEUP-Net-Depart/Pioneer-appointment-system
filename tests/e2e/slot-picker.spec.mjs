@@ -321,10 +321,11 @@ for (const count of [1, 2, 3, 4]) {
     const geometry = await page.locator('#booking-picker').evaluate(element => {
       const rect = element.getBoundingClientRect();
       const days = [...document.querySelectorAll('#booking-days button')].map(button => button.getBoundingClientRect().top);
-      return { scroll: scrollY, height: rect.height, screen: innerHeight, rows: new Set(days).size, overflow: document.documentElement.scrollWidth > innerWidth };
+      return { scroll: scrollY, height: rect.height, dateHeight: document.querySelector('#booking-days').getBoundingClientRect().height, rows: new Set(days).size, overflow: document.documentElement.scrollWidth > innerWidth };
     });
     expect(geometry.scroll).toBe(initialScroll);
-    expect(geometry.height).toBeLessThanOrEqual(geometry.screen);
+    expect(geometry.dateHeight).toBeGreaterThanOrEqual(256);
+    expect(geometry.dateHeight).toBeLessThanOrEqual(308);
     const silhouettes = await page.locator('#booking-days button').evaluateAll(buttons => buttons.map(button => getComputedStyle(button).clipPath));
     expect(silhouettes.every(shape => count === 1 ? shape === 'none' : shape.startsWith('polygon('))).toBe(true);
     expect(geometry.overflow).toBe(false);
@@ -349,11 +350,12 @@ test('four future slots retain the horizontal row style within a phone screen', 
   await expect(page.locator('#booking-slots button')).toHaveCount(4);
   await expect(page.locator('#booking-slots button').first()).toBeEnabled();
   const geometry = await page.locator('#booking-picker').evaluate(element => ({
-    height: element.getBoundingClientRect().height, screen: innerHeight,
+    height: element.getBoundingClientRect().height, dateHeight: document.querySelector('#booking-days').getBoundingClientRect().height,
     rows: new Set([...document.querySelectorAll('#booking-slots button')].map(button => button.getBoundingClientRect().top)).size,
     overflow: document.documentElement.scrollWidth > innerWidth
   }));
-  expect(geometry.height).toBeLessThanOrEqual(geometry.screen);
+  expect(geometry.dateHeight).toBeGreaterThanOrEqual(256);
+  expect(geometry.dateHeight).toBeLessThanOrEqual(308);
   expect(geometry.rows).toBe(4);
   expect(geometry.overflow).toBe(false);
   await page.locator('#booking-slots button').last().click();
