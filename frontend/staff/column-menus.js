@@ -18,7 +18,7 @@ export function initColumnMenus(onChange) {
     close(); trigger = button; panel = $(`#staff-menu-${button.dataset.columnMenu}`);
     if (button.dataset.columnMenu === 'date') calendar.sync();
     trigger.setAttribute('aria-expanded','true'); panel.setAttribute('aria-modal','true'); panel.hidden = false; shade.hidden = false;
-    panel.querySelector(button.dataset.columnMenu === 'date' ? '[aria-current="date"]' : 'input:not([type="hidden"]),select,[data-filter]')?.focus();
+    panel.querySelector(button.dataset.columnMenu === 'date' ? '#staff-nearby-days [aria-current="date"],#staff-nearby-days button' : 'input:not([type="hidden"]),select,[data-filter]')?.focus();
   }));
   $$('[data-menu-close]').forEach(button => button.addEventListener('click',() => close(true)));
   $$('[data-column-sort]').forEach(button => button.addEventListener('click',() => {
@@ -33,7 +33,7 @@ export function initColumnMenus(onChange) {
     if (!panel) return;
     if (event.key === 'Escape') { event.preventDefault(); close(true); }
     if (event.key === 'Tab') {
-      const focusable = [...panel.querySelectorAll('button,input,select')].filter(element => !element.disabled && element.type!=='hidden' && element.tabIndex>=0);
+      const focusable = [...panel.querySelectorAll('button,input,select,summary')].filter(element => element.getClientRects().length>0 && !element.disabled && element.type!=='hidden' && element.tabIndex>=0);
       const first = focusable[0], last = focusable.at(-1);
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }

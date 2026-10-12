@@ -269,7 +269,9 @@ html{scrollbar-gutter:stable}
 .staff-appointments-wrap [data-start]:hover, .staff-appointments-wrap [data-finish]:hover { background: #245268; color: #fff; }
 .staff-menu-shade { position: fixed; inset: 0; z-index: 40; background: rgba(10,28,40,.32); }
 .staff-column-menu { position: fixed; left: 50%; top: 50%; transform: translate(-50%,-50%); width: min(480px, calc(100vw - 48px)); padding: 28px; z-index: 41; background: #fff; border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 24px 80px rgba(15,38,52,.2); max-height: calc(100dvh - 48px); overflow-y: auto; }
-.staff-date-menu { width: min(760px, calc(100vw - 48px)); }
+.staff-date-menu { width: min(480px, calc(100vw - 48px)); padding: 24px; }
+.staff-date-menu .staff-menu-heading { margin-bottom: 12px; }
+.staff-date-menu .staff-menu-done { margin-top: 12px; }
 .staff-menu-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .staff-menu-heading h3 { margin: 0; font-size: 16px; }
 .staff-menu-heading button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: #f2f5f7; color: var(--muted); font-size: 22px; }
@@ -277,25 +279,11 @@ html{scrollbar-gutter:stable}
 .staff-column-menu select, .staff-column-menu input { display: block; width: 100%; min-width: 0; height: 42px; border: 1px solid var(--line); border-radius: 8px; background: #f8fafb; color: var(--ink); font-size: 13px; padding: 9px 10px; margin-top: 6px; }
 .staff-menu-caption { color: var(--muted); font-size: 12px; margin: 0 0 14px; }
 .staff-menu-heading .staff-menu-caption { margin: 6px 0 0; }
-.staff-date-layout { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 28px; }
-.staff-calendar { min-width: 0; }
-.staff-calendar-heading { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 14px; }
-.staff-calendar-heading > div { display: flex; gap: 6px; }
-.staff-calendar-heading select { width: auto; margin: 0; background: #fff; }
-.staff-calendar-heading button { width: 32px; height: 40px; border: 0; border-radius: 8px; background: #f2f5f7; color: var(--ink); font-size: 24px; flex-shrink: 0; }
-.staff-calendar-weekdays, .staff-calendar-days { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: 4px; text-align: center; }
-.staff-calendar-weekdays { color: var(--muted); font-size: 11px; padding: 8px 0; }
-.staff-calendar-days button { position: relative; min-height: 40px; padding: 0; border: 0; border-radius: 10px; background: #fff; color: var(--ink); font-size: 14px; font-variant-numeric: tabular-nums; }
-.staff-calendar-days button.is-outside { color: #9aabb5; }
-.staff-calendar-days button:hover { background: #edf2f5; }
-.staff-calendar-days button.is-today::after { content: ''; position: absolute; bottom: 4px; left: calc(50% - 2px); width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
-.staff-calendar-days button.is-selected { background: var(--navy); color: #fff; }
-.staff-date-options { border-left: 1px solid var(--line); padding-left: 28px; }
 .staff-date-shortcuts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; }
 .staff-date-shortcuts button { min-height: 36px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--muted); font-size: 12px; }
 .staff-date-shortcuts button.is-active { background: #eaf1f4; border-color: #9eb5c2; color: var(--ink); }
 .staff-date-message { min-height: 16px; margin: -6px 0 0; color: #b03b30; font-size: 11px; }
-.staff-calendar-selection { color: var(--ink); font-size: 12px; margin-bottom: 0; }
+.staff-calendar-selection { color: var(--ink); font-size: 12px; margin: 10px 0 0; }
 .staff-column-menu button:focus-visible { outline: 2px solid #0e6874; outline-offset: 2px; }
 .staff-status-options { display: grid; gap: 5px; }
 .staff-status-options .filter-tab { display: flex; align-items: center; justify-content: space-between; border: 0; border-radius: 8px; background: transparent; padding: 11px 12px; color: var(--muted); text-align: left; }
@@ -345,19 +333,9 @@ html{scrollbar-gutter:stable}
   .staff-appointments-wrap .record-btn { min-height: 40px; }
   .staff-menu-shade { background: rgba(10,28,40,.28); }
   .staff-column-menu { inset: auto 12px calc(12px + env(safe-area-inset-bottom)); transform: none; width: auto; border-radius: 20px; padding: 20px; max-height: 85dvh; }
-  .staff-date-layout { grid-template-columns: 1fr; gap: 20px; }
-  .staff-date-options { padding-left: 0; border-left: 0; border-top: 1px solid var(--line); padding-top: 16px; }
-  .staff-date-shortcuts { grid-template-columns: repeat(4,minmax(0,1fr)); }
 }
 @media(max-width: 400px) {
   .staff-date-menu { padding: 16px; }
-  .staff-date-layout { gap: 12px; }
-  .staff-calendar-heading { margin-bottom: 6px; }
-  .staff-calendar-days button { min-height: 34px; }
-  .staff-date-options { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 10px; padding-top: 12px; }
-  .staff-date-options > .staff-menu-caption, .staff-date-shortcuts, .staff-calendar-selection { grid-column: 1 / -1; }
-  .staff-date-options > label { min-width: 0; }
-  .staff-date-options > label:last-of-type { grid-column: 2; grid-row: 3; }
   .staff-date-message { grid-column: 1 / -1; }
 }
 #live-updated{min-width:140px;text-align:right}
@@ -620,3 +598,15 @@ html{scrollbar-gutter:stable}
 @media (prefers-contrast: more) {
   .booking-float-button { outline: 1px solid #fff; }
 }
+
+.staff-nearby-days { display: grid; gap: 6px; margin-bottom: 12px; }
+.staff-nearby-days button { min-width: 0; min-height: 62px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); padding: 8px 4px; }
+.staff-nearby-days button span, .staff-nearby-days button strong { display: block; }
+.staff-nearby-days button span { color: var(--muted); font-size: 11px; }
+.staff-nearby-days button strong { margin-top: 3px; font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.staff-nearby-days button:hover { background: #f0f4f6; }
+.staff-nearby-days button.is-selected { background: var(--navy); border-color: var(--navy); color: #fff; }
+.staff-nearby-days button.is-selected span { color: #c4d8e1; }
+.staff-date-history { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 10px; }
+.staff-date-history summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+.staff-date-history summary:focus-visible { outline: 2px solid #0e6874; outline-offset: 4px; }

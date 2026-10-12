@@ -85,8 +85,7 @@ test('column filters compose, stay visible in the headers and fit a narrow scree
   await page.locator('#staff-menu-campus [data-menu-close]').last().click();
   await expect(page.locator('[data-column-summary=campus]')).toHaveText('南湖');
   await page.locator('[data-column-menu=date]').click();
-  await page.locator('#staff-date-manual').fill('2026-10-13');
-  await page.locator('#staff-date-manual').press('Enter');
+  await page.locator('[data-nearby-date="2026-10-13"]').click();
   await page.locator('#staff-slot-filter').selectOption(slots[1]);
   await expect(page.locator('[data-column-summary=date]')).toContainText('10/13');
   const box=await page.locator('#staff-menu-date').boundingBox();
@@ -127,20 +126,18 @@ test('column clicks cycle independently and preserve multi-sort priority', async
   await expect(page.locator('[data-sort-marker=date]')).toBeHidden();
 });
 
-test('opening the date filter locates today while retaining a date from another month', async ({page}) => {
-  await page.clock.install({time:new Date('2026-10-12T04:00:00Z')});
-  await loginMock(page);
+test('compact date filter focuses today and preserves a collapsed historical filter', async ({page}) => {
+  await page.clock.install({time:new Date('2026-10-12T04:00:00Z')});await loginMock(page);
   await page.locator('[data-column-menu=date]').click();
-  await expect(page.locator('[data-calendar-date="2026-10-12"]')).toBeFocused();
+  await expect(page.locator('[data-nearby-date="2026-10-12"]')).toBeFocused();
   await expect(page.locator('#staff-date-filter')).toHaveValue('');
-  await page.locator('#staff-date-manual').fill('2026-09-10');
-  await page.locator('#staff-date-manual').press('Enter');
-  await expect(page.locator('#staff-calendar-month')).toHaveValue('9');
-  await page.locator('#staff-menu-date [data-menu-close]').last().click();
-  await page.locator('[data-column-menu=date]').click();
-  await expect(page.locator('#staff-calendar-year')).toHaveValue('2026');
-  await expect(page.locator('#staff-calendar-month')).toHaveValue('10');
-  await expect(page.locator('[data-calendar-date="2026-10-12"]')).toBeFocused();
+  await expect(page.locator('#staff-date-history')).not.toHaveAttribute('open','');
+  await page.locator('#staff-date-history summary').click();
+  await page.locator('#staff-date-manual').fill('2026-09-10');await page.locator('#staff-date-manual').press('Enter');
+  await expect(page.locator('#staff-date-filter')).toHaveValue('2026-09-10');
+  await page.locator('#staff-menu-date [data-menu-close]').last().click();await page.locator('[data-column-menu=date]').click();
+  await expect(page.locator('[data-nearby-date="2026-10-12"]')).toBeFocused();
+  await expect(page.locator('#staff-date-history')).not.toHaveAttribute('open','');
   await expect(page.locator('#staff-date-filter')).toHaveValue('2026-09-10');
   await expect(page.locator('#staff-calendar-selection')).toHaveText('已选 2026 / 09 / 10');
 });
@@ -167,30 +164,49 @@ test('nearest work shortcut selects the next Monday to Thursday across weekends 
     await expect(page.locator('#staff-date-filter')).toHaveValue(expected);
     await expect(page.locator('#staff-slot-filter')).toHaveValue(slots[1]);
     await expect(shortcut).toHaveAttribute('aria-pressed','true');
-    await expect(page.locator(`[data-calendar-date="${expected}"]`)).toHaveAttribute('aria-pressed','true');
+    await expect(page.locator('#staff-calendar-selection')).toHaveText('已选 '+expected.replaceAll('-',' / '));
   }
 });
 
-test('desktop uses available width and offers a centered calendar with direct and keyboard selection', async ({page}) => {
+test('nearby date choices stay within the booking window across weekdays and year end', async ({page}) => {
+  await page.clock.install({time:new Date('2026-10-12T04:00:00Z')});
+  await page.setViewportSize({width:320,height:700});await loginMock(page);
+  for(const [today,expected] of [
+    ['2026-10-12',['2026-10-12','2026-10-13','2026-10-14','2026-10-15']],
+    ['2026-10-13',['2026-10-13','2026-10-14','2026-10-15']],
+    ['2026-10-14',['2026-10-14','2026-10-15']],
+    ['2026-10-15',['2026-10-15']],
+    ['2026-10-16',['2026-10-19']],
+    ['2026-10-17',['2026-10-19','2026-10-20']],
+    ['2026-10-18',['2026-10-19','2026-10-20','2026-10-21']],
+    ['2027-01-02',['2027-01-04','2027-01-05']]
+  ]) {
+    await page.clock.setSystemTime(new Date(`${today}T04:00:00Z`));
+    await page.locator('[data-column-menu=date]').click();
+    expect(await page.locator('[data-nearby-date]').evaluateAll(buttons=>buttons.map(button=>button.dataset.nearbyDate))).toEqual(expected);
+    const panel=await page.locator('#staff-menu-date').boundingBox();
+    expect(panel.x).toBeGreaterThanOrEqual(0);expect(panel.x+panel.width).toBeLessThanOrEqual(320);expect(panel.height).toBeLessThan(450);
+    if(today==='2026-10-12')await page.screenshot({path:'output/playwright/staff-date-compact-320.png'});
+    await page.locator('#staff-menu-date [data-menu-close]').last().click();
+  }
+});
+
+test('compact date panel centers on desktop and supports recent and historical selection', async ({page}) => {
+  await page.clock.install({time:new Date('2026-10-12T04:00:00Z')});
   await page.setViewportSize({width:1920,height:1080});await loginMock(page);
-  const shell=await page.locator('.staff-shell').boundingBox();expect(shell.width).toBeGreaterThan(1800);
   await page.locator('[data-column-menu=date]').click();
-  const box=await page.locator('#staff-menu-date').boundingBox();expect(box.width).toBeGreaterThan(700);
+  const box=await page.locator('#staff-menu-date').boundingBox();expect(box.width).toBeGreaterThan(400);expect(box.width).toBeLessThan(500);expect(box.height).toBeLessThan(450);
   expect(Math.abs(box.x+box.width/2-960)).toBeLessThan(10);expect(Math.abs(box.y+box.height/2-540)).toBeLessThan(1);
-  await page.locator('#staff-calendar-year').selectOption('2026');await page.locator('#staff-calendar-month').selectOption('10');
-  await page.locator('[data-calendar-date="2026-10-13"]').click();
-  await expect(page.locator('#staff-date-filter')).toHaveValue('2026-10-13');
-  await page.keyboard.press('ArrowRight');await page.keyboard.press('Enter');
-  await expect(page.locator('#staff-date-filter')).toHaveValue('2026-10-14');
-  await page.locator('#staff-calendar-next').click();await expect(page.locator('#staff-calendar-month')).toHaveValue('11');
-  await page.locator('#staff-calendar-prev').click();await expect(page.locator('#staff-calendar-month')).toHaveValue('10');
-  await page.locator('#staff-date-manual').fill('2026-02-30');await page.locator('#staff-date-manual').press('Enter');
-  await expect(page.locator('#staff-date-manual')).toHaveAttribute('aria-invalid','true');await expect(page.locator('#staff-date-filter')).toHaveValue('2026-10-14');
-  await page.locator('#staff-date-manual').fill('2026/10/15');await page.locator('#staff-date-manual').press('Enter');
-  await expect(page.locator('[data-column-summary=date]')).toContainText('2026/10/15');
-  await page.screenshot({path:'output/playwright/staff-calendar-1920.png'});
-  await page.locator('#staff-menu-date [data-menu-close]').last().click();
-  await page.screenshot({path:'output/playwright/staff-workbench-1920.png',fullPage:true});
+  await page.locator('[data-nearby-date="2026-10-13"]').click();await expect(page.locator('#staff-date-filter')).toHaveValue('2026-10-13');
+  await page.keyboard.press('ArrowRight');await page.keyboard.press('Enter');await expect(page.locator('#staff-date-filter')).toHaveValue('2026-10-14');
+  await page.screenshot({path:'output/playwright/staff-date-compact-1920.png'});
+  await page.locator('#staff-date-history summary').click();
+  for(const invalid of ['2026-02-30','2026-11-15']){
+    await page.locator('#staff-date-manual').fill(invalid);await page.locator('#staff-date-manual').press('Enter');
+    await expect(page.locator('#staff-date-manual')).toHaveAttribute('aria-invalid','true');await expect(page.locator('#staff-date-filter')).toHaveValue('2026-10-14');
+  }
+  await page.locator('#staff-date-manual').fill('2026/09/15');await page.locator('#staff-date-manual').press('Enter');
+  await expect(page.locator('[data-column-summary=date]')).toContainText('2026/09/15');
 });
 
 for (const width of [320,1440]) {

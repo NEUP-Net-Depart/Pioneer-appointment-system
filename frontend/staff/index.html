@@ -69,16 +69,15 @@
           <div class="staff-menu-shade" id="staff-menu-shade" hidden></div>
           <section class="staff-column-menu" id="staff-menu-campus" role="dialog" aria-label="校区筛选" hidden><div class="staff-menu-heading"><h3>校区</h3><button type="button" data-menu-close aria-label="关闭校区菜单">×</button></div><label>查看校区<select id="staff-campus-filter"><option value="all">全部校区</option><option>南湖</option><option>浑南</option></select></label><button class="staff-menu-done" type="button" data-menu-close>完成</button></section>
           <section class="staff-column-menu staff-date-menu" id="staff-menu-date" role="dialog" aria-label="预约时间筛选" hidden>
-            <div class="staff-menu-heading"><div><h3>预约时间</h3><p class="staff-menu-caption">选择日期与时段筛选记录</p></div><button type="button" data-menu-close aria-label="关闭预约时间菜单">×</button></div>
+            <div class="staff-menu-heading"><h3>预约时间</h3><button type="button" data-menu-close aria-label="关闭预约时间菜单">×</button></div>
             <input id="staff-date-filter" type="hidden" />
-            <div class="staff-date-layout">
-              <div class="staff-calendar">
-                <div class="staff-calendar-heading"><button type="button" id="staff-calendar-prev" aria-label="上个月">‹</button><div><select id="staff-calendar-year" aria-label="选择年份"></select><select id="staff-calendar-month" aria-label="选择月份"></select></div><button type="button" id="staff-calendar-next" aria-label="下个月">›</button></div>
-                <div class="staff-calendar-weekdays" aria-hidden="true"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
-                <div id="staff-calendar-days" class="staff-calendar-days" role="group" aria-label="选择预约日期"></div>
-              </div>
-              <div class="staff-date-options"><p class="staff-menu-caption">快捷选择</p><div class="staff-date-shortcuts"><button type="button" data-date-shortcut="today">今天</button><button type="button" data-date-shortcut="tomorrow">明天</button><button type="button" data-date-shortcut="nextWork" title="今天之后最近的周一至周四">最近工作</button><button type="button" id="staff-clear-date">不限日期</button></div><label>直接输入日期<input id="staff-date-manual" type="text" inputmode="numeric" placeholder="2026-10-12" maxlength="10" aria-describedby="staff-date-message" /></label><p id="staff-date-message" class="staff-date-message" role="status"></p><label>预约时段<select id="staff-slot-filter"><option value="">全部时段</option><option>19:00–20:00</option><option>20:00–21:00</option></select></label><p id="staff-calendar-selection" class="staff-calendar-selection"></p></div>
-            </div><button class="staff-menu-done" type="button" data-menu-close>完成</button>
+            <p class="staff-menu-caption">今天及未来 3 天的工作日</p>
+            <div id="staff-nearby-days" class="staff-nearby-days" role="group" aria-label="近期工作日"></div>
+            <div class="staff-date-shortcuts"><button type="button" data-date-shortcut="nextWork" title="今天之后最近的周一至周四">最近工作</button><button type="button" id="staff-clear-date">不限日期</button></div>
+            <label>预约时段<select id="staff-slot-filter"><option value="">全部时段</option><option>19:00–20:00</option><option>20:00–21:00</option></select></label>
+            <details class="staff-date-history" id="staff-date-history"><summary>查询历史日期</summary><label>历史预约日期<input id="staff-date-manual" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" maxlength="10" aria-describedby="staff-date-message" /></label><p id="staff-date-message" class="staff-date-message" role="status"></p></details>
+            <p id="staff-calendar-selection" class="staff-calendar-selection"></p>
+            <button class="staff-menu-done" type="button" data-menu-close>完成</button>
           </section>
           <section class="staff-column-menu" id="staff-menu-status" role="dialog" aria-label="状态筛选" hidden><div class="staff-menu-heading"><h3>预约状态</h3><button type="button" data-menu-close aria-label="关闭状态菜单">×</button></div><div class="staff-status-options" role="group" aria-label="筛选状态"><button class="filter-tab is-active" type="button" data-filter="all" aria-pressed="true">全部 <span id="count-all">0</span></button><button class="filter-tab" type="button" data-filter="pending" aria-pressed="false">待处理 <span id="count-pending">0</span></button><button class="filter-tab" type="button" data-filter="booked" aria-pressed="false">已预约 <span id="count-booked">0</span></button><button class="filter-tab" type="button" data-filter="in_progress" aria-pressed="false">维修中 <span id="count-progress">0</span></button><button class="filter-tab" type="button" data-filter="completed" aria-pressed="false">已结束 <span id="count-done">0</span></button></div><button class="staff-menu-done" type="button" data-menu-close>完成</button></section>
         </section>
