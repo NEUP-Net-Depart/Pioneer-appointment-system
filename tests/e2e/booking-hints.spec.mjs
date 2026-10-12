@@ -15,7 +15,7 @@ for (const width of [320, 1440]) {
     }
     await warranty.selectOption('是');
     await fault.selectOption('清灰换硅脂');
-    await expect(page.locator('[name=faultType] + #thermal-advice')).toContainText('提供免费普通硅脂或自带');
+    await expect(page.locator('[name=faultType] + #thermal-advice')).toContainText('我们提供免费普通硅脂，您亦可自带');
     await expect(page.locator('#thermal-advice')).toContainText('液金');
     await fault.selectOption('蓝屏');
     await expect(page.locator('#thermal-advice')).toBeHidden();
