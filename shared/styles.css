@@ -205,18 +205,6 @@ html{scrollbar-gutter:stable}
 }
 .booking-picker-heading { justify-content: space-between; gap: 20px; }
 .booking-picker h2 { margin: 0; font-size: 21px; letter-spacing: -.02em; }
-.booking-live {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
-  border-radius: 20px;
-  background: #eef8f5;
-  color: #25765f;
-  font-size: 10px;
-  white-space: nowrap;
-}
-.booking-live:before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: #25765f; }
 .booking-picker-heading .booking-campuses { gap: 4px; padding: 4px; border-radius: 8px; background: #f0f4f6; }
 .booking-choice {
   position: relative;
