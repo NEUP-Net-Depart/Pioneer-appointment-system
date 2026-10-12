@@ -1,5 +1,5 @@
-const occupied = "NOT (status='completed' AND outcome='cancelled')";
-const active = "status IN ('booked','in_progress')";
+const occupied = "source='booking' AND NOT (status='completed' AND outcome='cancelled')";
+const active = "source='booking' AND status IN ('booked','in_progress')";
 export function queueRepository(db) {
   return {
     async summary({ date, campus, timeSlot }, current) {

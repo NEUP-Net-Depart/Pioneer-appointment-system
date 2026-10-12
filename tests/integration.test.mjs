@@ -90,6 +90,7 @@ before(async () => {
     name: 'pioneer-tests', compatibilityDate: cfg.compatibility_date, compatibilityFlags: cfg.compatibility_flags,
     manifest: { mainModule: 'index.js', modules: { 'index.js': { type: 'esm', contents: await readFile('.wrangler/test-build/index.js', 'utf8') } } },
     env: { DB: { type: 'd1', id: 'test-db' }, CAPACITY_UPGRADE_DB: { type: 'd1', id: 'capacity-upgrade-db' }, WORKFLOW_UPGRADE_DB: { type: 'd1', id: 'workflow-upgrade-db' }, SLOT_SETTINGS_UPGRADE_DB: { type: 'd1', id: 'slot-settings-upgrade-db' }, ATTACHMENTS: { type: 'r2', name: 'test-attachments' },
+      SCAN_UPGRADE_DB: { type: 'd1', id: 'scan-upgrade-db' },
       JWT_SECRET: { type: 'text', value: JWT_SECRET }, PII_ENCRYPTION_KEY: { type: 'text', value: PII_ENCRYPTION_KEY } }
   } }] });
   db = await mf.getD1Database('DB'); bucket = await mf.getR2Bucket('ATTACHMENTS');
@@ -106,6 +107,47 @@ beforeEach(async () => {
   await db.prepare('UPDATE slot_capacities SET capacity=10,revision=0').run();
   const objects = await bucket.list();
   if (objects.objects.length) await bucket.delete(objects.objects.map(object => object.key));
+});
+
+test('legacy appointment APIs enforce a single active repair and exclude onsite records from booking maintenance', async () => {
+  const root = await login(), first = await book(), second = await book();
+  await api(`/api/appointments/${first.id}/status`, {method:'PATCH',token:root,body:{status:'in_progress',...await intake(first,root)}});
+  const conflict = await api(`/api/appointments/${second.id}/status`, {method:'PATCH',token:root,body:{status:'in_progress',...await intake(second,root)}},409);
+  assert.match(conflict.error,/已有进行中的工单/);
+  await db.prepare("UPDATE appointments SET source='onsite',registered_by='root001',registration_key=? WHERE id=?").bind(crypto.randomUUID(),second.id).run();
+  const summary = await api(`/api/live/summary?date=${second.date}&campus=${encodeURIComponent(second.campus)}`);
+  assert.equal(summary.slotTotal,1);
+  const repository = appointmentRepository(db);
+  const overview = await repository.overview(second.date,second.date,[second.campus]);
+  assert.equal(overview.totals.reduce((total,slot)=>total+slot.occupied,0),1);
+  assert.equal(await repository.countNoShows(addDays(second.date,1)),0);
+  await repository.endNoShows(addDays(second.date,1),new Date().toISOString());
+  assert.equal((await repository.find(second.id)).status,'booked');
+});
+
+test('scan migration preserves duplicate historical work and blocks new claims until those jobs drain', async () => {
+  const legacy = await mf.getD1Database('SCAN_UPGRADE_DB');
+  for (const file of (await readdir('migrations')).filter(name=>name.endsWith('.sql') && name<'0006').sort()) await applyMigration(legacy,file);
+  await legacy.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('993004','历史人员','technician','南湖',?,?)").bind(hashPassword(password),dateKey()).run();
+  const items = [await book(),await book(),await book()];
+  for (const [index,item] of items.entries()) {
+    const row = await db.prepare('SELECT * FROM appointments WHERE id=?').bind(item.id).first();
+    for (const key of ['source','registered_by','registration_key']) delete row[key];
+    row.status = index<2 ? 'in_progress' : 'booked'; row.assigned_to = index<2 ? '993004' : null;
+    await legacy.prepare(`INSERT INTO appointments(${Object.keys(row).join(',')}) VALUES(${Object.keys(row).map(()=>'?').join(',')})`).bind(...Object.values(row)).run();
+  }
+  const before = (await legacy.prepare('SELECT id,status,assigned_to,revision,phone,social,signature FROM appointments ORDER BY id').all()).results;
+  await applyMigration(legacy,'0006_scan_workbench.sql');
+  assert.deepEqual((await legacy.prepare('SELECT id,status,assigned_to,revision,phone,social,signature FROM appointments ORDER BY id').all()).results,before);
+  const claim = () => legacy.prepare("UPDATE appointments SET status='in_progress',assigned_to='993004' WHERE id=?").bind(items[2].id).run();
+  await assert.rejects(claim,/active_repairs.account/);
+  for (const item of items.slice(0,2)) {
+    await legacy.prepare("UPDATE appointments SET status='completed',outcome='repaired' WHERE id=?").bind(item.id).run();
+    if (item===items[0]) await assert.rejects(claim,/active_repairs.account/);
+  }
+  await claim();
+  assert.equal((await legacy.prepare('SELECT appointment_id FROM active_repairs').first()).appointment_id,items[2].id);
+  assert.deepEqual((await legacy.prepare('PRAGMA foreign_key_check').all()).results,[]);
 });
 
 test('health verifies D1 schema and R2; API paths return JSON and security headers', async () => {
@@ -1094,7 +1136,10 @@ test('new bookings continue legacy booking suffixes without rewriting primary ke
 test('completion and correction reuse the booking number even on a later day', async () => {
   const first = await book(), second = await book(), third = await book(), foreign = await book({campus:'浑南'}), root = await login();
   const repository = appointmentRepository(db), users = userRepository(db), actor = await users.find('root001');
-  for (const item of [first,second,third,foreign]) await api(`/api/appointments/${item.id}/status`, {method:'PATCH',token:root,body:{status:'in_progress',...await intake(item,root)}});
+  for (const [index,item] of [first,second,third,foreign].entries()) {
+    const token = index === 3 ? root : await addUser(`99100${index}`);
+    await api(`/api/appointments/${item.id}/status`, {method:'PATCH',token,body:{status:'in_progress',...await intake(item,token)}});
+  }
   // UTC 16:01 is the next business day in Shanghai.
   const nextDay = addDays(dateKey(), 1), instant = new Date(`${nextDay}T00:01:00+08:00`);
   const service = appointmentService(repository, users, PII_ENCRYPTION_KEY, () => instant);
@@ -1122,7 +1167,10 @@ test('completion and correction reuse the booking number even on a later day', a
 
 test('concurrent completions retain original numbers and reject stale revisions without allocating repair numbers', async () => {
   const root = await login(), items = await Promise.all([book(),book(),book()]);
-  for (const item of items) Object.assign(item, await api(`/api/appointments/${item.id}/status`, {method:'PATCH',token:root,body:{status:'in_progress',...await intake(item,root)}}));
+  for (const [index,item] of items.entries()) {
+    const token = index === 0 ? root : await addUser(`99200${index}`);
+    Object.assign(item, await api(`/api/appointments/${item.id}/status`, {method:'PATCH',token,body:{status:'in_progress',...await intake(item,token)}}));
+  }
   const finish = item => request(`/api/appointments/${item.id}/status`, {method:'PATCH',token:root,body:{status:'completed',outcome:'repaired',repairNote:'已修复',revision:item.revision}});
   const responses = await Promise.all([finish(items[0]),finish(items[0]),finish(items[1])]);
   assert.deepEqual(responses.map(r=>r.status).sort(), [200,200,409]);

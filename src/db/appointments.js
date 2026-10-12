@@ -21,10 +21,10 @@ export function appointmentRepository(db) {
       return row.total === 2;
     },
     async countNoShows(beforeDate) {
-      return (await db.prepare("SELECT COUNT(*) AS total FROM appointments WHERE status='booked' AND date<=?").bind(beforeDate).first()).total;
+      return (await db.prepare("SELECT COUNT(*) AS total FROM appointments WHERE source='booking' AND status='booked' AND date<=?").bind(beforeDate).first()).total;
     },
     async endNoShows(beforeDate, instant, { id, campuses } = {}) {
-      const where = ["status='booked'", 'date<=?'], args = [instant, beforeDate];
+      const where = ["source='booking'", "status='booked'", 'date<=?'], args = [instant, beforeDate];
       if (id) { where.push('id=?'); args.push(id); }
       if (campuses) { where.push(campuses.length ? `campus IN (${campuses.map(() => '?').join(',')})` : '0'); args.push(...campuses); }
       return db.prepare(`UPDATE appointments SET status='completed',outcome='no_show',completed_at=?,revision=revision+1 WHERE ${where.join(' AND ')}`).bind(...args).run();
@@ -85,7 +85,7 @@ export function appointmentRepository(db) {
         db.prepare(`SELECT campus,date,time_slot,COUNT(*) AS occupied,
           COUNT(CASE WHEN status='booked' THEN 1 END) AS booked,
           COUNT(CASE WHEN status='in_progress' THEN 1 END) AS in_progress
-          FROM appointments WHERE ${scope} AND date>=? AND date<=?
+          FROM appointments WHERE ${scope} AND date>=? AND date<=? AND source='booking'
           AND NOT (status='completed' AND outcome='cancelled') GROUP BY campus,date,time_slot`).bind(...campuses,start,end),
         db.prepare(`SELECT campus,time_slot,capacity FROM slot_capacities WHERE ${scope}`).bind(...campuses)
       ]);
