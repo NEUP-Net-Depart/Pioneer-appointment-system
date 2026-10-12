@@ -5,13 +5,23 @@ const columns = {
   status: 'status', assignedTo: 'assigned_to', repairNote: 'repair_note', createdAt: 'created_at',
   outcome: 'outcome', startedAt: 'started_at', completedAt: 'completed_at',
   agreementAt: 'agreement_at', agreementVersion: 'agreement_version', signature: 'signature',
-  repairNumber: 'repair_number', frontPhotoId: 'front_photo_id', backPhotoId: 'back_photo_id'
+  repairNumber: 'repair_number', frontPhotoId: 'front_photo_id', backPhotoId: 'back_photo_id',
+  source: 'source', registeredBy: 'registered_by', registrationKey: 'registration_key'
 };
 function fromRow(row) {
   return row ? { id: row.id, revision: row.revision, ...Object.fromEntries(Object.entries(columns).map(([key, column]) => [key, row[column] ?? (['outcome','startedAt','completedAt','repairNumber','frontPhotoId','backPhotoId'].includes(key) ? null : '')])) } : null;
 }
 export function appointmentRepository(db) {
   return {
+    async inProgress(account) {
+      return (await db.prepare("SELECT * FROM appointments WHERE assigned_to=? AND status='in_progress' ORDER BY started_at,created_at,id").bind(account).all()).results.map(fromRow);
+    },
+    async findRegistration(account, key) {
+      return fromRow(await db.prepare('SELECT * FROM appointments WHERE registered_by=? AND registration_key=?').bind(account,key).first());
+    },
+    async pendingRegistration(account) {
+      return fromRow(await db.prepare("SELECT * FROM appointments WHERE registered_by=? AND source='onsite' AND status='booked' ORDER BY created_at DESC,id DESC LIMIT 1").bind(account).first());
+    },
     async intakePhotos(id, account, front, back, now) {
       if (!front || !back || front === back) return false;
       const row = await db.prepare(`SELECT COUNT(*) AS total FROM appointment_attachments
@@ -85,7 +95,7 @@ export function appointmentRepository(db) {
         db.prepare(`SELECT campus,date,time_slot,COUNT(*) AS occupied,
           COUNT(CASE WHEN status='booked' THEN 1 END) AS booked,
           COUNT(CASE WHEN status='in_progress' THEN 1 END) AS in_progress
-          FROM appointments WHERE ${scope} AND date>=? AND date<=? AND source='booking'
+        FROM appointments WHERE ${scope} AND date>=? AND date<=? AND source='booking'
           AND NOT (status='completed' AND outcome='cancelled') GROUP BY campus,date,time_slot`).bind(...campuses,start,end),
         db.prepare(`SELECT campus,time_slot,capacity FROM slot_capacities WHERE ${scope}`).bind(...campuses)
       ]);
@@ -98,8 +108,9 @@ export function appointmentRepository(db) {
       // Include historical booking prefixes so their suffixes are never reused.
       const row = await db.prepare(`INSERT INTO appointments(id,${Object.values(columns).join(',')},access_token_hash,credential_rotated_at)
         SELECT ? || printf('%02d',COALESCE(MAX(CAST(substr(id,instr(id,'-')+1) AS INTEGER)),0)+1),${Object.keys(columns).map(() => '?').join(',')},?,?
-        FROM appointments WHERE id LIKE ? OR id LIKE ? OR id LIKE ? RETURNING *`)
-        .bind(prefix, ...Object.keys(columns).map(key => key === 'assignedTo' ? item[key] || null : item[key] ?? null), item.accessTokenHash,item.credentialRotatedAt,`${prefix}%`,`reverse${suffix}%`,`${suffix}%`).first();
+        FROM appointments WHERE id LIKE ? OR id LIKE ? OR id LIKE ?
+        ON CONFLICT(registered_by,registration_key) DO UPDATE SET registration_key=excluded.registration_key RETURNING *`)
+        .bind(prefix, ...Object.keys(columns).map(key => key === 'assignedTo' ? item[key] || null : key === 'source' ? item[key] || 'booking' : item[key] ?? null), item.accessTokenHash,item.credentialRotatedAt,`${prefix}%`,`reverse${suffix}%`,`${suffix}%`).first();
       return fromRow(row);
     },
     async update(item, patch) {

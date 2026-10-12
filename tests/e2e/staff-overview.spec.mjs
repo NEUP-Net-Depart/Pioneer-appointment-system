@@ -3,6 +3,7 @@ import { test, expect } from '@playwright/test';
 const dates = ['2026-10-12','2026-10-13','2026-10-14','2026-10-15'];
 const slots = ['19:00–20:00','20:00–21:00'];
 async function loginMock(page, campuses=['南湖','浑南']) {
+  await page.route('**/api/scan/current', route => route.fulfill({ json: { items: [], pending: null } }));
   await page.route('**/api/auth/login', route => route.fulfill({ json:{token:'test-only',account:'test-admin',role:'admin',authorizedCampuses:campuses} }));
   const items=campuses.flatMap(campus => dates.flatMap(date => slots.map((timeSlot,index) => ({campus,date,timeSlot,capacity:10,occupied:index ? 10:4,remaining:index ? 0:6,booked:index ? 8:2,inProgress:2,ended:false}))));
   await page.route('**/api/appointments/overview', route => route.fulfill({ json:{dates,campuses,updatedAt:'2026-10-12T08:00:00Z',items,week:{start:'2026-10-12',end:'2026-10-18',dates,items}} }));

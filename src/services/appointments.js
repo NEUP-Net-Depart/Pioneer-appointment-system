@@ -8,7 +8,9 @@ import { appointmentScope, requireRole, requireAppointmentAccess, requireCampus 
 
 export async function presentAppointment(item, encryptionKey) {
   const [phone, social] = await Promise.all([decryptText(item.phone, encryptionKey), decryptText(item.social, encryptionKey)]);
-  return { ...item, phone, social };
+  const visible = { ...item, phone, social };
+  delete visible.registrationKey;
+  return visible;
 }
 export function appointmentService(appointments, users, encryptionKey, clock = () => new Date()) {
   const present = item => presentAppointment(item, encryptionKey);
@@ -26,6 +28,12 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
   }
   function repairResult(outcome, note) {
     if (!repairOutcomes.includes(outcome) || !note?.trim()) fail(400, '请选择维修结果并填写维修说明');
+  }
+  function repeated(item, input, user, action) {
+    return !action && user?.account === item.assignedTo && (
+      (input.status === 'in_progress' && item.status === 'in_progress' && input.frontPhotoId === item.frontPhotoId && input.backPhotoId === item.backPhotoId) ||
+      (input.status === 'completed' && item.status === 'completed' && input.outcome === item.outcome && input.repairNote === item.repairNote)
+    );
   }
   return {
     async overview(user) {
@@ -58,15 +66,21 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       }));
       return { ...result, items };
     },
-    async create(data) {
+    async createOnsite(data, actor, requestId) {
+      return this.create(data, { actor, requestId });
+    },
+    async create(data, onsite) {
       const instant = clock(), today = dateKey(instant);
-      if (data.date < today || data.date > addDays(today, 3)) fail(400, '预约日期必须为今天起 3 天内');
-      if (!serviceDay(data.date)) fail(400, '预约日期必须为周一至周四');
-      if (Date.parse(slotDeadline(data.date, data.timeSlot)) <= instant.getTime()) fail(400, '该预约时段已经结束');
+      if (!onsite) {
+        if (data.date < today || data.date > addDays(today, 3)) fail(400, '预约日期必须为今天起 3 天内');
+        if (!serviceDay(data.date)) fail(400, '预约日期必须为周一至周四');
+        if (Date.parse(slotDeadline(data.date, data.timeSlot)) <= instant.getTime()) fail(400, '该预约时段已经结束');
+      }
       const timestamp = instant.toISOString(), credential = issueAccessToken();
       const [phone, social] = await Promise.all([encryptText(data.phone, encryptionKey), encryptText(data.social, encryptionKey)]);
       const item = { ...data, status: 'booked', assignedTo: '', repairNote: '', outcome: null, startedAt: null, completedAt: null,
         repairNumber: null, frontPhotoId: null, backPhotoId: null,
+        source: onsite ? 'onsite' : 'booking', registeredBy: onsite?.actor || null, registrationKey: onsite?.requestId || null,
         createdAt: timestamp, agreementAt: timestamp, agreementVersion: data.agreementVersion || 'v1.0',
         accessTokenHash: credential.hash, credentialRotatedAt: timestamp, phone, social };
       return { ...await present(await appointments.create(item)), accessToken: credential.token };
@@ -93,6 +107,9 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       const instant = clock(), timestamp = instant.toISOString();
       await expire(instant, { id: item.id });
       item = user ? await appointments.find(item.id) : await guestAppointment(appointments, item.id, accessToken);
+      // A lost response can be retried with the original revision and photo IDs.
+      // Only an exact repeat by the recorded owner is treated as success.
+      if (repeated(item, input, user, action)) return present(item);
       if (revision !== undefined && revision !== item.revision) fail(409, '预约已更新，请刷新后重试');
       if ((input.frontPhotoId !== undefined || input.backPhotoId !== undefined) &&
           (action === 'correct' || input.status !== 'in_progress')) fail(400, '签到照片只能在签到时记录');
@@ -146,7 +163,11 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
         } else fail(409, '当前状态不能执行此操作，修正记录请使用管理员纠错');
       }
       const updated = await appointments.update(item, patch);
-      if (!updated) fail(409, '预约已被其他工作人员修改，请刷新后重试');
+      if (!updated) {
+        const latest = await appointments.find(item.id);
+        if (latest && repeated(latest, input, user, action)) return present(latest);
+        fail(409, '预约已被其他工作人员修改，请刷新后重试');
+      }
       return present(updated);
     }
   };

@@ -5,7 +5,7 @@
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat"],
   "limits": { "cpu_ms": 1000 },
-  "vars": { "MAX_R2_BYTES": "8589934592" },
+  "vars": { "MAX_R2_BYTES": "8589934592", "SCAN_WORKBENCH_ENABLED": "true" },
   "d1_databases": [{
     "binding": "DB",
     "database_name": "pioneer-appointments-production-v2",
@@ -15,7 +15,7 @@
   "r2_buckets": [{ "binding": "ATTACHMENTS", "bucket_name": "pioneer-attachments-production-v2" }],
   "env": {
     "preview": {
-      "vars": { "MAX_R2_BYTES": "536870912" },
+      "vars": { "MAX_R2_BYTES": "536870912", "SCAN_WORKBENCH_ENABLED": "true" },
       "d1_databases": [{
         "binding": "DB",
         "database_name": "pioneer-appointments-preview-v2",

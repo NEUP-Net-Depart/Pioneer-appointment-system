@@ -15,6 +15,6 @@ export async function apiFetch(input, { json, ...options } = {}) {
 export async function apiJson(input, options) {
   const response = await apiFetch(input, options);
   const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error || '请求失败，请稍后重试');
+  if (!response.ok) { const error = new Error(payload.error || '请求失败，请稍后重试'); error.status = response.status; throw error; }
   return payload;
 }

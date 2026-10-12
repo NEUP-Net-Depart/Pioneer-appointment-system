@@ -7,6 +7,7 @@
   <title>先锋硬件部 · 工作人员工作台</title>
   <link rel="icon" href="/assets/organization-logo.jpg" type="image/jpeg" />
   <link rel="stylesheet" href="/shared/styles.css" />
+  <link rel="stylesheet" href="/staff/scan.css" />
 </head>
 <body class="staff-mode">
   <section class="login-view" id="login-view">
@@ -34,6 +35,7 @@
         <span><strong>先锋硬件部</strong><small>维修预约系统</small></span>
       </a>
       <nav class="main-nav" aria-label="主导航">
+        <button class="nav-link" data-view-link="scan" hidden>扫码维修</button>
         <button class="nav-link" data-view-link="staff" data-role-allow="technician,admin">维修后台</button>
         <button class="nav-link" data-view-link="stats" data-role-allow="admin">统计分析</button>
         <button class="nav-link" data-view-link="users" data-role-allow="admin">账号管理</button><button class="nav-link" data-view-link="settings" data-role-allow="technician">个人设置</button>
@@ -42,7 +44,52 @@
     </div>
   </header>
 
-<main>
+  <main>
+    <section class="view scan-workbench" id="scan-view" data-view="scan">
+      <div class="scan-heading"><div><p class="eyebrow">REPAIR WORKBENCH</p><h1>扫码维修</h1></div><span id="scan-account"></span></div>
+      <p id="scan-message" class="scan-message" role="status" aria-live="polite"></p>
+      <button type="button" id="scan-recover" class="secondary-btn">重新读取当前工单</button>
+      <section id="scan-home" hidden>
+        <div class="scanner-frame"><video id="scan-video" muted playsinline aria-label="维修二维码摄像头"></video><div class="scanner-guide" aria-hidden="true"></div></div>
+        <p id="camera-status" role="status">将维修二维码放入框内</p>
+        <div class="scan-tools"><button id="scan-camera" class="secondary-btn" type="button">开启 / 重试摄像头</button><button id="scan-torch" class="secondary-btn" type="button" aria-pressed="false" disabled>手电筒</button><button id="scan-switch-camera" class="secondary-btn" type="button">切换摄像头</button></div>
+        <label class="scan-image-label">从图片识别二维码<input id="scan-image" type="file" accept="image/*" /></label>
+        <div class="scan-bottom"><button id="scan-manual" class="secondary-btn" type="button">手动输入编号</button><button id="scan-onsite" class="primary-btn" type="button">临时维修登记</button></div>
+      </section>
+      <form id="scan-manual-form" class="scan-panel" hidden><h2>手动输入编号</h2><label>完整预约编号<input id="scan-number" required maxlength="80" placeholder="reserve020261013-01" autocapitalize="none" autocomplete="off" /></label><div class="scan-actions"><button type="button" class="secondary-btn" data-scan-back>返回扫码</button><button class="primary-btn" type="submit">查询工单</button></div></form>
+      <section id="scan-detail" class="scan-panel" hidden>
+        <div id="scan-detail-info"></div>
+        <section id="scan-files-section" hidden><h3>维修附件与签到照片</h3><div id="scan-files"></div><button id="scan-reload-files" type="button" class="text-btn">重新读取附件</button><label>补充维修附件<input id="scan-add-files" type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf,text/plain" /></label><button id="scan-upload-files" type="button" class="secondary-btn">上传附件</button><details><summary>机主协议签名</summary><canvas id="scan-signed" width="900" height="360" aria-label="机主协议签名" hidden></canvas></details></section>
+        <p id="scan-legacy-notice" hidden>此账号有多条历史未完成维修，请逐条处理；完成前无法开始新工单。</p>
+        <p id="scan-thermal-advice" hidden>清灰换硅脂：请先询问机主并确认是否使用液金散热，再确认处理方案。</p>
+        <form id="scan-intake-form" hidden><h2>拍照签到</h2><p>确认设备信息后拍摄正面和反面。提交签到后开始维修。</p><div class="intake-photos">
+          <label>电脑正面（必填）<input id="scan-front" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" /><img id="scan-front-preview" alt="电脑正面预览" hidden /><span id="scan-front-state"></span></label>
+          <label>电脑反面（必填）<input id="scan-back" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" /><img id="scan-back-preview" alt="电脑反面预览" hidden /><span id="scan-back-state"></span></label>
+        </div><p>每张不超过 5 MB，支持 JPG、PNG、WebP。</p><button class="primary-btn" type="submit">上传照片并确认签到</button></form>
+        <form id="scan-result-form" hidden><h2>维修结果</h2><label>结果<select id="scan-outcome" required><option value="">请选择维修结果</option><option value="repaired">修复成功</option><option value="unrepaired">未修复</option><option value="not_needed">无需维修</option></select></label><label>维修说明<textarea id="scan-note" required rows="5" maxlength="3000" placeholder="记录检测、处理过程与维修结果"></textarea></label><p id="scan-draft-state"></p><div class="scan-actions"><button id="scan-save-note" type="button" class="secondary-btn">保存维修说明</button><button type="submit" class="primary-btn">结束维修并返回扫码</button></div></form>
+        <button type="button" class="text-btn" id="scan-detail-back">返回扫码</button>
+      </section>
+      <form id="scan-onsite-form" class="scan-panel" hidden><h2>临时维修登记</h2><p>现场登记后拍照签到，沿用预约维修流程。</p><div class="scan-form-grid">
+<label>学号（必填）<input name="studentId" maxlength="20" required /></label>
+<label>姓名（必填）<input name="name" maxlength="80" required /></label>
+<label>学院 / 专业<input name="college" maxlength="120"  /></label>
+<label>手机号<input name="phone" maxlength="30"  /></label>
+<label>QQ / 微信（必填）<input name="social" maxlength="120" required /></label>
+<label>品牌（必填）<input name="brand" maxlength="80" required /></label>
+<label>型号（必填）<input name="deviceModel" maxlength="120" required /></label>
+<label>序列号<input name="serial" maxlength="120"  /></label>
+        <label>校区（必填）<select name="campus" required><option value="">请选择</option><option>南湖</option><option>浑南</option></select></label>
+        <label>设备类型（必填）<select name="deviceType" required><option>笔记本电脑</option><option>台式电脑</option><option>显示器</option><option>打印机</option><option>其他外设</option></select></label>
+        <label>是否在保（必填）<select name="warranty" required><option value="">请选择</option><option>是</option><option>否</option><option>不清楚</option></select></label>
+        <label>故障类型（必填）<select name="faultType" required><option value="">请选择</option><option>清灰换硅脂</option><option>换硬盘</option><option>换内存</option><option>系统问题</option><option>蓝屏</option><option>黑屏</option><option>网络问题</option><option>其他</option></select></label>
+        <label>是否进液 / 摔过（必填）<select name="liquidDrop" required><option>否</option><option>是</option><option>不清楚</option></select></label>
+        </div><label>故障描述<textarea name="issue" maxlength="10000" rows="3"></textarea></label><label>备注<textarea name="note" maxlength="500" rows="2"></textarea></label>
+        <details><summary>免费维修免责与行为操守协议</summary><p>1. 本服务为免费、自愿的互助维修，不收取任何费用。</p><p>2. 维修人员会尽力维修，但不保证一定能修好；维修方不承担数据丢失责任。</p><p>3. 配件及其他耗材由机主自行准备，中心不提供代购；清灰换硅脂所需的普通硅脂由中心提供，无需自备。</p><p>4. 在保设备建议先前往官方售后，避免影响保修。</p><p>5. 请如实描述故障并遵守现场秩序，不翻阅个人文件与聊天记录。</p></details>
+        <label class="checkbox-label"><input name="agreement" type="checkbox" required />机主已阅读并同意协议，确认重要数据已备份</label>
+        <label>请机主手写本人姓名<canvas id="onsite-signature" width="900" height="360" aria-label="临时维修协议手写签名"></canvas></label><button type="button" id="onsite-clear-signature" class="text-btn">清空签名</button>
+        <div class="scan-actions"><button type="button" class="secondary-btn" data-scan-back>返回扫码</button><button class="primary-btn" type="submit">登记并查看工单</button></div>
+      </form>
+    </section>
 
     <section class="view" id="staff-view" data-view="staff">
       <div class="content-shell staff-shell">

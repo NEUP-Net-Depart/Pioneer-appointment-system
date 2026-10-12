@@ -141,6 +141,8 @@ test('student booking, private links, whitelist activation, staff permissions, r
   const errors=[];
   const contexts=await Promise.all([10,11,12,13].map(n=>browser.newContext({baseURL:process.env.E2E_BASE_URL,extraHTTPHeaders:{'CF-Connecting-IP':`198.51.100.${n}`}})));
   const [student,root,member,privatePage]=await Promise.all(contexts.map(context=>context.newPage()));
+  // Keep exercising the retained technician UI as the feature-flag fallback.
+  await member.route('**/api/scan/config', route => route.fulfill({json:{enabled:false}}));
   for(const page of [student,root,member,privatePage])page.on('pageerror',error=>errors.push(error.message));
   try{
     const item=await booking(student,'20269901');

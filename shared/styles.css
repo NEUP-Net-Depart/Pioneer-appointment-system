@@ -612,3 +612,5 @@ html{scrollbar-gutter:stable}
 .staff-date-history { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 10px; }
 .staff-date-history summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 .staff-date-history summary:focus-visible { outline: 2px solid #0e6874; outline-offset: 4px; }
+/* Public repair QR contains only the appointment locator and its checksum. */
+.repair-qr{margin:18px 0;line-height:1.6}.repair-qr img{display:block;max-width:100%;height:auto;background:#fff;margin:12px auto}.repair-qr p{font-size:14px}.repair-qr summary{cursor:pointer;font-weight:600}
