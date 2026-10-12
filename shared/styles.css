@@ -341,12 +341,12 @@ html{scrollbar-gutter:stable}
 }
 
   /* The date count changes the silhouette, while the panel keeps its size. */
-  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) { position: relative; display: block; min-height: 264px; overflow: hidden; border-radius: 10px; background: #dce5ea; }
+  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) { --date-size: clamp(28px, 3vw, 42px); --weekday-height: 18px; --heading-height: calc(var(--weekday-height) + 6px + var(--date-size) * 1.25); position: relative; display: block; min-height: 308px; overflow: hidden; border-radius: 10px; background: #dce5ea; }
   .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; border-radius: 0; padding: 0; background: #fff; box-shadow: none; }
   .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice strong { position: absolute; display: block; left: 50%; top: 30%; transform: translate(-50%, -50%); white-space: nowrap; text-align: left; }
-  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-weekday { font-size: 12px; }
-  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-date-number { font-size: clamp(28px, 3vw, 42px); font-style: italic; line-height: 1.25; margin-top: 5px; }
-  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice small { position: absolute; left: 50%; top: 49%; transform: translateX(-50%); margin: 0; }
+  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-weekday { font-size: 12px; line-height: var(--weekday-height); }
+  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-date-number { font-size: var(--date-size); font-style: italic; line-height: 1.25; margin-top: 6px; }
+  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice small { position: absolute; left: 50%; top: calc(30% + var(--heading-height) / 2 + 10px); transform: translateX(-50%); margin: 0; line-height: 18px; }
   .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice[aria-pressed=true] { background: var(--navy); }
   .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice[aria-pressed=true]:after { display: none; }
   .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice[aria-pressed=true] strong:after { content: "✓"; position: absolute; left: calc(100% + 12px); top: 0; color: #bce8df; font-size: 14px; }
@@ -358,35 +358,34 @@ html{scrollbar-gutter:stable}
   .booking-days[data-count="2"] .booking-choice:last-child { left: auto; clip-path: polygon(50% 0, 100% 0, 100% 100%, 0 100%); }
   .booking-days[data-count="2"] .booking-choice:first-child strong, .booking-days[data-count="2"] .booking-choice:first-child small { left: 38%; }
   .booking-days[data-count="2"] .booking-choice:last-child strong { left: 62%; top: 58%; }
-  .booking-days[data-count="2"] .booking-choice:last-child small { left: 62%; top: 77%; }
+  .booking-days[data-count="2"] .booking-choice:last-child small { left: 62%; top: calc(58% + var(--heading-height) / 2 + 10px); }
   .booking-days[data-count="3"] .booking-choice { width: calc(50% - 1px); clip-path: polygon(0 0, 100% 0, 100% 48%, 0 99%); }
   .booking-days[data-count="3"] .booking-choice:nth-child(2) { left: auto; clip-path: polygon(0 0, 100% 0, 100% 99%, 0 48%); }
-  .booking-days[data-count="3"] .booking-choice small { top: 45%; }
   .booking-days[data-count="3"] .booking-choice:last-child { inset: auto 0 0; width: 100%; height: 51%; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
-  .booking-days[data-count="3"] .booking-choice:last-child strong { top: 47%; }
+  .booking-days[data-count="3"] .booking-choice:last-child strong { top: auto; bottom: 42px; transform: translateX(-50%); }
   .booking-days[data-count="3"] .booking-choice:last-child small { top: auto; bottom: 14px; }
-  .booking-days[data-count="4"] .booking-date-number { font-size: clamp(24px, 2.4vw, 32px); }
+  .booking-days[data-count="4"] { --date-size: clamp(24px, 2.4vw, 32px); }
   .booking-days[data-count="4"] .booking-choice:nth-child(1) { height: calc(50% - 1px); clip-path: polygon(0 0, 100% 0, 50% 100%); }
   .booking-days[data-count="4"] .booking-choice:nth-child(1) strong { top: 30%; }
-  .booking-days[data-count="4"] .booking-choice:nth-child(1) small { top: 60%; }
   .booking-days[data-count="4"] .booking-choice:nth-child(2) { left: auto; width: calc(50% - 1px); clip-path: polygon(100% 0, 100% 100%, 0 50%); }
   .booking-days[data-count="4"] .booking-choice:nth-child(2) strong { left: 67%; top: 44%; }
-  .booking-days[data-count="4"] .booking-choice:nth-child(2) small { left: 67%; top: 65%; }
+  .booking-days[data-count="4"] .booking-choice:nth-child(2) small { left: 67%; top: calc(44% + var(--heading-height) / 2 + 10px); }
   .booking-days[data-count="4"] .booking-choice:nth-child(3) { inset: auto 0 0; height: calc(50% - 1px); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
-  .booking-days[data-count="4"] .booking-choice:nth-child(3) strong { top: 50%; }
+  .booking-days[data-count="4"] .booking-choice:nth-child(3) strong { top: auto; bottom: 42px; transform: translateX(-50%); }
   .booking-days[data-count="4"] .booking-choice:nth-child(3) small { top: auto; bottom: 14px; }
   .booking-days:is([data-count="3"], [data-count="4"]) .booking-choice:nth-child(3)[aria-pressed=true] strong:after { top: auto; bottom: 2px; }
   .booking-days[data-count="4"] .booking-choice:nth-child(4) { width: calc(50% - 1px); clip-path: polygon(0 0, 100% 50%, 0 100%); }
   .booking-days[data-count="4"] .booking-choice:nth-child(4) strong { left: 33%; top: 44%; }
-  .booking-days[data-count="4"] .booking-choice:nth-child(4) small { left: 33%; top: 65%; }
+  .booking-days[data-count="4"] .booking-choice:nth-child(4) small { left: 33%; top: calc(44% + var(--heading-height) / 2 + 10px); }
 @media (max-width: 899px) {
   .booking-date-panel { container-type: inline-size; }
-  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) { min-height: clamp(196px, 62cqw, 232px); }
-  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-date-number { font-size: clamp(24px, 9cqw, 36px); }
+  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) { --date-size: clamp(24px, 9cqw, 36px); --weekday-height: 16px; min-height: clamp(256px, 84cqw, 308px); }
   .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-weekday { font-size: 10px; }
   .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice small { font-size: 11px; }
-  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice[aria-pressed=true] strong:after { left: calc(100% + 7px); font-size: 12px; }
+  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice[aria-pressed=true] strong:after { content: none; }
+  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice[aria-pressed=true] .booking-weekday:after { content: "✓"; display: inline-block; width: 12px; margin-left: 6px; color: #bce8df; font-size: 12px; line-height: 1; }
   .booking-days[data-count="1"] .booking-date-number { font-size: clamp(52px, 21cqw, 76px); }
-  .booking-days[data-count="4"] .booking-date-number { font-size: clamp(20px, 7cqw, 26px); }
-  .booking-days[data-count="4"] .booking-choice:nth-child(2) small, .booking-days[data-count="4"] .booking-choice:nth-child(4) small { top: 60%; }
+  .booking-days:is([data-count="4"]) { --date-size: clamp(20px, 7cqw, 26px); }
+  .booking-days:is([data-count="3"], [data-count="4"]) .booking-choice:nth-child(3) strong { top: auto; bottom: 42px; transform: translateX(-50%); }
+  .booking-days:is([data-count="3"], [data-count="4"]) .booking-choice:nth-child(3) small { line-height: 18px; }
 }
