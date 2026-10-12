@@ -325,7 +325,8 @@ for (const count of [1, 2, 3, 4]) {
     });
     expect(geometry.scroll).toBe(initialScroll);
     expect(geometry.height).toBeLessThanOrEqual(geometry.screen);
-    expect(geometry.rows).toBe(count === 4 ? 2 : 1);
+    const silhouettes = await page.locator('#booking-days button').evaluateAll(buttons => buttons.map(button => getComputedStyle(button).clipPath));
+    expect(silhouettes.every(shape => count === 1 ? shape === 'none' : shape.startsWith('polygon('))).toBe(true);
     expect(geometry.overflow).toBe(false);
   });
 }

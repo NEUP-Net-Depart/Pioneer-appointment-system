@@ -295,44 +295,6 @@ html{scrollbar-gutter:stable}
   .booking-days[data-count="1"] .booking-choice small { margin-top: 6px; }
   .booking-days[data-count="1"] .booking-choice, .booking-days[data-count="3"] .booking-choice:last-child { grid-column: 2 / span 2; }
   .booking-days .booking-choice[aria-pressed=true]:after { top: 13px; right: 13px; }
-  /* The date count changes the silhouette, while the panel keeps its size. */
-  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) { position: relative; display: block; min-height: 264px; overflow: hidden; border-radius: 10px; background: #dce5ea; }
-  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; border-radius: 0; padding: 0; background: #fff; box-shadow: none; }
-  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice strong { position: absolute; display: block; left: 50%; top: 30%; transform: translate(-50%, -50%); white-space: nowrap; text-align: left; }
-  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-weekday { font-size: 12px; }
-  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-date-number { font-size: clamp(28px, 3vw, 42px); font-style: italic; line-height: 1.25; margin-top: 5px; }
-  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice small { position: absolute; left: 50%; top: 49%; transform: translateX(-50%); margin: 0; }
-  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice[aria-pressed=true] { background: var(--navy); }
-  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice[aria-pressed=true]:after { display: none; }
-  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice[aria-pressed=true] strong:after { content: "✓"; position: absolute; left: calc(100% + 12px); top: 0; color: #bce8df; font-size: 14px; }
-  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice:focus-visible strong { outline: 2px solid #25765f; outline-offset: 7px; border-radius: 2px; }
-  .booking-days[data-count="1"] .booking-choice strong { left: 12%; top: 20%; transform: none; }
-  .booking-days[data-count="1"] .booking-date-number { font-size: clamp(56px, 6vw, 88px); letter-spacing: -.06em; }
-  .booking-days[data-count="1"] .booking-choice small { left: auto; top: auto; right: 10%; bottom: 18%; transform: none; font-size: 14px; }
-  .booking-days[data-count="2"] .booking-choice { width: 66.5%; clip-path: polygon(0 0, 100% 0, 50% 100%, 0 100%); }
-  .booking-days[data-count="2"] .booking-choice:last-child { left: auto; clip-path: polygon(50% 0, 100% 0, 100% 100%, 0 100%); }
-  .booking-days[data-count="2"] .booking-choice:first-child strong, .booking-days[data-count="2"] .booking-choice:first-child small { left: 38%; }
-  .booking-days[data-count="2"] .booking-choice:last-child strong { left: 62%; top: 58%; }
-  .booking-days[data-count="2"] .booking-choice:last-child small { left: 62%; top: 77%; }
-  .booking-days[data-count="3"] .booking-choice { width: calc(50% - 1px); clip-path: polygon(0 0, 100% 0, 100% 48%, 0 99%); }
-  .booking-days[data-count="3"] .booking-choice:nth-child(2) { left: auto; clip-path: polygon(0 0, 100% 0, 100% 99%, 0 48%); }
-  .booking-days[data-count="3"] .booking-choice small { top: 45%; }
-  .booking-days[data-count="3"] .booking-choice:last-child { inset: auto 0 0; width: 100%; height: 51%; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
-  .booking-days[data-count="3"] .booking-choice:last-child strong { top: 53%; }
-  .booking-days[data-count="3"] .booking-choice:last-child small { top: 80%; }
-  .booking-days[data-count="4"] .booking-date-number { font-size: clamp(24px, 2.4vw, 32px); }
-  .booking-days[data-count="4"] .booking-choice:nth-child(1) { height: calc(50% - 1px); clip-path: polygon(0 0, 100% 0, 50% 100%); }
-  .booking-days[data-count="4"] .booking-choice:nth-child(1) strong { top: 30%; }
-  .booking-days[data-count="4"] .booking-choice:nth-child(1) small { top: 60%; }
-  .booking-days[data-count="4"] .booking-choice:nth-child(2) { left: auto; width: calc(50% - 1px); clip-path: polygon(100% 0, 100% 100%, 0 50%); }
-  .booking-days[data-count="4"] .booking-choice:nth-child(2) strong { left: 67%; top: 44%; }
-  .booking-days[data-count="4"] .booking-choice:nth-child(2) small { left: 67%; top: 65%; }
-  .booking-days[data-count="4"] .booking-choice:nth-child(3) { inset: auto 0 0; height: calc(50% - 1px); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
-  .booking-days[data-count="4"] .booking-choice:nth-child(3) strong { top: 60%; }
-  .booking-days[data-count="4"] .booking-choice:nth-child(3) small { top: 86%; }
-  .booking-days[data-count="4"] .booking-choice:nth-child(4) { width: calc(50% - 1px); clip-path: polygon(0 0, 100% 50%, 0 100%); }
-  .booking-days[data-count="4"] .booking-choice:nth-child(4) strong { left: 33%; top: 44%; }
-  .booking-days[data-count="4"] .booking-choice:nth-child(4) small { left: 33%; top: 65%; }
   .booking-time-panel .booking-slot-panel:not([hidden]) { display: flex; flex-direction: column; flex: 1; margin: 0; padding: 0; border: 0; }
   .booking-slots { flex: 1; grid-auto-rows: minmax(60px, 1fr); }
   .booking-slot-placeholder { flex: 1; margin: 0; padding: 0; border: 0; }
@@ -376,4 +338,55 @@ html{scrollbar-gutter:stable}
   .booking-picker-footer { margin: 14px -14px 0; padding: 10px 14px; align-items: flex-start; flex-direction: column; gap: 4px; }
   .booking-picker-footer p { font-size: 11px; }
   .booking-picker-footer > div { font-size: 10px; }
+}
+
+  /* The date count changes the silhouette, while the panel keeps its size. */
+  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) { position: relative; display: block; min-height: 264px; overflow: hidden; border-radius: 10px; background: #dce5ea; }
+  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; border-radius: 0; padding: 0; background: #fff; box-shadow: none; }
+  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice strong { position: absolute; display: block; left: 50%; top: 30%; transform: translate(-50%, -50%); white-space: nowrap; text-align: left; }
+  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-weekday { font-size: 12px; }
+  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-date-number { font-size: clamp(28px, 3vw, 42px); font-style: italic; line-height: 1.25; margin-top: 5px; }
+  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice small { position: absolute; left: 50%; top: 49%; transform: translateX(-50%); margin: 0; }
+  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice[aria-pressed=true] { background: var(--navy); }
+  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice[aria-pressed=true]:after { display: none; }
+  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice[aria-pressed=true] strong:after { content: "✓"; position: absolute; left: calc(100% + 12px); top: 0; color: #bce8df; font-size: 14px; }
+  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice:focus-visible strong { outline: 2px solid #25765f; outline-offset: 7px; border-radius: 2px; }
+  .booking-days[data-count="1"] .booking-choice strong { left: 12%; top: 20%; transform: none; }
+  .booking-days[data-count="1"] .booking-date-number { font-size: clamp(56px, 6vw, 88px); letter-spacing: -.06em; }
+  .booking-days[data-count="1"] .booking-choice small { left: auto; top: auto; right: 10%; bottom: 18%; transform: none; font-size: 14px; }
+  .booking-days[data-count="2"] .booking-choice { width: 66.5%; clip-path: polygon(0 0, 100% 0, 50% 100%, 0 100%); }
+  .booking-days[data-count="2"] .booking-choice:last-child { left: auto; clip-path: polygon(50% 0, 100% 0, 100% 100%, 0 100%); }
+  .booking-days[data-count="2"] .booking-choice:first-child strong, .booking-days[data-count="2"] .booking-choice:first-child small { left: 38%; }
+  .booking-days[data-count="2"] .booking-choice:last-child strong { left: 62%; top: 58%; }
+  .booking-days[data-count="2"] .booking-choice:last-child small { left: 62%; top: 77%; }
+  .booking-days[data-count="3"] .booking-choice { width: calc(50% - 1px); clip-path: polygon(0 0, 100% 0, 100% 48%, 0 99%); }
+  .booking-days[data-count="3"] .booking-choice:nth-child(2) { left: auto; clip-path: polygon(0 0, 100% 0, 100% 99%, 0 48%); }
+  .booking-days[data-count="3"] .booking-choice small { top: 45%; }
+  .booking-days[data-count="3"] .booking-choice:last-child { inset: auto 0 0; width: 100%; height: 51%; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+  .booking-days[data-count="3"] .booking-choice:last-child strong { top: 47%; }
+  .booking-days[data-count="3"] .booking-choice:last-child small { top: auto; bottom: 14px; }
+  .booking-days[data-count="4"] .booking-date-number { font-size: clamp(24px, 2.4vw, 32px); }
+  .booking-days[data-count="4"] .booking-choice:nth-child(1) { height: calc(50% - 1px); clip-path: polygon(0 0, 100% 0, 50% 100%); }
+  .booking-days[data-count="4"] .booking-choice:nth-child(1) strong { top: 30%; }
+  .booking-days[data-count="4"] .booking-choice:nth-child(1) small { top: 60%; }
+  .booking-days[data-count="4"] .booking-choice:nth-child(2) { left: auto; width: calc(50% - 1px); clip-path: polygon(100% 0, 100% 100%, 0 50%); }
+  .booking-days[data-count="4"] .booking-choice:nth-child(2) strong { left: 67%; top: 44%; }
+  .booking-days[data-count="4"] .booking-choice:nth-child(2) small { left: 67%; top: 65%; }
+  .booking-days[data-count="4"] .booking-choice:nth-child(3) { inset: auto 0 0; height: calc(50% - 1px); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+  .booking-days[data-count="4"] .booking-choice:nth-child(3) strong { top: 50%; }
+  .booking-days[data-count="4"] .booking-choice:nth-child(3) small { top: auto; bottom: 14px; }
+  .booking-days:is([data-count="3"], [data-count="4"]) .booking-choice:nth-child(3)[aria-pressed=true] strong:after { top: auto; bottom: 2px; }
+  .booking-days[data-count="4"] .booking-choice:nth-child(4) { width: calc(50% - 1px); clip-path: polygon(0 0, 100% 50%, 0 100%); }
+  .booking-days[data-count="4"] .booking-choice:nth-child(4) strong { left: 33%; top: 44%; }
+  .booking-days[data-count="4"] .booking-choice:nth-child(4) small { left: 33%; top: 65%; }
+@media (max-width: 899px) {
+  .booking-date-panel { container-type: inline-size; }
+  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) { min-height: clamp(196px, 62cqw, 232px); }
+  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-date-number { font-size: clamp(24px, 9cqw, 36px); }
+  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-weekday { font-size: 10px; }
+  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice small { font-size: 11px; }
+  .booking-days:is([data-count="1"], [data-count="2"], [data-count="3"], [data-count="4"]) .booking-choice[aria-pressed=true] strong:after { left: calc(100% + 7px); font-size: 12px; }
+  .booking-days[data-count="1"] .booking-date-number { font-size: clamp(52px, 21cqw, 76px); }
+  .booking-days[data-count="4"] .booking-date-number { font-size: clamp(20px, 7cqw, 26px); }
+  .booking-days[data-count="4"] .booking-choice:nth-child(2) small, .booking-days[data-count="4"] .booking-choice:nth-child(4) small { top: 60%; }
 }
