@@ -117,10 +117,7 @@ export function initStaff(){
   $$('.filter-tab').forEach(button=>button.addEventListener('click',()=>{
     activeFilter=button.dataset.filter;$$('.filter-tab').forEach(item=>item.classList.toggle('is-active',item===button));refresh();
   }));
-  let composing=false;
-  $('#staff-search').addEventListener('compositionstart',()=>{composing=true;});
-  $('#staff-search').addEventListener('compositionend',()=>{composing=false; clearTimeout(searchTimer); searchTimer=setTimeout(refresh,100);});
-  $('#staff-search').addEventListener('input',()=>{if(composing)return;clearTimeout(searchTimer);searchTimer=setTimeout(refresh,200);});
+  $('#staff-search').addEventListener('input',()=>{clearTimeout(searchTimer);searchTimer=setTimeout(refresh,200);});
   $('#staff-campus-filter').addEventListener('change',refresh);$('#staff-date-filter').addEventListener('change',refresh);
   $('#staff-clear-filters').addEventListener('click',()=>{
     $('#staff-campus-filter').value='all';$('#staff-date-filter').value='';$('#staff-search').value='';activeFilter='all';

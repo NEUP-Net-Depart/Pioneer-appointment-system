@@ -52,15 +52,12 @@ export function appointmentRepository(db) {
       for (const key of ['campus','date']) if (query[key]) { where.push(`${key}=?`); args.push(query[key]); }
       if (query.status !== 'all') { where.push('status=?'); args.push(query.status); }
       if (query.q) {
-        where.push("(instr(lower(id),?)>0 OR instr(lower(COALESCE(repair_number,'')),?)>0 OR instr(lower(device_model),?)>0 OR instr(campus,?)>0 OR instr(lower(name),?)>0 OR instr(student_id,?)>0)");
+        where.push("(instr(id,?)>0 OR instr(repair_number,?)>0 OR instr(lower(device_model),?)>0 OR instr(campus,?)>0 OR ((?='' OR (assigned_to=? AND status<>'booked')) AND (instr(lower(name),?)>0 OR instr(student_id,?)>0)))");
         const text=query.q.toLowerCase();
-        args.push(text,text,text,text,text,text);
+        args.push(text,text,text,text,technician,technician,text,text);
       }
       const [items, counts] = await db.batch([
-        db.prepare(`SELECT * FROM appointments WHERE ${where.join(' AND ')} ORDER BY date ASC,
-          CASE time_slot WHEN '19:00–19:30' THEN 1 WHEN '19:30–20:00' THEN 2 WHEN '19:00–20:00' THEN 2
-            WHEN '20:00–20:30' THEN 3 WHEN '20:30–21:00' THEN 4 WHEN '20:00–21:00' THEN 4 ELSE 9 END ASC,
-          CAST(substr(id,instr(id,'-')+1) AS INTEGER) ASC, created_at ASC, id ASC`).bind(...args),
+        db.prepare(`SELECT * FROM appointments WHERE ${where.join(' AND ')} ORDER BY created_at DESC,id DESC`).bind(...args),
         db.prepare(`SELECT COUNT(*) AS allCount, COUNT(CASE WHEN status='booked' THEN 1 END) AS booked,
           COUNT(CASE WHEN status='in_progress' THEN 1 END) AS in_progress, COUNT(CASE WHEN status='completed' THEN 1 END) AS completed
           FROM appointments WHERE ${scope}`).bind(...scopeArgs)
