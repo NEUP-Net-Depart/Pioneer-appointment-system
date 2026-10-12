@@ -37,5 +37,5 @@ export function initIntake(start) {
     } catch (error) { showToast(error.message); }
     finally { busy = false; $('#confirm-intake').disabled = false; inputs.forEach(input => input.disabled = false); }
   });
-  return { open(value) { if (busy) return; previousFocus = document.activeElement; close(); item = value; for (const key of Object.keys(uploads)) delete uploads[key]; $('#intake-code').textContent = value.id; modal.hidden = false; inputs[0].focus(); }, close };
+  return { open(value) { if (busy) return; previousFocus = document.activeElement; close(); item = value; for (const key of Object.keys(uploads)) delete uploads[key]; $('#intake-code').textContent = value.id; $('#intake-thermal-advice').hidden = value.faultType !== '清灰换硅脂'; modal.hidden = false; inputs[0].focus(); }, close };
 }
