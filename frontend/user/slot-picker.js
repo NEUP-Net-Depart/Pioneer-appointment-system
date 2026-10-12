@@ -4,6 +4,7 @@ import { startVisiblePolling } from '/shared/polling.js';
 import { CAMPUSES, TIME_SLOTS } from '/shared/constants.js';
 import { timeLabel } from '/shared/time.js';
 import { availableSlots, bookingDates, slotAvailability } from '/shared/booking-slots.js';
+import { initBookingFloat } from './booking-float.js';
 
 const weekday = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', weekday: 'short' });
 const dayLabel = date => `${weekday.format(new Date(`${date}T12:00:00+08:00`))} · ${Number(date.slice(5, 7))}/${Number(date.slice(8))}`;
@@ -66,7 +67,9 @@ export function initSlotPicker() {
   const campusInput = $('[name="campus"]'), dateInput = $('[name="date"]'), slotInput = $('[name="timeSlot"]');
   const campusButtons = $('#booking-campuses'), days = $('#booking-days'), slots = $('#booking-slots');
   const status = $('#booking-selection'), updated = $('#booking-updated'), retry = $('#booking-retry');
+  const floating = initBookingFloat($('#booking-picker'));
   let generation = 0, summaries = new Map(), dates = [], notice = '', disposed = false, refreshing = false;
+  let selectionIssue = '';
   campusInput.value = CAMPUSES[0];
   const campusSummaries = new Map([[campusInput.value, summaries]]), campusUpdated = new Map();
 
@@ -99,13 +102,16 @@ export function initSlotPicker() {
     days.style.setProperty('--booking-day-count', String(Math.max(1, dates.length)));
     const reservedSlots = Math.max(1, ...dates.map(date => availableSlots(date).length));
     $('.booking-picker-body').style.setProperty('--booking-slot-count', String(reservedSlots));
-    if (!dates.includes(dateInput.value)) { dateInput.value = ''; slotInput.value = ''; }
+    if (!dates.includes(dateInput.value)) {
+      if (slotInput.value) selectionIssue = notice = '时段已过期，请重新选择';
+      dateInput.value = ''; slotInput.value = '';
+    }
     for (const button of campusButtons.children) selected(button, campusInput.value);
     for (const button of days.children) {
       const date = button.dataset.date, summary = summaries.get(date);
       selected(button, dateInput.value);
       const remaining = summary ? availableSlots(date).reduce((total, slot) => total + slotAvailability(summary, date, slot).remaining, 0) : 0;
-      button.disabled = refreshing || !summary || remaining === 0;
+      button.disabled = !summary || remaining === 0;
       button.dataset.loading = String(refreshing && (!summary || remaining > 0));
       showRemaining(button, summary ? remaining : undefined, summary && remaining === 0 ? availableSlots(date).every(slot => summary.slotCapacities[slot] === 0) ? '暂停预约' : '预约已满' : summary === null ? '读取失败' : undefined);
     }
@@ -113,14 +119,15 @@ export function initSlotPicker() {
     $('#booking-slot-panel').hidden = !dateInput.value;
     const summary = summaries.get(dateInput.value);
     if (slotInput.value && (!summary || slotAvailability(summary, dateInput.value, slotInput.value).disabled)) {
-      slotInput.value = ''; notice = '已选时段暂不可预约，请重新选择。';
+      selectionIssue = notice = summary ? `${slotAvailability(summary, dateInput.value, slotInput.value).label}，请重新选择` : '名额读取失败，请重试';
+      slotInput.value = '';
     }
     $('#booking-slot-title').textContent = dateInput.value ? `${campusInput.value} · ${dayLabel(dateInput.value)}，请选择时段` : '';
     for (const button of slots.children) {
       const slot = button.dataset.slot;
       button.hidden = !dateInput.value || !availableSlots(dateInput.value).includes(slot);
       const availability = summary && slotAvailability(summary, dateInput.value, slot);
-      button.disabled = refreshing || !availability || availability.disabled;
+      button.disabled = !availability || availability.disabled;
       button.dataset.loading = String(refreshing && (!availability || !availability.disabled));
       showRemaining(button, availability?.remaining, availability?.disabled ? availability.label : summary === null ? '读取失败' : undefined);
       const capacity = button.querySelector('.booking-slot-limit');
@@ -130,6 +137,7 @@ export function initSlotPicker() {
     }
     slots.dataset.count = String([...slots.children].filter(button => !button.hidden).length);
     status.textContent = slotInput.value ? `已选：${campusInput.value} · ${dayLabel(dateInput.value)} · ${slotInput.value}` : notice || (dateInput.value ? '请选择可预约时段。' : '先选日期，再选时段。');
+    floating.update(campusInput.value, dateInput.value ? dayLabel(dateInput.value) : '', slotInput.value, selectionIssue);
   }
   async function refresh({ date } = {}) {
     if (disposed) return false;
@@ -150,7 +158,7 @@ export function initSlotPicker() {
   }
   function changeCampus(value) {
     if (!CAMPUSES.includes(value)) value = CAMPUSES[0];
-    campusInput.value = value; slotInput.value = ''; notice = '';
+    campusInput.value = value; slotInput.value = ''; notice = ''; selectionIssue = '';
     if (!campusSummaries.has(value)) campusSummaries.set(value, new Map());
     summaries = campusSummaries.get(value);
     updated.textContent = campusUpdated.get(value) || '更新于 --:--';
@@ -173,23 +181,16 @@ export function initSlotPicker() {
     const button = event.target.closest('[data-date]');
     if (!button || button.disabled) return;
     const changedDate = dateInput.value !== button.dataset.date;
-    if (changedDate) slotInput.value = '';
+    if (changedDate) { slotInput.value = ''; selectionIssue = ''; }
     dateInput.value = button.dataset.date; notice = ''; render();
     void refresh({ date: dateInput.value });
   });
-  slots.addEventListener('click', async event => {
+  slots.addEventListener('click', event => {
     const button = event.target.closest('[data-slot]');
     if (!button || button.disabled) return;
-    const date = dateInput.value, slot = button.dataset.slot, requestGeneration = generation + 1;
-    const success = await refresh({ date });
-    if (disposed || generation !== requestGeneration) return;
-    if (!success) { slotInput.value = ''; notice = '名额确认失败，请重试后重新选择。'; render(); return; }
-    const summary = summaries.get(date);
-    if (dateInput.value !== date || !summary) return;
-    const availability = slotAvailability(summary, date, slot);
-    if (availability.disabled) notice = `${availability.label}，请选择其他时段。`;
-    else { slotInput.value = slot; notice = ''; }
+    slotInput.value = button.dataset.slot; notice = ''; selectionIssue = '';
     render();
+    void refresh({ date: dateInput.value });
   });
   retry.addEventListener('click', () => { void refresh(); });
   render();
@@ -198,23 +199,24 @@ export function initSlotPicker() {
     validate() {
       render();
       const summary = summaries.get(dateInput.value);
-      const valid = !refreshing && bookingDates().includes(dateInput.value) && slotInput.value && summary && !slotAvailability(summary, dateInput.value, slotInput.value).disabled;
+      const valid = bookingDates().includes(dateInput.value) && slotInput.value && summary && !slotAvailability(summary, dateInput.value, slotInput.value).disabled;
       if (!valid) {
-        notice = refreshing ? '请等待名额确认完成后再提交。' : '请先在上方选择可预约的日期和时段。'; render();
+        notice = '请先在上方选择可预约的日期和时段。'; render();
         const target = dateInput.value ? slots : days;
         (target.querySelector('button:not(:disabled):not([hidden])') || campusButtons.querySelector('button')).focus();
       }
       return Boolean(valid);
     },
     async recover(message) {
-      slotInput.value = ''; notice = `${message}，请重新选择时段。`;
+      slotInput.value = ''; selectionIssue = notice = `${message}，请重新选择时段。`;
       await refresh({ date: dateInput.value });
       const target = dateInput.value ? slots : days;
-      (target.querySelector('button:not(:disabled):not([hidden])') || campusButtons.querySelector('button')).focus();
+      (target.querySelector('button:not(:disabled):not([hidden])') || campusButtons.querySelector('button')).focus({ preventScroll: true });
     },
     dispose() {
       disposed = true; generation++;
       stopPolling();
+      floating.dispose();
       $('#booking-picker').getAnimations({ subtree: true }).forEach(animation => animation.cancel());
       $('#booking-picker').hidden = true;
     }

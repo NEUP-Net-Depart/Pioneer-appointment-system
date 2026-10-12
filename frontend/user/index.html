@@ -12,6 +12,12 @@
 <main>
     <section class="view is-active" id="booking-view" data-view="booking">
       <div class="content-shell">
+        <div class="booking-float" id="booking-float" hidden>
+          <div class="booking-float-particles" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <button type="button" class="booking-float-button" id="booking-float-button" aria-controls="booking-picker">
+            <span class="booking-float-detail"><span id="booking-float-meta"></span><strong id="booking-float-time"></strong><span id="booking-float-state" hidden></span></span>
+          </button>
+        </div>
         <section class="booking-picker" id="booking-picker" aria-labelledby="booking-picker-title">
           <div class="booking-picker-heading"><div><h2 id="booking-picker-title">选择预约时间</h2><span class="booking-live">剩余名额</span></div><div class="booking-campuses" id="booking-campuses" role="group" aria-label="预约校区"></div></div>
           <p class="booking-rule">周一至周四提供服务，可预约今天及未来 3 天。</p>

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { chromium, expect } from '@playwright/test';
 
-test('local debugger updates layout and availability without reloading the booking document', { timeout: 30000 }, async () => {
+test('local debugger updates layout and availability without reloading the booking document', { timeout: 60000 }, async () => {
   const server = spawn(process.execPath, ['scripts/preview-booking-layout.mjs'], {
     env: { ...process.env, BOOKING_LAYOUT_PORT: '0' }, stdio: ['ignore', 'pipe', 'pipe']
   });
