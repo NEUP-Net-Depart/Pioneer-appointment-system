@@ -4,7 +4,7 @@ import { statusLabels, outcomeLabels } from '../../shared/constants.js';
 import { expiredBookingDate, nowIso } from '../../shared/time.js';
 import { requireRole } from './permissions.js';
 
-const headers = ['预约编号','学号','姓名','学院','校区','联系方式','设备类型','品牌','型号','故障类型','日期','时段','状态','维修人员','维修记录','结束结果','开始时间(UTC)','结束时间(UTC)','维修单号'];
+const headers = ['预约编号','学号','姓名','学院','校区','联系方式','设备类型','品牌','型号','故障类型','日期','时段','状态','维修人员','维修记录','结束结果','开始时间(UTC)','结束时间(UTC)','历史维修编号'];
 export function exportService(appointments, encryptionKey) {
   return {
     async csv(actor) {

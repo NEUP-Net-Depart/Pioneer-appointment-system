@@ -28,7 +28,9 @@ async function booking(page,studentId,{file=true}={}){
   await capture(page, 'signature-' + studentId);
   await page.locator('#confirm-signature').click();await page.locator('#booking-form [type=submit]').click();
   await expect(page.locator('#success-panel')).toBeVisible();
-  return {id:await page.locator('#success-code').textContent(),link:await page.locator('#success-link-fallback').inputValue()};
+  const id = await page.locator('#success-code').textContent();
+  expect(id).toMatch(new RegExp(`^reserve0${date.replaceAll('-','')}-\\d{2,}$`));
+  return {id,link:await page.locator('#success-link-fallback').inputValue()};
 }
 async function application(page,studentId,name){
   await page.goto('/staff/?activate=1');
@@ -205,9 +207,13 @@ test('student booking, private links, whitelist activation, staff permissions, r
     await member.locator('#complete-detail').click();await expect(member.locator('#detail-modal')).toBeVisible();
     await member.locator('#detail-outcome').selectOption('repaired');await member.locator('#detail-repair-note').fill('浏览器验收：已修复并测试');
     await member.locator('#complete-detail').click();await expect(member.locator('#detail-modal')).toBeHidden();
+    await expect(member.locator('#toast')).toHaveText(`维修已结束，预约编号：${item.id}`);
     await student.locator('#refresh-my-appointments').click();await expect(student.locator('#lookup-results')).toContainText('修复成功');
     await expect(student.locator('[data-cancel]')).toHaveCount(0);
-    await expect(student.locator('#lookup-results')).toContainText('维修单号');
+    await expect(student.locator('#lookup-results')).toContainText(item.id);
+    await expect(student.locator('#lookup-results')).not.toContainText('历史维修编号');
+    const completed = await contexts[0].request.get(`/api/appointments/${item.id}`,{headers:{'X-Appointment-Token':secret}});
+    expect((await completed.json()).repairNumber).toBeNull();
 
     await root.getByRole('button',{name:'维修后台',exact:true}).click();await root.locator(`[data-detail="${item.id}"]`).click();
     await root.locator('#correction-panel summary').click();
@@ -246,6 +252,38 @@ test('student booking, private links, whitelist activation, staff permissions, r
     await login(root,'root001',process.env.E2E_ROOT_PASSWORD+'new');
     expect(errors).toEqual([]);
   }finally{await Promise.all(contexts.map(context=>context.close()));}
+});
+
+test('historical private links display original identifiers and repair aliases save the original booking ID', async ({ browser }) => {
+  const context = await browser.newContext({baseURL:process.env.E2E_BASE_URL});
+  const page = await context.newPage(), accessToken = 'a'.repeat(43), errors = [];
+  page.on('pageerror', error=>errors.push(error.message));
+  const items = ['','reverse','reserve'].map((prefix,index)=>({
+    id:`${prefix}020261012-${51+index}`,repairNumber:`020261015-${51+index}`,revision:0,
+    name:'历史预约同学',campus:'南湖',date:'2026-10-12',timeSlot:'19:00–20:00',
+    deviceType:'笔记本电脑',brand:'联想',deviceModel:'ThinkPad',status:'completed',outcome:'repaired',
+    repairNote:'历史维修说明',createdAt:'2026-10-12T08:00:00Z',attachments:[]
+  }));
+  await page.route('**/api/appointments/*', route=>{
+    const id = decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-1));
+    const item = items.find(item=>item.id===id || item.repairNumber===id);
+    if (!item || route.request().headers()['x-appointment-token']!==accessToken) return route.fulfill({status:404,json:{error:'预约不存在或访问凭证无效'}});
+    return route.fulfill({json:item});
+  });
+  try {
+    for (const item of items) for (const id of [item.id,item.repairNumber]) {
+      await page.goto(`/#${new URLSearchParams({appointment:id,access:accessToken})}`);
+      await expect(page.locator('#lookup-results')).toContainText(item.id);
+      await expect(page.locator('#lookup-results')).toContainText(`历史维修编号 ${item.repairNumber}`);
+      await expect(page.locator('#lookup-results')).toContainText('历史维修说明');
+      expect(new URL(page.url()).hash).toBe('');
+      const saved = await page.evaluate(()=>JSON.parse(localStorage.getItem('pioneerAppointmentAccess')));
+      expect(saved[0]).toEqual({id:item.id,accessToken});
+      await page.reload();await page.getByRole('button',{name:'我的预约',exact:true}).click();
+      await expect(page.locator('#lookup-results')).toContainText(item.id);
+    }
+    expect(errors).toEqual([]);
+  } finally { await context.close(); }
 });
 
 test('mobile booking and cancellation remain usable, and disabled storage offers a private link',async({browser})=>{

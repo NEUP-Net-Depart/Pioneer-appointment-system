@@ -8,15 +8,16 @@ function metadata(item) {
 }
 export function attachmentService(appointments, attachments, bucket, maxBytes) {
   async function authorize(id, user, accessToken) {
-    if (!user) { await guestAppointment(appointments,id,accessToken); return; }
+    if (!user) return guestAppointment(appointments,id,accessToken);
     const item = await appointments.find(id);
     if (!item) fail(404, '预约或附件不存在');
     requireAppointmentAccess(user,item);
+    return item;
   }
   return {
     async list(id, user, accessToken) {
-      await authorize(id, user, accessToken);
-      return { items: (await attachments.list(id, nowIso())).map(metadata) };
+      const item = await authorize(id, user, accessToken);
+      return { items: (await attachments.list(item.id, nowIso())).map(metadata) };
     },
     async upload(id, input, user, accessToken) {
       if (input.purpose && input.purpose !== 'general') {
@@ -24,7 +25,8 @@ export function attachmentService(appointments, attachments, bucket, maxBytes) {
         if (!appointment) fail(404, '预约不存在');
         requireAppointmentAccess(user, appointment, { start: true });
         if (appointment.status !== 'booked') fail(409, '当前预约不能上传签到照片');
-      } else await authorize(id, user, accessToken);
+        id = appointment.id;
+      } else id = (await authorize(id, user, accessToken)).id;
       const attachmentId = crypto.randomUUID();
       const objectKey = `appointments/${id}/${attachmentId}`;
       const { filename, mimeType, bytes } = input;
@@ -45,9 +47,9 @@ export function attachmentService(appointments, attachments, bucket, maxBytes) {
       }
     },
     async download(id, attachmentId, user, accessToken) {
-      await authorize(id, user, accessToken);
+      const item = await authorize(id, user, accessToken);
       const attachment = await attachments.find(attachmentId, nowIso());
-      if (!attachment || attachment.appointmentId !== id) fail(404, '附件不存在');
+      if (!attachment || attachment.appointmentId !== item.id) fail(404, '附件不存在');
       const object = await bucket.get(attachment.objectKey);
       if (!object) fail(404, '附件文件不存在');
       return { body: object.body, size: object.size, metadata: metadata(attachment) };
