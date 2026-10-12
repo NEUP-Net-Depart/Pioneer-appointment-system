@@ -66,10 +66,10 @@ globalThis.fetch=(input,options)=>{
       if (resource === 'shared/constants.js') content = content.replace(/export const TIME_SLOTS = .*?;/, `export const TIME_SLOTS = ${JSON.stringify(timeSlots)};`);
       if (resource === 'user/slot-picker.js') {
         // Expose the real picker's refresh only in the simulated server response.
-        const anchor = '  void refresh();\n  return {';
+        const anchor = '  const stopPolling = startVisiblePolling(() => refreshing ? undefined : refresh());\n  return {';
         if (!content.includes(anchor)) throw new Error('Preview picker bridge anchor missing');
         content = content.replace(anchor, `
-  void refresh();
+  const stopPolling = startVisiblePolling(() => refreshing ? undefined : refresh());
   globalThis.__bookingPreviewApply = async config => {
     globalThis.__bookingPreviewConfig = config;
     globalThis.__bookingPreviewInstant = config.instant || '2026-10-' + (16 - config.days) + 'T12:00:00+08:00';
