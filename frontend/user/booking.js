@@ -1,5 +1,6 @@
 import { $, showToast } from '/shared/utils.js';
 import { initSignature } from './signature.js';
+import { initBookingHints } from './booking-hints.js';
 import { apiJson } from '/shared/api.js';
 import { saveAppointment,privateLink } from './credentials.js';
 import { uploadAttachments } from '/shared/attachments.js';
@@ -10,6 +11,7 @@ import { nowIso } from '/shared/time.js';
 export function initBooking({ appointments, onCreated }) {
   const form = $('#booking-form');
   const picker = initSlotPicker();
+  initBookingHints();
   const signature = initSignature();
   $('#agreement-link').addEventListener('click', event => { event.preventDefault(); $('#agreement-modal').hidden = false; });
   $('#close-agreement').addEventListener('click', () => $('#agreement-modal').hidden = true);
@@ -32,7 +34,7 @@ export function initBooking({ appointments, onCreated }) {
     const submit = form.querySelector('[type=submit]');
     if (submit.disabled) return;
     submit.disabled = true;
-    const payload = { ...data, agreementAt: nowIso(), agreementVersion: 'v1.0', signature: signature.value() };
+    const payload = { ...data, agreementAt: nowIso(), agreementVersion: 'v1.1', signature: signature.value() };
     delete payload.agreement;
     try {
       const appointment = await apiJson('/api/appointments', { method: 'POST', json: payload });
