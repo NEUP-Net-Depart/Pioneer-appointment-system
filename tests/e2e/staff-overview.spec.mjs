@@ -127,6 +127,24 @@ test('column clicks cycle independently and preserve multi-sort priority', async
   await expect(page.locator('[data-sort-marker=date]')).toBeHidden();
 });
 
+test('opening the date filter locates today while retaining a date from another month', async ({page}) => {
+  await page.clock.install({time:new Date('2026-10-12T04:00:00Z')});
+  await loginMock(page);
+  await page.locator('[data-column-menu=date]').click();
+  await expect(page.locator('[data-calendar-date="2026-10-12"]')).toBeFocused();
+  await expect(page.locator('#staff-date-filter')).toHaveValue('');
+  await page.locator('#staff-date-manual').fill('2026-09-10');
+  await page.locator('#staff-date-manual').press('Enter');
+  await expect(page.locator('#staff-calendar-month')).toHaveValue('9');
+  await page.locator('#staff-menu-date [data-menu-close]').last().click();
+  await page.locator('[data-column-menu=date]').click();
+  await expect(page.locator('#staff-calendar-year')).toHaveValue('2026');
+  await expect(page.locator('#staff-calendar-month')).toHaveValue('10');
+  await expect(page.locator('[data-calendar-date="2026-10-12"]')).toBeFocused();
+  await expect(page.locator('#staff-date-filter')).toHaveValue('2026-09-10');
+  await expect(page.locator('#staff-calendar-selection')).toHaveText('已选 2026 / 09 / 10');
+});
+
 test('desktop uses available width and offers a centered calendar with direct and keyboard selection', async ({page}) => {
   await page.setViewportSize({width:1920,height:1080});await loginMock(page);
   const shell=await page.locator('.staff-shell').boundingBox();expect(shell.width).toBeGreaterThan(1800);

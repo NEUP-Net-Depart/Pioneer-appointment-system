@@ -18,7 +18,7 @@ export function initColumnMenus(onChange) {
     close(); trigger = button; panel = $(`#staff-menu-${button.dataset.columnMenu}`);
     if (button.dataset.columnMenu === 'date') calendar.sync();
     trigger.setAttribute('aria-expanded','true'); panel.setAttribute('aria-modal','true'); panel.hidden = false; shade.hidden = false;
-    panel.querySelector('input:not([type="hidden"]),select,[data-filter]')?.focus();
+    panel.querySelector(button.dataset.columnMenu === 'date' ? '[aria-current="date"]' : 'input:not([type="hidden"]),select,[data-filter]')?.focus();
   }));
   $$('[data-menu-close]').forEach(button => button.addEventListener('click',() => close(true)));
   $$('[data-column-sort]').forEach(button => button.addEventListener('click',() => {

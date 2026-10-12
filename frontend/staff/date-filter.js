@@ -70,5 +70,5 @@ export function initDateFilter() {
   }
   manual.addEventListener('change',applyManual);
   manual.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();applyManual();}});
-  return {sync(){cursor=input.value || dateKey();view=cursor.slice(0,7);render();manual.setAttribute('aria-invalid','false');}};
+  return {sync(){cursor=dateKey();view=cursor.slice(0,7);render();}};
 }
