@@ -114,6 +114,17 @@ test('column clicks cycle independently and preserve multi-sort priority', async
   await expect(page.locator('[data-sort-marker=date]')).toHaveText('↑1');
   await choose('date','date:desc');await choose('date','');
   await expect(page.locator('[data-sort-marker=date]')).toBeHidden();
+  await page.locator('th[data-sort-column=date]').click({position:{x:3,y:3}});
+  await expect(page.locator('[data-sort-marker=date]')).toHaveText('↑1');
+  const heading=await page.locator('th[data-sort-column=date]').boundingBox(), summary=await page.locator('[data-column-summary=date]').boundingBox();
+  await page.locator('th[data-sort-column=date]').click({position:{x:summary.x-heading.x+5,y:summary.y-heading.y+5}});
+  await expect(page.locator('[data-sort-marker=date]')).toHaveText('↓1');
+  await page.locator('[data-column-menu=date]').click();
+  await expect(page.locator('#staff-menu-date')).toBeVisible();
+  await expect(page.locator('[data-sort-marker=date]')).toHaveText('↓1');
+  await page.keyboard.press('Escape');
+  await page.locator('[data-column-sort=date]').focus();await page.keyboard.press('Enter');
+  await expect(page.locator('[data-sort-marker=date]')).toBeHidden();
 });
 
 test('desktop uses available width and offers a centered calendar with direct and keyboard selection', async ({page}) => {
