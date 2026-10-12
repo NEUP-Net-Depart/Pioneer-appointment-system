@@ -27,7 +27,7 @@ export function appointmentPatch(input) {
   const patch = {};
   if (input.action !== undefined && input.action !== 'correct') fail(400, '操作不正确');
   if (input.startedAt !== undefined || input.completedAt !== undefined) fail(400, '维修时间由系统记录');
-  if (input.repairNumber !== undefined) fail(400, '维修单号由系统生成');
+  if (input.id !== undefined || input.repairNumber !== undefined) fail(400, '预约编号和历史维修编号不能修改');
   for (const key of ['frontPhotoId', 'backPhotoId']) {
     if (input[key] !== undefined) patch[key] = stringField(input[key], key, 80, true);
   }

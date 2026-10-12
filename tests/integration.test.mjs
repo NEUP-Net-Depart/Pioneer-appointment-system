@@ -10,6 +10,7 @@ import { dateKey, addDays, serviceDay, formatDate, slotDeadline, weekRange } fro
 import { attachmentRepository } from '../src/db/attachments.js';
 import { appointmentRepository } from '../src/db/appointments.js';
 import { appointmentService } from '../src/services/appointments.js';
+import { bookingInput } from '../src/lib/validation.js';
 import { endNoShows } from '../scripts/end-no-shows.mjs';
 import { attachmentService } from '../src/services/attachments.js';
 import { storageLimit } from '../src/lib/env.js';
@@ -116,7 +117,7 @@ test('health verifies D1 schema and R2; API paths return JSON and security heade
 });
 test('guest booking, encrypted contacts, lookup, queue and cancellation', async () => {
   const item = await book();
-  assert.match(item.id, /^reserve0\d{8}-01$/);
+  assert.equal(item.id, `reserve0${item.date.replaceAll('-','')}-01`);
   const row = await db.prepare('SELECT phone,social FROM appointments WHERE id=?').bind(item.id).first();
   assert.match(row.phone, /^enc\$/); assert.match(row.social, /^enc\$/); assert.ok(!row.social.includes('wechat-private'));
   const found = await api(`/api/appointments/${item.id}`,{accessToken:item.accessToken});
@@ -1054,7 +1055,43 @@ test('sign-in requires two purpose-matched photos uploaded by the signing techni
   assert.equal(started.repairNumber, null);
 });
 
-test('repair numbers use completion day and independent campus sequences rather than booking suffixes', async () => {
+test('booking numbers use the selected date across Shanghai midnight, campuses and slots', async () => {
+  let instant = new Date('2026-10-13T23:59:00+08:00');
+  const service = appointmentService(appointmentRepository(db), userRepository(db), PII_ENCRYPTION_KEY, () => instant);
+  const create = patch => service.create(bookingInput(draft({date:'2026-10-15',...patch})));
+  const first = await create();
+  assert.equal(first.id, 'reserve020261015-01');
+  instant = new Date('2026-10-14T00:01:00+08:00');
+  const second = await create(), laterSlot = await create({timeSlot:'20:00–21:00'});
+  assert.equal(second.id, 'reserve020261015-02');
+  assert.equal(laterSlot.id, 'reserve020261015-03');
+  assert.equal((await create({campus:'浑南'})).id, 'reserve120261015-01');
+  assert.equal((await create({date:'2026-10-14'})).id, 'reserve020261014-01');
+  const cancelled = await service.update(second.id, {patch:{status:'completed',outcome:'cancelled'}}, null, second.accessToken);
+  assert.equal(cancelled.id, second.id); assert.equal(cancelled.repairNumber, null);
+  assert.equal((await create()).id, 'reserve020261015-04');
+});
+
+test('new bookings continue legacy booking suffixes without rewriting primary keys or using repair sequences', async () => {
+  const service = appointmentService(appointmentRepository(db), userRepository(db), PII_ENCRYPTION_KEY, () => new Date('2026-10-13T10:00:00+08:00'));
+  const create = () => service.create(bookingInput(draft({date:'2026-10-15'})));
+  const legacyIds = ['reserve020261015-11','reverse020261015-97','020261015-99'];
+  for (const id of legacyIds) {
+    const item = await create();
+    // Pre-upgrade fixtures include all historical booking prefixes.
+    await db.prepare('UPDATE appointments SET id=? WHERE id=?').bind(id,item.id).run();
+  }
+  await db.prepare('UPDATE appointments SET repair_number=? WHERE id=?').bind('020261015-900',legacyIds[0]).run();
+  const before = (await db.prepare('SELECT * FROM appointments ORDER BY id').all()).results;
+  const current = await Promise.all([create(),create()]);
+  assert.deepEqual(current.map(item=>item.id).sort(), ['reserve020261015-100','reserve020261015-101']);
+  assert.ok(current.every(item=>item.repairNumber===null));
+  const after = (await db.prepare('SELECT * FROM appointments WHERE id IN (?,?,?) ORDER BY id').bind(...legacyIds).all()).results;
+  assert.deepEqual(after, before);
+  assert.deepEqual((await db.prepare('PRAGMA foreign_key_check').all()).results, []);
+});
+
+test('completion and correction reuse the booking number even on a later day', async () => {
   const first = await book(), second = await book(), third = await book(), foreign = await book({campus:'浑南'}), root = await login();
   const repository = appointmentRepository(db), users = userRepository(db), actor = await users.find('root001');
   for (const item of [first,second,third,foreign]) await api(`/api/appointments/${item.id}/status`, {method:'PATCH',token:root,body:{status:'in_progress',...await intake(item,root)}});
@@ -1063,33 +1100,101 @@ test('repair numbers use completion day and independent campus sequences rather 
   const service = appointmentService(repository, users, PII_ENCRYPTION_KEY, () => instant);
   const finish = item => service.update(item.id, {patch:{status:'completed',outcome:'repaired',repairNote:'检测完成'}}, actor);
   const doneSecond = await finish(second), doneFirst = await finish(first), doneForeign = await finish(foreign);
-  assert.equal(doneSecond.repairNumber, `0${nextDay.replaceAll('-','')}-01`);
-  assert.equal(doneFirst.repairNumber, `0${nextDay.replaceAll('-','')}-02`);
-  assert.equal(doneForeign.repairNumber, `1${nextDay.replaceAll('-','')}-01`);
-  assert.notEqual(doneSecond.repairNumber, second.id.replace('reserve',''));
-  assert.equal(doneSecond.id, second.id);
+  for (const [done, original] of [[doneSecond,second],[doneFirst,first],[doneForeign,foreign]]) {
+    assert.equal(done.repairNumber, null); assert.equal(done.id, original.id);
+    assert.equal(done.completedAt, instant.toISOString());
+  }
   const later = appointmentService(repository, users, PII_ENCRYPTION_KEY, () => new Date(`${addDays(nextDay,1)}T00:01:00+08:00`));
   const doneThird = await later.update(third.id, {patch:{status:'completed',outcome:'not_needed',repairNote:'无需处理'}}, actor);
-  assert.equal(doneThird.repairNumber, `0${addDays(nextDay,1).replaceAll('-','')}-01`);
+  assert.equal(doneThird.id, third.id); assert.equal(doneThird.repairNumber, null);
   await assert.rejects(finish(second), error => error.status === 409);
   const corrected = await service.update(second.id, {action:'correct',patch:{status:'completed',outcome:'unrepaired',repairNote:'复核'}}, actor);
-  assert.equal(corrected.repairNumber, doneSecond.repairNumber);
-  const search = await api(`/api/appointments?q=${doneSecond.repairNumber}`, {token:root});
+  assert.equal(corrected.id, second.id); assert.equal(corrected.repairNumber, null);
+  const search = await api(`/api/appointments?q=${doneSecond.id}`, {token:root});
   assert.deepEqual(search.items.map(item=>item.id), [second.id]);
-  assert.ok((await (await request('/api/export/appointments.csv',{token:root})).text()).includes(doneSecond.repairNumber));
+  const csv = await (await request('/api/export/appointments.csv',{token:root})).text();
+  assert.ok(csv.includes(doneSecond.id)); assert.ok(csv.includes('历史维修编号'));
+  assert.ok((await db.prepare('SELECT repair_number FROM appointments').all()).results.every(row=>row.repair_number===null));
+  for (const field of ['id','repairNumber']) {
+    await api(`/api/appointments/${second.id}/status`, {method:'PATCH',token:root,body:{action:'correct',repairNote:'不能改号',[field]:'020261015-99'}}, 400);
+  }
 });
 
-test('concurrent completions allocate unique numbers and stale retries do not consume sequence', async () => {
+test('concurrent completions retain original numbers and reject stale revisions without allocating repair numbers', async () => {
   const root = await login(), items = await Promise.all([book(),book(),book()]);
   for (const item of items) Object.assign(item, await api(`/api/appointments/${item.id}/status`, {method:'PATCH',token:root,body:{status:'in_progress',...await intake(item,root)}}));
   const finish = item => request(`/api/appointments/${item.id}/status`, {method:'PATCH',token:root,body:{status:'completed',outcome:'repaired',repairNote:'已修复',revision:item.revision}});
   const responses = await Promise.all([finish(items[0]),finish(items[0]),finish(items[1])]);
   assert.deepEqual(responses.map(r=>r.status).sort(), [200,200,409]);
-  const numbers = [];
-  for (const response of responses) if (response.status === 200) numbers.push((await response.json()).repairNumber);
-  assert.equal(new Set(numbers).size, 2);
-  assert.deepEqual(numbers.map(n=>n.split('-')[1]).sort(), ['01','02']);
-  const last = await finish(items[2]);assert.equal(last.status, 200);assert.ok((await last.json()).repairNumber.endsWith('-03'));
+  const completed = [];
+  for (const response of responses) if (response.status === 200) completed.push(await response.json());
+  assert.deepEqual(completed.map(item=>item.id).sort(), items.slice(0,2).map(item=>item.id).sort());
+  assert.ok(completed.every(item=>item.repairNumber===null));
+  const last = await finish(items[2]); assert.equal(last.status, 200);
+  const done = await last.json(); assert.equal(done.id, items[2].id); assert.equal(done.repairNumber, null);
+  assert.equal((await book()).id.split('-')[1], '04');
+});
+
+test('historical booking and repair numbers retain credentials, attachments, recovery, search and export', async () => {
+  const root = await login(), repository = appointmentRepository(db), actor = await userRepository(db).find('root001');
+  for (const [index,prefix] of ['','reverse','reserve'].entries()) {
+    const headers = {'CF-Connecting-IP':`198.51.100.${70+index}`};
+    const clientApi = (path,options,status) => api(path,{...options,headers},status);
+    const clientRequest = (path,options) => request(path,{...options,headers});
+    const current = await book(), id = `${prefix}020261012-${51+index}`, repairNumber = `020261015-${51+index}`;
+    await db.prepare("UPDATE appointments SET id=?,repair_number=?,status='completed',outcome='repaired',assigned_to='root001',repair_note='旧维修说明',started_at=?,completed_at=? WHERE id=?")
+      .bind(id,repairNumber,current.createdAt,current.createdAt,current.id).run();
+    const item = {...current,id}, accessToken = item.accessToken;
+    const stored = await db.prepare('SELECT * FROM appointments WHERE id=?').bind(id).first();
+    const file = await clientApi(`/api/appointments/${repairNumber}/attachments`, {method:'POST',accessToken,body:{filename:'历史.txt',mimeType:'text/plain',data:'bGVnYWN5'}}, 201);
+    assert.equal(file.appointmentId, id);
+    for (const query of [id,repairNumber]) {
+      const found = await clientApi(`/api/appointments/${query}`, {accessToken});
+      assert.equal(found.id, id); assert.equal(found.repairNumber, repairNumber); assert.equal(found.attachments[0].id, file.id);
+      await clientApi(`/api/appointments/${query}`, {}, 404);
+      await clientApi(`/api/appointments/${query}`, {accessToken:'x'.repeat(43)}, 404);
+      const list = await clientApi(`/api/appointments?q=${query}`, {token:root});
+      assert.deepEqual(list.items.map(item=>item.id), [id]);
+      const live = await clientApi(`/api/live/summary?appointmentId=${query}`, {accessToken});
+      assert.equal(live.position, null);
+      assert.equal((await clientApi(`/api/appointments/${query}/attachments`, {accessToken})).items[0].id, file.id);
+      assert.equal(await (await clientRequest(`/api/appointments/${query}/attachments/${file.id}`, {accessToken})).text(), 'legacy');
+    }
+    assert.deepEqual(await db.prepare('SELECT * FROM appointments WHERE id=?').bind(id).first(), stored);
+    const corrected = await clientApi(`/api/appointments/${id}/status`, {method:'PATCH',token:root,body:{action:'correct',outcome:'unrepaired',repairNote:'复核旧记录'}});
+    assert.equal(corrected.id, id); assert.equal(corrected.repairNumber, repairNumber);
+    const service = appointmentService(repository, userRepository(db), PII_ENCRYPTION_KEY, () => new Date(`${item.date}T18:00:00+08:00`));
+    const reopened = await service.update(id, {action:'correct',patch:{status:'in_progress'}}, actor);
+    const ended = await service.update(id, {patch:{status:'completed',outcome:'repaired',repairNote:'重新检测'}}, actor);
+    assert.equal(reopened.repairNumber, repairNumber); assert.equal(ended.repairNumber, repairNumber);
+    const recovered = await clientApi(`/api/appointments/${id}/credential`, {method:'POST',token:root,body:{identityVerified:true,reason:'已当面核验历史预约学生身份'}});
+    assert.equal(recovered.id, id);
+    await clientApi(`/api/appointments/${repairNumber}`, {accessToken}, 404);
+    assert.equal((await clientApi(`/api/appointments/${repairNumber}`, {accessToken:recovered.accessToken})).id, id);
+    const recovery = await db.prepare('SELECT appointment_id FROM credential_recoveries WHERE appointment_id=?').bind(id).first();
+    assert.equal(recovery.appointment_id, id);
+    const csv = await (await request('/api/export/appointments.csv',{token:root})).text();
+    assert.ok(csv.includes(id) && csv.includes(repairNumber));
+  }
+  assert.deepEqual((await db.prepare('PRAGMA foreign_key_check').all()).results, []);
+});
+
+test('repair aliases resolve by credential before expiration, cancellation and attachment ownership checks', async () => {
+  const original = await book(), other = await book(), alias = '020261012-88';
+  await db.prepare('UPDATE appointments SET repair_number=? WHERE id=?').bind(alias,original.id).run();
+  // An old unprefixed primary key can have the same text as another repair number.
+  await db.prepare('UPDATE appointments SET id=? WHERE id=?').bind(alias,other.id).run();
+  assert.equal((await api(`/api/appointments/${alias}`, {accessToken:original.accessToken})).id, original.id);
+  assert.equal((await api(`/api/appointments/${alias}`, {accessToken:other.accessToken})).id, alias);
+  const file = await api(`/api/appointments/${alias}/attachments`, {method:'POST',accessToken:original.accessToken,body:{filename:'alias.txt',mimeType:'text/plain',data:'b3duZXI='}}, 201);
+  await api(`/api/appointments/${alias}/attachments/${file.id}`, {accessToken:other.accessToken}, 404);
+  const cancelled = await api(`/api/appointments/${alias}/status`, {method:'PATCH',accessToken:original.accessToken,body:{status:'completed',outcome:'cancelled'}});
+  assert.equal(cancelled.id, original.id); assert.equal((await appointmentRepository(db).find(alias)).status, 'booked');
+  const repository = appointmentRepository(db);
+  await db.prepare("UPDATE appointments SET date=?,repair_number=? WHERE id=?").bind(addDays(dateKey(),-1),'020261012-89',alias).run();
+  const expired = await api('/api/appointments/020261012-89', {accessToken:other.accessToken});
+  assert.equal(expired.id, alias); assert.equal(expired.outcome, 'no_show');
+  assert.equal((await repository.find(original.id)).outcome, 'cancelled');
 });
 
 test('slot capacity settings default to ten and follow administrator campus grants', async () => {
@@ -1144,6 +1249,7 @@ test('configured capacities isolate campuses and slots, apply to all dates and e
   const first = await Promise.all(Array.from({ length: 8 }, () => request('/api/appointments', { method: 'POST', body: draft() })));
   assert.equal(first.filter(response => response.status === 201).length, 3);
   assert.equal(first.filter(response => response.status === 409).length, 5);
+  const winner = await first.find(response => response.status === 201).json();
   await book({ campus: '浑南' });
   const second = await Promise.all(Array.from({ length: 13 }, () => request('/api/appointments', { method: 'POST', body: draft({ timeSlot: '20:00–21:00' }) })));
   assert.equal(second.filter(response => response.status === 201).length, 12);
@@ -1163,7 +1269,6 @@ test('configured capacities isolate campuses and slots, apply to all dates and e
   assert.deepEqual(anotherDay.slotCapacities, campus.slotCapacities);
   assert.equal(anotherDay.slotTotal, 0);
   // Direct D1 moves also enforce the target date's independently occupied quota.
-  const winner = await first.find(response => response.status === 201).json();
   await db.prepare('UPDATE appointments SET date=? WHERE id=?').bind(addDays(date, 7), winner.id).run();
   assert.equal((await summary({ campus: '南湖', date: addDays(date, 7) })).slotTotal, 1);
 });

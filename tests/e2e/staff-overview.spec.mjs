@@ -17,6 +17,27 @@ async function loginMock(page, campuses=['南湖','浑南']) {
   await expect(page.locator('.staff-campus-panel')).toHaveCount(campuses.length);
 }
 
+test('staff search and details retain historical booking and repair identifiers', async ({ page }) => {
+  await loginMock(page);
+  const item = {id:'reverse020261012-07',repairNumber:'020261015-03',name:'历史预约同学',studentId:'20260007',
+    campus:'南湖',date:dates[0],timeSlot:slots[0],status:'completed',outcome:'repaired',
+    deviceType:'笔记本电脑',brand:'联想',deviceModel:'ThinkPad',repairNote:'旧维修说明',assignedTo:'test-admin'};
+  await page.route('**/api/appointments?*', route=>{
+    const q = new URL(route.request().url()).searchParams.get('q');
+    return route.fulfill({json:{items:q===item.id || q===item.repairNumber ? [item]:[],counts:{all:1,completed:1},filteredCounts:{all:1,completed:1}}});
+  });
+  await page.route(`**/api/appointments/${item.id}/attachments`, route=>route.fulfill({json:{items:[]}}));
+  for (const number of [item.id,item.repairNumber]) {
+    await page.locator('#staff-search').fill(number);
+    await expect(page.locator('#appointments-table')).toContainText(item.id);
+    await expect(page.locator('#appointments-table')).toContainText(`历史维修编号：${item.repairNumber}`);
+    await page.locator(`[data-detail="${item.id}"]`).click();
+    await expect(page.locator('#detail-summary')).toContainText(`预约编号 ${item.id}`);
+    await expect(page.locator('#detail-summary')).toContainText(`历史维修编号：${item.repairNumber}`);
+    await page.locator('#close-detail').click();
+  }
+});
+
 for (const width of [320,390,768,1440]) {
   test(`overview and unified filters fit ${width}px and drill down into the right campus/date/slot`, async ({page}) => {
     await page.setViewportSize({width,height:1000});

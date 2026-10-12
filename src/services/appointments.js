@@ -72,9 +72,9 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       return { ...await present(await appointments.create(item)), accessToken: credential.token };
     },
     async lookup(id, accessToken) {
-      await guestAppointment(appointments, id, accessToken);
-      await expire(clock(), { id });
-      return present(await guestAppointment(appointments, id, accessToken));
+      const item = await guestAppointment(appointments, id, accessToken);
+      await expire(clock(), { id: item.id });
+      return present(await guestAppointment(appointments, item.id, accessToken));
     },
     async recover(id, input, actor) {
       const item = await appointments.find(id);
@@ -91,8 +91,8 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       if (!item) fail(404, '预约不存在');
       if (user) requireCampus(user, item.campus);
       const instant = clock(), timestamp = instant.toISOString();
-      await expire(instant, { id });
-      item = user ? await appointments.find(id) : await guestAppointment(appointments, id, accessToken);
+      await expire(instant, { id: item.id });
+      item = user ? await appointments.find(item.id) : await guestAppointment(appointments, item.id, accessToken);
       if (revision !== undefined && revision !== item.revision) fail(409, '预约已更新，请刷新后重试');
       if ((input.frontPhotoId !== undefined || input.backPhotoId !== undefined) &&
           (action === 'correct' || input.status !== 'in_progress')) fail(400, '签到照片只能在签到时记录');
@@ -145,7 +145,6 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
           patch = { repairNote: input.repairNote };
         } else fail(409, '当前状态不能执行此操作，修正记录请使用管理员纠错');
       }
-      if (patch.status === 'completed' && repairOutcomes.includes(patch.outcome) && !item.repairNumber) patch.repairNumberDate = dateKey(instant);
       const updated = await appointments.update(item, patch);
       if (!updated) fail(409, '预约已被其他工作人员修改，请刷新后重试');
       return present(updated);

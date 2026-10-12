@@ -1,4 +1,3 @@
-import { dateKey } from '../../shared/time.js';
 const columns = {
   studentId: 'student_id', name: 'name', college: 'college', campus: 'campus', phone: 'phone', social: 'social',
   deviceType: 'device_type', brand: 'brand', deviceModel: 'device_model', serial: 'serial', warranty: 'warranty',
@@ -32,7 +31,9 @@ export function appointmentRepository(db) {
     },
     async find(id) { return fromRow(await db.prepare('SELECT * FROM appointments WHERE id=?').bind(id).first()); },
     async findByCredential(id, hash) {
-      return fromRow(await db.prepare('SELECT * FROM appointments WHERE id=? AND access_token_hash=?').bind(id,hash).first());
+      // A legacy repair number is only an alias; the credential selects its owner
+      // even when the same text is another appointment's historical primary key.
+      return fromRow(await db.prepare('SELECT * FROM appointments WHERE (id=? OR repair_number=?) AND access_token_hash=?').bind(id,id,hash).first());
     },
     async rotateCredential(item, hash, actor, reason, instant) {
       const results = await db.batch([
@@ -91,23 +92,20 @@ export function appointmentRepository(db) {
       return { totals: totals.results, capacities: capacities.results };
     },
     async create(item) {
-      const prefix = `reserve${item.campus === '浑南' ? '1' : '0'}${dateKey(new Date(item.createdAt)).replaceAll('-', '')}-`;
+      const suffix = `${item.campus === '浑南' ? '1' : '0'}${item.date.replaceAll('-', '')}-`;
+      const prefix = `reserve${suffix}`;
       // One D1 statement allocates the ID and runs capacity/uniqueness constraints atomically.
+      // Include historical booking prefixes so their suffixes are never reused.
       const row = await db.prepare(`INSERT INTO appointments(id,${Object.values(columns).join(',')},access_token_hash,credential_rotated_at)
         SELECT ? || printf('%02d',COALESCE(MAX(CAST(substr(id,instr(id,'-')+1) AS INTEGER)),0)+1),${Object.keys(columns).map(() => '?').join(',')},?,?
-        FROM appointments WHERE id LIKE ? OR id LIKE ? RETURNING *`)
-        .bind(prefix, ...Object.keys(columns).map(key => key === 'assignedTo' ? item[key] || null : item[key] ?? null), item.accessTokenHash,item.credentialRotatedAt,`${prefix}%`,`${prefix.replace('reserve','reverse')}%`).first();
+        FROM appointments WHERE id LIKE ? OR id LIKE ? OR id LIKE ? RETURNING *`)
+        .bind(prefix, ...Object.keys(columns).map(key => key === 'assignedTo' ? item[key] || null : item[key] ?? null), item.accessTokenHash,item.credentialRotatedAt,`${prefix}%`,`reverse${suffix}%`,`${suffix}%`).first();
       return fromRow(row);
     },
     async update(item, patch) {
       const fields = [], args = [];
       for (const [key, column] of Object.entries({ status: 'status', assignedTo: 'assigned_to', repairNote: 'repair_note', outcome: 'outcome', startedAt: 'started_at', completedAt: 'completed_at', frontPhotoId: 'front_photo_id', backPhotoId: 'back_photo_id' })) {
         if (patch[key] !== undefined) { fields.push(`${column}=?`); args.push(key === 'assignedTo' ? patch[key] || null : patch[key]); }
-      }
-      if (patch.repairNumberDate && !item.repairNumber) {
-        const prefix = `${item.campus === '浑南' ? '1' : '0'}${patch.repairNumberDate.replaceAll('-', '')}-`;
-        fields.push("repair_number=? || printf('%02d',(SELECT COALESCE(MAX(CAST(substr(repair_number,instr(repair_number,'-')+1) AS INTEGER)),0)+1 FROM appointments WHERE repair_number LIKE ?))");
-        args.push(prefix, `${prefix}%`);
       }
       return fromRow(await db.prepare(`UPDATE appointments SET ${fields.join(',')},revision=revision+1 WHERE id=? AND revision=? RETURNING *`).bind(...args, item.id, item.revision).first());
     },

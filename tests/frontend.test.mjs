@@ -162,11 +162,15 @@ test('guest browser saves credentials without PII and private links stay in the 
   globalThis.location={origin:'https://app.test'};
   try{
     const {saveAppointment,savedAppointments,privateLink,parsePrivateLink}=await import('../frontend/user/credentials.js');
-    const entry={id:'020261012-01',accessToken:'a'.repeat(43),studentId:'123456',name:'私密姓名'};
-    assert.equal(saveAppointment(entry),true);
-    assert.deepEqual(savedAppointments(),[{id:entry.id,accessToken:entry.accessToken}]);
-    assert.equal(new URL(privateLink(entry)).search,'');
-    assert.deepEqual(parsePrivateLink(privateLink(entry)),savedAppointments()[0]);
+    const entry={id:'reserve020261015-01',accessToken:'a'.repeat(43),studentId:'123456',name:'私密姓名'};
+    for (const id of [entry.id,'reverse020261012-01','020261012-01']) {
+      const item={...entry,id};
+      assert.equal(saveAppointment(item),true);
+      assert.deepEqual(savedAppointments()[0],{id,accessToken:entry.accessToken});
+      assert.equal(new URL(privateLink(item)).search,'');
+      assert.deepEqual(parsePrivateLink(privateLink(item)),savedAppointments()[0]);
+    }
+    assert.equal(savedAppointments().length,3);
     assert.equal(parsePrivateLink('https://other.test/#appointment='+entry.id+'&access='+entry.accessToken),null);
     values.set('pioneerAppointmentAccess','{bad');assert.deepEqual(savedAppointments(),[]);
     globalThis.localStorage.setItem=()=>{throw new Error('blocked');};assert.equal(saveAppointment(entry),false);
