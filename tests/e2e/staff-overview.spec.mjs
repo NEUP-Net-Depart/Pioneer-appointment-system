@@ -227,3 +227,29 @@ for (const width of [320,1440]) {
     expect(await page.locator('#staff-overview-campuses button button').count()).toBe(0);
   });
 }
+
+test('top bars align brand and navigation to opposite edges at desktop widths and fit smaller screens', async ({page}) => {
+  await page.route('**/api/auth/me',route=>route.fulfill({json:{account:'test-admin',role:'admin',authorizedCampuses:['南湖','浑南']}}));
+  await loginMock(page);
+  for(const width of [320,390,768,1024,1440,1920]) {
+    await page.setViewportSize({width,height:1000});
+    for(const path of ['/staff/','/']) {
+      await page.goto(path);
+      const header=page.locator('.topbar-inner');
+      await expect(header).toBeVisible();
+      expect(await header.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+      const brand=await header.locator('.brand').boundingBox(),nav=await header.locator('.main-nav').boundingBox();
+      if(width>=1440) {
+        expect(brand.x).toBeLessThanOrEqual(101);
+        if(path==='/')expect(nav.x+nav.width).toBeGreaterThan(width-125);
+        else {
+          const account=await header.locator('.account-area').boundingBox();
+          expect(account.x+account.width).toBeGreaterThan(width-125);
+          expect(account.x-nav.x-nav.width).toBeLessThanOrEqual(25);
+          expect(nav.x-brand.x-brand.width).toBeGreaterThan(100);
+        }
+      }
+      if(width===1920)await page.screenshot({path:`output/playwright/topbar-${path==='/'?'user':'staff'}-1920.png`});
+    }
+  }
+});
