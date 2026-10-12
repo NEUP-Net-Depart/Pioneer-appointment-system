@@ -152,10 +152,8 @@ test('switching campuses displays cached counts until fresh availability arrives
   await expect(slot(page)).toContainText('剩余 8 名');
   await expect(day(page).locator('.booking-count-reel')).toHaveCount(1);
   const cachedReel = await day(page).locator('.booking-count-reel').elementHandle();
-  await expect(day(page)).toBeDisabled();
-  await expect(slot(page)).toBeDisabled();
-  await page.locator('#booking-form [type=submit]').click();
-  await expect(page.locator('#booking-selection')).toContainText('等待名额确认');
+  await expect(day(page)).toBeEnabled();
+  await expect(slot(page)).toBeEnabled();
   release();
   await expect(day(page)).toBeEnabled();
   expect(await day(page).locator('.booking-count-reel').evaluate((element, original) => element === original, cachedReel)).toBe(true);
@@ -284,19 +282,34 @@ test('loading starts at zero, counts roll in place and refreshes preserve select
   await expect(count.locator('.booking-count-column')).toHaveCount(0);
 });
 
-test('full days are disabled and a slot that fills during confirmation never becomes selected', async ({ page }) => {
-  let filled = false;
+test('cached options select immediately while background reads reconcile full slots', async ({ page }) => {
+  let filled = false, release, gate = Promise.resolve();
   await setup(page, undefined, async (route, query) => {
     const date = query.get('date'), data = summary(query.get('campus'), date);
     if (date === '2026-10-12') data.slots = { [firstSlot]: 10, [secondSlot]: 10 };
     if (date === '2026-10-15') data.slotCapacities = { [firstSlot]: 0, [secondSlot]: 0 };
     if (filled && date === '2026-10-13') data.slots[firstSlot] = 10;
+    await gate;
     await route.fulfill({ json: data });
   });
   await expect(day(page)).toContainText('预约已满');
   await expect(day(page)).toBeDisabled();
   await expect(page.locator('[data-date="2026-10-15"]')).toContainText('暂停预约');
   await expect(page.locator('[data-date="2026-10-15"]')).toBeDisabled();
+  await page.locator('[data-date="2026-10-13"]').click();
+  await expect(slot(page)).toBeEnabled();
+  filled = true;
+  gate = new Promise(resolve => { release = resolve; });
+  await slot(page).click();
+  await expect(slot(page)).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('[name=timeSlot]')).toHaveValue(firstSlot);
+  await expect(slot(page, secondSlot)).toBeEnabled();
+  await slot(page, secondSlot).click();
+  await expect(page.locator('[name=timeSlot]')).toHaveValue(secondSlot);
+  release();
+  await expect(page.locator('#booking-picker')).toHaveAttribute('aria-busy', 'false');
+  await expect(page.locator('[name=timeSlot]')).toHaveValue(secondSlot);
+  filled = false;
   await page.locator('[data-date="2026-10-13"]').click();
   await expect(slot(page)).toBeEnabled();
   filled = true;
@@ -364,6 +377,91 @@ test('four future slots retain the horizontal row style within a phone screen', 
   await page.screenshot({ path: 'output/playwright/future-four-slots-mobile.png' });
 });
 
+for (const width of [320, 390, 1440]) {
+  test(`floating booking summary gathers once, fits ${width}px and returns to the picker`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width === 320 ? 568 : 900 });
+    let full = false;
+    await setup(page, undefined, async (route, query) => {
+      const data = summary(query.get('campus'), query.get('date'));
+      if (full) data.slots[firstSlot] = data.slotCapacities[firstSlot];
+      await route.fulfill({ json: data });
+    });
+    const floating = page.locator('#booking-float'), button = page.locator('#booking-float-button');
+    const passPicker = () => page.locator('#booking-picker').evaluate(picker => {
+      window.scrollTo({ top: scrollY + picker.getBoundingClientRect().bottom + 40, behavior: 'instant' });
+    });
+    await expect(day(page)).toBeEnabled();
+    await passPicker();
+    await expect(floating).toBeHidden();
+    await page.locator('#booking-picker').evaluate(picker => picker.scrollIntoView({ behavior: 'instant' }));
+    await day(page).click(); await slot(page).click();
+    await expect(page.locator('[name=timeSlot]')).toHaveValue(firstSlot);
+    await expect(floating).toBeHidden();
+    await passPicker();
+    await expect(floating).toBeVisible();
+    await expect(button).toHaveAccessibleName('已选预约：南湖 · 周一 · 10/12 · 19:00–20:00，点击返回时间选择器');
+    await expect(floating.locator('.booking-float-particles i')).toHaveCount(6);
+    await button.evaluate(async element => {
+      await Promise.all(element.parentElement.getAnimations({ subtree: true }).map(animation => animation.finished.catch(() => {})));
+    });
+    const box = await floating.boundingBox();
+    expect(box.x).toBeGreaterThanOrEqual(12);
+    expect(box.x + box.width).toBeLessThanOrEqual(width - 12);
+    expect(box.y).toBeCloseTo(0, 0);
+    const buttonBox = await button.boundingBox();
+    expect(buttonBox.y).toBeCloseTo(0, 0);
+    expect(buttonBox.width).toBeLessThanOrEqual(160);
+    expect(buttonBox.height).toBeLessThanOrEqual(50);
+    await expect(button.locator('svg')).toHaveCount(0);
+    await page.screenshot({ path: `output/playwright/booking-float-${width}.png` });
+    await page.clock.fastForward(30000);
+    await expect(page.locator('#booking-picker')).toHaveAttribute('aria-busy', 'false');
+    expect(await floating.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0);
+    const exit = await floating.evaluate(element => new Promise(resolve => {
+      const observer = new MutationObserver(() => {
+        if (!element.inert) return;
+        observer.disconnect();
+        const animation = element.querySelector('button').getAnimations().find(animation => animation.effect.getTiming().duration === 220);
+        animation.pause(); animation.currentTime = 110;
+        resolve({ hidden: element.hidden, opacity: Number(getComputedStyle(element.querySelector('button')).opacity) });
+      });
+      observer.observe(element, { attributes: true, attributeFilter: ['inert'] });
+      document.querySelector('#booking-picker').scrollIntoView({ behavior: 'instant' });
+    }));
+    expect(exit.hidden).toBe(false);
+    expect(exit.opacity).toBeGreaterThan(0);
+    expect(exit.opacity).toBeLessThan(1);
+    // Returning past the boundary midway through dismissal cancels the pending hide.
+    await passPicker();
+    await expect(floating).toHaveJSProperty('inert', false);
+    await button.evaluate(async element => {
+      await Promise.all(element.getAnimations().map(animation => animation.finished.catch(() => {})));
+    });
+    await expect(floating).toBeVisible();
+    await button.click();
+    await expect(floating).toBeHidden();
+    await expect.poll(() => page.locator('#booking-picker').evaluate(picker => Math.abs(picker.getBoundingClientRect().top - 12))).toBeLessThan(2);
+    await expect(slot(page)).toBeFocused();
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await passPicker();
+    await expect(floating).toBeVisible();
+    expect(await button.evaluate(element => getComputedStyle(element).animationName)).toBe('none');
+    await expect(floating.locator('.booking-float-particles')).toBeHidden();
+    full = true;
+    await page.clock.fastForward(30000);
+    await expect(page.locator('[name=timeSlot]')).toHaveValue('');
+    await expect(floating).toBeVisible();
+    await expect(page.locator('#booking-float-state')).toContainText('预约已满');
+    await expect(button).toContainText(firstSlot);
+    const invalidBox = await floating.boundingBox();
+    expect(invalidBox.x).toBeGreaterThanOrEqual(12);
+    expect(invalidBox.x + invalidBox.width).toBeLessThanOrEqual(width - 12);
+    await page.screenshot({ path: `output/playwright/booking-float-invalid-${width}.png` });
+    await button.click();
+    await expect(floating).toBeHidden();
+  });
+}
+
 for (const reason of ['该校区该时段已满', '该校区该时段暂停预约']) {
   test(`submission rejection (${reason}) clears the slot but preserves fields and handwriting for resubmission`, async ({ page }) => {
     let rejected = false;
@@ -400,6 +498,8 @@ for (const reason of ['该校区该时段已满', '该校区该时段暂停预�
     await page.locator('#confirm-signature').click();
     await page.locator('#booking-form [type=submit]').click();
     await expect(page.locator('#booking-selection')).toContainText(reason);
+    await expect(page.locator('#booking-float')).toBeVisible();
+    await expect(page.locator('#booking-float-state')).toContainText(reason);
     await expect(page.locator('#success-panel')).toBeHidden();
     await expect(page.locator('[name=timeSlot]')).toHaveValue('');
     await expect(slot(page)).toBeDisabled();

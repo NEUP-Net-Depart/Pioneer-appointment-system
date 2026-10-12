@@ -389,3 +389,35 @@ html{scrollbar-gutter:stable}
   .booking-days:is([data-count="3"], [data-count="4"]) .booking-choice:nth-child(3) strong { top: auto; bottom: 42px; transform: translateX(-50%); }
   .booking-days:is([data-count="3"], [data-count="4"]) .booking-choice:nth-child(3) small { line-height: 18px; }
 }
+
+.booking-float { position: fixed; z-index: 25; top: 0; left: 50%; transform: translateX(-50%); width: max-content; max-width: min(200px, calc(100% - 68px)); filter: drop-shadow(0 4px 8px #0b25321f); }
+.booking-float-button { position: relative; display: block; width: 100%; min-height: 44px; padding: calc(6px + env(safe-area-inset-top, 0px)) 14px 8px; border: 0; border-radius: 0 0 20px 20px; background: #0b2532; color: #fff; text-align: center; touch-action: manipulation; }
+.booking-float-button::before, .booking-float-button::after { content: ''; position: absolute; top: 0; width: 18px; height: 18px; pointer-events: none; }
+.booking-float-button::before { left: -18px; background: radial-gradient(circle at 0 100%, transparent 18px, #0b2532 18.5px); }
+.booking-float-button::after { right: -18px; background: radial-gradient(circle at 100% 100%, transparent 18px, #0b2532 18.5px); }
+.booking-float-detail { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.booking-float-detail > span { font-size: 10px; line-height: 14px; color: #b7cbd4; white-space: nowrap; }
+.booking-float-detail strong { font-size: 14px; line-height: 19px; font-variant-numeric: tabular-nums; letter-spacing: .02em; white-space: nowrap; }
+.booking-float-detail #booking-float-state { color: #f4c78f; white-space: normal; font-size: 10px; }
+.booking-float-button:hover { color: #d5f4ec; }
+.booking-float-button:active { transform: scale(.98); }
+.booking-float-button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 4px; }
+.booking-float:not([hidden]) .booking-float-button { transform-origin: 50% 0; animation: booking-float-arrive .52s cubic-bezier(.2,.7,.25,1); }
+.booking-float-particles { position: absolute; inset: 0; pointer-events: none; }
+.booking-float-particles i { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; border-radius: 50%; background: #66bba5; opacity: 0; }
+.booking-float-particles i:nth-child(1) { --x: -108px; --y: 38px; }
+.booking-float-particles i:nth-child(2) { --x: -74px; --y: 58px; }
+.booking-float-particles i:nth-child(3) { --x: -26px; --y: 66px; }
+.booking-float-particles i:nth-child(4) { --x: 30px; --y: 62px; }
+.booking-float-particles i:nth-child(5) { --x: 80px; --y: 52px; }
+.booking-float-particles i:nth-child(6) { --x: 110px; --y: 30px; }
+.booking-float:not([hidden]) .booking-float-particles i { animation: booking-float-gather .55s cubic-bezier(.2,.7,.25,1); }
+@keyframes booking-float-arrive { 0% { opacity: 0; transform: scale(.86,.25); } 52% { opacity: 1; transform: scale(.98,1.08); } 76% { transform: scale(1.01,.97); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes booking-float-gather { 0% { opacity: 0; transform: translate(var(--x), var(--y)) scale(.6); } 18% { opacity: .8; } 100% { opacity: 0; transform: translate(0, 0) scale(.25); } }
+@media (prefers-reduced-motion: reduce) {
+  .booking-float:not([hidden]) .booking-float-button { animation: none; }
+  .booking-float-particles { display: none; }
+}
+@media (prefers-contrast: more) {
+  .booking-float-button { outline: 1px solid #fff; }
+}
