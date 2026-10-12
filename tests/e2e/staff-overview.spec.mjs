@@ -4,7 +4,8 @@ const dates = ['2026-10-12','2026-10-13','2026-10-14','2026-10-15'];
 const slots = ['19:00–20:00','20:00–21:00'];
 async function loginMock(page, campuses=['南湖','浑南']) {
   await page.route('**/api/auth/login', route => route.fulfill({ json:{token:'test-only',account:'test-admin',role:'admin',authorizedCampuses:campuses} }));
-  await page.route('**/api/appointments/overview', route => route.fulfill({ json:{dates,campuses,updatedAt:'2026-10-12T08:00:00Z',items:campuses.flatMap(campus => dates.flatMap(date => slots.map((timeSlot,index) => ({campus,date,timeSlot,capacity:10,occupied:index ? 10:4,remaining:index ? 0:6,booked:index ? 8:2,inProgress:2,ended:false}))))} }));
+  const items=campuses.flatMap(campus => dates.flatMap(date => slots.map((timeSlot,index) => ({campus,date,timeSlot,capacity:10,occupied:index ? 10:4,remaining:index ? 0:6,booked:index ? 8:2,inProgress:2,ended:false}))));
+  await page.route('**/api/appointments/overview', route => route.fulfill({ json:{dates,campuses,updatedAt:'2026-10-12T08:00:00Z',items,week:{start:'2026-10-12',end:'2026-10-18',dates,items}} }));
   await page.route('**/api/appointments?*', route => {
     const params=new URL(route.request().url()).searchParams;
     return route.fulfill({json:{items:params.get('status')==='completed' ? []:[{id:'reserve020261012-01',name:'测试同学',studentId:'20260001',date:params.get('date') || dates[0],campus:params.get('campus')==='浑南' ? '浑南':'南湖',timeSlot:params.get('timeSlot') || slots[0],status:'booked',deviceType:'笔记本电脑',brand:'联想',deviceModel:'ThinkPad',faultType:'蓝屏'}],counts:{all:12,booked:8,in_progress:2,completed:2},filteredCounts:{all:2,booked:1,in_progress:0,completed:1}}});
@@ -65,6 +66,35 @@ for (const width of [320,390,768,1440]) {
     }
     await page.locator('#staff-overview-title').scrollIntoViewIfNeeded();
     await page.screenshot({path:`output/playwright/staff-overview-${width}.png`,fullPage:true,style:'#toast { display: none !important; }'});
+  });
+}
+
+for(const width of [320,1440]) {
+  test(`this week overview aggregates and drills down without losing the range at ${width}px`, async ({page})=>{
+    await page.setViewportSize({width,height:900});await loginMock(page);
+    await page.locator('[data-overview-date=week]').click();
+    await expect(page.locator('[data-overview-date=week]')).toHaveAttribute('aria-pressed','true');
+    await expect(page.locator('#staff-overview-state')).toContainText('本周 10/12–10/18');
+    await expect(page.locator('.staff-campus-panel').first()).toContainText('待处理 56 人');
+    await expect(page.locator('.staff-campus-panel').first()).toContainText('剩余可约 24 名');
+    if(width===320) {
+      const rows=await page.locator('#staff-overview-dates button').evaluateAll(buttons=>buttons.map(button=>button.getBoundingClientRect().y));
+      expect(new Set(rows).size).toBe(1);
+      await page.screenshot({path:'output/playwright/staff-overview-week-320.png',fullPage:true,style:'#toast { display: none !important; }'});
+    }
+    const request=page.waitForRequest(r=>{
+      const q=new URL(r.url()).searchParams;
+      return r.url().includes('/api/appointments?') && q.get('campus')==='浑南' && q.get('status')==='in_progress' && q.get('timeSlot')===slots[0];
+    });
+    await page.locator(`[data-overview-campus="浑南"][data-overview-slot="${slots[0]}"][data-overview-status=in_progress]`).click();
+    const q=new URL((await request).url()).searchParams;
+    expect(q.get('date')).toBe('');expect(q.get('dateFrom')).toBe('2026-10-12');expect(q.get('dateTo')).toBe('2026-10-18');
+    await expect(page.locator('[data-column-summary=date]')).toContainText('本周 10/12–10/18');
+    await page.locator('[data-column-menu=date]').click();await page.locator('[data-nearby-date]').first().click();
+    await expect(page.locator('#staff-date-filter')).toHaveAttribute('data-from','');
+    await page.locator('#staff-menu-date [data-menu-close]').last().click();
+    await page.locator('[data-overview-date=week]').click();await page.locator('#staff-clear-filters').click();
+    await expect(page.locator('[data-column-summary=date]')).toHaveText('全部日期与时段');
   });
 }
 

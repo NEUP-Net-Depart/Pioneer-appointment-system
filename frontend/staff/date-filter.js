@@ -17,16 +17,17 @@ export function initDateFilter() {
     manual.value = selected;
     manual.setAttribute('aria-invalid','false');
     $('#staff-date-message').textContent = '';
-    $('#staff-calendar-selection').textContent = selected ? `已选 ${selected.replaceAll('-',' / ')}` : '全部日期';
+    $('#staff-calendar-selection').textContent = input.dataset.from ? `本周 ${input.dataset.from.slice(5).replace('-','/')}–${input.dataset.to.slice(5).replace('-','/')}` : selected ? `已选 ${selected.replaceAll('-',' / ')}` : '全部日期';
     for(const button of $$('[data-date-shortcut]')) {
       const active = selected===nextWork(today);
       button.classList.toggle('is-active',active);button.setAttribute('aria-pressed',String(active));
     }
-    $('#staff-clear-date').classList.toggle('is-active',!selected);
-    $('#staff-clear-date').setAttribute('aria-pressed',String(!selected));
+    $('#staff-clear-date').classList.toggle('is-active',!selected && !input.dataset.from);
+    $('#staff-clear-date').setAttribute('aria-pressed',String(!selected && !input.dataset.from));
   }
   function select(date) {
-    const changed=input.value!==date;
+    const changed=input.value!==date || !!input.dataset.from;
+    input.dataset.from='';input.dataset.to='';
     input.value=date;render();
     if(changed)input.dispatchEvent(new Event('change',{bubbles:true}));
   }

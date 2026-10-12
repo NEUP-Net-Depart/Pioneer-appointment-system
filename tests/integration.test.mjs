@@ -6,7 +6,7 @@ import { Miniflare } from 'miniflare';
 import { hashPassword } from '../src/lib/passwords.js';
 import { signToken } from '../src/lib/jwt.js';
 import { config, wrangler } from '../scripts/cli.mjs';
-import { dateKey, addDays, serviceDay, formatDate, slotDeadline } from '../shared/time.js';
+import { dateKey, addDays, serviceDay, formatDate, slotDeadline, weekRange } from '../shared/time.js';
 import { attachmentRepository } from '../src/db/attachments.js';
 import { appointmentRepository } from '../src/db/appointments.js';
 import { appointmentService } from '../src/services/appointments.js';
@@ -627,6 +627,27 @@ test('staff overview uses real capacity and cancellation rules without exposing 
   assert.equal(paused.items.find(item => item.campus==='南湖' && item.date===date && item.timeSlot==='19:00–20:00').capacity,0);
   assert.ok(paused.items.some(item => item.campus==='浑南' && item.occupied===1));
   await api('/api/appointments/overview', {},401);
+});
+
+test('weekly overview includes earlier records and range filters preserve permissions and counts', async () => {
+  const root=await login(),tech=await addUser('650019');
+  const first=await book(),last=await book(),outside=await book(),otherCampus=await book({campus:'浑南'});
+  const week=weekRange();
+  for(const [item,day] of [[first,week.start],[last,week.end],[outside,addDays(week.start,-1)],[otherCampus,week.start]]) {
+    await db.prepare("UPDATE appointments SET date=?,status='completed',outcome='repaired',assigned_to='650019' WHERE id=?").bind(day,item.id).run();
+  }
+  const overview=await api('/api/appointments/overview',{token:tech});
+  assert.equal(overview.week.start,week.start);assert.equal(overview.week.end,week.end);
+  assert.equal(overview.week.items.find(item=>item.date===week.start && item.timeSlot==='19:00–20:00').occupied,1);
+  assert.ok(overview.week.items.every(item=>item.campus==='南湖' && serviceDay(item.date)));
+  const query=new URLSearchParams({dateFrom:week.start,dateTo:week.end,status:'completed',timeSlot:'19:00–20:00',sorts:'date:asc,campus:asc'});
+  const result=await api(`/api/appointments?${query}`,{token:tech});
+  assert.deepEqual(result.items.map(item=>item.id),[first.id,last.id]);
+  assert.equal(result.filteredCounts.completed,2);
+  const all=await api(`/api/appointments?${query}`,{token:root});assert.equal(all.items.length,3);
+  for(const invalid of [{dateFrom:week.start},{dateTo:week.end},{dateFrom:week.end,dateTo:week.start},{dateFrom:'2026-02-30',dateTo:week.end},{date:week.start,dateFrom:week.start,dateTo:week.end}]) {
+    await api(`/api/appointments?${new URLSearchParams(invalid)}`,{token:root},400);
+  }
 });
 
 test('SQL queue counts use campus/slot scopes, deterministic ties and active status rules', async () => {

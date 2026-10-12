@@ -1,6 +1,6 @@
 import { fail } from '../lib/http.js';
 import { encryptText, decryptText } from '../lib/privacy.js';
-import { addDays, dateKey, serviceDay, slotDeadline, noShowDeadline, expiredBookingDate } from '../../shared/time.js';
+import { addDays, dateKey, serviceDay, slotDeadline, noShowDeadline, expiredBookingDate, weekRange } from '../../shared/time.js';
 import { issueAccessToken } from '../lib/access-tokens.js';
 import { guestAppointment } from './access.js';
 import { repairOutcomes, TIME_SLOTS } from '../../shared/constants.js';
@@ -32,9 +32,10 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       const instant = clock(), start = dateKey(instant), end = addDays(start, 6);
       const { campuses } = appointmentScope(user);
       await expire(instant, { campuses });
-      const { totals, capacities } = await appointments.overview(start, end, campuses);
+      const week = weekRange(start);
+      const { totals, capacities } = await appointments.overview(week.start, end, campuses);
       const dates = Array.from({ length: 7 }, (_, index) => addDays(start, index)).filter(serviceDay);
-      const items = campuses.flatMap(campus => dates.flatMap(date => TIME_SLOTS.map(timeSlot => {
+      const makeItems = days => campuses.flatMap(campus => days.flatMap(date => TIME_SLOTS.map(timeSlot => {
         const total = totals.find(row => row.campus === campus && row.date === date && row.time_slot === timeSlot);
         const capacity = capacities.find(row => row.campus === campus && row.time_slot === timeSlot)?.capacity ?? 0;
         const occupied = total?.occupied ?? 0;
@@ -42,7 +43,8 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
           booked: total?.booked ?? 0, inProgress: total?.in_progress ?? 0,
           ended: Date.parse(slotDeadline(date, timeSlot)) <= instant.getTime() };
       })));
-      return { start, end, dates, campuses, items, updatedAt: instant.toISOString() };
+      const weekDates = Array.from({ length: 7 }, (_, index) => addDays(week.start, index)).filter(serviceDay);
+      return { start, end, dates, campuses, items: makeItems(dates), week: { ...week, dates: weekDates, items: makeItems(weekDates) }, updatedAt: instant.toISOString() };
     },
     async list(query, user) {
       const scope = appointmentScope(user);

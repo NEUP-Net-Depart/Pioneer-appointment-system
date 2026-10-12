@@ -37,6 +37,10 @@ export function addDays(key, days) {
   date.setUTCDate(date.getUTCDate() + days);
   return calendarKey(date);
 }
+export function weekRange(key = dateKey()) {
+  const start = addDays(key, -((calendar(key).getUTCDay() + 6) % 7));
+  return { start, end: addDays(start, 6) };
+}
 export function serviceDay(key) {
   const day = calendar(key).getUTCDay();
   return day >= 1 && day <= 4;

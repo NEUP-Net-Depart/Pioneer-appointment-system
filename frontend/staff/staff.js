@@ -13,6 +13,7 @@ export function initStaff(){
   const menus=initColumnMenus(()=>refreshList());
   const overview=initOverview(selection=>{
     $('#staff-campus-filter').value=selection.campus;$('#staff-date-filter').value=selection.date;$('#staff-slot-filter').value=selection.timeSlot;
+    $('#staff-date-filter').dataset.from=selection.dateFrom || '';$('#staff-date-filter').dataset.to=selection.dateTo || '';
     clearTimeout(searchTimer);$('#staff-search').value='';activeFilter=selection.status || 'all';updateFilterButtons();refreshList();
     if(selection.navigate!==false)$('#staff-list-title').scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'});
   });
@@ -33,6 +34,7 @@ export function initStaff(){
     menus.update(activeFilter);
     const current=++generation;
     const query=new URLSearchParams({status:activeFilter,q:$('#staff-search').value.trim(),campus:$('#staff-campus-filter').value,date:$('#staff-date-filter').value,timeSlot:$('#staff-slot-filter').value,sorts:menus.query()});
+    if($('#staff-date-filter').dataset.from){query.set('dateFrom',$('#staff-date-filter').dataset.from);query.set('dateTo',$('#staff-date-filter').dataset.to);}
     try{
       const result=await apiJson(`/api/appointments?${query}`);
       if(current!==generation)return;
@@ -147,6 +149,7 @@ export function initStaff(){
   $('#staff-refresh').addEventListener('click',refresh);
   $('#staff-clear-filters').addEventListener('click',()=>{
     clearTimeout(searchTimer);$('#staff-campus-filter').value='all';$('#staff-date-filter').value='';$('#staff-search').value='';$('#staff-slot-filter').value='';activeFilter='all';
+    $('#staff-date-filter').dataset.from='';$('#staff-date-filter').dataset.to='';
     menus.reset();updateFilterButtons();refreshList();
   });
   $('#close-detail').addEventListener('click',close);$('#cancel-detail').addEventListener('click',close);
@@ -161,5 +164,6 @@ export function initStaff(){
   render();
   return{refresh,clear(){generation++;clearTimeout(searchTimer);appointments=[];counts={};filteredCounts={};activeFilter='all';
     $('#staff-campus-filter').value='all';$('#staff-date-filter').value='';$('#staff-slot-filter').value='';$('#staff-search').value='';
+    $('#staff-date-filter').dataset.from='';$('#staff-date-filter').dataset.to='';
     menus.reset();updateFilterButtons();overview.clear();intake.close();close();render();}};
 }

@@ -50,6 +50,7 @@ export function appointmentRepository(db) {
       const scopeArgs=[...campuses,...(technician ? [technician] : [])];
       const where = [scope], args = [...scopeArgs];
       for (const [key,column] of [['campus','campus'],['date','date'],['timeSlot','time_slot']]) if (query[key]) { where.push(`${column}=?`); args.push(query[key]); }
+      if (query.dateFrom && query.dateTo) { where.push('date>=? AND date<=?'); args.push(query.dateFrom,query.dateTo); }
       if (query.q) {
         where.push("(instr(id,?)>0 OR instr(repair_number,?)>0 OR instr(lower(device_model),?)>0 OR instr(campus,?)>0 OR ((?='' OR (assigned_to=? AND status<>'booked')) AND (instr(lower(name),?)>0 OR instr(student_id,?)>0)))");
         const text=query.q.toLowerCase();
