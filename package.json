@@ -27,6 +27,8 @@
     "verify": "npm run lint && npm run audit:architecture && npm run check && npm test && npm run db:verify && npm run test:e2e",
     "test:e2e": "node scripts/test-e2e.mjs",
     "preview:local": "node scripts/test-e2e.mjs --serve",
+    "preview:booking-layout": "npm run build && node scripts/preview-booking-layout.mjs",
+    "test:booking-layout": "npm run build && node --test tests/preview/booking-layout.test.mjs",
     "release:plan": "node scripts/release-plan.mjs"
   },
   "devDependencies": {

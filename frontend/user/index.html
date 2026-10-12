@@ -12,12 +12,21 @@
 <main>
     <section class="view is-active" id="booking-view" data-view="booking">
       <div class="content-shell">
-        <div class="live-summary live-summary-top" id="live-summary" aria-live="polite"><div><span>本校区当天预约</span><strong id="live-day-count">—</strong><small id="live-day-label">请选择校区</small></div><div><span>本校区当前时段</span><strong id="live-campus-count">—</strong><small id="live-campus-label">请选择校区和时段</small></div><div><span>当前时段剩余名额</span><strong id="live-slot-count">—</strong><small id="live-capacity-label">请选择校区和时段</small></div><em id="live-updated">等待选择校区</em></div>
+        <section class="booking-picker" id="booking-picker" aria-labelledby="booking-picker-title">
+          <div class="booking-picker-heading"><div><h2 id="booking-picker-title">选择预约时间</h2><span class="booking-live">剩余名额</span></div><div class="booking-campuses" id="booking-campuses" role="group" aria-label="预约校区"></div></div>
+          <p class="booking-rule">周一至周四提供服务，可预约今天及未来 3 天。</p>
+          <div class="booking-picker-body">
+            <div class="booking-date-panel"><div class="booking-panel-heading"><h3 class="booking-panel-label">选择日期</h3><p class="booking-date-context">仅显示当前可预约的服务日</p></div><div class="booking-days" id="booking-days" role="group" aria-label="可预约日期"></div><p class="booking-empty" id="booking-empty" hidden>当前预约范围内暂无服务时段，请稍后再来。</p></div>
+            <div class="booking-time-panel"><div class="booking-slot-placeholder"><div class="booking-panel-heading"><h3 class="booking-panel-label">选择时段</h3><p class="booking-date-context">选中日期后，查看可预约时段</p></div><p class="booking-placeholder-body">请选择日期，查看可预约时段</p></div><div class="booking-slot-panel" id="booking-slot-panel" hidden><div class="booking-panel-heading"><span class="booking-panel-label">选择时段</span><h3 id="booking-slot-title"></h3></div><div class="booking-slots" id="booking-slots" role="group" aria-labelledby="booking-slot-title"></div></div></div>
+          </div>
+          <div class="booking-picker-footer"><p id="booking-selection" role="status">先选日期，再选时段。</p><div><span>选择不锁定名额，以提交结果为准</span><span id="booking-updated">更新于 --:--</span><button type="button" id="booking-retry" hidden>重试</button></div></div>
+        </section>
         <div class="section-heading">
           <div><span class="section-index">01</span><h2>填写预约信息</h2></div>
           <span class="required-note"><i>*</i> 为必填项</span>
         </div>
         <form id="booking-form" class="booking-form" novalidate>
+          <input name="date" type="hidden" /><input name="timeSlot" type="hidden" />
           <div class="form-block">
             <div class="block-heading"><span>机主信息</span></div>
             <div class="form-grid four-cols">
@@ -36,14 +45,12 @@
               <label>型号 <i>*</i><input name="deviceModel" required maxlength="120" placeholder="例如 ThinkPad T14" /></label>
               <label>序列号<input name="serial" maxlength="120" placeholder="选填，用于查保修" /></label>
             </div>
-            <div class="form-grid four-cols compact-gap">
+            <div class="form-grid three-cols compact-gap">
               <label>是否在保 <i>*</i><select name="warranty" required><option value="">请选择</option><option>是</option><option>否</option><option>不清楚</option></select></label>
               <label>故障类型 <i>*</i><select name="faultType" required><option value="">请选择故障类型</option><option>清灰换硅脂</option><option>换硬盘</option><option>换内存</option><option>系统问题</option><option>蓝屏</option><option>黑屏</option><option>网络问题</option><option>其他</option></select></label>
               <label>是否进液 / 摔过 <i>*</i><select name="liquidDrop" required><option>否</option><option>是</option><option>不清楚</option></select></label>
-              <label>期望日期 <i>*</i><input name="date" type="date" required /></label>
             </div>
-            <div class="form-grid two-cols compact-gap">
-              <label>期望时段 <i>*</i><select name="timeSlot" required><option value="">请选择服务时段</option><option value="19:00–20:00">19:00–20:00</option><option value="20:00–21:00">20:00–21:00</option></select><small class="field-hint" id="slot-capacity">请选择校区和日期查看剩余名额</small></label>
+            <div class="compact-gap">
               <label>故障描述<textarea name="issue" rows="3" placeholder="选填，请描述设备的异常现象、已尝试的处理方式等"></textarea></label>
             </div>
             <label class="wide-field">备注（选填）<textarea name="note" maxlength="500" rows="2" placeholder="其他需要说明的情况"></textarea></label>

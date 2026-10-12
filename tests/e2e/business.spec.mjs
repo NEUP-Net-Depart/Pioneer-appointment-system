@@ -12,8 +12,10 @@ async function login(page,account,password){
 async function booking(page,studentId,{file=true}={}){
   await page.goto('/');
   for(const [name,value] of Object.entries({studentId,name:'浏览器测试同学',social:'e2e-private-contact',brand:'联想',deviceModel:'ThinkPad',issue:'启动后蓝屏'}))await page.locator(`[name="${name}"]`).fill(value);
-  for(const [name,value] of Object.entries({campus:'南湖',deviceType:'笔记本电脑',warranty:'否',faultType:'蓝屏',timeSlot:'19:00–20:00'}))await page.locator(`[name="${name}"]`).selectOption(value);
-  await page.locator('[name=date]').fill(date);
+  for(const [name,value] of Object.entries({campus:'南湖',deviceType:'笔记本电脑',warranty:'否',faultType:'蓝屏'}))await page.locator(`[name="${name}"]`).selectOption(value);
+  await page.locator(`[data-date="${date}"]`).click();
+  await page.locator('[data-slot="19:00–20:00"]').click();
+  await expect(page.locator('[name=timeSlot]')).toHaveValue('19:00–20:00');
   if(file)await page.locator('#appointment-attachments').setInputFiles({name:'故障描述.txt',mimeType:'text/plain',buffer:Buffer.from('browser attachment')});
   await page.locator('.check-box').click();
   await expect(page.locator('#signature-modal')).toBeVisible();
@@ -52,7 +54,7 @@ test('administrators configure persistent slot capacities and student choices fo
   }
   async function refreshStudent() {
     await student.bringToFront();
-    await student.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await student.locator(`[data-date="${date}"]`).click();
   }
   try {
     await login(root, 'root001', process.env.E2E_ROOT_PASSWORD);
@@ -68,11 +70,12 @@ test('administrators configure persistent slot capacities and student choices fo
     item = await booking(booked, '20269900', { file: false });
     await student.goto('/');
     await student.locator('[name=campus]').selectOption('南湖');
-    await expect(student.locator('[name=timeSlot] option').nth(1)).toContainText('剩余 2 名');
-    await expect(student.locator('[name=timeSlot] option').nth(2)).toContainText('剩余 12 名');
-    await student.locator('[name=timeSlot]').selectOption('19:00–20:00');
-    await expect(student.locator('#live-slot-count')).toHaveText('2');
-    await expect(student.locator('#live-capacity-label')).toHaveText('本时段最多 3 人');
+    await student.locator(`[data-date="${date}"]`).click();
+    await expect(student.locator('[data-slot="19:00–20:00"]')).toContainText('剩余 2 名');
+    await expect(student.locator('[data-slot="20:00–21:00"]')).toContainText('剩余 12 名');
+    await student.locator('[data-slot="19:00–20:00"]').click();
+    await expect(student.locator('#booking-selection')).toContainText('19:00–20:00');
+    await expect(student.locator('[data-slot="19:00–20:00"]')).toContainText('最多 3 人');
 
     await first.locator('input').fill('7'); await second.locator('input').fill('15');
     const headers = { Authorization: `Bearer ${token}` };
@@ -89,16 +92,16 @@ test('administrators configure persistent slot capacities and student choices fo
 
     await save(first, 1); await refreshStudent();
     await expect(student.locator('[name=timeSlot]')).toHaveValue('');
-    await expect(student.locator('[name=timeSlot] option').nth(1)).toHaveJSProperty('disabled', true);
-    await expect(student.locator('[name=timeSlot] option').nth(1)).toContainText('预约已满');
+    await expect(student.locator('[data-slot="19:00–20:00"]')).toHaveJSProperty('disabled', true);
+    await expect(student.locator('[data-slot="19:00–20:00"]')).toContainText('预约已满');
     await save(first, 0); await refreshStudent();
-    await expect(student.locator('[name=timeSlot] option').nth(1)).toContainText('暂停预约');
-    await student.locator('[name=timeSlot]').selectOption('20:00–21:00');
-    await expect(student.locator('#live-slot-count')).toHaveText('12');
-    await expect(student.locator('#live-capacity-label')).toHaveText('本时段最多 12 人');
+    await expect(student.locator('[data-slot="19:00–20:00"]')).toContainText('暂停预约');
+    await student.locator('[data-slot="20:00–21:00"]').click();
+    await expect(student.locator('[data-slot="20:00–21:00"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(student.locator('[data-slot="20:00–21:00"]')).toContainText('最多 12 人');
     await student.locator('[name=campus]').selectOption('浑南');
-    await expect(student.locator('[name=timeSlot] option').nth(1)).toContainText('剩余 10 名');
-    await expect(student.locator('[name=timeSlot] option').nth(1)).toHaveJSProperty('disabled', false);
+    await expect(student.locator('[data-slot="19:00–20:00"]')).toContainText('剩余 10 名');
+    await expect(student.locator('[data-slot="19:00–20:00"]')).toHaveJSProperty('disabled', false);
     await capture(student, 'student-configured-capacity');
 
     await root.reload(); await expect(root.locator('#app-shell')).toBeVisible();
@@ -114,7 +117,7 @@ test('administrators configure persistent slot capacities and student choices fo
     await booked.locator('[data-cancel]').click(); await expect(booked.locator('#lookup-results')).toContainText('已取消');
     await save(first, 4);
     await student.locator('[name=campus]').selectOption('南湖');
-    await expect(student.locator('[name=timeSlot] option').nth(1)).toContainText('剩余 4 名');
+    await expect(student.locator('[data-slot="19:00–20:00"]')).toContainText('剩余 4 名');
     expect(errors).toEqual([]);
   } finally {
     if (token) {
