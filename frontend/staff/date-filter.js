@@ -1,11 +1,16 @@
 import { $, $$ } from '/shared/utils.js';
-import { addDays, dateKey, validDate } from '/shared/time.js';
+import { addDays, dateKey, validDate, serviceDay } from '/shared/time.js';
 
 export function initDateFilter() {
   const input = $('#staff-date-filter'), days = $('#staff-calendar-days');
   const year = $('#staff-calendar-year'), month = $('#staff-calendar-month'), manual = $('#staff-date-manual');
   let view = dateKey().slice(0,7), cursor = dateKey();
   const firstOfMonth = value => `${value}-01`;
+  function shortcutDates(today) {
+    let nextWork = addDays(today,1);
+    while (!serviceDay(nextWork)) nextWork = addDays(nextWork,1);
+    return {today,tomorrow:addDays(today,1),nextWork};
+  }
   function render() {
     const selected = input.value, today = dateKey(), currentYear = Number(view.slice(0,4));
     const yearOptions = Array.from({length:21},(_,index) => currentYear - 10 + index).filter(value => value >= 1 && value <= 9999).map(value => `<option value="${value}">${value} 年</option>`).join('');
@@ -22,7 +27,7 @@ export function initDateFilter() {
     manual.value = selected;
     manual.setAttribute('aria-invalid','false');
     $('#staff-date-message').textContent = '';
-    const shortcuts = {today,tomorrow:addDays(today,1),monday:addDays(today,-((new Date(`${today}T00:00:00Z`).getUTCDay()+6)%7))};
+    const shortcuts = shortcutDates(today);
     $$('[data-date-shortcut]').forEach(button => {
       const active = shortcuts[button.dataset.dateShortcut] === selected;
       button.classList.toggle('is-active',active);button.setAttribute('aria-pressed',String(active));
@@ -59,8 +64,7 @@ export function initDateFilter() {
     if(event.key==='PageUp' || event.key==='PageDown'){event.preventDefault();moveMonth(event.key==='PageUp' ? -1:1);days.querySelector(`[data-calendar-date="${cursor}"]`)?.focus();}
   });
   $$('[data-date-shortcut]').forEach(button=>button.addEventListener('click',()=>{
-    const today=dateKey(), key=button.dataset.dateShortcut;
-    select(key==='today' ? today : key==='tomorrow' ? addDays(today,1) : addDays(today,-((new Date(`${today}T00:00:00Z`).getUTCDay()+6)%7)));
+    select(shortcutDates(dateKey())[button.dataset.dateShortcut]);
   }));
   $('#staff-clear-date').addEventListener('click',()=>select(''));
   function applyManual() {

@@ -145,6 +145,32 @@ test('opening the date filter locates today while retaining a date from another 
   await expect(page.locator('#staff-calendar-selection')).toHaveText('已选 2026 / 09 / 10');
 });
 
+test('nearest work shortcut selects the next Monday to Thursday across weekends and years', async ({page}) => {
+  await page.clock.install({time:new Date('2026-10-11T16:30:00Z')});
+  await loginMock(page);
+  await page.locator('[data-column-menu=date]').click();
+  await page.locator('#staff-slot-filter').selectOption(slots[1]);
+  const shortcut=page.locator('[data-date-shortcut=nextWork]');
+  await expect(shortcut).toHaveText('最近工作');
+  for (const [instant,expected] of [
+    ['2026-10-11T16:30:00Z','2026-10-13'],
+    ['2026-10-13T04:00:00Z','2026-10-14'],
+    ['2026-10-14T04:00:00Z','2026-10-15'],
+    ['2026-10-15T04:00:00Z','2026-10-19'],
+    ['2026-10-16T04:00:00Z','2026-10-19'],
+    ['2026-10-17T04:00:00Z','2026-10-19'],
+    ['2026-10-18T04:00:00Z','2026-10-19'],
+    ['2026-12-31T04:00:00Z','2027-01-04']
+  ]) {
+    await page.clock.setSystemTime(new Date(instant));
+    await shortcut.click();
+    await expect(page.locator('#staff-date-filter')).toHaveValue(expected);
+    await expect(page.locator('#staff-slot-filter')).toHaveValue(slots[1]);
+    await expect(shortcut).toHaveAttribute('aria-pressed','true');
+    await expect(page.locator(`[data-calendar-date="${expected}"]`)).toHaveAttribute('aria-pressed','true');
+  }
+});
+
 test('desktop uses available width and offers a centered calendar with direct and keyboard selection', async ({page}) => {
   await page.setViewportSize({width:1920,height:1080});await loginMock(page);
   const shell=await page.locator('.staff-shell').boundingBox();expect(shell.width).toBeGreaterThan(1800);
