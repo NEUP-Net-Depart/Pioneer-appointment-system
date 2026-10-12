@@ -46,11 +46,26 @@ export function appointmentPatch(input) {
   return {patch,revision:input.revision,action:input.action};
 }
 export function appointmentQuery(input) {
-  const query = { q: stringField(input.q, '搜索内容', 120), campus: input.campus || '', date: input.date || '', status: input.status || 'all' };
+  const query = { q: stringField(input.q, '搜索内容', 120), campus: input.campus || '', date: input.date || '', status: input.status || 'all', timeSlot: input.timeSlot || '', sort: input.sort || 'createdAt', direction: input.direction || 'desc' };
   if (query.campus === 'all') query.campus = '';
   if (query.campus && !['南湖','浑南'].includes(query.campus)) fail(400, '校区不正确');
   if (query.date && !validDate(query.date)) fail(400, '日期不正确');
-  if (query.status !== 'all' && !Object.hasOwn(statusLabels, query.status)) fail(400, '状态不正确');
+  for (const key of ['dateFrom','dateTo']) {
+    if (input[key]) { if (!validDate(input[key])) fail(400, '日期范围不正确'); query[key] = input[key]; }
+  }
+  if (!!query.dateFrom !== !!query.dateTo || (query.dateFrom && (query.dateFrom > query.dateTo || query.date))) fail(400, '日期范围不正确');
+  if (!['all','pending'].includes(query.status) && !Object.hasOwn(statusLabels, query.status)) fail(400, '状态不正确');
+  if (query.timeSlot) { query.timeSlot = normalizeTimeSlot(query.timeSlot); if (!query.timeSlot) fail(400, '时段不正确'); }
+  if (!['createdAt','date','status','campus'].includes(query.sort) || !['asc','desc'].includes(query.direction)) fail(400, '排序方式不正确');
+  if (input.sorts !== undefined) {
+    const value = stringField(input.sorts, '组合排序', 120);
+    query.sorts = value ? value.split(',').map(part => {
+      const [key,direction,...extra] = part.split(':');
+      if (!['createdAt','date','status','campus'].includes(key) || !['asc','desc'].includes(direction) || extra.length) fail(400, '组合排序方式不正确');
+      return { key,direction };
+    }) : [];
+    if (query.sorts.length > 4 || new Set(query.sorts.map(item => item.key)).size !== query.sorts.length) fail(400, '组合排序字段不能重复');
+  }
   return query;
 }
 export function liveQuery(input) {

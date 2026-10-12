@@ -1,4 +1,6 @@
 import {initIntake} from './intake.js';
+import {initOverview} from './overview.js';
+import {initColumnMenus} from './column-menus.js';
 import {drawSignature} from '/shared/signature.js';
 import {attachmentSize,attachmentUrl} from '/shared/attachments.js';
 import {$,$$,showToast,escapeHtml} from '/shared/utils.js';
@@ -7,18 +9,37 @@ import {formatDate,formatInstant} from '/shared/time.js';
 import {statusLabels,statusClass,outcomeLabels,repairOutcomes,roleLevel} from '/shared/constants.js';
 export function initStaff(){
   let activeFilter='all',generation=0,searchTimer,detailItem;
-  let appointments=[],counts={};
+  let appointments=[],counts={},filteredCounts={};
+  const menus=initColumnMenus(()=>refreshList());
+  const overview=initOverview(selection=>{
+    $('#staff-campus-filter').value=selection.campus;$('#staff-date-filter').value=selection.date;$('#staff-slot-filter').value=selection.timeSlot;
+    $('#staff-date-filter').dataset.from=selection.dateFrom || '';$('#staff-date-filter').dataset.to=selection.dateTo || '';
+    clearTimeout(searchTimer);$('#staff-search').value='';activeFilter=selection.status || 'all';updateFilterButtons();refreshList();
+    if(selection.navigate!==false)$('#staff-list-title').scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'});
+  });
   const intake=initIntake(async(item,photos)=>{ await openDetail(await patch(item,{status:'in_progress',...photos})); });
   const admin=()=>roleLevel[sessionStorage.getItem('pioneerRole')]>=2;
   const owns=item=>item.assignedTo===sessionStorage.getItem('pioneerAccount');
   async function refresh(){
+    configureCampuses();
+    await Promise.allSettled([refreshList(),overview.refresh()]);
+  }
+  function configureCampuses(){
+    const allowed=JSON.parse(sessionStorage.getItem('pioneerCampuses') || '[]');
+    $('.staff-metrics-caption').textContent=admin() ? '授权校区内的全部记录' : '授权校区内待签到及本人维修记录';
+    for(const option of $('#staff-campus-filter').options) if(option.value!=='all') option.hidden=option.disabled=!allowed.includes(option.value);
+    if($('#staff-campus-filter').value!=='all' && !allowed.includes($('#staff-campus-filter').value)) $('#staff-campus-filter').value='all';
+  }
+  async function refreshList(){
+    menus.update(activeFilter);
     const current=++generation;
-    const query=new URLSearchParams({status:activeFilter,q:$('#staff-search').value.trim(),campus:$('#staff-campus-filter').value,date:$('#staff-date-filter').value});
+    const query=new URLSearchParams({status:activeFilter,q:$('#staff-search').value.trim(),campus:$('#staff-campus-filter').value,date:$('#staff-date-filter').value,timeSlot:$('#staff-slot-filter').value,sorts:menus.query()});
+    if($('#staff-date-filter').dataset.from){query.set('dateFrom',$('#staff-date-filter').dataset.from);query.set('dateTo',$('#staff-date-filter').dataset.to);}
     try{
       const result=await apiJson(`/api/appointments?${query}`);
       if(current!==generation)return;
-      appointments=result.items;counts=result.counts;render();
-    }catch(error){if(current===generation)showToast(error.message);}
+      appointments=result.items;counts=result.counts;filteredCounts=result.filteredCounts || result.counts;render();
+    }catch(error){if(current===generation){$('#staff-list-summary').textContent='读取失败，显示上次结果；请刷新重试。';showToast(error.message);}}
   }
   async function patch(item,input){
     const updated=await apiJson(`/api/appointments/${encodeURIComponent(item.id)}/status`,{method:'PATCH',json:{...input,revision:item.revision}});
@@ -63,11 +84,13 @@ export function initStaff(){
   }
   function render(){
     for(const [suffix,key] of [['total','all'],['booked','booked'],['progress','in_progress'],['done','completed']])$('#metric-'+suffix).textContent=counts[key] || 0;
-    for(const [suffix,key] of [['all','all'],['booked','booked'],['progress','in_progress'],['done','completed']])$('#count-'+suffix).textContent=counts[key] || 0;
+    for(const [suffix,key] of [['all','all'],['booked','booked'],['progress','in_progress'],['done','completed']])$('#count-'+suffix).textContent=filteredCounts[key] || 0;
+    $('#count-pending').textContent=(filteredCounts.booked || 0)+(filteredCounts.in_progress || 0);
+    $('#staff-list-summary').textContent=`当前 ${appointments.length} 条 · 状态数量按当前筛选统计`;
     $('#appointments-table').innerHTML=appointments.map(item=>{
       const canDetail=admin() || (item.status!=='booked' && owns(item));
       const status=`<span class="status-pill ${statusClass[item.status]}">${statusLabels[item.status]}</span>${item.outcome ? `<span class="person-code">${outcomeLabels[item.outcome]}</span>` : ''}`;
-      return `<tr><td><span class="person-name">${escapeHtml(item.name || '等待到场')}</span><span class="person-code">${escapeHtml(item.studentId || '')} · ${item.id}</span>${item.repairNumber ? `<span class="person-code">维修单：${escapeHtml(item.repairNumber)}</span>` : ''}</td><td>${escapeHtml(item.deviceType)}<span class="person-code">${escapeHtml(item.campus)} · ${escapeHtml(item.brand)} ${escapeHtml(item.deviceModel)}</span></td><td>${formatDate(item.date)}<span class="person-code">${escapeHtml(item.timeSlot)}</span></td><td>${status}</td><td>${escapeHtml(item.repairNote || item.faultType || '暂无记录')}</td><td><div class="record-actions">${item.status==='booked' ? `<button class="record-btn" data-start="${item.id}">签到并开始维修</button>` : ''}${canDetail && item.status==='in_progress' ? `<button class="record-btn" data-finish="${item.id}">填写结果并结束</button>` : ''}${canDetail ? `<button class="record-btn" data-detail="${item.id}">详情</button>` : ''}</div></td></tr>`;
+      return `<tr><td><span class="person-name">${escapeHtml(item.name || '等待到场')}</span><span class="person-code">${escapeHtml(item.studentId || '')} · ${item.id}</span>${item.repairNumber ? `<span class="person-code">维修单：${escapeHtml(item.repairNumber)}</span>` : ''}</td><td>${formatDate(item.date)}<span class="person-code">${escapeHtml(item.timeSlot)}</span></td><td>${status}</td><td class="staff-record-campus">${escapeHtml(item.campus)}</td><td>${escapeHtml(item.deviceType)}<span class="person-code">${escapeHtml(item.brand)} ${escapeHtml(item.deviceModel)}</span></td><td><span class="staff-record-note">${escapeHtml(item.repairNote || item.faultType || '暂无记录')}</span></td><td><div class="record-actions">${item.status==='booked' ? `<button class="record-btn" data-start="${item.id}">签到并开始维修</button>` : ''}${canDetail && item.status==='in_progress' ? `<button class="record-btn" data-finish="${item.id}">填写结果并结束</button>` : ''}${canDetail ? `<button class="record-btn" data-detail="${item.id}">详情</button>` : ''}</div></td></tr>`;
     }).join('');
     $('#staff-empty').hidden=appointments.length>0;
     $$('[data-start]').forEach(button=>button.addEventListener('click',()=>intake.open(appointments.find(entry=>entry.id===button.dataset.start))));
@@ -115,13 +138,19 @@ export function initStaff(){
     catch{$('#recovered-link').select();showToast('请复制选中的私人链接');}
   });
   $$('.filter-tab').forEach(button=>button.addEventListener('click',()=>{
-    activeFilter=button.dataset.filter;$$('.filter-tab').forEach(item=>item.classList.toggle('is-active',item===button));refresh();
+    activeFilter=button.dataset.filter;updateFilterButtons();refreshList();
   }));
-  $('#staff-search').addEventListener('input',()=>{clearTimeout(searchTimer);searchTimer=setTimeout(refresh,200);});
-  $('#staff-campus-filter').addEventListener('change',refresh);$('#staff-date-filter').addEventListener('change',refresh);
+  function updateFilterButtons(){
+    menus.update(activeFilter);
+    $$('.filter-tab').forEach(item=>{const selected=item.dataset.filter===activeFilter;item.classList.toggle('is-active',selected);item.setAttribute('aria-pressed',String(selected));});
+  }
+  $('#staff-search').addEventListener('input',()=>{clearTimeout(searchTimer);searchTimer=setTimeout(refreshList,200);});
+  for(const id of ['staff-campus-filter','staff-date-filter','staff-slot-filter']) $('#'+id).addEventListener('change',refreshList);
+  $('#staff-refresh').addEventListener('click',refresh);
   $('#staff-clear-filters').addEventListener('click',()=>{
-    $('#staff-campus-filter').value='all';$('#staff-date-filter').value='';$('#staff-search').value='';activeFilter='all';
-    $$('.filter-tab').forEach(item=>item.classList.toggle('is-active',item.dataset.filter==='all'));refresh();
+    clearTimeout(searchTimer);$('#staff-campus-filter').value='all';$('#staff-date-filter').value='';$('#staff-search').value='';$('#staff-slot-filter').value='';activeFilter='all';
+    $('#staff-date-filter').dataset.from='';$('#staff-date-filter').dataset.to='';
+    menus.reset();updateFilterButtons();refreshList();
   });
   $('#close-detail').addEventListener('click',close);$('#cancel-detail').addEventListener('click',close);
   $('#detail-modal').addEventListener('click',event=>{if(event.target.id==='detail-modal')close();});
@@ -133,5 +162,8 @@ export function initStaff(){
     }catch(error){showToast(error.message);}
   });
   render();
-  return{refresh,clear(){generation++;clearTimeout(searchTimer);appointments=[];counts={};intake.close();close();render();}};
+  return{refresh,clear(){generation++;clearTimeout(searchTimer);appointments=[];counts={};filteredCounts={};activeFilter='all';
+    $('#staff-campus-filter').value='all';$('#staff-date-filter').value='';$('#staff-slot-filter').value='';$('#staff-search').value='';
+    $('#staff-date-filter').dataset.from='';$('#staff-date-filter').dataset.to='';
+    menus.reset();updateFilterButtons();overview.clear();intake.close();close();render();}};
 }

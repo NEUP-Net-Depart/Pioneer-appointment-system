@@ -57,6 +57,7 @@ test('textarea limits match the original server limits and count edits immediate
 
 test('intake reminds staff to verify thermal materials only for thermal servicing', async ({ page }) => {
   await page.route('**/api/auth/login', route => route.fulfill({ json: { token: 'test-only', account: 'test-admin', role: 'admin', authorizedCampuses: ['南湖'] } }));
+  await page.route('**/api/appointments/overview', route => route.fulfill({ json: { dates: ['2026-10-12'], campuses: ['南湖'], items: [], updatedAt: '2026-10-12T08:00:00Z' } }));
   await page.route('**/api/appointments?*', route => route.fulfill({ json: {
     items: ['清灰换硅脂', '蓝屏'].map((faultType, index) => ({ id: `test-${index}`, faultType, studentId: '20260001', name: '测试同学', campus: '南湖', deviceType: '笔记本电脑', brand: '测试', deviceModel: '测试', date: '2026-10-12', timeSlot: '19:00–20:00', status: 'booked', repairNote: '' })),
     counts: { all: 2, booked: 2, in_progress: 0, completed: 0 }

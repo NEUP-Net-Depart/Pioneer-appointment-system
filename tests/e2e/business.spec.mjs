@@ -1,9 +1,10 @@
 import {test,expect} from '@playwright/test';
 import {mkdir,readFile} from 'node:fs/promises';
-import {dateKey,addDays,serviceDay} from '../../shared/time.js';
+import {dateKey,addDays,serviceDay,slotDeadline} from '../../shared/time.js';
 
 const memberPassword='e2e-member-password-only';
-const date=[0,1,2,3].map(n=>addDays(dateKey(),n)).find(serviceDay);
+const bookingDates=[0,1,2,3].map(n=>addDays(dateKey(),n)).filter(serviceDay);
+const date=bookingDates.find(day=>Date.now()<Date.parse(slotDeadline(day,'19:00–20:00'))) || bookingDates[0];
 async function login(page,account,password){
   await page.goto('/staff/');
   await page.locator('#login-id').fill(account);await page.locator('#login-password').fill(password);

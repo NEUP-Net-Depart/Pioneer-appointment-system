@@ -8,7 +8,7 @@
   <link rel="icon" href="/assets/organization-logo.jpg" type="image/jpeg" />
   <link rel="stylesheet" href="/shared/styles.css" />
 </head>
-<body>
+<body class="staff-mode">
   <section class="login-view" id="login-view">
     <div class="login-panel">
       <div class="login-brand"><img class="organization-logo" src="/assets/organization-logo.jpg" alt="先锋网络中心 Logo" /><div><strong>先锋硬件部</strong><small>免费维修预约系统</small></div></div>
@@ -45,11 +45,41 @@
 <main>
 
     <section class="view" id="staff-view" data-view="staff">
-        <div class="page-intro staff-intro"><div><p class="eyebrow">SERVICE DESK · 03</p><h1>维修工作台</h1><p>签到、维修与结果记录集中管理。</p></div><button class="secondary-btn" id="export-csv" data-role-allow="admin" type="button">↓ 导出 CSV</button></div>
       <div class="content-shell staff-shell">
-        <div class="metrics-row"><div class="metric"><span>全部预约</span><strong id="metric-total">0</strong></div><div class="metric"><span>已预约</span><strong id="metric-booked">0</strong></div><div class="metric"><span>维修中</span><strong id="metric-progress">0</strong></div><div class="metric accent"><span>已结束</span><strong id="metric-done">0</strong></div></div>
-        <div class="toolbar"><div class="filter-tabs" role="tablist"><button class="filter-tab is-active" data-filter="all">全部 <span id="count-all">0</span></button><button class="filter-tab" data-filter="booked">已预约 <span id="count-booked">0</span></button><button class="filter-tab" data-filter="in_progress">维修中 <span id="count-progress">0</span></button><button class="filter-tab" data-filter="completed">已结束 <span id="count-done">0</span></button></div><div class="staff-filters"><select id="staff-campus-filter" aria-label="按校区筛选"><option value="all">全部校区</option><option>南湖</option><option>浑南</option></select><input id="staff-date-filter" type="date" aria-label="按日期筛选" /><button id="staff-clear-filters" class="filter-clear" type="button">清除</button><input id="staff-search" class="staff-search" placeholder="搜索姓名、学号、校区或编号" /></div></div>
-        <div class="table-wrap"><table><thead><tr><th>预约信息</th><th>设备</th><th>期望时段</th><th>状态</th><th>维修记录</th><th></th></tr></thead><tbody id="appointments-table"></tbody></table><div id="staff-empty" class="table-empty" hidden>暂无符合条件的预约</div></div>
+        <div class="page-intro staff-intro"><div><h1>维修工作台</h1><p>签到、维修与结果记录集中管理。</p></div><button class="secondary-btn" id="export-csv" data-role-allow="admin" type="button">↓ 导出 CSV</button></div>
+        <p class="staff-metrics-caption">授权范围内的全部记录</p><div class="metrics-row"><div class="metric"><span>全部预约</span><strong id="metric-total">0</strong></div><div class="metric"><span>已预约</span><strong id="metric-booked">0</strong></div><div class="metric"><span>维修中</span><strong id="metric-progress">0</strong></div><div class="metric accent"><span>已结束</span><strong id="metric-done">0</strong></div></div>
+        <section class="staff-overview" aria-labelledby="staff-overview-title">
+          <div class="staff-overview-heading"><div><p class="staff-kicker">本周汇总 / 未来 7 天</p><h2 id="staff-overview-title">近期预约概览</h2></div><button class="secondary-btn" id="staff-refresh" type="button">刷新数据</button></div>
+          <div id="staff-overview-dates" class="staff-overview-dates" role="group" aria-label="概览日期"></div>
+          <p id="staff-overview-state" class="staff-overview-state" role="status">登录后读取近期预约</p>
+          <div id="staff-overview-campuses" class="staff-overview-campuses"></div>
+          <p class="staff-overview-footnote">名额按未取消的预约统计，已结束仍占名额。点击校区、时段或状态人数筛选预约；概览不受下方列表筛选影响。</p>
+        </section>
+        <section class="staff-records" aria-labelledby="staff-list-title">
+          <div class="staff-list-heading"><div><h2 id="staff-list-title">预约记录</h2><p id="staff-list-summary" role="status">读取预约记录</p></div><div class="staff-record-tools"><input id="staff-search" type="search" aria-label="搜索预约记录" placeholder="搜索姓名、学号或单号" /><button id="staff-clear-filters" type="button">重置</button></div></div>
+          <p id="staff-sort-summary" class="staff-sort-summary">点击列名：升序 → 降序 → 清除；多列按选择顺序组合。</p>
+          <p class="staff-scroll-hint">左右滑动查看全部字段，预约信息保持可见</p><div class="staff-appointments-wrap" tabindex="0" role="region" aria-label="预约记录表格，可横向滚动"><table><thead><tr>
+            <th data-sort-column="createdAt"><div class="staff-column-heading"><button class="staff-column-sort" data-column-sort="createdAt" type="button"><span>预约信息</span><b data-sort-marker="createdAt" hidden></b></button></div><small data-column-summary="createdAt"></small></th>
+            <th data-sort-column="date"><div class="staff-column-heading"><button class="staff-column-sort" data-column-sort="date" type="button"><span>预约时间</span><b data-sort-marker="date" hidden></b></button><button class="staff-filter-trigger" data-column-menu="date" type="button" aria-expanded="false" aria-controls="staff-menu-date" aria-label="筛选预约时间"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4h14l-5 6v5l-4 2v-7z"/></svg></button></div><small data-column-summary="date"></small></th>
+            <th data-sort-column="status"><div class="staff-column-heading"><button class="staff-column-sort" data-column-sort="status" type="button"><span>状态</span><b data-sort-marker="status" hidden></b></button><button class="staff-filter-trigger" data-column-menu="status" type="button" aria-expanded="false" aria-controls="staff-menu-status" aria-label="筛选状态"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4h14l-5 6v5l-4 2v-7z"/></svg></button></div><small data-column-summary="status"></small></th>
+            <th data-sort-column="campus"><div class="staff-column-heading"><button class="staff-column-sort" data-column-sort="campus" type="button"><span>校区</span><b data-sort-marker="campus" hidden></b></button><button class="staff-filter-trigger" data-column-menu="campus" type="button" aria-expanded="false" aria-controls="staff-menu-campus" aria-label="筛选校区"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4h14l-5 6v5l-4 2v-7z"/></svg></button></div><small data-column-summary="campus"></small></th>
+            <th>设备</th>
+            <th>维修记录</th><th>操作</th>
+          </tr></thead><tbody id="appointments-table"></tbody></table><div id="staff-empty" class="table-empty" hidden>暂无符合条件的预约</div></div>
+          <div class="staff-menu-shade" id="staff-menu-shade" hidden></div>
+          <section class="staff-column-menu" id="staff-menu-campus" role="dialog" aria-label="校区筛选" hidden><div class="staff-menu-heading"><h3>校区</h3><button type="button" data-menu-close aria-label="关闭校区菜单">×</button></div><label>查看校区<select id="staff-campus-filter"><option value="all">全部校区</option><option>南湖</option><option>浑南</option></select></label><button class="staff-menu-done" type="button" data-menu-close>完成</button></section>
+          <section class="staff-column-menu staff-date-menu" id="staff-menu-date" role="dialog" aria-label="预约时间筛选" hidden>
+            <div class="staff-menu-heading"><h3>预约时间</h3><button type="button" data-menu-close aria-label="关闭预约时间菜单">×</button></div>
+            <input id="staff-date-filter" type="hidden" />
+            <p class="staff-menu-caption">今天及未来 3 天的工作日</p>
+            <div id="staff-nearby-days" class="staff-nearby-days" role="group" aria-label="近期工作日"></div>
+            <label>预约时段<select id="staff-slot-filter"><option value="">全部时段</option><option>19:00–20:00</option><option>20:00–21:00</option></select></label>
+            <details class="staff-date-history" id="staff-date-history"><summary>查询历史日期</summary><label>历史预约日期<input id="staff-date-manual" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" maxlength="10" aria-describedby="staff-date-message" /></label><p id="staff-date-message" class="staff-date-message" role="status"></p></details>
+            <p id="staff-calendar-selection" class="staff-calendar-selection"></p>
+            <button class="staff-menu-done" type="button" data-menu-close>完成</button>
+          </section>
+          <section class="staff-column-menu" id="staff-menu-status" role="dialog" aria-label="状态筛选" hidden><div class="staff-menu-heading"><h3>预约状态</h3><button type="button" data-menu-close aria-label="关闭状态菜单">×</button></div><div class="staff-status-options" role="group" aria-label="筛选状态"><button class="filter-tab is-active" type="button" data-filter="all" aria-pressed="true">全部 <span id="count-all">0</span></button><button class="filter-tab" type="button" data-filter="pending" aria-pressed="false">待处理 <span id="count-pending">0</span></button><button class="filter-tab" type="button" data-filter="booked" aria-pressed="false">已预约 <span id="count-booked">0</span></button><button class="filter-tab" type="button" data-filter="in_progress" aria-pressed="false">维修中 <span id="count-progress">0</span></button><button class="filter-tab" type="button" data-filter="completed" aria-pressed="false">已结束 <span id="count-done">0</span></button></div><button class="staff-menu-done" type="button" data-menu-close>完成</button></section>
+        </section>
       </div>
     </section>
 

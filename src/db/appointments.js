@@ -49,21 +49,46 @@ export function appointmentRepository(db) {
       const scope=campusScope+(technician ? " AND (assigned_to=? OR status='booked')" : '');
       const scopeArgs=[...campuses,...(technician ? [technician] : [])];
       const where = [scope], args = [...scopeArgs];
-      for (const key of ['campus','date']) if (query[key]) { where.push(`${key}=?`); args.push(query[key]); }
-      if (query.status !== 'all') { where.push('status=?'); args.push(query.status); }
+      for (const [key,column] of [['campus','campus'],['date','date'],['timeSlot','time_slot']]) if (query[key]) { where.push(`${column}=?`); args.push(query[key]); }
+      if (query.dateFrom && query.dateTo) { where.push('date>=? AND date<=?'); args.push(query.dateFrom,query.dateTo); }
       if (query.q) {
         where.push("(instr(id,?)>0 OR instr(repair_number,?)>0 OR instr(lower(device_model),?)>0 OR instr(campus,?)>0 OR ((?='' OR (assigned_to=? AND status<>'booked')) AND (instr(lower(name),?)>0 OR instr(student_id,?)>0)))");
         const text=query.q.toLowerCase();
         args.push(text,text,text,text,technician,technician,text,text);
       }
-      const [items, counts] = await db.batch([
-        db.prepare(`SELECT * FROM appointments WHERE ${where.join(' AND ')} ORDER BY created_at DESC,id DESC`).bind(...args),
+      const filteredWhere = where.join(' AND '), filteredArgs = [...args];
+      if (query.status === 'pending') where.push("status IN ('booked','in_progress')");
+      else if (query.status !== 'all') { where.push('status=?'); args.push(query.status); }
+      // Only fixed expressions reach ORDER BY; query values are validated at the route.
+      const sortColumns = { createdAt: ['created_at'], date: ['date','time_slot'], status: ["CASE status WHEN 'booked' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END"], campus: ['campus'] };
+      const sorts = query.sorts ?? [{key:query.sort || 'createdAt',direction:query.direction || 'desc'}];
+      if (query.sorts === undefined && query.sort === 'campus') sorts.push({key:'date',direction:query.direction || 'desc'});
+      const order = sorts.flatMap(item => (sortColumns[item.key] || []).map(column => `${column} ${item.direction === 'asc' ? 'ASC' : 'DESC'}`));
+      order.push('created_at DESC','id DESC');
+      const [items, counts, filteredCounts] = await db.batch([
+        db.prepare(`SELECT * FROM appointments WHERE ${where.join(' AND ')} ORDER BY ${order.join(',')}`).bind(...args),
         db.prepare(`SELECT COUNT(*) AS allCount, COUNT(CASE WHEN status='booked' THEN 1 END) AS booked,
           COUNT(CASE WHEN status='in_progress' THEN 1 END) AS in_progress, COUNT(CASE WHEN status='completed' THEN 1 END) AS completed
-          FROM appointments WHERE ${scope}`).bind(...scopeArgs)
+          FROM appointments WHERE ${scope}`).bind(...scopeArgs),
+        db.prepare(`SELECT COUNT(*) AS allCount, COUNT(CASE WHEN status='booked' THEN 1 END) AS booked,
+          COUNT(CASE WHEN status='in_progress' THEN 1 END) AS in_progress, COUNT(CASE WHEN status='completed' THEN 1 END) AS completed
+          FROM appointments WHERE ${filteredWhere}`).bind(...filteredArgs)
       ]);
       const { allCount, ...totals } = counts.results[0];
-      return { items: items.results.map(fromRow), counts: { all: allCount, ...totals } };
+      const { allCount: filteredTotal, ...filteredTotals } = filteredCounts.results[0];
+      return { items: items.results.map(fromRow), counts: { all: allCount, ...totals }, filteredCounts: { all: filteredTotal, ...filteredTotals } };
+    },
+    async overview(start, end, campuses) {
+      const scope = campuses.length ? `campus IN (${campuses.map(() => '?').join(',')})` : '0';
+      const [totals, capacities] = await db.batch([
+        db.prepare(`SELECT campus,date,time_slot,COUNT(*) AS occupied,
+          COUNT(CASE WHEN status='booked' THEN 1 END) AS booked,
+          COUNT(CASE WHEN status='in_progress' THEN 1 END) AS in_progress
+          FROM appointments WHERE ${scope} AND date>=? AND date<=?
+          AND NOT (status='completed' AND outcome='cancelled') GROUP BY campus,date,time_slot`).bind(...campuses,start,end),
+        db.prepare(`SELECT campus,time_slot,capacity FROM slot_capacities WHERE ${scope}`).bind(...campuses)
+      ]);
+      return { totals: totals.results, capacities: capacities.results };
     },
     async create(item) {
       const prefix = `reserve${item.campus === '浑南' ? '1' : '0'}${dateKey(new Date(item.createdAt)).replaceAll('-', '')}-`;
