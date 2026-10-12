@@ -24,7 +24,7 @@ for (const width of [320,390,768,1440]) {
     await expect(page.locator('#staff-overview-campuses')).toContainText('名额已满');
     await page.locator('[data-overview-date="2026-10-14"]').click();
     const request=page.waitForRequest(request => request.url().includes('/api/appointments?') && new URL(request.url()).searchParams.get('date')==='2026-10-14');
-    await page.locator('[data-overview-campus="浑南"][data-overview-slot="20:00–21:00"]').click();
+    await page.locator('.staff-slot-main[data-overview-campus="浑南"][data-overview-slot="20:00–21:00"]').click();
     const query=new URL((await request).url()).searchParams;
     expect(query.get('campus')).toBe('浑南');expect(query.get('timeSlot')).toBe(slots[1]);
     await expect(page.locator('#staff-campus-filter')).toHaveValue('浑南');
@@ -192,3 +192,38 @@ test('desktop uses available width and offers a centered calendar with direct an
   await page.locator('#staff-menu-date [data-menu-close]').last().click();
   await page.screenshot({path:'output/playwright/staff-workbench-1920.png',fullPage:true});
 });
+
+for (const width of [320,1440]) {
+  test(`overview campus and status actions compose exact filters at ${width}px`, async ({page}) => {
+    await page.setViewportSize({width,height:1000});await loginMock(page);
+    await page.locator('[data-column-sort=campus]').click();
+    async function select(selector,{campus,date,timeSlot,status}) {
+      const request=page.waitForRequest(r=>{
+        if(!r.url().includes('/api/appointments?'))return false;
+        const q=new URL(r.url()).searchParams;
+        return q.get('campus')===campus && q.get('date')===date && q.get('timeSlot')===timeSlot && q.get('status')===status;
+      });
+      await page.locator(selector).click();
+      const q=new URL((await request).url()).searchParams;expect(q.get('sorts')).toBe('campus:asc');
+      await expect(page.locator('#staff-campus-filter')).toHaveValue(campus);
+      await expect(page.locator('#staff-date-filter')).toHaveValue(date);
+      await expect(page.locator('#staff-slot-filter')).toHaveValue(timeSlot);
+      await expect(page.locator(`[data-filter=${status}]`)).toHaveAttribute('aria-pressed','true');
+    }
+    await select('[data-overview-date="2026-10-14"]',{campus:'all',date:dates[2],timeSlot:'',status:'all'});
+    await select('.staff-slot-main[data-overview-campus="浑南"][data-overview-slot="19:00–20:00"]',{campus:'浑南',date:dates[2],timeSlot:slots[0],status:'all'});
+    await select('[data-overview-campus="浑南"][data-overview-slot="19:00–20:00"][data-overview-status=in_progress]',{campus:'浑南',date:dates[2],timeSlot:slots[0],status:'in_progress'});
+    await expect(page.locator('[data-column-summary=status]')).toHaveText('维修中');
+    await select('[data-overview-campus="浑南"][data-overview-slot="19:00–20:00"][data-overview-status=booked]',{campus:'浑南',date:dates[2],timeSlot:slots[0],status:'booked'});
+    await select('.staff-campus-link[data-overview-campus="南湖"]',{campus:'南湖',date:dates[2],timeSlot:'',status:'all'});
+    await select('[data-overview-campus="浑南"][data-overview-status=pending]',{campus:'浑南',date:dates[2],timeSlot:'',status:'pending'});
+    await expect(page.locator('[data-column-summary=status]')).toHaveText('待处理（待签到与维修中）');
+    await expect(page.locator('#count-pending')).toHaveText('1');
+    const statusButton=page.locator('[data-overview-campus="南湖"][data-overview-slot="20:00–21:00"][data-overview-status=in_progress]');
+    await statusButton.focus();await page.keyboard.press('Enter');
+    await expect(page.locator('#staff-campus-filter')).toHaveValue('南湖');
+    await expect(page.locator('#staff-slot-filter')).toHaveValue(slots[1]);
+    await expect(page.locator('[data-filter=in_progress]')).toHaveAttribute('aria-pressed','true');
+    expect(await page.locator('#staff-overview-campuses button button').count()).toBe(0);
+  });
+}

@@ -50,7 +50,7 @@ export function appointmentQuery(input) {
   if (query.campus === 'all') query.campus = '';
   if (query.campus && !['南湖','浑南'].includes(query.campus)) fail(400, '校区不正确');
   if (query.date && !validDate(query.date)) fail(400, '日期不正确');
-  if (query.status !== 'all' && !Object.hasOwn(statusLabels, query.status)) fail(400, '状态不正确');
+  if (!['all','pending'].includes(query.status) && !Object.hasOwn(statusLabels, query.status)) fail(400, '状态不正确');
   if (query.timeSlot) { query.timeSlot = normalizeTimeSlot(query.timeSlot); if (!query.timeSlot) fail(400, '时段不正确'); }
   if (!['createdAt','date','status','campus'].includes(query.sort) || !['asc','desc'].includes(query.direction)) fail(400, '排序方式不正确');
   if (input.sorts !== undefined) {

@@ -56,7 +56,8 @@ export function appointmentRepository(db) {
         args.push(text,text,text,text,technician,technician,text,text);
       }
       const filteredWhere = where.join(' AND '), filteredArgs = [...args];
-      if (query.status !== 'all') { where.push('status=?'); args.push(query.status); }
+      if (query.status === 'pending') where.push("status IN ('booked','in_progress')");
+      else if (query.status !== 'all') { where.push('status=?'); args.push(query.status); }
       // Only fixed expressions reach ORDER BY; query values are validated at the route.
       const sortColumns = { createdAt: ['created_at'], date: ['date','time_slot'], status: ["CASE status WHEN 'booked' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END"], campus: ['campus'] };
       const sorts = query.sorts ?? [{key:query.sort || 'createdAt',direction:query.direction || 'desc'}];

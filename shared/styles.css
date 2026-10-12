@@ -167,9 +167,17 @@ html{scrollbar-gutter:stable}
 .staff-campus-panel { min-width: 0; padding: 18px; border: 1px solid var(--line); border-radius: 8px; }
 .staff-campus-heading { margin-bottom: 8px; }
 .staff-campus-heading h3 { font-size: 15px; margin: 0; }
-.staff-campus-heading > span { color: var(--muted); font-size: 12px; }
+.staff-campus-link { border: 0; background: transparent; padding: 6px 0; color: var(--ink); font-size: inherit; font-weight: inherit; text-align: left; }
+.staff-campus-link:hover { color: #0f6874; }
 .staff-campus-heading strong { color: var(--ink); font-variant-numeric: tabular-nums; }
-.staff-overview-slot { display: block; width: 100%; background: transparent; border: 0; padding: 15px 0; color: var(--ink); text-align: left; border-radius: 3px; }
+.staff-overview-slot { position: relative; display: block; width: 100%; background: transparent; border: 0; padding: 15px 0; color: var(--ink); text-align: left; border-radius: 3px; }
+.staff-slot-main { width: 100%; display: block; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; }
+.staff-slot-main::after { content: ''; position: absolute; inset: 0; cursor: pointer; }
+.staff-overview-slot:has(.staff-slot-main:focus-visible) { outline: 2px solid #0f6874; outline-offset: 3px; }
+.staff-overview-status { position: relative; z-index: 1; border: 0; border-radius: 6px; background: transparent; color: var(--muted); padding: 6px 8px; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.staff-overview-status:hover { color: #0f6874; background: #e3edf1; }
+.staff-slot-statuses { display: flex; gap: 4px; margin: -6px -8px -6px 0; }
+.staff-overview button:focus-visible { outline: 2px solid #0f6874; outline-offset: 2px; }
 .staff-overview-slot + .staff-overview-slot { border-top: 1px solid var(--line); }
 .staff-overview-slot:hover .staff-slot-top > strong { color: #0f6874; }
 .staff-slot-top > strong { font-size: 16px; font-variant-numeric: tabular-nums; }

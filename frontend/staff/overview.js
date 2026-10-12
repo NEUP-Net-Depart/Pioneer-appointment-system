@@ -15,10 +15,12 @@ export function initOverview(onSelect) {
     const panels = data.campuses.map(campus => {
       const items = data.items.filter(item => item.campus === campus && item.date === selectedDate);
       const pending = items.reduce((sum, item) => sum + item.booked + item.inProgress, 0);
-      return `<section class="staff-campus-panel"><div class="staff-campus-heading"><h3>${escapeHtml(campus)}校区</h3><span>待处理 <strong>${pending}</strong> 人</span></div>${items.map(item => {
+      const campusAttr = `data-overview-campus="${escapeHtml(campus)}"`;
+      return `<section class="staff-campus-panel"><div class="staff-campus-heading"><h3><button class="staff-campus-link" type="button" ${campusAttr} aria-label="查看${escapeHtml(campus)}${dateLabel(selectedDate)}全部预约">${escapeHtml(campus)}校区</button></h3><button class="staff-overview-status" type="button" ${campusAttr} data-overview-status="pending">待处理 <strong>${pending}</strong> 人</button></div>${items.map(item => {
         const label = item.ended ? '时段已结束' : item.capacity === 0 ? '暂停预约' : item.occupied > item.capacity ? '超出当前上限' : item.remaining === 0 ? '名额已满' : `剩余 ${item.remaining} 名`;
         const ratio = item.capacity ? Math.min(100, item.occupied / item.capacity * 100) : 0;
-        return `<button type="button" class="staff-overview-slot" data-overview-slot="${escapeHtml(item.timeSlot)}" data-overview-campus="${escapeHtml(campus)}" aria-label="查看${escapeHtml(campus)}${dateLabel(selectedDate)}${escapeHtml(item.timeSlot)}的预约"><span class="staff-slot-top"><strong>${escapeHtml(item.timeSlot)}</strong><span class="staff-slot-availability ${item.ended || item.capacity === 0 || item.remaining === 0 ? 'is-muted' : ''}">${label}</span></span><span class="staff-slot-count"><span>已占名额 <b>${item.occupied}</b> / ${item.capacity}</span><span>待签到 ${item.booked} · 维修中 ${item.inProgress}</span></span><span class="staff-slot-track" aria-hidden="true"><i style="width:${ratio}%"></i></span></button>`;
+        const slotAttr = `${campusAttr} data-overview-slot="${escapeHtml(item.timeSlot)}"`;
+        return `<div class="staff-overview-slot"><button type="button" class="staff-slot-main" ${slotAttr} aria-label="查看${escapeHtml(campus)}${dateLabel(selectedDate)}${escapeHtml(item.timeSlot)}的预约"><span class="staff-slot-top"><strong>${escapeHtml(item.timeSlot)}</strong><span class="staff-slot-availability ${item.ended || item.capacity === 0 || item.remaining === 0 ? 'is-muted' : ''}">${label}</span></span></button><div class="staff-slot-count"><span>已占名额 <b>${item.occupied}</b> / ${item.capacity}</span><div class="staff-slot-statuses"><button class="staff-overview-status" type="button" ${slotAttr} data-overview-status="booked">待签到 ${item.booked}</button><button class="staff-overview-status" type="button" ${slotAttr} data-overview-status="in_progress">维修中 ${item.inProgress}</button></div></div><span class="staff-slot-track" aria-hidden="true"><i style="width:${ratio}%"></i></span></div>`;
       }).join('')}</section>`;
     }).join('');
     if (campuses.innerHTML !== panels) campuses.innerHTML = panels;
@@ -30,10 +32,11 @@ export function initOverview(onSelect) {
     selectedDate = button.dataset.overviewDate;
     render();
     dates.querySelector(`[data-overview-date="${selectedDate}"]`)?.focus();
+    onSelect({campus:'all',date:selectedDate,timeSlot:'',status:'all',navigate:false});
   });
   campuses.addEventListener('click', event => {
-    const button = event.target.closest('[data-overview-slot]');
-    if (button) onSelect({ campus: button.dataset.overviewCampus, date: selectedDate, timeSlot: button.dataset.overviewSlot });
+    const button = event.target.closest('[data-overview-campus]');
+    if (button) onSelect({ campus: button.dataset.overviewCampus, date: selectedDate, timeSlot: button.dataset.overviewSlot || '', status:button.dataset.overviewStatus || 'all' });
   });
   return {
     async refresh() {

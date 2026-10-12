@@ -13,8 +13,8 @@ export function initStaff(){
   const menus=initColumnMenus(()=>refreshList());
   const overview=initOverview(selection=>{
     $('#staff-campus-filter').value=selection.campus;$('#staff-date-filter').value=selection.date;$('#staff-slot-filter').value=selection.timeSlot;
-    $('#staff-search').value='';activeFilter='all';updateFilterButtons();refreshList();
-    $('#staff-list-title').scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'});
+    clearTimeout(searchTimer);$('#staff-search').value='';activeFilter=selection.status || 'all';updateFilterButtons();refreshList();
+    if(selection.navigate!==false)$('#staff-list-title').scrollIntoView({block:'start',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'});
   });
   const intake=initIntake(async(item,photos)=>{ await openDetail(await patch(item,{status:'in_progress',...photos})); });
   const admin=()=>roleLevel[sessionStorage.getItem('pioneerRole')]>=2;
@@ -83,6 +83,7 @@ export function initStaff(){
   function render(){
     for(const [suffix,key] of [['total','all'],['booked','booked'],['progress','in_progress'],['done','completed']])$('#metric-'+suffix).textContent=counts[key] || 0;
     for(const [suffix,key] of [['all','all'],['booked','booked'],['progress','in_progress'],['done','completed']])$('#count-'+suffix).textContent=filteredCounts[key] || 0;
+    $('#count-pending').textContent=(filteredCounts.booked || 0)+(filteredCounts.in_progress || 0);
     $('#staff-list-summary').textContent=`当前 ${appointments.length} 条 · 状态数量按当前筛选统计`;
     $('#appointments-table').innerHTML=appointments.map(item=>{
       const canDetail=admin() || (item.status!=='booked' && owns(item));

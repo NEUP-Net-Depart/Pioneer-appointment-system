@@ -45,7 +45,7 @@ export function initColumnMenus(onChange) {
     reset(){sorts=[];close();calendar.sync();},
     update(status) {
       const campus = $('#staff-campus-filter').value, date = $('#staff-date-filter').value, slot = $('#staff-slot-filter').value;
-      const labels = { createdAt:'按提交时间',campus:campus === 'all' ? '全部校区' : campus,date:[date?.replaceAll('-','/'),slot].filter(Boolean).join(' · ') || '全部日期与时段',status:statusLabels[status] || '全部状态' };
+      const labels = { createdAt:'按提交时间',campus:campus === 'all' ? '全部校区' : campus,date:[date?.replaceAll('-','/'),slot].filter(Boolean).join(' · ') || '全部日期与时段',status:status==='pending' ? '待处理（待签到与维修中）' : statusLabels[status] || '全部状态' };
       for(const button of $$('[data-column-sort]')){
         const key=button.dataset.columnSort,index=sorts.findIndex(item=>item.key===key),sort=sorts[index];
         const marker=$(`[data-sort-marker="${key}"]`);
