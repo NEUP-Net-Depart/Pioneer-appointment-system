@@ -149,6 +149,11 @@ button:disabled{cursor:wait;opacity:.65}
 
 /* Keep async view updates and navigation from moving surrounding content. */
 html{scrollbar-gutter:stable}
+.booking-warranty-advice { display: block; color: #b42318; line-height: 1.6; margin-top: 6px; }
+.booking-advice, .intake-thermal-advice { padding: 10px 14px; margin: 14px 0; border-left: 3px solid #bd831e; border-radius: 4px; background: #fff8ec; color: #714e13; font-size: 12px; line-height: 1.7; }
+.booking-advice p { margin: 0; }
+.booking-advice p + p { margin-top: 3px; }
+.booking-character-count { margin: 5px 0 0; text-align: right; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; line-height: 1.5; }
 #live-updated{min-width:140px;text-align:right}
 .appointment-card{transition:box-shadow .2s}
 @media(prefers-reduced-motion:reduce){
