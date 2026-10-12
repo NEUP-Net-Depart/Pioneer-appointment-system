@@ -203,9 +203,21 @@ html{scrollbar-gutter:stable}
 #staff-search:focus { border-color: #7d9bab; box-shadow: 0 0 0 3px #e9f0f4; }
 #staff-clear-filters { border: 0; background: transparent; font-size: 12px; color: var(--muted); padding: 10px 6px; }
 #staff-clear-filters:hover { color: var(--ink); }
-.staff-appointments-wrap { background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-.staff-appointments-wrap table { width: 100%; min-width: 0; border-collapse: collapse; }
+.staff-appointments-wrap { background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: #b9cbd5 #f5f8fa; }
+.staff-appointments-wrap table { width: 100%; min-width: 1000px; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
 .staff-appointments-wrap thead { background: #f5f8fa; }
+.staff-appointments-wrap th:first-child { width: 220px; }
+.staff-appointments-wrap th:nth-child(2) { width: 165px; }
+.staff-appointments-wrap th:nth-child(3) { width: 105px; }
+.staff-appointments-wrap th:nth-child(4) { width: 72px; }
+.staff-appointments-wrap th:nth-child(5) { width: 140px; }
+.staff-appointments-wrap th:nth-child(7) { width: 190px; }
+.staff-appointments-wrap th:first-child, .staff-appointments-wrap td:first-child { position: sticky; left: 0; box-shadow: 5px 0 8px -6px rgba(16,42,67,.22); }
+.staff-appointments-wrap th:first-child { z-index: 3; background: #f5f8fa; }
+.staff-appointments-wrap td:first-child { z-index: 2; background: #fff; }
+.staff-appointments-wrap tbody tr:hover td:first-child { background: #fbfcfd; }
+.staff-scroll-hint { display: none; color: var(--muted); font-size: 11px; margin: -4px 0 10px; }
+@media(max-width:1100px) { .staff-scroll-hint { display: block; } }
 .staff-appointments-wrap th { font-size: 12px; font-weight: 500; color: var(--muted); padding: 0 16px; height: 68px; text-align: left; border-bottom: 1px solid var(--line); }
 .staff-column-trigger { display: grid; grid-template-columns: 1fr 8px; column-gap: 8px; width: 100%; border: 0; padding: 12px 0; background: transparent; color: var(--ink); text-align: left; }
 .staff-column-trigger > span { font-size: 13px; font-weight: 600; }
@@ -268,29 +280,11 @@ html{scrollbar-gutter:stable}
   .staff-list-heading { align-items: stretch; flex-direction: column; gap: 12px; }
   .staff-record-tools { width: 100%; }
   #staff-search { flex: 1; width: 0; min-height: 42px; }
-  .staff-appointments-wrap { overflow: visible; border: 0; border-radius: 0; background: transparent; }
-  .staff-appointments-wrap table, .staff-appointments-wrap thead, .staff-appointments-wrap tbody { display: block; }
-  .staff-appointments-wrap thead { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 12px; }
-  .staff-appointments-wrap thead tr { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); }
-  .staff-appointments-wrap th { display: none; min-width: 0; padding: 0 8px; height: auto; border: 0; }
-  .staff-appointments-wrap th[data-sort-column] { display: block; }
-  .staff-column-trigger { grid-template-columns: 1fr; }
-  .staff-column-trigger > span { font-size: 11px; white-space: nowrap; }
-  .staff-column-trigger i { display: none; }
-  .staff-column-trigger small { font-size: 9px; max-width: 100%; }
-  .staff-appointments-wrap tbody tr { display: grid; grid-template-columns: 1fr auto; padding: 16px; margin-bottom: 12px; gap: 9px 12px; background: #fff; border: 1px solid #e3ebef; border-radius: 12px; }
-  .staff-appointments-wrap td { display: block; padding: 0; border: 0; min-width: 0; }
-  .staff-appointments-wrap td:nth-child(1) { grid-column: 1; grid-row: 1; }
-  .staff-appointments-wrap td:nth-child(5) { grid-column: 2; grid-row: 1; text-align: right; }
-  .staff-appointments-wrap td:nth-child(2) { grid-column: 1 / -1; grid-row: 2; font-size: 11px; color: var(--muted); }
-  .staff-appointments-wrap td:nth-child(4) { grid-column: 1 / -1; grid-row: 3; font-weight: 600; }
-  .staff-appointments-wrap td:nth-child(4) .person-code { display: inline; margin-left: 8px; color: var(--ink); font-weight: 400; }
-  .staff-appointments-wrap td:nth-child(3) { grid-column: 1 / -1; grid-row: 4; }
-  .staff-appointments-wrap td:nth-child(3) .person-code { display: inline; margin-left: 6px; }
-  .staff-appointments-wrap td:nth-child(6) { grid-column: 1 / -1; grid-row: 5; color: var(--muted); font-size: 12px; }
-  .staff-appointments-wrap td:nth-child(7) { grid-column: 1 / -1; grid-row: 6; padding-top: 12px; border-top: 1px solid #edf1f3; }
-  .staff-record-note { max-width: none; }
-  .staff-appointments-wrap .record-actions { justify-content: flex-end; }
+  .staff-appointments-wrap th { padding: 0 12px; }
+  .staff-appointments-wrap td { padding: 16px 12px; }
+  .staff-appointments-wrap th:first-child { width: 125px; }
+  .staff-appointments-wrap .person-name { font-size: 13px; }
+  .staff-appointments-wrap .record-btn { min-height: 40px; }
   .staff-menu-shade { background: rgba(10,28,40,.28); }
   .staff-column-menu { inset: auto 12px calc(12px + env(safe-area-inset-bottom)) !important; width: auto; border-radius: 20px; padding: 20px; max-height: 80dvh; }
 }

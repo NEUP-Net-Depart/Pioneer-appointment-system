@@ -47,8 +47,20 @@ for (const width of [320,390,768,1440]) {
     await expect(page.locator('#staff-slot-filter')).toHaveValue('');
     await expect(page.locator('#staff-sort')).toHaveValue('date');
     await expect(page.locator('[data-filter=all]')).toHaveAttribute('aria-pressed','true');
-    for(const selector of ['.staff-overview','.staff-record-tools','.staff-appointments-wrap','.staff-appointments-wrap table']) {
+    for(const selector of ['.staff-overview','.staff-record-tools','.staff-appointments-wrap']) {
       const box=await page.locator(selector).boundingBox();expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(width);
+    }
+    await expect(page.locator('.staff-appointments-wrap table')).toHaveCSS('display','table');
+    await expect(page.locator('.staff-appointments-wrap thead')).toHaveCSS('display','table-header-group');
+    await expect(page.locator('.staff-appointments-wrap tbody tr')).toHaveCSS('display','table-row');
+    const header=await page.locator('th[data-sort-column=date]').boundingBox(), cell=await page.locator('#appointments-table tr:first-child td:nth-child(2)').boundingBox();
+    expect(Math.abs(header.x-cell.x)).toBeLessThan(1);
+    if(width<1100) {
+      const original=await page.locator('#appointments-table tr:first-child td:first-child').boundingBox();
+      await page.locator('.staff-appointments-wrap').evaluate(element => {element.scrollLeft=450;});
+      const pinned=await page.locator('#appointments-table tr:first-child td:first-child').boundingBox();
+      expect(Math.abs(original.x-pinned.x)).toBeLessThan(1);
+      await page.locator('.staff-appointments-wrap').evaluate(element => {element.scrollLeft=0;});
     }
     await page.locator('#staff-overview-title').scrollIntoViewIfNeeded();
     await page.screenshot({path:`output/playwright/staff-overview-${width}.png`,fullPage:true,style:'#toast { display: none !important; }'});

@@ -58,12 +58,12 @@
         <section class="staff-records" aria-labelledby="staff-list-title">
           <div class="staff-list-heading"><div><h2 id="staff-list-title">预约记录</h2><p id="staff-list-summary" role="status">读取预约记录</p></div><div class="staff-record-tools"><input id="staff-search" type="search" aria-label="搜索预约记录" placeholder="搜索姓名、学号或单号" /><button id="staff-clear-filters" type="button">重置</button></div></div>
           <select id="staff-sort" hidden aria-label="排序字段"><option value="date">预约时间</option><option value="createdAt">提交时间</option><option value="status">状态</option><option value="campus">校区</option></select><select id="staff-direction" hidden aria-label="排序方向"><option value="asc">升序</option><option value="desc">降序</option></select>
-          <div class="staff-appointments-wrap"><table><thead><tr>
+          <p class="staff-scroll-hint">左右滑动查看全部字段，预约信息保持可见</p><div class="staff-appointments-wrap" tabindex="0" role="region" aria-label="预约记录表格，可横向滚动"><table><thead><tr>
             <th data-sort-column="createdAt"><button class="staff-column-trigger" data-column-menu="createdAt" type="button" aria-expanded="false" aria-controls="staff-menu-createdAt"><span>预约信息</span><small data-column-summary="createdAt">提交时间</small><i aria-hidden="true"></i></button></th>
-            <th data-sort-column="campus"><button class="staff-column-trigger" data-column-menu="campus" type="button" aria-expanded="false" aria-controls="staff-menu-campus"><span>校区</span><small data-column-summary="campus">全部校区</small><i aria-hidden="true"></i></button></th>
-            <th>设备</th>
             <th data-sort-column="date"><button class="staff-column-trigger" data-column-menu="date" type="button" aria-expanded="false" aria-controls="staff-menu-date"><span>预约时间</span><small data-column-summary="date">由近到远</small><i aria-hidden="true"></i></button></th>
             <th data-sort-column="status"><button class="staff-column-trigger" data-column-menu="status" type="button" aria-expanded="false" aria-controls="staff-menu-status"><span>状态</span><small data-column-summary="status">全部状态</small><i aria-hidden="true"></i></button></th>
+            <th data-sort-column="campus"><button class="staff-column-trigger" data-column-menu="campus" type="button" aria-expanded="false" aria-controls="staff-menu-campus"><span>校区</span><small data-column-summary="campus">全部校区</small><i aria-hidden="true"></i></button></th>
+            <th>设备</th>
             <th>维修记录</th><th>操作</th>
           </tr></thead><tbody id="appointments-table"></tbody></table><div id="staff-empty" class="table-empty" hidden>暂无符合条件的预约</div></div>
           <div class="staff-menu-shade" id="staff-menu-shade" hidden></div>
