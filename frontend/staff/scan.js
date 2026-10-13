@@ -44,6 +44,7 @@ export function initScan() {
     item = value; write('selected', item.id); panels('scan-detail');
     renderScanDetails($('#scan-detail-info'), item);
     $('#scan-intake-form').hidden = item.status !== 'booked';
+    $('#scan-cancel-onsite').hidden = item.status !== 'booked' || item.source !== 'onsite';
     $('#scan-result-form').hidden = item.status !== 'in_progress' || item.assignedTo !== account();
     $('#scan-detail-back').hidden = item.status === 'in_progress' && item.assignedTo === account();
     $('#scan-files-section').hidden = item.status === 'booked';
@@ -184,6 +185,17 @@ export function initScan() {
       }
       await update({ status: 'in_progress', frontPhotoId: uploaded.front, backPhotoId: uploaded.back }, current);
       if (current === generation) showToast('照片已保存，已签到并开始维修');
+    });
+  });
+  $('#scan-cancel-onsite').addEventListener('click', () => {
+    if (!item || !window.confirm('确认取消这条尚未签到的临时登记？')) return;
+    run(async current => {
+      const id = item.id;
+      await update({ status: 'completed', outcome: 'cancelled' }, current);
+      if (current !== generation) return;
+      write(`draft:${id}`, null); write(`photos:${id}`, null); write('selected', null);
+      await home();
+      if (current === generation) showToast('临时登记已取消');
     });
   });
   $('#scan-save-note').addEventListener('click', () => run(async current => {

@@ -21,7 +21,7 @@ export function canManageAccount(actor, target) {
 export function requireAppointmentAccess(user, item, { start = false } = {}) {
   requireCampus(user,item.campus);
   if (user.role==='technician' && (item.status==='booked' || item.assignedTo!==user.account) &&
-      !(start && item.status === 'booked')) fail(403,'只能访问本人维修的预约');
+      !(start && item.status === 'booked') && !(item.source === 'onsite' && item.registeredBy === user.account)) fail(403,'只能访问本人维修的预约');
 }
 export function appointmentScope(user) {
   requireRole(user,'technician');

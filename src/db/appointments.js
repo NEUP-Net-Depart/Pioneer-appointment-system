@@ -33,11 +33,25 @@ export function appointmentRepository(db) {
     async countNoShows(beforeDate) {
       return (await db.prepare("SELECT COUNT(*) AS total FROM appointments WHERE source='booking' AND status='booked' AND date<=?").bind(beforeDate).first()).total;
     },
+    async countExpirations(beforeDate) {
+      return (await db.prepare("SELECT COUNT(*) AS total FROM appointments WHERE source='onsite' AND status='booked' AND date<=?").bind(beforeDate).first()).total;
+    },
     async endNoShows(beforeDate, instant, { id, campuses } = {}) {
       const where = ["source='booking'", "status='booked'", 'date<=?'], args = [instant, beforeDate];
       if (id) { where.push('id=?'); args.push(id); }
       if (campuses) { where.push(campuses.length ? `campus IN (${campuses.map(() => '?').join(',')})` : '0'); args.push(...campuses); }
       return db.prepare(`UPDATE appointments SET status='completed',outcome='no_show',completed_at=?,revision=revision+1 WHERE ${where.join(' AND ')}`).bind(...args).run();
+    },
+    async expirePending(beforeDate, instant, scope = {}) {
+      const bookingWhere = ["source='booking'", "status='booked'", 'date<=?'], bookingArgs = [instant, beforeDate];
+      if (scope.id) { bookingWhere.push('id=?'); bookingArgs.push(scope.id); }
+      if (scope.campuses) { bookingWhere.push(scope.campuses.length ? `campus IN (${scope.campuses.map(() => '?').join(',')})` : '0'); bookingArgs.push(...scope.campuses); }
+      const booking = await db.prepare(`UPDATE appointments SET status='completed',outcome='no_show',completed_at=?,revision=revision+1 WHERE ${bookingWhere.join(' AND ')}`).bind(...bookingArgs).run();
+      const where = ["source='onsite'", "status='booked'", 'date<=?'], args = [instant, beforeDate];
+      if (scope.id) { where.push('id=?'); args.push(scope.id); }
+      if (scope.campuses) { where.push(scope.campuses.length ? `campus IN (${scope.campuses.map(() => '?').join(',')})` : '0'); args.push(...scope.campuses); }
+      const onsite = await db.prepare(`UPDATE appointments SET status='completed',outcome='expired',completed_at=?,revision=revision+1 WHERE ${where.join(' AND ')}`).bind(...args).run();
+      return { meta: { changes: (booking.meta?.changes || 0) + (onsite.meta?.changes || 0) } };
     },
     async find(id) { return fromRow(await db.prepare('SELECT * FROM appointments WHERE id=?').bind(id).first()); },
     async findByCredential(id, hash) {
@@ -57,15 +71,15 @@ export function appointmentRepository(db) {
     },
     async list(query,{campuses,technician}) {
       const campusScope=campuses.length ? `campus IN (${campuses.map(()=>'?').join(',')})` : '0';
-      const scope=campusScope+(technician ? " AND (assigned_to=? OR status='booked')" : '');
-      const scopeArgs=[...campuses,...(technician ? [technician] : [])];
+      const scope=campusScope+(technician ? " AND (assigned_to=? OR registered_by=? OR status='booked')" : '');
+      const scopeArgs=[...campuses,...(technician ? [technician, technician] : [])];
       const where = [scope], args = [...scopeArgs];
       for (const [key,column] of [['campus','campus'],['date','date'],['timeSlot','time_slot']]) if (query[key]) { where.push(`${column}=?`); args.push(query[key]); }
       if (query.dateFrom && query.dateTo) { where.push('date>=? AND date<=?'); args.push(query.dateFrom,query.dateTo); }
       if (query.q) {
-        where.push("(instr(id,?)>0 OR instr(repair_number,?)>0 OR instr(lower(device_model),?)>0 OR instr(campus,?)>0 OR ((?='' OR (assigned_to=? AND status<>'booked')) AND (instr(lower(name),?)>0 OR instr(student_id,?)>0)))");
+        where.push("(instr(id,?)>0 OR instr(repair_number,?)>0 OR instr(lower(device_model),?)>0 OR instr(campus,?)>0 OR ((?='' OR ((assigned_to=? OR registered_by=?) AND status<>'booked')) AND (instr(lower(name),?)>0 OR instr(student_id,?)>0)))");
         const text=query.q.toLowerCase();
-        args.push(text,text,text,text,technician,technician,text,text);
+        args.push(text,text,text,text,technician,technician,technician,text,text);
       }
       const filteredWhere = where.join(' AND '), filteredArgs = [...args];
       if (query.status === 'pending') where.push("status IN ('booked','in_progress')");

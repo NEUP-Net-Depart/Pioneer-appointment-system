@@ -24,7 +24,7 @@ Schema 以 [migrations/](../migrations/) 为准，迁移只追加，运行时不
 
 ## 并发约束
 
-迁移 0006 增加 `source`（booking/onsite）、`registered_by`、`registration_key`；登记人与请求编号联合唯一，保证临时登记重试幂等。现场记录以服务器当天日期及首个时段兼容存储，不计线上容量、排队和未到场处理。
+迁移 0006 增加 `source`（booking/onsite）、`registered_by`、`registration_key`，保证临时登记重试幂等；迁移 0007 增加现场登记的 `expired` 结果和单条待签到约束。现场记录使用服务器当天日期及首个时段存储，不计线上容量、排队和未到场。
 
 历史多张进行中工单不自动结束或改派：`active_repairs` 在旧工单间接续占用，全部完成前禁止新签到。签到、结束的相同请求返回原结果，不重复更新 revision 或时间；过期的不同请求返回 409。
 

@@ -5,11 +5,11 @@ export function statsService(stats, appointments) {
   return {
     async summary({ range, day },actor) {
       requireRole(actor,'admin');
-      await appointments.endNoShows(expiredBookingDate(), nowIso(), {campuses:actor.authorizedCampuses});
+      await (appointments.expirePending || appointments.endNoShows)(expiredBookingDate(), nowIso(), {campuses:actor.authorizedCampuses});
       const start = day || range === 'all' ? '' : addDays(dateKey(), -(Number(range) - 1));
       const result = await stats.aggregate({start,day,campuses:actor.authorizedCampuses});
-      const { total, completed, noShow, classified, repaired } = result.summary;
-      return { range, day, total, completed, noShow, classified, repaired,
+      const { total, completed, noShow, expired, classified, repaired } = result.summary;
+      return { range, day, total, completed, noShow, expired, classified, repaired,
         repairSuccessRate: classified ? Math.round(repaired / classified * 100) : 0,
         completionRate: total ? Math.round(completed / total * 100) : 0, noShowRate: total ? Math.round(noShow / total * 100) : 0,
         daily: Object.fromEntries(result.daily.map(row => [row.date, { total: row.total, completed: row.completed }])),

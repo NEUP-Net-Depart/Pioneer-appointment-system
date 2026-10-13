@@ -9,12 +9,13 @@ import { presentAppointment } from './appointments.js';
 export function scanService(appointments, service, encryptionKey, secret, enabled) {
   const present = item => presentAppointment(item, encryptionKey);
   function available() { if (!enabled) fail(404, '扫码工作台未启用'); }
+  const expire = (now, scope) => (appointments.expirePending || appointments.endNoShows)(expiredBookingDate(now), now.toISOString(), scope);
   async function locate(id, actor) {
     const now = new Date();
     const original = await appointments.find(id);
     if (!original) fail(404, '预约不存在，请检查编号');
     requireAppointmentAccess(actor, original, { start: true });
-    await appointments.endNoShows(expiredBookingDate(now), now.toISOString(), { id });
+    await expire(now, { id });
     const item = await appointments.find(id);
     if (!item) fail(404, '预约不存在，请检查编号');
     requireAppointmentAccess(actor, item, { start: true });
@@ -39,6 +40,7 @@ export function scanService(appointments, service, encryptionKey, secret, enable
     },
     async current(actor, registrationRequestId) {
       available();
+      await expire(new Date(), { campuses: actor.authorizedCampuses });
       let registration = null;
       if (registrationRequestId !== undefined) {
         const key = stringField(registrationRequestId, '登记请求编号', 36, true);
@@ -57,6 +59,7 @@ export function scanService(appointments, service, encryptionKey, secret, enable
       if (!/^[a-f0-9-]{36}$/.test(key)) fail(400, '登记请求编号不正确');
       const previous = await appointments.findRegistration(actor.account, key);
       if (previous) return locate(previous.id, actor);
+      if (await appointments.pendingRegistration(actor.account)) fail(409, '请先签到或取消当前临时登记');
       if ((await appointments.inProgress(actor.account)).length) fail(409, '请先完成当前维修，再登记下一台设备');
       const now = new Date();
       const data = bookingInput({ ...input, date: dateKey(now), timeSlot: TIME_SLOTS[0], agreementAt: now.toISOString(), agreementVersion: 'v1.0' });

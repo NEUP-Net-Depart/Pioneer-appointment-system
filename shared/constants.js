@@ -14,7 +14,7 @@ export const statusClass = {
 export const repairOutcomes = ['repaired', 'unrepaired', 'not_needed'];
 export const outcomeLabels = {
   repaired: '修复成功', unrepaired: '未修复', not_needed: '无需维修',
-  cancelled: '已取消', no_show: '未到场', legacy_unknown: '历史未分类'
+  cancelled: '已取消', no_show: '未到场', expired: '临时登记过期', legacy_unknown: '历史未分类'
 };
 export function normalizeTimeSlot(value) {
   const match = String(value ?? '').trim().replace(/：/g, ':').match(/^(\d{1,2})\s*:\s*(\d{2})\s*[‐‑‒–—−-]\s*(\d{1,2})\s*:\s*(\d{2})$/);

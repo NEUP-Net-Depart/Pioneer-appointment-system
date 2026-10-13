@@ -14,7 +14,7 @@ export async function presentAppointment(item, encryptionKey) {
 }
 export function appointmentService(appointments, users, encryptionKey, clock = () => new Date()) {
   const present = item => presentAppointment(item, encryptionKey);
-  const expire = (instant, scope) => appointments.endNoShows(expiredBookingDate(instant), instant.toISOString(), scope);
+  const expire = (instant, scope) => (appointments.expirePending || appointments.endNoShows)(expiredBookingDate(instant), instant.toISOString(), scope);
   async function assignee(value, campus) {
     let user = await users.find(value.toLowerCase());
     if (!user) {
@@ -59,7 +59,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       await expire(clock(), { campuses: scope.campuses });
       const result = await appointments.list(query, scope);
       const items = await Promise.all(result.items.map(async item => {
-        if (user.role === 'technician' && (item.status === 'booked' || item.assignedTo !== user.account)) {
+        if (user.role === 'technician' && (item.status === 'booked' || (item.assignedTo !== user.account && !(item.source === 'onsite' && item.registeredBy === user.account)))) {
           return Object.fromEntries(['id','revision','campus','date','timeSlot','deviceType','brand','deviceModel','faultType','status','createdAt'].map(key => [key, item[key]]));
         }
         return present(item);
@@ -143,6 +143,9 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       } else if (!user) {
         if (input.status !== 'completed' || input.outcome !== 'cancelled') fail(403, '学生仅可取消尚未开始维修的预约');
         if (item.status !== 'booked') fail(409, '当前状态不能取消');
+        patch = { status: 'completed', outcome: 'cancelled', completedAt: timestamp };
+      } else if (item.status === 'booked' && input.status === 'completed' && input.outcome === 'cancelled' &&
+          item.source === 'onsite' && item.registeredBy === user.account) {
         patch = { status: 'completed', outcome: 'cancelled', completedAt: timestamp };
       } else {
         const starting = item.status === 'booked' && input.status === 'in_progress';
