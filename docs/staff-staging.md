@@ -23,6 +23,8 @@ Staff Staging 地址：<https://pioneer-staff-staging.pages.dev>；工作人员�
 
 `wrangler.jsonc` 继续管理现有 Production/Preview；`wrangler.staff-staging.jsonc` 是 Staff 非敏感运行配置的唯一来源，包括 DB、ATTACHMENTS、迁移目录、配额、兼容日期、`nodejs_compat` 和 CPU 限制。脚本校验三套资源没有复用。控制台不要另行修改这些字段；改配额时须同步 GitHub 环境变量，发布前脚本会核对两者。
 
+Wrangler Pages 不接受 `--config`。Staff 发布脚本将专用配置和本次构建/Functions 放入随机临时目录，在该目录生成标准的 `wrangler.jsonc` 并部署；完成或失败后删除临时目录，不复制本地 Secrets。现有 Production/Preview 继续从原仓库目录部署。D1 命令支持 `--config`，直接读取专用源文件。
+
 ## PR 与同步
 
 新功能从 `next/staff-platform` 创建 `feat/staff-<功能>`，PR 的 base 选择 `next/staff-platform`。Ruleset 配置见 `.github/staff-staging-ruleset.json`：禁止删除和强推，要求线性历史、1 人审核、最新推送审核、讨论解决及 GitHub Actions 的 `test` 检查通过，要求 PR 基于最新集成分支；无绕过角色。合并使用 squash 或 rebase。
