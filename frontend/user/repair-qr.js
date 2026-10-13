@@ -17,7 +17,7 @@ export async function renderRepairQr(container, item) {
       if (!container.contains(image)) return;
       const url = URL.createObjectURL(blob);
       image.onload = () => URL.revokeObjectURL(url); image.src = url;
-      hint.textContent = '二维码仅供工作人员定位工单，不包含私人查询凭证。'; button.hidden = true;
+      hint.textContent = ''; button.hidden = true;
     } catch { image.hidden = true; hint.textContent = '二维码暂不可用，到场后可报预约编号。'; button.hidden = false; }
     finally { button.disabled = false; }
   }

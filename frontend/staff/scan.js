@@ -56,9 +56,9 @@ export function initScan() {
     const draft = read(`draft:${item.id}`);
     $('#scan-note').value = draft?.note ?? item.repairNote ?? '';
     $('#scan-outcome').value = draft?.outcome || '';
-    $('#scan-draft-state').textContent = draft ? '已恢复此账号在本机保存的维修草稿。' : '填写内容会自动保存到此账号的本机草稿。';
+    $('#scan-draft-state').textContent = draft ? '已恢复此账号在本机保存的维修草稿。' : '';
     for (const side of ['front','back']) $('#scan-'+side+'-state').textContent = photos()[side] ? '照片已上传，可直接重试签到' : '';
-    message(item.status === 'booked' ? '已定位设备，拍照并确认后才会签到。' : item.status === 'in_progress' ? '维修进行中，完成后请填写结果。' : '此工单已结束。');
+    message(item.status === 'in_progress' ? '维修进行中，完成后请填写结果。' : item.status === 'completed' ? '此工单已结束。' : '');
   }
   async function loadFiles() {
     const selected = item, current = generation;
@@ -79,7 +79,7 @@ export function initScan() {
         }));
         $('#scan-files').append(button);
       }
-    } catch (error) { if (current === generation && selected === item) $('#scan-files').textContent = error.message + '，可重新读取附件；维修结果仍可提交。'; }
+    } catch (error) { if (current === generation && selected === item) $('#scan-files').textContent = error.message; }
   }
   async function home() {
     const current = generation;
@@ -146,7 +146,7 @@ export function initScan() {
   function saveDraft() {
     if (!item) return;
     const saved = write(`draft:${item.id}`, { note: $('#scan-note').value, outcome: $('#scan-outcome').value });
-    $('#scan-draft-state').textContent = saved ? '草稿已保存在本机，断网后可继续填写。' : '本机无法保存草稿，请保持页面打开并尽快提交。';
+    $('#scan-draft-state').textContent = saved ? '' : '本机无法保存草稿，请保持页面打开并尽快提交。';
   }
   $('#scan-note').addEventListener('input', saveDraft); $('#scan-outcome').addEventListener('change', saveDraft);
   $('#scan-reload-files').addEventListener('click', loadFiles);
@@ -176,7 +176,7 @@ export function initScan() {
       const uploaded = photos();
       for (const side of ['front','back']) {
         const file = $('#scan-'+side).files[0];
-        if (!uploaded[side] && (!file || file.size > 5 * 1024 * 1024 || !['image/jpeg','image/png','image/webp'].includes(file.type))) throw new Error('请选择正面和反面照片，每张不超过 5 MB');
+        if (!uploaded[side] && (!file || file.size > 5 * 1024 * 1024 || !['image/jpeg','image/png','image/webp'].includes(file.type))) throw new Error('照片无效');
       }
       for (const side of ['front','back']) if (!uploaded[side]) {
         const [file] = await uploadAttachments(item, [$('#scan-'+side).files[0]], 'intake_'+side);
