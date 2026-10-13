@@ -8,24 +8,29 @@ export function initAuth({ onLogin, onLogout }) {
     clearSession(); $('#app-shell').hidden = true; $('#login-view').hidden = false;
     $('#login-form').reset(); onLogout?.();
   }
-  function enter(payload) {
+  async function enter(payload) {
+    const sessionToken = payload.token || sessionStorage.getItem('pioneerToken');
     sessionStorage.setItem('pioneerRole', payload.role);
     sessionStorage.setItem('pioneerAccount', payload.account);
     sessionStorage.setItem('pioneerCampuses',JSON.stringify(payload.authorizedCampuses));
     if (payload.token) sessionStorage.setItem('pioneerToken', payload.token);
-    $('#login-view').hidden = true; $('#app-shell').hidden = false; $('#logout-btn').hidden = false;
+    $('#logout-btn').hidden = false;
     $('#account-role').textContent = `${roleLabels[payload.role]} · ${payload.account}`;
     $$('[data-role-allow]').forEach(element => {
       element.hidden = !element.dataset.roleAllow.split(',').some(role => roleLevel[payload.role] >= roleLevel[role]);
     });
-    message(); onLogin(payload.role, payload);
+    message();
+    await onLogin(payload.role, payload);
+    if (sessionStorage.getItem('pioneerToken') !== sessionToken || sessionStorage.getItem('pioneerAccount') !== payload.account) return false;
+    $('#login-view').hidden = true; $('#app-shell').hidden = false;
+    return true;
   }
   $('#login-form').addEventListener('submit', async event => {
     event.preventDefault();
     const button = event.currentTarget.querySelector('button'); button.disabled = true;
     try {
       const payload = await apiJson('/api/auth/login', { method: 'POST', json: { account: $('#login-id').value.trim(), password: $('#login-password').value } });
-      enter(payload); $('#login-password').value = ''; showToast('登录成功');
+      if (await enter(payload)) { $('#login-password').value = ''; showToast('登录成功'); }
     } catch (error) { message(error.message || '无法连接服务器，请稍后重试'); }
     finally { button.disabled = false; }
   });
@@ -39,6 +44,6 @@ export function initAuth({ onLogin, onLogout }) {
   window.addEventListener('auth-expired', () => { showLogin(); message('登录已过期，请重新登录'); });
   if (sessionStorage.getItem('pioneerToken')) apiFetch('/api/auth/me').then(async response => {
     if (!response.ok) { showLogin(); return; }
-    enter(await response.json());
+    await enter(await response.json());
   }).catch(() => message('会话验证失败，请稍后重试'));
 }
