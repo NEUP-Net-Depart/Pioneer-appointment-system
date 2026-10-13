@@ -129,6 +129,7 @@ test('a single authorized campus and failed overview refresh keep the last visib
 });
 
 test('column filters compose, stay visible in the headers and fit a narrow screen', async ({page}) => {
+  await page.clock.install({time:new Date('2026-10-12T04:00:00Z')});
   await page.setViewportSize({width:320,height:700});
   await loginMock(page);
   await page.locator('[data-column-menu=campus]').click();
