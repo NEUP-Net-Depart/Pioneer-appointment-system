@@ -27,7 +27,7 @@ Wrangler Pages 不接受 `--config`。Staff 发布脚本将专用配置和本次
 
 ## PR 与同步
 
-新功能从 `next/staff-platform` 创建 `feat/staff-<功能>`，PR 的 base 选择 `next/staff-platform`。Ruleset 配置见 `.github/staff-staging-ruleset.json`：禁止删除和强推，要求线性历史、1 人审核、最新推送审核、讨论解决及 GitHub Actions 的 `test` 检查通过，要求 PR 基于最新集成分支；无绕过角色。合并使用 squash 或 rebase。
+新功能从 `next/staff-platform` 创建 `feat/staff-<功能>`，PR 的 base 选择 `next/staff-platform`。Ruleset 配置见 `.github/staff-staging-ruleset.json`：禁止删除和强推，要求线性历史及 GitHub Actions 的 `test` 检查通过，要求更新基于最新集成分支；无绕过角色。按仓库维护者本次调整，强制 PR/审核规则已关闭，通过 CI 的提交可以快进推送。后续功能仍建议走 PR 和代码审核，合并使用 squash 或 rebase。
 
 建分支时未合并的 PR：[扫码 #35](https://github.com/NEUP-Net-Depart/Pioneer-appointment-system/pull/35)、[半小时预约时段 #38](https://github.com/NEUP-Net-Depart/Pioneer-appointment-system/pull/38)，base 均为 `dev`，保持独立。等待它们合入 dev 后，再按需同步兼容修复与迁移；本次不引入这些业务功能。
 
