@@ -1,16 +1,18 @@
 import { readQr } from '/shared/zxing.js';
 
-export function createScanner({ video, status, torch, switchCamera, onCode }) {
+export function createScanner({ video, status, torch, switchCamera, onCode, onState = () => {} }) {
   let stream, timer, generation = 0, facing = 'environment', cameras = [], deviceId, lit = false;
   const canvas = document.createElement('canvas'), context = canvas.getContext('2d', { willReadFrequently: true });
   function stop() {
     generation++; clearTimeout(timer);
     stream?.getTracks().forEach(track => track.stop()); stream = undefined;
     video.srcObject = null; lit = false; torch.disabled = true; torch.setAttribute('aria-pressed', 'false');
+    onState('idle');
   }
   async function start() {
     stop(); const current = generation;
     status.textContent = '正在打开摄像头…';
+    onState('opening');
     try {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error('当前浏览器无法使用摄像头');
       const media = await navigator.mediaDevices.getUserMedia({ audio: false, video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: facing }, width: { ideal: 1280 } } });
@@ -19,10 +21,11 @@ export function createScanner({ video, status, torch, switchCamera, onCode }) {
       if (current !== generation) return;
       const track = stream.getVideoTracks()[0];
       torch.disabled = !track.getCapabilities?.().torch;
-      cameras = (await navigator.mediaDevices.enumerateDevices()).filter(device => device.kind === 'videoinput');
+      cameras = (await navigator.mediaDevices.enumerateDevices?.().catch(() => []) || []).filter(device => device.kind === 'videoinput');
       if (current !== generation) return;
-      deviceId = track.getSettings().deviceId;
-      status.textContent = '将维修二维码放入框内';
+      deviceId = track.getSettings?.().deviceId;
+      status.textContent = '将机主二维码对准扫描框';
+      onState('running');
       async function frame() {
         if (current !== generation) return;
         try {
@@ -35,12 +38,12 @@ export function createScanner({ video, status, torch, switchCamera, onCode }) {
             if (codes[0]?.text) { stop(); await onCode(codes[0].text); return; }
           }
           timer = setTimeout(frame, 220);
-        } catch (error) { if (current === generation) { stop(); status.textContent = `识别失败：${error.message}。可重试摄像头、选择图片或手动输入编号。`; } }
+        } catch (error) { if (current === generation) { stop(); onState('error'); status.textContent = `识别失败：${error.message}。可选择相册或输入编号。`; } }
       }
       frame();
     } catch (error) {
       if (current !== generation) return;
-      stop(); status.textContent = `摄像头不可用（${error.name === 'NotAllowedError' ? '未获得权限' : error.message}），请使用图片识别或手动输入编号。`;
+      stop(); onState('error'); status.textContent = error.name === 'NotAllowedError' ? '未获得相机权限，可使用相册或输入编号' : '相机暂不可用，可重试、使用相册或输入编号';
     }
   }
   torch.addEventListener('click', async () => {

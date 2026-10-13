@@ -1,110 +1,84 @@
 # 部署与运维
 
-本地启动和验证入口见 [README](../README.md)。配置以 [wrangler.jsonc](../wrangler.jsonc) 和 [.github/workflows/](../.github/workflows/) 为准。
+本地开发见 [README](../README.md)。环境配置以 [wrangler.jsonc](../wrangler.jsonc) 为准，自动发布由 [check.yml](../.github/workflows/check.yml) 执行。
 
-## Cloudflare 环境
+## Cloudflare 配置
 
-| 环境 | 分支 | D1（绑定 `DB`） | 私有 R2（绑定 `ATTACHMENTS`） | `MAX_R2_BYTES` |
+| 环境 | 分支 | D1（DB） | 私有 R2（ATTACHMENTS） | MAX_R2_BYTES |
 |---|---|---|---|---:|
-| Production | `main` | `pioneer-appointments-production-v2` | `pioneer-attachments-production-v2` | 8589934592 |
-| Preview | 所有非 `main` 分支 | `pioneer-appointments-preview-v2` | `pioneer-attachments-preview-v2` | 536870912 |
+| Production | main | pioneer-appointments-production-v2 | pioneer-attachments-production-v2 | 8589934592 |
+| Preview | 非 main | pioneer-appointments-preview-v2 | pioneer-attachments-preview-v2 | 536870912 |
 
-生产地址为 <https://pioneer-appointment-system.pages.dev>，测试主分支为 <https://dev.pioneer-appointment-system.pages.dev>。其他 Preview 地址按分支名转小写、非字母数字替换为 `-` 生成，避免别名冲突。各分支代码独立，但所有 Preview 共用数据、附件和 Pages Secrets。
+生产地址：<https://pioneer-appointment-system.pages.dev>；dev 地址：<https://dev.pioneer-appointment-system.pages.dev>。其他 Preview 地址由分支名生成；各分支代码独立，所有 Preview 共用测试数据、附件与 Secrets。
 
-Pages 构建命令为 `npm run build`，输出 `dist`，根目录为仓库根目录，Functions 位于 `functions/`；启用 `nodejs_compat`，`limits.cpu_ms=1000`。关闭 Pages 自身的 Production/Preview 自动部署，由 Actions 统一发布，保留 Git 关联、生产分支 `main` 和两套绑定，避免应用抢在迁移前上线。
+Pages 根目录为仓库根，构建命令 `npm run build`，输出 `dist`，Functions 位于 `functions/`；保留 `nodejs_compat`、两套绑定和生产分支 `main`。关闭 Pages 自身的自动部署，由 Actions 保证先迁移再发布。
 
-## 密钥与功能开关
+两个 Pages 环境分别设置以下 Secrets，生产、测试使用不同值，密钥不入 Git：
 
-两个 Pages 环境分别设置 Secrets，生产和测试必须使用不同值，不写入 Git、Wrangler vars 或构建产物：
-
-| Secret | 要求与用途 |
+| Secret | 要求 |
 |---|---|
-| `JWT_SECRET` | 至少 32 字符的随机值，用于 JWT 与限流 HMAC |
-| `PII_ENCRYPTION_KEY` | 64 位十六进制随机值，用于联系方式 AES-256-GCM 加密 |
-| `SCAN_QR_SECRET` | 可选，至少 32 字符的稳定随机值；未设置时用 `PII_ENCRYPTION_KEY` 配合独立 HMAC 域签名二维码 |
+| JWT_SECRET | 至少 32 字符的随机值，用于 JWT 和限流 HMAC |
+| PII_ENCRYPTION_KEY | 64 位十六进制，用于联系方式加密 |
+| SCAN_QR_SECRET | 可选，至少 32 字符；未设置时使用 PII 密钥和独立 HMAC 域签名二维码 |
 
-改变实际二维码签名密钥会使已打印二维码失效；学生凭证和工作人员密码变更不影响二维码。密钥应单独安全备份，恢复联系方式必须使用原环境的加密密钥。
+二维码签名密钥须稳定，变更会使已打印码失效；恢复联系方式须使用原加密密钥。
 
-扫码上线前先应用 `0006_scan_workbench.sql`，再发布应用。`wrangler.jsonc` 两个环境默认 `SCAN_WORKBENCH_ENABLED=true`；回退时将目标环境此变量改为 `false` 并重新部署，刷新或重新登录即恢复旧工作台。无需反向迁移，历史数据保留，单人单工单约束继续对旧 API 生效。
+## 发布与迁移
 
-扫码库 zxing-wasm 的脚本、WASM 和许可证随构建托管于 `/vendor/`。摄像头需要 HTTPS 和浏览器授权；`public/_headers` 与 API 响应的 Permissions-Policy 允许同源摄像头。手机实机的手电筒、镜头切换兼容性需单独验收，失败时使用图片或编号查询。
-
-## GitHub Actions 发布
-
-[发布工作流](../.github/workflows/check.yml) 先执行 `npm run verify`：
+Actions 先运行 `npm run verify`，再按下表执行；推送会触发发布，操作前确认目标环境和授权，尤其是生产分支 `main`。
 
 | 触发 | 行为 |
 |---|---|
-| 推送 `main` | 生产迁移 → 发布 → HTTP smoke |
-| 推送 `dev` | 迁移共享 Preview D1 → 发布该分支 → smoke |
+| 推送 main | 生产迁移 → 发布 → smoke |
+| 推送 dev | 共享 Preview 迁移 → 发布 → smoke |
 | 推送其他分支 | 发布该分支 Preview → smoke，不迁移 |
-| 手动选择非 `main` 分支运行 | 同推送规则，仅 `dev` 迁移 |
-| PR / 标签 / 分支删除 | PR 仅验证；标签和删除不发布 |
+| 手动运行 | 仅非 main 分支可用，迁移规则同上 |
+| PR | 仅验证 |
 
-功能分支依赖新结构时，先将兼容迁移合入 `dev` 并等待成功，再发布功能分支。共享库迁移串行执行，不取消正在运行的迁移；同一分支发布串行执行。迁移失败不发布，发布失败不继续 smoke。
+功能依赖新结构时，先将兼容迁移合入 dev 并等待成功，再发布功能分支。迁移只追加、必须兼容仍在运行的旧应用；失败不发布，发布失败不回滚数据库，重跑跳过已执行迁移。
 
-`CLOUDFLARE_ACCOUNT_ID` 可存于仓库 Secrets；Cloudflare Token 存在以下 GitHub Environments，资源范围限定目标账号：
+仓库 Secret 设置 `CLOUDFLARE_ACCOUNT_ID`，各 GitHub Environment 配置如下：
 
-| Environment | 分支限制 | Secret | 权限 |
+| Environment | Branch 限制 | Token Secret | 权限 |
 |---|---|---|---|
-| `production` | 仅 `main` | `CLOUDFLARE_API_TOKEN` | D1 Edit、Pages Edit、R2 Storage Edit |
-| `preview` | No restriction | `CLOUDFLARE_PREVIEW_API_TOKEN` | 仅 Pages Edit |
-| `preview-migrations` | 仅 `dev` | `CLOUDFLARE_PREVIEW_D1_API_TOKEN` | 仅 D1 Edit |
-| `preview-maintenance` | 仅 `main` | `CLOUDFLARE_PREVIEW_MAINTENANCE_API_TOKEN` | D1 Edit、R2 Storage Edit |
+| production | 仅 main | CLOUDFLARE_API_TOKEN | D1 Edit、Pages Edit、R2 Storage Edit |
+| preview | No restriction | CLOUDFLARE_PREVIEW_API_TOKEN | Pages Edit |
+| preview-migrations | 仅 dev | CLOUDFLARE_PREVIEW_D1_API_TOKEN | D1 Edit |
+| preview-maintenance | 仅 main | CLOUDFLARE_PREVIEW_MAINTENANCE_API_TOKEN | D1 Edit、R2 Storage Edit |
 
-`preview` 用 No restriction 兼容含 `/` 的分支，由工作流排除不允许的触发；其余环境使用 Selected branches and tags 的精确 Branch 规则。四个环境不配置额外必需审批人。Pages Edit 在单个项目内不能只限 Preview，仓库分支写入者必须可信；Preview 维护 Token 不向功能分支开放。Production Token 须保留 R2 对象删除权限。
+Token 资源范围限定目标账号；维护 Token 不提供给功能分支，R2 权限须支持删除对象。`preview` 不限分支以兼容含 `/` 的名称，其余设精确 Branch 规则，不额外配置必需审批人。Pages Edit 无法在同一项目内仅限 Preview，仓库写入者须可信。`production` 环境变量 `SITE_URL` 设置为生产域名。
 
-`production` 设置环境变量 `SITE_URL=https://pioneer-appointment-system.pages.dev`（或自定义域名）；Preview URL 自动生成。调整凭证时先配置环境 Secrets 和分支规则，同步 `main` 与默认分支上的工作流，手动 dry-run 验证后再移除旧仓库 Token；不要提前撤销仍在使用的值。
+## 手动发布与初始化
 
-## 迁移与手动发布
-
-迁移只追加，不修改已执行文件。迁移期间旧应用仍在运行，SQL 必须兼容旧版本；破坏性修改分阶段发布。Pages 发布失败不会撤销已应用迁移，重跑跳过已执行文件。Functions 和发布工作流均不初始化或重置 root。
-
-发布前工作树须干净，先检查计划中的提交、分支、D1/R2、配额和迁移：
-
-```bash
-npm run release:plan -- --preview
-npm run release:plan
-```
-
-远程迁移、seed 和发布命令默认只打印计划。获得对应环境的发布授权后执行以下命令；Preview 常规迁移从 `dev` 执行，`deploy:preview` 发布当前真实分支：
+工作树须干净。远程迁移、seed、发布默认只打印计划，先检查提交、分支和目标资源，再按已获授权执行：
 
 | 步骤 | Preview | Production |
 |---|---|---|
+| 计划 | `npm run release:plan -- --preview` | `npm run release:plan` |
 | 迁移 | `npm run db:migrate:remote -- --preview --execute --approve-preview` | `npm run db:migrate:remote -- --execute --approve-production` |
 | 发布 | `npm run deploy:preview -- --execute --approve-preview` | `npm run deploy -- --execute --approve-production` |
-| 检查 | `npm run smoke -- https://<branch-alias>.pioneer-appointment-system.pages.dev` | `npm run smoke -- https://pioneer-appointment-system.pages.dev` |
 
-首次初始化在迁移后、发布前创建 root。以下为 PowerShell 的 Preview 示例；生产需移除 `--preview` 并将授权参数改为 `--approve-production`：
+Preview 迁移从 dev 执行，发布使用当前真实分支。新库依次应用全部迁移，已有库只执行未应用项。
 
-```powershell
-$env:ROOT001_PASSWORD = Read-Host 'root001 密码（16–128 字符）' -MaskInput
-$env:ROOT002_PASSWORD = Read-Host 'root002 密码（16–128 字符）' -MaskInput
-try {
-  npm run db:seed -- --remote --preview --execute --approve-preview
-} finally {
-  Remove-Item Env:ROOT001_PASSWORD, Env:ROOT002_PASSWORD -ErrorAction SilentlyContinue
-}
-```
+仅首次初始化需在迁移后、发布前创建 root。安全设置临时环境变量 `ROOT001_PASSWORD`、`ROOT002_PASSWORD`（各 16–128 字符），然后运行 `npm run db:seed -- --remote --preview --execute --approve-preview`；生产移除 `--preview` 并改用 `--approve-production`。完成后清除临时密码变量。seed 重跑不覆盖已有密码，运行时和自动发布不初始化账号。
 
-重跑 seed 不覆盖已有密码。新库按编号应用全部迁移；已有库只应用未执行的迁移，不直接重套初始结构。可用 [release-checks.sql](release-checks.sql) 做只读检查；仅首次空库初始化应有两个受保护 root、四条校区授权及空业务表。
+[release-checks.sql](release-checks.sql) 提供只读检查；仅首次空库初始化预期两个保护 root、四条校区授权和空业务表。发布后运行 `npm run smoke -- https://<domain>`，并检查登录、预约、扫码签到、私人凭证查询和附件访问。
+
+## 扫码配置与回退
+
+- 先应用 `0006_scan_workbench.sql` 再部署；`SCAN_WORKBENCH_ENABLED` 默认 true。将目标环境变量改为 false 并重新部署，刷新或重新登录恢复旧工作台；不反向迁移，一人一单约束继续生效。
+- zxing-wasm 脚本、WASM 与许可证由本站 `/vendor/` 提供；保留 `public/_headers` 和 API 的同源摄像头 Permissions-Policy。
+- 摄像头需 HTTPS 或本地可信源及浏览器授权；无法使用时可选相册或手动编号。实体 iOS、Android、QQ 浏览器的镜头切换和手电筒须单独验收。
 
 ## 维护与备份
 
-附件自上传起保留 180 天；清理同时处理超过 24 小时的未完成上传和失败补偿。D1 先预留容量，成功删除 R2 对象后释放额度；每批 100 条，失败记录下次重试。R2 生命周期规则不能代替数据库清理。
-
-```bash
-npm run attachments:cleanup -- --dry-run --preview
-npm run attachments:cleanup -- --apply --preview
-```
-
-以上针对 Preview，生产移除 `--preview`；先 dry-run，再执行。定时任务如下（北京时间）：
-
-| 工作流 | 时间 | 启用所需仓库变量 |
+| 工作流 | 北京时间 | 启用变量 |
 |---|---|---|
-| [附件清理](../.github/workflows/cleanup-attachments.yml) | 周一 03:17 | `ATTACHMENT_MAINTENANCE_ENABLED=true` |
-| [无人到场处理](../.github/workflows/end-no-shows.yml) | 每日 21:35 | `BOOKING_MAINTENANCE_ENABLED=true` |
+| [附件清理](../.github/workflows/cleanup-attachments.yml) | 周一 03:17 | ATTACHMENT_MAINTENANCE_ENABLED=true |
+| [未到场处理](../.github/workflows/end-no-shows.yml) | 每日 21:35 | BOOKING_MAINTENANCE_ENABLED=true |
 
-定时入口从仓库默认分支触发（当前约定为 `dev`），用内置 `GITHUB_TOKEN` 与 `actions: write` 派发到 `main`，执行 `both`、`dry_run=false`；无需 PAT，结果以随后在 `main` 上运行的任务为准。手动维护必须选择 `main`，目标可选 `production`、`preview`、`both`，默认 dry-run；关闭后才写入或删除。维护按目标使用专用 Token，不回退到其他凭证，也不执行迁移。
+定时入口从默认分支 dev 派发到 main，使用内置 GITHUB_TOKEN，处理两个环境；以 main 上的执行结果为准。手动维护也须选择 main，可选 production/preview/both，默认 dry-run，关闭后才写入或删除。维护不执行迁移。
 
-D1 备份：`npx wrangler d1 export DB --remote --output <secure-backup-path>`；Preview 增加 `--env preview`。R2 对象和密钥须单独备份。发布后 `/api/health` 应返回 `ok: true`、`database: d1`、`attachments: r2`，再检查登录、预约、扫码签到、凭证查询及附件访问。旧资源不属于当前绑定，处置需单独确认。
+附件清理覆盖到期文件、超过 24 小时的未完成上传及失败补偿；失败下次重试，R2 生命周期规则不能替代 D1 清理。手动预检：`npm run attachments:cleanup -- --dry-run --preview`；确认后用 `--apply`，生产移除 `--preview`。
+
+D1 备份：`npx wrangler d1 export DB --remote --output <secure-backup-path>`，Preview 增加 `--env preview`。R2 对象和密钥单独备份，备份文件不入 Git。

@@ -1,33 +1,31 @@
-# 数据库结构
+# 数据库结构与约束
 
-Schema 以 [migrations/](../migrations/) 按编号执行的 SQL 为准，只追加迁移，运行时不初始化。发布顺序见 [部署运维](operations.md)，业务与权限见 [业务规则](requirements.md)。
+Schema 以 [migrations/](../migrations/) 为准，迁移只追加，运行时不初始化。业务含义见 [业务规则](requirements.md)，执行顺序见 [部署运维](operations.md)。
 
-| 实体 | 职责与主要约束 |
+| 实体 | 职责与约束 |
 |---|---|
-| `staff_accounts` | 工作人员身份、角色、启停状态；保护 root 必须是启用的 superadmin，停用账号保留历史关联 |
-| `staff_campus_grants` | 账号与授权校区复合主键；所属校区不自动授予权限 |
-| `staff_whitelist` / `whitelist_campus_grants` | 激活资格、预期身份及授权范围，不保存登录身份 |
-| `activation_requests` | 激活资料、密码与回执哈希、审核记录；同一学号最多一条待审，通过时原子创建账号与授权并清除申请密码哈希 |
-| `appointments` | 预约和现场登记、协议签名、负责人、维修状态与记录；学生访问凭证仅存 SHA-256 |
-| `active_repairs` | 账号主键、工单唯一外键，触发器原子维护进行中占用，覆盖新旧 API |
-| `slot_capacities` | 校区与时段联合主键，人数与 revision 持久保存，所有预约日期共用 |
-| `credential_recoveries` | 人工补发凭证的操作人、核验说明和时间，不存凭证明文 |
-| 附件与额度 | R2 存私有对象，D1 保存元数据、容量预留和清理状态，删除对象成功后才释放额度 |
+| `staff_accounts` / `staff_campus_grants` | 身份、角色、启停和校区授权；受保护 root 必须启用且为 superadmin |
+| `staff_whitelist` / `whitelist_campus_grants` | 激活资格、预期角色和授权范围 |
+| `activation_requests` | 同一学号最多一条待审；通过时原子创建账号与授权，审核结束清除申请密码哈希 |
+| `appointments` | 预约、现场登记、协议签名、负责人、状态和维修结果 |
+| `active_repairs` | 账号主键、工单唯一外键，触发器约束一人一张进行中工单，覆盖新旧 API |
+| `slot_capacities` | 校区与时段联合主键，容量和 revision 持久保存 |
+| `credential_recoveries` | 补发凭证的操作人、核验说明和时间 |
+| 附件与额度表 | 保存 R2 元数据、容量预留和清理状态；删除对象成功后才释放额度 |
 
-账号、白名单、激活申请及预约通过 revision 或状态条件防止并发覆盖；关联写入使用 D1 batch 或触发器保持原子性。联系方式加密存储；学生没有账号，不存在 student 登录角色。
+密码使用 scrypt；联系方式使用 AES-256-GCM；学生凭证为 32 字节随机值，D1 仅存 SHA-256。事件时间保存为 UTC ISO，业务日期按上海时区计算。关联写入通过 D1 batch 或触发器保持原子性，并以 revision 或状态条件防止并发覆盖。
 
-## 编号、签名和照片
+## 历史兼容
 
-- `appointments.id`：`reserve{校区代码}{YYYYMMDD}-{序号}`；南湖 `0`、浑南 `1`，按校区及预约日期原子递增，两个时段共用并避让历史序号。历史主键、凭证及附件关联不改写。
-- `repair_number`：仅保留历史维修编号及唯一索引，新记录为 `null`；API 的 `repairNumber` 只读，仍支持查询、展示和导出。
-- `signature`：经坐标、点数与笔迹长度校验的归一化 JSON，与 `agreement_at`、`agreement_version` 一起保存，旧记录可为空。
-- `front_photo_id` / `back_photo_id`：签到选用的照片，撤回签到清空；附件到期后可保留 ID 作为历史引用。
-- `appointment_attachments.purpose`：`general` / `intake_front` / `intake_back`；`uploaded_by` 从当前账号写入，签到校验工单、用途、上传人及有效期，不能用学生或他人的照片代替。
+- 新记录只使用预约 `id`，`repair_number` 为 null；历史主键、维修号、凭证和附件关联不改写，旧维修号仍可查询、展示、导出。
+- `signature` 为校验后的归一化笔迹 JSON，与 `agreement_at`、`agreement_version` 保存，旧记录可为空。
+- `front_photo_id` / `back_photo_id` 记录签到照片，撤回签到清空；到期后可保留历史引用。签到校验附件的工单、用途、上传人和有效期。
+- 附件 `purpose` 为 `general`、`intake_front` 或 `intake_back`，`uploaded_by` 来自当前账号。
 
-## 并发与名额约束
+## 并发约束
 
-迁移 0006 为 `appointments` 增加 `source`（默认 `booking`，现场为 `onsite`）、`registered_by`、`registration_key`。登记人和请求编号的联合唯一索引保证重试只建一条记录。现场登记使用服务器当天日期及第一个时段作为兼容存储值，界面区分来源；不计入线上名额、排队或未到场处理，管理和导出仍可读取。
+迁移 0006 增加 `source`（booking/onsite）、`registered_by`、`registration_key`；登记人与请求编号联合唯一，保证临时登记重试幂等。现场记录以服务器当天日期及首个时段兼容存储，不计线上容量、排队和未到场处理。
 
-`active_repairs` 阻止工作人员新增第二张进行中工单。升级前已有多张时，不结束或改派历史记录；每个账号先保留一条占用，完成后转到其余旧工单，全部处理完才允许新签到。签到及完成的同内容重试返回原结果，不重复更新 revision 或时间；不同内容的过期请求返回 409。
+历史多张进行中工单不自动结束或改派：`active_repairs` 在旧工单间接续占用，全部完成前禁止新签到。签到、结束的相同请求返回原结果，不重复更新 revision 或时间；过期的不同请求返回 409。
 
-`slot_capacities` 限定两校区、两时段，容量默认 10，必须是 0 至 9007199254740991 的整数，更新匹配并递增 revision。预约新增、取消后恢复或更改日期/校区/时段时，触发器检查容量：0 返回 `SLOT_PAUSED`，满额返回 `SLOT_FULL`；只有取消释放名额，普通签到及维修更新不重新占额。公开名额查询在同一 D1 batch 中读取占用与配置。
+预约新增、恢复取消记录或更改日期/校区/时段时，由触发器检查容量；暂停返回 `SLOT_PAUSED`，满额返回 `SLOT_FULL`。容量更新校验 revision，名额查询在同一 batch 读取占用与配置。

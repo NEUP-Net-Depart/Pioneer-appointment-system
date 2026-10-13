@@ -1,10 +1,9 @@
-import { $, $$, escapeHtml, showToast } from '/shared/utils.js';
+import { $, $$, showToast } from '/shared/utils.js';
 import { apiJson, apiFetch } from '/shared/api.js';
 import { uploadAttachments, attachmentUrl, attachmentSize } from '/shared/attachments.js';
 import { drawSignature, validSignature } from '/shared/signature.js';
-import { statusLabels, outcomeLabels } from '/shared/constants.js';
 import { createScanner } from './scanner.js';
-import { formatInstant } from '/shared/time.js';
+import { renderScanDetails } from './scan-details.js';
 
 export function initScan() {
   let item, active = false, ready = false, busy = false, generation = 0, legacyCount = 0, onsiteRequest;
@@ -18,12 +17,18 @@ export function initScan() {
     catch { return false; }
   }
   const message = text => { $('#scan-message').textContent = text; };
-  const scanner = createScanner({ video: $('#scan-video'), status: $('#camera-status'), torch: $('#scan-torch'), switchCamera: $('#scan-switch-camera'), onCode: code => resolve({ code }) });
+  const scanner = createScanner({ video: $('#scan-video'), status: $('#camera-status'), torch: $('#scan-torch'), switchCamera: $('#scan-switch-camera'), onCode: code => resolve({ code }), onState(state) {
+    $('.scanner-frame').dataset.cameraState = state;
+    $('#scan-camera').hidden = state === 'running';
+  } });
   function panels(id) {
     scanner.stop();
     const changingPanel = id && $('#'+id).hidden;
     for (const panel of ['scan-home','scan-manual-form','scan-detail','scan-onsite-form']) $('#'+panel).hidden = panel !== id;
-    if (changingPanel) window.scrollTo({ top: 0, behavior: 'auto' });
+    if (changingPanel) {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+      if (active) $('#'+id).querySelector('h1')?.focus({ preventScroll: true });
+    }
   }
   function photos() { return read(`photos:${item.id}`) || {}; }
   function resetPreviews() {
@@ -37,16 +42,7 @@ export function initScan() {
   function showItem(value) {
     if (item?.id !== value.id) resetPreviews();
     item = value; write('selected', item.id); panels('scan-detail');
-    const fields = [
-      ['设备', `${item.deviceType} · ${item.brand} ${item.deviceModel}`], ['校区', item.campus], ['编号', item.id],
-      ['状态', statusLabels[item.status] + (item.outcome ? ` · ${outcomeLabels[item.outcome]}` : '')],
-      ['登记方式', item.source === 'onsite' ? '现场临时登记' : `${item.date} ${item.timeSlot}`],
-      ['序列号', item.serial], ['保修', item.warranty], ['故障类型', item.faultType], ['进液 / 摔过', item.liquidDrop],
-      ['故障描述', item.issue], ['备注', item.note], ['机主', item.name], ['学号', item.studentId], ['学院 / 专业', item.college],
-      ['QQ / 微信', item.social], ['手机', item.phone], ['维修人员', item.assignedTo], ['维修说明', item.repairNote],
-      ['开始时间', item.startedAt && formatInstant(item.startedAt)], ['结束时间', item.completedAt && formatInstant(item.completedAt)]
-    ];
-    $('#scan-detail-info').innerHTML = `<h2>工单详情</h2><dl>${fields.filter(([, value]) => value).map(([label,value]) => `<div><dt>${label}</dt><dd>${escapeHtml(value)}</dd></div>`).join('')}</dl>`;
+    renderScanDetails($('#scan-detail-info'), item);
     $('#scan-intake-form').hidden = item.status !== 'booked';
     $('#scan-result-form').hidden = item.status !== 'in_progress' || item.assignedTo !== account();
     $('#scan-detail-back').hidden = item.status === 'in_progress' && item.assignedTo === account();
@@ -210,7 +206,6 @@ export function initScan() {
     const allowed = JSON.parse(sessionStorage.getItem('pioneerCampuses') || '[]');
     for (const option of form.elements.campus.options) option.disabled = !!option.value && !allowed.includes(option.value);
     if (allowed.length === 1) form.elements.campus.value = allowed[0];
-    form.elements.studentId.focus();
   });
   const point = event => { const rect = canvas.getBoundingClientRect(); return [Math.max(0,Math.min(1,(event.clientX-rect.left)/rect.width)),Math.max(0,Math.min(1,(event.clientY-rect.top)/rect.height))]; };
   canvas.addEventListener('pointerdown', event => { if (busy || pointer !== undefined) return; pointer = event.pointerId; canvas.setPointerCapture(pointer); strokes.push([point(event)]); });
@@ -241,7 +236,6 @@ export function initScan() {
     refresh() {},
     activate(value) {
       active = value;
-      $('#scan-account').textContent = `当前账号：${account() || ''}`;
       if (active && ready && !$('#scan-home').hidden && !document.hidden) scanner.start(); else scanner.stop();
     },
     clear() {

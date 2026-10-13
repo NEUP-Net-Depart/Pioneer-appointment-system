@@ -18,7 +18,7 @@ export function initAuth({ onLogin, onLogout }) {
     $$('[data-role-allow]').forEach(element => {
       element.hidden = !element.dataset.roleAllow.split(',').some(role => roleLevel[payload.role] >= roleLevel[role]);
     });
-    message(); onLogin(payload.role);
+    message(); onLogin(payload.role, payload);
   }
   $('#login-form').addEventListener('submit', async event => {
     event.preventDefault();
