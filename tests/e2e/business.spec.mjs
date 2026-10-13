@@ -51,15 +51,15 @@ test('weekday capacity configuration preserves booked days and unsaved edits', a
   async function save(capacity) {
     await row(weekday).locator('input').fill(String(capacity));
     await root.locator('#capacity-save-all').click();
-    await expect(row(weekday).locator('p')).toHaveText(capacity===0 ? '暂停预约':`最多 ${capacity} 人`);
+    await expect(root.locator('#capacity-draft-status')).toHaveText('所有配置已保存');
+    await expect(row(weekday).locator('input')).toHaveAttribute('title',capacity===0 ? '暂停预约':`最多 ${capacity} 人`);
   }
   try {
     await login(root,'root001',process.env.E2E_ROOT_PASSWORD);
     token=await root.evaluate(()=>sessionStorage.getItem('pioneerToken'));
     await root.getByRole('button',{name:'个人设置',exact:true}).click();
     await expect(root.locator('.capacity-row')).toHaveCount(32);
-    await root.locator(`#capacity-weekdays [data-weekday="${weekday}"]`).click();
-    await expect(root.locator('.capacity-row:visible')).toHaveCount(4);
+    await expect(root.locator('.capacity-row:visible')).toHaveCount(16);
     await expect(row(weekday).locator('input')).toHaveValue('5');
     await row(weekday).locator('input').fill('1.5');
     await root.locator('#capacity-save-all').click();
@@ -73,32 +73,56 @@ test('weekday capacity configuration preserves booked days and unsaved edits', a
     const future=await (await contexts[0].request.get(`/api/live/summary?date=${addDays(date,7)}&campus=${encodeURIComponent('南湖')}`)).json();
     expect(future.slotCapacities['19:00–19:30']).toBe(0);
     await row(weekday).locator('input').fill('7');
-    const another=weekday===1 ? 2:1;
-    await root.locator(`#capacity-weekdays [data-weekday="${another}"]`).click();
-    await root.locator(`#capacity-weekdays [data-weekday="${weekday}"]`).click();
+    await root.locator('[data-capacity-campus="浑南"]').click();
+    await root.locator('[data-capacity-campus="南湖"]').click();
     await expect(row(weekday).locator('input')).toHaveValue('7');
     await root.locator('#reload-capacities').click();
+    await expect(row(weekday).locator('input')).toHaveValue('7');
+    await root.locator('#capacity-discard').click();
     await expect(row(weekday).locator('input')).toHaveValue('0');
+    await root.locator('.capacity-tools summary').click();
     await root.locator('#capacity-bulk-value').fill('11');
     await root.locator('#capacity-bulk-scope').selectOption('week');
     await root.getByRole('button',{name:'统一填写',exact:true}).click();
     await expect(root.locator('#capacity-draft-status')).toContainText('16 项');
+    await expect(root.locator('#capacity-draft-status')).toContainText('南湖 周一、周二、周三、周四');
     await root.locator('#capacity-copy-campus').click();
-    await expect(root.locator('#capacity-draft-status')).toContainText('20 项');
+    await expect(root.locator('#capacity-draft-status')).toContainText('32 项');
+    await root.locator('[data-capacity-campus="浑南"]').click();
+    await expect(root.locator('.capacity-campus:visible [data-day-total="1"]')).toHaveText('44');
+    await root.locator('[data-capacity-campus="南湖"]').click();
     await root.locator('#capacity-save-all').click();
     await expect(root.locator('#capacity-draft-status')).toHaveText('所有配置已保存');
-    await expect(row(weekday).locator('p')).toHaveText('最多 11 人');
+    await expect(row(weekday).locator('input')).toHaveAttribute('title','最多 11 人');
     await root.locator('#capacity-bulk-value').fill('7');
-    await root.locator('#capacity-bulk-scope').selectOption('day');
+    await root.locator('#capacity-bulk-scope').selectOption(String(weekday));
     await root.getByRole('button',{name:'统一填写',exact:true}).click();
+    await expect(root.locator('#capacity-draft-status')).toContainText('4 项');
+    await root.locator('#capacity-copy-day').selectOption(String(weekday));
     await root.locator('#capacity-copy-week').click();
     await expect(root.locator('#capacity-draft-status')).toContainText('16 项');
-    await root.locator('#reload-capacities').click();
+    const another = weekday === 1 ? 2 : 1;
+    await row(another).locator('input').fill('6');
+    await root.locator('#capacity-undo').click();
+    await expect(root.locator('#capacity-draft-status')).toContainText('5 项');
+    await expect(row(weekday).locator('input')).toHaveValue('7');
+    await expect(row(another).locator('input')).toHaveValue('6');
+    await root.locator('#capacity-discard').click();
     await expect(root.locator('#capacity-draft-status')).toHaveText('所有配置已保存');
+    await root.locator('.capacity-tools summary').click();
     await capture(root,'weekday-capacities-desktop');
+    for (const width of [320,390,768]) {
+      await root.setViewportSize({width,height:844});
+      expect(await root.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+      await expect(root.locator('.capacity-row:visible')).toHaveCount(16);
+      const box = await row(weekday).locator('input').boundingBox();
+      expect(box.width).toBeGreaterThanOrEqual(40);
+    }
     await root.setViewportSize({width:390,height:844});
-    expect(await root.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     await capture(root,'weekday-capacities-mobile');
+    await root.locator('.capacity-tools summary').click();
+    expect(await root.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await capture(root,'weekday-capacities-mobile-tools');
   } finally {
     if (item) {
       const link=new URL(item.link),access=link.hash.match(/access=([^&]+)/)?.[1];
@@ -107,8 +131,8 @@ test('weekday capacity configuration preserves booked days and unsaved edits', a
     if(token) {
       const headers={Authorization:`Bearer ${token}`};
       const result=await contexts[0].request.get('/api/slot-capacities',{headers});
-      for(const current of (await result.json()).items.filter(item=>item.capacity!==5))
-        await contexts[0].request.patch('/api/slot-capacities',{headers,data:{...current,capacity:5}});
+      const items=(await result.json()).items.filter(item=>item.capacity!==5).map(item=>({...item,capacity:5}));
+      if(items.length) expect((await contexts[0].request.patch('/api/slot-capacities',{headers,data:{items}})).ok()).toBe(true);
     }
     await Promise.all(contexts.map(context=>context.close()));
   }

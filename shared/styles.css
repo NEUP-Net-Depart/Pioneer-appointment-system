@@ -369,15 +369,7 @@ html{scrollbar-gutter:stable}
 .capacity-heading h2 { margin: 0; font-size: 20px; }
 .capacity-settings > p { color: var(--muted); font-size: 13px; line-height: 1.8; }
 .capacity-settings .capacity-hint { font-size: 12px; }
-.capacity-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
-.capacity-campus { min-width: 0; padding: 20px; border: 1px solid var(--line); background: #fff; }
-.capacity-campus h3 { margin: 0 0 8px; font-size: 16px; }
-.capacity-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 16px; align-items: end; padding: 16px 0; border-top: 1px solid var(--line); }
-.capacity-row label { min-width: 0; color: #415563; font-size: 13px; }
-.capacity-row input { display: block; width: 100%; min-width: 0; margin-top: 8px; border: 1px solid #cdd9df; background: #fff; padding: 10px 12px; }
-.capacity-row input:focus { outline: 2px solid var(--navy-2); outline-offset: 2px; }
-.capacity-row p { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-@media (max-width: 600px) { .capacity-grid { grid-template-columns: 1fr; } .capacity-heading { align-items: start; flex-wrap: wrap; } }
+@media (max-width: 600px) { .capacity-heading { align-items: start; flex-wrap: wrap; } }
 
 /* The guest picker uses the same fields and capacity API as the booking form. */
 .booking-picker {
@@ -613,21 +605,57 @@ html{scrollbar-gutter:stable}
 .staff-date-history summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 .staff-date-history summary:focus-visible { outline: 2px solid #0e6874; outline-offset: 4px; }
 
-.capacity-weekdays{display:flex;gap:8px;margin:18px 0;flex-wrap:wrap}.capacity-weekdays button{min-width:68px}.capacity-weekdays button[aria-pressed="true"]{background:#171717;color:#fff;border-color:#171717}.capacity-row[hidden]{display:none}
-
-.capacity-campuses,.capacity-copy-tools{display:flex;align-items:end;gap:10px;flex-wrap:wrap}
-.capacity-campuses{margin-top:18px}.capacity-campuses button[aria-pressed="true"]{background:#171717;color:#fff;border-color:#171717}
-.capacity-tools{padding:16px;margin-bottom:18px;background:#f4f7f9;border:1px solid var(--line);border-radius:10px}
-.capacity-bulk-form{display:flex;align-items:end;gap:10px;flex-wrap:wrap;margin-bottom:12px}
-.capacity-tools label{display:grid;gap:6px;font-size:12px;color:var(--muted)}
-.capacity-tools input,.capacity-tools select{min-height:40px;padding:8px 10px;border:1px solid var(--line);background:#fff;border-radius:5px}
-.capacity-tools input{width:100px}.capacity-tools .secondary-btn{min-height:40px}
-.capacity-campus:not([hidden]){grid-column:1 / -1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;border-radius:10px}
-.capacity-campus[hidden]{display:none}.capacity-campus h3{grid-column:1 / -1}
-.capacity-campus .capacity-row{display:block;padding:14px;border:1px solid var(--line);border-radius:8px}
-.capacity-campus .capacity-row[hidden]{display:none}.capacity-campus .capacity-row p{margin-top:10px;min-height:18px}
-.capacity-row.is-dirty{border-color:var(--navy-2)}.capacity-row.is-dirty p{color:var(--navy-2)}
-.capacity-save-bar{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-top:16px;font-size:12px;color:var(--muted)}
-.capacity-tools button{white-space:nowrap}
-@media(max-width:700px){.capacity-bulk-form{display:grid;grid-template-columns:100px minmax(0,1fr)}.capacity-bulk-form button{grid-column:1 / -1;width:100%}.capacity-tools select{width:100%;min-width:0}.capacity-copy-tools{display:grid;grid-template-columns:minmax(0,1fr) max-content}.capacity-copy-tools>button:first-child{grid-column:1 / -1;width:100%}}
-@media(max-width:700px){.capacity-campus:not([hidden]){grid-template-columns:repeat(2,minmax(0,1fr));padding:14px;gap:10px}.capacity-campus .capacity-row{padding:10px}.capacity-row input{padding:10px 8px}.capacity-save-bar{align-items:start;flex-direction:column}.capacity-save-bar button{width:100%}.capacity-tools .secondary-btn{font-size:12px}.capacity-bulk-form label:nth-child(2){flex:1}.capacity-bulk-form button{flex:1}}
+.capacity-campuses { display:flex; gap:8px; flex-wrap:wrap; margin:24px 0 16px; }
+.capacity-campuses button[aria-pressed="true"] { background:var(--ink); border-color:var(--ink); color:#fff; }
+.capacity-grid { min-width:0; }
+.capacity-campus { background:#fff; border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+.capacity-campus[hidden] { display:none; }
+.capacity-table-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:20px 24px; }
+.capacity-table-heading h3 { margin:0; font-size:16px; }
+.capacity-table-heading > span { font-size:12px; color:var(--muted); }
+.capacity-table { width:100%; table-layout:fixed; border-collapse:collapse; min-width:0; }
+.capacity-table caption { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+.capacity-table th,.capacity-table td { text-align:center; padding:14px; border:0; border-top:1px solid var(--line); white-space:normal; }
+.capacity-table thead th { background:#f5f8fa; font-size:13px; font-weight:600; color:var(--ink); }
+.capacity-table th:first-child { width:160px; }
+.capacity-table tbody th { font-weight:500; font-size:13px; color:var(--muted); }
+.capacity-time-dash { margin:0 5px; }
+.capacity-table .capacity-row input { width:100%; max-width:100px; min-width:0; min-height:44px; padding:8px; text-align:center; font-size:18px; font-variant-numeric:tabular-nums; border:1px solid #d7e1e7; border-radius:6px; background:#fff; color:var(--ink); }
+.capacity-table .capacity-row input:focus { outline:2px solid var(--navy-2); outline-offset:2px; }
+.capacity-table .capacity-row.is-paused input { color:var(--muted); background:#f5f7f8; }
+.capacity-table .capacity-row.is-dirty input { border-color:var(--orange); background:#fff5ef; }
+.capacity-table tfoot { color:var(--muted); font-size:13px; background:#f9fbfc; }
+.capacity-table tfoot td { font-variant-numeric:tabular-nums; font-weight:600; color:var(--ink); }
+.capacity-tools { margin-top:16px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+.capacity-tools summary { padding:16px 20px; cursor:pointer; font-weight:600; }
+.capacity-tools summary span { margin-left:10px; font-weight:400; font-size:12px; color:var(--muted); }
+.capacity-tool-body { padding:0 20px 20px; }
+.capacity-tool-row { display:flex; gap:12px; align-items:end; padding:16px 0; border-top:1px solid var(--line); flex-wrap:wrap; }
+.capacity-tool-row[hidden] { display:none; }
+.capacity-tool-row label { display:grid; gap:6px; font-size:12px; color:var(--muted); }
+.capacity-tool-row input,.capacity-tool-row select { min-height:44px; min-width:0; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:#fff; }
+.capacity-tool-row input { width:100px; }
+.capacity-tool-body > p { color:var(--muted); font-size:12px; }
+.capacity-tools button { white-space:nowrap; }
+.capacity-save-bar { display:flex; justify-content:space-between; align-items:center; gap:16px; margin:20px 0 32px; font-size:12px; color:var(--muted); }
+.capacity-save-bar > div { display:flex; align-items:center; gap:12px; flex-shrink:0; }
+@media(max-width:700px) {
+  .capacity-table-heading { padding:16px 12px; flex-wrap:wrap; gap:4px; }
+  .capacity-table-heading h3 { font-size:14px; }
+  .capacity-table th,.capacity-table td { padding:10px 4px; }
+  .capacity-table th:first-child { width:70px; }
+  .capacity-table tbody th { font-size:12px; }
+  .capacity-table tbody th span { display:block; line-height:1.5; }
+  .capacity-table tbody th .capacity-time-dash { display:none; }
+  .capacity-table .capacity-row input { padding:8px 2px; font-size:16px; appearance:textfield; -moz-appearance:textfield; }
+  .capacity-table input::-webkit-inner-spin-button,.capacity-table input::-webkit-outer-spin-button { appearance:none; margin:0; }
+  .capacity-table tfoot th,.capacity-table tfoot td { font-size:12px; }
+  .capacity-tools summary { padding:14px 12px; }
+  .capacity-tools summary span { margin-left:6px; }
+  .capacity-tool-body { padding:0 12px 16px; }
+  .capacity-tool-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; }
+  .capacity-tool-row select,.capacity-tool-row input { width:100%; }
+  .capacity-tool-row button { grid-column:1 / -1; width:100%; }
+  .capacity-save-bar { align-items:stretch; flex-direction:column; gap:12px; }
+  .capacity-save-bar > div { justify-content:space-between; }
+}
