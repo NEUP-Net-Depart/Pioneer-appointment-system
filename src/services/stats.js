@@ -1,12 +1,13 @@
-import { addDays, dateKey, expiredBookingDate, nowIso } from '../../shared/time.js';
+import { addDays, dateKey, expiredBookingDate } from '../../shared/time.js';
 import { requireRole } from './permissions.js';
 
-export function statsService(stats, appointments) {
+export function statsService(stats, appointments, clock = () => new Date()) {
   return {
     async summary({ range, day },actor) {
       requireRole(actor,'admin');
-      await (appointments.expirePending || appointments.endNoShows)(expiredBookingDate(), nowIso(), {campuses:actor.authorizedCampuses});
-      const start = day || range === 'all' ? '' : addDays(dateKey(), -(Number(range) - 1));
+      const instant = clock();
+      await (appointments.expirePending || appointments.endNoShows)(expiredBookingDate(instant), instant.toISOString(), {campuses:actor.authorizedCampuses});
+      const start = day || range === 'all' ? '' : addDays(dateKey(instant), -(Number(range) - 1));
       const result = await stats.aggregate({start,day,campuses:actor.authorizedCampuses});
       const { total, completed, noShow, expired, classified, repaired } = result.summary;
       return { range, day, total, completed, noShow, expired, classified, repaired,

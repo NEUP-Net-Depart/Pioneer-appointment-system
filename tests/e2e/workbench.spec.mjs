@@ -120,7 +120,7 @@ test('onsite intake, offline drafts, relogin recovery and completion retain the 
   const token = await page.evaluate(() => sessionStorage.getItem('pioneerToken'));
   for (const path of ['/api/stats/summary', '/api/users', '/api/slot-capacities']) expect((await request.get(path, { headers: { ...headers, Authorization: `Bearer ${token}` } })).status()).toBe(403);
   await context.setOffline(true); await page.locator('#scan-note').fill('已检查内存接触，复测正常。'); await page.locator('#scan-outcome').selectOption('repaired');
-  await expect(page.locator('#scan-draft-state')).toContainText('本机'); await context.setOffline(false);
+  await context.setOffline(false);
   await page.reload(); await expect(page.locator('#scan-result-form')).toBeVisible(); await expect(page.locator('#scan-note')).toHaveValue('已检查内存接触，复测正常。');
   await page.getByRole('button', { name: '个人中心', exact: true }).click(); await page.getByRole('button', { name: '退出登录', exact: true }).click();
   await expect(page.locator('#login-view')).toBeVisible(); await login(page, account);

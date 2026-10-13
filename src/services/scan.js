@@ -6,12 +6,12 @@ import { TIME_SLOTS } from '../../shared/constants.js';
 import { requireCampus, requireAppointmentAccess } from './permissions.js';
 import { presentAppointment } from './appointments.js';
 
-export function scanService(appointments, service, encryptionKey, secret, enabled) {
+export function scanService(appointments, service, encryptionKey, secret, enabled, clock = () => new Date()) {
   const present = item => presentAppointment(item, encryptionKey);
   function available() { if (!enabled) fail(404, '扫码工作台未启用'); }
   const expire = (now, scope) => (appointments.expirePending || appointments.endNoShows)(expiredBookingDate(now), now.toISOString(), scope);
   async function locate(id, actor) {
-    const now = new Date();
+    const now = clock();
     const original = await appointments.find(id);
     if (!original) fail(404, '预约不存在，请检查编号');
     requireAppointmentAccess(actor, original, { start: true });
@@ -40,7 +40,7 @@ export function scanService(appointments, service, encryptionKey, secret, enable
     },
     async current(actor, registrationRequestId) {
       available();
-      await expire(new Date(), { campuses: actor.authorizedCampuses });
+      await expire(clock(), { campuses: actor.authorizedCampuses });
       let registration = null;
       if (registrationRequestId !== undefined) {
         const key = stringField(registrationRequestId, '登记请求编号', 36, true);
@@ -61,7 +61,7 @@ export function scanService(appointments, service, encryptionKey, secret, enable
       if (previous) return locate(previous.id, actor);
       if (await appointments.pendingRegistration(actor.account)) fail(409, '请先签到或取消当前临时登记');
       if ((await appointments.inProgress(actor.account)).length) fail(409, '请先完成当前维修，再登记下一台设备');
-      const now = new Date();
+      const now = clock();
       const data = bookingInput({ ...input, date: dateKey(now), timeSlot: TIME_SLOTS[0], agreementAt: now.toISOString(), agreementVersion: 'v1.0' });
       requireCampus(actor, data.campus);
       const item = await service.createOnsite(data, actor.account, key);
