@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pioneer-staff-staging",
+  "pages_build_output_dir": "./dist",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "limits": { "cpu_ms": 1000 },
+  "vars": { "MAX_R2_BYTES": "536870912" },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "pioneer-appointments-staff-staging",
+    "database_id": "ba8a59f5-c95b-48ab-9c01-f95ffa941e71",
+    "migrations_dir": "migrations"
+  }],
+  "r2_buckets": [{ "binding": "ATTACHMENTS", "bucket_name": "pioneer-attachments-staff-staging" }]
+}
