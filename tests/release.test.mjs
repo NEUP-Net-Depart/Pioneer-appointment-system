@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {execFileSync,spawnSync} from 'node:child_process';
 import {readdirSync} from 'node:fs';
-import {mkdtemp,readFile,writeFile,unlink,rmdir} from 'node:fs/promises';
+import {mkdtemp,readFile,writeFile,unlink,rmdir,access} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {validateRemoteConfig,validateStaffConfig,remoteOptions,STAFF_BRANCH} from '../scripts/release-guard.mjs';
@@ -10,6 +10,7 @@ import {assertCleanRelease,pagesSiteUrl,previewBranch,releasePlan} from '../scri
 import {ciReleaseTarget,ciReleasePlan,runCiRelease,runCiPreviewMigration,runCiStaffMigration} from '../scripts/ci-release.mjs';
 import {config} from '../scripts/cli.mjs';
 import {configureStaffSecrets} from '../scripts/staff-pages-secrets.mjs';
+import {publishPages} from '../scripts/pages-deploy.mjs';
 
 const bindings=(id,bucket)=>({d1_databases:[{binding:'DB',database_name:bucket,database_id:id}],r2_buckets:[{binding:'ATTACHMENTS',bucket_name:bucket}]});
 const cfg=()=>({name:'existing-pages',...bindings('11111111-1111-4111-8111-111111111111','production-private'),env:{preview:bindings('22222222-2222-4222-8222-222222222222','preview-private')}});
@@ -210,4 +211,31 @@ test('Staff secret injection targets only its Direct Upload project and never lo
   assert.equal(body.deployment_configs.production.env_vars.PII_ENCRYPTION_KEY.value,env.PII_ENCRYPTION_KEY);
   for(const change of [{GITHUB_REF:'refs/heads/dev'},{JWT_SECRET:''},{PII_ENCRYPTION_KEY:''},{MAX_R2_BYTES:'8589934592'}])await assert.rejects(()=>configureStaffSecrets({...env,...change},()=>assert.fail('Unexpected request')));
   await assert.rejects(()=>configureStaffSecrets(env,async()=>({ok:true,json:async()=>({success:true,result:{production_branch:'main'}})})),/Direct Upload/);
+});
+
+test('Pages retains existing deployment args and uses a temporary standard config only for Staff',async()=>{
+  const original=await readFile('wrangler.jsonc','utf8');
+  for(const environment of ['production','preview']){
+    const plan={environment,project:'pioneer-appointment-system',branch:environment==='production' ? 'main' : 'dev',commit:'reviewed-commit'};
+    await publishPages(plan,(args,options)=>{
+      assert.deepEqual(args,['pages','deploy','dist','--project-name',plan.project,'--branch',plan.branch,'--commit-hash',plan.commit]);
+      assert.equal(options,undefined);
+    });
+  }
+  const plan={environment:'staff-staging',project:'pioneer-staff-staging',branch:STAFF_BRANCH,commit:'reviewed-commit'};
+  for(const fail of [false,true]){
+    let directory;
+    const operation=publishPages(plan,async(args,{cwd})=>{
+      directory=cwd;
+      assert.ok(!args.includes('--config'));
+      assert.deepEqual(JSON.parse(await readFile(join(cwd,'wrangler.jsonc'),'utf8')),await config({staffStaging:true}));
+      for(const file of ['package.json','dist/index.html','functions/api/[[path]].js','src/lib/env.js','shared/time.js'])await access(join(cwd,file));
+      await assert.rejects(()=>access(join(cwd,'.dev.vars')));
+      if(fail)throw new Error('Simulated Pages upload failure');
+    });
+    if(fail)await assert.rejects(()=>operation,/upload failure/);else await operation;
+    await assert.rejects(()=>access(directory));
+    assert.equal(await readFile('wrangler.jsonc','utf8'),original);
+  }
+  await assert.rejects(()=>publishPages({...plan,project:'pioneer-appointment-system'}),/dedicated project/);
 });

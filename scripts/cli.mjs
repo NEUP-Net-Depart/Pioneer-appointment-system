@@ -3,8 +3,8 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import {validateRemoteConfig} from './release-guard.mjs';
 export const root = fileURLToPath(new URL('..', import.meta.url));
-export function wrangler(args, { capture = false } = {}) {
-  const result = spawnSync(process.execPath, [fileURLToPath(new URL('../node_modules/wrangler/bin/wrangler.js', import.meta.url)), ...args], { cwd: root, encoding: 'utf8', stdio: ['ignore', capture ? 'pipe' : 'inherit', 'inherit'], env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } });
+export function wrangler(args, { capture = false, cwd = root } = {}) {
+  const result = spawnSync(process.execPath, [fileURLToPath(new URL('../node_modules/wrangler/bin/wrangler.js', import.meta.url)), ...args], { cwd, encoding: 'utf8', stdio: ['ignore', capture ? 'pipe' : 'inherit', 'inherit'], env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } });
   if (result.error || result.status !== 0) throw result.error || new Error(`Wrangler exited ${result.status}`);
   return result.stdout;
 }
