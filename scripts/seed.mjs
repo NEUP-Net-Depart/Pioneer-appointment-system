@@ -8,13 +8,13 @@ import { localVars, root, wrangler, remoteConfig } from './cli.mjs';
 import {remoteOptions,requireRemoteApproval} from './release-guard.mjs';
 import {releasePlan,assertCleanRelease} from './release-plan.mjs';
 
-export async function seed({ remote = false, preview = false,execute=false,approval } = {}) {
+export async function seed({ remote = false, preview = false,staffStaging=false,execute=false,approval } = {}) {
   if (remote){
-    requireRemoteApproval({preview,execute,approval});
-    const plan=await releasePlan('initialize-protected-roots',{preview});
+    requireRemoteApproval({preview,staffStaging,execute,approval});
+    const plan=await releasePlan('initialize-protected-roots',{preview,staffStaging});
     console.log(JSON.stringify({...plan,mode:execute ? 'approved-execution' : 'plan-only'},null,2));
     if(!execute)return;
-    assertCleanRelease(plan);await remoteConfig();
+    assertCleanRelease(plan);await remoteConfig({staffStaging});
   }
   const vars = remote ? process.env : await localVars();
   const rows = ['root001','root002'].map((account, index) => {
@@ -27,7 +27,7 @@ export async function seed({ remote = false, preview = false,execute=false,appro
   const path = join(dir, `seed-${randomUUID()}.sql`);
   await mkdir(dir, { recursive: true });
   await writeFile(path, `INSERT INTO staff_accounts(account,name,role,home_campus,status,protected,password_hash,created_at) VALUES ${rows.join(',')} ON CONFLICT(account) DO NOTHING; INSERT OR IGNORE INTO staff_campus_grants(account,campus) SELECT account,'南湖' FROM staff_accounts WHERE protected=1; INSERT OR IGNORE INTO staff_campus_grants(account,campus) SELECT account,'浑南' FROM staff_accounts WHERE protected=1;`, { mode: 0o600 });
-  try { wrangler(['d1','execute','DB', remote ? '--remote' : '--local', ...(preview ? ['--env','preview'] : []), '--file', path]); }
+  try { wrangler(['d1','execute','DB', remote ? '--remote' : '--local','--config',staffStaging ? 'wrangler.staff-staging.jsonc' : 'wrangler.jsonc', ...(preview ? ['--env','preview'] : []), '--file', path]); }
   finally { await rm(path, { force: true }); }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -6,5 +6,5 @@ const plan=await releasePlan('apply-d1-migrations',options);
 console.log(JSON.stringify({...plan,mode:options.execute ? 'approved-execution' : 'plan-only'},null,2));
 if(options.execute){
   assertCleanRelease(plan);
-  wrangler(['d1','migrations','apply','DB','--remote',...(options.preview ? ['--env','preview'] : [])]);
+  wrangler(['d1','migrations','apply','DB','--remote','--config',plan.wranglerConfig,...(options.preview ? ['--env','preview'] : [])]);
 }

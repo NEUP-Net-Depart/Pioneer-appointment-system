@@ -4,7 +4,7 @@
 
 项目由一个 Cloudflare Pages 项目组成，包含用户端 `/`、工作人员端 `/staff/` 和同源 `/api/*`。Pages Functions 执行业务逻辑，D1 保存业务数据，私有 R2 保存附件。项目没有独立的 Cloudflare Worker；应用使用自身的 JWT/RBAC 鉴权，不依赖 Cloudflare Access。
 
-GitHub Actions 在所有仓库内分支推送后运行验证：`main` 自动发布 Production，其他分支自动发布各自的 Preview 地址，也可以选择非 `main` 分支手动运行。所有 Preview 分支共用测试 D1、私有 R2 和 Pages Secrets，与 Production 分开。只有 `dev` 自动迁移共享测试库，功能分支只发布和检查自己的网址；Production 继续在迁移成功后发布。
+GitHub Actions 在所有分支推送和 PR 上运行验证：`main` 发布 Production，`dev` 发布共享 Preview，`next/staff-platform` 发布独立 Staff Staging；`feat/staff-*` 只进行隔离验证。其他分支继续发布各自的共享 Preview 地址。只有 `dev` 自动迁移共享测试库；Production 与 Staff Staging 均在目标 D1 迁移成功后发布。
 
 发布、迁移和维护凭证分别保存在 GitHub Environments 中。附件清理和无人到场预约处理从 `main` 执行；默认分支 `dev` 上的定时入口使用 GitHub 内置 Token 派发任务，Preview 维护使用独立的受限环境和凭证。
 
@@ -13,6 +13,7 @@ GitHub Actions 在所有仓库内分支推送后运行验证：`main` 自动发�
 - [数据库结构](docs/data-model.md)
 - [学生预约访问](docs/student-access.md)
 - [部署与运维](docs/operations.md)
+- [长期集成分支与 Staff Staging](docs/staff-staging.md)
 
 ## Cloudflare 架构
 
@@ -34,7 +35,8 @@ flowchart LR
 | 环境 | 分支 | D1 | R2 | 限额 |
 |---|---|---|---|---|
 | Production | `main` | `pioneer-appointments-production-v2` | `pioneer-attachments-production-v2` | 8 GiB |
-| Preview | 所有非 `main` 分支 | `pioneer-appointments-preview-v2` | `pioneer-attachments-preview-v2` | 512 MiB |
+| Preview | dev 和其他普通分支 | `pioneer-appointments-preview-v2` | `pioneer-attachments-preview-v2` | 512 MiB |
+| Staff Staging | `next/staff-platform` | `pioneer-appointments-staff-staging` | `pioneer-attachments-staff-staging` | 512 MiB |
 
 绑定名固定为 `DB` 和 `ATTACHMENTS`。JWT 签名密钥和联系方式加密密钥分别配置在两个 Pages 环境的 Secrets 中。
 

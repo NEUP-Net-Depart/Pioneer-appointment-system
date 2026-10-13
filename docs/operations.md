@@ -1,13 +1,14 @@
 # 部署与运维
 
-项目使用一个 Cloudflare Pages 项目，Pages Functions、D1 和私有 R2 共同提供服务。没有独立的 Cloudflare Worker 项目。
+现有 Production/Preview 使用同一个 Cloudflare Pages 项目，Pages Functions、D1 和私有 R2 共同提供服务。长期集成分支使用独立的 [Staff Staging](staff-staging.md)，其配置、凭证和操作见专用文档。
 
 ## 环境与绑定
 
 | 环境 | 分支 | D1 | R2 | `MAX_R2_BYTES` |
 |---|---|---|---|---:|
 | Production | `main` | `pioneer-appointments-production-v2` | `pioneer-attachments-production-v2` | 8589934592 |
-| Preview | 所有非 `main` 分支 | `pioneer-appointments-preview-v2` | `pioneer-attachments-preview-v2` | 536870912 |
+| Preview | dev 和其他普通分支 | `pioneer-appointments-preview-v2` | `pioneer-attachments-preview-v2` | 536870912 |
+| Staff Staging | `next/staff-platform` | `pioneer-appointments-staff-staging` | `pioneer-attachments-staff-staging` | 536870912 |
 
 绑定名固定为 `DB` 和 `ATTACHMENTS`。旧 D1/R2 资源不属于当前绑定，删除需要单独授权。
 
@@ -80,6 +81,8 @@ npm run release:plan
 |---|---|---|
 | 推送 `main` | Production | 验证通过后自动迁移、发布和检查 |
 | 推送 `dev` | `dev` Preview | 验证通过后自动迁移共享测试库、发布和检查 |
+| 推送 `next/staff-platform` | 独立 Staff Staging | 独立 D1 迁移成功后发布和检查 |
+| 推送 `feat/staff-*` | 无远程发布 | 隔离本地 D1/R2 验证 |
 | 推送其他分支 | 该分支的 Preview | 验证通过后发布和检查，不迁移 |
 | Actions 中选择非 `main` 分支，点击 Run workflow | 该分支的 Preview | 与推送同样处理；仅 `dev` 执行迁移 |
 | PR、标签或分支删除 | 无远程发布 | PR 仅验证；标签和删除不发布 |

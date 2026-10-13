@@ -5,9 +5,11 @@ import {readdirSync} from 'node:fs';
 import {mkdtemp,readFile,writeFile,unlink,rmdir} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {validateRemoteConfig,remoteOptions} from '../scripts/release-guard.mjs';
+import {validateRemoteConfig,validateStaffConfig,remoteOptions,STAFF_BRANCH} from '../scripts/release-guard.mjs';
 import {assertCleanRelease,pagesSiteUrl,previewBranch,releasePlan} from '../scripts/release-plan.mjs';
-import {ciReleaseTarget,ciReleasePlan,runCiRelease,runCiPreviewMigration} from '../scripts/ci-release.mjs';
+import {ciReleaseTarget,ciReleasePlan,runCiRelease,runCiPreviewMigration,runCiStaffMigration} from '../scripts/ci-release.mjs';
+import {config} from '../scripts/cli.mjs';
+import {configureStaffSecrets} from '../scripts/staff-pages-secrets.mjs';
 
 const bindings=(id,bucket)=>({d1_databases:[{binding:'DB',database_name:bucket,database_id:id}],r2_buckets:[{binding:'ATTACHMENTS',bucket_name:bucket}]});
 const cfg=()=>({name:'existing-pages',...bindings('11111111-1111-4111-8111-111111111111','production-private'),env:{preview:bindings('22222222-2222-4222-8222-222222222222','preview-private')}});
@@ -142,4 +144,70 @@ test('deploy, migration and remote seed default to local plans without credentia
     const denied=spawnSync(process.execPath,['scripts/'+script,...args,'--execute'],{env,encoding:'utf8'});
     assert.equal(denied.status,1);assert.match(denied.stderr,/requires --execute --approve-/);
   }
+});
+
+test('Staff releases select a third project and reject feature, PR, tag and stale migration contexts',async()=>{
+  const base=await config(),staff=await config({staffStaging:true});
+  for(const event of ['push','workflow_dispatch']){
+    const env={...ciEnv(event,STAFF_BRANCH),GITHUB_SHA:'reviewed-commit',STAFF_MIGRATIONS_COMMIT:'reviewed-commit'};
+    assert.equal(ciReleaseTarget(env),'staff-staging');
+    assert.deepEqual(ciReleasePlan(env,base,staff),{target:'staff-staging',branch:STAFF_BRANCH,url:'https://pioneer-staff-staging.pages.dev'});
+    const calls=[];
+    runCiStaffMigration(env,(script,args)=>{calls.push([script,args]);return {status:0};});
+    await runCiRelease(env,(script,args)=>{calls.push([script,args]);return {status:0};});
+    const args=['--staff-staging','--execute','--approve-staff-staging'];
+    assert.deepEqual(calls,[['migrate-remote.mjs',args],['deploy.mjs',args],['smoke.mjs',['https://pioneer-staff-staging.pages.dev']]]);
+    const plan=await releasePlan('publish-pages',{staffStaging:true,env});
+    assert.equal(plan.wranglerConfig,'wrangler.staff-staging.jsonc');
+    assert.equal(plan.database.name,'pioneer-appointments-staff-staging');
+    assert.equal(plan.attachments.bucket,'pioneer-attachments-staff-staging');
+    assert.equal(plan.siteUrl,'https://pioneer-staff-staging.pages.dev');
+    assert.ok(plan.automaticMigrations);
+  }
+  for(const event of ['push','workflow_dispatch','pull_request'])assert.throws(()=>ciReleaseTarget(ciEnv(event,'feat/staff-permissions')));
+  assert.throws(()=>ciReleaseTarget(ciEnv('pull_request',STAFF_BRANCH)));
+  for(const branch of ['main','dev','feat/other'])assert.throws(()=>runCiStaffMigration(ciEnv('push',branch),()=>assert.fail('Unexpected Staff migration')));
+  assert.throws(()=>runCiStaffMigration(ciEnv('push',STAFF_BRANCH),()=>({status:1})),/release stopped/);
+  for(const stamp of [undefined,'previous-commit'])await assert.rejects(()=>runCiRelease({...ciEnv('push',STAFF_BRANCH),GITHUB_SHA:'new-commit',STAFF_MIGRATIONS_COMMIT:stamp},()=>assert.fail('Unexpected Staff release')),/same commit/);
+  for(const branch of [STAFF_BRANCH,'feat/staff-permissions'])await assert.rejects(()=>releasePlan('publish-pages',{preview:true,env:ciEnv('push',branch)}),/shared Preview/);
+  for(const failure of ['deploy.mjs','smoke.mjs']){
+    const calls=[];
+    await assert.rejects(()=>runCiRelease({...ciEnv('push',STAFF_BRANCH),GITHUB_SHA:'commit',STAFF_MIGRATIONS_COMMIT:'commit'},script=>{calls.push(script);return {status:script===failure ? 1 : 0};}),/release stopped/);
+    assert.deepEqual(calls,failure==='deploy.mjs' ? [failure] : ['deploy.mjs',failure]);
+  }
+});
+
+test('Staff config prevents reused resources, compatibility drift and mismatched approval',async()=>{
+  const base=await config(),staff=await config({staffStaging:true});
+  assert.equal(validateStaffConfig(base,staff),staff);
+  for(const target of [base,base.env.preview]){
+    for(const field of ['database_id','database_name']){
+      const c=structuredClone(staff);c.d1_databases[0][field]=target.d1_databases[0][field];
+      assert.throws(()=>validateStaffConfig(base,c));
+    }
+    const c=structuredClone(staff);c.r2_buckets[0].bucket_name=target.r2_buckets[0].bucket_name;
+    assert.throws(()=>validateStaffConfig(base,c));
+  }
+  for(const change of [c=>c.name=base.name,c=>c.compatibility_flags=[],c=>c.compatibility_date='2020-01-01',c=>c.vars.MAX_R2_BYTES='0',c=>c.d1_databases[0].database_id='00000000-0000-4000-8000-000000000001',c=>c.d1_databases.push({...c.d1_databases[0]})]){
+    const c=structuredClone(staff);change(c);assert.throws(()=>validateStaffConfig(base,c));
+  }
+  assert.ok(remoteOptions(['--staff-staging','--execute','--approve-staff-staging']).execute);
+  for(const args of [['--staff-staging','--preview'],['--staff-staging','--execute','--approve-preview'],['--staff-staging','--execute','--approve-production']])assert.throws(()=>remoteOptions(args));
+});
+
+test('Staff secret injection targets only its Direct Upload project and never logs secret values',async()=>{
+  const env={...ciEnv('push',STAFF_BRANCH),CLOUDFLARE_ACCOUNT_ID:'a'.repeat(32),JWT_SECRET:'j'.repeat(64),PII_ENCRYPTION_KEY:'b'.repeat(64),MAX_R2_BYTES:'536870912'};
+  const calls=[];
+  await configureStaffSecrets(env,async(url,options)=>{
+    calls.push([url,options]);
+    return {ok:true,json:async()=>({success:true,result:{production_branch:STAFF_BRANCH,source:null}})};
+  });
+  assert.equal(calls.length,2);
+  assert.ok(calls.every(([url])=>url.endsWith('/pages/projects/pioneer-staff-staging')));
+  const body=JSON.parse(calls[1][1].body);
+  assert.deepEqual(Object.keys(body.deployment_configs),['production']);
+  assert.equal(body.deployment_configs.production.env_vars.JWT_SECRET.type,'secret_text');
+  assert.equal(body.deployment_configs.production.env_vars.PII_ENCRYPTION_KEY.value,env.PII_ENCRYPTION_KEY);
+  for(const change of [{GITHUB_REF:'refs/heads/dev'},{JWT_SECRET:''},{PII_ENCRYPTION_KEY:''},{MAX_R2_BYTES:'8589934592'}])await assert.rejects(()=>configureStaffSecrets({...env,...change},()=>assert.fail('Unexpected request')));
+  await assert.rejects(()=>configureStaffSecrets(env,async()=>({ok:true,json:async()=>({success:true,result:{production_branch:'main'}})})),/Direct Upload/);
 });

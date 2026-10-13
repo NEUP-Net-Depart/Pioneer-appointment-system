@@ -32,9 +32,9 @@ export async function cleanupAttachments(repository, deleteObject, {
 }
 
 export async function main(args = process.argv.slice(2)) {
-  if (args.some(arg => !['--apply','--dry-run','--preview'].includes(arg)) || (args.includes('--apply') && args.includes('--dry-run'))) throw new Error('Use --dry-run or --apply, optionally with --preview');
-  const preview = args.includes('--preview'), apply = args.includes('--apply');
-  const cfg = await remoteConfig(preview);
+  if (args.some(arg => !['--apply','--dry-run','--preview','--staff-staging'].includes(arg)) || (args.includes('--apply') && args.includes('--dry-run')) || (args.includes('--preview') && args.includes('--staff-staging'))) throw new Error('Use --dry-run or --apply, optionally with --preview or --staff-staging');
+  const preview = args.includes('--preview'),staffStaging=args.includes('--staff-staging'), apply = args.includes('--apply');
+  const cfg = await remoteConfig({staffStaging});
   const bindings = preview ? cfg.env.preview : cfg;
   const client = cloudflareClient(process.env.CLOUDFLARE_ACCOUNT_ID, process.env.CLOUDFLARE_API_TOKEN);
   const bucket = bindings.r2_buckets.find(item => item.binding === 'ATTACHMENTS').bucket_name;
@@ -42,9 +42,9 @@ export async function main(args = process.argv.slice(2)) {
   await client.checkBucket(bucket);
   const repository = attachmentRepository(client.database(bindings.d1_databases.find(item => item.binding === 'DB').database_id));
   const result = await cleanupAttachments(repository, async key => {
-    wrangler(['r2','object','delete',`${bucket}/${key}`,'--remote', ...(preview ? ['--env','preview'] : [])], { capture: true });
+    wrangler(['r2','object','delete',`${bucket}/${key}`,'--remote','--config',staffStaging ? 'wrangler.staff-staging.jsonc' : 'wrangler.jsonc', ...(preview ? ['--env','preview'] : [])], { capture: true });
   }, { apply });
-  console.log(JSON.stringify({ environment: preview ? 'preview' : 'production', ...result }));
+  console.log(JSON.stringify({ environment: staffStaging ? 'staff-staging' : preview ? 'preview' : 'production', ...result }));
   if (result.failed) process.exitCode = 1;
   return result;
 }
