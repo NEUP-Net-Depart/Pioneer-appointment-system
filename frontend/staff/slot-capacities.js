@@ -1,6 +1,7 @@
 import { $, escapeHtml, showToast } from '/shared/utils.js';
 import { apiJson } from '/shared/api.js';
 import { CAMPUSES, TIME_SLOTS } from '/shared/constants.js';
+import { initCapacitySheet } from './capacity-sheet.js';
 
 export function initSlotCapacities() {
   const panel = $('#capacity-settings'), root = $('#capacity-fields');
@@ -46,6 +47,7 @@ export function initSlotCapacities() {
     undo.disabled = saving || !previous?.size;
     save.disabled = saving || !pending.length;
     save.textContent = saving ? '正在保存…' : '保存全部修改';
+    sheet.refresh();
   }
   function applyItem(row, item) {
     row.item = item; row.input.value = String(item.capacity); row.input.setCustomValidity('');
@@ -85,11 +87,12 @@ export function initSlotCapacities() {
   function createRow(item, group) {
     const form = document.createElement('td'); form.className = 'capacity-row';
     form.dataset.campus = item.campus; form.dataset.timeSlot = item.timeSlot; form.dataset.weekday = String(item.weekday);
+    form.dataset.sheetRow = String(TIME_SLOTS.indexOf(item.timeSlot)); form.tabIndex = 0;
+    form.setAttribute('role','gridcell'); form.setAttribute('aria-label',`${item.campus} ${weekdayNames[item.weekday]} ${item.timeSlot}`);
     form.innerHTML = `<input type="number" min="0" max="9007199254740991" step="1" required aria-label="${escapeHtml(item.campus)} ${weekdayNames[item.weekday]} ${escapeHtml(item.timeSlot)} 预约人数" />`;
     const row = { form, input: form.querySelector('input') };
     rows.set(keyOf(item), row); group.append(form); applyItem(row, item);
     row.input.addEventListener('input', () => { previous?.delete(keyOf(item)); row.input.setCustomValidity(''); render(); });
-    row.input.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); void saveAll(); } });
   }
   campuses.addEventListener('click', event => {
     const button = event.target.closest('[data-capacity-campus]');
@@ -105,6 +108,8 @@ export function initSlotCapacities() {
     for (const [key,value] of previous) { const row = rows.get(key); if (row) { row.input.value = value; row.input.setCustomValidity(''); } }
     previous = null; render();
   });
+  const sheet = initCapacitySheet({ root,toolbar:$('#capacity-sheet-toolbar'),campus:() => selectedCampus,disabled:() => saving || !rows.size,
+    beforeChange:remember,afterChange:finishQuickSetting,notify:showToast,undo:() => undo.click() });
   discard.addEventListener('click', () => {
     for (const row of rows.values()) applyItem(row,row.item);
     previous = null; render(); state.textContent = '';
@@ -158,7 +163,7 @@ export function initSlotCapacities() {
         let group = [...root.children].find(element => element.dataset.campus === campus);
         if (!group) {
           group = document.createElement('section'); group.className = 'capacity-campus'; group.dataset.campus = campus;
-          group.innerHTML = `<div class="capacity-table-heading"><h3>${campus}校区 · 每周预约人数</h3><span>有修改的格子以橙色标记</span></div><table class="capacity-table"><caption class="sr-only">${campus}校区周一至周四各半小时时段预约人数</caption><thead><tr><th scope="col">时段</th>${[1,2,3,4].map(day => `<th scope="col">${weekdayNames[day]}</th>`).join('')}</tr></thead><tbody>${TIME_SLOTS.map(time => `<tr data-capacity-time="${time}"><th scope="row">${time.split('–').map(part => `<span>${part}</span>`).join('<span class="capacity-time-dash">–</span>')}</th></tr>`).join('')}</tbody><tfoot><tr><th scope="row">每天合计</th>${[1,2,3,4].map(day => `<td data-day-total="${day}"></td>`).join('')}</tr></tfoot></table>`;
+          group.innerHTML = `<div class="capacity-table-heading"><h3>${campus}校区 · 每周预约人数</h3><span>橙色数字为未保存修改</span></div><table class="capacity-table" role="grid" aria-multiselectable="true"><caption class="sr-only">${campus}校区周一至周四各半小时时段预约人数</caption><thead><tr><th scope="col"><button type="button" data-sheet-header="all" aria-label="选择整个校区表格">时段</button></th>${[1,2,3,4].map(day => `<th scope="col"><button type="button" data-sheet-header="col" data-sheet-index="${day - 1}" aria-label="选择${weekdayNames[day]}整列">${weekdayNames[day]}</button></th>`).join('')}</tr></thead><tbody>${TIME_SLOTS.map((time,index) => `<tr data-capacity-time="${time}"><th scope="row"><button type="button" data-sheet-header="row" data-sheet-index="${index}" aria-label="选择 ${time} 整行">${time.split('–').map(part => `<span>${part}</span>`).join('<span class="capacity-time-dash">–</span>')}</button></th></tr>`).join('')}</tbody><tfoot><tr><th scope="row">每天合计</th>${[1,2,3,4].map(day => `<td data-day-total="${day}"></td>`).join('')}</tr></tfoot></table>`;
           root.append(group);
         }
         for (const weekday of [1,2,3,4]) for (const timeSlot of TIME_SLOTS) {
@@ -179,6 +184,7 @@ export function initSlotCapacities() {
   function clear() {
     generation++; user = null; saving = false; selectedCampus = ''; previous = null;
     rows.clear(); root.replaceChildren(); campuses.replaceChildren();
+    sheet.clear();
     state.textContent = ''; busy(false); panel.hidden = true;
   }
   reload.addEventListener('click', () => refresh(user));
