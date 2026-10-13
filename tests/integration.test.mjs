@@ -17,6 +17,7 @@ import { storageLimit } from '../src/lib/env.js';
 import { cleanupAttachments } from '../scripts/cleanup-attachments.mjs';
 import { cloudflareClient } from '../scripts/cloudflare-d1.mjs';
 import { userRepository } from '../src/db/users.js';
+import { TIME_SLOTS } from '../shared/constants.js';
 
 let mf, db, bucket;
 const MAX_R2_BYTES = 8589934592;
@@ -1319,6 +1320,42 @@ test('weekday templates freeze on first booking and preserve cancellations, rest
   assert.equal((await api(`/api/live/summary?date=${date}&campus=${encodeURIComponent('南湖')}`)).slotCapacities[timeSlot],3);
   await book({timeSlot});
   assert.equal((await api(`/api/live/summary?appointmentId=${item.id}`,{accessToken:item.accessToken})).capacity,3);
+});
+
+test('all four half-hour slots propagate through booking, summary, queue, overview, filters and export', async () => {
+  await db.prepare('DELETE FROM booking_day_slots').run();
+  const token = await login(), targetDate = bookingDates.find(day => day > dateKey());
+  assert.ok(targetDate, 'fixture requires a future service day in the booking window');
+  const bookings = [];
+  for (const timeSlot of TIME_SLOTS) {
+    const item = await book({ date: targetDate, timeSlot });
+    bookings.push(item);
+    const lookup = await api(`/api/appointments/${item.id}`, { accessToken: item.accessToken });
+    assert.equal(lookup.timeSlot, timeSlot);
+    const summary = await api(`/api/live/summary?appointmentId=${item.id}`, { accessToken: item.accessToken });
+    assert.deepEqual(summary.timeSlots, TIME_SLOTS);
+    assert.equal(summary.capacity, 5);
+    assert.equal(summary.slotTotal, 1);
+    assert.equal(summary.position, 1);
+    const query = new URLSearchParams({ campus: '南湖', date: targetDate, timeSlot });
+    const filtered = await api(`/api/appointments?${query}`, { token });
+    assert.deepEqual(filtered.items.map(row => row.id), [item.id]);
+  }
+  const summary = await api(`/api/live/summary?${new URLSearchParams({ campus: '南湖', date: targetDate })}`);
+  assert.deepEqual(summary.slots, Object.fromEntries(TIME_SLOTS.map(slot => [slot, 1])));
+  assert.deepEqual(summary.slotCapacities, Object.fromEntries(TIME_SLOTS.map(slot => [slot, 5])));
+  assert.equal(summary.capacity, 20);
+  const overview = await api('/api/appointments/overview', { token });
+  const rows = overview.items.filter(item => item.campus === '南湖' && item.date === targetDate);
+  assert.deepEqual(rows.map(row => row.timeSlot), TIME_SLOTS);
+  assert.ok(rows.every(row => row.occupied === 1 && row.remaining === 4 && row.capacity === 5));
+  const csv = await (await request('/api/export/appointments.csv', { token })).text();
+  for (const item of bookings) assert.ok(csv.includes(item.id) && csv.includes(item.timeSlot));
+  const cancelled = bookings[3];
+  await api(`/api/appointments/${cancelled.id}/status`, { method: 'PATCH', accessToken: cancelled.accessToken, body: { status: 'completed', outcome: 'cancelled' } });
+  const refreshed = await api(`/api/live/summary?${new URLSearchParams({ campus: '南湖', date: targetDate })}`);
+  assert.equal(refreshed.slots[TIME_SLOTS[3]], 0);
+  assert.equal(refreshed.slots[TIME_SLOTS[0]], 1);
 });
 
 test('concurrent configuration updates cannot overwrite a stale revision or affect another slot', async () => {
