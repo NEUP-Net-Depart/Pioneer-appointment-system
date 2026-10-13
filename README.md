@@ -123,6 +123,8 @@ npm run release:plan
 
 管理员可在工作人员端“个人设置 → 预约人数设置”调整容量，业务规则见 [预约规则](docs/requirements.md#预约规则)。
 
+`PATCH /api/slot-capacities` 的配置包含 `campus`、`weekday`（1 至 4）、`timeSlot`、`capacity` 和 `revision`，支持单项或 `{ items: [...] }` 批量保存。批量保存中任何配置版本冲突都会撤销整批修改。
+
 `GET /api/slot-capacities` 返回 `{ items: [{ campus, timeSlot, capacity, revision }] }`，只包含授权校区。PATCH 接受单项同形对象，capacity 为非负安全整数，revision 必须匹配当前版本；成功返回更新项并递增 revision，冲突返回 409，权限不足返回 403。
 
-`GET /api/live/summary` 返回各时段占用人数 `slots` 和容量 `slotCapacities`；选校区时返回该校区数据，否则汇总两个校区。`capacity` 与 `slotTotal` 使用相同筛选范围：选时段时返回该时段容量，否则合计两个时段；凭预约查询时默认采用该预约的校区、时段。暂停或满额时预约写入返回 409。
+`GET /api/live/summary` 返回当天实际时段 `timeSlots`、占用人数 `slots` 和容量 `slotCapacities`；选校区时返回该校区数据，否则汇总两个校区。`capacity` 与 `slotTotal` 使用相同筛选范围：选时段时返回该时段容量，否则合计当天各时段；凭预约查询时默认采用该预约的校区、时段。暂停或满额时预约写入返回 409。

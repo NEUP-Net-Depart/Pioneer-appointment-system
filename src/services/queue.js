@@ -1,6 +1,5 @@
 import { guestAppointment } from './access.js';
 import { dateKey, expiredBookingDate, nowIso } from '../../shared/time.js';
-import { TIME_SLOTS } from '../../shared/constants.js';
 
 export function queueService(appointments, queue) {
   return {
@@ -10,11 +9,12 @@ export function queueService(appointments, queue) {
       if (current) current = await appointments.find(current.id);
       const date = query.date || current?.date || dateKey();
       const selection = { date, campus: query.campus || current?.campus || '', timeSlot: query.timeSlot || current?.timeSlot || '' };
-      const { counts, capacities, queue: position } = await queue.summary(selection, current);
-      const slotCapacities = Object.fromEntries(TIME_SLOTS.map(slot => [slot, capacities.find(row => row.time_slot === slot)?.capacity ?? 0]));
+      const { counts, capacities, slots: occupied, queue: position } = await queue.summary(selection, current);
+      const timeSlots = [...new Set(capacities.map(row => row.time_slot))].sort();
+      const slotCapacities = Object.fromEntries(timeSlots.map(slot => [slot, capacities.filter(row => row.time_slot === slot).reduce((sum,row) => sum + row.capacity, 0)]));
       const capacity = selection.timeSlot ? slotCapacities[selection.timeSlot] : Object.values(slotCapacities).reduce((sum, value) => sum + value, 0);
       return { date, dayTotal: counts.dayTotal, campusDayTotal: counts.campusDayTotal, slotTotal: counts.slotTotal, capacity, slotCapacities,
-        slots: { [TIME_SLOTS[0]]: counts.firstSlot, [TIME_SLOTS[1]]: counts.secondSlot },
+        timeSlots, slots: Object.fromEntries(timeSlots.map(slot => [slot, occupied.find(row => row.time_slot === slot)?.occupied ?? 0])),
         ahead: position?.present ? position.ahead : null, position: position?.present ? position.ahead + 1 : null,
         queueTotal: position ? position.queueTotal : counts.slotTotal };
     }

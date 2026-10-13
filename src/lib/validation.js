@@ -1,5 +1,5 @@
 import { fail } from './http.js';
-import { normalizeTimeSlot, statusLabels, outcomeLabels, CAMPUSES, roleLevel } from '../../shared/constants.js';
+import { normalizeTimeSlot, statusLabels, outcomeLabels, CAMPUSES, roleLevel, TIME_SLOTS } from '../../shared/constants.js';
 import { validDate } from '../../shared/time.js';
 import { validSignature } from '../../shared/signature.js';
 
@@ -85,10 +85,20 @@ export function statsQuery(input) {
 export function slotCapacityInput(input) {
   if (!CAMPUSES.includes(input.campus)) fail(400, '校区不正确');
   const timeSlot = normalizeTimeSlot(stringField(input.timeSlot, '时段', 40, true));
-  if (!timeSlot) fail(400, '时段不正确');
+  if (!TIME_SLOTS.includes(timeSlot)) fail(400, '时段不正确');
+  if (!Number.isInteger(input.weekday) || input.weekday < 1 || input.weekday > 4) fail(400, '请选择周一至周四');
   if (!Number.isSafeInteger(input.capacity) || input.capacity < 0) fail(400, '预约人数必须为非负安全整数');
   if (!Number.isSafeInteger(input.revision) || input.revision < 0) fail(400, '配置版本不正确');
-  return { campus: input.campus, timeSlot, capacity: input.capacity, revision: input.revision };
+  return { campus: input.campus, weekday: input.weekday, timeSlot, capacity: input.capacity, revision: input.revision };
+}
+export function slotCapacityBatchInput(input) {
+  if (!Array.isArray(input.items) || !input.items.length || input.items.length > 32) fail(400, '请选择 1 至 32 项人数配置');
+  const items = input.items.map(item => {
+    if (!item || typeof item !== 'object') fail(400, '人数配置不正确');
+    return slotCapacityInput(item);
+  });
+  if (new Set(items.map(item => `${item.campus}/${item.weekday}/${item.timeSlot}`)).size !== items.length) fail(400, '人数配置不能重复');
+  return items;
 }
 export function passwordInput(value) {
   if (typeof value !== 'string' || value.length < 8 || value.length > 128) fail(400, '密码长度应为 8 至 128 位');

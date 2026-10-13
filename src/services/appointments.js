@@ -3,7 +3,7 @@ import { encryptText, decryptText } from '../lib/privacy.js';
 import { addDays, dateKey, serviceDay, slotDeadline, noShowDeadline, expiredBookingDate, weekRange } from '../../shared/time.js';
 import { issueAccessToken } from '../lib/access-tokens.js';
 import { guestAppointment } from './access.js';
-import { repairOutcomes, TIME_SLOTS } from '../../shared/constants.js';
+import { repairOutcomes } from '../../shared/constants.js';
 import { appointmentScope, requireRole, requireAppointmentAccess, requireCampus } from './permissions.js';
 
 export async function presentAppointment(item, encryptionKey) {
@@ -35,14 +35,14 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       const week = weekRange(start);
       const { totals, capacities } = await appointments.overview(week.start, end, campuses);
       const dates = Array.from({ length: 7 }, (_, index) => addDays(start, index)).filter(serviceDay);
-      const makeItems = days => campuses.flatMap(campus => days.flatMap(date => TIME_SLOTS.map(timeSlot => {
+      const makeItems = days => capacities.filter(row => days.includes(row.date)).map(row => {
+        const { campus, date, time_slot: timeSlot, capacity } = row;
         const total = totals.find(row => row.campus === campus && row.date === date && row.time_slot === timeSlot);
-        const capacity = capacities.find(row => row.campus === campus && row.time_slot === timeSlot)?.capacity ?? 0;
         const occupied = total?.occupied ?? 0;
         return { campus, date, timeSlot, capacity, occupied, remaining: Math.max(0, capacity - occupied),
           booked: total?.booked ?? 0, inProgress: total?.in_progress ?? 0,
           ended: Date.parse(slotDeadline(date, timeSlot)) <= instant.getTime() };
-      })));
+      });
       const weekDates = Array.from({ length: 7 }, (_, index) => addDays(week.start, index)).filter(serviceDay);
       return { start, end, dates, campuses, items: makeItems(dates), week: { ...week, dates: weekDates, items: makeItems(weekDates) }, updatedAt: instant.toISOString() };
     },
@@ -62,6 +62,8 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       const instant = clock(), today = dateKey(instant);
       if (data.date < today || data.date > addDays(today, 3)) fail(400, '预约日期必须为今天起 3 天内');
       if (!serviceDay(data.date)) fail(400, '预约日期必须为周一至周四');
+      const schedule = await appointments.schedule(data.date, data.campus);
+      if (!schedule.some(slot => slot.time_slot === data.timeSlot)) fail(409, '该日期的时段安排已更新，请重新选择');
       if (Date.parse(slotDeadline(data.date, data.timeSlot)) <= instant.getTime()) fail(400, '该预约时段已经结束');
       const timestamp = instant.toISOString(), credential = issueAccessToken();
       const [phone, social] = await Promise.all([encryptText(data.phone, encryptionKey), encryptText(data.social, encryptionKey)]);

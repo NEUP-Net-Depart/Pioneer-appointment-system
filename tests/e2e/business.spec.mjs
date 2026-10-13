@@ -4,7 +4,7 @@ import {dateKey,addDays,serviceDay,slotDeadline} from '../../shared/time.js';
 
 const memberPassword='e2e-member-password-only';
 const bookingDates=[0,1,2,3].map(n=>addDays(dateKey(),n)).filter(serviceDay);
-const date=bookingDates.find(day=>Date.now()<Date.parse(slotDeadline(day,'19:00–20:00'))) || bookingDates[0];
+const date=bookingDates.find(day=>Date.now()<Date.parse(slotDeadline(day,'19:00–19:30'))) || bookingDates[0];
 async function login(page,account,password){
   await page.goto('/staff/');
   await page.locator('#login-id').fill(account);await page.locator('#login-password').fill(password);
@@ -15,8 +15,8 @@ async function booking(page,studentId,{file=true}={}){
   for(const [name,value] of Object.entries({studentId,name:'浏览器测试同学',social:'e2e-private-contact',brand:'联想',deviceModel:'ThinkPad',issue:'启动后蓝屏'}))await page.locator(`[name="${name}"]`).fill(value);
   for(const [name,value] of Object.entries({campus:'南湖',deviceType:'笔记本电脑',warranty:'否',faultType:'蓝屏'}))await page.locator(`[name="${name}"]`).selectOption(value);
   await page.locator(`[data-date="${date}"]`).click();
-  await page.locator('[data-slot="19:00–20:00"]').click();
-  await expect(page.locator('[name=timeSlot]')).toHaveValue('19:00–20:00');
+  await page.locator('[data-slot="19:00–19:30"]').click();
+  await expect(page.locator('[name=timeSlot]')).toHaveValue('19:00–19:30');
   if(file)await page.locator('#appointment-attachments').setInputFiles({name:'故障描述.txt',mimeType:'text/plain',buffer:Buffer.from('browser attachment')});
   await page.locator('.check-box').click();
   await expect(page.locator('#signature-modal')).toBeVisible();
@@ -42,97 +42,75 @@ async function capture(page,name){
   await mkdir('output/playwright',{recursive:true});await page.screenshot({path:`output/playwright/${name}.png`,fullPage:true,animations:'disabled'});
 }
 
-test('administrators configure persistent slot capacities and student choices follow full or paused slots', async ({ browser }) => {
-  const contexts = await Promise.all([30,31].map(n => browser.newContext({ baseURL: process.env.E2E_BASE_URL, extraHTTPHeaders: { 'CF-Connecting-IP': `198.51.100.${n}` } })));
-  const root = await contexts[0].newPage(), student = await contexts[1].newPage(), booked = await contexts[1].newPage();
-  const errors = [];
-  for (const page of [root, student, booked]) page.on('pageerror', error => errors.push(error.message));
-  let token, item;
-  const row = (campus, slot) => root.locator(`.capacity-row[data-campus="${campus}"][data-time-slot="${slot}"]`);
-  const first = row('南湖', '19:00–20:00'), second = row('南湖', '20:00–21:00');
-  async function save(target, capacity) {
-    await target.locator('input').fill(String(capacity));
-    await target.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(target.locator('p')).toHaveText(capacity === 0 ? '暂停预约' : `开放预约 · 最多 ${capacity} 人`);
-  }
-  async function refreshStudent() {
-    await student.bringToFront();
-    await student.locator(`[data-date="${date}"]`).click();
+test('weekday capacity configuration preserves booked days and unsaved edits', async ({ browser }) => {
+  const contexts=await Promise.all([30,31].map(n=>browser.newContext({baseURL:process.env.E2E_BASE_URL,extraHTTPHeaders:{'CF-Connecting-IP':`198.51.100.${n}`}})));
+  const root=await contexts[0].newPage(), student=await contexts[1].newPage();
+  let token,item;
+  const weekday=new Date(date+'T00:00:00Z').getUTCDay();
+  const row=day=>root.locator(`.capacity-row[data-campus="南湖"][data-weekday="${day}"][data-time-slot="19:00–19:30"]`);
+  async function save(capacity) {
+    await row(weekday).locator('input').fill(String(capacity));
+    await root.locator('#capacity-save-all').click();
+    await expect(row(weekday).locator('p')).toHaveText(capacity===0 ? '暂停预约':`最多 ${capacity} 人`);
   }
   try {
-    await login(root, 'root001', process.env.E2E_ROOT_PASSWORD);
-    token = await root.evaluate(() => sessionStorage.getItem('pioneerToken'));
-    await root.getByRole('button', { name: '个人设置', exact: true }).click();
-    await expect(root.locator('.capacity-row')).toHaveCount(4);
-    await expect(first.locator('input')).toHaveValue('10');
-    await first.locator('input').fill('1.5');
-    await first.getByRole('button', { name: '保存', exact: true }).click();
-    expect(await first.locator('input').evaluate(input => input.validity.valid)).toBe(false);
-    await save(first, 3); await save(second, 12);
-    await expect(row('浑南', '19:00–20:00').locator('input')).toHaveValue('10');
-    item = await booking(booked, '20269900', { file: false });
-    await student.goto('/');
-    await student.locator('[name=campus]').selectOption('南湖');
-    await student.locator(`[data-date="${date}"]`).click();
-    await expect(student.locator('[data-slot="19:00–20:00"]')).toContainText('剩余 2 名');
-    await expect(student.locator('[data-slot="20:00–21:00"]')).toContainText('剩余 12 名');
-    await student.locator('[data-slot="19:00–20:00"]').click();
-    await expect(student.locator('#booking-selection')).toContainText('19:00–20:00');
-    await expect(student.locator('[data-slot="19:00–20:00"]')).toContainText('最多 3 人');
-
-    await first.locator('input').fill('7'); await second.locator('input').fill('15');
-    const headers = { Authorization: `Bearer ${token}` };
-    const settings = await (await contexts[0].request.get('/api/slot-capacities', { headers })).json();
-    const current = settings.items.find(value => value.campus === '南湖' && value.timeSlot === '19:00–20:00');
-    expect((await contexts[0].request.patch('/api/slot-capacities', { headers, data: { ...current, capacity: 5 } })).status()).toBe(200);
-    await root.waitForResponse(response => new URL(response.url()).pathname === '/api/slot-capacities' && response.request().method() === 'GET', { timeout: 15000 });
-    await expect(first.locator('input')).toHaveValue('7'); await expect(second.locator('input')).toHaveValue('15');
-    await first.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(first.locator('p')).toContainText('配置已更新');
-    await expect(second.locator('input')).toHaveValue('15');
+    await login(root,'root001',process.env.E2E_ROOT_PASSWORD);
+    token=await root.evaluate(()=>sessionStorage.getItem('pioneerToken'));
+    await root.getByRole('button',{name:'个人设置',exact:true}).click();
+    await expect(root.locator('.capacity-row')).toHaveCount(32);
+    await root.locator(`#capacity-weekdays [data-weekday="${weekday}"]`).click();
+    await expect(root.locator('.capacity-row:visible')).toHaveCount(4);
+    await expect(row(weekday).locator('input')).toHaveValue('5');
+    await row(weekday).locator('input').fill('1.5');
+    await root.locator('#capacity-save-all').click();
+    expect(await row(weekday).locator('input').evaluate(input=>input.validity.valid)).toBe(false);
+    await save(3);
+    item=await booking(student,'20269900',{file:false});
+    await save(0);
+    const summary=await (await contexts[0].request.get(`/api/live/summary?date=${date}&campus=${encodeURIComponent('南湖')}`)).json();
+    expect(summary.slotCapacities['19:00–19:30']).toBe(3);
+    expect(summary.slots['19:00–19:30']).toBe(1);
+    const future=await (await contexts[0].request.get(`/api/live/summary?date=${addDays(date,7)}&campus=${encodeURIComponent('南湖')}`)).json();
+    expect(future.slotCapacities['19:00–19:30']).toBe(0);
+    await row(weekday).locator('input').fill('7');
+    const another=weekday===1 ? 2:1;
+    await root.locator(`#capacity-weekdays [data-weekday="${another}"]`).click();
+    await root.locator(`#capacity-weekdays [data-weekday="${weekday}"]`).click();
+    await expect(row(weekday).locator('input')).toHaveValue('7');
     await root.locator('#reload-capacities').click();
-    await expect(first.locator('input')).toHaveValue('5'); await expect(second.locator('input')).toHaveValue('12');
-
-    await save(first, 1); await refreshStudent();
-    await expect(student.locator('[name=timeSlot]')).toHaveValue('');
-    await expect(student.locator('[data-slot="19:00–20:00"]')).toHaveJSProperty('disabled', true);
-    await expect(student.locator('[data-slot="19:00–20:00"]')).toContainText('预约已满');
-    await save(first, 0); await refreshStudent();
-    await expect(student.locator('[data-slot="19:00–20:00"]')).toContainText('暂停预约');
-    await student.locator('[data-slot="20:00–21:00"]').click();
-    await expect(student.locator('[data-slot="20:00–21:00"]')).toHaveAttribute('aria-pressed', 'true');
-    await expect(student.locator('[data-slot="20:00–21:00"]')).toContainText('最多 12 人');
-    await student.locator('[name=campus]').selectOption('浑南');
-    await expect(student.locator('[data-slot="19:00–20:00"]')).toContainText('剩余 10 名');
-    await expect(student.locator('[data-slot="19:00–20:00"]')).toHaveJSProperty('disabled', false);
-    await capture(student, 'student-configured-capacity');
-
-    await root.reload(); await expect(root.locator('#app-shell')).toBeVisible();
-    await root.getByRole('button', { name: '个人设置', exact: true }).click();
-    await expect(first.locator('input')).toHaveValue('0');
-    await root.setViewportSize({ width: 390, height: 844 });
-    expect(await root.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await capture(root, 'mobile-capacity-settings');
-    await root.setViewportSize({ width: 1440, height: 1000 }); await capture(root, 'admin-capacity-settings');
-    await booked.getByRole('button', { name: '查看我的预约', exact: true }).click();
-    await expect(booked.locator('#lookup-results')).toContainText(item.id);
-    booked.once('dialog', dialog => dialog.accept());
-    await booked.locator('[data-cancel]').click(); await expect(booked.locator('#lookup-results')).toContainText('已取消');
-    await save(first, 4);
-    await student.locator('[name=campus]').selectOption('南湖');
-    await expect(student.locator('[data-slot="19:00–20:00"]')).toContainText('剩余 4 名');
-    expect(errors).toEqual([]);
+    await expect(row(weekday).locator('input')).toHaveValue('0');
+    await root.locator('#capacity-bulk-value').fill('11');
+    await root.locator('#capacity-bulk-scope').selectOption('week');
+    await root.getByRole('button',{name:'统一填写',exact:true}).click();
+    await expect(root.locator('#capacity-draft-status')).toContainText('16 项');
+    await root.locator('#capacity-copy-campus').click();
+    await expect(root.locator('#capacity-draft-status')).toContainText('20 项');
+    await root.locator('#capacity-save-all').click();
+    await expect(root.locator('#capacity-draft-status')).toHaveText('所有配置已保存');
+    await expect(row(weekday).locator('p')).toHaveText('最多 11 人');
+    await root.locator('#capacity-bulk-value').fill('7');
+    await root.locator('#capacity-bulk-scope').selectOption('day');
+    await root.getByRole('button',{name:'统一填写',exact:true}).click();
+    await root.locator('#capacity-copy-week').click();
+    await expect(root.locator('#capacity-draft-status')).toContainText('16 项');
+    await root.locator('#reload-capacities').click();
+    await expect(root.locator('#capacity-draft-status')).toHaveText('所有配置已保存');
+    await capture(root,'weekday-capacities-desktop');
+    await root.setViewportSize({width:390,height:844});
+    expect(await root.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await capture(root,'weekday-capacities-mobile');
   } finally {
-    if (token) {
-      const headers = { Authorization: `Bearer ${token}` };
-      const response = await contexts[0].request.get('/api/slot-capacities', { headers });
-      if (response.ok()) {
-        for (const current of (await response.json()).items.filter(value => value.capacity !== 10)) {
-          expect((await contexts[0].request.patch('/api/slot-capacities', { headers, data: { ...current, capacity: 10 } })).status()).toBe(200);
-        }
-      }
+    if (item) {
+      const link=new URL(item.link),access=link.hash.match(/access=([^&]+)/)?.[1];
+      await contexts[0].request.patch(`/api/appointments/${item.id}/status`,{headers:{'X-Appointment-Token':decodeURIComponent(access || '')},data:{status:'completed',outcome:'cancelled'}});
     }
-    await Promise.all(contexts.map(context => context.close()));
+    if(token) {
+      const headers={Authorization:`Bearer ${token}`};
+      const result=await contexts[0].request.get('/api/slot-capacities',{headers});
+      for(const current of (await result.json()).items.filter(item=>item.capacity!==5))
+        await contexts[0].request.patch('/api/slot-capacities',{headers,data:{...current,capacity:5}});
+    }
+    await Promise.all(contexts.map(context=>context.close()));
   }
 });
 
@@ -235,7 +213,7 @@ test('student booking, private links, whitelist activation, staff permissions, r
     await member.reload();await expect(member.locator('#login-view')).toBeVisible();await login(member,'20268801',memberPassword);
     await expect(member.locator('[data-view-link=stats]')).toBeVisible();await expect(member.locator('#appointments-table')).not.toContainText(item.id);
     await member.getByRole('button',{name:'个人设置',exact:true}).click();await expect(member.locator('#profile-info')).toContainText('所属 南湖 · 授权 浑南');
-    await expect(member.locator('.capacity-row')).toHaveCount(2);
+    await expect(member.locator('.capacity-row')).toHaveCount(16);
     await expect(member.locator('.capacity-row[data-campus="南湖"]')).toHaveCount(0);
     await member.locator('#current-password').fill(memberPassword);await member.locator('#new-password').fill('changed-member-password');await member.locator('#confirm-password').fill('changed-member-password');
     await member.locator('#password-form [type=submit]').click();await expect(member.locator('#login-view')).toBeVisible();

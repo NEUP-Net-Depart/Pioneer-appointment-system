@@ -73,7 +73,7 @@
             <input id="staff-date-filter" type="hidden" />
             <p class="staff-menu-caption">今天及未来 3 天的工作日</p>
             <div id="staff-nearby-days" class="staff-nearby-days" role="group" aria-label="近期工作日"></div>
-            <label>预约时段<select id="staff-slot-filter"><option value="">全部时段</option><option>19:00–20:00</option><option>20:00–21:00</option></select></label>
+            <label>预约时段<select id="staff-slot-filter"><option value="">全部时段</option><optgroup label="半小时时段"><option>19:00–19:30</option><option>19:30–20:00</option><option>20:00–20:30</option><option>20:30–21:00</option></optgroup><optgroup label="原有预约时段"><option>19:00–20:00</option><option>20:00–21:00</option></optgroup></select></label>
             <details class="staff-date-history" id="staff-date-history"><summary>查询历史日期</summary><label>历史预约日期<input id="staff-date-manual" type="text" inputmode="numeric" placeholder="YYYY-MM-DD" maxlength="10" aria-describedby="staff-date-message" /></label><p id="staff-date-message" class="staff-date-message" role="status"></p></details>
             <p id="staff-calendar-selection" class="staff-calendar-selection"></p>
             <button class="staff-menu-done" type="button" data-menu-close>完成</button>
@@ -107,10 +107,14 @@
 <section class="view" id="settings-view" data-view="settings"><div class="page-intro"><p class="eyebrow">PERSONAL SETTINGS</p><h1>个人设置</h1><p id="profile-info"></p></div><div class="content-shell">
   <section id="capacity-settings" class="capacity-settings" data-role-allow="admin" hidden aria-labelledby="capacity-title">
     <div class="capacity-heading"><h2 id="capacity-title">预约人数设置</h2><button id="reload-capacities" class="secondary-btn" type="button">重新读取配置</button></div>
-    <p>按校区、时段分别设置预约人数，默认 10 人。设为 0 暂停该时段预约；配置适用于所有可预约日期，直到再次修改。</p>
-    <p>下调人数或暂停预约会保留已有预约，已有预约仍可查询、取消、签到和维修。</p>
-    <p class="capacity-hint">自动刷新保留未保存的输入；点击“重新读取配置”会放弃未保存的修改。</p>
-    <p id="capacity-load-state" role="status"></p><div id="capacity-fields" class="capacity-grid"></div>
+    <p>按校区、星期和半小时时段配置人数；设为 0 暂停预约。</p>
+    <p>修改仅影响该校区尚未产生预约的日期。已有预约日期保留当天时段和人数上限，全部取消后也不会改变。</p>
+    <p class="capacity-hint">切换校区、星期或自动刷新均保留草稿；统一填写、复制后点击“保存全部修改”。重新读取会放弃草稿。</p>
+    <div id="capacity-campuses" class="capacity-campuses" role="group" aria-label="配置校区"></div><div id="capacity-weekdays" class="capacity-weekdays" role="group" aria-label="配置星期"><button type="button" class="secondary-btn" data-weekday="1" aria-pressed="true">周一</button><button type="button" class="secondary-btn" data-weekday="2" aria-pressed="false">周二</button><button type="button" class="secondary-btn" data-weekday="3" aria-pressed="false">周三</button><button type="button" class="secondary-btn" data-weekday="4" aria-pressed="false">周四</button></div><div class="capacity-tools">
+      <form id="capacity-bulk-form" class="capacity-bulk-form"><label>统一人数<input id="capacity-bulk-value" type="number" min="0" max="9007199254740991" step="1" value="5" required /></label><label>应用范围<select id="capacity-bulk-scope"><option value="day">当前校区 · 当天</option><option value="week">当前校区 · 整周</option></select></label><button class="secondary-btn" type="submit">统一填写</button></form>
+      <div class="capacity-copy-tools"><button id="capacity-copy-week" class="secondary-btn" type="button">将当天复制到整周</button><label>复制当天到<select id="capacity-copy-target" aria-label="目标校区"></select></label><button id="capacity-copy-campus" class="secondary-btn" type="button">复制到该校区</button></div>
+    </div><p id="capacity-load-state" role="status"></p><div id="capacity-fields" class="capacity-grid"></div>
+    <div class="capacity-save-bar"><span id="capacity-draft-status" role="status"></span><button id="capacity-save-all" class="primary-btn" type="button" disabled>保存全部修改</button></div>
   </section>
   <div class="user-create-panel"><div><h2>修改密码</h2><p>修改后所有设备都需要重新登录。</p></div><form id="password-form" class="login-form"><label>当前密码<input id="current-password" type="password" required autocomplete="current-password" /></label><label>新密码<input id="new-password" type="password" required minlength="8" maxlength="128" autocomplete="new-password" /></label><label>确认新密码<input id="confirm-password" type="password" required minlength="8" maxlength="128" autocomplete="new-password" /></label><button class="primary-btn" type="submit">修改密码并退出</button></form></div><button id="revoke-sessions" class="secondary-btn" type="button">撤销所有登录会话</button></div></section></main>
   <div class="modal-backdrop" id="intake-modal" hidden><div class="modal" role="dialog" aria-modal="true" aria-labelledby="intake-title"><h2 id="intake-title">签到前拍照确认</h2><p id="intake-code"></p><p class="intake-thermal-advice" id="intake-thermal-advice" hidden>清灰换硅脂：请先询问机主并确认设备是否使用液金散热，确认散热材料与处理方案后再操作。</p><p>请由本次签到的维修人员上传电脑正面和反面照片，确认外观清晰可见。两张照片上传成功后才会进入维修中。</p><form id="intake-form"><div class="intake-photos"><label>电脑正面（必填）<input id="intake-front" type="file" accept="image/jpeg,image/png,image/webp" required /><img id="intake-front-preview" alt="电脑正面预览" hidden /></label><label>电脑反面（必填）<input id="intake-back" type="file" accept="image/jpeg,image/png,image/webp" required /><img id="intake-back-preview" alt="电脑反面预览" hidden /></label></div><p>每张不超过 5 MB；可使用手机相机拍摄后选择照片。</p><div class="modal-actions"><button id="cancel-intake" class="secondary-btn" type="button">取消</button><button id="confirm-intake" class="primary-btn" type="submit">上传照片并确认签到</button></div></form></div></div>

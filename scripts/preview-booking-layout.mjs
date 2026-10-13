@@ -62,7 +62,7 @@ globalThis.fetch=(input,options)=>{
     if (!mime[extension]) return send('Not found', undefined, 404);
     let content = await readFile(path);
     if (extension === '.js') {
-      content = content.toString().replaceAll('/shared/', `${prefix}shared/`).replaceAll('/api/', `${prefix}api/`);
+      content = content.toString().replaceAll('\r\n', '\n').replaceAll('/shared/', `${prefix}shared/`).replaceAll('/api/', `${prefix}api/`);
       if (resource === 'shared/constants.js') content = content.replace(/export const TIME_SLOTS = .*?;/, `export const TIME_SLOTS = ${JSON.stringify(timeSlots)};`);
       if (resource === 'user/slot-picker.js') {
         // Expose the real picker's refresh only in the simulated server response.
