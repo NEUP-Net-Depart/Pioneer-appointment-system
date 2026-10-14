@@ -1,4 +1,4 @@
-name: End unattended appointments
+name: Expire pending appointments
 on:
   schedule:
     # 13:35 UTC = 21:35 Asia/Shanghai; catch up missed days too.
@@ -28,7 +28,7 @@ jobs:
       - name: Dispatch scheduled appointment maintenance on main
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run end-no-shows.yml --repo "$GITHUB_REPOSITORY" --ref main -f environment=both -f dry_run=false
+        run: gh workflow run expire-appointments.yml --repo "$GITHUB_REPOSITORY" --ref main -f environment=both -f dry_run=false
   select-targets:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -51,7 +51,7 @@ jobs:
             production|preview) printf 'environments=["%s"]\n' "$TARGET_ENVIRONMENT" >> "$GITHUB_OUTPUT" ;;
             *) echo "::error::Choose production, preview, or both."; exit 1 ;;
           esac
-  end-no-shows:
+  expire-appointments:
     needs: select-targets
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -62,7 +62,7 @@ jobs:
       matrix:
         environment: ${{ fromJSON(needs.select-targets.outputs.environments) }}
     concurrency:
-      group: appointments-end-no-shows-${{ matrix.environment }}
+      group: appointments-expire-${{ matrix.environment }}
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
@@ -71,7 +71,7 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      - name: End appointments
+      - name: Expire pending appointments
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets[matrix.environment == 'production' && 'CLOUDFLARE_API_TOKEN' || 'CLOUDFLARE_PREVIEW_MAINTENANCE_API_TOKEN'] }}
@@ -83,4 +83,4 @@ jobs:
           args=(--dry-run)
           if [[ "$APPLY_ENDINGS" == "true" ]]; then args=(--apply); fi
           if [[ "$TARGET_ENVIRONMENT" == "preview" ]]; then args+=(--preview); fi
-          npm run appointments:end-no-shows -- "${args[@]}"
+          npm run appointments:expire -- "${args[@]}"

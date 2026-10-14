@@ -6,7 +6,7 @@ import {randomUUID,randomBytes} from 'node:crypto';
 import {createServer} from 'node:net';
 import {root,config} from './cli.mjs';
 import {hashPassword} from '../src/lib/passwords.js';
-import {nowIso} from '../shared/time.js';
+import {dateKey, nowIso} from '../shared/time.js';
 
 await import('./build.mjs');
 const parent=resolve(root,'.wrangler'),dir=resolve(parent,'e2e-'+randomUUID()),inside=relative(parent,dir);
@@ -17,7 +17,8 @@ await writeFile(resolve(dir,'package.json'),JSON.stringify({private:true,type:'m
 for(const area of ['functions','src','shared','dist'])await cp(resolve(root,area),resolve(dir,area),{recursive:true});
 const cfg=await config(),configPath=resolve(dir,'wrangler.jsonc'),state=resolve(dir,'state');
 const rootPassword=randomBytes(24).toString('base64url');
-const vars=`JWT_SECRET=${randomBytes(48).toString('base64url')}\nPII_ENCRYPTION_KEY=${randomBytes(32).toString('hex')}\nROOT001_PASSWORD=${rootPassword}\n`;
+const testNow=new Date(`${dateKey()}T10:00:00+08:00`).toISOString();
+const vars=`JWT_SECRET=${randomBytes(48).toString('base64url')}\nPII_ENCRYPTION_KEY=${randomBytes(32).toString('hex')}\nROOT001_PASSWORD=${rootPassword}\nTEST_NOW=${testNow}\n`;
 await writeFile(resolve(dir,'.dev.vars'),vars,{mode:0o600});
 await writeFile(resolve(dir,'.dev.vars.preview'),vars,{mode:0o600});
 const bindings={

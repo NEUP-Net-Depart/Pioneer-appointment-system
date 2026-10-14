@@ -11,11 +11,12 @@ function renderBars(target, values, total) {
 function renderStats(stats) {
   const { daily, faults, campuses, technicians } = stats;
   const completed = stats.completed;
-  const noShow = stats.noShow;
   $('#stats-total').textContent = stats.total;
   $('#stats-completed').textContent = completed;
   $('#stats-rate').textContent = `${stats.repairSuccessRate || 0}%`;
-  $('#stats-no-show').textContent = `${stats.total ? Math.round(noShow / stats.total * 100) : 0}%`;
+  $('#stats-cancelled').textContent = stats.cancelled || 0;
+  $('#stats-expired-rate').textContent = `${stats.expiredRate || 0}%`;
+  $('#stats-expired').textContent = stats.expired || 0;
 
   const days = Object.entries(daily);
   const maxDay = Math.max(...days.map(([, value]) => value.total), 1);
@@ -29,7 +30,7 @@ function renderStats(stats) {
 
 export function initStats() {
   let generation = 0;
-  function empty() { renderStats({ total: 0, completed: 0, noShow: 0, daily: {}, faults: {}, campuses: {}, technicians: {} }); }
+  function empty() { renderStats({ total: 0, completed: 0, cancelled: 0, expired: 0, daily: {}, faults: {}, campuses: {}, technicians: {} }); }
   async function refresh() {
     const current = ++generation;
     const query = new URLSearchParams({ range: $('#stats-range').value, day: $('#stats-day').value });

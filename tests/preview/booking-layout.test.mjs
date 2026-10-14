@@ -23,7 +23,7 @@ test('local debugger updates layout and availability without reloading the booki
     await expect(page.locator('#update-status')).toHaveText('配置已实时应用');
     const preview = page.frameLocator('#preview');
     const firstDate = preview.locator('[data-date="2026-10-12"]');
-    const firstSlot = preview.locator('[data-slot="19:00–20:00"]');
+    const firstSlot = preview.locator('[data-slot="19:00–19:30"]');
     await firstDate.click();
     await firstSlot.click();
     await preview.locator('[name=name]').fill('实时预览测试');
@@ -82,7 +82,7 @@ test('local debugger updates layout and availability without reloading the booki
     await expect(firstDate).toContainText('剩余 17 名');
     await page.locator('#capacity-rows [data-field=remaining]').first().fill('3');
     await expect(firstSlot).toContainText('剩余 3 名');
-    await expect(preview.locator('[name=timeSlot]')).toHaveValue('19:00–20:00');
+    await expect(preview.locator('[name=timeSlot]')).toHaveValue('19:00–19:30');
     await expect(firstDate).toContainText('剩余 11 名');
     await expect(preview.locator('[data-date="2026-10-13"]')).toContainText('剩余 17 名');
     await page.locator('#capacity-rows [data-field=remaining]').first().fill('0');
@@ -91,8 +91,8 @@ test('local debugger updates layout and availability without reloading the booki
     await expect(preview.locator('[name=timeSlot]')).toHaveValue('');
     await page.locator('#capacity-rows [data-field=capacity]').nth(1).fill('0');
     await expect(firstDate).toBeDisabled();
-    await expect(preview.locator('[data-slot="20:00–21:00"]')).toContainText('暂停预约');
-    assert.equal(await preview.locator('[data-slot="20:00–21:00"] .booking-remaining').evaluate(element => globalThis.getComputedStyle(element).backgroundColor), 'rgba(0, 0, 0, 0)');
+    await expect(preview.locator('[data-slot="20:00–20:30"]')).toContainText('暂停预约');
+    assert.equal(await preview.locator('[data-slot="20:00–20:30"] .booking-remaining').evaluate(element => globalThis.getComputedStyle(element).backgroundColor), 'rgba(0, 0, 0, 0)');
     await page.locator('#reset-capacity').click();
     await expect(firstDate).toBeEnabled();
 
@@ -167,13 +167,13 @@ test('local debugger updates layout and availability without reloading the booki
       if (scenario === 'friday') {
         await monday.click();
         await firstSlot.click();
-        await expect(preview.locator('[name=timeSlot]')).toHaveValue('19:00–20:00');
+        await expect(preview.locator('[name=timeSlot]')).toHaveValue('19:00–19:30');
         await page.locator('#capacity-date').selectOption('2026-10-19');
         await page.locator('#capacity-rows [data-field=remaining]').first().fill('2');
       }
       await expect(firstSlot).toContainText('剩余 2 名');
       await expect(preview.locator('[name=date]')).toHaveValue('2026-10-19');
-      await expect(preview.locator('[name=timeSlot]')).toHaveValue('19:00–20:00');
+      await expect(preview.locator('[name=timeSlot]')).toHaveValue('19:00–19:30');
       await expect(monday).toHaveAttribute('aria-pressed', 'true');
       await expect(page.locator('#capacity-date')).toHaveValue('2026-10-19');
     }

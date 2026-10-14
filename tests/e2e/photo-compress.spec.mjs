@@ -239,3 +239,85 @@ test('stale compression results cannot replace the latest preview or resurrect a
   await expect(page.locator('#intake-front-preview')).not.toHaveAttribute('src');
   await expect(page.locator('#intake-front-meta')).toHaveText('');
 });
+
+async function scanHarness(page) {
+  const item = { id: 'photo-test', status: 'booked', revision: 0, campus: '南湖', date: '2026-10-14', timeSlot: '19:00–19:30', brand: '联想', deviceModel: 'ThinkPad', deviceType: '笔记本电脑', faultType: '蓝屏', source: 'booking' };
+  const user = { account: 'photo-staff', name: '照片测试员', role: 'technician', authorizedCampuses: ['南湖'], token: 'photo-session' };
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => { throw new DOMException('Denied', 'NotAllowedError'); } });
+  });
+  await page.route('**/api/auth/login', route => route.fulfill({ json: user }));
+  await page.route('**/api/auth/me', route => route.fulfill({ json: user }));
+  await page.route('**/api/scan/config', route => route.fulfill({ json: { enabled: true } }));
+  await page.route('**/api/scan/current*', route => route.fulfill({ json: { items: [], pending: item } }));
+  await page.route('**/api/scan/resolve', route => route.fulfill({ json: item }));
+  const uploads = [], starts = [], controls = { failBack: false, failStart: false };
+  await page.route('**/api/appointments/photo-test/attachments', async route => {
+    if (route.request().method() === 'GET') { await route.fulfill({ json: { items: [] } }); return; }
+    const input = route.request().postDataJSON();
+    const record = { ...input, id: input.filename + '-' + (uploads.length + 1) }; uploads.push(record);
+    if (controls.failBack && input.purpose === 'intake_back') {
+      controls.failBack = false; await route.fulfill({ status: 500, json: { error: '模拟上传失败' } });
+    } else await route.fulfill({ status: 201, json: { id: record.id } });
+  });
+  await page.route('**/api/appointments/photo-test/status', async route => {
+    starts.push(route.request().postDataJSON());
+    if (controls.failStart) {
+      controls.failStart = false; await route.fulfill({ status: 500, json: { error: '模拟签到失败' } });
+    } else await route.fulfill({ json: { ...item, status: 'in_progress', assignedTo: user.account } });
+  });
+  await page.goto('/staff/');
+  await page.locator('#login-id').fill(user.account); await page.locator('#login-password').fill('photo-test-password');
+  await page.locator('#login-form button').click();
+  await expect(page.locator('#scan-intake-form')).toBeVisible();
+  return { uploads, starts, controls, user };
+}
+
+test('scanner intake compresses originals above 2 MB and replaces IDs after a partial upload', async ({ page }) => {
+  const errors = []; page.on('pageerror', error => errors.push(error.message));
+  const { uploads, starts, controls } = await scanHarness(page);
+  controls.failBack = true;
+  await page.locator('#scan-front').setInputFiles({ name: 'large-front.png', mimeType: '', buffer: Buffer.concat([png, Buffer.alloc(3 * 1024 * 1024)]) });
+  await page.locator('#scan-back').setInputFiles({ name: 'back.png', mimeType: '', buffer: png });
+  await expect(page.locator('#scan-front-state')).toContainText('3.0 MB →');
+  await expect(page.locator('#scan-front-progress')).toHaveJSProperty('value', 100);
+  await expect(page.locator('#scan-front-preview')).toBeVisible();
+  await expect(page.locator('#scan-front')).not.toHaveAttribute('capture');
+  await page.getByRole('button', { name: '确认照片并开始维修' }).click();
+  await expect(page.locator('#scan-back-state')).toContainText('上传失败，请重试');
+  expect(uploads[0].mimeType).toBe('image/jpeg'); expect(uploads[0].filename).toBe('large-front.jpg');
+  expect(Buffer.from(uploads[0].data, 'base64').length).toBeLessThanOrEqual(2 * 1024 * 1024);
+  await page.locator('#scan-front').setInputFiles({ name: 'new-front.png', mimeType: '', buffer: png });
+  await page.getByRole('button', { name: '确认照片并开始维修' }).click();
+  await expect(page.locator('#scan-result-form')).toBeVisible();
+  expect(uploads.map(input => input.filename)).toEqual(['large-front.jpg', 'back.png', 'new-front.png', 'back.png']);
+  expect(starts[0]).toMatchObject({ frontPhotoId: uploads[2].id, backPhotoId: uploads[3].id, status: 'in_progress' });
+  expect(errors).toEqual([]);
+});
+
+test('scanner restores uploaded IDs after reload, rejects HEIC and reuses only the unchanged photo', async ({ page }) => {
+  const errors = []; page.on('pageerror', error => errors.push(error.message));
+  const { uploads, starts, controls, user } = await scanHarness(page);
+  controls.failStart = true;
+  for (const side of ['front', 'back']) await page.locator('#scan-' + side).setInputFiles({ name: side + '.png', mimeType: '', buffer: png });
+  await page.getByRole('button', { name: '确认照片并开始维修' }).click();
+  await expect(page.locator('#toast')).toContainText('模拟签到失败');
+  await page.reload();
+  await expect(page.locator('#scan-intake-form')).toBeVisible();
+  for (const side of ['front', 'back']) {
+    await expect(page.locator('#scan-' + side + '-state')).toContainText('照片已上传，可直接重试签到');
+    expect(await page.locator('#scan-' + side).evaluate(input => input.files.length)).toBe(0);
+  }
+  await page.locator('#scan-back').setInputFiles({ name: 'back.heic', mimeType: '', buffer: Buffer.from('\x00\x00\x00\x18ftypheic\x00\x00\x00\x00heic', 'binary') });
+  await expect(page.locator('#scan-back-state')).toContainText('HEIC/HEIF');
+  await page.getByRole('button', { name: '确认照片并开始维修' }).click();
+  await expect(page.locator('#toast')).toContainText('转为 JPG');
+  expect(starts).toHaveLength(1); expect(uploads).toHaveLength(2);
+  expect(await page.evaluate(account => JSON.parse(localStorage.getItem(`pioneerScan:${account}:photos:photo-test`)), user.account)).toEqual({ front: uploads[0].id });
+  await page.locator('#scan-back').setInputFiles({ name: 'new-back.png', mimeType: '', buffer: png });
+  await page.getByRole('button', { name: '确认照片并开始维修' }).click();
+  await expect(page.locator('#scan-result-form')).toBeVisible();
+  expect(uploads.map(input => input.filename)).toEqual(['front.png', 'back.png', 'new-back.png']);
+  expect(starts[1]).toMatchObject({ frontPhotoId: uploads[0].id, backPhotoId: uploads[2].id });
+  expect(errors).toEqual([]);
+});

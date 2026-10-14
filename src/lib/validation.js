@@ -1,5 +1,5 @@
 import { fail } from './http.js';
-import { normalizeTimeSlot, statusLabels, outcomeLabels, CAMPUSES, roleLevel } from '../../shared/constants.js';
+import { normalizeTimeSlot, statusLabels, repairOutcomes, CAMPUSES, roleLevel, TIME_SLOTS } from '../../shared/constants.js';
 import { validDate } from '../../shared/time.js';
 import { validSignature } from '../../shared/signature.js';
 
@@ -32,18 +32,28 @@ export function appointmentPatch(input) {
     if (input[key] !== undefined) patch[key] = stringField(input[key], key, 80, true);
   }
   if (input.outcome !== undefined) {
-    if (!Object.hasOwn(outcomeLabels, input.outcome) || input.outcome === 'legacy_unknown') fail(400, '结束结果不正确');
+    if (!repairOutcomes.includes(input.outcome)) fail(400, '维修结果不正确');
     patch.outcome = input.outcome;
   }
   if (input.status !== undefined) {
     if (!Object.hasOwn(statusLabels, input.status)) fail(400, '状态不正确');
     patch.status = input.status;
   }
+  if (input.status && input.status !== 'completed' && input.outcome !== undefined) fail(400, '仅已完成工单可以填写维修结果');
+  if (input.expiresAt !== undefined) {
+    if (input.action !== 'correct' || input.status !== 'booked') fail(400, '有效截止时间只能在管理员恢复为已预约时设置');
+    const value = stringField(input.expiresAt, '有效截止时间', 40, true);
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value) ||
+        !validDate(value.slice(0, 10)) || !Number.isFinite(Date.parse(value))) fail(400, '有效截止时间格式不正确');
+    patch.expiresAt = new Date(value).toISOString();
+  }
+  const correctionReason = input.correctionReason === undefined ? '' : stringField(input.correctionReason, '纠错原因', 300, true);
+  if (input.correctionReason !== undefined && (input.action !== 'correct' || correctionReason.length < 8)) fail(400, '管理员纠错原因至少填写 8 字');
   for (const [key, max] of [['assignedTo', 80], ['repairNote', 3000]]) {
     if (input[key] !== undefined) patch[key] = stringField(input[key], key, max);
   }
   if (input.revision!==undefined && (!Number.isInteger(input.revision) || input.revision<0)) fail(400,'预约版本不正确');
-  return {patch,revision:input.revision,action:input.action};
+  return {patch,revision:input.revision,action:input.action,correctionReason};
 }
 export function appointmentQuery(input) {
   const query = { q: stringField(input.q, '搜索内容', 120), campus: input.campus || '', date: input.date || '', status: input.status || 'all', timeSlot: input.timeSlot || '', sort: input.sort || 'createdAt', direction: input.direction || 'desc' };
@@ -85,10 +95,20 @@ export function statsQuery(input) {
 export function slotCapacityInput(input) {
   if (!CAMPUSES.includes(input.campus)) fail(400, '校区不正确');
   const timeSlot = normalizeTimeSlot(stringField(input.timeSlot, '时段', 40, true));
-  if (!timeSlot) fail(400, '时段不正确');
+  if (!TIME_SLOTS.includes(timeSlot)) fail(400, '时段不正确');
+  if (!Number.isInteger(input.weekday) || input.weekday < 1 || input.weekday > 4) fail(400, '请选择周一至周四');
   if (!Number.isSafeInteger(input.capacity) || input.capacity < 0) fail(400, '预约人数必须为非负安全整数');
   if (!Number.isSafeInteger(input.revision) || input.revision < 0) fail(400, '配置版本不正确');
-  return { campus: input.campus, timeSlot, capacity: input.capacity, revision: input.revision };
+  return { campus: input.campus, weekday: input.weekday, timeSlot, capacity: input.capacity, revision: input.revision };
+}
+export function slotCapacityBatchInput(input) {
+  if (!Array.isArray(input.items) || !input.items.length || input.items.length > 32) fail(400, '请选择 1 至 32 项人数配置');
+  const items = input.items.map(item => {
+    if (!item || typeof item !== 'object') fail(400, '人数配置不正确');
+    return slotCapacityInput(item);
+  });
+  if (new Set(items.map(item => `${item.campus}/${item.weekday}/${item.timeSlot}`)).size !== items.length) fail(400, '人数配置不能重复');
+  return items;
 }
 export function passwordInput(value) {
   if (typeof value !== 'string' || value.length < 8 || value.length > 128) fail(400, '密码长度应为 8 至 128 位');
