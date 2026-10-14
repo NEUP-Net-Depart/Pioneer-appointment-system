@@ -2,9 +2,10 @@
 export function conflictMessage(error) {
   const message = `${error.message} ${error.cause?.message || ''}`;
   if (message.includes('UNIQUE constraint failed: active_repairs.account') || message.includes('ACTIVE_REPAIR_EXISTS')) return '该维修人员已有进行中的工单，请先完成当前维修';
-  if (message.includes('APPOINTMENT_OVERLAP')) return '同一时间已经存在预约';
+  if (message.includes('idx_one_pending_onsite_registration') || message.includes('UNIQUE constraint failed: appointments.registered_by')) return '请先签到或取消当前临时登记';
   if (message.includes('SLOT_PAUSED')) return '该校区该时段暂停预约';
   if (message.includes('SLOT_CHANGED')) return '该日期的时段安排已更新，请重新选择';
+  if (message.includes('APPOINTMENT_OVERLAP')) return '同一时间已经存在预约';
   if (message.includes('SLOT_FULL')) return '该校区该时段已满';
   if (message.includes('UNIQUE constraint failed: appointments.student_id')) return '同一时段已经存在预约';
   if (message.includes('UNIQUE constraint failed: staff_accounts.account')) return '学号已存在';

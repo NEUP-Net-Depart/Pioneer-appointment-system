@@ -7,7 +7,8 @@ const columns = {
   status: 'status', assignedTo: 'assigned_to', repairNote: 'repair_note', createdAt: 'created_at',
   outcome: 'outcome', startedAt: 'started_at', completedAt: 'completed_at',
   agreementAt: 'agreement_at', agreementVersion: 'agreement_version', signature: 'signature',
-  repairNumber: 'repair_number', frontPhotoId: 'front_photo_id', backPhotoId: 'back_photo_id'
+  repairNumber: 'repair_number', frontPhotoId: 'front_photo_id', backPhotoId: 'back_photo_id',
+  source: 'source', registeredBy: 'registered_by', registrationKey: 'registration_key'
 };
 function fromRow(row) {
   return row ? { id: row.id, revision: row.revision, ...Object.fromEntries(Object.entries(columns).map(([key, column]) => [key, row[column] ?? (['outcome','startedAt','completedAt','repairNumber','frontPhotoId','backPhotoId'].includes(key) ? null : '')])) } : null;
@@ -16,6 +17,15 @@ export function appointmentRepository(db) {
   return {
     async schedule(date, campus) {
       return (await scheduleStatement(db, date, date, [campus]).all()).results;
+    },
+    async inProgress(account) {
+      return (await db.prepare("SELECT * FROM appointments WHERE assigned_to=? AND status='in_progress' ORDER BY started_at,created_at,id").bind(account).all()).results.map(fromRow);
+    },
+    async findRegistration(account, key) {
+      return fromRow(await db.prepare('SELECT * FROM appointments WHERE registered_by=? AND registration_key=?').bind(account,key).first());
+    },
+    async pendingRegistration(account) {
+      return fromRow(await db.prepare("SELECT * FROM appointments WHERE registered_by=? AND source='onsite' AND status='booked' ORDER BY created_at DESC,id DESC LIMIT 1").bind(account).first());
     },
     async intakePhotos(id, account, front, back, now) {
       if (!front || !back || front === back) return false;
@@ -28,11 +38,25 @@ export function appointmentRepository(db) {
     async countNoShows(beforeDate) {
       return (await db.prepare("SELECT COUNT(*) AS total FROM appointments WHERE source='booking' AND status='booked' AND date<=?").bind(beforeDate).first()).total;
     },
+    async countExpirations(beforeDate) {
+      return (await db.prepare("SELECT COUNT(*) AS total FROM appointments WHERE source='onsite' AND status='booked' AND date<=?").bind(beforeDate).first()).total;
+    },
     async endNoShows(beforeDate, instant, { id, campuses } = {}) {
       const where = ["source='booking'", "status='booked'", 'date<=?'], args = [instant, beforeDate];
       if (id) { where.push('id=?'); args.push(id); }
       if (campuses) { where.push(campuses.length ? `campus IN (${campuses.map(() => '?').join(',')})` : '0'); args.push(...campuses); }
       return db.prepare(`UPDATE appointments SET status='completed',outcome='no_show',completed_at=?,revision=revision+1 WHERE ${where.join(' AND ')}`).bind(...args).run();
+    },
+    async expirePending(beforeDate, instant, scope = {}) {
+      const bookingWhere = ["source='booking'", "status='booked'", 'date<=?'], bookingArgs = [instant, beforeDate];
+      if (scope.id) { bookingWhere.push('id=?'); bookingArgs.push(scope.id); }
+      if (scope.campuses) { bookingWhere.push(scope.campuses.length ? `campus IN (${scope.campuses.map(() => '?').join(',')})` : '0'); bookingArgs.push(...scope.campuses); }
+      const booking = await db.prepare(`UPDATE appointments SET status='completed',outcome='no_show',completed_at=?,revision=revision+1 WHERE ${bookingWhere.join(' AND ')}`).bind(...bookingArgs).run();
+      const where = ["source='onsite'", "status='booked'", 'date<=?'], args = [instant, beforeDate];
+      if (scope.id) { where.push('id=?'); args.push(scope.id); }
+      if (scope.campuses) { where.push(scope.campuses.length ? `campus IN (${scope.campuses.map(() => '?').join(',')})` : '0'); args.push(...scope.campuses); }
+      const onsite = await db.prepare(`UPDATE appointments SET status='completed',outcome='expired',completed_at=?,revision=revision+1 WHERE ${where.join(' AND ')}`).bind(...args).run();
+      return { meta: { changes: (booking.meta?.changes || 0) + (onsite.meta?.changes || 0) } };
     },
     async find(id) { return fromRow(await db.prepare('SELECT * FROM appointments WHERE id=?').bind(id).first()); },
     async findByCredential(id, hash) {
@@ -52,15 +76,15 @@ export function appointmentRepository(db) {
     },
     async list(query,{campuses,technician}) {
       const campusScope=campuses.length ? `campus IN (${campuses.map(()=>'?').join(',')})` : '0';
-      const scope=campusScope+(technician ? " AND (assigned_to=? OR status='booked')" : '');
-      const scopeArgs=[...campuses,...(technician ? [technician] : [])];
+      const scope=campusScope+(technician ? " AND (assigned_to=? OR registered_by=? OR status='booked')" : '');
+      const scopeArgs=[...campuses,...(technician ? [technician, technician] : [])];
       const where = [scope], args = [...scopeArgs];
       for (const [key,column] of [['campus','campus'],['date','date'],['timeSlot','time_slot']]) if (query[key]) { where.push(`${column}=?`); args.push(query[key]); }
       if (query.dateFrom && query.dateTo) { where.push('date>=? AND date<=?'); args.push(query.dateFrom,query.dateTo); }
       if (query.q) {
-        where.push("(instr(id,?)>0 OR instr(repair_number,?)>0 OR instr(lower(device_model),?)>0 OR instr(campus,?)>0 OR ((?='' OR (assigned_to=? AND status<>'booked')) AND (instr(lower(name),?)>0 OR instr(student_id,?)>0)))");
+        where.push("(instr(id,?)>0 OR instr(repair_number,?)>0 OR instr(lower(device_model),?)>0 OR instr(campus,?)>0 OR ((?='' OR ((assigned_to=? OR registered_by=?) AND status<>'booked')) AND (instr(lower(name),?)>0 OR instr(student_id,?)>0)))");
         const text=query.q.toLowerCase();
-        args.push(text,text,text,text,technician,technician,text,text);
+        args.push(text,text,text,text,technician,technician,technician,text,text);
       }
       const filteredWhere = where.join(' AND '), filteredArgs = [...args];
       if (query.status === 'pending') where.push("status IN ('booked','in_progress')");
@@ -90,7 +114,7 @@ export function appointmentRepository(db) {
         db.prepare(`SELECT campus,date,time_slot,COUNT(*) AS occupied,
           COUNT(CASE WHEN status='booked' THEN 1 END) AS booked,
           COUNT(CASE WHEN status='in_progress' THEN 1 END) AS in_progress
-          FROM appointments WHERE ${scope} AND date>=? AND date<=? AND source='booking'
+        FROM appointments WHERE ${scope} AND date>=? AND date<=? AND source='booking'
           AND NOT (status='completed' AND outcome='cancelled') GROUP BY campus,date,time_slot`).bind(...campuses,start,end),
         scheduleStatement(db, start, end, campuses)
       ]);
@@ -103,8 +127,9 @@ export function appointmentRepository(db) {
       // Include historical booking prefixes so their suffixes are never reused.
       const row = await db.prepare(`INSERT INTO appointments(id,${Object.values(columns).join(',')},access_token_hash,credential_rotated_at)
         SELECT ? || printf('%02d',COALESCE(MAX(CAST(substr(id,instr(id,'-')+1) AS INTEGER)),0)+1),${Object.keys(columns).map(() => '?').join(',')},?,?
-        FROM appointments WHERE id LIKE ? OR id LIKE ? OR id LIKE ? RETURNING *`)
-        .bind(prefix, ...Object.keys(columns).map(key => key === 'assignedTo' ? item[key] || null : item[key] ?? null), item.accessTokenHash,item.credentialRotatedAt,`${prefix}%`,`reverse${suffix}%`,`${suffix}%`).first();
+        FROM appointments WHERE id LIKE ? OR id LIKE ? OR id LIKE ?
+        ON CONFLICT(registered_by,registration_key) DO UPDATE SET registration_key=excluded.registration_key RETURNING *`)
+        .bind(prefix, ...Object.keys(columns).map(key => key === 'assignedTo' ? item[key] || null : key === 'source' ? item[key] || 'booking' : item[key] ?? null), item.accessTokenHash,item.credentialRotatedAt,`${prefix}%`,`reverse${suffix}%`,`${suffix}%`).first();
       return fromRow(row);
     },
     async update(item, patch) {

@@ -6,6 +6,7 @@ import { formatDate,formatInstant } from '/shared/time.js';
 import { statusLabels,statusClass,outcomeLabels } from '/shared/constants.js';
 import { startVisiblePolling } from '/shared/polling.js';
 import { savedAppointments,saveAppointment,privateLink,parsePrivateLink,credentialHeaders } from './credentials.js';
+import { renderRepairQr } from './repair-qr.js';
 
 export function initLookup(appointments,{onPrivateLink=()=>{}}={}) {
   let stopPolling,generation=0;
@@ -17,6 +18,13 @@ export function initLookup(appointments,{onPrivateLink=()=>{}}={}) {
     stopPolling?.();
     root.innerHTML=list.map(item=>`<article class="appointment-card"><div><h3>${escapeHtml(item.deviceType)} · ${escapeHtml(item.brand)} ${escapeHtml(item.deviceModel)}</h3><span class="code">预约编号 <strong>${escapeHtml(item.id)}</strong></span>${item.repairNumber ? `<p class="code">历史维修编号 <strong>${escapeHtml(item.repairNumber)}</strong></p>` : ''}<div class="appointment-meta"><span>${escapeHtml(item.campus)}</span><span>${formatDate(item.date)}</span><span>${escapeHtml(item.timeSlot)}</span></div><div class="queue-info" data-queue-id="${escapeHtml(item.id)}">正在读取排队位置…</div>${item.outcome ? `<p class="record-note"><b>结束结果：</b>${outcomeLabels[item.outcome]}</p>` : ''}${item.startedAt || item.completedAt ? `<p class="record-note">开始：${formatInstant(item.startedAt)} · 结束：${formatInstant(item.completedAt)}</p>` : ''}${item.repairNote ? `<p class="record-note"><b>维修说明：</b>${escapeHtml(item.repairNote)}</p>` : ''}<div class="appointment-attachments">${(item.attachments || []).map(file=>`<button type="button" class="attachment-link" data-file="${escapeHtml(file.id)}" data-appointment="${escapeHtml(item.id)}">${escapeHtml(file.filename)} <small>${attachmentSize(file.size)}</small></button>`).join('')}</div><div class="attachment-upload"><label>补充附件（单个不超过 5 MB）<input type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf,text/plain" data-upload-input="${escapeHtml(item.id)}" aria-label="为 ${escapeHtml(item.id)} 选择附件" /></label><button class="secondary-btn" type="button" data-upload="${escapeHtml(item.id)}">上传附件</button></div><button class="text-btn" data-copy-link="${escapeHtml(item.id)}">复制私人查询链接</button></div><div class="appointment-status"><span class="status-pill ${statusClass[item.status]}">${statusLabels[item.status]}</span><time>提交于 ${formatDate(item.createdAt)}</time>${item.status==='booked' ? `<button class="cancel-link" data-cancel="${escapeHtml(item.id)}">取消预约</button>` : ''}</div></article>`).join('');
     if (!list.length && !failed.length) root.innerHTML='<div class="empty-state"><span class="empty-icon">⌕</span><h2>此浏览器暂无预约</h2><p>预约成功后会自动出现在这里。其他设备可直接访问私人查询链接。</p></div>';
+    root.querySelectorAll('.appointment-card').forEach((card, index) => {
+      if (list[index].status === 'completed') return;
+      const qr = document.createElement('details'); qr.className = 'repair-qr';
+      const summary = document.createElement('summary'); summary.textContent = '出示维修二维码';
+      const content = document.createElement('div'); qr.append(summary, content); card.firstElementChild.append(qr);
+      qr.addEventListener('toggle', () => { if (qr.open && !content.childElementCount) renderRepairQr(content, list[index]); });
+    });
     if (failed.length) root.innerHTML+=failed.map(({entry,message})=>`<div class="empty-state"><h2>${escapeHtml(entry.id)} 暂时无法读取</h2><p>${escapeHtml(message)}。如凭证遗失或失效，请联系工作人员人工核验后重新签发。</p></div>`).join('');
     $$('[data-upload]').forEach(button=>button.addEventListener('click',async()=>{
       const item=list.find(entry=>entry.id===button.dataset.upload);

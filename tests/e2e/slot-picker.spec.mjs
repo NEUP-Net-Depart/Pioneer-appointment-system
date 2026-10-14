@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-const firstSlot = '19:00–20:00', secondSlot = '20:00–21:00';
+const firstSlot = '19:00–19:30', secondSlot = '20:00–20:30';
 const day = page => page.locator('[data-date="2026-10-12"]');
 const slot = (page, value = firstSlot) => page.locator(`[data-slot="${value}"]`);
 function summary(campus, date) {
@@ -34,7 +34,7 @@ test('dates show availability immediately, campus controls sync, and selections 
   await page.keyboard.press('Enter');
   await expect(slot(page)).toContainText('剩余 8 名');
   await slot(page).click();
-  await expect(page.locator('#booking-selection')).toContainText('已选：南湖 · 周一 · 10/12 · 19:00–20:00');
+  await expect(page.locator('#booking-selection')).toContainText('已选：南湖 · 周一 · 10/12 · 19:00–19:30');
   await page.locator('[data-campus="浑南"]').click();
   await expect(page.locator('[name=campus]')).toHaveValue('浑南');
   await expect(page.locator('[name=timeSlot]')).toHaveValue('');
@@ -410,7 +410,7 @@ for (const width of [320, 390, 1440]) {
     await expect(floating).toBeHidden();
     await passPicker();
     await expect(floating).toBeVisible();
-    await expect(button).toHaveAccessibleName('已选预约：南湖 · 周一 · 10/12 · 19:00–20:00，点击返回时间选择器');
+    await expect(button).toHaveAccessibleName('已选预约：南湖 · 周一 · 10/12 · 19:00–19:30，点击返回时间选择器');
     await expect(floating.locator('.booking-float-particles i')).toHaveCount(6);
     await button.evaluate(async element => {
       await Promise.all(element.parentElement.getAnimations({ subtree: true }).map(animation => animation.finished.catch(() => {})));

@@ -143,6 +143,8 @@ test('student booking, private links, whitelist activation, staff permissions, r
   const errors=[];
   const contexts=await Promise.all([10,11,12,13].map(n=>browser.newContext({baseURL:process.env.E2E_BASE_URL,extraHTTPHeaders:{'CF-Connecting-IP':`198.51.100.${n}`}})));
   const [student,root,member,privatePage]=await Promise.all(contexts.map(context=>context.newPage()));
+  // Keep exercising the retained technician UI as the feature-flag fallback.
+  await member.route('**/api/scan/config', route => route.fulfill({json:{enabled:false}}));
   for(const page of [student,root,member,privatePage])page.on('pageerror',error=>errors.push(error.message));
   try{
     const item=await booking(student,'20269901');
@@ -255,6 +257,12 @@ test('student booking, private links, whitelist activation, staff permissions, r
     await root.locator('#current-password').fill(process.env.E2E_ROOT_PASSWORD);await root.locator('#new-password').fill(process.env.E2E_ROOT_PASSWORD+'new');await root.locator('#confirm-password').fill(process.env.E2E_ROOT_PASSWORD+'new');
     await root.locator('#password-form [type=submit]').click();await expect(root.locator('#login-view')).toBeVisible();
     await login(root,'root001',process.env.E2E_ROOT_PASSWORD+'new');
+    const changedToken = await root.evaluate(() => sessionStorage.getItem('pioneerToken'));
+    const restore = await contexts[0].request.patch('/api/auth/password', {
+      headers: { Authorization: `Bearer ${changedToken}` },
+      data: { currentPassword: process.env.E2E_ROOT_PASSWORD + 'new', newPassword: process.env.E2E_ROOT_PASSWORD }
+    });
+    expect(restore.ok()).toBe(true);
     expect(errors).toEqual([]);
   }finally{await Promise.all(contexts.map(context=>context.close()));}
 });
@@ -265,7 +273,7 @@ test('historical private links display original identifiers and repair aliases s
   page.on('pageerror', error=>errors.push(error.message));
   const items = ['','reverse','reserve'].map((prefix,index)=>({
     id:`${prefix}020261012-${51+index}`,repairNumber:`020261015-${51+index}`,revision:0,
-    name:'历史预约同学',campus:'南湖',date:'2026-10-12',timeSlot:'19:00–20:00',
+    name:'历史预约同学',campus:'南湖',date:'2026-10-12',timeSlot:'19:00–19:30',
     deviceType:'笔记本电脑',brand:'联想',deviceModel:'ThinkPad',status:'completed',outcome:'repaired',
     repairNote:'历史维修说明',createdAt:'2026-10-12T08:00:00Z',attachments:[]
   }));

@@ -77,7 +77,7 @@ export function initStaff(){
     $('#correction-panel').hidden=!admin();$('#correction-panel').open=false;
     $('#correction-status').innerHTML=Object.entries(statusLabels).map(([value,label])=>`<option value="${value}" ${value===item.status ? 'selected' : ''}>${label}</option>`).join('');
     $('#correction-assigned').value=item.assignedTo;
-    $('#correction-outcome').innerHTML='<option value="">保留现有结果</option>'+Object.entries(outcomeLabels).filter(([value])=>value!=='legacy_unknown').map(([value,label])=>`<option value="${value}" ${value===item.outcome ? 'selected' : ''}>${label}</option>`).join('');
+    $('#correction-outcome').innerHTML='<option value="">保留现有结果</option>'+Object.entries(outcomeLabels).filter(([value])=>!['legacy_unknown','expired'].includes(value)).map(([value,label])=>`<option value="${value}" ${value===item.outcome ? 'selected' : ''}>${label}</option>`).join('');
     $('#recovery-panel').hidden=!admin();$('#recovery-result').hidden=true;$('#recovered-link').value='';
     $('#recovery-verified').checked=false;$('#recovery-reason').value='';
     $('#detail-modal').hidden=false;$('#close-detail').focus();

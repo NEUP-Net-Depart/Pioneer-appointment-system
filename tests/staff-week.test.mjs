@@ -13,7 +13,7 @@ test('Sunday weekly overview reads earlier service days while preserving the upc
   let range;
   const repository={endNoShows:async()=>{},overview:async(start,end,campuses)=>{
     range={start,end,campuses};
-    return {totals:[{campus:'南湖',date:'2026-10-12',time_slot:'19:00–20:00',occupied:3,booked:0,in_progress:1}],capacities:[{campus:'南湖',date:'2026-10-12',time_slot:'19:00–20:00',capacity:10}]};
+    return {totals:[{campus:'南湖',date:'2026-10-12',time_slot:'19:00–19:30',occupied:3,booked:0,in_progress:1}],capacities:[{campus:'南湖',date:'2026-10-12',time_slot:'19:00–19:30',capacity:10}]};
   }};
   const service=appointmentService(repository,{},'',()=>new Date('2026-10-18T04:00:00Z'));
   const result=await service.overview({account:'staff',role:'technician',status:'enabled',authorizedCampuses:['南湖']});

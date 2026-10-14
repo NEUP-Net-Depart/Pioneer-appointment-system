@@ -1,5 +1,5 @@
 -- Preserve every appointment and its referencing rows while widening the slot constraint.
--- Old clients can still book legacy slots until the application switches.
+-- Legacy slot values remain readable for historical rows; new application requests use only half-hour slots.
 
 CREATE TABLE appointments_new (
   id TEXT PRIMARY KEY, student_id TEXT NOT NULL, name TEXT NOT NULL,
@@ -11,7 +11,7 @@ CREATE TABLE appointments_new (
   date TEXT NOT NULL, time_slot TEXT NOT NULL CHECK(time_slot IN ('19:00–20:00','20:00–21:00','19:00–19:30','19:30–20:00','20:00–20:30','20:30–21:00')),
   note TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL CHECK(status IN ('booked','in_progress','completed')),
-  outcome TEXT CHECK(outcome IN ('repaired','unrepaired','not_needed','cancelled','no_show','legacy_unknown')),
+  outcome TEXT CHECK(outcome IN ('repaired','unrepaired','not_needed','cancelled','no_show','expired','legacy_unknown')),
   started_at TEXT, completed_at TEXT,
   assigned_to TEXT REFERENCES staff_accounts(account), repair_note TEXT NOT NULL DEFAULT '',
   access_token_hash TEXT NOT NULL UNIQUE CHECK(length(access_token_hash)=64),
@@ -123,6 +123,7 @@ BEGIN
 END;
 
 CREATE UNIQUE INDEX idx_onsite_request ON appointments(registered_by,registration_key);
+CREATE UNIQUE INDEX idx_one_pending_onsite_registration ON appointments(registered_by) WHERE source='onsite' AND status='booked' AND registered_by IS NOT NULL;
 
 CREATE TABLE weekday_slot_capacities (
  campus TEXT NOT NULL CHECK(campus IN ('南湖','浑南')),
