@@ -26,6 +26,13 @@ export function initScan() {
       if (!item) return;
       const uploaded = photos(); delete uploaded[side]; write(`photos:${item.id}`, uploaded);
     },
+    async upload(file) {
+      const [attachment] = await uploadAttachments(item, [file], 'intake_' + side);
+      return attachment;
+    },
+    onUploaded(file) {
+      const uploaded = photos(); uploaded[side] = file.id; write(`photos:${item.id}`, uploaded);
+    },
   })]));
   const scanner = createScanner({ video: $('#scan-video'), status: $('#camera-status'), torch: $('#scan-torch'), switchCamera: $('#scan-switch-camera'), onCode: code => resolve({ code }), onState(state) {
     $('.scanner-frame').dataset.cameraState = state;
@@ -179,20 +186,10 @@ export function initScan() {
     event.preventDefault(); run(async current => {
       if (!item || item.status !== 'booked') throw new Error('当前工单不能签到，请重新读取当前工单');
       const uploaded = photos();
-      const files = {};
-      for (const side of ['front','back']) {
-        if (!uploaded[side]) files[side] = await photoInputs[side].getFile();
-        if (current !== generation) return;
-      }
-      for (const side of ['front','back']) if (!uploaded[side]) {
-        const photo = photoInputs[side]; photo.setStatus('正在上传');
-        let file;
-        try { [file] = await uploadAttachments(item, [files[side]], 'intake_'+side); }
-        catch (error) { if (current === generation) photo.setStatus('上传失败，请重试'); throw error; }
-        if (current !== generation) return;
-        uploaded[side] = file.id; write(`photos:${item.id}`, uploaded); photo.setStatus('照片已上传，可直接重试签到');
-      }
-      await update({ status: 'in_progress', frontPhotoId: uploaded.front, backPhotoId: uploaded.back }, current);
+      const [frontPhotoId, backPhotoId] = await Promise.all(['front','back'].map(async side =>
+        uploaded[side] || (await photoInputs[side].getUploaded()).id));
+      if (current !== generation) return;
+      await update({ status: 'in_progress', frontPhotoId, backPhotoId }, current);
       if (current === generation) showToast('照片已保存，已签到并开始维修');
     });
   });

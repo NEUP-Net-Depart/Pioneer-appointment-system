@@ -180,19 +180,22 @@ test('replacing a photo after a partial upload clears its old attachment ID and 
     } else await route.fulfill({ status: 201, json: { id: body.filename, size: png.length } });
   });
   const select = (side, name) => page.locator('#intake-' + side).setInputFiles({ name, mimeType: '', buffer: png });
-  await select('front', 'old-front.png'); await select('back', 'back.png');
-  await expect(page.locator('#intake-front-meta')).toContainText('照片已准备好');
+  await select('front', 'old-front.png');
+  await expect(page.locator('#intake-front-meta')).toContainText('已上传');
+  await select('back', 'back.png');
   await expect(page.locator('#intake-front-progress')).toHaveJSProperty('value', 100);
   await expect(page.locator('#intake-front-preview')).toBeVisible();
-  await page.locator('#confirm-intake').click();
   await expect(page.locator('#toast')).toContainText('模拟上传失败');
+  await expect(page.locator('#intake-back-meta')).toContainText('上传失败');
+  await expect(page.locator('#intake-back-preview')).toBeVisible();
+  expect(await page.evaluate(() => window.photoStarts)).toEqual([]);
   await select('front', 'new-front.png');
   await page.locator('#confirm-intake').click();
   await expect(page.locator('#intake-modal')).toBeHidden();
   expect(await page.evaluate(() => window.photoStarts[0].photos)).toEqual({ frontPhotoId: 'new-front.png', backPhotoId: 'back.png' });
-  expect(uploads.map(body => [body.filename, body.mimeType])).toEqual([
+  expect(uploads.map(body => [body.filename, body.mimeType]).sort()).toEqual([
     ['old-front.png', 'image/png'], ['back.png', 'image/png'], ['new-front.png', 'image/png'], ['back.png', 'image/png']
-  ]);
+  ].sort());
   expect(errors).toEqual([]);
 
   // Both photos upload, but starting fails. Replacing only the back must
@@ -208,11 +211,16 @@ test('replacing a photo after a partial upload clears its old attachment ID and 
   await page.locator('#confirm-intake').click();
   await expect(page.locator('#intake-modal')).toBeHidden();
   expect(await page.evaluate(() => window.photoStarts[1].photos)).toEqual({ frontPhotoId: 'front2.png', backPhotoId: 'new-back2.png' });
-  expect(uploads.slice(4).map(body => body.filename)).toEqual(['front2.png', 'back2.png', 'new-back2.png']);
+  expect(uploads.slice(4).map(body => body.filename).sort()).toEqual(['front2.png', 'back2.png', 'new-back2.png'].sort());
 });
 
 test('stale compression results cannot replace the latest preview or resurrect a closed intake', async ({ page }) => {
   await harness(page, { intake: true });
+  const uploads = [];
+  await page.route('**/api/appointments/photo-test/attachments', route => {
+    const body = route.request().postDataJSON(); uploads.push(body);
+    return route.fulfill({ status: 201, json: { id: body.filename } });
+  });
   await page.evaluate(() => {
     const original = window.loadImage;
     window.loadImage = function (file, callback, options) {
@@ -226,7 +234,7 @@ test('stale compression results cannot replace the latest preview or resurrect a
   await page.locator('#intake-front').setInputFiles({ name: 'old.png', mimeType: 'image/png', buffer: png });
   await page.waitForFunction(() => typeof window.releaseOldPhoto === 'function');
   await page.locator('#intake-front').setInputFiles({ name: 'latest.png', mimeType: 'image/png', buffer: png });
-  await expect(page.locator('#intake-front-meta')).toContainText('照片已准备好');
+  await expect(page.locator('#intake-front-meta')).toContainText('已上传');
   const url = await page.locator('#intake-front-preview').getAttribute('src');
   await page.evaluate(() => window.releaseOldPhoto());
   await expect(page.locator('#intake-front-preview')).toHaveAttribute('src', url);
@@ -238,6 +246,7 @@ test('stale compression results cannot replace the latest preview or resurrect a
   await expect(page.locator('#intake-front-preview')).toBeHidden();
   await expect(page.locator('#intake-front-preview')).not.toHaveAttribute('src');
   await expect(page.locator('#intake-front-meta')).toHaveText('');
+  expect(uploads.map(file => file.filename)).toEqual(['latest.png']);
 });
 
 async function scanHarness(page) {
@@ -273,25 +282,113 @@ async function scanHarness(page) {
   return { uploads, starts, controls, user };
 }
 
+async function intakeEntry(page, entry) {
+  if (entry === 'scanner') {
+    const { starts } = await scanHarness(page);
+    return { prefix: 'scan', meta: 'state', confirm: page.getByRole('button', { name: '确认照片并开始维修' }),
+      readStarts: async () => starts, completed: page.locator('#scan-result-form') };
+  }
+  await harness(page, { intake: true });
+  return { prefix: 'intake', meta: 'meta', confirm: page.locator('#confirm-intake'),
+    readStarts: () => page.evaluate(() => window.photoStarts.map(start => start.photos)), completed: page.locator('#intake-modal') };
+}
+
+for (const entry of ['modal', 'scanner']) {
+  test(`${entry} uploads each selected photo immediately and confirmation joins pending uploads without duplicates`, async ({ page }) => {
+    const errors = []; page.on('pageerror', error => errors.push(error.message));
+    const { prefix, meta, confirm, readStarts, completed } = await intakeEntry(page, entry);
+    const uploads = [], release = {};
+    await page.route('**/api/appointments/photo-test/attachments', async route => {
+      if (route.request().method() !== 'POST') { await route.fulfill({ json: { items: [] } }); return; }
+      const body = route.request().postDataJSON(); uploads.push(body);
+      await new Promise(resolve => { release[body.purpose] = resolve; });
+      await route.fulfill({ status: 201, json: { id: body.filename } });
+    });
+    await page.locator('#'+prefix+'-front').setInputFiles({ name: 'front.png', mimeType: '', buffer: png });
+    await expect.poll(() => uploads.length).toBe(1);
+    await expect(page.locator('#'+prefix+'-front-'+meta)).toContainText('正在上传');
+    expect(await readStarts()).toEqual([]);
+    await page.locator('#'+prefix+'-back').setInputFiles({ name: 'back.png', mimeType: '', buffer: png });
+    await expect.poll(() => uploads.length).toBe(2);
+    await confirm.click(); await expect(confirm).toBeDisabled();
+    expect(await readStarts()).toEqual([]);
+    release.intake_front();
+    await expect(page.locator('#'+prefix+'-front-'+meta)).toContainText('已上传');
+    expect(await readStarts()).toEqual([]);
+    release.intake_back();
+    if (entry === 'modal') await expect(completed).toBeHidden(); else await expect(completed).toBeVisible();
+    expect(await readStarts()).toHaveLength(1);
+    expect((await readStarts())[0]).toMatchObject({ frontPhotoId: 'front.png', backPhotoId: 'back.png' });
+    expect(uploads).toHaveLength(2); expect(errors).toEqual([]);
+  });
+
+  test(`${entry} ignores an old upload that finishes after its photo is replaced`, async ({ page }) => {
+    const errors = []; page.on('pageerror', error => errors.push(error.message));
+    const { prefix, meta, confirm, readStarts, completed } = await intakeEntry(page, entry);
+    const uploads = []; let releaseOld;
+    await page.route('**/api/appointments/photo-test/attachments', async route => {
+      if (route.request().method() !== 'POST') { await route.fulfill({ json: { items: [] } }); return; }
+      const body = route.request().postDataJSON(); uploads.push(body);
+      if (body.filename === 'old-front.png') await new Promise(resolve => { releaseOld = resolve; });
+      await route.fulfill({ status: 201, json: { id: body.filename } });
+    });
+    const select = (side, name) => page.locator('#'+prefix+'-'+side).setInputFiles({ name, mimeType: '', buffer: png });
+    await select('front', 'old-front.png');
+    await expect.poll(() => typeof releaseOld).toBe('function');
+    await select('front', 'new-front.png');
+    await expect(page.locator('#'+prefix+'-front-'+meta)).toContainText('已上传');
+    await select('back', 'back.png');
+    await expect(page.locator('#'+prefix+'-back-'+meta)).toContainText('已上传');
+    const preview = await page.locator('#'+prefix+'-front-preview').getAttribute('src');
+    const oldResponse = page.waitForResponse(response => response.request().method() === 'POST'
+      && response.url().endsWith('/attachments') && response.request().postDataJSON().filename === 'old-front.png');
+    releaseOld(); await (await oldResponse).finished();
+    await expect(page.locator('#'+prefix+'-front-preview')).toHaveAttribute('src', preview);
+    await confirm.click();
+    if (entry === 'modal') await expect(completed).toBeHidden(); else await expect(completed).toBeVisible();
+    expect((await readStarts())[0]).toMatchObject({ frontPhotoId: 'new-front.png', backPhotoId: 'back.png' });
+    expect(uploads).toHaveLength(3); expect(errors).toEqual([]);
+  });
+}
+
+test('closing intake ignores a pending upload when the same appointment is reopened', async ({ page }) => {
+  await harness(page, { intake: true });
+  let releaseOld;
+  await page.route('**/api/appointments/photo-test/attachments', async route => {
+    await new Promise(resolve => { releaseOld = resolve; });
+    await route.fulfill({ status: 201, json: { id: 'old-photo' } });
+  });
+  await page.locator('#intake-front').setInputFiles({ name: 'old.png', mimeType: '', buffer: png });
+  await expect.poll(() => typeof releaseOld).toBe('function');
+  await page.locator('#cancel-intake').click();
+  await page.evaluate(() => window.photoIntake.open({ id: 'photo-test' }));
+  const oldResponse = page.waitForResponse(response => response.url().endsWith('/attachments'));
+  releaseOld(); await (await oldResponse).finished();
+  await expect(page.locator('#intake-front-meta')).toHaveText('');
+  await expect(page.locator('#intake-front-preview')).toBeHidden();
+  expect(await page.evaluate(() => window.photoStarts)).toEqual([]);
+});
+
 test('scanner intake compresses originals above 2 MB and replaces IDs after a partial upload', async ({ page }) => {
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   const { uploads, starts, controls } = await scanHarness(page);
   controls.failBack = true;
   await page.locator('#scan-front').setInputFiles({ name: 'large-front.png', mimeType: '', buffer: Buffer.concat([png, Buffer.alloc(3 * 1024 * 1024)]) });
-  await page.locator('#scan-back').setInputFiles({ name: 'back.png', mimeType: '', buffer: png });
   await expect(page.locator('#scan-front-state')).toContainText('3.0 MB →');
+  await expect(page.locator('#scan-front-state')).toContainText('已上传');
+  await page.locator('#scan-back').setInputFiles({ name: 'back.png', mimeType: '', buffer: png });
   await expect(page.locator('#scan-front-progress')).toHaveJSProperty('value', 100);
   await expect(page.locator('#scan-front-preview')).toBeVisible();
   await expect(page.locator('#scan-front')).not.toHaveAttribute('capture');
-  await page.getByRole('button', { name: '确认照片并开始维修' }).click();
-  await expect(page.locator('#scan-back-state')).toContainText('上传失败，请重试');
+  await expect(page.locator('#scan-back-state')).toContainText('上传失败，确认签到时重试');
+  expect(starts).toEqual([]);
   expect(uploads[0].mimeType).toBe('image/jpeg'); expect(uploads[0].filename).toBe('large-front.jpg');
   expect(Buffer.from(uploads[0].data, 'base64').length).toBeLessThanOrEqual(2 * 1024 * 1024);
   await page.locator('#scan-front').setInputFiles({ name: 'new-front.png', mimeType: '', buffer: png });
   await page.getByRole('button', { name: '确认照片并开始维修' }).click();
   await expect(page.locator('#scan-result-form')).toBeVisible();
-  expect(uploads.map(input => input.filename)).toEqual(['large-front.jpg', 'back.png', 'new-front.png', 'back.png']);
-  expect(starts[0]).toMatchObject({ frontPhotoId: uploads[2].id, backPhotoId: uploads[3].id, status: 'in_progress' });
+  expect(uploads.map(input => input.filename).sort()).toEqual(['large-front.jpg', 'back.png', 'new-front.png', 'back.png'].sort());
+  expect(starts[0]).toMatchObject({ frontPhotoId: uploads.find(file => file.filename === 'new-front.png').id, backPhotoId: uploads.filter(file => file.filename === 'back.png').at(-1).id, status: 'in_progress' });
   expect(errors).toEqual([]);
 });
 
