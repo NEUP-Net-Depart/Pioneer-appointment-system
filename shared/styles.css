@@ -606,6 +606,11 @@ html{scrollbar-gutter:stable}
 .staff-date-history summary:focus-visible { outline: 2px solid #0e6874; outline-offset: 4px; }
 /* Public repair QR contains only the appointment locator and its checksum. */
 .repair-qr{margin:18px 0;line-height:1.6}.repair-qr img{display:block;max-width:100%;height:auto;background:#fff;margin:12px auto}.repair-qr p{font-size:14px}.repair-qr summary{cursor:pointer;font-weight:600}
+.status-cancelled { color: #536474; background: #edf1f5; }
+.status-expired { color: #855300; background: #fff2d5; }
+.staff-shell .metrics-row, .stats-metrics { grid-template-columns: repeat(6,minmax(0,1fr)); }
+@media (max-width: 1000px) { .staff-shell .metrics-row, .stats-metrics { grid-template-columns: repeat(3,minmax(0,1fr)); } }
+@media (max-width: 600px) { .staff-shell .metrics-row, .stats-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 
 .capacity-campuses { display:flex; gap:8px; flex-wrap:wrap; margin:24px 0 16px; }
 .capacity-campuses button[aria-pressed="true"] { background:var(--ink); border-color:var(--ink); color:#fff; }
@@ -726,8 +731,3 @@ html{scrollbar-gutter:stable}
   .booking-picker .booking-rule { margin:8px 0 4px; }
   .booking-arrival { padding:0; margin-bottom:8px; border-bottom:0; }
 }
-.status-cancelled { color: #536474; background: #edf1f5; }
-.status-expired { color: #855300; background: #fff2d5; }
-.staff-shell .metrics-row, .stats-metrics { grid-template-columns: repeat(6,minmax(0,1fr)); }
-@media (max-width: 1000px) { .staff-shell .metrics-row, .stats-metrics { grid-template-columns: repeat(3,minmax(0,1fr)); } }
-@media (max-width: 600px) { .staff-shell .metrics-row, .stats-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); } }
