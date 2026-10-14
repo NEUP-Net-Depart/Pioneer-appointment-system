@@ -733,6 +733,32 @@ html{scrollbar-gutter:stable}
   .repair-location-settings { padding:18px 14px; }
   .repair-location-fields { grid-template-columns:1fr; gap:20px; }
 }
+
+/* Keep the post-booking result and the appointment list on the same visual system. */
+.lookup-tools { display:flex; align-items:center; justify-content:space-between; gap:24px; margin-bottom:26px; }
+.lookup-tools p { margin:0; color:var(--muted); font-size:12px; line-height:1.7; text-align:right; }
+.success-panel { max-width:1124px; margin:28px auto 20px; padding:34px clamp(22px,4vw,48px); border:1px solid #cfe1dc; border-radius:8px; background:#fff; box-shadow:0 10px 30px rgba(18,59,80,.07); }
+.success-panel .success-icon { margin-bottom:16px; }
+.success-panel .success-summary { display:inline-flex; flex-wrap:wrap; justify-content:center; gap:8px 16px; margin:18px auto 0; padding:10px 16px; border:1px solid #d8e8e5; border-radius:999px; background:#f5fbfa; }
+.appointment-card { margin:0 0 18px; padding:26px 28px; border:1px solid #d4e2e6; border-radius:8px; background:#fff; box-shadow:0 7px 24px rgba(18,59,80,.06); }
+.appointment-card h3 { font-size:18px; line-height:1.4; }
+.appointment-meta { align-items:center; padding:12px 0; border-top:1px solid #edf2f3; border-bottom:1px solid #edf2f3; }
+.repair-arrival.success-arrival,
+.repair-arrival.lookup-arrival { grid-template-columns:1fr; justify-items:center; text-align:center; gap:4px; }
+.repair-arrival.success-arrival .repair-location-update,
+.repair-arrival.lookup-arrival .repair-location-update { grid-column:auto; }
+.repair-arrival.success-arrival .text-btn,
+.repair-arrival.lookup-arrival .text-btn { padding:3px 8px; }
+.appointment-card .attachment-upload .secondary-btn { justify-self:start; }
+.lookup-arrival { margin:16px 0; padding:16px 0; }
+.success-actions { margin-top:24px; }
+@media(max-width:800px) {
+  .lookup-tools { align-items:stretch; flex-direction:column; gap:10px; margin-bottom:20px; }
+  .lookup-tools p { text-align:left; }
+  .appointment-card { padding:22px 18px; }
+  .appointment-card .appointment-status { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; }
+  .appointment-card .appointment-status time { margin-top:0; }
+}
 @media(max-width:600px) {
   .booking-picker .booking-rule { margin:8px 0 4px; }
   .booking-arrival { padding:0; margin-bottom:8px; border-bottom:0; }

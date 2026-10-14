@@ -1,4 +1,4 @@
-import { $, showToast } from '/shared/utils.js';
+import { $, $$, showToast } from '/shared/utils.js';
 import { initSignature } from './signature.js';
 import { initBookingHints } from './booking-hints.js';
 import { apiJson } from '/shared/api.js';
@@ -12,6 +12,9 @@ import { nowIso } from '/shared/time.js';
 export function initBooking({ appointments, onCreated, locations }) {
   const form = $('#booking-form');
   const picker = initSlotPicker(locations);
+  const lastSubmissionKey = 'pioneerLastSubmittedAppointment';
+  const navigationEntry = performance.getEntriesByType('navigation')[0];
+  const isReload = navigationEntry?.type === 'reload';
   initBookingHints();
   const signature = initSignature();
   $('#agreement-link').addEventListener('click', event => { event.preventDefault(); $('#agreement-modal').hidden = false; });
@@ -40,6 +43,39 @@ export function initBooking({ appointments, onCreated, locations }) {
   $('#close-booking-confirm').addEventListener('click', () => closeConfirmation(false));
   confirmModal.addEventListener('click', event => { if (event.target === confirmModal) closeConfirmation(false); });
   confirmModal.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); closeConfirmation(false); } });
+  function clearLastSubmission() {
+    try { sessionStorage.removeItem(lastSubmissionKey); } catch (error) { void error; }
+  }
+  function rememberLastSubmission(appointment) {
+    try {
+      sessionStorage.setItem(lastSubmissionKey, JSON.stringify({
+        id: appointment.id,
+        accessToken: appointment.accessToken,
+      }));
+    } catch (error) { void error; }
+  }
+  function renderSuccess(appointment, { remember = true } = {}) {
+    if (remember) rememberLastSubmission(appointment);
+    const saved = saveAppointment(appointment);
+    $('#success-link-fallback').value = privateLink(appointment);
+    $('#success-link-fallback').hidden = saved;
+    $('#credential-save-message').textContent = saved ? '' : '此浏览器无法保存凭证，请复制并保留私人查询链接。';
+    $('#credential-save-message').hidden = saved;
+    $('#success-code').textContent = appointment.id;
+    renderRepairQr($('#success-repair-qr'), appointment);
+    $('#success-summary').textContent = `${appointment.campus} · ${appointment.date} · ${appointment.timeSlot}`;
+    $('#success-location').dataset.repairCampus = appointment.campus;
+    $('#success-copy-location').dataset.copyRepairLocation = appointment.campus;
+    locations.paint();
+    void locations.refresh();
+    picker.dispose();
+    form.hidden = true;
+    $('.section-heading').hidden = true;
+    $('#success-panel').hidden = false;
+  }
+  $$('[data-view-link]').forEach(link => link.addEventListener('click', event => {
+    if (event.currentTarget.dataset.viewLink === 'lookup') clearLastSubmission();
+  }));
   $('#copy-code').addEventListener('click', async () => {
     const link = $('#success-link-fallback');
     try { await navigator.clipboard.writeText(link.value); showToast('私人链接已复制，请勿转发给他人'); }
@@ -62,24 +98,12 @@ export function initBooking({ appointments, onCreated, locations }) {
     delete payload.agreement;
     try {
       const appointment = await apiJson('/api/appointments', { method: 'POST', json: payload });
-      const saved=saveAppointment(appointment);
-      $('#success-link-fallback').value=privateLink(appointment);
-      $('#success-link-fallback').hidden=saved;
-      $('#credential-save-message').textContent=saved ? '' : '此浏览器无法保存凭证，请复制并保留私人查询链接。';
-      $('#credential-save-message').hidden=saved;
       if (files.length) {
         try { await uploadAttachments(appointment, files); }
         catch (error) { showToast(`预约已提交，但${error.message}`); }
       }
       appointments.unshift(appointment);
-      $('#success-code').textContent = appointment.id;
-      renderRepairQr($('#success-repair-qr'), appointment);
-      $('#success-summary').textContent = `${appointment.campus} · ${appointment.date} · ${appointment.timeSlot}`;
-      $('#success-location').dataset.repairCampus = appointment.campus;
-      $('#success-copy-location').dataset.copyRepairLocation = appointment.campus;
-      locations.paint(); void locations.refresh();
-      picker.dispose();
-      form.hidden = true; $('.section-heading').hidden = true; $('#success-panel').hidden = false;
+      renderSuccess(appointment);
       if (!files.length) showToast('免费维修预约已提交');
       onCreated?.(appointment);
     } catch (error) {
@@ -88,4 +112,19 @@ export function initBooking({ appointments, onCreated, locations }) {
     }
     finally { submit.disabled = false; }
   });
+  if (isReload) {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(lastSubmissionKey) || 'null');
+      if (saved?.id && saved?.accessToken) {
+        const entry = appointments.find(item => item.id === saved.id) || { id: saved.id, accessToken: saved.accessToken };
+        apiJson(`/api/appointments/${encodeURIComponent(entry.id)}`, { headers: { 'X-Appointment-Token': entry.accessToken } })
+          .then(appointment => {
+            const restored = { ...appointment, accessToken: entry.accessToken };
+            appointments.unshift(restored);
+            renderSuccess(restored, { remember: false });
+          })
+          .catch(clearLastSubmission);
+      }
+    } catch { clearLastSubmission(); }
+  }
 }
