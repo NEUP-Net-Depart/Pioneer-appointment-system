@@ -1343,8 +1343,14 @@ test('automatic expirations honor 21:30 Shanghai, dry-run, missed days, active r
   const waiting=await book(),past=await book(),active=await book(),future=await book();
   const token=await login();
   await api(`/api/appointments/${active.id}/status`,{method:'PATCH',token,body:{status:'in_progress',...await intake(active, token)}});
-  await setAppointmentDate(past.id, addDays(date,-1));
-  await setAppointmentDate(future.id, addDays(date,1));
+  // Booking fixtures must keep a valid slot when crossing the closed weekend.
+  const adjacentServiceDate=step=>{
+    let day=addDays(date,step);
+    while(!serviceDay(day))day=addDays(day,step);
+    return day;
+  };
+  await setAppointmentDate(past.id, adjacentServiceDate(-1));
+  await setAppointmentDate(future.id, adjacentServiceDate(1));
   const repository=appointmentRepository(db);
   const before=new Date(`${date}T21:29:59.999+08:00`),at=new Date(`${date}T21:30:00+08:00`);
   assert.equal((await expireAppointments(repository,{now:before})).eligible,1);
