@@ -693,6 +693,39 @@ html{scrollbar-gutter:stable}
   .capacity-table .capacity-fill-handle { width:18px; height:18px; }
 }
 
+.repair-arrival { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:6px 14px; align-items:center; text-align:left; }
+.repair-arrival-label { color:var(--muted); font-size:12px; white-space:nowrap; }
+.repair-arrival strong { font-size:14px; font-weight:600; line-height:1.6; overflow-wrap:anywhere; user-select:text; }
+.repair-arrival .text-btn { padding:6px 0; font-size:12px; white-space:nowrap; text-decoration:underline; text-underline-offset:3px; }
+.booking-arrival { padding:10px 0 14px; border-bottom:1px solid var(--line); margin-bottom:18px; }
+.repair-location-update { grid-column:2/-1; color:var(--muted); font-size:11px; }
+.lookup-arrival { margin:16px 0; padding:12px 0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+.appointment-card > div { min-width:0; }
+.appointment-card .attachment-upload { grid-template-columns:minmax(0,1fr); }
+.appointment-card input[type=file] { width:100%; min-width:0; max-width:100%; }
+.success-arrival { margin:18px 0; padding:14px 0; border-top:1px solid #cfe1dc; border-bottom:1px solid #cfe1dc; }
+.repair-location-settings { margin:0 0 32px; padding:24px; background:#fff; border:1px solid var(--line); border-radius:12px; }
+.repair-location-settings h2 { font-size:20px; }
+.repair-location-settings > p { font-size:12px; color:var(--muted); }
+.repair-location-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; margin-top:20px; }
+.repair-location-form { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:end; min-width:0; }
+.repair-location-form label { display:grid; gap:8px; grid-column:1/-1; font-size:13px; font-weight:600; }
+.repair-location-form input { min-width:0; width:100%; padding:12px; border:1px solid #c4d7de; border-radius:6px; color:var(--ink); background:#fff; }
+.repair-location-form input:focus { outline:2px solid #0e6874; outline-offset:2px; }
+.repair-location-form button { grid-column:2; padding:9px 14px; border-radius:6px; }
+.repair-location-form-state { grid-column:1; grid-row:2; margin:0; font-size:12px; color:var(--muted); overflow-wrap:anywhere; }
+@media(max-width:700px) {
+  .repair-arrival { gap:4px 10px; }
+  .repair-arrival strong { font-size:12px; }
+  .repair-arrival-label,.repair-arrival .text-btn { font-size:11px; }
+  .booking-arrival { margin-bottom:12px; padding:6px 0 10px; }
+  .repair-location-settings { padding:18px 14px; }
+  .repair-location-fields { grid-template-columns:1fr; gap:20px; }
+}
+@media(max-width:600px) {
+  .booking-picker .booking-rule { margin:8px 0 4px; }
+  .booking-arrival { padding:0; margin-bottom:8px; border-bottom:0; }
+}
 .status-cancelled { color: #536474; background: #edf1f5; }
 .status-expired { color: #855300; background: #fff2d5; }
 .staff-shell .metrics-row, .stats-metrics { grid-template-columns: repeat(6,minmax(0,1fr)); }

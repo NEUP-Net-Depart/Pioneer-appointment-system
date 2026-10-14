@@ -481,6 +481,7 @@ for (const width of [320, 390, 1440]) {
 
 for (const reason of ['该校区该时段已满', '该校区该时段暂停预约']) {
   test(`submission rejection (${reason}) clears the slot but preserves fields and handwriting for resubmission`, async ({ page }) => {
+    await page.route('**/api/repair-locations', route => route.fulfill({ json: { items: [{ campus: '南湖', location: '主楼 101 室', revision: 1 }] } }));
     let rejected = false;
     const payloads = [];
     await setup(page, undefined, async (route, query) => {
@@ -528,6 +529,8 @@ for (const reason of ['该校区该时段已满', '该校区该时段暂停预�
     await expect(page.locator('[name=timeSlot]')).toHaveValue(secondSlot);
     await page.locator('#booking-form [type=submit]').click();
     await expect(page.locator('#success-panel')).toBeVisible();
+    await expect(page.locator('#success-location')).toHaveText('主楼 101 室');
+    await expect(page.locator('#success-copy-location')).toBeVisible();
     expect(payloads).toHaveLength(2);
     expect(payloads[1].signature).toEqual(payloads[0].signature);
     expect(payloads[1].timeSlot).toBe(secondSlot);

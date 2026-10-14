@@ -19,6 +19,8 @@ import { rateLimitService } from './services/rate-limits.js';
 import { slotCapacityService } from './services/slot-capacities.js';
 import { storageLimit } from './lib/env.js';
 import { scanService } from './services/scan.js';
+import { repairLocationRepository } from './db/repair-locations.js';
+import { repairLocationService } from './services/repair-locations.js';
 
 export function createContext(request, env) {
   // Request-scoped D1 session, explicitly injected into D1 repositories. No startup I/O.
@@ -34,6 +36,7 @@ export function createContext(request, env) {
     export: exportService(appointments, env.PII_ENCRYPTION_KEY, clock),
     limits: rateLimitService(rateLimitRepository(db), env.JWT_SECRET),
     slotCapacities: slotCapacityService(slotCapacityRepository(db)),
+    repairLocations: repairLocationService(repairLocationRepository(db)),
     async health() { await Promise.all([users.health(), env.ATTACHMENTS.list({ limit: 1 })]); return { ok: true, service: 'pioneer-repair-api', database: 'd1', attachments: 'r2' }; }
   };
   services.scan = scanService(appointments, services.appointments, env.PII_ENCRYPTION_KEY, env.SCAN_QR_SECRET || env.PII_ENCRYPTION_KEY, env.SCAN_WORKBENCH_ENABLED === 'true', clock);

@@ -1,11 +1,13 @@
 import { initNavigation } from '/shared/navigation.js';
 import { initBooking } from './booking.js';
 import { initLookup } from './lookup.js';
+import { initRepairLocations } from './repair-locations.js';
 const appointments=[];
+const locations=initRepairLocations();
 let importing=false,switchView;
-const lookup=initLookup(appointments,{onPrivateLink:()=>{importing=true;switchView?.('lookup');importing=false;}});
+const lookup=initLookup(appointments,{locations,onPrivateLink:()=>{importing=true;switchView?.('lookup');importing=false;}});
 importing=lookup.hasPrivateLink;
 switchView=initNavigation(view=>{if(view==='lookup' && !importing)lookup.refresh();});
-initBooking({appointments});
+initBooking({appointments,locations});
 if(lookup.hasPrivateLink) switchView('lookup');
 importing=false;

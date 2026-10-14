@@ -63,7 +63,7 @@ function choiceButton(value, attribute, title) {
   return button;
 }
 
-export function initSlotPicker() {
+export function initSlotPicker(locations) {
   const campusInput = $('[name="campus"]'), dateInput = $('[name="date"]'), slotInput = $('[name="timeSlot"]');
   const campusButtons = $('#booking-campuses'), days = $('#booking-days'), slots = $('#booking-slots');
   const status = $('#booking-selection'), updated = $('#booking-updated'), retry = $('#booking-retry');
@@ -97,6 +97,9 @@ export function initSlotPicker() {
     }
   }
   function render() {
+    $('#booking-repair-location').dataset.repairCampus = campusInput.value;
+    $('#booking-copy-location').dataset.copyRepairLocation = campusInput.value;
+    locations.paint();
     $('#booking-picker').setAttribute('aria-busy', String(refreshing));
     const currentDates = bookingDates();
     for (const cache of campusSummaries.values()) for (const date of cache.keys()) if (!currentDates.includes(date)) cache.delete(date);
@@ -175,7 +178,7 @@ export function initSlotPicker() {
     summaries = campusSummaries.get(value);
     updated.textContent = campusUpdated.get(value) || '更新于 --:--';
     retry.hidden = true;
-    render(); void refresh();
+    render(); void refresh(); void locations.refresh();
   }
   for (const campus of CAMPUSES) {
     const button = choiceButton(campus, 'campus', `${campus}校区`);

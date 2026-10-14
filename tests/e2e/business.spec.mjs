@@ -188,6 +188,7 @@ test('student booking, private links, whitelist activation, staff permissions, r
     await member.getByRole('button', { name: '个人设置', exact: true }).click();
     await expect(member.locator('#profile-info')).toContainText('授权 南湖');
     await expect(member.locator('#capacity-settings')).toBeHidden();
+    await expect(member.locator('#repair-location-settings')).toBeHidden();
     await member.getByRole('button', { name: '维修后台', exact: true }).click();
     await expect(member.locator('#appointments-table')).toContainText(item.id);
     await expect(member.locator('#appointments-table')).not.toContainText('浏览器测试同学');
@@ -244,6 +245,7 @@ test('student booking, private links, whitelist activation, staff permissions, r
     await expect(member.locator('[data-view-link=stats]')).toBeVisible();await expect(member.locator('#appointments-table')).not.toContainText(item.id);
     await member.getByRole('button',{name:'个人设置',exact:true}).click();await expect(member.locator('#profile-info')).toContainText('所属 南湖 · 授权 浑南');
     await expect(member.locator('.capacity-row')).toHaveCount(16);
+    await expect(member.locator('#repair-location-settings')).toBeHidden();
     await expect(member.locator('.capacity-row[data-campus="南湖"]')).toHaveCount(0);
     await member.locator('#current-password').fill(memberPassword);await member.locator('#new-password').fill('changed-member-password');await member.locator('#confirm-password').fill('changed-member-password');
     await member.locator('#password-form [type=submit]').click();await expect(member.locator('#login-view')).toBeVisible();

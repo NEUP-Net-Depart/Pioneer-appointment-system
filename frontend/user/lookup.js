@@ -8,7 +8,7 @@ import { startVisiblePolling } from '/shared/polling.js';
 import { savedAppointments,saveAppointment,privateLink,parsePrivateLink,credentialHeaders } from './credentials.js';
 import { renderRepairQr } from './repair-qr.js';
 
-export function initLookup(appointments,{onPrivateLink=()=>{}}={}) {
+export function initLookup(appointments,{locations,onPrivateLink=()=>{}}={}) {
   let stopPolling,generation=0;
   const root=$('#lookup-results');
   async function read(entry) {
@@ -19,6 +19,13 @@ export function initLookup(appointments,{onPrivateLink=()=>{}}={}) {
     root.innerHTML=list.map(item=>`<article class="appointment-card"><div><h3>${escapeHtml(item.deviceType)} · ${escapeHtml(item.brand)} ${escapeHtml(item.deviceModel)}</h3><span class="code">预约编号 <strong>${escapeHtml(item.id)}</strong></span>${item.repairNumber ? `<p class="code">历史维修编号 <strong>${escapeHtml(item.repairNumber)}</strong></p>` : ''}<div class="appointment-meta"><span>${escapeHtml(item.campus)}</span><span>${formatDate(item.date)}</span><span>${escapeHtml(item.timeSlot)}</span></div><div class="queue-info" data-queue-id="${escapeHtml(item.id)}">${item.status==='expired' ? expirationMessage : terminalStatuses.includes(item.status) ? `该预约${statusLabels[item.status]}` : item.status==='in_progress' ? '正在维修' : '正在读取排队位置…'}</div>${item.outcome ? `<p class="record-note"><b>维修结果：</b>${outcomeLabels[item.outcome]}</p>` : ''}${item.startedAt || item.completedAt ? `<p class="record-note">开始：${formatInstant(item.startedAt)} · ${endTimeLabels[item.status] || '结束时间'}：${formatInstant(item.completedAt)}</p>` : ''}${item.repairNote ? `<p class="record-note"><b>维修说明：</b>${escapeHtml(item.repairNote)}</p>` : ''}<div class="appointment-attachments">${(item.attachments || []).map(file=>`<button type="button" class="attachment-link" data-file="${escapeHtml(file.id)}" data-appointment="${escapeHtml(item.id)}">${escapeHtml(file.filename)} <small>${attachmentSize(file.size)}</small></button>`).join('')}</div><div class="attachment-upload"><label>补充附件（单个不超过 5 MB）<input type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf,text/plain" data-upload-input="${escapeHtml(item.id)}" aria-label="为 ${escapeHtml(item.id)} 选择附件" /></label><button class="secondary-btn" type="button" data-upload="${escapeHtml(item.id)}">上传附件</button></div><button class="text-btn" data-copy-link="${escapeHtml(item.id)}">复制私人查询链接</button></div><div class="appointment-status"><span class="status-pill ${statusClass[item.status]}">${statusLabels[item.status]}</span><time>提交于 ${formatDate(item.createdAt)}</time>${item.status==='booked' ? `<button class="cancel-link" data-cancel="${escapeHtml(item.id)}">取消预约</button>` : ''}</div></article>`).join('');
     if (!list.length && !failed.length) root.innerHTML='<div class="empty-state"><span class="empty-icon">⌕</span><h2>此浏览器暂无预约</h2><p>预约成功后会自动出现在这里。其他设备可直接访问私人查询链接。</p></div>';
     root.querySelectorAll('.appointment-card').forEach((card, index) => {
+      const arrival = document.createElement('div'); arrival.className = 'repair-arrival lookup-arrival';
+      const label = document.createElement('span'); label.className = 'repair-arrival-label'; label.textContent = '维修地点';
+      const address = document.createElement('strong'); address.dataset.repairCampus = list[index].campus;
+      const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'text-btn'; copy.dataset.copyRepairLocation = list[index].campus; copy.textContent = '复制地点';
+      const state = document.createElement('span'); state.className = 'repair-location-update'; state.dataset.locationState = ''; state.hidden = true;
+      const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'text-btn'; retry.dataset.repairRetry = ''; retry.textContent = '重试地点'; retry.hidden = true;
+      arrival.append(label,address,copy,state,retry); card.querySelector('.appointment-meta').after(arrival);
       if (terminalStatuses.includes(list[index].status)) return;
       const qr = document.createElement('details'); qr.className = 'repair-qr';
       const summary = document.createElement('summary'); summary.textContent = '出示维修二维码';
@@ -26,6 +33,7 @@ export function initLookup(appointments,{onPrivateLink=()=>{}}={}) {
       qr.addEventListener('toggle', () => { if (qr.open && !content.childElementCount) renderRepairQr(content, list[index]); });
     });
     if (failed.length) root.innerHTML+=failed.map(({entry,message})=>`<div class="empty-state"><h2>${escapeHtml(entry.id)} 暂时无法读取</h2><p>${escapeHtml(message)}。如凭证遗失或失效，请联系工作人员人工核验后重新签发。</p></div>`).join('');
+    locations.paint();
     $$('[data-upload]').forEach(button=>button.addEventListener('click',async()=>{
       const item=list.find(entry=>entry.id===button.dataset.upload);
       const files=[...$(`[data-upload-input="${CSS.escape(item.id)}"]`).files];
@@ -68,6 +76,7 @@ export function initLookup(appointments,{onPrivateLink=()=>{}}={}) {
       finally {button.disabled=false;}
     }));
     stopPolling=startVisiblePolling(async()=>{
+      if (list.length && $('#lookup-view').classList.contains('is-active')) void locations.refresh();
       const current=generation;
       const fresh=await Promise.allSettled(list.map(read));
       if(current!==generation)return;
@@ -91,6 +100,7 @@ export function initLookup(appointments,{onPrivateLink=()=>{}}={}) {
     });
   }
   async function refresh() {
+    void locations.refresh();
     const current=++generation;
     const entries=savedAppointments();
     const results=await Promise.allSettled(entries.map(read));
@@ -100,6 +110,7 @@ export function initLookup(appointments,{onPrivateLink=()=>{}}={}) {
     appointments.splice(0,appointments.length,...list);render(list,failed);
   }
   async function importLink(value) {
+    void locations.refresh();
     const entry=parsePrivateLink(value);
     if(!entry) throw new Error('请使用本系统的完整私人查询链接');
     const item=await read(entry);

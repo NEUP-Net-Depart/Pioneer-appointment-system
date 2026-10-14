@@ -116,8 +116,36 @@ beforeEach(async () => {
   await db.prepare('UPDATE storage_quota SET used_bytes=0 WHERE id=1').run();
   await db.prepare('UPDATE slot_capacities SET capacity=10,revision=0').run();
   await db.prepare('UPDATE weekday_slot_capacities SET capacity=5,revision=0').run();
+  await db.prepare("UPDATE campus_repair_locations SET location='',revision=0,updated_at=''").run();
   const objects = await bucket.list();
   if (objects.objects.length) await bucket.delete(objects.objects.map(object => object.key));
+});
+
+test('repair locations are public, superadmin scoped and revision checked without changing bookings', async () => {
+  const empty = await api('/api/repair-locations');
+  assert.equal(empty.items.length,2);
+  assert.ok(empty.items.every(item => item.location === '' && item.revision === 0));
+  const input = { campus:'南湖', location:'主楼 101 室', revision:0 };
+  const root = await login(), admin = await addUser('960001','admin'), tech = await addUser('960002');
+  await api('/api/repair-locations',{method:'PATCH',body:input},401);
+  for (const token of [admin,tech]) await api('/api/repair-locations',{method:'PATCH',token,body:input},403);
+  const item = await book(), original = await db.prepare('SELECT * FROM appointments WHERE id=?').bind(item.id).first();
+  const saved = await api('/api/repair-locations',{method:'PATCH',token:root,body:input});
+  assert.deepEqual(saved,{ ...input,revision:1 });
+  await api('/api/repair-locations',{method:'PATCH',token:root,body:input},409);
+  assert.equal((await api('/api/repair-locations')).items.find(row => row.campus==='南湖').location,input.location);
+  assert.deepEqual(await db.prepare('SELECT * FROM appointments WHERE id=?').bind(item.id).first(),original);
+  const scoped = await addUser('960003','superadmin');
+  await api('/api/repair-locations',{method:'PATCH',token:scoped,body:{...input,campus:'浑南'}},403);
+  await api('/api/repair-locations',{method:'PATCH',token:scoped,body:{...saved,location:'南湖教学楼 201 室'}});
+  const current = (await api('/api/repair-locations')).items.find(row => row.campus==='南湖');
+  const races = await Promise.all(['301 室','302 室'].map(location => request('/api/repair-locations',{method:'PATCH',token:root,body:{...current,location}})));
+  assert.deepEqual(races.map(response => response.status).sort(),[200,409]);
+  const fresh = (await api('/api/repair-locations')).items.find(row => row.campus==='南湖');
+  for (const patch of [{campus:'其他'}, {location:'a'.repeat(201)}, {location:'两行\n地点'}, {location:null}, {location:42}, {revision:-1}, {revision:0.5}])
+    await api('/api/repair-locations',{method:'PATCH',token:root,body:{...fresh,...patch}},400);
+  const cleared = await api('/api/repair-locations',{method:'PATCH',token:root,body:{...fresh,location:'   '}});
+  assert.equal(cleared.location,'');
 });
 
 test('scan lookup needs staff authorization, preserves campus scope and never starts a repair', async () => {

@@ -10,6 +10,7 @@ Schema 以 [migrations/](../migrations/) 为准，迁移只追加，运行时不
 | `appointments` | 预约、临时登记、协议签名、负责人、五状态和维修结果 |
 | `active_repairs` | 账号主键、工单唯一外键，约束一人一张进行中工单 |
 | `slot_capacities` | 校区与时段联合主键，容量和 revision 持久保存 |
+| `campus_repair_locations` | 按校区保存最新维修地点，revision 防止并发覆盖；不修改已有预约 |
 | `credential_recoveries` | 补发凭证的操作人、核验说明和时间 |
 | `appointment_corrections` | 纠错的操作人、原因、修改前后值和时间，与工单修改原子提交 |
 | 附件与额度表 | 元数据、容量预留和清理状态；物理删除成功后释放额度 |

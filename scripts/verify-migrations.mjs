@@ -19,6 +19,7 @@ try {
   assert.ok(schema.success && keys.success && capacities.success);
   assert.deepEqual(keys.results, [], 'D1 foreign key violations');
   const names = new Set(schema.results.map(row => row.name));
+  assert.ok(names.has('campus_repair_locations'),'Missing campus repair locations');
   for (const name of ['staff_accounts','staff_campus_grants','staff_whitelist','whitelist_campus_grants','activation_requests','credential_recoveries','appointments','appointment_attachments','rate_limits','storage_quota','attachment_storage','attachment_storage_reserve','attachment_storage_release','idx_attachment_expiry','idx_storage_expiry','idx_storage_pending','appointment_capacity_insert','appointment_capacity_update','idx_active_student_slot','idx_active_queue']) assert.ok(names.has(name), `Missing D1 schema object: ${name}`);
   assert.ok(names.has('activation_approve'),'Missing atomic activation approval trigger');
   assert.ok(names.has('idx_one_pending_activation') && names.has('idx_one_approved_activation'),'Missing activation uniqueness constraints');

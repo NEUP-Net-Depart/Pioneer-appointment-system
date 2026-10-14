@@ -114,6 +114,13 @@ export function passwordInput(value) {
   if (typeof value !== 'string' || value.length < 8 || value.length > 128) fail(400, '密码长度应为 8 至 128 位');
   return value;
 }
+export function repairLocationInput(input) {
+  if (!CAMPUSES.includes(input.campus)) fail(400,'校区不正确');
+  const location = stringField(input.location,'维修地点',200);
+  if (typeof input.location !== 'string' || [...input.location].some(char => char.charCodeAt(0)<32 || char.charCodeAt(0)===127)) fail(400,'维修地点请填写单行文本，最多 200 字');
+  if (!Number.isSafeInteger(input.revision) || input.revision < 0) fail(400,'配置版本不正确');
+  return { campus:input.campus, location, revision:input.revision };
+}
 export function campusGrants(value) {
   if (!Array.isArray(value) || !value.length || value.length>2 || value.some(campus => !CAMPUSES.includes(campus)) || new Set(value).size!==value.length) fail(400,'请选择有效的授权校区');
   return [...value].sort();

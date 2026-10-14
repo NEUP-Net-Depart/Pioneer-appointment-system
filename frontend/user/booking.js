@@ -9,9 +9,9 @@ import { initSlotPicker } from './slot-picker.js';
 import { normalizeTimeSlot } from '/shared/constants.js';
 import { nowIso } from '/shared/time.js';
 
-export function initBooking({ appointments, onCreated }) {
+export function initBooking({ appointments, onCreated, locations }) {
   const form = $('#booking-form');
-  const picker = initSlotPicker();
+  const picker = initSlotPicker(locations);
   initBookingHints();
   const signature = initSignature();
   $('#agreement-link').addEventListener('click', event => { event.preventDefault(); $('#agreement-modal').hidden = false; });
@@ -52,6 +52,9 @@ export function initBooking({ appointments, onCreated }) {
       $('#success-code').textContent = appointment.id;
       renderRepairQr($('#success-repair-qr'), appointment);
       $('#success-summary').textContent = `${appointment.campus} · ${appointment.date} · ${appointment.timeSlot}`;
+      $('#success-location').dataset.repairCampus = appointment.campus;
+      $('#success-copy-location').dataset.copyRepairLocation = appointment.campus;
+      locations.paint(); void locations.refresh();
       picker.dispose();
       form.hidden = true; $('.section-heading').hidden = true; $('#success-panel').hidden = false;
       if (!files.length) showToast('免费维修预约已提交');

@@ -21,6 +21,7 @@
         <section class="booking-picker" id="booking-picker" aria-labelledby="booking-picker-title">
           <div class="booking-picker-heading"><div><h2 id="booking-picker-title">选择预约时间</h2></div><div class="booking-campuses" id="booking-campuses" role="group" aria-label="预约校区"></div></div>
           <p class="booking-rule">周一至周四提供服务，可预约今天及未来 3 天。</p>
+          <div class="repair-arrival booking-arrival" aria-live="polite"><span class="repair-arrival-label">维修地点</span><strong id="booking-repair-location" data-repair-campus="南湖">正在读取维修地点…</strong><button id="booking-copy-location" class="text-btn" type="button" data-copy-repair-location="南湖" hidden>复制地点</button><span class="repair-location-update" data-location-state hidden></span><button type="button" class="text-btn" data-repair-retry hidden>重试地点</button></div>
           <div class="booking-picker-body">
             <div class="booking-date-panel"><div class="booking-panel-heading"><h3 class="booking-panel-label">选择日期</h3><p class="booking-date-context">仅显示当前可预约的服务日</p></div><div class="booking-days" id="booking-days" role="group" aria-label="可预约日期"></div><p class="booking-empty" id="booking-empty" hidden>当前预约范围内暂无服务时段，请稍后再来。</p></div>
             <div class="booking-time-panel"><div class="booking-slot-placeholder"><div class="booking-panel-heading"><h3 class="booking-panel-label">选择时段</h3><p class="booking-date-context">选中日期后，查看可预约时段</p></div><p class="booking-placeholder-body">请选择日期，查看可预约时段</p></div><div class="booking-slot-panel" id="booking-slot-panel" hidden><div class="booking-panel-heading"><span class="booking-panel-label">选择时段</span><h3 id="booking-slot-title"></h3></div><div class="booking-slots" id="booking-slots" role="group" aria-labelledby="booking-slot-title"></div></div></div>
@@ -72,7 +73,7 @@
           <div class="success-icon">✓</div><p class="eyebrow">FREE SERVICE BOOKING</p><h2>预约已提交</h2>
           <div class="booking-code"><span>预约编号</span><strong id="success-code"></strong><button id="copy-code" type="button" title="复制私人链接">复制</button></div>
           <div id="success-repair-qr" class="repair-qr"></div>
-          <p class="success-summary" id="success-summary"></p><p id="credential-save-message" role="status" hidden></p><input id="success-link-fallback" class="private-link-fallback" type="text" readonly hidden aria-label="私人查询链接" />
+          <p class="success-summary" id="success-summary"></p><div class="repair-arrival success-arrival"><span class="repair-arrival-label">维修地点</span><strong id="success-location" data-repair-campus="">正在读取维修地点…</strong><button id="success-copy-location" type="button" class="text-btn" data-copy-repair-location="" hidden>复制地点</button><span class="repair-location-update" data-location-state hidden></span><button type="button" class="text-btn" data-repair-retry hidden>重试地点</button></div><p id="credential-save-message" role="status" hidden></p><input id="success-link-fallback" class="private-link-fallback" type="text" readonly hidden aria-label="私人查询链接" />
           <div class="success-actions"><button class="secondary-btn" type="button" data-view-link="lookup">查看我的预约</button></div>
         </section>
       </div>
