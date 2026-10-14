@@ -6,8 +6,10 @@ import { initStaff } from './staff.js';
 import { initStats } from './stats.js';
 import { initUsers } from './users.js';
 import { initSettings } from './settings.js';
+import { initStaffHost } from './app-shell.js';
 
 useStaffSession();
+initStaffHost();
 const controllers = { staff: initStaff(), stats: initStats(), users: initUsers(), settings:initSettings() };
 let role = '', activeView = 'staff';
 function refresh() {

@@ -16,7 +16,7 @@ export function authService(users, secret) {
     async login(input) {
       const user = await users.find(account(input.account));
       if (typeof input.password !== 'string' || input.password.length > 128 || user?.status !== 'enabled' || !verifyPassword(input.password, user.passwordHash)) fail(401, '账号或密码不正确');
-      return {account:user.account,name:user.name,role:user.role,status:user.status,homeCampus:user.homeCampus,authorizedCampuses:user.authorizedCampuses,
+      return {account:user.account,memberId:user.memberId || `member-${user.account}`,name:user.name,role:user.role,status:user.status,homeCampus:user.homeCampus,authorizedCampuses:user.authorizedCampuses,authVersion:user.authVersion,
         token:signToken(user,secret),expiresIn:TOKEN_TTL_SECONDS};
     },
     async logout(user) { await users.revokeTokens(user.account); return { ok: true }; },

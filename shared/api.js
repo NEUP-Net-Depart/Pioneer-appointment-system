@@ -3,13 +3,13 @@ export function useStaffSession() { staffSession = true; }
 export function clearSession() {
   ['pioneerRole','pioneerAccount','pioneerToken','pioneerCampuses'].forEach(key => sessionStorage.removeItem(key));
 }
-export async function apiFetch(input, { json, ...options } = {}) {
+export async function apiFetch(input, { json, suppressAuthExpired = false, ...options } = {}) {
   const headers = new Headers(options.headers || {});
   if (json !== undefined) { headers.set('Content-Type', 'application/json'); options.body = JSON.stringify(json); }
   const token = staffSession ? sessionStorage.getItem('pioneerToken') : null;
   if (token) headers.set('Authorization', `Bearer ${token}`);
   const response = await fetch(input, { ...options, headers });
-  if (response.status === 401 && token) { clearSession(); window.dispatchEvent(new CustomEvent('auth-expired')); }
+  if (response.status === 401 && token && !suppressAuthExpired) { clearSession(); window.dispatchEvent(new CustomEvent('auth-expired')); }
   return response;
 }
 export async function apiJson(input, options) {

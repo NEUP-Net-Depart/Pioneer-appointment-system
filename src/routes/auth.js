@@ -12,8 +12,12 @@ export const authRoutes = [
   }],
   ['POST', /^\/api\/auth\/revoke$/, async context => json(await context.services.auth.logout(await context.role('technician')))],
   ['GET', /^\/api\/auth\/me$/, async context => {
-    const { account, name, role, status, homeCampus, authorizedCampuses } = await context.role('technician');
-    return json({ account, name, role, status, homeCampus, authorizedCampuses });
+    const user = await context.role('technician');
+    const profile = await context.services.staffPlatform.contextFor(user);
+    return json({ account:user.account, name:user.name, role:user.role, status:user.status, homeCampus:user.homeCampus,
+      authorizedCampuses:user.authorizedCampuses, ...profile, actor:{ ...profile.actor, account:user.account, role:user.role },
+      authVersion:profile.authVersion, schemaVersion:profile.schemaVersion, modules:profile.modules || [], navigation:profile.navigation || [],
+      resumeTasks:profile.resumeTasks || [], todayDuties:profile.todayDuties || [] });
   }],
   ['POST', /^\/api\/auth\/logout$/, async context => json(await context.services.auth.logout(await context.role('technician')))]
 ];

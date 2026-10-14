@@ -23,6 +23,26 @@ export function bookingInput(input) {
   data.signature = JSON.stringify(input.signature);
   return data;
 }
+export function onsiteInput(input) {
+  const value = input || {};
+  const registrationFlow = value.registrationFlow || 'technician_intake';
+  if (!['technician_intake', 'frontdesk'].includes(registrationFlow)) fail(400, '登记入口不正确');
+  const data = {
+    studentId: stringField(value.studentId, 'studentId', 20, true), name: stringField(value.name, 'name', 80, true),
+    college: stringField(value.college, 'college', 120), campus: stringField(value.campus, 'campus', 20, true),
+    phone: stringField(value.phone, 'phone', 30), social: stringField(value.social, 'social', 120),
+    deviceType: stringField(value.deviceType, 'deviceType', 80, true), brand: stringField(value.brand, 'brand', 80, true),
+    deviceModel: stringField(value.deviceModel, 'deviceModel', 120, true), serial: stringField(value.serial, 'serial', 120),
+    warranty: stringField(value.warranty, 'warranty', 20), faultType: stringField(value.faultType, 'faultType', 80, true),
+    issue: stringField(value.issue, 'issue', 10000), liquidDrop: stringField(value.liquidDrop, 'liquidDrop', 20),
+    date: stringField(value.date, 'date', 10, true), timeSlot: normalizeTimeSlot(stringField(value.timeSlot, 'timeSlot', 40, true)),
+    note: stringField(value.note, 'note', 500), registrationKey: stringField(value.registrationKey || value.requestId, 'registrationKey', 128, true), registrationFlow
+  };
+  if (!/^\d{6,20}$/.test(data.studentId) || data.name.length < 2) fail(400, '学号或姓名格式不正确');
+  if (!CAMPUSES.includes(data.campus)) fail(400, '校区不正确');
+  if (!validDate(data.date) || !data.timeSlot) fail(400, '预约日期或时段不正确');
+  return data;
+}
 export function appointmentPatch(input) {
   const patch = {};
   if (input.action !== undefined && input.action !== 'correct') fail(400, '操作不正确');
@@ -43,7 +63,8 @@ export function appointmentPatch(input) {
     if (input[key] !== undefined) patch[key] = stringField(input[key], key, max);
   }
   if (input.revision!==undefined && (!Number.isInteger(input.revision) || input.revision<0)) fail(400,'预约版本不正确');
-  return {patch,revision:input.revision,action:input.action};
+  const reason = input.reason === undefined ? '' : stringField(input.reason, 'reason', 300);
+  return {patch,revision:input.revision,action:input.action,requestId:input.requestId || '',reason};
 }
 export function appointmentQuery(input) {
   const query = { q: stringField(input.q, '搜索内容', 120), campus: input.campus || '', date: input.date || '', status: input.status || 'all', timeSlot: input.timeSlot || '', sort: input.sort || 'createdAt', direction: input.direction || 'desc' };

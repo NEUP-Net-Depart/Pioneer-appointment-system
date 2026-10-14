@@ -8,10 +8,17 @@ const columns = {
   repairNumber: 'repair_number', frontPhotoId: 'front_photo_id', backPhotoId: 'back_photo_id'
 };
 function fromRow(row) {
-  return row ? { id: row.id, revision: row.revision, ...Object.fromEntries(Object.entries(columns).map(([key, column]) => [key, row[column] ?? (['outcome','startedAt','completedAt','repairNumber','frontPhotoId','backPhotoId'].includes(key) ? null : '')])) } : null;
+  return row ? { id: row.id, revision: row.revision,
+    ...Object.fromEntries(Object.entries(columns).map(([key, column]) => [key, row[column] ?? (['outcome','startedAt','completedAt','repairNumber','frontPhotoId','backPhotoId'].includes(key) ? null : '')])),
+    source: row.source || 'booking', registeredBy: row.registered_by || '', registrationKey: row.registration_key || '' } : null;
 }
 export function appointmentRepository(db) {
   return {
+    async currentRepair(account) {
+      const row = await db.prepare(`SELECT a.* FROM active_repairs ar JOIN appointments a ON a.id=ar.appointment_id
+        WHERE ar.account=? AND a.status='in_progress' LIMIT 1`).bind(account).first();
+      return fromRow(row);
+    },
     async intakePhotos(id, account, front, back, now) {
       if (!front || !back || front === back) return false;
       const row = await db.prepare(`SELECT COUNT(*) AS total FROM appointment_attachments
@@ -30,6 +37,16 @@ export function appointmentRepository(db) {
       return db.prepare(`UPDATE appointments SET status='completed',outcome='no_show',completed_at=?,revision=revision+1 WHERE ${where.join(' AND ')}`).bind(...args).run();
     },
     async find(id) { return fromRow(await db.prepare('SELECT * FROM appointments WHERE id=?').bind(id).first()); },
+    async findByCode(code) { return fromRow(await db.prepare('SELECT * FROM appointments WHERE id=? OR repair_number=? LIMIT 1').bind(code,code).first()); },
+    async findOnsiteByKey(account, registrationKey) {
+      return fromRow(await db.prepare("SELECT * FROM appointments WHERE source='onsite' AND registered_by=? AND registration_key=? LIMIT 1").bind(account,registrationKey).first());
+    },
+    async createOnsite(item) {
+      const values = [item.id, ...Object.keys(columns).map(key => key === 'assignedTo' ? item[key] || null : item[key] ?? null), 'onsite', item.registeredBy, item.registrationKey, item.accessTokenHash, item.credentialRotatedAt];
+      const fields = ['id', ...Object.values(columns), 'source', 'registered_by', 'registration_key', 'access_token_hash', 'credential_rotated_at'];
+      const row = await db.prepare(`INSERT INTO appointments(${fields.join(',')}) VALUES(${values.map(() => '?').join(',')}) RETURNING *`).bind(...values).first();
+      return fromRow(row);
+    },
     async findByCredential(id, hash) {
       // A legacy repair number is only an alias; the credential selects its owner
       // even when the same text is another appointment's historical primary key.
@@ -107,7 +124,15 @@ export function appointmentRepository(db) {
       for (const [key, column] of Object.entries({ status: 'status', assignedTo: 'assigned_to', repairNote: 'repair_note', outcome: 'outcome', startedAt: 'started_at', completedAt: 'completed_at', frontPhotoId: 'front_photo_id', backPhotoId: 'back_photo_id' })) {
         if (patch[key] !== undefined) { fields.push(`${column}=?`); args.push(key === 'assignedTo' ? patch[key] || null : patch[key]); }
       }
-      return fromRow(await db.prepare(`UPDATE appointments SET ${fields.join(',')},revision=revision+1 WHERE id=? AND revision=? RETURNING *`).bind(...args, item.id, item.revision).first());
+      const start = patch.status === 'in_progress' && patch.frontPhotoId && patch.backPhotoId && patch.assignedTo;
+      if (!start) return fromRow(await db.prepare(`UPDATE appointments SET ${fields.join(',')},revision=revision+1 WHERE id=? AND revision=? RETURNING *`).bind(...args, item.id, item.revision).first());
+      const intakeId = `intake-${item.id}-${item.revision + 1}`;
+      const result = await db.batch([
+        db.prepare(`UPDATE appointments SET ${fields.join(',')},revision=revision+1 WHERE id=? AND revision=? RETURNING *`).bind(...args, item.id, item.revision),
+        db.prepare(`INSERT INTO repair_intake_records(id,appointment_id,member_id,account,front_photo_id,back_photo_id,verified_at)
+          SELECT ?,?,(SELECT member_id FROM staff_accounts WHERE account=?),?,?,?,? WHERE changes()>0`).bind(intakeId,item.id,patch.assignedTo,patch.assignedTo,patch.frontPhotoId,patch.backPhotoId,patch.startedAt || new Date().toISOString())
+      ]);
+      return fromRow(result[0]?.results?.[0]);
     },
     async exportPage(cursor,limit,campuses) {
       const campusScope=campuses.length ? `campus IN (${campuses.map(()=>'?').join(',')})` : '0';

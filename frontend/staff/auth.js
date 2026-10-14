@@ -19,6 +19,7 @@ export function initAuth({ onLogin, onLogout }) {
       element.hidden = !element.dataset.roleAllow.split(',').some(role => roleLevel[payload.role] >= roleLevel[role]);
     });
     message(); onLogin(payload.role);
+    window.dispatchEvent(new CustomEvent('staff-session-ready', { detail: payload }));
   }
   $('#login-form').addEventListener('submit', async event => {
     event.preventDefault();

@@ -1,7 +1,10 @@
 import { json, readBody } from '../lib/http.js';
-import { appointmentQuery, appointmentPatch, bookingInput, liveQuery } from '../lib/validation.js';
+import { appointmentQuery, appointmentPatch, bookingInput, onsiteInput, liveQuery } from '../lib/validation.js';
 
 export const appointmentRoutes = [
+  ['POST', /^\/api\/scan\/resolve$/, async context => json(await context.services.appointments.resolveScan((await readBody(context.request)).code, await context.role('technician')))],
+  ['GET', /^\/api\/scan\/current$/, async context => json({ item: await context.services.appointments.current(await context.role('technician')) })],
+  ['POST', /^\/api\/scan\/onsite$/, async context => json(await context.services.appointments.createOnsite(onsiteInput(await readBody(context.request)), await context.role('technician')), 201)],
   ['GET', /^\/api\/appointments\/overview$/, async context => {
     return json(await context.services.appointments.overview(await context.role('technician')));
   }],
@@ -29,6 +32,15 @@ export const appointmentRoutes = [
     await context.limit('write');
     const input = appointmentPatch(await readBody(context.request));
     return json(await context.services.appointments.update(decodeURIComponent(match[1]),input,await context.authenticate(),context.accessToken));
+  }],
+  ['POST', /^\/api\/appointments\/([^/]+)\/transfer$/, async (context, match) => {
+    await context.limit('write');
+    return json(await context.services.appointments.transfer(decodeURIComponent(match[1]), await readBody(context.request), await context.role('technician')));
+  }],
+  ['PATCH', /^\/api\/appointments\/([^/]+)\/correction$/, async (context, match) => {
+    await context.limit('write');
+    const input = appointmentPatch(await readBody(context.request));
+    return json(await context.services.appointments.update(decodeURIComponent(match[1]), { ...input, action: 'correct' }, await context.role('technician')));
   }],
   ['GET', /^\/api\/live\/summary$/, async context => {
     const query = liveQuery(context.query);
