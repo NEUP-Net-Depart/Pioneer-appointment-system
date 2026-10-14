@@ -44,6 +44,13 @@ function visit(path) {
 }
 for (const entry of ['frontend/user/main.js','frontend/staff/main.js','functions/api/[[path]].js']) visit(resolve(root, entry));
 for (const path of graph.keys()) assert.ok(visited.has(path), `Unreachable runtime module: ${relative(root, path)}`);
+const { manifests, validateManifests } = await import('../src/modules/registry.js');
+const manifestCheck = validateManifests(manifests);
+assert.ok(manifestCheck.valid, `Invalid module manifest: ${manifestCheck.errors.join('; ')}`);
+assert.ok(manifests.some(item => item.code === 'meetings' && item.releaseState === 'test'), 'Missing isolated meetings extension manifest');
+for (const path of ['docs/architecture/module-map.md','docs/architecture/identity-mapping.md','docs/architecture/authorization.md','docs/architecture/attendance-policies.md','docs/contracts/staff-platform.json','docs/releases/baseline-manifest.json']) {
+  await access(join(root, path));
+}
 for (const path of ['README.md','docs/operations.md','docs/requirements.md','wrangler.jsonc','.dev.vars.example']) {
   assert.ok(!forbidden.test(await readFile(join(root, path), 'utf8')), `Retired configuration in ${path}`);
 }
