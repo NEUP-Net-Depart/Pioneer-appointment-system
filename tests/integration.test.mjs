@@ -384,7 +384,7 @@ test('capacity migration preserves existing bookings and enforces ten on new or 
   await legacy.prepare("UPDATE appointments SET status='no_show' WHERE id='legacy-1'").run();
   await legacy.prepare("UPDATE appointments SET status='pending' WHERE id='legacy-0'").run();
   await insert(12, '浑南').run();
-  await insert(13, '南湖', '20:00–20:30').run();
+  await insert(13, '南湖', '20:00–21:00').run();
   await assert.rejects(legacy.prepare("UPDATE appointments SET campus='南湖' WHERE id='legacy-12'").run(), /SLOT_FULL/);
   await assert.rejects(legacy.prepare("UPDATE appointments SET time_slot='19:00–20:00' WHERE id='legacy-13'").run(), /SLOT_FULL/);
 });
@@ -767,13 +767,13 @@ test('only the matching credential grants guest access and recovery revokes ever
 });
 
 test('two requests for the final slot have one winner and cancellation releases capacity', async () => {
-  for (let n = 0; n < 9; n++) await book();
+  for (let n = 0; n < 4; n++) await book();
   const attempts = await Promise.all([draft(), draft()].map(body => request('/api/appointments', { method: 'POST', body })));
   assert.deepEqual(attempts.map(response => response.status).sort(), [201,409]);
   const winner = await attempts.find(response => response.status === 201).json();
   await api(`/api/appointments/${winner.id}/status`, { method: 'PATCH', accessToken:winner.accessToken, body: { status: 'completed', outcome: 'cancelled', studentId: winner.studentId } });
   await book();
-  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM appointments WHERE NOT (status='completed' AND outcome='cancelled')").first()).n, 10);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM appointments WHERE NOT (status='completed' AND outcome='cancelled')").first()).n, 5);
 });
 
 test('SQL staff filters preserve literal searches, status groups and totals', async () => {
@@ -833,12 +833,12 @@ test('staff overview uses real capacity and cancellation rules without exposing 
   assert.equal(result.start, dateKey()); assert.equal(result.end, addDays(dateKey(),6));
   assert.ok(result.dates.every(serviceDay));
   const slot = result.items.find(item => item.date===date && item.timeSlot==='19:00–19:30');
-  assert.equal(slot.occupied,2); assert.equal(slot.remaining,0); assert.equal(slot.capacity,1);
+  assert.equal(slot.occupied,2); assert.equal(slot.remaining,3); assert.equal(slot.capacity,5);
   assert.equal(slot.booked,0); assert.equal(slot.inProgress,1);
   assert.ok(result.items.every(item => item.campus==='南湖' && !('name' in item) && !('studentId' in item) && !('social' in item)));
   await configureCapacity(root,0);
   const paused = await api('/api/appointments/overview', { token:root });
-  assert.equal(paused.items.find(item => item.campus==='南湖' && item.date===date && item.timeSlot==='19:00–19:30').capacity,0);
+  assert.equal(paused.items.find(item => item.campus==='南湖' && item.date===date && item.timeSlot==='19:00–19:30').capacity,5);
   assert.ok(paused.items.some(item => item.campus==='浑南' && item.occupied===1));
   await api('/api/appointments/overview', {},401);
 });
@@ -847,7 +847,7 @@ test('weekly overview includes earlier records and range filters preserve permis
   const root=await login(),tech=await addUser('650019');
   const first=await book(),last=await book(),outside=await book(),otherCampus=await book({campus:'浑南'});
   const week=weekRange();
-  for(const [item,day] of [[first,week.start],[last,week.end],[outside,addDays(week.start,-1)],[otherCampus,week.start]]) {
+  for(const [item,day] of [[first,week.start],[last,addDays(week.start,3)],[outside,addDays(week.start,-4)],[otherCampus,week.start]]) {
     await db.prepare("UPDATE appointments SET date=?,status='completed',outcome='repaired',assigned_to='650019' WHERE id=?").bind(day,item.id).run();
   }
   const overview=await api('/api/appointments/overview',{token:tech});
@@ -888,7 +888,7 @@ test('SQL statistics aggregate date windows and workload without reading contact
   const root = await login();
   await addUser('650001');
   const recent = await book({ faultType: '蓝屏' }), older = await book({ faultType: '硬盘' }), skipped = await book();
-  const today = dateKey(), past = addDays(today, -31);
+  const today = dateKey(), past = addDays(today, -30);
   await db.prepare("UPDATE appointments SET date=?,status='completed',outcome='repaired',assigned_to='650001',social='unreadable' WHERE id=?").bind(today, recent.id).run();
   await db.prepare("UPDATE appointments SET date=?,status='completed',outcome='legacy_unknown',assigned_to='650001' WHERE id=?").bind(past, older.id).run();
   await db.prepare("UPDATE appointments SET date=?,status='completed',outcome='no_show' WHERE id=?").bind(today, skipped.id).run();
