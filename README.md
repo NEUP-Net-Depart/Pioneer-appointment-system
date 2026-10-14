@@ -13,6 +13,9 @@ GitHub Actions 在所有分支推送和 PR 上运行验证：`main` 发布 Produ
 - [数据库结构](docs/data-model.md)
 - [学生预约访问](docs/student-access.md)
 - [部署与运维](docs/operations.md)
+- [工作人员平台架构](docs/architecture/module-map.md)
+- [身份与组织映射](docs/architecture/identity-mapping.md)
+- [权限与签到契约](docs/architecture/authorization.md)
 - [长期集成分支与 Staff Staging](docs/staff-staging.md)
 
 ## Cloudflare 架构
@@ -118,6 +121,8 @@ npm run release:plan
 | GET / POST | `/api/staff-whitelist` / `/api/staff-whitelist/import` | 名册与 CSV 导入 |
 | GET / POST | `/api/activation-requests` / `/api/activation-requests/review` | 申请审核 |
 | GET | `/api/export/appointments.csv` | admin+ 导出 |
+
+工作人员平台（迁移 `0007_staff_platform.sql`）还提供稳定成员、模块授权、策略化签到和排班契约：`/api/members`、`/api/roles`、`/api/permissions`、`/api/workbench`、`/api/attendance/*`、`/api/presence/me`、`/api/roster-tasks`、`/api/rosters/*`、`/api/swaps`、`/api/leaves` 和 `/api/audit`。`GET /api/auth/me` 返回 `memberId`、任职、工作属性、完整授权、当日岗位、模块导航、恢复任务、`authVersion` 与 schema 版本。
 
 学生的查询、取消、排队和附件接口都要求预约访问凭证；预约编号仅用于展示和业务沟通，不能单独访问敏感数据。
 

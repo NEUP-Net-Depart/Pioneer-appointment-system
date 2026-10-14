@@ -35,3 +35,13 @@
 预约触发器在新增、从已取消恢复或更换日期、校区、时段等重新占用名额时读取目标配置：容量为 0 触发 `SLOT_PAUSED`，已达容量触发 `SLOT_FULL`。普通签到、维修说明更新及结束操作不触发容量检查；只有已取消的预约释放名额。
 
 公开名额查询在同一 D1 batch 中读取占用数和配置，保持一致的读取状态。迁移和发布顺序见 [部署与运维](operations.md)。
+
+## 工作人员平台（0007）
+
+`members` 是稳定人员主键；`staff_accounts.member_id` 只表示登录映射。`departments`、`campuses`、`locations` 是可扩展字典，`member_department_memberships` 保存带生效区间的多部门任职，`member_work_profiles` 保存维修 / 交流 / 办公工作资格。角色、完整授权项和模块投影分别位于 `roles`、`role_grants`、`member_roles`、`permission_definitions` 和 `module_catalog`。
+
+`attendance_events`、`attendance_tokens`、`attendance_records` 三表分别保存场次、可替换凭证和成员事实；`staff_presence` 与 `presence_events` 保存当日在岗变化。`roster_tasks`、`availability`、`roster_versions`、`duty_assignments` 和 `duty_roles` 保存排班输入、规则 / 算法版本和发布事实。请假与换班使用 `leave_requests`、`swap_requests`，`audit_events` 与 `operation_receipts` 和业务写入一起记录审计及幂等回执。
+
+`repair_intake_records` 独立保存确认接单时的操作者、成员映射、设备正反面照片和核验时间；预约状态与维修占用由 `appointments` / `active_repairs` 维护，现场登记的 `registered_by` / `registration_key` 保留入口和重复请求关联。
+
+历史签到保存发生时部门和身份快照；成员转部门或资料更正不会重写历史事实。业务日期按 `Asia/Shanghai` 保存，事件时点使用 UTC ISO 字符串。`active_repairs.member_id` 兼容旧账号占用并保证同一成员只有一张进行中维修。

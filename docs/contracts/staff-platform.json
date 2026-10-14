@@ -1,0 +1,17 @@
+{
+  "contractVersion": "staff-platform.v1",
+  "schemaVersion": "0007",
+  "authContext": ["actor", "memberships", "workProfiles", "grants", "todayDuties", "navigation", "resumeTasks", "modules", "authVersion", "schemaVersion"],
+  "errors": ["VALIDATION_ERROR", "SESSION_EXPIRED", "PERMISSION_REQUIRED", "REVISION_CONFLICT", "REQUEST_CONFLICT", "PRESENCE_CHANGED", "ACTIVE_REPAIR_EXISTS"],
+  "routes": {
+    "identity": ["GET /api/auth/me", "GET /api/members", "GET /api/members/:memberId", "PATCH /api/members/:memberId", "POST /api/members/import", "GET /api/workbench", "GET /api/desk/summary"],
+    "organization": ["GET /api/organization/campuses", "GET /api/organization/departments", "GET /api/organization/locations"],
+    "authorization": ["GET /api/permissions", "GET /api/roles", "POST /api/roles", "PATCH /api/roles/:id", "POST /api/roles/preview", "PUT /api/members/:memberId/roles"],
+    "repairs": ["POST /api/scan/resolve", "GET /api/scan/current", "POST /api/scan/onsite", "PATCH /api/appointments/:id/status", "POST /api/appointments/:id/transfer", "PATCH /api/appointments/:id/correction"],
+    "attendance": ["POST /api/attendance/events", "POST /api/attendance/events/:id/token", "POST /api/attendance/check-ins", "GET /api/attendance", "GET /api/attendance/export.csv", "GET /api/export/attendance.csv", "GET /api/me/attendance", "POST /api/attendance/corrections", "PATCH /api/presence/me"],
+    "rosters": ["GET /api/roster-tasks", "GET /api/roster-tasks/:id/availability", "POST /api/roster-tasks", "PUT /api/roster-tasks/:id/availability", "POST /api/rosters/generate", "PATCH /api/rosters/:id", "POST /api/rosters/:id/publish", "GET /api/me/roster", "POST /api/swaps", "GET /api/swaps", "POST /api/swaps/:id/decision", "POST /api/leaves", "GET /api/leaves", "POST /api/leaves/:id/decision", "POST /api/leaves/:id/withdraw"],
+    "audit": ["GET /api/audit"]
+  },
+  "idempotency": "actorMemberId + action + requestId",
+  "businessTimeZone": "Asia/Shanghai"
+}
