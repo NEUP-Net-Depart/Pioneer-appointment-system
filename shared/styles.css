@@ -699,6 +699,12 @@ html{scrollbar-gutter:stable}
 }
 
 .repair-arrival { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:6px 14px; align-items:center; text-align:left; }
+.booking-confirm-lead { color:var(--muted); margin:0 0 18px; }
+.booking-confirm-summary { margin:0 0 22px; padding:14px 16px; background:var(--soft); border:1px solid var(--line); }
+.booking-confirm-summary > div { display:grid; grid-template-columns:5em minmax(0,1fr); gap:14px; padding:8px 0; border-bottom:1px solid var(--line); }
+.booking-confirm-summary > div:last-child { border-bottom:0; }
+.booking-confirm-summary dt { color:var(--muted); font-size:12px; }
+.booking-confirm-summary dd { margin:0; font-weight:700; overflow-wrap:anywhere; }
 .repair-arrival-label { color:var(--muted); font-size:12px; white-space:nowrap; }
 .repair-arrival strong { font-size:14px; font-weight:600; line-height:1.6; overflow-wrap:anywhere; user-select:text; }
 .repair-arrival .text-btn { padding:6px 0; font-size:12px; white-space:nowrap; text-decoration:underline; text-underline-offset:3px; }

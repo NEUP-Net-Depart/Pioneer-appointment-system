@@ -18,6 +18,28 @@ export function initBooking({ appointments, onCreated, locations }) {
   $('#close-agreement').addEventListener('click', () => $('#agreement-modal').hidden = true);
   $('#agree-modal').addEventListener('click', () => { $('#agreement-modal').hidden = true; signature.open(); });
   $('#agreement-modal').addEventListener('click', event => { if (event.target.id === 'agreement-modal') $('#agreement-modal').hidden = true; });
+  const confirmModal = $('#booking-confirm-modal');
+  let confirmResolve;
+  function closeConfirmation(result) {
+    confirmModal.hidden = true;
+    const resolve = confirmResolve;
+    confirmResolve = undefined;
+    resolve?.(result);
+  }
+  function confirmBooking(data) {
+    $('#confirm-campus').textContent = data.campus;
+    $('#confirm-date').textContent = data.date;
+    $('#confirm-time').textContent = data.timeSlot;
+    $('#confirm-location').textContent = $('#booking-repair-location').textContent || '地点待确认，请联系工作人员';
+    confirmModal.hidden = false;
+    $('#confirm-booking-submit').focus();
+    return new Promise(resolve => { confirmResolve = resolve; });
+  }
+  $('#confirm-booking-submit').addEventListener('click', () => closeConfirmation(true));
+  $('#cancel-booking-confirm').addEventListener('click', () => closeConfirmation(false));
+  $('#close-booking-confirm').addEventListener('click', () => closeConfirmation(false));
+  confirmModal.addEventListener('click', event => { if (event.target === confirmModal) closeConfirmation(false); });
+  confirmModal.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); closeConfirmation(false); } });
   $('#copy-code').addEventListener('click', async () => {
     const link = $('#success-link-fallback');
     try { await navigator.clipboard.writeText(link.value); showToast('私人链接已复制，请勿转发给他人'); }
@@ -35,6 +57,7 @@ export function initBooking({ appointments, onCreated, locations }) {
     const submit = form.querySelector('[type=submit]');
     if (submit.disabled) return;
     submit.disabled = true;
+    if (!await confirmBooking(data)) { submit.disabled = false; return; }
     const payload = { ...data, agreementAt: nowIso(), agreementVersion: 'v1.1', signature: signature.value() };
     delete payload.agreement;
     try {

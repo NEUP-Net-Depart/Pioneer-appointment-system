@@ -515,6 +515,8 @@ for (const reason of ['该校区该时段已满', '该校区该时段暂停预�
     await page.mouse.move(box.x + 70, box.y + 110, { steps: 15 }); await page.mouse.up();
     await page.locator('#confirm-signature').click();
     await page.locator('#booking-form [type=submit]').click();
+    await expect(page.locator('#booking-confirm-modal')).toBeVisible();
+    await page.locator('#confirm-booking-submit').click();
     await expect(page.locator('#booking-selection')).toContainText(reason);
     await expect(page.locator('#booking-float')).toBeVisible();
     await expect(page.locator('#booking-float-state')).toContainText(reason);
@@ -528,6 +530,8 @@ for (const reason of ['该校区该时段已满', '该校区该时段暂停预�
     await slot(page, secondSlot).click();
     await expect(page.locator('[name=timeSlot]')).toHaveValue(secondSlot);
     await page.locator('#booking-form [type=submit]').click();
+    await expect(page.locator('#booking-confirm-modal')).toBeVisible();
+    await page.locator('#confirm-booking-submit').click();
     await expect(page.locator('#success-panel')).toBeVisible();
     await expect(page.locator('#success-location')).toHaveText('主楼 101 室');
     await expect(page.locator('#success-copy-location')).toBeVisible();

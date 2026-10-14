@@ -27,6 +27,14 @@ async function booking(page,studentId,{file=true}={}){
   expect(await page.locator('#signature-modal .modal').evaluate(element=>element.scrollWidth<=element.clientWidth)).toBe(true);
   await capture(page, 'signature-' + studentId);
   await page.locator('#confirm-signature').click();await page.locator('#booking-form [type=submit]').click();
+  await expect(page.locator('#booking-confirm-modal')).toBeVisible();
+  await expect(page.locator('#confirm-campus')).toHaveText('南湖');
+  await expect(page.locator('#confirm-time')).toHaveText('19:00–19:30');
+  await page.locator('#cancel-booking-confirm').click();
+  await expect(page.locator('#booking-confirm-modal')).toBeHidden();
+  await page.locator('#booking-form [type=submit]').click();
+  await expect(page.locator('#booking-confirm-modal')).toBeVisible();
+  await page.locator('#confirm-booking-submit').click();
   await expect(page.locator('#success-panel')).toBeVisible();
   const id = await page.locator('#success-code').textContent();
   expect(id).toMatch(new RegExp(`^reserve0${date.replaceAll('-','')}-\\d{2,}$`));
