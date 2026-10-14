@@ -1,7 +1,7 @@
 import { fail } from '../lib/http.js';
 import { hashPassword } from '../lib/passwords.js';
 import { roleLevel } from '../../shared/constants.js';
-import { canManageAccount,requireGrantScope,requireRole } from './permissions.js';
+import { canManageAccount,requireGrantScope,requireRole,requireCampus } from './permissions.js';
 
 export function userService(users) {
   async function manageable(id, actor) {
@@ -11,6 +11,10 @@ export function userService(users) {
     return target;
   }
   return {
+    async assignees(query, actor) {
+      requireRole(actor,'admin'); requireCampus(actor,query.campus);
+      return { items: await users.assignees(query) };
+    },
     async list(actor) {
       requireRole(actor,'admin');
       return {items:(await users.list()).filter(user=>actor.role==='superadmin' || canManageAccount(actor,user) || user.account===actor.account)};

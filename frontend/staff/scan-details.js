@@ -1,4 +1,4 @@
-import { escapeHtml } from '/shared/utils.js';
+import { escapeHtml, assigneeLabel } from '/shared/utils.js';
 import { statusLabels, outcomeLabels, terminalStatuses, endTimeLabels, expirationMessage } from '/shared/constants.js';
 import { formatInstant } from '/shared/time.js';
 
@@ -17,5 +17,5 @@ export function renderScanDetails(container, item) {
     ${item.status === 'expired' ? `<p class="record-note">${expirationMessage}</p>` : ''}
   </section>` + group('故障信息', [['故障类型', item.faultType], ['进液 / 摔过', item.liquidDrop], ['故障描述', item.issue], ['备注', item.note]]) +
     group('机主信息', [['机主', item.name], ['学号', item.studentId], ['学院 / 专业', item.college], ['QQ / 微信', item.social], ['手机', item.phone]], true) +
-    group('维修记录', [['维修人员', item.assignedTo], ['维修结果', item.outcome && outcomeLabels[item.outcome]], ['维修说明', item.repairNote], ['开始时间', item.startedAt && formatInstant(item.startedAt)], [endTimeLabels[item.status] || '结束时间', item.completedAt && formatInstant(item.completedAt)]], !terminalStatuses.includes(item.status));
+    group('维修记录', [['维修人员', assigneeLabel(item.assignedTo,item.assignedToName)], ['维修结果', item.outcome && outcomeLabels[item.outcome]], ['维修说明', item.repairNote], ['开始时间', item.startedAt && formatInstant(item.startedAt)], [endTimeLabels[item.status] || '结束时间', item.completedAt && formatInstant(item.completedAt)]], !terminalStatuses.includes(item.status));
 }

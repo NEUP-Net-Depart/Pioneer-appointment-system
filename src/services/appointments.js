@@ -6,14 +6,15 @@ import { guestAppointment } from './access.js';
 import { repairOutcomes } from '../../shared/constants.js';
 import { appointmentScope, requireRole, requireAppointmentAccess, requireCampus } from './permissions.js';
 
-export async function presentAppointment(item, encryptionKey) {
+export async function presentAppointment(item, encryptionKey, { staff = false } = {}) {
   const [phone, social] = await Promise.all([decryptText(item.phone, encryptionKey), decryptText(item.social, encryptionKey)]);
   const visible = { ...item, phone, social };
   delete visible.registrationKey;
+  if (!staff) delete visible.assignedToName;
   return visible;
 }
 export function appointmentService(appointments, users, encryptionKey, clock = () => new Date()) {
-  const present = item => presentAppointment(item, encryptionKey);
+  const present = (item, staff = false) => presentAppointment(item, encryptionKey, { staff });
   const expire = (instant, scope) => appointments.expirePending(instant.toISOString(), scope);
   async function assignee(value, campus) {
     let user = await users.find(value.toLowerCase());
@@ -62,7 +63,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
         if (user.role === 'technician' && (item.status === 'booked' || (item.assignedTo !== user.account && !(item.source === 'onsite' && item.registeredBy === user.account)))) {
           return Object.fromEntries(['id','revision','campus','date','timeSlot','deviceType','brand','deviceModel','faultType','status','createdAt','expiresAt'].map(key => [key, item[key]]));
         }
-        return present(item);
+        return present(item, true);
       }));
       return { ...result, items };
     },
@@ -86,7 +87,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
         source: onsite ? 'onsite' : 'booking', registeredBy: onsite?.actor || null, registrationKey: onsite?.requestId || null,
         createdAt: timestamp, agreementAt: timestamp, agreementVersion: data.agreementVersion || 'v1.0',
         accessTokenHash: credential.hash, credentialRotatedAt: timestamp, phone, social };
-      return { ...await present(await appointments.create(item)), accessToken: credential.token };
+      return { ...await present(await appointments.create(item), !!onsite), accessToken: credential.token };
     },
     async lookup(id, accessToken) {
       const item = await guestAppointment(appointments, id, accessToken);
@@ -112,7 +113,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       item = user ? await appointments.find(item.id) : await guestAppointment(appointments, item.id, accessToken);
       // A lost response can be retried with the original revision and photo IDs.
       // Only an exact repeat by the recorded owner is treated as success.
-      if (repeated(item, input, user, action)) return present(item);
+      if (repeated(item, input, user, action)) return present(item, true);
       if (revision !== undefined && revision !== item.revision) fail(409, '预约已更新，请刷新后重试');
       if ((input.frontPhotoId !== undefined || input.backPhotoId !== undefined) &&
           (action === 'correct' || input.status !== 'in_progress')) fail(400, '签到照片只能在签到时记录');
@@ -178,10 +179,10 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       const updated = await appointments.update(item, patch, correction);
       if (!updated) {
         const latest = await appointments.find(item.id);
-        if (latest && repeated(latest, input, user, action)) return present(latest);
+        if (latest && repeated(latest, input, user, action)) return present(latest, true);
         fail(409, '预约已被其他工作人员修改，请刷新后重试');
       }
-      return present(updated);
+      return present(updated, !!user);
     }
   };
 }

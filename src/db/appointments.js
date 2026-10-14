@@ -10,8 +10,10 @@ const columns = {
   repairNumber: 'repair_number', frontPhotoId: 'front_photo_id', backPhotoId: 'back_photo_id',
   source: 'source', registeredBy: 'registered_by', registrationKey: 'registration_key'
 };
+const assigneeName = "(SELECT trim(name) FROM staff_accounts WHERE account=appointments.assigned_to AND status='enabled') AS assigned_to_name";
+const select = `SELECT appointments.*,${assigneeName} FROM appointments`;
 function fromRow(row) {
-  return row ? { id: row.id, revision: row.revision, ...Object.fromEntries(Object.entries(columns).map(([key, column]) => [key, row[column] ?? (['outcome','startedAt','completedAt','repairNumber','frontPhotoId','backPhotoId'].includes(key) ? null : '')])) } : null;
+  return row ? { id: row.id, revision: row.revision, assignedToName: row.assigned_to_name || '', ...Object.fromEntries(Object.entries(columns).map(([key, column]) => [key, row[column] ?? (['outcome','startedAt','completedAt','repairNumber','frontPhotoId','backPhotoId'].includes(key) ? null : '')])) } : null;
 }
 export function appointmentRepository(db) {
   return {
@@ -19,13 +21,13 @@ export function appointmentRepository(db) {
       return (await scheduleStatement(db, date, date, [campus]).all()).results;
     },
     async inProgress(account) {
-      return (await db.prepare("SELECT * FROM appointments WHERE assigned_to=? AND status='in_progress' ORDER BY started_at,created_at,id").bind(account).all()).results.map(fromRow);
+      return (await db.prepare(`${select} WHERE assigned_to=? AND status='in_progress' ORDER BY started_at,created_at,id`).bind(account).all()).results.map(fromRow);
     },
     async findRegistration(account, key) {
-      return fromRow(await db.prepare('SELECT * FROM appointments WHERE registered_by=? AND registration_key=?').bind(account,key).first());
+      return fromRow(await db.prepare(`${select} WHERE registered_by=? AND registration_key=?`).bind(account,key).first());
     },
     async pendingRegistration(account) {
-      return fromRow(await db.prepare("SELECT * FROM appointments WHERE registered_by=? AND source='onsite' AND status='booked' ORDER BY created_at DESC,id DESC LIMIT 1").bind(account).first());
+      return fromRow(await db.prepare(`${select} WHERE registered_by=? AND source='onsite' AND status='booked' ORDER BY created_at DESC,id DESC LIMIT 1`).bind(account).first());
     },
     async intakePhotos(id, account, front, back, now) {
       if (!front || !back || front === back) return false;
@@ -46,11 +48,11 @@ export function appointmentRepository(db) {
       if (campuses) { where.push(campuses.length ? `campus IN (${campuses.map(() => '?').join(',')})` : '0'); args.push(...campuses); }
       return db.prepare(`UPDATE appointments SET status='expired',outcome=NULL,completed_at=?,revision=revision+1 WHERE ${where.join(' AND ')}`).bind(...args).run();
     },
-    async find(id) { return fromRow(await db.prepare('SELECT * FROM appointments WHERE id=?').bind(id).first()); },
+    async find(id) { return fromRow(await db.prepare(`${select} WHERE id=?`).bind(id).first()); },
     async findByCredential(id, hash) {
       // A legacy repair number is only an alias; the credential selects its owner
       // even when the same text is another appointment's historical primary key.
-      return fromRow(await db.prepare('SELECT * FROM appointments WHERE (id=? OR repair_number=?) AND access_token_hash=?').bind(id,id,hash).first());
+      return fromRow(await db.prepare(`${select} WHERE (id=? OR repair_number=?) AND access_token_hash=?`).bind(id,id,hash).first());
     },
     async rotateCredential(item, hash, actor, reason, instant) {
       const results = await db.batch([
@@ -84,7 +86,7 @@ export function appointmentRepository(db) {
       const order = sorts.flatMap(item => (sortColumns[item.key] || []).map(column => `${column} ${item.direction === 'asc' ? 'ASC' : 'DESC'}`));
       order.push('created_at DESC','id DESC');
       const [items, counts, filteredCounts] = await db.batch([
-        db.prepare(`SELECT * FROM appointments WHERE ${where.join(' AND ')} ORDER BY ${order.join(',')}`).bind(...args),
+        db.prepare(`${select} WHERE ${where.join(' AND ')} ORDER BY ${order.join(',')}`).bind(...args),
         db.prepare(`SELECT COUNT(*) AS allCount, COUNT(CASE WHEN status='booked' THEN 1 END) AS booked,
           COUNT(CASE WHEN status='in_progress' THEN 1 END) AS in_progress, COUNT(CASE WHEN status='completed' THEN 1 END) AS completed,
           COUNT(CASE WHEN status='cancelled' THEN 1 END) AS cancelled, COUNT(CASE WHEN status='expired' THEN 1 END) AS expired
@@ -127,7 +129,7 @@ export function appointmentRepository(db) {
       for (const [key, column] of Object.entries({ status: 'status', assignedTo: 'assigned_to', repairNote: 'repair_note', outcome: 'outcome', startedAt: 'started_at', completedAt: 'completed_at', expiresAt: 'expires_at', frontPhotoId: 'front_photo_id', backPhotoId: 'back_photo_id' })) {
         if (patch[key] !== undefined) { fields.push(`${column}=?`); args.push(key === 'assignedTo' ? patch[key] || null : patch[key]); }
       }
-      const update = db.prepare(`UPDATE appointments SET ${fields.join(',')},revision=revision+1 WHERE id=? AND revision=? RETURNING *`).bind(...args, item.id, item.revision);
+      const update = db.prepare(`UPDATE appointments SET ${fields.join(',')},revision=revision+1 WHERE id=? AND revision=? RETURNING *,${assigneeName}`).bind(...args, item.id, item.revision);
       if (!correction) return fromRow(await update.first());
       const snapshot = value => JSON.stringify(Object.fromEntries(['revision','status','outcome','assignedTo','repairNote','startedAt','completedAt','expiresAt','frontPhotoId','backPhotoId'].map(key => [key, value[key]])));
       const results = await db.batch([
@@ -142,7 +144,7 @@ export function appointmentRepository(db) {
       const campusScope=campuses.length ? `campus IN (${campuses.map(()=>'?').join(',')})` : '0';
       const where=campusScope+(cursor ? ' AND (created_at<? OR (created_at=? AND id<?))' : '');
       const args=[...campuses,...(cursor ? [cursor.createdAt,cursor.createdAt,cursor.id] : []),limit];
-      return (await db.prepare(`SELECT * FROM appointments WHERE ${where} ORDER BY created_at DESC,id DESC LIMIT ?`).bind(...args).all()).results.map(fromRow);
+      return (await db.prepare(`${select} WHERE ${where} ORDER BY created_at DESC,id DESC LIMIT ?`).bind(...args).all()).results.map(fromRow);
     }
   };
 }

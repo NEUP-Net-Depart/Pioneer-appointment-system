@@ -19,6 +19,7 @@ async function mockLogin(page,role) {
   await page.route('**/api/scan/config',route => route.fulfill({json:{enabled:true}}));
   await page.route('**/api/scan/current*',route => route.fulfill({json:{items:[],pending:null,registration:null}}));
   await page.route('**/api/appointments/*/attachments',route => route.fulfill({json:{items:[]}}));
+  await page.route('**/api/staff/assignees?*',route => route.fulfill({json:{items:[{account:user.account,name:user.name}]}}));
   await page.goto('/staff/');
   await page.locator('#login-id').fill(user.account);await page.locator('#login-password').fill('local-status-test');
   await page.locator('#login-form button').click();

@@ -1,5 +1,5 @@
 import { apiJson } from '/shared/api.js';
-import { $, escapeHtml, showToast } from '/shared/utils.js';
+import { $, escapeHtml, showToast, assigneeLabel } from '/shared/utils.js';
 import { formatDate } from '/shared/time.js';
 
 function renderBars(target, values, total) {
@@ -25,7 +25,7 @@ function renderStats(stats) {
   renderBars($('#campus-chart'), Object.entries(campuses), stats.total);
   // Integer-like account keys lose SQL ordering when represented as a JSON object.
   const workload = Object.entries(technicians).sort((a, b) => b[1].completed - a[1].completed);
-  $('#technician-chart').innerHTML = workload.length ? `<div class="workload-head"><span>维修人员</span><span>开始数</span><span>完成数</span><span>完成率</span></div>${workload.map(([name, value]) => `<div class="workload-row"><strong>${escapeHtml(name)}</strong><span>${value.started}</span><span>${value.completed}</span><span>${value.started ? Math.round(value.completed / value.started * 100) : 0}%</span></div>`).join('')}` : '<p class="stats-empty">暂无已分配的维修记录</p>';
+  $('#technician-chart').innerHTML = workload.length ? `<div class="workload-head"><span>维修人员</span><span>开始数</span><span>完成数</span><span>完成率</span></div>${workload.map(([account, value]) => `<div class="workload-row"><strong>${escapeHtml(assigneeLabel(account,value.assignedToName))}</strong><span>${value.started}</span><span>${value.completed}</span><span>${value.started ? Math.round(value.completed / value.started * 100) : 0}%</span></div>`).join('')}` : '<p class="stats-empty">暂无已分配的维修记录</p>';
 }
 
 export function initStats() {
