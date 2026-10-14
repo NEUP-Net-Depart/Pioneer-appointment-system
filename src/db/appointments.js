@@ -1,3 +1,5 @@
+import { scheduleStatement } from './slot-capacities.js';
+
 const columns = {
   studentId: 'student_id', name: 'name', college: 'college', campus: 'campus', phone: 'phone', social: 'social',
   deviceType: 'device_type', brand: 'brand', deviceModel: 'device_model', serial: 'serial', warranty: 'warranty',
@@ -15,6 +17,9 @@ function fromRow(row) {
 }
 export function appointmentRepository(db) {
   return {
+    async schedule(date, campus) {
+      return (await scheduleStatement(db, date, date, [campus]).all()).results;
+    },
     async inProgress(account) {
       return (await db.prepare(`${select} WHERE assigned_to=? AND status='in_progress' ORDER BY started_at,created_at,id`).bind(account).all()).results.map(fromRow);
     },
@@ -103,7 +108,7 @@ export function appointmentRepository(db) {
           COUNT(CASE WHEN status='in_progress' THEN 1 END) AS in_progress
         FROM appointments WHERE ${scope} AND date>=? AND date<=? AND source='booking'
           AND status<>'cancelled' GROUP BY campus,date,time_slot`).bind(...campuses,start,end),
-        db.prepare(`SELECT campus,time_slot,capacity FROM slot_capacities WHERE ${scope}`).bind(...campuses)
+        scheduleStatement(db, start, end, campuses)
       ]);
       return { totals: totals.results, capacities: capacities.results };
     },

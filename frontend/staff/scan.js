@@ -1,6 +1,7 @@
 import { $, $$, showToast } from '/shared/utils.js';
 import { apiJson, apiFetch } from '/shared/api.js';
 import { uploadAttachments, attachmentUrl, attachmentSize } from '/shared/attachments.js';
+import { createPhotoInput } from '/shared/photo-input.js';
 import { drawSignature, validSignature } from '/shared/signature.js';
 import { createScanner } from './scanner.js';
 import { renderScanDetails } from './scan-details.js';
@@ -18,6 +19,21 @@ export function initScan() {
     catch { return false; }
   }
   const message = text => { $('#scan-message').textContent = text; };
+  const photoInputs = Object.fromEntries(['front','back'].map(side => [side, createPhotoInput({
+    input: $('#scan-'+side), preview: $('#scan-'+side+'-preview'), meta: $('#scan-'+side+'-state'), progress: $('#scan-'+side+'-progress'),
+    getContext: () => `${generation}:${account()}:${item?.id}`,
+    onChange() {
+      if (!item) return;
+      const uploaded = photos(); delete uploaded[side]; write(`photos:${item.id}`, uploaded);
+    },
+    async upload(file) {
+      const [attachment] = await uploadAttachments(item, [file], 'intake_' + side);
+      return attachment;
+    },
+    onUploaded(file) {
+      const uploaded = photos(); uploaded[side] = file.id; write(`photos:${item.id}`, uploaded);
+    },
+  })]));
   const scanner = createScanner({ video: $('#scan-video'), status: $('#camera-status'), torch: $('#scan-torch'), switchCamera: $('#scan-switch-camera'), onCode: code => resolve({ code }), onState(state) {
     $('.scanner-frame').dataset.cameraState = state;
     $('#scan-camera').hidden = state === 'running';
@@ -33,15 +49,13 @@ export function initScan() {
   }
   function photos() { return read(`photos:${item.id}`) || {}; }
   function resetPreviews() {
-    for (const side of ['front','back']) {
-      const preview = $('#scan-'+side+'-preview'); URL.revokeObjectURL(preview.src); preview.removeAttribute('src'); preview.hidden = true; $('#scan-'+side).value = '';
-    }
+    for (const photo of Object.values(photoInputs)) photo.reset();
   }
   function resetRegistration() {
     onsiteRequest = undefined; write('onsiteRequest', null); form.reset(); strokes = []; pointer = undefined; drawSignature(canvas, strokes);
   }
   function showItem(value) {
-    if (item?.id !== value.id) resetPreviews();
+    if (item?.id !== value.id || value.status !== 'booked') resetPreviews();
     item = value; write('selected', item.id); panels('scan-detail');
     renderScanDetails($('#scan-detail-info'), item);
     $('#scan-intake-form').hidden = item.status !== 'booked';
@@ -58,7 +72,7 @@ export function initScan() {
     $('#scan-note').value = draft?.note ?? item.repairNote ?? '';
     $('#scan-outcome').value = draft?.outcome || '';
     $('#scan-draft-state').textContent = draft ? '已恢复此账号在本机保存的维修草稿。' : '';
-    for (const side of ['front','back']) $('#scan-'+side+'-state').textContent = photos()[side] ? '照片已上传，可直接重试签到' : '';
+    for (const side of ['front','back']) if (photos()[side]) photoInputs[side].setStatus('照片已上传，可直接重试签到');
     message(item.status === 'in_progress' ? '维修进行中，完成后请填写结果。' : item.status === 'expired' ? expirationMessage : terminalStatuses.includes(item.status) ? `此工单${statusLabels[item.status]}。` : '');
   }
   async function loadFiles() {
@@ -95,6 +109,7 @@ export function initScan() {
   }
   async function restore() {
     const current = ++generation; ready = false; scanner.stop(); message('正在恢复当前维修…');
+    resetPreviews();
     const selected = read('selected');
     try {
       const registrationRequestId = onsiteRequest || read('onsiteRequest');
@@ -167,24 +182,14 @@ export function initScan() {
   });
   $('#scan-recover').addEventListener('click', () => { if (!busy) restore().then(() => { if (ready && active && !item) scanner.start(); }); });
   for (const button of [...$$('[data-scan-back]'), $('#scan-detail-back')]) button.addEventListener('click', () => run(home));
-  for (const side of ['front','back']) $('#scan-'+side).addEventListener('change', event => {
-    const preview = $('#scan-'+side+'-preview'); URL.revokeObjectURL(preview.src); preview.removeAttribute('src'); preview.hidden = true;
-    const uploaded = photos(); delete uploaded[side]; write(`photos:${item.id}`, uploaded); $('#scan-'+side+'-state').textContent = '';
-    const file = event.target.files[0]; if (file) { preview.src = URL.createObjectURL(file); preview.hidden = false; }
-  });
   $('#scan-intake-form').addEventListener('submit', event => {
     event.preventDefault(); run(async current => {
+      if (!item || item.status !== 'booked') throw new Error('当前工单不能签到，请重新读取当前工单');
       const uploaded = photos();
-      for (const side of ['front','back']) {
-        const file = $('#scan-'+side).files[0];
-        if (!uploaded[side] && (!file || file.size > 5 * 1024 * 1024 || !['image/jpeg','image/png','image/webp'].includes(file.type))) throw new Error('照片无效');
-      }
-      for (const side of ['front','back']) if (!uploaded[side]) {
-        const [file] = await uploadAttachments(item, [$('#scan-'+side).files[0]], 'intake_'+side);
-        if (current !== generation) return;
-        uploaded[side] = file.id; write(`photos:${item.id}`, uploaded); $('#scan-'+side+'-state').textContent = '照片已上传';
-      }
-      await update({ status: 'in_progress', frontPhotoId: uploaded.front, backPhotoId: uploaded.back }, current);
+      const [frontPhotoId, backPhotoId] = await Promise.all(['front','back'].map(async side =>
+        uploaded[side] || (await photoInputs[side].getUploaded()).id));
+      if (current !== generation) return;
+      await update({ status: 'in_progress', frontPhotoId, backPhotoId }, current);
       if (current === generation) showToast('照片已保存，已签到并开始维修');
     });
   });

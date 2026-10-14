@@ -17,6 +17,7 @@ import { storageLimit } from '../src/lib/env.js';
 import { cleanupAttachments } from '../scripts/cleanup-attachments.mjs';
 import { cloudflareClient } from '../scripts/cloudflare-d1.mjs';
 import { userRepository } from '../src/db/users.js';
+import { TIME_SLOTS } from '../shared/constants.js';
 
 let mf, db, bucket;
 const MAX_R2_BYTES = 8589934592;
@@ -24,12 +25,12 @@ const password = 'integration-test-password-only';
 const JWT_SECRET = randomBytes(48).toString('base64url');
 const PII_ENCRYPTION_KEY = randomBytes(32).toString('hex');
 const bookingDates = [0,1,2,3].map(n => addDays(dateKey(), n)).filter(serviceDay);
-const date = bookingDates.find(day => Date.now() < Date.parse(slotDeadline(day,'19:00–20:00'))) || bookingDates[0];
+const date = bookingDates.find(day => Date.now() < Date.parse(slotDeadline(day,'19:00–19:30'))) || bookingDates[0];
 const testNow = new Date(`${dateKey()}T10:00:00+08:00`).toISOString();
 let serial = 200000;
 const signature = [[[0.1,0.1],[0.2,0.3],[0.3,0.2],[0.4,0.4],[0.5,0.2],[0.6,0.3],[0.7,0.1],[0.8,0.4]]];
 const photo = { filename: 'computer.png', mimeType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=' };
-const draft = (patch = {}) => ({ signature, studentId: String(++serial), name: '测试同学', campus: '南湖', phone: '13800138000', social: 'wechat-private', deviceType: '笔记本电脑', brand: '联想', deviceModel: 'ThinkPad', warranty: '否', date, timeSlot: '19:00–20:00', faultType: '蓝屏', issue: '', agreementAt: new Date().toISOString(), ...patch });
+const draft = (patch = {}) => ({ signature, studentId: String(++serial), name: '测试同学', campus: '南湖', phone: '13800138000', social: 'wechat-private', deviceType: '笔记本电脑', brand: '联想', deviceModel: 'ThinkPad', warranty: '否', date, timeSlot: '19:00–19:30', faultType: '蓝屏', issue: '', agreementAt: new Date().toISOString(), ...patch });
 async function request(path, { method = 'GET', body, token, accessToken, headers = {} } = {}) {
   return mf.dispatchFetch(`https://app.test${path}`, { method, headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(accessToken ? {'X-Appointment-Token':accessToken} : {}), ...headers }, ...(body !== undefined ? { body: typeof body === 'string' ? body : JSON.stringify(body) } : {}) });
 }
@@ -51,9 +52,9 @@ const book = patch => api('/api/appointments', { method: 'POST', body: draft(pat
 async function login(account = 'root001', suppliedPassword = password) {
   return (await api('/api/auth/login', { method: 'POST', body: { account, password: suppliedPassword } })).token;
 }
-async function configureCapacity(token, capacity, { campus = '南湖', timeSlot = '19:00–20:00' } = {}) {
+async function configureCapacity(token, capacity, { campus = '南湖', timeSlot = '19:00–19:30', weekday = new Date(date+'T00:00:00Z').getUTCDay() } = {}) {
   const { items } = await api('/api/slot-capacities', { token });
-  const item = items.find(row => row.campus === campus && row.timeSlot === timeSlot);
+  const item = items.find(row => row.campus === campus && row.weekday === weekday && row.timeSlot === timeSlot);
   return api('/api/slot-capacities', { method: 'PATCH', token, body: { ...item, capacity } });
 }
 async function addUser(account, role = 'technician') {
@@ -94,6 +95,7 @@ before(async () => {
     name: 'pioneer-tests', compatibilityDate: cfg.compatibility_date, compatibilityFlags: cfg.compatibility_flags,
     manifest: { mainModule: 'index.js', modules: { 'index.js': { type: 'esm', contents: await readFile('.wrangler/test-build/index.js', 'utf8') } } },
     env: { DB: { type: 'd1', id: 'test-db' }, CAPACITY_UPGRADE_DB: { type: 'd1', id: 'capacity-upgrade-db' }, WORKFLOW_UPGRADE_DB: { type: 'd1', id: 'workflow-upgrade-db' }, SLOT_SETTINGS_UPGRADE_DB: { type: 'd1', id: 'slot-settings-upgrade-db' }, ATTACHMENTS: { type: 'r2', name: 'test-attachments' },
+      SCHEDULE_UPGRADE_DB: { type: 'd1', id: 'schedule-upgrade-db' },
       SCAN_UPGRADE_DB: { type: 'd1', id: 'scan-upgrade-db' },
       EXPIRATION_UPGRADE_DB: { type: 'd1', id: 'expiration-upgrade-db' },
       FIVE_STATUS_UPGRADE_DB: { type: 'd1', id: 'five-status-upgrade-db' },
@@ -110,9 +112,10 @@ before(async () => {
 });
 after(async () => { await mf?.dispose(); });
 beforeEach(async () => {
-  await db.batch(['DELETE FROM appointment_corrections','DELETE FROM credential_recoveries','DELETE FROM activation_requests','DELETE FROM staff_whitelist','DELETE FROM attachment_storage','DELETE FROM appointment_attachments','DELETE FROM appointments',"DELETE FROM staff_accounts WHERE protected=0",'DELETE FROM rate_limits'].map(sql => db.prepare(sql)));
+  await db.batch(['DELETE FROM appointment_corrections','DELETE FROM credential_recoveries','DELETE FROM activation_requests','DELETE FROM staff_whitelist','DELETE FROM attachment_storage','DELETE FROM appointment_attachments','DELETE FROM appointments','DELETE FROM booking_day_slots',"DELETE FROM staff_accounts WHERE protected=0",'DELETE FROM rate_limits'].map(sql => db.prepare(sql)));
   await db.prepare('UPDATE storage_quota SET used_bytes=0 WHERE id=1').run();
   await db.prepare('UPDATE slot_capacities SET capacity=10,revision=0').run();
+  await db.prepare('UPDATE weekday_slot_capacities SET capacity=5,revision=0').run();
   const objects = await bucket.list();
   if (objects.objects.length) await bucket.delete(objects.objects.map(object => object.key));
 });
@@ -247,6 +250,7 @@ test('scan migration preserves duplicate historical work and blocks new claims u
   const items = [await book(),await book(),await book()];
   for (const [index,item] of items.entries()) {
     const row = await db.prepare('SELECT * FROM appointments WHERE id=?').bind(item.id).first();
+    row.time_slot = '19:00–20:00';
     for (const key of ['source','registered_by','registration_key','expires_at']) delete row[key];
     row.status = index<2 ? 'in_progress' : 'booked'; row.assigned_to = index<2 ? '993004' : null;
     await legacy.prepare(`INSERT INTO appointments(${Object.keys(row).join(',')}) VALUES(${Object.keys(row).map(()=>'?').join(',')})`).bind(...Object.values(row)).run();
@@ -275,6 +279,7 @@ test('onsite expiration migration preserves populated records, attachments, reco
   const items = [await book(), await book(), await book(), await book()];
   for (const [index, item] of items.entries()) {
     const row = await db.prepare('SELECT * FROM appointments WHERE id=?').bind(item.id).first();
+    row.time_slot = '19:00–20:00';
     delete row.expires_at;
     if (index === 0) {
       row.status = 'in_progress'; row.assigned_to = 'root001'; row.started_at = testNow;
@@ -332,9 +337,10 @@ test('five-state migration preserves populated history, related records and all 
   const outcomes = [null,null,'repaired','unrepaired','not_needed','legacy_unknown','cancelled','no_show','expired'];
   const items = [];
   for (const [index,outcome] of outcomes.entries()) {
-    const item = await book(); items.push(item);
+    const item = await book({timeSlot:TIME_SLOTS[index % TIME_SLOTS.length]}); items.push(item);
     const row = await db.prepare('SELECT * FROM appointments WHERE id=?').bind(item.id).first();
     delete row.expires_at;
+    row.time_slot = '19:00–20:00';
     row.status = index === 0 ? 'booked' : index === 1 ? 'in_progress' : 'completed'; row.outcome = outcome;
     row.assigned_to = index > 0 && index < 6 ? 'root001' : null;
     row.started_at = row.assigned_to ? testNow : null; row.completed_at = index > 1 ? testNow : null;
@@ -361,6 +367,7 @@ test('five-state migration preserves populated history, related records and all 
   await assert.rejects(legacy.prepare("UPDATE appointments SET status='no_show' WHERE id=?").bind(items[0].id).run(),/CHECK/);
   await assert.rejects(legacy.prepare("UPDATE appointments SET outcome='cancelled' WHERE id=?").bind(items[6].id).run(),/CHECK/);
   await assert.rejects(legacy.prepare("UPDATE appointments SET status='in_progress',assigned_to='root001' WHERE id=?").bind(items[0].id).run(),/active_repairs.account/);
+  await applyMigration(legacy,'0009_weekday_booking_schedules.sql');
   const repository = appointmentRepository(legacy);
   const counts = (await repository.list({status:'all'},{campuses:['南湖'],technician:''})).counts;
   assert.deepEqual(counts,{all:9,booked:1,in_progress:1,completed:4,cancelled:1,expired:2});
@@ -423,19 +430,21 @@ test('admin recovery extends both sources, records snapshots and requires fresh 
 });
 
 test('failed and stale corrections never leave audit rows or bypass capacity and uniqueness', async () => {
-  const root = await login(), actor = await userRepository(db).find('root001'), item = await book();
+  await login();
+  const actor = await userRepository(db).find('root001'), item = await book();
   const repository = appointmentRepository(db), service = appointmentService(repository,userRepository(db),PII_ENCRYPTION_KEY,() => new Date(testNow));
   const cancelled = await service.update(item.id,{patch:{status:'cancelled'}},null,item.accessToken);
   const input = {action:'correct',correctionReason:'管理员核实误取消记录后恢复预约',patch:{status:'booked'},revision:cancelled.revision};
-  await configureCapacity(root,0);
+  await db.prepare('UPDATE booking_day_slots SET capacity=? WHERE campus=? AND date=? AND time_slot=?').bind(0,item.campus,item.date,item.timeSlot).run();
   await assert.rejects(service.update(item.id,input,actor),/SLOT_PAUSED/);
   assert.deepEqual(await service.lookup(item.id,item.accessToken),cancelled);
   assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointment_corrections').first()).n,0);
-  await configureCapacity(root,1);
-  const replacement = await book({studentId:item.studentId});
+  await db.prepare('UPDATE booking_day_slots SET capacity=? WHERE campus=? AND date=? AND time_slot=?').bind(1,item.campus,item.date,item.timeSlot).run();
+  const replacement = await book();
   await assert.rejects(service.update(item.id,input,actor),/SLOT_FULL/);
-  await configureCapacity(root,10);
-  await assert.rejects(service.update(item.id,input,actor),/appointments.student_id/);
+  await db.prepare('UPDATE booking_day_slots SET capacity=? WHERE campus=? AND date=? AND time_slot=?').bind(10,item.campus,item.date,item.timeSlot).run();
+  await db.prepare('UPDATE appointments SET student_id=? WHERE id=?').bind(item.studentId,replacement.id).run();
+  await assert.rejects(service.update(item.id,input,actor),/APPOINTMENT_OVERLAP/);
   assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointment_corrections').first()).n,0);
   await service.update(replacement.id,{patch:{status:'cancelled'}},null,replacement.accessToken);
   const restored = await service.update(item.id,input,actor);
@@ -533,7 +542,7 @@ test('guest booking, encrypted contacts, lookup, queue and cancellation', async 
   await api(`/api/appointments/${item.id}`,{accessToken:'x'.repeat(43)},404);
   await api('/api/appointments', {}, 401);
   const live = await api(`/api/live/summary?appointmentId=${item.id}`,{accessToken:item.accessToken});
-  assert.equal(live.position, 1); assert.equal(live.capacity, 10); assert.equal(live.slotTotal, 1);
+  assert.equal(live.position, 1); assert.equal(live.capacity, 5); assert.equal(live.slotTotal, 1);
   const cancelled = await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', accessToken:item.accessToken, body: { status: 'cancelled', studentId: item.studentId, assignedTo: 'root001', repairNote: 'injection' } });
   assert.equal(cancelled.status, 'cancelled'); assert.equal(cancelled.outcome, null); assert.equal(cancelled.assignedTo, ''); assert.equal(cancelled.repairNote, '');
   assert.ok((await book({ studentId: item.studentId })).id.endsWith('-02'));
@@ -546,18 +555,17 @@ test('validation rejects invalid dates, windows, fields, MIME, JSON and cross-si
   await api('/api/appointments', { method: 'POST', body: [] }, 400);
   await api('/api/appointments', { method: 'POST', body: draft(), headers: { 'Content-Type': 'text/plain' } }, 415);
   await api('/api/appointments', { method: 'POST', body: draft(), headers: { Origin: 'https://other.test' } }, 403);
-  const normalized = await book({ timeSlot: '19:00-20:00', social: 'enc$literal-user-input' });
-  assert.equal(normalized.timeSlot, '19:00–20:00'); assert.equal(normalized.social, 'enc$literal-user-input');
+  await api('/api/appointments', { method: 'POST', body: draft({ timeSlot: '19:00-20:00', social: 'enc$literal-user-input' }) }, 400);
 });
 test('simultaneous reservations cannot exceed capacity and retain sequential unique IDs', async () => {
   const results = await Promise.all(Array.from({ length: 15 }, () => request('/api/appointments', { method: 'POST', body: draft() })));
-  assert.equal(results.filter(r => r.status === 201).length, 10);
-  assert.equal(results.filter(r => r.status === 409).length, 5);
-  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointments').first()).n, 10);
+  assert.equal(results.filter(r => r.status === 201).length, 5);
+  assert.equal(results.filter(r => r.status === 409).length, 10);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointments').first()).n, 5);
   const ids = (await db.prepare('SELECT id FROM appointments ORDER BY id').all()).results.map(row => row.id);
-  assert.equal(new Set(ids).size, 10); assert.ok(ids.at(-1).endsWith('-10'));
+  assert.equal(new Set(ids).size, 5); assert.ok(ids.at(-1).endsWith('-05'));
   const live = await api(`/api/live/summary?date=${date}&campus=${encodeURIComponent('南湖')}`);
-  assert.equal(live.slots['19:00–20:00'], 10);
+  assert.equal(live.slots['19:00–19:30'], 5);
 });
 
 test('capacity migration preserves existing bookings and enforces ten on new or restored reservations', async () => {
@@ -594,7 +602,7 @@ test('reactivating cancelled appointments still enforces D1 capacity and duplica
   const replacement = await book({ studentId: old.studentId });
   await api(`/api/appointments/${old.id}/status`, { method: 'PATCH', token: root, body: { action: 'correct', status: 'booked' } }, 409);
   await api(`/api/appointments/${replacement.id}/status`, { method: 'PATCH', token: root, body: { status: 'cancelled' } });
-  for (let n = 0; n < 10; n++) await book();
+  for (let n = 0; n < 5; n++) await book();
   await api(`/api/appointments/${old.id}/status`, { method: 'PATCH', token: root, body: { action: 'correct', status: 'booked' } }, 409);
 });
 test('simultaneous sign-ins have one winner; technician ownership and transitions hold', async () => {
@@ -676,6 +684,27 @@ test('R2 upload/download preserves bytes, enforces credentials and hides storage
   await api(base, { accessToken:item.accessToken, method: 'POST', body: { ...input, mimeType: 'image/png' } }, 400);
   await api(base, { accessToken:item.accessToken, method: 'POST', body: { ...input, data: '%%%=' } }, 400);
   await api(base, { accessToken:item.accessToken, method: 'POST', body: { ...input, data: Buffer.alloc(5 * 1024 * 1024 + 1, 65).toString('base64') } }, 400);
+});
+test('intake photos enforce 2 MB per file while general attachments retain 5 MB', async () => {
+  const item = await book(), token = await login();
+  const base = `/api/appointments/${item.id}/attachments`;
+  const image = size => {
+    const bytes = Buffer.alloc(size, 65);
+    Buffer.from(photo.data, 'base64').copy(bytes);
+    return { ...photo, data: bytes.toString('base64') };
+  };
+  for (const purpose of ['intake_front', 'intake_back']) {
+    const accepted = await api(base, { method: 'POST', token, body: { ...image(2 * 1024 * 1024), purpose } }, 201);
+    assert.equal(accepted.size, 2 * 1024 * 1024);
+    const rejected = await api(base, { method: 'POST', token, body: { ...image(2 * 1024 * 1024 + 1), purpose } }, 400);
+    assert.equal(rejected.error, '签到照片大小不能超过 2 MB');
+  }
+  const general = await api(base, { method: 'POST', accessToken: item.accessToken, body: image(5 * 1024 * 1024) }, 201);
+  assert.equal(general.size, 5 * 1024 * 1024);
+  const rejected = await api(base, { method: 'POST', accessToken: item.accessToken, body: image(5 * 1024 * 1024 + 1) }, 400);
+  assert.equal(rejected.error, '附件大小不能超过 5 MB');
+  assert.equal((await bucket.list()).objects.length, 3);
+  assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 9 * 1024 * 1024);
 });
 test('R2 write is compensated when D1 metadata fails', async () => {
   const item = await book();
@@ -962,13 +991,13 @@ test('only the matching credential grants guest access and recovery revokes ever
 });
 
 test('two requests for the final slot have one winner and cancellation releases capacity', async () => {
-  for (let n = 0; n < 9; n++) await book();
+  for (let n = 0; n < 4; n++) await book();
   const attempts = await Promise.all([draft(), draft()].map(body => request('/api/appointments', { method: 'POST', body })));
   assert.deepEqual(attempts.map(response => response.status).sort(), [201,409]);
   const winner = await attempts.find(response => response.status === 201).json();
   await api(`/api/appointments/${winner.id}/status`, { method: 'PATCH', accessToken:winner.accessToken, body: { status: 'cancelled', studentId: winner.studentId } });
   await book();
-  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM appointments WHERE status<>'cancelled'").first()).n, 10);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM appointments WHERE status<>'cancelled'").first()).n, 5);
 });
 
 test('SQL staff filters preserve literal searches, status groups and totals', async () => {
@@ -984,13 +1013,13 @@ test('SQL staff filters preserve literal searches, status groups and totals', as
 
 test('staff sorting and slot filters compose while contextual counts ignore only the status tab', async () => {
   const token = await login();
-  const first = await book(), later = await book({ timeSlot: '20:00–21:00' }), other = await book({ campus: '浑南' });
+  const first = await book(), later = await book({ timeSlot: '20:00–20:30' }), other = await book({ campus: '浑南' });
   await db.prepare("UPDATE appointments SET status='cancelled',outcome=NULL WHERE id=?").bind(later.id).run();
   const sorted = await api('/api/appointments?sort=date&direction=asc', { token });
-  assert.deepEqual(sorted.items.map(item => item.timeSlot), ['19:00–20:00','19:00–20:00','20:00–21:00']);
+  assert.deepEqual(sorted.items.map(item => item.timeSlot), ['19:00–19:30','19:00–19:30','20:00–20:30']);
   const reverse = await api('/api/appointments?sort=date&direction=desc', { token });
   assert.equal(reverse.items[0].id, later.id);
-  const filtered = await api(`/api/appointments?${new URLSearchParams({ campus:'南湖',date,timeSlot:'20:00–21:00',status:'booked',sort:'status',direction:'asc' })}`, { token });
+  const filtered = await api(`/api/appointments?${new URLSearchParams({ campus:'南湖',date,timeSlot:'20:00–20:30',status:'booked',sort:'status',direction:'asc' })}`, { token });
   assert.equal(filtered.items.length, 0);
   assert.deepEqual(filtered.filteredCounts, { all:1,booked:0,in_progress:0,completed:0,cancelled:1,expired:0 });
   assert.equal(filtered.counts.all, 3);
@@ -1027,13 +1056,13 @@ test('staff overview uses real capacity and cancellation rules without exposing 
   assert.deepEqual(result.campuses, ['南湖']);
   assert.equal(result.start, dateKey()); assert.equal(result.end, addDays(dateKey(),6));
   assert.ok(result.dates.every(serviceDay));
-  const slot = result.items.find(item => item.date===date && item.timeSlot==='19:00–20:00');
-  assert.equal(slot.occupied,2); assert.equal(slot.remaining,0); assert.equal(slot.capacity,1);
+  const slot = result.items.find(item => item.date===date && item.timeSlot==='19:00–19:30');
+  assert.equal(slot.occupied,2); assert.equal(slot.remaining,3); assert.equal(slot.capacity,5);
   assert.equal(slot.booked,0); assert.equal(slot.inProgress,1);
   assert.ok(result.items.every(item => item.campus==='南湖' && !('name' in item) && !('studentId' in item) && !('social' in item)));
   await configureCapacity(root,0);
   const paused = await api('/api/appointments/overview', { token:root });
-  assert.equal(paused.items.find(item => item.campus==='南湖' && item.date===date && item.timeSlot==='19:00–20:00').capacity,0);
+  assert.equal(paused.items.find(item => item.campus==='南湖' && item.date===date && item.timeSlot==='19:00–19:30').capacity,5);
   assert.ok(paused.items.some(item => item.campus==='浑南' && item.occupied===1));
   await api('/api/appointments/overview', {},401);
 });
@@ -1042,14 +1071,14 @@ test('weekly overview includes earlier records and range filters preserve permis
   const root=await login(),tech=await addUser('650019');
   const first=await book(),last=await book(),outside=await book(),otherCampus=await book({campus:'浑南'});
   const week=weekRange();
-  for(const [item,day] of [[first,week.start],[last,week.end],[outside,addDays(week.start,-1)],[otherCampus,week.start]]) {
+  for(const [item,day] of [[first,week.start],[last,addDays(week.start,3)],[outside,addDays(week.start,-4)],[otherCampus,week.start]]) {
     await db.prepare("UPDATE appointments SET date=?,status='completed',outcome='repaired',assigned_to='650019' WHERE id=?").bind(day,item.id).run();
   }
   const overview=await api('/api/appointments/overview',{token:tech});
   assert.equal(overview.week.start,week.start);assert.equal(overview.week.end,week.end);
-  assert.equal(overview.week.items.find(item=>item.date===week.start && item.timeSlot==='19:00–20:00').occupied,1);
+  assert.equal(overview.week.items.find(item=>item.date===week.start && item.timeSlot==='19:00–19:30').occupied,1);
   assert.ok(overview.week.items.every(item=>item.campus==='南湖' && serviceDay(item.date)));
-  const query=new URLSearchParams({dateFrom:week.start,dateTo:week.end,status:'completed',timeSlot:'19:00–20:00',sorts:'date:asc,campus:asc'});
+  const query=new URLSearchParams({dateFrom:week.start,dateTo:week.end,status:'completed',timeSlot:'19:00–19:30',sorts:'date:asc,campus:asc'});
   const result=await api(`/api/appointments?${query}`,{token:tech});
   assert.deepEqual(result.items.map(item=>item.id),[first.id,last.id]);
   assert.equal(result.filteredCounts.completed,2);
@@ -1063,14 +1092,14 @@ test('SQL queue counts use campus/slot scopes, deterministic ties and active sta
   const root = await login();
   const first = await book(), second = await book();
   await book({ campus: '浑南' });
-  await book({ timeSlot: '20:00–21:00' });
+  await book({ timeSlot: '20:00–20:30' });
   const ended = await book();
   await db.prepare("UPDATE appointments SET status='expired',outcome=NULL WHERE id=?").bind(ended.id).run();
   await db.prepare('UPDATE appointments SET created_at=? WHERE id IN (?,?)').bind('2026-10-04T16:00:00.000Z', first.id, second.id).run();
   const summary = await api(`/api/live/summary?appointmentId=${second.id}`,{accessToken:second.accessToken});
   assert.equal(summary.dayTotal, 5); assert.equal(summary.campusDayTotal, 4); assert.equal(summary.slotTotal, 3);
   assert.equal(summary.queueTotal, 2); assert.equal(summary.ahead, 1); assert.equal(summary.position, 2);
-  assert.deepEqual(summary.slots, { '19:00–20:00': 3, '20:00–21:00': 1 });
+  assert.deepEqual(summary.slots, { '19:00–19:30': 3, '19:30–20:00': 0, '20:00–20:30': 1, '20:30–21:00': 0 });
   await api(`/api/appointments/${first.id}/status`, { method: 'PATCH', token: root, body: { status:'in_progress',...await intake(first, root) } });
   await api(`/api/appointments/${first.id}/status`, { method: 'PATCH', token: root, body: { status: 'completed', outcome: 'repaired', repairNote: '已修复' } });
   assert.equal((await api(`/api/live/summary?appointmentId=${second.id}`,{accessToken:second.accessToken})).ahead, 0);
@@ -1083,7 +1112,7 @@ test('SQL statistics aggregate date windows and workload without reading contact
   const root = await login();
   await addUser('650001');
   const recent = await book({ faultType: '蓝屏' }), older = await book({ faultType: '硬盘' }), skipped = await book();
-  const today = dateKey(), past = addDays(today, -31);
+  const today = dateKey(), past = addDays(today, -30);
   await db.prepare("UPDATE appointments SET date=?,status='completed',outcome='repaired',assigned_to='650001',social='unreadable' WHERE id=?").bind(today, recent.id).run();
   await db.prepare("UPDATE appointments SET date=?,status='completed',outcome='legacy_unknown',assigned_to='650001' WHERE id=?").bind(past, older.id).run();
   await db.prepare("UPDATE appointments SET date=?,status='expired',outcome=NULL WHERE id=?").bind(today, skipped.id).run();
@@ -1408,8 +1437,14 @@ test('automatic expirations honor 21:30 Shanghai, dry-run, missed days, active r
   const waiting=await book(),past=await book(),active=await book(),future=await book();
   const token=await login();
   await api(`/api/appointments/${active.id}/status`,{method:'PATCH',token,body:{status:'in_progress',...await intake(active, token)}});
-  await setAppointmentDate(past.id, addDays(date,-1));
-  await setAppointmentDate(future.id, addDays(date,1));
+  // Booking fixtures must keep a valid slot when crossing the closed weekend.
+  const adjacentServiceDate=step=>{
+    let day=addDays(date,step);
+    while(!serviceDay(day))day=addDays(day,step);
+    return day;
+  };
+  await setAppointmentDate(past.id, adjacentServiceDate(-1));
+  await setAppointmentDate(future.id, adjacentServiceDate(1));
   const repository=appointmentRepository(db);
   const before=new Date(`${date}T21:29:59.999+08:00`),at=new Date(`${date}T21:30:00+08:00`);
   assert.equal((await expireAppointments(repository,{now:before})).eligible,1);
@@ -1497,7 +1532,7 @@ test('workflow migration preserves populated legacy records, credentials, attach
 });
 
 test('finished repairs and expirations retain capacity while restoring a cancellation checks capacity',async()=>{
-  const items=[];for(let n=0;n<10;n++)items.push(await book());
+  const items=[];for(let n=0;n<5;n++)items.push(await book());
   const token=await login();
   await api(`/api/appointments/${items[0].id}/status`,{method:'PATCH',token,body:{status:'in_progress',...await intake(items[0], token)}});
   await api(`/api/appointments/${items[0].id}/status`,{method:'PATCH',token,body:{status:'completed',outcome:'not_needed',repairNote:'无需维修'}});
@@ -1562,7 +1597,7 @@ test('booking numbers use the selected date across Shanghai midnight, campuses a
   const first = await create();
   assert.equal(first.id, 'reserve020261015-01');
   instant = new Date('2026-10-14T00:01:00+08:00');
-  const second = await create(), laterSlot = await create({timeSlot:'20:00–21:00'});
+  const second = await create(), laterSlot = await create({timeSlot:'20:00–20:30'});
   assert.equal(second.id, 'reserve020261015-02');
   assert.equal(laterSlot.id, 'reserve020261015-03');
   assert.equal((await create({campus:'浑南'})).id, 'reserve120261015-01');
@@ -1705,13 +1740,13 @@ test('repair aliases resolve by credential before expiration, cancellation and a
   assert.equal((await repository.find(original.id)).status, 'cancelled');
 });
 
-test('slot capacity settings default to ten and follow administrator campus grants', async () => {
+test('weekday half-hour settings default to five and follow administrator campus grants', async () => {
   const root = await login();
   const defaults = (await api('/api/slot-capacities', { token: root })).items;
-  assert.equal(defaults.length, 4);
-  assert.ok(defaults.every(item => item.capacity === 10 && item.revision === 0));
-  assert.equal(new Set(defaults.map(item => `${item.campus}/${item.timeSlot}`)).size, 4);
-  const input = { campus: '南湖', timeSlot: '19:00–20:00', capacity: 4, revision: 0 };
+  assert.equal(defaults.length, 32);
+  assert.ok(defaults.every(item => item.capacity === 5 && item.revision === 0));
+  assert.equal(new Set(defaults.map(item => `${item.campus}/${item.weekday}/${item.timeSlot}`)).size, 32);
+  const input = { campus: '南湖', weekday: 1, timeSlot: '19:00–19:30', capacity: 4, revision: 0 };
   await api('/api/slot-capacities', {}, 401);
   await api('/api/slot-capacities', { method: 'PATCH', body: input }, 401);
   const technician = await addUser('910001');
@@ -1720,118 +1755,133 @@ test('slot capacity settings default to ten and follow administrator campus gran
   const admin = await addUser('910002', 'admin');
   await db.prepare("UPDATE staff_accounts SET home_campus='浑南' WHERE account='910002'").run();
   const scoped = (await api('/api/slot-capacities', { token: admin })).items;
-  assert.equal(scoped.length, 2);
+  assert.equal(scoped.length, 16);
   assert.ok(scoped.every(item => item.campus === '南湖'));
   const updated = await api('/api/slot-capacities', { method: 'PATCH', token: admin, body: input });
   assert.deepEqual(updated, { ...input, revision: 1 });
   await api('/api/slot-capacities', { method: 'PATCH', token: admin, body: { ...input, campus: '浑南' } }, 403);
-  assert.ok((await api('/api/slot-capacities', { token: root })).items.filter(item => item.campus === '浑南').every(item => item.capacity === 10));
+  assert.ok((await api('/api/slot-capacities', { token: root })).items.filter(item => item.campus === '浑南').every(item => item.capacity === 5));
   await api('/api/users/910002', { method: 'PATCH', token: root, body: { status: 'disabled' } });
   await api('/api/slot-capacities', { token: admin }, 401);
   await api('/api/slot-capacities', { method: 'PATCH', token: admin, body: updated }, 401);
 });
 
 test('capacity APIs and D1 reject invalid numbers, versions, campuses and slots', async () => {
-  const token = await login(), input = { campus: '南湖', timeSlot: '19:00–20:00', capacity: 5, revision: 0 };
+  const token = await login(), input = { campus: '南湖', weekday: 1, timeSlot: '19:00–19:30', capacity: 5, revision: 0 };
   const invalid = [
     ...[-1, 0.5, '5', '', null, true, Number.MAX_SAFE_INTEGER + 1, NaN, Infinity].map(capacity => ({ capacity })),
     ...[undefined, -1, 0.5, '0', null, Number.MAX_SAFE_INTEGER + 1].map(revision => ({ revision })),
-    { campus: '其他' }, { campus: null }, { timeSlot: '10:00–11:00' }, { timeSlot: null }
+    ...[undefined,0,5,1.5,'1',null].map(weekday=>({weekday})), { timeSlot:'19:00–20:00' }, { campus: '其他' }, { campus: null }, { timeSlot: '10:00–11:00' }, { timeSlot: null }
   ];
   for (const patch of invalid) await api('/api/slot-capacities', { method: 'PATCH', token, body: { ...input, ...patch } }, 400);
   for (const capacity of [-1, 0.5, 'invalid', null, Number.MAX_SAFE_INTEGER + 1]) {
-    await assert.rejects(db.prepare("UPDATE slot_capacities SET capacity=? WHERE campus='南湖' AND time_slot='19:00–20:00'").bind(capacity).run(), /constraint/i);
+    await assert.rejects(db.prepare("UPDATE weekday_slot_capacities SET capacity=? WHERE campus='南湖' AND time_slot='19:00–19:30'").bind(capacity).run(), /constraint/i);
   }
-  await assert.rejects(db.prepare("UPDATE slot_capacities SET campus='其他' WHERE campus='南湖'").run(), /constraint/i);
-  await assert.rejects(db.prepare("UPDATE slot_capacities SET time_slot='10:00–11:00' WHERE campus='南湖'").run(), /constraint/i);
-  assert.ok((await api('/api/slot-capacities', { token })).items.every(item => item.capacity === 10 && item.revision === 0));
-  const normalized = await api('/api/slot-capacities', { method: 'PATCH', token, body: { ...input, timeSlot: '19:00-20:00', capacity: Number.MAX_SAFE_INTEGER } });
+  await assert.rejects(db.prepare("UPDATE weekday_slot_capacities SET campus='其他' WHERE campus='南湖'").run(), /constraint/i);
+  await assert.rejects(db.prepare("UPDATE weekday_slot_capacities SET time_slot='10:00–11:00' WHERE campus='南湖'").run(), /constraint/i);
+  assert.ok((await api('/api/slot-capacities', { token })).items.every(item => item.capacity === 5 && item.revision === 0));
+  const normalized = await api('/api/slot-capacities', { method: 'PATCH', token, body: { ...input, timeSlot: '19:00-19:30', capacity: Number.MAX_SAFE_INTEGER } });
   assert.equal(normalized.timeSlot, input.timeSlot);
   assert.equal(normalized.capacity, Number.MAX_SAFE_INTEGER);
 });
 
-test('configured capacities isolate campuses and slots, apply to all dates and enforce concurrent bookings', async () => {
-  const token = await login();
+test('weekday templates freeze on first booking and preserve cancellations, restoration and queues', async () => {
+  await db.prepare('DELETE FROM booking_day_slots').run();
+  const token = await login(), timeSlot = '19:00–19:30';
   await configureCapacity(token, 3);
-  await configureCapacity(token, 12, { timeSlot: '20:00–21:00' });
-  const first = await Promise.all(Array.from({ length: 8 }, () => request('/api/appointments', { method: 'POST', body: draft() })));
-  assert.equal(first.filter(response => response.status === 201).length, 3);
-  assert.equal(first.filter(response => response.status === 409).length, 5);
-  const winner = await first.find(response => response.status === 201).json();
-  await book({ campus: '浑南' });
-  const second = await Promise.all(Array.from({ length: 13 }, () => request('/api/appointments', { method: 'POST', body: draft({ timeSlot: '20:00–21:00' }) })));
-  assert.equal(second.filter(response => response.status === 201).length, 12);
-  assert.equal(second.filter(response => response.status === 409).length, 1);
-  const summary = query => api(`/api/live/summary?${new URLSearchParams({ date, ...query })}`);
-  const campus = await summary({ campus: '南湖' });
-  assert.equal(campus.capacity, 15);
-  assert.deepEqual(campus.slotCapacities, { '19:00–20:00': 3, '20:00–21:00': 12 });
-  assert.deepEqual(campus.slots, { '19:00–20:00': 3, '20:00–21:00': 12 });
-  assert.equal((await summary({ campus: '南湖', timeSlot: '19:00–20:00' })).capacity, 3);
-  assert.equal((await summary({ campus: '浑南' })).capacity, 20);
-  assert.equal((await summary({ timeSlot: '19:00–20:00' })).capacity, 13);
-  const all = await summary({});
-  assert.equal(all.capacity, 35);
-  assert.deepEqual(all.slotCapacities, { '19:00–20:00': 13, '20:00–21:00': 22 });
-  const anotherDay = await summary({ campus: '南湖', date: addDays(date, 7) });
-  assert.deepEqual(anotherDay.slotCapacities, campus.slotCapacities);
-  assert.equal(anotherDay.slotTotal, 0);
-  // Direct D1 moves also enforce the target date's independently occupied quota.
-  await setAppointmentDate(winner.id, addDays(date, 7));
-  assert.equal((await summary({ campus: '南湖', date: addDays(date, 7) })).slotTotal, 1);
+  const responses = await Promise.all(Array.from({length:8}, () => request('/api/appointments', {method:'POST',body:draft({timeSlot})})));
+  assert.equal(responses.filter(r=>r.status===201).length,3);
+  assert.equal(responses.filter(r=>r.status===409).length,5);
+  const item = await responses.find(r=>r.status===201).json();
+  await configureCapacity(token,0);
+  const summary = await api(`/api/live/summary?date=${date}&campus=${encodeURIComponent('南湖')}`);
+  assert.deepEqual(summary.timeSlots,['19:00–19:30','19:30–20:00','20:00–20:30','20:30–21:00']);
+  assert.equal(summary.slotCapacities[timeSlot],3);
+  assert.equal(summary.slots[timeSlot],3);
+  assert.equal((await api(`/api/live/summary?date=${addDays(date,7)}&campus=${encodeURIComponent('南湖')}`)).slotCapacities[timeSlot],0);
+  assert.equal((await api(`/api/live/summary?date=${date}&campus=${encodeURIComponent('浑南')}`)).slotCapacities[timeSlot],5);
+  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',accessToken:item.accessToken,body:{status:'cancelled'}});
+  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{action:'correct',status:'booked'}});
+  await api('/api/appointments',{method:'POST',body:draft({timeSlot:'19:00–19:30'})},409);
+  const overview=await api('/api/appointments/overview',{token});
+  assert.equal(overview.items.find(r=>r.campus==='南湖' && r.date===date && r.timeSlot===timeSlot).capacity,3);
+  for (const row of (await db.prepare('SELECT id FROM appointments').all()).results)
+    await db.prepare("UPDATE appointments SET status='cancelled',outcome=NULL WHERE id=?").bind(row.id).run();
+  assert.equal((await api(`/api/live/summary?date=${date}&campus=${encodeURIComponent('南湖')}`)).slotCapacities[timeSlot],3);
+  await book({timeSlot});
+  assert.equal((await api(`/api/live/summary?appointmentId=${item.id}`,{accessToken:item.accessToken})).capacity,3);
 });
 
-test('lowering or pausing capacity preserves existing work and controls new or restored reservations', async () => {
-  const token = await login(), cancelled = await book(), working = await book();
-  await configureCapacity(token, 1);
-  assert.equal((await api('/api/appointments', { method: 'POST', body: draft() }, 409)).error, '该校区该时段已满');
-  await configureCapacity(token, 0);
-  assert.equal((await api('/api/appointments', { method: 'POST', body: draft() }, 409)).error, '该校区该时段暂停预约');
-  const live = await api(`/api/live/summary?appointmentId=${working.id}`, { accessToken: working.accessToken });
-  assert.equal(live.capacity, 0); assert.equal(live.slotTotal, 2); assert.equal(live.position, 2);
-  assert.equal((await api(`/api/appointments/${working.id}`, { accessToken: working.accessToken })).status, 'booked');
+test('all four half-hour slots propagate through booking, summary, queue, overview, filters and export', async () => {
+  await db.prepare('DELETE FROM booking_day_slots').run();
+  const token = await login(), targetDate = bookingDates.find(day => day > dateKey());
+  assert.ok(targetDate, 'fixture requires a future service day in the booking window');
+  const bookings = [];
+  for (const timeSlot of TIME_SLOTS) {
+    const item = await book({ date: targetDate, timeSlot });
+    bookings.push(item);
+    const lookup = await api(`/api/appointments/${item.id}`, { accessToken: item.accessToken });
+    assert.equal(lookup.timeSlot, timeSlot);
+    const summary = await api(`/api/live/summary?appointmentId=${item.id}`, { accessToken: item.accessToken });
+    assert.deepEqual(summary.timeSlots, TIME_SLOTS);
+    assert.equal(summary.capacity, 5);
+    assert.equal(summary.slotTotal, 1);
+    assert.equal(summary.position, 1);
+    const query = new URLSearchParams({ campus: '南湖', date: targetDate, timeSlot });
+    const filtered = await api(`/api/appointments?${query}`, { token });
+    assert.deepEqual(filtered.items.map(row => row.id), [item.id]);
+  }
+  const summary = await api(`/api/live/summary?${new URLSearchParams({ campus: '南湖', date: targetDate })}`);
+  assert.deepEqual(summary.slots, Object.fromEntries(TIME_SLOTS.map(slot => [slot, 1])));
+  assert.deepEqual(summary.slotCapacities, Object.fromEntries(TIME_SLOTS.map(slot => [slot, 5])));
+  assert.equal(summary.capacity, 20);
+  const overview = await api('/api/appointments/overview', { token });
+  const rows = overview.items.filter(item => item.campus === '南湖' && item.date === targetDate);
+  assert.deepEqual(rows.map(row => row.timeSlot), TIME_SLOTS);
+  assert.ok(rows.every(row => row.occupied === 1 && row.remaining === 4 && row.capacity === 5));
+  const csv = await (await request('/api/export/appointments.csv', { token })).text();
+  for (const item of bookings) assert.ok(csv.includes(item.id) && csv.includes(item.timeSlot));
+  const cancelled = bookings[3];
   await api(`/api/appointments/${cancelled.id}/status`, { method: 'PATCH', accessToken: cancelled.accessToken, body: { status: 'cancelled' } });
-  await api(`/api/appointments/${working.id}/status`, { method: 'PATCH', token, body: { status: 'in_progress', ...await intake(working, token) } });
-  await api(`/api/appointments/${working.id}/status`, { method: 'PATCH', token, body: { repairNote: '暂停后仍可记录维修说明' } });
-  await api(`/api/appointments/${working.id}/status`, { method: 'PATCH', token, body: { status: 'completed', outcome: 'repaired', repairNote: '暂停后正常结束维修' } });
-  assert.equal((await api(`/api/appointments/${cancelled.id}/status`, { method: 'PATCH', token, body: { action: 'correct', status: 'booked' } }, 409)).error, '该校区该时段暂停预约');
-  await configureCapacity(token, 0, { timeSlot: '20:00–21:00' });
-  await assert.rejects(db.prepare("UPDATE appointments SET time_slot='20:00–21:00' WHERE id=?").bind(working.id).run(), /SLOT_PAUSED/);
-  await configureCapacity(token, 1);
-  await api(`/api/appointments/${cancelled.id}/status`, { method: 'PATCH', token, body: { action: 'correct', status: 'booked' } }, 409);
-  await configureCapacity(token, 2);
-  const restored = await api(`/api/appointments/${cancelled.id}/status`, { method: 'PATCH', token, body: { action: 'correct', status: 'booked' } });
-  assert.equal(restored.status, 'booked');
-  await api('/api/appointments', { method: 'POST', body: draft() }, 409);
-  await configureCapacity(token, 3);
-  await book();
+  const refreshed = await api(`/api/live/summary?${new URLSearchParams({ campus: '南湖', date: targetDate })}`);
+  assert.equal(refreshed.slots[TIME_SLOTS[3]], 0);
+  assert.equal(refreshed.slots[TIME_SLOTS[0]], 1);
+});
+
+test('new booking and query APIs reject retired hourly slots', async () => {
+  const retired = '19:00–20:00';
+  await api('/api/appointments', { method: 'POST', body: draft({ timeSlot: retired }) }, 400);
+  await api(`/api/live/summary?${new URLSearchParams({ date, campus: '南湖', timeSlot: retired })}`, {}, 400);
+  await api(`/api/appointments?${new URLSearchParams({ date, campus: '南湖', timeSlot: retired })}`, { token: await login() }, 400);
 });
 
 test('concurrent configuration updates cannot overwrite a stale revision or affect another slot', async () => {
-  const token = await login(), input = { campus: '南湖', timeSlot: '19:00–20:00', capacity: 5, revision: 0 };
+  const token = await login(), input = { campus: '南湖', weekday: 1, timeSlot: '19:00–19:30', capacity: 5, revision: 0 };
   const responses = await Promise.all([5, 7].map(capacity => request('/api/slot-capacities', { method: 'PATCH', token, body: { ...input, capacity } })));
   assert.deepEqual(responses.map(response => response.status).sort(), [200, 409]);
   const winner = await responses.find(response => response.status === 200).json();
   assert.equal(winner.revision, 1);
   await api('/api/slot-capacities', { method: 'PATCH', token, body: input }, 409);
-  const other = await api('/api/slot-capacities', { method: 'PATCH', token, body: { ...input, timeSlot: '20:00–21:00' } });
+  const other = await api('/api/slot-capacities', { method: 'PATCH', token, body: { ...input, timeSlot: '20:00–20:30' } });
   assert.equal(other.revision, 1);
-  const current = (await api('/api/slot-capacities', { token })).items.find(item => item.campus === winner.campus && item.timeSlot === winner.timeSlot);
+  const current = (await api('/api/slot-capacities', { token })).items.find(item => item.campus === winner.campus && item.weekday === winner.weekday && item.timeSlot === winner.timeSlot);
   assert.deepEqual(current, winner);
   assert.equal((await api('/api/slot-capacities', { method: 'PATCH', token, body: { ...winner, capacity: 0 } })).revision, 2);
 });
 
-test('a booking racing with a pause obeys database commit order and later bookings remain paused', async () => {
-  const token = await login(), item = await configureCapacity(token, 1);
-  const [paused, reservation] = await Promise.all([
-    request('/api/slot-capacities', { method: 'PATCH', token, body: { ...item, capacity: 0 } }),
-    request('/api/appointments', { method: 'POST', body: draft() })
+test('first booking and template pause race atomically without partial snapshots', async () => {
+  await db.prepare('DELETE FROM booking_day_slots').run();
+  const token = await login(), item = await configureCapacity(token,1);
+  const [paused,reservation]=await Promise.all([
+    request('/api/slot-capacities',{method:'PATCH',token,body:{...item,capacity:0}}),
+    request('/api/appointments',{method:'POST',body:draft({timeSlot:item.timeSlot})})
   ]);
-  assert.equal(paused.status, 200);
-  assert.ok([201, 409].includes(reservation.status));
-  const occupied = (await db.prepare('SELECT COUNT(*) AS n FROM appointments').first()).n;
-  assert.equal(occupied, reservation.status === 201 ? 1 : 0);
-  assert.equal((await api('/api/appointments', { method: 'POST', body: draft() }, 409)).error, '该校区该时段暂停预约');
+  assert.equal(paused.status,200);
+  assert.ok([201,409].includes(reservation.status));
+  const summary=await api(`/api/live/summary?date=${date}&campus=${encodeURIComponent('南湖')}`);
+  assert.equal(summary.slotCapacities[item.timeSlot],reservation.status===201 ? 1:0);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM booking_day_slots WHERE campus='南湖' AND date=?").bind(date).first()).n,reservation.status===201 ? 4:0);
+  await api('/api/appointments',{method:'POST',body:draft({timeSlot:item.timeSlot})},409);
 });
 
 test('slot settings migration preserves existing records and replaces fixed capacity triggers', async () => {
@@ -1861,4 +1911,83 @@ test('slot settings migration preserves existing records and replaces fixed capa
   await legacy.prepare("UPDATE slot_capacities SET capacity=4 WHERE campus='南湖' AND time_slot='19:00–20:00'").run();
   await insert(5).run();
   assert.equal((await legacy.prepare('SELECT COUNT(*) AS n FROM appointments').first()).n, 5);
+});
+
+
+test('schedule migration preserves legacy bookings, cancelled days, onsite work, attachments and active repair claims', async () => {
+  const legacy = await mf.getD1Database('SCHEDULE_UPGRADE_DB');
+  for (const file of (await readdir('migrations')).filter(name=>name.endsWith('.sql') && name<'0007').sort()) await applyMigration(legacy,file);
+  await legacy.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,protected,password_hash,created_at) VALUES('root001','历史管理员','superadmin','南湖',1,?,?)").bind(hashPassword(password),dateKey()).run();
+  const booked=await book(),cancelled=await book(),onsite=await book();
+  for (const item of [booked,cancelled,onsite]) {
+    const row=await db.prepare('SELECT * FROM appointments WHERE id=?').bind(item.id).first();
+    row.time_slot='19:00–20:00';
+    delete row.expires_at;
+    await legacy.prepare(`INSERT INTO appointments(${Object.keys(row).join(',')}) VALUES(${Object.keys(row).map(()=>'?').join(',')})`).bind(...Object.values(row)).run();
+  }
+  await legacy.prepare("UPDATE appointments SET status='in_progress',assigned_to='root001',front_photo_id='photo1',back_photo_id='photo2',repair_number='legacy-repair' WHERE id=?").bind(booked.id).run();
+  await legacy.prepare("UPDATE appointments SET status='completed',outcome='cancelled',date=? WHERE id=?").bind(addDays(date,7),cancelled.id).run();
+  await legacy.prepare("UPDATE appointments SET source='onsite',registered_by='root001',registration_key='onsite-key',date=? WHERE id=?").bind(addDays(date,14),onsite.id).run();
+  await legacy.prepare("INSERT INTO appointment_attachments VALUES('photo1',?,'front.png','image/png',100,'r2/front','2026-10-12','2027-10-12','intake_front','root001')").bind(booked.id).run();
+  await legacy.prepare("INSERT INTO attachment_storage VALUES('photo1','r2/front',100,'complete','2026-10-12','2027-10-12')").run();
+  await legacy.prepare("INSERT INTO credential_recoveries VALUES('recovery',?,'root001','人工核验历史记录','2026-10-12')").bind(booked.id).run();
+  await legacy.prepare("UPDATE slot_capacities SET capacity=7 WHERE campus='南湖' AND time_slot='19:00–20:00'").run();
+  await applyMigration(legacy,'0007_onsite_expiration.sql');
+  await applyMigration(legacy,'0008_five_statuses.sql');
+  await legacy.prepare("INSERT INTO appointment_corrections VALUES('historical-correction',?,'root001','历史纠错说明','{}','{}','2026-10-12')").bind(booked.id).run();
+  const tables=['appointments','appointment_attachments','credential_recoveries','active_repairs','attachment_storage','storage_quota','appointment_corrections'];
+  const before=await Promise.all(tables.map(async table=>(await legacy.prepare(`SELECT * FROM ${table} ORDER BY 1`).all()).results));
+  await applyMigration(legacy,'0009_weekday_booking_schedules.sql');
+  for (const [index,table] of tables.entries()) assert.deepEqual((await legacy.prepare(`SELECT * FROM ${table} ORDER BY 1`).all()).results,before[index],table);
+  assert.deepEqual((await legacy.prepare('PRAGMA foreign_key_check').all()).results,[]);
+  const snapshot=(await legacy.prepare("SELECT * FROM booking_day_slots WHERE campus='南湖' ORDER BY date,time_slot").all()).results;
+  assert.equal(snapshot.length,4);
+  assert.deepEqual([...new Set(snapshot.map(r=>r.date))],[date,addDays(date,7)]);
+  assert.deepEqual(snapshot.slice(0,2).map(r=>[r.time_slot,r.capacity]),[['19:00–20:00',7],['20:00–21:00',10]]);
+  assert.deepEqual((await legacy.prepare("SELECT capacity FROM weekday_slot_capacities WHERE campus='南湖' AND weekday=1 ORDER BY time_slot").all()).results.map(r=>r.capacity),[4,3,5,5]);
+  await legacy.prepare("UPDATE appointments SET status='completed',outcome='repaired' WHERE id=?").bind(booked.id).run();
+  assert.equal((await legacy.prepare('SELECT COUNT(*) AS n FROM active_repairs').first()).n,0);
+  await legacy.prepare("DELETE FROM attachment_storage WHERE id='photo1'").run();
+  assert.equal((await legacy.prepare('SELECT COUNT(*) AS n FROM appointment_attachments').first()).n,0);
+  assert.equal((await legacy.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes,0);
+});
+
+
+test('half-hour bookings reject overlapping slots across campuses', async () => {
+  await db.prepare("DELETE FROM booking_day_slots WHERE campus='浑南'").run();
+  const legacy=await book();
+  await api('/api/appointments',{method:'POST',body:draft({studentId:legacy.studentId,campus:'浑南',timeSlot:'19:00–19:30'})},409);
+  const later=await book({studentId:legacy.studentId,campus:'浑南',timeSlot:'20:00–20:30'});
+  assert.equal(later.timeSlot,'20:00–20:30');
+  await api(`/api/appointments/${legacy.id}/status`,{method:'PATCH',accessToken:legacy.accessToken,body:{status:'cancelled'}});
+  await book({studentId:legacy.studentId,campus:'浑南',timeSlot:'19:00–19:30'});
+  await api(`/api/appointments/${legacy.id}/status`,{method:'PATCH',token:await login(),body:{action:'correct',status:'booked'}},409);
+});
+
+
+test('bulk capacity saves are atomic, revision checked and restricted to authorized campuses', async () => {
+  const root=await login();
+  const original=(await api('/api/slot-capacities',{token:root})).items;
+  const [first,second]=original;
+  await api('/api/slot-capacities',{method:'PATCH',token:root,body:{...second,capacity:9}});
+  await api('/api/slot-capacities',{method:'PATCH',token:root,body:{items:[{...first,capacity:7},{...second,capacity:8}]}},409);
+  let current=(await api('/api/slot-capacities',{token:root})).items;
+  const find=item=>current.find(row=>row.campus===item.campus && row.weekday===item.weekday && row.timeSlot===item.timeSlot);
+  assert.deepEqual(find(first),first);
+  assert.equal(find(second).capacity,9);
+  const saved=await api('/api/slot-capacities',{method:'PATCH',token:root,body:{items:current.map(item=>({...item,capacity:11}))}});
+  assert.equal(saved.items.length,32);
+  assert.ok(saved.items.every(item=>item.capacity===11));
+  current=saved.items;
+  const admin=await addUser('950006','admin');
+  await api('/api/slot-capacities',{method:'PATCH',token:admin,body:{items:current.map(item=>({...item,capacity:12}))}},403);
+  assert.deepEqual((await api('/api/slot-capacities',{token:root})).items.sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))),current.sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))));
+  for(const items of [[],Array(33).fill(first),[first,first],[null],[{...first,weekday:0}]])
+    await api('/api/slot-capacities',{method:'PATCH',token:root,body:{items}},400);
+  const a=current.find(item=>item.campus==='南湖' && item.weekday===1 && item.timeSlot==='19:00–19:30');
+  const b=current.find(item=>item.campus==='南湖' && item.weekday===1 && item.timeSlot==='19:30–20:00');
+  await db.prepare('DELETE FROM weekday_slot_capacities WHERE campus=? AND weekday=? AND time_slot=?').bind(b.campus,b.weekday,b.timeSlot).run();
+  await api('/api/slot-capacities',{method:'PATCH',token:root,body:{items:[{...a,capacity:13},{...b,capacity:13}]}},409);
+  assert.equal((await db.prepare('SELECT capacity FROM weekday_slot_capacities WHERE campus=? AND weekday=? AND time_slot=?').bind(a.campus,a.weekday,a.timeSlot).first()).capacity,11);
+  await db.prepare('INSERT INTO weekday_slot_capacities(campus,weekday,time_slot,capacity,revision) VALUES(?,?,?,?,?)').bind(b.campus,b.weekday,b.timeSlot,b.capacity,b.revision).run();
 });
