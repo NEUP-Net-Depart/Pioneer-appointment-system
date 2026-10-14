@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Single Cloudflare Pages project with D1 and R2",
+  "description": "Cloudflare Pages with isolated Production, Preview and Staff Staging resources",
   "engines": {
     "node": ">=22.0.0"
   },
@@ -20,6 +20,7 @@
     "test": "npm run build && node --test tests/*.test.mjs",
     "deploy": "node scripts/deploy.mjs",
     "deploy:preview": "node scripts/deploy.mjs --preview",
+    "deploy:staff-staging": "node scripts/deploy.mjs --staff-staging",
     "smoke": "node scripts/smoke.mjs",
     "lint": "eslint . --max-warnings 0",
     "audit:architecture": "node scripts/audit.mjs",

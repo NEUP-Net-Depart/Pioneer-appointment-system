@@ -57,11 +57,12 @@ export function scanService(appointments, service, encryptionKey, secret, enable
       available();
       const key = stringField(input.requestId, '登记请求编号', 36, true);
       if (!/^[a-f0-9-]{36}$/.test(key)) fail(400, '登记请求编号不正确');
+      const now = clock();
+      await expire(now, { campuses: actor.authorizedCampuses });
       const previous = await appointments.findRegistration(actor.account, key);
       if (previous) return locate(previous.id, actor);
       if (await appointments.pendingRegistration(actor.account)) fail(409, '请先签到或取消当前临时登记');
       if ((await appointments.inProgress(actor.account)).length) fail(409, '请先完成当前维修，再登记下一台设备');
-      const now = clock();
       const data = bookingInput({ ...input, date: dateKey(now), timeSlot: TIME_SLOTS[0], agreementAt: now.toISOString(), agreementVersion: 'v1.0' });
       requireCampus(actor, data.campus);
       const item = await service.createOnsite(data, actor.account, key);

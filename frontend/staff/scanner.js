@@ -15,7 +15,15 @@ export function createScanner({ video, status, torch, switchCamera, onCode, onSt
     onState('opening');
     try {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error('当前浏览器无法使用摄像头');
-      const media = await navigator.mediaDevices.getUserMedia({ audio: false, video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: facing }, width: { ideal: 1280 } } });
+      const videoOptions = deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { exact: facing }, width: { ideal: 1280 } };
+      let media;
+      try { media = await navigator.mediaDevices.getUserMedia({ audio: false, video: videoOptions }); }
+      catch (error) {
+        if (current !== generation) return;
+        if (deviceId || !['OverconstrainedError','NotFoundError'].includes(error.name)) throw error;
+        // Phones should choose the rear lens; single-camera devices may not expose facing modes.
+        media = await navigator.mediaDevices.getUserMedia({ audio: false, video: { ...videoOptions, facingMode: { ideal: facing } } });
+      }
       if (current !== generation) { media.getTracks().forEach(track => track.stop()); return; }
       stream = media; video.srcObject = stream; await video.play();
       if (current !== generation) return;

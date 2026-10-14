@@ -117,7 +117,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       if (action === 'correct') {
         requireRole(user, 'admin'); requireAppointmentAccess(user, item);
         const status = input.status || item.status;
-        if (status === 'in_progress' && (item.status === 'booked' || ['cancelled','no_show'].includes(item.outcome))) fail(409, '请先恢复为已预约，再通过签到上传照片并开始维修');
+        if (status === 'in_progress' && (item.status === 'booked' || ['cancelled','no_show','expired'].includes(item.outcome))) fail(409, '请先恢复为已预约，再通过签到上传照片并开始维修');
         patch = { ...input, status };
         if (status === 'booked') {
           if (instant.getTime() >= Date.parse(noShowDeadline(item.date))) fail(409, '已过自动结束时间，不能恢复为已预约');
@@ -133,7 +133,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
             patch.outcome = input.outcome ?? item.outcome;
             if (!patch.outcome) fail(400, '请选择结束结果');
             if (repairOutcomes.includes(patch.outcome)) {
-              if (item.status === 'booked') fail(409, '请先签到并开始维修');
+              if (item.status === 'booked' || ['cancelled','no_show','expired'].includes(item.outcome)) fail(409, '请先签到并开始维修');
               repairResult(patch.outcome, input.repairNote ?? item.repairNote);
             }
             if (patch.outcome === 'no_show' && instant.getTime() < Date.parse(noShowDeadline(item.date))) fail(409, '尚未到未到场判定时间');

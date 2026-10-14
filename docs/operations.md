@@ -2,12 +2,15 @@
 
 本地开发见 [README](../README.md)。环境配置以 [wrangler.jsonc](../wrangler.jsonc) 为准，自动发布由 [check.yml](../.github/workflows/check.yml) 执行。
 
+Production/Preview 共用一个 Pages 项目；长期集成分支使用独立的 [Staff Staging](staff-staging.md)，以 [wrangler.staff-staging.jsonc](../wrangler.staff-staging.jsonc) 管理配置、独立 D1/R2 和凭证。
+
 ## Cloudflare 配置
 
 | 环境 | 分支 | D1（DB） | 私有 R2（ATTACHMENTS） | MAX_R2_BYTES |
 |---|---|---|---|---:|
 | Production | main | pioneer-appointments-production-v2 | pioneer-attachments-production-v2 | 8589934592 |
-| Preview | 非 main | pioneer-appointments-preview-v2 | pioneer-attachments-preview-v2 | 536870912 |
+| Preview | dev 和普通功能分支 | pioneer-appointments-preview-v2 | pioneer-attachments-preview-v2 | 536870912 |
+| Staff Staging | next/staff-platform | pioneer-appointments-staff-staging | pioneer-attachments-staff-staging | 536870912 |
 
 生产地址：<https://pioneer-appointment-system.pages.dev>；dev 地址：<https://dev.pioneer-appointment-system.pages.dev>。其他 Preview 地址由分支名生成；各分支代码独立，所有 Preview 共用测试数据、附件与 Secrets。
 
@@ -31,11 +34,13 @@ Actions 先运行 `npm run verify`，再按下表执行；推送会触发发布�
 |---|---|
 | 推送 main | 生产迁移 → 发布 → smoke |
 | 推送 dev | 共享 Preview 迁移 → 发布 → smoke |
+| 推送 next/staff-platform | 独立 Staff Staging 迁移 → 发布 → smoke |
+| 推送 feat/staff-* | 仅隔离验证，不发布 |
 | 推送其他分支 | 发布该分支 Preview → smoke，不迁移 |
 | 手动运行 | 仅非 main 分支可用，迁移规则同上 |
 | PR | 仅验证 |
 
-功能依赖新结构时，先将兼容迁移合入 dev 并等待成功，再发布功能分支。迁移只追加、必须兼容仍在运行的旧应用；失败不发布，发布失败不回滚数据库，重跑跳过已执行迁移。
+共享 Preview 功能依赖新结构时，先将兼容迁移合入 dev 并等待成功，再发布功能分支；Staff Staging 在自身迁移成功后发布。迁移只追加、必须兼容仍在运行的旧应用；失败不发布，发布失败不回滚数据库，重跑跳过已执行迁移。
 
 仓库 Secret 设置 `CLOUDFLARE_ACCOUNT_ID`，各 GitHub Environment 配置如下：
 
@@ -45,6 +50,8 @@ Actions 先运行 `npm run verify`，再按下表执行；推送会触发发布�
 | preview | No restriction | CLOUDFLARE_PREVIEW_API_TOKEN | Pages Edit |
 | preview-migrations | 仅 dev | CLOUDFLARE_PREVIEW_D1_API_TOKEN | D1 Edit |
 | preview-maintenance | 仅 main | CLOUDFLARE_PREVIEW_MAINTENANCE_API_TOKEN | D1 Edit、R2 Storage Edit |
+| staff-staging | 仅 next/staff-platform | CLOUDFLARE_STAFF_PAGES_API_TOKEN | Pages Edit |
+| staff-staging-migrations | 仅 next/staff-platform | CLOUDFLARE_STAFF_D1_API_TOKEN / CLOUDFLARE_STAFF_MAINTENANCE_API_TOKEN | 分别为 D1 Edit / D1 Edit、R2 Storage Edit |
 
 Token 资源范围限定目标账号；维护 Token 不提供给功能分支，R2 权限须支持删除对象。`preview` 不限分支以兼容含 `/` 的名称，其余设精确 Branch 规则，不额外配置必需审批人。Pages Edit 无法在同一项目内仅限 Preview，仓库写入者须可信。`production` 环境变量 `SITE_URL` 设置为生产域名。
 
@@ -66,9 +73,10 @@ Preview 迁移从 dev 执行，发布使用当前真实分支。新库依次应�
 
 ## 扫码配置与回退
 
-- 先应用 `0006_scan_workbench.sql` 再部署；`SCAN_WORKBENCH_ENABLED` 默认 true。将目标环境变量改为 false 并重新部署，刷新或重新登录恢复旧工作台；不反向迁移，一人一单约束继续生效。
+- 先应用 `0006_scan_workbench.sql`、`0007_onsite_expiration.sql` 再部署；`SCAN_WORKBENCH_ENABLED` 默认 true。将目标环境变量改为 false 并重新部署，刷新或重新登录恢复旧工作台；不反向迁移，一人一单约束继续生效。
 - zxing-wasm 脚本、WASM 与许可证由本站 `/vendor/` 提供；保留 `public/_headers` 和 API 的同源摄像头 Permissions-Policy。
 - 摄像头需 HTTPS 或本地可信源及浏览器授权；无法使用时可选相册或手动编号。实体 iOS、Android、QQ 浏览器的镜头切换和手电筒须单独验收。
+- 默认请求后置摄像头；设备不支持精确镜头方向时回退为方向偏好，切换镜头仍使用选定设备或前后方向。权限被拒绝时保留相册和手动输入入口。
 
 ## 维护与备份
 
@@ -78,6 +86,8 @@ Preview 迁移从 dev 执行，发布使用当前真实分支。新库依次应�
 | [未到场处理](../.github/workflows/end-no-shows.yml) | 每日 21:35 | BOOKING_MAINTENANCE_ENABLED=true |
 
 定时入口从默认分支 dev 派发到 main，使用内置 GITHUB_TOKEN，处理两个环境；以 main 上的执行结果为准。手动维护也须选择 main，可选 production/preview/both，默认 dry-run，关闭后才写入或删除。维护不执行迁移。
+
+临时登记与线上预约均在业务日期 21:30 后结束待签到记录，结果分别为 `expired`、`no_show`。共享 Preview 的定时维护执行 main 上的脚本；本功能合入 dev 后，须将包含临时登记过期处理的脚本和迁移同步到 main，后台定时任务才会处理共享 Preview 的临时登记。在此之前，预约查询和工作人员操作仍会按需处理过期记录。Staff Staging 的维护从 next/staff-platform 执行，规则见专用文档。
 
 附件清理覆盖到期文件、超过 24 小时的未完成上传及失败补偿；失败下次重试，R2 生命周期规则不能替代 D1 清理。手动预检：`npm run attachments:cleanup -- --dry-run --preview`；确认后用 `--apply`，生产移除 `--preview`。
 

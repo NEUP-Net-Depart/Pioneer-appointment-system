@@ -60,6 +60,27 @@ for (const width of [320, 375, 390, 430]) test(`workbench keeps scanning, fallba
   await expect(page.locator('#scan-home')).toBeVisible();
 });
 
+for (const strictFacing of [true, false]) test(`camera prefers the rear lens, switches facing and falls back when exact facing is ${strictFacing ? 'supported' : 'unsupported'}`, async ({ page }) => {
+  await mockSession(page);
+  await page.addInitScript(supported => {
+    window.cameraRequests = [];
+    Object.defineProperty(navigator.mediaDevices, 'enumerateDevices', { value: async () => [] });
+    Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async constraints => {
+      window.cameraRequests.push(constraints);
+      if (!supported && constraints.video.facingMode.exact) throw new DOMException('Facing mode unavailable', 'OverconstrainedError');
+      const canvas = document.createElement('canvas'); canvas.width = canvas.height = 64;
+      canvas.getContext('2d').fillRect(0, 0, 64, 64);
+      return canvas.captureStream(1);
+    } });
+  }, strictFacing);
+  await login(page);
+  await expect(page.locator('.scanner-frame')).toHaveAttribute('data-camera-state', 'running');
+  expect(await page.evaluate(() => window.cameraRequests.map(request => request.video.facingMode))).toEqual(strictFacing ? [{ exact: 'environment' }] : [{ exact: 'environment' }, { ideal: 'environment' }]);
+  await page.locator('#scan-switch-camera').click();
+  await expect(page.locator('.scanner-frame')).toHaveAttribute('data-camera-state', 'running');
+  expect(await page.evaluate(() => window.cameraRequests.map(request => request.video.facingMode))).toEqual(strictFacing ? [{ exact: 'environment' }, { exact: 'user' }] : [{ exact: 'environment' }, { ideal: 'environment' }, { exact: 'user' }, { ideal: 'user' }]);
+});
+
 test('camera pauses for the personal center and scanned images open grouped device details', async ({ page }) => {
   await mockSession(page);
   await page.addInitScript(() => {

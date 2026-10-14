@@ -15,7 +15,7 @@ flowchart LR
   Secrets[Pages Secrets] -.-> Functions
 ```
 
-附件经鉴权 API 访问。`main` 为生产分支；非 `main` 分支各有 Preview 地址，共用测试 D1/R2 和 Secrets，与生产隔离。推送会触发发布，不要未经授权推送 `main`。迁移与发布规则见 [部署运维](docs/operations.md)。
+附件经鉴权 API 访问。`main` 发布 Production；`dev` 和普通功能分支发布共享测试 D1/R2 的 Preview；`next/staff-platform` 发布独立 Staff Staging；`feat/staff-*` 仅运行隔离验证。推送会触发对应发布，不要未经授权推送 `main`。迁移与发布规则见 [部署运维](docs/operations.md)。
 
 ## 本地开发
 
@@ -44,3 +44,4 @@ npm run dev
 - [业务规则与权限](docs/requirements.md)
 - [数据库结构与约束](docs/data-model.md)
 - [部署、迁移、回退与维护](docs/operations.md)
+- [长期集成分支与 Staff Staging](docs/staff-staging.md)
