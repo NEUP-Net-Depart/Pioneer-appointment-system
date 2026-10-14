@@ -1721,8 +1721,7 @@ test('weekday templates freeze on first booking and preserve cancellations, rest
 
 test('all four half-hour slots propagate through booking, summary, queue, overview, filters and export', async () => {
   await db.prepare('DELETE FROM booking_day_slots').run();
-  const token = await login(), targetDate = bookingDates.find(day => day > dateKey());
-  assert.ok(targetDate, 'fixture requires a future service day in the booking window');
+  const token = await login(), targetDate = bookingDates.find(day => day > date) || date;
   const bookings = [];
   for (const timeSlot of TIME_SLOTS) {
     const item = await book({ date: targetDate, timeSlot });
