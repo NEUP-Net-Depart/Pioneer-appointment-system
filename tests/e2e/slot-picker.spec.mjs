@@ -91,12 +91,18 @@ test('failed reads can be retried and choosing dates invalidates full or paused 
 });
 
 test('expired times and dates outside the service window stay hidden across the deadline and weekend', async ({ page }) => {
-  await setup(page, '2026-10-15T20:59:45+08:00');
+  const finalSlot = '20:30–21:00';
+  await setup(page, '2026-10-15T20:59:45+08:00', async (route, query) => {
+    const data = summary(query.get('campus'), query.get('date'));
+    data.slotCapacities[finalSlot] = 10;
+    data.slots[finalSlot] = 0;
+    await route.fulfill({ json: data });
+  });
   await expect(page.locator('#booking-days button')).toHaveCount(1);
   await page.locator('[data-date="2026-10-15"]').click();
   await expect(slot(page)).toBeHidden();
-  await slot(page, secondSlot).click();
-  await expect(page.locator('[name=timeSlot]')).toHaveValue(secondSlot);
+  await slot(page, finalSlot).click();
+  await expect(page.locator('[name=timeSlot]')).toHaveValue(finalSlot);
   await expect(page.locator('[data-date="2026-10-15"]')).toContainText('剩余 10 名');
   await page.clock.fastForward(30000);
   await page.locator('[data-campus="南湖"]').click();

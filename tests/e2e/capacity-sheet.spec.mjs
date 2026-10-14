@@ -11,6 +11,7 @@ async function openSheet(browser,{ mobile = false } = {}) {
   const actor = { token:'capacity-test-only',account:'test-capacity-admin',name:'配置测试管理员',role:'admin',homeCampus:'南湖',authorizedCampuses:['南湖','浑南'] };
   await page.route('**/api/auth/login',route => route.fulfill({ json:actor }));
   await page.route('**/api/auth/me',route => route.fulfill({ json:actor }));
+  await page.route('**/api/scan/config',route => route.fulfill({ json:{ enabled:false } }));
   await page.route('**/api/appointments?*',route => route.fulfill({ json:{ items:[],counts:{},filteredCounts:{} } }));
   await page.route('**/api/appointments/overview',route => route.fulfill({ json:{ dates:[],campuses:['南湖','浑南'],updatedAt:new Date().toISOString(),items:[] } }));
   const items = ['南湖','浑南'].flatMap(campus => TIME_SLOTS.flatMap((timeSlot,row) => [1,2,3,4].map(weekday => ({ campus,weekday,timeSlot,capacity:row * 4 + weekday,revision:0 }))));
