@@ -87,7 +87,7 @@ Preview 迁移从 dev 执行，发布使用当前真实分支。新库依次应�
 
 定时入口从默认分支 dev 派发到 main，使用内置 GITHUB_TOKEN，处理两个环境；以 main 上的执行结果为准。手动维护也须选择 main，可选 production/preview/both，默认 dry-run，关闭后才写入或删除。维护不执行迁移。
 
-临时登记与线上预约均在业务日期 21:30 后结束待签到记录，结果分别为 `expired`、`no_show`。共享 Preview 的定时维护执行 main 上的脚本；本功能合入 dev 后，须将包含临时登记过期处理的脚本和迁移同步到 main，后台定时任务才会处理共享 Preview 的临时登记。在此之前，预约查询和工作人员操作仍会按需处理过期记录。Staff Staging 的维护从 next/staff-platform 执行，规则见专用文档。
+临时登记与线上预约均在业务日期 21:30 后结束待签到记录，结果分别为 `expired`、`no_show`。共享 Preview 定时维护使用 main 上的脚本，须保持维护逻辑与目标库迁移版本一致。预约查询和工作人员操作也会按需处理过期记录。Staff Staging 维护从 next/staff-platform 执行，规则见专用文档。
 
 附件清理覆盖到期文件、超过 24 小时的未完成上传及失败补偿；失败下次重试，R2 生命周期规则不能替代 D1 清理。手动预检：`npm run attachments:cleanup -- --dry-run --preview`；确认后用 `--apply`，生产移除 `--preview`。
 

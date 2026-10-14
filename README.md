@@ -37,11 +37,11 @@ npm run dev
 | `npm run preview:booking-layout` | 预约布局预览（8790 端口，模拟数据、禁用提交） |
 | `npm run test:booking-layout` | 预约布局回归 |
 
-源码：`frontend/` 为页面，`shared/` 为公共模块；API 按 `functions/api/` → `src/routes/` → `src/services/` → `src/db/` 分层。工作台壳层、维修流程和卡片渲染分别位于 `workbench.js`、`scan.js`、`scan-details.js`；未来状态组件可挂载到 `#workbench-status`。
+源码：`frontend/` 为页面，`shared/` 为公共模块；API 按 `functions/api/` → `src/routes/` → `src/services/` → `src/db/` 分层。工作台壳层、维修流程和卡片渲染分别位于 `workbench.js`、`scan.js`、`scan-details.js`。
 
 ## 文档
 
 - [业务规则与权限](docs/requirements.md)
 - [数据库结构与约束](docs/data-model.md)
 - [部署、迁移、回退与维护](docs/operations.md)
-- [长期集成分支与 Staff Staging](docs/staff-staging.md)
+- [Staff Staging 配置与运维](docs/staff-staging.md)
