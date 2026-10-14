@@ -184,6 +184,7 @@ END;
 
 CREATE TRIGGER appointment_capacity_update BEFORE UPDATE ON appointments
 WHEN NEW.source='booking' AND ((OLD.status='cancelled' OR (NEW.status='booked' AND OLD.status IN ('completed','expired'))) OR NEW.date<>OLD.date OR NEW.campus<>OLD.campus OR NEW.time_slot<>OLD.time_slot OR OLD.source<>NEW.source)
+ AND (NEW.date=OLD.date OR EXISTS(SELECT 1 FROM booking_day_slots WHERE campus=NEW.campus AND date=NEW.date))
 BEGIN
  INSERT INTO booking_day_slots(campus,date,time_slot,capacity)
  SELECT NEW.campus,NEW.date,time_slot,capacity FROM slot_capacities
