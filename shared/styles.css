@@ -692,6 +692,73 @@ html{scrollbar-gutter:stable}
   .capacity-sheet-toolbar { flex-direction:column; align-items:stretch; gap:4px; }
   .capacity-sheet-toolbar > div { justify-content:space-between; }
 }
+
+/* Focused appointment result layout: action first, supporting details second. */
+.success-panel { max-width:980px; padding:30px; text-align:left; }
+.success-header { display:flex; align-items:center; gap:16px; padding-bottom:22px; border-bottom:1px solid #e4eeee; }
+.success-header .success-icon { flex:none; margin:0; width:48px; height:48px; background:#d9f2e9; color:#11816c; box-shadow:0 0 0 7px #f0faf6; }
+.success-header .eyebrow { margin:0 0 3px; }
+.success-header h2 { margin:0; font-size:26px; line-height:1.2; }
+.success-copy { margin:5px 0 0; color:var(--muted); font-size:13px; }
+.success-layout { display:grid; grid-template-columns:minmax(230px,280px) minmax(0,1fr); gap:28px; margin-top:26px; align-items:start; }
+.success-qr-panel { padding:18px 16px 16px; border:1px solid #d7e9e6; border-radius:14px; background:linear-gradient(160deg,#f8fffd,#eef9f7); text-align:center; }
+.success-panel-label { margin:0 0 8px; color:#176c64; font-size:12px; font-weight:700; }
+.success-qr-panel .repair-qr { margin:0; }
+.success-qr-panel .repair-qr img { width:min(220px,100%); margin:8px auto 0; padding:7px; border:1px solid #e2eeee; border-radius:10px; }
+.success-qr-panel .repair-qr p:first-child { margin:0; color:var(--muted); font-size:11px; }
+.success-qr-panel .repair-qr p:empty { display:none; }
+.success-details { min-width:0; }
+.success-detail-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border:1px solid #e1ebed; border-radius:10px; overflow:hidden; background:#fbfdfd; }
+.success-detail-grid > div { min-width:0; padding:13px 14px; border-right:1px solid #e1ebed; }
+.success-detail-grid > div:last-child { border-right:0; }
+.success-detail-grid span { display:block; margin-bottom:3px; color:var(--muted); font-size:11px; }
+.success-detail-grid strong { display:block; color:var(--navy); font-size:14px; overflow-wrap:anywhere; }
+.success-arrival { margin:14px 0; padding:13px 14px; border:1px solid #d7e9e6; border-radius:10px; background:#f4fbfa; }
+.success-arrival strong { color:#10766f; }
+.success-panel .booking-code { justify-content:flex-start; max-width:none; margin:0; padding:12px 14px; border:1px solid #e1ebed; border-radius:10px; background:#fff; }
+.success-panel .booking-code strong { font-size:16px; color:var(--navy-2); overflow-wrap:anywhere; }
+.success-panel .booking-code button { margin-left:auto; padding:5px 0; color:#0f6874; font-weight:700; }
+.success-panel .success-actions { justify-content:flex-end; margin-top:24px; }
+.success-panel .success-actions .primary-btn { min-width:172px; }
+.result-card { padding:24px 26px; }
+.result-card .appointment-card-header { padding-bottom:16px; }
+.appointment-overview { display:grid; grid-template-columns:minmax(0,1fr) 238px; gap:24px; margin-top:18px; align-items:start; }
+.appointment-overview-main { min-width:0; }
+.result-card .appointment-meta { margin-top:0; }
+.result-card .lookup-arrival { margin-top:14px; }
+.appointment-qr-slot { min-width:0; margin:0; padding:14px 12px 12px; border:1px solid #dcebea; border-radius:12px; background:#f7fcfb; }
+.appointment-qr-slot .repair-qr { margin:0; text-align:center; }
+.appointment-qr-slot .repair-qr p:first-child { margin:0; color:var(--muted); font-size:11px; line-height:1.45; }
+.appointment-qr-slot .repair-qr img { width:min(190px,100%); margin:8px auto 0; padding:5px; border:1px solid #e3eeee; border-radius:8px; }
+.appointment-qr-slot .repair-qr p:empty { display:none; }
+.appointment-qr-slot .repair-qr .secondary-btn { width:100%; margin-top:9px; padding:7px 10px; font-size:11px; }
+.appointment-extra { margin-top:18px; border-top:1px solid #e7eef0; }
+.appointment-extra summary { padding:13px 0 3px; color:#356777; cursor:pointer; font-size:12px; list-style-position:inside; }
+.appointment-extra summary::marker { color:var(--cyan); }
+.appointment-extra-body { padding-top:4px; }
+.appointment-extra .record-note { margin-top:10px; }
+.appointment-extra .appointment-attachments { margin-top:12px; }
+.result-card .appointment-actions { margin-top:16px; padding-top:14px; }
+.result-card .attachment-upload { margin-top:12px; }
+.result-card .appointment-status { min-width:120px; }
+@media(max-width:700px) {
+  .success-panel { padding:22px 18px; }
+  .success-header { align-items:flex-start; gap:12px; }
+  .success-header .success-icon { width:42px; height:42px; font-size:22px; }
+  .success-header h2 { font-size:23px; }
+  .success-layout { grid-template-columns:1fr; gap:16px; margin-top:20px; }
+  .success-qr-panel { order:0; padding:15px 12px 13px; }
+  .success-qr-panel .repair-qr img { width:min(190px,100%); }
+  .success-detail-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .success-detail-grid > div { padding:10px 8px; }
+  .success-detail-grid strong { font-size:12px; }
+  .success-panel .success-actions { justify-content:stretch; }
+  .success-panel .success-actions .primary-btn { width:100%; }
+  .result-card { padding:20px 16px; }
+  .appointment-overview { grid-template-columns:1fr; gap:14px; }
+  .appointment-qr-slot { order:-1; }
+  .result-card .appointment-status { min-width:0; }
+}
 @media(pointer:coarse) {
   .capacity-table .capacity-row input { pointer-events:auto; }
   .capacity-grid.is-extending .capacity-row input { pointer-events:none; }
@@ -775,4 +842,120 @@ html{scrollbar-gutter:stable}
 @media(max-width:600px) {
   .booking-picker .booking-rule { margin:8px 0 4px; }
   .booking-arrival { padding:0; margin-bottom:8px; border-bottom:0; }
+}
+
+/* Appointment result redesign: one readable card for both success and history. */
+.page-intro { padding-top:42px; padding-bottom:34px; }
+.page-intro h1 { font-size:36px; }
+.lookup-shell { padding-top:28px; }
+.result-card { display:block; overflow:hidden; }
+.appointment-card-main { min-width:0; }
+.appointment-card-header { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; padding-bottom:18px; border-bottom:1px solid #e8eff1; }
+.appointment-card-title { min-width:0; }
+.result-kicker { margin:0 0 5px; color:var(--orange); font-size:10px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; }
+.appointment-card-title h3 { margin:0 0 7px; color:var(--navy); font-size:19px; line-height:1.35; overflow-wrap:anywhere; }
+.appointment-card-title .code { display:block; margin:2px 0 0; }
+.appointment-status { flex:none; min-width:110px; text-align:right; }
+.appointment-status .status-pill { white-space:nowrap; }
+.appointment-status time { margin-top:8px; white-space:nowrap; }
+.appointment-status .cancel-link { margin-top:9px; }
+.appointment-meta { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:0; margin-top:18px; padding:0; border:0; }
+.appointment-meta > div { display:grid; gap:4px; min-width:0; padding:0 16px; border-right:1px solid #e8eff1; }
+.appointment-meta > div:first-child { padding-left:0; }
+.appointment-meta > div:last-child { padding-right:0; border-right:0; }
+.appointment-meta span { color:var(--muted); font-size:11px; }
+.appointment-meta strong { color:var(--ink); font-size:13px; overflow-wrap:anywhere; }
+.lookup-arrival { margin:20px 0 0; padding:17px 12px; border:1px solid #d9e9e7; border-radius:10px; background:#f4fbfa; }
+.lookup-arrival .repair-arrival-label { color:#578078; font-size:11px; }
+.lookup-arrival strong { color:#0e766f; font-size:16px; }
+.queue-info { display:inline-flex; max-width:100%; margin-top:13px; padding:8px 11px; border:1px solid #d8e8ed; border-left:3px solid var(--cyan); border-radius:7px; background:#f6fbfc; color:var(--navy-2); font-size:11px; }
+.record-note { margin:14px 0 0; padding:10px 12px; border-radius:7px; background:#f7f9fa; }
+.appointment-actions { display:flex; flex-wrap:wrap; gap:9px; margin-top:18px; padding-top:16px; border-top:1px solid #e8eff1; }
+.appointment-actions .secondary-btn { padding:9px 14px; }
+.appointment-attachments { margin-top:17px; padding-top:14px; border-top:1px dashed #d7e4e7; }
+.appointment-attachments:empty { display:none; }
+.attachment-upload { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:10px; margin-top:14px; padding:11px 12px; border:1px dashed #d7e4e7; border-radius:8px; background:#fff; }
+.attachment-upload label { min-width:0; color:var(--muted); font-size:11px; }
+.attachment-upload input { display:block; width:100%; min-width:0; margin-top:7px; font-size:11px; }
+.attachment-upload .secondary-btn { min-height:38px; padding:8px 13px; }
+.appointment-qr-slot { margin-top:12px; }
+.appointment-qr-slot:empty { display:none; }
+.appointment-qr-slot { margin-top:18px; padding:14px 12px 12px; border:1px solid #e0ecee; border-radius:10px; background:#fbfefe; }
+.appointment-qr-slot .repair-qr { margin:0; text-align:center; }
+.appointment-qr-slot .repair-qr p:first-child { margin:0 0 10px; color:var(--muted); font-size:11px; }
+.appointment-qr-slot .repair-qr img { display:block; width:min(176px,100%); height:auto; margin:0 auto; border-radius:6px; }
+.appointment-qr-slot .repair-qr p:empty { display:none; }
+.appointment-qr-slot .repair-qr .secondary-btn { min-height:34px; margin-top:9px; padding:6px 11px; font-size:11px; }
+.appointment-card--success { text-align:center; }
+.appointment-card--success .success-icon { margin-bottom:13px; }
+.appointment-card--success .booking-code { max-width:720px; margin:18px auto 0; }
+.appointment-card--success .success-summary { margin-top:14px; }
+.appointment-card--success .success-arrival { max-width:720px; margin:18px auto 0; }
+.appointment-card--success .success-actions { justify-content:center; }
+@media(max-width:700px) {
+  .page-intro { padding:30px 20px 26px; }
+  .page-intro h1 { font-size:30px; }
+  .lookup-shell { padding-top:22px; }
+  .appointment-card-header { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; }
+  .appointment-card-title h3 { font-size:17px; }
+  .appointment-status { min-width:0; }
+  .appointment-status time { white-space:normal; }
+  .appointment-meta > div { padding:0 9px; }
+  .appointment-meta > div:first-child { padding-left:0; }
+  .appointment-meta > div:last-child { padding-right:0; }
+  .appointment-meta strong { font-size:12px; }
+  .attachment-upload { grid-template-columns:1fr; }
+  .attachment-upload .secondary-btn { justify-self:start; }
+}
+
+/* Final responsive tuning for the user result screens. */
+body.user-mode .page-intro { padding-top:42px; padding-bottom:34px; }
+body.user-mode .page-intro h1 { font-size:36px; }
+body.user-mode .lookup-shell { max-width:1080px; padding-top:28px; }
+body.user-mode .lookup-tools { max-width:100%; margin-bottom:20px; padding:0 2px; }
+body.user-mode .lookup-tools p { max-width:560px; }
+.result-card { border:1px solid #d9e6e8; border-radius:16px; box-shadow:0 12px 30px rgba(18,59,80,.07); }
+.result-card:hover { transform:translateY(-1px); box-shadow:0 16px 34px rgba(18,59,80,.1); transition:transform .18s ease,box-shadow .18s ease; }
+.result-card .appointment-card-header { align-items:center; }
+.result-card .appointment-card-title h3 { max-width:680px; }
+.result-card .appointment-status { display:flex; flex-direction:column; align-items:flex-end; gap:2px; }
+.result-card .appointment-status time { margin-top:4px; }
+.result-card .cancel-link { border:1px solid #f1c6b8; border-radius:8px; background:#fff8f5; color:#bd5b3b; padding:6px 10px; }
+.result-card .cancel-link:hover { background:#fff0ea; }
+.result-card .appointment-meta { border:1px solid #e1ebed; border-radius:10px; background:#fbfdfd; overflow:hidden; }
+.result-card .appointment-meta > div { padding:11px 13px; }
+.result-card .lookup-arrival { margin-top:14px; }
+.result-card .appointment-actions { display:flex; align-items:center; justify-content:flex-end; gap:10px; }
+.result-card .appointment-actions .secondary-btn { min-height:38px; }
+.appointment-extra[open] summary { color:var(--navy-2); font-weight:700; }
+@media(max-width:700px) {
+  body.user-mode .page-intro { padding:28px 20px 24px; }
+  body.user-mode .page-intro h1 { font-size:30px; }
+  body.user-mode .lookup-shell { padding-top:20px; }
+  body.user-mode .lookup-tools { gap:11px; }
+  body.user-mode .lookup-tools .secondary-btn { width:100%; }
+  body.user-mode .lookup-tools p { max-width:none; font-size:11px; }
+  .result-card .appointment-card-header { align-items:flex-start; }
+  .result-card .appointment-status { align-items:flex-end; }
+  .result-card .appointment-meta > div { padding:10px 7px; }
+  .result-card .appointment-meta span { font-size:10px; }
+  .result-card .appointment-meta strong { font-size:11px; }
+  .result-card .lookup-arrival { padding:12px 10px; }
+  .result-card .appointment-actions { justify-content:stretch; }
+  .result-card .appointment-actions .secondary-btn { width:100%; }
+}
+@media(max-width:420px) {
+  .success-panel .success-header { gap:10px; }
+  .success-panel .success-header h2 { font-size:21px; }
+  .success-detail-grid > div { padding:9px 6px; }
+  .success-detail-grid span { font-size:10px; }
+  .success-detail-grid strong { font-size:11px; }
+  .result-card { padding:17px 12px; border-radius:13px; }
+  .result-card .appointment-card-header { gap:8px; }
+  .result-card .appointment-card-title h3 { font-size:16px; }
+  .result-card .appointment-status .status-pill { padding:4px 8px; font-size:10px; }
+  .result-card .appointment-status time { font-size:10px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .result-card:hover { transform:none; }
 }

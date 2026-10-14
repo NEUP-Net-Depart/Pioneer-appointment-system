@@ -69,12 +69,19 @@
           <div class="form-actions"><button class="primary-btn" type="submit">提交预约 <span>→</span></button></div>
         </form>
 
-        <section class="success-panel appointment-card appointment-card--success" id="success-panel" hidden>
-          <div class="success-icon">✓</div><p class="eyebrow">FREE SERVICE BOOKING</p><h2>预约已提交</h2>
-          <div class="booking-code"><span>预约编号</span><strong id="success-code"></strong><button id="copy-code" type="button" title="复制私人链接">复制</button></div>
-          <div id="success-repair-qr" class="repair-qr"></div>
-          <p class="success-summary" id="success-summary"></p><div class="repair-arrival success-arrival"><span class="repair-arrival-label">维修地点</span><strong id="success-location" data-repair-campus="">正在读取维修地点…</strong><button id="success-copy-location" type="button" class="text-btn" data-copy-repair-location="" hidden>复制地点</button><span class="repair-location-update" data-location-state hidden></span><button type="button" class="text-btn" data-repair-retry hidden>重试地点</button></div><p id="credential-save-message" role="status" hidden></p><input id="success-link-fallback" class="private-link-fallback" type="text" readonly hidden aria-label="私人查询链接" />
-          <div class="success-actions"><button class="secondary-btn" type="button" data-view-link="lookup">查看我的预约</button></div>
+        <section class="success-panel appointment-card--success" id="success-panel" hidden>
+          <header class="success-header"><div class="success-icon">✓</div><div><p class="eyebrow">FREE SERVICE BOOKING</p><h2>预约已提交</h2><p class="success-copy">请保存二维码，到场时向工作人员出示</p></div></header>
+          <div class="success-layout">
+            <div class="success-qr-panel"><p class="success-panel-label">到场核验二维码</p><div id="success-repair-qr" class="repair-qr"></div></div>
+            <div class="success-details">
+              <div class="success-detail-grid"><div><span>校区</span><strong id="success-campus"></strong></div><div><span>预约日期</span><strong id="success-date"></strong></div><div><span>预约时段</span><strong id="success-time"></strong></div></div>
+              <div class="repair-arrival success-arrival"><span class="repair-arrival-label">维修地点</span><strong id="success-location" data-repair-campus="">正在读取维修地点…</strong><button id="success-copy-location" type="button" class="text-btn" data-copy-repair-location="" hidden>复制地点</button><span class="repair-location-update" data-location-state hidden></span><button type="button" class="text-btn" data-repair-retry hidden>重试地点</button></div>
+              <div class="booking-code"><span>预约编号</span><strong id="success-code"></strong><button id="copy-code" type="button" title="复制私人链接">复制链接</button></div>
+              <p id="credential-save-message" role="status" hidden></p><input id="success-link-fallback" class="private-link-fallback" type="text" readonly hidden aria-label="私人查询链接" />
+            </div>
+          </div>
+          <p class="success-summary" id="success-summary" hidden></p>
+          <div class="success-actions"><button class="primary-btn" type="button" data-view-link="lookup">查看我的预约</button></div>
         </section>
       </div>
     </section>

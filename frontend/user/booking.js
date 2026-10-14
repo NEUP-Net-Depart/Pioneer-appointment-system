@@ -64,6 +64,9 @@ export function initBooking({ appointments, onCreated, locations }) {
     $('#success-code').textContent = appointment.id;
     renderRepairQr($('#success-repair-qr'), appointment);
     $('#success-summary').textContent = `${appointment.campus} · ${appointment.date} · ${appointment.timeSlot}`;
+    $('#success-campus').textContent = appointment.campus;
+    $('#success-date').textContent = appointment.date;
+    $('#success-time').textContent = appointment.timeSlot;
     $('#success-location').dataset.repairCampus = appointment.campus;
     $('#success-copy-location').dataset.copyRepairLocation = appointment.campus;
     locations.paint();
