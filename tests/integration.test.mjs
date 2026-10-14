@@ -311,6 +311,27 @@ test('R2 upload/download preserves bytes, enforces credentials and hides storage
   await api(base, { accessToken:item.accessToken, method: 'POST', body: { ...input, data: '%%%=' } }, 400);
   await api(base, { accessToken:item.accessToken, method: 'POST', body: { ...input, data: Buffer.alloc(5 * 1024 * 1024 + 1, 65).toString('base64') } }, 400);
 });
+test('intake photos enforce 2 MB per file while general attachments retain 5 MB', async () => {
+  const item = await book(), token = await login();
+  const base = `/api/appointments/${item.id}/attachments`;
+  const image = size => {
+    const bytes = Buffer.alloc(size, 65);
+    Buffer.from(photo.data, 'base64').copy(bytes);
+    return { ...photo, data: bytes.toString('base64') };
+  };
+  for (const purpose of ['intake_front', 'intake_back']) {
+    const accepted = await api(base, { method: 'POST', token, body: { ...image(2 * 1024 * 1024), purpose } }, 201);
+    assert.equal(accepted.size, 2 * 1024 * 1024);
+    const rejected = await api(base, { method: 'POST', token, body: { ...image(2 * 1024 * 1024 + 1), purpose } }, 400);
+    assert.equal(rejected.error, '签到照片大小不能超过 2 MB');
+  }
+  const general = await api(base, { method: 'POST', accessToken: item.accessToken, body: image(5 * 1024 * 1024) }, 201);
+  assert.equal(general.size, 5 * 1024 * 1024);
+  const rejected = await api(base, { method: 'POST', accessToken: item.accessToken, body: image(5 * 1024 * 1024 + 1) }, 400);
+  assert.equal(rejected.error, '附件大小不能超过 5 MB');
+  assert.equal((await bucket.list()).objects.length, 3);
+  assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 9 * 1024 * 1024);
+});
 test('R2 write is compensated when D1 metadata fails', async () => {
   const item = await book();
   await db.prepare("CREATE TRIGGER test_attachment_failure BEFORE INSERT ON appointment_attachments BEGIN SELECT RAISE(ABORT,'test failure'); END").run();

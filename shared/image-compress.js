@@ -1,103 +1,138 @@
-// 客户端图片压缩：上传前限制尺寸、按需降低质量，并修正 EXIF 方向，
-// 让手机相机拍的原图也能直接上传，避免照片旋转或超过 5 MB 被拒绝。
+const MB = 1024 * 1024;
+export const INTAKE_PHOTO_MAX_BYTES = 2 * MB;
 const DEFAULTS = {
-  maxBytes: 5 * 1024 * 1024,
-  maxDimension: 2000,
+  maxBytes: INTAKE_PHOTO_MAX_BYTES,
+  maxDimension: 2560,
   quality: 0.85,
-  minQuality: 0.5,
+  minQuality: 0.7,
+  targetMinBytes: MB,
+  targetMaxBytes: 1.5 * MB,
 };
 
-export async function compressImage(file, options = {}) {
-  const { maxBytes, maxDimension, quality, minQuality } = { ...DEFAULTS, ...options };
-  if (!file || !file.type.startsWith('image/')) return file;
-
-  const orientation = await readOrientation(file);
-
-  // 快速路径：体积已达标且无需修正方向时原样返回，避免无损重编码造成画质损失。
-  if (file.size <= maxBytes && orientation === 1) return file;
-
-  let bitmap;
-  try {
-    bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
-  } catch {
-    bitmap = await createImageBitmap(file); // 旧浏览器：退回不修方向
+function namedFile(blob, name, lastModified) {
+  try { return new File([blob], name, { type: blob.type, lastModified }); }
+  catch {
+    // Older Safari versions can read File objects but cannot construct them.
+    blob.name = name;
+    return blob;
   }
-
-  const srcW = bitmap.width;
-  const srcH = bitmap.height;
-  let scale = Math.min(1, maxDimension / Math.max(srcW, srcH));
-  let q = quality;
-  let blob;
-
-  do {
-    const width = Math.max(1, Math.round(srcW * scale));
-    const height = Math.max(1, Math.round(srcH * scale));
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#ffffff'; // 透明 PNG 转 JPEG 时铺白底，避免黑背景
-    ctx.fillRect(0, 0, width, height);
-    ctx.drawImage(bitmap, 0, 0, width, height);
-    blob = await canvasToBlob(canvas, 'image/jpeg', q);
-    if (blob.size <= maxBytes) break;
-    if (q > minQuality) q = Math.max(minQuality, q - 0.15);
-    else scale *= 0.8;
-  } while (scale > 0.05);
-
-  bitmap.close?.();
-
-  // 压缩没有更小（例如极小的 PNG），保留原图避免画质损失。
-  if (!blob || blob.size >= file.size) return file;
-
-  const name = file.name.replace(/\.[^.]+$/, '') + '.jpg';
-  return new File([blob], name, { type: 'image/jpeg' });
 }
 
-function canvasToBlob(canvas, type, quality) {
+function readHeader(file) {
   return new Promise((resolve, reject) => {
-    canvas.toBlob(blob => (blob ? resolve(blob) : reject(new Error('图片压缩失败'))), type, quality);
+    const reader = new FileReader();
+    reader.onload = () => resolve(new Uint8Array(reader.result));
+    reader.onerror = reader.onabort = () => reject(new Error('无法读取照片，请重新选择'));
+    reader.readAsArrayBuffer(file.slice(0, 64));
   });
 }
 
-// 读取 JPEG 的 EXIF 方向（1–8），其他格式或无 EXIF 返回 1。
-function readOrientation(file) {
-  if (file.type !== 'image/jpeg') return Promise.resolve(1);
-  return new Promise(resolve => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const view = new DataView(reader.result);
-        if (view.getUint16(0, false) !== 0xffd8) return resolve(1);
-        let offset = 2;
-        while (offset + 4 < view.byteLength) {
-          if (view.getUint8(offset) !== 0xff) return resolve(1);
-          const marker = view.getUint8(offset + 1);
-          if (marker === 0xe1) {
-            const length = view.getUint16(offset + 2, false);
-            if (length >= 14 && view.getUint32(offset + 4, false) === 0x45786966) {
-              const tiff = offset + 10;
-              const little = view.getUint16(tiff, false) === 0x4949;
-              if (view.getUint16(tiff, little) !== 0x2a) return resolve(1);
-              const ifd0 = tiff + view.getUint32(tiff + 4, little);
-              const count = view.getUint16(ifd0, little);
-              for (let i = 0; i < count; i++) {
-                const entry = ifd0 + 2 + i * 12;
-                if (entry + 12 > view.byteLength) break;
-                if (view.getUint16(entry, little) === 0x0112) return resolve(view.getUint16(entry + 8, little) || 1);
-              }
-            }
-            offset += 2 + length;
-          } else if (marker === 0xda) {
-            return resolve(1); // 已到图像数据，不再有 EXIF
-          } else {
-            offset += 2 + view.getUint16(offset + 2, false);
-          }
-        }
-        resolve(1);
-      } catch { resolve(1); }
-    };
-    reader.onerror = () => resolve(1);
-    reader.readAsArrayBuffer(file.slice(0, 128 * 1024));
+async function imageFile(file) {
+  if (!file || !file.size) throw new Error('请选择有效的照片');
+  const header = await readHeader(file);
+  const text = String.fromCharCode(...header);
+  let type;
+  if (header[0] === 255 && header[1] === 216 && header[2] === 255) type = 'image/jpeg';
+  else if ([137, 80, 78, 71, 13, 10, 26, 10].every((byte, index) => header[index] === byte)) type = 'image/png';
+  else if (text.slice(0, 4) === 'RIFF' && text.slice(8, 12) === 'WEBP') type = 'image/webp';
+  else if (text.slice(4, 8) === 'ftyp' && /(?:heic|heix|hevc|hevx|heim|heis|hevm|hevs|mif1|msf1)/.test(text.slice(8))) type = 'image/heic';
+  else if (/\.(heic|heif)$/i.test(file.name) || /image\/hei[cf]/i.test(file.type)) {
+    throw new Error('无法读取 HEIC/HEIF 照片，请转为 JPG，或在相机设置中选择“兼容性最佳”后重新拍摄');
+  } else throw new Error('照片格式不支持，请选择 JPG、PNG 或 WebP');
+  return file.type === type ? file : namedFile(new Blob([file], { type }), file.name, file.lastModified);
+}
+
+function loadCanvas(file, maxDimension) {
+  return new Promise((resolve, reject) => {
+    if (typeof window.loadImage !== 'function') { reject(new Error('图片处理组件加载失败')); return; }
+    const loading = window.loadImage(file, (image, data) => {
+      if (!image || image.type === 'error' || typeof image.getContext !== 'function' || !image.width || !image.height) {
+        reject(new Error('图片解码失败，照片可能损坏或浏览器不支持此格式'));
+      } else resolve({ canvas: image, data });
+    }, {
+      canvas: true, orientation: true, meta: true,
+      maxWidth: maxDimension, maxHeight: maxDimension,
+      imageSmoothingQuality: 'high',
+    });
+    if (!loading) reject(new Error('浏览器不支持图片读取'));
   });
+}
+
+function canvasToBlob(canvas, quality) {
+  return new Promise((resolve, reject) => {
+    const complete = blob => blob?.size && blob.type === 'image/jpeg'
+      ? resolve(blob) : reject(new Error('JPEG 编码失败'));
+    if (typeof canvas.toBlob === 'function') {
+      canvas.toBlob(complete, 'image/jpeg', quality);
+      return;
+    }
+    // Use a data URL only when the browser has no native toBlob API.
+    const url = canvas.toDataURL('image/jpeg', quality);
+    if (!url.startsWith('data:image/jpeg;base64,')) throw new Error('浏览器不支持 JPEG 编码');
+    const binary = atob(url.split(',')[1]);
+    complete(new Blob([Uint8Array.from(binary, char => char.charCodeAt(0))], { type: 'image/jpeg' }));
+  });
+}
+
+// Direction, decoding and scaling belong to blueimp-load-image. Only its
+// already oriented canvas is re-used, so EXIF is never applied a second time.
+export async function compressImage(file, options = {}) {
+  const settings = { ...DEFAULTS, ...options };
+  const { maxBytes, maxDimension, minQuality, targetMinBytes, targetMaxBytes } = settings;
+  const report = (value, label) => options.onProgress?.({ value, label });
+  report(5, '正在读取照片');
+  const original = await imageFile(file);
+  let source, scaled;
+  try {
+    report(20, '正在解码并校正方向');
+    const loaded = await loadCanvas(original, maxDimension);
+    source = loaded.canvas;
+    const context = source.getContext('2d');
+    if (!context) throw new Error('浏览器不支持图片画布');
+    context.globalCompositeOperation = 'destination-over';
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, source.width, source.height);
+    context.globalCompositeOperation = 'source-over';
+    let quality = settings.quality, dimension = Math.max(source.width, source.height), blob;
+    scaled = source;
+    for (let attempt = 0; attempt < 32; attempt++) {
+      report(40 + Math.min(attempt * 2, 55), `正在压缩照片（第 ${attempt + 1} 次）`);
+      blob = await canvasToBlob(scaled, quality);
+      if (blob.size <= maxBytes) {
+        // The size target is soft. Try one small quality adjustment, and keep
+        // the clearer version if that would undershoot or still miss it.
+        if (blob.size > targetMaxBytes && quality > minQuality) {
+          report(96, '正在优化照片大小');
+          const candidate = await canvasToBlob(scaled, Math.max(minQuality, Number((quality - 0.05).toFixed(2))));
+          if (candidate.size >= targetMinBytes && candidate.size <= targetMaxBytes) blob = candidate;
+        }
+        const orientation = loaded.data?.exif?.get('Orientation') || 1;
+        const originalDimension = Math.max(loaded.data?.originalWidth || source.width, loaded.data?.originalHeight || source.height);
+        const keepOriginal = original.type !== 'image/heic' && original.size <= maxBytes
+          && originalDimension <= maxDimension && orientation === 1 && original.size <= blob.size;
+        const result = keepOriginal ? original : namedFile(blob, (file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg', file.lastModified);
+        report(100, '照片已准备好');
+        return { file: result, warning: '' };
+      }
+      if (quality > minQuality) quality = Math.max(minQuality, Number((quality - 0.05).toFixed(2)));
+      else {
+        dimension = Math.max(1, Math.floor(dimension * 0.9));
+        if (scaled !== source) { scaled.width = 0; scaled.height = 0; }
+        scaled = window.loadImage.scale(source, { canvas: true, maxWidth: dimension, maxHeight: dimension, imageSmoothingQuality: 'high' });
+        quality = settings.quality;
+      }
+    }
+    throw new Error('照片压缩后仍超过 2 MB');
+  } catch (error) {
+    if (original.type === 'image/heic') throw new Error('当前浏览器无法处理 HEIC/HEIF 照片，请转为 JPG，或在相机设置中选择“兼容性最佳”后重新拍摄', { cause: error });
+    if (original.size <= maxBytes) {
+      const warning = `照片压缩失败（${error.message}），原图不超过 2 MB，将上传原图`;
+      report(100, '将使用原图');
+      return { file: original, warning };
+    }
+    throw new Error(`照片压缩失败（${error.message}），原图超过 2 MB，请重新选择或拍摄照片`, { cause: error });
+  } finally {
+    if (scaled && scaled !== source) { scaled.width = 0; scaled.height = 0; }
+    if (source) { source.width = 0; source.height = 0; }
+  }
 }

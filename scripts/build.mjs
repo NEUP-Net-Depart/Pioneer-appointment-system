@@ -10,6 +10,9 @@ await mkdir(out, { recursive: true });
 await cp(join(root, 'public'), out, { recursive: true });
 await cp(join(root, 'shared'), join(out, 'shared'), { recursive: true });
 await cp(join(root, 'frontend/assets'), join(out, 'assets'), { recursive: true });
+await mkdir(join(out, 'assets/vendor'), { recursive: true });
+await cp(join(root, 'node_modules/blueimp-load-image/js/load-image.all.min.js'), join(out, 'assets/vendor/load-image.all.min.js'));
+await cp(join(root, 'node_modules/blueimp-load-image/LICENSE.txt'), join(out, 'assets/vendor/blueimp-load-image-LICENSE.txt'));
 await cp(join(root, 'frontend/staff'), join(out, 'staff'), { recursive: true });
 await mkdir(join(out, 'user'));
 for (const name of await readdir(join(root, 'frontend/user'))) {

@@ -38,5 +38,8 @@
     "globals": "17.13.0",
     "miniflare": "5.20261006.1-alpha",
     "wrangler": "4.149.0"
+  },
+  "dependencies": {
+    "blueimp-load-image": "5.16.0"
   }
 }
