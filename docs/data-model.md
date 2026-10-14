@@ -24,6 +24,7 @@ Schema 以 [migrations/](../migrations/) 为准，迁移只追加，运行时不
 - 预约新增和恢复时校验容量，暂停返回 `SLOT_PAUSED`，满额返回 `SLOT_FULL`。取消释放容量；取消和逾期释放同学号同日同时段唯一占位。
 - `signature` 保存归一化笔迹 JSON。`front_photo_id`、`back_photo_id` 保存签到照片引用；恢复为已预约时清空，重新签到须使用恢复后上传的照片。
 - 附件用途为 general/intake_front/intake_back；签到校验工单、上传人、用途和有效期。
+- 预约排班使用每周半小时模板和日期冻结快照；旧小时段只作为历史数据保留，新预约和查询只接受四个半小时段。
 
 ## 历史数据
 

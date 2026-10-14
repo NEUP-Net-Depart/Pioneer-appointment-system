@@ -92,7 +92,7 @@ test('camera pauses for the personal center and scanned images open grouped devi
     } });
   });
   const id = 'reserve020261013-01';
-  await page.route('**/api/scan/resolve', route => route.fulfill({ json: { id, status: 'booked', revision: 0, campus: '南湖', date: '2026-10-13', timeSlot: '19:00–20:00', brand: '联想', deviceModel: 'ThinkPad T14', deviceType: '笔记本电脑', warranty: '否', faultType: '蓝屏', issue: '启动后蓝屏', source: 'booking' } }));
+  await page.route('**/api/scan/resolve', route => route.fulfill({ json: { id, status: 'booked', revision: 0, campus: '南湖', date: '2026-10-13', timeSlot: '19:00–19:30', brand: '联想', deviceModel: 'ThinkPad T14', deviceType: '笔记本电脑', warranty: '否', faultType: '蓝屏', issue: '启动后蓝屏', source: 'booking' } }));
   await login(page);
   await expect(page.locator('.scanner-frame')).toHaveAttribute('data-camera-state', 'running');
   await page.getByRole('button', { name: '个人中心', exact: true }).click();

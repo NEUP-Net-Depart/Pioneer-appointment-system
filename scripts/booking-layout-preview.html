@@ -32,9 +32,9 @@ import { bookingDates } from '/scenario/4/2/shared/booking-slots.js';
 const $=selector=>document.querySelector(selector);
 const frame=$('#preview'),days=$('#days'),slots=$('#slots'),device=$('#device'),width=$('#width'),height=$('#height'),metrics=$('#metrics'),campus=$('#capacity-campus'),date=$('#capacity-date'),rows=$('#capacity-rows');
 const scenarioInstant=value=>'2026-10-'+({friday:16,saturday:17,sunday:18}[value]||16-Number(value))+'T12:00:00+08:00';
-const config={days:4,instant:scenarioInstant('4'),slotCount:2,overrides:{}};
+const config={days:4,instant:scenarioInstant('4'),slotCount:4,overrides:{}};
 let observer,ready=false,revision=0;
-const timeSlots=()=>config.slotCount===4?['19:00–19:30','19:30–20:00','20:00–20:30','20:30–21:00']:['19:00–20:00','20:00–21:00'];
+const timeSlots=()=>['19:00–19:30','19:30–20:00','20:00–20:30','20:30–21:00'];
 const key=(day,slot)=>JSON.stringify([campus.value,day,slot]);
 function counts(slot,index){return config.overrides[key(date.value,slot)]||config.overrides[key('*',slot)]||{capacity:10,remaining:10-index-(campus.value==='浑南'?3:1)};}
 function measure(){const picker=frame.contentDocument?.querySelector('#booking-picker');if(!picker)return;const rect=picker.getBoundingClientRect();metrics.textContent='容器高度 '+Math.round(rect.height)+' px / 屏幕高度 '+frame.height+' px · 容器顶部 '+Math.round(rect.top)+' px · '+(rect.top>=-1&&rect.bottom<=Number(frame.height)?'整个容器在一屏内':'可手动滚动查看');}

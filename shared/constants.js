@@ -1,4 +1,4 @@
-export const TIME_SLOTS = ['19:00–20:00', '20:00–21:00'];
+export const TIME_SLOTS = ['19:00–19:30', '19:30–20:00', '20:00–20:30', '20:30–21:00'];
 export const roleLevel = { technician: 1, admin: 2, superadmin: 3 };
 export const CAMPUSES = ['南湖', '浑南'];
 export const roleLabels = {technician:'维修人员',admin:'管理员',superadmin:'最高权限者'};

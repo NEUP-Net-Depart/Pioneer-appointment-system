@@ -6,9 +6,7 @@ import { fileURLToPath } from 'node:url';
 // A separate, read-only local preview; none of these overrides enter dist/.
 const dist = fileURLToPath(new URL('../dist/', import.meta.url));
 const port = Number(process.env.BOOKING_LAYOUT_PORT || 8790);
-const slotsFor = count => count === 4
-  ? ['19:00–19:30', '19:30–20:00', '20:00–20:30', '20:30–21:00']
-  : ['19:00–20:00', '20:00–21:00'];
+const slotsFor = () => ['19:00–19:30', '19:30–20:00', '20:00–20:30', '20:30–21:00'];
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.jpg': 'image/jpeg' };
 const gallery = await readFile(new URL('./booking-layout-preview.html', import.meta.url), 'utf8');
 
@@ -62,7 +60,7 @@ globalThis.fetch=(input,options)=>{
     if (!mime[extension]) return send('Not found', undefined, 404);
     let content = await readFile(path);
     if (extension === '.js') {
-      content = content.toString().replaceAll('/shared/', `${prefix}shared/`).replaceAll('/api/', `${prefix}api/`);
+      content = content.toString().replaceAll('\r\n', '\n').replaceAll('/shared/', `${prefix}shared/`).replaceAll('/api/', `${prefix}api/`);
       if (resource === 'shared/constants.js') content = content.replace(/export const TIME_SLOTS = .*?;/, `export const TIME_SLOTS = ${JSON.stringify(timeSlots)};`);
       if (resource === 'user/slot-picker.js') {
         // Expose the real picker's refresh only in the simulated server response.
