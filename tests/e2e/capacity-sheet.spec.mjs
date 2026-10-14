@@ -39,7 +39,7 @@ async function dragBetween(page,from,to) {
 }
 async function pasteText(page,text) {
   await page.evaluate(text => navigator.clipboard.writeText(text),text);
-  await page.keyboard.press('Control+v');
+  await page.keyboard.press('ControlOrMeta+v');
 }
 
 test('capacity sheet selects blocks and rows, repeats fill in both axes, cancels and undoes drafts',async ({ browser }) => {
@@ -99,9 +99,9 @@ test('capacity sheet copies columns across campuses with native clipboard and va
     await page.locator('.capacity-campus:visible [data-sheet-header="col"][data-sheet-index="0"]').click();
     await page.locator('.capacity-campus:visible [data-sheet-header="col"][data-sheet-index="1"]').click({ modifiers:['Shift'] });
     await expect(page.locator('.capacity-row.is-selected')).toHaveCount(8);
-    await page.keyboard.press('Control+c');
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('1\t2\n5\t6\n9\t10\n13\t14');
-    await page.locator('[data-capacity-campus="浑南"]').click(); await cell(0,2).click(); await page.keyboard.press('Control+v');
+    await page.keyboard.press('ControlOrMeta+c');
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('1\t2\n5\t6\n9\t10\n13\t14');
+    await page.locator('[data-capacity-campus="浑南"]').click(); await cell(0,2).click(); await page.keyboard.press('ControlOrMeta+v');
     await expect(cell(3,3).locator('input')).toHaveValue('14');
     await expect(page.locator('#capacity-draft-status')).toContainText('8 项');
     await expect(page.locator('#capacity-draft-status')).toContainText('浑南 周三、周四');

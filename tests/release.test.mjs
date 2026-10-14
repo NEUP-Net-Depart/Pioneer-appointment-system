@@ -34,6 +34,11 @@ test('Pages URLs use actual branch aliases and retain the production site origin
     assert.equal(ciReleasePlan({...ciEnv('push',branch),SITE_URL:'https://dev.example.test'}, {name:'pioneer-appointment-system'}).url,expected);
     assert.equal(ciReleasePlan({...ciEnv('push',branch),SITE_URL:''},{name:'pioneer-appointment-system'}).url,expected);
   }
+  assert.equal(
+    pagesSiteUrl('pioneer-appointment-system','feat/photo-compatibility-and-compresssion'),
+    'https://feat-photo-compatibility-and.pioneer-appointment-system.pages.dev',
+  );
+  assert.equal(pagesSiteUrl('pioneer-appointment-system','main'),'https://pioneer-appointment-system.pages.dev');
   assert.equal(ciReleasePlan(ciEnv('push','main'),cfg()).url,'https://example.test');
   for(const url of ['http://example.test','https://user:pass@example.test','https://example.test/path','https://example.test/?branch=dev','https://example.test/#dev'])assert.throws(()=>ciReleasePlan({...ciEnv('push','main'),SITE_URL:url},cfg()),/HTTPS site origin/);
 });
