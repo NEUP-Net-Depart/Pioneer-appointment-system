@@ -126,7 +126,7 @@ test('weekday capacity configuration preserves booked days and unsaved edits', a
   } finally {
     if (item) {
       const link=new URL(item.link),access=link.hash.match(/access=([^&]+)/)?.[1];
-      await contexts[0].request.patch(`/api/appointments/${item.id}/status`,{headers:{'X-Appointment-Token':decodeURIComponent(access || '')},data:{status:'completed',outcome:'cancelled'}});
+      await contexts[0].request.patch(`/api/appointments/${item.id}/status`,{headers:{'X-Appointment-Token':decodeURIComponent(access || '')},data:{status:'cancelled'}});
     }
     if(token) {
       const headers={Authorization:`Bearer ${token}`};
@@ -225,6 +225,7 @@ test('student booking, private links, whitelist activation, staff permissions, r
     await root.locator(`[data-detail="${item.id}"]`).click();
     await root.locator('#correction-panel summary').click();
     await root.locator('#correction-outcome').selectOption('not_needed');await root.locator('#detail-repair-note').fill('浏览器验收：复测后无需维修');
+    await root.locator('#correction-reason').fill('管理员根据复测记录核实并修正维修结果');
     root.once('dialog',dialog=>dialog.accept());await root.locator('#apply-correction').click();await expect(root.locator('#detail-modal')).toBeHidden();
     await expect(root.locator('#appointments-table')).toContainText('无需维修');
     await root.locator(`[data-detail="${item.id}"]`).click();

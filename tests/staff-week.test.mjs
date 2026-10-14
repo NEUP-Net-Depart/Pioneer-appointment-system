@@ -11,7 +11,7 @@ test('week boundaries use Monday through Sunday across weekends and years',()=>{
 
 test('Sunday weekly overview reads earlier service days while preserving the upcoming window',async()=>{
   let range;
-  const repository={endNoShows:async()=>{},overview:async(start,end,campuses)=>{
+  const repository={expirePending:async()=>{},overview:async(start,end,campuses)=>{
     range={start,end,campuses};
     return {totals:[{campus:'南湖',date:'2026-10-12',time_slot:'19:00–19:30',occupied:3,booked:0,in_progress:1}],capacities:[{campus:'南湖',date:'2026-10-12',time_slot:'19:00–19:30',capacity:10}]};
   }};

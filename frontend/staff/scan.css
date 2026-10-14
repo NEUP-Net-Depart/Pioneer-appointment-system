@@ -69,6 +69,8 @@
 .scan-status-pill[data-status=booked] { color: #a54a27; background: #fff0e8; }
 .scan-status-pill[data-status=in_progress] { color: #0e6178; background: #dff4f5; }
 .scan-status-pill[data-status=completed] { color: #13715f; background: #dcf4e8; }
+.scan-status-pill[data-status=cancelled] { color: #536474; background: #edf1f5; }
+.scan-status-pill[data-status=expired] { color: #855300; background: #fff2d5; }
 .scan-device-card h2 { margin-bottom: 4px; font-size: 22px; overflow-wrap: anywhere; }
 .scan-device-type { margin: 0; font-size: 13px; color: var(--muted); }
 .scan-order-code { margin: 12px 0 0; font-family: ui-monospace, Consolas, monospace; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }

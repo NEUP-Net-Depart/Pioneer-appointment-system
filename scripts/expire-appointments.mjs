@@ -1,14 +1,13 @@
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { appointmentRepository } from '../src/db/appointments.js';
-import { expiredBookingDate } from '../shared/time.js';
 import { remoteConfig } from './cli.mjs';
 import { cloudflareClient } from './cloudflare-d1.mjs';
 
-export async function endNoShows(repository, { apply = false, now = new Date() } = {}) {
-  const beforeDate = expiredBookingDate(now);
-  if (!apply) return { dryRun: true, eligible: (await repository.countNoShows(beforeDate)) + (repository.countExpirations ? await repository.countExpirations(beforeDate) : 0), ended: 0 };
-  const result = await (repository.expirePending || repository.endNoShows)(beforeDate, now.toISOString());
+export async function expireAppointments(repository, { apply = false, now = new Date() } = {}) {
+  const instant = now.toISOString();
+  if (!apply) return { dryRun: true, eligible: await repository.countExpirations(instant), ended: 0 };
+  const result = await repository.expirePending(instant);
   return { dryRun: false, ended: result.meta.changes };
 }
 
@@ -18,7 +17,7 @@ export async function main(args = process.argv.slice(2)) {
   const bindings = preview ? cfg.env.preview : cfg;
   const client = cloudflareClient(process.env.CLOUDFLARE_ACCOUNT_ID, process.env.CLOUDFLARE_API_TOKEN);
   const repository = appointmentRepository(client.database(bindings.d1_databases.find(item => item.binding === 'DB').database_id));
-  const result = await endNoShows(repository, { apply: args.includes('--apply') });
+  const result = await expireAppointments(repository, { apply: args.includes('--apply') });
   console.log(JSON.stringify({ environment: staffStaging ? 'staff-staging' : preview ? 'preview' : 'production', ...result }));
   return result;
 }

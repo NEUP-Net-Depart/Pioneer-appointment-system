@@ -1,7 +1,7 @@
 import { fail } from '../lib/http.js';
 import { scanCode, verifyScanCode } from '../lib/scan-code.js';
 import { bookingInput, stringField } from '../lib/validation.js';
-import { dateKey, expiredBookingDate } from '../../shared/time.js';
+import { dateKey } from '../../shared/time.js';
 import { TIME_SLOTS } from '../../shared/constants.js';
 import { requireCampus, requireAppointmentAccess } from './permissions.js';
 import { presentAppointment } from './appointments.js';
@@ -9,7 +9,7 @@ import { presentAppointment } from './appointments.js';
 export function scanService(appointments, service, encryptionKey, secret, enabled, clock = () => new Date()) {
   const present = item => presentAppointment(item, encryptionKey);
   function available() { if (!enabled) fail(404, '扫码工作台未启用'); }
-  const expire = (now, scope) => (appointments.expirePending || appointments.endNoShows)(expiredBookingDate(now), now.toISOString(), scope);
+  const expire = (now, scope) => appointments.expirePending(now.toISOString(), scope);
   async function locate(id, actor) {
     const now = clock();
     const original = await appointments.find(id);
@@ -21,7 +21,7 @@ export function scanService(appointments, service, encryptionKey, secret, enable
     requireAppointmentAccess(actor, item, { start: true });
     if (item.status === 'booked') {
       // Before intake, reveal device information only, matching the existing queue policy.
-      return Object.fromEntries(['id','revision','campus','date','timeSlot','deviceType','brand','deviceModel','serial','warranty','faultType','issue','liquidDrop','note','status','source'].map(key => [key, item[key]]));
+      return Object.fromEntries(['id','revision','campus','date','timeSlot','deviceType','brand','deviceModel','serial','warranty','faultType','issue','liquidDrop','note','status','source','expiresAt'].map(key => [key, item[key]]));
     }
     return present(item);
   }

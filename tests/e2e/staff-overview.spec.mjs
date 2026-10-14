@@ -9,7 +9,7 @@ async function loginMock(page, campuses=['南湖','浑南']) {
   await page.route('**/api/appointments/overview', route => route.fulfill({ json:{dates,campuses,updatedAt:'2026-10-12T08:00:00Z',items,week:{start:'2026-10-12',end:'2026-10-18',dates,items}} }));
   await page.route('**/api/appointments?*', route => {
     const params=new URL(route.request().url()).searchParams;
-    return route.fulfill({json:{items:params.get('status')==='completed' ? []:[{id:'reserve020261012-01',name:'测试同学',studentId:'20260001',date:params.get('date') || dates[0],campus:params.get('campus')==='浑南' ? '浑南':'南湖',timeSlot:params.get('timeSlot') || slots[0],status:'booked',deviceType:'笔记本电脑',brand:'联想',deviceModel:'ThinkPad',faultType:'蓝屏'}],counts:{all:12,booked:8,in_progress:2,completed:2},filteredCounts:{all:2,booked:1,in_progress:0,completed:1}}});
+    return route.fulfill({json:{items:params.get('status')==='completed' ? []:[{id:'reserve020261012-01',name:'测试同学',studentId:'20260001',date:params.get('date') || dates[0],campus:params.get('campus')==='浑南' ? '浑南':'南湖',timeSlot:params.get('timeSlot') || slots[0],status:'booked',deviceType:'笔记本电脑',brand:'联想',deviceModel:'ThinkPad',faultType:'蓝屏'}],counts:{all:12,booked:8,in_progress:2,completed:2,cancelled:0,expired:0},filteredCounts:{all:2,booked:1,in_progress:0,completed:1,cancelled:0,expired:0}}});
   });
   await page.goto('/staff/');
   await page.locator('#login-id').fill('test-admin');
@@ -25,7 +25,7 @@ test('staff search and details retain historical booking and repair identifiers'
     deviceType:'笔记本电脑',brand:'联想',deviceModel:'ThinkPad',repairNote:'旧维修说明',assignedTo:'test-admin'};
   await page.route('**/api/appointments?*', route=>{
     const q = new URL(route.request().url()).searchParams.get('q');
-    return route.fulfill({json:{items:q===item.id || q===item.repairNumber ? [item]:[],counts:{all:1,completed:1},filteredCounts:{all:1,completed:1}}});
+    return route.fulfill({json:{items:q===item.id || q===item.repairNumber ? [item]:[],counts:{all:1,completed:1,cancelled:0,expired:0},filteredCounts:{all:1,completed:1,cancelled:0,expired:0}}});
   });
   await page.route(`**/api/appointments/${item.id}/attachments`, route=>route.fulfill({json:{items:[]}}));
   for (const number of [item.id,item.repairNumber]) {

@@ -4,6 +4,7 @@ import { uploadAttachments, attachmentUrl, attachmentSize } from '/shared/attach
 import { drawSignature, validSignature } from '/shared/signature.js';
 import { createScanner } from './scanner.js';
 import { renderScanDetails } from './scan-details.js';
+import { terminalStatuses,statusLabels,expirationMessage } from '/shared/constants.js';
 
 export function initScan() {
   let item, active = false, ready = false, busy = false, generation = 0, legacyCount = 0, onsiteRequest;
@@ -58,7 +59,7 @@ export function initScan() {
     $('#scan-outcome').value = draft?.outcome || '';
     $('#scan-draft-state').textContent = draft ? '已恢复此账号在本机保存的维修草稿。' : '';
     for (const side of ['front','back']) $('#scan-'+side+'-state').textContent = photos()[side] ? '照片已上传，可直接重试签到' : '';
-    message(item.status === 'in_progress' ? '维修进行中，完成后请填写结果。' : item.status === 'completed' ? '此工单已结束。' : '');
+    message(item.status === 'in_progress' ? '维修进行中，完成后请填写结果。' : item.status === 'expired' ? expirationMessage : terminalStatuses.includes(item.status) ? `此工单${statusLabels[item.status]}。` : '');
   }
   async function loadFiles() {
     const selected = item, current = generation;
@@ -110,7 +111,7 @@ export function initScan() {
           throw error;
         });
         if (current !== generation) return false;
-        if (selectedItem.status !== 'completed') { showItem(selectedItem); return true; }
+        if (!terminalStatuses.includes(selectedItem.status)) { showItem(selectedItem); return true; }
         write(`draft:${selected}`, null); write(`photos:${selected}`, null);
       }
       item = undefined; write('selected', null); panels('scan-home'); message('准备接待下一台设备');
@@ -191,7 +192,7 @@ export function initScan() {
     if (!item || !window.confirm('确认取消这条尚未签到的临时登记？')) return;
     run(async current => {
       const id = item.id;
-      await update({ status: 'completed', outcome: 'cancelled' }, current);
+      await update({ status: 'cancelled' }, current);
       if (current !== generation) return;
       write(`draft:${id}`, null); write(`photos:${id}`, null); write('selected', null);
       await home();

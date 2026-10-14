@@ -15,7 +15,7 @@ flowchart LR
   Secrets[Pages Secrets] -.-> Functions
 ```
 
-附件经鉴权 API 访问。`main` 发布 Production；`dev` 和普通功能分支发布共享测试 D1/R2 的 Preview；`next/staff-platform` 发布独立 Staff Staging；`feat/staff-*` 仅运行隔离验证。推送会触发对应发布，不要未经授权推送 `main`。迁移与发布规则见 [部署运维](docs/operations.md)。
+附件经鉴权 API 访问。环境、分支与发布规则见 [部署运维](docs/operations.md)。
 
 ## 本地开发
 
@@ -28,7 +28,7 @@ npm run setup:local
 npm run dev
 ```
 
-访问 [用户端](http://127.0.0.1:8788/) 或 [工作人员端](http://127.0.0.1:8788/staff/)。`setup:local` 生成随机 `.dev.vars`、应用迁移并初始化 `root001`、`root002`，密码在该文件中；已有配置和密码不覆盖。本地数据位于 `.wrangler/`，不连接远程资源。
+访问 [用户端](http://127.0.0.1:8788/) 或 [工作人员端](http://127.0.0.1:8788/staff/)。`setup:local` 初始化本地数据库与管理员，配置和密码在 `.dev.vars`，数据在 `.wrangler/`；不覆盖已有配置和密码。
 
 | 命令 | 用途 |
 |---|---|
@@ -37,7 +37,7 @@ npm run dev
 | `npm run preview:booking-layout` | 预约布局预览（8790 端口，模拟数据、禁用提交） |
 | `npm run test:booking-layout` | 预约布局回归 |
 
-源码：`frontend/` 为页面，`shared/` 为公共模块；API 按 `functions/api/` → `src/routes/` → `src/services/` → `src/db/` 分层。工作台壳层、维修流程和卡片渲染分别位于 `workbench.js`、`scan.js`、`scan-details.js`。
+源码：页面在 `frontend/`，公共模块在 `shared/`；API 按 `functions/api/` → `src/routes/` → `src/services/` → `src/db/` 分层。
 
 ## 文档
 

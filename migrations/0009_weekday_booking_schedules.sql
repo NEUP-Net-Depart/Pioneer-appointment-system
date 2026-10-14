@@ -10,9 +10,10 @@ CREATE TABLE appointments_new (
   issue TEXT NOT NULL DEFAULT '', liquid_drop TEXT NOT NULL DEFAULT '',
   date TEXT NOT NULL, time_slot TEXT NOT NULL CHECK(time_slot IN ('19:00–20:00','20:00–21:00','19:00–19:30','19:30–20:00','20:00–20:30','20:30–21:00')),
   note TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL CHECK(status IN ('booked','in_progress','completed')),
-  outcome TEXT CHECK(outcome IN ('repaired','unrepaired','not_needed','cancelled','no_show','expired','legacy_unknown')),
+  status TEXT NOT NULL CHECK(status IN ('booked','in_progress','completed','cancelled','expired')),
+  outcome TEXT CHECK(outcome IN ('repaired','unrepaired','not_needed','legacy_unknown')),
   started_at TEXT, completed_at TEXT,
+  expires_at TEXT NOT NULL CHECK(length(expires_at)=24 AND substr(expires_at,24,1)='Z' AND julianday(expires_at) IS NOT NULL),
   assigned_to TEXT REFERENCES staff_accounts(account), repair_note TEXT NOT NULL DEFAULT '',
   access_token_hash TEXT NOT NULL UNIQUE CHECK(length(access_token_hash)=64),
   credential_rotated_at TEXT NOT NULL,
@@ -21,7 +22,7 @@ CREATE TABLE appointments_new (
   CHECK((status='completed' AND outcome IS NOT NULL) OR (status<>'completed' AND outcome IS NULL))
 );
 
-INSERT INTO appointments_new(id,student_id,name,college,campus,phone,social,device_type,brand,device_model,serial,warranty,fault_type,issue,liquid_drop,date,time_slot,note,status,outcome,started_at,completed_at,assigned_to,repair_note,access_token_hash,credential_rotated_at,revision,created_at,agreement_at,agreement_version,signature,repair_number,front_photo_id,back_photo_id,source,registered_by,registration_key) SELECT id,student_id,name,college,campus,phone,social,device_type,brand,device_model,serial,warranty,fault_type,issue,liquid_drop,date,time_slot,note,status,outcome,started_at,completed_at,assigned_to,repair_note,access_token_hash,credential_rotated_at,revision,created_at,agreement_at,agreement_version,signature,repair_number,front_photo_id,back_photo_id,source,registered_by,registration_key FROM appointments;
+INSERT INTO appointments_new(id,student_id,name,college,campus,phone,social,device_type,brand,device_model,serial,warranty,fault_type,issue,liquid_drop,date,time_slot,note,status,outcome,started_at,completed_at,assigned_to,repair_note,access_token_hash,credential_rotated_at,revision,created_at,agreement_at,agreement_version,signature,repair_number,front_photo_id,back_photo_id,source,registered_by,registration_key,expires_at) SELECT id,student_id,name,college,campus,phone,social,device_type,brand,device_model,serial,warranty,fault_type,issue,liquid_drop,date,time_slot,note,status,outcome,started_at,completed_at,assigned_to,repair_note,access_token_hash,credential_rotated_at,revision,created_at,agreement_at,agreement_version,signature,repair_number,front_photo_id,back_photo_id,source,registered_by,registration_key,expires_at FROM appointments;
 
 CREATE TABLE appointment_attachments_new (
   id TEXT PRIMARY KEY, appointment_id TEXT NOT NULL REFERENCES appointments_new(id),
@@ -54,9 +55,19 @@ DROP TABLE credential_recoveries;
 
 DROP TABLE appointment_attachments;
 
+CREATE TABLE appointment_corrections_new (
+  id TEXT PRIMARY KEY, appointment_id TEXT NOT NULL REFERENCES appointments_new(id),
+  actor TEXT NOT NULL REFERENCES staff_accounts(account),
+  reason TEXT NOT NULL CHECK(length(reason)<=300),
+  before_state TEXT NOT NULL, after_state TEXT NOT NULL, created_at TEXT NOT NULL
+);
+INSERT INTO appointment_corrections_new SELECT * FROM appointment_corrections;
+DROP TABLE appointment_corrections;
 DROP TABLE appointments;
 
 ALTER TABLE appointments_new RENAME TO appointments;
+ALTER TABLE appointment_corrections_new RENAME TO appointment_corrections;
+CREATE INDEX idx_correction_appointment ON appointment_corrections(appointment_id,created_at,id);
 
 ALTER TABLE appointment_attachments_new RENAME TO appointment_attachments;
 
@@ -74,7 +85,7 @@ CREATE INDEX idx_appointments_status ON appointments(status,date);
 
 CREATE INDEX idx_appointments_fault ON appointments(fault_type);
 
-CREATE UNIQUE INDEX idx_active_student_slot ON appointments(student_id,date,time_slot) WHERE status<>'completed' OR outcome NOT IN ('cancelled','no_show');
+CREATE UNIQUE INDEX idx_active_student_slot ON appointments(student_id,date,time_slot) WHERE status NOT IN ('cancelled','expired');
 
 CREATE INDEX idx_attachment_appointment ON appointment_attachments(appointment_id,created_at);
 
@@ -86,7 +97,7 @@ BEGIN
   UPDATE storage_quota SET used_bytes=used_bytes-OLD.size WHERE id=1;
 END;
 
-CREATE INDEX idx_booked_expiry ON appointments(date,id) WHERE status='booked';
+CREATE INDEX idx_booked_expiry ON appointments(expires_at,id) WHERE status='booked' AND started_at IS NULL;
 
 CREATE UNIQUE INDEX idx_repair_number ON appointments(repair_number);
 
@@ -163,16 +174,16 @@ BEGIN
  AND NOT EXISTS(SELECT 1 FROM booking_day_slots WHERE campus=NEW.campus AND date=NEW.date);
  SELECT RAISE(ABORT,'SLOT_CHANGED') WHERE NOT EXISTS(
  SELECT 1 FROM booking_day_slots WHERE campus=NEW.campus AND date=NEW.date AND time_slot=NEW.time_slot);
- SELECT RAISE(ABORT,'SLOT_PAUSED') WHERE NOT (NEW.status='completed' AND NEW.outcome='cancelled') AND
+ SELECT RAISE(ABORT,'SLOT_PAUSED') WHERE NEW.status<>'cancelled' AND
  (SELECT capacity FROM booking_day_slots WHERE campus=NEW.campus AND date=NEW.date AND time_slot=NEW.time_slot)=0;
- SELECT RAISE(ABORT,'SLOT_FULL') WHERE NOT (NEW.status='completed' AND NEW.outcome='cancelled') AND
+ SELECT RAISE(ABORT,'SLOT_FULL') WHERE NEW.status<>'cancelled' AND
  (SELECT COUNT(*) FROM appointments WHERE source='booking' AND date=NEW.date AND campus=NEW.campus AND time_slot=NEW.time_slot
- AND NOT (status='completed' AND outcome='cancelled')) >=
+ AND status<>'cancelled') >=
  (SELECT capacity FROM booking_day_slots WHERE campus=NEW.campus AND date=NEW.date AND time_slot=NEW.time_slot);
 END;
 
 CREATE TRIGGER appointment_capacity_update BEFORE UPDATE ON appointments
-WHEN NEW.source='booking' AND ((OLD.status='completed' AND OLD.outcome='cancelled') OR NEW.date<>OLD.date OR NEW.campus<>OLD.campus OR NEW.time_slot<>OLD.time_slot OR OLD.source<>NEW.source)
+WHEN NEW.source='booking' AND ((OLD.status='cancelled' OR (NEW.status='booked' AND OLD.status IN ('completed','expired'))) OR NEW.date<>OLD.date OR NEW.campus<>OLD.campus OR NEW.time_slot<>OLD.time_slot OR OLD.source<>NEW.source)
 BEGIN
  INSERT INTO booking_day_slots(campus,date,time_slot,capacity)
  SELECT NEW.campus,NEW.date,time_slot,capacity FROM slot_capacities
@@ -184,28 +195,28 @@ BEGIN
  AND NOT EXISTS(SELECT 1 FROM booking_day_slots WHERE campus=NEW.campus AND date=NEW.date);
  SELECT RAISE(ABORT,'SLOT_CHANGED') WHERE NOT EXISTS(
  SELECT 1 FROM booking_day_slots WHERE campus=NEW.campus AND date=NEW.date AND time_slot=NEW.time_slot);
- SELECT RAISE(ABORT,'SLOT_PAUSED') WHERE NOT (NEW.status='completed' AND NEW.outcome='cancelled') AND
+ SELECT RAISE(ABORT,'SLOT_PAUSED') WHERE NEW.status<>'cancelled' AND
  (SELECT capacity FROM booking_day_slots WHERE campus=NEW.campus AND date=NEW.date AND time_slot=NEW.time_slot)=0;
- SELECT RAISE(ABORT,'SLOT_FULL') WHERE NOT (NEW.status='completed' AND NEW.outcome='cancelled') AND
+ SELECT RAISE(ABORT,'SLOT_FULL') WHERE NEW.status<>'cancelled' AND
  (SELECT COUNT(*) FROM appointments WHERE source='booking' AND date=NEW.date AND campus=NEW.campus AND time_slot=NEW.time_slot
- AND NOT (status='completed' AND outcome='cancelled') AND id<>OLD.id) >=
+ AND status<>'cancelled' AND id<>OLD.id) >=
  (SELECT capacity FROM booking_day_slots WHERE campus=NEW.campus AND date=NEW.date AND time_slot=NEW.time_slot);
 END;
 
 CREATE TRIGGER appointment_overlap_insert BEFORE INSERT ON appointments
-WHEN NEW.source='booking' AND NOT (NEW.status='completed' AND NEW.outcome IN ('cancelled','no_show'))
+WHEN NEW.source='booking' AND NEW.status NOT IN ('cancelled','expired')
 BEGIN
  SELECT RAISE(ABORT,'APPOINTMENT_OVERLAP') WHERE EXISTS(
  SELECT 1 FROM appointments WHERE source='booking' AND student_id=NEW.student_id AND date=NEW.date
- AND NOT (status='completed' AND outcome IN ('cancelled','no_show'))
+ AND status NOT IN ('cancelled','expired')
  AND substr(time_slot,1,5)<substr(NEW.time_slot,7,5) AND substr(time_slot,7,5)>substr(NEW.time_slot,1,5));
 END;
 
 CREATE TRIGGER appointment_overlap_update BEFORE UPDATE ON appointments
-WHEN NEW.source='booking' AND ((OLD.status='completed' AND OLD.outcome IN ('cancelled','no_show')) OR NEW.date<>OLD.date OR NEW.time_slot<>OLD.time_slot OR OLD.source<>NEW.source) AND NOT (NEW.status='completed' AND NEW.outcome IN ('cancelled','no_show'))
+WHEN NEW.source='booking' AND (OLD.status IN ('cancelled','expired') OR NEW.date<>OLD.date OR NEW.time_slot<>OLD.time_slot OR OLD.source<>NEW.source) AND NEW.status NOT IN ('cancelled','expired')
 BEGIN
  SELECT RAISE(ABORT,'APPOINTMENT_OVERLAP') WHERE EXISTS(
  SELECT 1 FROM appointments WHERE source='booking' AND student_id=NEW.student_id AND date=NEW.date
- AND NOT (status='completed' AND outcome IN ('cancelled','no_show'))
+ AND status NOT IN ('cancelled','expired')
  AND substr(time_slot,1,5)<substr(NEW.time_slot,7,5) AND substr(time_slot,7,5)>substr(NEW.time_slot,1,5) AND id<>OLD.id);
 END;

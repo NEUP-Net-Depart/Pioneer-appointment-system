@@ -6,12 +6,12 @@ import { Miniflare } from 'miniflare';
 import { hashPassword } from '../src/lib/passwords.js';
 import { signToken } from '../src/lib/jwt.js';
 import { config, wrangler } from '../scripts/cli.mjs';
-import { dateKey, addDays, serviceDay, formatDate, slotDeadline, weekRange } from '../shared/time.js';
+import { dateKey, addDays, serviceDay, formatDate, slotDeadline, weekRange, expirationDeadline } from '../shared/time.js';
 import { attachmentRepository } from '../src/db/attachments.js';
 import { appointmentRepository } from '../src/db/appointments.js';
 import { appointmentService } from '../src/services/appointments.js';
 import { bookingInput } from '../src/lib/validation.js';
-import { endNoShows } from '../scripts/end-no-shows.mjs';
+import { expireAppointments } from '../scripts/expire-appointments.mjs';
 import { attachmentService } from '../src/services/attachments.js';
 import { storageLimit } from '../src/lib/env.js';
 import { cleanupAttachments } from '../scripts/cleanup-attachments.mjs';
@@ -44,6 +44,9 @@ async function intake(item, token) {
   const front = await api(`/api/appointments/${item.id}/attachments`, {method:'POST',token,body:{...photo,purpose:'intake_front'}},201);
   const back = await api(`/api/appointments/${item.id}/attachments`, {method:'POST',token,body:{...photo,purpose:'intake_back'}},201);
   return {frontPhotoId:front.id,backPhotoId:back.id};
+}
+async function setAppointmentDate(id, day) {
+  await db.prepare('UPDATE appointments SET date=?,expires_at=? WHERE id=?').bind(day,expirationDeadline(day),id).run();
 }
 const book = patch => api('/api/appointments', { method: 'POST', body: draft(patch) }, 201);
 async function login(account = 'root001', suppliedPassword = password) {
@@ -95,6 +98,7 @@ before(async () => {
       SCHEDULE_UPGRADE_DB: { type: 'd1', id: 'schedule-upgrade-db' },
       SCAN_UPGRADE_DB: { type: 'd1', id: 'scan-upgrade-db' },
       EXPIRATION_UPGRADE_DB: { type: 'd1', id: 'expiration-upgrade-db' },
+      FIVE_STATUS_UPGRADE_DB: { type: 'd1', id: 'five-status-upgrade-db' },
       SCAN_WORKBENCH_ENABLED: { type: 'text', value: 'true' },
       TEST_NOW: { type: 'text', value: testNow },
       JWT_SECRET: { type: 'text', value: JWT_SECRET }, PII_ENCRYPTION_KEY: { type: 'text', value: PII_ENCRYPTION_KEY } }
@@ -108,7 +112,7 @@ before(async () => {
 });
 after(async () => { await mf?.dispose(); });
 beforeEach(async () => {
-  await db.batch(['DELETE FROM credential_recoveries','DELETE FROM activation_requests','DELETE FROM staff_whitelist','DELETE FROM attachment_storage','DELETE FROM appointment_attachments','DELETE FROM appointments','DELETE FROM booking_day_slots',"DELETE FROM staff_accounts WHERE protected=0",'DELETE FROM rate_limits'].map(sql => db.prepare(sql)));
+  await db.batch(['DELETE FROM appointment_corrections','DELETE FROM credential_recoveries','DELETE FROM activation_requests','DELETE FROM staff_whitelist','DELETE FROM attachment_storage','DELETE FROM appointment_attachments','DELETE FROM appointments','DELETE FROM booking_day_slots',"DELETE FROM staff_accounts WHERE protected=0",'DELETE FROM rate_limits'].map(sql => db.prepare(sql)));
   await db.prepare('UPDATE storage_quota SET used_bytes=0 WHERE id=1').run();
   await db.prepare('UPDATE slot_capacities SET capacity=10,revision=0').run();
   await db.prepare('UPDATE weekday_slot_capacities SET capacity=5,revision=0').run();
@@ -198,11 +202,11 @@ test('staff onsite registration is scoped, retry-safe, outside slot capacity and
 test('expired onsite registrations cannot bypass photo intake through administrator corrections', async () => {
   const root = await login(), tech = await addUser('993005');
   const item = await api('/api/scan/onsite', { method: 'POST', token: tech, body: { ...draft(), requestId: crypto.randomUUID() } }, 201);
-  await db.prepare('UPDATE appointments SET date=? WHERE id=?').bind(addDays(dateKey(new Date(testNow)), -1), item.id).run();
+  await setAppointmentDate(item.id, addDays(dateKey(new Date(testNow)), -1));
   await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token: root, body: { action: 'correct', status: 'in_progress', assignedTo: 'root001' } }, 409);
   await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token: root, body: { action: 'correct', status: 'completed', outcome: 'repaired', repairNote: '未经签到直接修改结果', assignedTo: 'root001' } }, 409);
   const expired = await appointmentRepository(db).find(item.id);
-  assert.equal(expired.status, 'completed'); assert.equal(expired.outcome, 'expired');
+  assert.equal(expired.status, 'expired'); assert.equal(expired.outcome, null);
   assert.equal(expired.frontPhotoId, null); assert.equal(expired.backPhotoId, null);
   assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM active_repairs').first()).n, 0);
 });
@@ -213,17 +217,17 @@ test('new onsite registrations catch up overdue records while same-day pending i
   const first = await api('/api/scan/onsite', { method: 'POST', token: tech, body: firstInput }, 201);
   const secondInput = { ...draft(), requestId: crypto.randomUUID() };
   await api('/api/scan/onsite', { method: 'POST', token: tech, body: secondInput }, 409);
-  await db.prepare('UPDATE appointments SET date=? WHERE id=?').bind(addDays(dateKey(new Date(testNow)), -1), first.id).run();
+  await setAppointmentDate(first.id, addDays(dateKey(new Date(testNow)), -1));
   const second = await api('/api/scan/onsite', { method: 'POST', token: tech, body: secondInput }, 201);
   assert.notEqual(second.id, first.id);
   const expired = await appointmentRepository(db).find(first.id);
-  assert.equal(expired.outcome, 'expired'); assert.equal(expired.completedAt, testNow);
+  assert.equal(expired.status, 'expired'); assert.equal(expired.outcome, null); assert.equal(expired.completedAt, testNow);
   const retry = await api('/api/scan/onsite', { method: 'POST', token: tech, body: firstInput }, 201);
-  assert.equal(retry.id, first.id); assert.equal(retry.status, 'completed');
+  assert.equal(retry.id, first.id); assert.equal(retry.status, 'expired');
   assert.equal((await api('/api/scan/current', { token: tech })).pending.id, second.id);
 });
 
-test('legacy appointment APIs enforce a single active repair and exclude onsite records from booking maintenance', async () => {
+test('legacy appointment APIs enforce a single active repair and expire onsite records without consuming booking capacity', async () => {
   const root = await login(), first = await book(), second = await book();
   await api(`/api/appointments/${first.id}/status`, {method:'PATCH',token:root,body:{status:'in_progress',...await intake(first,root)}});
   const conflict = await api(`/api/appointments/${second.id}/status`, {method:'PATCH',token:root,body:{status:'in_progress',...await intake(second,root)}},409);
@@ -234,9 +238,9 @@ test('legacy appointment APIs enforce a single active repair and exclude onsite 
   const repository = appointmentRepository(db);
   const overview = await repository.overview(second.date,second.date,[second.campus]);
   assert.equal(overview.totals.reduce((total,slot)=>total+slot.occupied,0),1);
-  assert.equal(await repository.countNoShows(addDays(second.date,1)),0);
-  await repository.endNoShows(addDays(second.date,1),new Date().toISOString());
-  assert.equal((await repository.find(second.id)).status,'booked');
+  assert.equal(await repository.countExpirations(expirationDeadline(second.date)),1);
+  await repository.expirePending(expirationDeadline(second.date));
+  assert.equal((await repository.find(second.id)).status,'expired');
 });
 
 test('scan migration preserves duplicate historical work and blocks new claims until those jobs drain', async () => {
@@ -247,12 +251,15 @@ test('scan migration preserves duplicate historical work and blocks new claims u
   for (const [index,item] of items.entries()) {
     const row = await db.prepare('SELECT * FROM appointments WHERE id=?').bind(item.id).first();
     row.time_slot = '19:00–20:00';
-    for (const key of ['source','registered_by','registration_key']) delete row[key];
+    for (const key of ['source','registered_by','registration_key','expires_at']) delete row[key];
     row.status = index<2 ? 'in_progress' : 'booked'; row.assigned_to = index<2 ? '993004' : null;
     await legacy.prepare(`INSERT INTO appointments(${Object.keys(row).join(',')}) VALUES(${Object.keys(row).map(()=>'?').join(',')})`).bind(...Object.values(row)).run();
   }
   const before = (await legacy.prepare('SELECT id,status,assigned_to,revision,phone,social,signature FROM appointments ORDER BY id').all()).results;
   await applyMigration(legacy,'0006_scan_workbench.sql');
+  assert.deepEqual((await legacy.prepare('SELECT id,status,assigned_to,revision,phone,social,signature FROM appointments ORDER BY id').all()).results,before);
+  await applyMigration(legacy,'0007_onsite_expiration.sql');
+  await applyMigration(legacy,'0008_five_statuses.sql');
   assert.deepEqual((await legacy.prepare('SELECT id,status,assigned_to,revision,phone,social,signature FROM appointments ORDER BY id').all()).results,before);
   const claim = () => legacy.prepare("UPDATE appointments SET status='in_progress',assigned_to='993004' WHERE id=?").bind(items[2].id).run();
   await assert.rejects(claim,/active_repairs.account/);
@@ -273,6 +280,7 @@ test('onsite expiration migration preserves populated records, attachments, reco
   for (const [index, item] of items.entries()) {
     const row = await db.prepare('SELECT * FROM appointments WHERE id=?').bind(item.id).first();
     row.time_slot = '19:00–20:00';
+    delete row.expires_at;
     if (index === 0) {
       row.status = 'in_progress'; row.assigned_to = 'root001'; row.started_at = testNow;
       row.front_photo_id = 'historical-photo'; row.back_photo_id = 'expired-photo-reference';
@@ -305,21 +313,214 @@ test('onsite maintenance observes 21:30, retains active repairs and reports a di
   const item = await api('/api/scan/onsite', { method: 'POST', token: root, body: input }, 201);
   const repository = appointmentRepository(db);
   const before = new Date(`${item.date}T21:29:59+08:00`), deadline = new Date(`${item.date}T21:30:00+08:00`);
-  assert.deepEqual(await endNoShows(repository, { now: before }), { dryRun: true, eligible: 0, ended: 0 });
-  assert.deepEqual(await endNoShows(repository, { now: deadline }), { dryRun: true, eligible: 1, ended: 0 });
+  assert.deepEqual(await expireAppointments(repository, { now: before }), { dryRun: true, eligible: 0, ended: 0 });
+  assert.deepEqual(await expireAppointments(repository, { now: deadline }), { dryRun: true, eligible: 1, ended: 0 });
   assert.equal((await repository.find(item.id)).status, 'booked');
-  assert.deepEqual(await endNoShows(repository, { apply: true, now: deadline }), { dryRun: false, ended: 1 });
+  assert.deepEqual(await expireAppointments(repository, { apply: true, now: deadline }), { dryRun: false, ended: 1 });
   const expired = await repository.find(item.id);
-  assert.equal(expired.outcome, 'expired'); assert.equal(expired.completedAt, deadline.toISOString());
-  assert.deepEqual(await endNoShows(repository, { apply: true, now: deadline }), { dryRun: false, ended: 0 });
+  assert.equal(expired.status, 'expired'); assert.equal(expired.outcome, null); assert.equal(expired.completedAt, deadline.toISOString());
+  assert.deepEqual(await expireAppointments(repository, { apply: true, now: deadline }), { dryRun: false, ended: 0 });
   const next = await api('/api/scan/onsite', { method: 'POST', token: root, body: { ...draft(), requestId: crypto.randomUUID() } }, 201);
   await api(`/api/appointments/${next.id}/status`, { method: 'PATCH', token: root, body: { status: 'in_progress', ...await intake(next, root) } });
-  assert.deepEqual(await endNoShows(repository, { apply: true, now: deadline }), { dryRun: false, ended: 0 });
+  assert.deepEqual(await expireAppointments(repository, { apply: true, now: deadline }), { dryRun: false, ended: 0 });
   assert.equal((await repository.find(next.id)).status, 'in_progress');
   const stats = await api('/api/stats/summary', { token: root });
-  assert.equal(stats.expired, 1); assert.equal(stats.noShow, 0); assert.equal(stats.completed, 0);
+  assert.equal(stats.expired, 1); assert.equal(stats.cancelled, 0); assert.equal(stats.completed, 0);
   const csv = await (await request('/api/export/appointments.csv', { token: root })).text();
-  assert.ok(csv.includes('临时登记过期'));
+  assert.ok(csv.includes('已逾期'));
+});
+
+test('five-state migration preserves populated history, related records and all constraints', async () => {
+  const legacy = await mf.getD1Database('FIVE_STATUS_UPGRADE_DB');
+  for (const file of (await readdir('migrations')).filter(name => name.endsWith('.sql') && name < '0008').sort()) await applyMigration(legacy, file);
+  await legacy.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,protected,password_hash,created_at) VALUES('root001','历史负责人','superadmin','南湖',1,?,?)").bind(hashPassword(password),testNow).run();
+  const outcomes = [null,null,'repaired','unrepaired','not_needed','legacy_unknown','cancelled','no_show','expired'];
+  const items = [];
+  for (const [index,outcome] of outcomes.entries()) {
+    const item = await book({timeSlot:TIME_SLOTS[index % TIME_SLOTS.length]}); items.push(item);
+    const row = await db.prepare('SELECT * FROM appointments WHERE id=?').bind(item.id).first();
+    delete row.expires_at;
+    row.time_slot = '19:00–20:00';
+    row.status = index === 0 ? 'booked' : index === 1 ? 'in_progress' : 'completed'; row.outcome = outcome;
+    row.assigned_to = index > 0 && index < 6 ? 'root001' : null;
+    row.started_at = row.assigned_to ? testNow : null; row.completed_at = index > 1 ? testNow : null;
+    row.repair_number = `020261012-${70+index}`; row.repair_note = '原维修记录'; row.revision = index;
+    row.front_photo_id = 'historical-photo'; row.back_photo_id = 'retained-expired-photo';
+    if (index === 8) { row.source='onsite'; row.registered_by='root001'; row.registration_key=crypto.randomUUID(); }
+    await legacy.prepare(`INSERT INTO appointments(${Object.keys(row).join(',')}) VALUES(${Object.keys(row).map(() => '?').join(',')})`).bind(...Object.values(row)).run();
+  }
+  await legacy.prepare("INSERT INTO attachment_storage VALUES('historical-photo','private/history',4,'complete','2026-10-01','2027-10-01')").run();
+  await legacy.prepare("INSERT INTO appointment_attachments VALUES('historical-photo',?,'历史.png','image/png',4,'private/history','2026-10-01','2027-10-01','intake_front','root001')").bind(items[1].id).run();
+  await legacy.prepare("INSERT INTO credential_recoveries VALUES('historical-recovery',?,'root001','原始核验原因','2026-10-01')").bind(items[0].id).run();
+  const before = (await legacy.prepare('SELECT * FROM appointments ORDER BY id').all()).results;
+  const relatedTables = ['appointment_attachments','credential_recoveries','attachment_storage','storage_quota','active_repairs'];
+  const related = await Promise.all(relatedTables.map(table => legacy.prepare(`SELECT * FROM ${table}`).all()));
+  await applyMigration(legacy,'0008_five_statuses.sql');
+  const expected = before.map(row => ({...row,
+    status: row.outcome === 'cancelled' ? 'cancelled' : ['no_show','expired'].includes(row.outcome) ? 'expired' : row.status,
+    outcome: ['cancelled','no_show','expired'].includes(row.outcome) ? null : row.outcome,
+    expires_at: expirationDeadline(row.date)
+  }));
+  assert.deepEqual((await legacy.prepare('SELECT * FROM appointments ORDER BY id').all()).results,expected);
+  for (const [index,table] of relatedTables.entries()) assert.deepEqual((await legacy.prepare(`SELECT * FROM ${table}`).all()).results,related[index].results,table);
+  assert.deepEqual((await legacy.prepare('PRAGMA foreign_key_check').all()).results,[]);
+  await assert.rejects(legacy.prepare("UPDATE appointments SET status='no_show' WHERE id=?").bind(items[0].id).run(),/CHECK/);
+  await assert.rejects(legacy.prepare("UPDATE appointments SET outcome='cancelled' WHERE id=?").bind(items[6].id).run(),/CHECK/);
+  await assert.rejects(legacy.prepare("UPDATE appointments SET status='in_progress',assigned_to='root001' WHERE id=?").bind(items[0].id).run(),/active_repairs.account/);
+  await applyMigration(legacy,'0009_weekday_booking_schedules.sql');
+  const repository = appointmentRepository(legacy);
+  const counts = (await repository.list({status:'all'},{campuses:['南湖'],technician:''})).counts;
+  assert.deepEqual(counts,{all:9,booked:1,in_progress:1,completed:4,cancelled:1,expired:2});
+  assert.equal((await repository.overview(date,date,['南湖'])).totals[0].occupied,7);
+  await legacy.prepare("DELETE FROM attachment_storage WHERE id='historical-photo'").run();
+  assert.equal((await legacy.prepare('SELECT COUNT(*) AS n FROM appointment_attachments').first()).n,0);
+  assert.equal((await legacy.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes,0);
+});
+
+test('old terminal outcome requests are rejected and cancellation returns a primary state', async () => {
+  const item = await book(), root = await login();
+  for (const outcome of ['cancelled','expired','no_show','legacy_unknown']) {
+    await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:root,body:{action:'correct',status:'completed',outcome}},400);
+  }
+  for (const body of [{status:'no_show'},{status:'booked',expiresAt:item.expiresAt},{status:'cancelled',outcome:'repaired'}]) {
+    await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:root,body},400);
+  }
+  assert.equal((await appointmentRepository(db).find(item.id)).revision,0);
+  const cancelled = await api(`/api/appointments/${item.id}/status`,{method:'PATCH',accessToken:item.accessToken,body:{status:'cancelled',revision:item.revision}});
+  assert.equal(cancelled.status,'cancelled'); assert.equal(cancelled.outcome,null);
+  const stats = await api('/api/stats/summary',{token:root});
+  assert.equal(stats.cancelled,1); assert.equal(stats.completed,0); assert.equal(stats.expired,0);
+  assert.equal(stats.noShow,undefined); assert.equal(stats.noShowRate,undefined);
+});
+
+test('admin recovery extends both sources, records snapshots and requires fresh photo intake', async () => {
+  const root = await login(), actor = await userRepository(db).find('root001');
+  const repository = appointmentRepository(db);
+  for (const source of ['booking','onsite']) {
+    const item = source==='booking' ? await book() : await api('/api/scan/onsite',{method:'POST',token:root,body:{...draft(),requestId:crypto.randomUUID()}},201);
+    let now = new Date(`${item.date}T21:31:00+08:00`);
+    const service = appointmentService(repository,userRepository(db),PII_ENCRYPTION_KEY,() => now);
+    const read = async () => (await service.list({status:'all'},actor)).items.find(row => row.id===item.id);
+    const expired = await read();
+    assert.equal(expired.status,'expired');
+    const expiresAt = new Date(`${item.date}T22:00:00+08:00`).toISOString();
+    const input = {action:'correct',revision:expired.revision,correctionReason:'已核实工作人员漏记，需要重新签到',patch:{status:'booked',expiresAt}};
+    await assert.rejects(service.update(item.id,{...input,patch:{status:'booked'}},actor),error => error.status===409);
+    await assert.rejects(service.update(item.id,{...input,correctionReason:''},actor),error => error.status===400);
+    await assert.rejects(service.update(item.id,{...input,patch:{status:'booked',expiresAt:now.toISOString()}},actor),error => error.status===409);
+    await assert.rejects(service.update(item.id,{...input,revision:0},actor),error => error.status===409);
+    await assert.rejects(service.update(item.id,{action:'correct',patch:{status:'in_progress',assignedTo:actor.account}},actor),error => error.status===409);
+    const restored = await service.update(item.id,input,actor);
+    assert.equal(restored.status,'booked'); assert.equal(restored.expiresAt,expiresAt);
+    for (const key of ['outcome','startedAt','completedAt','frontPhotoId','backPhotoId']) assert.equal(restored[key],null);
+    assert.equal(restored.assignedTo,''); assert.equal(restored.repairNote,'');
+    const audit = await db.prepare('SELECT * FROM appointment_corrections WHERE appointment_id=?').bind(item.id).first();
+    assert.equal(audit.actor,actor.account); assert.equal(audit.reason,input.correctionReason);
+    assert.equal(audit.created_at,now.toISOString());
+    assert.equal(JSON.parse(audit.before_state).status,'expired'); assert.equal(JSON.parse(audit.after_state).expiresAt,expiresAt);
+    assert.equal(JSON.parse(audit.after_state).revision,restored.revision);
+    now = new Date(`${item.date}T21:45:00+08:00`);
+    assert.equal((await read()).status,'booked');
+    await assert.rejects(service.update(item.id,{patch:{status:'in_progress'}},actor),error => error.status===400);
+    now = new Date(expiresAt);
+    assert.equal((await expireAppointments(repository,{now})).eligible,1);
+    assert.equal((await read()).status,'expired');
+    assert.equal((await expireAppointments(repository,{apply:true,now})).ended,0);
+  }
+});
+
+test('failed and stale corrections never leave audit rows or bypass capacity and uniqueness', async () => {
+  await login();
+  const actor = await userRepository(db).find('root001'), item = await book();
+  const repository = appointmentRepository(db), service = appointmentService(repository,userRepository(db),PII_ENCRYPTION_KEY,() => new Date(testNow));
+  const cancelled = await service.update(item.id,{patch:{status:'cancelled'}},null,item.accessToken);
+  const input = {action:'correct',correctionReason:'管理员核实误取消记录后恢复预约',patch:{status:'booked'},revision:cancelled.revision};
+  await db.prepare('UPDATE booking_day_slots SET capacity=? WHERE campus=? AND date=? AND time_slot=?').bind(0,item.campus,item.date,item.timeSlot).run();
+  await assert.rejects(service.update(item.id,input,actor),/SLOT_PAUSED/);
+  assert.deepEqual(await service.lookup(item.id,item.accessToken),cancelled);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointment_corrections').first()).n,0);
+  await db.prepare('UPDATE booking_day_slots SET capacity=? WHERE campus=? AND date=? AND time_slot=?').bind(1,item.campus,item.date,item.timeSlot).run();
+  const replacement = await book();
+  await assert.rejects(service.update(item.id,input,actor),/SLOT_FULL/);
+  await db.prepare('UPDATE booking_day_slots SET capacity=? WHERE campus=? AND date=? AND time_slot=?').bind(10,item.campus,item.date,item.timeSlot).run();
+  await db.prepare('UPDATE appointments SET student_id=? WHERE id=?').bind(item.studentId,replacement.id).run();
+  await assert.rejects(service.update(item.id,input,actor),/APPOINTMENT_OVERLAP/);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointment_corrections').first()).n,0);
+  await service.update(replacement.id,{patch:{status:'cancelled'}},null,replacement.accessToken);
+  const restored = await service.update(item.id,input,actor);
+  await assert.rejects(service.update(item.id,input,actor),error => error.status===409);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointment_corrections').first()).n,1);
+  assert.deepEqual(await service.lookup(item.id,item.accessToken),restored);
+});
+
+test('restored repairs reject earlier photos and remain in progress beyond the extended deadline', async () => {
+  const root = await login(), actor = await userRepository(db).find('root001'), item = await book();
+  const oldPhotos = await intake(item,root), repository = appointmentRepository(db);
+  await db.prepare('UPDATE appointment_attachments SET created_at=? WHERE appointment_id=?').bind(item.createdAt,item.id).run();
+  let now = new Date(`${item.date}T21:31:00+08:00`);
+  const service = appointmentService(repository,userRepository(db),PII_ENCRYPTION_KEY,() => now);
+  await service.lookup(item.id,item.accessToken);
+  const expiresAt = new Date(`${item.date}T22:00:00+08:00`).toISOString();
+  await service.update(item.id,{action:'correct',correctionReason:'核验旧工单后延长期限重新拍照接单',patch:{status:'booked',expiresAt}},actor);
+  await assert.rejects(service.update(item.id,{patch:{status:'in_progress',...oldPhotos}},actor),error => error.status===400);
+  const freshPhotos = await intake(item,root);
+  await db.prepare('UPDATE appointment_attachments SET created_at=? WHERE id IN (?,?)').bind(now.toISOString(),freshPhotos.frontPhotoId,freshPhotos.backPhotoId).run();
+  const started = await service.update(item.id,{patch:{status:'in_progress',...freshPhotos}},actor);
+  assert.equal(started.frontPhotoId,freshPhotos.frontPhotoId); assert.equal(started.startedAt,now.toISOString());
+  now = new Date(`${item.date}T23:00:00+08:00`);
+  assert.equal((await service.lookup(item.id,item.accessToken)).status,'in_progress');
+  const completed = await service.update(item.id,{patch:{status:'completed',outcome:'repaired',repairNote:'维修完成并复测'}},actor);
+  assert.equal(completed.status,'completed'); assert.equal(completed.completedAt,now.toISOString());
+});
+
+test('onsite recovery preserves campus and administrator permissions and one pending registration', async () => {
+  const root = await login(), tech = await addUser('993006'), actor = await userRepository(db).find('root001');
+  const owner = await userRepository(db).find('993006');
+  const item = await api('/api/scan/onsite',{method:'POST',token:tech,body:{...draft(),requestId:crypto.randomUUID()}},201);
+  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:tech,body:{status:'cancelled'}});
+  const next = await api('/api/scan/onsite',{method:'POST',token:tech,body:{...draft(),requestId:crypto.randomUUID()}},201);
+  const repository = appointmentRepository(db), service = appointmentService(repository,userRepository(db),PII_ENCRYPTION_KEY,() => new Date(testNow));
+  const input = {action:'correct',correctionReason:'核实重复登记后尝试恢复原现场工单',patch:{status:'booked'}};
+  await assert.rejects(service.update(item.id,input,owner),error => error.status===403);
+  await assert.rejects(service.update(item.id,input,{...actor,authorizedCampuses:['浑南']}),error => error.status===403);
+  await assert.rejects(service.update(item.id,input,actor),/appointments.registered_by/);
+  assert.equal((await repository.find(item.id)).status,'cancelled');
+  assert.equal((await repository.pendingRegistration(owner.account)).id,next.id);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointment_corrections').first()).n,0);
+  assert.equal((await api('/api/scan/current',{token:root})).items.length,0);
+});
+
+test('expiration racing with photo intake has one consistent winner and respects recorded starts', async () => {
+  const root = await login(), actor = await userRepository(db).find('root001'), item = await book();
+  const photos = await intake(item,root), repository = appointmentRepository(db);
+  const before = new Date(`${item.date}T21:29:59.999+08:00`), at = expirationDeadline(item.date);
+  const service = appointmentService(repository,userRepository(db),PII_ENCRYPTION_KEY,() => before);
+  const [start] = await Promise.allSettled([
+    service.update(item.id,{revision:item.revision,patch:{status:'in_progress',...photos}},actor),
+    repository.expirePending(at,{id:item.id})
+  ]);
+  const stored = await repository.find(item.id);
+  if (start.status==='fulfilled') {
+    assert.equal(stored.status,'in_progress'); assert.equal(stored.startedAt,before.toISOString());
+    assert.equal((await repository.expirePending(new Date(`${item.date}T23:59:00+08:00`).toISOString(),{id:item.id})).meta.changes,0);
+  } else { assert.equal(start.reason.status,409); assert.equal(stored.status,'expired'); assert.equal(stored.startedAt,null); }
+  const recorded = await book();
+  await db.prepare('UPDATE appointments SET started_at=? WHERE id=?').bind(before.toISOString(),recorded.id).run();
+  assert.equal((await repository.expirePending(at,{id:recorded.id})).meta.changes,0);
+  assert.equal((await repository.find(recorded.id)).status,'booked');
+});
+
+test('onsite creation stops at the inclusive Shanghai deadline', async () => {
+  const actor = await userRepository(db).find('root001');
+  let now = new Date(`${date}T21:29:59.999+08:00`);
+  const repository = appointmentRepository(db), service = appointmentService(repository,userRepository(db),PII_ENCRYPTION_KEY,() => now);
+  const data = bookingInput(draft());
+  const item = await service.createOnsite(data,actor.account,crypto.randomUUID());
+  assert.equal(item.expiresAt,expirationDeadline(date));
+  now = new Date(item.expiresAt);
+  await assert.rejects(service.createOnsite(data,actor.account,crypto.randomUUID()),error => error.status===400);
+  assert.equal((await service.lookup(item.id,item.accessToken)).status,'expired');
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointments').first()).n,1);
 });
 
 test('health verifies D1 schema and R2; API paths return JSON and security headers', async () => {
@@ -340,8 +541,8 @@ test('guest booking, encrypted contacts, lookup, queue and cancellation', async 
   await api('/api/appointments', {}, 401);
   const live = await api(`/api/live/summary?appointmentId=${item.id}`,{accessToken:item.accessToken});
   assert.equal(live.position, 1); assert.equal(live.capacity, 5); assert.equal(live.slotTotal, 1);
-  const cancelled = await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', accessToken:item.accessToken, body: { status: 'completed', outcome: 'cancelled', studentId: item.studentId, assignedTo: 'root001', repairNote: 'injection' } });
-  assert.equal(cancelled.status, 'completed'); assert.equal(cancelled.outcome, 'cancelled'); assert.equal(cancelled.assignedTo, ''); assert.equal(cancelled.repairNote, '');
+  const cancelled = await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', accessToken:item.accessToken, body: { status: 'cancelled', studentId: item.studentId, assignedTo: 'root001', repairNote: 'injection' } });
+  assert.equal(cancelled.status, 'cancelled'); assert.equal(cancelled.outcome, null); assert.equal(cancelled.assignedTo, ''); assert.equal(cancelled.repairNote, '');
   assert.ok((await book({ studentId: item.studentId })).id.endsWith('-02'));
 });
 test('validation rejects invalid dates, windows, fields, MIME, JSON and cross-site writes', async () => {
@@ -395,10 +596,10 @@ test('duplicate check spans campuses and is atomic', async () => {
 });
 test('reactivating cancelled appointments still enforces D1 capacity and duplicate constraints', async () => {
   const root = await login(), old = await book();
-  await api(`/api/appointments/${old.id}/status`, { method: 'PATCH', token: root, body: { status: 'completed', outcome: 'cancelled' } });
+  await api(`/api/appointments/${old.id}/status`, { method: 'PATCH', token: root, body: { status: 'cancelled' } });
   const replacement = await book({ studentId: old.studentId });
   await api(`/api/appointments/${old.id}/status`, { method: 'PATCH', token: root, body: { action: 'correct', status: 'booked' } }, 409);
-  await api(`/api/appointments/${replacement.id}/status`, { method: 'PATCH', token: root, body: { status: 'completed', outcome: 'cancelled' } });
+  await api(`/api/appointments/${replacement.id}/status`, { method: 'PATCH', token: root, body: { status: 'cancelled' } });
   for (let n = 0; n < 5; n++) await book();
   await api(`/api/appointments/${old.id}/status`, { method: 'PATCH', token: root, body: { action: 'correct', status: 'booked' } }, 409);
 });
@@ -411,7 +612,7 @@ test('simultaneous sign-ins have one winner; technician ownership and transition
   assert.ok(results.some(r => [403,409].includes(r.status)));
   const winner = results.findIndex(r => r.status === 200), token = tokens[winner];
   await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token: tokens[1-winner], body: { status: 'completed' } }, 403);
-  await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', accessToken:item.accessToken, body: { status: 'completed', outcome: 'cancelled', studentId: item.studentId } }, 409);
+  await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', accessToken:item.accessToken, body: { status: 'cancelled', studentId: item.studentId } }, 409);
   await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token, body: { assignedTo: '' } }, 403);
   await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token, body: { action: 'correct', status: 'booked' } }, 403);
   await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', token, body: { status: 'in_progress' } }, 409);
@@ -750,7 +951,7 @@ test('only the matching credential grants guest access and recovery revokes ever
   }
   await api(`/api/appointments/${item.id}?studentId=${item.studentId}`,{},404);
   await api(`/api/appointments/${item.id}?accessToken=${item.accessToken}`,{},404);
-  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',body:{studentId:item.studentId,status:'completed',outcome:'cancelled'}},404);
+  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',body:{studentId:item.studentId,status: 'cancelled'}},404);
   await api(`/api/live/summary?studentId=${item.studentId}`,{},400);
   const technician=await addUser('690001');
   await api(`/api/appointments/${item.id}/credential`,{method:'POST',token:technician,body:{}},403);
@@ -760,8 +961,8 @@ test('only the matching credential grants guest access and recovery revokes ever
   for(const path of paths)await api(path,{accessToken:item.accessToken},404);
   await api(`/api/appointments/${item.id}`,{accessToken:recovered.accessToken});
   assert.equal((await request(`/api/appointments/${item.id}/attachments/${file.id}`,{accessToken:recovered.accessToken})).status,200);
-  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',accessToken:item.accessToken,body:{status:'completed',outcome:'cancelled'}},404);
-  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',accessToken:recovered.accessToken,body:{status:'completed',outcome:'cancelled'}});
+  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',accessToken:item.accessToken,body:{status: 'cancelled'}},404);
+  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',accessToken:recovered.accessToken,body:{status: 'cancelled'}});
   const audit=await db.prepare('SELECT * FROM credential_recoveries').first();
   assert.equal(audit.actor,'root001');assert.ok(!JSON.stringify(audit).includes(recovered.accessToken));
 });
@@ -771,18 +972,18 @@ test('two requests for the final slot have one winner and cancellation releases 
   const attempts = await Promise.all([draft(), draft()].map(body => request('/api/appointments', { method: 'POST', body })));
   assert.deepEqual(attempts.map(response => response.status).sort(), [201,409]);
   const winner = await attempts.find(response => response.status === 201).json();
-  await api(`/api/appointments/${winner.id}/status`, { method: 'PATCH', accessToken:winner.accessToken, body: { status: 'completed', outcome: 'cancelled', studentId: winner.studentId } });
+  await api(`/api/appointments/${winner.id}/status`, { method: 'PATCH', accessToken:winner.accessToken, body: { status: 'cancelled', studentId: winner.studentId } });
   await book();
-  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM appointments WHERE NOT (status='completed' AND outcome='cancelled')").first()).n, 5);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM appointments WHERE status<>'cancelled'").first()).n, 5);
 });
 
 test('SQL staff filters preserve literal searches, status groups and totals', async () => {
   const root = await login();
   const first = await book({ deviceModel: 'A%_Device' }), second = await book({ campus: '浑南' });
-  await api(`/api/appointments/${second.id}/status`, { method: 'PATCH', token: root, body: { status: 'completed', outcome: 'cancelled' } });
+  await api(`/api/appointments/${second.id}/status`, { method: 'PATCH', token: root, body: { status: 'cancelled' } });
   const filtered = await api(`/api/appointments?${new URLSearchParams({ q: '%_', campus: '南湖', date, status: 'booked' })}`, { token: root });
   assert.deepEqual(filtered.items.map(item => item.id), [first.id]);
-  assert.deepEqual(filtered.counts, { all: 2, booked: 1, in_progress: 0, completed: 1 });
+  assert.deepEqual(filtered.counts, { all: 2, booked: 1, in_progress: 0, completed: 0, cancelled: 1, expired: 0 });
   assert.equal((await api('/api/appointments?q=no-match', { token: root })).items.length, 0);
   for (const query of ['status=invalid','date=2026-02-30','campus=invalid']) await api(`/api/appointments?${query}`, { token: root }, 400);
 });
@@ -790,19 +991,19 @@ test('SQL staff filters preserve literal searches, status groups and totals', as
 test('staff sorting and slot filters compose while contextual counts ignore only the status tab', async () => {
   const token = await login();
   const first = await book(), later = await book({ timeSlot: '20:00–20:30' }), other = await book({ campus: '浑南' });
-  await db.prepare("UPDATE appointments SET status='completed',outcome='cancelled' WHERE id=?").bind(later.id).run();
+  await db.prepare("UPDATE appointments SET status='cancelled',outcome=NULL WHERE id=?").bind(later.id).run();
   const sorted = await api('/api/appointments?sort=date&direction=asc', { token });
   assert.deepEqual(sorted.items.map(item => item.timeSlot), ['19:00–19:30','19:00–19:30','20:00–20:30']);
   const reverse = await api('/api/appointments?sort=date&direction=desc', { token });
   assert.equal(reverse.items[0].id, later.id);
   const filtered = await api(`/api/appointments?${new URLSearchParams({ campus:'南湖',date,timeSlot:'20:00–20:30',status:'booked',sort:'status',direction:'asc' })}`, { token });
   assert.equal(filtered.items.length, 0);
-  assert.deepEqual(filtered.filteredCounts, { all:1,booked:0,in_progress:0,completed:1 });
+  assert.deepEqual(filtered.filteredCounts, { all:1,booked:0,in_progress:0,completed:0,cancelled:1,expired:0 });
   assert.equal(filtered.counts.all, 3);
   await db.prepare("UPDATE appointments SET status='in_progress',assigned_to='root001' WHERE id=?").bind(first.id).run();
   const pending = await api('/api/appointments?status=pending&campus=南湖', { token });
   assert.deepEqual(pending.items.map(item=>item.id), [first.id]);
-  assert.equal(pending.filteredCounts.completed, 1);
+  assert.equal(pending.filteredCounts.cancelled, 1);
   const pendingAll = await api('/api/appointments?status=pending', { token });
   assert.deepEqual(new Set(pendingAll.items.map(item=>item.id)), new Set([first.id,other.id]));
   assert.equal((await api('/api/appointments?sort=status&direction=desc', { token })).items[0].id, later.id);
@@ -826,7 +1027,7 @@ test('staff overview uses real capacity and cancellation rules without exposing 
   await book({ campus:'浑南' });
   await db.prepare("UPDATE appointments SET status='in_progress',assigned_to='650018' WHERE id=?").bind(active.id).run();
   await db.prepare("UPDATE appointments SET status='completed',outcome='repaired' WHERE id=?").bind(finished.id).run();
-  await db.prepare("UPDATE appointments SET status='completed',outcome='cancelled' WHERE id=?").bind(cancelled.id).run();
+  await db.prepare("UPDATE appointments SET status='cancelled',outcome=NULL WHERE id=?").bind(cancelled.id).run();
   await configureCapacity(root, 1);
   const result = await api('/api/appointments/overview', { token:tech });
   assert.deepEqual(result.campuses, ['南湖']);
@@ -870,7 +1071,7 @@ test('SQL queue counts use campus/slot scopes, deterministic ties and active sta
   await book({ campus: '浑南' });
   await book({ timeSlot: '20:00–20:30' });
   const ended = await book();
-  await db.prepare("UPDATE appointments SET status='completed',outcome='no_show' WHERE id=?").bind(ended.id).run();
+  await db.prepare("UPDATE appointments SET status='expired',outcome=NULL WHERE id=?").bind(ended.id).run();
   await db.prepare('UPDATE appointments SET created_at=? WHERE id IN (?,?)').bind('2026-10-04T16:00:00.000Z', first.id, second.id).run();
   const summary = await api(`/api/live/summary?appointmentId=${second.id}`,{accessToken:second.accessToken});
   assert.equal(summary.dayTotal, 5); assert.equal(summary.campusDayTotal, 4); assert.equal(summary.slotTotal, 3);
@@ -879,7 +1080,7 @@ test('SQL queue counts use campus/slot scopes, deterministic ties and active sta
   await api(`/api/appointments/${first.id}/status`, { method: 'PATCH', token: root, body: { status:'in_progress',...await intake(first, root) } });
   await api(`/api/appointments/${first.id}/status`, { method: 'PATCH', token: root, body: { status: 'completed', outcome: 'repaired', repairNote: '已修复' } });
   assert.equal((await api(`/api/live/summary?appointmentId=${second.id}`,{accessToken:second.accessToken})).ahead, 0);
-  await api(`/api/appointments/${first.id}/status`, { method: 'PATCH', token: root, body: { action: 'correct', status: 'completed', outcome: 'cancelled' } });
+  await api(`/api/appointments/${first.id}/status`, { method: 'PATCH', token: root, body: { action: 'correct', status: 'cancelled' } });
   assert.equal((await api(`/api/live/summary?appointmentId=${second.id}`,{accessToken:second.accessToken})).position, 1);
   assert.equal((await api(`/api/live/summary?appointmentId=${first.id}`,{accessToken:first.accessToken})).position, null);
 });
@@ -891,9 +1092,9 @@ test('SQL statistics aggregate date windows and workload without reading contact
   const today = dateKey(), past = addDays(today, -30);
   await db.prepare("UPDATE appointments SET date=?,status='completed',outcome='repaired',assigned_to='650001',social='unreadable' WHERE id=?").bind(today, recent.id).run();
   await db.prepare("UPDATE appointments SET date=?,status='completed',outcome='legacy_unknown',assigned_to='650001' WHERE id=?").bind(past, older.id).run();
-  await db.prepare("UPDATE appointments SET date=?,status='completed',outcome='no_show' WHERE id=?").bind(today, skipped.id).run();
+  await db.prepare("UPDATE appointments SET date=?,status='expired',outcome=NULL WHERE id=?").bind(today, skipped.id).run();
   const current = await api('/api/stats/summary?range=7', { token: root });
-  assert.equal(current.total, 2); assert.equal(current.completed, 1); assert.equal(current.noShow, 1);
+  assert.equal(current.total, 2); assert.equal(current.completed, 1); assert.equal(current.expired, 1);
   assert.deepEqual(current.daily, { [today]: { total: 2, completed: 1 } });
   assert.deepEqual(current.faults, { '蓝屏': 1 });
   assert.deepEqual(current.technicians, { '650001': { started: 1, completed: 1 } });
@@ -909,7 +1110,7 @@ test('CSV streams multiple D1 pages without omitting or duplicating tied timesta
   const root = await login(), template = await book();
   const columns = (await db.prepare('PRAGMA table_info(appointments)').all()).results.map(row => row.name);
   // Generate history directly in D1; cancelled records do not consume live capacity.
-  const select = columns.map(column => column === 'id' ? '?' : column === 'status' ? "'completed'" : column === 'outcome' ? "'cancelled'" : column === 'access_token_hash' ? 'lower(hex(randomblob(32)))' : column).join(',');
+  const select = columns.map(column => column === 'id' ? '?' : column === 'status' ? "'cancelled'" : column === 'outcome' ? 'NULL' : column === 'access_token_hash' ? 'lower(hex(randomblob(32)))' : column).join(',');
   await db.batch(Array.from({ length: 205 }, (_, n) => db.prepare(`INSERT INTO appointments(${columns.join(',')}) SELECT ${select} FROM appointments WHERE id=?`).bind(`history-${String(n).padStart(4, '0')}`, template.id)));
   const response = await request('/api/export/appointments.csv', { token: root });
   assert.equal(response.status, 200);
@@ -1088,7 +1289,7 @@ test('an outdated staff detail cannot overwrite a newer repair record',async()=>
   assert.equal((await api(`/api/appointments/${item.id}`,{accessToken:item.accessToken})).repairNote,first.repairNote);
 });
 
-test('three-step workflow records the actor and server time, requires a result and excludes exceptions from repair success',async()=>{
+test('five-state workflow records the actor and server time, requires a result and excludes exceptions from repair success',async()=>{
   const token=await addUser('870001'),root=await login();
   for(const outcome of ['repaired','unrepaired','not_needed']){
     // Isolate result-validation scenarios from the separately tested IP write quota.
@@ -1107,33 +1308,33 @@ test('three-step workflow records the actor and server time, requires a result a
     await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{repairNote:'维修人员不能修改已结束记录'}},409);
   }
   const cancelled=await book();
-  await api(`/api/appointments/${cancelled.id}/status`,{method:'PATCH',accessToken:cancelled.accessToken,body:{status:'completed',outcome:'cancelled'}});
+  await api(`/api/appointments/${cancelled.id}/status`,{method:'PATCH',accessToken:cancelled.accessToken,body:{status: 'cancelled'}});
   const legacy=await book();
   await db.prepare("UPDATE appointments SET status='completed',outcome='legacy_unknown' WHERE id=?").bind(legacy.id).run();
   const stats=await api('/api/stats/summary',{token:root});
   assert.equal(stats.completed,4);assert.equal(stats.classified,3);assert.equal(stats.repaired,1);assert.equal(stats.repairSuccessRate,33);
   assert.deepEqual(stats.technicians['870001'],{started:3,completed:3});
   const csv=await (await request('/api/export/appointments.csv',{token:root})).text();
-  assert.ok(csv.includes('结束结果') && csv.includes('开始时间(UTC)') && csv.includes('修复成功') && csv.includes('历史未分类'));
+  assert.ok(csv.includes('维修结果') && csv.includes('开始时间(UTC)') && csv.includes('修复成功') && csv.includes('历史未分类'));
 });
 
-test('automatic no-shows honor 21:30 Shanghai, dry-run, missed days, active repairs and idempotency',async()=>{
+test('automatic expirations honor 21:30 Shanghai, dry-run, missed days, active repairs and idempotency',async()=>{
   const waiting=await book(),past=await book(),active=await book(),future=await book();
   const token=await login();
   await api(`/api/appointments/${active.id}/status`,{method:'PATCH',token,body:{status:'in_progress',...await intake(active, token)}});
-  await db.prepare('UPDATE appointments SET date=? WHERE id=?').bind(addDays(date,-1),past.id).run();
-  await db.prepare('UPDATE appointments SET date=? WHERE id=?').bind(addDays(date,1),future.id).run();
+  await setAppointmentDate(past.id, addDays(date,-1));
+  await setAppointmentDate(future.id, addDays(date,1));
   const repository=appointmentRepository(db);
   const before=new Date(`${date}T21:29:59.999+08:00`),at=new Date(`${date}T21:30:00+08:00`);
-  assert.equal((await endNoShows(repository,{now:before})).eligible,1);
+  assert.equal((await expireAppointments(repository,{now:before})).eligible,1);
   assert.equal((await repository.find(past.id)).status,'booked');
-  assert.equal((await endNoShows(repository,{apply:true,now:before})).ended,1);
+  assert.equal((await expireAppointments(repository,{apply:true,now:before})).ended,1);
   assert.equal((await repository.find(waiting.id)).status,'booked');
-  assert.equal((await endNoShows(repository,{apply:true,now:at})).ended,1);
+  assert.equal((await expireAppointments(repository,{apply:true,now:at})).ended,1);
   const ended=await repository.find(waiting.id);
-  assert.equal(ended.outcome,'no_show');assert.equal(ended.completedAt,at.toISOString());assert.equal(ended.assignedTo,'');assert.equal(ended.startedAt,null);
+  assert.equal(ended.status,'expired');assert.equal(ended.outcome,null);assert.equal(ended.completedAt,at.toISOString());assert.equal(ended.assignedTo,'');assert.equal(ended.startedAt,null);
   assert.equal((await repository.find(active.id)).status,'in_progress');assert.equal((await repository.find(future.id)).status,'booked');
-  assert.equal((await endNoShows(repository,{apply:true,now:at})).ended,0);
+  assert.equal((await expireAppointments(repository,{apply:true,now:at})).ended,0);
   assert.equal((await repository.find(waiting.id)).revision,ended.revision);
   const live=await api(`/api/live/summary?appointmentId=${waiting.id}`,{accessToken:waiting.accessToken});
   assert.equal(live.position,null);assert.equal(live.slotTotal,2);assert.equal(live.queueTotal,1);
@@ -1146,11 +1347,11 @@ test('queries and writes catch up missed automatic endings; unauthorized credent
   await assert.rejects(service.lookup(item.id,'x'.repeat(43)),error=>error.status===404);
   assert.equal((await repository.find(item.id)).status,'booked');
   const ended=await service.lookup(item.id,item.accessToken);
-  assert.equal(ended.status,'completed');assert.equal(ended.outcome,'no_show');
+  assert.equal(ended.status,'expired');assert.equal(ended.outcome,null);
   await assert.rejects(service.update(item.id,{patch:{status:'in_progress'}},await users.find('root001')),error=>error.status===409);
   const another=await book();
   const listed=await service.list({status:'all'},await users.find('root001'));
-  assert.equal(listed.items.find(row=>row.id===another.id).outcome,'no_show');
+  assert.equal(listed.items.find(row=>row.id===another.id).status,'expired');
   const expired=appointmentService(repository,users,PII_ENCRYPTION_KEY,()=>new Date(`${date}T20:00:00+08:00`));
   await assert.rejects(expired.create(draft()),error=>error.status===400 && error.message.includes('时段已经结束'));
 });
@@ -1209,18 +1410,18 @@ test('workflow migration preserves populated legacy records, credentials, attach
   assert.equal((await legacy.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes,0);
 });
 
-test('finished repairs and no-shows retain capacity while restoring a cancellation checks capacity',async()=>{
+test('finished repairs and expirations retain capacity while restoring a cancellation checks capacity',async()=>{
   const items=[];for(let n=0;n<5;n++)items.push(await book());
   const token=await login();
   await api(`/api/appointments/${items[0].id}/status`,{method:'PATCH',token,body:{status:'in_progress',...await intake(items[0], token)}});
   await api(`/api/appointments/${items[0].id}/status`,{method:'PATCH',token,body:{status:'completed',outcome:'not_needed',repairNote:'无需维修'}});
   await api('/api/appointments',{method:'POST',body:draft()},409);
-  await appointmentRepository(db).endNoShows(date,new Date().toISOString(),{id:items[1].id});
+  await appointmentRepository(db).expirePending(expirationDeadline(date),{id:items[1].id});
   await api('/api/appointments',{method:'POST',body:draft()},409);
-  await api(`/api/appointments/${items[2].id}/status`,{method:'PATCH',accessToken:items[2].accessToken,body:{status:'completed',outcome:'cancelled'}});
+  await api(`/api/appointments/${items[2].id}/status`,{method:'PATCH',accessToken:items[2].accessToken,body:{status: 'cancelled'}});
   await book();
   await api(`/api/appointments/${items[2].id}/status`,{method:'PATCH',token,body:{action:'correct',status:'in_progress',assignedTo:'root001'}},409);
-  assert.equal((await api(`/api/appointments/${items[2].id}`,{accessToken:items[2].accessToken})).outcome,'cancelled');
+  assert.equal((await api(`/api/appointments/${items[2].id}`,{accessToken:items[2].accessToken})).status,'cancelled');
 });
 
 test('correcting legacy results preserves missing times and disabled historical assignees',async()=>{
@@ -1280,7 +1481,7 @@ test('booking numbers use the selected date across Shanghai midnight, campuses a
   assert.equal(laterSlot.id, 'reserve020261015-03');
   assert.equal((await create({campus:'浑南'})).id, 'reserve120261015-01');
   assert.equal((await create({date:'2026-10-14'})).id, 'reserve020261014-01');
-  const cancelled = await service.update(second.id, {patch:{status:'completed',outcome:'cancelled'}}, null, second.accessToken);
+  const cancelled = await service.update(second.id, {patch:{status: 'cancelled'}}, null, second.accessToken);
   assert.equal(cancelled.id, second.id); assert.equal(cancelled.repairNumber, null);
   assert.equal((await create()).id, 'reserve020261015-04');
 });
@@ -1408,13 +1609,14 @@ test('repair aliases resolve by credential before expiration, cancellation and a
   assert.equal((await api(`/api/appointments/${alias}`, {accessToken:other.accessToken})).id, alias);
   const file = await api(`/api/appointments/${alias}/attachments`, {method:'POST',accessToken:original.accessToken,body:{filename:'alias.txt',mimeType:'text/plain',data:'b3duZXI='}}, 201);
   await api(`/api/appointments/${alias}/attachments/${file.id}`, {accessToken:other.accessToken}, 404);
-  const cancelled = await api(`/api/appointments/${alias}/status`, {method:'PATCH',accessToken:original.accessToken,body:{status:'completed',outcome:'cancelled'}});
+  const cancelled = await api(`/api/appointments/${alias}/status`, {method:'PATCH',accessToken:original.accessToken,body:{status: 'cancelled'}});
   assert.equal(cancelled.id, original.id); assert.equal((await appointmentRepository(db).find(alias)).status, 'booked');
   const repository = appointmentRepository(db);
+  await setAppointmentDate(alias, addDays(dateKey(),-1));
   await db.prepare("UPDATE appointments SET date=?,repair_number=? WHERE id=?").bind(addDays(dateKey(),-1),'020261012-89',alias).run();
   const expired = await api('/api/appointments/020261012-89', {accessToken:other.accessToken});
-  assert.equal(expired.id, alias); assert.equal(expired.outcome, 'no_show');
-  assert.equal((await repository.find(original.id)).outcome, 'cancelled');
+  assert.equal(expired.id, alias); assert.equal(expired.status, 'expired'); assert.equal(expired.outcome, null);
+  assert.equal((await repository.find(original.id)).status, 'cancelled');
 });
 
 test('weekday half-hour settings default to five and follow administrator campus grants', async () => {
@@ -1477,13 +1679,13 @@ test('weekday templates freeze on first booking and preserve cancellations, rest
   assert.equal(summary.slots[timeSlot],3);
   assert.equal((await api(`/api/live/summary?date=${addDays(date,7)}&campus=${encodeURIComponent('南湖')}`)).slotCapacities[timeSlot],0);
   assert.equal((await api(`/api/live/summary?date=${date}&campus=${encodeURIComponent('浑南')}`)).slotCapacities[timeSlot],5);
-  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',accessToken:item.accessToken,body:{status:'completed',outcome:'cancelled'}});
+  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',accessToken:item.accessToken,body:{status:'cancelled'}});
   await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{action:'correct',status:'booked'}});
   await api('/api/appointments',{method:'POST',body:draft({timeSlot:'19:00–19:30'})},409);
   const overview=await api('/api/appointments/overview',{token});
   assert.equal(overview.items.find(r=>r.campus==='南湖' && r.date===date && r.timeSlot===timeSlot).capacity,3);
   for (const row of (await db.prepare('SELECT id FROM appointments').all()).results)
-    await db.prepare("UPDATE appointments SET status='completed',outcome='cancelled' WHERE id=?").bind(row.id).run();
+    await db.prepare("UPDATE appointments SET status='cancelled',outcome=NULL WHERE id=?").bind(row.id).run();
   assert.equal((await api(`/api/live/summary?date=${date}&campus=${encodeURIComponent('南湖')}`)).slotCapacities[timeSlot],3);
   await book({timeSlot});
   assert.equal((await api(`/api/live/summary?appointmentId=${item.id}`,{accessToken:item.accessToken})).capacity,3);
@@ -1519,7 +1721,7 @@ test('all four half-hour slots propagate through booking, summary, queue, overvi
   const csv = await (await request('/api/export/appointments.csv', { token })).text();
   for (const item of bookings) assert.ok(csv.includes(item.id) && csv.includes(item.timeSlot));
   const cancelled = bookings[3];
-  await api(`/api/appointments/${cancelled.id}/status`, { method: 'PATCH', accessToken: cancelled.accessToken, body: { status: 'completed', outcome: 'cancelled' } });
+  await api(`/api/appointments/${cancelled.id}/status`, { method: 'PATCH', accessToken: cancelled.accessToken, body: { status: 'cancelled' } });
   const refreshed = await api(`/api/live/summary?${new URLSearchParams({ campus: '南湖', date: targetDate })}`);
   assert.equal(refreshed.slots[TIME_SLOTS[3]], 0);
   assert.equal(refreshed.slots[TIME_SLOTS[0]], 1);
@@ -1599,6 +1801,7 @@ test('schedule migration preserves legacy bookings, cancelled days, onsite work,
   for (const item of [booked,cancelled,onsite]) {
     const row=await db.prepare('SELECT * FROM appointments WHERE id=?').bind(item.id).first();
     row.time_slot='19:00–20:00';
+    delete row.expires_at;
     await legacy.prepare(`INSERT INTO appointments(${Object.keys(row).join(',')}) VALUES(${Object.keys(row).map(()=>'?').join(',')})`).bind(...Object.values(row)).run();
   }
   await legacy.prepare("UPDATE appointments SET status='in_progress',assigned_to='root001',front_photo_id='photo1',back_photo_id='photo2',repair_number='legacy-repair' WHERE id=?").bind(booked.id).run();
@@ -1608,9 +1811,12 @@ test('schedule migration preserves legacy bookings, cancelled days, onsite work,
   await legacy.prepare("INSERT INTO attachment_storage VALUES('photo1','r2/front',100,'complete','2026-10-12','2027-10-12')").run();
   await legacy.prepare("INSERT INTO credential_recoveries VALUES('recovery',?,'root001','人工核验历史记录','2026-10-12')").bind(booked.id).run();
   await legacy.prepare("UPDATE slot_capacities SET capacity=7 WHERE campus='南湖' AND time_slot='19:00–20:00'").run();
-  const tables=['appointments','appointment_attachments','credential_recoveries','active_repairs','attachment_storage','storage_quota'];
+  await applyMigration(legacy,'0007_onsite_expiration.sql');
+  await applyMigration(legacy,'0008_five_statuses.sql');
+  await legacy.prepare("INSERT INTO appointment_corrections VALUES('historical-correction',?,'root001','历史纠错说明','{}','{}','2026-10-12')").bind(booked.id).run();
+  const tables=['appointments','appointment_attachments','credential_recoveries','active_repairs','attachment_storage','storage_quota','appointment_corrections'];
   const before=await Promise.all(tables.map(async table=>(await legacy.prepare(`SELECT * FROM ${table} ORDER BY 1`).all()).results));
-  await applyMigration(legacy,'0008_weekday_booking_schedules.sql');
+  await applyMigration(legacy,'0009_weekday_booking_schedules.sql');
   for (const [index,table] of tables.entries()) assert.deepEqual((await legacy.prepare(`SELECT * FROM ${table} ORDER BY 1`).all()).results,before[index],table);
   assert.deepEqual((await legacy.prepare('PRAGMA foreign_key_check').all()).results,[]);
   const snapshot=(await legacy.prepare("SELECT * FROM booking_day_slots WHERE campus='南湖' ORDER BY date,time_slot").all()).results;
@@ -1632,7 +1838,7 @@ test('half-hour bookings reject overlapping slots across campuses', async () => 
   await api('/api/appointments',{method:'POST',body:draft({studentId:legacy.studentId,campus:'浑南',timeSlot:'19:00–19:30'})},409);
   const later=await book({studentId:legacy.studentId,campus:'浑南',timeSlot:'20:00–20:30'});
   assert.equal(later.timeSlot,'20:00–20:30');
-  await api(`/api/appointments/${legacy.id}/status`,{method:'PATCH',accessToken:legacy.accessToken,body:{status:'completed',outcome:'cancelled'}});
+  await api(`/api/appointments/${legacy.id}/status`,{method:'PATCH',accessToken:legacy.accessToken,body:{status:'cancelled'}});
   await book({studentId:legacy.studentId,campus:'浑南',timeSlot:'19:00–19:30'});
   await api(`/api/appointments/${legacy.id}/status`,{method:'PATCH',token:await login(),body:{action:'correct',status:'booked'}},409);
 });
