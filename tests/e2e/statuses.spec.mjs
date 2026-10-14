@@ -53,8 +53,10 @@ test('staff filters, statistics and recovery use the five-state interface',async
   const counts=() => ({all:items.length,...Object.fromEntries(Object.keys(statusLabels).map(status => [status,items.filter(item => item.status===status).length]))});
   page.on('pageerror',error => errors.push(error.message));
   await page.route('**/api/appointments/overview',route => route.fulfill({json:{start:'2026-10-12',end:'2026-10-18',dates:['2026-10-12'],campuses:['南湖'],items:[],updatedAt:'2026-10-12T02:00:00.000Z',week:{start:'2026-10-12',end:'2026-10-18',dates:['2026-10-12'],items:[]}}}));
-  await page.route('**/api/appointments?*',route => {
+  await page.route('**/api/appointments?*',async route => {
     const status=new URL(route.request().url()).searchParams.get('status');
+    // Keep the previous rows visible while the filtered response is pending.
+    if(status==='expired' && !corrected) await new Promise(resolve => setTimeout(resolve,300));
     return route.fulfill({json:{items:items.filter(item => status==='all' || item.status===status),counts:counts(),filteredCounts:counts()}});
   });
   await page.route('**/api/appointments/*/status',route => {
@@ -68,7 +70,7 @@ test('staff filters, statistics and recovery use the five-state interface',async
   await page.locator('[data-column-menu=status]').click();
   for (const [status,label] of Object.entries(statusLabels)) await expect(page.locator(`[data-filter=${status}]`)).toContainText(label);
   await page.locator('[data-filter=expired]').click();
-  await expect(page.locator('#appointments-table .status-pill')).toHaveText('已逾期');
+  await expect(page.locator('#appointments-table .status-pill')).toHaveText(['已逾期']);
   await expect(page.locator('#count-expired')).toHaveText('1');
   await page.locator('#staff-menu-status [data-menu-close]').last().click();
   await page.locator('[data-detail]').click();
