@@ -50,5 +50,5 @@ jobs:
         run: |
           args=(--staff-staging --dry-run)
           if [[ "$APPLY" == "true" ]]; then args=(--staff-staging --apply); fi
-          npm run appointments:end-no-shows -- "${args[@]}"
+          npm run appointments:expire -- "${args[@]}"
           npm run attachments:cleanup -- "${args[@]}"

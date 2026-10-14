@@ -1,6 +1,6 @@
 import { fail } from '../lib/http.js';
 import { encryptText, decryptText } from '../lib/privacy.js';
-import { addDays, dateKey, serviceDay, slotDeadline, noShowDeadline, expiredBookingDate, weekRange } from '../../shared/time.js';
+import { addDays, dateKey, serviceDay, slotDeadline, expirationDeadline, weekRange } from '../../shared/time.js';
 import { issueAccessToken } from '../lib/access-tokens.js';
 import { guestAppointment } from './access.js';
 import { repairOutcomes, TIME_SLOTS } from '../../shared/constants.js';
@@ -14,7 +14,7 @@ export async function presentAppointment(item, encryptionKey) {
 }
 export function appointmentService(appointments, users, encryptionKey, clock = () => new Date()) {
   const present = item => presentAppointment(item, encryptionKey);
-  const expire = (instant, scope) => (appointments.expirePending || appointments.endNoShows)(expiredBookingDate(instant), instant.toISOString(), scope);
+  const expire = (instant, scope) => appointments.expirePending(instant.toISOString(), scope);
   async function assignee(value, campus) {
     let user = await users.find(value.toLowerCase());
     if (!user) {
@@ -60,7 +60,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       const result = await appointments.list(query, scope);
       const items = await Promise.all(result.items.map(async item => {
         if (user.role === 'technician' && (item.status === 'booked' || (item.assignedTo !== user.account && !(item.source === 'onsite' && item.registeredBy === user.account)))) {
-          return Object.fromEntries(['id','revision','campus','date','timeSlot','deviceType','brand','deviceModel','faultType','status','createdAt'].map(key => [key, item[key]]));
+          return Object.fromEntries(['id','revision','campus','date','timeSlot','deviceType','brand','deviceModel','faultType','status','createdAt','expiresAt'].map(key => [key, item[key]]));
         }
         return present(item);
       }));
@@ -71,14 +71,15 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
     },
     async create(data, onsite) {
       const instant = clock(), today = dateKey(instant);
+      const expiresAt = expirationDeadline(data.date);
       if (!onsite) {
         if (data.date < today || data.date > addDays(today, 3)) fail(400, '预约日期必须为今天起 3 天内');
         if (!serviceDay(data.date)) fail(400, '预约日期必须为周一至周四');
         if (Date.parse(slotDeadline(data.date, data.timeSlot)) <= instant.getTime()) fail(400, '该预约时段已经结束');
-      }
+      } else if (data.date !== today || instant.getTime() >= Date.parse(expiresAt)) fail(400, '当天临时登记有效期限已结束');
       const timestamp = instant.toISOString(), credential = issueAccessToken();
       const [phone, social] = await Promise.all([encryptText(data.phone, encryptionKey), encryptText(data.social, encryptionKey)]);
-      const item = { ...data, status: 'booked', assignedTo: '', repairNote: '', outcome: null, startedAt: null, completedAt: null,
+      const item = { ...data, status: 'booked', assignedTo: '', repairNote: '', outcome: null, startedAt: null, completedAt: null, expiresAt,
         repairNumber: null, frontPhotoId: null, backPhotoId: null,
         source: onsite ? 'onsite' : 'booking', registeredBy: onsite?.actor || null, registrationKey: onsite?.requestId || null,
         createdAt: timestamp, agreementAt: timestamp, agreementVersion: data.agreementVersion || 'v1.0',
@@ -99,7 +100,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       if (!await appointments.rotateCredential(item, credential.hash, actor.account, input.reason.trim(), clock().toISOString())) fail(409, '预约已更新，请刷新后重试');
       return { id: item.id, accessToken: credential.token };
     },
-    async update(id, { patch: input, revision, action }, user, accessToken) {
+    async update(id, { patch: input, revision, action, correctionReason = '' }, user, accessToken) {
       if (!Object.keys(input).length) fail(400, '没有可更新的字段');
       let item = user ? await appointments.find(id) : await guestAppointment(appointments, id, accessToken);
       if (!item) fail(404, '预约不存在');
@@ -113,40 +114,46 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       if (revision !== undefined && revision !== item.revision) fail(409, '预约已更新，请刷新后重试');
       if ((input.frontPhotoId !== undefined || input.backPhotoId !== undefined) &&
           (action === 'correct' || input.status !== 'in_progress')) fail(400, '签到照片只能在签到时记录');
+      if (input.expiresAt !== undefined && action !== 'correct') fail(400, '有效截止时间只能由管理员纠错设置');
       let patch;
       if (action === 'correct') {
         requireRole(user, 'admin'); requireAppointmentAccess(user, item);
         const status = input.status || item.status;
-        if (status === 'in_progress' && (item.status === 'booked' || ['cancelled','no_show','expired'].includes(item.outcome))) fail(409, '请先恢复为已预约，再通过签到上传照片并开始维修');
+        if (input.expiresAt !== undefined && status !== 'booked') fail(400, '有效截止时间只能在恢复为已预约时设置');
+        if (['in_progress','completed'].includes(status) && ['booked','cancelled','expired'].includes(item.status)) fail(409, '请先恢复为已预约，再通过签到上传照片并开始维修');
+        if (input.outcome !== undefined && status !== 'completed') fail(400, '仅已完成工单可以填写维修结果');
         patch = { ...input, status };
         if (status === 'booked') {
-          if (instant.getTime() >= Date.parse(noShowDeadline(item.date))) fail(409, '已过自动结束时间，不能恢复为已预约');
-          patch = { status, assignedTo: '', startedAt: null, completedAt: null, outcome: null, repairNote: '', frontPhotoId: null, backPhotoId: null };
+          const late = instant.getTime() >= Date.parse(expirationDeadline(item.date));
+          if (late && input.expiresAt === undefined) fail(409, '已过原有效期限，请填写纠错原因并指定新的有效截止时间');
+          if ((late || input.expiresAt !== undefined) && (correctionReason.trim().length < 8 || correctionReason.length > 300)) fail(400, '请填写 8 至 300 字的纠错原因');
+          const expiresAt = input.expiresAt ?? item.expiresAt;
+          if (!Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= instant.getTime()) fail(409, '新的有效截止时间必须晚于当前时间');
+          patch = { status, expiresAt, assignedTo: '', startedAt: null, completedAt: null, outcome: null, repairNote: '', frontPhotoId: null, backPhotoId: null };
         } else {
           const account = input.assignedTo ?? item.assignedTo;
           if (account) patch.assignedTo = status === 'in_progress' || account !== item.assignedTo ? await assignee(account, item.campus) : account;
           else if (status === 'in_progress' || repairOutcomes.includes(input.outcome ?? item.outcome)) fail(400, '请指定维修人员');
           if (status === 'in_progress') {
-            patch.startedAt = item.status === 'booked' ? timestamp : item.startedAt;
             patch.completedAt = null; patch.outcome = null;
-          } else {
+          } else if (status === 'completed') {
             patch.outcome = input.outcome ?? item.outcome;
-            if (!patch.outcome) fail(400, '请选择结束结果');
-            if (repairOutcomes.includes(patch.outcome)) {
-              if (item.status === 'booked' || ['cancelled','no_show','expired'].includes(item.outcome)) fail(409, '请先签到并开始维修');
-              repairResult(patch.outcome, input.repairNote ?? item.repairNote);
-            }
-            if (patch.outcome === 'no_show' && instant.getTime() < Date.parse(noShowDeadline(item.date))) fail(409, '尚未到未到场判定时间');
+            if (!(item.status === 'completed' && item.outcome === 'legacy_unknown' && input.outcome === undefined)) repairResult(patch.outcome, input.repairNote ?? item.repairNote);
             patch.completedAt = item.status === 'completed' ? item.completedAt : timestamp;
+          } else {
+            if (status === 'expired' && (item.startedAt || item.status === 'in_progress' || item.status === 'completed')) fail(409, '已记录维修开始的工单不能改为已逾期');
+            if (status === 'expired' && instant.getTime() < Date.parse(item.expiresAt)) fail(409, '尚未到有效截止时间');
+            patch.outcome = null;
+            patch.completedAt = item.status === status ? item.completedAt : timestamp;
           }
         }
       } else if (!user) {
-        if (input.status !== 'completed' || input.outcome !== 'cancelled') fail(403, '学生仅可取消尚未开始维修的预约');
+        if (input.status !== 'cancelled' || input.outcome !== undefined) fail(403, '学生仅可取消尚未开始维修的预约');
         if (item.status !== 'booked') fail(409, '当前状态不能取消');
-        patch = { status: 'completed', outcome: 'cancelled', completedAt: timestamp };
-      } else if (item.status === 'booked' && input.status === 'completed' && input.outcome === 'cancelled' &&
+        patch = { status: 'cancelled', outcome: null, completedAt: timestamp };
+      } else if (item.status === 'booked' && input.status === 'cancelled' && input.outcome === undefined &&
           item.source === 'onsite' && item.registeredBy === user.account) {
-        patch = { status: 'completed', outcome: 'cancelled', completedAt: timestamp };
+        patch = { status: 'cancelled', outcome: null, completedAt: timestamp };
       } else {
         const starting = item.status === 'booked' && input.status === 'in_progress';
         requireAppointmentAccess(user, item, { start: starting });
@@ -155,9 +162,9 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
           if (input.outcome !== undefined) fail(400, '开始维修不能填写结束结果');
           if (!await appointments.intakePhotos(item.id, user.account, input.frontPhotoId, input.backPhotoId, timestamp)) fail(400, '请由本次签到人员上传电脑正面和反面照片');
           patch = { status: 'in_progress', assignedTo: user.account, startedAt: timestamp, completedAt: null, outcome: null, frontPhotoId: input.frontPhotoId, backPhotoId: input.backPhotoId };
-        } else if (item.status === 'booked' && input.status === 'completed' && input.outcome === 'cancelled') {
+        } else if (item.status === 'booked' && input.status === 'cancelled' && input.outcome === undefined) {
           requireRole(user, 'admin');
-          patch = { status: 'completed', outcome: 'cancelled', completedAt: timestamp };
+          patch = { status: 'cancelled', outcome: null, completedAt: timestamp };
         } else if (item.status === 'in_progress' && input.status === 'completed') {
           repairResult(input.outcome, input.repairNote);
           patch = { status: 'completed', outcome: input.outcome, repairNote: input.repairNote, completedAt: timestamp };
@@ -165,7 +172,8 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
           patch = { repairNote: input.repairNote };
         } else fail(409, '当前状态不能执行此操作，修正记录请使用管理员纠错');
       }
-      const updated = await appointments.update(item, patch);
+      const correction = action === 'correct' ? { actor: user.account, reason: correctionReason.trim(), instant: timestamp } : undefined;
+      const updated = await appointments.update(item, patch, correction);
       if (!updated) {
         const latest = await appointments.find(item.id);
         if (latest && repeated(latest, input, user, action)) return present(latest);

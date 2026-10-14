@@ -3,7 +3,7 @@ const columns = {
   deviceType: 'device_type', brand: 'brand', deviceModel: 'device_model', serial: 'serial', warranty: 'warranty',
   faultType: 'fault_type', issue: 'issue', liquidDrop: 'liquid_drop', date: 'date', timeSlot: 'time_slot', note: 'note',
   status: 'status', assignedTo: 'assigned_to', repairNote: 'repair_note', createdAt: 'created_at',
-  outcome: 'outcome', startedAt: 'started_at', completedAt: 'completed_at',
+  outcome: 'outcome', startedAt: 'started_at', completedAt: 'completed_at', expiresAt: 'expires_at',
   agreementAt: 'agreement_at', agreementVersion: 'agreement_version', signature: 'signature',
   repairNumber: 'repair_number', frontPhotoId: 'front_photo_id', backPhotoId: 'back_photo_id',
   source: 'source', registeredBy: 'registered_by', registrationKey: 'registration_key'
@@ -26,32 +26,20 @@ export function appointmentRepository(db) {
       if (!front || !back || front === back) return false;
       const row = await db.prepare(`SELECT COUNT(*) AS total FROM appointment_attachments
         WHERE appointment_id=? AND uploaded_by=? AND expires_at>? AND mime_type LIKE 'image/%'
+        AND created_at>=COALESCE((SELECT MAX(created_at) FROM appointment_corrections
+          WHERE appointment_id=? AND json_extract(after_state,'$.status')='booked'),'')
         AND ((id=? AND purpose='intake_front') OR (id=? AND purpose='intake_back'))`)
-        .bind(id, account, now, front, back).first();
+        .bind(id, account, now, id, front, back).first();
       return row.total === 2;
     },
-    async countNoShows(beforeDate) {
-      return (await db.prepare("SELECT COUNT(*) AS total FROM appointments WHERE source='booking' AND status='booked' AND date<=?").bind(beforeDate).first()).total;
+    async countExpirations(instant) {
+      return (await db.prepare("SELECT COUNT(*) AS total FROM appointments WHERE status='booked' AND started_at IS NULL AND expires_at<=?").bind(instant).first()).total;
     },
-    async countExpirations(beforeDate) {
-      return (await db.prepare("SELECT COUNT(*) AS total FROM appointments WHERE source='onsite' AND status='booked' AND date<=?").bind(beforeDate).first()).total;
-    },
-    async endNoShows(beforeDate, instant, { id, campuses } = {}) {
-      const where = ["source='booking'", "status='booked'", 'date<=?'], args = [instant, beforeDate];
+    async expirePending(instant, { id, campuses } = {}) {
+      const where = ["status='booked'", 'started_at IS NULL', 'expires_at<=?'], args = [instant, instant];
       if (id) { where.push('id=?'); args.push(id); }
       if (campuses) { where.push(campuses.length ? `campus IN (${campuses.map(() => '?').join(',')})` : '0'); args.push(...campuses); }
-      return db.prepare(`UPDATE appointments SET status='completed',outcome='no_show',completed_at=?,revision=revision+1 WHERE ${where.join(' AND ')}`).bind(...args).run();
-    },
-    async expirePending(beforeDate, instant, scope = {}) {
-      const bookingWhere = ["source='booking'", "status='booked'", 'date<=?'], bookingArgs = [instant, beforeDate];
-      if (scope.id) { bookingWhere.push('id=?'); bookingArgs.push(scope.id); }
-      if (scope.campuses) { bookingWhere.push(scope.campuses.length ? `campus IN (${scope.campuses.map(() => '?').join(',')})` : '0'); bookingArgs.push(...scope.campuses); }
-      const booking = await db.prepare(`UPDATE appointments SET status='completed',outcome='no_show',completed_at=?,revision=revision+1 WHERE ${bookingWhere.join(' AND ')}`).bind(...bookingArgs).run();
-      const where = ["source='onsite'", "status='booked'", 'date<=?'], args = [instant, beforeDate];
-      if (scope.id) { where.push('id=?'); args.push(scope.id); }
-      if (scope.campuses) { where.push(scope.campuses.length ? `campus IN (${scope.campuses.map(() => '?').join(',')})` : '0'); args.push(...scope.campuses); }
-      const onsite = await db.prepare(`UPDATE appointments SET status='completed',outcome='expired',completed_at=?,revision=revision+1 WHERE ${where.join(' AND ')}`).bind(...args).run();
-      return { meta: { changes: (booking.meta?.changes || 0) + (onsite.meta?.changes || 0) } };
+      return db.prepare(`UPDATE appointments SET status='expired',outcome=NULL,completed_at=?,revision=revision+1 WHERE ${where.join(' AND ')}`).bind(...args).run();
     },
     async find(id) { return fromRow(await db.prepare('SELECT * FROM appointments WHERE id=?').bind(id).first()); },
     async findByCredential(id, hash) {
@@ -85,7 +73,7 @@ export function appointmentRepository(db) {
       if (query.status === 'pending') where.push("status IN ('booked','in_progress')");
       else if (query.status !== 'all') { where.push('status=?'); args.push(query.status); }
       // Only fixed expressions reach ORDER BY; query values are validated at the route.
-      const sortColumns = { createdAt: ['created_at'], date: ['date','time_slot'], status: ["CASE status WHEN 'booked' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END"], campus: ['campus'] };
+      const sortColumns = { createdAt: ['created_at'], date: ['date','time_slot'], status: ["CASE status WHEN 'booked' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'completed' THEN 2 WHEN 'cancelled' THEN 3 ELSE 4 END"], campus: ['campus'] };
       const sorts = query.sorts ?? [{key:query.sort || 'createdAt',direction:query.direction || 'desc'}];
       if (query.sorts === undefined && query.sort === 'campus') sorts.push({key:'date',direction:query.direction || 'desc'});
       const order = sorts.flatMap(item => (sortColumns[item.key] || []).map(column => `${column} ${item.direction === 'asc' ? 'ASC' : 'DESC'}`));
@@ -93,10 +81,12 @@ export function appointmentRepository(db) {
       const [items, counts, filteredCounts] = await db.batch([
         db.prepare(`SELECT * FROM appointments WHERE ${where.join(' AND ')} ORDER BY ${order.join(',')}`).bind(...args),
         db.prepare(`SELECT COUNT(*) AS allCount, COUNT(CASE WHEN status='booked' THEN 1 END) AS booked,
-          COUNT(CASE WHEN status='in_progress' THEN 1 END) AS in_progress, COUNT(CASE WHEN status='completed' THEN 1 END) AS completed
+          COUNT(CASE WHEN status='in_progress' THEN 1 END) AS in_progress, COUNT(CASE WHEN status='completed' THEN 1 END) AS completed,
+          COUNT(CASE WHEN status='cancelled' THEN 1 END) AS cancelled, COUNT(CASE WHEN status='expired' THEN 1 END) AS expired
           FROM appointments WHERE ${scope}`).bind(...scopeArgs),
         db.prepare(`SELECT COUNT(*) AS allCount, COUNT(CASE WHEN status='booked' THEN 1 END) AS booked,
-          COUNT(CASE WHEN status='in_progress' THEN 1 END) AS in_progress, COUNT(CASE WHEN status='completed' THEN 1 END) AS completed
+          COUNT(CASE WHEN status='in_progress' THEN 1 END) AS in_progress, COUNT(CASE WHEN status='completed' THEN 1 END) AS completed,
+          COUNT(CASE WHEN status='cancelled' THEN 1 END) AS cancelled, COUNT(CASE WHEN status='expired' THEN 1 END) AS expired
           FROM appointments WHERE ${filteredWhere}`).bind(...filteredArgs)
       ]);
       const { allCount, ...totals } = counts.results[0];
@@ -110,7 +100,7 @@ export function appointmentRepository(db) {
           COUNT(CASE WHEN status='booked' THEN 1 END) AS booked,
           COUNT(CASE WHEN status='in_progress' THEN 1 END) AS in_progress
         FROM appointments WHERE ${scope} AND date>=? AND date<=? AND source='booking'
-          AND NOT (status='completed' AND outcome='cancelled') GROUP BY campus,date,time_slot`).bind(...campuses,start,end),
+          AND status<>'cancelled' GROUP BY campus,date,time_slot`).bind(...campuses,start,end),
         db.prepare(`SELECT campus,time_slot,capacity FROM slot_capacities WHERE ${scope}`).bind(...campuses)
       ]);
       return { totals: totals.results, capacities: capacities.results };
@@ -127,12 +117,21 @@ export function appointmentRepository(db) {
         .bind(prefix, ...Object.keys(columns).map(key => key === 'assignedTo' ? item[key] || null : key === 'source' ? item[key] || 'booking' : item[key] ?? null), item.accessTokenHash,item.credentialRotatedAt,`${prefix}%`,`reverse${suffix}%`,`${suffix}%`).first();
       return fromRow(row);
     },
-    async update(item, patch) {
+    async update(item, patch, correction) {
       const fields = [], args = [];
-      for (const [key, column] of Object.entries({ status: 'status', assignedTo: 'assigned_to', repairNote: 'repair_note', outcome: 'outcome', startedAt: 'started_at', completedAt: 'completed_at', frontPhotoId: 'front_photo_id', backPhotoId: 'back_photo_id' })) {
+      for (const [key, column] of Object.entries({ status: 'status', assignedTo: 'assigned_to', repairNote: 'repair_note', outcome: 'outcome', startedAt: 'started_at', completedAt: 'completed_at', expiresAt: 'expires_at', frontPhotoId: 'front_photo_id', backPhotoId: 'back_photo_id' })) {
         if (patch[key] !== undefined) { fields.push(`${column}=?`); args.push(key === 'assignedTo' ? patch[key] || null : patch[key]); }
       }
-      return fromRow(await db.prepare(`UPDATE appointments SET ${fields.join(',')},revision=revision+1 WHERE id=? AND revision=? RETURNING *`).bind(...args, item.id, item.revision).first());
+      const update = db.prepare(`UPDATE appointments SET ${fields.join(',')},revision=revision+1 WHERE id=? AND revision=? RETURNING *`).bind(...args, item.id, item.revision);
+      if (!correction) return fromRow(await update.first());
+      const snapshot = value => JSON.stringify(Object.fromEntries(['revision','status','outcome','assignedTo','repairNote','startedAt','completedAt','expiresAt','frontPhotoId','backPhotoId'].map(key => [key, value[key]])));
+      const results = await db.batch([
+        db.prepare(`INSERT INTO appointment_corrections(id,appointment_id,actor,reason,before_state,after_state,created_at)
+          SELECT ?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM appointments WHERE id=? AND revision=?)`)
+          .bind(crypto.randomUUID(),item.id,correction.actor,correction.reason,snapshot(item),snapshot({...item,...patch,revision:item.revision+1}),correction.instant,item.id,item.revision),
+        update
+      ]);
+      return fromRow(results.at(-1).results[0]);
     },
     async exportPage(cursor,limit,campuses) {
       const campusScope=campuses.length ? `campus IN (${campuses.map(()=>'?').join(',')})` : '0';

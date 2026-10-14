@@ -1,9 +1,9 @@
 import { guestAppointment } from './access.js';
-import { dateKey, expiredBookingDate } from '../../shared/time.js';
+import { dateKey } from '../../shared/time.js';
 import { TIME_SLOTS } from '../../shared/constants.js';
 
 export function queueService(appointments, queue, clock = () => new Date()) {
-  const expire = (scope = {}) => { const instant = clock(); return (appointments.expirePending || appointments.endNoShows)(expiredBookingDate(instant), instant.toISOString(), scope); };
+  const expire = (scope = {}) => appointments.expirePending(clock().toISOString(), scope);
   return {
     async summary(query, accessToken) {
       let current = query.appointmentId ? await guestAppointment(appointments,query.appointmentId,accessToken) : null;

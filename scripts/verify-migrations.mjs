@@ -24,7 +24,7 @@ try {
   assert.ok(names.has('idx_one_pending_activation') && names.has('idx_one_approved_activation'),'Missing activation uniqueness constraints');
   assert.ok(names.has('idx_repair_number'), 'Missing repair number uniqueness index');
   for (const name of ['active_repairs','appointment_active_insert','appointment_active_update','appointment_active_delete','idx_onsite_request','idx_one_pending_onsite_registration']) assert.ok(names.has(name), `Missing scan workbench constraint: ${name}`);
-  assert.ok(names.has('idx_booked_expiry'),'Missing booked expiry index');
+  for (const name of ['idx_booked_expiry','appointment_corrections','idx_correction_appointment']) assert.ok(names.has(name), `Missing expiration/correction schema: ${name}`);
   assert.ok(names.has('slot_capacities'), 'Missing campus/slot capacity settings');
   assert.equal(capacities.results.length, 4);
   assert.ok(capacities.results.every(row => row.capacity === 10 && row.revision === 0), 'Default capacity settings changed');
