@@ -1,4 +1,4 @@
-const occupied = "source='booking' AND NOT (status='completed' AND outcome='cancelled')";
+const occupied = "source='booking' AND status<>'cancelled'";
 const active = "source='booking' AND status IN ('booked','in_progress')";
 export function queueRepository(db) {
   return {
