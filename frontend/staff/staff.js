@@ -1,9 +1,10 @@
 import {initIntake} from './intake.js';
 import {initOverview} from './overview.js';
 import {initColumnMenus} from './column-menus.js';
+import {initAssigneePicker} from './assignee-picker.js';
 import {drawSignature} from '/shared/signature.js';
 import {attachmentSize,attachmentUrl} from '/shared/attachments.js';
-import {$,$$,showToast,escapeHtml} from '/shared/utils.js';
+import {$,$$,showToast,escapeHtml,assigneeLabel} from '/shared/utils.js';
 import {apiFetch,apiJson} from '/shared/api.js';
 import {formatDate,formatInstant,dateKey,timeLabel} from '/shared/time.js';
 import {statusLabels,statusClass,outcomeLabels,repairOutcomes,roleLevel,endTimeLabels,expirationMessage} from '/shared/constants.js';
@@ -11,6 +12,7 @@ export function initStaff(){
   let activeFilter='all',generation=0,searchTimer,detailItem;
   let appointments=[],counts={},filteredCounts={};
   const menus=initColumnMenus(()=>refreshList());
+  const assigneePicker=initAssigneePicker();
   const overview=initOverview(selection=>{
     $('#staff-campus-filter').value=selection.campus;$('#staff-date-filter').value=selection.date;$('#staff-slot-filter').value=selection.timeSlot;
     $('#staff-date-filter').dataset.from=selection.dateFrom || '';$('#staff-date-filter').dataset.to=selection.dateTo || '';
@@ -53,6 +55,7 @@ export function initStaff(){
     link.href=url;link.download='维修附件';link.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
   }
   function close(){
+    assigneePicker.reset();
     detailItem=undefined;$('#detail-modal').hidden=true;$('#recovered-link').value='';$('#recovery-result').hidden=true;
     $('#recovery-verified').checked=false;$('#recovery-reason').value='';
   }
@@ -67,7 +70,7 @@ export function initStaff(){
     $('#detail-signature').hidden=!item.signature;
     if(item.signature)drawSignature($('#detail-signature'),JSON.parse(item.signature));
     $('#detail-state').textContent=statusLabels[item.status]+(item.outcome ? ` · ${outcomeLabels[item.outcome]}` : '');
-    $('#detail-assigned').value=item.assignedTo;$('#detail-repair-note').value=item.repairNote;
+    $('#detail-assigned').value=assigneeLabel(item.assignedTo,item.assignedToName);$('#detail-repair-note').value=item.repairNote;
     $('#detail-repair-note').readOnly=item.status!=='in_progress' && !admin();
     $('#detail-times').textContent=`开始：${formatInstant(item.startedAt)} · ${endTimeLabels[item.status] || '结束时间'}：${formatInstant(item.completedAt)} · 有效截止：${formatInstant(item.expiresAt)}`;
     $('#detail-expiration-message').hidden=item.status!=='expired';$('#detail-expiration-message').textContent=expirationMessage;
@@ -77,7 +80,7 @@ export function initStaff(){
     $('#start-detail').hidden=item.status!=='booked';
     $('#correction-panel').hidden=!admin();$('#correction-panel').open=false;
     $('#correction-status').innerHTML=Object.entries(statusLabels).map(([value,label])=>`<option value="${value}" ${value===item.status ? 'selected' : ''}>${label}</option>`).join('');
-    $('#correction-assigned').value=item.assignedTo;
+    assigneePicker.reset(admin() ? item : undefined);
     $('#correction-outcome').innerHTML='<option value="">保留现有结果</option>'+repairOutcomes.map(value=>`<option value="${value}" ${value===item.outcome ? 'selected' : ''}>${outcomeLabels[value]}</option>`).join('');
     $('#correction-reason').value='';
     $('#correction-expires').value=item.expiresAt ? `${dateKey(new Date(item.expiresAt))}T${timeLabel(new Date(item.expiresAt))}` : '';
@@ -132,7 +135,7 @@ export function initStaff(){
     if(!window.confirm('确认修正此记录？恢复为已预约会清空原签到信息，并要求重新签到。'))return;
     const button=$('#apply-correction');button.disabled=true;
     const outcome=$('#correction-outcome').value;
-    try{await patch(detailItem,{action:'correct',status,correctionReason,assignedTo:$('#correction-assigned').value.trim(),repairNote:$('#detail-repair-note').value.trim(),...(status==='completed' && outcome ? {outcome} : {}),...(status==='booked' ? {expiresAt:`${deadline}:00+08:00`} : {})});close();showToast('记录已修正');}
+    try{await patch(detailItem,{action:'correct',status,correctionReason,assignedTo:assigneePicker.value(),repairNote:$('#detail-repair-note').value.trim(),...(status==='completed' && outcome ? {outcome} : {}),...(status==='booked' ? {expiresAt:`${deadline}:00+08:00`} : {})});close();showToast('记录已修正');}
     catch(error){showToast(error.message);}
     finally{button.disabled=false;}
   });
