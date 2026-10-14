@@ -9,6 +9,7 @@ export function statsRepository(db) {
       const sql = [
         `SELECT COUNT(*) AS total,COUNT(CASE WHEN ${finished} THEN 1 END) AS completed,
           COUNT(CASE WHEN outcome='no_show' THEN 1 END) AS noShow,
+          COUNT(CASE WHEN outcome='expired' THEN 1 END) AS expired,
           COUNT(CASE WHEN ${classified} THEN 1 END) AS classified,
           COUNT(CASE WHEN outcome='repaired' THEN 1 END) AS repaired FROM appointments WHERE ${where}`,
         `SELECT date,COUNT(*) AS total,COUNT(CASE WHEN ${finished} THEN 1 END) AS completed FROM appointments WHERE ${where} GROUP BY date ORDER BY date`,

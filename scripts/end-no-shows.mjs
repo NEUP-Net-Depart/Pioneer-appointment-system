@@ -7,8 +7,8 @@ import { cloudflareClient } from './cloudflare-d1.mjs';
 
 export async function endNoShows(repository, { apply = false, now = new Date() } = {}) {
   const beforeDate = expiredBookingDate(now);
-  if (!apply) return { dryRun: true, eligible: await repository.countNoShows(beforeDate), ended: 0 };
-  const result = await repository.endNoShows(beforeDate, now.toISOString());
+  if (!apply) return { dryRun: true, eligible: (await repository.countNoShows(beforeDate)) + (repository.countExpirations ? await repository.countExpirations(beforeDate) : 0), ended: 0 };
+  const result = await (repository.expirePending || repository.endNoShows)(beforeDate, now.toISOString());
   return { dryRun: false, ended: result.meta.changes };
 }
 

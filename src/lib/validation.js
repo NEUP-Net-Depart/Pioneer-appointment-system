@@ -32,7 +32,7 @@ export function appointmentPatch(input) {
     if (input[key] !== undefined) patch[key] = stringField(input[key], key, 80, true);
   }
   if (input.outcome !== undefined) {
-    if (!Object.hasOwn(outcomeLabels, input.outcome) || input.outcome === 'legacy_unknown') fail(400, '结束结果不正确');
+    if (!Object.hasOwn(outcomeLabels, input.outcome) || ['legacy_unknown', 'expired'].includes(input.outcome)) fail(400, '结束结果不正确');
     patch.outcome = input.outcome;
   }
   if (input.status !== undefined) {

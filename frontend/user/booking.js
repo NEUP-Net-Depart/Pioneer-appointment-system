@@ -3,6 +3,7 @@ import { initSignature } from './signature.js';
 import { initBookingHints } from './booking-hints.js';
 import { apiJson } from '/shared/api.js';
 import { saveAppointment,privateLink } from './credentials.js';
+import { renderRepairQr } from './repair-qr.js';
 import { uploadAttachments } from '/shared/attachments.js';
 import { initSlotPicker } from './slot-picker.js';
 import { normalizeTimeSlot } from '/shared/constants.js';
@@ -49,6 +50,7 @@ export function initBooking({ appointments, onCreated }) {
       }
       appointments.unshift(appointment);
       $('#success-code').textContent = appointment.id;
+      renderRepairQr($('#success-repair-qr'), appointment);
       $('#success-summary').textContent = `${appointment.campus} · ${appointment.date} · ${appointment.timeSlot}`;
       picker.dispose();
       form.hidden = true; $('.section-heading').hidden = true; $('#success-panel').hidden = false;

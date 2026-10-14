@@ -5,7 +5,7 @@ export const fail = (status, message) => { throw new HttpError(status, message);
 export const securityHeaders = {
   'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store',
-  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+  'Permissions-Policy': 'camera=(self), microphone=(), geolocation=()',
   'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'; sandbox"
 };
 export function json(payload, status = 200) {

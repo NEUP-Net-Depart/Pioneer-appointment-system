@@ -1,207 +1,94 @@
 # 部署与运维
 
-现有 Production/Preview 使用同一个 Cloudflare Pages 项目，Pages Functions、D1 和私有 R2 共同提供服务。长期集成分支使用独立的 [Staff Staging](staff-staging.md)，其配置、凭证和操作见专用文档。
+本地开发见 [README](../README.md)。环境配置以 [wrangler.jsonc](../wrangler.jsonc) 为准，自动发布由 [check.yml](../.github/workflows/check.yml) 执行。
 
-## 环境与绑定
+Production/Preview 共用一个 Pages 项目；长期集成分支使用独立的 [Staff Staging](staff-staging.md)，以 [wrangler.staff-staging.jsonc](../wrangler.staff-staging.jsonc) 管理配置、独立 D1/R2 和凭证。
 
-| 环境 | 分支 | D1 | R2 | `MAX_R2_BYTES` |
+## Cloudflare 配置
+
+| 环境 | 分支 | D1（DB） | 私有 R2（ATTACHMENTS） | MAX_R2_BYTES |
 |---|---|---|---|---:|
-| Production | `main` | `pioneer-appointments-production-v2` | `pioneer-attachments-production-v2` | 8589934592 |
-| Preview | dev 和其他普通分支 | `pioneer-appointments-preview-v2` | `pioneer-attachments-preview-v2` | 536870912 |
-| Staff Staging | `next/staff-platform` | `pioneer-appointments-staff-staging` | `pioneer-attachments-staff-staging` | 536870912 |
+| Production | main | pioneer-appointments-production-v2 | pioneer-attachments-production-v2 | 8589934592 |
+| Preview | dev 和普通功能分支 | pioneer-appointments-preview-v2 | pioneer-attachments-preview-v2 | 536870912 |
+| Staff Staging | next/staff-platform | pioneer-appointments-staff-staging | pioneer-attachments-staff-staging | 536870912 |
 
-绑定名固定为 `DB` 和 `ATTACHMENTS`。旧 D1/R2 资源不属于当前绑定，删除需要单独授权。
+生产地址：<https://pioneer-appointment-system.pages.dev>；dev 地址：<https://dev.pioneer-appointment-system.pages.dev>。其他 Preview 地址由分支名生成；各分支代码独立，所有 Preview 共用测试数据、附件与 Secrets。
 
-每个分支有独立地址，代码更新互不覆盖；Preview 数据库、附件和应用密钥共用，任何 Preview 上的数据修改都会被其他 Preview 看到。
+Pages 根目录为仓库根，构建命令 `npm run build`，输出 `dist`，Functions 位于 `functions/`；保留 `nodejs_compat`、两套绑定和生产分支 `main`。关闭 Pages 自身的自动部署，由 Actions 保证先迁移再发布。
 
-| 分支 | 网址 |
+两个 Pages 环境分别设置以下 Secrets，生产、测试使用不同值，密钥不入 Git：
+
+| Secret | 要求 |
 |---|---|
-| `main` | `https://pioneer-appointment-system.pages.dev` |
-| `dev` | `https://dev.pioneer-appointment-system.pages.dev` |
-| `feat/nfc-checkin` | `https://feat-nfc-checkin.pioneer-appointment-system.pages.dev` |
-| `fix/booking-status` | `https://fix-booking-status.pioneer-appointment-system.pages.dev` |
+| JWT_SECRET | 至少 32 字符的随机值，用于 JWT 和限流 HMAC |
+| PII_ENCRYPTION_KEY | 64 位十六进制，用于联系方式加密 |
+| SCAN_QR_SECRET | 可选，至少 32 字符；未设置时使用 PII 密钥和独立 HMAC 域签名二维码 |
 
-[Cloudflare Pages 分支别名](https://developers.cloudflare.com/pages/configuration/preview-deployments/#preview-aliases)使用小写分支名，并将非字母数字字符替换为 `-`。同一分支重新发布会更新该别名。选择分支名时避免转换后的别名相同，并确保别名是有效的 DNS 标签。
+二维码签名密钥须稳定，变更会使已打印码失效；恢复联系方式须使用原加密密钥。
 
-Pages 配置使用以下构建设置：
+## 发布与迁移
 
-- 构建命令：`npm run build`
-- 输出目录：`dist`
-- 根目录：仓库根目录
-- Functions：仓库根目录的 `functions/`
-- 兼容性：`nodejs_compat`，`limits.cpu_ms=1000`
+Actions 先运行 `npm run verify`，再按下表执行；推送会触发发布，操作前确认目标环境和授权，尤其是生产分支 `main`。
 
-## Secrets 与 root
+| 触发 | 行为 |
+|---|---|
+| 推送 main | 生产迁移 → 发布 → smoke |
+| 推送 dev | 共享 Preview 迁移 → 发布 → smoke |
+| 推送 next/staff-platform | 独立 Staff Staging 迁移 → 发布 → smoke |
+| 推送 feat/staff-* | 仅隔离验证，不发布 |
+| 推送其他分支 | 发布该分支 Preview → smoke，不迁移 |
+| 手动运行 | 仅非 main 分支可用，迁移规则同上 |
+| PR | 仅验证 |
 
-两个 Pages 环境分别配置以下 Secrets：
+共享 Preview 功能依赖新结构时，先将兼容迁移合入 dev 并等待成功，再发布功能分支；Staff Staging 在自身迁移成功后发布。迁移只追加、必须兼容仍在运行的旧应用；失败不发布，发布失败不回滚数据库，重跑跳过已执行迁移。
 
-| Secret | 要求 | 用途 |
-|---|---|---|
-| `JWT_SECRET` | 至少 32 个字符的随机值 | JWT 签名和限流 HMAC |
-| `PII_ENCRYPTION_KEY` | 64 位十六进制随机值 | AES-256-GCM 联系方式加密 |
+仓库 Secret 设置 `CLOUDFLARE_ACCOUNT_ID`，各 GitHub Environment 配置如下：
 
-Preview 和 Production 必须使用不同的密钥。密钥只保存在 Cloudflare Pages Secrets 和受限本地备份中，不写入 Git、Wrangler vars、前端或构建产物。
-
-`root001`、`root002` 是两个受保护的 `superadmin`。初始密码通过本机环境变量 `ROOT001_PASSWORD`、`ROOT002_PASSWORD` 提供，每个密码长度为 16–128 个字符。密码和两个环境的密钥保存在仓库外的受限目录；重新运行 seed 不会覆盖已有密码。
-
-## 本地开发
-
-```bash
-npm ci
-npx playwright install chromium
-npm run setup:local
-npm run dev
-```
-
-本地地址：
-
-- 用户端：<http://127.0.0.1:8788/>
-- 工作人员端：<http://127.0.0.1:8788/staff/>
-- 健康检查：`/api/health`
-
-本地 D1/R2 数据由 Wrangler 保存在 `.wrangler/`。本地环境不会连接远程资源。
-
-## 验证
-
-```bash
-npm run verify
-npm run release:plan -- --preview
-npm run release:plan
-```
-
-`release:plan` 只读取本地配置、当前提交和迁移哈希，不执行远程操作。发布前工作树必须干净，并核对计划中的分支、D1、R2、配额和迁移。
-
-## 远程迁移、root 初始化和发布
-
-### GitHub Actions 统一发布
-
-[Cloudflare CI and release](../.github/workflows/check.yml) 对所有推送和 PR 运行本地验证，发布行为如下：
-
-| 触发方式 | 目标 | 行为 |
-|---|---|---|
-| 推送 `main` | Production | 验证通过后自动迁移、发布和检查 |
-| 推送 `dev` | `dev` Preview | 验证通过后自动迁移共享测试库、发布和检查 |
-| 推送 `next/staff-platform` | 独立 Staff Staging | 独立 D1 迁移成功后发布和检查 |
-| 推送 `feat/staff-*` | 无远程发布 | 隔离本地 D1/R2 验证 |
-| 推送其他分支 | 该分支的 Preview | 验证通过后发布和检查，不迁移 |
-| Actions 中选择非 `main` 分支，点击 Run workflow | 该分支的 Preview | 与推送同样处理；仅 `dev` 执行迁移 |
-| PR、标签或分支删除 | 无远程发布 | PR 仅验证；标签和删除不发布 |
-
-工作流先运行 `npm run verify`。Production 在同一发布任务内依次执行 D1 迁移、Pages 发布和 HTTP smoke。`dev` 在独立的 `migrate-preview` 任务中迁移，成功后才发布；其他 Preview 跳过这个任务。迁移失败不会发布，发布失败不会继续检查。共享 Preview 的迁移串行执行，同一分支的发布串行执行，其他分支可以分别发布；正在进行的迁移不会被取消。
-
-`CLOUDFLARE_ACCOUNT_ID` 可继续保存在仓库 Secrets 中。全部工作流的 Cloudflare 凭证按 GitHub Environment 分配，Token 的资源范围只选目标 Cloudflare 账号：
-
-| GitHub Environment | 允许分支 | Secret | Cloudflare 权限 |
+| Environment | Branch 限制 | Token Secret | 权限 |
 |---|---|---|---|
-| `production` | 仅 `main` | `CLOUDFLARE_API_TOKEN` | D1 Edit、Cloudflare Pages Edit、Workers R2 Storage Edit；用于生产发布和维护 |
-| `preview` | 所有仓库内分支 | `CLOUDFLARE_PREVIEW_API_TOKEN` | 仅 Cloudflare Pages Edit |
-| `preview-migrations` | 仅 `dev` | `CLOUDFLARE_PREVIEW_D1_API_TOKEN` | 仅 D1 Edit |
-| `preview-maintenance` | 仅 `main` | `CLOUDFLARE_PREVIEW_MAINTENANCE_API_TOKEN` | D1 Edit、Workers R2 Storage Edit；用于共享测试库和附件维护 |
+| production | 仅 main | CLOUDFLARE_API_TOKEN | D1 Edit、Pages Edit、R2 Storage Edit |
+| preview | No restriction | CLOUDFLARE_PREVIEW_API_TOKEN | Pages Edit |
+| preview-migrations | 仅 dev | CLOUDFLARE_PREVIEW_D1_API_TOKEN | D1 Edit |
+| preview-maintenance | 仅 main | CLOUDFLARE_PREVIEW_MAINTENANCE_API_TOKEN | D1 Edit、R2 Storage Edit |
+| staff-staging | 仅 next/staff-platform | CLOUDFLARE_STAFF_PAGES_API_TOKEN | Pages Edit |
+| staff-staging-migrations | 仅 next/staff-platform | CLOUDFLARE_STAFF_D1_API_TOKEN / CLOUDFLARE_STAFF_MAINTENANCE_API_TOKEN | 分别为 D1 Edit / D1 Edit、R2 Storage Edit |
 
-生产维护复用 `production` 的原 Token；若重建生产 Token，必须同时保留 R2 读写和对象删除权限。Preview 维护使用新的专用 Token，不给所有功能分支可读取的 Preview 发布 Token 增加 D1/R2 权限，也不扩大仅供 `dev` 迁移的 Token 用途。[Cloudflare API 权限文档](https://developers.cloudflare.com/fundamentals/api/reference/permissions/)将上述写权限称为 D1 Write、Pages Write、Workers R2 Storage Write，控制台可能显示为 Edit；如果控制台支持资源范围，Preview 维护 Token 应只选择 Preview D1/R2。Pages 的 `JWT_SECRET`、`PII_ENCRYPTION_KEY` 继续按 Production/Preview 分别保存在 Cloudflare。
+Token 资源范围限定目标账号；维护 Token 不提供给功能分支，R2 权限须支持删除对象。`preview` 不限分支以兼容含 `/` 的名称，其余设精确 Branch 规则，不额外配置必需审批人。Pages Edit 无法在同一项目内仅限 Preview，仓库写入者须可信。`production` 环境变量 `SITE_URL` 设置为生产域名。
 
-Secret 迁移按以下顺序完成，避免旧工作流失去凭证：
+## 手动发布与初始化
 
-1. 将原来的 `CLOUDFLARE_API_TOKEN` 安全保存到 `production` 的环境 Secrets，并确认其 D1、Pages、R2 权限。GitHub Secret 无法读回，迁移原 Token 需要安全备份；如果 Roll 了 Token，先更新所有仍在使用旧值的 Secret。
-2. 为 `preview`、`preview-migrations` 和 `preview-maintenance` 配置表中的专用 Secret 和分支限制。已有的 Preview 发布、迁移 Token 可以继续使用；新增 Preview 维护 Token 不需要 Pages 权限。
-3. 先更新 `main` 上的工作流，再同步到当前默认分支 `dev`。两个分支均须包含最新维护工作流，因为定时入口从默认分支触发，再派发到 `main`。
-4. 从 `main` 手动运行两个维护工作流，选择 `both` 并保持 `dry_run=true`，确认两个环境的凭证和资源读取成功后，再删除仓库级 `CLOUDFLARE_API_TOKEN`。Cloudflare Token 不应留在仓库 Secrets 中。
+工作树须干净。远程迁移、seed、发布默认只打印计划，先检查提交、分支和目标资源，再按已获授权执行：
 
-`production` 配置环境变量 `SITE_URL=https://pioneer-appointment-system.pages.dev`，自定义生产域名也可继续使用。Preview 地址由实际分支名和 `wrangler.jsonc` 中的项目名生成，不再读取 Preview 的 `SITE_URL`；旧变量可以移除。发布任务把实际网址写入 GitHub Deployment 链接。四个环境不设置额外的必需审批人，以保持自动运行。
+| 步骤 | Preview | Production |
+|---|---|---|
+| 计划 | `npm run release:plan -- --preview` | `npm run release:plan` |
+| 迁移 | `npm run db:migrate:remote -- --preview --execute --approve-preview` | `npm run db:migrate:remote -- --execute --approve-production` |
+| 发布 | `npm run deploy:preview -- --execute --approve-preview` | `npm run deploy -- --execute --approve-production` |
 
-`preview` 的 Deployment branches and tags 选择 **No restriction**，由工作流排除 PR、标签、删除和手动 `main` 发布。[GitHub 的分支规则](https://docs.github.com/en/rest/deployments/branch-policies)中 `*` 不会匹配 `/`，仅添加 `*` 会继续挡住 `feat/nfc-checkin` 等分支。其余环境使用 Selected branches and tags，`production`、`preview-maintenance` 只添加类型为 Branch 的 `main`，`preview-migrations` 只添加 Branch 类型的 `dev`。
+Preview 迁移从 dev 执行，发布使用当前真实分支。新库依次应用全部迁移，已有库只执行未应用项。
 
-Cloudflare Pages Edit 是账号级权限，在同一个 Pages 项目内不能把 Token 限定到 Preview；Environment 分支规则和脚本负责选择发布环境。因此具备仓库分支写入权限的人必须可信，环境隔离也依赖正确维护工作流和 Token 权限。
+仅首次初始化需在迁移后、发布前创建 root。安全设置临时环境变量 `ROOT001_PASSWORD`、`ROOT002_PASSWORD`（各 16–128 字符），然后运行 `npm run db:seed -- --remote --preview --execute --approve-preview`；生产移除 `--preview` 并改用 `--approve-production`。完成后清除临时密码变量。seed 重跑不覆盖已有密码，运行时和自动发布不初始化账号。
 
-在 Cloudflare Pages 项目的 Git 构建设置中关闭 Production 自动部署和 Preview 自动部署，由 Actions 统一发布；保留 Git 关联、Production 分支 `main` 和两套绑定。否则 Pages 的独立自动部署可能抢在数据库迁移完成前上线。
+[release-checks.sql](release-checks.sql) 提供只读检查；仅首次空库初始化预期两个保护 root、四条校区授权和空业务表。发布后运行 `npm run smoke -- https://<domain>`，并检查登录、预约、扫码签到、私人凭证查询和附件访问。
 
-迁移文件只追加、不修改已执行文件。迁移执行时旧版本仍在提供服务，SQL 必须与旧版本兼容；删除字段等破坏性变化应拆成先扩展、再切换应用、最后清理的多次发布。Pages 发布失败后已执行的 D1 迁移保留，重跑工作流会跳过已应用迁移。工作流不初始化或重置 root 账号。
+## 扫码配置与回退
 
-功能分支需要新表或新字段时，先把兼容性迁移合并到 `dev` 并等待其迁移任务成功，再发布依赖该结构的功能分支。功能分支不会自动升级共享数据库；`dev` 的迁移必须兼容仍在运行的其他 Preview。
+- 先应用 `0006_scan_workbench.sql`、`0007_onsite_expiration.sql` 再部署；`SCAN_WORKBENCH_ENABLED` 默认 true。将目标环境变量改为 false 并重新部署，刷新或重新登录恢复旧工作台；不反向迁移，一人一单约束继续生效。
+- zxing-wasm 脚本、WASM 与许可证由本站 `/vendor/` 提供；保留 `public/_headers` 和 API 的同源摄像头 Permissions-Policy。
+- 摄像头需 HTTPS 或本地可信源及浏览器授权；无法使用时可选相册或手动编号。实体 iOS、Android、QQ 浏览器的镜头切换和手电筒须单独验收。
+- 默认请求后置摄像头；设备不支持精确镜头方向时回退为方向偏好，切换镜头仍使用选定设备或前后方向。权限被拒绝时保留相册和手动输入入口。
 
-### 本地手动操作
+## 维护与备份
 
-远程命令默认只打印计划。执行时必须使用对应环境的授权参数；不要把 Preview 参数用于 Production。
+| 工作流 | 北京时间 | 启用变量 |
+|---|---|---|
+| [附件清理](../.github/workflows/cleanup-attachments.yml) | 周一 03:17 | ATTACHMENT_MAINTENANCE_ENABLED=true |
+| [未到场处理](../.github/workflows/end-no-shows.yml) | 每日 21:35 | BOOKING_MAINTENANCE_ENABLED=true |
 
-### Preview
+定时入口从默认分支 dev 派发到 main，使用内置 GITHUB_TOKEN，处理两个环境；以 main 上的执行结果为准。手动维护也须选择 main，可选 production/preview/both，默认 dry-run，关闭后才写入或删除。维护不执行迁移。
 
-先切换到准备发布的非 `main` 分支。`deploy:preview` 读取当前真实分支名，不会把所有发布覆盖到 `dev`。共享测试库的常规迁移从 `dev` 执行。
+临时登记与线上预约均在业务日期 21:30 后结束待签到记录，结果分别为 `expired`、`no_show`。共享 Preview 定时维护使用 main 上的脚本，须保持维护逻辑与目标库迁移版本一致。预约查询和工作人员操作也会按需处理过期记录。Staff Staging 维护从 next/staff-platform 执行，规则见专用文档。
 
-```bash
-npm run db:migrate:remote -- --preview --execute --approve-preview
+附件清理覆盖到期文件、超过 24 小时的未完成上传及失败补偿；失败下次重试，R2 生命周期规则不能替代 D1 清理。手动预检：`npm run attachments:cleanup -- --dry-run --preview`；确认后用 `--apply`，生产移除 `--preview`。
 
-$env:ROOT001_PASSWORD = Read-Host 'Preview root001 密码' -MaskInput
-$env:ROOT002_PASSWORD = Read-Host 'Preview root002 密码' -MaskInput
-try {
-  npm run db:seed -- --remote --preview --execute --approve-preview
-} finally {
-  Remove-Item Env:ROOT001_PASSWORD, Env:ROOT002_PASSWORD -ErrorAction SilentlyContinue
-}
-
-npm run deploy:preview -- --execute --approve-preview
-npm run smoke -- https://dev.pioneer-appointment-system.pages.dev
-```
-
-### Production
-
-```bash
-npm run db:migrate:remote -- --execute --approve-production
-
-$env:ROOT001_PASSWORD = Read-Host 'Production root001 密码' -MaskInput
-$env:ROOT002_PASSWORD = Read-Host 'Production root002 密码' -MaskInput
-try {
-  npm run db:seed -- --remote --execute --approve-production
-} finally {
-  Remove-Item Env:ROOT001_PASSWORD, Env:ROOT002_PASSWORD -ErrorAction SilentlyContinue
-}
-
-npm run deploy -- --execute --approve-production
-npm run smoke -- https://<production-domain>
-```
-
-首次使用新数据库时按编号顺序应用 `migrations/` 下的全部迁移。已有数据库应用尚未执行的迁移；`0002_slot_capacity.sql` 将每校区每时段的新预约上限改为 10 人，并允许继续处理原有预约。上线后的结构变化追加新的编号迁移，不修改已应用文件。旧结构数据库不能直接套用当前初始迁移。
-
-迁移和 seed 不由 Pages Functions 自动执行。初始化后可用 [release-checks.sql](release-checks.sql) 做只读计数检查；Production 应只有两个受保护 root、四条校区授权和空业务表。
-
-## 附件维护
-
-附件使用私有 R2，应用先在 D1 预留容量，再上传对象；删除 R2 对象成功后释放额度。附件自上传起保留 180 天，超过 24 小时的未完成上传和失败补偿由清理命令处理。
-
-先 dry-run，再按环境执行：
-
-```bash
-npm run attachments:cleanup -- --dry-run
-npm run attachments:cleanup -- --dry-run --preview
-npm run attachments:cleanup -- --apply
-npm run attachments:cleanup -- --apply --preview
-```
-
-清理任务每批处理 100 条；单条失败会保留记录并在下次重试。R2 生命周期规则只负责对象删除，不能代替 D1 元数据和额度清理。
-
-## GitHub 定时维护
-
-[Clean expired attachments](../.github/workflows/cleanup-attachments.yml) 每周一北京时间 03:17 清理附件；[End unattended appointments](../.github/workflows/end-no-shows.yml) 每天北京时间 21:35 结束无人到场预约。仓库变量 `ATTACHMENT_MAINTENANCE_ENABLED=true`、`BOOKING_MAINTENANCE_ENABLED=true` 分别启用对应定时任务，未启用时仍可手动 dry-run。
-
-GitHub 的定时任务只从默认分支触发，当前默认分支为 `dev`。定时入口不读取 Cloudflare Token，只用内置 `GITHUB_TOKEN` 和任务级 `actions: write` 权限向同一个工作流的 `main` 分支发送 `workflow_dispatch`，选择 `both`、`dry_run=false`。派发成功不代表维护完成，实际结果查看随后在 `main` 上执行的工作流。无需新增 GitHub PAT，也不改变默认分支或生产环境的分支限制。[GitHub 工作流触发规则](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)允许内置 Token 触发 `workflow_dispatch`。
-
-手动维护必须在 Run workflow 中选择 `main`，可选择 `production`、`preview` 或 `both`；默认 `dry_run=true`，只有主动关闭 dry-run 才会写入或删除。分支和目标验证任务不读取 Cloudflare Secret，不合法的分支在凭证任务开始前失败。任务矩阵只创建选中的环境，生产维护绑定 `production`，Preview 维护绑定 `preview-maintenance`，缺少对应 Token 时失败，不回退到另一种 Token。维护脚本继续按 `--preview` 选择共享 Preview D1/R2，按环境串行执行，不执行数据库迁移。
-
-## 备份与健康检查
-
-D1 导出示例：
-
-```bash
-npx wrangler d1 export DB --remote --output <secure-backup-path>
-```
-
-R2 对象和 `PII_ENCRYPTION_KEY` 需要单独备份。恢复时必须使用同一环境的加密密钥。
-
-发布后检查：
-
-```bash
-npm run smoke -- https://<domain>
-```
-
-`/api/health` 应报告 `ok: true`、`database: d1`、`attachments: r2`。再检查用户端、工作人员端、登录、预约、凭证查询和附件访问。
-
-生产发布、Secrets、D1/R2 绑定、域名和旧资源处置均需在目标 Cloudflare 账号中核对；不要删除当前或旧资源来绕过发布问题。
+D1 备份：`npx wrangler d1 export DB --remote --output <secure-backup-path>`，Preview 增加 `--env preview`。R2 对象和密钥单独备份，备份文件不入 Git。
