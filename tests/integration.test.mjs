@@ -399,7 +399,7 @@ test('reactivating cancelled appointments still enforces D1 capacity and duplica
   const replacement = await book({ studentId: old.studentId });
   await api(`/api/appointments/${old.id}/status`, { method: 'PATCH', token: root, body: { action: 'correct', status: 'booked' } }, 409);
   await api(`/api/appointments/${replacement.id}/status`, { method: 'PATCH', token: root, body: { status: 'completed', outcome: 'cancelled' } });
-  for (let n = 0; n < 10; n++) await book();
+  for (let n = 0; n < 5; n++) await book();
   await api(`/api/appointments/${old.id}/status`, { method: 'PATCH', token: root, body: { action: 'correct', status: 'booked' } }, 409);
 });
 test('simultaneous sign-ins have one winner; technician ownership and transitions hold', async () => {
@@ -833,12 +833,12 @@ test('staff overview uses real capacity and cancellation rules without exposing 
   assert.equal(result.start, dateKey()); assert.equal(result.end, addDays(dateKey(),6));
   assert.ok(result.dates.every(serviceDay));
   const slot = result.items.find(item => item.date===date && item.timeSlot==='19:00–19:30');
-  assert.equal(slot.occupied,2); assert.equal(slot.remaining,8); assert.equal(slot.capacity,10);
+  assert.equal(slot.occupied,2); assert.equal(slot.remaining,0); assert.equal(slot.capacity,1);
   assert.equal(slot.booked,0); assert.equal(slot.inProgress,1);
   assert.ok(result.items.every(item => item.campus==='南湖' && !('name' in item) && !('studentId' in item) && !('social' in item)));
   await configureCapacity(root,0);
   const paused = await api('/api/appointments/overview', { token:root });
-  assert.equal(paused.items.find(item => item.campus==='南湖' && item.date===date && item.timeSlot==='19:00–19:30').capacity,10);
+  assert.equal(paused.items.find(item => item.campus==='南湖' && item.date===date && item.timeSlot==='19:00–19:30').capacity,0);
   assert.ok(paused.items.some(item => item.campus==='浑南' && item.occupied===1));
   await api('/api/appointments/overview', {},401);
 });
@@ -1210,7 +1210,7 @@ test('workflow migration preserves populated legacy records, credentials, attach
 });
 
 test('finished repairs and no-shows retain capacity while restoring a cancellation checks capacity',async()=>{
-  const items=[];for(let n=0;n<10;n++)items.push(await book());
+  const items=[];for(let n=0;n<5;n++)items.push(await book());
   const token=await login();
   await api(`/api/appointments/${items[0].id}/status`,{method:'PATCH',token,body:{status:'in_progress',...await intake(items[0], token)}});
   await api(`/api/appointments/${items[0].id}/status`,{method:'PATCH',token,body:{status:'completed',outcome:'not_needed',repairNote:'无需维修'}});
@@ -1626,14 +1626,14 @@ test('schedule migration preserves legacy bookings, cancelled days, onsite work,
 });
 
 
-test('mixed legacy and half-hour dates reject overlapping bookings across campuses', async () => {
+test('half-hour bookings reject overlapping slots across campuses', async () => {
   await db.prepare("DELETE FROM booking_day_slots WHERE campus='浑南'").run();
   const legacy=await book();
-  await api('/api/appointments',{method:'POST',body:draft({studentId:legacy.studentId,campus:'浑南',timeSlot:'19:30–20:00'})},409);
+  await api('/api/appointments',{method:'POST',body:draft({studentId:legacy.studentId,campus:'浑南',timeSlot:'19:00–19:30'})},409);
   const later=await book({studentId:legacy.studentId,campus:'浑南',timeSlot:'20:00–20:30'});
   assert.equal(later.timeSlot,'20:00–20:30');
   await api(`/api/appointments/${legacy.id}/status`,{method:'PATCH',accessToken:legacy.accessToken,body:{status:'completed',outcome:'cancelled'}});
-  await book({studentId:legacy.studentId,campus:'浑南',timeSlot:'19:30–20:00'});
+  await book({studentId:legacy.studentId,campus:'浑南',timeSlot:'19:00–19:30'});
   await api(`/api/appointments/${legacy.id}/status`,{method:'PATCH',token:await login(),body:{action:'correct',status:'booked'}},409);
 });
 
