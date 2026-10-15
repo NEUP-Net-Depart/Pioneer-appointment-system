@@ -68,7 +68,7 @@ test('public output excludes server source, secrets, old entrypoints and build t
 });
 test('shared requests isolate guest pages from staff JWT and clear revoked sessions', async () => {
   const oldFetch = globalThis.fetch;
-  const values = new Map([['pioneerToken','staff-test-token'],['pioneerAccount','123456'],['pioneerRole','technician']]);
+  const values = new Map([['pioneerToken','staff-test-token'],['pioneerAccount','123456'],['pioneerRole','technician'],['booking-draft','keep']]);
   const events = [];
   globalThis.sessionStorage = { getItem: key => values.get(key), removeItem: key => values.delete(key) };
   globalThis.window = { dispatchEvent: event => events.push(event.type) };
@@ -78,7 +78,7 @@ test('shared requests isolate guest pages from staff JWT and clear revoked sessi
     const { apiFetch, useStaffSession } = await import('../shared/api.js');
     await apiFetch('/api/appointments'); assert.equal(captured[0], null);
     useStaffSession(); await apiFetch('/api/auth/me'); assert.equal(captured[1], 'Bearer staff-test-token');
-    await apiFetch('/api/auth/me'); assert.equal(values.size, 0); assert.deepEqual(events, ['auth-expired']);
+    await apiFetch('/api/auth/me'); assert.deepEqual([...values], [['booking-draft','keep']]); assert.deepEqual(events, ['auth-expired']);
   } finally { globalThis.fetch = oldFetch; delete globalThis.sessionStorage; delete globalThis.window; }
 });
 

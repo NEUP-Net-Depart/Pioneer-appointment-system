@@ -1,19 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { drawSignature, validSignature } from '../../shared/signature.js';
+import { apiJson, clearSession, useStaffSession } from '../../shared/api.js';
 
 const roles = { technician: '维修人员', admin: '管理员', superadmin: '最高权限者' };
 const tokenKey = 'pioneerToken';
 const readToken = () => sessionStorage.getItem(tokenKey) || '';
 
-async function request(path, options = {}) {
-  const headers = new Headers(options.headers || {});
-  if (options.body !== undefined) { headers.set('content-type', 'application/json'); options.body = JSON.stringify(options.body); }
-  const token = readToken(); if (token) headers.set('authorization', `Bearer ${token}`);
-  const response = await fetch(path, { ...options, headers });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || '请求失败，请稍后重试');
-  return payload;
+useStaffSession();
+function request(path, { body, ...options } = {}) {
+  return apiJson(path, { ...options, ...(body === undefined ? {} : { json: body }) });
 }
 
 function Login({ onLogin }) {
@@ -88,6 +84,41 @@ function Roster() {
 
 function App({ user, onLogout }) { const [page, setPage] = useState('workbench'); const admin = ['admin', 'superadmin'].includes(user.role); const navigate = value => setPage(value); return <><header className="react-topbar"><strong>先锋硬件部</strong><nav><button className={page === 'workbench' ? 'is-active' : ''} onClick={() => setPage('workbench')}>工作台</button><button className={page === 'repair' ? 'is-active' : ''} onClick={() => setPage('repair')}>维修前台</button><button className={page === 'attendance' ? 'is-active' : ''} onClick={() => setPage('attendance')}>签到</button><button className={page === 'roster' ? 'is-active' : ''} onClick={() => setPage('roster')}>排班</button>{admin && <><button className={page === 'members' ? 'is-active' : ''} onClick={() => setPage('members')}>成员管理</button><button className={page === 'permissions' ? 'is-active' : ''} onClick={() => setPage('permissions')}>权限编辑器</button></>}</nav><span>{user.name} · {roles[user.role]} <button onClick={onLogout}>退出</button></span></header>{page === 'workbench' && <Workbench user={user} onNavigate={navigate} />}{page === 'repair' && <Repair user={user} />}{page === 'attendance' && <Attendance onNavigate={navigate} />}{page === 'roster' && <Roster />}{page === 'members' && admin && <Members />}{page === 'permissions' && admin && <Permissions />}</>; }
 
-function Root() { const [user, setUser] = useState(null); useEffect(() => { document.querySelectorAll('.login-view,#app-shell,#workbench-profile-dialog,.modal-backdrop').forEach(node => { node.dataset.reactHidden = 'true'; node.hidden = true; }); const token = readToken(); if (token) request('/api/auth/me').then(setUser).catch(() => sessionStorage.clear()); }, []); function logout() { request('/api/auth/logout', { method: 'POST' }).catch(() => {}); sessionStorage.clear(); setUser(null); } return user ? <App user={user} onLogout={logout} /> : <Login onLogin={setUser} />; }
+function Root() {
+  const [user, setUser] = useState(null);
+  const [restoring, setRestoring] = useState(Boolean(readToken()));
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let active = true;
+    document.querySelectorAll('.login-view,#app-shell,#workbench-profile-dialog,.modal-backdrop').forEach(node => {
+      node.dataset.reactHidden = 'true'; node.hidden = true;
+    });
+    function expired() {
+      setUser(null);
+      setError('登录已失效，请重新登录');
+      setRestoring(false);
+    }
+    window.addEventListener('auth-expired', expired);
+    const token = readToken();
+    if (token) {
+      request('/api/auth/me').then(data => {
+        if (active && readToken() === token) setUser(data);
+      }).catch(err => {
+        if (active) setError(err.message);
+      }).finally(() => {
+        if (active) setRestoring(false);
+      });
+    }
+    return () => { active = false; window.removeEventListener('auth-expired', expired); };
+  }, []);
+  function logout() {
+    request('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    clearSession();
+    setUser(null);
+    setError('');
+  }
+  if (restoring) return <main className="react-login" role="status">正在恢复登录…</main>;
+  return user ? <App user={user} onLogout={logout} /> : <>{error && <p className="react-error" role="alert">{error}</p>}<Login onLogin={data => { setError(''); setUser(data); }} /></>;
+}
 
 createRoot(document.getElementById('staff-react-root')).render(<Root />);

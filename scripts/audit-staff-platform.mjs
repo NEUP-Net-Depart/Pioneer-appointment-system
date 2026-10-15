@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { manifests, validateManifests } from '../src/modules/registry.js';
 import { readFile, readdir } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { migrationFingerprint } from './migration-fingerprint.mjs';
 
 const result = validateManifests(manifests);
 assert.equal(result.valid, true, result.errors.join('; '));
@@ -14,7 +14,7 @@ assert.equal(baseline.schemaVersion, contract.schemaVersion);
 assert.deepEqual(baseline.modules.map(item => item.code).sort(), result.summary.map(item => item.code).sort());
 for (const migration of baseline.migrations || []) {
   const content = await readFile(new URL(`../migrations/${migration.name}`, import.meta.url));
-  assert.equal(createHash('sha256').update(content).digest('hex'), migration.sha256, `Migration hash drift: ${migration.name}`);
+  assert.equal(migrationFingerprint(content), migration.sha256, `Migration hash drift: ${migration.name}`);
 }
 for (const module of result.summary) {
   const recorded = baseline.modules.find(item => item.code === module.code);
