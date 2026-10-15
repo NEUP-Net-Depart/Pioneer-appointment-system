@@ -8,6 +8,11 @@ export const scanRoutes = [
     await context.limit('lookup');
     return json(await context.services.scan.resolve(await readBody(context.request), actor));
   }],
+  ['POST', /^\/api\/scan\/search$/, async context => {
+    const actor = await context.role('technician');
+    await context.limit('lookup');
+    return json(await context.services.scan.search(await readBody(context.request), actor));
+  }],
   ['POST', /^\/api\/scan\/onsite$/, async context => {
     const actor = await context.role('technician');
     await context.limit('write');

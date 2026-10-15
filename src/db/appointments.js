@@ -17,6 +17,14 @@ function fromRow(row) {
 }
 export function appointmentRepository(db) {
   return {
+    async searchNumbers(text, date, { campuses, technician }) {
+      const scope = campuses.length ? `campus IN (${campuses.map(() => '?').join(',')})` : '0';
+      const access = technician ? " AND (status='booked' OR assigned_to=? OR (source='onsite' AND registered_by=?))" : '';
+      return (await db.prepare(`SELECT id,campus,date,time_slot AS timeSlot,status FROM appointments
+        WHERE ${scope}${access} AND date=? AND instr(replace(replace(replace(id,'reserve',''),'reverse',''),'-',''),?)>0
+        ORDER BY CASE WHEN status IN ('booked','in_progress') THEN 0 ELSE 1 END,time_slot,id LIMIT 9`)
+        .bind(...campuses,...(technician ? [technician,technician] : []),date,text).all()).results;
+    },
     async schedule(date, campus) {
       return (await scheduleStatement(db, date, date, [campus]).all()).results;
     },

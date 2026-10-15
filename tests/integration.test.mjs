@@ -120,6 +120,29 @@ beforeEach(async () => {
   if (objects.objects.length) await bucket.delete(objects.objects.map(object => object.key));
 });
 
+test('scan number search requires four digits, limits results and preserves date, campus and access scopes', async () => {
+  const root = await login(), tech = await addUser('993046');
+  const booked = await book(), ended = await book(), other = await book({campus:'浑南'});
+  await db.prepare("UPDATE appointments SET status='cancelled' WHERE id=?").bind(ended.id).run();
+  const search = (token,q) => api('/api/scan/search',{method:'POST',token,body:{q}});
+  await api('/api/scan/search',{method:'POST',body:{q:'2026'}},401);
+  assert.deepEqual(await search(root,'202'),{items:[],hasMore:false});
+  await api('/api/scan/search',{method:'POST',token:root,body:{q:'2026%'}},400);
+  const all = await search(root,'2026');
+  assert.equal(all.items.length,3);
+  assert.equal(all.items.at(-1).status,'cancelled');
+  assert.deepEqual(Object.keys(all.items[0]).sort(),['campus','date','id','status','timeSlot']);
+  assert.deepEqual((await search(tech,'2026')).items.map(item=>item.id),[booked.id]);
+  assert.deepEqual((await search(root,booked.id)).items.map(item=>item.id),[booked.id]);
+  assert.equal((await search(root,'9999')).items.length,0);
+  assert.ok(all.items.some(item=>item.id===other.id));
+  await db.prepare("UPDATE appointments SET date='2026-10-14' WHERE id=?").bind(ended.id).run();
+  assert.equal((await search(root,'2026')).items.length,2);
+  for (let i=0;i<8;i++) await book({timeSlot: i<4 ? '19:30–20:00' : '20:00–20:30'});
+  const limited=await search(root,'2026');
+  assert.equal(limited.items.length,8); assert.equal(limited.hasMore,true);
+});
+
 test('scan lookup needs staff authorization, preserves campus scope and never starts a repair', async () => {
   const item = await book(), tech = await addUser('993001');
   const headers = {accessToken:item.accessToken};

@@ -39,6 +39,7 @@ export function initScan() {
     $('#scan-camera').hidden = state === 'running';
   } });
   function panels(id) {
+    clearSuggestions();
     scanner.stop();
     const changingPanel = id && $('#'+id).hidden;
     for (const panel of ['scan-home','scan-manual-form','scan-detail','scan-onsite-form']) $('#'+panel).hidden = panel !== id;
@@ -173,7 +174,51 @@ export function initScan() {
     if (current === generation) { $('#scan-add-files').value = ''; await loadFiles(); message('维修附件已保存'); }
   }));
   $('#scan-manual').addEventListener('click', () => { if (ready) { panels('scan-manual-form'); $('#scan-number').focus(); } });
-  $('#scan-manual-form').addEventListener('submit', event => { event.preventDefault(); resolve({ id: $('#scan-number').value.trim() }); });
+  let suggestionTimer, suggestionGeneration = 0, suggestionRequest;
+  const suggestionBox = $('#scan-number-suggestions'), suggestionMessage = $('#scan-number-message');
+  function clearSuggestions() {
+    clearTimeout(suggestionTimer); suggestionGeneration++; suggestionRequest?.abort();
+    suggestionBox.hidden = true; suggestionBox.replaceChildren(); suggestionMessage.textContent = '';
+  }
+  function searchSuggestions() {
+    clearSuggestions();
+    const input = $('#scan-number'), raw = input.value.trim().replace(/^(?:reserve|reverse)/i, '');
+    if (!/^[\d-]+$/.test(raw) || raw.replace(/-/g, '').length < 4) return;
+    const current = suggestionGeneration;
+    suggestionTimer = setTimeout(async () => {
+      suggestionRequest = new AbortController();
+      suggestionMessage.textContent = '正在查找当天预约…';
+      try {
+        const { items, hasMore } = await apiJson('/api/scan/search', { method: 'POST', json: { q: raw }, signal: suggestionRequest.signal });
+        if (current !== suggestionGeneration || !active || $('#scan-manual-form').hidden) return;
+        suggestionBox.replaceChildren(...items.map(item => {
+          const button = document.createElement('button'); button.type = 'button'; button.className = 'scan-number-suggestion';
+          const number = document.createElement('strong'), detail = document.createElement('span'), state = document.createElement('em');
+          number.textContent = item.id; detail.textContent = `${item.campus} · ${item.timeSlot}`; state.textContent = statusLabels[item.status] || item.status;
+          button.append(number, detail, state);
+          button.addEventListener('click', () => { input.value = item.id; clearSuggestions(); resolve({ id: item.id }); });
+          button.addEventListener('keydown', event => {
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+              event.preventDefault(); (event.key === 'ArrowDown' ? button.nextElementSibling : button.previousElementSibling)?.focus();
+            }
+          });
+          return button;
+        }));
+        suggestionBox.hidden = !items.length;
+        suggestionMessage.textContent = hasMore ? '显示前 8 条，请继续输入以缩小范围' : items.length ? `找到 ${items.length} 条当天预约，选择即可打开` : '当天没有匹配的预约；历史预约请填写完整编号查询';
+      } catch (error) {
+        if (current === suggestionGeneration && error.name !== 'AbortError') suggestionMessage.textContent = '搜索失败，请继续输入重试，或填写完整编号查询';
+      }
+    }, 300);
+  }
+  $('#scan-number').addEventListener('input', searchSuggestions);
+  $('#scan-number').addEventListener('keydown', event => {
+    if (event.key === 'ArrowDown' && !suggestionBox.hidden) { event.preventDefault(); suggestionBox.firstElementChild?.focus(); }
+  });
+  $('#scan-manual-form').addEventListener('keydown', event => {
+    if (event.key === 'Escape') { clearSuggestions(); $('#scan-number').focus(); }
+  });
+  $('#scan-manual-form').addEventListener('submit', event => { event.preventDefault(); clearSuggestions(); resolve({ id: $('#scan-number').value.trim() }); });
   $('#scan-camera').addEventListener('click', () => { if (ready && active) scanner.start(); });
   $('#scan-image').addEventListener('change', async event => {
     if (!ready || busy) return;
@@ -254,6 +299,7 @@ export function initScan() {
     refresh() {},
     activate(value) {
       active = value;
+      if (!active) clearSuggestions();
       if (active && ready && !$('#scan-home').hidden && !document.hidden) scanner.start(); else scanner.stop();
     },
     clear() {
