@@ -2,7 +2,7 @@ import { parseAppointmentSearch, APPOINTMENT_SEARCH_LIMIT } from '../../shared/a
 import { appointmentAccessRules } from '../lib/appointment-access.js';
 import { fail } from '../lib/http.js';
 import { scanCode, verifyScanCode } from '../lib/scan-code.js';
-import { bookingInput, stringField } from '../lib/validation.js';
+import { onsiteBookingInput, stringField } from '../lib/validation.js';
 import { dateKey } from '../../shared/time.js';
 import { TIME_SLOTS } from '../../shared/constants.js';
 import { requireCampus, requireAppointmentAccess, appointmentScope } from './permissions.js';
@@ -23,7 +23,7 @@ export function scanService(appointments, service, encryptionKey, secret, enable
     requireAppointmentAccess(actor, item, { start: true });
     if (item.status === 'booked') {
       // Before intake, reveal device information only, matching the existing queue policy.
-      return Object.fromEntries(['id','revision','campus','date','timeSlot','deviceType','brand','deviceModel','serial','warranty','faultType','issue','liquidDrop','note','status','source','expiresAt'].map(key => [key, item[key]]));
+      return Object.fromEntries(['id','revision','campus','date','timeSlot','deviceType','brand','deviceModel','serial','warranty','liquidMetal','dellG15','faultType','issue','liquidDrop','note','status','source','expiresAt'].map(key => [key, item[key]]));
     }
     return present(item);
   }
@@ -75,7 +75,7 @@ export function scanService(appointments, service, encryptionKey, secret, enable
       if (previous) return locate(previous.id, actor);
       if (await appointments.pendingRegistration(actor.account)) fail(409, '请先签到或取消当前临时登记');
       if ((await appointments.inProgress(actor.account)).length) fail(409, '请先完成当前维修，再登记下一台设备');
-      const data = bookingInput({ ...input, date: dateKey(now), timeSlot: TIME_SLOTS[0], agreementAt: now.toISOString(), agreementVersion: 'v1.0' });
+      const data = onsiteBookingInput({ ...input, date: dateKey(now), timeSlot: TIME_SLOTS[0], agreementAt: now.toISOString(), agreementVersion: 'v1.0' });
       requireCampus(actor, data.campus);
       const item = await service.createOnsite(data, actor.account, key);
       return locate(item.id, actor);

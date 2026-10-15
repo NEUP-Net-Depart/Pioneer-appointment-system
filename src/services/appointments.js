@@ -1,20 +1,24 @@
 import { fail } from '../lib/http.js';
 import { encryptText, decryptText } from '../lib/privacy.js';
 import { addDays, dateKey, serviceDay, slotDeadline, expirationDeadline, weekRange } from '../../shared/time.js';
-import { issueAccessToken } from '../lib/access-tokens.js';
+import { issueAccessToken, bookingDigest, hashAccessToken } from '../lib/access-tokens.js';
 import { guestAppointment } from './access.js';
 import { repairOutcomes } from '../../shared/constants.js';
 import { appointmentScope, requireRole, requireAppointmentAccess, requireCampus } from './permissions.js';
 
 export async function presentAppointment(item, encryptionKey, { staff = false } = {}) {
-  const [phone, social] = await Promise.all([decryptText(item.phone, encryptionKey), decryptText(item.social, encryptionKey)]);
-  const visible = { ...item, phone, social };
+  const [phone, social, email, contactValue] = await Promise.all([item.phone,item.social,item.email,item.contactValue].map(value => decryptText(value, encryptionKey)));
+  const visible = { ...item, phone, social, email, contactValue };
   delete visible.registrationKey;
   if (!staff) delete visible.assignedToName;
   return visible;
 }
 export function appointmentService(appointments, users, encryptionKey, clock = () => new Date()) {
-  const present = (item, staff = false) => presentAppointment(item, encryptionKey, { staff });
+  const present = async (item, staff = false) => {
+    const [visible, location] = await Promise.all([presentAppointment(item,encryptionKey,{ staff }),appointments.location(item.date,item.campus)]);
+    return { ...visible, serverNow:clock().toISOString(), location: location?.location || item.locationSnapshot || '', currentLocationRevision: location?.revision ?? null,
+      locationChanged: Boolean(item.locationSnapshot && location?.location && item.locationSnapshot !== location.location) };
+  };
   const expire = (instant, scope) => appointments.expirePending(instant.toISOString(), scope);
   async function assignee(value, campus) {
     let user = await users.find(value.toLowerCase());
@@ -37,6 +41,15 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
     );
   }
   return {
+    async resolveAttempt(key, digest) {
+      const receipt = await appointments.findRequest(key);
+      if (!receipt) return { found: false };
+      if (digest && receipt.digest !== digest) fail(409, '同一次预约请求的内容已改变，请先核实原预约结果', 'IDEMPOTENCY_MISMATCH');
+      const token = await decryptText(receipt.encryptedToken,encryptionKey);
+      const item = await appointments.findByCredential(receipt.appointmentId,hashAccessToken(token));
+      if (!item) fail(409, '本次预约已创建，但私人凭证已由工作人员重新签发，请使用新链接', 'CREDENTIAL_ROTATED');
+      return { found: true, appointment: { ...await this.lookup(item.id,token), accessToken: token } };
+    },
     async overview(user) {
       const instant = clock(), start = dateKey(instant), end = addDays(start, 6);
       const { campuses } = appointmentScope(user);
@@ -70,24 +83,38 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
     async createOnsite(data, actor, requestId) {
       return this.create(data, { actor, requestId });
     },
-    async create(data, onsite) {
+    async create(data, onsite, requestKey) {
+      const digest = requestKey ? bookingDigest(data) : null;
+      if (requestKey) {
+        const previous = await this.resolveAttempt(requestKey,digest);
+        if (previous.found) return previous.appointment;
+      }
       const instant = clock(), today = dateKey(instant);
       const expiresAt = expirationDeadline(data.date);
       if (!onsite) {
-        if (data.date < today || data.date > addDays(today, 3)) fail(400, '预约日期必须为今天起 3 天内');
-        if (!serviceDay(data.date)) fail(400, '预约日期必须为周一至周四');
+        if (data.date < today || data.date > addDays(today, 3)) fail(409, '预约日期必须为今天起 3 天内', 'DATE_UNAVAILABLE');
+        if (!serviceDay(data.date)) fail(409, '预约日期必须为周一至周四', 'DATE_UNAVAILABLE');
         const schedule = await appointments.schedule(data.date, data.campus);
-        if (!schedule.some(slot => slot.time_slot === data.timeSlot)) fail(409, '该日期的时段安排已更新，请重新选择');
-        if (Date.parse(slotDeadline(data.date, data.timeSlot)) <= instant.getTime()) fail(400, '该预约时段已经结束');
+        if (!schedule.some(slot => slot.time_slot === data.timeSlot)) fail(409, '该日期的时段安排已更新，请重新选择', 'SLOT_CHANGED');
+        if (Date.parse(slotDeadline(data.date, data.timeSlot)) <= instant.getTime()) fail(409, '该预约时段已经结束', 'SLOT_ENDED');
+        if (!(await appointments.ensureDefaultLocation(data.date,data.campus,instant.toISOString()))?.location) fail(409, '该日期尚未配置维修地点，请重新选择日期', 'LOCATION_MISSING');
       } else if (data.date !== today || instant.getTime() >= Date.parse(expiresAt)) fail(400, '当天临时登记有效期限已结束');
       const timestamp = instant.toISOString(), credential = issueAccessToken();
-      const [phone, social] = await Promise.all([encryptText(data.phone, encryptionKey), encryptText(data.social, encryptionKey)]);
+      const [phone, social, email, contactValue] = await Promise.all([data.phone,data.social,data.email,data.contactValue].map(value => encryptText(value, encryptionKey)));
       const item = { ...data, status: 'booked', assignedTo: '', repairNote: '', outcome: null, startedAt: null, completedAt: null, expiresAt,
         repairNumber: null, frontPhotoId: null, backPhotoId: null,
         source: onsite ? 'onsite' : 'booking', registeredBy: onsite?.actor || null, registrationKey: onsite?.requestId || null,
         createdAt: timestamp, agreementAt: timestamp, agreementVersion: data.agreementVersion || 'v1.0',
-        accessTokenHash: credential.hash, credentialRotatedAt: timestamp, phone, social };
-      return { ...await present(await appointments.create(item), !!onsite), accessToken: credential.token };
+        accessTokenHash: credential.hash, credentialRotatedAt: timestamp, phone, social, email, contactValue };
+      const request = requestKey ? { key: requestKey, digest, encryptedToken: await encryptText(credential.token,encryptionKey) } : undefined;
+      // Recheck after database reads and encryption, just before the atomic write.
+      const checkedAt=clock();
+      if (!onsite && Date.parse(slotDeadline(data.date,data.timeSlot))<=checkedAt.getTime()) fail(409,'该预约时段已经结束','SLOT_ENDED');
+      if (onsite && Date.parse(expiresAt)<=checkedAt.getTime()) fail(400,'当天临时登记有效期限已结束');
+      item.createdAt=item.agreementAt=item.credentialRotatedAt=checkedAt.toISOString();
+      const created = await appointments.create(item,request);
+      if (!created) return (await this.resolveAttempt(requestKey,digest)).appointment;
+      return { ...await present(created, !!onsite), accessToken: credential.token };
     },
     async lookup(id, accessToken) {
       const item = await guestAppointment(appointments, id, accessToken);

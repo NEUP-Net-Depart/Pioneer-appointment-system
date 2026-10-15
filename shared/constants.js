@@ -1,6 +1,7 @@
 export const TIME_SLOTS = ['19:00–19:30', '19:30–20:00', '20:00–20:30', '20:30–21:00'];
 export const roleLevel = { technician: 1, admin: 2, superadmin: 3 };
 export const CAMPUSES = ['南湖', '浑南'];
+export const DEFAULT_SERVICE_LOCATIONS = Object.freeze({ '南湖':'大学生活动中心202室', '浑南':'大学生活动中心308室' });
 export const roleLabels = {technician:'维修人员',admin:'管理员',superadmin:'最高权限者'};
 export const appointmentTransitions = {
   booked: ['in_progress', 'cancelled', 'expired'], in_progress: ['completed']
@@ -13,7 +14,7 @@ export const statusClass = {
   cancelled: 'status-cancelled', expired: 'status-expired'
 };
 export const terminalStatuses = ['completed', 'cancelled', 'expired'];
-export const expirationMessage = '预约时段已结束，本次预约未记录维修开始。如仍需维修，请重新预约或联系工作人员。';
+export const expirationMessage = '预约有效期已结束，本次预约未记录维修开始。如实际到过现场，请联系工作人员核实；如仍需维修，可以重新预约。';
 export const endTimeLabels = { completed: '完成时间', cancelled: '取消时间', expired: '逾期处理时间' };
 export const repairOutcomes = ['repaired', 'unrepaired', 'not_needed'];
 export const outcomeLabels = {

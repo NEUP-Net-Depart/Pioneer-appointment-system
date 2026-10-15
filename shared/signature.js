@@ -13,10 +13,10 @@ export function validSignature(strokes) {
   }
   return points >= 8 && distance >= 0.1;
 }
-export function drawSignature(canvas, strokes) {
+export function drawSignature(canvas, strokes, pixelRatio = 1) {
   const context = canvas.getContext('2d');
   context.clearRect(0, 0, canvas.width, canvas.height);
-  context.strokeStyle = '#172a36'; context.lineWidth = 3; context.lineCap = 'round'; context.lineJoin = 'round';
+  context.strokeStyle = '#172a36'; context.lineWidth = 3 * pixelRatio; context.lineCap = 'round'; context.lineJoin = 'round';
   for (const stroke of strokes) {
     context.beginPath();
     stroke.forEach(([x,y], i) => context[i ? 'lineTo' : 'moveTo'](x * canvas.width, y * canvas.height));

@@ -4,10 +4,17 @@ function fromRow(row) {
 const cleanupCondition = "(state='deleting' OR (state='complete' AND expires_at<=?) OR (state='pending' AND created_at<=?))";
 export function attachmentRepository(db) {
   return {
+    async photoCount(id,now) {
+      return (await db.prepare(`SELECT (SELECT COUNT(*) FROM appointment_attachments WHERE appointment_id=? AND expires_at>?
+        AND purpose IN ('general','student_photo') AND mime_type LIKE 'image/%') +
+        (SELECT COUNT(*) FROM attachment_storage WHERE appointment_id=? AND state='pending' AND purpose='student_photo') AS total`).bind(id,now,id).first()).total;
+    },
     async reserve(item, maxBytes) {
-      return !!await db.prepare(`INSERT INTO attachment_storage(id,object_key,size,state,created_at,expires_at)
-        SELECT ?,?,?,'pending',?,? FROM storage_quota WHERE id=1 AND used_bytes+?<=? RETURNING id`)
-        .bind(item.id, item.objectKey, item.size, item.createdAt, item.expiresAt, item.size, maxBytes).first();
+      return !!await db.prepare(`INSERT INTO attachment_storage(id,object_key,size,state,created_at,expires_at,appointment_id,purpose)
+        SELECT ?,?,?,'pending',?,?,?,? FROM storage_quota WHERE id=1 AND used_bytes+?<=? AND (?<>'student_photo' OR
+        (SELECT COUNT(*) FROM appointment_attachments WHERE appointment_id=? AND expires_at>? AND purpose IN ('general','student_photo') AND mime_type LIKE 'image/%') +
+        (SELECT COUNT(*) FROM attachment_storage WHERE appointment_id=? AND state='pending' AND purpose='student_photo') < 4) RETURNING id`)
+        .bind(item.id,item.objectKey,item.size,item.createdAt,item.expiresAt,item.appointmentId || null,item.purpose || 'general',item.size,maxBytes,item.purpose || 'general',item.appointmentId || null,item.createdAt,item.appointmentId || null).first();
     },
     async create(item) {
       const results = await db.batch([

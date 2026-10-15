@@ -1,8 +1,9 @@
 import { $,showToast } from '/shared/utils.js';
 import { apiJson,clearSession } from '/shared/api.js';
 import { initSlotCapacities } from './slot-capacities.js';
+import { initServiceLocations } from './service-locations.js';
 export function initSettings() {
-  const capacities=initSlotCapacities();
+  const capacities=initSlotCapacities(),locations=initServiceLocations();
   let generation=0;
   async function refresh(){
     const current=++generation;
@@ -10,7 +11,7 @@ export function initSettings() {
       const user=await apiJson('/api/auth/me');
       if(current!==generation)return;
       $('#profile-info').textContent=`${user.name} · ${user.account} · 所属 ${user.homeCampus} · 授权 ${user.authorizedCampuses.join(' / ')}`;
-      await capacities.refresh(user);
+      await Promise.all([capacities.refresh(user),locations.refresh(user)]);
     }catch(error){showToast(error.message);}
   }
   function signedOut(){
@@ -31,5 +32,5 @@ export function initSettings() {
     try{await apiJson('/api/auth/revoke',{method:'POST'});signedOut();showToast('所有会话已撤销');}
     catch(error){showToast(error.message);}
   });
-  return {refresh,clear(){generation++;capacities.clear();$('#password-form').reset();$('#profile-info').textContent='';}};
+  return {refresh,clear(){generation++;capacities.clear();locations.clear();$('#password-form').reset();$('#profile-info').textContent='';}};
 }
