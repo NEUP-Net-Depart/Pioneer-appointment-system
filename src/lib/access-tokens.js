@@ -6,3 +6,6 @@ export function issueAccessToken() {
 export function hashAccessToken(token) {
   return createHash('sha256').update(token).digest('hex');
 }
+export function bookingDigest(data) {
+  return createHash('sha256').update(JSON.stringify(Object.fromEntries(Object.entries(data).sort(([a],[b]) => a.localeCompare(b))))).digest('hex');
+}

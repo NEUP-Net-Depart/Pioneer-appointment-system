@@ -1,95 +1,93 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#102a43" />
-  <title>先锋硬件部 · 维修预约系统</title>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#102a43" /><meta name="referrer" content="no-referrer" />
+  <title>先锋硬件部 · 免费维修预约</title>
   <link rel="icon" href="/assets/organization-logo.jpg" type="image/jpeg" />
-  <link rel="stylesheet" href="/shared/styles.css" />
+  <link rel="stylesheet" href="/shared/styles.css" /><link rel="stylesheet" href="/user/student.css" />
+  <script src="/assets/vendor/load-image.all.min.js" defer></script>
 </head>
-<body class="user-mode"><header class="topbar"><div class="topbar-inner"><a class="brand" href="/"><img class="organization-logo" src="/assets/organization-logo.jpg" alt="先锋网络中心 Logo" /><span><strong>先锋硬件部</strong><small>免费维修预约系统</small></span></a><nav class="main-nav" aria-label="学生预约导航"><button class="nav-link is-active" type="button" data-view-link="booking">预约维修</button><button class="nav-link" type="button" data-view-link="lookup">我的预约</button></nav></div></header>
-<main>
-    <section class="view is-active" id="booking-view" data-view="booking">
-      <div class="content-shell">
-        <div class="booking-float" id="booking-float" hidden>
-          <div class="booking-float-particles" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-          <button type="button" class="booking-float-button" id="booking-float-button" aria-controls="booking-picker">
-            <span class="booking-float-detail"><span id="booking-float-meta"></span><strong id="booking-float-time"></strong><span id="booking-float-state" hidden></span></span>
-          </button>
-        </div>
-        <section class="booking-picker" id="booking-picker" aria-labelledby="booking-picker-title">
-          <div class="booking-picker-heading"><div><h2 id="booking-picker-title">选择预约时间</h2></div><div class="booking-campuses" id="booking-campuses" role="group" aria-label="预约校区"></div></div>
-          <p class="booking-rule">周一至周四提供服务，可预约今天及未来 3 天。</p>
-          <div class="booking-picker-body">
-            <div class="booking-date-panel"><div class="booking-panel-heading"><h3 class="booking-panel-label">选择日期</h3><p class="booking-date-context">仅显示当前可预约的服务日</p></div><div class="booking-days" id="booking-days" role="group" aria-label="可预约日期"></div><p class="booking-empty" id="booking-empty" hidden>当前预约范围内暂无服务时段，请稍后再来。</p></div>
-            <div class="booking-time-panel"><div class="booking-slot-placeholder"><div class="booking-panel-heading"><h3 class="booking-panel-label">选择时段</h3><p class="booking-date-context">选中日期后，查看可预约时段</p></div><p class="booking-placeholder-body">请选择日期，查看可预约时段</p></div><div class="booking-slot-panel" id="booking-slot-panel" hidden><div class="booking-panel-heading"><span class="booking-panel-label">选择时段</span><h3 id="booking-slot-title"></h3></div><div class="booking-slots" id="booking-slots" role="group" aria-labelledby="booking-slot-title"></div></div></div>
-          </div>
-          <div class="booking-picker-footer"><p id="booking-selection" role="status">先选日期，再选时段。</p><div><span>选择不锁定名额，以提交结果为准</span><span id="booking-updated">更新于 --:--</span><button type="button" id="booking-retry" hidden>重试</button></div></div>
-        </section>
-        <div class="section-heading">
-          <div><span class="section-index">01</span><h2>填写预约信息</h2></div>
-          <span class="required-note"><i>*</i> 为必填项</span>
-        </div>
-        <form id="booking-form" class="booking-form" novalidate>
-          <input name="date" type="hidden" /><input name="timeSlot" type="hidden" />
-          <div class="form-block">
-            <div class="block-heading"><span>机主信息</span></div>
-            <div class="form-grid four-cols">
-              <label>学号 <i>*</i><input name="studentId" required placeholder="例如 20240101" autocomplete="off" /></label>
-              <label>姓名 <i>*</i><input name="name" required placeholder="请输入姓名" autocomplete="name" /></label>
-              <label>校区 <i>*</i><select name="campus" required><option value="">请选择校区</option><option>南湖</option><option>浑南</option></select></label>
-              <label>手机号<input name="phone" placeholder="选填，用于预约核验" autocomplete="tel" /></label>
-            </div>
-            <div class="form-grid two-cols compact-gap"><label>学院 / 专业<input name="college" maxlength="120" placeholder="例如 信息学院" /></label><label>QQ / 微信 <i>*</i><input name="social" required maxlength="120" placeholder="请输入 QQ 或微信号" /></label></div>
-          </div>
-          <div class="form-block">
-            <div class="block-heading"><span>设备与故障</span></div>
-            <div class="form-grid four-cols">
-              <label>设备类型 <i>*</i><select name="deviceType" required><option value="">请选择设备类型</option><option>笔记本电脑</option><option>台式电脑</option><option>显示器</option><option>打印机</option><option>其他外设</option></select></label>
-              <label>品牌 <i>*</i><input name="brand" required maxlength="80" placeholder="例如 联想 / Dell" /></label>
-              <label>型号 <i>*</i><input name="deviceModel" required maxlength="120" placeholder="例如 ThinkPad T14" /></label>
-              <label>序列号<input name="serial" maxlength="120" placeholder="选填，用于查保修" /></label>
-            </div>
-            <div class="form-grid three-cols compact-gap">
-              <label>是否在保 <i>*</i><select name="warranty" required aria-describedby="warranty-advice"><option value="">请选择</option><option>是</option><option>否</option><option>不清楚</option></select><small class="field-hint booking-warranty-advice" id="warranty-advice" hidden>保修期内建议优先联系官方售后，避免影响保修权益。</small></label>
-              <label>故障类型 <i>*</i><select name="faultType" required aria-describedby="thermal-advice"><option value="">请选择故障类型</option><option>清灰换硅脂</option><option>换硬盘</option><option>换内存</option><option>系统问题</option><option>蓝屏</option><option>黑屏</option><option>网络问题</option><option>其他</option></select><small class="field-hint booking-advice" id="thermal-advice" role="status" hidden><span>我们提供免费普通硅脂，您亦可自带</span><span>如您的设备使用液金散热或你不确定，请在备注中说明，维修前由工作人员确认。</span></small></label>
-              <label>是否进液 / 摔过 <i>*</i><select name="liquidDrop" required><option>否</option><option>是</option><option>不清楚</option></select></label>
-            </div>
-            <div class="compact-gap">
-              <div><label>故障描述<textarea name="issue" maxlength="10000" rows="3" aria-describedby="issue-count" placeholder="选填，请描述设备的异常现象、已尝试的处理方式等"></textarea></label><p class="booking-character-count" id="issue-count">0 / 10000 字</p></div>
-            </div>
-            <label class="wide-field">备注（选填）<textarea name="note" maxlength="500" rows="2" aria-describedby="note-count" placeholder="其他需要说明的情况"></textarea></label><p class="booking-character-count" id="note-count">0 / 500 字</p>
-            <label class="wide-field attachment-field">故障照片或相关文件（选填）<input id="appointment-attachments" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,text/plain" multiple /><small class="field-hint">支持 JPG、PNG、WEBP、PDF、TXT，单个文件不超过 5 MB。</small></label>
-          </div>
-          <div class="agreement-block"><p id="signature-status" role="status">同意协议后需手写本人姓名，请提前准备。</p>
-            <label class="check-row"><input type="checkbox" name="agreement" required /><span class="check-box"></span><span>我已阅读并同意<a href="#agreement" id="agreement-link">《免费维修免责与行为操守协议》</a>，确认设备中的重要数据已完成备份。</span></label>
-          </div>
-          <div class="form-actions"><button class="primary-btn" type="submit">提交预约 <span>→</span></button></div>
-        </form>
-
-        <section class="success-panel" id="success-panel" hidden>
-          <div class="success-icon">✓</div><p class="eyebrow">FREE SERVICE BOOKING</p><h2>预约已提交</h2>
-          <div class="booking-code"><span>预约编号</span><strong id="success-code"></strong><button id="copy-code" type="button" title="复制私人链接">复制</button></div>
-          <div id="success-repair-qr" class="repair-qr"></div>
-          <p class="success-summary" id="success-summary"></p><p id="credential-save-message" role="status" hidden></p><input id="success-link-fallback" class="private-link-fallback" type="text" readonly hidden aria-label="私人查询链接" />
-          <div class="success-actions"><button class="secondary-btn" type="button" data-view-link="lookup">查看我的预约</button></div>
-        </section>
-      </div>
+<body class="user-mode">
+<header class="topbar"><div class="topbar-inner"><a class="brand" href="/"><img class="organization-logo" src="/assets/organization-logo.jpg" alt="先锋网络中心" /><span><strong>先锋硬件部</strong></span></a><nav class="main-nav" aria-label="学生预约导航"><button class="nav-link is-active" type="button" data-view-link="booking">预约维修</button><button class="nav-link" type="button" data-view-link="lookup">我的预约</button></nav></div></header>
+<main class="student-shell">
+<section class="view is-active" id="booking-view" data-view="booking">
+  <div id="booking-heading" class="student-heading"><h1>预约维修</h1></div>
+  <div id="draft-prompt" class="notice" hidden role="region" aria-label="恢复预约草稿"><p>发现未完成的预约，是否继续填写？</p><div class="actions"><button type="button" id="draft-discard" class="secondary-btn">重新填写</button><button type="button" id="draft-restore" class="primary-btn">恢复填写</button></div></div>
+  <p id="draft-notice" class="notice" role="status" hidden></p>
+  <ol id="booking-steps" class="step-track" aria-label="预约步骤"><li aria-current="step"><span>1</span>到场时间</li><li><span>2</span>设备与联系</li><li><span>3</span>核对与签名</li></ol>
+  <p id="booking-error" class="notice is-error" role="alert" hidden></p>
+  <form id="booking-form" class="student-form" novalidate>
+    <input name="campus" type="hidden" /><input name="date" type="hidden" /><input name="timeSlot" type="hidden" />
+    <section data-step="1" class="booking-picker" id="booking-picker" aria-labelledby="booking-picker-title">
+      <div class="booking-picker-heading"><div><h2 id="booking-picker-title" tabindex="-1">校区与到场时间</h2></div><div class="booking-campuses" id="booking-campuses" role="group" aria-label="预约校区"></div></div>
+      <div id="booking-calendar" hidden><div class="booking-picker-body">
+        <div class="booking-date-panel"><div class="booking-panel-heading"><h3 class="booking-panel-label">选择日期</h3></div><div class="booking-days" id="booking-days" role="group" aria-label="可预约日期"></div></div>
+        <div class="booking-time-panel"><div class="booking-slot-placeholder"><div class="booking-panel-heading"><h3 class="booking-panel-label">选择到场时段</h3></div><p class="booking-placeholder-body" aria-hidden="true"></p></div><div class="booking-slot-panel" id="booking-slot-panel" hidden><div class="booking-panel-heading"><h3 id="booking-slot-title" class="booking-panel-label">选择到场时段</h3></div><div class="booking-slots" id="booking-slots" role="group" aria-label="到场时段"></div></div></div>
+      </div><div class="booking-empty" id="booking-empty" hidden><strong>未来三天内无可用日期</strong></div>
+      <div class="selection-summary" id="booking-location" hidden></div></div>
+      <div class="booking-feedback" hidden><p id="booking-selection" role="status"></p><button type="button" class="text-btn" id="booking-retry" hidden>重试</button></div>
+      <div class="step-actions"><button class="primary-btn" type="button" id="step-one-next">下一步 · 填写设备信息</button></div>
     </section>
-
-    <section class="view" id="lookup-view" data-view="lookup">
-      <div class="page-intro"><p class="eyebrow">MY APPOINTMENT · 02</p><h1>我的预约</h1></div>
-      <div class="content-shell lookup-shell">
-        <button class="secondary-btn" id="refresh-my-appointments" type="button">刷新我的预约</button><p>凭证遗失请联系工作人员人工核验后重新签发。私人链接可访问预约和附件，请勿转发。</p>
-        <div id="lookup-results" class="lookup-results"><div class="empty-state"><span class="empty-icon">⌕</span><h2>此浏览器暂无预约</h2><p>预约成功后会自动出现在这里。其他设备可直接访问私人查询链接。</p></div></div>
-      </div>
+    <section data-step="2" hidden>
+      <div class="step-heading"><h2 tabindex="-1">设备、故障与联系方式</h2></div>
+      <div class="selection-summary" id="step-two-time"></div><button class="text-btn" type="button" data-edit-step="1">修改到场时间</button>
+      <section class="form-block"><h3>设备信息</h3>
+        <label class="field">设备类型 <i>*</i><select name="deviceType" required></select><span class="field-error" data-error-for="deviceType"></span></label>
+        <label class="field">品牌 <i>*</i><select name="brand" required></select><span class="field-error" data-error-for="brand"></span></label>
+        <label class="field" id="brand-other-field" hidden>其他品牌完整名称 <i>*</i><input name="brandOther" data-max-length="30" disabled /><span class="field-error" data-error-for="brandOther"></span></label>
+        <label class="field">设备型号 <input name="deviceModel" data-max-length="60" placeholder="例如 ThinkPad T14" /><span class="field-error" data-error-for="deviceModel"></span></label>
+        <fieldset class="field" id="dell-g15-field" hidden><legend>你的电脑是 游侠 G15 系列的吗？</legend><div class="radio-options" data-answer="dellG15"></div><span class="field-error" data-error-for="dellG15"></span></fieldset>
+        <fieldset class="field" id="liquid-metal-field" hidden><legend>你的电脑是否使用液金 <i>*</i></legend><div class="radio-options" data-answer="liquidMetal"></div><span class="field-error" data-error-for="liquidMetal"></span></fieldset>
+        <fieldset class="field"><legend>是否在保 <i>*</i></legend><div class="radio-options" data-answer="warranty"></div><span class="field-error" data-error-for="warranty"></span></fieldset>
+      </section>
+      <section class="form-block"><h3>故障说明</h3><fieldset class="field"><legend>故障分类 <i>*</i></legend><div class="radio-options fault-options" id="fault-options"></div><span class="field-error" data-error-for="faultType"></span><div id="fault-advice" class="fault-advice" role="status" hidden><span class="advice-icon" aria-hidden="true">i</span><div><strong id="fault-advice-title"></strong><p id="fault-advice-message"></p></div></div></fieldset>
+        <label class="field">故障描述与补充说明 <i id="issue-required" hidden>*</i><textarea name="issue" rows="5" data-max-length="1000" placeholder="描述设备遇到的问题，也可以粘贴故障视频网盘链接"></textarea><span class="field-error" data-error-for="issue"></span></label>
+        <div class="field"><h4>故障照片</h4><div id="booking-photos" class="photo-collection"></div></div>
+      </section>
+      <section class="form-block"><h3>机主与联系方式</h3>
+        <label class="field">姓名 <i>*</i><input name="name" data-max-length="20" required autocomplete="off" /><span class="field-error" data-error-for="name"></span></label>
+        <label class="field">学号 <i>*</i><input name="studentId" data-max-length="20" required inputmode="numeric" autocomplete="off" /><span class="field-error" data-error-for="studentId"></span></label>
+        <label class="field">学院 <i>*</i><select name="college" required></select><span class="field-error" data-error-for="college"></span></label>
+        <label class="field" id="college-other-field" hidden>学院完整名称 <i>*</i><input name="collegeOther" data-max-length="50" disabled /><span class="field-error" data-error-for="collegeOther"></span></label>
+        <label class="field">联系邮箱 <input name="email" type="email" data-max-length="254" inputmode="email" autocomplete="email" /><span class="field-error" data-error-for="email"></span></label>
+        <fieldset class="field"><legend>QQ／微信 <i>*</i></legend><div class="radio-options"><label><input name="contactType" type="radio" value="qq" /><span>QQ</span></label><label><input name="contactType" type="radio" value="wechat" /><span>微信</span></label></div><span class="field-error" data-error-for="contactType"></span></fieldset>
+        <label class="field" id="contact-qq-field" hidden>QQ 账号 <i>*</i><input name="qqAccount" data-max-length="12" inputmode="numeric" disabled /><span class="field-error" data-error-for="qqAccount"></span></label>
+        <label class="field" id="contact-wechat-field" hidden>微信账号 <i>*</i><input name="wechatAccount" data-max-length="20" disabled /><span class="field-error" data-error-for="wechatAccount"></span></label>
+      </section>
+      <div class="step-actions"><button class="secondary-btn" type="button" data-edit-step="1">上一步</button><button class="primary-btn" id="step-two-next" type="button">下一步 · 核对预约</button></div>
     </section>
-
+    <section data-step="3" hidden>
+      <div class="step-heading"><h2 tabindex="-1">核对预约并签名</h2></div>
+      <div class="selection-summary" id="step-three-time"></div><button class="text-btn" type="button" data-edit-step="1">修改时间</button>
+      <div id="booking-review"></div><button class="text-btn" type="button" data-edit-step="2">修改设备和联系方式</button>
+      <aside class="booking-preparation" aria-label="到场准备"><p><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 4-3 8v7a1 1 0 0 0 1 1h20a1 1 0 0 0 1-1v-7l-3-8H4Z M1 12h22 M5 16h.01 M9 16h.01" /></svg><span><strong>提前备份重要数据</strong>，避免维修过程中造成数据丢失。</span></p><p><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 2v6 M16 2v6 M5 8h14v5a7 7 0 0 1-14 0V8Z M12 20v3" /></svg><span><strong>携带设备及对应电源适配器</strong>，方便现场检查和维修。</span></p></aside>
+      <section class="form-block"><h3>协议与手写签名</h3><label class="agreement-check"><input type="checkbox" name="agreement" /><span>我已阅读并同意<a href="#agreement" id="agreement-link">《免费维修免责与行为操守协议》</a></span></label><span class="field-error" data-error-for="agreement"></span>
+        <button id="open-signature" aria-describedby="signature-status" class="secondary-btn" type="button">手写本人姓名</button><p id="signature-status" role="status">尚未完成手写签名。</p><canvas id="confirmed-signature" aria-label="已确认的签名" hidden></canvas><span class="field-error" data-error-for="signature"></span>
+      </section>
+      <div class="step-actions"><button class="secondary-btn" type="button" data-edit-step="2">上一步</button><button class="primary-btn" id="booking-submit" type="submit">确认并提交预约</button></div>
+    </section>
+  </form>
+  <section class="success-panel" id="success-panel" hidden aria-labelledby="success-title"><div class="success-icon" aria-hidden="true">✓</div><h1 id="success-title" tabindex="-1">预约成功</h1>
+    <div class="success-layout"><div class="success-details"><div id="success-summary" class="selection-summary"></div>
+    <div class="booking-code"><span>预约编号</span><strong id="success-code"></strong></div>
+    <button class="secondary-btn" id="copy-code" type="button">复制私人查询链接</button><p id="credential-save-message" class="notice" hidden role="status"></p><input id="success-link-fallback" class="private-link-fallback" type="text" readonly hidden aria-label="私人查询链接" />
+    </div><div id="success-repair-qr" class="repair-qr success-qr-panel"></div></div>
+    <section id="success-photos" aria-labelledby="success-photo-title" hidden><h2 id="success-photo-title">故障照片上传</h2><p id="success-photo-status"></p><div class="photo-upload-heading"><span>照片上传进度</span><span id="success-photo-count"></span></div><progress id="success-photo-total" value="0" max="4" aria-label="照片上传总进度"></progress><div id="success-photo-progress"></div><p id="success-photo-message" role="status"></p><p id="success-photo-advice" class="upload-advice"><span class="advice-icon" aria-hidden="true">i</span><span>建议等待照片上传完成后再关闭页面。预约本身已经成功。</span></p><div class="photo-upload-actions"><button id="success-photo-retry" class="secondary-btn" type="button" hidden>重试未上传照片</button><button id="success-photo-later" class="text-btn" type="button" hidden>稍后补传</button></div></section>
+    <div class="success-actions"><button class="primary-btn" id="view-created-appointment" type="button">查看本次预约</button><button class="secondary-btn" type="button" data-view-link="lookup">我的预约</button></div>
+  </section>
+</section>
+<section class="view" id="lookup-view" data-view="lookup">
+  <section id="lookup-list"><div class="student-heading title-row"><h1 tabindex="-1">我的预约</h1><button class="text-btn" id="import-appointment" type="button" hidden aria-expanded="false" aria-controls="import-form">导入预约</button></div>
+    <form id="import-form" class="student-form import-form" hidden novalidate><label class="field">私人查询链接<input id="private-link-input" type="url" data-max-length="2048" autocomplete="off" placeholder="粘贴完整私人查询链接" /></label><button class="primary-btn" type="submit">查看预约</button><p id="import-error" class="field-error" role="alert"></p></form>
+    <div class="list-toolbar"><button class="text-btn" id="refresh-my-appointments" type="button">刷新</button></div><p id="lookup-notice" class="notice" role="status" hidden></p><div id="lookup-results" aria-live="polite"></div>
+  </section>
+  <section id="lookup-detail" hidden><button id="back-to-appointments" class="text-btn" type="button">← 我的预约</button><h1 id="appointment-detail-title" tabindex="-1">预约详情</h1><p id="detail-notice" class="notice" role="status" hidden></p><div id="appointment-detail"></div></section>
+</section>
 </main>
-  <div class="modal-backdrop" id="signature-modal" hidden><div class="modal" role="dialog" aria-modal="true" aria-labelledby="signature-title"><h2 id="signature-title">请手写本人姓名</h2><p>请确认已阅读并同意维修协议、已备份重要数据。用手指、触控笔或鼠标在下方签名，签名将随预约保存。</p><canvas id="signature-canvas" width="900" height="360" aria-label="手写签名区域"></canvas><div class="modal-actions"><button id="clear-signature" type="button" class="secondary-btn">清空重写</button><button id="cancel-signature" type="button" class="secondary-btn">取消</button><button id="confirm-signature" type="button" class="primary-btn">确认签名并同意</button></div></div></div>
-  <div class="modal-backdrop" id="agreement-modal" hidden><div class="modal" role="dialog" aria-modal="true" aria-labelledby="agreement-title"><button class="modal-close" id="close-agreement" type="button" aria-label="关闭">×</button><p class="eyebrow">FREE SERVICE AGREEMENT</p><h2 id="agreement-title">免费维修免责与行为操守协议</h2><div class="modal-body"><p>1. 本服务为免费、自愿的互助维修，不收取任何费用。</p><p>2. 维修人员会尽力维修，但不保证一定能修好；维修方不承担数据丢失责任。</p><p>3. 配件及其他耗材由机主自行准备，中心不提供代购；清灰换硅脂所需的普通硅脂由中心提供，无需自备。</p><p>4. 在保设备建议先前往官方售后，避免影响保修。</p><p>5. 请如实描述故障并遵守现场秩序，不翻阅个人文件与聊天记录。</p></div><button class="primary-btn" id="agree-modal" type="button">我已同意协议，去签名</button></div></div>
-<div class="toast" id="toast" role="status"></div>
-<script type="module" src="/user/main.js"></script>
+<div class="modal-backdrop signature-layer" id="signature-modal" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="signature-title"><h2 id="signature-title">手写本人姓名</h2><canvas id="signature-canvas" aria-label="手写签名区域"></canvas><p id="signature-error" class="field-error" role="alert"></p><div class="modal-actions"><button id="clear-signature" type="button" class="secondary-btn">清空全部</button><button id="cancel-signature" type="button" class="secondary-btn">取消</button><button id="confirm-signature" type="button" class="primary-btn">确认签名</button></div></section></div>
+<div class="modal-backdrop" id="agreement-modal" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="agreement-title"><h2 id="agreement-title">免费维修免责与行为操守协议</h2><p>v1.1</p><div class="modal-body"><p>1. 本服务为免费、自愿的互助维修，不收取任何费用。</p><p>2. 维修人员会尽力维修，但不保证一定能修好；维修方不承担数据丢失责任。</p><p>3. 配件及其他耗材由机主自行准备，中心不提供代购；清灰换硅脂所需的普通硅脂由中心提供，无需自备。</p><p>4. 在保设备建议先前往官方售后，避免影响保修。</p><p>5. 请如实描述故障并遵守现场秩序，不翻阅个人文件与聊天记录。</p></div><button class="primary-btn" id="close-agreement" type="button">关闭阅读</button></section></div>
+<div class="modal-backdrop photo-layer" id="photo-modal" hidden><section class="modal" role="dialog" aria-modal="true" aria-label="照片预览"><button type="button" id="close-photo" class="secondary-btn">关闭预览</button><img id="photo-large" alt="故障照片预览" /></section></div>
+<div class="toast" id="toast" role="status"></div><script type="module" src="/user/main.js"></script>
 </body>
 </html>

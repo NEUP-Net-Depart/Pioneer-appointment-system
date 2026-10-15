@@ -718,3 +718,6 @@ html{scrollbar-gutter:stable}
 .staff-shell .metrics-row, .stats-metrics { grid-template-columns: repeat(6,minmax(0,1fr)); }
 @media (max-width: 1000px) { .staff-shell .metrics-row, .stats-metrics { grid-template-columns: repeat(3,minmax(0,1fr)); } }
 @media (max-width: 600px) { .staff-shell .metrics-row, .stats-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+
+.input-length-error{display:block;color:#a43c30;font-size:13px;font-weight:400;margin-top:6px;overflow-wrap:anywhere}
+.input-length-error[hidden]{display:none}

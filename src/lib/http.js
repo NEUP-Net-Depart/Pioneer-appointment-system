@@ -1,7 +1,7 @@
 export class HttpError extends Error {
-  constructor(status, message) { super(message); this.status = status; }
+  constructor(status, message, code, fields) { super(message); this.status = status; this.code = code; this.fields = fields; }
 }
-export const fail = (status, message) => { throw new HttpError(status, message); };
+export const fail = (status, message, code, fields) => { throw new HttpError(status, message, code, fields); };
 export const securityHeaders = {
   'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store',

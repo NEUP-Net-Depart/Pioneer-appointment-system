@@ -188,7 +188,7 @@ test('onsite intake, offline drafts, relogin recovery and completion retain the 
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await login(page, account); await page.getByRole('button', { name: '临时维修登记', exact: true }).click();
   const form = page.locator('#scan-onsite-form');
-  for (const [name, value] of Object.entries({ studentId: account + '1', name: '设备测试同学', college: '计算机学院', phone: '13800138000', social: 'workbench-test', brand: '联想', deviceModel: 'ThinkPad T14', serial: 'LOCAL-ONLY', issue: '开机蓝屏', note: '已备份数据' })) await form.locator(`[name=${name}]`).fill(value);
+  for (const [name, value] of Object.entries({ studentId: account + '1', name: '设备测试同学', college: '计算机学院', phone: '13800138000', social: '12345678901', brand: '联想', deviceModel: 'ThinkPad T14', serial: 'LOCAL-ONLY', issue: '开机蓝屏', note: '已备份数据' })) await form.locator(`[name=${name}]`).fill(value);
   await form.locator('[name=warranty]').selectOption('否'); await form.locator('[name=faultType]').selectOption('蓝屏');
   await form.locator('[name=agreement]').check(); await page.locator('#onsite-signature').scrollIntoViewIfNeeded();
   const box = await page.locator('#onsite-signature').boundingBox();

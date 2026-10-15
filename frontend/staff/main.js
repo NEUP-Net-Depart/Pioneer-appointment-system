@@ -9,8 +9,10 @@ import { initUsers } from './users.js';
 import { initSettings } from './settings.js';
 import { initScan } from './scan.js';
 import { initWorkbench } from './workbench.js';
+import { initInputLimits } from '/shared/input-limits.js';
 
 useStaffSession();
+initInputLimits();
 const controllers = { staff: initStaff(), stats: initStats(), users: initUsers(), settings:initSettings(), scan:initScan() };
 let role = '', activeView = 'staff', loginGeneration = 0, scanEnabled = false, workbenchSettings = false;
 function refresh() {
