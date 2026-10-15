@@ -6,15 +6,16 @@ import { guestAppointment } from './access.js';
 import { repairOutcomes } from '../../shared/constants.js';
 import { appointmentScope, requireRole, requireAppointmentAccess, requireCampus } from './permissions.js';
 
-export async function presentAppointment(item, encryptionKey) {
+export async function presentAppointment(item, encryptionKey, { staff = false } = {}) {
   const [phone, social, email, contactValue] = await Promise.all([item.phone,item.social,item.email,item.contactValue].map(value => decryptText(value, encryptionKey)));
   const visible = { ...item, phone, social, email, contactValue };
   delete visible.registrationKey;
+  if (!staff) delete visible.assignedToName;
   return visible;
 }
 export function appointmentService(appointments, users, encryptionKey, clock = () => new Date()) {
-  const present = async item => {
-    const [visible, location] = await Promise.all([presentAppointment(item,encryptionKey),appointments.location(item.date,item.campus)]);
+  const present = async (item, staff = false) => {
+    const [visible, location] = await Promise.all([presentAppointment(item,encryptionKey,{ staff }),appointments.location(item.date,item.campus)]);
     return { ...visible, serverNow:clock().toISOString(), location: location?.location || item.locationSnapshot || '', currentLocationRevision: location?.revision ?? null,
       locationChanged: Boolean(item.locationSnapshot && location?.location && item.locationSnapshot !== location.location) };
   };
@@ -75,7 +76,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
         if (user.role === 'technician' && (item.status === 'booked' || (item.assignedTo !== user.account && !(item.source === 'onsite' && item.registeredBy === user.account)))) {
           return Object.fromEntries(['id','revision','campus','date','timeSlot','deviceType','brand','deviceModel','faultType','status','createdAt','expiresAt'].map(key => [key, item[key]]));
         }
-        return present(item);
+        return present(item, true);
       }));
       return { ...result, items };
     },
@@ -113,7 +114,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       item.createdAt=item.agreementAt=item.credentialRotatedAt=checkedAt.toISOString();
       const created = await appointments.create(item,request);
       if (!created) return (await this.resolveAttempt(requestKey,digest)).appointment;
-      return { ...await present(created), accessToken: credential.token };
+      return { ...await present(created, !!onsite), accessToken: credential.token };
     },
     async lookup(id, accessToken) {
       const item = await guestAppointment(appointments, id, accessToken);
@@ -139,7 +140,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       item = user ? await appointments.find(item.id) : await guestAppointment(appointments, item.id, accessToken);
       // A lost response can be retried with the original revision and photo IDs.
       // Only an exact repeat by the recorded owner is treated as success.
-      if (repeated(item, input, user, action)) return present(item);
+      if (repeated(item, input, user, action)) return present(item, true);
       if (revision !== undefined && revision !== item.revision) fail(409, '预约已更新，请刷新后重试');
       if ((input.frontPhotoId !== undefined || input.backPhotoId !== undefined) &&
           (action === 'correct' || input.status !== 'in_progress')) fail(400, '签到照片只能在签到时记录');
@@ -205,10 +206,10 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       const updated = await appointments.update(item, patch, correction);
       if (!updated) {
         const latest = await appointments.find(item.id);
-        if (latest && repeated(latest, input, user, action)) return present(latest);
+        if (latest && repeated(latest, input, user, action)) return present(latest, true);
         fail(409, '预约已被其他工作人员修改，请刷新后重试');
       }
-      return present(updated);
+      return present(updated, !!user);
     }
   };
 }
