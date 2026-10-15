@@ -11,6 +11,7 @@ import { terminalStatuses,statusLabels,expirationMessage } from '/shared/constan
 export function initScan() {
   let item, active = false, ready = false, busy = false, generation = 0, legacyCount = 0, onsiteRequest;
   let strokes = [], pointer;
+  let cameraPaused = false, pageActive = true;
   const root = $('#scan-view'), form = $('#scan-onsite-form'), canvas = $('#onsite-signature');
   const suggestions = initAppointmentSearch({ isActive: () => active, onSelect: id => resolve({ id }) });
   const account = () => sessionStorage.getItem('pioneerAccount');
@@ -36,9 +37,12 @@ export function initScan() {
       const uploaded = photos(); uploaded[side] = file.id; write(`photos:${item.id}`, uploaded);
     },
   })]));
-  const scanner = createScanner({ video: $('#scan-video'), status: $('#camera-status'), torch: $('#scan-torch'), switchCamera: $('#scan-switch-camera'), onCode: code => resolve({ code }), onState(state) {
+  const canStartCamera = () => active && ready && !cameraPaused && pageActive && !document.hidden && !$('#scan-home').hidden;
+  const scanner = createScanner({ video: $('#scan-video'), torch: $('#scan-torch'), switchCamera: $('#scan-switch-camera'), canStart: canStartCamera, onCode: code => resolve({ code }), onState(state) {
     $('.scanner-frame').dataset.cameraState = state;
-    $('#scan-camera').hidden = state === 'running';
+    $('#scan-camera').hidden = false;
+    $('#scan-camera').textContent = ['running','opening'].includes(state) ? '关闭摄像头' : '开启摄像头';
+    $('#scan-camera').setAttribute('aria-pressed', String(['running','opening'].includes(state)));
   } });
   function panels(id) {
     suggestions.clear();
@@ -177,7 +181,13 @@ export function initScan() {
   }));
   $('#scan-manual').addEventListener('click', () => { if (ready) { panels('scan-manual-form'); $('#scan-number').focus(); } });
   $('#scan-manual-form').addEventListener('submit', event => { event.preventDefault(); suggestions.clear(); resolve({ id: $('#scan-number').value.trim() }); });
-  $('#scan-camera').addEventListener('click', () => { if (ready && active) scanner.start(); });
+  $('#scan-camera').addEventListener('click', () => {
+    if (['running','opening'].includes($('.scanner-frame').dataset.cameraState)) {
+      cameraPaused = true; scanner.stop();
+    } else {
+      cameraPaused = false; scanner.start();
+    }
+  });
   $('#scan-image').addEventListener('change', async event => {
     if (!ready || busy) return;
     const file = event.target.files[0]; if (!file) return;
@@ -249,7 +259,10 @@ export function initScan() {
     if (document.hidden) scanner.stop();
     else if (active && ready && !busy && !$('#scan-home').hidden) scanner.start();
   });
-  window.addEventListener('pagehide', () => scanner.stop());
+  window.addEventListener('pagehide', () => { pageActive = false; scanner.stop(); });
+  window.addEventListener('pageshow', () => { pageActive = true; if (canStartCamera()) scanner.start(); });
+  window.addEventListener('blur', () => { pageActive = false; scanner.stop(); });
+  window.addEventListener('focus', () => { pageActive = true; if (canStartCamera()) scanner.start(); });
   window.addEventListener('offline', () => { if (active) message('网络已断开，填写内容会保留。联网后可重试提交或重新读取工单。'); });
   window.addEventListener('online', () => { if (active) message('网络已恢复，可以重试提交或重新读取当前工单。'); });
   return {
@@ -261,6 +274,7 @@ export function initScan() {
       if (active && ready && !$('#scan-home').hidden && !document.hidden) scanner.start(); else scanner.stop();
     },
     clear() {
+      cameraPaused = false;
       generation++; active = ready = busy = false; item = undefined; onsiteRequest = undefined; scanner.stop(); resetPreviews();
       root.removeAttribute('aria-busy'); root.querySelectorAll('button,input,select,textarea').forEach(element => element.disabled = false);
       $('#scan-torch').disabled = true; $('#scan-detail-info').replaceChildren(); $('#scan-files').replaceChildren(); $('#scan-add-files').value = ''; $('#scan-note').value = ''; $('#scan-outcome').value = ''; form.reset();

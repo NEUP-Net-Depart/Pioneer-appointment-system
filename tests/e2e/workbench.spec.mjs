@@ -31,7 +31,7 @@ for (const width of [320, 375, 390, 430]) test(`workbench keeps scanning, fallba
   await cameraDenied(page); await mockSession(page); await login(page);
   await expect(page.locator('#scan-home')).toBeVisible();
   await expect(page.locator('#management-header')).toBeHidden();
-  await expect(page.locator('#camera-status')).toContainText('未获得相机权限');
+  await expect(page.getByText('未获得相机权限', { exact: true })).toHaveCount(0);
   await expect(page.locator('#scan-onsite')).toBeVisible(); await fits(page);
   await expect(page.getByText('今日值班', { exact: true })).toHaveCount(0);
   await page.screenshot({ path: `output/playwright/workbench-home-${width}.png`, fullPage: true });
@@ -108,6 +108,70 @@ test('camera pauses for the personal center and scanned images open grouped devi
   await expect(page.locator('.scan-device-card')).toContainText('ThinkPad T14');
   await expect(page.locator('#scan-intake-form')).toBeVisible();
   expect(await page.evaluate(() => window.cameraStreams.every(stream => stream.getTracks().every(track => track.readyState === 'ended')))).toBe(true);
+});
+
+test('camera closes manually and releases tracks on navigation, background, pagehide and logout', async ({ page }) => {
+  await mockSession(page);
+  await page.addInitScript(() => {
+    window.cameraStreams = [];
+    Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => {
+      const canvas = document.createElement('canvas'); canvas.width = canvas.height = 64;
+      canvas.getContext('2d').fillRect(0, 0, 64, 64);
+      const stream = canvas.captureStream(1);
+      window.cameraStreams.push(stream); return stream;
+    } });
+  });
+  const running = () => expect(page.locator('.scanner-frame')).toHaveAttribute('data-camera-state', 'running');
+  const released = async () => {
+    await expect(page.locator('.scanner-frame')).toHaveAttribute('data-camera-state', 'idle');
+    expect(await page.evaluate(() => window.cameraStreams.every(stream => stream.getTracks().every(track => track.readyState === 'ended')))).toBe(true);
+    expect(await page.locator('#scan-video').evaluate(video => video.srcObject === null)).toBe(true);
+  };
+  await login(page); await running();
+  await page.getByRole('button', { name: '关闭摄像头', exact: true }).click(); await released();
+  await expect(page.locator('#scan-switch-camera')).toBeDisabled();
+  await page.evaluate(() => { window.dispatchEvent(new Event('blur')); window.dispatchEvent(new Event('focus')); });
+  await released();
+  await page.getByRole('button', { name: '手动输入编号', exact: true }).click();
+  await page.getByRole('button', { name: '返回扫码', exact: true }).click(); await released();
+  await page.getByRole('button', { name: '开启摄像头', exact: true }).click(); await running();
+  await page.getByRole('button', { name: '手动输入编号', exact: true }).click(); await released();
+  await page.getByRole('button', { name: '返回扫码', exact: true }).click(); await running();
+  await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, value: true }); document.dispatchEvent(new Event('visibilitychange')); });
+  await released();
+  await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, value: false }); document.dispatchEvent(new Event('visibilitychange')); });
+  await running();
+  await page.evaluate(() => window.dispatchEvent(new Event('blur'))); await released();
+  await page.evaluate(() => window.dispatchEvent(new Event('focus'))); await running();
+  await page.evaluate(() => window.dispatchEvent(new Event('pagehide'))); await released();
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))); await released();
+  await page.evaluate(() => window.dispatchEvent(new Event('pageshow'))); await running();
+  await page.getByRole('button', { name: '个人中心', exact: true }).click(); await released();
+  await page.locator('#workbench-logout').click(); await released();
+});
+
+test('late camera permission cannot reopen a closed camera or an inactive scan page', async ({ page }) => {
+  await mockSession(page);
+  await page.addInitScript(() => {
+    window.cameraStreams = [];
+    Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: () => new Promise(resolve => {
+      window.grantCamera = () => {
+        const stream = document.createElement('canvas').captureStream(1);
+        window.cameraStreams.push(stream); resolve(stream);
+      };
+    }) });
+  });
+  await login(page);
+  await expect(page.locator('.scanner-frame')).toHaveAttribute('data-camera-state', 'opening');
+  await page.getByRole('button', { name: '关闭摄像头', exact: true }).click();
+  await page.evaluate(() => window.grantCamera());
+  await expect.poll(() => page.evaluate(() => window.cameraStreams.every(stream => stream.getTracks().every(track => track.readyState === 'ended')))).toBe(true);
+  await page.getByRole('button', { name: '开启摄像头', exact: true }).click();
+  await expect(page.locator('.scanner-frame')).toHaveAttribute('data-camera-state', 'opening');
+  await page.getByRole('button', { name: '手动输入编号', exact: true }).click();
+  await page.evaluate(() => window.grantCamera());
+  await expect.poll(() => page.evaluate(() => window.cameraStreams.every(stream => stream.getTracks().every(track => track.readyState === 'ended')))).toBe(true);
+  expect(await page.locator('#scan-video').evaluate(video => video.srcObject === null)).toBe(true);
 });
 
 test('onsite intake, offline drafts, relogin recovery and completion retain the real repair workflow', async ({ page, request, context }) => {
