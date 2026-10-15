@@ -583,6 +583,18 @@ export function staffPlatformRepository(db) {
       LEFT JOIN duty_roles dr ON dr.assignment_id=da.id WHERE da.id=?`).bind(id).first();
     return assignment(row);
   }
+  async function swapCandidates(source) {
+    const result = await db.prepare(`SELECT da.*,c.name AS campus_name,m.name AS member_name,dr.role_kind
+      FROM duty_assignments da JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published'
+      JOIN campuses c ON c.id=da.campus_id JOIN members m ON m.id=da.member_id AND m.status='active'
+      LEFT JOIN duty_roles dr ON dr.assignment_id=da.id
+      WHERE da.member_id<>? AND da.duty_type=? AND da.campus_id=?
+      AND da.business_date>=? AND da.business_date<=date(?, '+6 day')
+      AND NOT EXISTS(SELECT 1 FROM leave_requests lr WHERE lr.assignment_id=da.id AND lr.status IN ('pending','approved'))
+      ORDER BY da.business_date,da.start_at,m.name,da.id LIMIT 200`)
+      .bind(source.memberId,source.dutyType,source.campusId,source.weekStart,source.weekStart).all();
+    return rows(result).map(row => ({ ...assignment(row), memberName: row.member_name }));
+  }
   async function createLeave(input, actorMemberId) { const id = input.id || crypto.randomUUID(); await db.prepare(`INSERT INTO leave_requests(id,assignment_id,member_id,reason,created_at) VALUES(?,?,?,?,?)`).bind(id,input.assignmentId,actorMemberId,input.reason,nowIso()).run(); return db.prepare('SELECT * FROM leave_requests WHERE id=?').bind(id).first(); }
   async function leaveById(id) { return db.prepare('SELECT * FROM leave_requests WHERE id=?').bind(id).first(); }
   async function listLeaves(filters = {}) {
@@ -625,5 +637,5 @@ export function staffPlatformRepository(db) {
   return { accountRow, accountForMember, ensureMember, memberRow, memberships, membershipsForMembers, profiles, grants, todayDuties, authorizationContext, listMembers, updateMember, listMemberships, addMembership, endMembership,
     listCampuses, listDepartments, listLocations, listPresence, activeRepair, importMembers, dutyEvent, latestIntake, fieldPeople,
     roleBindings, permissionDefinitions, listRoles, createRole, updateRole, bindRoles, modules, createEvent, issueToken, findEventByToken, findAttendanceByDedupe, insertAttendance, listAttendance, attendanceExport, setPresence,
-    attendanceEvent, eventById: attendanceEvent, createReceipt, claimReceipt, releaseReceipt, receipt, audit, listAudit, createRosterTask, listRosterTasks, saveAvailability, availability, createRosterVersion, updateRosterDraft, publishRoster, listAssignments, assignmentById, createLeave, leaveById, listLeaves, updateLeave, createSwap, swapById, listSwaps, updateSwap };
+    attendanceEvent, eventById: attendanceEvent, createReceipt, claimReceipt, releaseReceipt, receipt, audit, listAudit, createRosterTask, listRosterTasks, saveAvailability, availability, createRosterVersion, updateRosterDraft, publishRoster, listAssignments, assignmentById, swapCandidates, createLeave, leaveById, listLeaves, updateLeave, createSwap, swapById, listSwaps, updateSwap };
 }

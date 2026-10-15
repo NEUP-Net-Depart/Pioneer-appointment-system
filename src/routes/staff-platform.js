@@ -56,6 +56,7 @@ export const staffPlatformRoutes = [
   ['PATCH', /^\/api\/rosters\/([^/]+)$/, async (context, match) => json(await context.services.staffPlatform.updateRoster(await context.role('technician'), decodeURIComponent(match[1]), await readBody(context.request)))],
   ['POST', /^\/api\/rosters\/([^/]+)\/publish$/, async (context, match) => json(await context.services.staffPlatform.publish(await context.role('technician'), decodeURIComponent(match[1]), await readBody(context.request)))],
   ['GET', /^\/api\/me\/roster$/, async context => json(await context.services.staffPlatform.rosterMine(await context.role('technician'), context.query))],
+  ['GET', /^\/api\/swaps\/candidates$/, async context => json(await context.services.staffPlatform.swapCandidates(await context.role('technician'), context.query))],
   ['POST', /^\/api\/swaps$/, async context => json(await context.services.staffPlatform.swap(await context.role('technician'), await readBody(context.request)), 201)],
   ['GET', /^\/api\/swaps$/, async context => json(await context.services.staffPlatform.swaps(await context.role('technician'), context.query))],
   ['POST', /^\/api\/swaps\/([^/]+)\/decision$/, async (context, match) => json(await context.services.staffPlatform.swapDecision(await context.role('technician'), decodeURIComponent(match[1]), await readBody(context.request)))],

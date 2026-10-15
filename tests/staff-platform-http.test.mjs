@@ -320,3 +320,28 @@ test('role writes reject malformed ranges and protect administrator identities f
   const audit = await db.prepare("SELECT COUNT(*) AS total FROM audit_events WHERE actor_account='20269810' AND action='identity.member.updated'").first();
   assert.equal(audit.total, 1, 'capture the acting identity before deactivation so the successful write is still audited');
 });
+
+
+test('swap acceptance rolls both assignments back when either revision is stale', async () => {
+  const db = await mf.getD1Database('DB');
+  const repository = staffPlatformRepository(db);
+  const root = await repository.ensureMember('root001');
+  const other = await repository.ensureMember('20268801');
+  await db.prepare(`INSERT INTO roster_tasks(id,week_start,slot_start,slot_end,deadline,created_at) VALUES('swap-test-task','2026-10-19','19:00','21:00','2026-10-18','2026-10-15')`).run();
+  await db.prepare(`INSERT INTO roster_versions(id,task_id,status,version,rule_version,algorithm_version,created_at) VALUES('swap-test-version','swap-test-task','published',1,'1','1','2026-10-15')`).run();
+  await db.batch([
+    db.prepare(`INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at) VALUES('swap-a','swap-test-version',?,'2026-10-19','campus-nanhu','repair','19:00','21:00')`).bind(root),
+    db.prepare(`INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at) VALUES('swap-b','swap-test-version',?,'2026-10-20','campus-nanhu','repair','19:00','21:00')`).bind(other)
+  ]);
+  const swap = await repository.createSwap({ fromAssignmentId: 'swap-a', toAssignmentId: 'swap-b', toMemberId: other, fromRevision: 0, toRevision: 0 }, root);
+  await db.prepare("UPDATE duty_assignments SET revision=1 WHERE id='swap-b'").run();
+  const before = await Promise.all(['swap-a','swap-b'].map(id => repository.assignmentById(id)));
+  await assert.rejects(repository.updateSwap(swap.id, 'accepted', other, 0), /REVISION_CONFLICT/);
+  assert.deepEqual(await Promise.all(['swap-a','swap-b'].map(id => repository.assignmentById(id))), before);
+  assert.equal((await repository.swapById(swap.id)).status, 'pending');
+  const fresh = await repository.createSwap({ fromAssignmentId: 'swap-a', toAssignmentId: 'swap-b', toMemberId: other, fromRevision: 0, toRevision: 1 }, root);
+  assert.equal((await repository.updateSwap(fresh.id, 'accepted', other, 0)).status, 'accepted');
+  assert.equal((await repository.assignmentById('swap-a')).memberId, other);
+  assert.equal((await repository.assignmentById('swap-b')).memberId, root);
+  assert.equal(await repository.updateSwap(fresh.id, 'accepted', other, 0), null);
+});

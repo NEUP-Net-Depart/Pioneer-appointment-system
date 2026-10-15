@@ -1,0 +1,63 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { staffPlatformService } from '../src/services/staff-platform.js';
+
+function setup(memberId = 'target', allowedCampuses = ['campus-nanhu']) {
+  const changes = [];
+  const assignments = {
+    a: { id: 'a', memberId: 'sender', businessDate: '2026-10-19', campusId: 'campus-nanhu', dutyType: 'repair', revision: 0 },
+    b: { id: 'b', memberId: 'target', businessDate: '2026-10-20', campusId: 'campus-hunnan', dutyType: 'repair', revision: 0 }
+  };
+  const swap = { id: 'swap', from_assignment_id: 'a', to_assignment_id: 'b', from_member_id: 'sender', to_member_id: 'target', status: 'pending', revision: 0 };
+  const repository = {
+    availability: async () => [{ memberId: 'target', campusId: 'campus-nanhu' }, { memberId: 'sender', campusId: 'campus-hunnan' }],
+    assignmentById: async id => assignments[id], swapById: async () => swap,
+    listSwaps: async () => [swap],
+    listLeaves: async () => [{ id: 'north', assignment_id: 'b', member_id: 'target', status: 'pending' }, { id: 'south', assignment_id: 'a', member_id: 'sender', status: 'pending' }],
+    updateSwap: async (...args) => { changes.push(args); return { ...swap, status: args[1] }; },
+    audit: async () => {}
+  };
+  const platform = {
+    authContext: async () => ({ actor: { memberId }, grants: [] }),
+    authorizer: { evaluate: (_actor, permission, target) => ({ allowed: permission === 'roster.read' || allowedCampuses.includes(target.campusId) }) }
+  };
+  return { service: staffPlatformService({ repository, platform, manifests: [] }), changes, assignments };
+}
+
+test('only the invited member can respond, including when a manager supplies an authorized campus', async () => {
+  const { service, changes } = setup('manager', ['campus-nanhu', 'campus-hunnan']);
+  for (const decision of ['accept', 'decline']) {
+    await assert.rejects(service.swapDecision({ account: 'root001', role: 'superadmin' }, 'swap', { decision, revision: 0, campusId: 'campus-nanhu' }), error => error.status === 403);
+  }
+  assert.deepEqual(changes, []);
+});
+
+test('invited member can respond and receives the corresponding action', async () => {
+  const { service, changes } = setup();
+  const list = await service.swaps({ account: 'target' });
+  assert.equal(list.items[0].actions.respond, true);
+  await service.swapDecision({ account: 'target' }, 'swap', { decision: 'accept', revision: 0 });
+  assert.equal(changes[0][2], 'target');
+});
+
+test('review lists filter actual assignment scope, including both sides of a swap', async () => {
+  const { service } = setup('manager');
+  const actor = { account: 'manager' };
+  assert.deepEqual((await service.leaves(actor, { all: true })).items.map(item => item.id), ['south']);
+  assert.deepEqual((await service.swaps(actor, { all: true, campusId: 'campus-nanhu' })).items, []);
+});
+
+test('stale and cross-week swap proposals fail before creating a request', async () => {
+  const { service, assignments } = setup('sender');
+  const input = { fromAssignmentId: 'a', toAssignmentId: 'b', toMemberId: 'target', fromRevision: 1, toRevision: 0 };
+  await assert.rejects(service.swap({ account: 'sender' }, input), error => error.status === 409);
+  assignments.b.businessDate = '2026-10-26';
+  await assert.rejects(service.swap({ account: 'sender' }, { ...input, fromRevision: 0 }), error => error.status === 400);
+});
+
+
+test('a personal roster grant does not expose other members availability', async () => {
+  const { service } = setup('target', []);
+  const result = await service.taskAvailability({ account: 'target' }, 'task');
+  assert.deepEqual(result.items.map(item => item.memberId), ['target']);
+});

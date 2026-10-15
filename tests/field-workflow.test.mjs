@@ -7,6 +7,12 @@ import { hashPassword } from "../src/lib/passwords.js";
 import { dateKey } from "../shared/time.js";
 import { fieldSeed } from "./fixtures/field-seed.mjs";
 
+// Only the disposable Worker uses this clock; late-night test runs must still exercise a live duty day.
+const testNow = Date.parse('2026-10-15T10:00:00+08:00');
+const workerClock = `const RealDate = Date; globalThis.Date = class extends RealDate {
+  constructor(...args) { super(...(args.length ? args : [${testNow}])); }
+  static now() { return ${testNow}; }
+};\n`;
 let mf, db;
 const tokens = {};
 async function sql(text) {
@@ -75,7 +81,7 @@ before(async () => {
             modules: {
               "index.js": {
                 type: "esm",
-                contents: await readFile(
+                contents: workerClock + await readFile(
                   ".wrangler/field-test-build/index.js",
                   "utf8",
                 ),
@@ -114,7 +120,7 @@ before(async () => {
   await db
     .prepare("INSERT INTO staff_campus_grants VALUES('root001','南湖')")
     .run();
-  await sql(fieldSeed(dateKey()));
+  await sql(fieldSeed(dateKey(new Date(testNow))));
   for (const account of [
     "root001",
     "20261001",
@@ -158,7 +164,7 @@ test("field day: reception, attendance, intake, transfer and completion share au
   );
   const event = await request("/api/attendance/events", office, {
     campusId: "campus-nanhu",
-    businessDate: dateKey(),
+    businessDate: dateKey(new Date(testNow)),
     requestId: "field-event-request",
   });
   assert.equal(event.status, 201, JSON.stringify(event.body));
@@ -563,7 +569,7 @@ test("concurrent claims and transfers serialize; cross-day repairs survive and r
     1,
     JSON.stringify(transfers),
   );
-  const previousDay = new Date(Date.now() - 86400000).toLocaleDateString(
+  const previousDay = new Date(testNow - 86400000).toLocaleDateString(
     "en-CA",
     { timeZone: "Asia/Shanghai" },
   );

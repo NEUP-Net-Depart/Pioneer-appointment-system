@@ -6,7 +6,7 @@ import { migrationFingerprint } from './migration-fingerprint.mjs';
 const result = validateManifests(manifests);
 assert.equal(result.valid, true, result.errors.join('; '));
 const contract = JSON.parse(await readFile(new URL('../docs/contracts/staff-platform.json', import.meta.url), 'utf8'));
-assert.equal(contract.schemaVersion, '0012');
+assert.equal(contract.schemaVersion, '0013');
 assert.ok(manifests.every(item => item.requiredSchemaVersion));
 const baseline = JSON.parse(await readFile(new URL('../docs/releases/baseline-manifest.json', import.meta.url), 'utf8'));
 assert.equal(baseline.branch, 'next/staff-platform');

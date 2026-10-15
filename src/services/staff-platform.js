@@ -515,12 +515,26 @@ export function staffPlatformService({ repository, platform, manifests }) {
     return result;
   }
 
-  async function rosterTasks(actor) { await requirePermission(actor, 'roster.read'); return { items: await repository.listRosterTasks() }; }
-  async function taskAvailability(actor, taskId) { await requirePermission(actor, 'roster.read'); return { items: await repository.availability(taskId) }; }
+  async function rosterTasks(actor) {
+    const context = await contextFor(actor);
+    await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId });
+    const tasks = await repository.listRosterTasks();
+    return { items: tasks.filter(task => !task.memberIds?.length || task.memberIds.includes(context.actor.memberId) ||
+      evaluate(context, 'roster.repair.manage', { campusIds: task.campusScope?.campusIds }).allowed ||
+      evaluate(context, 'roster.office.manage', { campusIds: task.campusScope?.campusIds }).allowed) };
+  }
+  async function taskAvailability(actor, taskId) {
+    const context = await contextFor(actor);
+    await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId });
+    const rows = await repository.availability(taskId);
+    return { items: rows.filter(item => item.memberId === context.actor.memberId ||
+      evaluate(context, 'roster.repair.manage', { campusId: item.campusId }).allowed ||
+      evaluate(context, 'roster.office.manage', { campusId: item.campusId }).allowed) };
+  }
   async function createRosterTask(actor, input) {
     await requirePermission(actor, 'roster.repair.manage', { campusId: input.campusId }, input.weekStart || dateKey());
     if (!input.weekStart || !input.slotStart || !input.slotEnd || !input.deadline) fail(400, '排班任务字段不完整');
-    const context = await contextFor(actor); const result = await repository.createRosterTask(input, context.actor.memberId);
+    const context = await contextFor(actor); const result = await repository.createRosterTask({ ...input, campusScope: { campusIds: [input.campusId] } }, context.actor.memberId);
     await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.task.created', sourceRef: publicResourceRef('rosters','task',result.id), after: result, requestId: input.requestId });
     return result;
   }
@@ -562,15 +576,28 @@ export function staffPlatformService({ repository, platform, manifests }) {
   async function leaves(actor, query = {}) {
     const context = await contextFor(actor);
     const all = query.all === true || query.all === '1' || query.all === 'true';
-    if (all) await requirePermission(actor, 'leave.review', { campusId: query.campusId }, query.businessDate || dateKey());
-    const filters = { ...query, memberId: all ? undefined : context.actor.memberId };
-    return { items: (await repository.listLeaves(filters)).map(publicLeave) };
+    const rows = await repository.listLeaves({ ...query, memberId: all ? undefined : context.actor.memberId });
+    const items = [];
+    for (const row of rows) {
+      const assignment = await repository.assignmentById(row.assignment_id);
+      const scope = { campusId: assignment?.campusId, memberId: row.member_id };
+      const datedContext = assignment ? await contextFor(actor, assignment.businessDate) : context;
+      const canReview = !!assignment && evaluate(datedContext, 'leave.review', scope).allowed;
+      if (all && !canReview) continue;
+      if (query.campusId && assignment?.campusId !== query.campusId) continue;
+      items.push({ ...publicLeave(row), assignment, actions: {
+        review: canReview && row.status === 'pending',
+        withdraw: row.member_id === context.actor.memberId && row.status === 'pending'
+      } });
+    }
+    return { items };
   }
+
   async function leaveDecision(actor, id, input) {
     if (!['approve','reject'].includes(input.decision)) fail(400, '审批动作不正确');
     const request = await repository.leaveById(id); if (!request) fail(404, '请假申请不存在');
     const assignment = await repository.assignmentById(request.assignment_id);
-    await requirePermission(actor, 'leave.review', { campusId: assignment?.campusId || input.campusId }, input.businessDate || assignment?.businessDate || dateKey());
+    await requirePermission(actor, 'leave.review', { campusId: assignment?.campusId }, assignment?.businessDate || dateKey());
     const context = await contextFor(actor); const result = await repository.updateLeave(id,input.decision === 'approve' ? 'approved' : 'rejected',context.actor.memberId,input.revision,input.note || ''); if (!result) fail(409, '请假申请已变化，请刷新'); const value = publicLeave(result); await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.leave.reviewed', sourceRef: publicResourceRef('rosters','leave',id), after: value, requestId: input.requestId }); return value;
   }
   async function leaveWithdraw(actor, id, input) {
@@ -579,29 +606,61 @@ export function staffPlatformService({ repository, platform, manifests }) {
     await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId }, input.businessDate || dateKey());
     const result = await repository.updateLeave(id,'withdrawn',context.actor.memberId,input.revision,'本人撤回'); if (!result) fail(409, '请假申请已变化，请刷新'); const value = publicLeave(result); await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.leave.withdrawn', sourceRef: publicResourceRef('rosters','leave',id), after: value, requestId: input.requestId }); return value;
   }
+  async function swapCandidates(actor, query = {}) {
+    const context = await contextFor(actor);
+    await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId });
+    const source = await repository.assignmentById(query.assignmentId);
+    if (!source || source.memberId !== context.actor.memberId) fail(403, '请先选择本人的班次');
+    const weekStart = weekRange(source.businessDate).start;
+    const own = await repository.listAssignments(context.actor.memberId, weekStart);
+    if (!own.some(item => item.id === source.id)) fail(409, '该班次已失效，请刷新班表');
+    return { items: await repository.swapCandidates({ ...source, weekStart }) };
+  }
   async function swap(actor, input) {
     const context = await contextFor(actor);
     await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId }, input.businessDate || dateKey());
     const from = await repository.assignmentById(input.fromAssignmentId); const to = await repository.assignmentById(input.toAssignmentId);
     if (!from || !to || from.memberId !== context.actor.memberId || to.memberId === context.actor.memberId || input.toMemberId !== to.memberId) fail(400, '换班班次或目标成员不正确');
     if (from.id === to.id || !Number.isInteger(input.fromRevision) || !Number.isInteger(input.toRevision)) fail(400, '换班版本不正确');
+    if (from.revision !== input.fromRevision || to.revision !== input.toRevision) fail(409, '班次已变化，请重新选择');
+    if (weekRange(from.businessDate).start !== weekRange(to.businessDate).start) fail(400, '只能选择同一周的班次换班');
+    if (from.dutyType !== to.dutyType) fail(400, '只能交换相同岗位类型的班次');
     return withReceipt(actor, 'swap.create', input, async () => {
       const result = publicSwap(await repository.createSwap({ ...input, fromRevision: input.fromRevision, toRevision: input.toRevision }, context.actor.memberId));
       await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.swap.created', sourceRef: publicResourceRef('rosters','swap',result.id), after: result, requestId: input.requestId });
       return result;
     });
   }
-  async function swaps(actor, query = {}) { const context = await contextFor(actor); const all = query.all === true || query.all === '1' || query.all === 'true'; if (all) await requirePermission(actor, 'roster.repair.manage', { campusId: query.campusId }, query.businessDate || dateKey()); return { items: (await repository.listSwaps({ ...query, memberId: all ? undefined : context.actor.memberId })).map(publicSwap) }; }
+  async function swaps(actor, query = {}) {
+    const context = await contextFor(actor);
+    const all = query.all === true || query.all === '1' || query.all === 'true';
+    const rows = await repository.listSwaps({ ...query, memberId: all ? undefined : context.actor.memberId });
+    const items = [];
+    for (const row of rows) {
+      const from = await repository.assignmentById(row.from_assignment_id);
+      const to = await repository.assignmentById(row.to_assignment_id);
+      if (all) {
+        if (!from || !to) continue;
+        const allowed = await Promise.all([from, to].map(async assignment => {
+          const datedContext = await contextFor(actor, assignment.businessDate);
+          return evaluate(datedContext, assignment.dutyType === 'office' ? 'roster.office.manage' : 'roster.repair.manage', { campusId: assignment.campusId }).allowed;
+        }));
+        if (allowed.some(value => !value)) continue;
+      }
+      if (query.campusId && from?.campusId !== query.campusId && to?.campusId !== query.campusId) continue;
+      items.push({ ...publicSwap(row), fromAssignment: from, toAssignment: to,
+        actions: { respond: row.to_member_id === context.actor.memberId && row.status === 'pending' } });
+    }
+    return { items };
+  }
   async function swapDecision(actor, id, input) {
     if (!['accept','decline'].includes(input.decision)) fail(400, '换班审批动作不正确');
     const context = await contextFor(actor);
     const request = await repository.swapById(id);
     if (!request) fail(404, '换班申请不存在');
-    const fromAssignment = await repository.assignmentById(request.from_assignment_id);
-    const reviewTarget = { campusId: input.campusId || fromAssignment?.campusId };
-    const canReview = evaluate(context, 'roster.repair.manage', reviewTarget).allowed || evaluate(context, 'leave.review', reviewTarget).allowed;
-    if (!canReview && request.to_member_id !== context.actor.memberId) await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId }, input.businessDate || dateKey());
-    const result = await repository.updateSwap(id,input.decision === 'accept' ? 'accepted' : 'declined',canReview ? request.to_member_id : context.actor.memberId,input.revision);
+    if (request.to_member_id !== context.actor.memberId) fail(403, '只有被邀请的成员可以确认或拒绝换班');
+    await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId });
+    const result = await repository.updateSwap(id,input.decision === 'accept' ? 'accepted' : 'declined',context.actor.memberId,input.revision);
     if (!result) fail(409, '换班申请已变化，请刷新');
     const value = publicSwap(result);
     await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.swap.decided', sourceRef: publicResourceRef('rosters','swap',id), after: value, requestId: input.requestId });
@@ -611,6 +670,6 @@ export function staffPlatformService({ repository, platform, manifests }) {
 
   return { contextFor, requirePermission, memberList, memberDetail, updateMember, addMembership, endMembership, permissions, roles, createRole, updateRole, previewRole, bindMemberRoles,
     organization, importMembers, deskSummary, workbench, createAttendanceEvent, issueAttendanceToken, checkIn, previewAttendance, attendanceList, correctAttendance, presence, rosterTasks, taskAvailability, createRosterTask, saveAvailability, generate, updateRoster, publish, rosterMine,
-    leave, leaves, leaveDecision, leaveWithdraw, swap, swaps, swapDecision, attendanceExport, audit,
+    leave, leaves, leaveDecision, leaveWithdraw, swapCandidates, swap, swaps, swapDecision, attendanceExport, audit,
     recordAudit: input => repository.audit(input) };
 }

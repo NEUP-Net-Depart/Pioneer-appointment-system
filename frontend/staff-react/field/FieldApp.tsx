@@ -602,6 +602,9 @@ export function FieldApp({
                   <h2>{initial.actor.name}</h2>
                   <p className="field-muted">个人安排与账号</p>
                   <div className="field-actions">
+                    <button onClick={() => onNavigate("roster")}>
+                      我的班次与申请
+                    </button>
                     <button onClick={() => onNavigate("settings")}>
                       账号安全
                     </button>
