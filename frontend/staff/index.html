@@ -2,13 +2,16 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#102a43" />
   <title>先锋硬件部 · 工作人员工作台</title>
   <link rel="icon" href="/assets/organization-logo.jpg" type="image/jpeg" />
   <link rel="stylesheet" href="/shared/styles.css" />
+  <link rel="stylesheet" href="/staff/scan.css" />
+  <link rel="stylesheet" href="/staff/react.css" />
 </head>
 <body class="staff-mode">
+  <div id="staff-react-root"></div>
   <section class="login-view" id="login-view">
     <div class="login-panel">
       <div class="login-brand"><img class="organization-logo" src="/assets/organization-logo.jpg" alt="先锋网络中心 Logo" /><div><strong>先锋硬件部</strong><small>免费维修预约系统</small></div></div>
@@ -27,13 +30,14 @@
 
 <section class="login-view" id="activation-view" hidden><div class="login-panel"><div class="login-brand"><img class="organization-logo" src="/assets/organization-logo.jpg" alt="先锋网络中心 Logo" /><div><strong>先锋硬件部</strong><small>工作人员首次激活</small></div></div><p class="eyebrow">STAFF ACTIVATION</p><form id="activation-form" class="login-form"><label>学号<input id="activation-student-id" inputmode="numeric" pattern="[0-9]{6,20}" maxlength="20" required autocomplete="username" /></label><label>姓名<input id="activation-name" minlength="2" maxlength="80" required autocomplete="name" /></label><label>所属校区<select id="activation-campus" required><option value="">请选择所属校区</option><option>南湖</option><option>浑南</option></select></label><label>设置密码<input id="activation-password" type="password" minlength="8" maxlength="128" required autocomplete="new-password" /></label><label>确认密码<input id="activation-confirm" type="password" minlength="8" maxlength="128" required autocomplete="new-password" /></label><button class="primary-btn" type="submit">提交激活申请</button></form><div id="activation-result" hidden><h2 id="activation-status" role="status"></h2><p id="activation-note"></p><button id="refresh-activation" class="secondary-btn" type="button">刷新审核结果</button><a id="activation-login" class="primary-btn" href="/staff/" hidden>前往登录</a></div><a class="text-btn" href="/staff/">返回工作人员登录</a></div></section>
 <div id="app-shell" hidden>
-  <header class="topbar">
+  <header class="topbar" id="management-header">
     <div class="topbar-inner">
       <a class="brand" href="/staff/" aria-label="工作人员首页">
         <img class="organization-logo" src="/assets/organization-logo.jpg" alt="先锋网络中心 Logo" />
         <span><strong>先锋硬件部</strong><small>维修预约系统</small></span>
       </a>
       <nav class="main-nav" aria-label="主导航">
+        <button class="nav-link" data-view-link="scan" hidden>扫码维修</button>
         <button class="nav-link" data-view-link="staff" data-role-allow="technician,admin">维修后台</button>
         <button class="nav-link" data-view-link="stats" data-role-allow="admin">统计分析</button>
         <button class="nav-link" data-view-link="users" data-role-allow="admin">账号管理</button><button class="nav-link" data-view-link="settings" data-role-allow="technician">个人设置</button>
@@ -42,7 +46,65 @@
     </div>
   </header>
 
-<main>
+  <header class="workbench-header" id="workbench-header" hidden>
+    <div class="workbench-brand"><img src="/assets/organization-logo.jpg" alt="" width="44" height="44" /><div><strong>先锋硬件部</strong><span id="workbench-subtitle">维修工作台</span></div></div>
+    <button class="workbench-icon-button" id="workbench-profile" type="button" aria-label="个人中心" aria-haspopup="dialog" aria-controls="workbench-profile-dialog" aria-expanded="false"><img class="workbench-icon" src="/assets/workbench-icons/user.svg" alt="" aria-hidden="true" /></button>
+  </header>
+  <main>
+    <section class="view scan-workbench" id="scan-view" data-view="scan">
+      <div class="workbench-status" id="workbench-status" aria-label="工作状态">
+        <!-- Independent status components (e.g. duty attendance) can mount here when implemented. -->
+        <div class="scan-status-line"><p id="scan-message" class="scan-message" role="status" aria-live="polite"></p><button type="button" id="scan-recover" class="workbench-icon-button" aria-label="重新读取当前工单" title="重新读取当前工单"><img class="workbench-icon" src="/assets/workbench-icons/refresh.svg" alt="" aria-hidden="true" /></button></div>
+      </div>
+      <div class="workbench-main" id="workbench-main">
+      <section id="scan-home" aria-labelledby="scan-home-title" hidden>
+        <div class="scanner-card">
+          <div class="scanner-toolbar"><h1 id="scan-home-title">扫描维修二维码</h1><div class="scanner-controls"><button id="scan-torch" class="workbench-icon-button" type="button" aria-label="手电筒" title="手电筒（设备支持时可用）" aria-pressed="false" disabled><img class="workbench-icon" src="/assets/workbench-icons/bolt.svg" alt="" aria-hidden="true" /></button><button id="scan-switch-camera" class="workbench-icon-button" type="button" aria-label="切换摄像头" title="切换摄像头"><img class="workbench-icon" src="/assets/workbench-icons/camera-rotate.svg" alt="" aria-hidden="true" /></button></div></div>
+          <div class="scanner-frame" data-camera-state="idle"><video id="scan-video" muted autoplay playsinline webkit-playsinline x5-playsinline aria-label="维修二维码摄像头"></video><img class="scanner-guide" src="/assets/workbench-icons/scan.svg" alt="" aria-hidden="true" /></div>
+          <p id="camera-status" role="status">将机主二维码对准扫描框</p>
+          <button id="scan-camera" class="scanner-retry" type="button"><img class="workbench-icon" src="/assets/workbench-icons/camera.svg" alt="" aria-hidden="true" />开启摄像头</button>
+        </div>
+        <div class="workbench-actions" aria-label="接单方式">
+          <div class="scan-secondary-actions"><label class="scan-image-label"><img class="workbench-icon" src="/assets/workbench-icons/photo.svg" alt="" aria-hidden="true" /><span>相册识别</span><input id="scan-image" type="file" accept="image/*" aria-label="从相册识别二维码" /></label><button id="scan-manual" type="button"><img class="workbench-icon" src="/assets/workbench-icons/keyboard.svg" alt="" aria-hidden="true" />手动输入编号</button></div>
+          <button id="scan-onsite" class="primary-btn scan-primary-action" type="button"><img class="workbench-icon" src="/assets/workbench-icons/plus.svg" alt="" aria-hidden="true" />临时维修登记</button>
+        </div>
+      </section>
+      <form id="scan-manual-form" class="scan-panel" hidden><div class="scan-panel-heading"><button type="button" class="workbench-icon-button" data-scan-back aria-label="返回扫码"><img class="workbench-icon" src="/assets/workbench-icons/arrow-left.svg" alt="" aria-hidden="true" /></button><h1 tabindex="-1">手动输入编号</h1></div><p class="scan-help">输入机主提供的完整预约编号。</p><label>预约编号<input id="scan-number" required maxlength="80" placeholder="reserve020261013-01" autocapitalize="none" autocomplete="off" enterkeyhint="search" spellcheck="false" /></label><div class="scan-actions"><button class="primary-btn" type="submit">查询工单</button></div></form>
+      <section id="scan-detail" hidden>
+        <div class="scan-panel-heading"><button type="button" class="workbench-icon-button" id="scan-detail-back" aria-label="返回扫码"><img class="workbench-icon" src="/assets/workbench-icons/arrow-left.svg" alt="" aria-hidden="true" /></button><h1 tabindex="-1">工单详情</h1></div>
+        <div id="scan-detail-info"></div>
+        <p id="scan-legacy-notice" class="scan-notice" hidden>此账号有多条历史未完成维修，请逐条处理；完成前无法开始新工单。</p>
+        <p id="scan-thermal-advice" class="scan-notice" hidden>清灰换硅脂：请先询问机主并确认是否使用液金散热，再确认处理方案。</p>
+        <form id="scan-intake-form" class="scan-panel" hidden><h2>拍照签到</h2><div class="intake-photos">
+          <label class="scan-photo-field"><img class="workbench-icon" src="/assets/workbench-icons/camera.svg" alt="" aria-hidden="true" /><strong>电脑正面</strong><span>拍照或选择照片</span><input id="scan-front" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" aria-label="电脑正面照片（必填）" /><img id="scan-front-preview" class="scan-photo-preview" alt="电脑正面预览" hidden /><span id="scan-front-state" role="status"></span></label>
+          <label class="scan-photo-field"><img class="workbench-icon" src="/assets/workbench-icons/camera.svg" alt="" aria-hidden="true" /><strong>电脑反面</strong><span>拍照或选择照片</span><input id="scan-back" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" aria-label="电脑反面照片（必填）" /><img id="scan-back-preview" class="scan-photo-preview" alt="电脑反面预览" hidden /><span id="scan-back-state" role="status"></span></label>
+        </div><p class="scan-help">两张照片均必填，每张不超过 5 MB。</p><button class="primary-btn scan-primary-action" type="submit">确认照片并开始维修</button></form><button id="scan-cancel-onsite" class="secondary-btn scan-cancel-onsite" type="button" hidden>取消临时登记</button>
+        <form id="scan-result-form" class="scan-panel" hidden><h2>维修结果</h2><label>结果<select id="scan-outcome" required><option value="">请选择维修结果</option><option value="repaired">修复成功</option><option value="unrepaired">未修复</option><option value="not_needed">无需维修</option></select></label><label>维修说明<textarea id="scan-note" required rows="5" maxlength="3000" placeholder="记录检测、处理过程与维修结果"></textarea></label><p id="scan-draft-state" role="status"></p><div class="scan-actions"><button id="scan-save-note" type="button" class="secondary-btn">保存说明</button><button type="submit" class="primary-btn">完成并返回扫码</button></div></form>
+        <section id="scan-files-section" class="scan-panel" hidden><details><summary>维修附件与签到照片</summary><div id="scan-files"></div><button id="scan-reload-files" type="button" class="text-btn">重新读取附件</button><label>补充维修附件<input id="scan-add-files" type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf,text/plain" /></label><button id="scan-upload-files" type="button" class="secondary-btn">上传附件</button><details><summary>机主协议签名</summary><canvas id="scan-signed" width="900" height="360" aria-label="机主协议签名" hidden></canvas></details></details></section>
+      </section>
+      <form id="scan-onsite-form" class="scan-panel" hidden><div class="scan-panel-heading"><button type="button" class="workbench-icon-button" data-scan-back aria-label="返回扫码"><img class="workbench-icon" src="/assets/workbench-icons/arrow-left.svg" alt="" aria-hidden="true" /></button><h1 tabindex="-1">临时维修登记</h1></div><fieldset class="scan-form-section"><legend>机主信息</legend><div class="scan-form-grid">
+<label>学号（必填）<input name="studentId" maxlength="20" inputmode="numeric" enterkeyhint="next" required /></label>
+<label>姓名（必填）<input name="name" maxlength="80" required /></label>
+<label>学院 / 专业<input name="college" maxlength="120"  /></label>
+<label>手机号<input name="phone" maxlength="30" inputmode="tel" enterkeyhint="next" /></label>
+<label>QQ / 微信（必填）<input name="social" maxlength="120" required /></label>
+</div></fieldset><fieldset class="scan-form-section"><legend>设备信息</legend><div class="scan-form-grid">
+<label>品牌（必填）<input name="brand" maxlength="80" required /></label>
+<label>型号（必填）<input name="deviceModel" maxlength="120" required /></label>
+<label>序列号<input name="serial" maxlength="120"  /></label>
+        <label>校区（必填）<select name="campus" required><option value="">请选择</option><option>南湖</option><option>浑南</option></select></label>
+        <label>设备类型（必填）<select name="deviceType" required><option>笔记本电脑</option><option>台式电脑</option><option>显示器</option><option>打印机</option><option>其他外设</option></select></label>
+        <label>是否在保（必填）<select name="warranty" required><option value="">请选择</option><option>是</option><option>否</option><option>不清楚</option></select></label>
+        <label>故障类型（必填）<select name="faultType" required><option value="">请选择</option><option>清灰换硅脂</option><option>换硬盘</option><option>换内存</option><option>系统问题</option><option>蓝屏</option><option>黑屏</option><option>网络问题</option><option>其他</option></select></label>
+        <label>是否进液 / 摔过（必填）<select name="liquidDrop" required><option>否</option><option>是</option><option>不清楚</option></select></label>
+        </div></fieldset><fieldset class="scan-form-section"><legend>故障与协议</legend><label>故障描述<textarea name="issue" maxlength="10000" rows="3"></textarea></label><label>备注<textarea name="note" maxlength="500" rows="2"></textarea></label>
+        <details><summary>免费维修免责与行为操守协议</summary><p>1. 本服务为免费、自愿的互助维修，不收取任何费用。</p><p>2. 维修人员会尽力维修，但不保证一定能修好；维修方不承担数据丢失责任。</p><p>3. 配件及其他耗材由机主自行准备，中心不提供代购；清灰换硅脂所需的普通硅脂由中心提供，无需自备。</p><p>4. 在保设备建议先前往官方售后，避免影响保修。</p><p>5. 请如实描述故障并遵守现场秩序，不翻阅个人文件与聊天记录。</p></details>
+        <label class="checkbox-label"><input name="agreement" type="checkbox" required />机主已阅读并同意协议，确认重要数据已备份</label>
+        <label>请机主手写本人姓名<canvas id="onsite-signature" width="900" height="360" aria-label="临时维修协议手写签名"></canvas></label><button type="button" id="onsite-clear-signature" class="text-btn">清空签名</button></fieldset>
+        <div class="scan-actions"><button type="button" class="secondary-btn" data-scan-back>返回扫码</button><button class="primary-btn" type="submit">登记并查看工单</button></div>
+      </form>
+      </div>
+    </section>
 
     <section class="view" id="staff-view" data-view="staff">
       <div class="content-shell staff-shell">
@@ -86,7 +148,7 @@
     <section class="view" id="stats-view" data-view="stats">
       <div class="page-intro stats-intro"><div><p class="eyebrow">ADMIN INSIGHTS · 04</p><h1>维修统计</h1><p>按日期、故障类型、校区和维修人员查看服务情况。</p></div><div class="stats-filters"><label class="stats-range-label">统计范围<select id="stats-range"><option value="7">最近 7 天</option><option value="30">最近 30 天</option><option value="all">全部记录</option></select></label><label class="stats-day-label">查看单日<input id="stats-day" type="date" /></label><button class="filter-clear" id="stats-clear-day" type="button">清除日期</button></div></div>
       <div class="content-shell stats-shell">
-        <div class="metrics-row stats-metrics"><div class="metric"><span>预约总数</span><strong id="stats-total">0</strong></div><div class="metric"><span>已完成维修</span><strong id="stats-completed">0</strong></div><div class="metric"><span>修复成功率</span><strong id="stats-rate">0%</strong></div><div class="metric accent"><span>未到场率</span><strong id="stats-no-show">0%</strong></div></div>
+        <div class="metrics-row stats-metrics"><div class="metric"><span>预约总数</span><strong id="stats-total">0</strong></div><div class="metric"><span>已完成维修</span><strong id="stats-completed">0</strong></div><div class="metric"><span>修复成功率</span><strong id="stats-rate">0%</strong></div><div class="metric accent"><span>未到场率</span><strong id="stats-no-show">0%</strong></div><div class="metric"><span>临时登记过期</span><strong id="stats-expired">0</strong></div></div>
         <div class="stats-grid">
           <section class="stats-panel stats-wide"><div class="stats-panel-heading"><div><span class="section-index">01</span><h2>每日维修人数</h2></div><span class="panel-caption"><i class="legend-dot booked"></i>预约 <i class="legend-dot finished"></i>完成</span></div><div class="daily-chart" id="daily-chart"></div></section>
           <section class="stats-panel"><div class="stats-panel-heading"><div><span class="section-index">02</span><h2>故障分类</h2></div><span class="panel-caption">按已完成数</span></div><div class="bar-list" id="fault-chart"></div></section>
@@ -104,19 +166,32 @@
         <div class="table-wrap"><table><thead><tr><th>账号</th><th>姓名</th><th>权限</th><th>校区</th><th>状态</th><th>工作量</th><th>操作</th></tr></thead><tbody id="users-table"></tbody></table><div id="users-empty" class="table-empty" hidden>暂无账号</div></div>
       </div>
     </section>
-<section class="view" id="settings-view" data-view="settings"><div class="page-intro"><p class="eyebrow">PERSONAL SETTINGS</p><h1>个人设置</h1><p id="profile-info"></p></div><div class="content-shell">
+<section class="view" id="settings-view" data-view="settings"><button id="workbench-settings-back" class="workbench-back" type="button" hidden><img class="workbench-icon" src="/assets/workbench-icons/arrow-left.svg" alt="" aria-hidden="true" />返回工作台</button><div class="page-intro"><p class="eyebrow">PERSONAL SETTINGS</p><h1>个人设置</h1><p id="profile-info"></p></div><div class="content-shell">
   <section id="capacity-settings" class="capacity-settings" data-role-allow="admin" hidden aria-labelledby="capacity-title">
     <div class="capacity-heading"><h2 id="capacity-title">预约人数设置</h2><button id="reload-capacities" class="secondary-btn" type="button">重新读取配置</button></div>
     <p>按校区、时段分别设置预约人数，默认 10 人。设为 0 暂停该时段预约；配置适用于所有可预约日期，直到再次修改。</p>
     <p>下调人数或暂停预约会保留已有预约，已有预约仍可查询、取消、签到和维修。</p>
     <p class="capacity-hint">自动刷新保留未保存的输入；点击“重新读取配置”会放弃未保存的修改。</p>
-    <p id="capacity-load-state" role="status"></p><div id="capacity-fields" class="capacity-grid"></div>
+    <p id="capacity-load-state" role="status"></p>
+    <div class="capacity-toolbar" id="capacity-sheet-toolbar"><span data-sheet-status role="status"></span><button type="button" data-sheet-all>全选</button><button type="button" data-sheet-copy>复制</button><button type="button" data-sheet-paste>粘贴</button><button type="button" data-sheet-extend>扩展选择</button></div>
+    <div id="capacity-campuses" class="capacity-campus-tabs"></div>
+    <div class="capacity-bulk-tools"><form id="capacity-bulk-form"><input id="capacity-bulk-value" type="number" min="0" step="1" required aria-label="批量人数" /><select id="capacity-bulk-scope"><option value="week">当前校区整周</option><option value="1">周一</option><option value="2">周二</option><option value="3">周三</option><option value="4">周四</option></select><button type="submit">批量设置</button></form><button id="capacity-save-all" type="button">保存全部修改</button><button id="capacity-discard" type="button">放弃修改</button><button id="capacity-undo" type="button">撤销快捷操作</button><span id="capacity-draft-status" role="status"></span></div>
+    <div id="capacity-campus-copy-row"><select id="capacity-copy-target" aria-label="复制目标校区"></select><button id="capacity-copy-campus" type="button">复制当天到目标校区</button><select id="capacity-copy-day" aria-label="复制星期"><option value="1">周一</option><option value="2">周二</option><option value="3">周三</option><option value="4">周四</option></select><button id="capacity-copy-week" type="button">复制整周</button></div>
+    <div id="capacity-fields" class="capacity-grid"></div>
   </section>
   <div class="user-create-panel"><div><h2>修改密码</h2><p>修改后所有设备都需要重新登录。</p></div><form id="password-form" class="login-form"><label>当前密码<input id="current-password" type="password" required autocomplete="current-password" /></label><label>新密码<input id="new-password" type="password" required minlength="8" maxlength="128" autocomplete="new-password" /></label><label>确认新密码<input id="confirm-password" type="password" required minlength="8" maxlength="128" autocomplete="new-password" /></label><button class="primary-btn" type="submit">修改密码并退出</button></form></div><button id="revoke-sessions" class="secondary-btn" type="button">撤销所有登录会话</button></div></section></main>
   <div class="modal-backdrop" id="intake-modal" hidden><div class="modal" role="dialog" aria-modal="true" aria-labelledby="intake-title"><h2 id="intake-title">签到前拍照确认</h2><p id="intake-code"></p><p class="intake-thermal-advice" id="intake-thermal-advice" hidden>清灰换硅脂：请先询问机主并确认设备是否使用液金散热，确认散热材料与处理方案后再操作。</p><p>请由本次签到的维修人员上传电脑正面和反面照片，确认外观清晰可见。两张照片上传成功后才会进入维修中。</p><form id="intake-form"><div class="intake-photos"><label>电脑正面（必填）<input id="intake-front" type="file" accept="image/jpeg,image/png,image/webp" required /><img id="intake-front-preview" alt="电脑正面预览" hidden /></label><label>电脑反面（必填）<input id="intake-back" type="file" accept="image/jpeg,image/png,image/webp" required /><img id="intake-back-preview" alt="电脑反面预览" hidden /></label></div><p>每张不超过 5 MB；可使用手机相机拍摄后选择照片。</p><div class="modal-actions"><button id="cancel-intake" class="secondary-btn" type="button">取消</button><button id="confirm-intake" class="primary-btn" type="submit">上传照片并确认签到</button></div></form></div></div>
   <div class="modal-backdrop" id="detail-modal" hidden><div class="modal detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-title"><button class="modal-close" id="close-detail" type="button" aria-label="关闭">×</button><p class="eyebrow">APPOINTMENT DETAIL</p><h2 id="detail-title">预约详情</h2><div class="detail-summary" id="detail-summary"></div><canvas id="detail-signature" width="900" height="360" aria-label="用户协议手写签名" hidden></canvas><div class="detail-grid"><div>状态 <strong id="detail-state"></strong></div><label>维修人员<input id="detail-assigned" readonly /></label></div><p id="detail-times"></p><label id="repair-result-field">维修结果<select id="detail-outcome"></select></label><label class="detail-note-label">维修说明<textarea id="detail-repair-note" rows="4" placeholder="记录检测、维修、更换部件和烤机结果"></textarea></label><details id="correction-panel" class="recovery-panel" hidden><summary>管理员纠错</summary><p>可转派、修正结果或撤回操作。恢复为已预约须未过当天21:30，且有可用名额。</p><label>修正后的状态<select id="correction-status"></select></label><label>维修人员<input id="correction-assigned" placeholder="输入账号或姓名" /></label><label>结束结果<select id="correction-outcome"></select></label><button id="apply-correction" class="secondary-btn" type="button">应用修正</button></details><section id="recovery-panel" class="recovery-panel" hidden><h3>学生凭证遗失处理</h3><label class="checkbox-label"><input id="recovery-verified" type="checkbox" /> 已人工核验本人身份</label><label>核验说明<textarea id="recovery-reason" rows="2" maxlength="300" placeholder="至少 8 字，记录核验方式"></textarea></label><button id="recover-access" class="secondary-btn" type="button">重新签发并撤销旧凭证</button><div id="recovery-result" hidden><label>仅交给核验通过的本人<input id="recovered-link" type="text" readonly /></label><button id="copy-recovered-link" class="text-btn" type="button">复制新私人链接</button></div></section><div class="modal-actions"><button class="secondary-btn" id="cancel-detail" type="button">取消</button><button class="secondary-btn" id="save-detail" type="button">保存维修说明</button><button class="primary-btn" id="start-detail" type="button">签到并开始维修</button><button class="primary-btn" id="complete-detail" type="button">结束维修</button></div></div></div>
 </div>
+<div id="workbench-profile-dialog" class="workbench-profile-backdrop" hidden>
+  <section class="workbench-profile-panel" role="dialog" aria-modal="true" aria-labelledby="workbench-profile-title" tabindex="-1">
+    <div class="profile-heading"><h2 id="workbench-profile-title">个人中心</h2><button id="workbench-profile-close" class="workbench-icon-button" type="button" aria-label="关闭个人中心"><img class="workbench-icon" src="/assets/workbench-icons/x.svg" alt="" aria-hidden="true" /></button></div>
+    <div class="workbench-identity"><img class="workbench-icon" src="/assets/workbench-icons/user.svg" alt="" aria-hidden="true" /><div><strong id="workbench-profile-name"></strong><p id="workbench-profile-role"></p><p id="scan-account"></p></div></div>
+    <div class="workbench-profile-menu"><button id="workbench-password" type="button"><img class="workbench-icon" src="/assets/workbench-icons/key.svg" alt="" aria-hidden="true" /><span>修改密码与账号安全</span><img class="workbench-icon" src="/assets/workbench-icons/chevron-right.svg" alt="" aria-hidden="true" /></button><button id="workbench-admin" type="button" hidden><img class="workbench-icon" src="/assets/workbench-icons/layout-dashboard.svg" alt="" aria-hidden="true" /><span>返回管理后台</span><img class="workbench-icon" src="/assets/workbench-icons/chevron-right.svg" alt="" aria-hidden="true" /></button></div>
+    <button id="workbench-logout" class="workbench-logout" type="button"><img class="workbench-icon" src="/assets/workbench-icons/logout.svg" alt="" aria-hidden="true" />退出登录</button>
+  </section>
+</div>
 <div class="modal-backdrop" id="user-edit-modal" hidden><div class="modal" role="dialog" aria-modal="true" aria-labelledby="edit-user-title"><button id="close-user-edit" class="modal-close" type="button" aria-label="关闭权限编辑">×</button><h2 id="edit-user-title">编辑账号</h2><form id="user-edit-form" class="login-form"><label>姓名<input id="edit-user-name" required minlength="2" maxlength="80" /></label><label>角色<select id="edit-user-role"></select></label><label>所属校区<select id="edit-home-campus"><option>南湖</option><option>浑南</option></select></label><fieldset><legend>授权校区</legend><div id="edit-campus-grants"></div><p>所属校区不自动授予访问权限。</p></fieldset><label>重置密码（选填）<input id="edit-user-password" type="password" minlength="8" maxlength="128" autocomplete="new-password" placeholder="留空保留现有密码" /><small>重置后交给本人，并请其在个人设置中修改。</small></label><div class="modal-actions"><button id="cancel-user-edit" class="secondary-btn" type="button">取消</button><button class="primary-btn" type="submit">保存权限</button></div></form></div></div><div class="toast" id="toast" role="status"></div>
-<script type="module" src="/staff/main.js"></script>
+<script type="module" src="/staff/react-main.mjs"></script>
 </body>
 </html>

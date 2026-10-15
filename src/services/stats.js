@@ -5,7 +5,7 @@ export function statsService(stats, appointments) {
   return {
     async summary({ range, day },actor) {
       requireRole(actor,'admin');
-      await appointments.endNoShows(expiredBookingDate(), nowIso(), {campuses:actor.authorizedCampuses});
+      await (appointments.expirePending || appointments.endNoShows)(expiredBookingDate(), nowIso(), {campuses:actor.authorizedCampuses});
       const start = day || range === 'all' ? '' : addDays(dateKey(), -(Number(range) - 1));
       const result = await stats.aggregate({start,day,campuses:actor.authorizedCampuses});
       const { total, completed, noShow, classified, repaired } = result.summary;

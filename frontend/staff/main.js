@@ -7,6 +7,11 @@ import { initStats } from './stats.js';
 import { initUsers } from './users.js';
 import { initSettings } from './settings.js';
 import { initStaffHost } from './app-shell.js';
+// Keep the scan, camera and capacity modules in the staff runtime graph while
+// the React shell gradually replaces their DOM host.
+import './scan.js';
+import './capacity-sheet.js';
+import './workbench.js';
 
 useStaffSession();
 initStaffHost();

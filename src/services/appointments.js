@@ -3,16 +3,17 @@ import { encryptText, decryptText } from '../lib/privacy.js';
 import { addDays, dateKey, serviceDay, slotDeadline, noShowDeadline, expiredBookingDate, weekRange } from '../../shared/time.js';
 import { issueAccessToken } from '../lib/access-tokens.js';
 import { guestAppointment } from './access.js';
-import { repairOutcomes, TIME_SLOTS } from '../../shared/constants.js';
+import { repairOutcomes, LEGACY_TIME_SLOTS } from '../../shared/constants.js';
+import { scanCode as makeScanCode, verifyScanCode } from '../lib/scan-code.js';
 import { appointmentScope, requireRole, requireAppointmentAccess, requireCampus } from './permissions.js';
 
 export async function presentAppointment(item, encryptionKey) {
   const [phone, social] = await Promise.all([decryptText(item.phone, encryptionKey), decryptText(item.social, encryptionKey)]);
   return { ...item, phone, social };
 }
-export function appointmentService(appointments, users, encryptionKey, clock = () => new Date(), staffPlatform = null) {
+export function appointmentService(appointments, users, encryptionKey, clock = () => new Date(), staffPlatform = null, scanSecret = '') {
   const present = item => presentAppointment(item, encryptionKey);
-  const expire = (instant, scope) => appointments.endNoShows(expiredBookingDate(instant), instant.toISOString(), scope);
+  const expire = (instant, scope) => (appointments.expirePending || appointments.endNoShows)(expiredBookingDate(instant), instant.toISOString(), scope);
   async function assignee(value, campus) {
     let user = await users.find(value.toLowerCase());
     if (!user) {
@@ -35,14 +36,14 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       const week = weekRange(start);
       const { totals, capacities } = await appointments.overview(week.start, end, campuses);
       const dates = Array.from({ length: 7 }, (_, index) => addDays(start, index)).filter(serviceDay);
-      const makeItems = days => campuses.flatMap(campus => days.flatMap(date => TIME_SLOTS.map(timeSlot => {
+      const makeItems = days => capacities.filter(row => days.includes(row.date)).map(row => {
+        const { campus, date, time_slot: timeSlot, capacity } = row;
         const total = totals.find(row => row.campus === campus && row.date === date && row.time_slot === timeSlot);
-        const capacity = capacities.find(row => row.campus === campus && row.time_slot === timeSlot)?.capacity ?? 0;
         const occupied = total?.occupied ?? 0;
         return { campus, date, timeSlot, capacity, occupied, remaining: Math.max(0, capacity - occupied),
           booked: total?.booked ?? 0, inProgress: total?.in_progress ?? 0,
           ended: Date.parse(slotDeadline(date, timeSlot)) <= instant.getTime() };
-      })));
+      });
       const weekDates = Array.from({ length: 7 }, (_, index) => addDays(week.start, index)).filter(serviceDay);
       return { start, end, dates, campuses, items: makeItems(dates), week: { ...week, dates: weekDates, items: makeItems(weekDates) }, updatedAt: instant.toISOString() };
     },
@@ -62,6 +63,11 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       const instant = clock(), today = dateKey(instant);
       if (data.date < today || data.date > addDays(today, 3)) fail(400, '预约日期必须为今天起 3 天内');
       if (!serviceDay(data.date)) fail(400, '预约日期必须为周一至周四');
+      const schedule = await appointments.schedule(data.date, data.campus);
+      // Legacy two-hour slots remain readable during the migration window. New
+      // bookings use weekday half-hour templates; old clients can still submit
+      // an existing legacy slot and let the database snapshot its capacity.
+      if (!schedule.some(slot => slot.time_slot === data.timeSlot) && !LEGACY_TIME_SLOTS.includes(data.timeSlot)) fail(409, '该日期的时段安排已更新，请重新选择');
       if (Date.parse(slotDeadline(data.date, data.timeSlot)) <= instant.getTime()) fail(400, '该预约时段已经结束');
       const timestamp = instant.toISOString(), credential = issueAccessToken();
       const [phone, social] = await Promise.all([encryptText(data.phone, encryptionKey), encryptText(data.social, encryptionKey)]);
@@ -78,7 +84,8 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
     },
     async resolveScan(code, user) {
       if (typeof code !== 'string' || !code.trim()) fail(400, '维修码不正确');
-      const normalized = code.trim().replace(/^pioneer:repair:v1:/, '');
+      const raw = code.trim().replace(/^pioneer:repair:v1:/, '');
+      const normalized = raw.includes('.') ? verifyScanCode(raw, scanSecret) : raw;
       const item = await appointments.findByCode(normalized);
       if (!item) fail(404, '维修预约不存在');
       requireCampus(user, item.campus);
@@ -88,6 +95,10 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
         ? Object.fromEntries(['id','revision','campus','date','timeSlot','deviceType','brand','deviceModel','faultType','status','source'].map(key => [key, item[key]]))
         : await present(item);
       return { ...visible, actions: item.status === 'booked' ? ['repair.start'] : own && item.status === 'in_progress' ? ['repair.finish.own'] : [], scanType: 'repair' };
+    },
+    async scanCode(id, accessToken) {
+      const item = await guestAppointment(appointments, id, accessToken);
+      return { id: item.id, code: makeScanCode(item.id, scanSecret) };
     },
     async current(user) {
       requireRole(user, 'technician');

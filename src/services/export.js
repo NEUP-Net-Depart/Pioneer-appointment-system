@@ -10,7 +10,7 @@ export function exportService(appointments, encryptionKey) {
     async csv(actor) {
       requireRole(actor,'admin');
       const campuses=actor.authorizedCampuses;
-      await appointments.endNoShows(expiredBookingDate(), nowIso(), {campuses});
+      await (appointments.expirePending || appointments.endNoShows)(expiredBookingDate(), nowIso(), {campuses});
       const firstPage=await appointments.exportPage(null,200,campuses);
       // Validate/decrypt the initial page before committing HTTP headers.
       const present = rows => Promise.all(rows.map(row => presentAppointment(row, encryptionKey)));

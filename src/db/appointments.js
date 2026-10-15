@@ -1,3 +1,5 @@
+import { scheduleStatement } from './slot-capacities.js';
+
 const columns = {
   studentId: 'student_id', name: 'name', college: 'college', campus: 'campus', phone: 'phone', social: 'social',
   deviceType: 'device_type', brand: 'brand', deviceModel: 'device_model', serial: 'serial', warranty: 'warranty',
@@ -14,6 +16,9 @@ function fromRow(row) {
 }
 export function appointmentRepository(db) {
   return {
+    async schedule(date, campus) {
+      return (await scheduleStatement(db, date, date, [campus]).all()).results;
+    },
     async currentRepair(account) {
       const row = await db.prepare(`SELECT a.* FROM active_repairs ar JOIN appointments a ON a.id=ar.appointment_id
         WHERE ar.account=? AND a.status='in_progress' LIMIT 1`).bind(account).first();
@@ -35,6 +40,16 @@ export function appointmentRepository(db) {
       if (id) { where.push('id=?'); args.push(id); }
       if (campuses) { where.push(campuses.length ? `campus IN (${campuses.map(() => '?').join(',')})` : '0'); args.push(...campuses); }
       return db.prepare(`UPDATE appointments SET status='completed',outcome='no_show',completed_at=?,revision=revision+1 WHERE ${where.join(' AND ')}`).bind(...args).run();
+    },
+    async expirePending(beforeDate, instant, scope = {}) {
+      const common = (source, outcome) => {
+        const where = [`source=?`, "status='booked'", 'date<=?']; const args = [source, beforeDate];
+        if (scope.id) { where.push('id=?'); args.push(scope.id); }
+        if (scope.campuses) { where.push(scope.campuses.length ? `campus IN (${scope.campuses.map(() => '?').join(',')})` : '0'); args.push(...scope.campuses); }
+        return db.prepare(`UPDATE appointments SET status='completed',outcome=?,completed_at=?,revision=revision+1 WHERE ${where.join(' AND ')}`).bind(outcome, instant, ...args);
+      };
+      const [booking, onsite] = await db.batch([common('booking', 'no_show'), common('onsite', 'expired')]);
+      return { meta: { changes: (booking.meta?.changes || 0) + (onsite.meta?.changes || 0) } };
     },
     async find(id) { return fromRow(await db.prepare('SELECT * FROM appointments WHERE id=?').bind(id).first()); },
     async findByCode(code) { return fromRow(await db.prepare('SELECT * FROM appointments WHERE id=? OR repair_number=? LIMIT 1').bind(code,code).first()); },
@@ -104,7 +119,7 @@ export function appointmentRepository(db) {
           COUNT(CASE WHEN status='in_progress' THEN 1 END) AS in_progress
           FROM appointments WHERE ${scope} AND date>=? AND date<=? AND source='booking'
           AND NOT (status='completed' AND outcome='cancelled') GROUP BY campus,date,time_slot`).bind(...campuses,start,end),
-        db.prepare(`SELECT campus,time_slot,capacity FROM slot_capacities WHERE ${scope}`).bind(...campuses)
+        scheduleStatement(db, start, end, campuses)
       ]);
       return { totals: totals.results, capacities: capacities.results };
     },

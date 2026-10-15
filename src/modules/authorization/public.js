@@ -1,3 +1,5 @@
+import { campusId } from './scopes.js';
+import { dateKey, validDate } from '../../platform/time.js';
 import { conditionProviders } from './conditions.js';
 import { parseJson } from '../../platform/contracts.js';
 
@@ -5,19 +7,29 @@ function values(value) {
   return Array.isArray(value) ? value : value === undefined || value === null ? [] : [value];
 }
 
+function validityMatches(validity, context = {}) {
+  if (!validity || typeof validity !== 'object' || Array.isArray(validity)) return true;
+  const businessDate = context.businessDate || context.date || dateKey();
+  const from = validity.effectiveFrom || validity.from || validity.startDate || validity.start;
+  const to = validity.effectiveTo || validity.to || validity.endDate || validity.end;
+  if ((from && !validDate(String(from).slice(0, 10))) || (to && !validDate(String(to).slice(0, 10)))) return false;
+  if (from && businessDate < String(from).slice(0, 10)) return false;
+  if (to && businessDate >= String(to).slice(0, 10)) return false;
+  return true;
+}
+
 function scopeMatches(scope, target = {}, actor = {}) {
-  if (!scope || scope.all === true) return true;
-  const boundCampuses = actor.authorizedCampuses || [];
-  const rawCampuses = scope.campusIds || scope.campuses;
-  const campuses = rawCampuses === 'bound' || rawCampuses === 'legacy' ? boundCampuses : values(rawCampuses);
-  const departments = values(scope.departmentIds || scope.departments);
-  const campusNames = { 'campus-nanhu': '南湖', 'campus-hunnan': '浑南', '南湖': '南湖', '浑南': '浑南' };
-  const targetCampuses = values(target.campusId || target.campusIds || actor.authorizedCampuses);
-  const targetDepartments = values(target.departmentId || target.departmentIds);
-  if (campuses.length && !targetCampuses.some(value => campuses.some(candidate => candidate === value || campusNames[candidate] === campusNames[value] || actor.campusNameMap?.[candidate] === value))) return false;
-  if (departments.length && !targetDepartments.some(value => departments.includes(value))) return false;
-  if (scope.self && target.memberId && target.memberId !== actor.memberId) return false;
-  if (scope.objectIds && target.id && !values(scope.objectIds).includes(target.id)) return false;
+  if (!scope) return false;
+  const rawCampuses = scope.campusIds ?? scope.campuses;
+  const campusValues = rawCampuses === 'bound' || rawCampuses === 'legacy' ? actor.authorizedCampuses || [] : values(rawCampuses);
+  if (rawCampuses !== undefined) {
+    const targets = values(target.campusId || target.campusIds || actor.authorizedCampuses);
+    if (!campusValues.length || !targets.some(value => campusValues.some(candidate => campusId(candidate) === campusId(value)))) return false;
+  }
+  const departments = scope.departmentIds ?? scope.departments;
+  if (departments !== undefined && !values(target.departmentId || target.departmentIds).some(value => values(departments).includes(value))) return false;
+  if (scope.self && (target.memberId || target.assignedMemberId) && (target.memberId || target.assignedMemberId) !== actor.memberId) return false;
+  if (scope.objectIds !== undefined && (!target.id || !values(scope.objectIds).includes(target.id))) return false;
   return true;
 }
 
@@ -28,7 +40,7 @@ export function createAuthorizer({ providers = conditionProviders() } = {}) {
       const explanations = [];
       for (const grant of grants.filter(item => item.permissionCode === permissionCode)) {
         const scope = grant.scope || {};
-        if (!scopeMatches(scope, target, actor)) continue;
+        if (!validityMatches(grant.validity, context) || !scopeMatches(scope, target, actor)) continue;
         const conditions = grant.conditions || [];
         const failed = conditions.find(condition => {
           const provider = providers[condition.code];

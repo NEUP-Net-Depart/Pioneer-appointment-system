@@ -72,6 +72,12 @@ export function initSlotPicker() {
   let selectionIssue = '';
   campusInput.value = CAMPUSES[0];
   const campusSummaries = new Map([[campusInput.value, summaries]]), campusUpdated = new Map();
+  function slotsFor(date) {
+    const summary = summaries.get(date);
+    const previous = date === dateInput.value && slots.children.length ? [...slots.children].map(button => button.dataset.slot) : TIME_SLOTS;
+    const schedule = summary?.timeSlots || (summary ? Object.keys(summary.slotCapacities) : previous);
+    return availableSlots(date, new Date(), schedule);
+  }
 
   function selected(button, value) {
     button.setAttribute('aria-pressed', String(button.dataset.campus === value || button.dataset.date === value || button.dataset.slot === value));
@@ -100,7 +106,7 @@ export function initSlotPicker() {
     }
     days.dataset.count = String(dates.length);
     days.style.setProperty('--booking-day-count', String(Math.max(1, dates.length)));
-    const reservedSlots = Math.max(1, ...dates.map(date => availableSlots(date).length));
+    const reservedSlots = Math.max(1, ...dates.map(date => slotsFor(date).length));
     $('.booking-picker-body').style.setProperty('--booking-slot-count', String(reservedSlots));
     if (!dates.includes(dateInput.value)) {
       if (slotInput.value) selectionIssue = notice = '时段已过期，请重新选择';
@@ -110,14 +116,20 @@ export function initSlotPicker() {
     for (const button of days.children) {
       const date = button.dataset.date, summary = summaries.get(date);
       selected(button, dateInput.value);
-      const remaining = summary ? availableSlots(date).reduce((total, slot) => total + slotAvailability(summary, date, slot).remaining, 0) : 0;
+      const remaining = summary ? slotsFor(date).reduce((total, slot) => total + slotAvailability(summary, date, slot).remaining, 0) : 0;
       button.disabled = !summary || remaining === 0;
       button.dataset.loading = String(refreshing && (!summary || remaining > 0));
-      showRemaining(button, summary ? remaining : undefined, summary && remaining === 0 ? availableSlots(date).every(slot => summary.slotCapacities[slot] === 0) ? '暂停预约' : '预约已满' : summary === null ? '读取失败' : undefined);
+      showRemaining(button, summary ? remaining : undefined, summary && remaining === 0 ? slotsFor(date).every(slot => summary.slotCapacities[slot] === 0) ? '暂停预约' : '预约已满' : summary === null ? '读取失败' : undefined);
     }
     $('#booking-empty').hidden = dates.length > 0;
     $('#booking-slot-panel').hidden = !dateInput.value;
     const summary = summaries.get(dateInput.value);
+    const previousSlots = slots.children.length ? [...slots.children].map(button => button.dataset.slot) : TIME_SLOTS;
+    const timeSlots = summary?.timeSlots || (summary ? Object.keys(summary.slotCapacities) : previousSlots);
+    if ([...slots.children].map(button => button.dataset.slot).join() !== timeSlots.join()) {
+      const existing = new Map([...slots.children].map(button => [button.dataset.slot, button]));
+      slots.replaceChildren(...timeSlots.map(slot => existing.get(slot) || choiceButton(slot, 'slot', slot)));
+    }
     if (slotInput.value && (!summary || slotAvailability(summary, dateInput.value, slotInput.value).disabled)) {
       selectionIssue = notice = summary ? `${slotAvailability(summary, dateInput.value, slotInput.value).label}，请重新选择` : '名额读取失败，请重试';
       slotInput.value = '';
@@ -125,7 +137,7 @@ export function initSlotPicker() {
     $('#booking-slot-title').textContent = dateInput.value ? `${campusInput.value} · ${dayLabel(dateInput.value)}，请选择时段` : '';
     for (const button of slots.children) {
       const slot = button.dataset.slot;
-      button.hidden = !dateInput.value || !availableSlots(dateInput.value).includes(slot);
+      button.hidden = !dateInput.value || !slotsFor(dateInput.value).includes(slot);
       const availability = summary && slotAvailability(summary, dateInput.value, slot);
       button.disabled = !availability || availability.disabled;
       button.dataset.loading = String(refreshing && (!availability || !availability.disabled));
@@ -169,7 +181,6 @@ export function initSlotPicker() {
     const button = choiceButton(campus, 'campus', `${campus}校区`);
     button.querySelector('small').remove(); campusButtons.append(button);
   }
-  for (const slot of TIME_SLOTS) slots.append(choiceButton(slot, 'slot', slot));
   campusButtons.addEventListener('click', event => {
     const button = event.target.closest('[data-campus]');
     if (!button) return;

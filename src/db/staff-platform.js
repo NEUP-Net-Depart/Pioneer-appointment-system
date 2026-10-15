@@ -1,5 +1,6 @@
 import { parseJson } from '../platform/contracts.js';
 import { dateKey, nowIso } from '../platform/time.js';
+import { intersectScopes } from '../modules/authorization/scopes.js';
 
 const memberColumns = `m.id,m.name,m.student_id,m.home_campus_id,m.status,m.revision,m.created_at,m.updated_at`;
 
@@ -86,21 +87,7 @@ export function staffPlatformRepository(db) {
       WHERE mr.member_id=? AND mr.effective_from<=? AND (mr.effective_to IS NULL OR ?<mr.effective_to)
       ORDER BY rg.permission_code`).bind(memberId, businessDate, businessDate).all();
     return rows(result).map(row => {
-      const grantScope = parseJson(row.scope_spec, {}); const binding = parseJson(row.scope_bindings, {});
-      const scope = { ...grantScope };
-      for (const [key, value] of Object.entries(binding)) {
-        // A member binding can narrow a role grant, but never widen a grant
-        // to all objects. Array scopes are intersected below.
-        if (key === 'all' && value === true && grantScope.all !== true) continue;
-        if (scope[key] === undefined) scope[key] = value;
-        else if (Array.isArray(scope[key]) && Array.isArray(value)) scope[key] = scope[key].filter(item => value.includes(item));
-        else if (scope[key] !== value && (scope[key] === 'bound' || scope[key] === 'legacy')) scope[key] = value;
-      }
-      for (const key of ['campusIds', 'departmentIds', 'objectIds']) {
-        const grantValues = Array.isArray(grantScope[key]) ? grantScope[key] : null;
-        const bindingValues = Array.isArray(binding[key]) ? binding[key] : null;
-        if (grantValues && bindingValues) scope[key] = grantValues.filter(value => bindingValues.includes(value));
-      }
+      const scope = intersectScopes(parseJson(row.scope_spec, {}), parseJson(row.scope_bindings, {}));
       return { id: row.id, roleId: row.role_id, roleCode: row.role_code, permissionCode: row.permission_code,
         scope, conditions: parseJson(row.condition_spec, []), validity: parseJson(row.validity_spec, {}) };
     });
@@ -306,6 +293,11 @@ export function staffPlatformRepository(db) {
     return (await listRoles()).find(role => role.id === id) || null;
   }
 
+  async function roleBindings(memberId) {
+    const result = await db.prepare('SELECT * FROM member_roles WHERE member_id=? ORDER BY effective_from,id').bind(memberId).all();
+    return rows(result).map(row => ({ id: row.id, roleId: row.role_id, scope: parseJson(row.scope_bindings, {}), effectiveFrom: row.effective_from, effectiveTo: row.effective_to, revision: row.revision }));
+  }
+
   async function bindRoles(memberId, bindings, revision) {
     const at = nowIso();
     const nextRevision = Number(revision) + 1;
@@ -324,6 +316,11 @@ export function staffPlatformRepository(db) {
   }
 
   async function createEvent(input, actorMemberId) {
+    if (input.type === 'duty') {
+      const existing = await db.prepare(`SELECT * FROM attendance_events WHERE type='duty' AND business_date=? AND COALESCE(campus_id,'')=COALESCE(?, '') ORDER BY created_at LIMIT 1`)
+        .bind(input.businessDate, input.campusId || null).first();
+      if (existing) return event(existing);
+    }
     const id = input.id || crypto.randomUUID(); const at = nowIso();
     await db.prepare(`INSERT INTO attendance_events(id,type,policy_code,policy_version,rule_snapshot,campus_id,business_date,starts_at,ends_at,source_ref,created_by_member_id,created_at)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`).bind(id,input.type,input.policyCode,input.policyVersion,json(input.ruleSnapshot,{}),input.campusId || null,input.businessDate,input.startsAt,input.endsAt,json(input.sourceRef,{}),actorMemberId,at).run();
@@ -484,8 +481,13 @@ export function staffPlatformRepository(db) {
     const id = input.id || crypto.randomUUID(); const at = nowIso();
     const statements = [db.prepare(`INSERT INTO roster_versions(id,task_id,status,version,rule_version,algorithm_version,input_snapshot_ref,solver_status,validation_result,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`)
       .bind(id,input.taskId,input.status || 'draft',input.version || 1,input.ruleVersion || '1.0.0',input.algorithmVersion || 'deterministic-greedy-v1',json(input.inputSnapshotRef,{}),input.solverStatus || 'feasible',json(input.validation,{}),at)];
-    for (const item of input.assignments || []) statements.push(db.prepare(`INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at) VALUES(?,?,?,?,?,?,?,?)`)
-      .bind(item.id || crypto.randomUUID(),id,item.memberId,item.businessDate,item.campusId,item.dutyType || 'repair',item.startAt,item.endAt));
+    for (const item of input.assignments || []) {
+      const assignmentId = item.id || crypto.randomUUID();
+      statements.push(db.prepare(`INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at) VALUES(?,?,?,?,?,?,?,?)`)
+        .bind(assignmentId,id,item.memberId,item.businessDate,item.campusId,item.dutyType || 'repair',item.startAt,item.endAt));
+      if (item.roleKind) statements.push(db.prepare('INSERT INTO duty_roles(id,assignment_id,role_kind,effective_range) VALUES(?,?,?,?)')
+        .bind(`duty-role-${assignmentId}-${item.roleKind}`,assignmentId,item.roleKind,json(item.effectiveRange || {})));
+    }
     await db.batch(statements);
     return rosterVersion(await db.prepare('SELECT * FROM roster_versions WHERE id=?').bind(id).first());
   }
@@ -494,10 +496,16 @@ export function staffPlatformRepository(db) {
     const nextVersion = Number(revision) + 1;
     const validation = input.validation || { valid: false, errors: [{ code: 'DRAFT_CHANGED_REQUIRES_VALIDATION' }] };
     const statements = [db.prepare(`UPDATE roster_versions SET version=?,validation_result=? WHERE id=? AND version=? AND status='draft'`).bind(nextVersion,json(validation,{}),id,revision),
+      db.prepare(`DELETE FROM duty_roles WHERE assignment_id IN (SELECT id FROM duty_assignments WHERE version_id=?) AND EXISTS(SELECT 1 FROM roster_versions WHERE id=? AND version=? AND status='draft')`).bind(id,id,nextVersion),
       db.prepare(`DELETE FROM duty_assignments WHERE version_id=? AND changes()>0 AND EXISTS(SELECT 1 FROM roster_versions WHERE id=? AND version=? AND status='draft')`).bind(id,id,nextVersion)];
-    for (const item of input.assignments || []) statements.push(db.prepare(`INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at)
-      SELECT ?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM roster_versions WHERE id=? AND version=? AND status='draft')`)
-      .bind(item.id || crypto.randomUUID(),id,item.memberId,item.businessDate,item.campusId,item.dutyType || 'repair',item.startAt,item.endAt,id,nextVersion));
+    for (const item of input.assignments || []) {
+      const assignmentId = item.id || crypto.randomUUID();
+      statements.push(db.prepare(`INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at)
+        SELECT ?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM roster_versions WHERE id=? AND version=? AND status='draft')`)
+        .bind(assignmentId,id,item.memberId,item.businessDate,item.campusId,item.dutyType || 'repair',item.startAt,item.endAt,id,nextVersion));
+      if (item.roleKind) statements.push(db.prepare(`INSERT INTO duty_roles(id,assignment_id,role_kind,effective_range) SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM duty_assignments WHERE id=? AND version_id=?)`)
+        .bind(`duty-role-${assignmentId}-${item.roleKind}`,assignmentId,item.roleKind,json(item.effectiveRange || {}),assignmentId,id));
+    }
     const result = await db.batch(statements);
     if (!result[0]?.meta?.changes) return null;
     return rosterVersion(await db.prepare('SELECT * FROM roster_versions WHERE id=?').bind(id).first());
@@ -561,6 +569,6 @@ export function staffPlatformRepository(db) {
 
   return { accountRow, accountForMember, ensureMember, memberRow, memberships, profiles, grants, todayDuties, authorizationContext, listMembers, updateMember, listMemberships, addMembership, endMembership,
     listCampuses, listDepartments, listLocations, listPresence, activeRepair, importMembers,
-    permissionDefinitions, listRoles, createRole, updateRole, bindRoles, modules, createEvent, issueToken, findEventByToken, findAttendanceByDedupe, insertAttendance, listAttendance, attendanceExport, setPresence,
+    roleBindings, permissionDefinitions, listRoles, createRole, updateRole, bindRoles, modules, createEvent, issueToken, findEventByToken, findAttendanceByDedupe, insertAttendance, listAttendance, attendanceExport, setPresence,
     attendanceEvent, eventById: attendanceEvent, createReceipt, claimReceipt, releaseReceipt, receipt, audit, listAudit, createRosterTask, listRosterTasks, saveAvailability, availability, createRosterVersion, updateRosterDraft, publishRoster, listAssignments, assignmentById, createLeave, leaveById, listLeaves, updateLeave, createSwap, listSwaps, updateSwap };
 }
