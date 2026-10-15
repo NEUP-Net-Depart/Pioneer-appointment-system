@@ -22,7 +22,7 @@ import { staffPlatformRepository } from './db/staff-platform.js';
 import { composeStaffPlatform } from './app/compose.js';
 import { staffPlatformService } from './services/staff-platform.js';
 import { requestTrace } from './platform/observability.js';
-import { scanService as legacyScanService } from './services/scan.js';
+import { scanService } from './services/scan.js';
 
 export function createContext(request, env) {
   // Request-scoped D1 session, explicitly injected into D1 repositories. No startup I/O.
@@ -34,16 +34,16 @@ export function createContext(request, env) {
   const services = {
     auth: authService(users, env.JWT_SECRET), users: userService(users),
     activation: activationService(activationRepository(db),users),
-    appointments: appointmentService(appointments, users, env.PII_ENCRYPTION_KEY, undefined, staffPlatformServiceInstance, env.JWT_SECRET),
+    appointments: appointmentService(appointments, users, env.PII_ENCRYPTION_KEY, undefined, staffPlatformServiceInstance),
     attachments: attachmentService(appointments, attachmentRepository(db), env.ATTACHMENTS, storageLimit(env)),
     queue: queueService(appointments, queueRepository(db)), stats: statsService(statsRepository(db), appointments),
     export: exportService(appointments, env.PII_ENCRYPTION_KEY),
     limits: rateLimitService(rateLimitRepository(db), env.JWT_SECRET),
     slotCapacities: slotCapacityService(slotCapacityRepository(db)),
     staffPlatform: staffPlatformServiceInstance,
-    scanLegacyFactory: legacyScanService,
     async health() { await Promise.all([users.health(), env.ATTACHMENTS.list({ limit: 1 })]); return { ok: true, service: 'pioneer-repair-api', database: 'd1', attachments: 'r2' }; }
   };
+  services.scan = scanService(appointments, services.appointments, env.PII_ENCRYPTION_KEY, env.JWT_SECRET, env.SCAN_WORKBENCH_ENABLED !== 'false');
   let authentication;
   const authenticate = () => authentication ||= services.auth.authenticate(request.headers.get('authorization'));
   const url = new URL(request.url);

@@ -1,7 +1,6 @@
 import { initNavigation } from '/shared/navigation.js';
 import { initBooking } from './booking.js';
 import { initLookup } from './lookup.js';
-import './repair-qr.js';
 const appointments=[];
 let importing=false,switchView;
 const lookup=initLookup(appointments,{onPrivateLink:()=>{importing=true;switchView?.('lookup');importing=false;}});

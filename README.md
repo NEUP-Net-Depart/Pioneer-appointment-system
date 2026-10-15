@@ -122,7 +122,7 @@ npm run release:plan
 | GET / POST | `/api/activation-requests` / `/api/activation-requests/review` | 申请审核 |
 | GET | `/api/export/appointments.csv` | admin+ 导出 |
 
-工作人员平台（迁移 `0007_staff_platform.sql`）还提供稳定成员、模块授权、策略化签到和排班契约：`/api/members`、`/api/roles`、`/api/permissions`、`/api/workbench`、`/api/attendance/*`、`/api/presence/me`、`/api/roster-tasks`、`/api/rosters/*`、`/api/swaps`、`/api/leaves` 和 `/api/audit`。`GET /api/auth/me` 返回 `memberId`、任职、工作属性、完整授权、当日岗位、模块导航、恢复任务、`authVersion` 与 schema 版本。
+工作人员平台（dev 追加 `0010_staff_platform.sql`，Staff Staging 采用独立迁移目录，逻辑 schema `0010`）还提供稳定成员、模块授权、策略化签到和排班契约：`/api/members`、`/api/roles`、`/api/permissions`、`/api/workbench`、`/api/attendance/*`、`/api/presence/me`、`/api/roster-tasks`、`/api/rosters/*`、`/api/swaps`、`/api/leaves` 和 `/api/audit`。`GET /api/auth/me` 返回 `memberId`、任职、工作属性、完整授权、当日岗位、模块导航、恢复任务、`authVersion` 与 schema 版本。
 
 学生的查询、取消、排队和附件接口都要求预约访问凭证；预约编号仅用于展示和业务沟通，不能单独访问敏感数据。
 

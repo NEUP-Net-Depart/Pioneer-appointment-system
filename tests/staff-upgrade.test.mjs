@@ -20,8 +20,8 @@ const candidate = 'database/upgrades/staff-0007-to-five-statuses.sql';
 const timestamp = '2026-10-15T10:00:00.000Z';
 
 async function fixture(db) {
-  for (const file of (await readdir('migrations')).filter(file => file.endsWith('.sql')).sort()) {
-    await db.batch((await statements(`migrations/${file}`)).map(sql => db.prepare(sql)));
+  for (const file of (await readdir('database/staff-migrations')).filter(file => file.endsWith('.sql') && file < '0008').sort()) {
+    await db.batch((await statements(`database/staff-migrations/${file}`)).map(sql => db.prepare(sql)));
   }
   await db.prepare(`INSERT INTO staff_accounts(account,name,role,home_campus,protected,password_hash,created_at)
     VALUES ('root001','历史负责人','superadmin','南湖',1,'test-only',?)`).bind(timestamp).run();
@@ -161,5 +161,18 @@ test('dev and deployed Staff upgrade paths converge on the same schema and prese
       return result;
     }
     assert.deepEqual(await structure(staff), await structure(dev));
+    for (const database of [staff, dev]) {
+      const insert = () => database.prepare(`INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at)
+        VALUES ('998877','原成员','technician','南湖','test-only',?)`).bind(timestamp).run();
+      await insert();
+      const original = await database.prepare("SELECT member_id FROM staff_accounts WHERE account='998877'").first();
+      const membership = await database.prepare('SELECT * FROM member_department_memberships WHERE member_id=?').bind(original.member_id).all();
+      await database.prepare("DELETE FROM staff_accounts WHERE account='998877'").run();
+      await insert();
+      assert.deepEqual(await database.prepare("SELECT member_id FROM staff_accounts WHERE account='998877'").first(), original);
+      assert.deepEqual((await database.prepare('SELECT * FROM member_department_memberships WHERE member_id=?').bind(original.member_id).all()).results, membership.results);
+      assert.deepEqual((await database.prepare('PRAGMA foreign_key_check').all()).results, []);
+    }
+
   } finally { await mf.dispose(); }
 });

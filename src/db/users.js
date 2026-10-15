@@ -22,6 +22,14 @@ export function userRepository(db) {
     async findByName(name) {
       return (await db.prepare(`${select} WHERE name=? LIMIT 2`).bind(name).all()).results.map(publicUser);
     },
+    async assignees({ campus, q }) {
+      const search = q.toLowerCase();
+      return (await db.prepare(`SELECT account,trim(name) AS name FROM staff_accounts
+        WHERE status='enabled' AND role IN ('technician','admin','superadmin')
+          AND EXISTS(SELECT 1 FROM staff_campus_grants WHERE account=staff_accounts.account AND campus=?)
+          AND (instr(lower(name),?)>0 OR instr(lower(account),?)>0)
+        ORDER BY name,account`).bind(campus,search,search).all()).results;
+    },
     async list() {
       return (await db.prepare(`SELECT staff_accounts.*,
         (SELECT json_group_array(campus) FROM staff_campus_grants WHERE account=staff_accounts.account) AS campuses,

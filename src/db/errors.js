@@ -1,6 +1,7 @@
 // D1 keeps the SQL constraint failure in message/cause. No SQL or bindings leave the server.
 export function conflictMessage(error) {
   const message = `${error.message} ${error.cause?.message || ''}`;
+  if (message.includes('idx_one_pending_onsite_registration')) return '请先签到或取消当前临时登记';
   if (message.includes('UNIQUE constraint failed: active_repairs.account') || message.includes('ACTIVE_REPAIR_EXISTS')) return '该维修人员已有进行中的工单，请先完成当前维修';
   if (message.includes('SLOT_PAUSED')) return '该校区该时段暂停预约';
   if (message.includes('SLOT_FULL')) return '该校区该时段已满';

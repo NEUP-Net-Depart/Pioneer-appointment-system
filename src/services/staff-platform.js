@@ -136,7 +136,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const scoped = filters?.homeCampusId ? filters : { ...(filters || {}), homeCampusIds: allowed.map(item => names[item] || item) };
     const items = await repository.listMembers(scoped);
     for (const item of items) item.memberships = await repository.listMemberships(item.memberId, false);
-    return { items, nextCursor: items.length > 100 ? items.at(-1).memberId : null, schemaVersion: '0007' };
+    return { items, nextCursor: items.length > 100 ? items.at(-1).memberId : null, schemaVersion: '0010' };
   }
 
   async function memberDetail(actor, memberId, businessDate = dateKey()) {

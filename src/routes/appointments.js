@@ -1,14 +1,7 @@
 import { json, readBody } from '../lib/http.js';
-import { appointmentQuery, appointmentPatch, bookingInput, onsiteInput, liveQuery } from '../lib/validation.js';
+import { appointmentQuery, appointmentPatch, bookingInput, liveQuery } from '../lib/validation.js';
 
 export const appointmentRoutes = [
-  ['POST', /^\/api\/scan\/resolve$/, async context => { await context.limit('lookup'); return json(await context.services.appointments.resolveScan((await readBody(context.request)).code, await context.role('technician'))); }],
-  ['GET', /^\/api\/appointments\/([^/]+)\/scan-code$/, async (context, match) => {
-    await context.limit('lookup');
-    return json(await context.services.appointments.scanCode(decodeURIComponent(match[1]), context.accessToken));
-  }],
-  ['GET', /^\/api\/scan\/current$/, async context => json({ item: await context.services.appointments.current(await context.role('technician')) })],
-  ['POST', /^\/api\/scan\/onsite$/, async context => json(await context.services.appointments.createOnsite(onsiteInput(await readBody(context.request)), await context.role('technician')), 201)],
   ['GET', /^\/api\/appointments\/overview$/, async context => {
     return json(await context.services.appointments.overview(await context.role('technician')));
   }],

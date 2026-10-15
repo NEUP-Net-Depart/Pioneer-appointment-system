@@ -1,6 +1,5 @@
--- Candidate additive upgrade from dev 135da288204d20a9c06d9579d7bf61813b2587fc.
--- Preserve deployed appointment states, timestamps, templates and snapshots.
--- Not yet wired into release migrations.
+-- Forward upgrade from dev 135da288204d20a9c06d9579d7bf61813b2587fc.
+-- Applied as migrations/0010_staff_platform.sql; preserve existing appointment facts.
 -- Staff platform architecture: stable identities, organization, authorization,
 -- attendance, rosters, idempotent receipts and module/rule projections.
 -- This migration is additive so the existing appointment and activation history
@@ -486,9 +485,10 @@ BEGIN
   UPDATE staff_accounts SET member_id='member-'||NEW.account WHERE account=NEW.account AND member_id IS NULL;
   INSERT OR IGNORE INTO member_department_memberships
     (id,member_id,department_id,assignment_type,is_primary,effective_from,created_at)
-    VALUES ('membership-'||NEW.account,'member-'||NEW.account,
+    SELECT 'membership-'||NEW.account,'member-'||NEW.account,
       CASE NEW.role WHEN 'admin' THEN 'dept-office' WHEN 'superadmin' THEN 'dept-office' ELSE 'dept-hardware' END,
-      'primary',1,substr(NEW.created_at,1,10),NEW.created_at);
+      'primary',1,substr(NEW.created_at,1,10),NEW.created_at
+    WHERE NOT EXISTS(SELECT 1 FROM member_department_memberships WHERE id='membership-'||NEW.account);
   INSERT OR IGNORE INTO member_work_profiles(id,member_id,profile_code,effective_from)
     VALUES ('profile-default-'||NEW.account,'member-'||NEW.account,
       CASE NEW.role WHEN 'admin' THEN 'office' WHEN 'superadmin' THEN 'repair' ELSE 'repair' END,

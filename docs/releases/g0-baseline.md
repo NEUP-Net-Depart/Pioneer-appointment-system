@@ -1,6 +1,8 @@
 # G0 迁移与业务基线
 
-`next/staff-platform` 的 G0 基线把 PR #35 的扫码维修、现场临时登记和过期结果，与 PR #38 的周一至周四半小时预约模板合并到同一个 `0007_staff_platform.sql`。迁移保留旧的整点时段作为兼容输入；新页面和新配置接口使用 `weekday_slot_capacities`，已有预约使用 `booking_day_slots` 快照，后续修改模板不会改变已产生的日期。
+`next/staff-platform` 保留 dev 的五主状态及四个半小时时段。dev 迁移链保留原 0001～0009，追加 `0010_staff_platform.sql`；Staff Staging 保留已部署的 0001～0007，追加 `database/staff-migrations/0008_five_statuses.sql`。逻辑目标 schema 版本统一为 `0010`，不要求两个环境的迁移编号相同。
+
+旧整点时段仍作为历史预约展示，不接受新的整点时段预约。新页面与配置使用 `weekday_slot_capacities`，已有日期使用 `booking_day_slots` 快照。两路径的带数据升级、失败回滚和最终结构一致性由 `tests/staff-upgrade.test.mjs` 验证，已部署迁移指纹由 `tests/g0-baseline.test.mjs` 验证。
 
 基线校验包括：
 

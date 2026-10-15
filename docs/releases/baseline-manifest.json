@@ -2,28 +2,152 @@
   "branch": "next/staff-platform",
   "baseCommit": "53b53db110d4d867c2f4277fa0954f1d97d74c7d",
   "contractVersion": "staff-platform.v1",
-  "schemaVersion": "0007",
+  "schemaVersion": "0010",
   "businessTimeZone": "Asia/Shanghai",
   "migrations": [
-    {"name": "0001_initial.sql", "sha256": "6f2b0cce7f26f98d82aff4cc2e2c4a213e3b58be436b0950906a53dc14f971dd"},
-    {"name": "0002_slot_capacity.sql", "sha256": "702fe572a7ea2ccba08866303a4a9231ac0b0009d7bdb65ec563f93c85bdef5d"},
-    {"name": "0003_three_step_workflow.sql", "sha256": "112a3db0dd1579df9bf89a60ea61eddcd7b319c835d9e334b0c4f1a6ca91454d"},
-    {"name": "0004_signatures_intake_numbers.sql", "sha256": "bd715b259315233d436a2b5b41aab4b248e8b09cc0b41c84274f0631bd14cdc5"},
-    {"name": "0005_slot_capacity_settings.sql", "sha256": "39b00893d2632d5c76224a10c27a670beacdfcb6a58544e84778d9b24b1e804e"},
-    {"name": "0006_scan_workbench.sql", "sha256": "8c3484d1745e13992022afc111bc7d7f6b98b24ef8ee6d545c90b50365b23b02"},
-    {"name": "0007_staff_platform.sql", "sha256": "2914ae0739b6496591af1f2f95aeaf83ff3daa694cc97502f001825c505c1cdd"}
+    {
+      "name": "0001_initial.sql",
+      "sha256": "6f2b0cce7f26f98d82aff4cc2e2c4a213e3b58be436b0950906a53dc14f971dd"
+    },
+    {
+      "name": "0002_slot_capacity.sql",
+      "sha256": "702fe572a7ea2ccba08866303a4a9231ac0b0009d7bdb65ec563f93c85bdef5d"
+    },
+    {
+      "name": "0003_three_step_workflow.sql",
+      "sha256": "112a3db0dd1579df9bf89a60ea61eddcd7b319c835d9e334b0c4f1a6ca91454d"
+    },
+    {
+      "name": "0004_signatures_intake_numbers.sql",
+      "sha256": "bd715b259315233d436a2b5b41aab4b248e8b09cc0b41c84274f0631bd14cdc5"
+    },
+    {
+      "name": "0005_slot_capacity_settings.sql",
+      "sha256": "39b00893d2632d5c76224a10c27a670beacdfcb6a58544e84778d9b24b1e804e"
+    },
+    {
+      "name": "0006_scan_workbench.sql",
+      "sha256": "8c3484d1745e13992022afc111bc7d7f6b98b24ef8ee6d545c90b50365b23b02"
+    },
+    {
+      "name": "0007_onsite_expiration.sql",
+      "sha256": "661246173420e0effe982e6369652a327b9d3a07805112f19cc166d0288120bd"
+    },
+    {
+      "name": "0008_five_statuses.sql",
+      "sha256": "3abe40fc10885f618bf7e9471586ae72e15e392a89b32de654a0ea2235b02504"
+    },
+    {
+      "name": "0009_weekday_booking_schedules.sql",
+      "sha256": "0dc521cb699ce7bef96610e13a5433d3ebf4882ba2bfc7a22e6984f80b520156"
+    },
+    {
+      "name": "0010_staff_platform.sql",
+      "sha256": "8f771fad64d2ce57e8e16a46a77afef23de83c4761d1b982881bfea7a0c4225e"
+    }
   ],
   "modules": [
-    {"code": "identity", "version": "1.0.0", "manifestHash": "f4b0b62d", "releaseState": "ready"},
-    {"code": "organization", "version": "1.0.0", "manifestHash": "b3f4bad4", "releaseState": "ready"},
-    {"code": "authorization", "version": "1.0.0", "manifestHash": "067c7c3b", "releaseState": "ready"},
-    {"code": "repairs", "version": "1.0.0", "manifestHash": "e9cb1406", "releaseState": "ready"},
-    {"code": "duty", "version": "1.0.0", "manifestHash": "cc8019d2", "releaseState": "ready"},
-    {"code": "attendance", "version": "1.0.0", "manifestHash": "a06d1395", "releaseState": "ready"},
-    {"code": "rosters", "version": "1.0.0", "manifestHash": "514c6e44", "releaseState": "ready"},
-    {"code": "meetings", "version": "1.0.0", "manifestHash": "068e1705", "releaseState": "test"},
-    {"code": "audit", "version": "1.0.0", "manifestHash": "4c3c7c4b", "releaseState": "ready"},
-    {"code": "files", "version": "1.0.0", "manifestHash": "cafe3c07", "releaseState": "ready"}
+    {
+      "code": "identity",
+      "version": "1.0.0",
+      "manifestHash": "f4b0b62d",
+      "releaseState": "ready"
+    },
+    {
+      "code": "organization",
+      "version": "1.0.0",
+      "manifestHash": "b3f4bad4",
+      "releaseState": "ready"
+    },
+    {
+      "code": "authorization",
+      "version": "1.0.0",
+      "manifestHash": "067c7c3b",
+      "releaseState": "ready"
+    },
+    {
+      "code": "repairs",
+      "version": "1.0.0",
+      "manifestHash": "e9cb1406",
+      "releaseState": "ready"
+    },
+    {
+      "code": "duty",
+      "version": "1.0.0",
+      "manifestHash": "cc8019d2",
+      "releaseState": "ready"
+    },
+    {
+      "code": "attendance",
+      "version": "1.0.0",
+      "manifestHash": "a06d1395",
+      "releaseState": "ready"
+    },
+    {
+      "code": "rosters",
+      "version": "1.0.0",
+      "manifestHash": "514c6e44",
+      "releaseState": "ready"
+    },
+    {
+      "code": "meetings",
+      "version": "1.0.0",
+      "manifestHash": "068e1705",
+      "releaseState": "test"
+    },
+    {
+      "code": "audit",
+      "version": "1.0.0",
+      "manifestHash": "4c3c7c4b",
+      "releaseState": "ready"
+    },
+    {
+      "code": "files",
+      "version": "1.0.0",
+      "manifestHash": "cafe3c07",
+      "releaseState": "ready"
+    }
   ],
-  "verification": ["npm run lint", "npm run audit:architecture", "npm run audit:staff-platform", "npm run db:verify", "npm test"]
+  "verification": [
+    "npm run lint",
+    "npm run audit:architecture",
+    "npm run audit:staff-platform",
+    "npm run db:verify",
+    "npm test"
+  ],
+  "staffMigrations": [
+    {
+      "name": "0001_initial.sql",
+      "sha256": "6f2b0cce7f26f98d82aff4cc2e2c4a213e3b58be436b0950906a53dc14f971dd"
+    },
+    {
+      "name": "0002_slot_capacity.sql",
+      "sha256": "702fe572a7ea2ccba08866303a4a9231ac0b0009d7bdb65ec563f93c85bdef5d"
+    },
+    {
+      "name": "0003_three_step_workflow.sql",
+      "sha256": "112a3db0dd1579df9bf89a60ea61eddcd7b319c835d9e334b0c4f1a6ca91454d"
+    },
+    {
+      "name": "0004_signatures_intake_numbers.sql",
+      "sha256": "bd715b259315233d436a2b5b41aab4b248e8b09cc0b41c84274f0631bd14cdc5"
+    },
+    {
+      "name": "0005_slot_capacity_settings.sql",
+      "sha256": "39b00893d2632d5c76224a10c27a670beacdfcb6a58544e84778d9b24b1e804e"
+    },
+    {
+      "name": "0006_scan_workbench.sql",
+      "sha256": "8c3484d1745e13992022afc111bc7d7f6b98b24ef8ee6d545c90b50365b23b02"
+    },
+    {
+      "name": "0007_staff_platform.sql",
+      "sha256": "2914ae0739b6496591af1f2f95aeaf83ff3daa694cc97502f001825c505c1cdd"
+    },
+    {
+      "name": "0008_five_statuses.sql",
+      "sha256": "b96e313d5b90100173514ad601400adfa493f6e7cd51199f4d69703a38937042"
+    }
+  ],
+  "staffMigrationsDirectory": "database/staff-migrations"
 }

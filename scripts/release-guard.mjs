@@ -9,7 +9,7 @@ export function validateStaffConfig(base,staff){
     if(staff.name===base.name || db[0].database_id===target.d1_databases[0].database_id || db[0].database_name===target.d1_databases[0].database_name || r2[0].bucket_name===target.r2_buckets[0].bucket_name)throw new Error('Staff Staging must be isolated from Production and Preview.');
   }
   if(staff.compatibility_date!==base.compatibility_date || JSON.stringify(staff.compatibility_flags)!==JSON.stringify(base.compatibility_flags) || JSON.stringify(staff.limits)!==JSON.stringify(base.limits))throw new Error('Staff Staging must retain the existing Cloudflare compatibility and limits.');
-  if(db[0].migrations_dir!=='migrations' || !/^\d+$/.test(staff.vars?.MAX_R2_BYTES || '') || Number(staff.vars.MAX_R2_BYTES)<=0)throw new Error('Configure Staff Staging migrations and attachment quota.');
+  if(db[0].migrations_dir!=='database/staff-migrations' || !/^\d+$/.test(staff.vars?.MAX_R2_BYTES || '') || Number(staff.vars.MAX_R2_BYTES)<=0)throw new Error('Configure Staff Staging migrations and attachment quota.');
   return staff;
 }
 export function validateRemoteConfig(cfg){

@@ -1,5 +1,5 @@
--- Candidate forward upgrade from the deployed Staff 0007 schema.
--- Not in the release migration chain until application five-state cutover is ready.
+-- Forward upgrade from the deployed Staff 0007 schema.
+-- Applied as database/staff-migrations/0008_five_statuses.sql.
 -- Preserve existing date snapshots, members, intake records and active claims.
 -- Target appointment constraints follow dev 135da288204d20a9c06d9579d7bf61813b2587fc.
 
@@ -217,4 +217,34 @@ CREATE UNIQUE INDEX idx_active_repairs_member ON active_repairs(member_id) WHERE
 CREATE TRIGGER active_repair_member_sync AFTER INSERT ON active_repairs
 BEGIN
   UPDATE active_repairs SET member_id=(SELECT member_id FROM staff_accounts WHERE account=NEW.account) WHERE account=NEW.account AND member_id IS NULL;
+END;
+
+-- Account re-creation must retain the existing primary membership.
+DROP TRIGGER staff_account_member_sync;
+CREATE TRIGGER staff_account_member_sync AFTER INSERT ON staff_accounts
+BEGIN
+  INSERT OR IGNORE INTO members(id,name,student_id,home_campus_id,status,created_at,updated_at)
+    VALUES ('member-'||NEW.account,NEW.name,
+      CASE WHEN NEW.account GLOB '[0-9]*' THEN NEW.account ELSE NULL END,
+      CASE NEW.home_campus WHEN '南湖' THEN 'campus-nanhu' WHEN '浑南' THEN 'campus-hunnan' END,
+      CASE NEW.status WHEN 'enabled' THEN 'active' ELSE 'inactive' END,NEW.created_at,NEW.created_at);
+  UPDATE staff_accounts SET member_id='member-'||NEW.account WHERE account=NEW.account AND member_id IS NULL;
+  INSERT OR IGNORE INTO member_department_memberships
+    (id,member_id,department_id,assignment_type,is_primary,effective_from,created_at)
+    SELECT 'membership-'||NEW.account,'member-'||NEW.account,
+      CASE NEW.role WHEN 'admin' THEN 'dept-office' WHEN 'superadmin' THEN 'dept-office' ELSE 'dept-hardware' END,
+      'primary',1,substr(NEW.created_at,1,10),NEW.created_at
+    WHERE NOT EXISTS(SELECT 1 FROM member_department_memberships WHERE id='membership-'||NEW.account);
+  INSERT OR IGNORE INTO member_work_profiles(id,member_id,profile_code,effective_from)
+    VALUES ('profile-default-'||NEW.account,'member-'||NEW.account,
+      CASE NEW.role WHEN 'admin' THEN 'office' WHEN 'superadmin' THEN 'repair' ELSE 'repair' END,
+      substr(NEW.created_at,1,10));
+  INSERT OR IGNORE INTO member_work_profiles(id,member_id,profile_code,effective_from)
+    SELECT 'profile-office-'||NEW.account,'member-'||NEW.account,'office',substr(NEW.created_at,1,10)
+    WHERE NEW.role IN ('admin','superadmin');
+  INSERT OR IGNORE INTO member_roles(id,member_id,role_id,scope_bindings,effective_from)
+    VALUES ('member-role-'||NEW.account,'member-'||NEW.account,
+      CASE NEW.role WHEN 'technician' THEN 'role-technician' WHEN 'admin' THEN 'role-office' ELSE 'role-superadmin' END,
+      CASE WHEN NEW.protected=1 THEN '{"all":true}' ELSE '{"campuses":"legacy"}' END,
+      substr(NEW.created_at,1,10));
 END;

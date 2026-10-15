@@ -16,7 +16,7 @@
 
 | 阶段 / PR 组 | 交付内容与页面 | 完成证据 | 当前核查 |
 | --- | --- | --- | --- |
-| 0 / G0 | 实际 dev 基线、迁移链、字段/API 映射、表归属、旧业务回归 | 两个来源 PR 的最终 SHA；空库和带数据升级；原约束和历史引用；A-14、X14 | 未完成：迁移链分叉；空库通过不代表升级通过 |
+| 0 / G0 | 实际 dev 基线、迁移链、字段/API 映射、表归属、旧业务回归 | 两个来源 PR 的最终 SHA；空库和带数据升级；原约束和历史引用；A-14、X14 | 部分完成：双路径追加迁移、带数据升级和回滚已通过；旧后台浏览器业务等价回归仍未通过 |
 | 1 / G1–G2 | 稳定成员、字典、有效任职、完整授权、账号/会话版本、目录投影 | root 与历史账号映射；A-01～A-05；X01～X05、X09 | 部分实现，需逐接口核查范围、有效时点及原子撤销 |
 | 2 / G3、G5 | React + TypeScript + Vite、shadcn/ui；宿主、路由、查询隔离；P01/P02/P10/P11/P21 | 深链接、旧激活入口、模块加载/失败恢复、权限配置；A-12、X12/X16 | 当前 JSX 单文件且按旧 role 导航，不满足阶段门槛 |
 | 3 / G4、G6 | P03～P08/P12；扫描、核验、维修恢复、容量、接待、转派与现场登记 | B01～B09、B16～B20；成员级占用；A-02/A-09、X11/X17/X18 | 有旧能力及接口，React 流程并未等价迁移 |
@@ -35,7 +35,7 @@
 - dev 的 0007 onsite、0008 five_statuses、0009 weekday_booking_schedules 与 Staff 的 0007_staff_platform 不是同一迁移链。
 - 隔离 SQLite 探查：分别重放两分支迁移；dev 的 appointments 多出 expires_at；直接再执行 Staff 0007 报 `table weekday_slot_capacities already exists`。这是排错证据，不能代替 D1 升级验收。
 - Staff Staging CI [38501416301](https://github.com/NEUP-Net-Depart/Pioneer-appointment-system/actions/runs/38501416301) 的 migrate-staff-staging 日志确认在 2026-10-14 02:34 UTC 执行了 0007_staff_platform.sql。不能删除、覆盖或重新编号该迁移。当前远端账本的直接只读核查因本地未配置 Cloudflare API token 未能执行；部署历史证据不等于当前完整账本。
-- 用户已确认保留 dev 五主状态及历史数据语义，取代规格中沿用的三主状态口径。Staff 现有三状态实现及相关测试需要迁移，不能仅改展示标签。
+- 用户已确认保留 dev 五主状态及历史数据语义，取代规格中沿用的三主状态口径。已同步五状态服务、期限、容量与纠错语义，保留 Staff 身份、维修占用及签到记录；React 维修闭环仍待补齐。
 
 ## 本轮之后的执行顺序
 
