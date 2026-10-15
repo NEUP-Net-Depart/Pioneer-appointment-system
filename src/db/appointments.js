@@ -1,3 +1,5 @@
+import { APPOINTMENT_SEARCH_LIMIT } from '../../shared/appointment-search.js';
+import { terminalStatuses } from '../../shared/constants.js';
 import { scheduleStatement } from './slot-capacities.js';
 
 const columns = {
@@ -17,13 +19,18 @@ function fromRow(row) {
 }
 export function appointmentRepository(db) {
   return {
-    async searchNumbers(text, date, { campuses, technician }) {
+    async searchNumbers(text, date, { campuses }, accessRules) {
       const scope = campuses.length ? `campus IN (${campuses.map(() => '?').join(',')})` : '0';
-      const access = technician ? " AND (status='booked' OR assigned_to=? OR (source='onsite' AND registered_by=?))" : '';
+      const accessArgs = [];
+      const access = accessRules.map(conditions => conditions.length ? '(' + conditions.map(({field,operator,value}) => {
+        if (!Object.hasOwn(columns, field)) throw new Error('Unknown appointment access field');
+        accessArgs.push(value);
+        return `${columns[field]} ${operator === 'ne' ? '<>' : '='} ?`;
+      }).join(' AND ') + ')' : '1').join(' OR ') || '0';
       return (await db.prepare(`SELECT id,campus,date,time_slot AS timeSlot,status FROM appointments
-        WHERE ${scope}${access} AND ${date ? "date=? AND instr(substr(id,instr(id,'-')+1),?)>0" : 'instr(id,?)>0'}
-        ORDER BY CASE WHEN status IN ('booked','in_progress') THEN 0 ELSE 1 END,date DESC,time_slot,id LIMIT 9`)
-        .bind(...campuses,...(technician ? [technician,technician] : []),...(date ? [date] : []),text).all()).results;
+        WHERE ${scope} AND (${access}) AND ${date ? "date=? AND instr(substr(id,instr(id,'-')+1),?)>0" : 'instr(id,?)>0'}
+        ORDER BY CASE WHEN status IN (${terminalStatuses.map(() => '?').join(',')}) THEN 1 ELSE 0 END,date DESC,time_slot,id LIMIT ?`)
+        .bind(...campuses,...accessArgs,...(date ? [date] : []),text,...terminalStatuses,APPOINTMENT_SEARCH_LIMIT + 1).all()).results;
     },
     async schedule(date, campus) {
       return (await scheduleStatement(db, date, date, [campus]).all()).results;

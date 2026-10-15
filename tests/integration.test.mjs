@@ -153,6 +153,14 @@ test('scan number search requires two digits, limits results and preserves date,
 
 });
 
+test('automatic scan searches cannot consume the resolve quota', async () => {
+  const token=await login(), item=await book();
+  for(let i=0;i<60;i++) await api('/api/scan/search',{method:'POST',token,body:{q:'01'}});
+  await api('/api/scan/search',{method:'POST',token,body:{q:'01'}},429);
+  const found=await api('/api/scan/resolve',{method:'POST',token,body:{id:item.id}});
+  assert.equal(found.id,item.id);
+});
+
 test('scan lookup needs staff authorization, preserves campus scope and never starts a repair', async () => {
   const item = await book(), tech = await addUser('993001');
   const headers = {accessToken:item.accessToken};

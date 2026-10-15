@@ -10,7 +10,7 @@ export const scanRoutes = [
   }],
   ['POST', /^\/api\/scan\/search$/, async context => {
     const actor = await context.role('technician');
-    await context.limit('lookup');
+    await context.limit('scanSearch');
     return json(await context.services.scan.search(await readBody(context.request), actor));
   }],
   ['POST', /^\/api\/scan\/onsite$/, async context => {

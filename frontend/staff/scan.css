@@ -64,7 +64,7 @@
 .scan-number-suggestion { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px 12px; width: 100%; min-height: 82px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink); text-align: left; cursor: pointer; }
 .scan-number-suggestion strong { grid-column: 1 / -1; font-size: 15px; line-height: 1.4; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; letter-spacing: .015em; }
 .scan-number-suggestion span { align-self: center; font-size: 12px; line-height: 1.5; color: var(--muted); }
-.scan-number-suggestion em { align-self: center; padding: 4px 9px; border-radius: 6px; font-style: normal; font-weight: 600; font-size: 11px; line-height: 1.4; white-space: nowrap; }
+.scan-number-suggestion em { align-self: center; justify-self: end; font-style: normal; white-space: nowrap; }
 .scan-number-suggestion:hover { background: #f8faf9; border-color: #a7bdb4; }
 .scan-number-suggestion:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 @media (max-width: 380px) { .scan-number-suggestion { padding: 13px 12px; gap: 8px; } .scan-number-suggestion strong { font-size: 14px; } }

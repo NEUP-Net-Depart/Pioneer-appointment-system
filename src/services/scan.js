@@ -1,3 +1,5 @@
+import { parseAppointmentSearch, APPOINTMENT_SEARCH_LIMIT } from '../../shared/appointment-search.js';
+import { appointmentAccessRules } from '../lib/appointment-access.js';
 import { fail } from '../lib/http.js';
 import { scanCode, verifyScanCode } from '../lib/scan-code.js';
 import { bookingInput, stringField } from '../lib/validation.js';
@@ -40,15 +42,13 @@ export function scanService(appointments, service, encryptionKey, secret, enable
     },
     async search(input, actor) {
       available();
-      const raw = stringField(input.q, '预约编号片段', 80, true).replace(/^(?:reserve|reverse)/i, '');
-      if (!/^\d+(?:-\d*)?$/.test(raw)) fail(400, '请输入预约编号中的数字');
-      const text = raw;
-      const acrossDates = raw.includes('-');
-      if (text.replace('-', '').length < 2) return { items: [], hasMore: false };
+      const query = parseAppointmentSearch(input.q);
+      if (!query) fail(400, '请输入预约编号中的数字');
+      if (!query.ready) return { items: [], hasMore: false };
       const now = clock(), scope = appointmentScope(actor);
       await expire(now, { campuses: scope.campuses });
-      const items = await appointments.searchNumbers(text, acrossDates ? null : dateKey(now), scope);
-      return { items: items.slice(0, 8), hasMore: items.length > 8 };
+      const items = await appointments.searchNumbers(query.text, query.acrossDates ? null : dateKey(now), scope, appointmentAccessRules(actor, { start: true }));
+      return { items: items.slice(0, APPOINTMENT_SEARCH_LIMIT), hasMore: items.length > APPOINTMENT_SEARCH_LIMIT };
     },
     async current(actor, registrationRequestId) {
       available();
