@@ -41,12 +41,13 @@ export function scanService(appointments, service, encryptionKey, secret, enable
     async search(input, actor) {
       available();
       const raw = stringField(input.q, '预约编号片段', 80, true).replace(/^(?:reserve|reverse)/i, '');
-      if (!/^[\d-]+$/.test(raw)) fail(400, '请输入预约编号中的数字');
-      const text = raw.split('-').at(-1);
-      if (text.length < 2) return { items: [], hasMore: false };
+      if (!/^\d+(?:-\d*)?$/.test(raw)) fail(400, '请输入预约编号中的数字');
+      const text = raw;
+      const acrossDates = raw.includes('-');
+      if (text.replace('-', '').length < 2) return { items: [], hasMore: false };
       const now = clock(), scope = appointmentScope(actor);
       await expire(now, { campuses: scope.campuses });
-      const items = await appointments.searchNumbers(text, dateKey(now), scope);
+      const items = await appointments.searchNumbers(text, acrossDates ? null : dateKey(now), scope);
       return { items: items.slice(0, 8), hasMore: items.length > 8 };
     },
     async current(actor, registrationRequestId) {

@@ -139,6 +139,11 @@ test('scan number search requires two digits, limits results and preserves date,
   assert.ok(all.items.some(item=>item.id===other.id));
   await db.prepare("UPDATE appointments SET date='2026-10-14' WHERE id=?").bind(ended.id).run();
   assert.equal((await search(root,'02')).items.length,0);
+  assert.deepEqual((await search(root,'1015-02')).items.map(item=>item.id),[ended.id]);
+  assert.equal((await search(tech,'1015-02')).items.length,0);
+  assert.equal((await search(tech,'120261015-01')).items.length,0);
+  assert.equal((await search(root,'1015-')).items.length,3);
+  for (const q of ['-01','10--01']) await api('/api/scan/search',{method:'POST',token:root,body:{q}},400);
   for (let i=0;i<8;i++) {
     const item=await book({timeSlot:i<4 ? '19:30–20:00' : '20:00–20:30'});
     await db.prepare('UPDATE appointments SET id=? WHERE id=?').bind(`reserve020261015-01${i}`,item.id).run();

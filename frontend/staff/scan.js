@@ -183,18 +183,20 @@ export function initScan() {
   function searchSuggestions() {
     clearSuggestions();
     const input = $('#scan-number'), raw = input.value.trim().replace(/^(?:reserve|reverse)/i, '');
-    if (!/^[\d-]+$/.test(raw) || raw.replace(/-/g, '').length < 2) return;
+    if (!/^\d+(?:-\d*)?$/.test(raw) || raw.replace(/-/g, '').length < 2) return;
+    const acrossDates = raw.includes('-');
+    const scopeLabel = acrossDates ? '可见预约' : '当天预约';
     const current = suggestionGeneration;
     suggestionTimer = setTimeout(async () => {
       suggestionRequest = new AbortController();
-      suggestionMessage.textContent = '正在查找当天预约…';
+      suggestionMessage.textContent = `正在查找${scopeLabel}…`;
       try {
         const { items, hasMore } = await apiJson('/api/scan/search', { method: 'POST', json: { q: raw }, signal: suggestionRequest.signal });
         if (current !== suggestionGeneration || !active || $('#scan-manual-form').hidden) return;
         suggestionBox.replaceChildren(...items.map(item => {
           const button = document.createElement('button'); button.type = 'button'; button.className = 'scan-number-suggestion';
           const number = document.createElement('strong'), detail = document.createElement('span'), state = document.createElement('em');
-          number.textContent = item.id; detail.textContent = `${item.campus} · ${item.timeSlot}`; state.textContent = statusLabels[item.status] || item.status;
+          number.textContent = item.id; detail.textContent = `${item.campus} · ${acrossDates ? item.date + ' · ' : ''}${item.timeSlot}`; state.textContent = statusLabels[item.status] || item.status;
           state.className = `status-pill ${statusClass[item.status] || ''}`;
           button.append(number, detail, state);
           button.addEventListener('click', () => { input.value = item.id; clearSuggestions(); resolve({ id: item.id }); });
@@ -206,7 +208,7 @@ export function initScan() {
           return button;
         }));
         suggestionBox.hidden = !items.length;
-        suggestionMessage.textContent = hasMore ? '显示前 8 条，请继续输入以缩小范围' : items.length ? `找到 ${items.length} 条当天预约，选择即可打开` : '当天没有匹配的预约；历史预约请填写完整编号查询';
+        suggestionMessage.textContent = hasMore ? '显示前 8 条，请继续输入以缩小范围' : items.length ? `找到 ${items.length} 条${scopeLabel}，选择即可打开` : `没有匹配的${scopeLabel}；可输入含 - 的编号片段扩大日期范围`;
       } catch (error) {
         if (current === suggestionGeneration && error.name !== 'AbortError') suggestionMessage.textContent = '搜索失败，请继续输入重试，或填写完整编号查询';
       }
