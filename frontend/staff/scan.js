@@ -36,7 +36,7 @@ export function initScan() {
     },
   })]));
   const canStartCamera = () => active && ready && !cameraPaused && pageActive && !document.hidden && !$('#scan-home').hidden;
-  const scanner = createScanner({ video: $('#scan-video'), status: $('#camera-status'), torch: $('#scan-torch'), switchCamera: $('#scan-switch-camera'), canStart: canStartCamera, onCode: code => resolve({ code }), onState(state) {
+  const scanner = createScanner({ video: $('#scan-video'), torch: $('#scan-torch'), switchCamera: $('#scan-switch-camera'), canStart: canStartCamera, onCode: code => resolve({ code }), onState(state) {
     $('.scanner-frame').dataset.cameraState = state;
     $('#scan-camera').hidden = false;
     $('#scan-camera').textContent = ['running','opening'].includes(state) ? '关闭摄像头' : '开启摄像头';

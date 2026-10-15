@@ -31,7 +31,7 @@ for (const width of [320, 375, 390, 430]) test(`workbench keeps scanning, fallba
   await cameraDenied(page); await mockSession(page); await login(page);
   await expect(page.locator('#scan-home')).toBeVisible();
   await expect(page.locator('#management-header')).toBeHidden();
-  await expect(page.locator('#camera-status')).toContainText('未获得相机权限');
+  await expect(page.getByText('未获得相机权限', { exact: true })).toHaveCount(0);
   await expect(page.locator('#scan-onsite')).toBeVisible(); await fits(page);
   await expect(page.getByText('今日值班', { exact: true })).toHaveCount(0);
   await page.screenshot({ path: `output/playwright/workbench-home-${width}.png`, fullPage: true });
