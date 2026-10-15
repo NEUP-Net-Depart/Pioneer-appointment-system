@@ -43,7 +43,7 @@ export function scanService(appointments, service, encryptionKey, secret, enable
       const raw = stringField(input.q, '预约编号片段', 80, true).replace(/^(?:reserve|reverse)/i, '');
       if (!/^[\d-]+$/.test(raw)) fail(400, '请输入预约编号中的数字');
       const text = raw.replace(/-/g, '');
-      if (text.length < 4) return { items: [], hasMore: false };
+      if (text.length < 2) return { items: [], hasMore: false };
       const now = clock(), scope = appointmentScope(actor);
       await expire(now, { campuses: scope.campuses });
       const items = await appointments.searchNumbers(text, dateKey(now), scope);

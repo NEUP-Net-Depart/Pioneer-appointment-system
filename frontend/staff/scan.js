@@ -183,7 +183,7 @@ export function initScan() {
   function searchSuggestions() {
     clearSuggestions();
     const input = $('#scan-number'), raw = input.value.trim().replace(/^(?:reserve|reverse)/i, '');
-    if (!/^[\d-]+$/.test(raw) || raw.replace(/-/g, '').length < 4) return;
+    if (!/^[\d-]+$/.test(raw) || raw.replace(/-/g, '').length < 2) return;
     const current = suggestionGeneration;
     suggestionTimer = setTimeout(async () => {
       suggestionRequest = new AbortController();
@@ -195,6 +195,7 @@ export function initScan() {
           const button = document.createElement('button'); button.type = 'button'; button.className = 'scan-number-suggestion';
           const number = document.createElement('strong'), detail = document.createElement('span'), state = document.createElement('em');
           number.textContent = item.id; detail.textContent = `${item.campus} · ${item.timeSlot}`; state.textContent = statusLabels[item.status] || item.status;
+          state.dataset.status = item.status;
           button.append(number, detail, state);
           button.addEventListener('click', () => { input.value = item.id; clearSuggestions(); resolve({ id: item.id }); });
           button.addEventListener('keydown', event => {

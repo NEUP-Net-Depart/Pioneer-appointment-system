@@ -120,15 +120,15 @@ beforeEach(async () => {
   if (objects.objects.length) await bucket.delete(objects.objects.map(object => object.key));
 });
 
-test('scan number search requires four digits, limits results and preserves date, campus and access scopes', async () => {
+test('scan number search requires two digits, limits results and preserves date, campus and access scopes', async () => {
   const root = await login(), tech = await addUser('993046');
   const booked = await book(), ended = await book(), other = await book({campus:'浑南'});
   await db.prepare("UPDATE appointments SET status='cancelled' WHERE id=?").bind(ended.id).run();
   const search = (token,q) => api('/api/scan/search',{method:'POST',token,body:{q}});
   await api('/api/scan/search',{method:'POST',body:{q:'2026'}},401);
-  assert.deepEqual(await search(root,'202'),{items:[],hasMore:false});
+  assert.deepEqual(await search(root,'2'),{items:[],hasMore:false});
   await api('/api/scan/search',{method:'POST',token:root,body:{q:'2026%'}},400);
-  const all = await search(root,'2026');
+  const all = await search(root,'26');
   assert.equal(all.items.length,3);
   assert.equal(all.items.at(-1).status,'cancelled');
   assert.deepEqual(Object.keys(all.items[0]).sort(),['campus','date','id','status','timeSlot']);
