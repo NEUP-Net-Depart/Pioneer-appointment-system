@@ -5,6 +5,7 @@ import { Miniflare } from 'miniflare';
 import { config, wrangler } from '../scripts/cli.mjs';
 import { hashPassword } from '../src/lib/passwords.js';
 import { dateKey } from '../shared/time.js';
+import { staffPlatformRepository } from '../src/db/staff-platform.js';
 
 let mf;
 async function applyMigration(database, file) {
@@ -34,6 +35,48 @@ before(async () => {
   await database.batch(['南湖','浑南'].map(campus => database.prepare('INSERT INTO staff_campus_grants VALUES (?,?)').bind('root001', campus)));
 });
 after(async () => mf?.dispose());
+
+test('stale member, role, binding and attendance commands leave all related rows unchanged', async () => {
+  const db = await mf.getD1Database('DB');
+  const repository = staffPlatformRepository(db);
+  await db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,?,?,?,?,?)')
+    .bind('20268801', '并发测试成员', 'technician', '南湖', hashPassword('cas-test-password'), dateKey()).run();
+  const memberId = await repository.ensureMember('20268801');
+  const original = await repository.memberRow(memberId);
+  const member = await repository.updateMember(memberId, { name: '正确更新' }, original.revision);
+  const accountBefore = await repository.accountRow('20268801');
+  assert.equal(await repository.updateMember(memberId, { name: '过期覆盖', status: 'inactive' }, original.revision), null);
+  assert.deepEqual(await repository.accountRow('20268801'), accountBefore);
+  assert.deepEqual(await repository.memberRow(memberId), member);
+
+  const role = await repository.createRole({ code: 'cas-role', name: '并发测试角色', level: 1,
+    grants: [{ permissionCode: 'attendance.self', scope: { self: true }, conditions: [], validity: {} }] });
+  assert.equal(await repository.bindRoles(memberId, [{ roleId: role.id, scope: { campusIds: ['campus-nanhu'] }, effectiveFrom: '2026-01-01' }], member.revision), true);
+  const bindingsBefore = await repository.roleBindings(memberId);
+  const boundAccount = await repository.accountRow('20268801');
+  assert.equal(await repository.bindRoles(memberId, [], member.revision), false);
+  assert.deepEqual(await repository.roleBindings(memberId), bindingsBefore);
+  assert.deepEqual(await repository.accountRow('20268801'), boundAccount);
+
+  const updatedRole = await repository.updateRole(role.id, { name: '已更新角色' }, role.revision);
+  const roleAccount = await repository.accountRow('20268801');
+  assert.equal(await repository.updateRole(role.id, { grants: [] }, role.revision), null);
+  assert.deepEqual((await repository.listRoles()).find(item => item.id === role.id), updatedRole);
+  assert.deepEqual(await repository.accountRow('20268801'), roleAccount);
+
+  const event = await repository.createEvent({ type: 'meeting', policyCode: 'meeting', policyVersion: 1,
+    businessDate: dateKey(), startsAt: new Date().toISOString(), endsAt: new Date(Date.now() + 3600000).toISOString() }, memberId);
+  await repository.issueToken(event.id, 'cas-token-first', new Date(Date.now() + 300000).toISOString(), memberId, event.revision);
+  const tokens = (await db.prepare('SELECT * FROM attendance_tokens WHERE event_id=? ORDER BY id').bind(event.id).all()).results;
+  assert.equal(await repository.issueToken(event.id, 'cas-token-stale', new Date(Date.now() + 300000).toISOString(), memberId, event.revision), null);
+  assert.deepEqual((await db.prepare('SELECT * FROM attendance_tokens WHERE event_id=? ORDER BY id').bind(event.id).all()).results, tokens);
+
+  await repository.setPresence(memberId, { businessDate: dateKey(), state: 'available', campusId: 'campus-nanhu' }, 0, { memberId, account: '20268801' });
+  await repository.setPresence(memberId, { businessDate: dateKey(), state: 'off_duty' }, 0, { memberId, account: '20268801' });
+  const presenceEvents = (await db.prepare('SELECT * FROM presence_events WHERE member_id=? ORDER BY id').bind(memberId).all()).results;
+  assert.equal(await repository.setPresence(memberId, { businessDate: dateKey(), state: 'available' }, 0, { memberId, account: '20268801' }), null);
+  assert.deepEqual((await db.prepare('SELECT * FROM presence_events WHERE member_id=? ORDER BY id').bind(memberId).all()).results, presenceEvents);
+});
 
 async function request(path, options = {}) {
   const response = await mf.dispatchFetch(`https://staff.test${path}`, { ...options, headers: { ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) } });
@@ -86,6 +129,6 @@ test('staff platform auth context, modular permissions and policy attendance are
   const exportResponse = await mf.dispatchFetch(`https://staff.test/api/attendance/export.csv?month=${dateKey().slice(0, 7)}`, { headers });
   assert.equal(exportResponse.status, 200);
   assert.match(await exportResponse.text(), /校区,人员,学号,签到次数,部门/);
-  const presenceEvents = await (await mf.getD1Database('DB')).prepare('SELECT COUNT(*) AS total FROM presence_events').first();
+  const presenceEvents = await (await mf.getD1Database('DB')).prepare("SELECT COUNT(*) AS total FROM presence_events WHERE member_id='member-root001'").first();
   assert.equal(presenceEvents.total, 1);
 });
