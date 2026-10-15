@@ -4,11 +4,10 @@ import { credentialHeaders } from './credentials.js';
 
 export async function renderRepairQr(container, item) {
   container.replaceChildren();
-  const title = document.createElement('p'); title.textContent = '到场维修时向工作人员出示此二维码';
   const image = document.createElement('img'); image.alt = `${item.id} 维修二维码`; image.width = image.height = 240;
   const hint = document.createElement('p'); hint.className = 'repair-qr-status'; hint.setAttribute('role','status'); hint.textContent = '正在生成维修二维码…';
   const button = document.createElement('button'); button.type = 'button'; button.className = 'secondary-btn'; button.textContent = '重新生成二维码'; button.hidden = true;
-  container.append(title, image, hint, button);
+  container.append(image, hint, button);
   async function load() {
     let encodingTimer;
     button.disabled = true;

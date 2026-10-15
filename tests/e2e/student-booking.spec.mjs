@@ -12,6 +12,7 @@ test('signature and agreement are independent, and cancelling a new signature pr
 test('success shows real location and QR and sends distinct actions to the current detail and list',async({page})=>{
   const state=await setupStudent(page);await chooseTime(page);await fillDevice(page);await goReview(page);await submitStudent(page);
   await expect(page.locator('#success-title')).toHaveText('预约成功');await expect(page.locator('#success-summary')).toContainText('南湖校区测试维修室');await expect(page.locator('#success-repair-qr img')).toBeVisible();await expect(page.locator('#copy-code')).toHaveText('复制私人查询链接');
+  await expect(page.locator('#success-photos')).toBeHidden();
   const id=state.calls.length ? [...state.appointments.keys()][0] : '';await page.locator('#view-created-appointment').click();await expect(page.locator('#appointment-detail')).toContainText(id);await expect(page.locator('#lookup-list')).toBeHidden();
   await page.locator('[data-view-link=lookup]').first().click();await expect(page.locator('#lookup-list')).toBeVisible();await expect(page.locator('.student-record')).toHaveCount(1);await expect(page.locator('.student-record button')).toHaveCount(0);await expect(page.locator('[data-cancel-open]')).toBeHidden();
 });
@@ -60,6 +61,33 @@ test('a photo upload failure leaves success intact and retries just the failed p
   await page.route('**/api/appointments/*/attachments',route=>{requests++;if(failed && requests===1)return route.fulfill({status:503,json:{error:'照片暂时无法上传'}});return route.fulfill({status:201,json:{id:String(requests),purpose:'student_photo'}});});
   await chooseTime(page);await fillDevice(page);await page.locator('#appointment-attachments').setInputFiles([1,2].map(index=>({name:index+'.png',mimeType:'image/png',buffer:PHOTO})));await expect.poll(()=>page.locator('.photo-card').filter({hasText:'照片已准备好'}).count()).toBe(2);await goReview(page);await submitStudent(page);await expect(page.locator('#success-photo-message')).toContainText('预约已成功');await expect(page.locator('#success-title')).toHaveText('预约成功');
   failed=false;await page.locator('#success-photo-retry').click();await expect(page.locator('#success-photo-message')).toHaveText('照片已全部上传。');expect(requests).toBe(3);
+});
+
+for(const width of [320,1440])test(`photo totals distinguish uploaded, active, waiting and failed items and retain progress on retry at ${width}px`,async({page},testInfo)=>{
+  await page.setViewportSize({width,height:900});await setupStudent(page);const attempts=[],gates=new Map();let failLast=true;
+  await page.route('**/api/appointments/*/attachments',async route=>{
+    const body=route.request().postDataJSON();attempts.push(body.filename);
+    if(body.filename==='3.png' || body.filename==='4.png')await new Promise(resolve=>gates.set(body.filename,resolve));
+    if(body.filename==='4.png' && failLast)return route.fulfill({status:503,json:{error:'照片暂时无法上传'}});
+    return route.fulfill({status:201,json:{id:body.filename,purpose:'student_photo'}});
+  });
+  await chooseTime(page);await fillDevice(page);await page.locator('#appointment-attachments').setInputFiles([1,2,3,4].map(index=>({name:index+'.png',mimeType:'image/png',buffer:PHOTO})));
+  await expect.poll(()=>page.locator('.photo-card').filter({hasText:'照片已准备好'}).count()).toBe(4);await goReview(page);await submitStudent(page);
+  await expect(page.locator('#success-photo-count')).toHaveText('2 / 4 张');await expect(page.locator('#success-photo-total')).toHaveJSProperty('value',2);await expect(page.locator('#success-photo-total')).toHaveJSProperty('max',4);
+  const rows=page.locator('#success-photo-progress .photo-upload-row');await expect(rows).toHaveCount(4);await expect(rows.nth(0)).toHaveAttribute('data-upload-state','uploaded');await expect(rows.nth(1)).toHaveAttribute('data-upload-state','uploaded');await expect(rows.nth(2)).toHaveAttribute('data-upload-state','uploading');await expect(rows.nth(3)).toHaveAttribute('data-upload-state','waiting');await expect(page.locator('#success-photo-advice')).toBeVisible();
+  expect(await page.evaluate(()=>Math.max(document.body.scrollWidth,document.documentElement.scrollWidth)<=innerWidth)).toBe(true);await page.screenshot({path:testInfo.outputPath(`photo-progress-${width}.png`),fullPage:true});
+  await expect.poll(()=>gates.has('3.png')).toBe(true);gates.get('3.png')();await expect(rows.nth(3)).toHaveAttribute('data-upload-state','uploading');await expect.poll(()=>gates.has('4.png')).toBe(true);gates.get('4.png')();
+  await expect(rows.nth(3)).toHaveAttribute('data-upload-state','failed');await expect(page.locator('#success-photo-count')).toHaveText('3 / 4 张');await expect(page.locator('#success-photo-message')).toContainText('预约已成功');await expect(page.locator('#success-photo-retry')).toBeEnabled();
+  failLast=false;gates.delete('4.png');await page.locator('#success-photo-retry').click();await expect(rows.nth(3)).toHaveAttribute('data-upload-state','uploading');await expect(page.locator('#success-photo-count')).toHaveText('3 / 4 张');await expect.poll(()=>gates.has('4.png')).toBe(true);gates.get('4.png')();
+  await expect(page.locator('#success-photo-count')).toHaveText('4 / 4 张');await expect(page.locator('#success-photo-total')).toHaveJSProperty('value',4);await expect(page.locator('#success-photo-message')).toHaveText('照片已全部上传。');await expect(page.locator('#success-photo-advice')).toBeHidden();await expect(page.locator('#success-photo-retry')).toBeHidden();expect(attempts).toEqual(['1.png','2.png','3.png','4.png','4.png']);
+});
+
+test('deferring photos retains the completed count, finishes the current upload and leaves queued photos pending',async({page})=>{
+  await setupStudent(page);const uploads=[];let release;
+  await page.route('**/api/appointments/*/attachments',async route=>{const body=route.request().postDataJSON();uploads.push(body.filename);await new Promise(resolve=>release=resolve);return route.fulfill({status:201,json:{id:body.filename,purpose:'student_photo'}});});
+  await chooseTime(page);await fillDevice(page);await page.locator('#appointment-attachments').setInputFiles([1,2].map(index=>({name:index+'.png',mimeType:'image/png',buffer:PHOTO})));await expect.poll(()=>page.locator('.photo-card').filter({hasText:'照片已准备好'}).count()).toBe(2);await goReview(page);await submitStudent(page);
+  await expect.poll(()=>typeof release).toBe('function');await page.locator('#success-photo-later').click();await expect(page.locator('#success-photo-status')).toContainText('当前照片上传后暂停');await expect(page.locator('#success-photo-message')).toBeVisible();await expect(page.locator('#success-photo-advice')).toBeHidden();release();
+  await expect(page.locator('#success-photo-count')).toHaveText('1 / 2 张');await expect(page.locator('#success-photo-status')).toContainText('剩余照片可稍后补传');await expect(page.locator('#success-photo-progress .photo-upload-row').nth(1)).toHaveAttribute('data-upload-state','waiting');await expect(page.locator('#success-title')).toHaveText('预约成功');expect(uploads).toEqual(['1.png']);
 });
 
 test('session draft asks before restoring, expires after two hours, and excludes photos, signatures and consent',async({page})=>{
@@ -155,7 +183,7 @@ test('a small byte-size image with large pixel dimensions still obeys the 2560px
 
 for(const width of [320,1440])test(`long links and manual brand names stay readable inside cards at ${width}px`,async({page})=>{
   await page.setViewportSize({width,height:812});await page.emulateMedia({reducedMotion:'reduce'});await setupStudent(page);await chooseTime(page);await fillDevice(page);
-  await page.locator('[name=brand]').selectOption('other');await page.locator('[name=brandOther]').fill('B'.repeat(80));await page.locator('[name=issue]').fill('补充说明\nhttps://example.com/'+'a'.repeat(600));await goReview(page);
+  await page.locator('[name=brand]').selectOption('other');await page.locator('[name=brandOther]').fill('B'.repeat(30));await page.locator('[name=issue]').fill('补充说明\nhttps://example.com/'+'a'.repeat(600));await goReview(page);
   const contained=async locator=>expect(await locator.evaluateAll(elements=>elements.every(element=>element.scrollWidth<=element.clientWidth))).toBe(true);
   await contained(page.locator('#booking-review .record-note'));await page.locator('#booking-review details summary').click();await contained(page.locator('#booking-review .record-note'));
   await submitStudent(page);await page.locator('#view-created-appointment').click();await page.locator('#detail-information details summary').click();await contained(page.locator('#detail-information .record-note'));

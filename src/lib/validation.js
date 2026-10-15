@@ -36,7 +36,7 @@ export function bookingInput(input) {
   const keys = ['studentId','name','college','campus','deviceType','brand','deviceModel','warranty','faultType','issue','date','email','contactType','contactValue','agreementAt','agreementVersion'];
   const data = Object.fromEntries(keys.map(key => [key, (input[key] || '').trim()]));
   data.timeSlot = timeSlot;
-  data.liquidMetal = ['笔记本','台式机'].includes(data.deviceType) ? input.liquidMetal : null;
+  data.liquidMetal = data.deviceType === '笔记本' ? input.liquidMetal : null;
   data.dellG15 = data.deviceType === '笔记本' && data.brand === 'Dell' ? input.dellG15 || null : null;
   data.signature = JSON.stringify(input.signature);
   // Populate the legacy contact display for staff; never trust hidden old fields.

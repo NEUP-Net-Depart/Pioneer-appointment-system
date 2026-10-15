@@ -20,6 +20,11 @@ test('booking picker adapts its date shapes and column layout across phone, tabl
       await page.waitForFunction(()=>globalThis.document.querySelector('#booking-picker').getAttribute('aria-busy')==='false');
       assert.equal(await page.locator('#booking-days button').count(),days);assert.equal(await page.locator('#booking-slots button').count(),4);assert.equal(await page.locator('[name=timeSlot]').inputValue(),'');
       assert.equal(await page.locator('#booking-days').getAttribute('data-count'),String(days));
+      for(const campus of await page.locator('#booking-campuses button').all()){
+        const box=await campus.boundingBox(),label=await campus.locator('strong').boundingBox();
+        assert.ok(Math.abs(box.y+box.height/2-label.y-label.height/2)<1,'Campus labels stay vertically centered');
+        assert.ok(Math.abs(box.x+box.width/2-label.x-label.width/2)<1,'Campus labels stay horizontally centered');
+      }
       const datePanel=await page.locator('.booking-date-panel').boundingBox(),timePanel=await page.locator('.booking-time-panel').boundingBox();
       if(width>=900){assert.ok(Math.abs(datePanel.y-timePanel.y)<1);assert.ok(timePanel.x>=datePanel.x+datePanel.width);assert.ok(Math.abs(datePanel.width-timePanel.width)<1);}
       else assert.ok(timePanel.y>=datePanel.y+datePanel.height);
@@ -33,6 +38,13 @@ test('booking picker adapts its date shapes and column layout across phone, tabl
       assert.ok(slotBoxes.every((box,index)=>box.height>=44 && (!index || box.top>=slotBoxes[index-1].top+slotBoxes[index-1].height)));
       await page.locator('[data-slot="19:00–19:30"]').click();assert.equal(await page.locator('[name=timeSlot]').inputValue(),'19:00–19:30');assert.equal(await page.evaluate(()=>Math.max(globalThis.document.body.scrollWidth,globalThis.document.documentElement.scrollWidth)<=globalThis.innerWidth),true);assert.equal(await page.locator('#booking-submit').isDisabled(),true);assert.deepEqual(errors,[]);
       if(days===4 && [375,1440].includes(width))await page.screenshot({path:`output/playwright/responsive-picker/${engine}-${width}.png`,fullPage:true});
+      if(days===4){
+        await page.locator('#step-one-next').click();await page.locator('[data-step="2"]').waitFor({state:'visible'});
+        const device=await page.locator('[name=deviceType]').boundingBox(),brand=await page.locator('[name=brand]').boundingBox();
+        if(width>=900){assert.ok(Math.abs(device.y-brand.y)<1);assert.ok(brand.x>=device.x+device.width);}
+        else assert.ok(brand.y>=device.y+device.height);
+        assert.equal(await page.locator('.student-shell').evaluate(element=>element.scrollWidth<=element.clientWidth),true);
+      }
       await page.close();
       }
       await browser.close();browser=null;

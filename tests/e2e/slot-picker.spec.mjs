@@ -63,5 +63,5 @@ test('lost creation responses are verified with the stable request key and displ
 });
 
 test('server time determines Shanghai dates when the device clock is wrong',async({page})=>{
-  await setupStudent(page);await page.clock.setSystemTime(new Date('2026-10-17T12:00:00+08:00'));await page.locator('[data-campus=南湖]').click();await expect(page.locator('[name=date]')).toHaveValue('2026-10-12');await expect(page.locator('#booking-days button')).toHaveCount(4);await expect(page.locator('#booking-updated')).toContainText('10:00');expect(NOW).toContain('2026-10-12');
+  await setupStudent(page);await page.clock.setSystemTime(new Date('2026-10-17T12:00:00+08:00'));await page.locator('[data-campus=南湖]').click();await expect(page.locator('[name=date]')).toHaveValue('2026-10-12');await expect(page.locator('#booking-days button')).toHaveCount(4);expect(NOW).toContain('2026-10-12');
 });

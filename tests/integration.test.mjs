@@ -2044,7 +2044,6 @@ test('bulk capacity saves are atomic, revision checked and restricted to authori
   await db.prepare('INSERT INTO weekday_slot_capacities(campus,weekday,time_slot,capacity,revision) VALUES(?,?,?,?,?)').bind(b.campus,b.weekday,b.timeSlot,b.capacity,b.revision).run();
 });
 
-// Student booking specification (2026-10-15): exercise real D1/R2 and HTTP.
 test('student create idempotency survives concurrent retries, lost responses and changed inputs',async()=>{
   const body=draft({email:'student@example.test',deviceModel:''}),key=randomBytes(32).toString('base64url');
   const responses=await Promise.all(Array.from({length:6},()=>api('/api/appointments',{method:'POST',body,headers:{'Idempotency-Key':key}},201)));
@@ -2060,13 +2059,16 @@ test('student create idempotency survives concurrent retries, lost responses and
 });
 
 test('student request validation distinguishes unknown answers and strips hidden legacy fields',async()=>{
-  for(const patch of [{deviceType:'显示器'},{deviceType:''},{warranty:''},{liquidMetal:''},{faultType:'硬盘'},{faultType:'其他',issue:''},{college:''},{contactType:''},{contactValue:''},{email:'invalid'},{issue:'字'.repeat(1001)},{agreementAccepted:false},{agreementVersion:'v1.0'}]) {
+  for(const patch of [{deviceType:'显示器'},{deviceType:''},{warranty:''},{liquidMetal:''},{faultType:'硬盘'},{faultType:'其他',issue:''},{college:''},{contactType:''},{contactValue:''},{email:'invalid'},{issue:'字'.repeat(1001)},{name:'名'.repeat(21)},{brand:'牌'.repeat(31)},{deviceModel:'型'.repeat(61)},{college:'院'.repeat(51)},{contactType:'qq',contactValue:'1'.repeat(13)},{contactType:'wechat',contactValue:'w'.repeat(21)},{agreementAccepted:false},{agreementVersion:'v1.0'}]) {
     const response=await api('/api/appointments',{method:'POST',body:draft(patch)},400);assert.equal(response.code,'FIELD_INVALID');assert.ok(Object.keys(response.fields).length);
   }
   const input=draft({deviceType:'其他',liquidMetal:'是',dellG15:'是',deviceModel:'',serial:'hidden',liquidDrop:'是',note:'hidden',phone:'13800138000',social:'hidden-social',issue:'🙂'.repeat(1000),email:'student@example.test'});
   const item=await book(input);assert.equal(item.liquidMetal,null);assert.equal(item.dellG15,null);assert.equal(item.deviceModel,'');assert.equal(item.serial,'');assert.equal(item.liquidDrop,'');assert.equal(item.note,'');assert.equal(item.phone,'');assert.equal(item.issue,'🙂'.repeat(1000));
   assert.equal(item.email,'student@example.test');assert.equal(item.contactType,'wechat');assert.equal(item.contactValue,'wechat-private');
   const row=await db.prepare('SELECT email,contact_value FROM appointments WHERE id=?').bind(item.id).first();assert.match(row.email,/^enc\$/);assert.match(row.contact_value,/^enc\$/);
+  const desktop=await book(draft({deviceType:'台式机',liquidMetal:'forged',name:'名'.repeat(20),brand:'牌'.repeat(30),deviceModel:'型'.repeat(60),college:'院'.repeat(50),contactType:'qq',contactValue:'1'.repeat(12)}));
+  assert.equal(desktop.liquidMetal,null);assert.equal(desktop.name,'名'.repeat(20));assert.equal(desktop.deviceModel,'型'.repeat(60));
+  const desktopWithoutAnswer=await book(draft({deviceType:'台式机',liquidMetal:undefined,contactType:'wechat',contactValue:'w'.repeat(20)}));assert.equal(desktopWithoutAnswer.liquidMetal,null);
 });
 
 test('daily online uniqueness is atomic across campuses and slots; completed counts and onsite does not',async()=>{
@@ -2082,7 +2084,9 @@ test('daily online uniqueness is atomic across campuses and slots; completed cou
 
 test('service locations block new bookings, preserve snapshots and audit authorized changes independently of capacities',async()=>{
   await db.prepare('DELETE FROM service_locations WHERE campus=? AND date=?').bind('南湖',date).run();
-  const availability=await api('/api/booking-availability?'+new URLSearchParams({campus:'南湖',date}));assert.equal(availability.location,'');
+  const availability=await api('/api/booking-availability?'+new URLSearchParams({campus:'南湖',date}));assert.equal(availability.location,'大学生活动中心202室');
+  await db.prepare('UPDATE service_locations SET location=? WHERE campus=? AND date=?').bind('','南湖',date).run();
+  assert.equal((await api('/api/booking-availability?'+new URLSearchParams({campus:'南湖',date}))).location,'');
   assert.equal((await api('/api/appointments',{method:'POST',body:draft()},409)).code,'LOCATION_MISSING');
   await api('/api/service-locations',{},401);
   const root=await login(),tech=await addUser('994001');
@@ -2099,6 +2103,25 @@ test('service locations block new bookings, preserve snapshots and audit authori
   assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM service_location_changes').first()).n,2);
   const history=await api('/api/service-locations/history?'+new URLSearchParams({campus:'南湖',date}),{token:root});assert.equal(history.changes[0].actor,'root001');
   await assert.rejects(db.prepare('DELETE FROM service_locations WHERE campus=? AND date=?').bind('南湖',date).run(),/LOCATION_REQUIRED/);
+});
+
+test('campus default locations initialize safely, preserve overrides and enter booking snapshots',async()=>{
+  await db.prepare('DELETE FROM service_locations WHERE date=?').bind(date).run();
+  const results=await Promise.all(Array.from({length:4},()=>api('/api/booking-availability?'+new URLSearchParams({campus:'南湖',date}))));
+  assert.ok(results.every(item=>item.location==='大学生活动中心202室' && item.locationRevision===0));
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM service_locations WHERE campus=? AND date=?').bind('南湖',date).first()).n,1);
+  const nanhu=await book();assert.equal(nanhu.locationSnapshot,'大学生活动中心202室');assert.equal(nanhu.locationRevision,0);
+  const hunnan=await book({campus:'浑南'});assert.equal(hunnan.locationSnapshot,'大学生活动中心308室');
+  const root=await login();
+  await api('/api/service-locations',{method:'PATCH',token:root,body:{campus:'南湖',date,location:'临时服务室',revision:0}});
+  assert.equal((await api('/api/booking-availability?'+new URLSearchParams({campus:'南湖',date}))).location,'临时服务室');
+  assert.equal((await api(`/api/appointments/${nanhu.id}`,{accessToken:nanhu.accessToken})).locationSnapshot,'大学生活动中心202室');
+  const next=addDays(date,4);await db.prepare('DELETE FROM service_locations WHERE date=?').bind(next).run();
+  const list=await api('/api/service-locations?'+new URLSearchParams({dateFrom:next,dateTo:next}),{token:root});
+  assert.deepEqual(list.items.map(item=>[item.campus,item.location]),[['南湖','大学生活动中心202室'],['浑南','大学生活动中心308室']]);
+  const historical='2026-10-01';await db.prepare('DELETE FROM service_locations WHERE date=?').bind(historical).run();
+  assert.equal((await api('/api/booking-availability?'+new URLSearchParams({campus:'南湖',date:historical}))).location,'');
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM service_locations WHERE date=?').bind(historical).first()).n,0);
 });
 
 test('student photos have an atomic four-photo limit, 2 MiB cap and independent staff intake allocation',async()=>{

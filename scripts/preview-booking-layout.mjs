@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 const dist = fileURLToPath(new URL('../dist/', import.meta.url));
 const port = Number(process.env.BOOKING_LAYOUT_PORT || 8790);
 import { bookingDates } from '../shared/booking-slots.js';
+import { DEFAULT_SERVICE_LOCATIONS } from '../shared/constants.js';
 const slotsFor = () => ['19:00–19:30', '19:30–20:00', '20:00–20:30', '20:30–21:00'];
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.jpg': 'image/jpeg', '.wasm':'application/wasm' };
 const gallery = await readFile(new URL('./booking-layout-preview.html', import.meta.url), 'utf8');
@@ -42,7 +43,7 @@ globalThis.fetch=(input,options)=>{
   const nativeInstant=new NativeDate(globalThis.__bookingPreviewInstant);
   const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(nativeInstant);
   const items=[0,1,2,3].map(offset=>{const day=new NativeDate(today+'T00:00:00Z');day.setUTCDate(day.getUTCDate()+offset);return day.toISOString().slice(0,10);}).filter(date=>{const weekday=new NativeDate(date+'T00:00:00Z').getUTCDay();return weekday>=1&&weekday<=4;}).map(date=>{
-    const summary={campus,date,location:campus+'模拟维修室',serverNow:nativeInstant.toISOString(),timeSlots:${JSON.stringify(slotsFor())},slotCapacities:{},slots:{}};
+    const summary={campus,date,location:${JSON.stringify(DEFAULT_SERVICE_LOCATIONS)}[campus],serverNow:nativeInstant.toISOString(),timeSlots:${JSON.stringify(slotsFor())},slotCapacities:{},slots:{}};
     summary.timeSlots.forEach((slot,index)=>{
       const counts=config.overrides[JSON.stringify([campus,date,slot])]||config.overrides[JSON.stringify([campus,'*',slot])]||{capacity:10,remaining:10-index-(campus==='浑南'?3:1)};
       summary.slotCapacities[slot]=counts.capacity;summary.slots[slot]=counts.capacity-counts.remaining;
@@ -53,7 +54,7 @@ globalThis.fetch=(input,options)=>{
     }
     if (resource === 'api/booking-availability') {
       const campus = url.searchParams.get('campus');
-      return send(JSON.stringify({serverNow:new Date(instant).toISOString(),items:bookingDates(new Date(instant)).map(date=>({campus,date,location:campus+'模拟维修室',serverNow:new Date(instant).toISOString(),timeSlots,
+      return send(JSON.stringify({serverNow:new Date(instant).toISOString(),items:bookingDates(new Date(instant)).map(date=>({campus,date,location:DEFAULT_SERVICE_LOCATIONS[campus],serverNow:new Date(instant).toISOString(),timeSlots,
         slotCapacities:Object.fromEntries(timeSlots.map(slot=>[slot,10])),slots:Object.fromEntries(timeSlots.map((slot,index)=>[slot,index+1]))}))}), 'application/json');
     }
     const path = resolve(dist, resource || 'index.html'), inside = relative(dist, path);

@@ -1,4 +1,5 @@
 import { scheduleStatement } from './slot-capacities.js';
+import { DEFAULT_SERVICE_LOCATIONS } from '../../shared/constants.js';
 
 const columns = {
   studentId: 'student_id', name: 'name', college: 'college', campus: 'campus', phone: 'phone', social: 'social',
@@ -21,6 +22,13 @@ export function appointmentRepository(db) {
   return {
     async location(date, campus) {
       return db.prepare('SELECT location,revision FROM service_locations WHERE date=? AND campus=?').bind(date,campus).first();
+    },
+    async ensureDefaultLocation(date,campus,instant) {
+      const existing=await this.location(date,campus);
+      if(existing)return existing;
+      const created=await db.prepare(`INSERT INTO service_locations(campus,date,location,updated_at) VALUES (?,?,?,?)
+        ON CONFLICT(campus,date) DO NOTHING RETURNING location,revision`).bind(campus,date,DEFAULT_SERVICE_LOCATIONS[campus],instant).first();
+      return created || this.location(date,campus);
     },
     async findRequest(key) {
       return db.prepare('SELECT request_key AS requestKey,digest,appointment_id AS appointmentId,encrypted_token AS encryptedToken FROM booking_requests WHERE request_key=?').bind(key).first();

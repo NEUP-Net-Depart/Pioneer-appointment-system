@@ -1,6 +1,4 @@
--- Read-only schema and data checks.
--- Fresh database baseline: 2 protected roots, 4 grants, empty business tables,
--- used_bytes=0, all migrations recorded, no foreign key violations.
+-- Read-only schema and data checks; exclude private credentials and contact values.
 SELECT COUNT(*) AS staff_accounts,
   COUNT(CASE WHEN protected=1 AND role='superadmin' AND status='enabled' THEN 1 END) AS enabled_protected_roots
   FROM staff_accounts;
@@ -21,7 +19,6 @@ SELECT COUNT(*) AS invalid_deadlines FROM appointments WHERE expires_at IS NULL 
 SELECT used_bytes FROM storage_quota WHERE id=1;
 SELECT name FROM d1_migrations ORDER BY id;
 PRAGMA foreign_key_check;
--- Student booking 0010: do not print contact ciphertext, request keys or tokens.
 SELECT campus,date,location,revision FROM service_locations ORDER BY date,campus;
 SELECT student_id,date,COUNT(*) AS historical_online_duplicates FROM appointments
   WHERE source='booking' AND status IN ('booked','in_progress','completed')

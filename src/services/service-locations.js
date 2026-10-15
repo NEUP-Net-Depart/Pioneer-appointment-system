@@ -1,6 +1,6 @@
 import { requireRole, requireCampus } from './permissions.js';
 import { fail } from '../lib/http.js';
-import { dateKey,addDays } from '../../shared/time.js';
+import { dateKey,addDays,serviceDay } from '../../shared/time.js';
 import { TIME_SLOTS } from '../../shared/constants.js';
 import { decryptText } from '../lib/privacy.js';
 import { bookingDates } from '../../shared/booking-slots.js';
@@ -16,16 +16,25 @@ export function serviceLocationService(repository,appointments,queue,encryptionK
     },
     async availability(campus,date) {
       if (!date) return {serverNow:clock().toISOString(),items:await Promise.all(bookingDates(clock()).map(day=>this.availability(campus,day)))};
-      const [summary,location] = await Promise.all([queue.summary({campus,date}),appointments.location(date,campus)]);
+      const instant=clock();
+      const [summary,location] = await Promise.all([queue.summary({campus,date}),bookingDates(instant).includes(date)
+        ? appointments.ensureDefaultLocation(date,campus,instant.toISOString()) : appointments.location(date,campus)]);
       return { campus,date,timeSlots:TIME_SLOTS,slotCapacities:summary.slotCapacities,slots:summary.slots,
         location:location?.location || '',locationRevision:location?.revision ?? null,serverNow:clock().toISOString() };
     },
     async list(actor,start = dateKey(clock()),end = addDays(start,6)) {
       requireRole(actor,'admin');
+      const instant=clock(),today=dateKey(instant);
+      for(let date=start;date<=end;date=addDays(date,1)){
+        if(date>=today && serviceDay(date))await Promise.all(actor.authorizedCampuses.map(campus=>appointments.ensureDefaultLocation(date,campus,instant.toISOString())));
+        if(date===end)break;
+      }
       return {items:await repository.list(start,end,actor.authorizedCampuses),start,end,campuses:actor.authorizedCampuses};
     },
     async update(input,actor) {
       requireRole(actor,'admin'); requireCampus(actor,input.campus);
+      const instant=clock();
+      if(input.date>=dateKey(instant) && serviceDay(input.date))await appointments.ensureDefaultLocation(input.date,input.campus,instant.toISOString());
       const item = await repository.update(input,actor.account,clock().toISOString());
       if (!item) fail(409,'维修地点已被更新，请读取最新配置后重试','LOCATION_CONFLICT');
       const affected = await repository.affected(input.campus,input.date);

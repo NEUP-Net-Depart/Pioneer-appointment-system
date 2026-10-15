@@ -97,7 +97,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
         const schedule = await appointments.schedule(data.date, data.campus);
         if (!schedule.some(slot => slot.time_slot === data.timeSlot)) fail(409, '该日期的时段安排已更新，请重新选择', 'SLOT_CHANGED');
         if (Date.parse(slotDeadline(data.date, data.timeSlot)) <= instant.getTime()) fail(409, '该预约时段已经结束', 'SLOT_ENDED');
-        if (!(await appointments.location(data.date,data.campus))?.location) fail(409, '该日期尚未配置维修地点，请重新选择日期', 'LOCATION_MISSING');
+        if (!(await appointments.ensureDefaultLocation(data.date,data.campus,instant.toISOString()))?.location) fail(409, '该日期尚未配置维修地点，请重新选择日期', 'LOCATION_MISSING');
       } else if (data.date !== today || instant.getTime() >= Date.parse(expiresAt)) fail(400, '当天临时登记有效期限已结束');
       const timestamp = instant.toISOString(), credential = issueAccessToken();
       const [phone, social, email, contactValue] = await Promise.all([data.phone,data.social,data.email,data.contactValue].map(value => encryptText(value, encryptionKey)));
