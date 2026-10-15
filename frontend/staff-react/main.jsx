@@ -1,30 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { drawSignature, validSignature } from '../../shared/signature.js';
-import { clearSession, useStaffSession } from '../../shared/api.js';
+import { initStaffApplication } from '../staff/main.js';
 import { request } from './request.js';
 import { MemberEditor } from './MemberEditor.jsx';
 import { Permissions } from './Permissions.jsx';
-import { statusLabels, TIME_SLOTS } from '../../shared/constants.js';
+import { statusLabels } from '../../shared/constants.js';
 
 const roles = { technician: '维修人员', admin: '管理员', superadmin: '最高权限者' };
-const tokenKey = 'pioneerToken';
-const readToken = () => sessionStorage.getItem(tokenKey) || '';
-
-useStaffSession();
-
-function Login({ onLogin }) {
-  const [account, setAccount] = useState(''); const [password, setPassword] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
-  async function submit(event) { event.preventDefault(); setBusy(true); setError(''); try { const data = await request('/api/auth/login', { method: 'POST', body: { account, password } }); sessionStorage.setItem(tokenKey, data.token); sessionStorage.setItem('pioneerAccount', data.account); const profile = await request('/api/auth/me'); if (readToken() === data.token) onLogin(profile); } catch (err) { clearSession(); setError(err.message); } finally { setBusy(false); } }
-  return <main className="react-login"><div className="react-card"><p className="react-eyebrow">STAFF ACCESS · ACCOUNT LOGIN</p><h1>工作人员登录</h1><p>先锋硬件部 · Staff Platform</p><form onSubmit={submit}><label>学号<input value={account} onChange={event => setAccount(event.target.value)} autoComplete="username" required /></label><label>密码<input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="current-password" required /></label>{error && <p className="react-error">{error}</p>}<button className="react-primary" disabled={busy}>{busy ? '登录中…' : '进入系统'}</button></form></div></main>;
-}
-
 function Workbench({ user, onNavigate }) {
   const [data, setData] = useState(null); const [appointments, setAppointments] = useState([]); const [error, setError] = useState(''); const [code, setCode] = useState(''); const [scan, setScan] = useState(null);
-  async function refresh() { try { const [work, list] = await Promise.all([request('/api/workbench'), request('/api/appointments?status=pending')]); setData(work); setAppointments(list.items || []); } catch (err) { setError(err.message); } }
+  async function refresh() { try { const [work, list] = await Promise.all([request('/api/workbench'), request('/api/appointments?status=booked')]); setData(work); setAppointments(list.items || []); } catch (err) { setError(err.message); } }
   useEffect(() => { refresh(); }, []);
   async function resolve(event) { event.preventDefault(); setError(''); try { setScan(await request('/api/scan/resolve', { method: 'POST', body: /\.[a-f0-9]{12}$/.test(code.trim()) ? { code: code.trim() } : { id: code.trim() } })); } catch (err) { setError(err.message); } }
-  return <section className="react-page"><div className="react-heading"><div><p className="react-eyebrow">G3 · G4 · G6</p><h1>角色工作台</h1><p>{user.name} · {roles[user.role]} · {user.authorizedCampuses?.join('、')}</p></div><button onClick={refresh}>刷新</button></div>{error && <p className="react-error">{error}</p>}<div className="react-grid"><article className="react-card"><h2>今日工作</h2><p>值班安排：{data?.todayDuties?.length || 0} 项</p><p>签到状态：{data?.presence?.state || '未签到'}</p><p>当前维修：{data?.currentRepair ? data.currentRepair.id : '暂无'}</p><button className="react-primary" onClick={() => onNavigate('attendance')}>打开值班签到</button></article><article className="react-card"><h2>扫码维修前台</h2><form onSubmit={resolve} className="react-inline"><input value={code} onChange={event => setCode(event.target.value)} placeholder="扫描或输入预约编号" required /><button className="react-primary">查询工单</button></form>{scan && <div className="react-result"><strong>{scan.id}</strong><span>{scan.campus} · {scan.date} · {scan.timeSlot}</span><span>{scan.deviceType} · {scan.deviceModel}</span><small>可执行：{scan.actions?.join('、') || '查看'}</small></div>}<button onClick={() => onNavigate('repair')}>进入维修前台</button></article></div><article className="react-card"><div className="react-heading"><h2>待处理预约</h2><button onClick={() => onNavigate('repair')}>完整维修列表</button></div><div className="react-table"><div className="react-row react-row-head"><span>编号</span><span>校区 / 时段</span><span>设备</span><span>状态</span></div>{appointments.slice(0, 8).map(item => <div className="react-row" key={item.id}><span>{item.id}</span><span>{item.campus}<br />{item.date} {item.timeSlot}</span><span>{item.deviceType} · {item.deviceModel}</span><span>{statusLabels[item.status] || item.status}</span></div>)}{!appointments.length && <p className="react-muted">暂无待处理预约</p>}</div></article></section>;
+  return <section className="react-page"><div className="react-heading"><div><p className="react-eyebrow">G3 · G4 · G6</p><h1>角色工作台</h1><p>{user.name} · {roles[user.role]} · {user.authorizedCampuses?.join('、')}</p></div><button onClick={refresh}>刷新</button></div>{error && <p className="react-error">{error}</p>}<div className="react-grid"><article className="react-card"><h2>今日工作</h2><p>值班安排：{data?.todayDuties?.length || 0} 项</p><p>签到状态：{data?.presence?.state || '未签到'}</p><p>当前维修：{data?.currentRepair ? data.currentRepair.id : '暂无'}</p><button className="react-primary" onClick={() => onNavigate('attendance')}>打开值班签到</button></article><article className="react-card"><h2>扫码维修前台</h2><form onSubmit={resolve} className="react-inline"><input value={code} onChange={event => setCode(event.target.value)} placeholder="扫描或输入预约编号" required /><button className="react-primary">查询工单</button></form>{scan && <div className="react-result"><strong>{scan.id}</strong><span>{scan.campus} · {scan.date} · {scan.timeSlot}</span><span>{scan.deviceType} · {scan.deviceModel}</span><small>可执行：{scan.actions?.join('、') || '查看'}</small></div>}<button onClick={() => onNavigate('scan')}>进入维修前台</button></article></div><article className="react-card"><div className="react-heading"><h2>待处理预约</h2><button onClick={() => onNavigate('staff')}>完整维修列表</button></div><div className="react-table"><div className="react-row react-row-head"><span>编号</span><span>校区 / 时段</span><span>设备</span><span>状态</span></div>{appointments.slice(0, 8).map(item => <div className="react-row" key={item.id}><span>{item.id}</span><span>{item.campus}<br />{item.date} {item.timeSlot}</span><span>{item.deviceType} · {item.deviceModel}</span><span>{statusLabels[item.status] || item.status}</span></div>)}{!appointments.length && <p className="react-muted">暂无待处理预约</p>}</div></article></section>;
 }
 
 function Members({ user }) {
@@ -35,19 +23,6 @@ function Members({ user }) {
 }
 
 
-
-function Repair({ user }) {
-  const [items, setItems] = useState([]); const [error, setError] = useState(''); const [strokes, setStrokes] = useState([]); const [onsite, setOnsite] = useState({ studentId: '', name: '', campus: user.homeCampus || '南湖', deviceType: '笔记本电脑', brand: '', deviceModel: '', faultType: '', date: '', timeSlot: '19:00–19:30', social: '', warranty: '未知' });
-  const canvasRef = React.useRef(null); const requestId = React.useRef(crypto.randomUUID());
-  useEffect(() => { const canvas = canvasRef.current; if (canvas) drawSignature(canvas, strokes); }, [strokes]);
-  async function refresh() { try { const data = await request('/api/appointments?status=all'); setItems(data.items || []); } catch (err) { setError(err.message); } }
-  useEffect(() => { refresh(); }, []);
-  function point(event) { const rect = canvasRef.current.getBoundingClientRect(); return [Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)), Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height))]; }
-  function begin(event) { event.currentTarget.setPointerCapture(event.pointerId); setStrokes(current => [...current, [point(event)]]); }
-  function move(event) { if (!event.currentTarget.hasPointerCapture(event.pointerId)) return; setStrokes(current => { const next = current.map(stroke => [...stroke]); next[next.length - 1].push(point(event)); return next; }); }
-  async function createOnsite(event) { event.preventDefault(); if (!validSignature(strokes)) { setError('请先完成机主本人手写签名'); return; } try { await request('/api/scan/onsite', { method: 'POST', body: { ...onsite, registrationKey: requestId.current, agreementAt: new Date().toISOString(), signature: strokes } }); setOnsite(current => ({ ...current, studentId: '', name: '', brand: '', deviceModel: '', faultType: '', social: '' })); setStrokes([]); requestId.current = crypto.randomUUID(); refresh(); } catch (err) { setError(err.message); } }
-  return <section className="react-page"><div className="react-heading"><div><p className="react-eyebrow">G4 · G6 · REPAIR DESK</p><h1>维修前台</h1><p>扫码查询、维修登记与现场临时工单入口。</p></div><button onClick={refresh}>刷新</button></div>{error && <p className="react-error">{error}</p>}<div className="react-grid"><article className="react-card"><h2>临时维修登记</h2><form onSubmit={createOnsite} className="react-form-grid">{[['studentId','学号'],['name','姓名'],['social','联系方式'],['brand','品牌'],['deviceModel','型号'],['faultType','故障']].map(([key, label]) => <label key={key}>{label}<input required value={onsite[key]} onChange={event => setOnsite({ ...onsite, [key]: event.target.value })} /></label>)}<label>校区<select value={onsite.campus} onChange={event => setOnsite({ ...onsite, campus: event.target.value })}><option>南湖</option><option>浑南</option></select></label><label>日期<input type="date" required value={onsite.date} onChange={event => setOnsite({ ...onsite, date: event.target.value })} /></label><label>时段<select value={onsite.timeSlot} onChange={event => setOnsite({ ...onsite, timeSlot: event.target.value })}>{TIME_SLOTS.map(slot => <option key={slot}>{slot}</option>)}</select></label><label>机主本人签名<canvas ref={canvasRef} width="500" height="180" className="react-signature" onPointerDown={begin} onPointerMove={move} /></label><button type="button" onClick={() => setStrokes([])}>清除签名</button><button className="react-primary">创建临时工单</button></form></article><article className="react-card"><h2>工单队列</h2><div className="react-table">{items.slice(0, 20).map(item => <div className="react-row" key={item.id}><span>{item.id}<br />{item.name || '已隐藏身份'}</span><span>{item.campus}<br />{item.timeSlot}</span><span>{statusLabels[item.status] || item.status}</span></div>)}</div></article></div></section>;
-}
 
 function Attendance({ onNavigate }) {
   const [items, setItems] = useState([]); const [token, setToken] = useState(''); const [message, setMessage] = useState('');
@@ -69,43 +44,25 @@ function Roster() {
   return <section className="react-page"><div className="react-heading"><div><p className="react-eyebrow">G8 · G9 · G10</p><h1>排班、换班与请假</h1><p>查看已发布班表，填报可用时间并提交协作申请。</p></div><button onClick={refresh}>刷新</button></div>{message && <p className="react-message">{message}</p>}<div className="react-grid"><article className="react-card"><h2>我的已发布班次</h2>{assignments.map(item => <div className="react-list-item" key={item.id}>{item.businessDate} · {item.startAt}–{item.endAt} · {item.campusName || item.campusId} · {item.roleKind || item.dutyType}<button type="button" onClick={() => setSwapForm(current => ({ ...current, fromAssignmentId: item.id, fromRevision: item.revision }))}>发起换班</button></div>)}{!assignments.length && <p className="react-muted">本周班表正在安排</p>}</article><article className="react-card"><h2>可值班时间</h2><form onSubmit={saveAvailability}>{tasks.length ? <select value={availability.taskId} onChange={event => setAvailability({ ...availability, taskId: event.target.value })}>{tasks.map(task => <option key={task.id} value={task.id}>{task.weekStart} · {task.slotStart}–{task.slotEnd}</option>)}</select> : <p className="react-muted">暂无开放的排班任务</p>}<input type="date" required value={availability.businessDate} onChange={event => setAvailability({ ...availability, businessDate: event.target.value })} /><div className="react-inline"><input type="time" value={availability.startAt} onChange={event => setAvailability({ ...availability, startAt: event.target.value })} /><input type="time" value={availability.endAt} onChange={event => setAvailability({ ...availability, endAt: event.target.value })} /></div><button className="react-primary" disabled={!tasks.length}>提交可值班时间</button></form></article><article className="react-card"><h2>请假申请</h2><form onSubmit={applyLeave}><textarea value={reason} onChange={event => setReason(event.target.value)} minLength="2" required placeholder="请填写请假原因" /><button className="react-primary">提交请假</button></form>{leaves.map(item => <div className="react-list-item" key={item.id}>{item.reason} · {item.status}{item.status === 'pending' && <button type="button" onClick={() => request(`/api/leaves/${encodeURIComponent(item.id)}/withdraw`, { method: 'POST', body: { revision: item.revision } }).then(refresh).catch(error => setMessage(error.message))}>撤回</button>}{item.status === 'pending' && <span><button type="button" onClick={() => decideLeave(item, 'approve')}>批准</button><button type="button" onClick={() => decideLeave(item, 'reject')}>拒绝</button></span>}</div>)}</article><article className="react-card"><h2>换班申请</h2><form onSubmit={applySwap}><input required placeholder="目标班次 ID" value={swapForm.toAssignmentId} onChange={event => setSwapForm({ ...swapForm, toAssignmentId: event.target.value })} /><input required placeholder="目标成员 ID" value={swapForm.toMemberId} onChange={event => setSwapForm({ ...swapForm, toMemberId: event.target.value })} /><input type="number" required placeholder="目标班次版本" value={swapForm.toRevision} onChange={event => setSwapForm({ ...swapForm, toRevision: event.target.value })} /><input placeholder="说明" value={swapForm.note} onChange={event => setSwapForm({ ...swapForm, note: event.target.value })} /><button className="react-primary">提交换班</button></form>{swaps.map(item => <div className="react-list-item" key={item.id}>{item.fromAssignmentId} → {item.toAssignmentId} · {item.status}{item.status === 'pending' && <span><button type="button" onClick={() => decideSwap(item, 'accept')}>接受</button><button type="button" onClick={() => decideSwap(item, 'decline')}>拒绝</button></span>}</div>)}</article></div></section>;
 }
 
-function App({ user, onLogout }) { const [page, setPage] = useState('workbench'); const admin = ['admin', 'superadmin'].includes(user.role); const navigate = value => setPage(value); return <><header className="react-topbar"><strong>先锋硬件部</strong><nav><button className={page === 'workbench' ? 'is-active' : ''} onClick={() => setPage('workbench')}>工作台</button><button className={page === 'repair' ? 'is-active' : ''} onClick={() => setPage('repair')}>维修前台</button><button className={page === 'attendance' ? 'is-active' : ''} onClick={() => setPage('attendance')}>签到</button><button className={page === 'roster' ? 'is-active' : ''} onClick={() => setPage('roster')}>排班</button>{admin && <><button className={page === 'members' ? 'is-active' : ''} onClick={() => setPage('members')}>成员管理</button><button className={page === 'permissions' ? 'is-active' : ''} onClick={() => setPage('permissions')}>权限编辑器</button></>}</nav><span>{user.name} · {roles[user.role]} <button onClick={onLogout}>退出</button></span></header>{page === 'workbench' && <Workbench user={user} onNavigate={navigate} />}{page === 'repair' && <Repair user={user} />}{page === 'attendance' && <Attendance onNavigate={navigate} />}{page === 'roster' && <Roster />}{page === 'members' && admin && <Members user={user} />}{page === 'permissions' && admin && <Permissions />}</>; }
-
+// The React host mounts new modules alongside the existing operational modules.
+// Authentication, navigation and camera lifecycle have one owner in main.js.
 function Root() {
   const [user, setUser] = useState(null);
-  const [restoring, setRestoring] = useState(Boolean(readToken()));
-  const [error, setError] = useState('');
+  const [page, setPage] = useState('');
   useEffect(() => {
-    let active = true;
-    document.querySelectorAll('.login-view,#app-shell,#workbench-profile-dialog,.modal-backdrop').forEach(node => {
-      node.dataset.reactHidden = 'true'; node.hidden = true;
-    });
-    function expired() {
-      setUser(null);
-      setError('登录已失效，请重新登录');
-      setRestoring(false);
-    }
-    window.addEventListener('auth-expired', expired);
-    const token = readToken();
-    if (token) {
-      request('/api/auth/me').then(data => {
-        if (active && readToken() === token) setUser(data);
-      }).catch(err => {
-        if (active) setError(err.message);
-      }).finally(() => {
-        if (active) setRestoring(false);
-      });
-    }
-    return () => { active = false; window.removeEventListener('auth-expired', expired); };
+    return initStaffApplication({
+      onSession: setUser,
+      onView: setPage,
+      onLogout: () => { setUser(null); setPage(''); }
+    }).dispose;
   }, []);
-  function logout() {
-    request('/api/auth/logout', { method: 'POST' }).catch(() => {});
-    clearSession();
-    setUser(null);
-    setError('');
-  }
-  if (restoring) return <main className="react-login" role="status">正在恢复登录…</main>;
-  return user ? <App user={user} onLogout={logout} /> : <>{error && <p className="react-error" role="alert">{error}</p>}<Login onLogin={data => { setError(''); setUser(data); }} /></>;
+  const navigate = view => window.dispatchEvent(new CustomEvent('staff-navigate', { detail: view }));
+  if (!user) return null;
+  return <>{page === 'workbench' && <Workbench user={user} onNavigate={navigate} />}
+    {page === 'attendance' && <Attendance onNavigate={navigate} />}
+    {page === 'roster' && <Roster />}
+    {page === 'members' && <Members user={user} />}
+    {page === 'permissions' && <Permissions />}</>;
 }
 
-createRoot(document.getElementById('staff-react-root')).render(<Root />);
+createRoot(document.getElementById('staff-platform-root')).render(<Root />);

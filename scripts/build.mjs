@@ -12,7 +12,9 @@ await cp(join(root, 'public'), out, { recursive: true });
 await cp(join(root, 'shared'), join(out, 'shared'), { recursive: true });
 await cp(join(root, 'frontend/assets'), join(out, 'assets'), { recursive: true });
 await cp(join(root, 'frontend/staff'), join(out, 'staff'), { recursive: true });
-await build({ entryPoints: [join(root, 'frontend/staff-react/main.jsx')], bundle: true, format: 'esm', target: 'es2022', outfile: join(out, 'staff/react-main.mjs'), minify: false });
+await build({ entryPoints: [join(root, 'frontend/staff-react/main.jsx')], bundle: true, format: 'esm', target: 'es2022', outfile: join(out, 'staff/react-main.mjs'), minify: false, plugins: [{ name: 'shared-browser-modules', setup(builder) {
+  builder.onResolve({ filter: /^\/shared\// }, args => ({ path: resolve(root, args.path.slice(1)) }));
+} }] });
 await mkdir(join(out, 'user'));
 for (const name of await readdir(join(root, 'frontend/user'))) {
   if (!(await stat(join(root, 'frontend/user', name))).isFile()) continue;

@@ -24,7 +24,9 @@ export function createStaffHost({ documentRef = document, windowRef = window } =
     if (!nav || !context) return;
     nav.querySelectorAll('[data-generated-module]').forEach(node => node.remove());
     for (const item of context.navigation || []) {
-      if ([...nav.querySelectorAll('[data-view-link]')].some(node => node.dataset.viewLink === item.id)) continue;
+      if ([...nav.querySelectorAll('[data-view-link]')].some(node => node.dataset.viewLink === item.id || node.dataset.platformModule === item.id)) continue;
+      // Publish only registered screens; a manifest alone is not a mounted UI.
+      if (!documentRef.querySelector(`[data-view="${item.id}"]`)) continue;
       const button = documentRef.createElement('button');
       button.type = 'button'; button.className = 'nav-link'; button.dataset.viewLink = item.id; button.dataset.generatedModule = 'true';
       button.textContent = item.title; button.title = `${item.module || 'module'} · ${item.moduleVersion || ''}`;
@@ -48,20 +50,24 @@ export function createStaffHost({ documentRef = document, windowRef = window } =
   }
 
   async function refresh() {
-    if (disposed || !sessionStorage.getItem('pioneerToken')) return null;
+    const token = sessionStorage.getItem('pioneerToken');
+    if (disposed || !token) return null;
     // The legacy staff screen can continue to operate when a context refresh
     // is unavailable (for example while a deployment is warming up). A
     // rejected context request must not revoke the freshly established login;
     // auth.js owns session expiry and will handle it on its own request.
-    context = normalizeAuthContext(await apiJson('/api/auth/me', { suppressAuthExpired: true }));
+    const payload = await apiJson('/api/auth/me', { suppressAuthExpired: true });
+    if (disposed || sessionStorage.getItem('pioneerToken') !== token) return null;
+    context = { ...payload, ...normalizeAuthContext(payload) };
     renderNavigation(); renderResumeTasks();
     windowRef.dispatchEvent(new CustomEvent('staff-context-ready', { detail: context }));
     return context;
   }
 
-  function dispose() { disposed = true; windowRef.removeEventListener('staff-session-ready', refresh); windowRef.removeEventListener('auth-expired', clearContext); }
+  function dispose() { disposed = true; windowRef.removeEventListener('staff-session-ready', sessionReady); windowRef.removeEventListener('auth-expired', clearContext); }
+  function sessionReady() { refresh().catch(() => {}); }
   function clearContext() { context = null; registry = createModuleRegistry([]); }
-  windowRef.addEventListener('staff-session-ready', refresh);
+  windowRef.addEventListener('staff-session-ready', sessionReady);
   windowRef.addEventListener('auth-expired', clearContext);
   refresh().catch(() => {});
   return { refresh, dispose, get context() { return context; }, get registry() { return registry; }, queryKey };

@@ -1,5 +1,5 @@
 import {spawn,spawnSync} from 'node:child_process';
-import {mkdir,writeFile,rm,cp} from 'node:fs/promises';
+import {mkdir,writeFile,readFile,rm,cp} from 'node:fs/promises';
 import {resolve,relative,isAbsolute} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomUUID,randomBytes} from 'node:crypto';
@@ -15,6 +15,17 @@ await mkdir(dir,{recursive:true});
 // Pages locates its build directory from the nearest package.json.
 await writeFile(resolve(dir,'package.json'),JSON.stringify({private:true,type:'module'}));
 for(const area of ['functions','src','shared','dist'])await cp(resolve(root,area),resolve(dir,area),{recursive:true});
+// Freeze only the disposable test Worker; production bundles and bindings
+// never expose a clock override. Browser business fixtures use the same instant.
+if (!process.argv.includes('--serve')) {
+  const clock = `const RealDate = Date; globalThis.Date = class extends RealDate {
+    constructor(...args) { super(...(args.length ? args : [1792029600000])); }
+    static now() { return 1792029600000; }
+  };`;
+  const entry = resolve(dir, 'functions/api/[[path]].js');
+  await writeFile(resolve(dir, 'functions/e2e-clock.js'), clock);
+  await writeFile(entry, "import '../e2e-clock.js';\n" + await readFile(entry, 'utf8'));
+}
 const cfg=await config(),configPath=resolve(dir,'wrangler.jsonc'),state=resolve(dir,'state');
 const rootPassword=randomBytes(24).toString('base64url');
 const vars=`JWT_SECRET=${randomBytes(48).toString('base64url')}\nPII_ENCRYPTION_KEY=${randomBytes(32).toString('hex')}\nROOT001_PASSWORD=${rootPassword}\n`;

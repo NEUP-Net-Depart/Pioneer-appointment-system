@@ -11,15 +11,15 @@
   <link rel="stylesheet" href="/staff/react.css" />
 </head>
 <body class="staff-mode">
-  <div id="staff-react-root"></div>
+  <div id="staff-react-root">
   <section class="login-view" id="login-view">
     <div class="login-panel">
       <div class="login-brand"><img class="organization-logo" src="/assets/organization-logo.jpg" alt="先锋网络中心 Logo" /><div><strong>先锋硬件部</strong><small>免费维修预约系统</small></div></div>
       <p class="eyebrow">STAFF ACCESS · ACCOUNT LOGIN</p>
       <h1>工作人员登录</h1>
       <form class="login-form" id="login-form">
-        <label>学号 <i>*</i><input id="login-id" required placeholder="请输入学号" autocomplete="username" /></label>
-        <label>密码 <i>*</i><input id="login-password" type="password" required placeholder="请输入密码" autocomplete="current-password" /></label>
+        <label>学号 <i>*</i><input aria-label="学号" id="login-id" required placeholder="请输入学号" autocomplete="username" /></label>
+        <label>密码 <i>*</i><input aria-label="密码" id="login-password" type="password" required placeholder="请输入密码" autocomplete="current-password" /></label>
         <button class="primary-btn" type="submit">进入系统 <span>→</span></button>
       </form>
       <p class="login-message" id="login-message" role="status" aria-live="polite" hidden></p>
@@ -37,10 +37,15 @@
         <span><strong>先锋硬件部</strong><small>维修预约系统</small></span>
       </a>
       <nav class="main-nav" aria-label="主导航">
-        <button class="nav-link" data-view-link="scan" hidden>扫码维修</button>
+        <button class="nav-link" data-view-link="scan" data-role-allow="technician">扫码维修</button>
         <button class="nav-link" data-view-link="staff" data-role-allow="technician,admin">维修后台</button>
         <button class="nav-link" data-view-link="stats" data-role-allow="admin">统计分析</button>
         <button class="nav-link" data-view-link="users" data-role-allow="admin">账号管理</button><button class="nav-link" data-view-link="settings" data-role-allow="technician">个人设置</button>
+      <button class="nav-link" data-view-link="workbench" data-platform-permission="repair.summary.read" hidden>工作台</button>
+        <button class="nav-link" data-view-link="attendance" data-platform-permission="attendance.self" hidden>签到</button>
+        <button class="nav-link" data-view-link="roster" data-platform-module="rosters" data-platform-permission="roster.read" hidden>排班</button>
+        <button class="nav-link" data-view-link="members" data-platform-permission="members.manage" hidden>成员管理</button>
+        <button class="nav-link" data-view-link="permissions" data-platform-module="roles" data-platform-permission="roles.manage" hidden>权限编辑器</button>
       </nav>
       <div class="account-area"><span class="service-status"><span class="status-dot"></span>周一至周四 19:00–21:00</span><span class="account-role" id="account-role">工作人员</span><button class="logout-btn" id="logout-btn" type="button" hidden>退出</button></div>
     </div>
@@ -51,6 +56,7 @@
     <button class="workbench-icon-button" id="workbench-profile" type="button" aria-label="个人中心" aria-haspopup="dialog" aria-controls="workbench-profile-dialog" aria-expanded="false"><img class="workbench-icon" src="/assets/workbench-icons/user.svg" alt="" aria-hidden="true" /></button>
   </header>
   <main>
+    <section class="view" id="staff-platform-view" data-view="platform"><div id="staff-platform-root"></div></section>
     <section class="view scan-workbench" id="scan-view" data-view="scan">
       <div class="workbench-status" id="workbench-status" aria-label="工作状态">
         <!-- Independent status components (e.g. duty attendance) can mount here when implemented. -->
@@ -192,6 +198,7 @@
   </section>
 </div>
 <div class="modal-backdrop" id="user-edit-modal" hidden><div class="modal" role="dialog" aria-modal="true" aria-labelledby="edit-user-title"><button id="close-user-edit" class="modal-close" type="button" aria-label="关闭权限编辑">×</button><h2 id="edit-user-title">编辑账号</h2><form id="user-edit-form" class="login-form"><label>姓名<input id="edit-user-name" required minlength="2" maxlength="80" /></label><label>角色<select id="edit-user-role"></select></label><label>所属校区<select id="edit-home-campus"><option>南湖</option><option>浑南</option></select></label><fieldset><legend>授权校区</legend><div id="edit-campus-grants"></div><p>所属校区不自动授予访问权限。</p></fieldset><label>重置密码（选填）<input id="edit-user-password" type="password" minlength="8" maxlength="128" autocomplete="new-password" placeholder="留空保留现有密码" /><small>重置后交给本人，并请其在个人设置中修改。</small></label><div class="modal-actions"><button id="cancel-user-edit" class="secondary-btn" type="button">取消</button><button class="primary-btn" type="submit">保存权限</button></div></form></div></div><div class="toast" id="toast" role="status"></div>
+</div>
 <script type="module" src="/staff/react-main.mjs"></script>
 </body>
 </html>

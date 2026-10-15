@@ -7,7 +7,7 @@ const definitions = [
   { code: 'attendance.self', name: '本人签到', scopeKinds: ['self'], conditionKinds: [] }
 ];
 
-async function fixture(page, { manageRoles = true } = {}) {
+async function fixture(page, { manageRoles = true, roleName = 'superadmin' } = {}) {
   const writes = [];
   let revision = 4;
   let bindings = [{ id: 'binding-custom', roleId: 'custom-role', scope: { campusIds: ['campus-hunnan'], departmentIds: ['hardware'] }, effectiveFrom: '2026-01-01', effectiveTo: '2026-12-31' }];
@@ -17,9 +17,11 @@ async function fixture(page, { manageRoles = true } = {}) {
     const req = route.request(); const path = new URL(req.url()).pathname;
     let body = {};
     if (req.method() !== 'GET') writes.push({ path, method: req.method(), body: req.postDataJSON() });
-    if (path === '/api/auth/login') body = { token: 'test-token', account: 'root001' };
-    if (path === '/api/auth/me') body = { name: '平台测试管理员', account: 'root001', role: 'superadmin', actor: { memberId: 'root' },
+    if (path === '/api/auth/login') body = { token: 'test-token', account: 'root001', role: roleName, authorizedCampuses: ['南湖', '浑南'] };
+    if (path === '/api/auth/me') body = { name: '平台测试管理员', account: 'root001', role: roleName, authorizedCampuses: ['南湖'], homeCampus: '南湖', actor: { memberId: 'root' },
       grants: [{ permissionCode: 'members.manage' }, ...(manageRoles ? [{ permissionCode: 'roles.manage' }] : [])] };
+    if (path === '/api/appointments') body = { items: [], counts: {}, filteredCounts: {} };
+    if (path === '/api/appointments/overview') body = { dates: [], campuses: [], items: [] };
     if (path === '/api/members') body = { items: [member] };
     if (path === '/api/members/member-example') {
       if (req.method() === 'PATCH') member = { ...member, ...req.postDataJSON(), revision: ++revision };
@@ -39,8 +41,8 @@ async function fixture(page, { manageRoles = true } = {}) {
   });
   await page.goto('/staff/');
   const root = page.locator('#staff-react-root');
-  await root.getByLabel('学号', { exact: true }).fill('root001');
-  await root.getByLabel('密码', { exact: true }).fill('test-password');
+  await root.locator('#login-view').getByLabel('学号', { exact: true }).fill('root001');
+  await root.locator('#login-view').getByLabel('密码', { exact: true }).fill('test-password');
   await root.getByRole('button', { name: '进入系统' }).click();
   await expect(root.getByRole('button', { name: '成员管理', exact: true })).toBeVisible();
   return { root, writes, bindings };
@@ -102,9 +104,34 @@ test('permission changes save once and preserve complete unrelated grants', asyn
   await root.getByRole('checkbox', { name: '开始维修' }).uncheck();
   await root.getByRole('checkbox', { name: '开始维修' }).check();
   await root.getByRole('button', { name: '保存权限', exact: true }).click();
-  await expect(root.getByRole('status')).toHaveText('权限已保存，受影响的账号需要重新登录');
+  await expect(root.locator('#staff-platform-root').getByRole('status')).toHaveText('权限已保存，受影响的账号需要重新登录');
   const saved = writes.filter(write => write.path.startsWith('/api/roles/'));
   expect(saved).toHaveLength(1);
   expect(saved[0].body.grants.find(grant => grant.permissionCode === 'repair.start')).toEqual(grants[0]);
   expect(saved[0].body.grants.find(grant => grant.permissionCode === 'attendance.self').scope).toEqual({ self: true });
+});
+
+
+test('operational and React pages share a session and navigation follows grants rather than legacy roles', async ({ page }) => {
+  const errors = [], memberTokens = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('request', request => {
+    if (new URL(request.url()).pathname === '/api/members') memberTokens.push(request.headers().authorization);
+  });
+  const { root } = await fixture(page, { manageRoles: false, roleName: 'technician' });
+  await expect(root.getByRole('button', { name: '权限编辑器', exact: true })).toBeHidden();
+  await root.getByRole('button', { name: '成员管理', exact: true }).click();
+  await expect(root.locator('#staff-platform-root')).toContainText('测试成员');
+  await root.getByRole('button', { name: '个人设置', exact: true }).click();
+  await expect(root.locator('#profile-info')).toContainText('root001');
+  await expect(root.locator('#staff-platform-root')).toBeHidden();
+  await root.getByRole('button', { name: '成员管理', exact: true }).click();
+  await expect(root.locator('#staff-platform-root')).toContainText('测试成员');
+  expect(memberTokens.length).toBeGreaterThanOrEqual(2);
+  expect(memberTokens.every(value => value === 'Bearer test-token')).toBe(true);
+  await root.locator('#logout-btn').click();
+  await expect(root.locator('#login-view')).toBeVisible();
+  await expect(root.locator('#staff-platform-root')).toBeEmpty();
+  await expect(root.getByRole('button', { name: '成员管理', exact: true })).toBeHidden();
+  expect(errors).toEqual([]);
 });
