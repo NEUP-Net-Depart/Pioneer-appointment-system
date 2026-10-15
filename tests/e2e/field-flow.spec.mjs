@@ -357,3 +357,16 @@ test("field polling pauses when hidden and scanner releases every acquired track
     ),
   ).toBe(true);
 });
+
+test("shared QR writer works under the customer page security policy", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const result = await page.evaluate(async () => {
+    const { qrImage } = await import("/shared/zxing.js");
+    const blob = await qrImage("local-qr-regression");
+    return { type: blob.type, size: blob.size };
+  });
+  expect(result.type).toBe("image/png");
+  expect(result.size).toBeGreaterThan(0);
+});

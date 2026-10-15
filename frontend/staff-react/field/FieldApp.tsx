@@ -606,6 +606,13 @@ export function FieldApp({
                       账号安全
                     </button>
                     <button
+                      onClick={() =>
+                        document.getElementById("logout-btn")?.click()
+                      }
+                    >
+                      退出登录
+                    </button>
+                    <button
                       onClick={() => {
                         setAttendance(true);
                         setScan(true);
@@ -726,7 +733,7 @@ export function FieldApp({
       )}
       {selected && (
         <Repair
-          sidePanel={scene !== 'repair'}
+          sidePanel={scene !== "repair"}
           id={selected}
           key={selected}
           memberId={initial.actor.memberId}
