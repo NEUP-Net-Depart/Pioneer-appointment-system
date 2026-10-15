@@ -26,15 +26,16 @@ function Attendance({ onNavigate }) {
 
 function Roster({ user }) {
   const [assignments, setAssignments] = useState([]); const [tasks, setTasks] = useState([]); const [leaves, setLeaves] = useState([]); const [swaps, setSwaps] = useState([]); const [activeTab, setActiveTab] = useState('schedule'); const [selectedAssignment, setSelectedAssignment] = useState(null); const [reason, setReason] = useState(''); const [availability, setAvailability] = useState({ taskId: '', businessDate: '', startAt: '19:00', endAt: '21:00', campusId: 'campus-nanhu' }); const [swapForm, setSwapForm] = useState({ fromAssignmentId: '', toAssignmentId: '', toMemberId: '', fromRevision: 0, toRevision: 0, note: '' }); const [message, setMessage] = useState('');
+  const [reviewLeaves, setReviewLeaves] = useState([]); const [reviewSwaps, setReviewSwaps] = useState([]);
   const statusText = { pending: '待处理', approved: '已批准', rejected: '已拒绝', withdrawn: '已撤回', accepted: '已接受', declined: '已拒绝' };
   const canReview = ['admin', 'superadmin'].includes(user?.role);
   async function refresh() {
     try {
       const requests = [request('/api/me/roster'), request('/api/roster-tasks'), request('/api/leaves'), request('/api/swaps')];
       if (canReview) requests.push(request('/api/leaves?all=true'), request('/api/swaps?all=true'));
-      const [mine, taskData, leaveData, swapData, reviewLeaves, reviewSwaps] = await Promise.all(requests);
+      const [mine, taskData, leaveData, swapData, allLeaves, allSwaps] = await Promise.all(requests);
       setAssignments(mine.items || []); setTasks(taskData.items || []); setLeaves(leaveData.items || []); setSwaps(swapData.items || []);
-      if (reviewLeaves) setLeaves(reviewLeaves.items || []); if (reviewSwaps) setSwaps(reviewSwaps.items || []);
+      setReviewLeaves(allLeaves?.items || []); setReviewSwaps(allSwaps?.items || []);
       if (!availability.taskId && taskData.items?.[0]) setAvailability(current => ({ ...current, taskId: taskData.items[0].id }));
     } catch (error) { setMessage(error.message); }
   }

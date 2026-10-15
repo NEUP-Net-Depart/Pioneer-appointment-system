@@ -595,8 +595,13 @@ export function staffPlatformService({ repository, platform, manifests }) {
   async function swapDecision(actor, id, input) {
     if (!['accept','decline'].includes(input.decision)) fail(400, '换班审批动作不正确');
     const context = await contextFor(actor);
-    await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId }, input.businessDate || dateKey());
-    const result = await repository.updateSwap(id,input.decision === 'accept' ? 'accepted' : 'declined',context.actor.memberId,input.revision);
+    const request = await repository.swapById(id);
+    if (!request) fail(404, '换班申请不存在');
+    const fromAssignment = await repository.assignmentById(request.from_assignment_id);
+    const reviewTarget = { campusId: input.campusId || fromAssignment?.campusId };
+    const canReview = evaluate(context, 'roster.repair.manage', reviewTarget).allowed || evaluate(context, 'leave.review', reviewTarget).allowed;
+    if (!canReview && request.to_member_id !== context.actor.memberId) await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId }, input.businessDate || dateKey());
+    const result = await repository.updateSwap(id,input.decision === 'accept' ? 'accepted' : 'declined',canReview ? request.to_member_id : context.actor.memberId,input.revision);
     if (!result) fail(409, '换班申请已变化，请刷新');
     const value = publicSwap(result);
     await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.swap.decided', sourceRef: publicResourceRef('rosters','swap',id), after: value, requestId: input.requestId });

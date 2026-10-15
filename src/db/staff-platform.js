@@ -601,6 +601,7 @@ export function staffPlatformRepository(db) {
     const result = await db.prepare(`SELECT * FROM swap_requests ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''} ORDER BY created_at DESC,id DESC LIMIT 501`).bind(...args).all();
     return rows(result);
   }
+  async function swapById(id) { return db.prepare('SELECT * FROM swap_requests WHERE id=?').bind(id).first(); }
   async function updateSwap(id, status, actorMemberId, revision) {
     const request = await db.prepare('SELECT * FROM swap_requests WHERE id=? AND to_member_id=? AND revision=? AND status=\'pending\'').bind(id,actorMemberId,revision).first();
     if (!request) return null;
@@ -624,5 +625,5 @@ export function staffPlatformRepository(db) {
   return { accountRow, accountForMember, ensureMember, memberRow, memberships, membershipsForMembers, profiles, grants, todayDuties, authorizationContext, listMembers, updateMember, listMemberships, addMembership, endMembership,
     listCampuses, listDepartments, listLocations, listPresence, activeRepair, importMembers, dutyEvent, latestIntake, fieldPeople,
     roleBindings, permissionDefinitions, listRoles, createRole, updateRole, bindRoles, modules, createEvent, issueToken, findEventByToken, findAttendanceByDedupe, insertAttendance, listAttendance, attendanceExport, setPresence,
-    attendanceEvent, eventById: attendanceEvent, createReceipt, claimReceipt, releaseReceipt, receipt, audit, listAudit, createRosterTask, listRosterTasks, saveAvailability, availability, createRosterVersion, updateRosterDraft, publishRoster, listAssignments, assignmentById, createLeave, leaveById, listLeaves, updateLeave, createSwap, listSwaps, updateSwap };
+    attendanceEvent, eventById: attendanceEvent, createReceipt, claimReceipt, releaseReceipt, receipt, audit, listAudit, createRosterTask, listRosterTasks, saveAvailability, availability, createRosterVersion, updateRosterDraft, publishRoster, listAssignments, assignmentById, createLeave, leaveById, listLeaves, updateLeave, createSwap, swapById, listSwaps, updateSwap };
 }
