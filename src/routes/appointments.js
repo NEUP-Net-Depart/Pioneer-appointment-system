@@ -1,7 +1,10 @@
 import { json, readBody } from '../lib/http.js';
-import { appointmentQuery, appointmentPatch, bookingInput, liveQuery } from '../lib/validation.js';
+import { appointmentQuery, appointmentPatch, bookingInput, bookingRequestKey, liveQuery } from '../lib/validation.js';
 
 export const appointmentRoutes = [
+  ['GET', /^\/api\/appointments\/overview$/, async context => {
+    return json(await context.services.appointments.overview(await context.role('technician')));
+  }],
   ['GET', /^\/api\/appointments$/, async context => {
     const user = await context.role('technician');
     return json(await context.services.appointments.list(appointmentQuery(context.query), user));
@@ -9,7 +12,12 @@ export const appointmentRoutes = [
   ['POST', /^\/api\/appointments$/, async context => {
     await context.limit('write');
     const input = bookingInput(await readBody(context.request));
-    return json(await context.services.appointments.create(input), 201);
+    return json(await context.services.appointments.create(input,undefined,bookingRequestKey(context.request.headers.get('Idempotency-Key'))), 201);
+  }],
+  ['POST', /^\/api\/booking-attempts\/resolve$/, async context => {
+    await context.limit('lookup');
+    const input = await readBody(context.request);
+    return json(await context.services.appointments.resolveAttempt(bookingRequestKey(input.requestKey)));
   }],
   ['GET', /^\/api\/appointments\/([^/]+)$/, async (context,match) => {
     await context.limit('lookup');

@@ -14,16 +14,21 @@ try {
   const args = ['d1','migrations','apply','DB','--local','--persist-to',path];
   wrangler(args);
   wrangler(args); // The migration ledger must make the second application a no-op.
-  const [schema, keys, capacities] = JSON.parse(wrangler(['d1','execute','DB','--local','--persist-to',path,'--json','--command',
-    "SELECT name FROM sqlite_schema WHERE type IN ('table','trigger','index') ORDER BY name; PRAGMA foreign_key_check; SELECT campus,time_slot,capacity,revision FROM slot_capacities ORDER BY campus,time_slot;"], { capture: true }));
+  const [schema, keys, capacities, weekdays] = JSON.parse(wrangler(['d1','execute','DB','--local','--persist-to',path,'--json','--command',
+    "SELECT name FROM sqlite_schema WHERE type IN ('table','trigger','index') ORDER BY name; PRAGMA foreign_key_check; SELECT campus,time_slot,capacity,revision FROM slot_capacities ORDER BY campus,time_slot; SELECT * FROM weekday_slot_capacities;"], { capture: true }));
   assert.ok(schema.success && keys.success && capacities.success);
   assert.deepEqual(keys.results, [], 'D1 foreign key violations');
   const names = new Set(schema.results.map(row => row.name));
-  for (const name of ['staff_accounts','staff_campus_grants','staff_whitelist','whitelist_campus_grants','activation_requests','credential_recoveries','appointments','appointment_attachments','rate_limits','storage_quota','attachment_storage','attachment_storage_reserve','attachment_storage_release','idx_attachment_expiry','idx_storage_expiry','idx_storage_pending','appointment_capacity_insert','appointment_capacity_update','idx_active_student_slot','idx_active_queue']) assert.ok(names.has(name), `Missing D1 schema object: ${name}`);
+  for (const name of ['staff_accounts','staff_campus_grants','staff_whitelist','whitelist_campus_grants','activation_requests','credential_recoveries','appointments','appointment_attachments','rate_limits','storage_quota','attachment_storage','attachment_storage_reserve','attachment_storage_release','idx_attachment_expiry','idx_storage_expiry','idx_storage_pending','appointment_capacity_insert','appointment_capacity_update','idx_online_student_day','appointment_student_day_insert','appointment_student_day_update','service_locations','service_location_changes','booking_requests','appointment_location_insert','appointment_new_slot_deadline','idx_pending_student_photos','idx_active_queue']) assert.ok(names.has(name), `Missing D1 schema object: ${name}`);
   assert.ok(names.has('activation_approve'),'Missing atomic activation approval trigger');
   assert.ok(names.has('idx_one_pending_activation') && names.has('idx_one_approved_activation'),'Missing activation uniqueness constraints');
   assert.ok(names.has('idx_repair_number'), 'Missing repair number uniqueness index');
-  assert.ok(names.has('idx_booked_expiry'),'Missing booked expiry index');
+  for (const name of ['active_repairs','appointment_active_insert','appointment_active_update','appointment_active_delete','idx_onsite_request','idx_one_pending_onsite_registration']) assert.ok(names.has(name), `Missing scan workbench constraint: ${name}`);
+  for (const name of ['idx_booked_expiry','appointment_corrections','idx_correction_appointment']) assert.ok(names.has(name), `Missing expiration/correction schema: ${name}`);
+
+  assert.ok(names.has('booking_day_slots') && names.has('weekday_slot_capacities'), 'Missing date snapshots or weekday templates');
+  assert.equal(weekdays.results.length,32);
+  assert.ok(weekdays.results.every(row=>row.capacity===5 && row.revision===0));
   assert.ok(names.has('slot_capacities'), 'Missing campus/slot capacity settings');
   assert.equal(capacities.results.length, 4);
   assert.ok(capacities.results.every(row => row.capacity === 10 && row.revision === 0), 'Default capacity settings changed');

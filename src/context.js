@@ -18,22 +18,28 @@ import { exportService } from './services/export.js';
 import { rateLimitService } from './services/rate-limits.js';
 import { slotCapacityService } from './services/slot-capacities.js';
 import { storageLimit } from './lib/env.js';
+import { scanService } from './services/scan.js';
+import { serviceLocationRepository } from './db/service-locations.js';
+import { serviceLocationService } from './services/service-locations.js';
 
 export function createContext(request, env) {
   // Request-scoped D1 session, explicitly injected into D1 repositories. No startup I/O.
   const db = env.DB.withSession('first-primary');
   const users = userRepository(db), appointments = appointmentRepository(db);
+  const clock = env.TEST_NOW === undefined ? undefined : () => new Date(env.TEST_NOW);
   const services = {
     auth: authService(users, env.JWT_SECRET), users: userService(users),
     activation: activationService(activationRepository(db),users),
-    appointments: appointmentService(appointments, users, env.PII_ENCRYPTION_KEY),
+    appointments: appointmentService(appointments, users, env.PII_ENCRYPTION_KEY, clock),
     attachments: attachmentService(appointments, attachmentRepository(db), env.ATTACHMENTS, storageLimit(env)),
-    queue: queueService(appointments, queueRepository(db)), stats: statsService(statsRepository(db), appointments),
-    export: exportService(appointments, env.PII_ENCRYPTION_KEY),
+    queue: queueService(appointments, queueRepository(db), clock), stats: statsService(statsRepository(db), appointments, clock),
+    export: exportService(appointments, env.PII_ENCRYPTION_KEY, clock),
     limits: rateLimitService(rateLimitRepository(db), env.JWT_SECRET),
     slotCapacities: slotCapacityService(slotCapacityRepository(db)),
     async health() { await Promise.all([users.health(), env.ATTACHMENTS.list({ limit: 1 })]); return { ok: true, service: 'pioneer-repair-api', database: 'd1', attachments: 'r2' }; }
   };
+  services.scan = scanService(appointments, services.appointments, env.PII_ENCRYPTION_KEY, env.SCAN_QR_SECRET || env.PII_ENCRYPTION_KEY, env.SCAN_WORKBENCH_ENABLED === 'true', clock);
+  services.serviceLocations = serviceLocationService(serviceLocationRepository(db),appointments,services.queue,env.PII_ENCRYPTION_KEY,clock);
   let authentication;
   const authenticate = () => authentication ||= services.auth.authenticate(request.headers.get('authorization'));
   const url = new URL(request.url);

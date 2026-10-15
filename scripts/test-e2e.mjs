@@ -6,7 +6,8 @@ import {randomUUID,randomBytes} from 'node:crypto';
 import {createServer} from 'node:net';
 import {root,config} from './cli.mjs';
 import {hashPassword} from '../src/lib/passwords.js';
-import {nowIso} from '../shared/time.js';
+import {dateKey, nowIso, addDays, serviceDay} from '../shared/time.js';
+import { DEFAULT_SERVICE_LOCATIONS } from '../shared/constants.js';
 
 await import('./build.mjs');
 const parent=resolve(root,'.wrangler'),dir=resolve(parent,'e2e-'+randomUUID()),inside=relative(parent,dir);
@@ -17,7 +18,8 @@ await writeFile(resolve(dir,'package.json'),JSON.stringify({private:true,type:'m
 for(const area of ['functions','src','shared','dist'])await cp(resolve(root,area),resolve(dir,area),{recursive:true});
 const cfg=await config(),configPath=resolve(dir,'wrangler.jsonc'),state=resolve(dir,'state');
 const rootPassword=randomBytes(24).toString('base64url');
-const vars=`JWT_SECRET=${randomBytes(48).toString('base64url')}\nPII_ENCRYPTION_KEY=${randomBytes(32).toString('hex')}\nROOT001_PASSWORD=${rootPassword}\n`;
+const testNow=new Date(`${dateKey()}T10:00:00+08:00`).toISOString();
+const vars=`JWT_SECRET=${randomBytes(48).toString('base64url')}\nPII_ENCRYPTION_KEY=${randomBytes(32).toString('hex')}\nROOT001_PASSWORD=${rootPassword}\nTEST_NOW=${testNow}\n`;
 await writeFile(resolve(dir,'.dev.vars'),vars,{mode:0o600});
 await writeFile(resolve(dir,'.dev.vars.preview'),vars,{mode:0o600});
 const bindings={
@@ -42,7 +44,9 @@ async function stopServer(){
 try{
   command(['d1','migrations','apply','DB','--local','--persist-to',state]);
   const sql=resolve(dir,'seed.sql');
-  await writeFile(sql,`INSERT INTO staff_accounts(account,name,role,home_campus,protected,password_hash,created_at) VALUES ('root001','预览负责人','superadmin','南湖',1,'${hashPassword(rootPassword)}','${nowIso()}'); INSERT INTO staff_campus_grants VALUES ('root001','南湖'),('root001','浑南');`,{mode:0o600});
+  const locationDates=Array.from({length:7},(_,index)=>addDays(dateKey(),index)).filter(serviceDay);
+  const locationSeed=locationDates.flatMap(date=>['南湖','浑南'].map(campus=>`INSERT INTO service_locations(campus,date,location,updated_at) VALUES ('${campus}','${date}','${DEFAULT_SERVICE_LOCATIONS[campus]}','${nowIso()}');`)).join('');
+  await writeFile(sql,`INSERT INTO staff_accounts(account,name,role,home_campus,protected,password_hash,created_at) VALUES ('root001','预览负责人','superadmin','南湖',1,'${hashPassword(rootPassword)}','${nowIso()}'); INSERT INTO staff_campus_grants VALUES ('root001','南湖'),('root001','浑南');${locationSeed}`,{mode:0o600});
   command(['d1','execute','DB','--local','--persist-to',state,'--file',sql]);
   await rm(sql);
   const probe=createServer();await new Promise(resolve=>probe.listen(0,'127.0.0.1',resolve));

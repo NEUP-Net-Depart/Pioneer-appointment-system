@@ -52,7 +52,9 @@ test('frontend DOM selectors resolve only against their own HTML entry', async (
   for (const area of ['user','staff']) {
     const html = await readFile(`frontend/${area}/index.html`, 'utf8');
     const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]));
-    for (const file of (await files(`frontend/${area}`)).filter(file => file.endsWith('.js'))) {
+    const areaFiles=(await files(`frontend/${area}`)).filter(file=>file.endsWith('.js'));
+    for(const file of areaFiles)for(const [,id] of (await readFile(file,'utf8')).matchAll(/\bid="([\w-]+)"/g))ids.add(id);
+    for (const file of areaFiles) {
       const source = await readFile(file, 'utf8');
       for (const [, id] of source.matchAll(/\$\(['"]#([\w-]+)['"]\)/g)) assert.ok(ids.has(id), `${file} depends on missing #${id}`);
     }
@@ -162,13 +164,24 @@ test('guest browser saves credentials without PII and private links stay in the 
   globalThis.location={origin:'https://app.test'};
   try{
     const {saveAppointment,savedAppointments,privateLink,parsePrivateLink}=await import('../frontend/user/credentials.js');
-    const entry={id:'020261012-01',accessToken:'a'.repeat(43),studentId:'123456',name:'私密姓名'};
-    assert.equal(saveAppointment(entry),true);
-    assert.deepEqual(savedAppointments(),[{id:entry.id,accessToken:entry.accessToken}]);
-    assert.equal(new URL(privateLink(entry)).search,'');
-    assert.deepEqual(parsePrivateLink(privateLink(entry)),savedAppointments()[0]);
+    const entry={id:'reserve020261015-01',accessToken:'a'.repeat(43),studentId:'123456',name:'私密姓名'};
+    for (const id of [entry.id,'reverse020261012-01','020261012-01']) {
+      const item={...entry,id};
+      assert.equal(saveAppointment(item),true);
+      assert.deepEqual(savedAppointments()[0],{id,accessToken:entry.accessToken});
+      assert.equal(new URL(privateLink(item)).search,'');
+      assert.deepEqual(parsePrivateLink(privateLink(item)),savedAppointments()[0]);
+    }
+    assert.equal(savedAppointments().length,3);
     assert.equal(parsePrivateLink('https://other.test/#appointment='+entry.id+'&access='+entry.accessToken),null);
-    values.set('pioneerAppointmentAccess','{bad');assert.deepEqual(savedAppointments(),[]);
+    values.set('pioneerAppointmentAccess','{bad');assert.equal(savedAppointments().length,3); // A storage read failure retains session credentials.
     globalThis.localStorage.setItem=()=>{throw new Error('blocked');};assert.equal(saveAppointment(entry),false);
   }finally{delete globalThis.localStorage;delete globalThis.location;}
+});
+
+test('student request deadlines cover a stalled response body, not only receipt of headers',async()=>{
+  const original=globalThis.fetch;let bodyAborted=false;
+  globalThis.fetch=async(_input,{signal})=>new Response(new ReadableStream({start(controller){controller.enqueue(new TextEncoder().encode('{"id":'));signal.addEventListener('abort',()=>{bodyAborted=true;controller.error(new DOMException('aborted','AbortError'));});}}),{status:201,headers:{'Content-Type':'application/json'}});
+  try{const {apiJson}=await import('../shared/api.js?body-timeout');await assert.rejects(apiJson('/api/appointments',{timeoutMs:20}),error=>error.name==='AbortError');assert.equal(bodyAborted,true);}
+  finally{globalThis.fetch=original;}
 });

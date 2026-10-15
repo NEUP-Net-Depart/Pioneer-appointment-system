@@ -1,5 +1,5 @@
 import { json, readBody } from '../lib/http.js';
-import { slotCapacityInput } from '../lib/validation.js';
+import { slotCapacityInput, slotCapacityBatchInput } from '../lib/validation.js';
 
 export const slotCapacityRoutes = [
   ['GET', /^\/api\/slot-capacities$/, async context => {
@@ -8,6 +8,9 @@ export const slotCapacityRoutes = [
   ['PATCH', /^\/api\/slot-capacities$/, async context => {
     const actor = await context.role('admin');
     await context.limit('write');
-    return json(await context.services.slotCapacities.update(slotCapacityInput(await readBody(context.request)), actor));
+    const input = await readBody(context.request);
+    return json(input.items !== undefined
+      ? await context.services.slotCapacities.updateMany(slotCapacityBatchInput(input), actor)
+      : await context.services.slotCapacities.update(slotCapacityInput(input), actor));
   }]
 ];

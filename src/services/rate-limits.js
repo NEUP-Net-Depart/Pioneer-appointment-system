@@ -5,6 +5,7 @@ import { epochSeconds } from '../../shared/time.js';
 const policies = {
   login: { limit: 20, seconds: 900 }, lookup: { limit: 30, seconds: 60 },
   write: { limit: 30, seconds: 60 }, upload: { limit: 15, seconds: 60 },
+  scanSearch: { limit: 60, seconds: 60 },
   activation: { limit: 60, seconds: 900 }
 };
 export function rateLimitService(repository, secret) {

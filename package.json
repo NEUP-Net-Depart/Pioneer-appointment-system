@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Single Cloudflare Pages project with D1 and R2",
+  "description": "Cloudflare Pages with isolated Production, Preview and Staff Staging resources",
   "engines": {
     "node": ">=22.0.0"
   },
@@ -15,11 +15,12 @@
     "db:migrate:remote": "node scripts/migrate-remote.mjs",
     "db:seed": "node scripts/seed.mjs",
     "attachments:cleanup": "node scripts/cleanup-attachments.mjs",
-    "appointments:end-no-shows": "node scripts/end-no-shows.mjs",
+    "appointments:expire": "node scripts/expire-appointments.mjs",
     "check": "node scripts/check.mjs",
     "test": "npm run build && node --test tests/*.test.mjs",
     "deploy": "node scripts/deploy.mjs",
     "deploy:preview": "node scripts/deploy.mjs --preview",
+    "deploy:staff-staging": "node scripts/deploy.mjs --staff-staging",
     "smoke": "node scripts/smoke.mjs",
     "lint": "eslint . --max-warnings 0",
     "audit:architecture": "node scripts/audit.mjs",
@@ -27,14 +28,21 @@
     "verify": "npm run lint && npm run audit:architecture && npm run check && npm test && npm run db:verify && npm run test:e2e",
     "test:e2e": "node scripts/test-e2e.mjs",
     "preview:local": "node scripts/test-e2e.mjs --serve",
+    "preview:booking-layout": "npm run build && node scripts/preview-booking-layout.mjs",
+    "test:booking-layout": "npm run build && node --test tests/preview/booking-layout.test.mjs",
     "release:plan": "node scripts/release-plan.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.64.0",
+    "esbuild": "0.28.2",
     "eslint": "10.12.0",
     "globals": "17.13.0",
     "miniflare": "5.20261006.1-alpha",
     "wrangler": "4.149.0"
+  },
+  "dependencies": {
+    "blueimp-load-image": "5.16.0",
+    "zxing-wasm": "3.1.5"
   }
 }
