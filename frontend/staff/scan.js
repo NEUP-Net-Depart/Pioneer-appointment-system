@@ -1,3 +1,4 @@
+import { initAppointmentSearch } from './appointment-search.js';
 import { $, $$, showToast } from '/shared/utils.js';
 import { apiJson, apiFetch } from '/shared/api.js';
 import { uploadAttachments, attachmentUrl, attachmentSize } from '/shared/attachments.js';
@@ -12,6 +13,7 @@ export function initScan() {
   let strokes = [], pointer;
   let cameraPaused = false, pageActive = true;
   const root = $('#scan-view'), form = $('#scan-onsite-form'), canvas = $('#onsite-signature');
+  const suggestions = initAppointmentSearch({ isActive: () => active, onSelect: id => resolve({ id }) });
   const account = () => sessionStorage.getItem('pioneerAccount');
   const key = suffix => `pioneerScan:${account()}:${suffix}`;
   const read = suffix => { try { return JSON.parse(localStorage.getItem(key(suffix)) || 'null'); } catch { return null; } };
@@ -43,6 +45,7 @@ export function initScan() {
     $('#scan-camera').setAttribute('aria-pressed', String(['running','opening'].includes(state)));
   } });
   function panels(id) {
+    suggestions.clear();
     scanner.stop();
     const changingPanel = id && $('#'+id).hidden;
     for (const panel of ['scan-home','scan-manual-form','scan-detail','scan-onsite-form']) $('#'+panel).hidden = panel !== id;
@@ -177,7 +180,7 @@ export function initScan() {
     if (current === generation) { $('#scan-add-files').value = ''; await loadFiles(); message('维修附件已保存'); }
   }));
   $('#scan-manual').addEventListener('click', () => { if (ready) { panels('scan-manual-form'); $('#scan-number').focus(); } });
-  $('#scan-manual-form').addEventListener('submit', event => { event.preventDefault(); resolve({ id: $('#scan-number').value.trim() }); });
+  $('#scan-manual-form').addEventListener('submit', event => { event.preventDefault(); suggestions.clear(); resolve({ id: $('#scan-number').value.trim() }); });
   $('#scan-camera').addEventListener('click', () => {
     if (['running','opening'].includes($('.scanner-frame').dataset.cameraState)) {
       cameraPaused = true; scanner.stop();
@@ -267,6 +270,7 @@ export function initScan() {
     refresh() {},
     activate(value) {
       active = value;
+      if (!active) suggestions.clear();
       if (active && ready && !$('#scan-home').hidden && !document.hidden) scanner.start(); else scanner.stop();
     },
     clear() {

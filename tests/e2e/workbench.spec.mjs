@@ -238,3 +238,36 @@ test('admins keep their management navigation and the feature flag restores the 
   await page.reload(); await expect(page.locator('#staff-view')).toBeVisible();
   await expect(page.locator('[data-view-link=scan]')).toBeHidden(); await expect(page.locator('[data-view-link=stats]')).toBeHidden();
 });
+
+for (const width of [320,1440]) test(`manual search waits for two digits and opens only matching candidates at ${width}px`, async ({page}) => {
+  await page.setViewportSize({width,height:800});
+  await cameraDenied(page); await mockSession(page);
+  const queries=[];
+  const id='reserve020261015-01';
+  await page.route('**/api/appointments/*/attachments', route=>route.fulfill({json:{items:[]}}));
+  await page.route('**/api/scan/search',async route=>{
+    const {q}=route.request().postDataJSON(); queries.push(q);
+    await route.fulfill({json:{items:['01','1015-01'].includes(q) ? [{id,campus:'南湖',date:'2026-10-15',timeSlot:'19:00–19:30',status:'booked'}] : [],hasMore:false}});
+  });
+  await page.route('**/api/scan/resolve',route=>route.fulfill({json:{id,status:'cancelled',campus:'南湖',timeSlot:'19:00–19:30'}}));
+  await login(page); await page.locator('#scan-manual').click();
+  await page.locator('#scan-number').fill('0');
+  await page.waitForTimeout(400);
+  expect(queries).toEqual([]); await expect(page.locator('#scan-number-suggestions')).toBeHidden();
+  await page.locator('#scan-number').fill('reserve01');
+  await expect(page.locator('.scan-number-suggestion')).toHaveCount(1);
+  expect(queries).toEqual(['01']);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.locator('#scan-number').fill('9999');
+  await expect(page.locator('#scan-number-message')).toContainText('没有匹配');
+  await expect(page.locator('#scan-number-suggestions')).toBeHidden();
+  await page.locator('#scan-number').fill('01');
+  await expect(page.locator('.scan-number-suggestion')).toHaveCount(1);
+  await page.locator('#scan-number').fill('1015-01');
+  await expect(page.locator('.scan-number-suggestion')).toContainText('2026-10-15');
+  await expect(page.locator('#scan-number-message')).toContainText('可见预约');
+  await page.locator('#scan-number').press('ArrowDown');
+  await expect(page.locator('.scan-number-suggestion')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#scan-detail')).toBeVisible();
+});

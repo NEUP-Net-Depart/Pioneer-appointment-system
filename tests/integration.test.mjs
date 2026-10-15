@@ -124,6 +124,47 @@ beforeEach(async () => {
   if (objects.objects.length) await bucket.delete(objects.objects.map(object => object.key));
 });
 
+test('scan number search requires two digits, limits results and preserves date, campus and access scopes', async () => {
+  const root = await login(), tech = await addUser('993046');
+  const booked = await book(), ended = await book(), other = await book({campus:'浑南'});
+  await db.prepare("UPDATE appointments SET status='cancelled' WHERE id=?").bind(ended.id).run();
+  const search = (token,q) => api('/api/scan/search',{method:'POST',token,body:{q}});
+  await api('/api/scan/search',{method:'POST',body:{q:'2026'}},401);
+  assert.deepEqual(await search(root,'2'),{items:[],hasMore:false});
+  await api('/api/scan/search',{method:'POST',token:root,body:{q:'2026%'}},400);
+  const all = await search(root,'01');
+  assert.equal(all.items.length,2);
+  assert.deepEqual(Object.keys(all.items[0]).sort(),['campus','date','id','status','timeSlot']);
+  assert.deepEqual((await search(tech,'01')).items.map(item=>item.id),[booked.id]);
+  assert.ok((await search(root,booked.id)).items.some(item=>item.id===booked.id));
+  assert.equal((await search(root,'2026')).items.length,0);
+  assert.equal((await search(root,'1015')).items.length,0);
+  assert.equal((await search(root,'02')).items[0].status,'cancelled');
+  assert.ok(all.items.some(item=>item.id===other.id));
+  await db.prepare("UPDATE appointments SET date='2026-10-14' WHERE id=?").bind(ended.id).run();
+  assert.equal((await search(root,'02')).items.length,0);
+  assert.deepEqual((await search(root,'1015-02')).items.map(item=>item.id),[ended.id]);
+  assert.equal((await search(tech,'1015-02')).items.length,0);
+  assert.equal((await search(tech,'120261015-01')).items.length,0);
+  assert.equal((await search(root,'1015-')).items.length,3);
+  for (const q of ['-01','10--01']) await api('/api/scan/search',{method:'POST',token:root,body:{q}},400);
+  for (let i=0;i<8;i++) {
+    const item=await book({timeSlot:i<4 ? '19:30–20:00' : '20:00–20:30'});
+    await db.prepare('UPDATE appointments SET id=? WHERE id=?').bind(`reserve020261015-01${i}`,item.id).run();
+  }
+  const limited=await search(root,'01');
+  assert.equal(limited.items.length,8); assert.equal(limited.hasMore,true);
+
+});
+
+test('automatic scan searches cannot consume the resolve quota', async () => {
+  const token=await login(), item=await book();
+  for(let i=0;i<60;i++) await api('/api/scan/search',{method:'POST',token,body:{q:'01'}});
+  await api('/api/scan/search',{method:'POST',token,body:{q:'01'}},429);
+  const found=await api('/api/scan/resolve',{method:'POST',token,body:{id:item.id}});
+  assert.equal(found.id,item.id);
+});
+
 test('scan lookup needs staff authorization, preserves campus scope and never starts a repair', async () => {
   const item = await book(), tech = await addUser('993001');
   const headers = {accessToken:item.accessToken};

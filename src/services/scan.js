@@ -1,9 +1,11 @@
+import { parseAppointmentSearch, APPOINTMENT_SEARCH_LIMIT } from '../../shared/appointment-search.js';
+import { appointmentAccessRules } from '../lib/appointment-access.js';
 import { fail } from '../lib/http.js';
 import { scanCode, verifyScanCode } from '../lib/scan-code.js';
 import { onsiteBookingInput, stringField } from '../lib/validation.js';
 import { dateKey } from '../../shared/time.js';
 import { TIME_SLOTS } from '../../shared/constants.js';
-import { requireCampus, requireAppointmentAccess } from './permissions.js';
+import { requireCampus, requireAppointmentAccess, appointmentScope } from './permissions.js';
 import { presentAppointment } from './appointments.js';
 
 export function scanService(appointments, service, encryptionKey, secret, enabled, clock = () => new Date()) {
@@ -37,6 +39,16 @@ export function scanService(appointments, service, encryptionKey, secret, enable
       const id = input.code !== undefined ? verifyScanCode(input.code, secret) : stringField(input.id, '预约编号', 80, true);
       if (!/^(?:reserve|reverse)?[01]\d{8}-\d{2,}$/.test(id)) fail(400, '请输入完整预约编号');
       return locate(id, actor);
+    },
+    async search(input, actor) {
+      available();
+      const query = parseAppointmentSearch(input.q);
+      if (!query) fail(400, '请输入预约编号中的数字');
+      if (!query.ready) return { items: [], hasMore: false };
+      const now = clock(), scope = appointmentScope(actor);
+      await expire(now, { campuses: scope.campuses });
+      const items = await appointments.searchNumbers(query.text, query.acrossDates ? null : dateKey(now), scope, appointmentAccessRules(actor, { start: true }));
+      return { items: items.slice(0, APPOINTMENT_SEARCH_LIMIT), hasMore: items.length > APPOINTMENT_SEARCH_LIMIT };
     },
     async current(actor, registrationRequestId) {
       available();
