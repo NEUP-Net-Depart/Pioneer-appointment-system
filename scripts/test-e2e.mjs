@@ -68,7 +68,7 @@ try{
   }else{
     const runner=fileURLToPath(new URL('../node_modules/@playwright/test/cli.js',import.meta.url));
     exitCode=await new Promise((resolve,reject)=>{
-      const child=spawn(process.execPath,[runner,'test','--config','playwright.config.mjs'],{cwd:root,env:{...env,E2E_BASE_URL:base,E2E_ROOT_PASSWORD:rootPassword},stdio:'inherit'});
+      const child=spawn(process.execPath,[runner,'test','--config','playwright.config.mjs',...process.argv.slice(2)],{cwd:root,env:{...env,E2E_BASE_URL:base,E2E_ROOT_PASSWORD:rootPassword},stdio:'inherit'});
       child.once('error',reject);child.once('exit',code=>resolve(code ?? 1));
     });
   }

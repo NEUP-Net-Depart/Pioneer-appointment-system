@@ -1,12 +1,14 @@
 import { test, expect } from '@playwright/test';
+import { TIME_SLOTS } from '../../shared/constants.js';
 
-const firstSlot = '19:00–20:00', secondSlot = '20:00–21:00';
+const firstSlot = TIME_SLOTS[0], secondSlot = TIME_SLOTS.at(-1);
 const day = page => page.locator('[data-date="2026-10-12"]');
 const slot = (page, value = firstSlot) => page.locator(`[data-slot="${value}"]`);
 function summary(campus, date) {
   return {
-    date, slotCapacities: { [firstSlot]: campus === '浑南' ? 5 : 10, [secondSlot]: 10 },
-    slots: { [firstSlot]: date === '2026-10-12' ? 2 : 0, [secondSlot]: 0 }
+    date, timeSlots: TIME_SLOTS,
+    slotCapacities: Object.fromEntries(TIME_SLOTS.map(slot => [slot, slot === firstSlot && campus === '浑南' ? 5 : 10])),
+    slots: Object.fromEntries(TIME_SLOTS.map(slot => [slot, slot === firstSlot && date === '2026-10-12' ? 2 : 0]))
   };
 }
 async function setup(page, instant = '2026-10-12T12:00:00+08:00', handler) {
@@ -23,8 +25,8 @@ test('dates show availability immediately, campus controls sync, and selections 
   await setup(page);
   await expect(page.locator('#booking-days button')).toHaveCount(4);
   await expect(day(page)).toContainText('周一 · 10/12');
-  await expect(day(page)).toContainText('剩余 18 名');
-  await expect(page.locator('[data-date="2026-10-13"]')).toContainText('剩余 20 名');
+  await expect(day(page)).toContainText('剩余 38 名');
+  await expect(page.locator('[data-date="2026-10-13"]')).toContainText('剩余 40 名');
   await expect(page.locator('[name=campus]')).toHaveValue('南湖');
   await expect(page.locator('#booking-slot-panel')).toBeHidden();
   await expect(page.locator('input[type=date], select[name=timeSlot]')).toHaveCount(0);
@@ -34,11 +36,11 @@ test('dates show availability immediately, campus controls sync, and selections 
   await page.keyboard.press('Enter');
   await expect(slot(page)).toContainText('剩余 8 名');
   await slot(page).click();
-  await expect(page.locator('#booking-selection')).toContainText('已选：南湖 · 周一 · 10/12 · 19:00–20:00');
+  await expect(page.locator('#booking-selection')).toContainText('已选：南湖 · 周一 · 10/12 · 19:00–19:30');
   await page.locator('[data-campus="浑南"]').click();
   await expect(page.locator('[name=campus]')).toHaveValue('浑南');
   await expect(page.locator('[name=timeSlot]')).toHaveValue('');
-  await expect(day(page)).toContainText('剩余 13 名');
+  await expect(day(page)).toContainText('剩余 33 名');
   await expect(slot(page)).toContainText('剩余 3 名');
   await page.locator('[name=campus]').selectOption('南湖');
   await expect(page.locator('[data-campus="南湖"]')).toHaveAttribute('aria-pressed', 'true');
@@ -118,14 +120,14 @@ test('a delayed response for the previous campus cannot replace current availabi
     await route.fulfill({ json: summary(query.get('campus'), query.get('date')) });
   });
   await page.locator('[data-campus="浑南"]').click();
-  await expect(day(page)).toContainText('剩余 13 名');
+  await expect(day(page)).toContainText('剩余 33 名');
   const previousResponses = [];
   page.on('response', response => {
     if (response.url().includes('/api/live/summary?') && new URL(response.url()).searchParams.get('campus') === '南湖') previousResponses.push(response.finished());
   });
   const lastResponse = page.waitForResponse(response => response.url().includes('date=2026-10-15') && response.url().includes('campus=%E5%8D%97%E6%B9%96'));
   release(); await lastResponse; await Promise.all(previousResponses);
-  await expect(day(page)).toContainText('剩余 13 名');
+  await expect(day(page)).toContainText('剩余 33 名');
   await day(page).click(); await slot(page).click();
   await expect(slot(page)).toContainText('剩余 3 名');
   await expect(page.locator('[name=campus]')).toHaveValue('浑南');
@@ -144,11 +146,11 @@ test('switching campuses displays cached counts until fresh availability arrives
   await expect(page.locator('[name=timeSlot]')).toHaveValue(firstSlot);
   await page.locator('[data-campus="浑南"]').click();
   await expect(day(page)).toBeEnabled();
-  await expect(day(page)).toContainText('剩余 13 名');
+  await expect(day(page)).toContainText('剩余 33 名');
   gate = new Promise(resolve => { release = resolve; });
   await page.locator('[data-campus="南湖"]').click();
   await expect(page.locator('#booking-picker')).toHaveAttribute('aria-busy', 'true');
-  await expect(day(page)).toContainText('剩余 18 名');
+  await expect(day(page)).toContainText('剩余 38 名');
   await expect(slot(page)).toContainText('剩余 8 名');
   await expect(day(page).locator('.booking-count-reel')).toHaveCount(1);
   const cachedReel = await day(page).locator('.booking-count-reel').elementHandle();
@@ -162,10 +164,10 @@ test('switching campuses displays cached counts until fresh availability arrives
   await expect(day(page)).toBeEnabled();
   gate = new Promise(resolve => { release = resolve; });
   await page.locator('[name=campus]').selectOption('南湖');
-  await expect(day(page)).toContainText('剩余 18 名');
+  await expect(day(page)).toContainText('剩余 38 名');
   await expect(slot(page)).toContainText('剩余 8 名');
   release();
-  await expect(day(page)).toContainText('剩余 10 名');
+  await expect(day(page)).toContainText('剩余 30 名');
   await expect(day(page).locator('.booking-count-reel')).toHaveCount(1);
   await expect(slot(page)).toContainText('预约已满');
   await expect(slot(page)).toBeDisabled();
@@ -199,10 +201,10 @@ test('availability polls every 30 seconds, keeps unchanged digits still, and pau
   expect(await day(page).locator('.booking-count-reel').evaluate((element, original) => element === original, originalReel)).toBe(true);
   changed = true;
   await page.clock.fastForward(30000);
-  await expect(day(page)).toContainText('剩余 16 名');
+  await expect(day(page)).toContainText('剩余 36 名');
   expect(requests).toHaveLength(12);
   expect(await day(page).locator('.booking-count-reel').evaluate((element, original) => element === original, originalReel)).toBe(false);
-  await expect(day(page).locator('.booking-count-value')).toHaveText('16');
+  await expect(day(page).locator('.booking-count-value')).toHaveText('36');
   await page.evaluate(() => {
     Object.defineProperty(document, 'hidden', { configurable: true, value: true });
     document.dispatchEvent(new Event('visibilitychange'));
@@ -234,7 +236,7 @@ test('loading starts at zero, counts roll in place and refreshes preserve select
   await setup(page, undefined, async (route, query) => {
     await gate;
     const data = summary(query.get('campus'), query.get('date'));
-    if (largeCounts) data.slotCapacities = { [firstSlot]: 1000, [secondSlot]: 1000 };
+    if (largeCounts) data.slotCapacities = Object.fromEntries(TIME_SLOTS.map(slot => [slot, 1000]));
     await route.fulfill({ json: data });
   });
   const count = day(page).locator('.booking-remaining');
@@ -242,7 +244,7 @@ test('loading starts at zero, counts roll in place and refreshes preserve select
   const placeholderBox = await count.boundingBox();
   release();
   await expect(day(page)).toBeEnabled();
-  await expect(count.locator('.booking-count-value')).toHaveText('18');
+  await expect(count.locator('.booking-count-value')).toHaveText('38');
   await expect(count.locator('.booking-count-reel')).toHaveAttribute('aria-hidden', 'true');
   await expect(count.locator('.booking-count-column')).toHaveCount(2);
   expect((await count.boundingBox()).width).toBe(placeholderBox.width);
@@ -256,14 +258,14 @@ test('loading starts at zero, counts roll in place and refreshes preserve select
   largeCounts = true;
   await slot(page).click();
   await expect(page.locator('#booking-picker')).toHaveAttribute('aria-busy', 'true');
-  await expect(day(page)).toContainText('剩余 18 名');
+  await expect(day(page)).toContainText('剩余 38 名');
   await expect(slot(page)).toContainText('剩余 8 名');
   await expect(slot(page)).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#booking-updated')).toHaveText(previousText);
   expect(await slot(page).evaluate(button => getComputedStyle(button).opacity)).toBe('1');
   expect(await count.evaluate((element, original) => element === original, countNode)).toBe(true);
   release();
-  await expect(day(page)).toContainText('剩余 1998 名');
+  await expect(day(page)).toContainText('剩余 3998 名');
   await expect(slot(page)).toContainText('剩余 998 名');
   expect((await count.boundingBox()).width).toBe(placeholderBox.width);
   expect((await slot(page).locator('.booking-remaining').boundingBox()).width).toBe(previousSlotBox.width);
@@ -278,7 +280,7 @@ test('loading starts at zero, counts roll in place and refreshes preserve select
   await page.emulateMedia({ reducedMotion: 'reduce' });
   largeCounts = false;
   await page.locator('[data-campus="浑南"]').click();
-  await expect(day(page)).toContainText('剩余 13 名');
+  await expect(day(page)).toContainText('剩余 33 名');
   await expect(count.locator('.booking-count-column')).toHaveCount(0);
 });
 
@@ -286,8 +288,8 @@ test('cached options select immediately while background reads reconcile full sl
   let filled = false, release, gate = Promise.resolve();
   await setup(page, undefined, async (route, query) => {
     const date = query.get('date'), data = summary(query.get('campus'), date);
-    if (date === '2026-10-12') data.slots = { [firstSlot]: 10, [secondSlot]: 10 };
-    if (date === '2026-10-15') data.slotCapacities = { [firstSlot]: 0, [secondSlot]: 0 };
+    if (date === '2026-10-12') data.slots = Object.fromEntries(TIME_SLOTS.map(slot => [slot, 10]));
+    if (date === '2026-10-15') data.slotCapacities = Object.fromEntries(TIME_SLOTS.map(slot => [slot, 0]));
     if (filled && date === '2026-10-13') data.slots[firstSlot] = 10;
     await gate;
     await route.fulfill({ json: data });
@@ -346,13 +348,8 @@ for (const count of [1, 2, 3, 4]) {
   });
 }
 
-test('four future slots retain the horizontal row style within a phone screen', async ({ page }) => {
-  const futureSlots = ['19:00–19:30', '19:30–20:00', '20:00–20:30', '20:30–21:00'];
-  await page.route('**/shared/constants.js', async route => {
-    const response = await route.fetch();
-    const body = (await response.text()).replace(/export const TIME_SLOTS = .*?;/, `export const TIME_SLOTS = ${JSON.stringify(futureSlots)};`);
-    await route.fulfill({ response, body });
-  });
+test('four half-hour slots retain the horizontal row style within a phone screen', async ({ page }) => {
+  const futureSlots = TIME_SLOTS;
   await page.setViewportSize({ width: 375, height: 667 });
   await setup(page, undefined, async (route, query) => {
     await route.fulfill({ json: { date: query.get('date'),
@@ -410,7 +407,7 @@ for (const width of [320, 390, 1440]) {
     await expect(floating).toBeHidden();
     await passPicker();
     await expect(floating).toBeVisible();
-    await expect(button).toHaveAccessibleName('已选预约：南湖 · 周一 · 10/12 · 19:00–20:00，点击返回时间选择器');
+    await expect(button).toHaveAccessibleName('已选预约：南湖 · 周一 · 10/12 · 19:00–19:30，点击返回时间选择器');
     await expect(floating.locator('.booking-float-particles i')).toHaveCount(6);
     await button.evaluate(async element => {
       await Promise.all(element.parentElement.getAnimations({ subtree: true }).map(animation => animation.finished.catch(() => {})));
