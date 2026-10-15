@@ -2071,6 +2071,25 @@ test('student request validation distinguishes unknown answers and strips hidden
   const desktopWithoutAnswer=await book(draft({deviceType:'台式机',liquidMetal:undefined,contactType:'wechat',contactValue:'w'.repeat(20)}));assert.equal(desktopWithoutAnswer.liquidMetal,null);
 });
 
+test('student API rejects overlong fields explicitly and enforces numeric QQ boundaries',async()=>{
+  for(const [key,limit,value] of [['name',20,'名'],['studentId',20,'1'],['brand',30,'牌'],['deviceModel',60,'型'],['college',50,'院'],['email',254,'a'],['issue',1000,'🙂']]){
+    const response=await api('/api/appointments',{method:'POST',body:draft({[key]:value.repeat(limit+1)})},400);
+    assert.equal(response.fields[key],`必须在 ${limit} 字以内`);
+  }
+  for(const [contactType,limit] of [['qq',12],['wechat',20]]){
+    const response=await api('/api/appointments',{method:'POST',body:draft({contactType,contactValue:'1'.repeat(limit+1)})},400);
+    assert.equal(response.fields.contactValue,`必须在 ${limit} 字以内`);
+  }
+  for(const value of ['12345678','abcdefghi','012345678']){
+    const response=await api('/api/appointments',{method:'POST',body:draft({contactType:'qq',contactValue:value})},400);
+    assert.equal(response.fields.contactValue,'请输入 9～12 位 QQ 数字，首位不能为 0');
+  }
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointments').first()).n,0);
+  for(const value of ['123456789','123456789012']){
+    const item=await book({contactType:'qq',contactValue:value});assert.equal(item.contactValue,value);
+  }
+});
+
 test('daily online uniqueness is atomic across campuses and slots; completed counts and onsite does not',async()=>{
   const studentId='20265555';
   const requests=await Promise.all(['南湖','浑南'].map((campus,index)=>request('/api/appointments',{method:'POST',body:draft({studentId,campus,timeSlot:TIME_SLOTS[index]})})));

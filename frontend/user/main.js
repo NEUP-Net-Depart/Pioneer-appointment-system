@@ -2,6 +2,8 @@ import { $,$$ } from '/shared/utils.js';
 import { initBooking } from './booking.js';
 import { initLookup } from './lookup.js';
 import { closeAllDialogs } from './dialogs.js';
+import { initInputLimits } from '/shared/input-limits.js';
+initInputLimits($('#import-form'));
 let booking,lookup,lastHandled;
 function activate(view){closeAllDialogs();$$('.view').forEach(element=>element.classList.toggle('is-active',element.dataset.view===view));$$('[data-view-link]').forEach(element=>{const selected=element.dataset.viewLink===view;element.classList.toggle('is-active',selected);if(selected)element.setAttribute('aria-current','page');else element.removeAttribute('aria-current');});booking?.setActive(view==='booking');lookup?.setActive(view==='lookup');window.scrollTo({top:0,behavior:'auto'});}
 function navigate(kind,id,{record=true}={}){const fragment=kind==='detail' ? '#detail='+encodeURIComponent(id) : '#'+kind;if(record && location.hash!==fragment)history.pushState(null,'',fragment);lastHandled=location.hash;activate(kind==='booking' ? 'booking' : 'lookup');}

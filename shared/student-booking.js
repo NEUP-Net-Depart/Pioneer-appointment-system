@@ -42,20 +42,22 @@ export function studentFieldErrors(data) {
     const value = data[key];
     if (value === undefined && !required) return;
     if (required && (typeof value !== 'string' || !value.trim())) errors[key] = `请输入${label}`;
-    else if (typeof value !== 'string' || characterCount(value) > limit) errors[key] = `请检查${label}`;
+    else if (typeof value !== 'string') errors[key] = `请检查${label}`;
+    else if (characterCount(value) > limit) errors[key] = `必须在 ${limit} 字以内`;
   };
   for (const [key,label,limit,required] of [
     ['name','姓名',STUDENT_FIELD_LIMITS.name,true],['studentId','学号',STUDENT_FIELD_LIMITS.studentId,true],['college','学院',STUDENT_FIELD_LIMITS.college,true],
     ['brand','品牌',STUDENT_FIELD_LIMITS.brand,true],['deviceModel','设备型号',STUDENT_FIELD_LIMITS.deviceModel,false],['email','邮箱',STUDENT_FIELD_LIMITS.email,false],
     ['contactValue',data.contactType==='qq' ? 'QQ 账号' : '微信账号',data.contactType==='qq' ? STUDENT_FIELD_LIMITS.qqAccount : STUDENT_FIELD_LIMITS.wechatAccount,true],['issue','故障描述与补充说明',STUDENT_FIELD_LIMITS.issue,data.faultType === '其他']
   ]) text(key,label,limit,required);
-  if (!/^\d{6,20}$/.test(data.studentId || '')) errors.studentId = '请输入学号';
+  if (!errors.studentId && !/^\d{6,20}$/.test(data.studentId || '')) errors.studentId = '请输入学号';
   if (!STUDENT_DEVICE_TYPES.includes(data.deviceType)) errors.deviceType = '请选择设备类型';
   if (!FAULT_TYPES.includes(data.faultType)) errors.faultType = '请选择故障分类';
   if (!ANSWERS.includes(data.warranty)) errors.warranty = '请选择是否在保，可选不清楚';
   if (data.deviceType === '笔记本' && !ANSWERS.includes(data.liquidMetal)) errors.liquidMetal = '请选择是否使用液金散热，可选不清楚';
   if (data.deviceType === '笔记本' && data.brand === 'Dell' && data.dellG15 != null && data.dellG15 !== '' && !ANSWERS.includes(data.dellG15)) errors.dellG15 = '请选择是否属于 Dell G15 系列';
   if (!['qq','wechat'].includes(data.contactType)) errors.contactType = '请选择 QQ 或微信';
-  if (data.email && (typeof data.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email))) errors.email = '请输入有效的联系邮箱';
+  if (!errors.contactValue && data.contactType === 'qq' && !/^[1-9]\d{8,11}$/.test(data.contactValue || '')) errors.contactValue = '请输入 9～12 位 QQ 数字，首位不能为 0';
+  if (!errors.email && data.email && (typeof data.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email))) errors.email = '请输入有效的联系邮箱';
   return errors;
 }

@@ -4,6 +4,7 @@ import {dateKey,addDays,serviceDay,slotDeadline} from '../../shared/time.js';
 
 import { chooseTime,fillDevice,goReview,sign,PHOTO } from './support/student.mjs';
 
+const qqContact='98765432109';
 const memberPassword='e2e-member-password-only';
 const bookingDates=[0,1,2,3].map(n=>addDays(dateKey(),n)).filter(serviceDay);
 const date=bookingDates.find(day=>Date.now()<Date.parse(slotDeadline(day,'19:00–19:30'))) || bookingDates[0];
@@ -13,7 +14,7 @@ async function login(page,account,password){
   await page.locator('#login-form button').click();await expect(page.locator('#app-shell')).toBeVisible();
 }
 async function booking(page,studentId,{file=true}={}){
-  await page.goto('/');await chooseTime(page);await fillDevice(page,{studentId,name:'浏览器测试同学'});await page.locator('[name=qqAccount]').fill('e2e-private-contact');await page.locator('[name=issue]').fill('启动后蓝屏');
+  await page.goto('/');await chooseTime(page);await fillDevice(page,{studentId,name:'浏览器测试同学'});await page.locator('[name=qqAccount]').fill(qqContact);await page.locator('[name=issue]').fill('启动后蓝屏');
   if(file){await page.locator('#appointment-attachments').setInputFiles({name:'故障照片.png',mimeType:'image/png',buffer:PHOTO});await expect(page.locator('#booking-photos')).toContainText('照片已准备好');}
   await goReview(page);await page.locator('[name=agreement]').check();await page.locator('#open-signature').click();await page.locator('#confirm-signature').click();await expect(page.locator('#signature-error')).toContainText('完整手写');await page.locator('#cancel-signature').click();await sign(page);
   await capture(page,'booking-review-'+studentId);await page.locator('#booking-submit').click();await expect(page.locator('#success-panel')).toBeVisible();
@@ -159,7 +160,10 @@ test('student booking, private links, whitelist activation, staff permissions, r
     await root.getByRole('button',{name:'维修后台',exact:true}).click();await root.getByRole('button',{name:'账号管理',exact:true}).click();
     await expect(root.locator('[data-application]')).toHaveCount(1);
     await root.locator('#select-pending').check();await root.locator('#verify-identities').check();
+    await root.locator('#review-note').fill('字'.repeat(301));await expect(root.locator('#review-note')).toHaveValue('字'.repeat(301));await expect(root.locator('#length-error-review-note')).toHaveText('必须在 300 字以内');
+    await root.locator('#approve-applications').click();await expect(root.locator('[data-application]')).toHaveCount(1);await expect(root.locator('#review-note')).toBeFocused();
     await root.locator('#review-note').fill('已当面逐一核验部员身份及学生证');
+    await expect(root.locator('#length-error-review-note')).toBeHidden();
     await root.locator('#approve-applications').click();
     await expect(root.locator('#applications-table tr')).toHaveCount(0);
     await expect(root.locator('#applications-empty')).toBeVisible();
@@ -174,7 +178,7 @@ test('student booking, private links, whitelist activation, staff permissions, r
     await member.getByRole('button', { name: '维修后台', exact: true }).click();
     await expect(member.locator('#appointments-table')).toContainText(item.id);
     await expect(member.locator('#appointments-table')).not.toContainText('浏览器测试同学');
-    await expect(member.locator('#appointments-table')).not.toContainText('e2e-private-contact');
+    await expect(member.locator('#appointments-table')).not.toContainText(qqContact);
     const staffToken=await member.evaluate(()=>sessionStorage.getItem('pioneerToken'));
     expect((await contexts[2].request.get(`/api/appointments/${item.id}/attachments`,{headers:{Authorization:'Bearer '+staffToken}})).status()).toBe(403);
     await member.locator(`[data-start="${item.id}"]`).click();
@@ -184,7 +188,7 @@ test('student booking, private links, whitelist activation, staff permissions, r
     await capture(member,'technician-intake-photos');
     await member.locator('#confirm-intake').click();await expect(member.locator('#intake-modal')).toBeHidden();
     await expect(member.locator('#appointments-table')).toContainText('浏览器测试同学');
-    await expect(member.locator('#detail-modal')).toBeVisible();await expect(member.locator('#detail-summary')).toContainText('e2e-private-contact');
+    await expect(member.locator('#detail-modal')).toBeVisible();await expect(member.locator('#detail-summary')).toContainText(qqContact);
     await expect(member.locator('#recovery-panel')).toBeHidden();await expect(member.locator('#detail-assigned')).toHaveAttribute('readonly','');
     await capture(member,'technician-repair-detail');
     await member.setViewportSize({width:390,height:844});

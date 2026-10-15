@@ -35,25 +35,25 @@
       <section class="form-block"><h3>设备信息</h3>
         <label class="field">设备类型 <i>*</i><select name="deviceType" required></select><span class="field-error" data-error-for="deviceType"></span></label>
         <label class="field">品牌 <i>*</i><select name="brand" required></select><span class="field-error" data-error-for="brand"></span></label>
-        <label class="field" id="brand-other-field" hidden>其他品牌完整名称 <i>*</i><input name="brandOther" maxlength="30" disabled /><span class="field-error" data-error-for="brandOther"></span></label>
-        <label class="field">设备型号 <input name="deviceModel" maxlength="60" placeholder="例如 ThinkPad T14" /><span class="field-error" data-error-for="deviceModel"></span></label>
+        <label class="field" id="brand-other-field" hidden>其他品牌完整名称 <i>*</i><input name="brandOther" data-max-length="30" disabled /><span class="field-error" data-error-for="brandOther"></span></label>
+        <label class="field">设备型号 <input name="deviceModel" data-max-length="60" placeholder="例如 ThinkPad T14" /><span class="field-error" data-error-for="deviceModel"></span></label>
         <fieldset class="field" id="dell-g15-field" hidden><legend>你的电脑是 游侠 G15 系列的吗？</legend><div class="radio-options" data-answer="dellG15"></div><span class="field-error" data-error-for="dellG15"></span></fieldset>
         <fieldset class="field" id="liquid-metal-field" hidden><legend>你的电脑是否使用液金 <i>*</i></legend><div class="radio-options" data-answer="liquidMetal"></div><span class="field-error" data-error-for="liquidMetal"></span></fieldset>
         <fieldset class="field"><legend>是否在保 <i>*</i></legend><div class="radio-options" data-answer="warranty"></div><span class="field-error" data-error-for="warranty"></span></fieldset>
       </section>
       <section class="form-block"><h3>故障说明</h3><fieldset class="field"><legend>故障分类 <i>*</i></legend><div class="radio-options fault-options" id="fault-options"></div><span class="field-error" data-error-for="faultType"></span><div id="fault-advice" class="fault-advice" role="status" hidden><span class="advice-icon" aria-hidden="true">i</span><div><strong id="fault-advice-title"></strong><p id="fault-advice-message"></p></div></div></fieldset>
-        <label class="field">故障描述与补充说明 <i id="issue-required" hidden>*</i><textarea name="issue" rows="5" maxlength="2000" placeholder="描述设备遇到的问题，也可以粘贴故障视频网盘链接"></textarea><span class="field-error" data-error-for="issue"></span></label>
+        <label class="field">故障描述与补充说明 <i id="issue-required" hidden>*</i><textarea name="issue" rows="5" data-max-length="1000" placeholder="描述设备遇到的问题，也可以粘贴故障视频网盘链接"></textarea><span class="field-error" data-error-for="issue"></span></label>
         <div class="field"><h4>故障照片</h4><div id="booking-photos" class="photo-collection"></div></div>
       </section>
       <section class="form-block"><h3>机主与联系方式</h3>
-        <label class="field">姓名 <i>*</i><input name="name" maxlength="20" required autocomplete="off" /><span class="field-error" data-error-for="name"></span></label>
-        <label class="field">学号 <i>*</i><input name="studentId" maxlength="20" required inputmode="numeric" autocomplete="off" /><span class="field-error" data-error-for="studentId"></span></label>
+        <label class="field">姓名 <i>*</i><input name="name" data-max-length="20" required autocomplete="off" /><span class="field-error" data-error-for="name"></span></label>
+        <label class="field">学号 <i>*</i><input name="studentId" data-max-length="20" required inputmode="numeric" autocomplete="off" /><span class="field-error" data-error-for="studentId"></span></label>
         <label class="field">学院 <i>*</i><select name="college" required></select><span class="field-error" data-error-for="college"></span></label>
-        <label class="field" id="college-other-field" hidden>学院完整名称 <i>*</i><input name="collegeOther" maxlength="50" disabled /><span class="field-error" data-error-for="collegeOther"></span></label>
-        <label class="field">联系邮箱 <input name="email" type="email" maxlength="254" inputmode="email" autocomplete="email" /><span class="field-error" data-error-for="email"></span></label>
+        <label class="field" id="college-other-field" hidden>学院完整名称 <i>*</i><input name="collegeOther" data-max-length="50" disabled /><span class="field-error" data-error-for="collegeOther"></span></label>
+        <label class="field">联系邮箱 <input name="email" type="email" data-max-length="254" inputmode="email" autocomplete="email" /><span class="field-error" data-error-for="email"></span></label>
         <fieldset class="field"><legend>QQ／微信 <i>*</i></legend><div class="radio-options"><label><input name="contactType" type="radio" value="qq" /><span>QQ</span></label><label><input name="contactType" type="radio" value="wechat" /><span>微信</span></label></div><span class="field-error" data-error-for="contactType"></span></fieldset>
-        <label class="field" id="contact-qq-field" hidden>QQ 账号 <i>*</i><input name="qqAccount" maxlength="12" inputmode="numeric" disabled /><span class="field-error" data-error-for="qqAccount"></span></label>
-        <label class="field" id="contact-wechat-field" hidden>微信账号 <i>*</i><input name="wechatAccount" maxlength="20" disabled /><span class="field-error" data-error-for="wechatAccount"></span></label>
+        <label class="field" id="contact-qq-field" hidden>QQ 账号 <i>*</i><input name="qqAccount" data-max-length="12" inputmode="numeric" disabled /><span class="field-error" data-error-for="qqAccount"></span></label>
+        <label class="field" id="contact-wechat-field" hidden>微信账号 <i>*</i><input name="wechatAccount" data-max-length="20" disabled /><span class="field-error" data-error-for="wechatAccount"></span></label>
       </section>
       <div class="step-actions"><button class="secondary-btn" type="button" data-edit-step="1">上一步</button><button class="primary-btn" id="step-two-next" type="button">下一步 · 核对预约</button></div>
     </section>
@@ -79,7 +79,7 @@
 </section>
 <section class="view" id="lookup-view" data-view="lookup">
   <section id="lookup-list"><div class="student-heading title-row"><h1 tabindex="-1">我的预约</h1><button class="text-btn" id="import-appointment" type="button" hidden aria-expanded="false" aria-controls="import-form">导入预约</button></div>
-    <form id="import-form" class="student-form import-form" hidden novalidate><label class="field">私人查询链接<input id="private-link-input" type="url" maxlength="2048" autocomplete="off" placeholder="粘贴完整私人查询链接" /></label><button class="primary-btn" type="submit">查看预约</button><p id="import-error" class="field-error" role="alert"></p></form>
+    <form id="import-form" class="student-form import-form" hidden novalidate><label class="field">私人查询链接<input id="private-link-input" type="url" data-max-length="2048" autocomplete="off" placeholder="粘贴完整私人查询链接" /></label><button class="primary-btn" type="submit">查看预约</button><p id="import-error" class="field-error" role="alert"></p></form>
     <div class="list-toolbar"><button class="text-btn" id="refresh-my-appointments" type="button">刷新</button></div><p id="lookup-notice" class="notice" role="status" hidden></p><div id="lookup-results" aria-live="polite"></div>
   </section>
   <section id="lookup-detail" hidden><button id="back-to-appointments" class="text-btn" type="button">← 我的预约</button><h1 id="appointment-detail-title" tabindex="-1">预约详情</h1><p id="detail-notice" class="notice" role="status" hidden></p><div id="appointment-detail"></div></section>

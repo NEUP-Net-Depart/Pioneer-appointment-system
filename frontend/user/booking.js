@@ -1,6 +1,6 @@
 import { $,showToast,escapeHtml } from '/shared/utils.js';
 import { apiJson } from '/shared/api.js';
-import { COLLEGES,BRANDS,STUDENT_DEVICE_TYPES,FAULT_TYPES,ANSWERS,FAULT_HINTS,AGREEMENT_VERSION,STUDENT_FIELD_LIMITS,studentFieldErrors } from '/shared/student-booking.js';
+import { COLLEGES,BRANDS,STUDENT_DEVICE_TYPES,FAULT_TYPES,ANSWERS,FAULT_HINTS,AGREEMENT_VERSION,STUDENT_FIELD_LIMITS,characterCount,studentFieldErrors } from '/shared/student-booking.js';
 import { animateLayout,reveal,setVisible,setMessage } from './motion.js';
 import { initSlotPicker } from './slot-picker.js';
 import { initSignature } from './signature.js';
@@ -16,16 +16,15 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
   let step=1,busy=false,created=null,payload=null,attempt=readAttempt(),savedDraft=readDraft(),restoring=false,active=true,deferredPhotos=false;
   const signature=initSignature(),agreement=dialogController($('#agreement-modal'));
   const field=name=>form.elements.namedItem(name);
-  const textLimits=new WeakMap();
+  const textLimits=new Map();
   for(const [name,limit] of Object.entries(STUDENT_FIELD_LIMITS)){
     const control=field(name==='brand' ? 'brandOther' : name==='college' ? 'collegeOther' : name);
-    // A supplementary Unicode character uses two UTF-16 units. The shared
-    // validator counts actual characters in the freeform description.
-    if(control){control.maxLength=name==='issue' ? limit*2 : limit;textLimits.set(control,limit);}
+    if(control){control.dataset.maxLength=limit;textLimits.set(control,limit);}
   }
-  function limitText(control){const limit=control && textLimits.get(control);if(!limit)return;const characters=[...control.value];if(characters.length<=limit)return;
-    const start=control.selectionStart,end=control.selectionEnd;control.value=characters.slice(0,limit).join('');
-    if(typeof start==='number')control.setSelectionRange(Math.min(start,control.value.length),Math.min(end,control.value.length));
+  const errorKey=name=>name==='brandOther' ? 'brand' : name==='collegeOther' ? 'college' : ['qqAccount','wechatAccount'].includes(name) ? 'contactValue' : name;
+  function fieldErrors(){const errors=studentFieldErrors(data());
+    for(const [control,limit] of textLimits)if(!control.disabled && characterCount(control.value)>limit)errors[errorKey(control.name)]=`必须在 ${limit} 字以内`;
+    return errors;
   }
   const options=(element,items,placeholder)=>{element.innerHTML=`<option value="">${placeholder}</option>`+items.map(item=>`<option value="${escapeHtml(item.value || item)}">${escapeHtml(item.label || item)}</option>`).join('');};
   options(field('deviceType'),STUDENT_DEVICE_TYPES,'请选择设备类型');
@@ -67,20 +66,25 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
     const first=[...form.querySelectorAll('[data-error-for]')].find(target=>target.textContent && !target.closest('[hidden]'));
     if(first && focus){first.closest('.field,.form-block')?.scrollIntoView({block:'center',behavior:'auto'});const name=first.dataset.errorFor;const control=name==='signature' ? $('#open-signature') : form.querySelector(`[name="${name}"]:not(:disabled)`);control?.focus({preventScroll:true});}
   }
-  function changed(event){if(event?.isComposing)return;limitText(event?.target);syncConditions();saveDraft();
-    if(step===2){const errors=studentFieldErrors(data());for(const target of form.querySelectorAll('[data-error-for]')){if(!target.textContent)continue;const name=target.dataset.errorFor,key=name==='brandOther' ? 'brand' : name==='collegeOther' ? 'college' : ['qqAccount','wechatAccount'].includes(name) ? 'contactValue' : name;if(!errors[key]){target.textContent='';for(const control of form.querySelectorAll(`[name="${name}"]`)){control.removeAttribute('aria-invalid');if(control.dataset.baseDescription)control.setAttribute('aria-describedby',control.dataset.baseDescription);else control.removeAttribute('aria-describedby');}}}}
+  function changed(event){if(event?.isComposing)return;syncConditions();saveDraft();
+    if(step===2){const errors=fieldErrors(),visibleErrors={};
+      for(const target of form.querySelectorAll('[data-step="2"] [data-error-for]')){const name=target.dataset.errorFor,key=errorKey(name),control=field(name),limit=textLimits.get(control);
+        if(errors[key] && !control?.disabled && (target.textContent || (limit && characterCount(control.value)>limit)))visibleErrors[key]=errors[key];
+      }
+      showErrors(visibleErrors,{focus:false});
+    }
     if(step===3 && field('agreement').checked){form.querySelector('[data-error-for=agreement]').textContent='';field('agreement').removeAttribute('aria-invalid');}
   }
   form.addEventListener('input',changed);form.addEventListener('change',changed);form.addEventListener('compositionend',changed);
   form.querySelectorAll('[data-edit-step]').forEach(button=>button.addEventListener('click',()=>{if(!busy){error('');go(Number(button.dataset.editStep));}}));
   $('#step-one-next').addEventListener('click',async()=>{if(busy)return;const button=$('#step-one-next');button.disabled=true;try{if(await picker.refresh() && picker.validate()){error('');go(2);}}finally{button.disabled=false;}});
-  $('#step-two-next').addEventListener('click',()=>{const errors=studentFieldErrors(data());showErrors(errors);if(Object.keys(errors).length || !photos.validity())return;if(!picker.validate()){go(1);error('原到场时段当前不可预约，请重新选择。其他已填信息已保留。');return;}error('');go(3);void picker.refresh();});
+  $('#step-two-next').addEventListener('click',()=>{const errors=fieldErrors();showErrors(errors);if(Object.keys(errors).length || !photos.validity())return;if(!picker.validate()){go(1);error('原到场时段当前不可预约，请重新选择。其他已填信息已保留。');return;}error('');go(3);void picker.refresh();});
   $('#agreement-link').addEventListener('click',event=>{event.preventDefault();agreement.open();});$('#close-agreement').addEventListener('click',()=>agreement.close());
   $('#draft-prompt').hidden=!savedDraft;
   $('#draft-discard').addEventListener('click',()=>{savedDraft=null;clearDraft();$('#draft-prompt').hidden=true;});
   $('#draft-restore').addEventListener('click',async()=>{if(!savedDraft)return;restoring=true;const draft=savedDraft;savedDraft=null;form.reset();
-    for(const control of form.querySelectorAll('[name]')){if(control.name==='agreement')continue;const value=draft.fields[control.name];if(control.type==='radio')control.checked=control.value===value;else if(value!==undefined)control.value=value;limitText(control);}
-    syncConditions();signature.reset();photos.reset();await picker.restore(draft.fields);restoring=false;$('#draft-prompt').hidden=true;notice('已恢复文本和选择。请重新选择照片、勾选协议并完成手写签名。');go(picker.validate() ? Math.min(3,Math.max(1,draft.step || 1)) : 1);saveDraft();});
+    for(const control of form.querySelectorAll('[name]')){if(control.name==='agreement')continue;const value=draft.fields[control.name];if(control.type==='radio')control.checked=control.value===value;else if(value!==undefined)control.value=value;}
+    syncConditions();signature.reset();photos.reset();await picker.restore(draft.fields);restoring=false;$('#draft-prompt').hidden=true;notice('已恢复文本和选择。请重新选择照片、勾选协议并完成手写签名。');go(picker.validate() ? Math.min(Object.keys(fieldErrors()).length ? 2 : 3,Math.max(1,draft.step || 1)) : 1);changed();saveDraft();});
   async function resolve(){if(!attempt)return null;const result=await apiJson('/api/booking-attempts/resolve',{method:'POST',json:{requestKey:attempt.key},timeoutMs:15000});return result.found ? result.appointment : null;}
   function renderUploads(entries){if(!created)return;$('#success-photos').hidden=!entries.length;
     const uploaded=entries.filter(entry=>entry.attachment).length,failures=entries.some(entry=>entry.state==='upload-error'),pending=uploaded<entries.length,uploading=entries.some(entry=>entry.state==='uploading');
@@ -99,7 +103,7 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
   async function submit(){if(busy)return;busy=true;$('#booking-submit').disabled=true;$('#booking-submit').textContent='正在核实并提交…';form.querySelectorAll('[data-edit-step]').forEach(button=>button.disabled=true);error('');
     try {
       if(attempt?.pending){const found=await resolve();if(found){showSuccess(found);return;}}
-      const values=data(),errors=studentFieldErrors(values);
+      const values=data(),errors=fieldErrors();
       if(!field('agreement').checked)errors.agreement='请阅读并同意维修协议';if(!signature.value())errors.signature='请点击“手写本人姓名”完成签名';
       if(Object.keys(errors).some(key=>!['agreement','signature'].includes(key))){go(2);showErrors(errors);return;}
       showErrors(errors);if(Object.keys(errors).length || !photos.validity())return;
