@@ -169,6 +169,11 @@
       </div>
     </section>
 <section class="view" id="settings-view" data-view="settings"><button id="workbench-settings-back" class="workbench-back" type="button" hidden><img class="workbench-icon" src="/assets/workbench-icons/arrow-left.svg" alt="" aria-hidden="true" />返回工作台</button><div class="page-intro"><p class="eyebrow">PERSONAL SETTINGS</p><h1>个人设置</h1><p id="profile-info"></p></div><div class="content-shell">
+  <section id="location-settings" class="capacity-settings" data-role-allow="admin" hidden aria-labelledby="location-title">
+    <div class="capacity-heading"><h2 id="location-title">服务日维修地点</h2></div><p>按校区和具体日期配置。未配置地点的日期不开放学生预约。修改地点不改变当日人数快照。</p>
+    <form id="location-form" class="capacity-tool-row"><label>校区<select id="location-campus" required></select></label><label>服务日期<input id="location-date" type="date" required /></label><label>维修地点<input id="location-value" maxlength="200" placeholder="填写楼宇、房间等完整地点" /></label><button id="location-read" class="secondary-btn" type="button">读取地点</button><button class="primary-btn" type="submit">保存地点</button></form>
+    <p id="location-message" role="status"></p><div id="location-affected"></div><details><summary>地点变更记录</summary><div id="location-history"></div></details>
+  </section>
   <section id="capacity-settings" class="capacity-settings" data-role-allow="admin" hidden aria-labelledby="capacity-title">
     <div class="capacity-heading"><h2 id="capacity-title">预约人数设置</h2><button id="reload-capacities" class="text-btn" type="button">读取最新配置</button></div>
     <p>每格为该时段可预约人数，0 表示暂停。框选或点击行列标题选择，拖动右下角复制；支持 Ctrl/Cmd+C、V 跨校区粘贴。</p>

@@ -8,13 +8,21 @@ const columns = {
   outcome: 'outcome', startedAt: 'started_at', completedAt: 'completed_at', expiresAt: 'expires_at',
   agreementAt: 'agreement_at', agreementVersion: 'agreement_version', signature: 'signature',
   repairNumber: 'repair_number', frontPhotoId: 'front_photo_id', backPhotoId: 'back_photo_id',
-  source: 'source', registeredBy: 'registered_by', registrationKey: 'registration_key'
+  source: 'source', registeredBy: 'registered_by', registrationKey: 'registration_key',
+  email: 'email', contactType: 'contact_type', contactValue: 'contact_value', liquidMetal: 'liquid_metal', dellG15: 'dell_g15',
+  locationSnapshot: 'location_snapshot', locationRevision: 'location_revision'
 };
 function fromRow(row) {
-  return row ? { id: row.id, revision: row.revision, ...Object.fromEntries(Object.entries(columns).map(([key, column]) => [key, row[column] ?? (['outcome','startedAt','completedAt','repairNumber','frontPhotoId','backPhotoId'].includes(key) ? null : '')])) } : null;
+  return row ? { id: row.id, revision: row.revision, ...Object.fromEntries(Object.entries(columns).map(([key, column]) => [key, row[column] ?? (['outcome','startedAt','completedAt','repairNumber','frontPhotoId','backPhotoId','liquidMetal','dellG15','locationRevision'].includes(key) ? null : '')])) } : null;
 }
 export function appointmentRepository(db) {
   return {
+    async location(date, campus) {
+      return db.prepare('SELECT location,revision FROM service_locations WHERE date=? AND campus=?').bind(date,campus).first();
+    },
+    async findRequest(key) {
+      return db.prepare('SELECT request_key AS requestKey,digest,appointment_id AS appointmentId,encrypted_token AS encryptedToken FROM booking_requests WHERE request_key=?').bind(key).first();
+    },
     async schedule(date, campus) {
       return (await scheduleStatement(db, date, date, [campus]).all()).results;
     },
@@ -110,17 +118,30 @@ export function appointmentRepository(db) {
       ]);
       return { totals: totals.results, capacities: capacities.results };
     },
-    async create(item) {
+    async create(item, request) {
       const suffix = `${item.campus === '浑南' ? '1' : '0'}${item.date.replaceAll('-', '')}-`;
       const prefix = `reserve${suffix}`;
       // One D1 statement allocates the ID and runs capacity/uniqueness constraints atomically.
       // Include historical booking prefixes so their suffixes are never reused.
-      const row = await db.prepare(`INSERT INTO appointments(id,${Object.values(columns).join(',')},access_token_hash,credential_rotated_at)
-        SELECT ? || printf('%02d',COALESCE(MAX(CAST(substr(id,instr(id,'-')+1) AS INTEGER)),0)+1),${Object.keys(columns).map(() => '?').join(',')},?,?
+      const values = Object.keys(columns).map(key => key === 'locationSnapshot'
+        ? "COALESCE((SELECT location FROM service_locations WHERE campus=? AND date=?),'')"
+        : key === 'locationRevision' ? '(SELECT revision FROM service_locations WHERE campus=? AND date=?)' : '?');
+      const args = Object.keys(columns).flatMap(key => ['locationSnapshot','locationRevision'].includes(key) ? [item.campus,item.date]
+        : [key === 'assignedTo' ? item[key] || null : key === 'source' ? item[key] || 'booking'
+          : ['email','contactType','contactValue'].includes(key) ? item[key] || '' : item[key] ?? null]);
+      const insert = db.prepare(`INSERT INTO appointments(id,${Object.values(columns).join(',')},access_token_hash,credential_rotated_at)
+        SELECT ? || printf('%02d',COALESCE(MAX(CAST(substr(id,instr(id,'-')+1) AS INTEGER)),0)+1),${values.join(',')},?,?
         FROM appointments WHERE id LIKE ? OR id LIKE ? OR id LIKE ?
+        ${request ? 'HAVING NOT EXISTS(SELECT 1 FROM booking_requests WHERE request_key=?)' : ''}
         ON CONFLICT(registered_by,registration_key) DO UPDATE SET registration_key=excluded.registration_key RETURNING *`)
-        .bind(prefix, ...Object.keys(columns).map(key => key === 'assignedTo' ? item[key] || null : key === 'source' ? item[key] || 'booking' : item[key] ?? null), item.accessTokenHash,item.credentialRotatedAt,`${prefix}%`,`reverse${suffix}%`,`${suffix}%`).first();
-      return fromRow(row);
+        .bind(prefix,...args,item.accessTokenHash,item.credentialRotatedAt,`${prefix}%`,`reverse${suffix}%`,`${suffix}%`,...(request ? [request.key] : []));
+      if (!request) return fromRow(await insert.first());
+      // D1 batch is transactional. A racing retry observes the receipt, skips
+      // insertion, and cannot allocate an ID or consume another capacity slot.
+      const results = await db.batch([insert, db.prepare(`INSERT INTO booking_requests(request_key,digest,appointment_id,encrypted_token,created_at)
+        SELECT ?,?,id,?,? FROM appointments WHERE access_token_hash=? ON CONFLICT(request_key) DO NOTHING`)
+        .bind(request.key,request.digest,request.encryptedToken,item.createdAt,item.accessTokenHash)]);
+      return fromRow(results[0].results[0]);
     },
     async update(item, patch, correction) {
       const fields = [], args = [];

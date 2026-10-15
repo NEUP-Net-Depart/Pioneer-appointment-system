@@ -1,60 +1,21 @@
 import { test, expect } from '@playwright/test';
-
-for (const width of [320, 1440]) {
-  test(`booking advice follows choices and counters remain readable at ${width}px`, async ({ page }) => {
-    await page.setViewportSize({ width, height: width === 320 ? 700 : 1000 });
-    await page.goto('/');
-    const warranty = page.locator('[name=warranty]'), fault = page.locator('[name=faultType]');
-    await expect(page.locator('#warranty-advice')).toBeHidden();
-    await expect(page.locator('#thermal-advice')).toBeHidden();
-    await warranty.selectOption('是');
-    await expect(page.locator('#warranty-advice')).toBeVisible();
-    for (const value of ['否', '不清楚', '']) {
-      await warranty.selectOption(value);
-      await expect(page.locator('#warranty-advice')).toBeHidden();
-    }
-    await warranty.selectOption('是');
-    await fault.selectOption('清灰换硅脂');
-    await expect(page.locator('[name=faultType] + #thermal-advice')).toContainText('我们提供免费普通硅脂，您亦可自带');
-    await expect(page.locator('#thermal-advice')).toContainText('液金');
-    await fault.selectOption('蓝屏');
-    await expect(page.locator('#thermal-advice')).toBeHidden();
-    await fault.selectOption('清灰换硅脂');
-    await page.locator('[name=issue]').fill('蓝屏🙂');
-    await page.locator('[name=note]').fill('已备份');
-    await expect(page.locator('#issue-count')).toHaveText('4 / 10000 字');
-    await expect(page.locator('#note-count')).toHaveText('3 / 500 字');
-    await page.locator('[name=issue]').fill('');
-    await expect(page.locator('#issue-count')).toHaveText('0 / 10000 字');
-    await page.locator('#thermal-advice').scrollIntoViewIfNeeded();
-    for (const selector of ['#thermal-advice', '#issue-count', '#note-count']) {
-      const box = await page.locator(selector).boundingBox();
-      expect(box.x).toBeGreaterThanOrEqual(0);
-      expect(box.x + box.width).toBeLessThanOrEqual(width);
-    }
-    await page.screenshot({ path: `output/playwright/booking-form-hints-${width}.png`, fullPage: true });
-    await page.locator('#agreement-link').click();
-    await expect(page.locator('#agreement-modal')).toContainText('普通硅脂由中心提供，无需自备');
-    await page.locator('#close-agreement').click();
-    await page.locator('#booking-form').evaluate(form => form.reset());
-    await expect(page.locator('#warranty-advice')).toBeHidden();
-    await expect(page.locator('#thermal-advice')).toBeHidden();
-    await expect(page.locator('#note-count')).toHaveText('0 / 500 字');
-  });
-}
-
-test('textarea limits match the original server limits and count edits immediately', async ({ page }) => {
-  await page.goto('/');
-  for (const [name, limit] of [['issue', 10000], ['note', 500]]) {
-    const input = page.locator(`[name=${name}]`), counter = page.locator(`#${name}-count`);
-    await input.fill('字'.repeat(limit + 1));
-    await expect(input).toHaveValue('字'.repeat(limit));
-    await expect(counter).toHaveText(`${limit} / ${limit} 字`);
-    await input.fill('修改');
-    await expect(counter).toHaveText(`2 / ${limit} 字`);
-  }
+import { setupStudent,chooseTime,fillDevice,goReview } from './support/student.mjs';
+for(const width of [320,1440])test(`student conditional hints, single fault choice and Unicode count at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:900});await setupStudent(page);await chooseTime(page);await fillDevice(page);
+  await page.locator('[name=warranty][value="是"]').check();await expect(page.locator('#warranty-advice')).toBeVisible();
+  await page.locator('[name=warranty][value="不清楚"]').check();await expect(page.locator('#warranty-advice')).toBeHidden();
+  for(const [fault,hint] of [['清灰换硅脂','免费提供普通硅脂，也可以自带。'],['换硬盘','请自备需要更换的硬盘。'],['换内存','请自备需要更换的内存。']]){await page.locator(`[name=faultType][value="${fault}"]`).check();await expect(page.locator('#fault-advice')).toHaveText(hint);}
+  await page.locator('[name=faultType][value="蓝屏"]').check();await expect(page.locator('#fault-advice')).toBeHidden();
+  await expect(page.locator('[name=faultType]:checked')).toHaveCount(1);await page.locator('[name=issue]').fill('蓝屏🙂');await expect(page.locator('#issue-count')).toHaveText('3 / 1000 字');
+  await page.locator('[name=brand]').selectOption('Dell');await expect(page.locator('#dell-g15-field')).toBeVisible();await page.locator('[name=dellG15][value="不清楚"]').check();await page.locator('[name=brand]').selectOption('联想');await expect(page.locator('#dell-g15-field')).toBeHidden();await expect(page.locator('[name=dellG15]:checked')).toHaveCount(0);
+  await page.locator('[name=contactType][value=wechat]').check();await page.locator('[name=wechatAccount]').fill('other-account');await page.locator('[name=contactType][value=qq]').check();await goReview(page);await expect(page.locator('#booking-review')).toContainText('123456789');await expect(page.locator('#booking-review')).not.toContainText('other-account');
+  await page.locator('#agreement-link').click();await expect(page.locator('#agreement-modal')).toContainText('普通硅脂由中心提供，无需自备');await page.locator('#close-agreement').click();await expect(page.locator('[name=agreement]')).not.toBeChecked();await expect(page.locator('#signature-modal')).toBeHidden();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
-
+test('other fault, brand and college validate at the first error while all other input is retained',async({page})=>{
+  await setupStudent(page);await chooseTime(page);await fillDevice(page);await page.locator('[name=faultType][value="其他"]').check();await page.locator('#step-two-next').click();await expect(page.locator('[data-error-for=issue]')).toContainText('不能为空');await expect(page.locator('[name=issue]')).toBeFocused();await expect(page.locator('[name=name]')).toHaveValue('预约测试同学');
+  await page.locator('[name=issue]').fill('字'.repeat(1001));await page.locator('#step-two-next').click();await expect(page.locator('[data-error-for=issue]')).toContainText('1000');await page.locator('[name=issue]').fill('🙂'.repeat(1000));await page.locator('[name=brand]').selectOption('other');await page.locator('[name=brandOther]').fill('自行组装');await page.locator('[name=college]').selectOption('other');await page.locator('[name=collegeOther]').fill('完整学院名称');await goReview(page);await expect(page.locator('#booking-review')).toContainText('完整学院名称');await expect(page.locator('#booking-review')).toContainText('自行组装');
+});
 test('intake reminds staff to verify thermal materials only for thermal servicing', async ({ page }) => {
   await page.route('**/api/scan/current', route => route.fulfill({ json: { items: [], pending: null } }));
   await page.route('**/api/auth/login', route => route.fulfill({ json: { token: 'test-only', account: 'test-admin', role: 'admin', authorizedCampuses: ['南湖'] } }));

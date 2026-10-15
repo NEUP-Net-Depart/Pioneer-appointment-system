@@ -5,10 +5,10 @@ const mimeTypes = new Set(['image/jpeg','image/png','image/webp','application/pd
 export function attachmentInput(body) {
   if (typeof body.filename !== 'string' || typeof body.mimeType !== 'string' || typeof body.data !== 'string') fail(400, '附件格式不正确');
   const purpose = body.purpose || 'general';
-  if (!['general', 'intake_front', 'intake_back'].includes(purpose)) fail(400, '附件用途不正确');
-  const intake = purpose !== 'general';
-  const maxBytes = (intake ? 2 : 5) * 1024 * 1024;
-  const sizeError = intake ? '签到照片大小不能超过 2 MB' : '附件大小不能超过 5 MB';
+  if (!['general', 'student_photo', 'intake_front', 'intake_back'].includes(purpose)) fail(400, '附件用途不正确');
+  const intake = purpose === 'intake_front' || purpose === 'intake_back', photo = intake || purpose === 'student_photo';
+  const maxBytes = (photo ? 2 : 5) * 1024 * 1024;
+  const sizeError = intake ? '签到照片大小不能超过 2 MB' : photo ? '照片大小不能超过 2 MB' : '附件大小不能超过 5 MB';
   // Strip ASCII control characters from download filenames.
   // eslint-disable-next-line no-control-regex
   const filename = body.filename.split(/[\\/]/).pop().replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 160);
@@ -28,5 +28,6 @@ export function attachmentInput(body) {
   };
   if (!valid[mimeType]()) fail(400, '附件内容与文件类型不匹配');
   if (intake && !mimeType.startsWith('image/')) fail(400, '签到照片必须为图片');
+  if (purpose === 'student_photo' && !mimeType.startsWith('image/')) fail(400, '故障照片必须为图片');
   return { filename, mimeType, bytes, purpose };
 }

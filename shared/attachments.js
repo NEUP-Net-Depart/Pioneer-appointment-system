@@ -16,7 +16,7 @@ export async function uploadAttachments(appointment, files, purpose = 'general')
       reader.readAsDataURL(file);
     });
     uploaded.push(await apiJson(`/api/appointments/${encodeURIComponent(appointment.id)}/attachments`, {
-      method: 'POST', headers: appointment.accessToken ? { 'X-Appointment-Token':appointment.accessToken } : {}, json: { filename:file.name,mimeType:file.type,data,purpose }
+      method: 'POST', timeoutMs: purpose==='student_photo' ? 30000 : undefined, headers: appointment.accessToken ? { 'X-Appointment-Token':appointment.accessToken } : {}, json: { filename:file.name,mimeType:file.type,data,purpose }
     }));
   }
   return uploaded;

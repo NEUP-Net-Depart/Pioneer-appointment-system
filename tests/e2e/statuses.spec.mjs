@@ -25,27 +25,13 @@ async function mockLogin(page,role) {
   await expect(page.locator('#app-shell')).toBeVisible();
 }
 
-test('student cards show five states and keep terminal records out of intake and queue',async ({page}) => {
-  const items = fixtures(),accessToken='a'.repeat(43),errors=[];
-  page.on('pageerror',error => errors.push(error.message));
-  await page.addInitScript(entries => localStorage.setItem('pioneerAppointmentAccess',JSON.stringify(entries)),items.map(item => ({id:item.id,accessToken})));
-  await page.route('**/api/appointments/*',route => {
-    const id=new URL(route.request().url()).pathname.split('/').at(-1);
-    return route.fulfill({json:items.find(item => item.id===id)});
-  });
-  await page.route('**/api/live/summary*',route => route.fulfill({json:{position:1,ahead:0,queueTotal:1,dayTotal:0,campusDayTotal:0,slotTotal:0,
-    slots:{'19:00–20:00':0,'20:00–21:00':0},slotCapacities:{'19:00–20:00':10,'20:00–21:00':10},capacity:10,remaining:10}}));
-  await page.goto('/');await page.locator('[data-view-link=lookup]').first().click();
-  await expect(page.locator('.appointment-card')).toHaveCount(5);
-  await expect(page.locator('.appointment-status .status-pill')).toHaveText(Object.values(statusLabels));
-  await expect(page.locator('[data-cancel]')).toHaveCount(1);
-  for (const item of items.filter(item => terminalStatuses.includes(item.status))) {
-    const card=page.locator('.appointment-card').filter({has:page.locator(`[data-queue-id="${item.id}"]`)});
-    await expect(card.locator('.repair-qr')).toHaveCount(0);
-    await expect(card.locator('.queue-info')).toHaveText(item.status==='expired' ? expirationMessage : `该预约${statusLabels[item.status]}`);
-  }
-  await expect(page.locator('.appointment-card').last()).toContainText('逾期处理时间');
-  expect(errors).toEqual([]);
+test('student list groups five real states, has no queue or card actions, and opens legacy details',async({page})=>{
+  const items=fixtures(),accessToken='a'.repeat(43),requests=[];
+  await page.addInitScript(entries=>localStorage.setItem('pioneerAppointmentAccess',JSON.stringify(entries)),items.map(item=>({id:item.id,accessToken})));
+  await page.route('**/api/appointments/*',route=>{const id=new URL(route.request().url()).pathname.split('/').at(-1);return route.fulfill({json:items.find(item=>item.id===id)});});
+  page.on('request',request=>requests.push(request.url()));await page.goto('/#lookup');await expect(page.locator('.student-record')).toHaveCount(5);await expect(page.locator('.record-group').first().locator('.student-record')).toHaveCount(2);await expect(page.locator('.record-group').last().locator('.student-record')).toHaveCount(3);await expect(page.locator('.student-record').first()).toContainText('维修中');await expect(page.locator('[data-cancel-open]')).toHaveCount(0);
+  const expired=items.find(item=>item.status==='expired');await page.locator(`[data-detail-id="${expired.id}"]`).click();await expect(page.locator('#appointment-detail')).toContainText(expirationMessage);await expect(page.locator('#detail-qr details')).toHaveJSProperty('open',false);await expect(page.locator('#appointment-detail')).not.toContainText('未修复');await expect(page.locator('[data-rebook]')).toBeVisible();
+  expect(requests.some(url=>url.includes('/api/live/summary'))).toBe(false);
 });
 
 test('staff filters, statistics and recovery use the five-state interface',async ({page}) => {

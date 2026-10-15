@@ -23,7 +23,7 @@ flowchart LR
 
 ```bash
 npm ci
-npx playwright install chromium
+npx playwright install chromium webkit
 npm run setup:local
 npm run dev
 ```
@@ -32,7 +32,7 @@ npm run dev
 
 | 命令 | 用途 |
 |---|---|
-| `npm run verify` | 代码、架构、单元/集成、迁移与 Chromium E2E 检查 |
+| `npm run verify` | 代码、架构、单元/集成、迁移与 Chromium/WebKit E2E 检查 |
 | `npm run preview:local` | 隔离的本地测试预览 |
 | `npm run preview:booking-layout` | 预约布局预览（8790 端口，模拟数据、禁用提交） |
 | `npm run test:booking-layout` | 预约布局回归 |

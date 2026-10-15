@@ -66,6 +66,21 @@ Token 限定目标账号；维护 Token 不提供给功能分支，R2 权限须�
 
 应用、数据库和维护脚本须匹配；不兼容的升级须暂停写入和维护。回退仅使用兼容当前结构的应用版本，否则须成对恢复应用与数据库备份。迁移只追加，已执行 SQL 不改写。
 
+## 预约模型迁移（0010）
+
+升级前备份 D1、R2 和密钥，并检查历史重复与外键：
+
+```sql
+SELECT student_id,date,COUNT(*) FROM appointments
+WHERE source='booking' AND status IN ('booked','in_progress','completed')
+GROUP BY student_id,date HAVING COUNT(*)>1;
+PRAGMA foreign_key_check;
+```
+
+迁移 `0010_student_booking.sql` 保留历史重复，由触发器阻止新增同日冲突。暂停新预约后应用迁移并发布配套前后端；管理员在「个人设置 → 服务日维修地点」配置校区和具体日期的真实地点，再开放预约。未配置地点时不能新约，地点变更由管理员人工通知受影响学生。功能分支不会自动迁移共享 Preview 数据库，验证新接口前须先使环境 schema 匹配。
+
+优先发布兼容 0010 的修复版本。若回退旧应用，暂停写入和维护，保管升级后的数据，成对恢复应用与数据库；另行核对备份后的工单、照片和凭证，不能用旧库直接清理新 R2 对象。保留新列、收据和审计。恢复旧 `idx_active_student_slot` 前须检查所有有效工单的 `(student_id,date,time_slot)` 重复，现场登记可能不满足原索引，不能删除历史工单解决冲突。
+
 ## 扫码配置
 
 `SCAN_WORKBENCH_ENABLED` 默认为 true；设为 false 并部署可使用列表工作台，一人一单约束仍生效。zxing-wasm 由本站 `/vendor/` 提供，保留 `public/_headers` 的同源摄像头策略。摄像头需要 HTTPS 和授权，支持相册、手动编号及后置镜头偏好；手机、QQ 浏览器的镜头切换和手电筒需实机验收。

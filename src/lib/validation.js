@@ -2,6 +2,7 @@ import { fail } from './http.js';
 import { normalizeTimeSlot, statusLabels, repairOutcomes, CAMPUSES, roleLevel, TIME_SLOTS } from '../../shared/constants.js';
 import { validDate } from '../../shared/time.js';
 import { validSignature } from '../../shared/signature.js';
+import { studentFieldErrors, AGREEMENT_VERSION } from '../../shared/student-booking.js';
 
 export const account = value => String(value ?? '').trim().toLowerCase();
 export function stringField(value, name, max, required = false) {
@@ -9,7 +10,7 @@ export function stringField(value, name, max, required = false) {
   if (typeof value !== 'string' || value.length > max || (required && !value.trim())) fail(400, `${name} 格式不正确或超过 ${max} 字符`);
   return value.trim();
 }
-export function bookingInput(input) {
+export function onsiteBookingInput(input) {
   const limits = { studentId: 20, name: 80, college: 120, campus: 20, phone: 30, social: 120, deviceType: 80, brand: 80, deviceModel: 120, serial: 120, warranty: 20, faultType: 80, issue: 10000, liquidDrop: 20, date: 10, timeSlot: 40, note: 500, agreementAt: 40, agreementVersion: 20 };
   const required = new Set(['studentId','name','campus','social','deviceType','brand','deviceModel','warranty','date','timeSlot','faultType','agreementAt']);
   const data = Object.fromEntries(Object.entries(limits).map(([key, max]) => [key, stringField(input[key], key, max, required.has(key))]));
@@ -22,6 +23,36 @@ export function bookingInput(input) {
   if (!validSignature(input.signature)) fail(400, '请阅读协议并完成本人手写签名');
   data.signature = JSON.stringify(input.signature);
   return data;
+}
+export function bookingInput(input) {
+  const errors = studentFieldErrors(input);
+  if (!CAMPUSES.includes(input.campus)) errors.campus = '请选择校区';
+  if (!validDate(input.date)) errors.date = '请选择有效的预约日期';
+  const timeSlot = normalizeTimeSlot(input.timeSlot);
+  if (!timeSlot) errors.timeSlot = '请选择到场时段';
+  if (input.agreementAccepted !== true || input.agreementVersion !== AGREEMENT_VERSION || !Number.isFinite(Date.parse(input.agreementAt))) errors.agreement = '请阅读并同意维修协议';
+  if (!validSignature(input.signature)) errors.signature = '请完成合格的本人手写签名';
+  if (Object.keys(errors).length) fail(400, '请检查预约信息', 'FIELD_INVALID', errors);
+  const keys = ['studentId','name','college','campus','deviceType','brand','deviceModel','warranty','faultType','issue','date','email','contactType','contactValue','agreementAt','agreementVersion'];
+  const data = Object.fromEntries(keys.map(key => [key, (input[key] || '').trim()]));
+  data.timeSlot = timeSlot;
+  data.liquidMetal = ['笔记本','台式机'].includes(data.deviceType) ? input.liquidMetal : null;
+  data.dellG15 = data.deviceType === '笔记本' && data.brand === 'Dell' ? input.dellG15 || null : null;
+  data.signature = JSON.stringify(input.signature);
+  // Populate the legacy contact display for staff; never trust hidden old fields.
+  data.phone = ''; data.social = `${data.contactType === 'qq' ? 'QQ' : '微信'}：${data.contactValue}`;
+  data.serial = ''; data.liquidDrop = ''; data.note = '';
+  return data;
+}
+export function bookingRequestKey(value) {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(value)) fail(400, '缺少有效的预约请求标识', 'REQUEST_KEY_INVALID');
+  return value;
+}
+export function serviceLocationInput(input) {
+  if (!CAMPUSES.includes(input.campus)) fail(400, '校区不正确');
+  if (!validDate(input.date)) fail(400, '服务日期不正确');
+  if (!Number.isSafeInteger(input.revision) || input.revision < 0) fail(400, '地点版本不正确');
+  return { campus: input.campus, date: input.date, revision: input.revision, location: stringField(input.location, '维修地点', 200) };
 }
 export function appointmentPatch(input) {
   const patch = {};

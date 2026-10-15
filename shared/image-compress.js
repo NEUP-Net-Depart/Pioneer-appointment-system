@@ -125,7 +125,7 @@ export async function compressImage(file, options = {}) {
     throw new Error('照片压缩后仍超过 2 MB');
   } catch (error) {
     if (original.type === 'image/heic') throw new Error('当前浏览器无法处理 HEIC/HEIF 照片，请转为 JPG，或在相机设置中选择“兼容性最佳”后重新拍摄', { cause: error });
-    if (original.size <= maxBytes) {
+    if (!settings.strict && original.size <= maxBytes) {
       const warning = `照片压缩失败（${error.message}），原图不超过 2 MB，将上传原图`;
       report(100, '将使用原图');
       return { file: original, warning };
