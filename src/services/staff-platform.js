@@ -204,7 +204,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const before = await repository.memberRow(memberId);
     if (input.status === 'inactive' && (await repository.accountForMember(memberId))?.protected) fail(403, '受保护的负责人不能停用');
     if (!before) fail(404, '成员不存在');
-    await requireMemberPermission(actor, before);
+    const { context } = await requireMemberPermission(actor, before);
     if (input.homeCampusId) await requireMemberPermission(actor, before, { campusId: input.homeCampusId });
     if (!Number.isInteger(input?.revision) || input.revision < 0) fail(400, '成员版本不正确');
     const patch = {};
@@ -218,7 +218,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const after = await repository.updateMember(memberId, patch, input.revision);
     if (!after) fail(409, '成员已被其他操作修改，请刷新');
     const account = await repository.accountForMember(memberId);
-    await repository.audit({ actorMemberId: (await contextFor(actor)).actor.memberId, actorAccount: actor.account, action: 'identity.member.updated', sourceRef: publicResourceRef('identity','member',memberId), before, after, requestId: input.requestId, reason: input.reason });
+    await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'identity.member.updated', sourceRef: publicResourceRef('identity','member',memberId), before, after, requestId: input.requestId, reason: input.reason });
     return { member: memberPublic(after), revision: after.revision, affectedResources: [{ module: 'identity', type: 'member', id: memberId }], accountStatus: account?.status || '' };
   }
 

@@ -314,4 +314,9 @@ test('role writes reject malformed ranges and protect administrator identities f
     assert.equal((await request('/api/members/import', { headers: adminHeaders, method: 'POST', body: JSON.stringify({ csv, confirm: true }) })).response.status, 403);
   }
   assert.equal((await db.prepare("SELECT COUNT(*) AS total FROM members WHERE student_id IN ('20269811','20269812')").first()).total, 0);
+  const disabled = await request('/api/members/member-20269810', { headers: adminHeaders, method: 'PATCH', body: JSON.stringify({ revision: 0, status: 'inactive' }) });
+  assert.equal(disabled.response.status, 200, 'a committed self-deactivation must return its successful result');
+  assert.equal((await request('/api/auth/me', { headers: adminHeaders })).response.status, 401);
+  const audit = await db.prepare("SELECT COUNT(*) AS total FROM audit_events WHERE actor_account='20269810' AND action='identity.member.updated'").first();
+  assert.equal(audit.total, 1, 'capture the acting identity before deactivation so the successful write is still audited');
 });
