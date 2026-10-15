@@ -62,7 +62,7 @@ export function staffPlatformRepository(db) {
   async function accountForMember(memberId) {
     return db.prepare(`SELECT staff_accounts.*,m.id AS mapped_member_id,m.status AS member_status
       FROM staff_accounts LEFT JOIN members m ON m.id=staff_accounts.member_id
-      WHERE staff_accounts.member_id=? ORDER BY staff_accounts.account LIMIT 1`).bind(memberId).first();
+      WHERE staff_accounts.member_id=? ORDER BY staff_accounts.protected DESC,staff_accounts.account LIMIT 1`).bind(memberId).first();
   }
 
   async function memberships(memberId, businessDate = dateKey()) {
@@ -71,6 +71,20 @@ export function staffPlatformRepository(db) {
       AND mdm.effective_from<=? AND (mdm.effective_to IS NULL OR ?<mdm.effective_to)
       ORDER BY mdm.is_primary DESC,mdm.effective_from`).bind(memberId, businessDate, businessDate).all();
     return rows(result).map(membership);
+  }
+
+  async function membershipsForMembers(memberIds, businessDate = dateKey()) {
+    if (!memberIds.length) return [];
+    const statements = [];
+    // Keep each statement below D1's 100 bound-parameter limit.
+    for (let offset = 0; offset < memberIds.length; offset += 90) {
+      const ids = memberIds.slice(offset, offset + 90);
+      statements.push(db.prepare(`SELECT mdm.*,d.name AS department_name FROM member_department_memberships mdm
+        JOIN departments d ON d.id=mdm.department_id WHERE mdm.member_id IN (${ids.map(() => '?').join(',')})
+        AND mdm.effective_from<=? AND (mdm.effective_to IS NULL OR ?<mdm.effective_to)
+        ORDER BY mdm.is_primary DESC,mdm.effective_from`).bind(...ids, businessDate, businessDate));
+    }
+    return (await db.batch(statements)).flatMap(result => rows(result).map(membership));
   }
 
   async function profiles(memberId, businessDate = dateKey()) {
@@ -113,22 +127,26 @@ export function staffPlatformRepository(db) {
       actor: { memberId, account: user.account, name: member?.name || user.name, status: member?.status || user.status },
       member, memberships: membershipItems, workProfiles: profileItems, grants: grantItems,
       todayDuties: duties, presence: presence ? { memberId: presence.member_id, businessDate: presence.business_date, campusId: presence.campus_id, state: presence.state, revision: presence.revision } : null,
-      authVersion, schemaVersion: '0010'
+      authVersion, schemaVersion: '0011'
     };
   }
 
   async function listMembers(filters = {}) {
     const conditions = [], args = [];
-    if (filters.q) { conditions.push('(m.name LIKE ? OR m.student_id LIKE ? OR sa.account LIKE ?)'); const q = `%${filters.q}%`; args.push(q, q, q); }
+    if (filters.studentId) { conditions.push('m.student_id=?'); args.push(filters.studentId); }
+    if (filters.q) { conditions.push('(m.name LIKE ? OR m.student_id LIKE ? OR EXISTS(SELECT 1 FROM staff_accounts searched WHERE searched.member_id=m.id AND searched.account LIKE ?))'); const q = `%${filters.q}%`; args.push(q, q, q); }
     if (filters.status) { conditions.push('m.status=?'); args.push(filters.status); }
     if (filters.homeCampusId) { conditions.push('m.home_campus_id=?'); args.push(filters.homeCampusId); }
     if (filters.homeCampusIds?.length) { conditions.push(`m.home_campus_id IN (${filters.homeCampusIds.map(() => '?').join(',')})`); args.push(...filters.homeCampusIds); }
+    if (filters.after) { conditions.push('(m.name>? OR (m.name=? AND m.id>?))'); args.push(filters.after.name, filters.after.name, filters.after.memberId); }
     const query = `SELECT ${memberColumns},sa.account,sa.status AS account_status,sa.role,sa.auth_version,
       (SELECT GROUP_CONCAT(d.name,'、') FROM member_department_memberships mdm JOIN departments d ON d.id=mdm.department_id
-       WHERE mdm.member_id=m.id AND mdm.is_primary=1 AND mdm.effective_to IS NULL) AS primary_department
-      FROM members m LEFT JOIN staff_accounts sa ON sa.member_id=m.id
+       WHERE mdm.member_id=m.id AND mdm.is_primary=1 AND mdm.effective_from<=?
+         AND (mdm.effective_to IS NULL OR ?<mdm.effective_to)) AS primary_department
+      FROM members m LEFT JOIN staff_accounts sa ON sa.account=(SELECT account FROM staff_accounts WHERE member_id=m.id ORDER BY account LIMIT 1)
       ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''} ORDER BY m.name,m.id LIMIT 101`;
-    const result = await db.prepare(query).bind(...args).all();
+    const businessDate = filters.businessDate || dateKey();
+    const result = await db.prepare(query).bind(businessDate, businessDate, ...args).all();
     return rows(result).map(row => ({ memberId: row.id, name: row.name, studentId: row.student_id || '', homeCampusId: row.home_campus_id || '', status: row.status,
       account: row.account || '', accountStatus: row.account_status || '', role: row.role || '', authVersion: row.auth_version || 0,
       primaryDepartment: row.primary_department || '', revision: row.revision, memberships: [] }));
@@ -150,14 +168,14 @@ export function staffPlatformRepository(db) {
     if (account && (patch.name !== undefined || patch.status !== undefined || patch.homeCampusId !== undefined)) {
       const accountFields = [], accountArgs = [];
       if (patch.name !== undefined) { accountFields.push('name=?'); accountArgs.push(patch.name); }
-      if (patch.status !== undefined) { accountFields.push('status=?'); accountArgs.push(patch.status === 'active' ? 'enabled' : 'disabled'); }
+      // Member availability is independent of an individual login's enabled state.
       if (patch.homeCampusId !== undefined) {
         accountFields.push('home_campus=?');
         accountArgs.push(patch.homeCampusId === 'campus-hunnan' ? '浑南' : patch.homeCampusId === 'campus-nanhu' ? '南湖' : patch.homeCampusId);
       }
       if (patch.status !== undefined || patch.homeCampusId !== undefined) accountFields.push('token_version=token_version+1','auth_version=auth_version+1');
-      statements.push(db.prepare(`UPDATE staff_accounts SET ${accountFields.join(',')} WHERE account=? AND EXISTS(SELECT 1 FROM members WHERE id=? AND revision=?)`)
-        .bind(...accountArgs, account.account, memberId, revision));
+      statements.push(db.prepare(`UPDATE staff_accounts SET ${accountFields.join(',')} WHERE member_id=? AND EXISTS(SELECT 1 FROM members WHERE id=? AND revision=?)`)
+        .bind(...accountArgs, memberId, memberId, revision));
     }
     statements.push(db.prepare(`UPDATE members SET ${fields.join(',')} WHERE id=? AND revision=?`).bind(...args));
     const result = await db.batch(statements);
@@ -571,7 +589,7 @@ export function staffPlatformRepository(db) {
     return result[2]?.meta?.changes ? db.prepare('SELECT * FROM swap_requests WHERE id=?').bind(id).first() : null;
   }
 
-  return { accountRow, accountForMember, ensureMember, memberRow, memberships, profiles, grants, todayDuties, authorizationContext, listMembers, updateMember, listMemberships, addMembership, endMembership,
+  return { accountRow, accountForMember, ensureMember, memberRow, memberships, membershipsForMembers, profiles, grants, todayDuties, authorizationContext, listMembers, updateMember, listMemberships, addMembership, endMembership,
     listCampuses, listDepartments, listLocations, listPresence, activeRepair, importMembers,
     roleBindings, permissionDefinitions, listRoles, createRole, updateRole, bindRoles, modules, createEvent, issueToken, findEventByToken, findAttendanceByDedupe, insertAttendance, listAttendance, attendanceExport, setPresence,
     attendanceEvent, eventById: attendanceEvent, createReceipt, claimReceipt, releaseReceipt, receipt, audit, listAudit, createRosterTask, listRosterTasks, saveAvailability, availability, createRosterVersion, updateRosterDraft, publishRoster, listAssignments, assignmentById, createLeave, leaveById, listLeaves, updateLeave, createSwap, listSwaps, updateSwap };

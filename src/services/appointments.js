@@ -4,13 +4,13 @@ import { addDays, dateKey, serviceDay, slotDeadline, expirationDeadline, weekRan
 import { issueAccessToken } from '../lib/access-tokens.js';
 import { guestAppointment } from './access.js';
 import { repairOutcomes } from '../../shared/constants.js';
-import { appointmentScope, requireRole, requireAppointmentAccess, requireCampus } from './permissions.js';
+import { appointmentScope, requireRole, requireAppointmentAccess, requireCampus, ownsRepair, ownsRegistration } from './permissions.js';
 
 export async function presentAppointment(item, encryptionKey, { staff = false } = {}) {
   const [phone, social] = await Promise.all([decryptText(item.phone, encryptionKey), decryptText(item.social, encryptionKey)]);
   const visible = { ...item, phone, social };
   delete visible.registrationKey;
-  if (!staff) delete visible.assignedToName;
+  if (!staff) { delete visible.assignedToName; delete visible.assignedMemberId; delete visible.registeredMemberId; }
   return visible;
 }
 export function appointmentService(appointments, users, encryptionKey, clock = () => new Date(), staffPlatform = null) {
@@ -23,7 +23,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       if (matches.length > 1) fail(400, '有多个同名工作人员，请输入学号');
       user = matches[0];
     }
-    if (user?.status !== 'enabled') fail(400, '维修人员账号不存在或未启用');
+    if (user?.status !== 'enabled' || user.memberStatus === 'inactive') fail(400, '维修人员账号不存在或未启用');
     requireCampus(user, campus);
     return user.account;
   }
@@ -31,7 +31,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
     if (!repairOutcomes.includes(outcome) || !note?.trim()) fail(400, '请选择维修结果并填写维修说明');
   }
   function repeated(item, input, user, action) {
-    return !action && user?.account === item.assignedTo && (
+    return !action && ownsRepair(user, item) && (
       (input.status === 'in_progress' && item.status === 'in_progress' && input.frontPhotoId === item.frontPhotoId && input.backPhotoId === item.backPhotoId) ||
       (input.status === 'completed' && item.status === 'completed' && input.outcome === item.outcome && input.repairNote === item.repairNote)
     );
@@ -60,7 +60,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       await expire(clock(), { campuses: scope.campuses });
       const result = await appointments.list(query, scope);
       const items = await Promise.all(result.items.map(async item => {
-        if (user.role === 'technician' && (item.status === 'booked' || (item.assignedTo !== user.account && !(item.source === 'onsite' && item.registeredBy === user.account)))) {
+        if (user.role === 'technician' && (item.status === 'booked' || (!ownsRepair(user, item) && !(item.source === 'onsite' && ownsRegistration(user, item))))) {
           return Object.fromEntries(['id','revision','campus','date','timeSlot','deviceType','brand','deviceModel','faultType','status','createdAt','expiresAt'].map(key => [key, item[key]]));
         }
         return present(item, true);
@@ -179,7 +179,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
         if (item.status !== 'booked') fail(409, '当前状态不能取消');
         patch = { status: 'cancelled', outcome: null, completedAt: timestamp };
       } else if (item.status === 'booked' && input.status === 'cancelled' && input.outcome === undefined &&
-          item.source === 'onsite' && item.registeredBy === user.account) {
+          item.source === 'onsite' && ownsRegistration(user, item)) {
         patch = { status: 'cancelled', outcome: null, completedAt: timestamp };
       } else {
         const starting = item.status === 'booked' && input.status === 'in_progress';

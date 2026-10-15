@@ -11,6 +11,7 @@ export function initAuth({ onLogin, onLogout }) {
   function enter(payload) {
     sessionStorage.setItem('pioneerRole', payload.role);
     sessionStorage.setItem('pioneerAccount', payload.account);
+    sessionStorage.setItem('pioneerMemberId', payload.memberId || payload.actor?.memberId || '');
     sessionStorage.setItem('pioneerCampuses',JSON.stringify(payload.authorizedCampuses));
     if (payload.token) sessionStorage.setItem('pioneerToken', payload.token);
     $('#login-view').hidden = true; $('#app-shell').hidden = false; $('#logout-btn').hidden = false;

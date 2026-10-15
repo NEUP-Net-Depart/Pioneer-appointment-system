@@ -160,6 +160,14 @@ test('dev and deployed Staff upgrade paths converge on the same schema and prese
       }
       return result;
     }
+    for (const [db, path] of [[staff, 'database/staff-migrations/0009_member_account_aliases.sql'], [dev, 'migrations/0011_member_account_aliases.sql']]) {
+      const beforeAliases = await snapshot(db);
+      const commands = await statements(path);
+      await assert.rejects(db.batch([...commands.map(sql => db.prepare(sql)), db.prepare('INSERT INTO missing_alias_upgrade VALUES(1)')]));
+      assert.deepEqual(await snapshot(db), beforeAliases);
+      await db.batch(commands.map(sql => db.prepare(sql)));
+      assert.deepEqual(await snapshot(db), beforeAliases);
+    }
     assert.deepEqual(await structure(staff), await structure(dev));
     for (const database of [staff, dev]) {
       const insert = () => database.prepare(`INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at)

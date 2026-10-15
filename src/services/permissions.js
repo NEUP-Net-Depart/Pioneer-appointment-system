@@ -2,7 +2,7 @@ import { fail } from '../lib/http.js';
 import { roleLevel } from '../../shared/constants.js';
 
 export function requireRole(user, minimum) {
-  if (!user || user.status!=='enabled') fail(401,'登录已失效，请重新登录');
+  if (!user || user.status!=='enabled' || user.memberStatus==='inactive') fail(401,'登录已失效，请重新登录');
   if (!Object.hasOwn(roleLevel,user.role) || !Object.hasOwn(roleLevel,minimum) || roleLevel[user.role]<roleLevel[minimum]) fail(403,'没有执行此操作的权限');
   return user;
 }
@@ -20,10 +20,17 @@ export function canManageAccount(actor, target) {
 }
 export function requireAppointmentAccess(user, item, { start = false } = {}) {
   requireCampus(user,item.campus);
-  if (user.role==='technician' && (item.status==='booked' || item.assignedTo!==user.account) &&
-      !(start && item.status === 'booked') && !(item.source === 'onsite' && item.registeredBy === user.account)) fail(403,'只能访问本人维修的预约');
+  if (user.role==='technician' && (item.status==='booked' || !ownsRepair(user, item)) &&
+      !(start && item.status === 'booked') && !(item.source === 'onsite' && ownsRegistration(user, item))) fail(403,'只能访问本人维修的预约');
 }
 export function appointmentScope(user) {
   requireRole(user,'technician');
   return { campuses:user.authorizedCampuses, technician:user.role==='technician' ? user.account : '' };
+}
+
+export function ownsRepair(user, item) {
+  return !!user && (item.assignedTo === user.account || !!user.memberId && item.assignedMemberId === user.memberId);
+}
+export function ownsRegistration(user, item) {
+  return !!user && (item.registeredBy === user.account || !!user.memberId && item.registeredMemberId === user.memberId);
 }

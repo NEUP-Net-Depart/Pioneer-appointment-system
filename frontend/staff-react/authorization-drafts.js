@@ -25,3 +25,10 @@ export function roleBindingsPayload(bindings) {
     effectiveTo: binding.effectiveTo || null,
     scope: structuredClone(binding.scope || {}) }));
 }
+
+export function withGrantValidity(validity = {}, field, value) {
+  const next = { ...validity };
+  for (const key of field === 'effectiveFrom' ? ['effectiveFrom', 'from', 'startDate', 'start'] : ['effectiveTo', 'to', 'endDate', 'end']) delete next[key];
+  if (value) next[field] = value;
+  return next;
+}

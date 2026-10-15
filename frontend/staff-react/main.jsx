@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { initStaffApplication } from '../staff/main.js';
 import { request } from './request.js';
-import { MemberEditor } from './MemberEditor.jsx';
+import { Members } from './Members.jsx';
 import { Permissions } from './Permissions.jsx';
 import { statusLabels } from '../../shared/constants.js';
 
@@ -14,15 +14,6 @@ function Workbench({ user, onNavigate }) {
   async function resolve(event) { event.preventDefault(); setError(''); try { setScan(await request('/api/scan/resolve', { method: 'POST', body: /\.[a-f0-9]{12}$/.test(code.trim()) ? { code: code.trim() } : { id: code.trim() } })); } catch (err) { setError(err.message); } }
   return <section className="react-page"><div className="react-heading"><div><p className="react-eyebrow">G3 · G4 · G6</p><h1>角色工作台</h1><p>{user.name} · {roles[user.role]} · {user.authorizedCampuses?.join('、')}</p></div><button onClick={refresh}>刷新</button></div>{error && <p className="react-error">{error}</p>}<div className="react-grid"><article className="react-card"><h2>今日工作</h2><p>值班安排：{data?.todayDuties?.length || 0} 项</p><p>签到状态：{data?.presence?.state || '未签到'}</p><p>当前维修：{data?.currentRepair ? data.currentRepair.id : '暂无'}</p><button className="react-primary" onClick={() => onNavigate('attendance')}>打开值班签到</button></article><article className="react-card"><h2>扫码维修前台</h2><form onSubmit={resolve} className="react-inline"><input value={code} onChange={event => setCode(event.target.value)} placeholder="扫描或输入预约编号" required /><button className="react-primary">查询工单</button></form>{scan && <div className="react-result"><strong>{scan.id}</strong><span>{scan.campus} · {scan.date} · {scan.timeSlot}</span><span>{scan.deviceType} · {scan.deviceModel}</span><small>可执行：{scan.actions?.join('、') || '查看'}</small></div>}<button onClick={() => onNavigate('scan')}>进入维修前台</button></article></div><article className="react-card"><div className="react-heading"><h2>待处理预约</h2><button onClick={() => onNavigate('staff')}>完整维修列表</button></div><div className="react-table"><div className="react-row react-row-head"><span>编号</span><span>校区 / 时段</span><span>设备</span><span>状态</span></div>{appointments.slice(0, 8).map(item => <div className="react-row" key={item.id}><span>{item.id}</span><span>{item.campus}<br />{item.date} {item.timeSlot}</span><span>{item.deviceType} · {item.deviceModel}</span><span>{statusLabels[item.status] || item.status}</span></div>)}{!appointments.length && <p className="react-muted">暂无待处理预约</p>}</div></article></section>;
 }
-
-function Members({ user }) {
-  const [items, setItems] = useState([]); const [q, setQ] = useState(''); const [selected, setSelected] = useState(null); const [error, setError] = useState('');
-  async function refresh() { try { const members = await request(`/api/members?q=${encodeURIComponent(q)}`); setItems(members.items || []); } catch (err) { setError(err.message); } }
-  useEffect(() => { refresh(); }, [q]);
-  return <section className="react-page"><div className="react-heading"><div><p className="react-eyebrow">G5 · IDENTITY</p><h1>成员管理</h1><p>成员资料与角色授权分别维护，所属校区不改变授权范围。</p></div><button onClick={refresh}>刷新</button></div>{error && <p className="react-error">{error}</p>}<div className="react-toolbar"><input value={q} onChange={event => setQ(event.target.value)} placeholder="搜索姓名、学号或账号" /><span>{items.length} 名成员</span></div><div className="react-table"><div className="react-row react-row-head"><span>姓名 / 学号</span><span>校区</span><span>状态</span><span>主要部门</span><span>操作</span></div>{items.map(item => <div className="react-row" key={item.memberId}><span><strong>{item.name}</strong><br />{item.studentId || item.account}</span><span>{item.homeCampusId === 'campus-hunnan' ? '浑南' : '南湖'}</span><span>{item.status === 'active' ? '在岗' : '停用'}</span><span>{item.primaryDepartment || '—'}</span><span><button onClick={() => setSelected(item)}>编辑成员与权限</button></span></div>)}</div>{selected && <MemberEditor member={selected} canManageRoles={user.grants?.some(grant => grant.permissionCode === 'roles.manage')} onClose={() => setSelected(null)} onSaved={refresh} />}</section>;
-}
-
-
 
 function Attendance({ onNavigate }) {
   const [items, setItems] = useState([]); const [token, setToken] = useState(''); const [message, setMessage] = useState('');
@@ -62,7 +53,7 @@ function Root() {
     {page === 'attendance' && <Attendance onNavigate={navigate} />}
     {page === 'roster' && <Roster />}
     {page === 'members' && <Members user={user} />}
-    {page === 'permissions' && <Permissions />}</>;
+    {page === 'permissions' && <Permissions user={user} />}</>;
 }
 
 createRoot(document.getElementById('staff-platform-root')).render(<Root />);

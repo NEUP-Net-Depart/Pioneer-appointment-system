@@ -19,7 +19,7 @@ export function initStaff(){
   });
   const intake=initIntake(async(item,photos)=>{ await openDetail(await patch(item,{status:'in_progress',...photos})); });
   const admin=()=>roleLevel[sessionStorage.getItem('pioneerRole')]>=2;
-  const owns=item=>item.assignedTo===sessionStorage.getItem('pioneerAccount');
+  const owns=item=>item.assignedTo===sessionStorage.getItem('pioneerAccount') || !!item.assignedMemberId && item.assignedMemberId===sessionStorage.getItem('pioneerMemberId');
   async function refresh(){
     configureCampuses();
     await Promise.allSettled([refreshList(),overview.refresh()]);

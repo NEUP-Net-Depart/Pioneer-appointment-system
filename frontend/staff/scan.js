@@ -39,14 +39,15 @@ export function initScan() {
   function resetRegistration() {
     onsiteRequest = undefined; write('onsiteRequest', null); form.reset(); strokes = []; pointer = undefined; drawSignature(canvas, strokes);
   }
+  const owns = value => value.assignedTo === account() || !!value.assignedMemberId && value.assignedMemberId === sessionStorage.getItem('pioneerMemberId');
   function showItem(value) {
     if (item?.id !== value.id) resetPreviews();
     item = value; write('selected', item.id); panels('scan-detail');
     renderScanDetails($('#scan-detail-info'), item);
     $('#scan-intake-form').hidden = item.status !== 'booked';
     $('#scan-cancel-onsite').hidden = item.status !== 'booked' || item.source !== 'onsite';
-    $('#scan-result-form').hidden = item.status !== 'in_progress' || item.assignedTo !== account();
-    $('#scan-detail-back').hidden = item.status === 'in_progress' && item.assignedTo === account();
+    $('#scan-result-form').hidden = item.status !== 'in_progress' || !owns(item);
+    $('#scan-detail-back').hidden = item.status === 'in_progress' && owns(item);
     $('#scan-files-section').hidden = item.status === 'booked';
     $('#scan-signed').hidden = !item.signature;
     if (item.signature) { try { drawSignature($('#scan-signed'), JSON.parse(item.signature)); } catch { $('#scan-signed').hidden = true; } }

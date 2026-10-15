@@ -11,9 +11,11 @@ const columns = {
   source: 'source', registeredBy: 'registered_by', registrationKey: 'registration_key'
 };
 const assigneeName = "(SELECT trim(name) FROM staff_accounts WHERE account=appointments.assigned_to AND status='enabled') AS assigned_to_name";
-const select = `SELECT appointments.*,${assigneeName} FROM appointments`;
+const memberIdentity = "(SELECT member_id FROM staff_accounts WHERE account=appointments.assigned_to) AS assigned_member_id,(SELECT member_id FROM staff_accounts WHERE account=appointments.registered_by) AS registered_member_id";
+const select = `SELECT appointments.*,${assigneeName},${memberIdentity} FROM appointments`;
+const memberAccounts = '(SELECT account FROM staff_accounts WHERE member_id=(SELECT member_id FROM staff_accounts WHERE account=?))';
 function fromRow(row) {
-  return row ? { id: row.id, revision: row.revision, assignedToName: row.assigned_to_name || '', ...Object.fromEntries(Object.entries(columns).map(([key, column]) => [key, row[column] ?? (['outcome','startedAt','completedAt','repairNumber','frontPhotoId','backPhotoId'].includes(key) ? null : '')])) } : null;
+  return row ? { id: row.id, revision: row.revision, assignedToName: row.assigned_to_name || '', assignedMemberId: row.assigned_member_id || '', registeredMemberId: row.registered_member_id || '', ...Object.fromEntries(Object.entries(columns).map(([key, column]) => [key, row[column] ?? (['outcome','startedAt','completedAt','repairNumber','frontPhotoId','backPhotoId'].includes(key) ? null : '')])) } : null;
 }
 export function appointmentRepository(db) {
   return {
@@ -21,18 +23,18 @@ export function appointmentRepository(db) {
       return (await scheduleStatement(db, date, date, [campus]).all()).results;
     },
     async currentRepair(account) {
-      const row = await db.prepare(`SELECT a.* FROM active_repairs ar JOIN appointments a ON a.id=ar.appointment_id
-        WHERE ar.account=? AND a.status='in_progress' LIMIT 1`).bind(account).first();
+      const row = await db.prepare(`${select} WHERE id IN (SELECT appointment_id FROM active_repairs
+        WHERE account IN ${memberAccounts}) AND status='in_progress' LIMIT 1`).bind(account).first();
       return fromRow(row);
     },
     async inProgress(account) {
-      return (await db.prepare(`${select} WHERE assigned_to=? AND status='in_progress' ORDER BY started_at,created_at,id`).bind(account).all()).results.map(fromRow);
+      return (await db.prepare(`${select} WHERE assigned_to IN ${memberAccounts} AND status='in_progress' ORDER BY started_at,created_at,id`).bind(account).all()).results.map(fromRow);
     },
     async findRegistration(account, key) {
-      return fromRow(await db.prepare(`${select} WHERE registered_by=? AND registration_key=?`).bind(account,key).first());
+      return fromRow(await db.prepare(`${select} WHERE registered_by IN ${memberAccounts} AND registration_key=?`).bind(account,key).first());
     },
     async pendingRegistration(account) {
-      return fromRow(await db.prepare(`${select} WHERE registered_by=? AND source='onsite' AND status='booked' ORDER BY created_at DESC,id DESC LIMIT 1`).bind(account).first());
+      return fromRow(await db.prepare(`${select} WHERE registered_by IN ${memberAccounts} AND source='onsite' AND status='booked' ORDER BY created_at DESC,id DESC LIMIT 1`).bind(account).first());
     },
     async intakePhotos(id, account, front, back, now) {
       if (!front || !back || front === back) return false;
@@ -71,13 +73,13 @@ export function appointmentRepository(db) {
     },
     async list(query,{campuses,technician}) {
       const campusScope=campuses.length ? `campus IN (${campuses.map(()=>'?').join(',')})` : '0';
-      const scope=campusScope+(technician ? " AND (assigned_to=? OR registered_by=? OR status='booked')" : '');
+      const scope=campusScope+(technician ? ` AND (assigned_to IN ${memberAccounts} OR registered_by IN ${memberAccounts} OR status='booked')` : '');
       const scopeArgs=[...campuses,...(technician ? [technician, technician] : [])];
       const where = [scope], args = [...scopeArgs];
       for (const [key,column] of [['campus','campus'],['date','date'],['timeSlot','time_slot']]) if (query[key]) { where.push(`${column}=?`); args.push(query[key]); }
       if (query.dateFrom && query.dateTo) { where.push('date>=? AND date<=?'); args.push(query.dateFrom,query.dateTo); }
       if (query.q) {
-        where.push("(instr(id,?)>0 OR instr(repair_number,?)>0 OR instr(lower(device_model),?)>0 OR instr(campus,?)>0 OR ((?='' OR ((assigned_to=? OR registered_by=?) AND status<>'booked')) AND (instr(lower(name),?)>0 OR instr(student_id,?)>0)))");
+        where.push(`(instr(id,?)>0 OR instr(repair_number,?)>0 OR instr(lower(device_model),?)>0 OR instr(campus,?)>0 OR ((?='' OR ((assigned_to IN ${memberAccounts} OR registered_by IN ${memberAccounts}) AND status<>'booked')) AND (instr(lower(name),?)>0 OR instr(student_id,?)>0)))`);
         const text=query.q.toLowerCase();
         args.push(text,text,text,text,technician,technician,technician,text,text);
       }
@@ -134,7 +136,7 @@ export function appointmentRepository(db) {
       for (const [key, column] of Object.entries({ status: 'status', assignedTo: 'assigned_to', repairNote: 'repair_note', outcome: 'outcome', startedAt: 'started_at', completedAt: 'completed_at', expiresAt: 'expires_at', frontPhotoId: 'front_photo_id', backPhotoId: 'back_photo_id' })) {
         if (patch[key] !== undefined) { fields.push(`${column}=?`); args.push(key === 'assignedTo' ? patch[key] || null : patch[key]); }
       }
-      const update = db.prepare(`UPDATE appointments SET ${fields.join(',')},revision=revision+1 WHERE id=? AND revision=? RETURNING *,${assigneeName}`).bind(...args, item.id, item.revision);
+      const update = db.prepare(`UPDATE appointments SET ${fields.join(',')},revision=revision+1 WHERE id=? AND revision=? RETURNING *,${assigneeName},${memberIdentity}`).bind(...args, item.id, item.revision);
       const start = patch.status === 'in_progress' && patch.frontPhotoId && patch.backPhotoId && patch.assignedTo;
       if (!correction && !start) return fromRow(await update.first());
       const intake = start ? db.prepare(`INSERT INTO repair_intake_records(id,appointment_id,member_id,account,front_photo_id,back_photo_id,verified_at)

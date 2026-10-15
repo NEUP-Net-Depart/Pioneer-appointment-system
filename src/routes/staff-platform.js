@@ -13,8 +13,8 @@ export const staffPlatformRoutes = [
     return json(await context.services.staffPlatform.importMembers(actor, input));
   }],
   ['GET', /^\/api\/members\/([^/]+)\/memberships$/, async (context, match) => {
-    const actor = await context.role('technician'); await context.services.staffPlatform.requirePermission(actor, 'members.manage');
-    return json({ items: await context.services.staffPlatform.memberDetail(actor, decodeURIComponent(match[1]), context.query).then(result => result.member.memberships) });
+    const actor = await context.role('technician');
+    return json({ items: await context.services.staffPlatform.memberDetail(actor, decodeURIComponent(match[1]), context.query.businessDate).then(result => result.member.memberships) });
   }],
   ['POST', /^\/api\/members\/([^/]+)\/memberships$/, async (context, match) => json(await context.services.staffPlatform.addMembership(await context.role('technician'), decodeURIComponent(match[1]), await readBody(context.request)))],
   ['PATCH', /^\/api\/members\/([^/]+)\/memberships\/([^/]+)$/, async (context, match) => json(await context.services.staffPlatform.endMembership(await context.role('technician'), decodeURIComponent(match[1]), decodeURIComponent(match[2]), await readBody(context.request)))],

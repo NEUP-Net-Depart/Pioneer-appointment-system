@@ -207,6 +207,40 @@ test('staff onsite registration is scoped, retry-safe, outside slot capacity and
   assert.notEqual(next.id,item.id);
 });
 
+test('multiple logins for one member resume and complete the same repair and share the active-work constraint', async () => {
+  const primary = await addUser('993020');
+  await db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at,member_id) VALUES(?,?,?,?,?,?,?)')
+    .bind('993021', '同一维修人员另一个登录', 'technician', '南湖', hashPassword(password), date, 'member-993020').run();
+  await db.prepare("INSERT INTO staff_campus_grants VALUES('993021','南湖')").run();
+  const alias = await login('993021'), outsider = await addUser('993022');
+  const first = await book(), second = await book();
+  const firstPhotos = await intake(first, primary), secondPhotos = await intake(second, alias);
+  const attempts = await Promise.all([
+    request(`/api/appointments/${first.id}/status`, { method: 'PATCH', token: primary, body: { status: 'in_progress', ...firstPhotos } }),
+    request(`/api/appointments/${second.id}/status`, { method: 'PATCH', token: alias, body: { status: 'in_progress', ...secondPhotos } })
+  ].map(async pending => { const response = await pending; return { status: response.status, body: await response.json() }; }));
+  assert.deepEqual(attempts.map(response => response.status).sort(), [200, 409]);
+  const started = attempts.find(response => response.status === 200).body;
+  assert.equal(started.assignedMemberId, 'member-993020');
+  for (const token of [primary, alias]) {
+    const current = await api('/api/scan/current', { token });
+    assert.deepEqual(current.items.map(item => item.id), [started.id]);
+    assert.equal(current.items[0].assignedMemberId, 'member-993020');
+    assert.equal((await api('/api/scan/resolve', { method: 'POST', token, body: { id: started.id } })).name, '测试同学');
+    assert.ok((await api('/api/appointments?q=测试同学', { token })).items.some(item => item.id === started.id));
+  }
+  await api('/api/scan/resolve', { method: 'POST', token: outsider, body: { id: started.id } }, 403);
+  const otherLogin = started.assignedTo === '993020' ? alias : primary;
+  const done = await api(`/api/appointments/${started.id}/status`, { method: 'PATCH', token: otherLogin,
+    body: { revision: started.revision, status: 'completed', outcome: 'repaired', repairNote: '同一成员另一账号完成' } });
+  assert.equal(done.assignedMemberId, 'member-993020');
+  assert.equal(done.assignedTo, started.assignedTo, 'retain the original intake account for audit');
+  assert.equal((await api('/api/scan/current', { token: alias })).items.length, 0);
+  const guest = await api(`/api/appointments/${started.id}`, { accessToken: started.id === first.id ? first.accessToken : second.accessToken });
+  assert.equal(guest.assignedMemberId, undefined);
+  assert.equal(guest.registeredMemberId, undefined);
+});
+
 test('expired onsite registrations cannot bypass photo intake through administrator corrections', async () => {
   const root = await login(), tech = await addUser('993005');
   const item = await api('/api/scan/onsite', { method: 'POST', token: tech, body: { ...draft(), requestId: crypto.randomUUID() } }, 201);
@@ -376,6 +410,9 @@ test('five-state migration preserves populated history, related records and all 
   await assert.rejects(legacy.prepare("UPDATE appointments SET outcome='cancelled' WHERE id=?").bind(items[6].id).run(),/CHECK/);
   await assert.rejects(legacy.prepare("UPDATE appointments SET status='in_progress',assigned_to='root001' WHERE id=?").bind(items[0].id).run(),/active_repairs.account/);
   await applyMigration(legacy,'0009_weekday_booking_schedules.sql');
+  // Current repositories run only after the complete current schema is installed.
+  // The historical migration's preservation assertions above remain independent.
+  for (const file of (await readdir('migrations')).filter(name => name.endsWith('.sql') && name >= '0010').sort()) await applyMigration(legacy, file);
   const repository = appointmentRepository(legacy);
   const counts = (await repository.list({status:'all'},{campuses:['南湖'],technician:''})).counts;
   assert.deepEqual(counts,{all:9,booked:1,in_progress:1,completed:4,cancelled:1,expired:2});
@@ -458,8 +495,9 @@ test('failed and stale corrections never leave audit rows or bypass capacity and
   const restored = await service.update(item.id,input,actor);
   await assert.rejects(service.update(item.id,input,actor),error => error.status===409);
   assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointment_corrections').first()).n,1);
-  const { assignedToName, ...guestRestored } = restored;
+  const { assignedToName, assignedMemberId, registeredMemberId, ...guestRestored } = restored;
   assert.equal(assignedToName,'');
+  assert.equal(assignedMemberId,''); assert.equal(registeredMemberId,'');
   assert.deepEqual(await service.lookup(item.id,item.accessToken),guestRestored);
 });
 

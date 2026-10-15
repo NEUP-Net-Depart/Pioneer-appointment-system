@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 const grants = [{ id: 'custom-start', permissionCode: 'repair.start', scope: { campusIds: ['campus-hunnan'], departmentIds: ['hardware'] },
   conditions: [{ code: 'activeDutyRole', parameters: { kind: 'repair_lead' } }], validity: { effectiveFrom: '2026-10-20', effectiveTo: '2026-11-01' } }];
 const definitions = [
-  { code: 'repair.start', name: '开始维修', scopeKinds: ['campus'], conditionKinds: ['activeDutyRole'] },
+  { code: 'repair.start', name: '开始维修', scopeKinds: ['campus', 'department'], conditionKinds: ['activeDutyRole'] },
   { code: 'attendance.self', name: '本人签到', scopeKinds: ['self'], conditionKinds: [] }
 ];
 
@@ -35,7 +35,10 @@ async function fixture(page, { manageRoles = true, roleName = 'superadmin' } = {
       if (!manageRoles) return route.fulfill({ status: 403, json: { error: '缺少角色权限' } });
       body = { items: [role] };
     }
-    if (path === '/api/permissions') body = { items: definitions };
+    if (path === '/api/organization/campuses') body = { items: [{ id: 'campus-nanhu', name: '南湖' }, { id: 'campus-hunnan', name: '浑南' }] };
+    if (path === '/api/organization/departments') body = { items: [{ id: 'hardware', name: '硬件部' }] };
+    if (path === '/api/permissions') body = { items: definitions, conditionProviders: [{ code: 'activeDutyRole', description: '当前成员在业务日期拥有有效岗位', version: 1,
+      parameterSchema: { type: 'object', properties: { kind: { type: 'string' } } } }] };
     if (path === '/api/roles/custom-role' && req.method() === 'PATCH') body = { ...role, ...req.postDataJSON(), revision: 3 };
     return route.fulfill({ json: body });
   });
@@ -109,6 +112,22 @@ test('permission changes save once and preserve complete unrelated grants', asyn
   expect(saved).toHaveLength(1);
   expect(saved[0].body.grants.find(grant => grant.permissionCode === 'repair.start')).toEqual(grants[0]);
   expect(saved[0].body.grants.find(grant => grant.permissionCode === 'attendance.self').scope).toEqual({ self: true });
+});
+
+test('scope, registered condition parameters and validity can be edited without dropping grant metadata', async ({ page }) => {
+  const { root, writes } = await fixture(page);
+  await root.getByRole('button', { name: '权限编辑器', exact: true }).click();
+  const editor = root.locator('.react-grant-details');
+  await editor.locator('summary').click();
+  await editor.getByLabel('南湖', { exact: true }).check();
+  await editor.getByLabel('指定岗位', { exact: true }).fill('office_lead');
+  await editor.getByLabel('权限生效日期').fill('2026-10-21');
+  await editor.getByLabel('权限结束日期').fill('2026-11-03');
+  await root.getByRole('button', { name: '保存权限', exact: true }).click();
+  await expect(root.locator('#staff-platform-root').getByRole('status')).toContainText('权限已保存');
+  const saved = writes.find(write => write.path === '/api/roles/custom-role').body.grants[0];
+  expect(saved).toEqual({ ...grants[0], scope: { campusIds: ['campus-hunnan', 'campus-nanhu'], departmentIds: ['hardware'] },
+    conditions: [{ code: 'activeDutyRole', parameters: { kind: 'office_lead' } }], validity: { effectiveFrom: '2026-10-21', effectiveTo: '2026-11-03' } });
 });
 
 

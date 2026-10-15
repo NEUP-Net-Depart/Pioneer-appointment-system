@@ -1,9 +1,11 @@
 import { fail } from '../lib/http.js';
 import { dateKey, eventWindow, instant, nowIso, weekRange, validDate } from '../platform/time.js';
-import { requestId, stableJson, publicResourceRef } from '../platform/contracts.js';
+import { requestId, stableJson, publicResourceRef, SCHEMA_VERSION } from '../platform/contracts.js';
 import { memberPublic } from '../modules/identity/public.js';
 import { generateRoster, validateRoster } from '../modules/rosters/solver.js';
 import { attendanceMethod, policyFor } from '../modules/attendance/public.js';
+import { validScope } from '../modules/authorization/scopes.js';
+import { validGrantValidity } from '../modules/authorization/public.js';
 
 function randomToken() {
   const bytes = new Uint8Array(24);
@@ -31,24 +33,26 @@ function inputString(input, key, max, required = false) {
 }
 
 function validateGrantValidity(validity) {
-  if (validity === undefined) return;
-  if (!validity || typeof validity !== 'object' || Array.isArray(validity)) fail(400, '权限有效期不正确');
-  const from = validity.effectiveFrom || validity.from || validity.startDate || validity.start;
-  const to = validity.effectiveTo || validity.to || validity.endDate || validity.end;
-  for (const value of [from, to]) if (value !== undefined && (typeof value !== 'string' || !validDate(value))) fail(400, '权限有效期不正确');
-  if (from && to && String(to).slice(0, 10) <= String(from).slice(0, 10)) fail(400, '权限有效期不正确');
+  if (!validGrantValidity(validity)) fail(400, '权限有效期不正确');
 }
 
-function validateGrant(definition, grant, actor) {
+function validateScope(scope) {
+  if (!validScope(scope)) fail(400, '权限范围不正确');
+}
+
+function validateGrant(definition, grant, actor, authorizer) {
+  if (!grant || typeof grant !== 'object' || Array.isArray(grant)) fail(400, '权限配置不正确');
   if (grant.conditions !== undefined && !Array.isArray(grant.conditions)) fail(400, '权限条件必须是数组');
   if (grant.scope !== undefined && (!grant.scope || typeof grant.scope !== 'object' || Array.isArray(grant.scope))) fail(400, '权限范围不正确');
   const scope = grant.scope || {};
+  validateScope(scope);
   if (scope.all === true && actor.role !== 'superadmin') fail(403, '普通管理员不能授予全局权限');
   const allowed = new Set(definition.scopeKinds || []);
   if ((scope.campusIds !== undefined || scope.campuses !== undefined) && !allowed.has('campus')) fail(400, '该权限不支持校区范围');
   if ((scope.departmentIds !== undefined || scope.departments !== undefined) && !allowed.has('department')) fail(400, '该权限不支持部门范围');
   if (scope.self !== undefined && !allowed.has('self')) fail(400, '该权限不支持本人范围');
   const conditions = grant.conditions || [];
+  if (conditions.some(condition => !authorizer.validCondition(condition))) fail(400, '权限条件、版本或参数不正确');
   for (const required of definition.conditionKinds || []) if (!conditions.some(item => item?.code === required)) fail(400, `权限缺少必要条件：${required}`);
   validateGrantValidity(grant.validity);
 }
@@ -95,9 +99,13 @@ export function staffPlatformService({ repository, platform, manifests }) {
       grants: context.grants || [] };
   }
 
+  function evaluate(context, permissionCode, target) {
+    return platform.authorizer.evaluate(context.actor, permissionCode, target, context, context.grants);
+  }
+
   async function requirePermission(actor, permissionCode, target = {}, businessDate = dateKey()) {
     const context = await contextFor(actor, businessDate);
-    const result = platform.authorizer.evaluate(context.actor, permissionCode, target, { ...context, todayDuty: context.todayDuties?.length > 0, workProfiles: context.workProfiles, memberships: context.memberships }, context.grants);
+    const result = evaluate(context, permissionCode, target);
     if (!result.allowed) fail(403, `缺少权限：${permissionCode}`);
     return { context, result };
   }
@@ -129,29 +137,75 @@ export function staffPlatformService({ repository, platform, manifests }) {
     }
   }
 
-  async function memberList(actor, filters) {
-    await requirePermission(actor, 'members.manage', filters?.homeCampusId ? { campusId: filters.homeCampusId } : {});
-    const names = { 南湖: 'campus-nanhu', 浑南: 'campus-hunnan' };
-    const allowed = actor.authorizedCampuses || [];
-    const scoped = filters?.homeCampusId ? filters : { ...(filters || {}), homeCampusIds: allowed.map(item => names[item] || item) };
-    const items = await repository.listMembers(scoped);
-    for (const item of items) item.memberships = await repository.listMemberships(item.memberId, false);
-    return { items, nextCursor: items.length > 100 ? items.at(-1).memberId : null, schemaVersion: '0010' };
+  function memberTarget(member, memberships, overrides = {}) {
+    const memberId = member.memberId || member.id;
+    return { id: memberId, memberId, campusId: member.homeCampusId ?? member.home_campus_id,
+      departmentIds: memberships.map(item => item.departmentId), ...overrides };
+  }
+
+  async function requireMemberPermission(actor, member, overrides = {}) {
+    const context = await contextFor(actor);
+    const memberships = await repository.memberships(member.memberId || member.id, context.businessDate);
+    if (!evaluate(context, 'members.manage', memberTarget(member, memberships, overrides)).allowed) fail(403, '缺少权限：members.manage');
+    return { context, memberships };
+  }
+
+  function memberCursor(member) { return encodeURIComponent(JSON.stringify([member.name, member.memberId])); }
+  function parseMemberCursor(value) {
+    if (!value) return undefined;
+    try {
+      if (typeof value !== 'string' || value.length > 2048) throw new Error();
+      const parts = JSON.parse(decodeURIComponent(value));
+      if (!Array.isArray(parts) || parts.length !== 2 || parts.some(part => typeof part !== 'string') || parts[0].length > 80 || !parts[1] || parts[1].length > 128) throw new Error();
+      return { name: parts[0], memberId: parts[1] };
+    } catch { fail(400, '成员分页游标不正确'); }
+  }
+
+  async function memberList(actor, filters = {}) {
+    const context = await contextFor(actor);
+    if (!platform.authorizer.eligibleGrants('members.manage', context, context.grants).length) fail(403, '缺少权限：members.manage');
+    if (filters.status && !['active', 'inactive'].includes(filters.status)) fail(400, '成员状态不正确');
+    const query = { q: inputString(filters, 'q', 120), status: filters.status,
+      homeCampusId: inputString(filters, 'homeCampusId', 80), businessDate: context.businessDate };
+    let after = parseMemberCursor(filters.cursor);
+    const items = [];
+    // Scan in bounded database pages, but fill a page with authorized members.
+    // The public cursor references only the last returned (visible) member.
+    for (;;) {
+      const candidates = await repository.listMembers({ ...query, after });
+      const membershipItems = await repository.membershipsForMembers(candidates.map(item => item.memberId), context.businessDate);
+      const byMember = new Map();
+      for (const membership of membershipItems) {
+        if (!byMember.has(membership.memberId)) byMember.set(membership.memberId, []);
+        byMember.get(membership.memberId).push(membership);
+      }
+      for (const item of candidates) {
+        const memberships = byMember.get(item.memberId) || [];
+        if (!evaluate(context, 'members.manage', memberTarget(item, memberships)).allowed) continue;
+        items.push({ ...item, memberships });
+        if (items.length === 101) return { items: items.slice(0, 100), nextCursor: memberCursor(items[99]), schemaVersion: SCHEMA_VERSION };
+      }
+      if (candidates.length < 101) return { items, nextCursor: null, schemaVersion: SCHEMA_VERSION };
+      const last = candidates.at(-1);
+      after = { name: last.name, memberId: last.memberId };
+    }
   }
 
   async function memberDetail(actor, memberId, businessDate = dateKey()) {
     const target = await repository.memberRow(memberId);
     if (!target) fail(404, '成员不存在');
-    await requirePermission(actor, 'members.manage', { campusId: target.home_campus_id });
+    await requireMemberPermission(actor, target);
+    if (!validDate(businessDate)) fail(400, '业务日期不正确');
     const [memberMemberships, workProfiles, account] = await Promise.all([repository.listMemberships(memberId), repository.profiles(memberId, businessDate), repository.accountForMember(memberId)]);
-    return { bindings: await repository.roleBindings(memberId), member: memberPublic(target, { memberships: memberMemberships, profiles: workProfiles }), account: account ? { account: account.account, status: account.status, role: account.role, authVersion: account.auth_version || 0 } : null };
+    return { bindings: await repository.roleBindings(memberId), member: memberPublic(target, { memberships: memberMemberships, profiles: workProfiles }), account: account ? { account: account.account, status: account.status, protected: !!account.protected, role: account.role, authVersion: account.auth_version || 0 } : null };
   }
 
   async function updateMember(actor, memberId, input) {
     const before = await repository.memberRow(memberId);
+    if (input.status === 'inactive' && (await repository.accountForMember(memberId))?.protected) fail(403, '受保护的负责人不能停用');
     if (!before) fail(404, '成员不存在');
-    await requirePermission(actor, 'members.manage', { campusId: before.home_campus_id });
-    if (input.homeCampusId) await requirePermission(actor, 'members.manage', { campusId: input.homeCampusId });
+    await requireMemberPermission(actor, before);
+    if (input.homeCampusId) await requireMemberPermission(actor, before, { campusId: input.homeCampusId });
     if (!Number.isInteger(input?.revision) || input.revision < 0) fail(400, '成员版本不正确');
     const patch = {};
     if (input.name !== undefined) patch.name = inputString(input, 'name', 80, true);
@@ -169,12 +223,14 @@ export function staffPlatformService({ repository, platform, manifests }) {
   }
 
   async function addMembership(actor, memberId, input) {
-    await requirePermission(actor, 'members.manage');
     if (!Number.isInteger(input?.revision) || input.revision < 0) fail(400, '成员版本不正确');
     for (const key of ['departmentId', 'effectiveFrom']) inputString(input, key, 80, true);
+    if (!validDate(input.effectiveFrom) || input.effectiveTo && !validDate(input.effectiveTo)) fail(400, '任职有效期不正确');
     if (!['primary','secondary','exchange','temporary'].includes(input.assignmentType || 'secondary')) fail(400, '任职类型不正确');
     if (input.effectiveTo && input.effectiveTo <= input.effectiveFrom) fail(400, '任职有效期不正确');
     const member = await repository.memberRow(memberId); if (!member) fail(404, '成员不存在');
+    await requireMemberPermission(actor, member);
+    await requireMemberPermission(actor, member, { departmentIds: [input.departmentId] });
     const result = await repository.addMembership(memberId, input, input.revision);
     if (!result) fail(409, '成员版本或任职范围已变化，请刷新');
     await repository.audit({ actorMemberId: (await contextFor(actor)).actor.memberId, actorAccount: actor.account, action: 'organization.membership.updated', sourceRef: publicResourceRef('organization','membership',result.id), after: result, requestId: input.requestId });
@@ -182,10 +238,11 @@ export function staffPlatformService({ repository, platform, manifests }) {
   }
 
   async function endMembership(actor, memberId, membershipId, input) {
-    await requirePermission(actor, 'members.manage');
-    if (!Number.isInteger(input?.revision) || input.revision < 0 || typeof input.effectiveTo !== 'string') fail(400, '任职版本或结束日期不正确');
+    if (!Number.isInteger(input?.revision) || input.revision < 0 || !validDate(input.effectiveTo)) fail(400, '任职版本或结束日期不正确');
     const existing = (await repository.listMemberships(memberId)).find(item => item.id === membershipId);
     if (!existing) fail(404, '任职关系不存在');
+    const member = await repository.memberRow(memberId); if (!member) fail(404, '成员不存在');
+    await requireMemberPermission(actor, member, { departmentIds: [existing.departmentId] });
     if (input.effectiveTo <= existing.effectiveFrom) fail(400, '任职结束日期必须晚于生效日期');
     const result = await repository.endMembership(memberId, membershipId, input.effectiveTo, input.revision);
     if (!result) fail(409, '任职已被其他操作修改，请刷新');
@@ -194,17 +251,21 @@ export function staffPlatformService({ repository, platform, manifests }) {
     return result;
   }
 
-  async function permissions(actor) { await requirePermission(actor, 'roles.manage'); return { items: await repository.permissionDefinitions(), contractVersion: 'staff-platform.v1' }; }
+  async function permissions(actor) { await requirePermission(actor, 'roles.manage'); return { items: await repository.permissionDefinitions(), conditionProviders: platform.authorizer.conditionDefinitions(), contractVersion: 'staff-platform.v1' }; }
   async function roles(actor) { await requirePermission(actor, 'roles.manage'); return { items: await repository.listRoles() }; }
   async function createRole(actor, input) {
     await requirePermission(actor, 'roles.manage');
+    if (actor.role !== 'superadmin') fail(403, '角色配置与分配由最高管理员管理');
     const code = inputString(input, 'code', 80, true); if (!/^[a-z][a-z0-9_.-]+$/.test(code)) fail(400, '角色 code 不正确');
     const name = inputString(input, 'name', 80, true); const level = Number.isSafeInteger(input.level) ? input.level : 1;
     if (level < 1 || level >= (actor.role === 'superadmin' ? 4 : 3)) fail(403, '角色等级超出可管理范围');
     const definitions = Object.fromEntries((await repository.permissionDefinitions()).map(item => [item.code, item]));
+    if (input.grants !== undefined && !Array.isArray(input.grants)) fail(400, '权限集合必须是数组');
+    if (new Set((input.grants || []).map(grant => grant?.permissionCode)).size !== (input.grants || []).length) fail(400, '角色不能重复绑定同一权限');
     for (const grant of input.grants || []) {
+      if (!grant || typeof grant !== 'object') fail(400, '权限配置不正确');
       if (!definitions[grant.permissionCode]) fail(400, `未知权限：${grant.permissionCode || ''}`);
-      validateGrant(definitions[grant.permissionCode], grant, actor);
+      validateGrant(definitions[grant.permissionCode], grant, actor, platform.authorizer);
     }
     const result = await repository.createRole({ ...input, code, name, level }, actor.account);
     const context = await contextFor(actor);
@@ -213,14 +274,16 @@ export function staffPlatformService({ repository, platform, manifests }) {
   }
   async function updateRole(actor, id, input) {
     await requirePermission(actor, 'roles.manage');
+    if (actor.role !== 'superadmin') fail(403, '角色配置与分配由最高管理员管理');
+    if (id === 'role-superadmin') fail(403, '最高管理员权限包受保护');
     if (!Number.isInteger(input.revision)) fail(400, '角色版本不正确');
     if (input.grants !== undefined) {
       if (!Array.isArray(input.grants)) fail(400, '权限集合必须是数组');
-      const codes = input.grants.map(grant => grant.permissionCode);
+      const codes = input.grants.map(grant => grant?.permissionCode);
       if (new Set(codes).size !== codes.length) fail(400, '角色不能重复绑定同一权限');
       const definitions = Object.fromEntries((await repository.permissionDefinitions()).map(item => [item.code, item]));
       if (codes.some(code => !definitions[code])) fail(400, '角色包含未知权限');
-      for (const grant of input.grants) validateGrant(definitions[grant.permissionCode], grant, actor);
+      for (const grant of input.grants) validateGrant(definitions[grant.permissionCode], grant, actor, platform.authorizer);
     }
     const result = await repository.updateRole(id, input, input.revision); if (!result) fail(409, '角色已被其他操作修改，请刷新');
     const context = await contextFor(actor);
@@ -228,8 +291,8 @@ export function staffPlatformService({ repository, platform, manifests }) {
     return { ...result, authVersionChanged: true };
   }
   async function previewRole(actor, input) {
-    await requirePermission(actor, 'roles.manage');
     const targetMember = await repository.memberRow(input.memberId); if (!targetMember) fail(404, '成员不存在');
+    await requirePermission(actor, 'roles.manage', memberTarget(targetMember, await repository.memberships(input.memberId)));
     const targetAccount = await repository.accountForMember(input.memberId);
     if (!targetAccount) fail(400, '该成员尚未关联账号');
     const context = await contextFor({ account: targetAccount.account, role: targetAccount.role, authorizedCampuses: input.campusIds || [] }, input.businessDate || dateKey());
@@ -238,13 +301,17 @@ export function staffPlatformService({ repository, platform, manifests }) {
     return { actor: actorView, grants, results: grants.map(grant => platform.authorizer.evaluate(actorView, grant.permissionCode, input.target || {}, context, [grant])), testedAt: nowIso() };
   }
   async function bindMemberRoles(actor, memberId, input) {
-    await requirePermission(actor, 'roles.manage');
+    const member = await repository.memberRow(memberId); if (!member) fail(404, '成员不存在');
+    await requirePermission(actor, 'roles.manage', memberTarget(member, await repository.memberships(memberId)));
+    if (actor.role !== 'superadmin') fail(403, '角色配置与分配由最高管理员管理');
+    if ((await repository.accountForMember(memberId))?.protected) fail(403, '受保护的负责人授权不能更改');
     if (!Number.isInteger(input.revision)) fail(400, '成员版本不正确');
     if (!Array.isArray(input.bindings)) fail(400, '角色绑定必须是数组');
     const roles = Object.fromEntries((await repository.listRoles()).map(role => [role.id, role]));
-    if (input.bindings.some(binding => !roles[binding.roleId])) fail(400, '角色绑定不存在');
+    if (input.bindings.some(binding => !binding || !roles[binding.roleId])) fail(400, '角色绑定不存在');
     for (const binding of input.bindings) {
       if (binding.scope !== undefined && (!binding.scope || typeof binding.scope !== 'object' || Array.isArray(binding.scope))) fail(400, '角色范围不正确');
+      validateScope(binding.scope || {});
       for (const value of [binding.effectiveFrom, binding.effectiveTo]) if (value !== undefined && value !== null && (typeof value !== 'string' || !validDate(value))) fail(400, '角色有效期不正确');
       if (binding.effectiveFrom && binding.effectiveTo && binding.effectiveTo <= binding.effectiveFrom) fail(400, '角色有效期不正确');
     }
@@ -261,7 +328,8 @@ export function staffPlatformService({ repository, platform, manifests }) {
   }
 
   async function organization(actor, kind, query = {}) {
-    await requirePermission(actor, 'members.manage');
+    const context = await contextFor(actor);
+    if (!['members.manage', 'roles.manage'].some(code => platform.authorizer.eligibleGrants(code, context, context.grants).length)) fail(403, '缺少组织字典读取权限');
     const includeDisabled = query.includeDisabled === '1' || query.includeDisabled === true;
     if (kind === 'campuses') return { items: await repository.listCampuses(includeDisabled) };
     if (kind === 'departments') return { items: await repository.listDepartments(includeDisabled) };
@@ -270,7 +338,8 @@ export function staffPlatformService({ repository, platform, manifests }) {
   }
 
   async function importMembers(actor, input) {
-    await requirePermission(actor, 'members.manage');
+    const context = await contextFor(actor);
+    if (!platform.authorizer.eligibleGrants('members.manage', context, context.grants).length) fail(403, '缺少权限：members.manage');
     const rows = csvRows(String(input.csv || '').replace(/^\uFEFF/, ''));
     if (rows.length < 2) fail(400, '成员导入至少需要表头和一行数据');
     const headers = rows.shift().map(value => value.trim());
@@ -291,11 +360,16 @@ export function staffPlatformService({ repository, platform, manifests }) {
       return item;
     });
     if (new Set(items.map(item => item.studentId)).size !== items.length) fail(400, '导入文件包含重复学号');
+    for (const item of items) {
+      if (!evaluate(context, 'members.manage', { campusId: item.homeCampusId, departmentIds: item.departmentId ? [item.departmentId] : [] }).allowed) fail(403, '导入包含管理范围外的成员');
+      if (actor.role !== 'superadmin' && (item.roleCodes.length || item.workProfiles.length || item.authorizedCampuses.length)) fail(403, '角色、工作资格和账号校区授权由最高管理员配置');
+      const existing = (await repository.listMembers({ studentId: item.studentId }))[0];
+      if (existing) await requireMemberPermission(actor, existing);
+    }
     if (!input.confirm) return { mode: 'preview', items: items.map(item => ({ ...item, memberId: `member-${item.studentId}` })), warnings: items.flatMap(item => item.roleCodes.length || item.workProfiles.length ? [] : [{ studentId: item.studentId, message: '未设置工作属性或角色，导入后仅建立成员资料' }]), requestId: input.requestId || '' };
     const memberRows = await repository.importMembers(items);
     const byStudentId = Object.fromEntries(memberRows.map(row => [row.student_id, row]));
     const result = items.map(item => ({ memberId: byStudentId[item.studentId]?.id || `member-${item.studentId}`, studentId: item.studentId, name: item.name, status: 'updated' }));
-    const context = await contextFor(actor);
     await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'identity.members.imported', sourceRef: publicResourceRef('identity','import',input.requestId || crypto.randomUUID()), after: { count: result.length }, requestId: input.requestId });
     return { mode: 'confirmed', items: result, count: result.length, requestId: input.requestId || '' };
   }
