@@ -5,7 +5,7 @@ import { createPhotoInput } from '/shared/photo-input.js';
 import { drawSignature, validSignature } from '/shared/signature.js';
 import { createScanner } from './scanner.js';
 import { renderScanDetails } from './scan-details.js';
-import { terminalStatuses,statusLabels,expirationMessage } from '/shared/constants.js';
+import { terminalStatuses,statusLabels,statusClass,expirationMessage } from '/shared/constants.js';
 
 export function initScan() {
   let item, active = false, ready = false, busy = false, generation = 0, legacyCount = 0, onsiteRequest;
@@ -195,7 +195,7 @@ export function initScan() {
           const button = document.createElement('button'); button.type = 'button'; button.className = 'scan-number-suggestion';
           const number = document.createElement('strong'), detail = document.createElement('span'), state = document.createElement('em');
           number.textContent = item.id; detail.textContent = `${item.campus} · ${item.timeSlot}`; state.textContent = statusLabels[item.status] || item.status;
-          state.dataset.status = item.status;
+          state.className = `status-pill ${statusClass[item.status] || ''}`;
           button.append(number, detail, state);
           button.addEventListener('click', () => { input.value = item.id; clearSuggestions(); resolve({ id: item.id }); });
           button.addEventListener('keydown', event => {
