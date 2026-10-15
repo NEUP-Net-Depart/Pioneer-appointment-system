@@ -97,6 +97,7 @@ before(async () => {
     env: { DB: { type: 'd1', id: 'test-db' }, CAPACITY_UPGRADE_DB: { type: 'd1', id: 'capacity-upgrade-db' }, WORKFLOW_UPGRADE_DB: { type: 'd1', id: 'workflow-upgrade-db' }, SLOT_SETTINGS_UPGRADE_DB: { type: 'd1', id: 'slot-settings-upgrade-db' }, ATTACHMENTS: { type: 'r2', name: 'test-attachments' },
       SCHEDULE_UPGRADE_DB: { type: 'd1', id: 'schedule-upgrade-db' },
       STUDENT_UPGRADE_DB: {type:'d1',id:'student-upgrade-db'},
+      HISTORICAL_DATE_UPGRADE_DB: {type:'d1',id:'historical-date-upgrade-db'},
       SCAN_UPGRADE_DB: { type: 'd1', id: 'scan-upgrade-db' },
       EXPIRATION_UPGRADE_DB: { type: 'd1', id: 'expiration-upgrade-db' },
       FIVE_STATUS_UPGRADE_DB: { type: 'd1', id: 'five-status-upgrade-db' },
@@ -555,7 +556,7 @@ test('guest booking, encrypted contacts, lookup, queue and cancellation', async 
 });
 test('validation rejects invalid dates, windows, fields, MIME, JSON and cross-site writes', async () => {
   for (const patch of [{ date: '2026-02-30' }, { date: addDays(date, 4) }, { campus: '其他' }, { timeSlot: '10:00-11:00' }, { studentId: 'abc' }, { contactValue: ' ' }, { issue: 'x'.repeat(1001) }, { agreementAt: 'invalid' }]) {
-    await api('/api/appointments', { method: 'POST', body: draft(patch) }, 400);
+    await api('/api/appointments', { method: 'POST', body: draft(patch) }, patch.date === addDays(date, 4) ? 409 : 400);
   }
   await api('/api/appointments', { method: 'POST', body: '{broken' }, 400);
   await api('/api/appointments', { method: 'POST', body: [] }, 400);
@@ -1481,6 +1482,49 @@ test('queries and writes catch up missed automatic endings; unauthorized credent
   assert.equal(listed.items.find(row=>row.id===another.id).status,'expired');
   const expired=appointmentService(repository,users,PII_ENCRYPTION_KEY,()=>new Date(`${date}T20:00:00+08:00`));
   await assert.rejects(expired.create(draft()),error=>error.status===409 && error.message.includes('时段已经结束'));
+});
+
+test('historical date migration upgrades populated 0009/0010 databases without rewriting history', async () => {
+  const legacy = await mf.getD1Database('HISTORICAL_DATE_UPGRADE_DB');
+  for (const file of (await readdir('migrations')).filter(name => name.endsWith('.sql') && name < '0011').sort()) await applyMigration(legacy, file);
+  const item = await book(), historical = '2026-10-10'; // Saturday has no weekday template.
+  await legacy.prepare('INSERT INTO service_locations(campus,date,location,updated_at) VALUES (?,?,?,?)').bind(item.campus,item.date,'历史维修室',testNow).run();
+  const row = await db.prepare('SELECT * FROM appointments WHERE id=?').bind(item.id).first();
+  await legacy.prepare(`INSERT INTO appointments(${Object.keys(row).join(',')}) VALUES(${Object.keys(row).map(() => '?').join(',')})`).bind(...Object.values(row)).run();
+  const move = () => legacy.prepare('UPDATE appointments SET date=?,expires_at=? WHERE id=?').bind(historical,expirationDeadline(historical),item.id).run();
+  await assert.rejects(move, /SLOT_CHANGED/);
+  const tables = ['appointments','booking_day_slots','service_locations','booking_requests','appointment_attachments','credential_recoveries','active_repairs','storage_quota'];
+  const before = await Promise.all(tables.map(async table => (await legacy.prepare(`SELECT * FROM ${table} ORDER BY 1`).all()).results));
+  await applyMigration(legacy,'0011_historical_booking_dates.sql');
+  for (const [index,table] of tables.entries()) assert.deepEqual((await legacy.prepare(`SELECT * FROM ${table} ORDER BY 1`).all()).results,before[index],table);
+  await move();
+  assert.deepEqual(await legacy.prepare('SELECT * FROM appointments WHERE id=?').bind(item.id).first(),{...row,date:historical,expires_at:expirationDeadline(historical)});
+  const slots = (await legacy.prepare('SELECT time_slot,capacity FROM booking_day_slots WHERE campus=? AND date=? ORDER BY time_slot').bind(item.campus,historical).all()).results;
+  assert.deepEqual(slots, TIME_SLOTS.map(time_slot => ({time_slot,capacity:5})));
+  assert.deepEqual((await legacy.prepare('PRAGMA foreign_key_check').all()).results,[]);
+});
+
+test('historical date fallback cannot bypass slot, date, capacity, restoration or student-day guards', async () => {
+  const first = await book(), second = await book(), historical = '2026-10-10';
+  for (const [day,extra] of [['2026-10-16',''],['2026-02-30',''],[historical,",time_slot='20:00–20:30'"],[historical,",campus='浑南'"],[historical,",student_id='99998888'"]]) {
+    await assert.rejects(() => db.prepare(`UPDATE appointments SET date=?${extra} WHERE id=?`).bind(day,second.id).run(), /SLOT_CHANGED/);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM booking_day_slots WHERE date=?').bind(day).first()).n,0);
+  }
+  await db.prepare('UPDATE appointments SET date=?,expires_at=? WHERE id=?').bind(historical,expirationDeadline(historical),first.id).run();
+  await db.prepare("UPDATE booking_day_slots SET capacity=1 WHERE date=? AND campus='南湖' AND time_slot='19:00–19:30'").bind(historical).run();
+  await assert.rejects(() => db.prepare('UPDATE appointments SET date=? WHERE id=?').bind(historical,second.id).run(), /SLOT_FULL/);
+  await db.prepare("UPDATE booking_day_slots SET capacity=0 WHERE date=? AND campus='南湖' AND time_slot='19:00–19:30'").bind(historical).run();
+  await assert.rejects(() => db.prepare('UPDATE appointments SET date=? WHERE id=?').bind(historical,second.id).run(), /SLOT_PAUSED/);
+  await db.prepare("UPDATE appointments SET status='cancelled' WHERE id=?").bind(second.id).run();
+  await assert.rejects(() => db.prepare("UPDATE appointments SET date='2026-10-09',status='booked' WHERE id=?").bind(second.id).run(), /SLOT_CHANGED/);
+  await db.prepare("UPDATE booking_day_slots SET capacity=0 WHERE date=? AND campus='南湖' AND time_slot='19:00–19:30'").bind(date).run();
+  await assert.rejects(() => db.prepare("UPDATE appointments SET status='booked' WHERE id=?").bind(second.id).run(), /SLOT_PAUSED/);
+  await assert.rejects(() => db.prepare("UPDATE appointments SET date=?,status='booked',student_id=?,time_slot='20:00–20:30' WHERE id=?").bind(historical,first.studentId,second.id).run(), /STUDENT_DAY_EXISTS/);
+  await assert.rejects(() => db.prepare("UPDATE appointments SET date=?,time_slot='19:00–20:00' WHERE id=?").bind(historical,second.id).run(), /SLOT_CHANGED/);
+  await db.prepare("UPDATE appointments SET date='2026-10-09' WHERE id=?").bind(second.id).run();
+  assert.equal((await appointmentRepository(db).find(second.id)).status,'cancelled');
+  await db.prepare("UPDATE booking_day_slots SET capacity=0 WHERE date='2026-10-09' AND campus='南湖' AND time_slot='19:00–19:30'").run();
+  await assert.rejects(() => db.prepare("UPDATE appointments SET status='booked' WHERE id=?").bind(second.id).run(), /SLOT_PAUSED/);
 });
 
 test('admin corrections preserve start on reopening, validate reassignment and clear fields on undoing sign-in',async()=>{
