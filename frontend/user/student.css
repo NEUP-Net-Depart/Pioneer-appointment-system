@@ -100,6 +100,14 @@ fieldset.field { padding: 0; border: 0; }
 .user-mode .success-actions { justify-content: flex-start; gap: 12px; flex-wrap: wrap; }
 .user-mode .repair-qr img { display: block; width: 240px; height: 240px; max-width: 100%; object-fit: contain; }
 .user-mode .repair-qr-status { min-height: 1.7em; }
+.success-layout { display: grid; grid-template-columns: minmax(0,1fr) 264px; align-items: start; gap: 24px; margin-top: 24px; }
+.success-details { min-width: 0; }
+.success-details .selection-summary { margin-top: 0; }
+.success-details #copy-code { margin-top: 16px; }
+.user-mode .success-qr-panel { min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: #f1f7f5; text-align: center; }
+.user-mode .success-qr-panel img { margin: 0 auto; }
+.success-qr-panel>p:first-child { margin: 0 0 12px; font-size: 13px; color: var(--muted); }
+@media(max-width:759px) { .success-layout { grid-template-columns: minmax(0,1fr); } .success-qr-panel { order: -1; } }
 .list-toolbar { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
 .import-form { margin-bottom: 24px; }
 .record-group { margin: 24px 0; }

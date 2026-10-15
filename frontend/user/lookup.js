@@ -53,9 +53,9 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
     });
     if(item){const historic=terminalStatuses.includes(item.status),qr=$('#detail-qr'),details=document.createElement('details');
       const summary=document.createElement('summary');summary.textContent=historic ? '查看历史维修二维码' : '出示维修二维码';const content=document.createElement('div');details.append(summary,content);qr.append(details);
-      if(historic){const hint=document.createElement('p');hint.className='field-hint';hint.textContent='仅供工作人员查询历史记录，不代表预约仍然有效';content.append(hint);}
+      if(historic){const hint=document.createElement('p');hint.dataset.historyQr='true';hint.className='field-hint';hint.textContent='仅供工作人员查询历史记录，不代表预约仍然有效';content.append(hint);}
       let loaded=false;details.addEventListener('toggle',()=>{if(details.open && !loaded){loaded=true;const target=document.createElement('div');content.prepend(target);void renderRepairQr(target,item);}});
-
+      details.dataset.status=item.status;details.open=!historic;
     }
     updateDetail();
   }
@@ -75,6 +75,8 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
       if(terminalStatuses.includes(item.status)){
         qrDetails.open=false;qrDetails.querySelector('summary').textContent='查看历史维修二维码';
         if(!qrDetails.querySelector('[data-history-qr]')){const hint=document.createElement('p');hint.dataset.historyQr='true';hint.className='field-hint';hint.textContent='仅供工作人员查询历史记录，不代表预约仍然有效';qrDetails.append(hint);}
+      } else if(terminalStatuses.includes(qrDetails.dataset.status)){
+        qrDetails.querySelector('[data-history-qr]')?.remove();qrDetails.querySelector('summary').textContent='出示维修二维码';qrDetails.open=true;
       }
       qrDetails.dataset.status=item.status;
     }

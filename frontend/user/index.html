@@ -71,9 +71,11 @@
       <div class="step-actions"><button class="secondary-btn" type="button" data-edit-step="2">上一步</button><button class="primary-btn" id="booking-submit" type="submit">确认并提交预约</button></div>
     </section>
   </form>
-  <section class="success-panel" id="success-panel" hidden aria-labelledby="success-title"><div class="success-icon" aria-hidden="true">✓</div><h1 id="success-title" tabindex="-1">预约成功</h1><p>请保存预约凭证，到场时向工作人员出示。</p><div id="success-summary" class="selection-summary"></div>
-    <div class="booking-code"><span>预约编号</span><strong id="success-code"></strong></div><div id="success-repair-qr" class="repair-qr"></div>
+  <section class="success-panel" id="success-panel" hidden aria-labelledby="success-title"><div class="success-icon" aria-hidden="true">✓</div><h1 id="success-title" tabindex="-1">预约成功</h1><p>请保存预约凭证，到场时向工作人员出示。</p>
+    <div class="success-layout"><div class="success-details"><div id="success-summary" class="selection-summary"></div>
+    <div class="booking-code"><span>预约编号</span><strong id="success-code"></strong></div>
     <button class="secondary-btn" id="copy-code" type="button">复制私人查询链接</button><p class="field-hint">私人查询链接可以访问预约与附件，请妥善保存，不要随意转发。</p><p id="credential-save-message" class="notice" hidden role="status"></p><input id="success-link-fallback" class="private-link-fallback" type="text" readonly hidden aria-label="私人查询链接" />
+    </div><div id="success-repair-qr" class="repair-qr success-qr-panel"></div></div>
     <section id="success-photos" hidden><h2>故障照片上传</h2><div id="success-photo-progress"></div><p id="success-photo-message" role="status"></p><button id="success-photo-retry" class="secondary-btn" type="button" hidden>重试未上传照片</button><button id="success-photo-later" class="text-btn" type="button" hidden>稍后补传</button></section>
     <div class="success-actions"><button class="primary-btn" id="view-created-appointment" type="button">查看本次预约</button><button class="secondary-btn" type="button" data-view-link="lookup">我的预约</button></div>
   </section>

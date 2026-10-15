@@ -16,6 +16,32 @@ test('success shows real location and QR and sends distinct actions to the curre
   await page.locator('[data-view-link=lookup]').first().click();await expect(page.locator('#lookup-list')).toBeVisible();await expect(page.locator('.student-record')).toHaveCount(1);await expect(page.locator('.student-record button')).toHaveCount(0);await expect(page.locator('[data-cancel-open]')).toBeHidden();
 });
 
+test('success layout splits details and QR on desktop, and prioritizes QR on mobile',async({page},testInfo)=>{
+  await setupStudent(page);await chooseTime(page);await fillDevice(page);await goReview(page);await submitStudent(page);
+  for(const width of [320,375,768,1024,1440]){
+    await page.setViewportSize({width,height:900});
+    const details=await page.locator('.success-details').boundingBox(),qr=await page.locator('.success-qr-panel').boundingBox();
+    if(width>=760){expect(qr.x).toBeGreaterThanOrEqual(details.x+details.width);expect(Math.abs(qr.y-details.y)).toBeLessThan(1);}
+    else {expect(qr.y+qr.height).toBeLessThanOrEqual(details.y);expect(qr.width).toBeLessThanOrEqual(details.width+1);}
+    await expect(page.locator('#success-summary')).toContainText('南湖校区测试维修室');
+    expect(await page.evaluate(()=>Math.max(document.body.scrollWidth,document.documentElement.scrollWidth)<=innerWidth)).toBe(true);
+    if([375,1440].includes(width))await page.screenshot({path:testInfo.outputPath(`success-${width}.png`),fullPage:true});
+  }
+});
+
+test('valid detail QR opens by default while each historical status stays collapsed and loads only on demand',async({page})=>{
+  const state=await setupStudent(page),statuses=['booked','in_progress','completed','cancelled','expired'];let requests=0;
+  const items=statuses.map((status,index)=>({id:`reserve020261012-${80+index}`,accessToken:'a'.repeat(43),revision:0,status,outcome:status==='completed' ? 'legacy_unknown' : null,date:'2026-10-12',timeSlot:'19:00–19:30',campus:'南湖',deviceType:'其他',brand:status,attachments:[]}));
+  items.forEach(item=>state.appointments.set(item.id,item));await page.evaluate(items=>localStorage.setItem('pioneerAppointmentAccess',JSON.stringify(items.map(({id,accessToken})=>({id,accessToken})))),items);
+  await page.route('**/api/appointments/*/scan-code',route=>{requests++;return route.fulfill({json:{code:'historical-test.123456789abc'}});});
+  for(const [index,item] of items.entries()){
+    await page.locator('[data-view-link=lookup]').first().click();await page.locator(`[data-detail-id="${item.id}"]`).click();
+    const details=page.locator('#detail-qr details');
+    if(index<2){await expect(details).toHaveJSProperty('open',true);await expect(page.locator('#detail-qr img')).toBeVisible();await expect.poll(()=>requests).toBe(index+1);}
+    else {await expect(details).toHaveJSProperty('open',false);await expect(page.locator('#detail-qr img')).toHaveCount(0);expect(requests).toBe(index);await details.locator('summary').click();await expect(page.locator('[data-history-qr]')).toBeVisible();await expect(page.locator('[data-history-qr]')).toHaveCount(1);await expect(page.locator('#detail-qr img')).toBeVisible();await expect.poll(()=>requests).toBe(index+1);}
+  }
+});
+
 test('batch and incremental photo choices prepare locally, reject overflow, and upload only after creation',async({page})=>{
   const state=await setupStudent(page);let uploads=0;page.on('request',request=>{if(request.method()==='POST' && request.url().endsWith('/attachments'))uploads++;});
   await chooseTime(page);await fillDevice(page);const input=page.locator('#appointment-attachments');await expect(input).not.toHaveAttribute('capture');
@@ -56,13 +82,13 @@ test('empty list, failed record and inline import remain distinct and failed ver
 test('cancellation with a lost response rechecks the server and keeps the cancelled detail',async({page})=>{
   const state=await setupStudent(page);await chooseTime(page);await fillDevice(page);await goReview(page);await submitStudent(page);await page.locator('#view-created-appointment').click();const item=[...state.appointments.values()][0];
   await page.route('**/api/appointments/*/status',route=>{item.status='cancelled';item.completedAt='2026-10-12T02:10:00.000Z';item.revision++;return route.abort();});
-  await page.locator('[data-cancel-open]').click();await expect(page.locator('.cancel-confirm')).toContainText('取消后本次预约将失效');await page.locator('[data-cancel-keep]').click();await expect(page.locator('.cancel-confirm')).toBeHidden();await page.locator('[data-cancel-open]').click();await page.locator('[data-cancel-confirm]').click();await expect(page.locator('#detail-summary')).toContainText('已取消');await expect(page.locator('[data-cancel-open]')).toHaveCount(0);await page.locator('#back-to-appointments').click();await expect(page.locator('.record-group').last().locator('.student-record')).toHaveCount(1);
+  await page.locator('[data-cancel-open]').click();await expect(page.locator('.cancel-confirm')).toContainText('取消后本次预约将失效');await page.locator('[data-cancel-keep]').click();await expect(page.locator('.cancel-confirm')).toBeHidden();await page.locator('[data-cancel-open]').click();await page.locator('[data-cancel-confirm]').click();await expect(page.locator('#detail-summary')).toContainText('已取消');await expect(page.locator('#detail-qr details')).toHaveJSProperty('open',false);await expect(page.locator('[data-history-qr]')).toHaveCount(1);await expect(page.locator('[data-cancel-open]')).toHaveCount(0);await page.locator('#back-to-appointments').click();await expect(page.locator('.record-group').last().locator('.student-record')).toHaveCount(1);
 });
 
 test('completed legacy results, missing times and rebooking preserve history while clearing only an explicitly discarded draft',async({page})=>{
   const state=await setupStudent(page),item={id:'reserve020261012-80',accessToken:'a'.repeat(43),revision:0,status:'completed',outcome:'legacy_unknown',date:'2026-10-12',timeSlot:'19:00–20:00',campus:'南湖',deviceType:'显示器',brand:'旧品牌',name:'历史机主',studentId:'20260080',note:'历史备注',serial:'LEGACY',attachments:[]};state.appointments.set(item.id,item);
   await page.evaluate(entry=>localStorage.setItem('pioneerAppointmentAccess',JSON.stringify([{id:entry.id,accessToken:entry.accessToken}])),item);
-  await chooseTime(page);await fillDevice(page,{name:'当前草稿机主'});await page.locator('[data-view-link=lookup]').first().click();await page.locator(`[data-detail-id="${item.id}"]`).click();await expect(page.locator('#appointment-detail')).toContainText('历史未分类');await expect(page.locator('#appointment-detail')).not.toContainText('修复成功');await expect(page.locator('#appointment-detail')).toContainText('未记录');await expect(page.locator('#appointment-detail')).toContainText('LEGACY');
+  await chooseTime(page);await fillDevice(page,{name:'当前草稿机主'});await page.locator('[data-view-link=lookup]').first().click();await page.locator(`[data-detail-id="${item.id}"]`).click();await expect(page.locator('#appointment-detail')).toContainText('历史未分类');await expect(page.locator('#detail-qr details')).not.toHaveAttribute('open');await expect(page.locator('#detail-qr')).toContainText('仅供工作人员查询历史记录，不代表预约仍然有效');await expect(page.locator('#appointment-detail')).not.toContainText('修复成功');await expect(page.locator('#appointment-detail')).toContainText('未记录');await expect(page.locator('#appointment-detail')).toContainText('LEGACY');
   await page.locator('[data-rebook]').click();await expect(page.locator('#rebook-confirm')).toBeVisible();await page.locator('[data-rebook-keep]').click();await page.locator('[data-view-link=booking]').first().click();await expect(page.locator('[name=name]')).toHaveValue('当前草稿机主');
   await page.locator('[data-view-link=lookup]').first().click();await page.locator(`[data-detail-id="${item.id}"]`).click();await page.locator('[data-rebook]').click();await page.locator('[data-rebook-confirm]').click();await expect(page.locator('[data-step="1"]')).toBeVisible();await expect(page.locator('[name=campus]')).toHaveValue('');await expect(page.locator('[name=name]')).toHaveValue('');await expect(page.locator('[name=deviceType]')).toHaveValue('');expect(state.appointments.get(item.id).status).toBe('completed');
 });
