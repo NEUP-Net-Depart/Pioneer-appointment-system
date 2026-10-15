@@ -37,13 +37,13 @@ test('every booking text limit reports only overflow, retains the full value and
   }
   await goReview(page);await submitStudent(page);expect(state.calls).toHaveLength(1);expect(state.calls[0].body.issue).toBe('🙂'.repeat(1000));expect(state.calls[0].body.contactValue).toBe('w'.repeat(20));
 });
-test('QQ requires 9 to 12 digits and an overlong value is never silently submitted',async({page})=>{
+test('QQ requires 5 to 12 digits and an overlong value is never silently submitted',async({page})=>{
   const state=await setupStudent(page);await chooseTime(page);await fillDevice(page);
   const input=page.locator('[name=qqAccount]'),error=page.locator('[data-error-for=qqAccount]');
-  for(const value of ['12345678','abcdefghi','012345678','1234567890123']){
-    await input.fill(value);await page.locator('#step-two-next').click();await expect(page.locator('[data-step="2"]')).toBeVisible();await expect(input).toHaveValue(value);await expect(error).toHaveText(value.length>12 ? '必须在 12 字以内' : '请输入 9～12 位 QQ 数字，首位不能为 0');expect(state.calls).toHaveLength(0);
+  for(const value of ['1234','abcde','01234','1234567890123']){
+    await input.fill(value);await page.locator('#step-two-next').click();await expect(page.locator('[data-step="2"]')).toBeVisible();await expect(input).toHaveValue(value);await expect(error).toHaveText(value.length>12 ? '必须在 12 字以内' : '请输入 5～12 位 QQ 数字，首位不能为 0');expect(state.calls).toHaveLength(0);
   }
-  for(const value of ['123456789','1234567890','12345678901','123456789012']){
+  for(const value of ['12345','12345678','123456789','1234567890','12345678901','123456789012']){
     await input.fill(value);await expect(error).toBeEmpty();await goReview(page);await expect(page.locator('#booking-review')).toContainText(value);
     if(value.length<12)await page.getByRole('button',{name:'修改设备和联系方式',exact:true}).click();
   }

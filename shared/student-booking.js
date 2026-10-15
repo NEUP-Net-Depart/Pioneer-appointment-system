@@ -57,7 +57,7 @@ export function studentFieldErrors(data) {
   if (data.deviceType === '笔记本' && !ANSWERS.includes(data.liquidMetal)) errors.liquidMetal = '请选择是否使用液金散热，可选不清楚';
   if (data.deviceType === '笔记本' && data.brand === 'Dell' && data.dellG15 != null && data.dellG15 !== '' && !ANSWERS.includes(data.dellG15)) errors.dellG15 = '请选择是否属于 Dell G15 系列';
   if (!['qq','wechat'].includes(data.contactType)) errors.contactType = '请选择 QQ 或微信';
-  if (!errors.contactValue && data.contactType === 'qq' && !/^[1-9]\d{8,11}$/.test(data.contactValue || '')) errors.contactValue = '请输入 9～12 位 QQ 数字，首位不能为 0';
+  if (!errors.contactValue && data.contactType === 'qq' && !/^[1-9]\d{4,11}$/.test(data.contactValue || '')) errors.contactValue = '请输入 5～12 位 QQ 数字，首位不能为 0';
   if (!errors.email && data.email && (typeof data.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email))) errors.email = '请输入有效的联系邮箱';
   return errors;
 }

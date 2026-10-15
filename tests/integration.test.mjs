@@ -2080,12 +2080,12 @@ test('student API rejects overlong fields explicitly and enforces numeric QQ bou
     const response=await api('/api/appointments',{method:'POST',body:draft({contactType,contactValue:'1'.repeat(limit+1)})},400);
     assert.equal(response.fields.contactValue,`必须在 ${limit} 字以内`);
   }
-  for(const value of ['12345678','abcdefghi','012345678']){
+  for(const value of ['1234','abcde','01234']){
     const response=await api('/api/appointments',{method:'POST',body:draft({contactType:'qq',contactValue:value})},400);
-    assert.equal(response.fields.contactValue,'请输入 9～12 位 QQ 数字，首位不能为 0');
+    assert.equal(response.fields.contactValue,'请输入 5～12 位 QQ 数字，首位不能为 0');
   }
   assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointments').first()).n,0);
-  for(const value of ['123456789','123456789012']){
+  for(const value of ['12345','12345678','123456789012']){
     const item=await book({contactType:'qq',contactValue:value});assert.equal(item.contactValue,value);
   }
 });

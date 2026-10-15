@@ -27,9 +27,23 @@ test('resizing switches the picker between columns and stacked panels without lo
 
 for(const [now,count] of [['2026-10-15T10:00:00+08:00',1],['2026-10-14T10:00:00+08:00',2],['2026-10-13T10:00:00+08:00',3],['2026-10-12T10:00:00+08:00',4]]) {
   test(`${count} service dates and four vertical slots fit a 320px phone`,async({page})=>{
-    await page.setViewportSize({width:320,height:568});await setupStudent(page,{now});await page.locator('[data-campus=南湖]').click();await expect(page.locator('#booking-days button')).toHaveCount(count);
-    const positions=await page.locator('#booking-slots button').evaluateAll(buttons=>buttons.map(button=>({top:button.getBoundingClientRect().top,height:button.getBoundingClientRect().height})));
-    expect(positions).toHaveLength(4);expect(positions.every((box,index)=>box.height>=44 && (!index || box.top>positions[index-1].top))).toBe(true);
+    let release;
+    const responseReady=new Promise(resolve=>release=resolve);
+    await page.setViewportSize({width:320,height:568});await setupStudent(page,{now,availability:async(result,route)=>{await responseReady;await route.fulfill({json:result});}});
+    await page.locator('[data-campus=南湖]').click();
+    const slots=page.locator('#booking-slots button');
+    try{
+      await expect(page.locator('#booking-days button')).toHaveCount(count);
+      await expect(page.locator('#booking-picker')).toHaveAttribute('aria-busy','true');
+      await expect(slots.first()).toBeHidden();
+    }finally{release();}
+    await expect(page.locator('#booking-picker')).toHaveAttribute('aria-busy','false');
+    await expect(slots).toHaveCount(4);await expect(slots.first()).toBeVisible();await expect(slots.first()).toBeEnabled();
+    const positions=await slots.evaluateAll(buttons=>buttons.map(button=>({top:button.getBoundingClientRect().top,height:button.getBoundingClientRect().height})));
+    for(const [index,box] of positions.entries()){
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      if(index)expect(box.top).toBeGreaterThan(positions[index-1].top);
+    }
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   });
 }
