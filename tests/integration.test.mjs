@@ -1,4 +1,4 @@
-import { test, before, after, beforeEach } from 'node:test';
+import { test, before, after, beforeEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { randomBytes, createHmac } from 'node:crypto';
@@ -19,11 +19,23 @@ import { cloudflareClient } from '../scripts/cloudflare-d1.mjs';
 import { userRepository } from '../src/db/users.js';
 import { TIME_SLOTS } from '../shared/constants.js';
 
+// Test-only clock injection: no request header or deployment binding can enable it.
+function workerClock(now) {
+  return `const RealDate = Date; globalThis.Date = class extends RealDate {
+    constructor(...args) { super(...(args.length ? args : [${now}])); }
+    static now() { return ${now}; }
+  };`;
+}
+
 let mf, db, bucket;
 const MAX_R2_BYTES = 8589934592;
 const password = 'integration-test-password-only';
 const JWT_SECRET = randomBytes(48).toString('base64url');
 const PII_ENCRYPTION_KEY = randomBytes(32).toString('hex');
+// Keep both the fixture process and the isolated Worker on Thursday morning.
+// This deliberately exercises a booking window with no later service day.
+const testNow = Date.parse('2026-10-15T10:00:00+08:00');
+mock.timers.enable({ apis: ['Date'], now: testNow });
 const bookingDates = [0,1,2,3].map(n => addDays(dateKey(), n)).filter(serviceDay);
 const date = bookingDates.find(day => Date.now() < Date.parse(slotDeadline(day,'19:00–20:00'))) || bookingDates[0];
 let serial = 200000;
@@ -89,7 +101,7 @@ before(async () => {
   wrangler(['pages','functions','build','functions','--outdir','.wrangler/test-build','--compatibility-date',cfg.compatibility_date,'--compatibility-flags',...cfg.compatibility_flags]);
   mf = new Miniflare({ telemetry: { enabled: false }, workers: [{ config: {
     name: 'pioneer-tests', compatibilityDate: cfg.compatibility_date, compatibilityFlags: cfg.compatibility_flags,
-    manifest: { mainModule: 'index.js', modules: { 'index.js': { type: 'esm', contents: await readFile('.wrangler/test-build/index.js', 'utf8') } } },
+    manifest: { mainModule: 'index.js', modules: { 'index.js': { type: 'esm', contents: `${workerClock(testNow)}\n${await readFile('.wrangler/test-build/index.js', 'utf8')}` } } },
     env: { DB: { type: 'd1', id: 'test-db' }, CAPACITY_UPGRADE_DB: { type: 'd1', id: 'capacity-upgrade-db' }, WORKFLOW_UPGRADE_DB: { type: 'd1', id: 'workflow-upgrade-db' }, SLOT_SETTINGS_UPGRADE_DB: { type: 'd1', id: 'slot-settings-upgrade-db' }, ATTACHMENTS: { type: 'r2', name: 'test-attachments' },
       SCHEDULE_UPGRADE_DB: { type: 'd1', id: 'schedule-upgrade-db' },
       SCAN_UPGRADE_DB: { type: 'd1', id: 'scan-upgrade-db' },
@@ -102,7 +114,7 @@ before(async () => {
   await db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,protected,password_hash,created_at) VALUES (?,?,?,?,?,?,?)').bind('root001', '系统负责人', 'superadmin', '南湖', 1, hashPassword(password), dateKey()).run();
   await db.batch(['南湖','浑南'].map(campus=>db.prepare('INSERT INTO staff_campus_grants VALUES (?,?)').bind('root001',campus)));
 });
-after(async () => { await mf?.dispose(); });
+after(async () => { try { await mf?.dispose(); } finally { mock.timers.reset(); } });
 beforeEach(async () => {
   await db.batch(['DELETE FROM credential_recoveries','DELETE FROM activation_requests','DELETE FROM staff_whitelist','DELETE FROM attachment_storage','DELETE FROM appointment_attachments','DELETE FROM appointments','DELETE FROM booking_day_slots',"DELETE FROM staff_accounts WHERE protected=0",'DELETE FROM rate_limits'].map(sql => db.prepare(sql)));
   await db.prepare('UPDATE storage_quota SET used_bytes=0 WHERE id=1').run();
@@ -1324,8 +1336,9 @@ test('weekday templates freeze on first booking and preserve cancellations, rest
 
 test('all four half-hour slots propagate through booking, summary, queue, overview, filters and export', async () => {
   await db.prepare('DELETE FROM booking_day_slots').run();
-  const token = await login(), targetDate = bookingDates.find(day => day > dateKey());
-  assert.ok(targetDate, 'fixture requires a future service day in the booking window');
+  const token = await login(), targetDate = date;
+  assert.equal(new Date(`${targetDate}T00:00:00Z`).getUTCDay(), 4);
+  assert.deepEqual(bookingDates, [targetDate], 'Thursday has no later service day in the booking window');
   const bookings = [];
   for (const timeSlot of TIME_SLOTS) {
     const item = await book({ date: targetDate, timeSlot });
@@ -1348,7 +1361,8 @@ test('all four half-hour slots propagate through booking, summary, queue, overvi
   const overview = await api('/api/appointments/overview', { token });
   const rows = overview.items.filter(item => item.campus === '南湖' && item.date === targetDate);
   assert.deepEqual(rows.map(row => row.timeSlot), TIME_SLOTS);
-  assert.ok(rows.every(row => row.occupied === 1 && row.remaining === 4 && row.capacity === 5));
+  assert.equal(overview.updatedAt, new Date(testNow).toISOString());
+  assert.ok(rows.every(row => row.occupied === 1 && row.remaining === 4 && row.capacity === 5 && !row.ended));
   const csv = await (await request('/api/export/appointments.csv', { token })).text();
   for (const item of bookings) assert.ok(csv.includes(item.id) && csv.includes(item.timeSlot));
   const cancelled = bookings[3];
