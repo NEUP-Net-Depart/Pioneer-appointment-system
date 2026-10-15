@@ -31,6 +31,7 @@ export function initSlotPicker({onChange = () => {}} = {}) {
         strong.append(day,number);return item;
       }));
     }
+    days.dataset.count=String(dates.length);
     days.style.setProperty('--booking-day-count',String(Math.max(1,dates.length)));
     $('#booking-calendar').hidden=!campusInput.value;
     $('#booking-picker').setAttribute('aria-busy',String(loading));

@@ -12,6 +12,19 @@ test('campus has no default; server dates open progressively without selecting a
   await page.locator('[data-campus=浑南]').click();await expect(page.locator('[name=timeSlot]')).toHaveValue('');await expect(page.locator('[name=date]')).toHaveValue('2026-10-12');await expect(page.locator('#booking-location')).toContainText('浑南校区测试维修室');
 });
 
+test('resizing switches the picker between columns and stacked panels without losing the selected time',async({page})=>{
+  await setupStudent(page);await page.locator('[data-campus=南湖]').click();await page.locator('[data-slot="20:00–20:30"]').click();
+  for(const width of [1440,900,899,768,375,320,1440]){
+    await page.setViewportSize({width,height:900});
+    await expect.poll(async()=>{
+      const date=await page.locator('.booking-date-panel').boundingBox(),time=await page.locator('.booking-time-panel').boundingBox();
+      return width>=900 ? Math.abs(date.y-time.y)<1 && time.x>=date.x+date.width : time.y>=date.y+date.height;
+    }).toBe(true);
+    await expect(page.locator('[name=date]')).toHaveValue('2026-10-12');await expect(page.locator('[name=timeSlot]')).toHaveValue('20:00–20:30');await expect(page.locator('[data-step="2"]')).toBeHidden();
+    expect(await page.evaluate(()=>Math.max(document.body.scrollWidth,document.documentElement.scrollWidth)<=innerWidth)).toBe(true);
+  }
+});
+
 for(const [now,count] of [['2026-10-15T10:00:00+08:00',1],['2026-10-14T10:00:00+08:00',2],['2026-10-13T10:00:00+08:00',3],['2026-10-12T10:00:00+08:00',4]]) {
   test(`${count} service dates and four vertical slots fit a 320px phone`,async({page})=>{
     await page.setViewportSize({width:320,height:568});await setupStudent(page,{now});await page.locator('[data-campus=南湖]').click();await expect(page.locator('#booking-days button')).toHaveCount(count);

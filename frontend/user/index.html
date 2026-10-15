@@ -20,12 +20,11 @@
   <form id="booking-form" class="student-form" novalidate>
     <input name="campus" type="hidden" /><input name="date" type="hidden" /><input name="timeSlot" type="hidden" />
     <section data-step="1" class="booking-picker" id="booking-picker" aria-labelledby="booking-picker-title">
-      <div class="booking-picker-heading"><div><p class="eyebrow">第 1 步 / 3</p><h2 id="booking-picker-title" tabindex="-1">校区与到场时间</h2></div></div>
+      <div class="booking-picker-heading"><div class="booking-picker-title"><p class="eyebrow">第 1 步 / 3</p><h2 id="booking-picker-title" tabindex="-1">校区与到场时间</h2></div><div class="booking-campus-field"><h3>选择校区</h3><div class="booking-campuses" id="booking-campuses" role="group" aria-label="预约校区"></div></div></div>
       <p class="booking-rule">周一至周四提供服务，可预约今天及未来 3 天。</p>
-      <h3>先选择校区</h3><div class="booking-campuses" id="booking-campuses" role="group" aria-label="预约校区"></div>
       <div id="booking-calendar" hidden><div class="booking-picker-body">
         <div class="booking-date-panel"><div class="booking-panel-heading"><h3 class="booking-panel-label">选择日期</h3></div><div class="booking-days" id="booking-days" role="group" aria-label="可预约日期"></div></div>
-        <div class="booking-time-panel"><div class="booking-slot-panel" id="booking-slot-panel" hidden><div class="booking-panel-heading"><h3 id="booking-slot-title">选择到场时段</h3></div><div class="booking-slots" id="booking-slots" role="group" aria-label="到场时段"></div></div></div>
+        <div class="booking-time-panel"><div class="booking-slot-placeholder"><div class="booking-panel-heading"><h3 class="booking-panel-label">选择到场时段</h3></div><p class="booking-placeholder-body">选择可预约日期后查看时段</p></div><div class="booking-slot-panel" id="booking-slot-panel" hidden><div class="booking-panel-heading"><h3 id="booking-slot-title">选择到场时段</h3></div><div class="booking-slots" id="booking-slots" role="group" aria-label="到场时段"></div></div></div>
       </div><div class="booking-empty" id="booking-empty" hidden><strong>未来三天内无可用日期</strong><p>休息一下再来吧</p></div>
       <div class="selection-summary" id="booking-location" hidden></div><p class="field-hint">请在所选时段内到场，实际维修时间视现场情况而定。</p></div>
       <div class="booking-picker-footer"><p id="booking-selection" role="status">请先选择校区。</p><div><span>选择不锁定名额，以提交结果为准</span><span id="booking-updated"></span><button type="button" class="text-btn" id="booking-retry" hidden>重试</button></div></div>
