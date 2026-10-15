@@ -1,6 +1,6 @@
 import { readQr } from '/shared/zxing.js';
 
-export function createScanner({ video, status, torch, switchCamera, onCode, onState = () => {} }) {
+export function createScanner({ video, status, torch, switchCamera, onCode, onState = (state) => { void state; } }) {
   let stream, timer, generation = 0, facing = 'environment', cameras = [], deviceId, lit = false;
   const canvas = document.createElement('canvas'), context = canvas.getContext('2d', { willReadFrequently: true });
   function stop() {

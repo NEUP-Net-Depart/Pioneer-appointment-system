@@ -5,6 +5,7 @@ import { request } from './request.js';
 import { Members } from './Members.jsx';
 import { Permissions } from './Permissions.jsx';
 import { statusLabels } from '../../shared/constants.js';
+import { FieldApp } from './field/FieldApp';
 
 const roles = { technician: '维修人员', admin: '管理员', superadmin: '最高权限者' };
 function Workbench({ user, onNavigate }) {
@@ -40,6 +41,13 @@ function Roster() {
 function Root() {
   const [user, setUser] = useState(null);
   const [page, setPage] = useState('');
+  const [field, setField] = useState(null);
+  useEffect(() => {
+    let active = true;
+    if (!user) { setField(null); return; }
+    request('/api/field/home', { suppressAuthExpired: true }).then(data => { if (active && data.enabled) { setField(data); window.dispatchEvent(new CustomEvent('staff-navigate', { detail:'workbench' })); } }).catch(() => {});
+    return () => { active = false; };
+  }, [user?.memberId, user?.account, user?.authVersion]);
   useEffect(() => {
     return initStaffApplication({
       onSession: setUser,
@@ -49,7 +57,7 @@ function Root() {
   }, []);
   const navigate = view => window.dispatchEvent(new CustomEvent('staff-navigate', { detail: view }));
   if (!user) return null;
-  return <>{page === 'workbench' && <Workbench user={user} onNavigate={navigate} />}
+  return <>{page === 'workbench' && (field ? <FieldApp initial={field} onNavigate={navigate} /> : <Workbench user={user} onNavigate={navigate} />)}
     {page === 'attendance' && <Attendance onNavigate={navigate} />}
     {page === 'roster' && <Roster />}
     {page === 'members' && <Members user={user} />}

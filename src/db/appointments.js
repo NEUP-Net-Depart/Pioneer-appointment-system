@@ -8,7 +8,7 @@ const columns = {
   outcome: 'outcome', startedAt: 'started_at', completedAt: 'completed_at', expiresAt: 'expires_at',
   agreementAt: 'agreement_at', agreementVersion: 'agreement_version', signature: 'signature',
   repairNumber: 'repair_number', frontPhotoId: 'front_photo_id', backPhotoId: 'back_photo_id',
-  source: 'source', registeredBy: 'registered_by', registrationKey: 'registration_key'
+  source: 'source', registeredBy: 'registered_by', registrationKey: 'registration_key', registrationFlow: 'registration_flow'
 };
 const assigneeName = "(SELECT trim(name) FROM staff_accounts WHERE account=appointments.assigned_to AND status='enabled') AS assigned_to_name";
 const memberIdentity = "(SELECT member_id FROM staff_accounts WHERE account=appointments.assigned_to) AS assigned_member_id,(SELECT member_id FROM staff_accounts WHERE account=appointments.registered_by) AS registered_member_id";
@@ -17,7 +17,9 @@ const memberAccounts = '(SELECT account FROM staff_accounts WHERE member_id=(SEL
 function fromRow(row) {
   return row ? { id: row.id, revision: row.revision, assignedToName: row.assigned_to_name || '', assignedMemberId: row.assigned_member_id || '', registeredMemberId: row.registered_member_id || '', ...Object.fromEntries(Object.entries(columns).map(([key, column]) => [key, row[column] ?? (['outcome','startedAt','completedAt','repairNumber','frontPhotoId','backPhotoId'].includes(key) ? null : '')])) } : null;
 }
-export function appointmentRepository(db) {
+export function appointmentRepository(db, { workflowSchema = false } = {}) {
+  const writeColumns = { ...columns };
+  if (!workflowSchema) delete writeColumns.registrationFlow;
   return {
     async schedule(date, campus) {
       return (await scheduleStatement(db, date, date, [campus]).all()).results;
@@ -34,7 +36,7 @@ export function appointmentRepository(db) {
       return fromRow(await db.prepare(`${select} WHERE registered_by IN ${memberAccounts} AND registration_key=?`).bind(account,key).first());
     },
     async pendingRegistration(account) {
-      return fromRow(await db.prepare(`${select} WHERE registered_by IN ${memberAccounts} AND source='onsite' AND status='booked' ORDER BY created_at DESC,id DESC LIMIT 1`).bind(account).first());
+      return fromRow(await db.prepare(`${select} WHERE registered_by IN ${memberAccounts} AND source='onsite' ${workflowSchema ? "AND registration_flow<>'frontdesk'" : ''} AND status='booked' ORDER BY created_at DESC,id DESC LIMIT 1`).bind(account).first());
     },
     async intakePhotos(id, account, front, back, now) {
       if (!front || !back || front === back) return false;
@@ -124,20 +126,49 @@ export function appointmentRepository(db) {
       const prefix = `reserve${suffix}`;
       // One D1 statement allocates the ID and runs capacity/uniqueness constraints atomically.
       // Include historical booking prefixes so their suffixes are never reused.
-      const row = await db.prepare(`INSERT INTO appointments(id,${Object.values(columns).join(',')},access_token_hash,credential_rotated_at)
-        SELECT ? || printf('%02d',COALESCE(MAX(CAST(substr(id,instr(id,'-')+1) AS INTEGER)),0)+1),${Object.keys(columns).map(() => '?').join(',')},?,?
+      const row = await db.prepare(`INSERT INTO appointments(id,${Object.values(writeColumns).join(',')},access_token_hash,credential_rotated_at)
+        SELECT ? || printf('%02d',COALESCE(MAX(CAST(substr(id,instr(id,'-')+1) AS INTEGER)),0)+1),${Object.keys(writeColumns).map(() => '?').join(',')},?,?
         FROM appointments WHERE id LIKE ? OR id LIKE ? OR id LIKE ?
         ON CONFLICT(registered_by,registration_key) DO UPDATE SET registration_key=excluded.registration_key RETURNING *`)
-        .bind(prefix, ...Object.keys(columns).map(key => key === 'assignedTo' ? item[key] || null : key === 'source' ? item[key] || 'booking' : item[key] ?? null), item.accessTokenHash,item.credentialRotatedAt,`${prefix}%`,`reverse${suffix}%`,`${suffix}%`).first();
+        .bind(prefix, ...Object.keys(writeColumns).map(key => key === 'assignedTo' ? item[key] || null : key === 'source' ? item[key] || 'booking' : key === 'registrationFlow' ? item[key] || 'technician_intake' : item[key] ?? null), item.accessTokenHash,item.credentialRotatedAt,`${prefix}%`,`reverse${suffix}%`,`${suffix}%`).first();
       return fromRow(row);
     },
-    async update(item, patch, correction) {
+    async update(item, patch, correction, workflow) {
       const fields = [], args = [];
       for (const [key, column] of Object.entries({ status: 'status', assignedTo: 'assigned_to', repairNote: 'repair_note', outcome: 'outcome', startedAt: 'started_at', completedAt: 'completed_at', expiresAt: 'expires_at', frontPhotoId: 'front_photo_id', backPhotoId: 'back_photo_id' })) {
         if (patch[key] !== undefined) { fields.push(`${column}=?`); args.push(key === 'assignedTo' ? patch[key] || null : patch[key]); }
       }
-      const update = db.prepare(`UPDATE appointments SET ${fields.join(',')},revision=revision+1 WHERE id=? AND revision=? RETURNING *,${assigneeName},${memberIdentity}`).bind(...args, item.id, item.revision);
+      let guard = '';
+      const guardArgs = [];
+      if (workflow?.eligibility) {
+        const { context, event } = workflow.eligibility;
+        guard += ` AND EXISTS(SELECT 1 FROM staff_presence WHERE member_id=? AND business_date=? AND campus_id=? AND state='available' AND revision=?)
+          AND EXISTS(SELECT 1 FROM attendance_events WHERE id=? AND julianday(starts_at)<=julianday(?) AND julianday(ends_at)>=julianday(?))`;
+        guardArgs.push(context.actor.memberId, context.businessDate, context.presence.campusId, context.presence.revision, event.id, workflow.at, workflow.at);
+        guard += ` AND EXISTS(SELECT 1 FROM staff_accounts sa JOIN members m ON m.id=sa.member_id WHERE sa.account=? AND sa.auth_version=? AND sa.status='enabled' AND m.status='active')`;
+        guardArgs.push(context.actor.account,context.authVersion);
+      }
+      if (workflow?.actor) {
+        guard += ` AND EXISTS(SELECT 1 FROM staff_accounts sa JOIN members m ON m.id=sa.member_id WHERE sa.account=? AND sa.auth_version=? AND sa.status='enabled' AND m.status='active')`;
+        guardArgs.push(workflow.actor.account, workflow.actor.authVersion ?? 0);
+      }
+      const update = db.prepare(`UPDATE appointments SET ${fields.join(',')},revision=revision+1 WHERE id=? AND revision=?${guard} RETURNING *,${assigneeName},${memberIdentity}`).bind(...args, item.id, item.revision, ...guardArgs);
       const start = patch.status === 'in_progress' && patch.frontPhotoId && patch.backPhotoId && patch.assignedTo;
+      if (workflow) {
+        const statements = [update];
+        // Audit first uses changes() from the conditional update; all further writes
+        // refer to its unique ID so a stale revision cannot publish partial results.
+        const auditId = crypto.randomUUID();
+        statements.push(db.prepare(`INSERT INTO audit_events(id,actor_member_id,actor_account,action,source_ref,before_json,after_json,reason,request_id,occurred_at)
+          SELECT ?,?,?,?,?,?,?,?,?,? WHERE changes()>0`).bind(auditId,workflow.actor.memberId,workflow.actor.account,workflow.action,
+          JSON.stringify({module:'repairs',type:'appointment',id:item.id}),JSON.stringify({status:item.status,assignedTo:item.assignedTo}),JSON.stringify({status:patch.status || item.status,assignedTo:patch.assignedTo || item.assignedTo}),workflow.reason || '',workflow.requestId || null,workflow.at));
+        if (start) statements.push(db.prepare(`INSERT INTO repair_intake_records(id,appointment_id,member_id,account,front_photo_id,back_photo_id,verified_at,verification_json)
+          SELECT ?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM audit_events WHERE id=?)`).bind(`intake-${item.id}-${item.revision+1}`,item.id,workflow.actor.memberId,patch.assignedTo,patch.frontPhotoId,patch.backPhotoId,workflow.at,JSON.stringify(workflow.verification),auditId));
+        statements.push(db.prepare(`INSERT INTO operation_receipts(actor_member_id,action,request_id,payload_hash,resource_ref,result_json,result_status,created_at)
+          SELECT ?,?,?,?,?,'{}','success',? WHERE EXISTS(SELECT 1 FROM audit_events WHERE id=?)`).bind(workflow.actor.memberId,workflow.action,workflow.requestId,workflow.payloadHash,JSON.stringify({module:'repairs',type:'appointment',id:item.id}),workflow.at,auditId));
+        const result = await db.batch(statements);
+        return fromRow(result[0].results[0]);
+      }
       if (!correction && !start) return fromRow(await update.first());
       const intake = start ? db.prepare(`INSERT INTO repair_intake_records(id,appointment_id,member_id,account,front_photo_id,back_photo_id,verified_at)
         SELECT ?,?,(SELECT member_id FROM staff_accounts WHERE account=?),?,?,?,? WHERE changes()>0`)

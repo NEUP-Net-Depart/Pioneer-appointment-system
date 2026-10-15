@@ -392,7 +392,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     await requirePermission(actor, 'attendance.session.manage', { campusId: input.campusId }, input.businessDate || dateKey());
     const type = ['duty','meeting'].includes(input.type) ? input.type : 'duty';
     const businessDate = input.businessDate || dateKey();
-    const startsAt = instant(input.startsAt || `${businessDate}T10:30:00+08:00`); const endsAt = instant(input.endsAt || `${businessDate}T13:30:00+08:00`);
+    const startsAt = instant(input.startsAt || `${businessDate}T18:30:00+08:00`); const endsAt = instant(input.endsAt || `${businessDate}T21:30:00+08:00`);
     if (endsAt <= startsAt) fail(400, '签到窗口不正确');
     const context = await contextFor(actor, businessDate);
     return withReceipt(actor, 'attendance.event.create', input, async () => {
@@ -427,19 +427,30 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const existing = await repository.findAttendanceByDedupe(dedupeKey); if (existing) return { ...existing, isExisting: true, result: policy.describeResult(existing) };
     const method = attendanceMethod(input.method);
     if (method === 'nfc' && input.nfcEvidence?.verified !== true && input.verifiedEvidence?.method !== 'nfc') fail(403, 'NFC 凭证未通过服务端核验');
-    const occurredAt = input.occurredAt ? instant(input.occurredAt) : now;
+    const occurredAt = now;
     if (!eventWindow(event.startsAt, event.endsAt, occurredAt)) fail(400, '签到发生时间不在场次窗口内');
     const record = await withReceipt(actor, 'attendance.checkin', input, async () => {
-      const created = await repository.insertAttendance({ id: crypto.randomUUID(), memberId: context.actor.memberId, eventId: event.id, dedupeKey, occurredAt, recordedAt: now, method, sourceRef: event.sourceRef, campusId: event.campusId, businessDate: event.businessDate, departmentId: context.memberships.find(item => item.isPrimary)?.departmentId, departmentName: context.memberships.find(item => item.isPrimary)?.departmentName, identitySnapshot: { name: context.actor.name, memberId: context.actor.memberId }, nonScheduled: context.todayDuties.length === 0, actorAccount: actor.account }, event.type === 'duty');
+      const created = await repository.insertAttendance({ id: crypto.randomUUID(), memberId: context.actor.memberId, eventId: event.id, dedupeKey, occurredAt, recordedAt: now, method, sourceRef: event.sourceRef, campusId: event.campusId, businessDate: event.businessDate, departmentId: context.memberships.find(item => item.isPrimary)?.departmentId, departmentName: context.memberships.find(item => item.isPrimary)?.departmentName, identitySnapshot: { name: context.actor.name, memberId: context.actor.memberId }, nonScheduled: context.todayDuties.length === 0, actorAccount: actor.account,
+        checkInAudit: true, tokenId: found.token.id, authVersion: context.authVersion, requestId: requestId(input.requestId), payloadHash: hashPayload(input), type: event.type }, event.type === 'duty');
       if (!created) {
         const concurrent = await repository.findAttendanceByDedupe(dedupeKey);
         if (concurrent) return { ...concurrent, isExisting: true, result: policy.describeResult(concurrent) };
         fail(409, '签到记录已被其他请求创建');
       }
-      await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'attendance.checked_in', sourceRef: publicResourceRef('attendance','record',created.id), after: created, requestId: input.requestId });
       return { ...created, isExisting: false, result: policy.describeResult(created) };
     });
     return record;
+  }
+  async function previewAttendance(actor, input) {
+    if (typeof input.token !== 'string' || input.token.length > 256) fail(400, '签到凭证不正确');
+    const raw = input.token.replace(/^pioneer:attendance:v1:/, '');
+    const found = await repository.findEventByToken(await tokenDigest(raw));
+    if (!found) fail(404, '签到凭证已失效');
+    const event = found.event;
+    await requirePermission(actor, 'attendance.self', { campusId: event.campusId }, event.businessDate);
+    const campusName = { 'campus-nanhu':'南湖', 'campus-hunnan':'浑南' }[event.campusId];
+    if (!actor.authorizedCampuses.includes(campusName)) fail(403, '没有该校区的签到权限');
+    return { campusName, businessDate:event.businessDate, startsAt:event.startsAt, endsAt:event.endsAt, type:event.type };
   }
   async function attendanceList(actor, query) {
     const context = await contextFor(actor, query?.businessDate || dateKey());
@@ -491,9 +502,12 @@ export function staffPlatformService({ repository, platform, manifests }) {
     return created;
   }
   async function presence(actor, input) {
+    if (input.businessDate && input.businessDate !== dateKey()) fail(400, '只能修改今天的在岗状态');
     const context = await contextFor(actor, input.businessDate || dateKey());
     await requirePermission(actor, 'attendance.self', { campusId: input.campusId }, input.businessDate || dateKey());
     if (!['available','away','off_duty'].includes(input.state)) fail(400, '在岗状态不正确');
+    if (!context.presence) fail(409, '请先完成到岗签到');
+    if (input.campusId && input.campusId !== context.presence.campusId) fail(409, '在岗校区以签到记录为准');
     if (input.state !== 'available' && await repository.activeRepair(context.actor.memberId)) fail(409, '当前仍有进行中的维修，不能离岗', 'PRESENCE_CHANGED');
     const result = await repository.setPresence(context.actor.memberId, { ...input, businessDate: input.businessDate || dateKey() }, input.revision ?? 0, context.actor);
     if (!result) fail(409, '在岗状态已被其他操作修改，请刷新');
@@ -591,7 +605,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
   async function audit(actor, query) { await requirePermission(actor, 'audit.read'); return { items: await repository.listAudit(query || {}) }; }
 
   return { contextFor, requirePermission, memberList, memberDetail, updateMember, addMembership, endMembership, permissions, roles, createRole, updateRole, previewRole, bindMemberRoles,
-    organization, importMembers, deskSummary, workbench, createAttendanceEvent, issueAttendanceToken, checkIn, attendanceList, correctAttendance, presence, rosterTasks, taskAvailability, createRosterTask, saveAvailability, generate, updateRoster, publish, rosterMine,
+    organization, importMembers, deskSummary, workbench, createAttendanceEvent, issueAttendanceToken, checkIn, previewAttendance, attendanceList, correctAttendance, presence, rosterTasks, taskAvailability, createRosterTask, saveAvailability, generate, updateRoster, publish, rosterMine,
     leave, leaves, leaveDecision, leaveWithdraw, swap, swaps, swapDecision, attendanceExport, audit,
     recordAudit: input => repository.audit(input) };
 }

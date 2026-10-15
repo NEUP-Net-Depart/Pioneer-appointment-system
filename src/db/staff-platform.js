@@ -127,7 +127,7 @@ export function staffPlatformRepository(db) {
       actor: { memberId, account: user.account, name: member?.name || user.name, status: member?.status || user.status },
       member, memberships: membershipItems, workProfiles: profileItems, grants: grantItems,
       todayDuties: duties, presence: presence ? { memberId: presence.member_id, businessDate: presence.business_date, campusId: presence.campus_id, state: presence.state, revision: presence.revision } : null,
-      authVersion, schemaVersion: '0011'
+      authVersion, schemaVersion: '0012'
     };
   }
 
@@ -234,6 +234,30 @@ export function staffPlatformRepository(db) {
       WHERE ${conditions.join(' AND ')} ORDER BY m.name,m.id`).bind(...args).all();
     return rows(result).map(row => ({ memberId: row.member_id, name: row.name, studentId: row.student_id || '', businessDate: row.business_date,
       campusId: row.campus_id, state: row.state, revision: row.revision, updatedAt: row.updated_at }));
+  }
+
+  async function dutyEvent(businessDate, campusId) {
+    return event(await db.prepare("SELECT * FROM attendance_events WHERE type='duty' AND business_date=? AND campus_id=? ORDER BY created_at LIMIT 1").bind(businessDate, campusId).first());
+  }
+
+  async function latestIntake(id) {
+    const row = await db.prepare('SELECT verification_json FROM repair_intake_records WHERE appointment_id=? ORDER BY verified_at DESC LIMIT 1').bind(id).first();
+    return parseJson(row?.verification_json, null);
+  }
+
+  async function fieldPeople(day, campus) {
+    const result = await db.prepare(`SELECT m.id AS memberId,m.name,
+      (SELECT account FROM staff_accounts WHERE member_id=m.id AND status='enabled' ORDER BY account LIMIT 1) AS account,
+      sp.state,sp.revision,
+      (SELECT GROUP_CONCAT(d.name,'、') FROM member_department_memberships mm JOIN departments d ON d.id=mm.department_id
+       WHERE mm.member_id=m.id AND mm.effective_from<=? AND (mm.effective_to IS NULL OR mm.effective_to>?)) AS department,
+      EXISTS(SELECT 1 FROM duty_assignments da JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published'
+        WHERE da.member_id=m.id AND da.business_date=? AND da.campus_id=?) AS scheduled
+      FROM members m LEFT JOIN staff_presence sp ON sp.member_id=m.id AND sp.business_date=? AND sp.campus_id=?
+      WHERE sp.member_id IS NOT NULL OR EXISTS(SELECT 1 FROM duty_assignments da JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published'
+        WHERE da.member_id=m.id AND da.business_date=? AND da.campus_id=?) ORDER BY m.name,m.id`)
+      .bind(day, day, day, campus, day, campus, day, campus).all();
+    return rows(result);
   }
 
   async function activeRepair(memberId) {
@@ -387,14 +411,22 @@ export function staffPlatformRepository(db) {
   async function insertAttendance(record, presence) {
     const previousPresence = presence ? await db.prepare('SELECT state FROM staff_presence WHERE member_id=? AND business_date=?')
       .bind(record.memberId, record.businessDate).first() : null;
+    const guard = record.tokenId ? ` WHERE EXISTS(SELECT 1 FROM attendance_tokens t JOIN attendance_events e ON e.id=t.event_id WHERE t.id=? AND t.revoked_at IS NULL AND julianday(t.expires_at)>julianday(?) AND julianday(e.starts_at)<=julianday(?) AND julianday(e.ends_at)>=julianday(?)) AND EXISTS(SELECT 1 FROM staff_accounts sa JOIN members m ON m.id=sa.member_id WHERE sa.account=? AND sa.auth_version=? AND sa.status='enabled' AND m.status='active')` : '';
+    const guardArgs = record.tokenId ? [record.tokenId,record.recordedAt,record.recordedAt,record.recordedAt,record.actorAccount,record.authVersion] : [];
     const statements = [db.prepare(`INSERT INTO attendance_records(id,member_id,event_id,dedupe_key,occurred_at,recorded_at,method,source_ref,primary_department_id_snapshot,primary_department_name_snapshot,identity_snapshot,non_scheduled)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`).bind(record.id,record.memberId,record.eventId,record.dedupeKey,record.occurredAt,record.recordedAt,record.method,json(record.sourceRef,{}),record.departmentId || null,record.departmentName || null,json(record.identitySnapshot,{}),record.nonScheduled ? 1 : 0)];
+      SELECT ?,?,?,?,?,?,?,?,?,?,?,?${guard}`).bind(record.id,record.memberId,record.eventId,record.dedupeKey,record.occurredAt,record.recordedAt,record.method,json(record.sourceRef,{}),record.departmentId || null,record.departmentName || null,json(record.identitySnapshot,{}),record.nonScheduled ? 1 : 0,...guardArgs)];
     if (presence) {
-      statements.push(db.prepare(`INSERT INTO staff_presence(member_id,business_date,campus_id,state,revision,updated_at) VALUES(?,?,?,?,0,?)
+      statements.push(db.prepare(`INSERT INTO staff_presence(member_id,business_date,campus_id,state,revision,updated_at) SELECT ?,?,?,?,0,? WHERE EXISTS(SELECT 1 FROM attendance_records WHERE id=?)
         ON CONFLICT(member_id,business_date) DO UPDATE SET campus_id=excluded.campus_id,state='available',revision=staff_presence.revision+1,updated_at=excluded.updated_at`)
-        .bind(record.memberId,record.businessDate,record.campusId,'available',record.recordedAt));
+        .bind(record.memberId,record.businessDate,record.campusId,'available',record.recordedAt,record.id));
       statements.push(db.prepare(`INSERT INTO presence_events(id,member_id,business_date,from_state,to_state,occurred_at,actor_member_id,actor_account)
-        VALUES(?,?,?,?,?,?,?,?)`).bind(crypto.randomUUID(),record.memberId,record.businessDate,previousPresence?.state || null,'available',record.recordedAt,record.memberId,record.actorAccount || null));
+        SELECT ?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM attendance_records WHERE id=?)`).bind(crypto.randomUUID(),record.memberId,record.businessDate,previousPresence?.state || null,'available',record.recordedAt,record.memberId,record.actorAccount || null,record.id));
+    }
+    if (record.checkInAudit) {
+      statements.push(db.prepare(`INSERT INTO audit_events(id,actor_member_id,actor_account,action,source_ref,after_json,request_id,occurred_at)
+        SELECT ?,?,?,'attendance.checked_in',?,?,?,? WHERE EXISTS(SELECT 1 FROM attendance_records WHERE id=?)`).bind(crypto.randomUUID(),record.memberId,record.actorAccount,json({module:'attendance',type:'record',id:record.id},{}),json({eventId:record.eventId,occurredAt:record.occurredAt},{}),record.requestId || null,record.recordedAt,record.id));
+      if (record.requestId) statements.push(db.prepare(`UPDATE operation_receipts SET result_status='success',resource_ref=?,result_json=?
+        WHERE actor_member_id=? AND action='attendance.checkin' AND request_id=? AND payload_hash=? AND EXISTS(SELECT 1 FROM attendance_records WHERE id=?)`).bind(json({module:'attendance',type:'record',id:record.id},{}),json(record,{}),record.memberId,record.requestId,record.payloadHash,record.id));
     }
     try {
       const result = await db.batch(statements);
@@ -590,7 +622,7 @@ export function staffPlatformRepository(db) {
   }
 
   return { accountRow, accountForMember, ensureMember, memberRow, memberships, membershipsForMembers, profiles, grants, todayDuties, authorizationContext, listMembers, updateMember, listMemberships, addMembership, endMembership,
-    listCampuses, listDepartments, listLocations, listPresence, activeRepair, importMembers,
+    listCampuses, listDepartments, listLocations, listPresence, activeRepair, importMembers, dutyEvent, latestIntake, fieldPeople,
     roleBindings, permissionDefinitions, listRoles, createRole, updateRole, bindRoles, modules, createEvent, issueToken, findEventByToken, findAttendanceByDedupe, insertAttendance, listAttendance, attendanceExport, setPresence,
     attendanceEvent, eventById: attendanceEvent, createReceipt, claimReceipt, releaseReceipt, receipt, audit, listAudit, createRosterTask, listRosterTasks, saveAvailability, availability, createRosterVersion, updateRosterDraft, publishRoster, listAssignments, assignmentById, createLeave, leaveById, listLeaves, updateLeave, createSwap, listSwaps, updateSwap };
 }

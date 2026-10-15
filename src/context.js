@@ -23,27 +23,32 @@ import { composeStaffPlatform } from './app/compose.js';
 import { staffPlatformService } from './services/staff-platform.js';
 import { requestTrace } from './platform/observability.js';
 import { scanService } from './services/scan.js';
+import { fieldWorkflow } from './services/field-workflow.js';
 
 export function createContext(request, env) {
   // Request-scoped D1 session, explicitly injected into D1 repositories. No startup I/O.
   const db = env.DB.withSession('first-primary');
-  const users = userRepository(db), appointments = appointmentRepository(db);
+  const users = userRepository(db), appointments = appointmentRepository(db, { workflowSchema: env.STAFF_WORKFLOW_ENABLED === 'true' });
   const staffPlatform = staffPlatformRepository(db);
   const platform = composeStaffPlatform({ repository: staffPlatform, repairs: appointments });
   const staffPlatformServiceInstance = staffPlatformService({ repository: staffPlatform, platform, manifests: platform.manifests });
+  const field = fieldWorkflow({ repository: staffPlatform, appointments, users, staff: staffPlatformServiceInstance, authorizer: platform.authorizer,
+    encryptionKey: env.PII_ENCRYPTION_KEY, secret: env.JWT_SECRET, enabled: env.STAFF_WORKFLOW_ENABLED === 'true' });
+  staffPlatformServiceInstance.field = field;
   const services = {
     auth: authService(users, env.JWT_SECRET), users: userService(users),
     activation: activationService(activationRepository(db),users),
     appointments: appointmentService(appointments, users, env.PII_ENCRYPTION_KEY, undefined, staffPlatformServiceInstance),
-    attachments: attachmentService(appointments, attachmentRepository(db), env.ATTACHMENTS, storageLimit(env)),
+    attachments: attachmentService(appointments, attachmentRepository(db), env.ATTACHMENTS, storageLimit(env), field),
     queue: queueService(appointments, queueRepository(db)), stats: statsService(statsRepository(db), appointments),
-    export: exportService(appointments, env.PII_ENCRYPTION_KEY),
+    export: exportService(appointments, env.PII_ENCRYPTION_KEY, undefined, field),
     limits: rateLimitService(rateLimitRepository(db), env.JWT_SECRET),
     slotCapacities: slotCapacityService(slotCapacityRepository(db)),
     staffPlatform: staffPlatformServiceInstance,
+    field,
     async health() { await Promise.all([users.health(), env.ATTACHMENTS.list({ limit: 1 })]); return { ok: true, service: 'pioneer-repair-api', database: 'd1', attachments: 'r2' }; }
   };
-  services.scan = scanService(appointments, services.appointments, env.PII_ENCRYPTION_KEY, env.JWT_SECRET, env.SCAN_WORKBENCH_ENABLED !== 'false');
+  services.scan = scanService(appointments, services.appointments, env.PII_ENCRYPTION_KEY, env.JWT_SECRET, env.SCAN_WORKBENCH_ENABLED !== 'false', undefined, field);
   let authentication;
   const authenticate = () => authentication ||= services.auth.authenticate(request.headers.get('authorization'));
   const url = new URL(request.url);

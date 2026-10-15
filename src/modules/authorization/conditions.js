@@ -39,6 +39,7 @@ export function conditionProviders() {
       code: 'activeDutyRole', version: 1, description: '当前成员在业务日期拥有有效岗位',
       parameterSchema: schema({ kind: string, roleKinds: strings, dutyType: string }),
       check: ({ context, resource, parameters = {} }) => {
+        if (resource?.businessDate && resource.businessDate !== context?.businessDate) return false;
         const duties = context?.todayDuties || [];
         return duties.some(duty => activeOn(duty, context) &&
           (!resource?.campusId || !!(duty.campusId || duty.campusName) && campusId(duty.campusId || duty.campusName) === campusId(resource.campusId)) &&

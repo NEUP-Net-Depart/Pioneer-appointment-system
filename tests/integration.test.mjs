@@ -293,7 +293,7 @@ test('scan migration preserves duplicate historical work and blocks new claims u
   for (const [index,item] of items.entries()) {
     const row = await db.prepare('SELECT * FROM appointments WHERE id=?').bind(item.id).first();
     row.time_slot = '19:00–20:00';
-    for (const key of ['source','registered_by','registration_key','expires_at']) delete row[key];
+    for (const key of ['source','registered_by','registration_key','expires_at','registration_flow']) delete row[key];
     row.status = index<2 ? 'in_progress' : 'booked'; row.assigned_to = index<2 ? '993004' : null;
     await legacy.prepare(`INSERT INTO appointments(${Object.keys(row).join(',')}) VALUES(${Object.keys(row).map(()=>'?').join(',')})`).bind(...Object.values(row)).run();
   }
@@ -323,6 +323,7 @@ test('onsite expiration migration preserves populated records, attachments, reco
     const row = await db.prepare('SELECT * FROM appointments WHERE id=?').bind(item.id).first();
     row.time_slot = '19:00–20:00';
     delete row.expires_at;
+    delete row.registration_flow;
     if (index === 0) {
       row.status = 'in_progress'; row.assigned_to = 'root001'; row.started_at = testNow;
       row.front_photo_id = 'historical-photo'; row.back_photo_id = 'expired-photo-reference';
@@ -382,6 +383,7 @@ test('five-state migration preserves populated history, related records and all 
     const item = await book({timeSlot:TIME_SLOTS[index % TIME_SLOTS.length]}); items.push(item);
     const row = await db.prepare('SELECT * FROM appointments WHERE id=?').bind(item.id).first();
     delete row.expires_at;
+    delete row.registration_flow;
     row.time_slot = '19:00–20:00';
     row.status = index === 0 ? 'booked' : index === 1 ? 'in_progress' : 'completed'; row.outcome = outcome;
     row.assigned_to = index > 0 && index < 6 ? 'root001' : null;
@@ -1970,6 +1972,7 @@ test('schedule migration preserves legacy bookings, cancelled days, onsite work,
     const row=await db.prepare('SELECT * FROM appointments WHERE id=?').bind(item.id).first();
     row.time_slot='19:00–20:00';
     delete row.expires_at;
+    delete row.registration_flow;
     await legacy.prepare(`INSERT INTO appointments(${Object.keys(row).join(',')}) VALUES(${Object.keys(row).map(()=>'?').join(',')})`).bind(...Object.values(row)).run();
   }
   await legacy.prepare("UPDATE appointments SET status='in_progress',assigned_to='root001',front_photo_id='photo1',back_photo_id='photo2',repair_number='legacy-repair' WHERE id=?").bind(booked.id).run();

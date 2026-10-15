@@ -74,7 +74,15 @@ export function appointmentPatch(input) {
     if (input[key] !== undefined) patch[key] = stringField(input[key], key, max);
   }
   if (input.revision!==undefined && (!Number.isInteger(input.revision) || input.revision<0)) fail(400,'预约版本不正确');
-  return {patch,revision:input.revision,action:input.action,correctionReason,requestId:input.requestId || '',reason:input.reason || correctionReason};
+  let verification;
+  if (input.verification !== undefined) {
+    const value = input.verification;
+    if (!value || typeof value !== 'object') fail(400, '现场核验信息不正确');
+    verification = { brand: stringField(value.brand, '设备厂商', 80, true), model: stringField(value.model, '设备型号', 120, true),
+      warranty: value.warranty, liquidMetal: value.liquidMetal, note: stringField(value.note, '核验说明', 500) };
+    if (!['in_warranty','expired','unknown'].includes(value.warranty) || !['yes','no','unknown'].includes(value.liquidMetal)) fail(400, '请选择保修与液金情况');
+  }
+  return {patch,revision:input.revision,action:input.action,correctionReason,requestId:input.requestId || '',reason:input.reason || correctionReason,verification};
 }
 export function appointmentQuery(input) {
   const query = { q: stringField(input.q, '搜索内容', 120), campus: input.campus || '', date: input.date || '', status: input.status || 'all', timeSlot: input.timeSlot || '', sort: input.sort || 'createdAt', direction: input.direction || 'desc' };

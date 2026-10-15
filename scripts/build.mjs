@@ -1,7 +1,8 @@
 import { cp, mkdir, readdir, rm, stat } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { build } from 'esbuild';
+import { build } from 'vite';
+import { build as bundle } from 'esbuild';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const out = resolve(root, 'dist');
@@ -12,9 +13,13 @@ await cp(join(root, 'public'), out, { recursive: true });
 await cp(join(root, 'shared'), join(out, 'shared'), { recursive: true });
 await cp(join(root, 'frontend/assets'), join(out, 'assets'), { recursive: true });
 await cp(join(root, 'frontend/staff'), join(out, 'staff'), { recursive: true });
-await build({ entryPoints: [join(root, 'frontend/staff-react/main.jsx')], bundle: true, format: 'esm', target: 'es2022', outfile: join(out, 'staff/react-main.mjs'), minify: false, plugins: [{ name: 'shared-browser-modules', setup(builder) {
-  builder.onResolve({ filter: /^\/shared\// }, args => ({ path: resolve(root, args.path.slice(1)) }));
-} }] });
+// Keep the shared QR adapter's URLs stable for both React and legacy pages.
+await mkdir(join(out, 'vendor'), { recursive: true });
+for (const kind of ['reader', 'writer']) {
+  await bundle({ entryPoints: [join(root, `node_modules/zxing-wasm/dist/es/${kind}/index.js`)], bundle: true, format: 'esm', platform: 'browser', target: 'es2022', minify: true, outfile: join(out, `vendor/zxing-${kind}.js`) });
+  await cp(join(root, `node_modules/zxing-wasm/dist/${kind}/zxing_${kind}.wasm`), join(out, `vendor/zxing_${kind}.wasm`));
+}
+await build({ configFile: join(root, 'vite.staff.config.mjs') });
 await mkdir(join(out, 'user'));
 for (const name of await readdir(join(root, 'frontend/user'))) {
   if (!(await stat(join(root, 'frontend/user', name))).isFile()) continue;

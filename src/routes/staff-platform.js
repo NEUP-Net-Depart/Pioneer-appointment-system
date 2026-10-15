@@ -3,6 +3,9 @@ import { json, readBody, fail, securityHeaders } from '../lib/http.js';
 function bodyWithRevision(body) { return body && typeof body === 'object' ? body : {}; }
 
 export const staffPlatformRoutes = [
+  ['GET', /^\/api\/field\/home$/, async context => json(await context.services.field.home(await context.role('technician'), context.query))],
+  ['GET', /^\/api\/field\/board$/, async context => json(await context.services.field.board(await context.role('technician'), context.query))],
+  ['GET', /^\/api\/field\/appointments\/([^/]+)$/, async (context, match) => json(await context.services.field.detail(await context.role('technician'), decodeURIComponent(match[1])))],
   ['GET', /^\/api\/members$/, async context => json(await context.services.staffPlatform.memberList(await context.role('technician'), context.query))],
   ['GET', /^\/api\/organization\/(campuses|departments|locations)$/, async (context, match) => json(await context.services.staffPlatform.organization(await context.role('technician'), match[1], context.query))],
   ['GET', /^\/api\/members\/([^/]+)$/, async (context, match) => json(await context.services.staffPlatform.memberDetail(await context.role('technician'), decodeURIComponent(match[1]), context.query.businessDate))],
@@ -31,6 +34,7 @@ export const staffPlatformRoutes = [
   ['POST', /^\/api\/attendance\/events$/, async context => json(await context.services.staffPlatform.createAttendanceEvent(await context.role('technician'), await readBody(context.request)), 201)],
   ['POST', /^\/api\/attendance\/events\/([^/]+)\/token$/, async (context, match) => json(await context.services.staffPlatform.issueAttendanceToken(await context.role('technician'), decodeURIComponent(match[1]), await readBody(context.request)))],
   ['POST', /^\/api\/attendance\/check-ins$/, async context => json(await context.services.staffPlatform.checkIn(await context.role('technician'), await readBody(context.request)))],
+  ['POST', /^\/api\/attendance\/preview$/, async context => json(await context.services.staffPlatform.previewAttendance(await context.role('technician'), await readBody(context.request)))],
   ['GET', /^\/api\/attendance$/, async context => json(await context.services.staffPlatform.attendanceList(await context.role('technician'), context.query))],
   ['GET', /^\/api\/attendance\/export\.csv$/, async context => {
     const result = await context.services.staffPlatform.attendanceExport(await context.role('technician'), context.query);

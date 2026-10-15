@@ -48,7 +48,7 @@ export function initStaffApplication({ onSession, onView, onLogout }) {
     if (!role) return;
     const user = event.detail;
     workbench.profile(user);
-    for (const link of platformLinks) link.hidden = !(user.grants || []).some(grant => grant.permissionCode === link.dataset.platformPermission);
+    for (const link of platformLinks) link.hidden = link.dataset.viewLink !== 'workbench' && !(user.grants || []).some(grant => grant.permissionCode === link.dataset.platformPermission);
     if (platformLinks.some(link => link.dataset.viewLink === activeView && link.hidden)) navigate('staff');
     onSession(user);
   }

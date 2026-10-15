@@ -6,12 +6,15 @@ import { requireAppointmentAccess } from './permissions.js';
 function metadata(item) {
   return { id: item.id, appointmentId: item.appointmentId, filename: item.filename, mimeType: item.mimeType, size: item.size, createdAt: item.createdAt, expiresAt: item.expiresAt, purpose: item.purpose, uploadedBy: item.uploadedBy };
 }
-export function attachmentService(appointments, attachments, bucket, maxBytes) {
+export function attachmentService(appointments, attachments, bucket, maxBytes, field = null) {
   async function authorize(id, user, accessToken) {
     if (!user) return guestAppointment(appointments,id,accessToken);
     const item = await appointments.find(id);
     if (!item) fail(404, '预约或附件不存在');
-    requireAppointmentAccess(user,item);
+    if(field?.enabled) {
+      const visible=await field.detail(user,id);
+      if(!visible.canReadDetails)fail(403,'没有该预约附件的访问权限');
+    } else requireAppointmentAccess(user,item);
     return item;
   }
   return {
@@ -23,7 +26,8 @@ export function attachmentService(appointments, attachments, bucket, maxBytes) {
       if (input.purpose && input.purpose !== 'general') {
         const appointment = await appointments.find(id);
         if (!appointment) fail(404, '预约不存在');
-        requireAppointmentAccess(user, appointment, { start: true });
+        if(field?.enabled) await field.requireEligible(user,appointment.campus);
+        else requireAppointmentAccess(user, appointment, { start: true });
         if (appointment.status !== 'booked') fail(409, '当前预约不能上传签到照片');
         id = appointment.id;
       } else id = (await authorize(id, user, accessToken)).id;

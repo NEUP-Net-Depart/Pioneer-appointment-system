@@ -12,14 +12,14 @@ async function walk(dir) {
   }
   return paths;
 }
-const runtime = (await Promise.all(['frontend','shared','src','functions'].map(walk))).flat().filter(path => /\.(?:jsx?|html|css)$/.test(path));
+const runtime = (await Promise.all(['frontend','shared','src','functions'].map(walk))).flat().filter(path => /\.(?:[jt]sx?|html|css)$/.test(path) && !path.endsWith('.d.ts'));
 const { dependencies = {} } = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 const forbidden = /node:sqlite|http\.createServer|fs\.writeFileSync|fs\.createReadStream|ATTACHMENTS_DIR|DB_FILE|storage_path|BEGIN IMMEDIATE|[?&]mode=(?:user|staff)|nginx|systemd|dotenv/i;
 const graph = new Map();
 for (const path of runtime) {
   const source = await readFile(join(root, path), 'utf8');
   assert.ok(!forbidden.test(source), `Retired architecture in ${path}`);
-  if (!/\.jsx?$/.test(path)) continue;
+  if (!/\.[jt]sx?$/.test(path)) continue;
   const imports = [];
   for (const [, specifier] of source.matchAll(/(?:from\s+|import\s+)['"]([^'"]+)['"]/g)) {
     if (specifier.startsWith('node:')) {
@@ -32,8 +32,12 @@ for (const path of runtime) {
       import.meta.resolve(specifier);
       continue;
     }
-    const dependency = resolve(root, specifier.startsWith('/') ? specifier.slice(1) : join(dirname(path), specifier));
-    await access(dependency);
+    let dependency = resolve(root, specifier.startsWith('/') ? specifier.slice(1) : join(dirname(path), specifier));
+    try { await access(dependency); } catch {
+      let found = false;
+      for (const extension of ['.ts','.tsx','.js','.jsx']) { try { await access(dependency + extension); dependency += extension; found = true; break; } catch { /* Try the next supported source suffix. */ } }
+      assert.ok(found, `Unresolved import ${specifier} in ${path}`);
+    }
     assert.ok(relative(root, dependency) && !relative(root, dependency).startsWith('..'), `Import escapes repository: ${path}`);
     imports.push(dependency);
   }
