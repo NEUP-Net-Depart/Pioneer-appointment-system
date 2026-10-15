@@ -25,6 +25,7 @@ export function bookingInput(input) {
 }
 export function appointmentPatch(input) {
   const patch = {};
+  if (input.assignedToName !== undefined) fail(400, '维修人员姓名由账号信息提供，不能修改');
   if (input.action !== undefined && input.action !== 'correct') fail(400, '操作不正确');
   if (input.startedAt !== undefined || input.completedAt !== undefined) fail(400, '维修时间由系统记录');
   if (input.id !== undefined || input.repairNumber !== undefined) fail(400, '预约编号和历史维修编号不能修改');
@@ -77,6 +78,11 @@ export function appointmentQuery(input) {
     if (query.sorts.length > 4 || new Set(query.sorts.map(item => item.key)).size !== query.sorts.length) fail(400, '组合排序字段不能重复');
   }
   return query;
+}
+export function assigneeQuery(input) {
+  const campus = stringField(input.campus, '校区', 20, true);
+  if (!CAMPUSES.includes(campus)) fail(400, '校区不正确');
+  return { campus, q: stringField(input.q, '搜索内容', 120) };
 }
 export function liveQuery(input) {
   const query = { date:input.date || '',campus:input.campus || '',timeSlot:input.timeSlot || '',appointmentId:input.appointmentId || '' };

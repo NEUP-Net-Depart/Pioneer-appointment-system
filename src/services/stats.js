@@ -16,7 +16,7 @@ export function statsService(stats, appointments, clock = () => new Date()) {
         daily: Object.fromEntries(result.daily.map(row => [row.date, { total: row.total, completed: row.completed }])),
         faults: Object.fromEntries(result.faults.map(row => [row.label || '未分类', row.total])),
         campuses: Object.fromEntries(result.campuses.map(row => [row.label || '未填写', row.total])),
-        technicians: Object.fromEntries(result.technicians.map(row => [row.account, { started: row.started, completed: row.completed }])) };
+        technicians: Object.fromEntries(result.technicians.map(row => [row.account, { assignedToName: row.assigned_to_name || '', started: row.started, completed: row.completed }])) };
     }
   };
 }

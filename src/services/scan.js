@@ -7,7 +7,7 @@ import { requireCampus, requireAppointmentAccess } from './permissions.js';
 import { presentAppointment } from './appointments.js';
 
 export function scanService(appointments, service, encryptionKey, secret, enabled, clock = () => new Date()) {
-  const present = item => presentAppointment(item, encryptionKey);
+  const present = item => presentAppointment(item, encryptionKey, { staff: true });
   function available() { if (!enabled) fail(404, '扫码工作台未启用'); }
   const expire = (now, scope) => appointments.expirePending(now.toISOString(), scope);
   async function locate(id, actor) {
