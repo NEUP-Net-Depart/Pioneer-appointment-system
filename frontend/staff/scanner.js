@@ -1,15 +1,18 @@
 import { readQr } from '/shared/zxing.js';
 
-export function createScanner({ video, status, torch, switchCamera, onCode, onState = () => {} }) {
+export function createScanner({ video, status, torch, switchCamera, onCode, onState = () => {}, canStart = () => true }) {
   let stream, timer, generation = 0, facing = 'environment', cameras = [], deviceId, lit = false;
   const canvas = document.createElement('canvas'), context = canvas.getContext('2d', { willReadFrequently: true });
   function stop() {
     generation++; clearTimeout(timer);
     stream?.getTracks().forEach(track => track.stop()); stream = undefined;
     video.srcObject = null; lit = false; torch.disabled = true; torch.setAttribute('aria-pressed', 'false');
+    switchCamera.disabled = true;
+    status.textContent = '摄像头已关闭，可使用相册或输入编号';
     onState('idle');
   }
   async function start() {
+    if (!canStart()) return;
     stop(); const current = generation;
     status.textContent = '正在打开摄像头…';
     onState('opening');
@@ -24,7 +27,7 @@ export function createScanner({ video, status, torch, switchCamera, onCode, onSt
         // Phones should choose the rear lens; single-camera devices may not expose facing modes.
         media = await navigator.mediaDevices.getUserMedia({ audio: false, video: { ...videoOptions, facingMode: { ideal: facing } } });
       }
-      if (current !== generation) { media.getTracks().forEach(track => track.stop()); return; }
+      if (current !== generation || !canStart()) { media.getTracks().forEach(track => track.stop()); return; }
       stream = media; video.srcObject = stream; await video.play();
       if (current !== generation) return;
       const track = stream.getVideoTracks()[0];
@@ -33,6 +36,7 @@ export function createScanner({ video, status, torch, switchCamera, onCode, onSt
       if (current !== generation) return;
       deviceId = track.getSettings?.().deviceId;
       status.textContent = '将机主二维码对准扫描框';
+      switchCamera.disabled = false;
       onState('running');
       async function frame() {
         if (current !== generation) return;
@@ -60,6 +64,7 @@ export function createScanner({ video, status, torch, switchCamera, onCode, onSt
     catch { status.textContent = '此摄像头无法开启手电筒'; }
   });
   switchCamera.addEventListener('click', () => {
+    if (!stream || !canStart()) return;
     if (cameras.length > 1) deviceId = cameras[(cameras.findIndex(device => device.deviceId === deviceId) + 1) % cameras.length].deviceId;
     else { deviceId = undefined; facing = facing === 'environment' ? 'user' : 'environment'; }
     start();
