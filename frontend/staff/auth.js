@@ -38,7 +38,7 @@ export function initAuth({ onLogin, onLogout }) {
     } catch { showToast('网络异常，服务器会话未撤销；本机已退出'); }
     showLogin(); message();
   });
-  window.addEventListener('auth-expired', () => { showLogin(); message('登录已过期，请重新登录'); });
+  window.addEventListener('auth-expired', event => { showLogin(); message(event.detail?.message || '登录已过期，请重新登录'); });
   if (sessionStorage.getItem('pioneerToken')) apiFetch('/api/auth/me').then(async response => {
     if (!response.ok) { showLogin(); return; }
     enter(await response.json());

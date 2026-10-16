@@ -8,7 +8,7 @@ export function StaffWorkspace({ children, name, entries, active, onSelect }: {
 }) {
   const [more, setMore] = useState(false);
   const activeGroup = entries.find(entry => entry.id === active)?.group || '其他';
-  const [expanded, setExpanded] = useState<string[]>(['今日工作', activeGroup]);
+  const [expanded, setExpanded] = useState<string[]>(() => [...new Set(entries.map(entry => entry.group || '其他'))]);
   useEffect(() => { setExpanded(current => current.includes(activeGroup) ? current : [...current, activeGroup]); }, [activeGroup]);
   const [pending, setPending] = useState<string | null>(null);
   useEffect(() => {
@@ -22,7 +22,7 @@ export function StaffWorkspace({ children, name, entries, active, onSelect }: {
     if (!window.dispatchEvent(event)) { setPending(id); return; }
     onSelect(id);
   }
-  const groups = ['今日工作', '我的', '值班管理', '平台管理', '数据与审计', '其他'].map(label => ({ label, items: entries.filter(entry => (entry.group || '其他') === label) })).filter(group => group.items.length);
+  const groups = ['今日工作', '我的', '值班管理', '平台管理', '业务管理', '数据与审计', '其他'].map(label => ({ label, items: entries.filter(entry => (entry.group || '其他') === label) })).filter(group => group.items.length);
   const primary = entries.filter(entry => entry.id.startsWith('scene:') && entry.id !== 'scene:mine').slice(0, 2);
   const mine = entries.find(entry => entry.id === 'scene:mine');
   if (mine) primary.push(mine);

@@ -1,6 +1,7 @@
 import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { request } from './request.js';
 import { ActivityContext } from './field/ui';
+import { WorkspaceHeader } from './WorkspaceHeader';
 import { readWorkspaceState, writeWorkspaceState } from './workspace-state.js';
 import { MemberEditor } from './MemberEditor.jsx';
 
@@ -50,7 +51,7 @@ export function Members({ user }) {
   useEffect(() => { if (resolvedQuery === query) writeWorkspaceState(viewKey, { q, campus, status, items, nextCursor, query }); }, [viewKey, q, campus, status, items, nextCursor, query, resolvedQuery]);
 
   return <section className="react-page react-members-page">
-    <div className="react-heading"><div><p className="react-eyebrow">成员与组织</p><h1>成员管理</h1><p>成员资料与角色授权分别维护，所属校区不改变授权范围。</p></div><button onClick={() => load()} disabled={busy}>刷新</button></div>
+    <WorkspaceHeader group="平台管理" title="成员管理" description="成员资料与角色授权分别维护，所属校区不改变授权范围。"><button onClick={() => load()} disabled={busy}>刷新</button></WorkspaceHeader>
     {error && <p className="react-error" role="alert">{error}</p>}
     <div className="members-workspace"><div className="react-toolbar members-tools"><label>查找成员<input aria-label="搜索成员" value={q} onChange={event => setQ(event.target.value)} placeholder="姓名、学号或账号" /></label>
       <label>所属校区<select aria-label="筛选成员校区" value={campus} onChange={event => setCampus(event.target.value)}><option value="">全部校区</option><option value="campus-nanhu">南湖</option><option value="campus-hunnan">浑南</option></select></label>

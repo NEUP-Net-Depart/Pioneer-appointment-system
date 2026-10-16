@@ -1,6 +1,7 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { request } from './request.js';
 import { ActivityContext } from './field/ui';
+import { WorkspaceHeader } from './WorkspaceHeader';
 import { ScopeFields, ConditionFields } from './ScopeFields.jsx';
 import { setGrantEnabled, withGrantValidity } from './authorization-drafts.js';
 
@@ -57,7 +58,7 @@ export function Permissions({ user }) {
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
   return <section className="react-page permissions-workspace">
-    <div className="react-heading"><div><h1>权限身份</h1><p>选择角色，调整权限后统一保存。</p></div></div>
+    <WorkspaceHeader group="平台管理" title="权限身份" description="选择角色，调整权限后统一保存。" />
     {error && <p className="react-error" role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     <div className="react-permission-layout"><aside className="react-card" aria-label="角色列表"><h2>角色</h2>
       {roles.map(role => <button type="button" disabled={busy || !!dirty} aria-pressed={selected?.id === role.id} className={selected?.id === role.id ? 'is-selected' : ''} key={role.id} onClick={() => select(role)}>{role.name}<small>{role.description || role.code}</small></button>)}

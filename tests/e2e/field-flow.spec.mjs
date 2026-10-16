@@ -385,7 +385,8 @@ test("unified scanner previews attendance and resolves repairs without committin
   });
   const order = await api(request, `/api/field/appointments/${registered.id}`, office.token);
   await login(page, '20261003');
-  await page.locator('.field-sidebar').getByRole('button', { name: '我的', exact: true }).first().click();
+  const myGroup = page.locator('.field-sidebar').getByRole('button', { name: '我的', exact: true }).first();
+  if (await myGroup.getAttribute('aria-expanded') === 'false') await myGroup.click();
   await page.locator('.field-sidebar').getByRole('button', { name: '个人中心', exact: true }).click();
   await page.getByRole('button', { name: '到岗签到', exact: true }).click();
   const writes = [];
@@ -439,7 +440,8 @@ test('management keeps its shell and readable results during refresh at all widt
   await login(page, 'root001');
   const sidebar = page.locator('.field-sidebar');
   await sidebar.evaluate(node => { node.dataset.identity = 'persistent'; });
-  await sidebar.getByRole('button', { name: '平台管理', exact: true }).click();
+  const managementGroup = sidebar.getByRole('button', { name: '平台管理', exact: true });
+  if (await managementGroup.getAttribute('aria-expanded') === 'false') await managementGroup.click();
   await sidebar.getByRole('button', { name: '成员管理', exact: true }).click();
   await expect(page.locator('.react-member-identity').first()).toBeVisible();
   let release;
@@ -493,6 +495,69 @@ test('switching work modules retains local filters and pauses the hidden board',
   await page.locator('.field-sidebar').getByRole('button', { name: '接待台', exact: true }).click();
   await expect(search).toHaveValue('ThinkPad');
   await expect.poll(() => boardReads).toBeGreaterThan(pausedAt);
+});
+
+test('security and business settings have separate workflows and consistent page headings', async ({ page }) => {
+  await login(page, 'root001');
+  const sidebar = page.locator('.field-sidebar');
+  async function open(group, name) {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const toggle = sidebar.getByRole('button', { name: group, exact: true });
+    if (await toggle.getAttribute('aria-expanded') === 'false') await toggle.click();
+    await sidebar.getByRole('button', { name, exact: true }).click();
+  }
+  await open('我的', '账号安全');
+  const heading = page.getByRole('heading', { name: '账号安全', exact: true });
+  await expect(heading).toBeVisible();
+  const position = await heading.boundingBox();
+  await expect(page.locator('#capacity-settings')).toBeHidden();
+  const currentPassword = page.locator('.settings-workspace').getByLabel('当前密码', { exact: true });
+  await currentPassword.fill('unsaved-secret');
+  await page.getByRole('button', { name: '撤销所有登录会话', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: '撤销所有登录会话？' })).toBeVisible();
+  await page.getByRole('button', { name: '取消', exact: true }).click();
+  await open('业务管理', '预约配置');
+  await expect(page.locator('#capacity-fields input').first()).toBeVisible();
+  await expect(currentPassword).toBeHidden();
+  await open('我的', '账号安全');
+  await expect(currentPassword).toHaveValue('');
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `output/field-workflow/security-${width}.png`, fullPage: true });
+  }
+  await open('今日工作', '预约记录');
+  const records = page.getByRole('heading', { name: '预约记录', exact: true, level: 1 });
+  await expect(records).toBeVisible();
+  const recordsPosition = await records.boundingBox();
+  expect(Math.abs(position.x - recordsPosition.x)).toBeLessThan(2);
+  expect(Math.abs(position.y - recordsPosition.y)).toBeLessThan(2);
+  await expect(page.locator('#export-csv')).toBeVisible();
+  await open('我的', '账号安全');
+  const settings = page.locator('.settings-workspace');
+  let passwordWrites = 0;
+  await page.route('**/api/auth/password', async route => {
+    passwordWrites++;
+    expect(route.request().postDataJSON()).toEqual({ currentPassword: 'wrong-password', newPassword: 'NewPassword123' });
+    await route.fulfill({ status: 400, json: { error: '当前密码不正确' } });
+  });
+  await currentPassword.fill('wrong-password');
+  await settings.getByLabel('新密码', { exact: true }).fill('NewPassword123');
+  await settings.getByLabel('确认新密码', { exact: true }).fill('Different123');
+  await settings.getByRole('button', { name: '修改密码并退出' }).click();
+  await expect(settings.getByText('两次新密码不一致，请重新确认。')).toBeVisible();
+  expect(passwordWrites).toBe(0);
+  await settings.getByLabel('确认新密码', { exact: true }).fill('NewPassword123');
+  await settings.getByRole('button', { name: '修改密码并退出' }).click();
+  await expect(settings.getByText('当前密码不正确')).toBeVisible();
+  expect(passwordWrites).toBe(1);
+  const oldToken = await page.evaluate(() => sessionStorage.getItem('pioneerToken'));
+  await settings.getByRole('button', { name: '撤销所有登录会话' }).click();
+  await page.getByRole('button', { name: '确认撤销并退出' }).click();
+  await expect(page.locator('#login-form')).toBeVisible();
+  await expect(page.getByText('所有登录会话已撤销，请重新登录。')).toBeVisible();
+  const revoked = await page.request.get('/api/auth/me', { headers: { Authorization: `Bearer ${oldToken}` } });
+  expect(revoked.status()).toBe(401);
 });
 
 test('statistics uses the workspace region without reviving the legacy page', async ({ page }) => {

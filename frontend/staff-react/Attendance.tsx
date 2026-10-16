@@ -1,5 +1,6 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { ActivityContext, api, Notice, time } from './field/ui';
+import { WorkspaceHeader } from './WorkspaceHeader';
 
 type Record = { id: string; businessDate: string; occurredAt: string; campusId?: string; type: string; nonScheduled: boolean };
 const campusNames: { [key: string]: string } = { 'campus-nanhu': '南湖校区', 'campus-hunnan': '浑南校区' };
@@ -21,7 +22,7 @@ export function Attendance({ onNavigate }: { onNavigate: (route: string) => void
     return () => controller.abort();
   }, [refreshKey, routeActive]);
   return <section className="attendance-history">
-    <header className="field-top"><div><p className="field-kicker">我的</p><h1>本人签到记录</h1><p className="field-muted">查看已完成的签到。当前是否在岗，以今日工作台为准。</p></div><button type="button" onClick={() => onNavigate('scene:mine')}>返回个人中心</button></header>
+    <WorkspaceHeader group="我的" title="本人签到记录" description="查看已完成的签到。当前是否在岗，以今日工作台为准。"><button type="button" onClick={() => onNavigate('scene:mine')}>返回个人中心</button></WorkspaceHeader>
     <Notice>{error}</Notice>
     <section className="field-card" aria-busy={loading}>
       <div className="field-section-heading"><h2>签到历史</h2><button type="button" disabled={loading} onClick={() => setRefreshKey(value => value + 1)}>{loading ? '正在更新…' : '刷新记录'}</button></div>

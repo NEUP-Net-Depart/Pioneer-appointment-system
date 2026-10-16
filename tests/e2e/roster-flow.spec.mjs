@@ -92,7 +92,8 @@ test('manager restores a saved draft, adjusts a member and cannot publish missin
   await expect(page.locator('#management-header')).toBeHidden();
   await expandGroup(page, '我的');
   await page.locator('.field-sidebar').getByRole('button', { name: '账号安全', exact: true }).click();
-  await expect(page.locator('[data-view=settings]')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '账号安全', exact: true })).toBeVisible();
+  await expect(page.locator('[data-view=settings]')).toBeHidden();
   await expect(page.locator('.field-sidebar')).toHaveAttribute('data-persisted', 'yes');
   await page.locator('.field-sidebar').getByRole('button', { name: '班次与排班', exact: true }).click();
   await expandGroup(page, '值班管理');

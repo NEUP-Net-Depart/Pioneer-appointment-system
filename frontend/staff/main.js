@@ -34,7 +34,7 @@ export function initStaffApplication({ onSession, onView, onLogout }) {
   });
   function refresh() {
     if (!role || document.hidden) return;
-    if (activeView === 'stats' && document.body.classList.contains('field-mode')) return;
+    if (['stats', 'settings'].includes(activeView) && document.body.classList.contains('field-mode')) return;
     if (!['staff', 'settings', 'scan'].includes(activeView) && !['admin', 'superadmin'].includes(role)) return;
     controllers[activeView]?.refresh();
   }
@@ -77,6 +77,7 @@ export function initStaffApplication({ onSession, onView, onLogout }) {
   return { dispose() {
     clearInterval(timer); host.dispose();
     controllers.scan.clear();
+    controllers.settings.dispose();
     window.removeEventListener('staff-context-ready', profile);
     window.removeEventListener('staff-navigate', requestNavigation);
   } };

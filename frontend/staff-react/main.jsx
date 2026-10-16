@@ -15,6 +15,7 @@ import { LegacyWorkspace } from './LegacyWorkspace';
 import { FieldApp } from './field/FieldApp';
 import { ActivityContext } from './field/ui';
 import { Statistics } from './Statistics';
+import { AccountSettings } from './AccountSettings';
 
 const roles = { technician: '维修人员', admin: '管理员', superadmin: '最高权限者' };
 function Workbench({ user, onNavigate }) {
@@ -34,6 +35,7 @@ function Root() {
   const [workScene, setWorkScene] = useState(null);
   const [rosterSection, setRosterSection] = useState('mine');
   const [visited, setVisited] = useState([]);
+  const [settingsSection, setSettingsSection] = useState('security');
   useEffect(() => {
     let active = true;
     if (!user) { setField(null); return; }
@@ -44,10 +46,12 @@ function Root() {
     return initStaffApplication({
       onSession: profile => { setWorkspaceSession(`${profile.memberId || profile.account}:${profile.authVersion}`); setUser(profile); },
       onView: view => { setPage(view); setVisited(current => current.includes(view) ? current : [...current, view]); },
-      onLogout: () => { clearWorkspaceState(); setUser(null); setPage(''); setVisited([]); setWorkScene(null); setRosterSection('mine'); }
+      onLogout: () => { clearWorkspaceState(); setUser(null); setPage(''); setVisited([]); setWorkScene(null); setRosterSection('mine'); setSettingsSection('security'); }
     }).dispose;
   }, []);
   const navigate = view => {
+    if (view === 'capacity') { setSettingsSection('capacity'); view = 'settings'; }
+    else if (view === 'settings') setSettingsSection('security');
     if (view.startsWith('scene:')) { setWorkScene(view.slice(6)); view = 'workbench'; }
     if (view === 'roster-manage') { setRosterSection('manage'); view = 'roster'; }
     else if (view === 'roster') setRosterSection('mine');
@@ -66,7 +70,8 @@ function Root() {
     ...(published.has('roles') ? [{ id: 'permissions', label: '授权管理', group: '平台管理' }] : []),
     ...(published.has('attendance') ? [{ id: 'attendance', label: '本人签到记录', group: '我的' }] : []),
     ...(field && ['admin','superadmin'].includes(user.role) ? [{ id: 'stats', label: '统计分析', group: '数据与审计' }, { id: 'users', label: '账号管理', group: '平台管理' }] : []),
-    ...(field ? [{ id: 'settings', label: '账号安全', group: '我的' }] : [])
+    ...(field ? [{ id: 'settings', label: '账号安全', group: '我的' }] : []),
+    ...(field && ['admin','superadmin'].includes(user.role) ? [{ id: 'capacity', label: '预约配置', group: '业务管理' }] : [])
   ];
   if (!field) {
     if (page === 'workbench') return <Workbench user={user} onNavigate={navigate} />;
@@ -76,7 +81,7 @@ function Root() {
     const module = page === 'attendance' ? <Attendance onNavigate={navigate} /> : page === 'members' ? <Members user={user} /> : page === 'permissions' ? <Permissions user={user} /> : null;
     return module;
   }
-  const active = page === 'workbench' ? `scene:${workScene}` : page === 'roster' && rosterSection === 'manage' ? 'roster-manage' : page;
+  const active = page === 'workbench' ? `scene:${workScene}` : page === 'roster' && rosterSection === 'manage' ? 'roster-manage' : page === 'settings' && settingsSection === 'capacity' ? 'capacity' : page;
   // Keep route instances mounted for the signed-in session. Switching a
   // module only changes its visibility, so drafts, selected work orders and
   // dialog state survive a trip through the sidebar. Hidden field routes pass
@@ -85,9 +90,10 @@ function Root() {
   const route = (view, child, allowed = true) => allowed && visited.includes(view) ? <ActivityContext.Provider key={view} value={visible(view)}><div className="workspace-route" data-route={view} hidden={!visible(view)} aria-hidden={!visible(view)}>{child}</div></ActivityContext.Provider> : null;
   const fieldRoute = route('workbench', <FieldApp initial={field} active={visible('workbench')} onNavigate={navigate} requestedScene={workScene} onSceneChange={setWorkScene} onContextChange={setField} workspaceLinks={workspaceLinks} />);
   const rosterRoute = route('roster', <RosterArea user={user} section={rosterSection} />, published.has('rosters'));
-  const legacyRoutes = ['staff', 'users', 'settings'].map(view => route(view, <LegacyWorkspace page={view} />, workspaceLinks.some(entry => entry.id === view)));
+  const legacyRoutes = ['staff', 'users'].map(view => route(view, <LegacyWorkspace page={view} />, workspaceLinks.some(entry => entry.id === view)));
   const moduleRoutes = [
     route('stats', <Statistics />, workspaceLinks.some(entry => entry.id === 'stats')),
+    route('settings', <AccountSettings user={user} section={settingsSection} />),
     route('attendance', <main className="field-main workspace-module"><Attendance onNavigate={navigate} /></main>, published.has('attendance')),
     route('members', <main className="field-main workspace-module"><Members user={user} /></main>, published.has('members')),
     route('permissions', <main className="field-main workspace-module"><Permissions user={user} /></main>, published.has('roles')),

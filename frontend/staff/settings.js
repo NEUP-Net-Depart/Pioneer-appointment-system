@@ -16,6 +16,7 @@ export function initSettings() {
   function signedOut(){
     clearSession();window.dispatchEvent(new CustomEvent('auth-expired'));
   }
+  window.addEventListener('staff-capacities-refresh', refresh);
   $('#password-form').addEventListener('submit',async event=>{
     event.preventDefault();
     const form=event.currentTarget,button=form.querySelector('[type="submit"]');
@@ -31,5 +32,5 @@ export function initSettings() {
     try{await apiJson('/api/auth/revoke',{method:'POST'});signedOut();showToast('所有会话已撤销');}
     catch(error){showToast(error.message);}
   });
-  return {refresh,clear(){generation++;capacities.clear();$('#password-form').reset();$('#profile-info').textContent='';}};
+  return {refresh,dispose(){window.removeEventListener('staff-capacities-refresh', refresh);},clear(){generation++;capacities.clear();$('#password-form').reset();$('#profile-info').textContent='';}};
 }

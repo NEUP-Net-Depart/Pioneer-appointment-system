@@ -1,4 +1,37 @@
 .workspace-update { min-height: 24px; color: var(--muted, #657080); font-size: 12px; }
+.field-app { --muted: #657080; }
+.field-app .field-main { margin: 0 auto; }
+.roster-section > .react-page { padding: 0; max-width: none; }
+.field-app .field-top, .field-app .react-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin: 0 0 28px; }
+.field-app .field-top > div:first-child, .field-app .react-heading > div:first-child { min-width: 0; }
+.field-app .field-top p, .field-app .react-heading p { margin: 8px 0 0; max-width: 680px; }
+.field-app .field-top .field-kicker, .field-app .react-heading .react-eyebrow { font-size: 12px; letter-spacing: .04em; margin: 0 0 8px; color: var(--muted); }
+.field-app .field-top button, .field-app .react-heading > button { flex-shrink: 0; white-space: nowrap; }
+.workspace-heading-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.workspace-operational-content > .view { max-width: none; margin: 0; padding: 0; }
+.workspace-operational-content .content-shell { width: 100%; max-width: none; padding: 0; margin: 0; }
+.workspace-operational-content .page-intro { display: none; }
+.workspace-operational-content .section-index { display: none; }
+.security-layout { display: grid; grid-template-columns: minmax(220px,.65fr) minmax(0,1.35fr); gap: 24px; max-width: 1080px; }
+.security-layout > .field-card { margin: 0; }
+.security-profile dl { margin: 20px 0 0; display: grid; gap: 18px; }
+.security-profile dl div { display: grid; gap: 4px; }
+.security-profile dt { color: var(--muted); font-size: 13px; }
+.security-profile dd { margin: 0; overflow-wrap: anywhere; }
+.workspace-form { display: grid; gap: 18px; margin-top: 24px; }
+.workspace-form label { display: grid; gap: 8px; }
+.workspace-form > p { margin: -10px 0 0; font-size: 13px; }
+.security-sessions { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 24px; }
+.security-sessions button { flex-shrink: 0; }
+.workspace-capacity .capacity-settings { margin: 0; padding: 24px; background: white; border: 1px solid var(--line); border-radius: 16px; }
+@media (max-width: 700px) {
+  .field-app .field-top, .field-app .react-heading { gap: 16px; margin-bottom: 24px; }
+  .security-layout { grid-template-columns: minmax(0,1fr); gap: 16px; }
+  .security-sessions { flex-direction: column; align-items: stretch; }
+  .security-profile dl { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .workspace-capacity .capacity-settings { padding: 16px; }
+  .workspace-heading { flex-wrap: wrap; }
+}
 .workspace-skeleton { display: grid; gap: 16px; padding: 24px; min-height: 220px; }
 .workspace-skeleton span { height: 28px; border-radius: 8px; background: #eef0f3; }
 .workspace-skeleton span:nth-child(even) { width: 75%; }

@@ -12,8 +12,11 @@ const slotLabel = slot => `${slot.businessDate.slice(5).replace('-', '/')} · ${
 const issues = { SLOTS_REQUIRED: '没有服务班次', COVERAGE_MISSING: '尚未安排人员', LEAD_COVERAGE_MISSING: '缺少有资格的负责人', MEMBER_UNAVAILABLE: '成员可用时间或资格已变化', LEAD_INELIGIBLE: '负责人资格已变化', MEMBER_WEEK_DUPLICATE: '同一成员本周重复排班', LOCKED_ASSIGNMENT_CHANGED: '锁定安排已变化', DUTY_TYPE_MISMATCH: '岗位类型不一致' };
 
 export function RosterArea({ user, section = 'mine' }) {
+  const active = useContext(ActivityContext);
+  const [visited, setVisited] = useState([section]);
+  useEffect(() => { setVisited(current => current.includes(section) ? current : [...current, section]); }, [section]);
   const canManage = user?.grants?.some(grant => grant.permissionCode === 'roster.repair.manage');
-  return <main className="field-main roster-area">{section === 'manage' && canManage ? <RosterManager user={user} /> : <Roster user={user} />}</main>;
+  return <main className="field-main roster-area">{visited.includes('manage') && canManage && <ActivityContext.Provider value={active && section === 'manage'}><div hidden={section !== 'manage'} className="roster-section"><RosterManager user={user} /></div></ActivityContext.Provider>}{visited.includes('mine') && <ActivityContext.Provider value={active && section !== 'manage'}><div hidden={section === 'manage'} className="roster-section"><Roster user={user} /></div></ActivityContext.Provider>}</main>;
 }
 
 function RosterManager({ user }) {
