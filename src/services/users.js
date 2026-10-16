@@ -17,7 +17,10 @@ export function userService(users) {
     },
     async list(actor) {
       requireRole(actor,'admin');
-      return {items:(await users.list()).filter(user=>actor.role==='superadmin' || canManageAccount(actor,user) || user.account===actor.account)};
+      return {items:(await users.list()).filter(user=>actor.role==='superadmin' || canManageAccount(actor,user) || user.account===actor.account).map(user => {
+        const editable = canManageAccount(actor, user);
+        return { ...user, actions: { edit: editable, changeStatus: editable, resetPassword: editable } };
+      })};
     },
     async update(id, input, actor) {
       const target = await manageable(id, actor), patch = { ...input };

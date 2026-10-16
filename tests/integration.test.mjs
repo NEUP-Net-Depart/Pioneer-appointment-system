@@ -676,6 +676,9 @@ test('staff account model separates role, status, home campus and grants', async
   assert.equal(created.role,'technician'); assert.equal(created.status,'enabled');
   assert.equal(created.homeCampus,'南湖'); assert.deepEqual(created.authorizedCampuses,['浑南']);
   assert.ok(!created.passwordHash);
+  assert.deepEqual(created.actions, { edit: true, changeStatus: true, resetPassword: true });
+  const protectedAccount = (await api('/api/users', { token: root })).items.find(item => item.account === 'root001');
+  assert.deepEqual(protectedAccount.actions, { edit: false, changeStatus: false, resetPassword: false });
   const technician=await login('400001');
   await api('/api/users',{token:technician},403);
   await api('/api/stats/summary',{token:technician},403);

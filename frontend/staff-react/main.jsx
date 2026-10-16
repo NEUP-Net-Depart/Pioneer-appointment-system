@@ -16,6 +16,7 @@ import { FieldApp } from './field/FieldApp';
 import { ActivityContext } from './field/ui';
 import { Statistics } from './Statistics';
 import { AccountSettings } from './AccountSettings';
+import { Accounts } from './Accounts';
 
 const roles = { technician: '维修人员', admin: '管理员', superadmin: '最高权限者' };
 function Workbench({ user, onNavigate }) {
@@ -90,10 +91,11 @@ function Root() {
   const route = (view, child, allowed = true) => allowed && visited.includes(view) ? <ActivityContext.Provider key={view} value={visible(view)}><div className="workspace-route" data-route={view} hidden={!visible(view)} aria-hidden={!visible(view)}>{child}</div></ActivityContext.Provider> : null;
   const fieldRoute = route('workbench', <FieldApp initial={field} active={visible('workbench')} onNavigate={navigate} requestedScene={workScene} onSceneChange={setWorkScene} onContextChange={setField} workspaceLinks={workspaceLinks} />);
   const rosterRoute = route('roster', <RosterArea user={user} section={rosterSection} />, published.has('rosters'));
-  const legacyRoutes = ['staff', 'users'].map(view => route(view, <LegacyWorkspace page={view} />, workspaceLinks.some(entry => entry.id === view)));
+  const legacyRoutes = ['staff'].map(view => route(view, <LegacyWorkspace page={view} />, workspaceLinks.some(entry => entry.id === view)));
   const moduleRoutes = [
     route('stats', <Statistics />, workspaceLinks.some(entry => entry.id === 'stats')),
     route('settings', <AccountSettings user={user} section={settingsSection} />),
+    route('users', <Accounts user={user} />, workspaceLinks.some(entry => entry.id === 'users')),
     route('attendance', <main className="field-main workspace-module"><Attendance onNavigate={navigate} /></main>, published.has('attendance')),
     route('members', <main className="field-main workspace-module"><Members user={user} /></main>, published.has('members')),
     route('permissions', <main className="field-main workspace-module"><Permissions user={user} /></main>, published.has('roles')),

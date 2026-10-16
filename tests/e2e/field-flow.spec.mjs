@@ -560,6 +560,54 @@ test('security and business settings have separate workflows and consistent page
   expect(revoked.status()).toBe(401);
 });
 
+test('account workspace imports, reviews and updates an account with server actions', async ({ page, request }) => {
+  // Model an independent client for this workflow; do not exhaust the shared
+  // local-IP login quota used by unrelated repair and scheduling scenarios.
+  await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': '192.0.2.46' });
+  await login(page, 'root001');
+  await page.locator('.field-sidebar').getByRole('button', { name: '账号管理', exact: true }).click();
+  const workspace = page.locator('.accounts-workspace');
+  await expect(workspace.getByRole('heading', { name: '账号管理' })).toBeVisible();
+  await expect(page.locator('#users-view')).toBeHidden();
+  const protectedRow = workspace.locator('.account-row').filter({ hasText: 'root001' });
+  await expect(protectedRow.getByText('系统保护账号')).toBeVisible();
+  await expect(protectedRow.getByRole('button')).toHaveCount(0);
+  await workspace.getByRole('button', { name: '加入资格', exact: true }).click();
+  await workspace.getByRole('button', { name: '导入名单', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '导入加入名单' });
+  await dialog.getByLabel('或粘贴 CSV').fill('studentId,expectedName\n20309991,周测试');
+  await dialog.getByRole('button', { name: '导入名单', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(workspace.getByText('已导入 1 人，已有资格跳过 0 人。')).toBeVisible();
+  const application = await request.post('/api/activation', { data: { studentId: '20309991', name: '周测试', homeCampus: '南湖', password: 'AccountTest!2026' } });
+  expect(application.ok(), await application.text()).toBe(true);
+  await workspace.getByRole('button', { name: '激活审核', exact: true }).click();
+  await workspace.getByLabel('选择 20309991').check();
+  await expect(workspace.getByRole('button', { name: '批准申请' })).toBeDisabled();
+  await workspace.getByLabel('我已逐一核实选中申请的本人身份').check();
+  await workspace.getByRole('button', { name: '批准申请' }).click();
+  await expect(workspace.getByText('已处理 1 条申请。', { exact: true })).toBeVisible();
+  await workspace.getByRole('button', { name: '账号列表', exact: true }).click();
+  await workspace.getByLabel('查找账号').fill('20309991');
+  const row = workspace.getByRole('region', { name: '工作人员账号列表' }).locator('.account-row').filter({ hasText: '20309991' });
+  await row.getByRole('button', { name: '管理账号' }).click();
+  const editor = page.getByRole('dialog', { name: '管理账号 · 周测试' });
+  await editor.getByLabel('姓名', { exact: true }).fill('周测试更新');
+  await editor.getByLabel('账号状态').selectOption('disabled');
+  await editor.getByRole('button', { name: '保存账号' }).click();
+  await expect(row).toContainText('周测试更新');
+  await expect(row).toContainText('已停用');
+  const denied = await request.post('/api/auth/login', { headers: { 'CF-Connecting-IP': '192.0.2.46' }, data: { account: '20309991', password: 'AccountTest!2026' } });
+  expect(denied.status()).toBe(401);
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const tabTops = await workspace.getByRole('navigation', { name: '账号管理功能' }).getByRole('button').evaluateAll(buttons => buttons.map(button => button.getBoundingClientRect().top));
+    expect(Math.max(...tabTops) - Math.min(...tabTops)).toBeLessThan(1);
+    await page.screenshot({ path: `output/field-workflow/accounts-${width}.png`, fullPage: true });
+  }
+});
+
 test('statistics uses the workspace region without reviving the legacy page', async ({ page }) => {
   await login(page, 'root001');
   const sidebar = page.locator('.field-sidebar');
