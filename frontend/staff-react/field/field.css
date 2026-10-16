@@ -1053,3 +1053,35 @@
 @media(min-width:768px){
   .field-side-panel{width:min(600px,55vw);max-width:100%;height:100dvh;max-height:100dvh;margin:0 0 0 auto;border-radius:16px 0 0 16px;border:0;border-left:1px solid #e1e5eb}
 }
+
+.field-credential { width:100%; max-width:420px; margin:24px auto; padding:24px 16px; border:1px solid var(--line); border-radius:16px; text-align:center; background:#fff; }
+.field-credential header { display:block; }
+.field-credential h3 { margin:10px 0 8px; font-size:21px; }
+.field-credential header p { margin:4px 0; overflow-wrap:anywhere; color:var(--muted); }
+.field-credential-kind { display:inline-block; padding:5px 10px; border-radius:6px; font-size:12px; font-weight:600; background:#edf2fa; color:#315982; }
+.field-credential--attendance .field-credential-kind { background:#f3eff9; color:#69508a; }
+.field-credential .field-qr { margin:16px 0; }
+.field-credential .field-qr img { width:min(224px,100%); height:auto; }
+.field-credential-instruction { max-width:28em; margin:12px auto 6px; font-size:15px; line-height:1.6; }
+.field-credential small { display:block; font-size:13px; color:var(--muted); }
+@media(max-width:380px){ .field-credential{padding:16px 12px;margin:16px auto;} .field-credential h3{font-size:19px;} }
+
+.workspace-nav-group { margin:0 0 16px; }
+.field-app .workspace-nav-group h2,.field-modal .workspace-nav-group h2 { margin:12px 12px 5px; font-size:12px; font-weight:600; color:#737b89; }
+.workspace-nav-group button { width:100%; text-align:left; }
+.workspace-more { display:grid; gap:8px; }
+
+.field-sidebar .workspace-nav-group h2 { margin:4px 0; }
+.field-sidebar .workspace-group-toggle { display:flex; justify-content:space-between; align-items:center; padding:8px 12px; min-height:36px; border:0; background:transparent; color:var(--muted); font-size:12px; font-weight:600; }
+.field-sidebar .workspace-group-toggle span { font-size:16px; }
+.field-sidebar .workspace-nav-group { margin-bottom:8px; }
+
+.attendance-history { max-width:1100px; margin:0 auto; }
+.attendance-history-list { list-style:none; padding:0; margin:0; }
+.attendance-history-list li { display:flex; justify-content:space-between; gap:16px; padding:18px 0; border-bottom:1px solid var(--line); }
+.attendance-history-list li:last-child { border-bottom:0; }
+.attendance-history-list li>div { display:grid; gap:6px; }
+.attendance-history-list li>div:last-child { text-align:right; flex-shrink:0; }
+.attendance-history-list span,.attendance-history-list small { color:var(--muted); font-size:13px; }
+
+.field-credential--attendance { border:0; border-radius:0; padding:8px 0; margin:12px auto 24px; }

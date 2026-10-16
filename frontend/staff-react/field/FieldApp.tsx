@@ -1,32 +1,43 @@
 import React, { useEffect, useState } from "react";
-import { api, Empty, Modal, Notice, Qr, Scanner, Status, time } from "./ui";
+import { api, Empty, Modal, Notice, CredentialCard, Scanner, Status, time } from "./ui";
 import { useField } from "./useField";
 import { Repair } from "./Repair";
 import { Registration } from "./Registration";
 import type { Home } from "./types";
 import "./field.css";
+import { StaffWorkspace } from "../StaffWorkspace";
 
 export function FieldApp({
   initial,
   onNavigate,
+  workspaceLinks = [],
+  requestedScene,
+  onSceneChange,
+  onContextChange,
 }: {
   initial: Home;
+  workspaceLinks?: { id: string; label: string; group?: string }[];
+  requestedScene?: string | null;
+  onSceneChange?: (scene: string) => void;
+  onContextChange?: (home: Home) => void;
   onNavigate: (view: string) => void;
 }) {
   const key = `field-scene:${initial.actor.memberId}`;
   const [scene, setScene] = useState(() =>
-    initial.currentRepair
+    requestedScene || (initial.currentRepair
       ? "repair"
       : initial.contexts.find((c) => c.id === sessionStorage.getItem(key))
           ?.id ||
         initial.contexts.find((c) => c.id === "desk")?.id ||
         initial.contexts[0]?.id ||
-        "mine",
+        "mine"),
   );
+  useEffect(() => {
+    if (requestedScene && (requestedScene === 'mine' || initial.contexts.some(context => context.id === requestedScene))) setScene(requestedScene);
+  }, [requestedScene, initial.contexts]);
   const [campus, setCampus] = useState(initial.campusId),
     [selected, setSelected] = useState(""),
-    [scan, setScan] = useState(false),
-    [attendance, setAttendance] = useState(false),
+    [scanOpen, setScanOpen] = useState(false),
     [registration, setRegistration] = useState(false);
   const [code, setCode] = useState(""),
     [message, setMessage] = useState(""),
@@ -53,9 +64,13 @@ export function FieldApp({
     data = result.data;
   const refresh = result.refresh;
   useEffect(() => {
-    document.body.classList.add("field-mode");
-    return () => document.body.classList.remove("field-mode");
-  }, []);
+    if (!data) return;
+    onContextChange?.(data);
+    if (scene !== 'mine' && !data.contexts.some(context => context.id === scene)) {
+      const next = data.contexts[0]?.id || 'mine';
+      setScene(next); onSceneChange?.(next); setSelected(''); setScanOpen(false);
+    }
+  }, [data, scene, onContextChange, onSceneChange]);
   useEffect(() => {
     sessionStorage.setItem(key, scene);
   }, [key, scene]);
@@ -83,8 +98,7 @@ export function FieldApp({
           method: "POST",
           body: { token: value },
         });
-        setScan(false);
-        setAttendance(false);
+        setScanOpen(false);
         setCheckPreview(preview);
         setCheckToken(value);
       });
@@ -95,7 +109,7 @@ export function FieldApp({
         method: "POST",
         body: value.includes(".") ? { code: value } : { id: value },
       });
-      setScan(false);
+      setScanOpen(false);
       setSelected(item.id);
     });
   }
@@ -127,7 +141,7 @@ export function FieldApp({
         body: { token: value, method: "qr", requestId: crypto.randomUUID() },
       });
       setCheckToken("");
-      setAttendance(false);
+      setScanOpen(false);
       setMessage("签到成功，已更新到岗状态");
       await refresh();
     });
@@ -160,51 +174,13 @@ export function FieldApp({
   const campusName = data?.campuses.find((c) => c.id === campus)?.name || "";
   const choose = (value: string) => {
     setScene(value);
+    onSceneChange?.(value);
     setMessage("");
     setSelected("");
     setFilter("all");
   };
   return (
-    <div className="field-app">
-      <aside className="field-sidebar">
-        <a className="field-brand" href="/staff/">
-          <img src="/assets/organization-logo.jpg" alt="" />
-          <span>
-            先锋<span>工作人员平台</span>
-          </span>
-        </a>
-        <p className="field-nav-label">现场工作</p>
-        <nav aria-label="岗位工作导航">
-          {(data?.contexts || initial.contexts).map((c) => (
-            <button
-              key={c.id}
-              className={scene === c.id ? "active" : ""}
-              onClick={() => choose(c.id)}
-            >
-              <span className="field-nav-dot" />
-              {c.label}
-            </button>
-          ))}
-          <button
-            className={scene === "mine" ? "active" : ""}
-            onClick={() => choose("mine")}
-          >
-            <span className="field-nav-dot" />
-            我的
-          </button>
-        </nav>
-        <div className="field-sidebar-bottom">
-          <span className="field-avatar">{initial.actor.name.slice(-2)}</span>
-          <div>
-            <strong>{initial.actor.name}</strong>
-            <button
-              onClick={() => document.getElementById("logout-btn")?.click()}
-            >
-              退出登录
-            </button>
-          </div>
-        </div>
-      </aside>
+    <StaffWorkspace name={initial.actor.name} entries={workspaceLinks} active={`scene:${scene}`} onSelect={id => id.startsWith('scene:') ? choose(id.slice(6)) : onNavigate(id)}>
       <main className="field-main">
         <header className="field-top">
           <div>
@@ -285,8 +261,8 @@ export function FieldApp({
                       <button
                         className="field-primary"
                         onClick={() => {
-                          setAttendance(true);
-                          setScan(true);
+                          setMessage("");
+                          setScanOpen(true);
                         }}
                       >
                         到岗签到
@@ -302,7 +278,7 @@ export function FieldApp({
                     ) : data.state === "available" ? (
                       <button
                         className="field-primary"
-                        onClick={() => setScan(true)}
+                        onClick={() => { setMessage(""); setScanOpen(true); }}
                       >
                         扫描维修码
                       </button>
@@ -338,7 +314,7 @@ export function FieldApp({
                     <div className="field-actions">
                       <button
                         disabled={data.state !== "available"}
-                        onClick={() => setScan(true)}
+                        onClick={() => { setMessage(""); setScanOpen(true); }}
                       >
                         扫码 / 相册识别
                       </button>
@@ -589,7 +565,7 @@ export function FieldApp({
                       ))}
                     {!people.length && (
                       <Empty title="暂无现场人员">
-                        展示签到码后，成员扫码即可到岗。
+                        展示工作人员签到码，成员扫码并确认后记录到岗。
                       </Empty>
                     )}
                   </section>
@@ -602,9 +578,9 @@ export function FieldApp({
                   <h2>{initial.actor.name}</h2>
                   <p className="field-muted">个人安排与账号</p>
                   <div className="field-actions">
-                    <button onClick={() => onNavigate("roster")}>
+                    {workspaceLinks.some(entry => entry.id === "roster") && <button onClick={() => onNavigate("roster")}>
                       我的班次与申请
-                    </button>
+                    </button>}
                     <button onClick={() => onNavigate("settings")}>
                       账号安全
                     </button>
@@ -615,14 +591,14 @@ export function FieldApp({
                     >
                       退出登录
                     </button>
-                    <button
+{data.capability["attendance.self"] && <button
                       onClick={() => {
-                        setAttendance(true);
-                        setScan(true);
+                        setMessage("");
+                        setScanOpen(true);
                       }}
                     >
                       到岗签到
-                    </button>
+                    </button>}
                   </div>
                   <h3>今日安排</h3>
                   {data.todayDuties.map((d) => (
@@ -662,32 +638,14 @@ export function FieldApp({
           </>
         )}
       </main>
-      <nav className="field-bottom-nav" aria-label="手机岗位导航">
-        {[
-          ...(data?.contexts || initial.contexts),
-          { id: "mine", label: "我的" },
-        ].map((c) => (
-          <button
-            key={c.id}
-            className={scene === c.id ? "active" : ""}
-            onClick={() => choose(c.id)}
-          >
-            {c.label.replace("工作台", "").replace("现场管理", "现场")}
-          </button>
-        ))}
-      </nav>
-      {scan && (
+      {scanOpen && (
         <Modal
-          title={attendance ? "到岗签到" : "扫描维修码"}
-          onClose={() => setScan(false)}
+          title="扫一扫"
+          onClose={() => setScanOpen(false)}
         >
           <Scanner onCode={resolve} />
           <Notice>{message}</Notice>
-          <p className="field-muted">
-            {attendance
-              ? "请扫描接待人员展示的值班签到码。"
-              : "扫描成功后进入现场核验，扫码本身不会接单。"}
-          </p>
+          <p className="field-muted">支持客户维修码和工作人员签到码。识别后先核对信息，再确认接单或签到。</p>
         </Modal>
       )}
       {checkToken && (
@@ -712,10 +670,10 @@ export function FieldApp({
       )}
       {token && (
         <Modal
-          title={`${campusName}校区 · 值班签到`}
+          title="展示签到码"
           onClose={() => setToken(null)}
         >
-          <Qr code={token.token} label="请工作人员登录后扫描此码签到" />
+          <CredentialCard kind="attendance" code={token.token} context={`${campusName}校区 · ${data?.businessDate || initial.businessDate}`} />
           <p className="field-muted">
             有效至 {time(token.expiresAt)} · 更新签到码后旧码失效
           </p>
@@ -765,6 +723,6 @@ export function FieldApp({
           }}
         />
       )}
-    </div>
+    </StaffWorkspace>
   );
 }

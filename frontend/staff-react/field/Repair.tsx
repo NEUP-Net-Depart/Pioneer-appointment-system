@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { uploadAttachments } from "../../../shared/attachments.js";
 import { outcomeLabels } from "../../../shared/constants.js";
-import { api, Modal, Notice, Qr, Status } from "./ui";
+import { api, Modal, Notice, CredentialCard, Status } from "./ui";
 import type { Appointment, Person, Verification } from "./types";
 import { intakePhoto } from "./photos";
 
@@ -478,7 +478,7 @@ export function Repair({
             </form>
           )}
           {item.status === "booked" && !item.canStart && item.repairCode && (
-            <Qr code={item.repairCode} label="请维修人员扫描此码并确认接单" />
+            <CredentialCard kind="repair" code={item.repairCode} context={`${item.campus}校区 · ${item.id}`} detail={`${item.brand} ${item.deviceModel}`} />
           )}
           {item.intake && !item.canStart && (
             <details className="field-details">

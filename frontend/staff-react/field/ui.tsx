@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, type ReactNode } from "react";
+import React, { useEffect, useRef, useState, useId, type ReactNode } from "react";
 import { statusLabels, statusClass } from "../../../shared/constants.js";
 import { qrImage } from "../../../shared/zxing.js";
 import { createScanner } from "../../staff/scanner.js";
@@ -62,6 +62,7 @@ export function Modal({
   onClose: () => void;
   sidePanel?: boolean;
 }) {
+  const titleId = useId();
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const dialog = ref.current!;
@@ -76,13 +77,14 @@ export function Modal({
     <dialog
       className={`field-modal${sidePanel ? ' field-side-panel' : ''}`}
       ref={ref}
+      aria-labelledby={titleId}
       onCancel={(event) => {
         event.preventDefault();
         onClose();
       }}
     >
       <header>
-        <h2>{title}</h2>
+        <h2 id={titleId}>{title}</h2>
         <button type="button" onClick={onClose} aria-label="关闭">
           关闭
         </button>
@@ -118,10 +120,22 @@ export function Qr({ code, label }: { code: string; label: string }) {
       ) : (
         <p>{error || "正在生成二维码…"}</p>
       )}
-      <p>{label}</p>
     </div>
   );
 }
+export function CredentialCard({ kind, code, context, detail }: {
+  kind: 'repair' | 'attendance'; code: string; context: string; detail?: string;
+}) {
+  const repair = kind === 'repair';
+  const title = repair ? '客户维修码' : '工作人员到岗签到码';
+  return <section className={`field-credential field-credential--${kind}`} aria-label={title}>
+    <header><span className="field-credential-kind">{repair ? '客户 · 设备交接' : '工作人员 · 到岗考勤'}</span><h3>{title}</h3><p>{context}</p>{detail && <p>{detail}</p>}</header>
+    <Qr code={code} label={title} />
+    <p className="field-credential-instruction">{repair ? '请维修人员扫描，核对客户与设备后确认接单。' : '请工作人员使用本人账号扫描，核对校区与场次后确认签到。'}</p>
+    <small>{repair ? '确认接单后才绑定维修人员。' : '记录本人到岗，不创建或绑定客户工单。'}</small>
+  </section>;
+}
+
 export function Scanner({ onCode }: { onCode: (code: string) => void }) {
   const video = useRef<HTMLVideoElement>(null),
     status = useRef<HTMLParagraphElement>(null),

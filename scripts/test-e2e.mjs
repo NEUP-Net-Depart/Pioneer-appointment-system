@@ -46,6 +46,7 @@ function command(args){
   const result=spawnSync(process.execPath,[cli,...args,'--env','preview'],{cwd:dir,env,encoding:'utf8'});
   if(result.error || result.status!==0)throw result.error || new Error(`Local Wrangler failed: ${result.stderr.slice(-1500)}`);
 }
+const fixtureTimestamp=process.argv.includes('--serve') ? nowIso() : '2026-10-15T00:00:00.000Z';
 let server,exitCode=0;
 async function stopServer(){
   if(!server?.pid)return;
@@ -55,7 +56,7 @@ async function stopServer(){
 try{
   command(['d1','migrations','apply','DB','--local','--persist-to',state]);
   const sql=resolve(dir,'seed.sql');
-  await writeFile(sql,`INSERT INTO staff_accounts(account,name,role,home_campus,protected,password_hash,created_at) VALUES ('root001','预览负责人','superadmin','南湖',1,'${hashPassword(rootPassword)}','${nowIso()}'); INSERT INTO staff_campus_grants VALUES ('root001','南湖'),('root001','浑南');`,{mode:0o600});
+  await writeFile(sql,`INSERT INTO staff_accounts(account,name,role,home_campus,protected,password_hash,created_at) VALUES ('root001','预览负责人','superadmin','南湖',1,'${hashPassword(rootPassword)}','${fixtureTimestamp}'); INSERT INTO staff_campus_grants VALUES ('root001','南湖'),('root001','浑南');`,{mode:0o600});
   command(['d1','execute','DB','--local','--persist-to',state,'--file',sql]);
   if(process.argv.includes('--field')) {
     await writeFile(sql,fieldSeed(process.argv.includes('--serve')?dateKey():'2026-10-15'),{mode:0o600});

@@ -53,7 +53,7 @@ test("reception layout remains usable at desktop, phone and narrow-phone widths"
     await page.getByRole("button", { name: "展示签到码", exact: true }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
     await expect(
-      page.getByRole("img", { name: "请工作人员登录后扫描此码签到" }),
+      page.getByRole("img", { name: "工作人员到岗签到码" }),
     ).toBeVisible();
     expect(
       await page
@@ -369,4 +369,61 @@ test("shared QR writer works under the customer page security policy", async ({
   });
   expect(result.type).toBe("image/png");
   expect(result.size).toBeGreaterThan(0);
+});
+
+
+test("unified scanner previews attendance and resolves repairs without committing either action", async ({ page, request }) => {
+  const office = await request.post('/api/auth/login', { data: { account: '20261001', password: 'StaffTest!2026' } }).then(r => r.json());
+  const home = await api(request, '/api/field/home', office.token);
+  const event = await api(request, '/api/attendance/events', office.token, { type: 'duty', businessDate: home.businessDate, campusId: 'campus-nanhu', requestId: crypto.randomUUID() });
+  const credential = await api(request, `/api/attendance/events/${event.id}/token`, office.token, { revision: event.revision });
+  const registered = await api(request, '/api/scan/onsite', office.token, {
+    requestId: crypto.randomUUID(), registrationFlow: 'frontdesk', campus: '南湖',
+    name: '扫码边界测试', studentId: '20305009', social: 'local-test', deviceType: '笔记本电脑',
+    brand: '联想', deviceModel: 'ThinkPad QR', warranty: '否', faultType: '系统问题',
+    signature: [Array.from({ length: 10 }, (_, i) => [0.1 + i * 0.05, 0.2 + i * 0.03])]
+  });
+  const order = await api(request, `/api/field/appointments/${registered.id}`, office.token);
+  await login(page, '20261003');
+  await page.locator('.field-sidebar').getByRole('button', { name: '我的', exact: true }).first().click();
+  await page.locator('.field-sidebar').getByRole('button', { name: '个人中心', exact: true }).click();
+  await page.getByRole('button', { name: '到岗签到', exact: true }).click();
+  const writes = [];
+  page.on('request', request => {
+    if (request.method() !== 'GET' && /\/api\/(attendance\/check-ins|field\/appointments)/.test(request.url())) writes.push(request.url());
+  });
+  async function uploadQr(value) {
+    const bytes = await page.evaluate(async text => {
+      const { qrImage } = await import('/shared/zxing.js');
+      return Array.from(new Uint8Array(await (await qrImage(text)).arrayBuffer()));
+    }, value);
+    await page.getByRole('dialog').locator('input[type=file]').setInputFiles({ name: 'code.png', mimeType: 'image/png', buffer: Buffer.from(bytes) });
+  }
+  await uploadQr(credential.token);
+  await expect(page.getByRole('dialog', { name: '确认到岗签到' })).toBeVisible();
+  expect(writes).toEqual([]);
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.getByRole('button', { name: '到岗签到', exact: true }).click();
+  await uploadQr(order.repairCode);
+  await expect(page.getByRole('dialog')).not.toHaveAccessibleName('扫一扫');
+  await expect(page.getByRole('dialog')).not.toHaveAccessibleName('确认到岗签到');
+  await expect(page.getByRole('dialog')).toContainText(order.id);
+  expect(writes).toEqual([]);
+  await expect(page.locator('.field-sidebar').getByRole('button', { name: '扫码维修', exact: true })).toHaveCount(0);
+});
+
+
+test('an expired reception permission removes its scene and returns to personal work', async ({ page }) => {
+  await login(page, '20261001');
+  await expect(page.getByRole('heading', { name: '接待台', exact: true })).toBeVisible();
+  await page.route('**/api/field/board*', route => route.fulfill({ status:403, contentType:'application/json', body:JSON.stringify({error:'当前没有该校区的现场岗位权限'}) }));
+  await page.route('**/api/field/home*', async route => {
+    const response = await route.fetch();
+    const data = await response.json();
+    await route.fulfill({ response, json:{ ...data, contexts:[], capability:{ ...data.capability, 'onsite.frontdesk.create':false, 'repair.transfer':false } } });
+  });
+  await page.locator('.field-footer').getByRole('button', { name:'刷新', exact:true }).click();
+  await expect(page.getByRole('heading', { name:'我的工作', exact:true })).toBeVisible();
+  await expect(page.locator('.field-sidebar').getByRole('button', { name:'接待台', exact:true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name:'展示签到码', exact:true })).toHaveCount(0);
 });

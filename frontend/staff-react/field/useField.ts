@@ -26,6 +26,15 @@ export function useField(campus: string, scene: string, sessionKey: string) {
       }
     } catch (error) {
       if (!controller.signal.aborted && version === generation.current) {
+        if ((error as Error & { status: number }).status === 403 && ['desk', 'operations'].includes(scene)) {
+          // The selected campus may no longer permit this work scene. Recover
+          // its authorized home so navigation can offer the correct next step.
+          try {
+            const home = await api<Home>(`/api/field/home${campus ? '?campusId=' + encodeURIComponent(campus) : ''}`, { signal: controller.signal });
+            if (version === generation.current) { setData(home); setError(''); last.current = Date.now(); }
+            return;
+          } catch { /* Keep the original access error when recovery is unavailable. */ }
+        }
         if ([401, 403].includes((error as Error & { status: number }).status))
           setData(null);
         setError((error as Error).message);

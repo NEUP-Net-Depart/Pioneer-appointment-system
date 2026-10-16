@@ -86,9 +86,9 @@ export function fieldWorkflow({
       : null;
     const contexts = [];
     if (
-      context.workProfiles.some((item) =>
+      (capability["repair.summary.read"] && context.workProfiles.some((item) =>
         ["repair", "exchange"].includes(item.profileCode),
-      ) ||
+      )) ||
       current
     )
       contexts.push({ id: "repair", label: "维修工作台" });

@@ -21,8 +21,9 @@ export function initColumnMenus(onChange) {
     panel.querySelector(button.dataset.columnMenu === 'date' ? '#staff-nearby-days [aria-current="date"],#staff-nearby-days button' : 'input:not([type="hidden"]),select,[data-filter]')?.focus();
   }));
   $$('[data-menu-close]').forEach(button => button.addEventListener('click',() => close(true)));
-  $$('[data-column-sort]').forEach(button => button.addEventListener('click',() => {
-    const key=button.dataset.columnSort, index=sorts.findIndex(item=>item.key===key);
+  $$('th[data-sort-column]').forEach(cell => cell.addEventListener('click',event => {
+    if (event.target.closest('[data-column-menu]')) return;
+    const key=cell.dataset.sortColumn, index=sorts.findIndex(item=>item.key===key);
     if(index<0)sorts.push({key,direction:'asc'});
     else if(sorts[index].direction==='asc')sorts[index].direction='desc';
     else sorts.splice(index,1);
