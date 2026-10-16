@@ -17,8 +17,24 @@ export function scheduleStatement(db, start, end, campuses) {
     .bind(start,end,start,end,...campuses);
 }
 
-export function slotCapacityRepository(db) {
+export function slotCapacityRepository(db, { workflowSchema = false } = {}) {
   return {
+    async actual(date, campus, dutyTypes = []) {
+      const [schedule, snapshot, occupied, staffing] = await Promise.all([
+        scheduleStatement(db, date, date, [campus]).all(),
+        db.prepare('SELECT COUNT(*) AS total FROM booking_day_slots WHERE campus=? AND date=?').bind(campus, date).first(),
+        db.prepare("SELECT time_slot,COUNT(*) AS total FROM appointments WHERE campus=? AND date=? AND source='booking' AND status<>'cancelled' GROUP BY time_slot").bind(campus, date).all(),
+        workflowSchema && dutyTypes.length ? db.prepare(`SELECT da.duty_type,COUNT(DISTINCT da.member_id) AS total FROM duty_assignments da
+          JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published'
+          JOIN campuses c ON c.id=da.campus_id
+          WHERE c.name=? AND da.business_date=? AND da.duty_type IN (${dutyTypes.map(() => '?').join(',')})
+          GROUP BY da.duty_type`).bind(campus, date, ...dutyTypes).all() : null
+      ]);
+      return { source: snapshot.total ? 'snapshot' : 'template',
+        items: schedule.results.map(row => ({ timeSlot: row.time_slot, capacity: row.capacity,
+          occupied: occupied.results.find(item => item.time_slot === row.time_slot)?.total || 0 })),
+        staffing: staffing ? Object.fromEntries(dutyTypes.map(type => [type, staffing.results.find(row => row.duty_type === type)?.total || 0])) : null };
+    },
     async list(campuses) {
       if (!campuses.length) return [];
       const result = await db.prepare(`SELECT * FROM weekday_slot_capacities

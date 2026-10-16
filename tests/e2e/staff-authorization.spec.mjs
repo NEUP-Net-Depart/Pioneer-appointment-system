@@ -63,6 +63,7 @@ for (const width of [375, 1280]) test(`member profile saves independently from r
   await expect(dialog.getByRole('status')).toHaveText('成员资料已保存');
   expect(writes.filter(write => write.path.includes('/members/'))).toEqual([{ path: '/api/members/member-example', method: 'PATCH',
     body: { name: '修改后的名字', homeCampusId: 'campus-hunnan', status: 'active', revision: 4 } }]);
+  await dialog.getByRole('button', { name: '角色授权', exact: true }).click();
   await expect(dialog.getByLabel('浑南', { exact: true })).toBeChecked();
   await expect(dialog.getByLabel('生效日期', { exact: true })).toHaveValue('2026-01-01');
   expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
@@ -88,6 +89,7 @@ test('saving bindings uses the latest profile revision and preserves independent
   const dialog = root.getByRole('dialog');
   await dialog.getByRole('button', { name: '保存资料', exact: true }).click();
   await expect(dialog.getByRole('status')).toHaveText('成员资料已保存');
+  await dialog.getByRole('button', { name: '角色授权', exact: true }).click();
   await dialog.getByRole('button', { name: '保存角色授权', exact: true }).click();
   await expect(dialog.getByRole('status')).toContainText('角色授权已保存');
   expect(writes.filter(write => write.method === 'PUT')).toEqual([{ path: '/api/members/member-example/roles', method: 'PUT', body: { revision: 5, bindings } }]);

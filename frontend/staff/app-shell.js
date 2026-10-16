@@ -64,10 +64,11 @@ export function createStaffHost({ documentRef = document, windowRef = window } =
     return context;
   }
 
-  function dispose() { disposed = true; windowRef.removeEventListener('staff-session-ready', sessionReady); windowRef.removeEventListener('auth-expired', clearContext); }
-  function sessionReady() { refresh().catch(() => {}); }
+  function dispose() { disposed = true; windowRef.removeEventListener('staff-session-ready', sessionReady); windowRef.removeEventListener('staff-context-retry', sessionReady); windowRef.removeEventListener('auth-expired', clearContext); }
+  function sessionReady() { refresh().catch(error => windowRef.dispatchEvent(new CustomEvent('staff-context-error', { detail: { message: error.message } }))); }
   function clearContext() { context = null; registry = createModuleRegistry([]); }
   windowRef.addEventListener('staff-session-ready', sessionReady);
+  windowRef.addEventListener('staff-context-retry', sessionReady);
   windowRef.addEventListener('auth-expired', clearContext);
   refresh().catch(() => {});
   return { refresh, dispose, get context() { return context; }, get registry() { return registry; }, queryKey };

@@ -6,6 +6,7 @@ export function initAuth({ onLogin, onLogout }) {
   function message(value = '') { $('#login-message').textContent = value; $('#login-message').hidden = !value; }
   function showLogin() {
     clearSession(); $('#app-shell').hidden = true; $('#login-view').hidden = false;
+    document.body.classList.remove('staff-workspace-enabled');
     $('#login-form').reset(); onLogout?.();
   }
   function enter(payload) {
@@ -14,6 +15,7 @@ export function initAuth({ onLogin, onLogout }) {
     sessionStorage.setItem('pioneerMemberId', payload.memberId || payload.actor?.memberId || '');
     sessionStorage.setItem('pioneerCampuses',JSON.stringify(payload.authorizedCampuses));
     if (payload.token) sessionStorage.setItem('pioneerToken', payload.token);
+    document.body.classList.toggle('staff-workspace-enabled', payload.staffWorkflowEnabled === true);
     $('#login-view').hidden = true; $('#app-shell').hidden = false; $('#logout-btn').hidden = false;
     $('#account-role').textContent = `${roleLabels[payload.role]} · ${payload.account}`;
     $$('[data-role-allow]').forEach(element => {

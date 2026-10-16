@@ -25,7 +25,7 @@ export function initStaffApplication({ onSession, onView, onLogout }) {
   const nativeSwitch = initNavigation(view => {
     activeView = view;
     workbench.show(view === 'scan');
-    controllers.scan.activate(view === 'scan');
+    controllers.scan.activate(view === 'scan' && !document.body.classList.contains('staff-workspace-enabled'));
     onView(view);
     if (view === 'scan' && !scanReady) {
       scanReady = true;
@@ -33,7 +33,7 @@ export function initStaffApplication({ onSession, onView, onLogout }) {
     } else refresh();
   });
   function refresh() {
-    if (!role || document.hidden) return;
+    if (!role || document.hidden || document.body.classList.contains('staff-workspace-enabled')) return;
     if (['staff', 'stats', 'settings', 'users'].includes(activeView) && document.body.classList.contains('field-mode')) return;
     if (!['staff', 'settings', 'scan'].includes(activeView) && !['admin', 'superadmin'].includes(role)) return;
     controllers[activeView]?.refresh();

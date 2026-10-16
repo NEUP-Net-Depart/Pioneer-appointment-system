@@ -42,7 +42,7 @@ export function Members({ user }) {
   }, [q, campus, status]);
 
   useEffect(() => {
-    if (!routeActive) { ++generation.current; controller.current?.abort(); setSelected(null); return; }
+    if (!routeActive) { ++generation.current; controller.current?.abort(); return; }
     setBusy(true); setNextCursor('');
     const timer = setTimeout(() => load(), 200);
     return () => { clearTimeout(timer); ++generation.current; controller.current?.abort(); };

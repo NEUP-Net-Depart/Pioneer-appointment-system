@@ -12,10 +12,12 @@
   padding: 0;
   margin: 0;
 }
-.field-app {
+.field-app, .field-modal {
   --line: #e6e8ec;
-  --muted: #737b89;
+  --muted: #657080;
   --ink: #222831;
+}
+.field-app {
   font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif;
   line-height: 1.55;
   min-height: 100dvh;
@@ -288,7 +290,7 @@
   font-size: 12px;
 }
 .field-muted {
-  color: #78818e;
+  color: var(--muted, #657080);
   font-size: 13px;
 }
 .field-search {

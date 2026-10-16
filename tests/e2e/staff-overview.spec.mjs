@@ -3,7 +3,12 @@ import { test, expect } from '@playwright/test';
 const dates = ['2026-10-12','2026-10-13','2026-10-14','2026-10-15'];
 const slots = ['19:00–20:00','20:00–21:00'];
 async function loginMock(page, campuses=['南湖','浑南']) {
-  await page.route('**/api/auth/login', route => route.fulfill({ json:{token:'test-only',account:'test-admin',role:'admin',authorizedCampuses:campuses} }));
+  const profile = { account: 'test-admin', role: 'admin', authorizedCampuses: campuses, staffWorkflowEnabled: false };
+  await page.route('**/api/auth/login', route => route.fulfill({ json: { ...profile, token: 'test-only' } }));
+  // These tests exercise the workflow-disabled host. Mock the entire session
+  // handshake so its fake token cannot race an actual 401 and log it out.
+  await page.route('**/api/auth/me', route => route.fulfill({ json: profile }));
+  await page.route('**/api/field/home', route => route.fulfill({ json: { enabled: false } }));
   const items=campuses.flatMap(campus => dates.flatMap(date => slots.map((timeSlot,index) => ({campus,date,timeSlot,capacity:10,occupied:index ? 10:4,remaining:index ? 0:6,booked:index ? 8:2,inProgress:2,ended:false}))));
   await page.route('**/api/appointments/overview', route => route.fulfill({ json:{dates,campuses,updatedAt:'2026-10-12T08:00:00Z',items,week:{start:'2026-10-12',end:'2026-10-18',dates,items}} }));
   await page.route('**/api/appointments?*', route => {

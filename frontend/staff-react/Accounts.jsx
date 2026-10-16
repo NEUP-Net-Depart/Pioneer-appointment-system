@@ -3,6 +3,7 @@ import { roleLabels, roleLevel, CAMPUSES } from '../../shared/constants.js';
 import { request } from './request.js';
 import { ActivityContext, Modal, Notice } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
+import { WorkspaceSections } from './WorkspaceSections';
 
 const enrollmentLabels = { open: '待激活', revoked: '已撤销', activated: '已激活', pending: '待审核', approved: '已通过', rejected: '已拒绝' };
 const sections = [{ id: 'accounts', label: '账号列表' }, { id: 'review', label: '激活审核' }, { id: 'invites', label: '加入资格' }];
@@ -34,7 +35,7 @@ export function Accounts({ user }) {
   return <main className="field-main accounts-workspace">
     <WorkspaceHeader group="平台管理" title="账号管理" description="先授予加入资格，再核实激活申请；已有账号在这里维护。"><button onClick={copy}>复制激活网址</button></WorkspaceHeader>
     <Notice>{copyMessage}</Notice>
-    <nav className="workspace-section-nav" aria-label="账号管理功能">{sections.map(item => <button key={item.id} aria-pressed={section === item.id} onClick={() => { setSection(item.id); setVisited(current => current.includes(item.id) ? current : [...current, item.id]); }}>{item.label}</button>)}</nav>
+    <WorkspaceSections label="账号管理功能" items={sections} value={section} onChange={id => { setSection(id); setVisited(current => current.includes(id) ? current : [...current, id]); }} />
     {sections.map(item => visited.includes(item.id) && <ActivityContext.Provider key={item.id} value={active && section === item.id}><div hidden={section !== item.id}>{item.id === 'accounts' ? <AccountList user={user} /> : item.id === 'review' ? <ActivationReview /> : <Invitations user={user} />}</div></ActivityContext.Provider>)}
   </main>;
 }

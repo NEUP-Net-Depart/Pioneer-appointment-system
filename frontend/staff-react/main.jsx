@@ -10,6 +10,7 @@ import { Permissions } from './Permissions.jsx';
 import { statusLabels } from '../../shared/constants.js';
 import { RosterArea } from './RosterManager.jsx';
 import { WorkspacePortal } from './WorkspacePortal';
+import { WorkspaceHeader } from './WorkspaceHeader';
 import { StaffWorkspace } from './StaffWorkspace';
 import { Records } from './Records';
 import { FieldApp } from './field/FieldApp';
@@ -33,21 +34,36 @@ function Root() {
   const [user, setUser] = useState(null);
   const [page, setPage] = useState('');
   const [field, setField] = useState(null);
+  const [bootProfile, setBootProfile] = useState(null), [bootError, setBootError] = useState(''), [bootRetry, setBootRetry] = useState(0);
   const [workScene, setWorkScene] = useState(null);
   const [rosterSection, setRosterSection] = useState('mine');
   const [visited, setVisited] = useState([]);
   const [settingsSection, setSettingsSection] = useState('security');
   useEffect(() => {
-    let active = true;
+    let active = true; const controller = new AbortController();
     if (!user) { setField(null); return; }
-    request('/api/field/home', { suppressAuthExpired: true }).then(data => { if (active && data.enabled) { setField(data); setWorkScene(current => current || (data.currentRepair ? 'repair' : data.contexts.find(context => context.id === sessionStorage.getItem(`field-scene:${data.actor.memberId}`))?.id || data.contexts.find(context => context.id === 'desk')?.id || data.contexts[0]?.id || 'mine')); window.dispatchEvent(new CustomEvent('staff-navigate', { detail:'workbench' })); } }).catch(() => {});
-    return () => { active = false; };
-  }, [user?.memberId, user?.account, user?.authVersion]);
+    setBootError('');
+    request('/api/field/home', { signal: controller.signal }).then(data => {
+      if (!active) return;
+      if (data.enabled) {
+        setField(data); setBootProfile(null);
+        setWorkScene(current => current || (data.currentRepair ? 'repair' : data.contexts.find(context => context.id === sessionStorage.getItem(`field-scene:${data.actor.memberId}`))?.id || data.contexts.find(context => context.id === 'desk')?.id || data.contexts[0]?.id || 'mine'));
+        window.dispatchEvent(new CustomEvent('staff-navigate', { detail:'workbench' }));
+      } else if (user.staffWorkflowEnabled) setBootError('平台配置已更新，请退出后重新登录。');
+    }).catch(error => { if (active && !controller.signal.aborted && user.staffWorkflowEnabled) setBootError(error.message); });
+    return () => { active = false; controller.abort(); };
+  }, [user?.memberId, user?.account, user?.authVersion, bootRetry]);
+  useEffect(() => {
+    const session = event => { setBootProfile(event.detail?.staffWorkflowEnabled ? event.detail : null); setBootError(''); };
+    const failure = event => setBootError(event.detail?.message || '暂时无法准备工作区，请重试。');
+    window.addEventListener('staff-session-ready', session); window.addEventListener('staff-context-error', failure);
+    return () => { window.removeEventListener('staff-session-ready', session); window.removeEventListener('staff-context-error', failure); };
+  }, []);
   useEffect(() => {
     return initStaffApplication({
       onSession: profile => { setWorkspaceSession(`${profile.memberId || profile.account}:${profile.authVersion}`); setUser(profile); },
       onView: view => { setPage(view); setVisited(current => current.includes(view) ? current : [...current, view]); },
-      onLogout: () => { clearWorkspaceState(); setUser(null); setPage(''); setVisited([]); setWorkScene(null); setRosterSection('mine'); setSettingsSection('security'); }
+      onLogout: () => { clearWorkspaceState(); setUser(null); setField(null); setBootProfile(null); setBootError(''); setPage(''); setVisited([]); setWorkScene(null); setRosterSection('mine'); setSettingsSection('security'); }
     }).dispose;
   }, []);
   const navigate = view => {
@@ -59,6 +75,7 @@ function Root() {
     if (field && view === 'scan') { setWorkScene('repair'); view = 'workbench'; }
     window.dispatchEvent(new CustomEvent('staff-navigate', { detail: view }));
   };
+  if (!field && (bootProfile?.staffWorkflowEnabled || user?.staffWorkflowEnabled)) return <WorkspacePortal><div className="field-app workspace-bootstrap"><main className="field-main"><WorkspaceHeader group="工作人员平台" title={bootError ? '工作区暂时不可用' : '正在准备工作区'} description="正在加载你的岗位、授权范围与当前任务。" /><section className="field-card"><p role="status">{bootError || '请稍候，工作区准备完成后将自动进入。'}</p>{!bootError && <div className="workspace-skeleton" aria-hidden="true"><span /><span /><span /></div>}<div className="field-actions">{bootError && <button className="field-primary" onClick={() => { setBootError(''); if (user) setBootRetry(value => value + 1); else window.dispatchEvent(new CustomEvent('staff-context-retry')); }}>重新加载工作区</button>}<button onClick={() => document.getElementById('logout-btn')?.click()}>退出登录</button></div></section></main></div></WorkspacePortal>;
   if (!user) return null;
   const published = new Set((user.navigation || []).map(entry => entry.id));
   const workspaceLinks = [
@@ -94,7 +111,7 @@ function Root() {
   const moduleRoutes = [
     route('staff', <Records user={user} />, workspaceLinks.some(entry => entry.id === 'staff')),
     route('stats', <Statistics />, workspaceLinks.some(entry => entry.id === 'stats')),
-    route('settings', <AccountSettings user={user} section={settingsSection} />),
+    route('settings', <AccountSettings user={user} section={settingsSection} onNavigate={navigate} />),
     route('users', <Accounts user={user} />, workspaceLinks.some(entry => entry.id === 'users')),
     route('attendance', <main className="field-main workspace-module"><Attendance onNavigate={navigate} /></main>, published.has('attendance')),
     route('members', <main className="field-main workspace-module"><Members user={user} /></main>, published.has('members')),

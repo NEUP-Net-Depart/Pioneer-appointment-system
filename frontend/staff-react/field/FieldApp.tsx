@@ -4,6 +4,7 @@ import { useField } from "./useField";
 import { Repair } from "./Repair";
 import { Registration } from "./Registration";
 import type { Home } from "./types";
+import { WorkspaceHeader } from '../WorkspaceHeader';
 import "./field.css";
 
 export function FieldApp({
@@ -186,17 +187,7 @@ export function FieldApp({
   return (
     <>
       <main className="field-main" aria-busy={result.loading}>
-        <header className="field-top">
-          <div>
-            <p className="field-kicker">先锋 · 当日工作</p>
-            <h1>
-              {scene === "mine"
-                ? "我的工作"
-                : (data?.contexts || initial.contexts).find(
-                    (c) => c.id === scene,
-                  )?.label || "今日工作"}
-            </h1>
-          </div>
+        <WorkspaceHeader group={scene === 'mine' ? '我的' : '今日工作'} title={scene === 'mine' ? '个人中心' : (data?.contexts || initial.contexts).find(c => c.id === scene)?.label || '今日工作'}>
           <div className="field-scope">
             <span>{data?.businessDate || initial.businessDate}</span>
             <label>
@@ -217,7 +208,7 @@ export function FieldApp({
               </select>
             </label>
           </div>
-        </header>
+        </WorkspaceHeader>
         <Notice>{message || result.error}</Notice>
         <div className="workspace-update" role="status" aria-live="polite">{result.loading ? "正在更新当前区域…" : ""}</div>
         {!data ? (

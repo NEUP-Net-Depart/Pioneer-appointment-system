@@ -138,6 +138,34 @@ before(async () => {
 });
 after(async () => mf?.dispose());
 
+test('actual capacity keeps date snapshots and scopes staffing by existing roster grants', async () => {
+  const path = '/api/slot-capacities/actual?campus=%E5%8D%97%E6%B9%96&date=2026-10-15';
+  assert.equal((await request(path, null)).status, 401);
+  assert.equal((await request(path, '20261002')).status, 403);
+  assert.equal((await request('/api/slot-capacities/actual?campus=浑南&date=2026-10-15', 'root001')).status, 403);
+  assert.equal((await request('/api/slot-capacities/actual?campus=南湖&date=2026-02-30', 'root001')).status, 400);
+  const initial = await request(path, 'root001');
+  assert.equal(initial.status, 200, JSON.stringify(initial.body));
+  assert.equal(initial.body.source, 'template');
+  assert.equal(initial.body.items.length, 4);
+  assert.deepEqual(initial.body.staffing, { repair: 3, office: 1 });
+  const limited = await request(path, '20261001');
+  assert.equal(limited.status, 200, JSON.stringify(limited.body));
+  assert.equal(limited.body.staffing, null);
+  const date = '2026-10-22';
+  const { results } = await db.prepare("SELECT * FROM weekday_slot_capacities WHERE campus='南湖' AND weekday=4").all();
+  await db.batch(results.map(row => db.prepare('INSERT INTO booking_day_slots(campus,date,time_slot,capacity) VALUES(?,?,?,?)').bind(row.campus, date, row.time_slot, row.capacity)));
+  const cell = results[0];
+  await db.prepare('UPDATE weekday_slot_capacities SET capacity=capacity+2,revision=revision+1 WHERE campus=? AND weekday=4 AND time_slot=?').bind(cell.campus, cell.time_slot).run();
+  const frozen = await request(`/api/slot-capacities/actual?campus=南湖&date=${date}`, 'root001');
+  assert.equal(frozen.body.source, 'snapshot');
+  assert.equal(frozen.body.items.find(item => item.timeSlot === cell.time_slot).capacity, cell.capacity);
+  const future = await request('/api/slot-capacities/actual?campus=南湖&date=2026-10-29', 'root001');
+  assert.equal(future.body.source, 'template');
+  assert.equal(future.body.items.find(item => item.timeSlot === cell.time_slot).capacity, cell.capacity + 2);
+  await db.prepare('UPDATE weekday_slot_capacities SET capacity=?,revision=revision+1 WHERE campus=? AND weekday=4 AND time_slot=?').bind(cell.capacity, cell.campus, cell.time_slot).run();
+});
+
 test("field day: reception, attendance, intake, transfer and completion share authoritative facts", async () => {
   const office = "20261001",
     tech = "20261002",

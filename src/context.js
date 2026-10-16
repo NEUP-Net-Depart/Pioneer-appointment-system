@@ -43,7 +43,7 @@ export function createContext(request, env) {
     queue: queueService(appointments, queueRepository(db)), stats: statsService(statsRepository(db), appointments),
     export: exportService(appointments, env.PII_ENCRYPTION_KEY, undefined, field),
     limits: rateLimitService(rateLimitRepository(db), env.JWT_SECRET),
-    slotCapacities: slotCapacityService(slotCapacityRepository(db)),
+    slotCapacities: slotCapacityService(slotCapacityRepository(db, { workflowSchema: env.STAFF_WORKFLOW_ENABLED === 'true' }), staffPlatformServiceInstance),
     staffPlatform: staffPlatformServiceInstance,
     field,
     async health() { await Promise.all([users.health(), env.ATTACHMENTS.list({ limit: 1 })]); return { ok: true, service: 'pioneer-repair-api', database: 'd1', attachments: 'r2' }; }

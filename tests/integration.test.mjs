@@ -1849,9 +1849,15 @@ test('weekday templates freeze on first booking and preserve cancellations, rest
   assert.deepEqual(summary.timeSlots,['19:00–19:30','19:30–20:00','20:00–20:30','20:30–21:00']);
   assert.equal(summary.slotCapacities[timeSlot],3);
   assert.equal(summary.slots[timeSlot],3);
+  const actualPath = `/api/slot-capacities/actual?${new URLSearchParams({ campus: '南湖', date })}`;
+  const actual = await api(actualPath, { token });
+  assert.equal(actual.source, 'snapshot');
+  assert.deepEqual(actual.items.find(slot => slot.timeSlot === timeSlot), { timeSlot, capacity: 3, occupied: 3 });
+  assert.equal(actual.staffing, null);
   assert.equal((await api(`/api/live/summary?date=${addDays(date,7)}&campus=${encodeURIComponent('南湖')}`)).slotCapacities[timeSlot],0);
   assert.equal((await api(`/api/live/summary?date=${date}&campus=${encodeURIComponent('浑南')}`)).slotCapacities[timeSlot],5);
   await api(`/api/appointments/${item.id}/status`,{method:'PATCH',accessToken:item.accessToken,body:{status:'cancelled'}});
+  assert.equal((await api(actualPath, { token })).items.find(slot => slot.timeSlot === timeSlot).occupied, 2);
   await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token,body:{action:'correct',status:'booked'}});
   await api('/api/appointments',{method:'POST',body:draft({timeSlot:'19:00–19:30'})},409);
   const overview=await api('/api/appointments/overview',{token});

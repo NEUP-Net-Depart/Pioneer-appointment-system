@@ -3,6 +3,7 @@ import { request } from './request.js';
 import { ActivityContext, Modal } from './field/ui';
 import { Roster } from './Roster.jsx';
 import { addDays, dateKey, weekRange } from '../../shared/time.js';
+import { WorkspaceHeader } from './WorkspaceHeader';
 import './roster.css';
 
 const campusNames = { 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' };
@@ -103,7 +104,7 @@ function RosterManager({ user }) {
   }).length;
 
   return <section className="react-page roster-planner">
-    <header className="react-heading"><div><h1>维修排班</h1><p>收集时间 → 核对安排 → 发布给成员</p></div><button type="button" disabled={busy || dirty} onClick={() => setCreating(true)}>新建收集任务</button></header>
+    <WorkspaceHeader group="值班管理" title="维修排班管理" description="收集可用时间，核对人员安排，再发布给成员。"><button type="button" disabled={busy || dirty} onClick={() => setCreating(true)}>新建收集任务</button></WorkspaceHeader>
     {error && <p className="react-error" role="alert">{error}</p>}
     {notice && <p className="react-message" role="status">{notice}</p>}
     <div className="planner-toolbar"><label>排班周与校区<select disabled={busy || dirty} value={taskId} onChange={event => setTaskId(event.target.value)}><option value="">选择收集任务</option>{tasks.map(item => <option key={item.id} value={item.id}>{item.weekStart} · {item.campusScope.campusIds.map(id => campusNames[id] || id).join('、')} · {item.slotStart}–{item.slotEnd}</option>)}</select></label><button type="button" disabled={!taskId || busy || dirty || loading} onClick={() => load(taskId)}>刷新</button></div>

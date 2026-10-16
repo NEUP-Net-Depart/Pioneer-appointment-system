@@ -2,6 +2,9 @@ import { json, readBody } from '../lib/http.js';
 import { slotCapacityInput, slotCapacityBatchInput } from '../lib/validation.js';
 
 export const slotCapacityRoutes = [
+  ['GET', /^\/api\/slot-capacities\/actual$/, async context => {
+    return json(await context.services.slotCapacities.actual(await context.role('admin'), context.query));
+  }],
   ['GET', /^\/api\/slot-capacities$/, async context => {
     return json(await context.services.slotCapacities.list(await context.role('admin')));
   }],

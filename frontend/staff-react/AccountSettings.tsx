@@ -1,9 +1,10 @@
-import React, { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useContext, useEffect, useRef, useState } from 'react';
 import { clearSession } from '../../shared/api.js';
 import { ActivityContext, api, Modal, Notice } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
+import { CapacityEditor } from './CapacityEditor';
 
-export function AccountSettings({ user, section }: { user: { name: string; account: string; homeCampus: string; authorizedCampuses: string[]; role: string }; section: string }) {
+export function AccountSettings({ user, section, onNavigate }: { user: { name: string; account: string; homeCampus: string; authorizedCampuses: string[]; role: string }; section: string; onNavigate?: (view: string) => void }) {
   const active = useContext(ActivityContext);
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [confirm, setConfirm] = useState(false);
   const form = useRef<HTMLFormElement>(null);
@@ -41,20 +42,7 @@ export function AccountSettings({ user, section }: { user: { name: string; accou
       </form></section>
       <section className="field-card security-sessions"><div><h2>设备会话</h2><p className="field-muted">无法确认其他设备是否安全时，可让所有设备退出登录，包含当前设备。</p></div><button type="button" disabled={busy} onClick={() => { setError(''); setConfirm(true); }}>撤销所有登录会话</button></section>
     </div>
-    {allowed && <div hidden={security}><CapacityPanel active={active && !security} /></div>}
+    {allowed && <div hidden={security}><CapacityEditor active={active && !security} onNavigate={onNavigate} /></div>}
     {confirm && <Modal title="撤销所有登录会话？" onClose={() => { if (!busy) setConfirm(false); }}><p>所有设备都会退出登录，你需要重新登录后继续工作。</p><div className="field-actions"><button disabled={busy} onClick={() => setConfirm(false)}>取消</button><button className="field-primary" disabled={busy} onClick={revoke}>{busy ? '正在撤销…' : '确认撤销并退出'}</button></div></Modal>}
   </main>;
-}
-
-function CapacityPanel({ active }: { active: boolean }) {
-  const host = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const panel = document.getElementById('capacity-settings');
-    if (!panel || !host.current) return;
-    const anchor = document.createComment('capacity-settings-home');
-    panel.before(anchor); host.current.append(panel);
-    return () => { anchor.replaceWith(panel); };
-  }, []);
-  useEffect(() => { if (active) window.dispatchEvent(new CustomEvent('staff-capacities-refresh')); }, [active]);
-  return <div ref={host} className="workspace-capacity" />;
 }

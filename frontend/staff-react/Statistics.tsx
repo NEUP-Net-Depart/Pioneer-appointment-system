@@ -39,7 +39,7 @@ export function Statistics() {
   const data = snapshot?.data;
   const metrics = data ? [['预约总数', data.total], ['已完成维修', data.completed], ['修复成功率', `${data.repairSuccessRate}%`], ['已取消', data.cancelled], ['已逾期', data.expired]] : [];
   return <main className="field-main report-workspace">
-    <WorkspaceHeader group="数据与审计" title="维修统计" description="查看授权校区内的服务情况与人员工作量。"><button disabled={loading} onClick={() => setRevision(value => value + 1)}>刷新统计</button></WorkspaceHeader>
+    <WorkspaceHeader group="数据与审计" title="统计分析" description="查看授权校区内的服务情况与人员工作量。"><button disabled={loading} onClick={() => setRevision(value => value + 1)}>刷新统计</button></WorkspaceHeader>
     <section className="field-card report-filters" aria-label="统计范围">
       <label>统计范围<select value={range} onChange={event => { setRange(event.target.value); setDay(''); }}><option value="7">最近 7 天</option><option value="30">最近 30 天</option><option value="all">全部记录</option></select></label>
       <label>查看单日<input type="date" value={day} onChange={event => setDay(event.target.value)} /></label>

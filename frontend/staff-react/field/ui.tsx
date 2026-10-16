@@ -61,12 +61,14 @@ export function Modal({
   onClose,
   sidePanel = false,
   initialFocus,
+  dismissible = true,
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
   sidePanel?: boolean;
   initialFocus?: string;
+  dismissible?: boolean;
 }) {
   const titleId = useId();
   const ref = useRef<HTMLDialogElement>(null);
@@ -87,14 +89,23 @@ export function Modal({
       className={`field-modal${sidePanel ? ' field-side-panel' : ''}`}
       ref={ref}
       aria-labelledby={titleId}
+      onKeyDown={event => {
+        if (event.key !== 'Tab') return;
+        const controls = [...ref.current!.querySelectorAll<HTMLElement>('button,input,select,textarea,a[href],summary,[tabindex]')]
+          .filter(node => node.tabIndex >= 0 && !node.matches(':disabled') && node.getClientRects().length);
+        const first = controls[0], last = controls.at(-1);
+        if (!first) { event.preventDefault(); return; }
+        if (event.shiftKey && (document.activeElement === first || document.activeElement === ref.current)) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }}
       onCancel={(event) => {
         event.preventDefault();
-        onClose();
+        if (dismissible) onClose();
       }}
     >
       <header>
         <h2 id={titleId}>{title}</h2>
-        <button type="button" onClick={onClose} aria-label="关闭">
+        <button type="button" disabled={!dismissible} onClick={onClose} aria-label="关闭">
           关闭
         </button>
       </header>

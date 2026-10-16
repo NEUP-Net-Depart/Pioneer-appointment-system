@@ -16,7 +16,7 @@ async function login(page, account) {
     .getByLabel("密码", { exact: true })
     .fill(account === 'root001' ? process.env.E2E_ROOT_PASSWORD : "StaffTest!2026");
   await page.getByRole("button", { name: "进入系统" }).click();
-  await expect(page.locator(".field-app")).toBeVisible();
+  await expect(page.locator(".field-app:not(.workspace-bootstrap)")).toBeVisible();
 }
 async function api(request, path, token, body, method = body ? "POST" : "GET") {
   const response = await request.fetch(path, {
@@ -31,6 +31,30 @@ async function api(request, path, token, body, method = body ? "POST" : "GET") {
 async function recordFixture(request, token, studentId) {
   return api(request, '/api/scan/onsite', token, { requestId: crypto.randomUUID(), registrationFlow: 'frontdesk', campus: '南湖', name: '记录测试同学', studentId, social: 'record-test', deviceType: '笔记本电脑', brand: '联想', deviceModel: 'ThinkPad Records', warranty: '否', faultType: '系统问题', signature: [Array.from({ length: 10 }, (_,i) => [0.1 + i * 0.05, 0.2 + i * 0.03])] });
 }
+
+test('platform startup errors never reveal old pages or start legacy record refreshes', async ({ page }) => {
+  await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': '192.0.2.50' });
+  let contextFails = true, homeFails = true, legacyReads = 0;
+  page.on('request', req => { if (req.method() === 'GET' && /^\/api\/appointments(?:\?|\/overview)/.test(new URL(req.url()).pathname + new URL(req.url()).search)) legacyReads++; });
+  await page.route('**/api/auth/me', route => contextFails ? route.fulfill({ status: 503, json: { error: '初始化权限失败' } }) : route.continue());
+  await page.route('**/api/field/home*', route => homeFails ? route.fulfill({ status: 503, json: { error: '初始化工作台失败' } }) : route.continue());
+  await page.goto('/staff/');
+  await page.locator('#login-id').fill('root001');
+  await page.locator('#login-password').fill(process.env.E2E_ROOT_PASSWORD);
+  await page.getByRole('button', { name: '进入系统' }).click();
+  await expect(page.locator('.workspace-bootstrap')).toContainText('初始化权限失败');
+  await expect(page.locator('#management-header')).toBeHidden();
+  await expect(page.locator('#staff-view')).toBeHidden();
+  contextFails = false;
+  await page.getByRole('button', { name: '重新加载工作区' }).click();
+  await expect(page.locator('.workspace-bootstrap')).toContainText('初始化工作台失败');
+  expect(legacyReads).toBe(0);
+  homeFails = false;
+  await page.getByRole('button', { name: '重新加载工作区' }).click();
+  await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();
+  await expect(page.locator('.workspace-bootstrap')).toHaveCount(0);
+  expect(legacyReads).toBe(0);
+});
 
 test("reception layout remains usable at desktop, phone and narrow-phone widths", async ({
   page,
@@ -431,7 +455,7 @@ test('an expired reception permission removes its scene and returns to personal 
     });
   });
   await page.locator('.field-footer').getByRole('button', { name:'刷新', exact:true }).click();
-  await expect(page.getByRole('heading', { name:'我的工作', exact:true })).toBeVisible();
+  await expect(page.getByRole('heading', { name:'个人中心', exact:true })).toBeVisible();
   await expect(page.locator('.field-sidebar').getByRole('button', { name:'接待台', exact:true })).toHaveCount(0);
   await expect(page.getByRole('button', { name:'展示签到码', exact:true })).toHaveCount(0);
   // The scene change starts a home reconciliation. Let intercepted responses
@@ -461,8 +485,29 @@ test('management keeps its shell and readable results during refresh at all widt
     await page.screenshot({ path: `output/field-workflow/members-${width}.png`, fullPage: true });
   }
   await page.setViewportSize({ width: 1440, height: 900 });
+  const memberRow = page.locator('.members-results .react-row').filter({ hasText: '陈宇' });
+  await memberRow.getByRole('button', { name: '编辑成员与权限' }).click();
+  const memberDialog = page.getByRole('dialog', { name: '陈宇', exact: true });
+  const memberName = memberDialog.getByLabel('姓名', { exact: true });
+  await memberName.fill('陈宇测试草稿');
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('staff-navigate', { detail: 'settings' })));
+  await expect(memberDialog).toBeHidden();
+  await sidebar.getByRole('button', { name: '成员管理', exact: true }).click();
+  await expect(memberName).toHaveValue('陈宇测试草稿');
+  await memberDialog.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(memberDialog.getByRole('heading', { name: '放弃未保存的修改？' })).toBeVisible();
+  await memberDialog.getByRole('button', { name: '返回继续编辑' }).click();
+  await memberDialog.getByRole('button', { name: '角色授权', exact: true }).click();
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await memberDialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await page.screenshot({ path: `output/field-workflow/member-detail-${width}.png`, animations: 'disabled' });
+  }
+  await memberDialog.getByRole('button', { name: '关闭', exact: true }).click();
+  await memberDialog.getByRole('button', { name: '放弃修改并关闭' }).click();
+  await page.setViewportSize({ width: 1440, height: 900 });
   await sidebar.getByRole('button', { name: '授权管理', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '权限身份', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '授权管理', exact: true })).toBeVisible();
   await expect(sidebar).toHaveAttribute('data-identity', 'persistent');
   await expect(sidebar.getByRole('button', { name: '平台管理', exact: true })).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByLabel('查找权限')).toBeVisible();
@@ -520,7 +565,7 @@ test('security and business settings have separate workflows and consistent page
   await expect(page.getByRole('dialog', { name: '撤销所有登录会话？' })).toBeVisible();
   await page.getByRole('button', { name: '取消', exact: true }).click();
   await open('业务管理', '预约配置');
-  await expect(page.locator('#capacity-fields input').first()).toBeVisible();
+  await expect(page.locator('.capacity-sheet-desktop input').first()).toBeVisible();
   await expect(currentPassword).toBeHidden();
   await open('我的', '账号安全');
   await expect(currentPassword).toHaveValue('');
@@ -535,6 +580,13 @@ test('security and business settings have separate workflows and consistent page
   const recordsPosition = await records.boundingBox();
   expect(Math.abs(position.x - recordsPosition.x)).toBeLessThan(2);
   expect(Math.abs(position.y - recordsPosition.y)).toBeLessThan(2);
+  for (const [group, entry, title] of [['我的', '班次与排班', '我的值班安排'], ['值班管理', '维修排班管理', '维修排班管理']]) {
+    await open(group, entry);
+    const headingPosition = await page.getByRole('heading', { name: title, exact: true, level: 1 }).boundingBox();
+    expect(Math.abs(position.x - headingPosition.x)).toBeLessThan(2);
+    expect(Math.abs(position.y - headingPosition.y)).toBeLessThan(2);
+  }
+  await open('今日工作', '预约记录');
   await expect(page.getByRole('button', { name: '导出全部可见记录' })).toBeVisible();
   await open('我的', '账号安全');
   const settings = page.locator('.settings-workspace');
@@ -561,6 +613,87 @@ test('security and business settings have separate workflows and consistent page
   await expect(page.getByText('所有登录会话已撤销，请重新登录。')).toBeVisible();
   const revoked = await page.request.get('/api/auth/me', { headers: { Authorization: `Bearer ${oldToken}` } });
   expect(revoked.status()).toBe(401);
+});
+
+test('capacity workspace preserves drafts, reconciles conflicts and supports mobile and desktop editing', async ({ page, request }) => {
+  await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': '192.0.2.49' });
+  await login(page, 'root001');
+  const sidebar = page.locator('.field-sidebar');
+  await sidebar.getByRole('button', { name: '预约配置', exact: true }).click();
+  const editor = page.locator('.capacity-editor');
+  const input = editor.locator('.capacity-sheet-desktop input').first();
+  await expect(input).toBeVisible();
+  await expect(page.locator('#capacity-settings')).toBeHidden();
+  const token = await page.evaluate(() => sessionStorage.getItem('pioneerToken'));
+  const original = (await api(request, '/api/slot-capacities', token)).items;
+  const first = original.find(item => item.campus === '南湖' && item.weekday === 1 && item.timeSlot === '19:00–19:30');
+  let writes = 0;
+  page.on('request', req => { if (req.method() === 'PATCH' && req.url().endsWith('/api/slot-capacities')) writes++; });
+  try {
+    await input.fill('8');
+    await expect(editor.getByText('1 项待保存', { exact: true })).toBeVisible();
+    await sidebar.getByRole('button', { name: '账号安全', exact: true }).click();
+    await page.getByRole('button', { name: '保留草稿并切换', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '账号安全', exact: true })).toBeVisible();
+    // A preserved draft still protects against leaving/reloading the browser,
+    // even when its workspace is hidden.
+    expect(await page.evaluate(() => window.dispatchEvent(new Event('beforeunload', { cancelable: true })))).toBe(false);
+    await sidebar.getByRole('button', { name: '预约配置', exact: true }).click();
+    await expect(input).toHaveValue('8');
+    await api(request, '/api/slot-capacities', token, { items: [{ ...first, capacity: 9 }] }, 'PATCH');
+    await editor.getByRole('button', { name: '读取最新配置', exact: true }).click();
+    await expect(editor.getByRole('region', { name: '配置冲突' })).toContainText('最新值 9');
+    await expect(input).toHaveValue('8');
+    await expect(editor.getByRole('button', { name: '预览并保存' })).toBeDisabled();
+    await editor.getByRole('button', { name: '保留我的修改', exact: true }).click();
+    await editor.getByRole('button', { name: '预览并保存' }).click();
+    const confirm = page.getByRole('button', { name: '确认保存全部修改' });
+    // A second click while the first write is pending must not repeat it.
+    await page.route('**/api/slot-capacities', async route => { if (route.request().method() === 'PATCH') await new Promise(resolve => setTimeout(resolve, 200)); await route.continue(); });
+    await confirm.click();
+    await expect(editor.getByText(/已保存 1 项/)).toBeVisible();
+    expect(writes).toBe(1);
+    await input.fill('11');
+    const cell = editor.locator('[data-row="0"][data-col="0"]');
+    await cell.focus(); await page.keyboard.press('Escape');
+    await editor.getByRole('button', { name: '复制选区', exact: true }).click();
+    await editor.getByRole('button', { name: '浑南校区', exact: true }).click();
+    await editor.getByRole('button', { name: '粘贴', exact: true }).click();
+    await expect(editor.locator('.capacity-sheet-desktop input').first()).toHaveValue('11');
+    await editor.getByRole('button', { name: '放弃修改', exact: true }).click();
+    await page.getByRole('button', { name: '确认放弃修改', exact: true }).click();
+    await editor.getByRole('button', { name: '南湖校区', exact: true }).click();
+    const handle = editor.getByRole('button', { name: '拖动复制选区人数' });
+    const start = await handle.boundingBox(), end = await editor.locator('[data-row="1"][data-col="0"]').boundingBox();
+    await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2); await page.mouse.down();
+    await page.mouse.move(end.x + end.width / 2, end.y + end.height / 2, { steps: 6 }); await page.mouse.up();
+    await expect(editor.locator('[data-row="1"][data-col="0"] input')).toHaveValue('8');
+    await editor.getByRole('button', { name: '撤销上一步', exact: true }).click();
+    await expect(editor.locator('[data-row="1"][data-col="0"] input')).toHaveValue('5');
+    // Touch layouts use a vertical four-slot editor and keep the same draft.
+    await page.setViewportSize({ width: 390, height: 900 });
+    await editor.locator('.capacity-mobile-inputs input').first().fill('7');
+    await editor.getByRole('button', { name: '周二', exact: true }).click();
+    await editor.locator('.capacity-mobile-inputs input').first().fill('6');
+    for (const width of [390, 320, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.screenshot({ path: `output/field-workflow/capacity-${width}.png`, fullPage: true });
+    }
+    await editor.getByRole('button', { name: '放弃修改', exact: true }).click();
+    await page.getByRole('button', { name: '确认放弃修改', exact: true }).click();
+    await editor.getByRole('button', { name: '日期实际容量', exact: true }).click();
+    await editor.getByLabel('查看日期', { exact: true }).fill('2026-10-15');
+    await expect(editor.getByRole('heading', { name: '工作人员', exact: true })).toBeVisible();
+    await expect(editor.locator('.capacity-staffing')).toContainText('3 人');
+    await expect(editor.locator('.capacity-staffing')).toContainText('1 人');
+    await expect(editor.locator('.capacity-actual-slots article')).toHaveCount(4);
+    await page.screenshot({ path: 'output/field-workflow/capacity-actual-1440.png', fullPage: true });
+  } finally {
+    const current = (await api(request, '/api/slot-capacities', token)).items;
+    const updates = current.filter(item => original.find(old => old.campus === item.campus && old.weekday === item.weekday && old.timeSlot === item.timeSlot)?.capacity !== item.capacity).map(item => ({ ...item, capacity: original.find(old => old.campus === item.campus && old.weekday === item.weekday && old.timeSlot === item.timeSlot).capacity }));
+    if (updates.length) await api(request, '/api/slot-capacities', token, { items: updates }, 'PATCH');
+  }
 });
 
 test('account workspace imports, reviews and updates an account with server actions', async ({ page, request }) => {
@@ -716,7 +849,7 @@ test('statistics uses the workspace region without reviving the legacy page', as
   const reports = sidebar.getByRole('button', { name: '数据与审计', exact: true });
   if (await reports.getAttribute('aria-expanded') === 'false') await reports.click();
   await sidebar.getByRole('button', { name: '统计分析', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '维修统计', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '统计分析', exact: true })).toBeVisible();
   await expect(page.locator('#stats-view')).toBeHidden();
   await expect(page.getByRole('combobox', { name: '统计范围' })).toBeVisible();
   const first = page.locator('.report-metrics .field-card').first();
