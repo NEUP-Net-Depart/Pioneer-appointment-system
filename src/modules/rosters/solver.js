@@ -74,10 +74,11 @@ export function validateRoster(result, input) {
     const member = (input.members || []).find(candidate => candidate.memberId === item.memberId);
     const slot = (input.slots || []).find(candidate => slotKey(candidate) === slotKey(item));
     if (!member || !slot || !availableFor(member, item)) errors.push({ code: 'MEMBER_UNAVAILABLE', memberId: item.memberId, slot: item });
-    if (item.roleKind && (item.roleKind !== 'repair_lead' || !member || !leadFor(member, item))) errors.push({ code: 'LEAD_INELIGIBLE', memberId: item.memberId });
+    const office = slot?.dutyType === 'office';
+    if (item.roleKind && (office ? item.roleKind !== 'coordinator' : item.roleKind !== 'repair_lead' || !member || !leadFor(member, item))) errors.push({ code: 'LEAD_INELIGIBLE', memberId: item.memberId });
     if (item.dutyType && item.dutyType !== (slot?.dutyType || 'repair')) errors.push({ code: 'DUTY_TYPE_MISMATCH', memberId: item.memberId });
     const week = weekKey(item.businessDate);
-    if (seen.some(value => value.memberId === item.memberId && weekKey(value.businessDate) === week)) errors.push({ code: 'MEMBER_WEEK_DUPLICATE', memberId: item.memberId });
+    if (seen.some(value => value.memberId === item.memberId && (office ? value.businessDate === item.businessDate : weekKey(value.businessDate) === week))) errors.push({ code: office ? 'MEMBER_DAY_DUPLICATE' : 'MEMBER_WEEK_DUPLICATE', memberId: item.memberId });
     seen.push(item);
   }
   for (const locked of input.locked || []) if (!(result.assignments || []).some(item => key(item) === key(locked))) errors.push({ code: 'LOCKED_ASSIGNMENT_CHANGED', memberId: locked.memberId });

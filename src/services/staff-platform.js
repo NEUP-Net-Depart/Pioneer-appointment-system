@@ -527,11 +527,12 @@ export function staffPlatformService({ repository, platform, manifests }) {
 
   async function rosterTasks(actor) {
     const context = await contextFor(actor);
-    await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId });
+    if (!['roster.read','roster.repair.manage','roster.office.manage'].some(code => context.permissions[code])) fail(403, '没有查看排班任务的权限');
     const tasks = await repository.listRosterTasks();
-    return { items: tasks.filter(task => !task.memberIds?.length || task.memberIds.includes(context.actor.memberId) ||
-      evaluate(context, 'roster.repair.manage', { campusIds: task.campusScope?.campusIds }).allowed ||
-      evaluate(context, 'roster.office.manage', { campusIds: task.campusScope?.campusIds }).allowed) };
+    return { items: tasks.filter(task => {
+      const manage = evaluate(context, task.dutyType === 'office' ? 'roster.office.manage' : 'roster.repair.manage', { campusIds: task.campusScope?.campusIds }).allowed;
+      return manage || task.dutyType !== 'office' && context.permissions['roster.read'] && (!task.memberIds?.length || task.memberIds.includes(context.actor.memberId));
+    }) };
   }
   async function taskAvailability(actor, taskId) {
     const context = await contextFor(actor);
@@ -542,11 +543,13 @@ export function staffPlatformService({ repository, platform, manifests }) {
       evaluate(context, 'roster.office.manage', { campusId: item.campusId }).allowed) };
   }
   async function createRosterTask(actor, input) {
-    await requirePermission(actor, 'roster.repair.manage', { campusId: input.campusId });
+    const dutyType = input.dutyType || 'repair';
+    if (!['repair','office'].includes(dutyType)) fail(400, '岗位类型不正确');
+    await requirePermission(actor, dutyType === 'office' ? 'roster.office.manage' : 'roster.repair.manage', { campusId: input.campusId });
     if (!validDate(input.weekStart) || weekRange(input.weekStart).start !== input.weekStart || !input.campusId ||
       !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.slotStart) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.slotEnd) || input.slotEnd <= input.slotStart ||
       !Number.isFinite(Date.parse(input.deadline))) fail(400, '请选择周一、有效校区、完整班次时间和填报截止时间');
-    const context = await contextFor(actor); const result = await repository.createRosterTask({ ...input, campusScope: { campusIds: [input.campusId] } }, context.actor.memberId);
+    const context = await contextFor(actor); const result = await repository.createRosterTask({ ...input, dutyType, campusScope: { campusIds: [input.campusId] } }, context.actor.memberId);
     await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.task.created', sourceRef: publicResourceRef('rosters','task',result.id), after: result, requestId: input.requestId });
     return result;
   }
@@ -557,6 +560,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId });
     const task = await repository.rosterTaskById(taskId);
     if (!task) fail(404, '排班任务不存在');
+    if (task.dutyType === 'office') fail(400, '办公班次由负责人直接安排，无需填报');
     if (task.memberIds?.length && !task.memberIds.includes(context.actor.memberId)) fail(403, '该任务未邀请你填报');
     if (Date.parse(task.deadline) <= Date.now()) fail(409, '该任务已截止，请联系负责人调整');
     if (weekRange(input.businessDate).start !== task.weekStart) fail(400, '请选择任务所在周的日期');
@@ -571,12 +575,13 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const campusIds = task.campusScope?.campusIds;
     if (!validDate(task.weekStart) || weekRange(task.weekStart).start !== task.weekStart || !campusIds?.length)
       fail(409, '该任务缺少有效的周起始日期或校区，请重新创建收集任务');
-    for (const campusId of campusIds) await requirePermission(actor, 'roster.repair.manage', { campusId });
+    const office = task.dutyType === 'office';
+    for (const campusId of campusIds) await requirePermission(actor, office ? 'roster.office.manage' : 'roster.repair.manage', { campusId });
     const slots = Array.from({ length: 4 }, (_, offset) => campusIds.map(campusId => ({
-      businessDate: addDays(task.weekStart, offset), campusId, startAt: task.slotStart, endAt: task.slotEnd, dutyType: 'repair', requireLead: true
+      businessDate: addDays(task.weekStart, offset), campusId, startAt: task.slotStart, endAt: task.slotEnd, dutyType: office ? 'office' : 'repair', requireLead: !office
     }))).flat();
     const windows = await repository.availability(taskId);
-    const memberIds = [...new Set(task.memberIds?.length ? task.memberIds : windows.map(item => item.memberId))];
+    const memberIds = [...new Set(office ? await repository.officeRosterMemberIds(task.weekStart, campusIds) : task.memberIds?.length ? task.memberIds : windows.map(item => item.memberId))];
     if (memberIds.length > 300) fail(400, '单个排班任务最多支持 300 名成员');
     const members = [];
     const facts = await repository.rosterMemberFacts(memberIds, task.weekStart);
@@ -589,16 +594,18 @@ export function staffPlatformService({ repository, platform, manifests }) {
       for (const slot of slots) {
         if (!campusAccess.includes(slot.campusId)) continue;
         const profiles = fact.profiles.filter(profile => profile.effectiveFrom <= slot.businessDate && (!profile.effectiveTo || slot.businessDate < profile.effectiveTo));
-        if (!profiles.some(item => ['repair','exchange'].includes(item.profileCode))) continue;
-        if (other.some(item => item.dutyType === 'repair' || item.businessDate === slot.businessDate && item.startAt < slot.endAt && slot.startAt < item.endAt)) continue;
-        if (!windows.some(item => item.memberId === memberId && item.businessDate === slot.businessDate &&
+        if (!profiles.some(item => (office ? ['office'] : ['repair','exchange']).includes(item.profileCode))) continue;
+        if (other.some(item => (!office && item.dutyType === 'repair') || item.businessDate === slot.businessDate &&
+          ((office && item.dutyType === 'office') || item.startAt < slot.endAt && slot.startAt < item.endAt))) continue;
+        if (!office && !windows.some(item => item.memberId === memberId && item.businessDate === slot.businessDate &&
           (!item.campusId || item.campusId === slot.campusId) && item.startAt <= slot.startAt && item.endAt >= slot.endAt)) continue;
         available.push(slot);
         if (profiles.some(item => item.profileCode === 'repair_lead')) leadSlots.push(slot);
       }
-      members.push({ memberId, name: fact.name, available, leadSlots });
+      if (office && !available.length) continue;
+      members.push({ memberId, name: fact.name, available, leadSlots, ...(office ? { departmentNames: fact.departmentNames || [] } : {}) });
     }
-    return { taskId, taskRevision: task.revision, weekStart: task.weekStart, members, slots, requireLead: true };
+    return { taskId, dutyType: task.dutyType || 'repair', taskRevision: task.revision, weekStart: task.weekStart, members, slots, requireLead: !office };
   }
   async function rosterTaskState(actor, taskId) {
     const source = await rosterInput(actor, taskId);
@@ -606,7 +613,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const latest = versions.find(item => ['draft','published'].includes(item.status));
     const published = versions.find(item => item.status === 'published');
     const assignments = latest ? await repository.versionAssignments(latest.id) : [];
-    return { taskId, members: source.members, slots: source.slots,
+    return { taskId, dutyType: source.dutyType, members: source.members, slots: source.slots,
       draft: latest ? { ...latest, assignments, validation: validateRoster({ assignments }, source) } : null,
       publishedAssignments: published ? await repository.versionAssignments(published.id) : [] };
   }
@@ -614,7 +621,9 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const source = await rosterInput(actor, input.taskId);
     const previous = (await repository.rosterVersionsForTask(source.taskId)).find(item => ['draft','published'].includes(item.status));
     source.locked = previous ? (await repository.versionAssignments(previous.id)).filter(item => item.locked) : [];
-    const context = await contextFor(actor); const result = generateRoster(source); const validation = validateRoster(result, source);
+    const context = await contextFor(actor);
+    const result = source.dutyType === 'office' ? { assignments: previous ? await repository.versionAssignments(previous.id) : [], ruleVersion: 'office-daily-v1', algorithmVersion: 'manual-office-v1', solverStatus: 'needs_review', inputSnapshotRef: { dutyType: 'office' } } : generateRoster(source);
+    const validation = validateRoster(result, source);
     const version = await repository.createRosterVersion({ taskId: source.taskId, assignments: result.assignments.map(item => ({ ...item, id: undefined })),
       inputSnapshotRef: { ...result.inputSnapshotRef, taskRevision: source.taskRevision, lockedMemberIds: source.locked.map(item => item.memberId) }, ruleVersion: result.ruleVersion,
       algorithmVersion: result.algorithmVersion, solverStatus: result.solverStatus, validation });
@@ -636,16 +645,19 @@ export function staffPlatformService({ repository, platform, manifests }) {
     return { ...result, assignments: input.assignments, revision: result.version };
   }
   async function publish(actor, id, input) {
+    if (!Number.isInteger(input.version) || input.version < 1) fail(400, '请选择有效的班表版本');
     const version = await repository.rosterVersionById(id);
     if (!version) fail(404, '排班草稿不存在');
     const source = await rosterInput(actor, version.taskId);
+    if (version.status === 'published' && version.version === input.version) return version;
     const assignments = await repository.versionAssignments(id);
     const validation = validateRoster({ assignments }, source);
     if (!validation.valid) fail(409, '当前人员资格或班次覆盖不满足发布条件，请重新生成或调整草稿');
-    const result = await repository.publishRoster(id, input.version);
-    if (!result) fail(409, '排班版本已变化，请刷新');
     const context = await contextFor(actor);
-    await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.published', sourceRef: publicResourceRef('rosters','version',id), after: result, requestId: input.requestId });
+    let result;
+    try { result = await repository.publishRoster(id, input.version, { actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.published', sourceRef: publicResourceRef('rosters','version',id), before: version, after: { ...version, status: 'published' }, requestId: input.requestId }); }
+    catch (error) { if (String(error.message).includes('ROSTER_SCHEDULE_CONFLICT')) fail(409, '人员已在其他班表被安排，请刷新并重新核对'); throw error; }
+    if (!result) fail(409, '排班版本已变化，请刷新');
     return result;
   }
   async function rosterMine(actor, query = {}) { const context = await contextFor(actor); await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId }); return { items: await repository.listAssignments(context.actor.memberId, query.weekStart || weekRange(dateKey()).start), weekStart: query.weekStart || weekRange(dateKey()).start }; }

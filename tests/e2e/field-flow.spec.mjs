@@ -41,8 +41,8 @@ for (const account of ['20261001', '20261002']) test(`ordinary staff ${account} 
   const managementReads = [];
   page.on('request', req => { if (/^\/api\/(members|roles|users|stats|slot-capacities|staff-whitelist|activation-requests)(?:\/|$)/.test(new URL(req.url()).pathname)) managementReads.push(req.url()); });
   const sidebar = page.locator('.field-sidebar');
-  for (const label of ['成员管理','授权管理','账号管理','预约配置','统计分析','维修排班管理','现场管理']) await expect(sidebar.getByRole('button', { name: label, exact: true })).toHaveCount(0);
-  for (const view of ['members','permissions','users','stats','capacity','roster-manage']) {
+  for (const label of ['成员管理','授权管理','账号管理','预约配置','统计分析','维修排班管理','办公排班管理','现场管理']) await expect(sidebar.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+  for (const view of ['members','permissions','users','stats','capacity','roster-manage','office-roster']) {
     await page.evaluate(view => window.dispatchEvent(new CustomEvent('staff-navigate', { detail: view })), view);
     await expect(page.locator('.workspace-route:not([hidden])')).toHaveAttribute('data-route', 'workbench');
   }
@@ -52,7 +52,7 @@ for (const account of ['20261001', '20261002']) test(`ordinary staff ${account} 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: '更多', exact: true }).click();
   const entries = page.getByRole('dialog', { name: '工作入口', exact: true });
-  for (const label of ['成员管理','授权管理','账号管理','预约配置','统计分析','维修排班管理']) await expect(entries.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+  for (const label of ['成员管理','授权管理','账号管理','预约配置','统计分析','维修排班管理','办公排班管理']) await expect(entries.getByRole('button', { name: label, exact: true })).toHaveCount(0);
   await page.screenshot({ path: `output/field-workflow/access-${account}-mobile.png`, fullPage: true });
   await entries.getByRole('button', { name: '关闭', exact: true }).click();
   await page.setViewportSize({ width: 1440, height: 1000 });

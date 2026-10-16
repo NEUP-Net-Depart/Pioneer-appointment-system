@@ -19,6 +19,7 @@ import { Statistics } from './Statistics';
 import { AccountSettings } from './AccountSettings';
 import { Accounts } from './Accounts';
 import { staffPermission, staffViewAllowed, staffSceneAllowed } from '../../shared/staff-access.js';
+import { OfficeRoster } from './OfficeRoster';
 
 const roles = { technician: '维修人员', admin: '管理员', superadmin: '最高权限者' };
 function Workbench({ user, onNavigate }) {
@@ -104,6 +105,7 @@ function Root() {
     ...(field ? [{ id: 'scene:mine', label: '个人中心', group: '我的' }] : []),
     ...(published.has('rosters') ? [{ id: 'roster', label: '班次与排班', group: '我的' }] : []),
     ...(staffPermission(effectiveUser, 'roster.repair.manage') ? [{ id: 'roster-manage', label: '维修排班管理', group: '值班管理' }] : []),
+    ...(staffPermission(effectiveUser, 'roster.office.manage') ? [{ id: 'office-roster', label: '办公排班管理', group: '值班管理' }] : []),
     ...(field && staffPermission(effectiveUser, 'repair.summary.read') ? [{ id: 'staff', label: '预约记录', group: '今日工作' }] : []),
     ...(published.has('members') ? [{ id: 'members', label: '成员管理', group: '平台管理' }] : []),
     ...(published.has('roles') ? [{ id: 'permissions', label: '授权管理', group: '平台管理' }] : []),
@@ -116,6 +118,7 @@ function Root() {
   if (!field) {
     if (page === 'workbench') return <Workbench user={user} onNavigate={navigate} />;
     if (page === 'roster') return <RosterArea user={user} section={rosterSection} />;
+    if (page === 'office-roster') return <main className="field-main roster-area"><OfficeRoster user={user} /></main>;
     // Native pages retain their original host while the field platform is off.
     if (['staff','scan','stats','users','settings'].includes(page)) return null;
     const module = page === 'attendance' ? <Attendance onNavigate={navigate} /> : page === 'members' ? <Members user={user} /> : page === 'permissions' ? <Permissions user={user} /> : null;
@@ -131,6 +134,7 @@ function Root() {
   const fieldRoute = route('workbench', <FieldApp initial={field} active={visible('workbench')} onNavigate={navigate} requestedScene={workScene} onSceneChange={setWorkScene} onContextChange={setField} workspaceLinks={workspaceLinks} />);
   const rosterRoute = route('roster', <RosterArea user={effectiveUser} section={rosterSection} />, published.has('rosters') || staffPermission(effectiveUser, 'roster.repair.manage'));
   const moduleRoutes = [
+    route('office-roster', <main className="field-main roster-area"><OfficeRoster user={effectiveUser} /></main>, staffPermission(effectiveUser, 'roster.office.manage')),
     route('staff', <Records user={effectiveUser} />, workspaceLinks.some(entry => entry.id === 'staff')),
     route('stats', <Statistics />, workspaceLinks.some(entry => entry.id === 'stats')),
     route('settings', <AccountSettings user={effectiveUser} section={settingsSection} onNavigate={navigate} />),

@@ -40,7 +40,7 @@ function RosterManager({ user }) {
 
   async function loadTasks() {
     const result = await request('/api/roster-tasks');
-    const available = (result.items || []).filter(item => item.campusScope?.campusIds?.length);
+    const available = (result.items || []).filter(item => item.dutyType !== 'office' && item.campusScope?.campusIds?.length);
     setTasks(available);
     setTaskId(current => current || available[0]?.id || '');
   }

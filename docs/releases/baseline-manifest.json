@@ -2,7 +2,7 @@
   "branch": "next/staff-platform",
   "baseCommit": "53b53db110d4d867c2f4277fa0954f1d97d74c7d",
   "contractVersion": "staff-platform.v1",
-  "schemaVersion": "0014",
+  "schemaVersion": "0015",
   "businessTimeZone": "Asia/Shanghai",
   "migrations": [
     {
@@ -60,6 +60,10 @@
     {
       "name": "0014_workspace_authorization.sql",
       "sha256": "9c495e9b90f1805c10fa3de3d57cedbffd443fcbc0093525f7196f7cd1d86278"
+    },
+    {
+      "name": "0015_office_roster.sql",
+      "sha256": "c1ee84b3629325fa88741cc6475afd885b1efdc1f7e2f4cc994941dfdfe71d01"
     }
   ],
   "modules": [
@@ -101,8 +105,8 @@
     },
     {
       "code": "rosters",
-      "version": "1.0.0",
-      "manifestHash": "9c522d5c",
+      "version": "1.1.0",
+      "manifestHash": "b4f850c7",
       "releaseState": "ready"
     },
     {
@@ -179,6 +183,10 @@
     {
       "name": "0012_workspace_authorization.sql",
       "sha256": "9c495e9b90f1805c10fa3de3d57cedbffd443fcbc0093525f7196f7cd1d86278"
+    },
+    {
+      "name": "0013_office_roster.sql",
+      "sha256": "c1ee84b3629325fa88741cc6475afd885b1efdc1f7e2f4cc994941dfdfe71d01"
     }
   ],
   "staffMigrationsDirectory": "database/staff-migrations"

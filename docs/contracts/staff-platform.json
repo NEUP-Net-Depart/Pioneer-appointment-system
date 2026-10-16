@@ -1,6 +1,6 @@
 {
   "contractVersion": "staff-platform.v1",
-  "schemaVersion": "0014",
+  "schemaVersion": "0015",
   "authContext": ["actor", "memberships", "workProfiles", "grants", "permissions", "todayDuties", "navigation", "resumeTasks", "modules", "authVersion", "schemaVersion"],
   "errors": ["VALIDATION_ERROR", "SESSION_EXPIRED", "PERMISSION_REQUIRED", "REVISION_CONFLICT", "REQUEST_CONFLICT", "PRESENCE_CHANGED", "ACTIVE_REPAIR_EXISTS"],
   "routes": {

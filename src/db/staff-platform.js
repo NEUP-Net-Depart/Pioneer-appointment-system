@@ -127,7 +127,7 @@ export function staffPlatformRepository(db) {
       actor: { memberId, account: user.account, name: member?.name || user.name, status: member?.status || user.status },
       member, memberships: membershipItems, workProfiles: profileItems, grants: grantItems,
       todayDuties: duties, presence: presence ? { memberId: presence.member_id, businessDate: presence.business_date, campusId: presence.campus_id, state: presence.state, revision: presence.revision } : null,
-      authVersion, schemaVersion: '0014'
+      authVersion, schemaVersion: '0015'
     };
   }
 
@@ -502,10 +502,11 @@ export function staffPlatformRepository(db) {
     const row = await db.prepare('SELECT * FROM operation_receipts WHERE actor_member_id=? AND action=? AND request_id=?').bind(actorMemberId,action,requestIdValue).first();
     return row ? { payloadHash: row.payload_hash, resourceRef: parseJson(row.resource_ref, {}), result: parseJson(row.result_json, {}), resultStatus: row.result_status, createdAt: row.created_at } : null;
   }
-  async function audit(input) {
-    await db.prepare(`INSERT INTO audit_events(id,actor_member_id,actor_account,action,action_version,source_ref,before_json,after_json,reason,request_id,request_trace_id,occurred_at)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`).bind(input.id || crypto.randomUUID(),input.actorMemberId || null,input.actorAccount || null,input.action,input.actionVersion || '1',json(input.sourceRef,{}),input.before === undefined ? null : json(input.before,{}),input.after === undefined ? null : json(input.after,{}),input.reason || '',input.requestId || null,input.requestTraceId || null,input.occurredAt || nowIso()).run();
+  function auditStatement(input, conditional = false) {
+    return db.prepare(`INSERT INTO audit_events(id,actor_member_id,actor_account,action,action_version,source_ref,before_json,after_json,reason,request_id,request_trace_id,occurred_at)
+      SELECT ?,?,?,?,?,?,?,?,?,?,?,? ${conditional ? 'WHERE changes()>0' : ''}`).bind(input.id || crypto.randomUUID(),input.actorMemberId || null,input.actorAccount || null,input.action,input.actionVersion || '1',json(input.sourceRef,{}),input.before === undefined ? null : json(input.before,{}),input.after === undefined ? null : json(input.after,{}),input.reason || '',input.requestId || null,input.requestTraceId || null,input.occurredAt || nowIso());
   }
+  async function audit(input) { await auditStatement(input).run(); }
   async function listAudit(filters = {}) {
     const conditions = [], args = [];
     if (filters.actorMemberId) { conditions.push('actor_member_id=?'); args.push(filters.actorMemberId); }
@@ -514,6 +515,14 @@ export function staffPlatformRepository(db) {
     return rows(result).map(row => ({ id: row.id, actorMemberId: row.actor_member_id, actorAccount: row.actor_account, action: row.action, actionVersion: row.action_version, sourceRef: parseJson(row.source_ref, {}), before: parseJson(row.before_json, null), after: parseJson(row.after_json, null), reason: row.reason, requestId: row.request_id, occurredAt: row.occurred_at }));
   }
 
+  async function officeRosterMemberIds(weekStart, campusIds) {
+    const campusNames = campusIds.map(value => ({ 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' }[value] || value));
+    return rows(await db.prepare(`SELECT DISTINCT m.id FROM members m JOIN member_work_profiles p ON p.member_id=m.id
+      WHERE m.status='active' AND p.profile_code='office' AND p.effective_from<=date(?,'+3 day')
+      AND (p.effective_to IS NULL OR p.effective_to>?) AND EXISTS(SELECT 1 FROM staff_accounts sa JOIN staff_campus_grants g ON g.account=sa.account
+        WHERE sa.member_id=m.id AND sa.status='enabled' AND g.campus IN (${campusNames.map(() => '?').join(',')}))
+      ORDER BY m.name,m.id LIMIT 301`).bind(weekStart,weekStart,...campusNames).all()).map(row => row.id);
+  }
   async function rosterMemberFacts(memberIds, weekStart) {
     const facts = new Map();
     for (let offset = 0; offset < memberIds.length; offset += 80) {
@@ -526,12 +535,15 @@ export function staffPlatformRepository(db) {
         db.prepare(`SELECT * FROM member_work_profiles WHERE member_id IN (${placeholders}) AND effective_from<=date(?,'+6 day')
           AND (effective_to IS NULL OR effective_to>?)`).bind(...ids,weekStart,weekStart),
         db.prepare(`SELECT da.*,rv.task_id FROM duty_assignments da JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published'
-          WHERE da.member_id IN (${placeholders}) AND da.business_date>=? AND da.business_date<=date(?,'+6 day')`).bind(...ids,weekStart,weekStart)
+          WHERE da.member_id IN (${placeholders}) AND da.business_date>=? AND da.business_date<=date(?,'+6 day')`).bind(...ids,weekStart,weekStart),
+        db.prepare(`SELECT mm.member_id,d.name FROM member_department_memberships mm JOIN departments d ON d.id=mm.department_id
+          WHERE mm.member_id IN (${placeholders}) AND mm.effective_from<=? AND (mm.effective_to IS NULL OR mm.effective_to>?) ORDER BY mm.is_primary DESC,d.name`).bind(...ids,weekStart,weekStart)
       ]);
-      for (const row of rows(results[0])) facts.set(row.id, { memberId: row.id, name: row.name, active: row.status === 'active' && !!row.enabled, campuses: [], profiles: [], assignments: [] });
+      for (const row of rows(results[0])) facts.set(row.id, { memberId: row.id, name: row.name, active: row.status === 'active' && !!row.enabled, campuses: [], profiles: [], assignments: [], departmentNames: [] });
       for (const row of rows(results[1])) facts.get(row.member_id)?.campuses.push(row.campus);
       for (const row of rows(results[2])) facts.get(row.member_id)?.profiles.push(profile(row));
       for (const row of rows(results[3])) facts.get(row.member_id)?.assignments.push({ ...assignment(row), taskId: row.task_id });
+      for (const row of rows(results[4])) facts.get(row.member_id)?.departmentNames.push(row.name);
     }
     return [...facts.values()];
   }
@@ -544,11 +556,11 @@ export function staffPlatformRepository(db) {
   }
   async function createRosterTask(input, actorMemberId) {
     const id = input.id || crypto.randomUUID(); const at = nowIso();
-    await db.prepare(`INSERT INTO roster_tasks(id,week_start,campus_scope,slot_start,slot_end,member_ids,deadline,description,created_by_member_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`)
-      .bind(id,input.weekStart,json(input.campusScope,{}),input.slotStart,input.slotEnd,json(input.memberIds,[]),input.deadline,input.description || '',actorMemberId,at).run();
+    await db.prepare(`INSERT INTO roster_tasks(id,week_start,campus_scope,slot_start,slot_end,member_ids,deadline,description,created_by_member_id,created_at,duty_type) VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
+      .bind(id,input.weekStart,json(input.campusScope,{}),input.slotStart,input.slotEnd,json(input.memberIds,[]),input.deadline,input.description || '',actorMemberId,at,input.dutyType || 'repair').run();
     return rosterTask(await db.prepare('SELECT * FROM roster_tasks WHERE id=?').bind(id).first());
   }
-  function rosterTask(row) { return row ? { id: row.id, weekStart: row.week_start, campusScope: parseJson(row.campus_scope,{}), slotStart: row.slot_start, slotEnd: row.slot_end, memberIds: parseJson(row.member_ids,[]), deadline: row.deadline, description: row.description, revision: row.revision, createdAt: row.created_at } : null; }
+  function rosterTask(row) { return row ? { id: row.id, dutyType: row.duty_type || 'repair', weekStart: row.week_start, campusScope: parseJson(row.campus_scope,{}), slotStart: row.slot_start, slotEnd: row.slot_end, memberIds: parseJson(row.member_ids,[]), deadline: row.deadline, description: row.description, revision: row.revision, createdAt: row.created_at } : null; }
   async function listRosterTasks() { const result = await db.prepare('SELECT * FROM roster_tasks ORDER BY week_start DESC,id DESC LIMIT 101').all(); return rows(result).map(rosterTask); }
   async function saveAvailability(taskId, memberId, input) {
     const id = input.id || crypto.randomUUID();
@@ -610,12 +622,13 @@ export function staffPlatformRepository(db) {
     if (!result.at(-1)?.meta?.changes) return null;
     return rosterVersionById(id);
   }
-  async function publishRoster(id, revision) {
+  async function publishRoster(id, revision, auditRecord) {
     const at = nowIso();
     const current = await db.prepare(`SELECT task_id FROM roster_versions WHERE id=? AND version=? AND status='draft'`).bind(id,revision).first();
     if (!current) return null;
     const result = await db.batch([
       db.prepare(`UPDATE roster_versions SET status='published',published_at=? WHERE id=? AND version=? AND status='draft' AND COALESCE(json_extract(validation_result,'$.valid'),0)=1`).bind(at,id,revision),
+      ...(auditRecord ? [auditStatement({ ...auditRecord, occurredAt: at }, true)] : []),
       db.prepare(`UPDATE roster_versions SET status='superseded' WHERE task_id=? AND status='published' AND id<>? AND changes()>0`).bind(current.task_id,id)
     ]);
     return result[0]?.meta?.changes ? rosterVersion(await db.prepare('SELECT * FROM roster_versions WHERE id=?').bind(id).first()) : null;
@@ -683,5 +696,5 @@ export function staffPlatformRepository(db) {
   return { accountRow, accountForMember, ensureMember, memberRow, memberships, membershipsForMembers, profiles, grants, todayDuties, authorizationContext, listMembers, updateMember, listMemberships, addMembership, endMembership,
     listCampuses, listDepartments, listLocations, listPresence, activeRepair, importMembers, dutyEvent, latestIntake, fieldPeople,
     roleBindings, permissionDefinitions, listRoles, createRole, updateRole, bindRoles, modules, createEvent, issueToken, findEventByToken, findAttendanceByDedupe, insertAttendance, listAttendance, attendanceExport, setPresence,
-    attendanceEvent, eventById: attendanceEvent, createReceipt, claimReceipt, releaseReceipt, receipt, audit, listAudit, rosterMemberFacts, rosterTaskById, memberCampuses, createRosterTask, listRosterTasks, saveAvailability, availability, createRosterVersion, rosterVersionById, rosterVersionsForTask, versionAssignments, updateRosterDraft, publishRoster, listAssignments, assignmentById, swapCandidates, createLeave, leaveById, listLeaves, updateLeave, createSwap, swapById, listSwaps, updateSwap };
+    attendanceEvent, eventById: attendanceEvent, createReceipt, claimReceipt, releaseReceipt, receipt, audit, listAudit, officeRosterMemberIds, rosterMemberFacts, rosterTaskById, memberCampuses, createRosterTask, listRosterTasks, saveAvailability, availability, createRosterVersion, rosterVersionById, rosterVersionsForTask, versionAssignments, updateRosterDraft, publishRoster, listAssignments, assignmentById, swapCandidates, createLeave, leaveById, listLeaves, updateLeave, createSwap, swapById, listSwaps, updateSwap };
 }

@@ -6,6 +6,7 @@ import { config, wrangler } from "../scripts/cli.mjs";
 import { hashPassword } from "../src/lib/passwords.js";
 import { dateKey } from "../shared/time.js";
 import { fieldSeed } from "./fixtures/field-seed.mjs";
+import { staffPlatformRepository } from '../src/db/staff-platform.js';
 
 // Only the disposable Worker uses this clock; late-night test runs must still exercise a live duty day.
 const testNow = Date.parse('2026-10-15T10:00:00+08:00');
@@ -15,6 +16,62 @@ const workerClock = `const RealDate = Date; globalThis.Date = class extends Real
 };\n`;
 let mf, db;
 const tokens = {};
+
+test('office managers publish daily assignments, preserve repair tasks and reject duplicate or conflicting coverage', async () => {
+  const input = { dutyType: 'office', weekStart: '2026-11-02', campusId: 'campus-nanhu', slotStart: '19:00', slotEnd: '21:00', deadline: '2026-11-01T10:00:00Z' };
+  assert.equal((await request('/api/roster-tasks', '20261002', input)).status, 403);
+  const created = await request('/api/roster-tasks', 'root001', input);
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const taskId = created.body.id;
+  assert.equal(created.body.dutyType, 'office');
+  // A delegated office manager need not inherit repair or personal-roster grants.
+  const repository = staffPlatformRepository(db);
+  await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('20261111','办公排班负责人','technician','南湖',?,'2026-01-01')").bind(hashPassword('StaffTest!2026')).run();
+  await db.prepare("INSERT INTO staff_campus_grants VALUES('20261111','南湖')").run();
+  await db.prepare("DELETE FROM member_roles WHERE member_id='member-20261111'").run();
+  const officeRole = await repository.createRole({ code: 'office-manager-only', name: '办公排班管理', level: 1, grants: [{ permissionCode: 'roster.office.manage', scope: { campusIds: ['campus-nanhu'] }, conditions: [] }] });
+  await repository.bindRoles('member-20261111', [{ roleId: officeRole.id, scope: { campusIds: ['campus-nanhu'] }, effectiveFrom: '2026-01-01' }], 0);
+  const managerLogin = await request('/api/auth/login', '', { account: '20261111', password: 'StaffTest!2026' });
+  tokens['20261111'] = managerLogin.body.token;
+  const managerTasks = await request('/api/roster-tasks', '20261111');
+  assert.equal(managerTasks.status, 200, JSON.stringify(managerTasks.body));
+  assert.equal(managerTasks.body.items.every(item => item.dutyType === 'office'), true);
+  assert.equal((await request('/api/auth/me', '20261111')).body.navigation.some(item => item.id === 'office-roster'), true);
+  assert.equal((await request('/api/roster-tasks', '20261111', { ...input, campusId: 'campus-hunnan' })).status, 403);
+  const generated = await request('/api/rosters/generate', 'root001', { taskId });
+  assert.equal(generated.status, 201, JSON.stringify(generated.body));
+  let state = (await request(`/api/roster-tasks/${taskId}/roster`, 'root001')).body;
+  assert.equal(state.members.some(member => member.memberId === 'member-20261002'), false);
+  assert.equal(state.members.some(member => member.memberId === 'member-20261001'), true);
+  const assignments = state.slots.map(slot => ({ ...slot, memberId: 'member-20261001', roleKind: 'coordinator' }));
+  assert.equal((await request(`/api/rosters/${state.draft.id}/publish`, 'root001', { version: 'invalid' })).status, 400);
+  let saved = await request(`/api/rosters/${state.draft.id}`, 'root001', { version: state.draft.version, assignments: [...assignments, assignments[0]] }, 'PATCH');
+  assert.equal(saved.status, 409);
+  assert.equal((await request(`/api/rosters/${state.draft.id}/publish`, 'root001', { version: state.draft.version })).status, 409);
+  saved = await request(`/api/rosters/${state.draft.id}`, 'root001', { version: state.draft.version, assignments }, 'PATCH');
+  assert.equal(saved.body.validation.valid, true, JSON.stringify(saved.body));
+  assert.equal((await request(`/api/rosters/${state.draft.id}/publish`, 'root001', { version: saved.body.version })).status, 200);
+  state = (await request(`/api/roster-tasks/${taskId}/roster`, 'root001')).body;
+  assert.equal(state.publishedAssignments.length, 4);
+  assert.equal(state.publishedAssignments.every(item => item.dutyType === 'office' && item.roleKind === 'coordinator'), true);
+  const revised = await request('/api/rosters/generate', 'root001', { taskId });
+  assert.equal(revised.body.assignments.length, 4);
+  await db.prepare("CREATE TRIGGER reject_office_publish_audit BEFORE INSERT ON audit_events WHEN NEW.action='rosters.published' BEGIN SELECT RAISE(ABORT,'OFFICE_AUDIT_FAILURE'); END").run();
+  try {
+    assert.equal((await request(`/api/rosters/${revised.body.version.id}/publish`, 'root001', { version: revised.body.version.version })).status, 500);
+    assert.equal((await repository.rosterVersionById(revised.body.version.id)).status, 'draft');
+    assert.equal((await repository.rosterVersionById(state.draft.id)).status, 'published');
+  } finally { await db.prepare('DROP TRIGGER reject_office_publish_audit').run(); }
+  assert.equal((await request(`/api/rosters/${revised.body.version.id}/publish`, 'root001', { version: revised.body.version.version })).status, 200);
+  assert.equal((await request(`/api/rosters/${revised.body.version.id}/publish`, 'root001', { version: revised.body.version.version })).status, 200);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_events WHERE action='rosters.published' AND json_extract(source_ref,'$.id')=?").bind(revised.body.version.id).first()).n, 1);
+  const competing = await request('/api/roster-tasks', 'root001', { ...input, slotStart: '17:00', slotEnd: '18:00' });
+  const race = await repository.createRosterVersion({ taskId: competing.body.id, assignments: [{ ...assignments[0], startAt: '17:00', endAt: '18:00' }], validation: { valid: true } });
+  // Even a version validated before the other publication cannot become effective.
+  await assert.rejects(repository.publishRoster(race.id, race.version), /ROSTER_SCHEDULE_CONFLICT/);
+  assert.equal((await repository.rosterVersionById(race.id)).status, 'draft');
+  assert.equal((await repository.listAssignments('member-20261001', input.weekStart)).length, 4);
+});
 async function sql(text) {
   let buffer = "";
   const statements = [];
