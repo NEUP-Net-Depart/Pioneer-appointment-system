@@ -2,7 +2,7 @@
   "branch": "next/staff-platform",
   "baseCommit": "53b53db110d4d867c2f4277fa0954f1d97d74c7d",
   "contractVersion": "staff-platform.v1",
-  "schemaVersion": "0018",
+  "schemaVersion": "0019",
   "businessTimeZone": "Asia/Shanghai",
   "migrations": [
     {
@@ -76,6 +76,10 @@
     {
       "name": "0018_roster_task_scopes.sql",
       "sha256": "05a093a1a8a19aa20a176bb76d1dd84c4a001e7a2279d293ce9204c86a4ada61"
+    },
+    {
+      "name": "0019_longterm_roster_permissions.sql",
+      "sha256": "524c8fca13c4bcabb0ea802e4383b5f6512c2d2ad5714dbf992b3e3dbbd372c1"
     }
   ],
   "modules": [
@@ -117,8 +121,8 @@
     },
     {
       "code": "rosters",
-      "version": "1.5.0",
-      "manifestHash": "54aaa30f",
+      "version": "1.6.0",
+      "manifestHash": "cfa7ee7f",
       "releaseState": "ready"
     },
     {
@@ -211,6 +215,10 @@
     {
       "name": "0016_roster_task_scopes.sql",
       "sha256": "05a093a1a8a19aa20a176bb76d1dd84c4a001e7a2279d293ce9204c86a4ada61"
+    },
+    {
+      "name": "0017_longterm_roster_permissions.sql",
+      "sha256": "524c8fca13c4bcabb0ea802e4383b5f6512c2d2ad5714dbf992b3e3dbbd372c1"
     }
   ],
   "staffMigrationsDirectory": "database/staff-migrations"

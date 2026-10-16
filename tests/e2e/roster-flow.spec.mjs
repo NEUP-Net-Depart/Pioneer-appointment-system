@@ -10,6 +10,43 @@ async function expandGroup(page, name) {
 
 test.skip(process.env.E2E_FIELD !== 'true', 'Uses the isolated staff fixture');
 
+test('off-duty leaders can prepare schedules without gaining field coordination', async ({ page, request }) => {
+  await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': '192.0.2.120' });
+  const root = await request.post('/api/auth/login', { data: { account: 'root001', password: process.env.E2E_ROOT_PASSWORD } }).then(response => response.json());
+  async function command(path, data, method = data ? 'POST' : 'GET', token = root.token) {
+    const response = await request.fetch(path, { method, headers: { Authorization: `Bearer ${token}` }, ...(data ? { data } : {}) });
+    const result = await response.json(); expect(response.ok(), JSON.stringify(result)).toBe(true); return result;
+  }
+  await command('/api/staff-whitelist/import', { csv: 'studentId,expectedName\n20998721,提前排班负责人', expectedRole: 'technician', authorizedCampuses: ['南湖'] });
+  const application = await command('/api/activation', { studentId: '20998721',name:'提前排班负责人',homeCampus:'南湖',password:'ScheduleTest!2026' });
+  await command('/api/activation-requests/review', { ids:[application.id],status:'approved',identityVerified:true });
+  const member = await command('/api/members/member-20998721');
+  await command('/api/members/member-20998721/roles', { revision:member.member.revision,bindings:['role-repair-lead','role-office-lead'].map(roleId => ({roleId,scope:{campusIds:['campus-nanhu']},effectiveFrom:'2026-01-01'})) },'PUT');
+  await page.goto('/staff/'); await page.locator('#login-id').fill('20998721'); await page.locator('#login-password').fill('ScheduleTest!2026');
+  await page.getByRole('button', {name:'进入系统'}).click();
+  await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();
+  const token = await page.evaluate(() => sessionStorage.getItem('pioneerToken'));
+  const profile = await command('/api/auth/me',undefined,'GET',token);
+  expect(profile.todayDuties).toEqual([]);
+  const nav = page.locator('.field-sidebar');
+  await expect(nav.getByRole('button',{name:'现场管理',exact:true})).toHaveCount(0);
+  await expect(nav.getByRole('button',{name:'接待台',exact:true})).toHaveCount(0);
+  await expandGroup(page,'值班管理');
+  for (const name of ['维修排班管理','办公排班管理','请假审批']) await expect(nav.getByRole('button',{name,exact:true})).toBeVisible();
+  await nav.getByRole('button',{name:'维修排班管理',exact:true}).click();
+  await page.getByRole('button',{name:'新建收集任务',exact:true}).click();
+  const dialog = page.getByRole('dialog',{name:'收集下周可用时间',exact:true});
+  await dialog.getByLabel('周一日期',{exact:true}).fill('2027-01-11');
+  await dialog.getByLabel('填报截止',{exact:true}).fill('2027-01-10T18:00');
+  await dialog.getByRole('button',{name:'创建收集任务',exact:true}).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByText('收集任务已创建，成员现在可以填报时间。',{exact:true})).toBeVisible();
+  for (const width of [1440,390,320]) {
+    await page.setViewportSize({width,height:900});
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+});
+
 test('department manager creates only authorized roster scopes across screen sizes', async ({ page, request }) => {
   await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': '192.0.2.119' });
   const root = await request.post('/api/auth/login', { data: { account: 'root001', password: process.env.E2E_ROOT_PASSWORD } }).then(response => response.json());

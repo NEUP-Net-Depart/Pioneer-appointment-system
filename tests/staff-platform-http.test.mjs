@@ -571,6 +571,38 @@ test('roster generation and publication use server facts and reject forged clien
   assert.equal((await post(`/api/rosters/${finalDraft.body.version.id}/publish`, { version: finalDraft.body.version.version })).response.status, 409);
 });
 
+test('long-term managers can schedule off duty while field coordination remains restricted', async () => {
+  const call = (path,options = {}) => request(path,{...options,headers:{...options.headers,'CF-Connecting-IP':'192.0.2.165'}});
+  const db = await mf.getD1Database('DB'), repository = staffPlatformRepository(db);
+  const root = await call('/api/auth/login',{method:'POST',body:JSON.stringify({account:'root001',password:'staff-platform-password'})});
+  const rootHeaders = {Authorization:`Bearer ${root.body.token}`};
+  for (const [account,roleId,dutyType] of [['20998711','role-repair-lead','repair'],['20998712','role-office-lead','office']]) {
+    await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,'非值班日负责人','technician','南湖',?,'2026-01-01')").bind(account,hashPassword('longterm-test-password')).run();
+    await db.prepare("INSERT INTO staff_campus_grants(account,campus) VALUES(?,'南湖')").bind(account).run();
+    const member = await repository.memberRow(`member-${account}`);
+    await repository.bindRoles(member.id,[{roleId,scope:{campusIds:['campus-nanhu']},effectiveFrom:'2026-01-01'}],member.revision);
+    const login = await call('/api/auth/login',{method:'POST',body:JSON.stringify({account,password:'longterm-test-password'})});
+    const headers = {Authorization:`Bearer ${login.body.token}`};
+    const context = await call('/api/auth/me',{headers});
+    assert.deepEqual(context.body.todayDuties,[]);
+    assert.equal(context.body.permissions[`roster.${dutyType}.manage`],true);
+    assert.notEqual(context.body.permissions['repair.transfer'],true);
+    if (dutyType === 'office') assert.equal(context.body.permissions['leave.review'],true);
+    const input = {dutyType,weekStart:'2027-01-04',campusId:'campus-nanhu',slotStart:'19:00',slotEnd:'21:00',deadline:'2027-01-03T10:00:00Z'};
+    const created = await call('/api/roster-tasks',{headers,method:'POST',body:JSON.stringify(input)});
+    assert.equal(created.response.status,201,JSON.stringify(created.body));
+    const generate = await call('/api/rosters/generate',{headers,method:'POST',body:JSON.stringify({taskId:created.body.id})});
+    assert.equal(generate.response.status,201,JSON.stringify(generate.body));
+    assert.equal((await call('/api/roster-tasks',{headers,method:'POST',body:JSON.stringify({...input,campusId:'campus-hunnan'})})).response.status,403);
+    const role = await call('/api/roles',{headers:rootHeaders,method:'POST',body:JSON.stringify({code:`optional_duty_${dutyType}`,name:'明确保留当日岗位条件',grants:[{permissionCode:`roster.${dutyType}.manage`,scope:{campusIds:['campus-nanhu']},conditions:[{code:'activeDutyRole',version:1}]}]})});
+    assert.equal(role.response.status,201,JSON.stringify(role.body));
+    const latest = await repository.memberRow(member.id);
+    await repository.bindRoles(member.id,[{roleId:role.body.id,scope:{},effectiveFrom:'2026-01-01'}],latest.revision);
+    const restricted = await call('/api/auth/login',{method:'POST',body:JSON.stringify({account,password:'longterm-test-password'})});
+    assert.equal((await call('/api/roster-tasks/options',{headers:{Authorization:`Bearer ${restricted.body.token}`}})).response.status,403);
+  }
+});
+
 test('department roster scopes govern creation, task entries, participants, availability and shift-date transfers', async () => {
   const db = await mf.getD1Database('DB'), repository = staffPlatformRepository(db);
   const rootLogin = await request('/api/auth/login',{method:'POST',body:JSON.stringify({account:'root001',password:'staff-platform-password'})});
