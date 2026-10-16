@@ -28,6 +28,9 @@ async function api(request, path, token, body, method = body ? "POST" : "GET") {
   expect(response.ok(), JSON.stringify(value)).toBeTruthy();
   return value;
 }
+async function recordFixture(request, token, studentId) {
+  return api(request, '/api/scan/onsite', token, { requestId: crypto.randomUUID(), registrationFlow: 'frontdesk', campus: '南湖', name: '记录测试同学', studentId, social: 'record-test', deviceType: '笔记本电脑', brand: '联想', deviceModel: 'ThinkPad Records', warranty: '否', faultType: '系统问题', signature: [Array.from({ length: 10 }, (_,i) => [0.1 + i * 0.05, 0.2 + i * 0.03])] });
+}
 
 test("reception layout remains usable at desktop, phone and narrow-phone widths", async ({
   page,
@@ -532,7 +535,7 @@ test('security and business settings have separate workflows and consistent page
   const recordsPosition = await records.boundingBox();
   expect(Math.abs(position.x - recordsPosition.x)).toBeLessThan(2);
   expect(Math.abs(position.y - recordsPosition.y)).toBeLessThan(2);
-  await expect(page.locator('#export-csv')).toBeVisible();
+  await expect(page.getByRole('button', { name: '导出全部可见记录' })).toBeVisible();
   await open('我的', '账号安全');
   const settings = page.locator('.settings-workspace');
   let passwordWrites = 0;
@@ -606,6 +609,105 @@ test('account workspace imports, reviews and updates an account with server acti
     expect(Math.max(...tabTops) - Math.min(...tabTops)).toBeLessThan(1);
     await page.screenshot({ path: `output/field-workflow/accounts-${width}.png`, fullPage: true });
   }
+});
+
+test('records share filtering, responsive details and guarded record maintenance', async ({ page, request }) => {
+  await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': '192.0.2.47' });
+  await login(page, 'root001');
+  const token = await page.evaluate(() => sessionStorage.getItem('pioneerToken'));
+  const fixture = await recordFixture(request, token, '20309992');
+  await page.locator('.field-sidebar').getByRole('button', { name: '预约记录', exact: true }).click();
+  const workspace = page.locator('.records-workspace');
+  await expect(workspace.getByRole('heading', { name: '预约记录', exact: true })).toBeVisible();
+  await expect(page.locator('#staff-view')).toBeHidden();
+  await expect(workspace.locator('.records-table tbody tr').first()).toBeVisible();
+  await workspace.getByRole('button', { name: '状态，未排序；点击升序' }).click();
+  await workspace.getByRole('button', { name: '校区，未排序；点击升序' }).click();
+  await expect(workspace.locator('.records-result-meta')).toContainText('1. 状态↑ → 2. 校区↑');
+  await workspace.getByRole('button', { name: '全部状态', exact: true }).click();
+  const statusDialog = page.getByRole('dialog', { name: '状态筛选' });
+  await statusDialog.getByRole('button', { name: '已取消' }).click();
+  await statusDialog.getByRole('button', { name: '完成', exact: true }).click();
+  await expect(workspace.locator('.records-table tbody tr')).toHaveCount(0);
+  await workspace.getByRole('button', { name: '重置', exact: true }).click();
+  await expect(workspace.locator('.records-table tbody tr').first()).toBeVisible();
+  const overview = workspace.getByRole('region', { name: '近期预约概览' });
+  await overview.locator('summary').click();
+  await overview.getByRole('button', { name: '本周', exact: true }).click();
+  const weeklyQuery = page.waitForRequest(value => { const url = new URL(value.url()); return url.pathname === '/api/appointments' && url.searchParams.get('campus') === '南湖' && url.searchParams.get('dateFrom') === '2026-10-12' && url.searchParams.get('timeSlot') === '19:00–19:30'; });
+  await overview.locator('.records-campus').filter({ has: page.getByRole('button', { name: '南湖校区', exact: true }) }).getByRole('button', { name: /^19:00–19:30 / }).click();
+  await weeklyQuery;
+  await overview.locator('summary').click();
+  await workspace.getByRole('button', { name: '重置', exact: true }).click();
+  await expect(workspace.locator('.records-table tbody tr').first()).toBeVisible();
+  const row = workspace.locator('.records-table tbody tr').filter({ hasText: fixture.id });
+  const id = fixture.id;
+  await row.getByRole('button', { name: '查看详情' }).click();
+  const detail = page.getByRole('dialog').filter({ hasText: id });
+  await expect(detail.getByRole('heading', { name: '记录管理', exact: true })).toBeVisible();
+  await detail.getByText('附件与设备照片', { exact: true }).click();
+  await expect(detail.getByText(/暂无可用附件|front|back/).first()).toBeVisible();
+  await detail.getByRole('button', { name: '重发客户凭证', exact: true }).click();
+  await detail.getByLabel('已人工核验客户本人身份').check();
+  await detail.getByLabel('身份核验说明').fill('测试时已当面核验学生本人身份');
+  await detail.getByRole('button', { name: '签发新凭证', exact: true }).click();
+  await expect(detail.getByLabel('新私人链接')).toHaveValue(/appointment=.*access=/);
+  await detail.getByRole('button', { name: '修正预约记录', exact: true }).click();
+  const original = await api(request, `/api/field/appointments/${id}`, token);
+  await detail.getByLabel('修正后状态').selectOption('cancelled');
+  await detail.getByLabel('纠错原因').fill('测试客户重复登记，已核实申请取消');
+  await detail.getByRole('button', { name: '核对修改', exact: true }).click();
+  await detail.getByRole('button', { name: '确认修正记录', exact: true }).click();
+  await expect(detail.getByText('预约记录已修正。')).toBeVisible();
+  const corrected = await api(request, `/api/field/appointments/${id}`, token);
+  expect(corrected.status).toBe('cancelled');
+  expect(corrected.revision).toBeGreaterThan(original.revision);
+  await detail.getByRole('button', { name: '关闭', exact: true }).click();
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await expect(workspace.locator('.records-table tbody tr').first()).toBeVisible();
+    await page.screenshot({ path: `output/field-workflow/records-${width}.png`, fullPage: true });
+  }
+});
+
+test('records keep rows and focus during delayed updates and pause while inactive', async ({ page, request }) => {
+  await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': '192.0.2.48' });
+  await login(page, 'root001');
+  const token = await page.evaluate(() => sessionStorage.getItem('pioneerToken'));
+  await recordFixture(request, token, '20309993');
+  let reads = 0, release;
+  const delayed = new Promise(resolve => { release = resolve; });
+  await page.route('**/api/appointments?*', async route => {
+    reads++;
+    if (new URL(route.request().url()).searchParams.get('q') === 'temporary-query') {
+      await delayed;
+      await route.fulfill({ status: 503, json: { error: '暂时无法读取预约' } });
+    } else await route.continue();
+  });
+  const sidebar = page.locator('.field-sidebar');
+  await sidebar.getByRole('button', { name: '预约记录', exact: true }).click();
+  const workspace = page.locator('.records-workspace');
+  const first = workspace.locator('.records-table tbody tr').first();
+  await expect(first).toBeVisible();
+  const content = await first.textContent();
+  const search = workspace.getByLabel('查找预约');
+  const started = page.waitForRequest(value => value.url().includes('q=temporary-query'));
+  await search.fill('temporary-query');
+  await started;
+  await expect(first).toHaveText(content);
+  await expect(search).toBeFocused();
+  release();
+  await expect(workspace.getByText('暂时无法读取预约', { exact: true })).toBeVisible();
+  await expect(first).toHaveText(content);
+  await page.clock.install();
+  await sidebar.getByRole('button', { name: '账号安全', exact: true }).click();
+  const paused = reads;
+  await page.clock.fastForward(61000);
+  expect(reads).toBe(paused);
+  await sidebar.getByRole('button', { name: '预约记录', exact: true }).click();
+  await expect(search).toHaveValue('temporary-query');
+  await expect.poll(() => reads).toBeGreaterThan(paused);
 });
 
 test('statistics uses the workspace region without reviving the legacy page', async ({ page }) => {

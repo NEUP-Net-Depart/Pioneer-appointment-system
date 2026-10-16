@@ -215,6 +215,17 @@ test("field day: reception, attendance, intake, transfer and completion share au
   const before = await request(`/api/field/appointments/${id}`, tech);
   assert.equal(before.body.social, undefined);
   assert.equal(before.body.canStart, true);
+  assert.equal(before.body.canCorrect, false);
+  assert.equal(before.body.canRecoverCredential, false);
+  assert.equal(before.body.original, null);
+  assert.equal((await request(`/api/field/appointments/${id}/assignees`, tech)).status, 403);
+  const rootDetail = await request(`/api/field/appointments/${id}`, 'root001');
+  assert.equal(rootDetail.body.canCorrect, true);
+  assert.equal(rootDetail.body.canRecoverCredential, true);
+  assert.ok(rootDetail.body.original.signature);
+  const assignees = await request(`/api/field/appointments/${id}/assignees`, 'root001');
+  assert.equal(assignees.status, 200);
+  assert.ok(assignees.body.items.some(person => person.account === tech));
   assert.equal(
     (await request(`/api/field/appointments/${id}`, office)).body.social,
     "test-contact",
@@ -253,6 +264,11 @@ test("field day: reception, attendance, intake, transfer and completion share au
     "PATCH",
   );
   assert.equal(started.status, 200, JSON.stringify(started.body));
+  const candidates = await request(`/api/field/appointments/${id}/transfer-candidates`, lead);
+  assert.equal(candidates.status, 200, JSON.stringify(candidates.body));
+  assert.ok(candidates.body.items.some(person => person.account === next));
+  assert.ok(!candidates.body.items.some(person => person.account === tech));
+  assert.equal((await request(`/api/field/appointments/${id}/transfer-candidates`, tech)).status, 403);
   const replay = await request(
     `/api/appointments/${id}/status`,
     tech,

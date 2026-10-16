@@ -24,6 +24,10 @@ export interface Appointment {
   canStart?: boolean;
   canFinish?: boolean;
   canTransfer?: boolean;
+  canReadDetails?: boolean;
+  canCorrect?: boolean;
+  canRecoverCredential?: boolean;
+  original?: { note?: string; signature?: string; agreementAt?: string; agreementVersion?: string; college?: string; serial?: string; liquidDrop?: string } | null;
   intake?: Verification;
 }
 export interface Verification {

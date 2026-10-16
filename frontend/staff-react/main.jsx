@@ -11,7 +11,7 @@ import { statusLabels } from '../../shared/constants.js';
 import { RosterArea } from './RosterManager.jsx';
 import { WorkspacePortal } from './WorkspacePortal';
 import { StaffWorkspace } from './StaffWorkspace';
-import { LegacyWorkspace } from './LegacyWorkspace';
+import { Records } from './Records';
 import { FieldApp } from './field/FieldApp';
 import { ActivityContext } from './field/ui';
 import { Statistics } from './Statistics';
@@ -27,8 +27,8 @@ function Workbench({ user, onNavigate }) {
   return <section className="react-page"><div className="react-heading"><div><p className="react-eyebrow">G3 · G4 · G6</p><h1>角色工作台</h1><p>{user.name} · {roles[user.role]} · {user.authorizedCampuses?.join('、')}</p></div><button onClick={refresh}>刷新</button></div>{error && <p className="react-error">{error}</p>}<div className="react-grid"><article className="react-card"><h2>今日工作</h2><p>值班安排：{data?.todayDuties?.length || 0} 项</p><p>签到状态：{data?.presence?.state || '未签到'}</p><p>当前维修：{data?.currentRepair ? data.currentRepair.id : '暂无'}</p><button className="react-primary" onClick={() => onNavigate('attendance')}>打开值班签到</button></article><article className="react-card"><h2>扫码维修前台</h2><form onSubmit={resolve} className="react-inline"><input value={code} onChange={event => setCode(event.target.value)} placeholder="扫描或输入预约编号" required /><button className="react-primary">查询工单</button></form>{scan && <div className="react-result"><strong>{scan.id}</strong><span>{scan.campus} · {scan.date} · {scan.timeSlot}</span><span>{scan.deviceType} · {scan.deviceModel}</span><small>可执行：{scan.actions?.join('、') || '查看'}</small></div>}<button onClick={() => onNavigate('scan')}>进入维修前台</button></article></div><article className="react-card"><div className="react-heading"><h2>待处理预约</h2><button onClick={() => onNavigate('staff')}>完整维修列表</button></div><div className="react-table"><div className="react-row react-row-head"><span>编号</span><span>校区 / 时段</span><span>设备</span><span>状态</span></div>{appointments.slice(0, 8).map(item => <div className="react-row" key={item.id}><span>{item.id}</span><span>{item.campus}<br />{item.date} {item.timeSlot}</span><span>{item.deviceType} · {item.deviceModel}</span><span>{statusLabels[item.status] || item.status}</span></div>)}{!appointments.length && <p className="react-muted">暂无待处理预约</p>}</div></article></section>;
 }
 
-// The React host mounts new modules alongside the existing operational modules.
-// Authentication, navigation and camera lifecycle have one owner in main.js.
+// All enabled-platform routes share one React workspace. The DOM controllers
+// remain the compatibility host when the platform has not been enabled.
 function Root() {
   const [user, setUser] = useState(null);
   const [page, setPage] = useState('');
@@ -91,8 +91,8 @@ function Root() {
   const route = (view, child, allowed = true) => allowed && visited.includes(view) ? <ActivityContext.Provider key={view} value={visible(view)}><div className="workspace-route" data-route={view} hidden={!visible(view)} aria-hidden={!visible(view)}>{child}</div></ActivityContext.Provider> : null;
   const fieldRoute = route('workbench', <FieldApp initial={field} active={visible('workbench')} onNavigate={navigate} requestedScene={workScene} onSceneChange={setWorkScene} onContextChange={setField} workspaceLinks={workspaceLinks} />);
   const rosterRoute = route('roster', <RosterArea user={user} section={rosterSection} />, published.has('rosters'));
-  const legacyRoutes = ['staff'].map(view => route(view, <LegacyWorkspace page={view} />, workspaceLinks.some(entry => entry.id === view)));
   const moduleRoutes = [
+    route('staff', <Records user={user} />, workspaceLinks.some(entry => entry.id === 'staff')),
     route('stats', <Statistics />, workspaceLinks.some(entry => entry.id === 'stats')),
     route('settings', <AccountSettings user={user} section={settingsSection} />),
     route('users', <Accounts user={user} />, workspaceLinks.some(entry => entry.id === 'users')),
@@ -100,7 +100,7 @@ function Root() {
     route('members', <main className="field-main workspace-module"><Members user={user} /></main>, published.has('members')),
     route('permissions', <main className="field-main workspace-module"><Permissions user={user} /></main>, published.has('roles')),
   ];
-  return <WorkspacePortal key={`${user.memberId || user.account}:${user.authVersion}`}><StaffWorkspace name={user.name || ''} entries={workspaceLinks} active={active} onSelect={navigate}>{fieldRoute}{rosterRoute}{legacyRoutes}{moduleRoutes}</StaffWorkspace></WorkspacePortal>;
+  return <WorkspacePortal key={`${user.memberId || user.account}:${user.authVersion}`}><StaffWorkspace name={user.name || ''} entries={workspaceLinks} active={active} onSelect={navigate}>{fieldRoute}{rosterRoute}{moduleRoutes}</StaffWorkspace></WorkspacePortal>;
 
 }
 

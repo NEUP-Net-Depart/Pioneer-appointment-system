@@ -88,7 +88,8 @@ test('manager restores a saved draft, adjusts a member and cannot publish missin
   const navigation = await page.locator('.field-sidebar nav button').allTextContents();
   await page.locator('.field-sidebar').getByRole('button', { name: '预约记录', exact: true }).click();
   expect((await page.locator('.field-sidebar nav button').allTextContents()).map(text => text.replace(/[−+]/g, ''))).toEqual(navigation.map(text => text.replace(/[−+]/g, '')));
-  await expect(page.locator('[data-view=staff]')).toBeVisible();
+  await expect(page.locator('.records-workspace')).toBeVisible();
+  await expect(page.locator('[data-view=staff]')).toBeHidden();
   await expect(page.locator('#management-header')).toBeHidden();
   await expandGroup(page, '我的');
   await page.locator('.field-sidebar').getByRole('button', { name: '账号安全', exact: true }).click();

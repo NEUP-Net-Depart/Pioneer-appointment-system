@@ -157,7 +157,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       let patch, eligibility;
       if (action === 'correct') {
         if (user?.role === 'admin' || user?.role === 'superadmin') requireRole(user, 'admin');
-        else if (staffPlatform) await staffPlatform.requirePermission(user, 'repair.correct', { campusId: item.campus });
+        else if (staffPlatform) await staffPlatform.requirePermission(user, 'repair.correct', { campusId: item.campus, assignedMemberId: item.assignedMemberId, id: item.id, businessDate: item.date });
         else requireRole(user, 'admin');
         requireCampus(user, item.campus);
         const status = input.status || item.status;

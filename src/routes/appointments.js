@@ -36,7 +36,7 @@ export const appointmentRoutes = [
   }],
   ['PATCH', /^\/api\/appointments\/([^/]+)\/correction$/, async (context, match) => {
     await context.limit('write');
-    const input = appointmentPatch(await readBody(context.request));
+    const input = appointmentPatch({ ...await readBody(context.request), action: 'correct' });
     return json(await context.services.appointments.update(decodeURIComponent(match[1]), { ...input, action: 'correct' }, await context.role('technician')));
   }],
   ['GET', /^\/api\/live\/summary$/, async context => {

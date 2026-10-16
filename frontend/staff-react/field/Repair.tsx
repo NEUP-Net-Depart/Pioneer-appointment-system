@@ -4,6 +4,9 @@ import { outcomeLabels } from "../../../shared/constants.js";
 import { api, Modal, Notice, CredentialCard, Status, ActivityContext } from "./ui";
 import type { Appointment, Person, Verification } from "./types";
 import { intakePhoto } from "./photos";
+import { RecordMaintenance } from '../RecordMaintenance';
+import { RepairAttachments } from '../RepairAttachments';
+import { RepairOriginal } from '../RepairOriginal';
 
 export function Repair({
   id,
@@ -12,6 +15,7 @@ export function Repair({
   onClose,
   onChanged,
   sidePanel = false,
+  returnLabel = '返回工作台',
 }: {
   id: string;
   memberId: string;
@@ -19,6 +23,7 @@ export function Repair({
   onClose: () => void;
   onChanged: () => void;
   sidePanel?: boolean;
+  returnLabel?: string;
 }) {
   const routeActive = useContext(ActivityContext);
   const [item, setItem] = useState<Appointment | null>(null),
@@ -40,6 +45,17 @@ export function Repair({
   const [files, setFiles] = useState<Record<string, File>>({}),
     [uploaded, setUploaded] = useState<Record<string, string>>({});
   const [previews, setPreviews] = useState<Record<string, string>>({});
+  const [receivers, setReceivers] = useState<Person[]>(people), [receiversLoading, setReceiversLoading] = useState(false);
+  useEffect(() => {
+    if (!transfer || !routeActive) return;
+    const controller = new AbortController();
+    setReceiversLoading(true);
+    api<{ items: Person[] }>(`/api/field/appointments/${encodeURIComponent(id)}/transfer-candidates`, { signal: controller.signal })
+      .then(value => { if (!controller.signal.aborted) setReceivers(value.items); })
+      .catch(failure => { if (!controller.signal.aborted) { setReceivers([]); setError(failure.message); } })
+      .finally(() => { if (!controller.signal.aborted) setReceiversLoading(false); });
+    return () => controller.abort();
+  }, [id, transfer, routeActive]);
   const pending = useRef<{ signature: string; requestId: string } | null>(null);
   const fetchedAt = useRef(0);
   function operation(body: Record<string, unknown>) {
@@ -209,6 +225,13 @@ export function Repair({
     } finally {
       setBusy(false);
     }
+  }
+  async function saveNote() {
+    if (busy) return;
+    setBusy(true); setError('');
+    try { await command({ repairNote: note.trim() }); setError('维修说明已保存。'); }
+    catch (failure) { setError((failure as Error).message); await load().catch(() => {}); }
+    finally { setBusy(false); }
   }
   async function handoff(event: React.FormEvent) {
     event.preventDefault();
@@ -419,6 +442,7 @@ export function Repair({
                 ))}
               </fieldset>
               <p className="field-muted">填写内容会保留在当前登录会话中</p>
+              <button type="button" disabled={busy} onClick={saveNote}>保存维修说明</button>
               <button className="field-primary field-wide" disabled={busy}>
                 提交维修结果
               </button>
@@ -432,7 +456,7 @@ export function Repair({
                 {item.repairNote}
               </p>
               <button className="field-primary" onClick={onClose}>
-                返回工作台
+                {returnLabel}
               </button>
             </div>
           )}
@@ -458,7 +482,7 @@ export function Repair({
                   onChange={(e) => setTarget(e.target.value)}
                 >
                   <option value="">请选择人员</option>
-                  {people
+                  {receivers
                     .filter((p) => p.canReceive)
                     .map((p) => (
                       <option key={p.memberId} value={p.account}>
@@ -479,9 +503,10 @@ export function Repair({
               </label>
               <p>
                 {item.assignedToName} →{" "}
-                {people.find((p) => p.account === target)?.name || "待选择"}
+                {receivers.find((p) => p.account === target)?.name || "待选择"}
               </p>
-              <button className="field-primary" disabled={busy || !target}>
+              {!receiversLoading && !receivers.length && <Notice>当前没有可接手人员，请安排人员到岗后重新打开转交。</Notice>}
+              <button className="field-primary" disabled={busy || receiversLoading || !receivers.some(person => person.account === target && person.canReceive)}>
                 确认转交
               </button>
             </form>
@@ -512,6 +537,9 @@ export function Repair({
               <p>{item.intake.note}</p>
             </details>
           )}
+          {item.canReadDetails && <RepairAttachments id={item.id} revision={item.revision} />}
+          <RepairOriginal original={item.original} />
+          <RecordMaintenance item={item} busy={busy} onChanged={async () => { await load(); onChanged(); }} />
         </>
       )}
       {confirm && (

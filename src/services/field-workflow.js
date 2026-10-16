@@ -198,11 +198,18 @@ export function fieldWorkflow({
         campusId: campusId(item.campus),
         assignedMemberId: item.assignedMemberId,
         id: item.id,
+        businessDate: item.date,
       };
     const visible = await project(actor, item, context);
     if (!visible) fail(403, "没有该预约的访问权限");
     return {
       ...visible,
+      canCorrect: ['admin', 'superadmin'].includes(actor.role) || allowed(context, 'repair.correct', target),
+      canRecoverCredential: ['admin', 'superadmin'].includes(actor.role),
+      original: visible.canReadDetails && (item.assignedMemberId === context.actor.memberId || allowed(context, 'customer.identity.read', target)) ? {
+        note: item.note, signature: item.signature, agreementAt: item.agreementAt, agreementVersion: item.agreementVersion,
+        college: item.college, serial: item.serial, liquidDrop: item.liquidDrop,
+      } : null,
       intake: visible.canReadDetails ? await repository.latestIntake(id) : null,
       canTransfer:
         item.status === "in_progress" &&
@@ -216,6 +223,17 @@ export function fieldWorkflow({
         (await eligibility(actor, item.campus)).allowed,
       repairCode: scanCode(item.id, secret),
     };
+  }
+  async function correctionAssignees(actor, id, query = {}) {
+    const item = await detail(actor, id);
+    if (!item.canCorrect) fail(403, '没有该预约的纠错权限');
+    return { items: await users.assignees({ campus: item.campus, q: String(query.q || '').slice(0, 120) }) };
+  }
+  async function transferCandidates(actor, id) {
+    const item = await detail(actor, id);
+    if (!item.canTransfer) fail(403, '没有该预约的转派权限');
+    const data = await board(actor, { campusId: campusId(item.campus) });
+    return { items: data.staffPresence.filter(person => person.canReceive && person.memberId !== item.assignedMemberId) };
   }
   async function board(actor, query = {}) {
     if (!enabled) fail(404, "现场工作台尚未启用");
@@ -287,6 +305,8 @@ export function fieldWorkflow({
     await staff.requirePermission(actor, "repair.transfer", {
       campusId: campusId(item.campus),
       id: item.id,
+      assignedMemberId: item.assignedMemberId,
+      businessDate: item.date,
     });
     if (item.status !== "in_progress") fail(409, "只有维修中的工单可以转派");
     const target = await users.find(targetAccount);
@@ -327,6 +347,8 @@ export function fieldWorkflow({
     home,
     board,
     detail,
+    correctionAssignees,
+    transferCandidates,
     eligibility,
     requireEligible,
     assertTransfer,

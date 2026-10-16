@@ -60,11 +60,13 @@ export function Modal({
   children,
   onClose,
   sidePanel = false,
+  initialFocus,
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
   sidePanel?: boolean;
+  initialFocus?: string;
 }) {
   const titleId = useId();
   const ref = useRef<HTMLDialogElement>(null);
@@ -74,11 +76,12 @@ export function Modal({
     const dialog = ref.current!;
     const previous = document.activeElement as HTMLElement;
     dialog.showModal();
+    if (initialFocus) dialog.querySelector<HTMLElement>(initialFocus)?.focus();
     return () => {
       dialog.close();
       if (previous && !previous.closest('[hidden]')) previous.focus?.();
     };
-  }, [active]);
+  }, [active, initialFocus]);
   return (
     <dialog
       className={`field-modal${sidePanel ? ' field-side-panel' : ''}`}
