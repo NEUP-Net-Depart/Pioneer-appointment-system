@@ -81,31 +81,43 @@ for (const account of ['20261001', '20261002']) test(`ordinary staff ${account} 
   for (const label of ['成员管理','授权管理','账号管理','预约配置','统计分析']) await expect(page.locator('.field-sidebar').getByRole('button', { name: label, exact: true })).toHaveCount(0);
 });
 
-test('revoking an open capability signs out stale views and restores only authorized entries on login', async ({ page, request }) => {
+for (const capability of [
+  { code: 'settings.manage', group: '业务管理', label: '预约配置', view: 'capacity', selector: '.capacity-editor', endpoint: '/api/slot-capacities' },
+  { code: 'members.manage', group: '平台管理', label: '成员管理', view: 'members', selector: '.members-workspace', endpoint: '/api/members' },
+]) test(`revoking ${capability.code} closes its open workspace and blocks stale credentials`, async ({ page, request }) => {
   // Install before app startup so the shell's existing interval is controlled.
   await page.clock.install();
   await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': '192.0.2.73' });
   const admin = await api(request, '/api/auth/login', '', { account: 'root001', password: process.env.E2E_ROOT_PASSWORD });
   const member = await api(request, '/api/members/member-20261003', admin.token);
-  const role = await api(request, '/api/roles', admin.token, { code: 'browser_scope_' + Date.now(), name: '浏览器范围测试', grants: [{ permissionCode: 'settings.manage', scope: { campusIds: ['campus-nanhu'] }, conditions: [] }] });
+  const role = await api(request, '/api/roles', admin.token, { code: 'browser_scope_' + Date.now(), name: '浏览器范围测试', grants: [{ permissionCode: capability.code, scope: { campusIds: ['campus-nanhu'] }, conditions: [] }] });
   try {
     await api(request, '/api/members/member-20261003/roles', admin.token, { revision: member.member.revision, bindings: [...member.bindings, { roleId: role.id, scope: { campusIds: ['campus-nanhu'] }, effectiveFrom: '2026-01-01' }] }, 'PUT');
     await login(page, '20261003');
     const sidebar = page.locator('.field-sidebar');
-    const business = sidebar.getByRole('button', { name: '业务管理', exact: true });
+    const business = sidebar.getByRole('button', { name: capability.group, exact: true });
     if (await business.getAttribute('aria-expanded') === 'false') await business.click();
-    await sidebar.getByRole('button', { name: '预约配置', exact: true }).click();
-    await expect(page.locator('.capacity-editor')).toBeVisible();
-    await expect(page.locator('.capacity-sheet-desktop input').first()).toBeVisible();
+    await sidebar.getByRole('button', { name: capability.label, exact: true }).click();
+    await expect(page.locator(capability.selector)).toBeVisible();
+    const staleToken = await page.evaluate(() => sessionStorage.getItem('pioneerToken'));
+    expect((await page.request.get(capability.endpoint, { headers: { Authorization: `Bearer ${staleToken}` } })).status()).toBe(200);
     await api(request, `/api/roles/${role.id}`, admin.token, { revision: role.revision, grants: [] }, 'PATCH');
+    // Revocation is enforced by the server immediately, before the shell's next refresh.
+    expect((await page.request.get(capability.endpoint, { headers: { Authorization: `Bearer ${staleToken}` } })).status()).toBe(401);
+    const staleWrite = await page.request.patch('/api/members/member-20261002', {
+      headers: { Authorization: `Bearer ${staleToken}` }, data: { name: '禁止撤权后修改', revision: 0 }
+    });
+    expect(staleWrite.status()).toBe(401);
     await page.clock.fastForward(31000);
     await expect(page.locator('#login-view')).toBeVisible();
     await expect(page.locator('#staff-platform-root')).toBeEmpty();
     await page.clock.resume();
     await login(page, '20261003');
-    await expect(page.locator('.field-sidebar').getByRole('button', { name: '预约配置', exact: true })).toHaveCount(0);
-    await page.evaluate(() => window.dispatchEvent(new CustomEvent('staff-navigate', { detail: 'capacity' })));
-    await expect(page.locator('.capacity-editor')).toHaveCount(0);
+    await expect(page.locator('.field-sidebar').getByRole('button', { name: capability.label, exact: true })).toHaveCount(0);
+    await page.evaluate(view => window.dispatchEvent(new CustomEvent('staff-navigate', { detail: view })), capability.view);
+    await expect(page.locator(capability.selector)).toHaveCount(0);
+    const currentToken = await page.evaluate(() => sessionStorage.getItem('pioneerToken'));
+    expect((await page.request.get(capability.endpoint, { headers: { Authorization: `Bearer ${currentToken}` } })).status()).toBe(403);
   } finally {
     const latest = await api(request, '/api/members/member-20261003', admin.token);
     await api(request, '/api/members/member-20261003/roles', admin.token, { revision: latest.member.revision, bindings: member.bindings }, 'PUT');
