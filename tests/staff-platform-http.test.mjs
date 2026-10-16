@@ -351,17 +351,32 @@ test('swap acceptance rolls both assignments back when either revision is stale'
     db.prepare(`INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at) VALUES('swap-a','swap-test-version',?,'2026-10-19','campus-nanhu','repair','19:00','21:00')`).bind(root),
     db.prepare(`INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at) VALUES('swap-b','swap-test-version',?,'2026-10-20','campus-nanhu','repair','19:00','21:00')`).bind(other)
   ]);
-  const swap = await repository.createSwap({ fromAssignmentId: 'swap-a', toAssignmentId: 'swap-b', toMemberId: other, fromRevision: 0, toRevision: 0 }, root);
+  const source = await repository.assignmentById('swap-a'), target = await repository.assignmentById('swap-b');
+  const input = { fromAssignmentId:source.id,toAssignmentId:target.id,toMemberId:other,fromRevision:0,toRevision:0,note:'' };
+  const audit = { actorMemberId:root,actorAccount:'root001',action:'rosters.swap.created' };
+  const receipt = action => ({ action,id:crypto.randomUUID(),hash:'repository-test' });
+  const snapshot = { from:source,to:target,after:[{ ...source,memberId:other },{ ...target,memberId:root }],fingerprint:await repository.swapFingerprint(source.id,target.id) };
+  const swap = await repository.createSwap(input,audit,receipt('swap.create'),snapshot);
+  assert.ok(swap);
   await db.prepare("UPDATE duty_assignments SET revision=1 WHERE id='swap-b'").run();
   const before = await Promise.all(['swap-a','swap-b'].map(id => repository.assignmentById(id)));
-  await assert.rejects(repository.updateSwap(swap.id, 'accepted', other, 0), /REVISION_CONFLICT/);
-  assert.deepEqual(await Promise.all(['swap-a','swap-b'].map(id => repository.assignmentById(id))), before);
-  assert.equal((await repository.swapById(swap.id)).status, 'pending');
-  const fresh = await repository.createSwap({ fromAssignmentId: 'swap-a', toAssignmentId: 'swap-b', toMemberId: other, fromRevision: 0, toRevision: 1 }, root);
-  assert.equal((await repository.updateSwap(fresh.id, 'accepted', other, 0)).status, 'accepted');
-  assert.equal((await repository.assignmentById('swap-a')).memberId, other);
-  assert.equal((await repository.assignmentById('swap-b')).memberId, root);
-  assert.equal(await repository.updateSwap(fresh.id, 'accepted', other, 0), null);
+  const responder = { actorMemberId:other,actorAccount:'20268801',action:'rosters.swap.decided' };
+  const staleReceipt = receipt('swap.decide');
+  assert.equal(await repository.updateSwap(swap,'accepted',0,responder,staleReceipt,snapshot),null);
+  assert.equal(await repository.receipt(other,staleReceipt.action,staleReceipt.id),null);
+  assert.deepEqual(await Promise.all(['swap-a','swap-b'].map(id => repository.assignmentById(id))),before);
+  assert.equal((await repository.swapById(swap.id)).status,'pending');
+  assert.equal((await repository.rosterVersionsForTask('swap-test-task')).length,1);
+  await repository.updateSwap(swap,'declined',0,responder,receipt('swap.decide'));
+  const freshSnapshot = { ...snapshot,to:before[1],fingerprint:await repository.swapFingerprint(source.id,target.id) };
+  const fresh = await repository.createSwap({ ...input,toRevision:1 },audit,receipt('swap.create'),freshSnapshot);
+  const accepted = await repository.updateSwap(fresh,'accepted',0,responder,receipt('swap.decide'),freshSnapshot);
+  assert.equal(accepted.status,'accepted');
+  assert.equal((await repository.assignmentById('swap-a')).memberId,root);
+  assert.equal((await repository.assignmentById('swap-b')).memberId,other);
+  assert.equal((await repository.assignmentById(accepted.applied_from_assignment_id)).memberId,other);
+  assert.equal((await repository.assignmentById(accepted.applied_to_assignment_id)).memberId,root);
+  assert.equal(await repository.updateSwap(fresh,'accepted',0,responder,receipt('swap.decide'),freshSnapshot),null);
 });
 
 

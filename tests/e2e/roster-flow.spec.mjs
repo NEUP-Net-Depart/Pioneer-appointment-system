@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { mkdir } from 'node:fs/promises';
 
 test.use({ extraHTTPHeaders: { 'CF-Connecting-IP': '192.0.2.92' } });
 
@@ -8,6 +9,73 @@ async function expandGroup(page, name) {
 }
 
 test.skip(process.env.E2E_FIELD !== 'true', 'Uses the isolated staff fixture');
+
+test('members preview, confirm and recover a swap through responsive personal workspaces', async ({ browser }) => {
+  const contexts = await Promise.all([1,2].map(index => browser.newContext({ baseURL:process.env.E2E_BASE_URL,viewport:{ width:1440,height:1000 },extraHTTPHeaders:{ 'CF-Connecting-IP':`192.0.2.${100 + index}` } })));
+  try {
+    const [sender,invitee] = await Promise.all(contexts.map(context => context.newPage()));
+    await invitee.clock.install();
+    async function open(page,account) {
+      await page.goto('/staff/');
+      await page.locator('#login-id').fill(account); await page.locator('#login-password').fill('StaffTest!2026');
+      await page.getByRole('button', { name:'进入系统' }).click();
+      await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();
+      await expandGroup(page,'我的');
+      await page.locator('.field-sidebar').getByRole('button', { name:'班次与排班',exact:true }).click();
+      await expect(page.locator('.duty-card')).toHaveCount(1);
+    }
+    await open(sender,'20261002'); await open(invitee,'20261003');
+    // A second member's update must reach an already-open personal route.
+    await sender.getByRole('button', { name:'发起换班',exact:true }).click();
+    const targets = sender.getByRole('combobox', { name:'希望调换到',exact:true });
+    await expect(targets.locator('option').filter({ hasText:'周宁' })).toHaveCount(1);
+    await targets.selectOption({ label:await targets.locator('option').filter({ hasText:'周宁' }).textContent() });
+    const projection = sender.getByRole('region', { name:'交换后的班次',exact:true });
+    await expect(projection).toContainText('陈宇'); await expect(projection).toContainText('周宁');
+    await expect(sender.getByRole('button', { name:'发送换班邀请',exact:true })).toBeEnabled();
+    await sender.getByLabel('换班说明').fill('浏览器验收：双方确认后交换');
+    await mkdir('output/field-workflow',{ recursive:true });
+    for (const width of [1440,390,320]) {
+      await sender.setViewportSize({ width,height:900 });
+      expect(await sender.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await expect(projection).toBeVisible();
+      await sender.screenshot({ path:`output/field-workflow/swap-preview-${width}.png`,fullPage:true });
+    }
+    await sender.getByRole('button', { name:'发送换班邀请',exact:true }).click();
+    await expect(sender.getByRole('status').filter({ hasText:'换班申请已发送' })).toBeVisible();
+    await invitee.bringToFront();
+    await invitee.locator('.field-sidebar').getByRole('button', { name:'维修工作台',exact:true }).click();
+    await invitee.clock.fastForward(31000);
+    await expect(invitee.getByRole('region', { name:'待响应的换班邀请' })).toContainText('1 份换班邀请等待你确认');
+    await invitee.getByRole('button', { name:'查看邀请',exact:true }).click();
+    const invitation = invitee.locator('.swap-invitation').filter({ hasText:'陈宇 与 周宁的换班' });
+    await expect(invitation).toBeVisible();
+    await invitation.getByRole('button', { name:'查看并确认',exact:true }).click();
+    const confirmation = invitee.getByRole('dialog', { name:'换班详情',exact:true });
+    await expect(confirmation).toContainText('浏览器验收：双方确认后交换');
+    await expect(confirmation.getByRole('button', { name:'确认并同意换班',exact:true })).toBeEnabled();
+    for (const width of [1440,390,320]) {
+      await invitee.setViewportSize({ width,height:900 });
+      await expect(confirmation).toBeVisible();
+      expect(await confirmation.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+      await invitee.screenshot({ path:`output/field-workflow/swap-confirm-${width}.png`,fullPage:true });
+    }
+    await invitee.clock.resume();
+    await confirmation.getByRole('button', { name:'确认并同意换班',exact:true }).click();
+    await expect(confirmation).toHaveCount(0);
+    await expect(invitation).toContainText('已生效');
+    await invitee.reload();
+    await expect(invitee.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();
+    await invitee.setViewportSize({ width:1440,height:1000 });
+    await expandGroup(invitee,'我的');
+    await invitee.locator('.field-sidebar').getByRole('button', { name:'班次与排班',exact:true }).click();
+    await invitee.getByRole('button', { name:/我的申请/ }).click();
+    await expect(invitee.locator('.swap-invitation')).toContainText('已生效');
+    await invitee.locator('.swap-invitation').getByRole('button', { name:'查看详情',exact:true }).click();
+    await expect(invitee.getByRole('dialog', { name:'换班详情' })).toContainText('已生效');
+    await expect(invitee.getByRole('button', { name:'确认并同意换班',exact:true })).toHaveCount(0);
+  } finally { await Promise.all(contexts.map(context => context.close())); }
+});
 
 test('member submits leave and reviewer checks coverage in one responsive approval workspace', async ({ page, request }) => {
   await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': '192.0.2.96' });

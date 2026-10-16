@@ -120,6 +120,7 @@ export function fieldWorkflow({
       reason: ready.reason,
       currentRepair: current,
       todayDuties: context.todayDuties,
+      pendingSwapInvitations: context.permissions['roster.read'] ? await repository.pendingSwapInvitations(context.actor.memberId) : 0,
       presence: context.presence,
       event: ready.event,
       updatedAt: new Date().toISOString(),

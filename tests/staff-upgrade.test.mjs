@@ -20,6 +20,48 @@ async function statements(path) {
 const candidate = 'database/upgrades/staff-0007-to-five-statuses.sql';
 const timestamp = '2026-10-15T10:00:00.000Z';
 
+test('both swap upgrades preserve legacy accepted requests and retain revisions on unchanged republication', async () => {
+  const mf = new Miniflare({ telemetry:{ enabled:false },workers:[{ config:{ name:'swap-upgrade-test',compatibilityDate:'2026-10-01',
+    manifest:{ mainModule:'index.js',modules:{ 'index.js':{ type:'esm',contents:'export default { fetch() { return new Response("test"); } };' } } },
+    env:{ STAFF:{ type:'d1',id:'swap-upgrade-staff' },DEV:{ type:'d1',id:'swap-upgrade-dev' } }
+  } }] });
+  try {
+    for (const [binding,directory,last] of [['STAFF','database/staff-migrations','0015_swap_revisions.sql'],['DEV','migrations','0017_swap_revisions.sql']]) {
+      const db = await mf.getD1Database(binding);
+      for (const file of (await readdir(directory)).filter(name => name.endsWith('.sql') && name < last).sort()) await db.batch((await statements(`${directory}/${file}`)).map(sql => db.prepare(sql)));
+      for (const account of ['998821','998822']) await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,'旧版成员','technician','南湖','test-only',?)").bind(account,timestamp).run();
+      await db.prepare("INSERT INTO roster_tasks(id,week_start,slot_start,slot_end,deadline,created_at) VALUES('old-swap-task','2026-11-09','19:00','21:00',?,?)").bind(timestamp,timestamp).run();
+      await db.prepare("INSERT INTO roster_versions(id,task_id,status,version,rule_version,algorithm_version,created_at) VALUES('old-swap-version','old-swap-task','published',1,'1','old',?)").bind(timestamp).run();
+      for (const [id,member,day] of [['old-a','member-998821','2026-11-09'],['old-b','member-998822','2026-11-10']]) await db.prepare("INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at) VALUES(?,'old-swap-version',?,?,'campus-nanhu','repair','19:00','21:00')").bind(id,member,day).run();
+      await db.prepare("INSERT INTO swap_requests(id,from_assignment_id,to_assignment_id,from_member_id,to_member_id,from_revision,to_revision,created_at) VALUES('old-swap','old-a','old-b','member-998821','member-998822',0,0,?)").bind(timestamp).run();
+      await db.batch([
+        db.prepare("UPDATE duty_assignments SET member_id='member-998822',revision=1 WHERE id='old-a'"),
+        db.prepare("UPDATE duty_assignments SET member_id='member-998821',revision=1 WHERE id='old-b'"),
+        db.prepare("UPDATE swap_requests SET status='accepted',revision=1,decided_at=? WHERE id='old-swap'").bind(timestamp)
+      ]);
+      const before = (await db.prepare('SELECT * FROM swap_requests').all()).results;
+      const originals = (await db.prepare('SELECT * FROM duty_assignments ORDER BY id').all()).results;
+      const migration = await statements(`${directory}/${last}`);
+      await assert.rejects(db.batch([...migration.map(sql => db.prepare(sql)),db.prepare('INSERT INTO missing_swap_upgrade VALUES(1)')]));
+      assert.deepEqual((await db.prepare('SELECT * FROM swap_requests').all()).results,before);
+      await db.batch(migration.map(sql => db.prepare(sql)));
+      const after = (await db.prepare('SELECT * FROM swap_requests').all()).results;
+      assert.deepEqual(after.map(({ applied_from_assignment_id,applied_to_assignment_id,...row }) => {
+        assert.equal(applied_from_assignment_id,null); assert.equal(applied_to_assignment_id,null); return row;
+      }),before);
+      assert.deepEqual((await db.prepare('SELECT * FROM duty_assignments ORDER BY id').all()).results.map(({ previous_assignment_id,...row }) => {
+        assert.equal(previous_assignment_id,null); return row;
+      }),originals);
+      const repository = staffPlatformRepository(db), assignment = await repository.assignmentById('old-a');
+      const draft = await repository.createRosterVersion({ taskId:'old-swap-task',assignments:[{ ...assignment,id:undefined }] });
+      const copied = (await repository.versionAssignments(draft.id))[0];
+      assert.equal(copied.originAssignmentId,assignment.id); assert.equal(copied.revision,1);
+      assert.equal((await repository.assignmentById('old-a')).revision,1);
+      assert.deepEqual((await db.prepare('PRAGMA foreign_key_check').all()).results,[]);
+    }
+  } finally { await mf.dispose(); }
+});
+
 test('both leave-lineage upgrades preserve populated roster history and reconnect unchanged shifts', async () => {
   const mf = new Miniflare({ telemetry: { enabled: false }, workers: [{ config: {
     name: 'leave-upgrade-test', compatibilityDate: '2026-10-01',

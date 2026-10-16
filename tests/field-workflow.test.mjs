@@ -17,6 +17,144 @@ const workerClock = `const RealDate = Date; globalThis.Date = class extends Real
 let mf, db;
 const tokens = {};
 
+test('mutual swaps publish immutable linked revisions and roll back failed audits and receipts', async () => {
+  const repository = staffPlatformRepository(db), people = ['20261201','20261202','20261203','20261204'];
+  for (const [index,account] of people.entries()) {
+    await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,?,'technician','南湖',?,'2026-01-01')").bind(account,`换班成员${index + 1}`,hashPassword('StaffTest!2026')).run();
+    await db.prepare("INSERT INTO staff_campus_grants VALUES(?,'南湖')").bind(account).run();
+    if (index !== 1) await db.prepare("INSERT INTO member_work_profiles(id,member_id,profile_code,effective_from) VALUES(?,?,'repair_lead','2026-01-01')").bind(`swap-lead-${index}`,`member-${account}`).run();
+    const login = await request('/api/auth/login',null,{ account,password:'StaffTest!2026' });
+    assert.equal(login.status,200,JSON.stringify(login.body)); tokens[account] = login.body.token;
+  }
+  async function fixture(prefix,week,crossTask = false) {
+    const days = [week,week,week.slice(0,8) + String(Number(week.slice(8)) + 1).padStart(2,'0'),week.slice(0,8) + String(Number(week.slice(8)) + 1).padStart(2,'0')];
+    const order = [people[0],people[2],people[1],people[3]], result = [];
+    for (const side of crossTask ? [0,1] : [0]) {
+      const task = `${prefix}-task-${side}`,version = `${prefix}-v-${side}`;
+      await db.prepare("INSERT INTO roster_tasks(id,week_start,slot_start,slot_end,deadline,created_at) VALUES(?,?,?,?,'2026-10-14','2026-10-14')").bind(task,week,side ? '20:00' : '19:00',side ? '22:00' : '21:00').run();
+      await db.prepare("INSERT INTO roster_versions(id,task_id,status,version,rule_version,algorithm_version,created_at) VALUES(?,?,'published',1,'1','fixture','2026-10-14')").bind(version,task).run();
+      for (let index = 0; index < 4; index++) {
+        if (crossTask && Math.floor(index / 2) !== side) continue;
+        const shift = `${prefix}-shift-${index}`;
+        await db.prepare("INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at) VALUES(?,?,?,?,'campus-nanhu','repair',?,?)").bind(shift,version,`member-${order[index]}`,days[index],side ? '20:00' : '19:00',side ? '22:00' : '21:00').run();
+        if (order[index] !== people[1]) await db.prepare("INSERT INTO duty_roles(id,assignment_id,role_kind) VALUES(?,?,'repair_lead')").bind(`role-${shift}`,shift).run();
+        result[index] = await repository.assignmentById(shift);
+      }
+    }
+    return result;
+  }
+  const shifts = await fixture('swap-immutable','2026-12-07');
+  const input = { fromAssignmentId:shifts[0].id,toAssignmentId:shifts[2].id,toMemberId:shifts[2].memberId,fromRevision:0,toRevision:0,note:'期末考试调整',requestId:crypto.randomUUID() };
+  const preview = await request('/api/swaps/preview',people[0],input);
+  assert.equal(preview.status,200,JSON.stringify(preview.body)); assert.equal(preview.body.allowed,true,JSON.stringify(preview.body));
+  assert.deepEqual(preview.body.after.map(row => [row.memberName,row.roleKind]),[['换班成员2',''],['换班成员1','repair_lead']]);
+  assert.equal((await request('/api/swaps/preview',people[3],input)).status,403);
+  await db.prepare("CREATE TRIGGER reject_swap_create_audit BEFORE INSERT ON audit_events WHEN NEW.action='rosters.swap.created' BEGIN SELECT RAISE(ABORT,'SWAP_AUDIT_FAILURE'); END").run();
+  try {
+    assert.equal((await request('/api/swaps',people[0],input)).status,500);
+    assert.equal(await repository.receipt(shifts[0].memberId,'swap.create',input.requestId),null);
+    assert.deepEqual(await repository.listSwaps({ memberId:shifts[0].memberId }),[]);
+  } finally { await db.prepare('DROP TRIGGER reject_swap_create_audit').run(); }
+  const invite = await request('/api/swaps',people[0],input);
+  assert.equal(invite.status,201,JSON.stringify(invite.body));
+  assert.equal((await request('/api/field/home',people[1])).body.pendingSwapInvitations,1);
+  assert.equal((await request('/api/field/home',people[0])).body.pendingSwapInvitations,0);
+  assert.equal((await request('/api/swaps',people[0],input)).body.id,invite.body.id);
+  assert.equal((await request('/api/swaps',people[0],{ ...input,note:'不同内容' })).status,409);
+  assert.equal((await request('/api/swaps',people[0],{ ...input,requestId:crypto.randomUUID() })).status,409);
+  assert.equal((await request(`/api/swaps/${invite.body.id}`,people[3])).status,403);
+  assert.equal((await request(`/api/swaps/${invite.body.id}/decision`,people[0],{ decision:'accept',revision:0 })).status,403);
+  const otherInput = { fromAssignmentId:shifts[1].id,toAssignmentId:shifts[3].id,toMemberId:shifts[3].memberId,fromRevision:0,toRevision:0,requestId:crypto.randomUUID() };
+  const unchangedInvite = await request('/api/swaps',people[2],otherInput);
+  assert.equal(unchangedInvite.status,201,JSON.stringify(unchangedInvite.body));
+  const decision = { decision:'accept',revision:0,requestId:crypto.randomUUID() };
+  for (const failure of ['audit','receipt']) {
+    const sql = failure === 'audit' ? "CREATE TRIGGER reject_swap_commit BEFORE INSERT ON audit_events WHEN NEW.action='rosters.swap.decided' BEGIN SELECT RAISE(ABORT,'SWAP_AUDIT_FAILURE'); END" : "CREATE TRIGGER reject_swap_commit BEFORE UPDATE ON operation_receipts WHEN NEW.action='swap.decide' AND NEW.result_status='success' BEGIN SELECT RAISE(ABORT,'SWAP_RECEIPT_FAILURE'); END";
+    await db.prepare(sql).run();
+    try {
+      assert.equal((await request(`/api/swaps/${invite.body.id}/decision`,people[1],decision)).status,500);
+      assert.equal((await repository.swapById(invite.body.id)).status,'pending');
+      assert.equal((await repository.rosterVersionsForTask('swap-immutable-task-0')).length,1);
+      assert.equal((await repository.rosterVersionById(shifts[0].versionId)).status,'published');
+      assert.equal(await repository.receipt(shifts[2].memberId,'swap.decide',decision.requestId),null);
+      assert.equal((await repository.listAudit({ action:'rosters.swap.decided' })).length,0);
+    } finally { await db.prepare('DROP TRIGGER reject_swap_commit').run(); }
+  }
+  const accepted = await Promise.all([1,2].map(() => request(`/api/swaps/${invite.body.id}/decision`,people[1],decision)));
+  assert.ok(accepted.every(row => row.status === 200),JSON.stringify(accepted));
+  assert.equal(accepted[0].body.appliedFromAssignmentId,accepted[1].body.appliedFromAssignmentId);
+  assert.equal((await repository.rosterVersionsForTask('swap-immutable-task-0')).length,2);
+  assert.equal((await repository.listAudit({ action:'rosters.swap.decided' })).length,1);
+  assert.equal((await request('/api/field/home',people[1])).body.pendingSwapInvitations,0);
+  for (const original of shifts) {
+    const current = await repository.assignmentById(original.id);
+    assert.deepEqual({ ...current,versionStatus:'published' },original,'Historical published assignment and role facts remain unchanged');
+  }
+  const applied = await Promise.all([accepted[0].body.appliedFromAssignmentId,accepted[0].body.appliedToAssignmentId].map(id => repository.assignmentById(id)));
+  assert.deepEqual(applied.map(row => [row.memberId,row.roleKind,row.revision,row.previousAssignmentId]),[
+    [shifts[2].memberId,'',1,shifts[0].id],[shifts[0].memberId,'repair_lead',1,shifts[2].id]
+  ]);
+  assert.ok(applied.every(row => row.versionStatus === 'published' && !row.originAssignmentId));
+  const unaffected = await repository.effectiveAssignment(shifts[1].id,shifts[1].memberId);
+  assert.equal(unaffected.originAssignmentId,shifts[1].id); assert.equal(unaffected.revision,0);
+  const stillValid = await request(`/api/swaps/${unchangedInvite.body.id}`,people[3]);
+  assert.equal(stillValid.body.allowed,true,JSON.stringify(stillValid.body));
+  assert.equal((await request(`/api/swaps/${unchangedInvite.body.id}/decision`,people[3],{ decision:'accept',revision:0,requestId:crypto.randomUUID() })).status,200);
+  // Different source tasks must be superseded together before successors publish.
+  const cross = await fixture('swap-cross-task','2026-12-14',true);
+  const crossInvite = await request('/api/swaps',people[0],{ ...input,fromAssignmentId:cross[0].id,toAssignmentId:cross[2].id,requestId:crypto.randomUUID() });
+  assert.equal(crossInvite.status,201,JSON.stringify(crossInvite.body));
+  const race = await Promise.all(['accept','decline'].map(action => request(`/api/swaps/${crossInvite.body.id}/decision`,people[1],{ decision:action,revision:0,requestId:crypto.randomUUID() })));
+  assert.equal(race.filter(row => row.status === 200).length,1,JSON.stringify(race));
+  assert.equal(race.filter(row => row.status === 409).length,1,JSON.stringify(race));
+  const final = await repository.swapById(crossInvite.body.id);
+  for (const side of [0,1]) assert.equal((await repository.rosterVersionsForTask(`swap-cross-task-task-${side}`)).length,final.status === 'accepted' ? 2 : 1);
+  // Pending leave, loss of campus scope and profile changes invalidate acceptance.
+  const guarded = await fixture('swap-guarded','2026-12-21');
+  const guardedInput = { ...input,fromAssignmentId:guarded[0].id,toAssignmentId:guarded[2].id,requestId:crypto.randomUUID() };
+  await db.prepare("DELETE FROM duty_roles WHERE assignment_id=?").bind(guarded[1].id).run();
+  assert.equal((await request('/api/swaps/preview',people[0],guardedInput)).body.allowed,false,'Removing the other leader must expose lost coverage');
+  await db.prepare("INSERT INTO duty_roles(id,assignment_id,role_kind) VALUES('restored-guard-lead',?,'repair_lead')").bind(guarded[1].id).run();
+  const guardedInvite = await request('/api/swaps',people[0],guardedInput);
+  assert.equal(guardedInvite.status,201,JSON.stringify(guardedInvite.body));
+  const path = `/api/swaps/${guardedInvite.body.id}/decision`;
+  const guardDecision = { decision:'accept',revision:0,requestId:crypto.randomUUID() };
+  const leave = await request('/api/leaves',people[0],{ assignmentId:guarded[0].id,reason:'临时请假',requestId:crypto.randomUUID() });
+  assert.equal(leave.status,201,JSON.stringify(leave.body));
+  const pendingLeave = await request(path,people[1],guardDecision);
+  assert.equal(pendingLeave.status,409); assert.match(pendingLeave.body.error,/请假/);
+  assert.equal((await request(`/api/leaves/${leave.body.id}/withdraw`,people[0],{ revision:0 })).status,200);
+  await db.prepare("UPDATE member_work_profiles SET effective_to='2026-12-21' WHERE member_id=? AND profile_code='repair'").bind(guarded[2].memberId).run();
+  const unqualified = await request(path,people[1],guardDecision);
+  assert.equal(unqualified.status,409); assert.match(unqualified.body.error,/工作资格/);
+  await db.prepare("UPDATE member_work_profiles SET effective_to=NULL WHERE member_id=? AND profile_code='repair'").bind(guarded[2].memberId).run();
+  await db.prepare("DELETE FROM staff_campus_grants WHERE account=?").bind(people[0]).run();
+  const wrongCampus = await request(path,people[1],guardDecision);
+  assert.equal(wrongCampus.status,409); assert.match(wrongCampus.body.error,/校区/);
+  await db.prepare("INSERT INTO staff_campus_grants VALUES(?,'南湖')").bind(people[0]).run();
+  await db.prepare("INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at) VALUES('swap-guard-time',?,?,'2026-12-21','campus-nanhu','office','20:00','22:00')").bind(guarded[0].versionId,guarded[2].memberId).run();
+  const conflict = await request(path,people[1],guardDecision);
+  assert.equal(conflict.status,409); assert.match(conflict.body.error,/冲突/);
+  await db.prepare("DELETE FROM duty_assignments WHERE id='swap-guard-time'").run();
+  const originalVersionCount = (await repository.rosterVersionsForTask('swap-guarded-task-0')).length;
+  const staleSnapshot = { from:guarded[0],to:guarded[2],after:[],fingerprint:await repository.swapFingerprint(guarded[0].id,guarded[2].id) };
+  await db.prepare("UPDATE members SET status='inactive' WHERE id=?").bind(guarded[0].memberId).run();
+  const audit = { actorAccount:people[1],actorMemberId:guarded[2].memberId,authVersion:(await repository.accountRow(people[1])).auth_version,action:'rosters.swap.decided' };
+  const receipt = { action:'swap.decide',id:crypto.randomUUID(),hash:'stale-snapshot' };
+  staleSnapshot.after = [guarded[2],guarded[0]];
+  assert.equal(await repository.updateSwap(await repository.swapById(guardedInvite.body.id),'accepted',0,audit,receipt,staleSnapshot),null,'Commit must compare the validated snapshot inside its transaction');
+  assert.equal(await repository.receipt(audit.actorMemberId,receipt.action,receipt.id),null);
+  assert.equal((await repository.rosterVersionsForTask('swap-guarded-task-0')).length,originalVersionCount);
+  assert.equal((await repository.swapById(guardedInvite.body.id)).status,'pending');
+  await db.prepare("UPDATE members SET status='active' WHERE id=?").bind(guarded[0].memberId).run();
+  const approvedLeave = await request('/api/leaves',people[0],{ assignmentId:guarded[0].id,reason:'请假获批后不能换班',requestId:crypto.randomUUID() });
+  assert.equal(approvedLeave.status,201,JSON.stringify(approvedLeave.body));
+  assert.equal((await request(`/api/leaves/${approvedLeave.body.id}/decision`,'root001',{ decision:'approve',revision:0,requestId:crypto.randomUUID() })).status,200);
+  const approvedConflict = await request(path,people[1],guardDecision);
+  assert.equal(approvedConflict.status,409); assert.match(approvedConflict.body.error,/已批准的请假/);
+  assert.deepEqual((await db.prepare('PRAGMA foreign_key_check').all()).results,[]);
+});
+
 test('leave review preserves attendance, applies coverage atomically and follows unchanged published assignments', async () => {
   const repository = staffPlatformRepository(db);
   const task = await request('/api/roster-tasks', 'root001', { dutyType: 'office', weekStart: '2026-11-09', campusId: 'campus-nanhu', slotStart: '19:00', slotEnd: '21:00', deadline: '2026-11-08T10:00:00Z' });

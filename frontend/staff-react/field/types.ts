@@ -63,6 +63,7 @@ export interface Home {
   state: string;
   reason: string;
   currentRepair: Appointment | null;
+  pendingSwapInvitations?: number;
   presence?: { revision: number; campusId: string; state: string };
   event?: { id: string; revision: number; startsAt: string; endsAt: string };
   todayDuties: {

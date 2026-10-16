@@ -40,6 +40,7 @@ function Root() {
   const [bootProfile, setBootProfile] = useState(null), [bootError, setBootError] = useState(''), [bootRetry, setBootRetry] = useState(0);
   const [workScene, setWorkScene] = useState(null);
   const [rosterSection, setRosterSection] = useState('mine');
+  const [rosterRequestSignal, setRosterRequestSignal] = useState(0);
   const [visited, setVisited] = useState([]);
   const [settingsSection, setSettingsSection] = useState('security');
   const profileRef = useRef(null);
@@ -84,11 +85,12 @@ function Root() {
           capability: Object.fromEntries(Object.entries(current.capability).map(([code, allowed]) => [code, allowed && staffPermission(profile, code)])) } : current);
       },
       onView: view => { if (profileRef.current && !staffViewAllowed(profileRef.current, view)) return; setPage(view); setVisited(current => current.includes(view) ? current : [...current, view]); },
-      onLogout: () => { clearWorkspaceState(); setUser(null); setField(null); setBootProfile(null); setBootError(''); setPage(''); setVisited([]); setWorkScene(null); setRosterSection('mine'); setSettingsSection('security'); }
+      onLogout: () => { clearWorkspaceState(); setUser(null); setField(null); setBootProfile(null); setBootError(''); setPage(''); setVisited([]); setWorkScene(null); setRosterSection('mine'); setRosterRequestSignal(0); setSettingsSection('security'); }
     }).dispose;
   }, []);
   const navigate = view => {
     if (field && !(view.startsWith('scene:') ? staffSceneAllowed(profileRef.current, field, view.slice(6)) : staffViewAllowed(profileRef.current, view))) return;
+    if (view === 'roster-requests') { setRosterRequestSignal(value => value + 1); view = 'roster'; }
     if (view === 'capacity') { setSettingsSection('capacity'); view = 'settings'; }
     else if (view === 'settings') setSettingsSection('security');
     if (view.startsWith('scene:')) { setWorkScene(view.slice(6)); view = 'workbench'; }
@@ -136,7 +138,7 @@ function Root() {
   const visible = view => page === view;
   const route = (view, child, allowed = true) => allowed && staffViewAllowed(effectiveUser, view) && visited.includes(view) ? <ActivityContext.Provider key={view} value={visible(view)}><div className="workspace-route" data-route={view} hidden={!visible(view)} aria-hidden={!visible(view)}>{child}</div></ActivityContext.Provider> : null;
   const fieldRoute = route('workbench', <FieldApp initial={field} active={visible('workbench')} onNavigate={navigate} requestedScene={workScene} onSceneChange={setWorkScene} onContextChange={setField} workspaceLinks={workspaceLinks} />);
-  const rosterRoute = route('roster', <RosterArea user={effectiveUser} section={rosterSection} />, published.has('rosters') || staffPermission(effectiveUser, 'roster.repair.manage'));
+  const rosterRoute = route('roster', <RosterArea user={effectiveUser} section={rosterSection} requestSignal={rosterRequestSignal} />, published.has('rosters') || staffPermission(effectiveUser, 'roster.repair.manage'));
   const moduleRoutes = [
     route('leave-review', <LeaveReview user={effectiveUser} onNavigate={navigate} />, staffPermission(effectiveUser, 'leave.review')),
     route('office-roster', <main className="field-main roster-area"><OfficeRoster user={effectiveUser} /></main>, staffPermission(effectiveUser, 'roster.office.manage')),

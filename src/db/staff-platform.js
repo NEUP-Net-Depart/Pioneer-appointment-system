@@ -1,6 +1,7 @@
 import { parseJson } from '../platform/contracts.js';
 import { dateKey, nowIso } from '../platform/time.js';
 import { intersectScopes } from '../modules/authorization/scopes.js';
+import { rosterSwapCommands } from './roster-swaps.js';
 
 const memberColumns = `m.id,m.name,m.student_id,m.home_campus_id,m.status,m.revision,m.created_at,m.updated_at`;
 const assignmentLeaveColumn = `(SELECT lr.status FROM roster_leave_facts lr WHERE lr.origin_assignment_id=COALESCE(da.origin_assignment_id,da.id) AND lr.member_id=da.member_id
@@ -24,7 +25,7 @@ function assignment(row) {
     id: row.id, versionId: row.version_id, memberId: row.member_id, businessDate: row.business_date,
     campusId: row.campus_id, campusName: row.campus_name || '', dutyType: row.duty_type,
     startAt: row.start_at, endAt: row.end_at, revision: row.revision, roleKind: row.role_kind || '',
-    leaveStatus: row.leave_status || '', versionStatus: row.version_status || '', originAssignmentId: row.origin_assignment_id || ''
+    leaveStatus: row.leave_status || '', versionStatus: row.version_status || '', originAssignmentId: row.origin_assignment_id || '', previousAssignmentId: row.previous_assignment_id || ''
   } : null;
 }
 
@@ -652,14 +653,14 @@ export function staffPlatformRepository(db) {
       JOIN roster_versions rv ON rv.id=da.version_id LEFT JOIN duty_roles dr ON dr.assignment_id=da.id WHERE da.id=?`).bind(id).first();
     return assignment(row);
   }
-  async function effectiveLeaveAssignment(id, memberId) {
+  async function effectiveAssignment(id, memberId) {
     const row = await db.prepare(`SELECT da.*,c.name AS campus_name,dr.role_kind,rv.status AS version_status,${assignmentLeaveColumn}
       FROM duty_assignments da JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published' JOIN campuses c ON c.id=da.campus_id
       LEFT JOIN duty_roles dr ON dr.assignment_id=da.id WHERE COALESCE(da.origin_assignment_id,da.id)=(SELECT COALESCE(original.origin_assignment_id,original.id) FROM duty_assignments original WHERE original.id=?) AND da.member_id=? LIMIT 1`).bind(id,memberId).first();
     return row ? assignment(row) : assignmentById(id);
   }
   async function swapCandidates(source) {
-    const result = await db.prepare(`SELECT da.*,c.name AS campus_name,m.name AS member_name,dr.role_kind
+    const result = await db.prepare(`SELECT da.*,c.name AS campus_name,m.name AS member_name,dr.role_kind,rv.status AS version_status
       FROM duty_assignments da JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published'
       JOIN campuses c ON c.id=da.campus_id JOIN members m ON m.id=da.member_id AND m.status='active'
       LEFT JOIN duty_roles dr ON dr.assignment_id=da.id
@@ -740,7 +741,7 @@ export function staffPlatformRepository(db) {
       WHERE account.account=? AND account.member_id=? AND account.auth_version=? AND account.status='enabled' AND actor.status='active')`,
       args: [record.actorAccount,record.actorMemberId,record.authVersion] };
   }
-  async function createSwap(input, actorMemberId) { const id = input.id || crypto.randomUUID(); await db.prepare(`INSERT INTO swap_requests(id,from_assignment_id,to_assignment_id,from_member_id,to_member_id,from_revision,to_revision,note,created_at) VALUES(?,?,?,?,?,?,?,?,?)`).bind(id,input.fromAssignmentId,input.toAssignmentId,actorMemberId,input.toMemberId,input.fromRevision,input.toRevision,input.note || '',nowIso()).run(); return db.prepare('SELECT * FROM swap_requests WHERE id=?').bind(id).first(); }
+  const { swapFingerprint, createSwap, updateSwap } = rosterSwapCommands(db, { auditStatement, commandAuthorization });
   async function listSwaps(filters = {}) {
     const conditions = [], args = [];
     if (filters.memberId) { conditions.push('(from_member_id=? OR to_member_id=?)'); args.push(filters.memberId, filters.memberId); }
@@ -749,27 +750,17 @@ export function staffPlatformRepository(db) {
     return rows(result);
   }
   async function swapById(id) { return db.prepare('SELECT * FROM swap_requests WHERE id=?').bind(id).first(); }
-  async function updateSwap(id, status, actorMemberId, revision) {
-    const request = await db.prepare('SELECT * FROM swap_requests WHERE id=? AND to_member_id=? AND revision=? AND status=\'pending\'').bind(id,actorMemberId,revision).first();
-    if (!request) return null;
-    if (status !== 'accepted') {
-      const result = await db.prepare(`UPDATE swap_requests SET status=?,revision=revision+1,decided_at=? WHERE id=? AND to_member_id=? AND revision=? AND status='pending'`)
-        .bind(status,nowIso(),id,actorMemberId,revision).run();
-      return result.meta?.changes ? db.prepare('SELECT * FROM swap_requests WHERE id=?').bind(id).first() : null;
-    }
-    const at = nowIso();
-    const result = await db.batch([
-      db.prepare(`UPDATE duty_assignments SET member_id=?,revision=revision+1 WHERE id=? AND member_id=? AND revision=?`)
-        .bind(request.to_member_id,request.from_assignment_id,request.from_member_id,request.from_revision),
-      db.prepare(`UPDATE duty_assignments SET member_id=?,revision=revision+1 WHERE id=? AND member_id=? AND revision=?`)
-        .bind(request.from_member_id,request.to_assignment_id,request.to_member_id,request.to_revision),
-      db.prepare(`UPDATE swap_requests SET status='accepted',revision=revision+1,decided_at=? WHERE id=? AND to_member_id=? AND revision=? AND status='pending'`)
-        .bind(at,id,actorMemberId,revision)
-    ]);
-    return result[2]?.meta?.changes ? db.prepare('SELECT * FROM swap_requests WHERE id=?').bind(id).first() : null;
+  async function pendingSwapInvitations(memberId) {
+    return (await db.prepare("SELECT COUNT(*) AS total FROM swap_requests WHERE to_member_id=? AND status='pending'").bind(memberId).first()).total;
+  }
+  async function swapCoverage(weekStart) {
+    return rows(await db.prepare(`SELECT da.*,c.name AS campus_name,dr.role_kind,rv.status AS version_status,${assignmentLeaveColumn}
+      FROM duty_assignments da JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published'
+      JOIN campuses c ON c.id=da.campus_id LEFT JOIN duty_roles dr ON dr.assignment_id=da.id
+      WHERE da.business_date>=? AND da.business_date<=date(?,'+6 day') ORDER BY da.id`).bind(weekStart,weekStart).all()).map(assignment);
   }
 
-  return { effectiveLeaveAssignment, accountRow, accountForMember, ensureMember, memberRow, memberships, membershipsForMembers, profiles, grants, todayDuties, authorizationContext, listMembers, updateMember, listMemberships, addMembership, endMembership,
+  return { effectiveAssignment, effectiveLeaveAssignment: effectiveAssignment, swapFingerprint, swapCoverage, pendingSwapInvitations, accountRow, accountForMember, ensureMember, memberRow, memberships, membershipsForMembers, profiles, grants, todayDuties, authorizationContext, listMembers, updateMember, listMemberships, addMembership, endMembership,
     listCampuses, listDepartments, listLocations, listPresence, activeRepair, importMembers, dutyEvent, latestIntake, fieldPeople,
     roleBindings, permissionDefinitions, listRoles, createRole, updateRole, bindRoles, modules, createEvent, issueToken, findEventByToken, findAttendanceByDedupe, insertAttendance, listAttendance, attendanceExport, setPresence,
     attendanceEvent, eventById: attendanceEvent, createReceipt, claimReceipt, releaseReceipt, receipt, audit, listAudit, leaveImpact, officeRosterMemberIds, rosterMemberFacts, rosterTaskById, memberCampuses, createRosterTask, listRosterTasks, saveAvailability, availability, createRosterVersion, rosterVersionById, rosterVersionsForTask, versionAssignments, updateRosterDraft, publishRoster, listAssignments, assignmentById, swapCandidates, createLeave, leaveById, listLeaves, updateLeave, createSwap, swapById, listSwaps, updateSwap };

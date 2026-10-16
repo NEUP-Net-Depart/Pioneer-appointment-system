@@ -219,6 +219,7 @@ export function FieldApp({
           </Empty>
         ) : (
           <>
+            {!!data.pendingSwapInvitations && workspaceLinks.some(entry => entry.id === 'roster') && <section className="field-roster-todo" aria-label="待响应的换班邀请"><div><strong>{data.pendingSwapInvitations} 份换班邀请等待你确认</strong><p>查看双方的新安排，再决定是否同意。</p></div><button onClick={() => onNavigate('roster-requests')}>查看邀请</button></section>}
             {scene === "repair" && (
               <>
                 <section className="field-hero">

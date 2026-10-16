@@ -2,7 +2,7 @@
   "branch": "next/staff-platform",
   "baseCommit": "53b53db110d4d867c2f4277fa0954f1d97d74c7d",
   "contractVersion": "staff-platform.v1",
-  "schemaVersion": "0016",
+  "schemaVersion": "0017",
   "businessTimeZone": "Asia/Shanghai",
   "migrations": [
     {
@@ -68,6 +68,10 @@
     {
       "name": "0016_roster_leave_lineage.sql",
       "sha256": "101ba31e96db8a8857b52f79574e217eff2940b251f3afee117eb860d972054f"
+    },
+    {
+      "name": "0017_swap_revisions.sql",
+      "sha256": "b7afd318fdb712081a4049bd7e5e1da66052fcd7bb82a2a869f189b504d43ab3"
     }
   ],
   "modules": [
@@ -109,8 +113,8 @@
     },
     {
       "code": "rosters",
-      "version": "1.2.0",
-      "manifestHash": "19b13392",
+      "version": "1.3.0",
+      "manifestHash": "84074c42",
       "releaseState": "ready"
     },
     {
@@ -195,6 +199,10 @@
     {
       "name": "0014_roster_leave_lineage.sql",
       "sha256": "101ba31e96db8a8857b52f79574e217eff2940b251f3afee117eb860d972054f"
+    },
+    {
+      "name": "0015_swap_revisions.sql",
+      "sha256": "b7afd318fdb712081a4049bd7e5e1da66052fcd7bb82a2a869f189b504d43ab3"
     }
   ],
   "staffMigrationsDirectory": "database/staff-migrations"

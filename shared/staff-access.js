@@ -13,6 +13,7 @@ export function staffViewAllowed(user, view) {
     users: 'accounts.manage', stats: 'statistics.read', capacity: 'settings.manage', 'office-roster': 'roster.office.manage', 'leave-review': 'leave.review',
   };
   if (['workbench', 'settings'].includes(view)) return true;
+  if (view === 'roster-requests') return staffPermission(user, 'roster.read');
   if (view === 'roster') return staffPermission(user, 'roster.read') || staffPermission(user, 'roster.repair.manage');
   return !!permissions[view] && staffPermission(user, permissions[view]);
 }

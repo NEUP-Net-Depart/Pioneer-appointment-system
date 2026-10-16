@@ -11,7 +11,7 @@ export function normalizeAuthContext(value = {}) {
     resumeTasks: Array.isArray(value.resumeTasks) ? value.resumeTasks : [],
     modules: Array.isArray(value.modules) ? value.modules : [],
     authVersion: Number.isInteger(value.authVersion) ? value.authVersion : 0,
-    schemaVersion: value.schemaVersion || '0016'
+    schemaVersion: value.schemaVersion || '0017'
   };
 }
 
