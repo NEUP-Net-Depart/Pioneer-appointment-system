@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 
+test.use({ extraHTTPHeaders: { 'CF-Connecting-IP': '192.0.2.92' } });
+
 async function expandGroup(page, name) {
   const group = page.locator('.field-sidebar').getByRole('button', { name, exact: true }).first();
   if (await group.getAttribute('aria-expanded') === 'false') await group.click();

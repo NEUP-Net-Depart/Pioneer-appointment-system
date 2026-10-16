@@ -3,7 +3,7 @@ import { hashPassword } from '../lib/passwords.js';
 import { roleLevel } from '../../shared/constants.js';
 import { canManageAccount,requireGrantScope,requireRole,requireCampus } from './permissions.js';
 
-export function userService(users) {
+export function userService(users, staff = null) {
   async function manageable(id, actor) {
     const target = await users.find(id);
     if (!target) fail(404, '账号不存在');
@@ -12,17 +12,21 @@ export function userService(users) {
   }
   return {
     async assignees(query, actor) {
-      requireRole(actor,'admin'); requireCampus(actor,query.campus);
+      requireRole(actor,staff?.field?.enabled ? 'technician' : 'admin');
+      if (staff?.field?.enabled) actor = await staff.scopedActor(actor, 'repair.correct');
+      requireCampus(actor,query.campus);
       return { items: await users.assignees(query) };
     },
     async list(actor) {
-      requireRole(actor,'admin');
-      return {items:(await users.list()).filter(user=>actor.role==='superadmin' || canManageAccount(actor,user) || user.account===actor.account).map(user => {
+      requireRole(actor,staff?.field?.enabled ? 'technician' : 'admin');
+      if (staff?.field?.enabled) actor = await staff.scopedActor(actor, 'accounts.manage');
+      return {items:(await users.list()).filter(user=>(actor.role==='superadmin' && (!staff?.field?.enabled || user.authorizedCampuses.length > 0 && user.authorizedCampuses.every(campus => actor.authorizedCampuses.includes(campus)))) || canManageAccount(actor,user) || user.account===actor.account).map(user => {
         const editable = canManageAccount(actor, user);
         return { ...user, actions: { edit: editable, changeStatus: editable, resetPassword: editable } };
       })};
     },
     async update(id, input, actor) {
+      if (staff?.field?.enabled) actor = await staff.scopedActor(actor, 'accounts.manage');
       const target = await manageable(id, actor), patch = { ...input };
       if (patch.authorizedCampuses) requireGrantScope(actor,patch.authorizedCampuses);
       if (patch.role !== undefined) {

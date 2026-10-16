@@ -38,6 +38,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
   }
   return {
     async overview(user) {
+      if (staffPlatform?.field?.enabled) user = await staffPlatform.scopedActor(user, 'repair.summary.read');
       const instant = clock(), start = dateKey(instant), end = addDays(start, 6);
       const { campuses } = appointmentScope(user);
       await expire(instant, { campuses });
@@ -56,6 +57,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       return { start, end, dates, campuses, items: makeItems(dates), week: { ...week, dates: weekDates, items: makeItems(weekDates) }, updatedAt: instant.toISOString() };
     },
     async list(query, user) {
+      if (staffPlatform?.field?.enabled) user = await staffPlatform.scopedActor(user, 'repair.summary.read');
       const scope = appointmentScope(user);
       await expire(clock(), { campuses: scope.campuses });
       if(staffPlatform?.field?.enabled) {
@@ -130,7 +132,10 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
     async recover(id, input, actor) {
       const item = await appointments.find(id);
       if (!item) fail(404, '预约不存在');
-      requireRole(actor, 'admin'); requireAppointmentAccess(actor, item);
+      if (staffPlatform?.field?.enabled) {
+        requireCampus(actor, item.campus);
+        await staffPlatform.requirePermission(actor, 'repair.correct', { campusId: item.campus, id: item.id, assignedMemberId: item.assignedMemberId, businessDate: item.date });
+      } else { requireRole(actor, 'admin'); requireAppointmentAccess(actor, item); }
       if (input.identityVerified !== true || typeof input.reason !== 'string' || input.reason.trim().length < 8 || input.reason.length > 300) fail(400, '请确认已人工核验身份，并记录至少 8 字的核验说明');
       const credential = issueAccessToken();
       if (!await appointments.rotateCredential(item, credential.hash, actor.account, input.reason.trim(), clock().toISOString())) fail(409, '预约已更新，请刷新后重试');
@@ -156,7 +161,8 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       if (input.expiresAt !== undefined && action !== 'correct') fail(400, '有效截止时间只能由管理员纠错设置');
       let patch, eligibility;
       if (action === 'correct') {
-        if (user?.role === 'admin' || user?.role === 'superadmin') requireRole(user, 'admin');
+        if (staffPlatform?.field?.enabled) await staffPlatform.requirePermission(user, 'repair.correct', { campusId: item.campus, assignedMemberId: item.assignedMemberId, id: item.id, businessDate: item.date });
+        else if (user?.role === 'admin' || user?.role === 'superadmin') requireRole(user, 'admin');
         else if (staffPlatform) await staffPlatform.requirePermission(user, 'repair.correct', { campusId: item.campus, assignedMemberId: item.assignedMemberId, id: item.id, businessDate: item.date });
         else requireRole(user, 'admin');
         requireCampus(user, item.campus);
@@ -209,7 +215,8 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
           if (!await appointments.intakePhotos(item.id, user.account, input.frontPhotoId, input.backPhotoId, timestamp)) fail(400, '请由本次签到人员上传电脑正面和反面照片');
           patch = { status: 'in_progress', assignedTo: user.account, startedAt: timestamp, completedAt: null, outcome: null, frontPhotoId: input.frontPhotoId, backPhotoId: input.backPhotoId };
         } else if (item.status === 'booked' && input.status === 'cancelled' && input.outcome === undefined) {
-          requireRole(user, 'admin');
+          if (staffPlatform?.field?.enabled) await staffPlatform.requirePermission(user, 'repair.correct', { campusId: item.campus, id: item.id, businessDate: item.date });
+          else requireRole(user, 'admin');
           patch = { status: 'cancelled', outcome: null, completedAt: timestamp };
         } else if (item.status === 'in_progress' && input.status === 'completed') {
           if (staffPlatform?.field?.enabled) {

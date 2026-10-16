@@ -253,7 +253,7 @@ export function FieldApp({
                       >
                         继续维修
                       </button>
-                    ) : data.state === "unsigned" ? (
+                    ) : data.state === "unsigned" && data.capability['attendance.self'] ? (
                       <button
                         className="field-primary"
                         onClick={() => {

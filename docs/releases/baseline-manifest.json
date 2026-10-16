@@ -2,7 +2,7 @@
   "branch": "next/staff-platform",
   "baseCommit": "53b53db110d4d867c2f4277fa0954f1d97d74c7d",
   "contractVersion": "staff-platform.v1",
-  "schemaVersion": "0013",
+  "schemaVersion": "0014",
   "businessTimeZone": "Asia/Shanghai",
   "migrations": [
     {
@@ -56,13 +56,17 @@
     {
       "name": "0013_personal_roster_access.sql",
       "sha256": "ace80afe1b862980962e7361c4241012c50bb8ece7f98152a137cfb842d45ffc"
+    },
+    {
+      "name": "0014_workspace_authorization.sql",
+      "sha256": "9c495e9b90f1805c10fa3de3d57cedbffd443fcbc0093525f7196f7cd1d86278"
     }
   ],
   "modules": [
     {
       "code": "identity",
       "version": "1.0.0",
-      "manifestHash": "f4b0b62d",
+      "manifestHash": "4bfb2b31",
       "releaseState": "ready"
     },
     {
@@ -80,7 +84,7 @@
     {
       "code": "repairs",
       "version": "1.0.0",
-      "manifestHash": "e9cb1406",
+      "manifestHash": "2d03608e",
       "releaseState": "ready"
     },
     {
@@ -98,7 +102,7 @@
     {
       "code": "rosters",
       "version": "1.0.0",
-      "manifestHash": "514c6e44",
+      "manifestHash": "9c522d5c",
       "releaseState": "ready"
     },
     {
@@ -171,6 +175,10 @@
     {
       "name": "0011_personal_roster_access.sql",
       "sha256": "ace80afe1b862980962e7361c4241012c50bb8ece7f98152a137cfb842d45ffc"
+    },
+    {
+      "name": "0012_workspace_authorization.sql",
+      "sha256": "9c495e9b90f1805c10fa3de3d57cedbffd443fcbc0093525f7196f7cd1d86278"
     }
   ],
   "staffMigrationsDirectory": "database/staff-migrations"

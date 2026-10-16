@@ -7,7 +7,7 @@ const headers = ['预约编号','学号','姓名','学院','校区','联系方�
 export function exportService(appointments, encryptionKey, clock = () => new Date(), field = null) {
   return {
     async csv(actor) {
-      requireRole(actor,'admin');
+      requireRole(actor,field?.enabled ? 'technician' : 'admin');
       const campuses=actor.authorizedCampuses;
       const instant = clock();
       await appointments.expirePending(instant.toISOString(), {campuses});

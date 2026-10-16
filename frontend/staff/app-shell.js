@@ -18,6 +18,7 @@ export function createStaffHost({ documentRef = document, windowRef = window } =
   let context = null;
   let registry = createModuleRegistry([]);
   let disposed = false;
+  let checkedAt = 0, pending = null, pendingToken = '';
 
   function renderNavigation() {
     const nav = documentRef.querySelector('.main-nav');
@@ -49,22 +50,38 @@ export function createStaffHost({ documentRef = document, windowRef = window } =
     region.hidden = !(context.resumeTasks || []).length;
   }
 
-  async function refresh() {
+  async function load() {
     const token = sessionStorage.getItem('pioneerToken');
     if (disposed || !token) return null;
     // The legacy staff screen can continue to operate when a context refresh
     // is unavailable (for example while a deployment is warming up). A
     // rejected context request must not revoke the freshly established login;
     // auth.js owns session expiry and will handle it on its own request.
-    const payload = await apiJson('/api/auth/me', { suppressAuthExpired: true });
+    const payload = await apiJson('/api/auth/me', { suppressAuthExpired: !context?.staffWorkflowEnabled });
     if (disposed || sessionStorage.getItem('pioneerToken') !== token) return null;
     context = { ...payload, ...normalizeAuthContext(payload) };
+    checkedAt = Date.now();
     renderNavigation(); renderResumeTasks();
     windowRef.dispatchEvent(new CustomEvent('staff-context-ready', { detail: context }));
     return context;
   }
 
-  function dispose() { disposed = true; windowRef.removeEventListener('staff-session-ready', sessionReady); windowRef.removeEventListener('staff-context-retry', sessionReady); windowRef.removeEventListener('auth-expired', clearContext); }
+  function refresh() {
+    const token = sessionStorage.getItem('pioneerToken');
+    if (!pending || pendingToken !== token) {
+      pendingToken = token;
+      const current = load().finally(() => { if (pending === current) pending = null; });
+      pending = current;
+    }
+    return pending;
+  }
+  function revalidate(force = false) {
+    if (!documentRef.hidden && context?.staffWorkflowEnabled && (force === true || Date.now() - checkedAt >= 30000)) refresh().catch(() => {});
+  }
+  const timer = setInterval(() => revalidate(true), 30000);
+  documentRef.addEventListener('visibilitychange', revalidate);
+
+  function dispose() { disposed = true; clearInterval(timer); documentRef.removeEventListener('visibilitychange', revalidate); windowRef.removeEventListener('staff-session-ready', sessionReady); windowRef.removeEventListener('staff-context-retry', sessionReady); windowRef.removeEventListener('auth-expired', clearContext); }
   function sessionReady() { refresh().catch(error => windowRef.dispatchEvent(new CustomEvent('staff-context-error', { detail: { message: error.message } }))); }
   function clearContext() { context = null; registry = createModuleRegistry([]); }
   windowRef.addEventListener('staff-session-ready', sessionReady);

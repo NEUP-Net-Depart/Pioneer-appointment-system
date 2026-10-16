@@ -127,7 +127,7 @@ export function staffPlatformRepository(db) {
       actor: { memberId, account: user.account, name: member?.name || user.name, status: member?.status || user.status },
       member, memberships: membershipItems, workProfiles: profileItems, grants: grantItems,
       todayDuties: duties, presence: presence ? { memberId: presence.member_id, businessDate: presence.business_date, campusId: presence.campus_id, state: presence.state, revision: presence.revision } : null,
-      authVersion, schemaVersion: '0013'
+      authVersion, schemaVersion: '0014'
     };
   }
 

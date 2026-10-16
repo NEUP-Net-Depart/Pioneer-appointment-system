@@ -3,13 +3,14 @@ import { clearSession } from '../../shared/api.js';
 import { ActivityContext, api, Modal, Notice } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { CapacityEditor } from './CapacityEditor';
+import { staffPermission } from '../../shared/staff-access.js';
 
-export function AccountSettings({ user, section, onNavigate }: { user: { name: string; account: string; homeCampus: string; authorizedCampuses: string[]; role: string }; section: string; onNavigate?: (view: string) => void }) {
+export function AccountSettings({ user, section, onNavigate }: { user: { name: string; account: string; homeCampus: string; authorizedCampuses: string[]; role: string; staffWorkflowEnabled?: boolean; permissions?: Record<string, boolean> }; section: string; onNavigate?: (view: string) => void }) {
   const active = useContext(ActivityContext);
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [confirm, setConfirm] = useState(false);
   const form = useRef<HTMLFormElement>(null);
   const security = section !== 'capacity';
-  const allowed = ['admin', 'superadmin'].includes(user.role);
+  const allowed = staffPermission(user, 'settings.manage');
   function signedOut(message: string) { clearSession(); window.dispatchEvent(new CustomEvent('auth-expired', { detail: { message } })); }
   async function changePassword(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

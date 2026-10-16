@@ -36,11 +36,11 @@ export function createContext(request, env) {
     encryptionKey: env.PII_ENCRYPTION_KEY, secret: env.JWT_SECRET, enabled: env.STAFF_WORKFLOW_ENABLED === 'true' });
   staffPlatformServiceInstance.field = field;
   const services = {
-    auth: authService(users, env.JWT_SECRET), users: userService(users),
+    auth: authService(users, env.JWT_SECRET), users: userService(users, staffPlatformServiceInstance),
     activation: activationService(activationRepository(db),users),
     appointments: appointmentService(appointments, users, env.PII_ENCRYPTION_KEY, undefined, staffPlatformServiceInstance),
     attachments: attachmentService(appointments, attachmentRepository(db), env.ATTACHMENTS, storageLimit(env), field),
-    queue: queueService(appointments, queueRepository(db)), stats: statsService(statsRepository(db), appointments),
+    queue: queueService(appointments, queueRepository(db)), stats: statsService(statsRepository(db), appointments, undefined, staffPlatformServiceInstance),
     export: exportService(appointments, env.PII_ENCRYPTION_KEY, undefined, field),
     limits: rateLimitService(rateLimitRepository(db), env.JWT_SECRET),
     slotCapacities: slotCapacityService(slotCapacityRepository(db, { workflowSchema: env.STAFF_WORKFLOW_ENABLED === 'true' }), staffPlatformServiceInstance),
@@ -57,6 +57,10 @@ export function createContext(request, env) {
     observe(record) { if (env.OBSERVABILITY_LOGS === 'true') console.log(JSON.stringify(record)); },
     accessToken: request.headers.get('X-Appointment-Token') || '',
     async role(minimum) { return requireRole(await authenticate(), minimum); },
+    async permission(code, legacyRole = 'admin') {
+      const actor = requireRole(await authenticate(), field.enabled ? 'technician' : legacyRole);
+      return field.enabled ? staffPlatformServiceInstance.scopedActor(actor, code) : actor;
+    },
     async limit(scope, options) {
       // Supplied by Cloudflare on the edge. Missing IPs share a conservative bucket in local dev.
       await services.limits.check(request.headers.get('CF-Connecting-IP') || 'unknown', scope, options);

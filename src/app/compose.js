@@ -16,7 +16,8 @@ export function composeStaffPlatform({ repository, repairs }) {
     async authContext(user, options = {}) {
       const context = await repository.authorizationContext(user, options.businessDate);
       const grants = context.grants;
-      return { ...context, navigation: navigationFor(user, grants, manifests), modules: manifestCheck.summary, resumeTasks: [], workbenchProviders: workbenchProviders(manifests) };
+      const actor = { ...context.actor, role: user.role, authorizedCampuses: user.authorizedCampuses, authVersion: context.authVersion };
+      return { ...context, actor, navigation: navigationFor(actor, grants, manifests, { ...context, businessDate: options.businessDate }), modules: manifestCheck.summary, resumeTasks: [], workbenchProviders: workbenchProviders(manifests) };
     }
   };
 }

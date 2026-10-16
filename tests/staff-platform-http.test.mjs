@@ -315,6 +315,14 @@ test('role writes reject malformed ranges and protect administrator identities f
   await db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,?,?,?,?,?)')
     .bind('20269810', '办公管理员', 'admin', '南湖', hashPassword('delegation-password'), dateKey()).run();
   await db.prepare("INSERT INTO staff_campus_grants VALUES('20269810','南湖')").run();
+  // Reception no longer receives member administration implicitly. Grant this
+  // test editor an explicit campus-scoped capability before testing delegation.
+  const repository = staffPlatformRepository(db);
+  await repository.ensureMember('20269810');
+  const editorRole = await request('/api/roles', { headers, method: 'POST', body: JSON.stringify({ code: 'delegated-member-editor', name: '受委派资料管理员', grants: [{ permissionCode: 'members.manage', scope: { campusIds: ['campus-nanhu'] }, conditions: [] }] }) });
+  assert.equal(editorRole.response.status, 201);
+  const binding = await request('/api/members/member-20269810/roles', { headers, method: 'PUT', body: JSON.stringify({ revision: 0, bindings: [{ roleId: editorRole.body.id, scope: { campusIds: ['campus-nanhu'] }, effectiveFrom: dateKey() }] }) });
+  assert.equal(binding.response.status, 200);
   const admin = await request('/api/auth/login', { method: 'POST', body: JSON.stringify({ account: '20269810', password: 'delegation-password' }) });
   const adminHeaders = { Authorization: `Bearer ${admin.body.token}` };
   assert.equal((await request('/api/roles/role-superadmin', { headers: adminHeaders, method: 'PATCH', body: JSON.stringify({ revision: 0, grants: [] }) })).response.status, 403);
@@ -324,7 +332,7 @@ test('role writes reject malformed ranges and protect administrator identities f
     assert.equal((await request('/api/members/import', { headers: adminHeaders, method: 'POST', body: JSON.stringify({ csv, confirm: true }) })).response.status, 403);
   }
   assert.equal((await db.prepare("SELECT COUNT(*) AS total FROM members WHERE student_id IN ('20269811','20269812')").first()).total, 0);
-  const disabled = await request('/api/members/member-20269810', { headers: adminHeaders, method: 'PATCH', body: JSON.stringify({ revision: 0, status: 'inactive' }) });
+  const disabled = await request('/api/members/member-20269810', { headers: adminHeaders, method: 'PATCH', body: JSON.stringify({ revision: 1, status: 'inactive' }) });
   assert.equal(disabled.response.status, 200, 'a committed self-deactivation must return its successful result');
   assert.equal((await request('/api/auth/me', { headers: adminHeaders })).response.status, 401);
   const audit = await db.prepare("SELECT COUNT(*) AS total FROM audit_events WHERE actor_account='20269810' AND action='identity.member.updated'").first();

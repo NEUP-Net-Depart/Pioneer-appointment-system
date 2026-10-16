@@ -138,6 +138,56 @@ before(async () => {
 });
 after(async () => mf?.dispose());
 
+test('ordinary reception and repair roles cannot enter management or use legacy admin API shortcuts', async () => {
+  for (const account of ['20261001', '20261002']) {
+    const profile = await request('/api/auth/me', account);
+    assert.equal(profile.status, 200);
+    for (const code of ['members.manage', 'roles.manage', 'accounts.manage', 'statistics.read', 'settings.manage']) assert.notEqual(profile.body.permissions[code], true, `${account}: ${code}`);
+    for (const entry of ['members','roles','users','stats','capacity','roster-manage']) assert.equal(profile.body.navigation.some(item => item.id === entry), false, `${account}: ${entry}`);
+    for (const path of ['/api/members','/api/roles','/api/permissions','/api/users','/api/staff-whitelist','/api/activation-requests','/api/stats/summary','/api/export/appointments.csv','/api/slot-capacities']) {
+      assert.equal((await request(path, account)).status, 403, `${account}: ${path}`);
+    }
+    assert.equal((await request('/api/users/20261003', account, { status: 'disabled' }, 'PATCH')).status, 403);
+    assert.equal((await request('/api/slot-capacities', account, { items: [] }, 'PATCH')).status, 403);
+  }
+  const profile = await request('/api/auth/me', 'root001');
+  for (const entry of ['members','roles','users','stats','capacity']) assert.ok(profile.body.navigation.some(item => item.id === entry), entry);
+});
+
+test('explicit scoped capabilities work for technicians and revocation invalidates old sessions and entries', async () => {
+  const account = '20261901';
+  await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,'范围测试人员','technician','南湖',?,'2026-01-01')").bind(account, hashPassword('StaffTest!2026')).run();
+  await db.prepare("INSERT INTO staff_campus_grants VALUES(?,'南湖'),(?,'浑南')").bind(account, account).run();
+  async function login() { tokens[account] = (await request('/api/auth/login', null, { account, password: 'StaffTest!2026' })).body.token; }
+  await login();
+  const initial = (await request('/api/auth/me', account)).body;
+  const role = await request('/api/roles', 'root001', { code: 'scoped_test', name: '范围配置员', grants: ['settings.manage','statistics.read'].map(permissionCode => ({ permissionCode, scope: { campusIds: ['campus-nanhu'] }, conditions: [] })) });
+  assert.equal(role.status, 201, JSON.stringify(role.body));
+  const detail = await request(`/api/members/${initial.actor.memberId}`, 'root001');
+  assert.equal((await request(`/api/members/${initial.actor.memberId}/roles`, 'root001', { revision: detail.body.member.revision, bindings: [{ roleId: role.body.id, scope: { campusIds: ['campus-nanhu'] }, effectiveFrom: '2026-01-01' }] }, 'PUT')).status, 200);
+  assert.equal((await request('/api/auth/me', account)).status, 401);
+  await login();
+  const granted = (await request('/api/auth/me', account)).body;
+  for (const id of ['capacity','stats']) assert.ok(granted.navigation.some(entry => entry.id === id));
+  const capacities = await request('/api/slot-capacities', account);
+  assert.equal(capacities.status, 200, JSON.stringify(capacities.body));
+  assert.ok(capacities.body.items.length);
+  assert.ok(capacities.body.items.every(item => item.campus === '南湖'));
+  assert.equal((await request('/api/slot-capacities/actual?campus=浑南&date=2026-10-15', account)).status, 403);
+  const cell = capacities.body.items[0];
+  assert.equal((await request('/api/slot-capacities', account, { items: [{ ...cell, capacity: cell.capacity }] }, 'PATCH')).status, 200);
+  assert.equal((await request('/api/stats/summary', account)).status, 200);
+  const updated = await request(`/api/roles/${role.body.id}`, 'root001', { revision: role.body.revision, grants: [] }, 'PATCH');
+  assert.equal(updated.status, 200, JSON.stringify(updated.body));
+  assert.equal((await request('/api/slot-capacities', account)).status, 401);
+  await login();
+  const revoked = (await request('/api/auth/me', account)).body;
+  assert.equal(revoked.navigation.some(entry => ['capacity','stats'].includes(entry.id)), false);
+  assert.equal((await request('/api/slot-capacities', account)).status, 403);
+  assert.equal((await request('/api/stats/summary', account)).status, 403);
+  for (const path of ['/api/me/roster','/api/me/attendance','/api/leaves','/api/swaps']) assert.equal((await request(path, account)).status, 403, path);
+});
+
 test('actual capacity keeps date snapshots and scopes staffing by existing roster grants', async () => {
   const path = '/api/slot-capacities/actual?campus=%E5%8D%97%E6%B9%96&date=2026-10-15';
   assert.equal((await request(path, null)).status, 401);
@@ -150,8 +200,7 @@ test('actual capacity keeps date snapshots and scopes staffing by existing roste
   assert.equal(initial.body.items.length, 4);
   assert.deepEqual(initial.body.staffing, { repair: 3, office: 1 });
   const limited = await request(path, '20261001');
-  assert.equal(limited.status, 200, JSON.stringify(limited.body));
-  assert.equal(limited.body.staffing, null);
+  assert.equal(limited.status, 403, JSON.stringify(limited.body));
   const date = '2026-10-22';
   const { results } = await db.prepare("SELECT * FROM weekday_slot_capacities WHERE campus='南湖' AND weekday=4").all();
   await db.batch(results.map(row => db.prepare('INSERT INTO booking_day_slots(campus,date,time_slot,capacity) VALUES(?,?,?,?)').bind(row.campus, date, row.time_slot, row.capacity)));
@@ -251,6 +300,11 @@ test("field day: reception, attendance, intake, transfer and completion share au
   assert.equal(rootDetail.body.canCorrect, true);
   assert.equal(rootDetail.body.canRecoverCredential, true);
   assert.ok(rootDetail.body.original.signature);
+  const officeDetail = await request(`/api/field/appointments/${id}`, office);
+  assert.equal(officeDetail.body.canCorrect, false);
+  assert.equal(officeDetail.body.canRecoverCredential, false);
+  assert.equal((await request(`/api/appointments/${id}/correction`, office, { status: 'cancelled', revision: before.body.revision, correctionReason: '没有纠错授权时不能使用旧管理员身份绕过' }, 'PATCH')).status, 403);
+  assert.equal((await request(`/api/appointments/${id}/credential`, office, { identityVerified: true, reason: '没有纠错授权时不能签发新的用户凭证' })).status, 403);
   const assignees = await request(`/api/field/appointments/${id}/assignees`, 'root001');
   assert.equal(assignees.status, 200);
   assert.ok(assignees.body.items.some(person => person.account === tech));

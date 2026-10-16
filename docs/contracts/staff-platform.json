@@ -1,7 +1,7 @@
 {
   "contractVersion": "staff-platform.v1",
-  "schemaVersion": "0013",
-  "authContext": ["actor", "memberships", "workProfiles", "grants", "todayDuties", "navigation", "resumeTasks", "modules", "authVersion", "schemaVersion"],
+  "schemaVersion": "0014",
+  "authContext": ["actor", "memberships", "workProfiles", "grants", "permissions", "todayDuties", "navigation", "resumeTasks", "modules", "authVersion", "schemaVersion"],
   "errors": ["VALIDATION_ERROR", "SESSION_EXPIRED", "PERMISSION_REQUIRED", "REVISION_CONFLICT", "REQUEST_CONFLICT", "PRESENCE_CHANGED", "ACTIVE_REPAIR_EXISTS"],
   "routes": {
     "identity": ["GET /api/auth/me", "GET /api/members", "GET /api/members/:memberId", "PATCH /api/members/:memberId", "POST /api/members/import", "GET /api/workbench", "GET /api/desk/summary"],

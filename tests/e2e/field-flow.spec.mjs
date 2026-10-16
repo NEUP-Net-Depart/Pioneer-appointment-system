@@ -1,6 +1,9 @@
 import { test, expect } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 
+// Keep this suite's login limits independent from the other browser suites.
+test.use({ extraHTTPHeaders: { 'CF-Connecting-IP': '192.0.2.91' } });
+
 test.skip(
   process.env.E2E_FIELD !== "true",
   "Runs against the isolated field-workflow fixture",
@@ -31,6 +34,66 @@ async function api(request, path, token, body, method = body ? "POST" : "GET") {
 async function recordFixture(request, token, studentId) {
   return api(request, '/api/scan/onsite', token, { requestId: crypto.randomUUID(), registrationFlow: 'frontdesk', campus: '南湖', name: '记录测试同学', studentId, social: 'record-test', deviceType: '笔记本电脑', brand: '联想', deviceModel: 'ThinkPad Records', warranty: '否', faultType: '系统问题', signature: [Array.from({ length: 10 }, (_,i) => [0.1 + i * 0.05, 0.2 + i * 0.03])] });
 }
+
+for (const account of ['20261001', '20261002']) test(`ordinary staff ${account} cannot see or force open management workspaces`, async ({ page }) => {
+  await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': account === '20261001' ? '192.0.2.71' : '192.0.2.72' });
+  await login(page, account);
+  const managementReads = [];
+  page.on('request', req => { if (/^\/api\/(members|roles|users|stats|slot-capacities|staff-whitelist|activation-requests)(?:\/|$)/.test(new URL(req.url()).pathname)) managementReads.push(req.url()); });
+  const sidebar = page.locator('.field-sidebar');
+  for (const label of ['成员管理','授权管理','账号管理','预约配置','统计分析','维修排班管理','现场管理']) await expect(sidebar.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+  for (const view of ['members','permissions','users','stats','capacity','roster-manage']) {
+    await page.evaluate(view => window.dispatchEvent(new CustomEvent('staff-navigate', { detail: view })), view);
+    await expect(page.locator('.workspace-route:not([hidden])')).toHaveAttribute('data-route', 'workbench');
+  }
+  expect(managementReads).toEqual([]);
+  await mkdir('output/field-workflow', { recursive: true });
+  await page.screenshot({ path: `output/field-workflow/access-${account}-desktop.png`, fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: '更多', exact: true }).click();
+  const entries = page.getByRole('dialog', { name: '工作入口', exact: true });
+  for (const label of ['成员管理','授权管理','账号管理','预约配置','统计分析','维修排班管理']) await expect(entries.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+  await page.screenshot({ path: `output/field-workflow/access-${account}-mobile.png`, fullPage: true });
+  await entries.getByRole('button', { name: '关闭', exact: true }).click();
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await sidebar.getByRole('button', { name: '账号安全', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '账号安全', exact: true })).toBeVisible();
+  await expect(page.locator('.capacity-editor')).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();
+  for (const label of ['成员管理','授权管理','账号管理','预约配置','统计分析']) await expect(page.locator('.field-sidebar').getByRole('button', { name: label, exact: true })).toHaveCount(0);
+});
+
+test('revoking an open capability signs out stale views and restores only authorized entries on login', async ({ page, request }) => {
+  // Install before app startup so the shell's existing interval is controlled.
+  await page.clock.install();
+  await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': '192.0.2.73' });
+  const admin = await api(request, '/api/auth/login', '', { account: 'root001', password: process.env.E2E_ROOT_PASSWORD });
+  const member = await api(request, '/api/members/member-20261003', admin.token);
+  const role = await api(request, '/api/roles', admin.token, { code: 'browser_scope_' + Date.now(), name: '浏览器范围测试', grants: [{ permissionCode: 'settings.manage', scope: { campusIds: ['campus-nanhu'] }, conditions: [] }] });
+  try {
+    await api(request, '/api/members/member-20261003/roles', admin.token, { revision: member.member.revision, bindings: [...member.bindings, { roleId: role.id, scope: { campusIds: ['campus-nanhu'] }, effectiveFrom: '2026-01-01' }] }, 'PUT');
+    await login(page, '20261003');
+    const sidebar = page.locator('.field-sidebar');
+    const business = sidebar.getByRole('button', { name: '业务管理', exact: true });
+    if (await business.getAttribute('aria-expanded') === 'false') await business.click();
+    await sidebar.getByRole('button', { name: '预约配置', exact: true }).click();
+    await expect(page.locator('.capacity-editor')).toBeVisible();
+    await expect(page.locator('.capacity-sheet-desktop input').first()).toBeVisible();
+    await api(request, `/api/roles/${role.id}`, admin.token, { revision: role.revision, grants: [] }, 'PATCH');
+    await page.clock.fastForward(31000);
+    await expect(page.locator('#login-view')).toBeVisible();
+    await expect(page.locator('#staff-platform-root')).toBeEmpty();
+    await page.clock.resume();
+    await login(page, '20261003');
+    await expect(page.locator('.field-sidebar').getByRole('button', { name: '预约配置', exact: true })).toHaveCount(0);
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('staff-navigate', { detail: 'capacity' })));
+    await expect(page.locator('.capacity-editor')).toHaveCount(0);
+  } finally {
+    const latest = await api(request, '/api/members/member-20261003', admin.token);
+    await api(request, '/api/members/member-20261003/roles', admin.token, { revision: latest.member.revision, bindings: member.bindings }, 'PUT');
+  }
+});
 
 test('platform startup errors never reveal old pages or start legacy record refreshes', async ({ page }) => {
   await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': '192.0.2.50' });

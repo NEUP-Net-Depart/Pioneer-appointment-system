@@ -5,6 +5,7 @@ import { Roster } from './Roster.jsx';
 import { addDays, dateKey, weekRange } from '../../shared/time.js';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import './roster.css';
+import { staffPermission } from '../../shared/staff-access.js';
 
 const campusNames = { 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' };
 const campusIds = { '南湖': 'campus-nanhu', '浑南': 'campus-hunnan' };
@@ -14,10 +15,12 @@ const issues = { SLOTS_REQUIRED: '没有服务班次', COVERAGE_MISSING: '尚未
 
 export function RosterArea({ user, section = 'mine' }) {
   const active = useContext(ActivityContext);
+  const canManage = staffPermission(user, 'roster.repair.manage');
+  const canRead = staffPermission(user, 'roster.read');
+  if (!canRead && canManage) section = 'manage';
   const [visited, setVisited] = useState([section]);
   useEffect(() => { setVisited(current => current.includes(section) ? current : [...current, section]); }, [section]);
-  const canManage = user?.grants?.some(grant => grant.permissionCode === 'roster.repair.manage');
-  return <main className="field-main roster-area">{visited.includes('manage') && canManage && <ActivityContext.Provider value={active && section === 'manage'}><div hidden={section !== 'manage'} className="roster-section"><RosterManager user={user} /></div></ActivityContext.Provider>}{visited.includes('mine') && <ActivityContext.Provider value={active && section !== 'manage'}><div hidden={section === 'manage'} className="roster-section"><Roster user={user} /></div></ActivityContext.Provider>}</main>;
+  return <main className="field-main roster-area">{visited.includes('manage') && canManage && <ActivityContext.Provider value={active && section === 'manage'}><div hidden={section !== 'manage'} className="roster-section"><RosterManager user={user} /></div></ActivityContext.Provider>}{visited.includes('mine') && canRead && <ActivityContext.Provider value={active && section !== 'manage'}><div hidden={section === 'manage'} className="roster-section"><Roster user={user} /></div></ActivityContext.Provider>}</main>;
 }
 
 function RosterManager({ user }) {

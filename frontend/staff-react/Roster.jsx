@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { request } from './request.js';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { WorkspaceSections } from './WorkspaceSections';
+import { staffPermission } from '../../shared/staff-access.js';
 
 const dutyLabels = { repair: '维修值班', office: '办公接待', repair_lead: '维修值班负责人', office_lead: '办公值班负责人' };
 
@@ -14,7 +15,7 @@ export function Roster({ user }) {
   const [submittedWindows, setSubmittedWindows] = useState([]);
   const selectedTask = tasks.find(task => task.id === availability.taskId);
   const statusText = { pending: '待处理', approved: '已批准', rejected: '已拒绝', withdrawn: '已撤回', accepted: '已接受', declined: '已拒绝' };
-  const canReview = user?.role === 'superadmin' || user?.grants?.some(grant => grant.permissionCode === 'leave.review');
+  const canReview = staffPermission(user, 'leave.review');
   async function refresh() {
     try {
       const requests = [request('/api/me/roster'), request('/api/roster-tasks'), request('/api/leaves'), request('/api/swaps')];

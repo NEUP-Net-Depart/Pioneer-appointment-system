@@ -6,6 +6,7 @@ import { generateRoster, validateRoster } from '../modules/rosters/solver.js';
 import { attendanceMethod, policyFor } from '../modules/attendance/public.js';
 import { validScope, campusId as normalizeCampusId } from '../modules/authorization/scopes.js';
 import { validGrantValidity } from '../modules/authorization/public.js';
+import { workspacePermissions } from '../modules/authorization/workspace.js';
 
 function randomToken() {
   const bytes = new Uint8Array(24);
@@ -95,8 +96,16 @@ export function staffPlatformService({ repository, platform, manifests }) {
   async function contextFor(actor, businessDate = dateKey()) {
     const context = await platform.authContext(actor, { businessDate });
     if (context.member?.status && context.member.status !== 'active') fail(401, '成员已停用，请联系管理员');
-    return { ...context, businessDate, actor: { ...context.actor, role: actor.role, authorizedCampuses: actor.authorizedCampuses || [], homeCampus: actor.homeCampus },
-      grants: context.grants || [] };
+    const effective = { ...context, businessDate, actor: { ...context.actor, role: actor.role, authorizedCampuses: actor.authorizedCampuses || [], homeCampus: actor.homeCampus }, grants: context.grants || [] };
+    return { ...effective, permissions: workspacePermissions(effective.actor, effective, platform.authorizer) };
+  }
+
+  async function scopedActor(actor, permissionCode) {
+    const context = await contextFor(actor);
+    const authorizedCampuses = (actor.authorizedCampuses || []).filter(campusId =>
+      evaluate(context, permissionCode, { campusId }).allowed);
+    if (!authorizedCampuses.length) fail(403, '没有执行此操作的权限');
+    return { ...actor, authorizedCampuses };
   }
 
   function evaluate(context, permissionCode, target) {
@@ -104,6 +113,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
   }
 
   async function requirePermission(actor, permissionCode, target = {}, businessDate = dateKey()) {
+    if (permissionCode === 'roles.manage' && actor.role !== 'superadmin') fail(403, '角色配置与分配由最高管理员管理');
     const context = await contextFor(actor, businessDate);
     const result = evaluate(context, permissionCode, target);
     if (!result.allowed) fail(403, `缺少权限：${permissionCode}`);
@@ -163,7 +173,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
 
   async function memberList(actor, filters = {}) {
     const context = await contextFor(actor);
-    if (!platform.authorizer.eligibleGrants('members.manage', context, context.grants).length) fail(403, '缺少权限：members.manage');
+    if (!context.permissions['members.manage']) fail(403, '缺少权限：members.manage');
     if (filters.status && !['active', 'inactive'].includes(filters.status)) fail(400, '成员状态不正确');
     const query = { q: inputString(filters, 'q', 120), status: filters.status,
       homeCampusId: inputString(filters, 'homeCampusId', 80), businessDate: context.businessDate };
@@ -329,7 +339,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
 
   async function organization(actor, kind, query = {}) {
     const context = await contextFor(actor);
-    if (!['members.manage', 'roles.manage'].some(code => platform.authorizer.eligibleGrants(code, context, context.grants).length)) fail(403, '缺少组织字典读取权限');
+    if (!['members.manage', 'roles.manage'].some(code => context.permissions[code])) fail(403, '缺少组织字典读取权限');
     const includeDisabled = query.includeDisabled === '1' || query.includeDisabled === true;
     if (kind === 'campuses') return { items: await repository.listCampuses(includeDisabled) };
     if (kind === 'departments') return { items: await repository.listDepartments(includeDisabled) };
@@ -339,7 +349,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
 
   async function importMembers(actor, input) {
     const context = await contextFor(actor);
-    if (!platform.authorizer.eligibleGrants('members.manage', context, context.grants).length) fail(403, '缺少权限：members.manage');
+    if (!context.permissions['members.manage']) fail(403, '缺少权限：members.manage');
     const rows = csvRows(String(input.csv || '').replace(/^\uFEFF/, ''));
     if (rows.length < 2) fail(400, '成员导入至少需要表头和一行数据');
     const headers = rows.shift().map(value => value.trim());
@@ -464,6 +474,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
       delete filters.memberId;
     } else {
       if (query?.memberId && query.memberId !== context.actor.memberId) await requirePermission(actor, 'attendance.correct', { campusId: query.campusId }, query.businessDate || dateKey());
+      else await requirePermission(actor, 'attendance.self', { memberId: context.actor.memberId });
       filters.memberId = query?.memberId || context.actor.memberId;
     }
     const records = await repository.listAttendance(filters);
@@ -637,7 +648,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.published', sourceRef: publicResourceRef('rosters','version',id), after: result, requestId: input.requestId });
     return result;
   }
-  async function rosterMine(actor, query = {}) { const context = await contextFor(actor); return { items: await repository.listAssignments(context.actor.memberId, query.weekStart || weekRange(dateKey()).start), weekStart: query.weekStart || weekRange(dateKey()).start }; }
+  async function rosterMine(actor, query = {}) { const context = await contextFor(actor); await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId }); return { items: await repository.listAssignments(context.actor.memberId, query.weekStart || weekRange(dateKey()).start), weekStart: query.weekStart || weekRange(dateKey()).start }; }
   async function leave(actor, input) {
     const context = await contextFor(actor);
     await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId }, input.businessDate || dateKey());
@@ -654,6 +665,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
   async function leaves(actor, query = {}) {
     const context = await contextFor(actor);
     const all = query.all === true || query.all === '1' || query.all === 'true';
+    if (!all) await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId });
     const rows = await repository.listLeaves({ ...query, memberId: all ? undefined : context.actor.memberId });
     const items = [];
     for (const row of rows) {
@@ -679,7 +691,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const context = await contextFor(actor); const result = await repository.updateLeave(id,input.decision === 'approve' ? 'approved' : 'rejected',context.actor.memberId,input.revision,input.note || ''); if (!result) fail(409, '请假申请已变化，请刷新'); const value = publicLeave(result); await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.leave.reviewed', sourceRef: publicResourceRef('rosters','leave',id), after: value, requestId: input.requestId }); return value;
   }
   async function leaveWithdraw(actor, id, input) {
-    const context = await contextFor(actor); const request = await repository.leaveById(id);
+    const context = await contextFor(actor); await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId }); const request = await repository.leaveById(id);
     if (!request || request.member_id !== context.actor.memberId) fail(403, '只能撤回本人的请假申请');
     await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId }, input.businessDate || dateKey());
     const result = await repository.updateLeave(id,'withdrawn',context.actor.memberId,input.revision,'本人撤回'); if (!result) fail(409, '请假申请已变化，请刷新'); const value = publicLeave(result); await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.leave.withdrawn', sourceRef: publicResourceRef('rosters','leave',id), after: value, requestId: input.requestId }); return value;
@@ -712,6 +724,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
   async function swaps(actor, query = {}) {
     const context = await contextFor(actor);
     const all = query.all === true || query.all === '1' || query.all === 'true';
+    if (!all) await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId });
     const rows = await repository.listSwaps({ ...query, memberId: all ? undefined : context.actor.memberId });
     const items = [];
     for (const row of rows) {
@@ -746,7 +759,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
   }
   async function audit(actor, query) { await requirePermission(actor, 'audit.read'); return { items: await repository.listAudit(query || {}) }; }
 
-  return { contextFor, requirePermission, memberList, memberDetail, updateMember, addMembership, endMembership, permissions, roles, createRole, updateRole, previewRole, bindMemberRoles,
+  return { contextFor, requirePermission, scopedActor, memberList, memberDetail, updateMember, addMembership, endMembership, permissions, roles, createRole, updateRole, previewRole, bindMemberRoles,
     organization, importMembers, deskSummary, workbench, createAttendanceEvent, issueAttendanceToken, checkIn, previewAttendance, attendanceList, correctAttendance, presence, rosterTasks, taskAvailability, createRosterTask, saveAvailability, rosterTaskState, generate, updateRoster, publish, rosterMine,
     leave, leaves, leaveDecision, leaveWithdraw, swapCandidates, swap, swaps, swapDecision, attendanceExport, audit,
     recordAudit: input => repository.audit(input) };

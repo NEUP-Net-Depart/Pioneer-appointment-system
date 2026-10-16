@@ -18,7 +18,7 @@ export function fieldWorkflow({
 }) {
   const names = { "campus-nanhu": "南湖", "campus-hunnan": "浑南" };
   const allowed = (context, code, target = {}) =>
-    authorizer.evaluate(context.actor, code, target, context, context.grants)
+    (code !== 'roles.manage' || context.actor.role === 'superadmin') && authorizer.evaluate(context.actor, code, target, context, context.grants)
       .allowed;
   async function eligibility(actor, campus, ignoreAppointment = "") {
     const context = await staff.contextFor(actor),
@@ -114,6 +114,8 @@ export function fieldWorkflow({
       campusId: selected,
       contexts,
       capability,
+      permissions: context.permissions,
+      navigation: context.navigation,
       state,
       reason: ready.reason,
       currentRepair: current,
@@ -204,8 +206,8 @@ export function fieldWorkflow({
     if (!visible) fail(403, "没有该预约的访问权限");
     return {
       ...visible,
-      canCorrect: ['admin', 'superadmin'].includes(actor.role) || allowed(context, 'repair.correct', target),
-      canRecoverCredential: ['admin', 'superadmin'].includes(actor.role),
+      canCorrect: allowed(context, 'repair.correct', target),
+      canRecoverCredential: allowed(context, 'repair.correct', target),
       original: visible.canReadDetails && (item.assignedMemberId === context.actor.memberId || allowed(context, 'customer.identity.read', target)) ? {
         note: item.note, signature: item.signature, agreementAt: item.agreementAt, agreementVersion: item.agreementVersion,
         college: item.college, serial: item.serial, liquidDrop: item.liquidDrop,

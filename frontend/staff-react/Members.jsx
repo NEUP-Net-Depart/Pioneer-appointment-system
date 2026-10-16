@@ -4,6 +4,7 @@ import { ActivityContext } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { readWorkspaceState, writeWorkspaceState } from './workspace-state.js';
 import { MemberEditor } from './MemberEditor.jsx';
+import { staffPermission } from '../../shared/staff-access.js';
 
 export function Members({ user }) {
   const routeActive = useContext(ActivityContext);
@@ -69,6 +70,6 @@ export function Members({ user }) {
       {!busy && !items.length && !error && <div className="members-empty"><h2>没有找到成员</h2><p>试试其他姓名、学号，或放宽校区与状态条件。</p>{(q || campus || status) && <button onClick={() => { setQ(''); setCampus(''); setStatus(''); }}>清除筛选</button>}</div>}
     </div>
     <footer className="members-list-footer"><span>仅展示你有权查看的成员</span>{nextCursor && <button onClick={() => load(nextCursor)} disabled={busy}>加载更多成员</button>}</footer></div>
-    {selected && <MemberEditor member={selected} canManageRoles={user.role === 'superadmin' && user.grants?.some(grant => grant.permissionCode === 'roles.manage')} onClose={() => setSelected(null)} onSaved={() => load()} />}
+    {selected && <MemberEditor member={selected} canManageRoles={user.role === 'superadmin' && staffPermission(user, 'roles.manage')} onClose={() => setSelected(null)} onSaved={() => load()} />}
   </section>;
 }

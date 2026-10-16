@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { initStaffApplication } from '../staff/main.js';
 import { setWorkspaceSession, clearWorkspaceState } from './workspace-state.js';
@@ -18,6 +18,7 @@ import { ActivityContext } from './field/ui';
 import { Statistics } from './Statistics';
 import { AccountSettings } from './AccountSettings';
 import { Accounts } from './Accounts';
+import { staffPermission, staffViewAllowed, staffSceneAllowed } from '../../shared/staff-access.js';
 
 const roles = { technician: '维修人员', admin: '管理员', superadmin: '最高权限者' };
 function Workbench({ user, onNavigate }) {
@@ -39,6 +40,18 @@ function Root() {
   const [rosterSection, setRosterSection] = useState('mine');
   const [visited, setVisited] = useState([]);
   const [settingsSection, setSettingsSection] = useState('security');
+  const profileRef = useRef(null);
+  profileRef.current = user && { ...user, permissions: field?.permissions || user.permissions };
+  useEffect(() => {
+    if (!field || !user) return;
+    const profile = { ...user, permissions: field.permissions || user.permissions };
+    const target = page === 'settings' && settingsSection === 'capacity' ? 'capacity' : page === 'roster' && rosterSection === 'manage' ? 'roster-manage' : page;
+    if (!staffViewAllowed(profile, target)) {
+      setSettingsSection('security'); setRosterSection('mine'); setPage('workbench');
+      setVisited(current => [...new Set([...current.filter(view => staffViewAllowed(profile, view)), 'workbench'])]);
+    }
+    if (page === 'workbench' && workScene && !staffSceneAllowed(profile, field, workScene)) setWorkScene('mine');
+  }, [field, user, page, rosterSection, settingsSection, workScene]);
   useEffect(() => {
     let active = true; const controller = new AbortController();
     if (!user) { setField(null); return; }
@@ -61,12 +74,19 @@ function Root() {
   }, []);
   useEffect(() => {
     return initStaffApplication({
-      onSession: profile => { setWorkspaceSession(`${profile.memberId || profile.account}:${profile.authVersion}`); setUser(profile); },
-      onView: view => { setPage(view); setVisited(current => current.includes(view) ? current : [...current, view]); },
+      onSession: profile => {
+        setWorkspaceSession(`${profile.memberId || profile.account}:${profile.authVersion}:${JSON.stringify(profile.permissions || {})}`);
+        setUser(profile);
+        setField(current => current && current.actor.memberId === (profile.actor?.memberId || profile.memberId) ? { ...current, permissions: profile.permissions, navigation: profile.navigation,
+          contexts: current.contexts.filter(context => staffSceneAllowed(profile, current, context.id)),
+          capability: Object.fromEntries(Object.entries(current.capability).map(([code, allowed]) => [code, allowed && staffPermission(profile, code)])) } : current);
+      },
+      onView: view => { if (profileRef.current && !staffViewAllowed(profileRef.current, view)) return; setPage(view); setVisited(current => current.includes(view) ? current : [...current, view]); },
       onLogout: () => { clearWorkspaceState(); setUser(null); setField(null); setBootProfile(null); setBootError(''); setPage(''); setVisited([]); setWorkScene(null); setRosterSection('mine'); setSettingsSection('security'); }
     }).dispose;
   }, []);
   const navigate = view => {
+    if (field && !(view.startsWith('scene:') ? staffSceneAllowed(profileRef.current, field, view.slice(6)) : staffViewAllowed(profileRef.current, view))) return;
     if (view === 'capacity') { setSettingsSection('capacity'); view = 'settings'; }
     else if (view === 'settings') setSettingsSection('security');
     if (view.startsWith('scene:')) { setWorkScene(view.slice(6)); view = 'workbench'; }
@@ -77,19 +97,21 @@ function Root() {
   };
   if (!field && (bootProfile?.staffWorkflowEnabled || user?.staffWorkflowEnabled)) return <WorkspacePortal><div className="field-app workspace-bootstrap"><main className="field-main"><WorkspaceHeader group="工作人员平台" title={bootError ? '工作区暂时不可用' : '正在准备工作区'} description="正在加载你的岗位、授权范围与当前任务。" /><section className="field-card"><p role="status">{bootError || '请稍候，工作区准备完成后将自动进入。'}</p>{!bootError && <div className="workspace-skeleton" aria-hidden="true"><span /><span /><span /></div>}<div className="field-actions">{bootError && <button className="field-primary" onClick={() => { setBootError(''); if (user) setBootRetry(value => value + 1); else window.dispatchEvent(new CustomEvent('staff-context-retry')); }}>重新加载工作区</button>}<button onClick={() => document.getElementById('logout-btn')?.click()}>退出登录</button></div></section></main></div></WorkspacePortal>;
   if (!user) return null;
-  const published = new Set((user.navigation || []).map(entry => entry.id));
+  const effectiveUser = { ...user, permissions: field?.permissions || user.permissions };
+  const published = new Set((field?.navigation || user.navigation || []).map(entry => entry.id));
   const workspaceLinks = [
-    ...(field ? field.contexts.map(context => ({ ...context, id: `scene:${context.id}`, group: '今日工作' })) : [{ id: 'workbench', label: '工作台', group: '今日工作' }]),
+    ...(field ? field.contexts.filter(context => staffSceneAllowed(effectiveUser, field, context.id)).map(context => ({ ...context, id: `scene:${context.id}`, group: '今日工作' })) : [{ id: 'workbench', label: '工作台', group: '今日工作' }]),
     ...(field ? [{ id: 'scene:mine', label: '个人中心', group: '我的' }] : []),
     ...(published.has('rosters') ? [{ id: 'roster', label: '班次与排班', group: '我的' }] : []),
-    ...(published.has('rosters') && user.grants?.some(grant => grant.permissionCode === 'roster.repair.manage') ? [{ id: 'roster-manage', label: '维修排班管理', group: '值班管理' }] : []),
-    ...(field && field.capability['repair.summary.read'] ? [{ id: 'staff', label: '预约记录', group: '今日工作' }] : []),
+    ...(staffPermission(effectiveUser, 'roster.repair.manage') ? [{ id: 'roster-manage', label: '维修排班管理', group: '值班管理' }] : []),
+    ...(field && staffPermission(effectiveUser, 'repair.summary.read') ? [{ id: 'staff', label: '预约记录', group: '今日工作' }] : []),
     ...(published.has('members') ? [{ id: 'members', label: '成员管理', group: '平台管理' }] : []),
     ...(published.has('roles') ? [{ id: 'permissions', label: '授权管理', group: '平台管理' }] : []),
     ...(published.has('attendance') ? [{ id: 'attendance', label: '本人签到记录', group: '我的' }] : []),
-    ...(field && ['admin','superadmin'].includes(user.role) ? [{ id: 'stats', label: '统计分析', group: '数据与审计' }, { id: 'users', label: '账号管理', group: '平台管理' }] : []),
+    ...(field && staffPermission(effectiveUser, 'statistics.read') ? [{ id: 'stats', label: '统计分析', group: '数据与审计' }] : []),
+    ...(field && staffPermission(effectiveUser, 'accounts.manage') ? [{ id: 'users', label: '账号管理', group: '平台管理' }] : []),
     ...(field ? [{ id: 'settings', label: '账号安全', group: '我的' }] : []),
-    ...(field && ['admin','superadmin'].includes(user.role) ? [{ id: 'capacity', label: '预约配置', group: '业务管理' }] : [])
+    ...(field && staffPermission(effectiveUser, 'settings.manage') ? [{ id: 'capacity', label: '预约配置', group: '业务管理' }] : [])
   ];
   if (!field) {
     if (page === 'workbench') return <Workbench user={user} onNavigate={navigate} />;
@@ -107,17 +129,17 @@ function Root() {
   const visible = view => page === view;
   const route = (view, child, allowed = true) => allowed && visited.includes(view) ? <ActivityContext.Provider key={view} value={visible(view)}><div className="workspace-route" data-route={view} hidden={!visible(view)} aria-hidden={!visible(view)}>{child}</div></ActivityContext.Provider> : null;
   const fieldRoute = route('workbench', <FieldApp initial={field} active={visible('workbench')} onNavigate={navigate} requestedScene={workScene} onSceneChange={setWorkScene} onContextChange={setField} workspaceLinks={workspaceLinks} />);
-  const rosterRoute = route('roster', <RosterArea user={user} section={rosterSection} />, published.has('rosters'));
+  const rosterRoute = route('roster', <RosterArea user={effectiveUser} section={rosterSection} />, published.has('rosters') || staffPermission(effectiveUser, 'roster.repair.manage'));
   const moduleRoutes = [
-    route('staff', <Records user={user} />, workspaceLinks.some(entry => entry.id === 'staff')),
+    route('staff', <Records user={effectiveUser} />, workspaceLinks.some(entry => entry.id === 'staff')),
     route('stats', <Statistics />, workspaceLinks.some(entry => entry.id === 'stats')),
-    route('settings', <AccountSettings user={user} section={settingsSection} onNavigate={navigate} />),
+    route('settings', <AccountSettings user={effectiveUser} section={settingsSection} onNavigate={navigate} />),
     route('users', <Accounts user={user} />, workspaceLinks.some(entry => entry.id === 'users')),
     route('attendance', <main className="field-main workspace-module"><Attendance onNavigate={navigate} /></main>, published.has('attendance')),
-    route('members', <main className="field-main workspace-module"><Members user={user} /></main>, published.has('members')),
+    route('members', <main className="field-main workspace-module"><Members user={effectiveUser} /></main>, published.has('members')),
     route('permissions', <main className="field-main workspace-module"><Permissions user={user} /></main>, published.has('roles')),
   ];
-  return <WorkspacePortal key={`${user.memberId || user.account}:${user.authVersion}`}><StaffWorkspace name={user.name || ''} entries={workspaceLinks} active={active} onSelect={navigate}>{fieldRoute}{rosterRoute}{moduleRoutes}</StaffWorkspace></WorkspacePortal>;
+  return <WorkspacePortal key={`${user.memberId || user.account}:${user.authVersion}:${JSON.stringify(effectiveUser.permissions || {})}`}><StaffWorkspace name={user.name || ''} entries={workspaceLinks} active={active} onSelect={navigate}>{fieldRoute}{rosterRoute}{moduleRoutes}</StaffWorkspace></WorkspacePortal>;
 
 }
 

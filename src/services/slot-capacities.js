@@ -4,9 +4,19 @@ import { validDate } from '../../shared/time.js';
 import { campusId } from '../modules/authorization/scopes.js';
 
 export function slotCapacityService(repository, staff = null) {
+  async function authorize(actor, campuses = []) {
+    if (!staff?.field?.enabled) {
+      requireRole(actor, 'admin');
+      if (campuses.length) requireGrantScope(actor, campuses);
+      return actor;
+    }
+    actor = await staff.scopedActor(actor, 'settings.manage');
+    for (const campus of campuses) requireCampus(actor, campus);
+    return actor;
+  }
   return {
     async actual(actor, { date, campus }) {
-      requireRole(actor, 'admin'); requireCampus(actor, campus);
+      actor = await authorize(actor, [campus]); requireCampus(actor, campus);
       if (!validDate(date)) fail(400, '请选择有效日期');
       const dutyTypes = [];
       if (staff?.field?.enabled) {
@@ -20,17 +30,17 @@ export function slotCapacityService(repository, staff = null) {
       return { campus, date, ...await repository.actual(date, campus, dutyTypes) };
     },
     async list(actor) {
-      requireRole(actor, 'admin');
+      actor = await authorize(actor);
       return { items: await repository.list(actor.authorizedCampuses) };
     },
     async update(input, actor) {
-      requireGrantScope(actor, [input.campus]);
+      await authorize(actor, [input.campus]);
       const item = await repository.update(input);
       if (!item) fail(409, '预约人数配置已更新，请重新读取后重试');
       return item;
     },
     async updateMany(items, actor) {
-      requireGrantScope(actor, [...new Set(items.map(item => item.campus))]);
+      await authorize(actor, [...new Set(items.map(item => item.campus))]);
       const updated = await repository.updateMany(items);
       if (!updated || updated.length !== items.length) fail(409, '预约人数配置已更新，请重新读取后重试');
       return { items: updated };

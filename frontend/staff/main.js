@@ -9,13 +9,14 @@ import { initSettings } from './settings.js';
 import { initStaffHost } from './app-shell.js';
 import { initScan } from './scan.js';
 import { initWorkbench } from './workbench.js';
+import { staffViewAllowed } from '/shared/staff-access.js';
 
 // One session and navigation lifecycle for both DOM and React feature modules.
 export function initStaffApplication({ onSession, onView, onLogout }) {
   useStaffSession();
   const host = initStaffHost();
   const controllers = { staff: initStaff(), stats: initStats(), users: initUsers(), settings: initSettings(), scan: initScan() };
-  let role = '', activeView = 'staff', scanReady = false;
+  let role = '', activeView = 'staff', scanReady = false, currentUser = null;
   const platform = document.getElementById('staff-platform-view');
   const platformLinks = [...document.querySelectorAll('[data-platform-permission]')];
   const workbench = initWorkbench({
@@ -39,6 +40,7 @@ export function initStaffApplication({ onSession, onView, onLogout }) {
     controllers[activeView]?.refresh();
   }
   function navigate(view) {
+    if (currentUser?.staffWorkflowEnabled && !staffViewAllowed(currentUser, view)) return;
     const link = document.querySelector(`[data-view-link="${view}"]`);
     if (!role || !link || link.hidden) return;
     if (link.dataset.platformPermission) platform.dataset.view = view;
@@ -48,15 +50,20 @@ export function initStaffApplication({ onSession, onView, onLogout }) {
   function profile(event) {
     if (!role) return;
     const user = event.detail;
+    currentUser = user;
     workbench.profile(user);
-    for (const link of platformLinks) link.hidden = link.dataset.viewLink !== 'workbench' && !(user.grants || []).some(grant => grant.permissionCode === link.dataset.platformPermission);
-    if (platformLinks.some(link => link.dataset.viewLink === activeView && link.hidden)) navigate('staff');
+    for (const link of platformLinks) link.hidden = link.dataset.viewLink !== 'workbench' && (user.staffWorkflowEnabled
+      ? !staffViewAllowed(user, link.dataset.viewLink)
+      : !(user.grants || []).some(grant => grant.permissionCode === link.dataset.platformPermission));
+    if (currentUser.staffWorkflowEnabled && !staffViewAllowed(user, activeView)) navigate('workbench');
+    else if (platformLinks.some(link => link.dataset.viewLink === activeView && link.hidden)) navigate('staff');
     onSession(user);
   }
   window.addEventListener('staff-context-ready', profile);
   window.addEventListener('staff-navigate', requestNavigation);
   // Registered React modules share a single mount and the operational navigator.
   for (const link of platformLinks) link.addEventListener('click', () => {
+    if (link.hidden || currentUser?.staffWorkflowEnabled && !staffViewAllowed(currentUser, link.dataset.viewLink)) return;
     platform.dataset.view = link.dataset.viewLink;
     nativeSwitch(link.dataset.viewLink);
   });
@@ -67,7 +74,7 @@ export function initStaffApplication({ onSession, onView, onLogout }) {
       nativeSwitch('staff');
     },
     onLogout() {
-      role = ''; scanReady = false; workbench.clear();
+      role = ''; scanReady = false; currentUser = null; workbench.clear();
       Object.values(controllers).forEach(controller => controller.clear());
       for (const link of platformLinks) link.hidden = true;
       onLogout();
