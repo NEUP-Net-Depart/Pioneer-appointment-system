@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { request } from './request.js';
 import { Modal } from './field/ui';
 import { Roster } from './Roster.jsx';
-import { StaffWorkspace } from './StaffWorkspace';
 import { addDays, dateKey, weekRange } from '../../shared/time.js';
 import './roster.css';
 
@@ -12,11 +11,9 @@ const slotKey = slot => `${slot.businessDate}:${slot.campusId}:${slot.startAt}:$
 const slotLabel = slot => `${slot.businessDate.slice(5).replace('-', '/')} · ${campusNames[slot.campusId] || slot.campusId} · ${slot.startAt}–${slot.endAt}`;
 const issues = { SLOTS_REQUIRED: '没有服务班次', COVERAGE_MISSING: '尚未安排人员', LEAD_COVERAGE_MISSING: '缺少有资格的负责人', MEMBER_UNAVAILABLE: '成员可用时间或资格已变化', LEAD_INELIGIBLE: '负责人资格已变化', MEMBER_WEEK_DUPLICATE: '同一成员本周重复排班', LOCKED_ASSIGNMENT_CHANGED: '锁定安排已变化', DUTY_TYPE_MISMATCH: '岗位类型不一致' };
 
-export function RosterArea({ user, onNavigate, workspaceLinks = [], section = 'mine' }) {
+export function RosterArea({ user, section = 'mine' }) {
   const canManage = user?.grants?.some(grant => grant.permissionCode === 'roster.repair.manage');
-  return <StaffWorkspace name={user?.name || user?.actor?.name || ''} entries={workspaceLinks} active={section === 'manage' ? 'roster-manage' : 'roster'} onSelect={onNavigate}>
-    <main className="field-main roster-area">{section === 'manage' && canManage ? <RosterManager user={user} /> : <Roster user={user} />}</main>
-  </StaffWorkspace>;
+  return <main className="field-main roster-area">{section === 'manage' && canManage ? <RosterManager user={user} /> : <Roster user={user} />}</main>;
 }
 
 function RosterManager({ user }) {

@@ -5,7 +5,6 @@ import { Repair } from "./Repair";
 import { Registration } from "./Registration";
 import type { Home } from "./types";
 import "./field.css";
-import { StaffWorkspace } from "../StaffWorkspace";
 
 export function FieldApp({
   initial,
@@ -60,6 +59,7 @@ export function FieldApp({
       campus,
       scene,
       `${initial.actor.memberId}:${initial.authVersion}`,
+      initial,
     ),
     data = result.data;
   const refresh = result.refresh;
@@ -172,16 +172,9 @@ export function FieldApp({
       a.name.localeCompare(b.name, "zh-CN"),
   );
   const campusName = data?.campuses.find((c) => c.id === campus)?.name || "";
-  const choose = (value: string) => {
-    setScene(value);
-    onSceneChange?.(value);
-    setMessage("");
-    setSelected("");
-    setFilter("all");
-  };
   return (
-    <StaffWorkspace name={initial.actor.name} entries={workspaceLinks} active={`scene:${scene}`} onSelect={id => id.startsWith('scene:') ? choose(id.slice(6)) : onNavigate(id)}>
-      <main className="field-main">
+    <>
+      <main className="field-main" aria-busy={result.loading}>
         <header className="field-top">
           <div>
             <p className="field-kicker">先锋 · 当日工作</p>
@@ -215,6 +208,7 @@ export function FieldApp({
           </div>
         </header>
         <Notice>{message || result.error}</Notice>
+        <div className="workspace-update" role="status" aria-live="polite">{result.loading ? "正在更新当前区域…" : ""}</div>
         {!data ? (
           <Empty
             title={result.error ? "暂时无法读取工作台" : "正在读取当日工作"}
@@ -433,7 +427,7 @@ export function FieldApp({
                       }}
                     >
                       <span>{label}</span>
-                      <strong>{count}</strong>
+                      <strong>{data.appointments ? count : "—"}</strong>
                     </button>
                   ))}
                 </div>
@@ -517,7 +511,8 @@ export function FieldApp({
                         <span>{item.assignedToName || "等待接待"}</span>
                       </button>
                     ))}
-                    {!items.length && (
+                    {!data.appointments && result.loading && <div className="workspace-skeleton" aria-label="正在读取预约"><span /><span /><span /></div>}
+                    {data.appointments && !items.length && (
                       <Empty title="没有符合条件的预约">
                         可调整筛选条件，或登记现场到访机主。
                       </Empty>
@@ -563,7 +558,8 @@ export function FieldApp({
                           <Status value={person.state} />
                         </div>
                       ))}
-                    {!people.length && (
+                    {!data.staffPresence && result.loading && <div className="workspace-skeleton" aria-label="正在读取人员"><span /><span /></div>}
+                    {data.staffPresence && !people.length && (
                       <Empty title="暂无现场人员">
                         展示工作人员签到码，成员扫码并确认后记录到岗。
                       </Empty>
@@ -723,6 +719,6 @@ export function FieldApp({
           }}
         />
       )}
-    </StaffWorkspace>
+    </>
   );
 }

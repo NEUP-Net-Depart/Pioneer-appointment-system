@@ -4,6 +4,8 @@ import { ScopeFields, ConditionFields } from './ScopeFields.jsx';
 import { setGrantEnabled, withGrantValidity } from './authorization-drafts.js';
 
 export function Permissions({ user }) {
+  const [search, setSearch] = useState('');
+  const [enabledOnly, setEnabledOnly] = useState(false);
   const [permissions, setPermissions] = useState([]);
   const [providers, setProviders] = useState([]);
   const [campuses, setCampuses] = useState([]);
@@ -28,6 +30,15 @@ export function Permissions({ user }) {
     }).catch(err => { if (active) setError(err.message); });
     return () => { active = false; };
   }, []);
+  useEffect(() => {
+    if (!dirty) return;
+    const guard = event => event.preventDefault();
+    const unload = event => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('staff-before-navigation', guard);
+    window.addEventListener('beforeunload', unload);
+    return () => { window.removeEventListener('staff-before-navigation', guard); window.removeEventListener('beforeunload', unload); };
+  }, [dirty]);
+  const visiblePermissions = permissions.filter(permission => (!enabledOnly || codes.has(permission.code)) && `${permission.name} ${permission.description || ''}`.includes(search.trim()));
   function select(role) {
     setSelected(role); setDraft(structuredClone(role.grants || [])); setError(''); setMessage('');
   }
@@ -43,7 +54,7 @@ export function Permissions({ user }) {
       setMessage('权限已保存，受影响的账号需要重新登录');
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
-  return <section className="react-page">
+  return <section className="react-page permissions-workspace">
     <div className="react-heading"><div><h1>权限身份</h1><p>选择角色，调整权限后统一保存。</p></div></div>
     {error && <p className="react-error" role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     <div className="react-permission-layout"><aside className="react-card" aria-label="角色列表"><h2>角色</h2>
@@ -52,8 +63,9 @@ export function Permissions({ user }) {
       <p className="react-muted">启用已有权限会保留其范围、条件和有效期；新增权限采用受限的默认范围。</p>
       {protectedRole && <p className="react-muted">最高管理员权限包受保护，请选择其他角色配置。</p>}
       {user.role !== 'superadmin' && <p className="react-muted">角色配置与分配由最高管理员管理，当前可查看已有配置。</p>}
+      <div className="permission-tools"><label>查找权限<input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="按功能名称查找" /></label><label className="permission-filter"><input type="checkbox" checked={enabledOnly} onChange={event => setEnabledOnly(event.target.checked)} />只看已启用</label><span>已启用 {codes.size} 项 · 当前显示 {visiblePermissions.length} 项</span></div>
       <fieldset disabled={busy || !selected || readOnly} className="react-permission-fields"><legend className="sr-only">角色权限</legend>
-        {permissions.map(permission => <section className="react-permission-item" key={permission.code}>
+        {visiblePermissions.map(permission => <section className="react-permission-item" key={permission.code}>
           <label className="react-permission"><input type="checkbox" checked={codes.has(permission.code)} onChange={event => setDraft(current => setGrantEnabled(current, permission, event.target.checked, selected.grants || []))} />
             <span><strong>{permission.name}</strong><small>{permission.description || permission.code}</small></span>
           </label>
@@ -65,6 +77,7 @@ export function Permissions({ user }) {
           </details>)}
         </section>)}
       </fieldset>
+      {selected && !visiblePermissions.length && <p className="members-empty">没有匹配的权限，请调整筛选条件。</p>}
       <div className="react-editor-actions"><span aria-live="polite">{dirty ? '有未保存的修改' : '已与服务器同步'}</span>
         <button type="button" disabled={!dirty || busy} onClick={() => { setDraft(structuredClone(selected.grants || [])); setError(''); }}>放弃修改</button>
         <button type="button" className="react-primary" disabled={!dirty || busy} onClick={save}>{busy ? '正在保存…' : '保存权限'}</button>

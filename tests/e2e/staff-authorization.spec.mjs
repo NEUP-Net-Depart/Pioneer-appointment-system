@@ -146,7 +146,8 @@ test('operational and React pages share a session and navigation follows grants 
   await expect(root.locator('#staff-platform-root')).toBeHidden();
   await root.getByRole('button', { name: '成员管理', exact: true }).click();
   await expect(root.locator('#staff-platform-root')).toContainText('测试成员');
-  expect(memberTokens.length).toBeGreaterThanOrEqual(2);
+  // Cached rows render immediately; revalidation completes independently.
+  await expect.poll(() => memberTokens.length).toBeGreaterThanOrEqual(2);
   expect(memberTokens.every(value => value === 'Bearer test-token')).toBe(true);
   await root.locator('#logout-btn').click();
   await expect(root.locator('#login-view')).toBeVisible();

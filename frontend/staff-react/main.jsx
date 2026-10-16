@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { initStaffApplication } from '../staff/main.js';
+import { setWorkspaceSession, clearWorkspaceState } from './workspace-state.js';
+import './workspace.css';
 import { request } from './request.js';
 import { Attendance } from './Attendance';
 import { Members } from './Members.jsx';
 import { Permissions } from './Permissions.jsx';
 import { statusLabels } from '../../shared/constants.js';
 import { RosterArea } from './RosterManager.jsx';
+import { WorkspacePortal } from './WorkspacePortal';
 import { StaffWorkspace } from './StaffWorkspace';
 import { LegacyWorkspace } from './LegacyWorkspace';
 import { FieldApp } from './field/FieldApp';
@@ -31,14 +34,14 @@ function Root() {
   useEffect(() => {
     let active = true;
     if (!user) { setField(null); return; }
-    request('/api/field/home', { suppressAuthExpired: true }).then(data => { if (active && data.enabled) { setField(data); window.dispatchEvent(new CustomEvent('staff-navigate', { detail:'workbench' })); } }).catch(() => {});
+    request('/api/field/home', { suppressAuthExpired: true }).then(data => { if (active && data.enabled) { setField(data); setWorkScene(current => current || (data.currentRepair ? 'repair' : data.contexts.find(context => context.id === sessionStorage.getItem(`field-scene:${data.actor.memberId}`))?.id || data.contexts.find(context => context.id === 'desk')?.id || data.contexts[0]?.id || 'mine')); window.dispatchEvent(new CustomEvent('staff-navigate', { detail:'workbench' })); } }).catch(() => {});
     return () => { active = false; };
   }, [user?.memberId, user?.account, user?.authVersion]);
   useEffect(() => {
     return initStaffApplication({
-      onSession: setUser,
+      onSession: profile => { setWorkspaceSession(`${profile.memberId || profile.account}:${profile.authVersion}`); setUser(profile); },
       onView: setPage,
-      onLogout: () => { setUser(null); setPage(''); setWorkScene(null); setRosterSection('mine'); }
+      onLogout: () => { clearWorkspaceState(); setUser(null); setPage(''); setWorkScene(null); setRosterSection('mine'); }
     }).dispose;
   }, []);
   const navigate = view => {
@@ -62,12 +65,18 @@ function Root() {
     ...(field && ['admin','superadmin'].includes(user.role) ? [{ id: 'stats', label: '统计分析', group: '数据与审计' }, { id: 'users', label: '账号管理', group: '平台管理' }] : []),
     ...(field ? [{ id: 'settings', label: '账号安全', group: '我的' }] : [])
   ];
-  if (page === 'workbench') return field ? <FieldApp initial={field} onNavigate={navigate} requestedScene={workScene} onSceneChange={setWorkScene} onContextChange={setField} workspaceLinks={workspaceLinks} /> : <Workbench user={user} onNavigate={navigate} />;
-  if (page === 'roster') return <RosterArea user={user} onNavigate={navigate} section={rosterSection} workspaceLinks={workspaceLinks} />;
-  const content = page === 'attendance' ? <Attendance onNavigate={navigate} /> : page === 'members' ? <Members user={user} /> : page === 'permissions' ? <Permissions user={user} /> : null;
-  if (field && ['staff','scan','stats','users','settings'].includes(page)) return <LegacyWorkspace page={page} name={user.name || ''} entries={workspaceLinks} onSelect={navigate} />;
+  let content;
+  if (page === 'workbench') content = field ? <FieldApp initial={field} onNavigate={navigate} requestedScene={workScene} onSceneChange={setWorkScene} onContextChange={setField} workspaceLinks={workspaceLinks} /> : <Workbench user={user} onNavigate={navigate} />;
+  else if (page === 'roster') content = <RosterArea user={user} section={rosterSection} />;
+  else if (field && ['staff','scan','stats','users','settings'].includes(page)) content = <LegacyWorkspace page={page} />;
+  else {
+    const module = page === 'attendance' ? <Attendance onNavigate={navigate} /> : page === 'members' ? <Members user={user} /> : page === 'permissions' ? <Permissions user={user} /> : null;
+    content = field && module ? <main className="field-main workspace-module">{module}</main> : module;
+  }
   if (!field) return content;
-  return content ? <StaffWorkspace name={user.name || ''} entries={workspaceLinks} active={page} onSelect={navigate}><main className="field-main workspace-module">{content}</main></StaffWorkspace> : null;
+  const active = page === 'workbench' ? `scene:${workScene}` : page === 'roster' && rosterSection === 'manage' ? 'roster-manage' : page;
+  return <WorkspacePortal key={`${user.memberId || user.account}:${user.authVersion}`}><StaffWorkspace name={user.name || ''} entries={workspaceLinks} active={active} onSelect={navigate}>{content}</StaffWorkspace></WorkspacePortal>;
+
 }
 
 createRoot(document.getElementById('staff-platform-root')).render(<Root />);

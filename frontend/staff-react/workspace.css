@@ -1,0 +1,54 @@
+.workspace-update { min-height: 24px; color: var(--muted, #657080); font-size: 12px; }
+.workspace-skeleton { display: grid; gap: 16px; padding: 24px; min-height: 220px; }
+.workspace-skeleton span { height: 28px; border-radius: 8px; background: #eef0f3; }
+.workspace-skeleton span:nth-child(even) { width: 75%; }
+.members-workspace { border: 1px solid #e6e8ec; border-radius: 16px; background: white; overflow: hidden; }
+.members-workspace .members-tools { display: flex; flex-wrap: wrap; align-items: end; gap: 16px; margin: 0; padding: 20px; border-bottom: 1px solid #e6e8ec; background: #fafbfc; }
+.members-tools label { display: grid; gap: 7px; font-size: 13px; font-weight: 600; min-width: 140px; }
+.members-tools label:first-child { flex: 1; min-width: 200px; }
+.members-tools input, .members-tools select { width: 100%; max-width: none; min-height: 44px; border: 1px solid #dce1e7; border-radius: 9px; padding: 10px 12px; background: white; font: inherit; }
+.members-result-count { min-width: 150px; padding-bottom: 12px; color: #596575; font-size: 13px; }
+.members-workspace .members-results { border: 0; box-shadow: none; border-radius: 0; padding: 0 20px; }
+.members-results .react-row { min-height: 76px; grid-template-columns: minmax(150px, 1.5fr) .7fr .7fr 1fr minmax(150px, 1fr); }
+.members-results .react-row-head { min-height: 48px; }
+.members-results .members-row-action { text-align: right; }
+.members-list-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; color: #596575; font-size: 13px; }
+.members-empty { padding: 40px 24px; text-align: center; color: #596575; }
+.members-empty h2 { margin-bottom: 8px; }
+.permissions-workspace .react-permission-layout { align-items: start; grid-template-columns: minmax(200px, 260px) minmax(0, 1fr); gap: 24px; }
+.permissions-workspace .react-card { box-shadow: none; border-color: #e6e8ec; }
+.permissions-workspace aside { position: sticky; top: 24px; }
+.permissions-workspace aside button { width: 100%; text-align: left; margin-top: 8px; min-height: 56px; }
+.permission-tools { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; padding: 16px 0; border-block: 1px solid #e6e8ec; }
+.permission-tools > label:first-child { flex: 1; min-width: 160px; }
+.permission-tools .permission-filter { display: flex; flex-direction: row; align-items: center; gap: 8px; }
+.permission-tools .permission-filter input { width: 18px; min-height: 18px; }
+.permission-tools > span { width: 100%; color: #596575; font-size: 13px; }
+.permissions-workspace .react-editor-actions { position: sticky; bottom: 12px; background: white; border: 1px solid #e6e8ec; border-radius: 12px; padding: 14px; box-shadow: 0 4px 20px #2228310a; }
+@media (max-width: 700px) {
+  .members-workspace .members-tools { gap: 12px; padding: 16px; }
+  .members-tools label { flex: 1; min-width: 100px; }
+  .members-tools label:first-child { flex-basis: 100%; }
+  .members-result-count { padding-bottom: 0; }
+  .members-workspace .members-results { padding: 0 16px; }
+  .members-results .react-row { grid-template-columns: 1fr 1fr; gap: 12px; padding: 20px 0; }
+  .members-results .react-row-head { display: none; }
+  .members-results .react-member-identity { grid-column: 1 / -1; }
+  .members-results .react-row > span[data-label] { text-align: left; color: #323a46; }
+  .members-results [data-label]::before { content: attr(data-label); display: block; color: #657080; font-size: 12px; margin-bottom: 4px; }
+  .members-results .members-row-action { grid-column: 1 / -1; }
+  .members-list-footer { flex-wrap: wrap; padding: 16px; }
+  .permissions-workspace .react-permission-layout { grid-template-columns: 1fr; gap: 16px; }
+  .permissions-workspace aside { position: static; display: flex; flex-direction: row; gap: 8px; overflow-x: auto; }
+  .permissions-workspace aside h2 { display: none; }
+  .permissions-workspace aside button { flex: 0 0 170px; margin: 0; }
+  .permissions-workspace .react-card { padding: 16px; min-width: 0; }
+  .permissions-workspace .react-editor-actions { bottom: calc(72px + env(safe-area-inset-bottom)); flex-wrap: wrap; }
+}
+.field-app .react-primary { background: var(--ink, #222831) !important; color: white !important; }
+.field-app .react-page input[type="checkbox"], .field-app .react-page input[type="radio"] { width: 18px; height: 18px; min-height: 18px; flex: 0 0 18px; margin: 2px 0 0; }
+.permissions-workspace .react-permission > span { min-width: 0; flex: 1; }
+.field-app .react-heading p, .field-app .react-muted { color: #657080; }
+.field-app .react-eyebrow { color: #657080; letter-spacing: .04em; }
+.field-app .react-page button:focus-visible, .field-app .react-page input:focus-visible, .field-app .react-page select:focus-visible { outline: 3px solid #9ba8ba; outline-offset: 3px; }
+.permissions-workspace aside button.is-selected { background: #eef0f3; color: #222831; box-shadow: inset 3px 0 #222831; }

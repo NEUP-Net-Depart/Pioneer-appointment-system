@@ -14,7 +14,7 @@ async function login(page, account) {
   await page
     .locator("#login-form")
     .getByLabel("密码", { exact: true })
-    .fill("StaffTest!2026");
+    .fill(account === 'root001' ? process.env.E2E_ROOT_PASSWORD : "StaffTest!2026");
   await page.getByRole("button", { name: "进入系统" }).click();
   await expect(page.locator(".field-app")).toBeVisible();
 }
@@ -426,4 +426,42 @@ test('an expired reception permission removes its scene and returns to personal 
   await expect(page.getByRole('heading', { name:'我的工作', exact:true })).toBeVisible();
   await expect(page.locator('.field-sidebar').getByRole('button', { name:'接待台', exact:true })).toHaveCount(0);
   await expect(page.getByRole('button', { name:'展示签到码', exact:true })).toHaveCount(0);
+});
+
+test('management keeps its shell and readable results during refresh at all widths', async ({ page }) => {
+  await login(page, 'root001');
+  const sidebar = page.locator('.field-sidebar');
+  await sidebar.evaluate(node => { node.dataset.identity = 'persistent'; });
+  await sidebar.getByRole('button', { name: '平台管理', exact: true }).click();
+  await sidebar.getByRole('button', { name: '成员管理', exact: true }).click();
+  await expect(page.locator('.react-member-identity').first()).toBeVisible();
+  let release;
+  const held = new Promise(resolve => { release = resolve; });
+  await page.route('**/api/members?**', async route => { await held; await route.continue(); });
+  await page.getByRole('button', { name: '刷新', exact: true }).click();
+  await expect(page.locator('.members-results')).toHaveAttribute('aria-busy', 'true');
+  await expect(page.locator('.react-member-identity').first()).toBeVisible();
+  release();
+  await expect(page.locator('.members-results')).toHaveAttribute('aria-busy', 'false');
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `output/field-workflow/members-${width}.png`, fullPage: true });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await sidebar.getByRole('button', { name: '授权管理', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '权限身份', exact: true })).toBeVisible();
+  await expect(sidebar).toHaveAttribute('data-identity', 'persistent');
+  await expect(sidebar.getByRole('button', { name: '平台管理', exact: true })).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByLabel('查找权限')).toBeVisible();
+  await page.getByLabel('查找权限').fill('不存在的功能');
+  await expect(page.getByText('没有匹配的权限，请调整筛选条件。')).toBeVisible();
+  await page.getByLabel('查找权限').fill('');
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(await page.locator('.react-permission').first().evaluate(node => node.getBoundingClientRect().height)).toBeLessThan(180);
+    expect(await page.locator('.react-permission input').first().evaluate(node => node.getBoundingClientRect().width)).toBeLessThan(24);
+    await page.screenshot({ path: `output/field-workflow/permissions-${width}.png`, fullPage: true });
+  }
 });

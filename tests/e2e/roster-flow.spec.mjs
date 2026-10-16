@@ -1,5 +1,10 @@
 import { test, expect } from '@playwright/test';
 
+async function expandGroup(page, name) {
+  const group = page.locator('.field-sidebar').getByRole('button', { name, exact: true }).first();
+  if (await group.getAttribute('aria-expanded') === 'false') await group.click();
+}
+
 test.skip(process.env.E2E_FIELD !== 'true', 'Uses the isolated staff fixture');
 
 test('member reaches roster from My, chooses named shifts and can use narrow screens', async ({ page }) => {
@@ -10,7 +15,7 @@ test('member reaches roster from My, chooses named shifts and can use narrow scr
   await expect(page.locator('.field-app')).toBeVisible();
   await expect(page.locator('.field-sidebar').getByRole('button', { name: '成员管理', exact: true })).toHaveCount(0);
   await expect(page.locator('.field-sidebar').getByRole('button', { name: '授权管理', exact: true })).toHaveCount(0);
-  await page.locator('.field-sidebar').getByRole('button', { name: '我的', exact: true }).first().click();
+  await expandGroup(page, '我的');
   await page.locator('.field-sidebar').getByRole('button', { name: '个人中心', exact: true }).click();
   await page.getByRole('button', { name: '我的班次与申请' }).click();
   await expect(page.getByRole('heading', { name: '我的值班安排' })).toBeVisible();
@@ -35,10 +40,10 @@ test('manager restores a saved draft, adjusts a member and cannot publish missin
   await page.getByRole('button', { name: '进入系统' }).click();
   async function openManager() {
     await expect(page.locator('.field-app')).toBeVisible();
-    await page.locator('.field-sidebar').getByRole('button', { name: '我的', exact: true }).first().click();
+    await expandGroup(page, '我的');
   await page.locator('.field-sidebar').getByRole('button', { name: '个人中心', exact: true }).click();
     await page.getByRole('button', { name: '我的班次与申请' }).click();
-    await page.locator('.field-sidebar').getByRole('button', { name: '值班管理', exact: true }).click();
+    await expandGroup(page, '值班管理');
     await page.getByRole('button', { name: '维修排班管理', exact: true }).click();
   }
   await openManager();
@@ -79,16 +84,18 @@ test('manager restores a saved draft, adjusts a member and cannot publish missin
   await page.reload();
   await openManager();
   await expect(page.getByLabel('安排陈宇', { exact: true })).toHaveValue('2026-10-20:campus-nanhu:18:00:19:00');
+  await page.locator('.field-sidebar').evaluate(node => { node.dataset.persisted = 'yes'; });
   const navigation = await page.locator('.field-sidebar nav button').allTextContents();
   await page.locator('.field-sidebar').getByRole('button', { name: '预约记录', exact: true }).click();
   expect((await page.locator('.field-sidebar nav button').allTextContents()).map(text => text.replace(/[−+]/g, ''))).toEqual(navigation.map(text => text.replace(/[−+]/g, '')));
   await expect(page.locator('[data-view=staff]')).toBeVisible();
   await expect(page.locator('#management-header')).toBeHidden();
-  await page.locator('.field-sidebar').getByRole('button', { name: '我的', exact: true }).first().click();
+  await expandGroup(page, '我的');
   await page.locator('.field-sidebar').getByRole('button', { name: '账号安全', exact: true }).click();
   await expect(page.locator('[data-view=settings]')).toBeVisible();
+  await expect(page.locator('.field-sidebar')).toHaveAttribute('data-persisted', 'yes');
   await page.locator('.field-sidebar').getByRole('button', { name: '班次与排班', exact: true }).click();
-  await page.locator('.field-sidebar').getByRole('button', { name: '值班管理', exact: true }).click();
+  await expandGroup(page, '值班管理');
   await page.locator('.field-sidebar').getByRole('button', { name: '维修排班管理', exact: true }).click();
   await expect(page.getByLabel('安排陈宇', { exact: true })).toHaveValue('2026-10-20:campus-nanhu:18:00:19:00');
   for (const width of [1440, 390, 320]) {
