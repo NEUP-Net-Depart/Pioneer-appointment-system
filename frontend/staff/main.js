@@ -34,6 +34,7 @@ export function initStaffApplication({ onSession, onView, onLogout }) {
   });
   function refresh() {
     if (!role || document.hidden) return;
+    if (activeView === 'stats' && document.body.classList.contains('field-mode')) return;
     if (!['staff', 'settings', 'scan'].includes(activeView) && !['admin', 'superadmin'].includes(role)) return;
     controllers[activeView]?.refresh();
   }

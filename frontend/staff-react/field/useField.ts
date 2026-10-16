@@ -8,7 +8,7 @@ type Snapshot = { value: Home; fetchedAt: number };
 const freshness = 30_000;
 const isFresh = (entry?: Snapshot) => !!entry && Date.now() - entry.fetchedAt < freshness && entry.value.businessDate === dateKey();
 
-export function useField(campus: string, scene: string, sessionKey: string, initial?: Home) {
+export function useField(campus: string, scene: string, sessionKey: string, initial?: Home, active = true) {
   const resource = ['desk', 'operations'].includes(scene) ? 'board' : 'home';
   const key = `field:${sessionKey}:${campus}:${resource}`;
   const cached = () => readWorkspaceState(key) as Snapshot | undefined;
@@ -18,6 +18,7 @@ export function useField(campus: string, scene: string, sessionKey: string, init
   const [pending, setPending] = useState<string | null>(null);
   const request = useRef<AbortController | null>(null), generation = useRef(0);
   const refresh = useCallback(async () => {
+    if (!active) return;
     request.current?.abort();
     const controller = new AbortController(); request.current = controller;
     const version = ++generation.current;
@@ -49,8 +50,14 @@ export function useField(campus: string, scene: string, sessionKey: string, init
       if ([401, 403].includes(status)) { removeWorkspaceState(key); removeWorkspaceState(`field:${sessionKey}:${campus}:home`); removeWorkspaceState(`field:${sessionKey}:${campus}:board`); setSnapshot({ key, value: null }); }
       setFailure({ key, message: (error as Error).message });
     } finally { if (version === generation.current) setPending(null); }
-  }, [key, resource, campus, sessionKey]);
+  }, [active, key, resource, campus, sessionKey]);
   useEffect(() => {
+    if (!active) {
+      request.current?.abort();
+      generation.current++;
+      setPending(null);
+      return;
+    }
     const entry = readWorkspaceState(key) as Snapshot | undefined;
     if (entry) setSnapshot({ key, value: entry.value });
     if (!document.hidden && !isFresh(entry)) refresh();
@@ -64,7 +71,7 @@ export function useField(campus: string, scene: string, sessionKey: string, init
     };
     document.addEventListener('visibilitychange', visibility);
     return () => { clearInterval(timer); generation.current++; request.current?.abort(); document.removeEventListener('visibilitychange', visibility); };
-  }, [key, refresh]);
+  }, [active, key, refresh]);
   const data = snapshot.key === key ? snapshot.value : cached()?.value || fallback;
   return { data, error: failure.key === key ? failure.message : '', loading: pending === key, refresh };
 }

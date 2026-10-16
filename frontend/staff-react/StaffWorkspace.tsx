@@ -36,7 +36,7 @@ export function StaffWorkspace({ children, name, entries, active, onSelect }: {
     </aside>
     {children}
     <nav className="field-bottom-nav" aria-label="手机岗位导航">{primary.map(entry => <button key={entry.id} type="button" className={active === entry.id ? 'active' : ''} aria-current={active === entry.id ? 'page' : undefined} onClick={() => choose(entry.id)}>{entry.id === 'scene:mine' ? '我的' : entry.label === '工作台' ? '工作台' : entry.label.replace('工作台', '').replace('现场管理', '现场')}</button>)}{overflow.length > 0 && <button type="button" className={overflow.some(entry => entry.id === active) ? 'active' : ''} onClick={() => setMore(true)}>更多</button>}</nav>
-    {pending && <Modal title="有未保存的调整" onClose={() => setPending(null)}><p>离开会丢弃尚未保存的修改。你可以先返回保存，再切换页面。</p><div className="field-actions"><button type="button" onClick={() => setPending(null)}>留在当前页面</button><button type="button" onClick={() => { const id = pending; setPending(null); onSelect(id); }}>放弃修改并离开</button></div></Modal>}
+    {pending && <Modal title="有未保存的调整" onClose={() => setPending(null)}><p>你可以先保存；也可以保留当前草稿，稍后返回继续编辑。</p><div className="field-actions"><button type="button" onClick={() => setPending(null)}>留在当前页面</button><button type="button" onClick={() => { const id = pending; setPending(null); onSelect(id); }}>保留草稿并切换</button></div></Modal>}
     {more && <Modal title="工作入口" onClose={() => setMore(false)}><nav className="workspace-more">{groups.map(group => <section className="workspace-nav-group" key={group.label}><h2>{group.label}</h2>{group.items.map(entry => <button key={entry.id} type="button" aria-current={active === entry.id ? 'page' : undefined} onClick={() => choose(entry.id)}>{entry.label}</button>)}</section>)}</nav></Modal>}
   </div>;
 }

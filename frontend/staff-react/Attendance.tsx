@@ -1,15 +1,17 @@
-import React, { useEffect, useState } from 'react';
-import { api, Notice, time } from './field/ui';
+import React, { useContext, useEffect, useState } from 'react';
+import { ActivityContext, api, Notice, time } from './field/ui';
 
 type Record = { id: string; businessDate: string; occurredAt: string; campusId?: string; type: string; nonScheduled: boolean };
 const campusNames: { [key: string]: string } = { 'campus-nanhu': '南湖校区', 'campus-hunnan': '浑南校区' };
 
 export function Attendance({ onNavigate }: { onNavigate: (route: string) => void }) {
+  const routeActive = useContext(ActivityContext);
   const [items, setItems] = useState<Record[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
   useEffect(() => {
+    if (!routeActive) return;
     const controller = new AbortController();
     setLoading(true); setError('');
     api<{ items: Record[] }>('/api/me/attendance', { signal: controller.signal })
@@ -17,7 +19,7 @@ export function Attendance({ onNavigate }: { onNavigate: (route: string) => void
       .catch(failure => { if (!controller.signal.aborted) setError(failure.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [refreshKey]);
+  }, [refreshKey, routeActive]);
   return <section className="attendance-history">
     <header className="field-top"><div><p className="field-kicker">我的</p><h1>本人签到记录</h1><p className="field-muted">查看已完成的签到。当前是否在岗，以今日工作台为准。</p></div><button type="button" onClick={() => onNavigate('scene:mine')}>返回个人中心</button></header>
     <Notice>{error}</Notice>

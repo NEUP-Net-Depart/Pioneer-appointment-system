@@ -1,9 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { request } from './request.js';
+import { ActivityContext } from './field/ui';
 import { ScopeFields, ConditionFields } from './ScopeFields.jsx';
 import { setGrantEnabled, withGrantValidity } from './authorization-drafts.js';
 
 export function Permissions({ user }) {
+  const routeActive = useContext(ActivityContext);
   const [search, setSearch] = useState('');
   const [enabledOnly, setEnabledOnly] = useState(false);
   const [permissions, setPermissions] = useState([]);
@@ -34,10 +36,10 @@ export function Permissions({ user }) {
     if (!dirty) return;
     const guard = event => event.preventDefault();
     const unload = event => { event.preventDefault(); event.returnValue = ''; };
-    window.addEventListener('staff-before-navigation', guard);
+    if (routeActive) window.addEventListener('staff-before-navigation', guard);
     window.addEventListener('beforeunload', unload);
     return () => { window.removeEventListener('staff-before-navigation', guard); window.removeEventListener('beforeunload', unload); };
-  }, [dirty]);
+  }, [dirty, routeActive]);
   const visiblePermissions = permissions.filter(permission => (!enabledOnly || codes.has(permission.code)) && `${permission.name} ${permission.description || ''}`.includes(search.trim()));
   function select(role) {
     setSelected(role); setDraft(structuredClone(role.grants || [])); setError(''); setMessage('');

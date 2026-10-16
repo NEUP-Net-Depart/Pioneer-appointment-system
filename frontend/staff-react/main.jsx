@@ -13,6 +13,8 @@ import { WorkspacePortal } from './WorkspacePortal';
 import { StaffWorkspace } from './StaffWorkspace';
 import { LegacyWorkspace } from './LegacyWorkspace';
 import { FieldApp } from './field/FieldApp';
+import { ActivityContext } from './field/ui';
+import { Statistics } from './Statistics';
 
 const roles = { technician: '维修人员', admin: '管理员', superadmin: '最高权限者' };
 function Workbench({ user, onNavigate }) {
@@ -31,6 +33,7 @@ function Root() {
   const [field, setField] = useState(null);
   const [workScene, setWorkScene] = useState(null);
   const [rosterSection, setRosterSection] = useState('mine');
+  const [visited, setVisited] = useState([]);
   useEffect(() => {
     let active = true;
     if (!user) { setField(null); return; }
@@ -40,8 +43,8 @@ function Root() {
   useEffect(() => {
     return initStaffApplication({
       onSession: profile => { setWorkspaceSession(`${profile.memberId || profile.account}:${profile.authVersion}`); setUser(profile); },
-      onView: setPage,
-      onLogout: () => { clearWorkspaceState(); setUser(null); setPage(''); setWorkScene(null); setRosterSection('mine'); }
+      onView: view => { setPage(view); setVisited(current => current.includes(view) ? current : [...current, view]); },
+      onLogout: () => { clearWorkspaceState(); setUser(null); setPage(''); setVisited([]); setWorkScene(null); setRosterSection('mine'); }
     }).dispose;
   }, []);
   const navigate = view => {
@@ -65,17 +68,31 @@ function Root() {
     ...(field && ['admin','superadmin'].includes(user.role) ? [{ id: 'stats', label: '统计分析', group: '数据与审计' }, { id: 'users', label: '账号管理', group: '平台管理' }] : []),
     ...(field ? [{ id: 'settings', label: '账号安全', group: '我的' }] : [])
   ];
-  let content;
-  if (page === 'workbench') content = field ? <FieldApp initial={field} onNavigate={navigate} requestedScene={workScene} onSceneChange={setWorkScene} onContextChange={setField} workspaceLinks={workspaceLinks} /> : <Workbench user={user} onNavigate={navigate} />;
-  else if (page === 'roster') content = <RosterArea user={user} section={rosterSection} />;
-  else if (field && ['staff','scan','stats','users','settings'].includes(page)) content = <LegacyWorkspace page={page} />;
-  else {
+  if (!field) {
+    if (page === 'workbench') return <Workbench user={user} onNavigate={navigate} />;
+    if (page === 'roster') return <RosterArea user={user} section={rosterSection} />;
+    // Native pages retain their original host while the field platform is off.
+    if (['staff','scan','stats','users','settings'].includes(page)) return null;
     const module = page === 'attendance' ? <Attendance onNavigate={navigate} /> : page === 'members' ? <Members user={user} /> : page === 'permissions' ? <Permissions user={user} /> : null;
-    content = field && module ? <main className="field-main workspace-module">{module}</main> : module;
+    return module;
   }
-  if (!field) return content;
   const active = page === 'workbench' ? `scene:${workScene}` : page === 'roster' && rosterSection === 'manage' ? 'roster-manage' : page;
-  return <WorkspacePortal key={`${user.memberId || user.account}:${user.authVersion}`}><StaffWorkspace name={user.name || ''} entries={workspaceLinks} active={active} onSelect={navigate}>{content}</StaffWorkspace></WorkspacePortal>;
+  // Keep route instances mounted for the signed-in session. Switching a
+  // module only changes its visibility, so drafts, selected work orders and
+  // dialog state survive a trip through the sidebar. Hidden field routes pass
+  // `active=false`, which stops their polling and device-backed UI.
+  const visible = view => page === view;
+  const route = (view, child, allowed = true) => allowed && visited.includes(view) ? <ActivityContext.Provider key={view} value={visible(view)}><div className="workspace-route" data-route={view} hidden={!visible(view)} aria-hidden={!visible(view)}>{child}</div></ActivityContext.Provider> : null;
+  const fieldRoute = route('workbench', <FieldApp initial={field} active={visible('workbench')} onNavigate={navigate} requestedScene={workScene} onSceneChange={setWorkScene} onContextChange={setField} workspaceLinks={workspaceLinks} />);
+  const rosterRoute = route('roster', <RosterArea user={user} section={rosterSection} />, published.has('rosters'));
+  const legacyRoutes = ['staff', 'users', 'settings'].map(view => route(view, <LegacyWorkspace page={view} />, workspaceLinks.some(entry => entry.id === view)));
+  const moduleRoutes = [
+    route('stats', <Statistics />, workspaceLinks.some(entry => entry.id === 'stats')),
+    route('attendance', <main className="field-main workspace-module"><Attendance onNavigate={navigate} /></main>, published.has('attendance')),
+    route('members', <main className="field-main workspace-module"><Members user={user} /></main>, published.has('members')),
+    route('permissions', <main className="field-main workspace-module"><Permissions user={user} /></main>, published.has('roles')),
+  ];
+  return <WorkspacePortal key={`${user.memberId || user.account}:${user.authVersion}`}><StaffWorkspace name={user.name || ''} entries={workspaceLinks} active={active} onSelect={navigate}>{fieldRoute}{rosterRoute}{legacyRoutes}{moduleRoutes}</StaffWorkspace></WorkspacePortal>;
 
 }
 

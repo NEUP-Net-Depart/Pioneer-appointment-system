@@ -1,9 +1,11 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { request } from './request.js';
+import { ActivityContext } from './field/ui';
 import { readWorkspaceState, writeWorkspaceState } from './workspace-state.js';
 import { MemberEditor } from './MemberEditor.jsx';
 
 export function Members({ user }) {
+  const routeActive = useContext(ActivityContext);
   const viewKey = `members:${user.memberId || user.account}:${user.authVersion || 0}`;
   const saved = readWorkspaceState(viewKey);
   const [items, setItems] = useState(saved?.items || []);
@@ -39,10 +41,11 @@ export function Members({ user }) {
   }, [q, campus, status]);
 
   useEffect(() => {
+    if (!routeActive) { ++generation.current; controller.current?.abort(); setSelected(null); return; }
     setBusy(true); setNextCursor('');
     const timer = setTimeout(() => load(), 200);
     return () => { clearTimeout(timer); ++generation.current; controller.current?.abort(); };
-  }, [load]);
+  }, [load, routeActive]);
 
   useEffect(() => { if (resolvedQuery === query) writeWorkspaceState(viewKey, { q, campus, status, items, nextCursor, query }); }, [viewKey, q, campus, status, items, nextCursor, query, resolvedQuery]);
 

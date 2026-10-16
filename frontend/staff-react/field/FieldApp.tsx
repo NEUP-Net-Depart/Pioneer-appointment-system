@@ -13,12 +13,14 @@ export function FieldApp({
   requestedScene,
   onSceneChange,
   onContextChange,
+  active = true,
 }: {
   initial: Home;
   workspaceLinks?: { id: string; label: string; group?: string }[];
   requestedScene?: string | null;
   onSceneChange?: (scene: string) => void;
   onContextChange?: (home: Home) => void;
+  active?: boolean;
   onNavigate: (view: string) => void;
 }) {
   const key = `field-scene:${initial.actor.memberId}`;
@@ -60,9 +62,18 @@ export function FieldApp({
       scene,
       `${initial.actor.memberId}:${initial.authVersion}`,
       initial,
+      active,
     ),
     data = result.data;
   const refresh = result.refresh;
+  useEffect(() => {
+    if (active) return;
+    // Leaving the route must release device-backed UI immediately. The
+    // selected repair remains mounted so an unfinished form can be resumed.
+    setScanOpen(false);
+    setToken(null);
+    setCheckToken("");
+  }, [active]);
   useEffect(() => {
     if (!data) return;
     onContextChange?.(data);

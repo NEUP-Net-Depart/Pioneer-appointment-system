@@ -1,4 +1,8 @@
-import React, { useEffect, useRef, useState, useId, type ReactNode } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState, useId, type ReactNode } from "react";
+
+// A hidden route remains mounted for draft continuity, but its dialogs must
+// leave the browser top layer until the route is visible again.
+export const ActivityContext = createContext(true);
 import { statusLabels, statusClass } from "../../../shared/constants.js";
 import { qrImage } from "../../../shared/zxing.js";
 import { createScanner } from "../../staff/scanner.js";
@@ -64,15 +68,17 @@ export function Modal({
 }) {
   const titleId = useId();
   const ref = useRef<HTMLDialogElement>(null);
+  const active = useContext(ActivityContext);
   useEffect(() => {
+    if (!active) { ref.current?.close(); return; }
     const dialog = ref.current!;
     const previous = document.activeElement as HTMLElement;
     dialog.showModal();
     return () => {
       dialog.close();
-      previous?.focus?.();
+      if (previous && !previous.closest('[hidden]')) previous.focus?.();
     };
-  }, []);
+  }, [active]);
   return (
     <dialog
       className={`field-modal${sidePanel ? ' field-side-panel' : ''}`}

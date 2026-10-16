@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useContext, useEffect, useRef, useState } from 'react';
 import { request } from './request.js';
-import { Modal } from './field/ui';
+import { ActivityContext, Modal } from './field/ui';
 import { Roster } from './Roster.jsx';
 import { addDays, dateKey, weekRange } from '../../shared/time.js';
 import './roster.css';
@@ -17,6 +17,7 @@ export function RosterArea({ user, section = 'mine' }) {
 }
 
 function RosterManager({ user }) {
+  const routeActive = useContext(ActivityContext);
   const [tasks, setTasks] = useState([]), [taskId, setTaskId] = useState('');
   const [data, setData] = useState(null), [rows, setRows] = useState([]);
   const [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false), [loading, setLoading] = useState(false);
@@ -57,9 +58,9 @@ function RosterManager({ user }) {
     const beforeUnload = event => { event.preventDefault(); event.returnValue = ''; };
     const beforeNavigation = event => event.preventDefault();
     window.addEventListener('beforeunload', beforeUnload);
-    window.addEventListener('staff-before-navigation', beforeNavigation);
+    if (routeActive) window.addEventListener('staff-before-navigation', beforeNavigation);
     return () => { window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('staff-before-navigation', beforeNavigation); };
-  }, [dirty]);
+  }, [dirty, routeActive]);
 
   async function run(operation) {
     if (commandLock.current) return;

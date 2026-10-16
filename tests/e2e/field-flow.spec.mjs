@@ -420,12 +420,19 @@ test('an expired reception permission removes its scene and returns to personal 
   await page.route('**/api/field/home*', async route => {
     const response = await route.fetch();
     const data = await response.json();
-    await route.fulfill({ response, json:{ ...data, contexts:[], capability:{ ...data.capability, 'onsite.frontdesk.create':false, 'repair.transfer':false } } });
+    await route.fulfill({
+      status: response.status(),
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...data, contexts:[], capability:{ ...data.capability, 'onsite.frontdesk.create':false, 'repair.transfer':false } }),
+    });
   });
   await page.locator('.field-footer').getByRole('button', { name:'刷新', exact:true }).click();
   await expect(page.getByRole('heading', { name:'我的工作', exact:true })).toBeVisible();
   await expect(page.locator('.field-sidebar').getByRole('button', { name:'接待台', exact:true })).toHaveCount(0);
   await expect(page.getByRole('button', { name:'展示签到码', exact:true })).toHaveCount(0);
+  // The scene change starts a home reconciliation. Let intercepted responses
+  // finish before Playwright disposes the request context at test teardown.
+  await page.unrouteAll({ behavior: 'wait' });
 });
 
 test('management keeps its shell and readable results during refresh at all widths', async ({ page }) => {
@@ -463,5 +470,49 @@ test('management keeps its shell and readable results during refresh at all widt
     expect(await page.locator('.react-permission').first().evaluate(node => node.getBoundingClientRect().height)).toBeLessThan(180);
     expect(await page.locator('.react-permission input').first().evaluate(node => node.getBoundingClientRect().width)).toBeLessThan(24);
     await page.screenshot({ path: `output/field-workflow/permissions-${width}.png`, fullPage: true });
+  }
+});
+
+test('switching work modules retains local filters and pauses the hidden board', async ({ page }) => {
+  await page.clock.install();
+  let boardReads = 0;
+  page.on('request', request => {
+    if (new URL(request.url()).pathname === '/api/field/board') boardReads += 1;
+  });
+  await login(page, '20261001');
+  await expect(page.getByRole('heading', { name: '接待台', exact: true })).toBeVisible();
+  const search = page.getByRole('textbox', { name: '搜索当日预约' });
+  await search.fill('ThinkPad');
+  const mine = page.locator('.field-sidebar').getByRole('button', { name: '我的', exact: true });
+  if (await mine.getAttribute('aria-expanded') === 'false') await mine.click();
+  await page.locator('.field-sidebar').getByRole('button', { name: '班次与排班', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '我的值班安排' })).toBeVisible();
+  const pausedAt = boardReads;
+  await page.clock.fastForward(60000);
+  expect(boardReads).toBe(pausedAt);
+  await page.locator('.field-sidebar').getByRole('button', { name: '接待台', exact: true }).click();
+  await expect(search).toHaveValue('ThinkPad');
+  await expect.poll(() => boardReads).toBeGreaterThan(pausedAt);
+});
+
+test('statistics uses the workspace region without reviving the legacy page', async ({ page }) => {
+  await login(page, 'root001');
+  const sidebar = page.locator('.field-sidebar');
+  const reports = sidebar.getByRole('button', { name: '数据与审计', exact: true });
+  if (await reports.getAttribute('aria-expanded') === 'false') await reports.click();
+  await sidebar.getByRole('button', { name: '统计分析', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '维修统计', exact: true })).toBeVisible();
+  await expect(page.locator('#stats-view')).toBeHidden();
+  await expect(page.getByRole('combobox', { name: '统计范围' })).toBeVisible();
+  const first = page.locator('.report-metrics .field-card').first();
+  await expect(first).toBeVisible();
+  const sidebarIdentity = await sidebar.evaluate(node => node.getBoundingClientRect().left);
+  await page.getByRole('combobox', { name: '统计范围' }).selectOption('30');
+  await expect(page.getByText('当前显示：最近 30 天')).toBeVisible();
+  expect(await sidebar.evaluate(node => node.getBoundingClientRect().left)).toBe(sidebarIdentity);
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `output/field-workflow/statistics-${width}.png`, fullPage: true });
   }
 });

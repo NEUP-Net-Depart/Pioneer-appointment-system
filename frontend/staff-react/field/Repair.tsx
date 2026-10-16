@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import { uploadAttachments } from "../../../shared/attachments.js";
 import { outcomeLabels } from "../../../shared/constants.js";
-import { api, Modal, Notice, CredentialCard, Status } from "./ui";
+import { api, Modal, Notice, CredentialCard, Status, ActivityContext } from "./ui";
 import type { Appointment, Person, Verification } from "./types";
 import { intakePhoto } from "./photos";
 
@@ -20,6 +20,7 @@ export function Repair({
   onChanged: () => void;
   sidePanel?: boolean;
 }) {
+  const routeActive = useContext(ActivityContext);
   const [item, setItem] = useState<Appointment | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
@@ -40,6 +41,7 @@ export function Repair({
     [uploaded, setUploaded] = useState<Record<string, string>>({});
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const pending = useRef<{ signature: string; requestId: string } | null>(null);
+  const fetchedAt = useRef(0);
   function operation(body: Record<string, unknown>) {
     const signature = JSON.stringify(body);
     if (pending.current?.signature !== signature)
@@ -52,6 +54,7 @@ export function Repair({
       `/api/field/appointments/${encodeURIComponent(id)}`,
     );
     setItem(value);
+    fetchedAt.current = Date.now();
     return value;
   };
   useEffect(() => {
@@ -84,6 +87,7 @@ export function Repair({
             },
         );
         setUploaded(draft.uploaded || {});
+        fetchedAt.current = Date.now();
       })
       .catch((error) => {
         if (active) setError(error.message);
@@ -116,6 +120,7 @@ export function Repair({
   // Refresh ownership without replacing the user's draft. A transfer must remove
   // the old owner's controls even while they are editing.
   useEffect(() => {
+    if (!routeActive) return;
     let active = true,
       controller: AbortController | null = null;
     const refresh = async () => {
@@ -128,7 +133,10 @@ export function Repair({
           `/api/field/appointments/${encodeURIComponent(id)}`,
           { signal: current.signal },
         );
-        if (active && !current.signal.aborted) setItem(value);
+        if (active && !current.signal.aborted) {
+          setItem(value);
+          fetchedAt.current = Date.now();
+        }
       } catch (error) {
         if (!active || current.signal.aborted) return;
         if ([401, 403].includes((error as Error & { status: number }).status)) {
@@ -138,6 +146,7 @@ export function Repair({
         setError((error as Error).message);
       }
     };
+    if (!document.hidden && fetchedAt.current && Date.now() - fetchedAt.current >= 30000) refresh();
     const timer = setInterval(refresh, 30000);
     document.addEventListener("visibilitychange", refresh);
     return () => {
@@ -146,7 +155,7 @@ export function Repair({
       clearInterval(timer);
       document.removeEventListener("visibilitychange", refresh);
     };
-  }, [id]);
+  }, [id, routeActive]);
   async function command(body: Record<string, unknown>) {
     await api(`/api/appointments/${encodeURIComponent(id)}/status`, {
       method: "PATCH",
