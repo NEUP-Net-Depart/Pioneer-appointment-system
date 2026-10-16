@@ -144,6 +144,121 @@ test('staff platform auth context, modular permissions and policy attendance are
   assert.equal(presenceEvents.total, 1);
 });
 
+test('attendance corrections commit atomically, preserve historical scope and cannot be widened through query fields', async () => {
+  const db = await mf.getD1Database('DB'), repository = staffPlatformRepository(db), today = dateKey(), day = addDays(today,-1);
+  for (const [account,role,campus] of [['20269710','admin','南湖'],['20269711','technician','南湖'],['20269712','admin','南湖'],['20269713','technician','浑南'],['20269714','admin','浑南']]) {
+    await db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,?,?,?,?,?)')
+      .bind(account,`考勤范围${account}`,role,campus,hashPassword('attendance-scope-password'),'2026-01-01').run();
+    await db.prepare('INSERT INTO staff_campus_grants VALUES(?,?)').bind(account,campus).run();
+  }
+  await db.prepare("INSERT INTO staff_campus_grants VALUES('20269710','浑南')").run();
+  const leadTask = await repository.createRosterTask({weekStart:today,slotStart:'01:02',slotEnd:'01:03',deadline:today,memberIds:['member-20269710'],campusScope:{campusIds:['campus-nanhu','campus-hunnan']}},'member-root001');
+  const leadVersion = await repository.createRosterVersion({taskId:leadTask.id,status:'published',assignments:[
+    {memberId:'member-20269710',businessDate:today,campusId:'campus-nanhu',dutyType:'repair',startAt:'00:10',endAt:'00:20',roleKind:'repair_lead'},
+    {memberId:'member-20269710',businessDate:today,campusId:'campus-hunnan',dutyType:'office',startAt:'00:30',endAt:'00:40',roleKind:'office_lead'}
+  ]});
+  const roles = [];
+  for (const [campusId,departmentId] of [['campus-nanhu','dept-hardware'],['campus-hunnan','dept-office']]) roles.push(await repository.createRole({
+    code:`attendance-scope-${campusId}`,name:'考勤范围角色',grants:['attendance.correct','attendance.export'].map(permissionCode => ({
+      permissionCode,scope:{campusIds:[campusId],departmentIds:[departmentId]},conditions:permissionCode==='attendance.correct' ? [{code:'activeDutyRole',parameters:{}}] : []
+    }))
+  }));
+  await repository.bindRoles('member-20269710',roles.map(role => ({roleId:role.id,scope:{},effectiveFrom:'2026-01-01'})),0);
+  async function login(account,password) {
+    const result = await request('/api/auth/login',{method:'POST',body:JSON.stringify({account,password})});
+    assert.equal(result.response.status,200,JSON.stringify(result.body));return {Authorization:`Bearer ${result.body.token}`};
+  }
+  const root = await login('root001','staff-platform-password'), scoped = await login('20269710','attendance-scope-password');
+  const events = {};
+  for (const campusId of ['campus-nanhu','campus-hunnan']) events[campusId] = await repository.createEvent({type:'duty',policyCode:'duty.v1',policyVersion:'1.0.0',businessDate:day,campusId,startsAt:`${day}T08:00:00+08:00`,endsAt:`${day}T22:00:00+08:00`},'member-root001');
+  const input = {memberId:'member-20269711',eventId:events['campus-nanhu'].id,occurredAt:`${day}T10:00:00+08:00`,reason:'核对纸质签到后补录',requestId:crypto.randomUUID()};
+  const send = (body,headers=root) => request('/api/attendance/corrections',{method:'POST',headers,body:JSON.stringify(body)});
+  for (const failure of ['audit','receipt']) {
+    await db.prepare(failure==='audit'
+      ? "CREATE TRIGGER reject_attendance_correction BEFORE INSERT ON audit_events WHEN NEW.action='attendance.corrected' BEGIN SELECT RAISE(ABORT,'ATTENDANCE_AUDIT_FAILURE'); END"
+      : "CREATE TRIGGER reject_attendance_correction BEFORE UPDATE ON operation_receipts WHEN NEW.action='attendance.correct' AND NEW.result_status='success' BEGIN SELECT RAISE(ABORT,'ATTENDANCE_RECEIPT_FAILURE'); END").run();
+    try {
+      assert.equal((await send(input)).response.status,500);
+      assert.equal(await repository.findAttendanceByDedupe(`duty:${input.memberId}:${day}`),null);
+      assert.equal(await repository.receipt('member-root001','attendance.correct',input.requestId),null);
+      assert.equal((await repository.listAudit({action:'attendance.corrected'})).length,0);
+    } finally { await db.prepare('DROP TRIGGER reject_attendance_correction').run(); }
+  }
+  const accepted = await Promise.all([send(input),send(input)]);
+  assert.ok(accepted.every(row => row.response.status===201),JSON.stringify(accepted.map(row => row.body)));
+  assert.equal(accepted[0].body.id,accepted[1].body.id);
+  assert.equal(accepted[0].body.nonScheduled,true);
+  assert.equal(accepted[0].body.primaryDepartmentIdSnapshot,'dept-hardware');
+  assert.equal((await repository.listAudit({action:'attendance.corrected'})).length,1);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS total FROM staff_presence WHERE member_id=?').bind(input.memberId).first()).total,0,'Historical correction must not make a member available now');
+  assert.equal((await send({...input,reason:'同键不同内容'})).response.status,409);
+  assert.equal((await send({...input,requestId:crypto.randomUUID()})).response.status,409);
+  assert.equal((await send({...input,memberId:'member-20269712',requestId:crypto.randomUUID()},scoped)).response.status,403,'Matching campus cannot borrow another grant department');
+  assert.equal((await send({...input,memberId:'member-20269713',eventId:events['campus-hunnan'].id,campusId:'campus-nanhu',requestId:crypto.randomUUID()},scoped)).response.status,400,'Body campus cannot spoof the actual event');
+  assert.equal((await send({...input,memberId:'member-20269713',eventId:events['campus-hunnan'].id,requestId:crypto.randomUUID()},scoped)).response.status,403);
+  assert.equal((await send({...input,memberId:'member-20269712',occurredAt:`${day}T07:59:00+08:00`,requestId:crypto.randomUUID()})).response.status,400);
+  for (const [account,campusId] of [['20269712','campus-nanhu'],['20269713','campus-hunnan'],['20269714','campus-hunnan']]) {
+    const result = await send({...input,memberId:`member-${account}`,eventId:events[campusId].id,requestId:crypto.randomUUID()});
+    assert.equal(result.response.status,201,JSON.stringify(result.body));
+  }
+  // A later department move must not rewrite the department of the old fact.
+  await db.prepare("UPDATE member_department_memberships SET effective_to=? WHERE member_id='member-20269711'").bind(today).run();
+  await db.prepare("INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,effective_from,created_at) VALUES('attendance-move','member-20269711','dept-office','primary',1,?,?)").bind(today,today).run();
+  const overnight = await repository.createEvent({type:'meeting',policyCode:'meeting.v1',policyVersion:'1.0.0',businessDate:day,campusId:'campus-nanhu',
+    startsAt:`${day}T23:30:00+08:00`,endsAt:`${today}T01:00:00+08:00`,ruleSnapshot:{participantMemberIds:[input.memberId]}},'member-root001');
+  const overnightCorrection = await send({...input,eventId:overnight.id,occurredAt:`${today}T00:00:00+08:00`,requestId:crypto.randomUUID()});
+  assert.equal(overnightCorrection.response.status,201,JSON.stringify(overnightCorrection.body));
+  assert.equal(overnightCorrection.body.primaryDepartmentIdSnapshot,'dept-office','Cross-midnight corrections use the department at occurrence time');
+  assert.equal(overnightCorrection.body.businessDate,day,'An event keeps its own business-date grouping');
+  assert.equal((await send({...input,memberId:'member-20269712',eventId:overnight.id,occurredAt:`${today}T00:00:00+08:00`,requestId:crypto.randomUUID()})).response.status,403,'Correction reuses the event participant policy for the target member');
+  const listed = await request(`/api/attendance?all=1&businessDate=${day}`,{headers:scoped});
+  assert.equal(listed.response.status,200,JSON.stringify(listed.body));
+  assert.deepEqual(listed.body.items.map(row => row.memberId).sort(),['member-20269711','member-20269714']);
+  const exported = await mf.dispatchFetch(`https://staff.test/api/attendance/export.csv?month=${day.slice(0,7)}`,{headers:scoped});
+  assert.equal(exported.status,200);const csv=await exported.text();
+  assert.match(csv,/20269711/);assert.match(csv,/20269714/);assert.doesNotMatch(csv,/20269712|20269713/);
+  const own = await request('/api/me/attendance?all=1&memberId=member-20269711',{headers:root});
+  assert.ok(own.body.items.every(row => row.memberId==='member-root001'));
+  // Validate the command boundary independently: a change after service reads
+  // must leave neither a historical fact nor a pending retry receipt.
+  const guardedEvent = await repository.createEvent({type:'duty',policyCode:'duty.v1',policyVersion:'1.0.0',businessDate:addDays(day,-1),campusId:'campus-nanhu',startsAt:`${addDays(day,-1)}T08:00:00+08:00`,endsAt:`${addDays(day,-1)}T22:00:00+08:00`},'member-root001');
+  const audit = {actorMemberId:'member-20269710',actorAccount:'20269710',authVersion:(await repository.accountRow('20269710')).auth_version,businessDate:today,action:'attendance.corrected',reason:'边界校验'};
+  const receipt = {id:crypto.randomUUID(),action:'attendance.correct',hash:'validated-body-hash'};
+  const record = {id:crypto.randomUUID(),memberId:input.memberId,eventId:guardedEvent.id,dedupeKey:`duty:${input.memberId}:${guardedEvent.businessDate}`,occurredAt:`${guardedEvent.businessDate}T02:00:00.000Z`,recordedAt:new Date().toISOString(),departmentId:'dept-hardware',identitySnapshot:{name:'历史姓名'},nonScheduled:true};
+  for (const change of ['duty','event','authorization']) {
+    const snapshot = await repository.attendanceCorrectionFingerprint(record.memberId,record.eventId,audit.actorMemberId,today,record.occurredAt);
+    if (change==='duty') await db.prepare("UPDATE roster_versions SET status='superseded' WHERE id=?").bind(leadVersion.id).run();
+    if (change==='event') await db.prepare('UPDATE attendance_events SET revision=revision+1 WHERE id=?').bind(guardedEvent.id).run();
+    if (change==='authorization') await db.prepare("UPDATE staff_accounts SET auth_version=auth_version+1 WHERE account='20269710'").run();
+    assert.equal(await repository.correctAttendance(record,audit,receipt,snapshot),null,change);
+    assert.equal(await repository.receipt(audit.actorMemberId,receipt.action,receipt.id),null,change);
+    assert.equal(await repository.findAttendanceByDedupe(record.dedupeKey),null,change);
+    if (change==='duty') await db.prepare("UPDATE roster_versions SET status='published' WHERE id=?").bind(leadVersion.id).run();
+  }
+});
+
+test('attendance keyset pagination returns every same-time historical fact without duplicates', async () => {
+  const db = await mf.getD1Database('DB'), day = dateKey(), statements=[];
+  for (let index=0;index<205;index++) {
+    const id=`attendance-page-${String(index).padStart(3,'0')}`,event=`event-${id}`;
+    statements.push(db.prepare("INSERT INTO attendance_events(id,type,policy_code,policy_version,campus_id,business_date,starts_at,ends_at,source_ref,created_at) VALUES(?,'meeting','meeting.v1','1.0.0','campus-nanhu',?,?,?,?,?)")
+      .bind(event,day,`${day}T00:00:00.000Z`,`${day}T23:59:59.000Z`,'{}',`${day}T10:00:00.000Z`));
+    statements.push(db.prepare("INSERT INTO attendance_records(id,member_id,event_id,dedupe_key,occurred_at,recorded_at,method,source_ref,primary_department_id_snapshot,identity_snapshot) VALUES(?,'member-root001',?,?,?,?,'qr','{}','dept-office','{}')")
+      .bind(id,event,`meeting:member-root001:${event}`,`${day}T10:00:00.000Z`,`${day}T10:00:00.000Z`));
+  }
+  for(let index=0;index<statements.length;index+=60) await db.batch(statements.slice(index,index+60));
+  const login=await request('/api/auth/login',{method:'POST',body:JSON.stringify({account:'root001',password:'staff-platform-password'})});
+  const headers={Authorization:`Bearer ${login.body.token}`},seen=[];let cursor='',pages=0;
+  do {
+    const page=await request(`/api/me/attendance?${new URLSearchParams({type:'meeting',...(cursor ? {cursor} : {})})}`,{headers});
+    assert.equal(page.response.status,200,JSON.stringify(page.body));
+    assert.equal(page.body.items.length,pages<2 ? 100 : 5);
+    seen.push(...page.body.items.map(row => row.id));cursor=page.body.nextCursor;pages++;
+  }while(cursor);
+  assert.equal(new Set(seen).size,205);
+  assert.deepEqual(seen,[...seen].sort().reverse());
+});
+
 test('member reads, searches and writes share complete grants without mixing campus and department scopes', async () => {
   const db = await mf.getD1Database('DB'), repository = staffPlatformRepository(db), today = dateKey();
   async function account(id, campus, role = 'technician') {

@@ -637,6 +637,36 @@ test('switching work modules retains local filters and pauses the hidden board',
   await expect.poll(() => boardReads).toBeGreaterThan(pausedAt);
 });
 
+test('personal attendance loads older pages without replacing existing facts and retries in place', async ({ page }) => {
+  let failOlder = true;
+  const first = {id:'attendance-current',businessDate:'2026-10-15',occurredAt:'2026-10-15T10:00:00.000Z',type:'duty',campusId:'campus-nanhu',nonScheduled:false};
+  const older = {...first,id:'attendance-older',businessDate:'2026-10-14',occurredAt:'2026-10-14T10:00:00.000Z'};
+  await page.route('**/api/me/attendance*', route => {
+    const isOlder = new URL(route.request().url()).searchParams.has('cursor');
+    return isOlder && failOlder ? route.fulfill({status:503,json:{error:'历史记录暂时不可用'}})
+      : route.fulfill({json:{items:[isOlder ? older : first],nextCursor:isOlder ? null : 'older-cursor'}});
+  });
+  await login(page,'20261002');
+  const sidebar = page.locator('.field-sidebar');
+  await sidebar.getByRole('button',{name:'本人签到记录',exact:true}).click();
+  const history = page.locator('.attendance-history');
+  await expect(history.locator('li')).toHaveCount(1);
+  await history.getByRole('button',{name:'加载更早的签到',exact:true}).click();
+  await expect(history).toContainText('历史记录暂时不可用');
+  await expect(history.locator('li')).toHaveCount(1);
+  failOlder = false;
+  await history.getByRole('button',{name:'加载更早的签到',exact:true}).click();
+  await expect(history.locator('li')).toHaveCount(2);
+  await expect(history.locator('li').first()).toContainText('2026-10-15');
+  await expect(history.getByRole('button',{name:'加载更早的签到',exact:true})).toHaveCount(0);
+  for (const width of [320,390,1440]) {
+    await page.setViewportSize({width,height:900});
+    expect(await history.evaluate(element => element.scrollWidth<=element.clientWidth)).toBeTruthy();
+    await mkdir('output/field-workflow',{recursive:true});
+    await page.screenshot({path:`output/field-workflow/attendance-history-${width}.png`,fullPage:true});
+  }
+});
+
 test('security and business settings have separate workflows and consistent page headings', async ({ page }) => {
   // Compare settled layout coordinates, not the transient 4px route-entry
   // translation; retain the same strict alignment check on every platform.

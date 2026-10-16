@@ -14,5 +14,6 @@
     "audit": ["GET /api/audit"]
   },
   "idempotency": "actorMemberId + action + requestId",
+  "attendancePagination": {"pageSize":100,"cursor":"opaque nextCursor; pass as cursor without decoding","authorization":"current grants evaluated against historical campus and department snapshots"},
   "businessTimeZone": "Asia/Shanghai"
 }

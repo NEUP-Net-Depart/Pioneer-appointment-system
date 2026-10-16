@@ -9,3 +9,5 @@
 换班预览与接受复用 `validateSwap`，重读双方工作资格、适用校区、请假、同周时间冲突和负责人覆盖。接受时发布关联修订，不修改原分配及岗位事实；`previous_assignment_id` 记录直接前版本，未变化人员继续原 lineage，新接手人员开启新 lineage。不同任务的两份原版本在同一事务内先共同失效，再发布后继版本，继续使用发布冲突约束。旧版已接受记录原样保留，不伪造其生效版本。
 
 `roster-swaps.js` 对校验时的数据快照在批处理首条语句中重新比对，同时断言请求版本及当前账号授权版本。仅本次操作持有的唯一回执标记可执行后续写入；班次、岗位、申请结果、审计和最终回执一起成功或回滚。不同操作不能借用另一条待处理回执。快照变化不留下待处理回执，客户端保留同一 requestId 重试；内容摘要使用 SHA-256。实际事务、失败注入、并发和双迁移链证据在 `field-workflow.test.mjs`、`staff-platform-http.test.mjs`、`staff-upgrade.test.mjs`；双方浏览器操作及刷新恢复在 `roster-flow.spec.mjs`。
+
+考勤管理读取当前授权，业务日期仅筛选历史事实；列表与导出使用事实中的校区、部门快照逐项校验完整授权。补录按真实场次及当时部门校验，不接受请求体替换范围；`attendance-corrections.js` 在同一批处理内断言场次、目标资料、当前岗位和授权版本，提交考勤事实、审计与 SHA-256 请求回执，不改变实时在岗状态。列表按时间与 ID 游标分页，跨过不可见记录填满授权页。证据位于 `attendance-scope.test.mjs`、`staff-platform-http.test.mjs` 和 `field-flow.spec.mjs`。

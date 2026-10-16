@@ -1,7 +1,8 @@
-import { parseJson } from '../platform/contracts.js';
+import { parseJson, SCHEMA_VERSION } from '../platform/contracts.js';
 import { dateKey, nowIso } from '../platform/time.js';
 import { intersectScopes } from '../modules/authorization/scopes.js';
 import { rosterSwapCommands } from './roster-swaps.js';
+import { attendanceCorrections } from './attendance-corrections.js';
 
 const memberColumns = `m.id,m.name,m.student_id,m.home_campus_id,m.status,m.revision,m.created_at,m.updated_at`;
 const assignmentLeaveColumn = `(SELECT lr.status FROM roster_leave_facts lr WHERE lr.origin_assignment_id=COALESCE(da.origin_assignment_id,da.id) AND lr.member_id=da.member_id
@@ -131,7 +132,7 @@ export function staffPlatformRepository(db) {
       actor: { memberId, account: user.account, name: member?.name || user.name, status: member?.status || user.status },
       member, memberships: membershipItems, workProfiles: profileItems, grants: grantItems,
       todayDuties: duties, presence: presence ? { memberId: presence.member_id, businessDate: presence.business_date, campusId: presence.campus_id, state: presence.state, revision: presence.revision } : null,
-      authVersion, schemaVersion: '0016'
+      authVersion, schemaVersion: SCHEMA_VERSION
     };
   }
 
@@ -452,8 +453,9 @@ export function staffPlatformRepository(db) {
     if (filters.type) { conditions.push('e.type=?'); args.push(filters.type); }
     if (filters.campusId) { conditions.push('e.campus_id=?'); args.push(filters.campusId); }
     if (filters.campusIds?.length) { conditions.push(`e.campus_id IN (${filters.campusIds.map(() => '?').join(',')})`); args.push(...filters.campusIds); }
+    if (filters.after) { conditions.push('(ar.occurred_at<? OR (ar.occurred_at=? AND ar.id<?))'); args.push(filters.after.occurredAt,filters.after.occurredAt,filters.after.id); }
     const result = await db.prepare(`SELECT ar.*,e.type,e.business_date,e.campus_id FROM attendance_records ar JOIN attendance_events e ON e.id=ar.event_id
-      ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''} ORDER BY ar.occurred_at DESC,ar.id DESC LIMIT 501`).bind(...args).all();
+      ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''} ORDER BY ar.occurred_at DESC,ar.id DESC LIMIT 101`).bind(...args).all();
     return rows(result).map(attendanceRecord);
   }
 
@@ -742,6 +744,7 @@ export function staffPlatformRepository(db) {
       args: [record.actorAccount,record.actorMemberId,record.authVersion] };
   }
   const { swapFingerprint, createSwap, updateSwap } = rosterSwapCommands(db, { auditStatement, commandAuthorization });
+  const { attendanceCorrectionFingerprint, correctAttendance } = attendanceCorrections(db, { auditStatement, commandAuthorization });
   async function listSwaps(filters = {}) {
     const conditions = [], args = [];
     if (filters.memberId) { conditions.push('(from_member_id=? OR to_member_id=?)'); args.push(filters.memberId, filters.memberId); }
@@ -762,6 +765,6 @@ export function staffPlatformRepository(db) {
 
   return { effectiveAssignment, effectiveLeaveAssignment: effectiveAssignment, swapFingerprint, swapCoverage, pendingSwapInvitations, accountRow, accountForMember, ensureMember, memberRow, memberships, membershipsForMembers, profiles, grants, todayDuties, authorizationContext, listMembers, updateMember, listMemberships, addMembership, endMembership,
     listCampuses, listDepartments, listLocations, listPresence, activeRepair, importMembers, dutyEvent, latestIntake, fieldPeople,
-    roleBindings, permissionDefinitions, listRoles, createRole, updateRole, bindRoles, modules, createEvent, issueToken, findEventByToken, findAttendanceByDedupe, insertAttendance, listAttendance, attendanceExport, setPresence,
+    roleBindings, permissionDefinitions, listRoles, createRole, updateRole, bindRoles, modules, createEvent, issueToken, findEventByToken, findAttendanceByDedupe, insertAttendance, listAttendance, attendanceExport, attendanceCorrectionFingerprint, correctAttendance, setPresence,
     attendanceEvent, eventById: attendanceEvent, createReceipt, claimReceipt, releaseReceipt, receipt, audit, listAudit, leaveImpact, officeRosterMemberIds, rosterMemberFacts, rosterTaskById, memberCampuses, createRosterTask, listRosterTasks, saveAvailability, availability, createRosterVersion, rosterVersionById, rosterVersionsForTask, versionAssignments, updateRosterDraft, publishRoster, listAssignments, assignmentById, swapCandidates, createLeave, leaveById, listLeaves, updateLeave, createSwap, swapById, listSwaps, updateSwap };
 }

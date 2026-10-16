@@ -47,7 +47,7 @@ export const staffPlatformRoutes = [
     return new Response(result.csv, { headers: { ...securityHeaders, 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="attendance-${result.month}.csv"` } });
   }],
   ['POST', /^\/api\/attendance\/corrections$/, async context => json(await context.services.staffPlatform.correctAttendance(await context.role('technician'), await readBody(context.request)), 201)],
-  ['GET', /^\/api\/me\/attendance$/, async context => json(await context.services.staffPlatform.attendanceList(await context.role('technician'), { ...context.query, memberId: (await context.services.staffPlatform.contextFor(await context.role('technician'))).actor.memberId }))],
+  ['GET', /^\/api\/me\/attendance$/, async context => json(await context.services.staffPlatform.attendanceList(await context.role('technician'), { ...context.query, all:false,memberId: (await context.services.staffPlatform.contextFor(await context.role('technician'))).actor.memberId }))],
   ['PATCH', /^\/api\/presence\/me$/, async context => json(await context.services.staffPlatform.presence(await context.role('technician'), await readBody(context.request)))],
 
   ['GET', /^\/api\/roster-tasks$/, async context => json(await context.services.staffPlatform.rosterTasks(await context.role('technician'), context.query))],

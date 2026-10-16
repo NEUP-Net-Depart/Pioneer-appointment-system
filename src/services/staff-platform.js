@@ -8,6 +8,7 @@ import { validScope, campusId as normalizeCampusId } from '../modules/authorizat
 import { validGrantValidity } from '../modules/authorization/public.js';
 import { workspacePermissions } from '../modules/authorization/workspace.js';
 import { validateSwap } from '../modules/rosters/swap-validation.js';
+import { csvLine } from '../lib/csv.js';
 
 function randomToken() {
   const bytes = new Uint8Array(24);
@@ -88,11 +89,6 @@ function csvRows(value) {
   if (quoted) fail(400, 'CSV 引号未闭合');
   current.push(cell); if (current.some(item => item.trim())) rows.push(current);
   return rows;
-}
-
-function csvCell(value) {
-  const text = String(value ?? '');
-  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
 export function staffPlatformService({ repository, platform, manifests }) {
@@ -465,23 +461,43 @@ export function staffPlatformService({ repository, platform, manifests }) {
     return { campusName, businessDate:event.businessDate, startsAt:event.startsAt, endsAt:event.endsAt, type:event.type };
   }
   async function attendanceList(actor, query) {
-    const context = await contextFor(actor, query?.businessDate || dateKey());
-    let filters = { ...query };
+    const context = await contextFor(actor);
+    const filters = { memberId:query?.memberId,businessDate:query?.businessDate,type:inputString(query || {},'type',80),campusId:query?.campusId ? normalizeCampusId(query.campusId) : undefined };
+    if (query?.businessDate && !validDate(query.businessDate)) fail(400, '签到日期不正确');
     const all = query?.all === true || query?.all === '1' || query?.all === 'true';
+    const otherMember = query?.memberId && query.memberId !== context.actor.memberId;
+    const managing = all || otherMember;
+    // A requested historical/future date selects records, never the actor's
+    // grant version. Check every record with one complete current grant.
+    if (managing && !context.permissions['attendance.correct']) fail(403, '没有查看其他成员签到记录的权限');
     if (all) {
-      await requirePermission(actor, 'attendance.correct', { campusId: query.campusId }, query.businessDate || dateKey());
-      if (!query.campusId && actor.authorizedCampuses?.length) {
-        const ids = { '南湖': 'campus-nanhu', '浑南': 'campus-hunnan' };
-        filters.campusIds = actor.authorizedCampuses.map(item => ids[item] || item);
-      }
       delete filters.memberId;
     } else {
-      if (query?.memberId && query.memberId !== context.actor.memberId) await requirePermission(actor, 'attendance.correct', { campusId: query.campusId }, query.businessDate || dateKey());
-      else await requirePermission(actor, 'attendance.self', { memberId: context.actor.memberId });
+      if (!otherMember) await requirePermission(actor, 'attendance.self', { memberId: context.actor.memberId });
       filters.memberId = query?.memberId || context.actor.memberId;
     }
-    const records = await repository.listAttendance(filters);
-    return { items: records, definition: { unit: 'attendance_record', timezone: 'Asia/Shanghai', version: '1.0.0' } };
+    let after;
+    if (query?.cursor) {
+      try {
+        if (typeof query.cursor !== 'string' || query.cursor.length > 2048) throw new Error();
+        const parts = JSON.parse(decodeURIComponent(query.cursor));
+        if (!Array.isArray(parts) || parts.length !== 2 || typeof parts[0] !== 'string' || !Number.isFinite(Date.parse(parts[0])) || typeof parts[1] !== 'string' || !parts[1] || parts[1].length > 128) throw new Error();
+        after = {occurredAt:parts[0],id:parts[1]};
+      } catch { fail(400, '签到分页游标不正确'); }
+    }
+    const items = [], definition = {unit:'attendance_record',timezone:'Asia/Shanghai',version:'1.0.0'};
+    for (;;) {
+      const records = await repository.listAttendance({...filters,after});
+      for (const record of records) {
+        if (managing && !evaluate(context, 'attendance.correct', {
+          id:record.id,memberId:record.memberId,campusId:record.campusId,departmentId:record.primaryDepartmentIdSnapshot
+        }).allowed) continue;
+        items.push(record);
+        if (items.length === 101) return {items:items.slice(0,100),nextCursor:encodeURIComponent(JSON.stringify([items[99].occurredAt,items[99].id])),definition};
+      }
+      if (records.length < 101) return {items,nextCursor:null,definition};
+      const last = records.at(-1); after = {occurredAt:last.occurredAt,id:last.id};
+    }
   }
   async function attendanceExport(actor, query = {}) {
     const month = query.month === undefined ? dateKey().slice(0, 7) : query.month;
@@ -489,30 +505,59 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const [year, monthNumber] = month.split('-').map(Number);
     if (!Number.isInteger(year) || !Number.isInteger(monthNumber) || monthNumber < 1 || monthNumber > 12) fail(400, '月份不正确');
     const next = new Date(Date.UTC(year, monthNumber, 1)).toISOString().slice(0, 10);
-    await requirePermission(actor, 'attendance.export', { campusId: query.campusId }, dateKey());
+    const context = await contextFor(actor);
+    if (!context.permissions['attendance.export']) fail(403, '没有导出考勤的权限');
     const names = { '南湖': 'campus-nanhu', '浑南': 'campus-hunnan' };
     const requestedCampus = query.campusId || '';
     if (requestedCampus && !['campus-nanhu','campus-hunnan'].includes(requestedCampus)) fail(400, '校区不正确');
     const allowed = actor.authorizedCampuses || [];
     const campusIds = (requestedCampus ? [requestedCampus] : allowed.map(item => names[item] || item)).filter(Boolean);
-    const rows = await repository.attendanceExport({ month, nextMonth: next, campusIds, memberId: query.memberId, departmentId: query.departmentId });
+    if (!campusIds.length) fail(403, '没有可导出的校区');
+    const candidates = await repository.attendanceExport({ month, nextMonth: next, campusIds, memberId: query.memberId, departmentId: query.departmentId });
+    const rows = candidates.filter(row => evaluate(context, 'attendance.export', {
+      campusId: row.campusId, memberId: row.memberId, departmentId: row.departmentId
+    }).allowed);
     const header = ['校区','人员','学号','签到次数','部门'];
-    const body = rows.map(row => [row.campus,row.memberName,row.studentId,row.attendanceCount,row.department].map(csvCell).join(','));
-    return { month, rows, csv: `\uFEFF${[header.join(','), ...body].join('\r\n')}\r\n` };
+    const body = rows.map(row => csvLine([row.campus,row.memberName,row.studentId ? `'${row.studentId}` : '',row.attendanceCount,row.department]));
+    return { month, rows, csv: `\uFEFF${header.join(',')}\r\n${body.join('')}` };
   }
   async function correctAttendance(actor, input) {
-    await requirePermission(actor, 'attendance.correct', { campusId: input.campusId }, input.businessDate || dateKey());
-    if (!input.memberId || !input.eventId || !input.occurredAt || !input.reason) fail(400, '补录签到字段不完整');
-    const context = await contextFor(actor, input.businessDate || dateKey());
+    if (typeof input.memberId !== 'string' || !input.memberId || input.memberId.length > 128 ||
+      typeof input.eventId !== 'string' || !input.eventId || input.eventId.length > 128 ||
+      typeof input.occurredAt !== 'string' || !input.occurredAt || input.occurredAt.length > 80 || !input.reason) fail(400, '补录签到字段不完整');
+    const reason = inputString(input, 'reason', 500, true);
+    if (input.requestId !== undefined && !requestId(input.requestId)) fail(400, '请求编号不正确');
+    if (!Number.isFinite(Date.parse(input.occurredAt))) fail(400, '补录时间不正确');
+    const context = await contextFor(actor);
+    const occurredAt = instant(input.occurredAt);
+    const fingerprint = await repository.attendanceCorrectionFingerprint(input.memberId,input.eventId,context.actor.memberId,context.businessDate,occurredAt);
     const event = await repository.attendanceEvent?.(input.eventId); if (!event) fail(404, '签到场次不存在');
-    const policy = policyFor(event); const dedupeKey = policy.getDedupeScope({ memberId: input.memberId, event });
-    if (await repository.findAttendanceByDedupe(dedupeKey)) fail(409, '该成员已存在签到事实');
+    if (input.campusId && normalizeCampusId(input.campusId) !== event.campusId || input.businessDate && input.businessDate !== event.businessDate) fail(400, '补录范围与签到场次不一致');
+    if (!eventWindow(event.startsAt, event.endsAt, occurredAt) || Date.parse(occurredAt) > Date.now()) fail(400, '补录时间必须位于场次窗口内且不能晚于现在');
+    const primary = (await repository.memberships(input.memberId, dateKey(new Date(occurredAt)))).find(item => item.isPrimary) || null;
+    if (!evaluate(context, 'attendance.correct', { id:event.id, memberId:input.memberId, campusId:event.campusId, departmentId:primary?.departmentId }).allowed) fail(403, '没有修正该校区与部门考勤的权限');
+    const policy = policyFor(event); if (!policy) fail(400, '签到策略不存在');
+    if (!policy.checkEligibility({event,context:{actor:{memberId:input.memberId},attendanceEligible:true}})) fail(403, '该成员不在此场次的可参加范围内');
+    const dedupeKey = policy.getDedupeScope({ memberId: input.memberId, event });
     const target = await repository.memberRow(input.memberId); if (!target) fail(404, '成员不存在');
-    const primary = (await repository.memberships(input.memberId, event.businessDate)).find(item => item.isPrimary) || null;
-    const created = await repository.insertAttendance({ id: crypto.randomUUID(), memberId: input.memberId, eventId: input.eventId, dedupeKey, occurredAt: instant(input.occurredAt), recordedAt: nowIso(), method: 'manual', sourceRef: event.sourceRef, campusId: event.campusId, businessDate: event.businessDate, departmentId: primary?.departmentId || null, departmentName: primary?.departmentName || 'unknown', identitySnapshot: { name: target.name, studentId: target.student_id || '', memberId: target.id }, nonScheduled: false }, false);
-    if (!created) fail(409, '签到记录已被其他操作修改');
-    await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'attendance.corrected', sourceRef: publicResourceRef('attendance','record',created.id), after: created, reason: input.reason, requestId: input.requestId });
-    return created;
+    const receipt = { action:'attendance.correct',id:requestId(input.requestId) || crypto.randomUUID(),hash:await tokenDigest(stableJson(input)) };
+    const replay = async () => {
+      const previous = await repository.receipt(context.actor.memberId,receipt.action,receipt.id);
+      if (!previous) return null;
+      if (previous.payloadHash !== receipt.hash) fail(409, '请求编号已用于其他内容', 'REQUEST_CONFLICT');
+      if (previous.resultStatus !== 'success') fail(409, '补录正在处理中，请稍后重试', 'REQUEST_CONFLICT');
+      return {...previous.result,idempotent:true};
+    };
+    const previous = await replay(); if (previous) return previous;
+    const duties = await repository.todayDuties(input.memberId,event.businessDate);
+    if (fingerprint !== await repository.attendanceCorrectionFingerprint(input.memberId,input.eventId,context.actor.memberId,context.businessDate,occurredAt)) fail(409, '成员资料、当日岗位或签到场次已变化，请重新核对');
+    const created = await repository.correctAttendance({ id:crypto.randomUUID(),memberId:input.memberId,eventId:input.eventId,dedupeKey,occurredAt,recordedAt:nowIso(),
+      sourceRef:event.sourceRef,departmentId:primary?.departmentId,departmentName:primary?.departmentName || 'unknown',
+      identitySnapshot:{name:target.name,studentId:target.student_id || '',memberId:target.id},nonScheduled:!duties.length },
+    {actorMemberId:context.actor.memberId,actorAccount:actor.account,authVersion:context.authVersion,businessDate:context.businessDate,action:'attendance.corrected',reason,requestId:receipt.id},receipt,fingerprint);
+    if (created) return created;
+    const concurrent = await replay(); if (concurrent) return concurrent;
+    fail(409, '签到已存在，或成员资料、授权、场次已变化，请刷新后核对');
   }
   async function presence(actor, input) {
     if (input.businessDate && input.businessDate !== dateKey()) fail(400, '只能修改今天的在岗状态');
