@@ -28,6 +28,7 @@ export function slotCapacityRepository(db, { workflowSchema = false } = {}) {
           JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published'
           JOIN campuses c ON c.id=da.campus_id
           WHERE c.name=? AND da.business_date=? AND da.duty_type IN (${dutyTypes.map(() => '?').join(',')})
+          AND NOT EXISTS(SELECT 1 FROM roster_leave_facts lr WHERE lr.origin_assignment_id=COALESCE(da.origin_assignment_id,da.id) AND lr.member_id=da.member_id AND lr.status='approved')
           GROUP BY da.duty_type`).bind(campus, date, ...dutyTypes).all() : null
       ]);
       return { source: snapshot.total ? 'snapshot' : 'template',

@@ -69,6 +69,7 @@ export function generateRoster(input) {
 export function validateRoster(result, input) {
   const errors = [];
   const seen = [];
+  const effective = (result.assignments || []).filter(item => item.leaveStatus !== 'approved');
   if (!input.slots?.length) errors.push({ code: 'SLOTS_REQUIRED' });
   for (const item of result.assignments || []) {
     const member = (input.members || []).find(candidate => candidate.memberId === item.memberId);
@@ -83,8 +84,8 @@ export function validateRoster(result, input) {
   }
   for (const locked of input.locked || []) if (!(result.assignments || []).some(item => key(item) === key(locked))) errors.push({ code: 'LOCKED_ASSIGNMENT_CHANGED', memberId: locked.memberId });
   for (const slot of input.slots || []) {
-    if (!(result.assignments || []).some(item => slotKey(item) === slotKey(slot))) errors.push({ code: 'COVERAGE_MISSING', slot });
-    if ((input.requireLead || slot.requireLead) && !(result.assignments || []).some(item => slotKey(item) === slotKey(slot) && item.roleKind === 'repair_lead')) errors.push({ code: 'LEAD_COVERAGE_MISSING', slot });
+    if (!effective.some(item => slotKey(item) === slotKey(slot))) errors.push({ code: 'COVERAGE_MISSING', slot });
+    if ((input.requireLead || slot.requireLead) && !effective.some(item => slotKey(item) === slotKey(slot) && item.roleKind === 'repair_lead')) errors.push({ code: 'LEAD_COVERAGE_MISSING', slot });
   }
   return { valid: errors.length === 0, errors };
 }

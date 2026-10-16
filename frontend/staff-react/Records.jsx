@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useRef, useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { apiFetch } from '../../shared/api.js';
 import { statusLabels, TIME_SLOTS, outcomeLabels } from '../../shared/constants.js';
 import { addDays, dateKey, serviceDay } from '../../shared/time.js';
@@ -8,32 +8,7 @@ import { Repair } from './field/Repair';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { staffPermission } from '../../shared/staff-access.js';
 
-// Each region owns its query lifecycle. Existing rows and local input survive
-// background updates; inactive routes and hidden documents stop requesting.
-function useRecordQuery(path, active, revision) {
-  const [snapshot, setSnapshot] = useState(null), [error, setError] = useState(''), [loading, setLoading] = useState(false);
-  const latest = useRef(0);
-  useEffect(() => {
-    if (!active) return;
-    latest.current = 0;
-    let controller, stopped = false;
-    async function read() {
-      controller?.abort();
-      if (document.hidden) { setLoading(false); return; }
-      controller = new AbortController(); const current = controller;
-      setLoading(true); setError('');
-      try { const data = await request(path, { signal: current.signal }); if (!stopped && !current.signal.aborted) { setSnapshot({ path, data }); latest.current = Date.now(); } }
-      catch (failure) { if (!stopped && !current.signal.aborted) { if ([401,403].includes(failure.status)) setSnapshot(null); setError(failure.message); } }
-      finally { if (!stopped && !current.signal.aborted) setLoading(false); }
-    }
-    read();
-    const timer = setInterval(read, 30000);
-    const visibility = () => { if (document.hidden) { controller?.abort(); setLoading(false); } else if (Date.now() - latest.current >= 30000) read(); };
-    document.addEventListener('visibilitychange', visibility);
-    return () => { stopped = true; controller?.abort(); clearInterval(timer); document.removeEventListener('visibilitychange', visibility); };
-  }, [path, active, revision]);
-  return { data: snapshot?.data, current: snapshot?.path === path, error, loading };
-}
+import { useWorkspaceQuery } from "./useWorkspaceQuery.js";
 
 const cleanFilters = { q: '', campus: 'all', date: '', timeSlot: '', status: 'all', dateFrom: '', dateTo: '' };
 const columns = { createdAt: '预约信息', date: '预约时间', status: '状态', campus: '校区' };
@@ -45,8 +20,8 @@ export function Records({ user }) {
   const [filters, setFilters] = useState(cleanFilters), [search, setSearch] = useState(''), [sorts, setSorts] = useState([]), [revision, setRevision] = useState(0), [menu, setMenu] = useState(''), [selected, setSelected] = useState(''), [message, setMessage] = useState('');
   useEffect(() => { const timer = setTimeout(() => setFilters(current => current.q === search.trim() ? current : { ...current, q: search.trim() }), 200); return () => clearTimeout(timer); }, [search]);
   const query = new URLSearchParams({ ...filters, sorts: sorts.map(item => `${item.key}:${item.direction}`).join(',') });
-  const list = useRecordQuery(`/api/appointments?${query}`, active, revision);
-  const overview = useRecordQuery('/api/appointments/overview', active && overviewOpen, revision);
+  const list = useWorkspaceQuery(`/api/appointments?${query}`, active, revision);
+  const overview = useWorkspaceQuery('/api/appointments/overview', active && overviewOpen, revision);
   const refresh = () => setRevision(value => value + 1);
   const update = patch => setFilters(current => ({ ...current, ...patch }));
   const reset = () => { setSearch(''); setFilters(cleanFilters); setSorts([]); };

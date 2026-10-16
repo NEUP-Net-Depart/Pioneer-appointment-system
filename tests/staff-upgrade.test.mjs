@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { Miniflare } from 'miniflare';
 import { migrationFingerprint } from '../scripts/migration-fingerprint.mjs';
+import { staffPlatformRepository } from '../src/db/staff-platform.js';
 
 async function statements(path) {
   const sql = (await readFile(path, 'utf8')).replace(/--[^\n]*/g, '');
@@ -18,6 +19,49 @@ async function statements(path) {
 }
 const candidate = 'database/upgrades/staff-0007-to-five-statuses.sql';
 const timestamp = '2026-10-15T10:00:00.000Z';
+
+test('both leave-lineage upgrades preserve populated roster history and reconnect unchanged shifts', async () => {
+  const mf = new Miniflare({ telemetry: { enabled: false }, workers: [{ config: {
+    name: 'leave-upgrade-test', compatibilityDate: '2026-10-01',
+    manifest: { mainModule: 'index.js', modules: { 'index.js': { type: 'esm', contents: 'export default { fetch() { return new Response("test"); } };' } } },
+    env: { STAFF: { type: 'd1', id: 'leave-upgrade-staff' }, DEV: { type: 'd1', id: 'leave-upgrade-dev' } }
+  } }] });
+  try {
+    for (const [binding, directory, last] of [['STAFF', 'database/staff-migrations', '0014_roster_leave_lineage.sql'], ['DEV', 'migrations', '0016_roster_leave_lineage.sql']]) {
+      const db = await mf.getD1Database(binding);
+      for (const file of (await readdir(directory)).filter(file => file.endsWith('.sql') && file < last).sort()) {
+        await db.batch((await statements(`${directory}/${file}`)).map(sql => db.prepare(sql)));
+      }
+      await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('998811','历史成员','technician','南湖','test-only',?)").bind(timestamp).run();
+      await db.prepare("INSERT INTO roster_tasks(id,week_start,slot_start,slot_end,deadline,created_at) VALUES('history-task','2026-11-09','19:00','21:00',?,?)").bind(timestamp,timestamp).run();
+      for (const version of [1, 2, 3]) {
+        await db.prepare("INSERT INTO roster_versions(id,task_id,status,version,rule_version,algorithm_version,created_at) VALUES(?,'history-task',?,?,'1','test',?)").bind(`history-v${version}`,version === 3 ? 'published' : 'superseded',version,timestamp).run();
+        await db.prepare("INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at) VALUES(?,?,'member-998811','2026-11-09','campus-nanhu','repair','19:00','21:00')").bind(`history-shift${version}`,`history-v${version}`).run();
+      }
+      await db.prepare("INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at) VALUES('rescheduled','history-v3','member-998811','2026-11-10','campus-nanhu','repair','19:00','21:00')").run();
+      await db.prepare("INSERT INTO leave_requests(id,assignment_id,member_id,reason,status,created_at) VALUES('history-leave','history-shift2','member-998811','历史请假','approved',?)").bind(timestamp).run();
+      await db.prepare("INSERT INTO leave_requests(id,assignment_id,member_id,reason,status,created_at) VALUES('history-later-pending','history-shift3','member-998811','旧版曾允许重新申请','pending','2026-10-16T10:00:00.000Z')").run();
+      const before = await snapshot(db), migration = await statements(`${directory}/${last}`);
+      await assert.rejects(db.batch([...migration.map(sql => db.prepare(sql)), db.prepare('INSERT INTO missing_leave_upgrade VALUES(1)')]));
+      assert.deepEqual(await snapshot(db), before);
+      await db.batch(migration.map(sql => db.prepare(sql)));
+      const after = await snapshot(db);
+      assert.deepEqual(after.leave_requests, before.leave_requests);
+      assert.deepEqual(after.roster_versions, before.roster_versions);
+      assert.equal(after.duty_assignments.find(row => row.id === 'history-shift1').origin_assignment_id, null);
+      assert.equal(after.duty_assignments.find(row => row.id === 'history-shift2').origin_assignment_id, 'history-shift1');
+      assert.equal(after.duty_assignments.find(row => row.id === 'history-shift3').origin_assignment_id, 'history-shift1');
+      assert.equal(after.duty_assignments.find(row => row.id === 'rescheduled').origin_assignment_id, null);
+      const repository = staffPlatformRepository(db);
+      const current = await repository.effectiveLeaveAssignment('history-shift2', 'member-998811');
+      assert.equal(current.id, 'history-shift3');
+      assert.equal(current.leaveStatus, 'approved');
+      assert.equal((await repository.leaveImpact(current)).expected, 0);
+      assert.equal((await repository.listAssignments('member-998811', '2026-11-09')).find(row => row.id === 'rescheduled').leaveStatus, '');
+      assert.deepEqual((await db.prepare('PRAGMA foreign_key_check').all()).results, []);
+    }
+  } finally { await mf.dispose(); }
+});
 
 async function fixture(db) {
   for (const file of (await readdir('database/staff-migrations')).filter(file => file.endsWith('.sql') && file < '0008').sort()) {

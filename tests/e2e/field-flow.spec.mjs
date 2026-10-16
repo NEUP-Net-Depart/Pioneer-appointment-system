@@ -37,16 +37,33 @@ async function recordFixture(request, token, studentId) {
 
 for (const account of ['20261001', '20261002']) test(`ordinary staff ${account} cannot see or force open management workspaces`, async ({ page }) => {
   await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': account === '20261001' ? '192.0.2.71' : '192.0.2.72' });
+  // A cached or inconsistent navigation list must never override effective permissions.
+  await page.route('**/api/field/home', async route => {
+    const response = await route.fetch();
+    const home = await response.json();
+    await route.fulfill({ response, json: { ...home, navigation: [...(home.navigation || []),
+      { id: 'members', label: '成员管理' }, { id: 'roles', label: '授权管理' }] } });
+  });
   await login(page, account);
   const managementReads = [];
   page.on('request', req => { if (/^\/api\/(members|roles|users|stats|slot-capacities|staff-whitelist|activation-requests)(?:\/|$)/.test(new URL(req.url()).pathname)) managementReads.push(req.url()); });
   const sidebar = page.locator('.field-sidebar');
-  for (const label of ['成员管理','授权管理','账号管理','预约配置','统计分析','维修排班管理','办公排班管理','现场管理']) await expect(sidebar.getByRole('button', { name: label, exact: true })).toHaveCount(0);
-  for (const view of ['members','permissions','users','stats','capacity','roster-manage','office-roster']) {
+  for (const label of ['成员管理','授权管理','账号管理','预约配置','统计分析','维修排班管理','办公排班管理','请假审批','现场管理']) await expect(sidebar.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+  for (const view of ['members','permissions','users','stats','capacity','roster-manage','office-roster','leave-review']) {
     await page.evaluate(view => window.dispatchEvent(new CustomEvent('staff-navigate', { detail: view })), view);
     await expect(page.locator('.workspace-route:not([hidden])')).toHaveAttribute('data-route', 'workbench');
   }
   expect(managementReads).toEqual([]);
+  // Verify backend enforcement independently of the hidden menus and route guards.
+  const token = await page.evaluate(() => sessionStorage.getItem('pioneerToken'));
+  for (const path of ['/api/members', '/api/roles', '/api/permissions']) {
+    const response = await page.request.get(path, { headers: { Authorization: `Bearer ${token}` } });
+    expect(response.status(), path).toBe(403);
+  }
+  const mutation = await page.request.patch('/api/members/member-20261003', {
+    headers: { Authorization: `Bearer ${token}` }, data: { name: '禁止越权修改', revision: 0 }
+  });
+  expect(mutation.status()).toBe(403);
   await mkdir('output/field-workflow', { recursive: true });
   await page.screenshot({ path: `output/field-workflow/access-${account}-desktop.png`, fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });

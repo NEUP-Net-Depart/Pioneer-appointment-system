@@ -623,7 +623,9 @@ export function staffPlatformService({ repository, platform, manifests }) {
     source.locked = previous ? (await repository.versionAssignments(previous.id)).filter(item => item.locked) : [];
     const context = await contextFor(actor);
     const result = source.dutyType === 'office' ? { assignments: previous ? await repository.versionAssignments(previous.id) : [], ruleVersion: 'office-daily-v1', algorithmVersion: 'manual-office-v1', solverStatus: 'needs_review', inputSnapshotRef: { dutyType: 'office' } } : generateRoster(source);
+    result.assignments = await inheritAssignmentLeaves(source.taskId, result.assignments);
     const validation = validateRoster(result, source);
+    result.solverStatus = validation.valid ? 'feasible' : 'needs_review';
     const version = await repository.createRosterVersion({ taskId: source.taskId, assignments: result.assignments.map(item => ({ ...item, id: undefined })),
       inputSnapshotRef: { ...result.inputSnapshotRef, taskRevision: source.taskRevision, lockedMemberIds: source.locked.map(item => item.memberId) }, ruleVersion: result.ruleVersion,
       algorithmVersion: result.algorithmVersion, solverStatus: result.solverStatus, validation });
@@ -638,11 +640,19 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const version = await repository.rosterVersionById(id);
     if (!version) fail(404, '排班草稿不存在');
     const source = await rosterInput(actor, version.taskId);
-    const validation = validateRoster({ assignments: input.assignments }, source);
-    const result = await repository.updateRosterDraft(id, { assignments: input.assignments, validation }, input.version);
+    const assignments = await inheritAssignmentLeaves(source.taskId, input.assignments);
+    const validation = validateRoster({ assignments }, source);
+    const result = await repository.updateRosterDraft(id, { assignments, validation }, input.version);
     if (!result) fail(409, '排班版本已变化，请刷新');
     await repository.audit({ actorMemberId: (await contextFor(actor)).actor.memberId, actorAccount: actor.account, action: 'rosters.updated', sourceRef: publicResourceRef('rosters','version',id), after: result, requestId: input.requestId });
-    return { ...result, assignments: input.assignments, revision: result.version };
+    return { ...result, assignments, revision: result.version };
+  }
+  async function inheritAssignmentLeaves(taskId, assignments) {
+    const published = (await repository.rosterVersionsForTask(taskId)).find(item => item.status === 'published');
+    const previous = published ? await repository.versionAssignments(published.id) : [];
+    const key = item => `${item.memberId}:${item.businessDate}:${item.campusId}:${item.startAt}:${item.endAt}:${item.dutyType || 'repair'}`;
+    const statuses = new Map(previous.map(item => [key(item), item.leaveStatus || '']));
+    return assignments.map(item => ({ ...item, leaveStatus: statuses.get(key(item)) || '' }));
   }
   async function publish(actor, id, input) {
     if (!Number.isInteger(input.version) || input.version < 1) fail(400, '请选择有效的班表版本');
@@ -663,50 +673,108 @@ export function staffPlatformService({ repository, platform, manifests }) {
   async function rosterMine(actor, query = {}) { const context = await contextFor(actor); await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId }); return { items: await repository.listAssignments(context.actor.memberId, query.weekStart || weekRange(dateKey()).start), weekStart: query.weekStart || weekRange(dateKey()).start }; }
   async function leave(actor, input) {
     const context = await contextFor(actor);
-    await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId }, input.businessDate || dateKey());
-    if (!input.assignmentId || !input.reason) fail(400, '请假字段不完整');
+    await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId });
+    if (typeof input.assignmentId !== 'string' || !input.assignmentId || typeof input.reason !== 'string' || input.reason.trim().length < 2 || input.reason.length > 500) fail(400, '请假班次或原因不正确');
+    const id = requestId(input.requestId), hash = hashPayload(input);
+    const receipt = id ? { memberId: context.actor.memberId, action: 'leave.create', id, hash } : null;
+    const replay = async () => {
+      const previous = receipt && await repository.receipt(receipt.memberId,receipt.action,receipt.id);
+      if (!previous) return null;
+      if (previous.payloadHash !== hash) fail(409, '请求编号已用于其他内容', 'REQUEST_CONFLICT');
+      if (previous.resultStatus !== 'success') fail(409, '请求正在处理中，请稍后重试', 'REQUEST_CONFLICT');
+      return { ...previous.result, idempotent: true };
+    };
+    const previous = await replay();
+    if (previous) return previous;
     const assignment = await repository.assignmentById(input.assignmentId);
     if (!assignment || assignment.memberId !== context.actor.memberId) fail(403, '只能为本人班次申请请假');
-    if (String(input.reason).trim().length < 2 || String(input.reason).length > 500) fail(400, '请假原因不正确');
-    return withReceipt(actor, 'leave.create', input, async () => {
-      const result = publicLeave(await repository.createLeave(input, context.actor.memberId));
-      await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.leave.created', sourceRef: publicResourceRef('rosters','leave',result.id), after: result, requestId: input.requestId });
-      return result;
-    });
+    if (assignment.versionStatus && assignment.versionStatus !== 'published') fail(409, '该班次已被新版班表替换，请选择当前班次');
+    const result = publicLeave(await repository.createLeave({ assignmentId: assignment.originAssignmentId || assignment.id, activeAssignmentId: assignment.id, reason: input.reason.trim() }, context.actor.memberId,
+      { actorMemberId: context.actor.memberId, actorAccount: actor.account, authVersion: context.authVersion, action: 'rosters.leave.created', requestId: id }, receipt));
+    if (result) return result;
+    const concurrent = await replay();
+    if (concurrent) return concurrent;
+    fail(409, '该班次已变化，或已有待审批、已批准的请假申请，请刷新后查看');
+  }
+  async function leaveAccess(context, request, assignment, memberships) {
+    const departments = memberships || (assignment && repository.memberships ? await repository.memberships(request.member_id, assignment.businessDate) : []);
+    const targets = departments.length ? departments.map(item => item.departmentId) : [undefined];
+    return { departments, allowed: !!assignment && targets.some(departmentId => evaluate(context, 'leave.review', {
+      campusId: assignment.campusId, memberId: request.member_id, departmentId, id: request.id
+    }).allowed) };
+  }
+  async function currentLeaveAssignment(row) {
+    return repository.effectiveLeaveAssignment ? repository.effectiveLeaveAssignment(row.assignment_id, row.member_id) : row.assignment || repository.assignmentById(row.assignment_id);
+  }
+  function leaveActions(request, assignment, context, canReview) {
+    const current = !!assignment && (!assignment.versionStatus || assignment.versionStatus === 'published') && assignment.memberId === request.member_id;
+    return { review: canReview && request.status === 'pending', approve: canReview && request.status === 'pending' && current,
+      reason: current ? '' : '原班次已被调整，可退回申请并请成员重新选择班次',
+      withdraw: request.member_id === context.actor.memberId && request.status === 'pending' };
+  }
+  async function leaveDetail(actor, id) {
+    const context = await contextFor(actor), row = await repository.leaveById(id);
+    if (!row) fail(404, '请假申请不存在');
+    const assignment = await currentLeaveAssignment(row);
+    const access = await leaveAccess(context, row, assignment);
+    if (!access.allowed && row.member_id !== context.actor.memberId) fail(403, '没有查看该请假申请的权限');
+    if (!access.allowed) await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId });
+    const member = await repository.memberRow(row.member_id);
+    return { ...publicLeave(row), memberName: member?.name || '成员', assignment,
+      departments: access.departments.map(item => item.departmentName), actions: leaveActions(row, assignment, context, access.allowed),
+      impact: access.allowed && assignment ? await repository.leaveImpact(assignment) : null };
   }
   async function leaves(actor, query = {}) {
     const context = await contextFor(actor);
     const all = query.all === true || query.all === '1' || query.all === 'true';
     if (!all) await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId });
-    const rows = await repository.listLeaves({ ...query, memberId: all ? undefined : context.actor.memberId });
+    if (query.status && !['pending','approved','rejected','withdrawn'].includes(query.status)) fail(400, '请假状态不正确');
+    const rows = await repository.listLeaves({ status: query.status, memberId: all ? undefined : context.actor.memberId });
+    const assignments = new Map(await Promise.all(rows.map(async row => [row.id, row.assignment?.versionStatus === 'published' ? row.assignment : await currentLeaveAssignment(row)])));
+    const memberships = new Map();
+    if (repository.membershipsForMembers) for (const day of new Set([...assignments.values()].filter(Boolean).map(item => item.businessDate))) {
+      const ids = [...new Set(rows.filter(row => assignments.get(row.id)?.businessDate === day).map(row => row.member_id))];
+      memberships.set(day, await repository.membershipsForMembers(ids, day));
+    }
     const items = [];
     for (const row of rows) {
-      const assignment = await repository.assignmentById(row.assignment_id);
-      const scope = { campusId: assignment?.campusId, memberId: row.member_id };
-      const datedContext = assignment ? await contextFor(actor, assignment.businessDate) : context;
-      const canReview = !!assignment && evaluate(datedContext, 'leave.review', scope).allowed;
+      const assignment = assignments.get(row.id);
+      const access = await leaveAccess(context, row, assignment, memberships.get(assignment?.businessDate)?.filter(item => item.memberId === row.member_id));
+      const canReview = access.allowed;
       if (all && !canReview) continue;
       if (query.campusId && assignment?.campusId !== query.campusId) continue;
-      items.push({ ...publicLeave(row), assignment, actions: {
-        review: canReview && row.status === 'pending',
-        withdraw: row.member_id === context.actor.memberId && row.status === 'pending'
-      } });
+      items.push({ ...publicLeave(row), assignment, memberName: row.member_name || '', departments: access.departments.map(item => item.departmentName),
+        actions: leaveActions(row, assignment, context, canReview) });
     }
     return { items };
   }
 
   async function leaveDecision(actor, id, input) {
     if (!['approve','reject'].includes(input.decision)) fail(400, '审批动作不正确');
+    if (!Number.isInteger(input.revision) || input.revision < 0) fail(400, '请假申请版本不正确');
+    const note = inputString(input, 'note', 500);
     const request = await repository.leaveById(id); if (!request) fail(404, '请假申请不存在');
-    const assignment = await repository.assignmentById(request.assignment_id);
-    await requirePermission(actor, 'leave.review', { campusId: assignment?.campusId }, assignment?.businessDate || dateKey());
-    const context = await contextFor(actor); const result = await repository.updateLeave(id,input.decision === 'approve' ? 'approved' : 'rejected',context.actor.memberId,input.revision,input.note || ''); if (!result) fail(409, '请假申请已变化，请刷新'); const value = publicLeave(result); await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.leave.reviewed', sourceRef: publicResourceRef('rosters','leave',id), after: value, requestId: input.requestId }); return value;
+    const assignment = await currentLeaveAssignment(request);
+    const context = await contextFor(actor);
+    const access = await leaveAccess(context, request, assignment);
+    if (!access.allowed) fail(403, '没有审批该校区与部门申请的权限');
+    const status = input.decision === 'approve' ? 'approved' : 'rejected';
+    if (request.status === status && request.revision === input.revision + 1) return publicLeave(request);
+    if (status === 'approved' && !leaveActions(request, assignment, context, true).approve) fail(409, '班次或申请已变化，请刷新后处理');
+    const result = await repository.updateLeave(id,status,context.actor.memberId,input.revision,note, {
+      actorMemberId: context.actor.memberId, actorAccount: actor.account, authVersion: context.authVersion, action: 'rosters.leave.reviewed', sourceRef: publicResourceRef('rosters','leave',id),
+      before: publicLeave(request), after: { ...publicLeave(request), status, reviewNote: note, reviewerMemberId: context.actor.memberId }, requestId: input.requestId
+    });
+    if (!result) fail(409, '请假申请或班次已变化，请刷新');
+    return publicLeave(result);
   }
   async function leaveWithdraw(actor, id, input) {
+    if (!Number.isInteger(input.revision) || input.revision < 0) fail(400, '请假申请版本不正确');
     const context = await contextFor(actor); await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId }); const request = await repository.leaveById(id);
     if (!request || request.member_id !== context.actor.memberId) fail(403, '只能撤回本人的请假申请');
-    await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId }, input.businessDate || dateKey());
-    const result = await repository.updateLeave(id,'withdrawn',context.actor.memberId,input.revision,'本人撤回'); if (!result) fail(409, '请假申请已变化，请刷新'); const value = publicLeave(result); await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.leave.withdrawn', sourceRef: publicResourceRef('rosters','leave',id), after: value, requestId: input.requestId }); return value;
+    if (request.status === 'withdrawn' && request.revision === input.revision + 1) return publicLeave(request);
+    const result = await repository.updateLeave(id,'withdrawn',context.actor.memberId,input.revision,'本人撤回', { actorMemberId: context.actor.memberId, actorAccount: actor.account, authVersion: context.authVersion, action: 'rosters.leave.withdrawn', sourceRef: publicResourceRef('rosters','leave',id), before: publicLeave(request), after: { ...publicLeave(request), status: 'withdrawn' }, requestId: input.requestId });
+    if (!result) fail(409, '请假申请已变化，请刷新'); return publicLeave(result);
   }
   async function swapCandidates(actor, query = {}) {
     const context = await contextFor(actor);
@@ -773,6 +841,6 @@ export function staffPlatformService({ repository, platform, manifests }) {
 
   return { contextFor, requirePermission, scopedActor, memberList, memberDetail, updateMember, addMembership, endMembership, permissions, roles, createRole, updateRole, previewRole, bindMemberRoles,
     organization, importMembers, deskSummary, workbench, createAttendanceEvent, issueAttendanceToken, checkIn, previewAttendance, attendanceList, correctAttendance, presence, rosterTasks, taskAvailability, createRosterTask, saveAvailability, rosterTaskState, generate, updateRoster, publish, rosterMine,
-    leave, leaves, leaveDecision, leaveWithdraw, swapCandidates, swap, swaps, swapDecision, attendanceExport, audit,
+    leave, leaves, leaveDetail, leaveDecision, leaveWithdraw, swapCandidates, swap, swaps, swapDecision, attendanceExport, audit,
     recordAudit: input => repository.audit(input) };
 }

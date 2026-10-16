@@ -20,6 +20,7 @@ import { AccountSettings } from './AccountSettings';
 import { Accounts } from './Accounts';
 import { staffPermission, staffViewAllowed, staffSceneAllowed } from '../../shared/staff-access.js';
 import { OfficeRoster } from './OfficeRoster';
+import { LeaveReview } from './LeaveReview';
 
 const roles = { technician: '维修人员', admin: '管理员', superadmin: '最高权限者' };
 function Workbench({ user, onNavigate }) {
@@ -100,16 +101,18 @@ function Root() {
   if (!user) return null;
   const effectiveUser = { ...user, permissions: field?.permissions || user.permissions };
   const published = new Set((field?.navigation || user.navigation || []).map(entry => entry.id));
+  const publishedView = (id, view) => published.has(id) && staffViewAllowed(effectiveUser, view);
   const workspaceLinks = [
     ...(field ? field.contexts.filter(context => staffSceneAllowed(effectiveUser, field, context.id)).map(context => ({ ...context, id: `scene:${context.id}`, group: '今日工作' })) : [{ id: 'workbench', label: '工作台', group: '今日工作' }]),
     ...(field ? [{ id: 'scene:mine', label: '个人中心', group: '我的' }] : []),
-    ...(published.has('rosters') ? [{ id: 'roster', label: '班次与排班', group: '我的' }] : []),
+    ...(publishedView('rosters', 'roster') ? [{ id: 'roster', label: '班次与排班', group: '我的' }] : []),
     ...(staffPermission(effectiveUser, 'roster.repair.manage') ? [{ id: 'roster-manage', label: '维修排班管理', group: '值班管理' }] : []),
     ...(staffPermission(effectiveUser, 'roster.office.manage') ? [{ id: 'office-roster', label: '办公排班管理', group: '值班管理' }] : []),
+    ...(staffPermission(effectiveUser, 'leave.review') ? [{ id: 'leave-review', label: '请假审批', group: '值班管理' }] : []),
     ...(field && staffPermission(effectiveUser, 'repair.summary.read') ? [{ id: 'staff', label: '预约记录', group: '今日工作' }] : []),
-    ...(published.has('members') ? [{ id: 'members', label: '成员管理', group: '平台管理' }] : []),
-    ...(published.has('roles') ? [{ id: 'permissions', label: '授权管理', group: '平台管理' }] : []),
-    ...(published.has('attendance') ? [{ id: 'attendance', label: '本人签到记录', group: '我的' }] : []),
+    ...(publishedView('members', 'members') ? [{ id: 'members', label: '成员管理', group: '平台管理' }] : []),
+    ...(publishedView('roles', 'permissions') ? [{ id: 'permissions', label: '授权管理', group: '平台管理' }] : []),
+    ...(publishedView('attendance', 'attendance') ? [{ id: 'attendance', label: '本人签到记录', group: '我的' }] : []),
     ...(field && staffPermission(effectiveUser, 'statistics.read') ? [{ id: 'stats', label: '统计分析', group: '数据与审计' }] : []),
     ...(field && staffPermission(effectiveUser, 'accounts.manage') ? [{ id: 'users', label: '账号管理', group: '平台管理' }] : []),
     ...(field ? [{ id: 'settings', label: '账号安全', group: '我的' }] : []),
@@ -119,6 +122,7 @@ function Root() {
     if (page === 'workbench') return <Workbench user={user} onNavigate={navigate} />;
     if (page === 'roster') return <RosterArea user={user} section={rosterSection} />;
     if (page === 'office-roster') return <main className="field-main roster-area"><OfficeRoster user={user} /></main>;
+    if (page === 'leave-review') return <LeaveReview user={user} onNavigate={navigate} />;
     // Native pages retain their original host while the field platform is off.
     if (['staff','scan','stats','users','settings'].includes(page)) return null;
     const module = page === 'attendance' ? <Attendance onNavigate={navigate} /> : page === 'members' ? <Members user={user} /> : page === 'permissions' ? <Permissions user={user} /> : null;
@@ -130,10 +134,11 @@ function Root() {
   // dialog state survive a trip through the sidebar. Hidden field routes pass
   // `active=false`, which stops their polling and device-backed UI.
   const visible = view => page === view;
-  const route = (view, child, allowed = true) => allowed && visited.includes(view) ? <ActivityContext.Provider key={view} value={visible(view)}><div className="workspace-route" data-route={view} hidden={!visible(view)} aria-hidden={!visible(view)}>{child}</div></ActivityContext.Provider> : null;
+  const route = (view, child, allowed = true) => allowed && staffViewAllowed(effectiveUser, view) && visited.includes(view) ? <ActivityContext.Provider key={view} value={visible(view)}><div className="workspace-route" data-route={view} hidden={!visible(view)} aria-hidden={!visible(view)}>{child}</div></ActivityContext.Provider> : null;
   const fieldRoute = route('workbench', <FieldApp initial={field} active={visible('workbench')} onNavigate={navigate} requestedScene={workScene} onSceneChange={setWorkScene} onContextChange={setField} workspaceLinks={workspaceLinks} />);
   const rosterRoute = route('roster', <RosterArea user={effectiveUser} section={rosterSection} />, published.has('rosters') || staffPermission(effectiveUser, 'roster.repair.manage'));
   const moduleRoutes = [
+    route('leave-review', <LeaveReview user={effectiveUser} onNavigate={navigate} />, staffPermission(effectiveUser, 'leave.review')),
     route('office-roster', <main className="field-main roster-area"><OfficeRoster user={effectiveUser} /></main>, staffPermission(effectiveUser, 'roster.office.manage')),
     route('staff', <Records user={effectiveUser} />, workspaceLinks.some(entry => entry.id === 'staff')),
     route('stats', <Statistics />, workspaceLinks.some(entry => entry.id === 'stats')),

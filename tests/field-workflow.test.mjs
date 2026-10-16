@@ -17,6 +17,86 @@ const workerClock = `const RealDate = Date; globalThis.Date = class extends Real
 let mf, db;
 const tokens = {};
 
+test('leave review preserves attendance, applies coverage atomically and follows unchanged published assignments', async () => {
+  const repository = staffPlatformRepository(db);
+  const task = await request('/api/roster-tasks', 'root001', { dutyType: 'office', weekStart: '2026-11-09', campusId: 'campus-nanhu', slotStart: '19:00', slotEnd: '21:00', deadline: '2026-11-08T10:00:00Z' });
+  assert.equal(task.status, 201, JSON.stringify(task.body));
+  let generated = await request('/api/rosters/generate', 'root001', { taskId: task.body.id });
+  const state = (await request(`/api/roster-tasks/${task.body.id}/roster`, 'root001')).body;
+  const assignments = state.slots.flatMap(slot => ['member-20261001', 'member-root001'].map(memberId => ({ ...slot, memberId })));
+  let saved = await request(`/api/rosters/${generated.body.version.id}`, 'root001', { version: generated.body.version.version, assignments }, 'PATCH');
+  assert.equal(saved.body.validation.valid, true, JSON.stringify(saved.body));
+  assert.equal((await request(`/api/rosters/${saved.body.id}/publish`, 'root001', { version: saved.body.version })).status, 200);
+  const own = (await request('/api/me/roster?weekStart=2026-11-09', '20261001')).body.items;
+  const input = { assignmentId: own[0].id, reason: '课程考试需要请假', requestId: crypto.randomUUID() };
+  await db.prepare("CREATE TRIGGER reject_leave_receipt BEFORE UPDATE ON operation_receipts WHEN NEW.action='leave.create' AND NEW.result_status='success' BEGIN SELECT RAISE(ABORT,'LEAVE_RECEIPT_FAILURE'); END").run();
+  try {
+    assert.equal((await request('/api/leaves', '20261001', input)).status, 500);
+    assert.equal(await repository.receipt('member-20261001', 'leave.create', input.requestId), null);
+    assert.equal((await repository.listLeaves({ memberId: 'member-20261001' })).length, 0);
+  } finally { await db.prepare('DROP TRIGGER reject_leave_receipt').run(); }
+  const created = await request('/api/leaves', '20261001', input);
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  assert.equal((await request('/api/leaves', '20261001', input)).body.id, created.body.id);
+  assert.equal((await request('/api/leaves', '20261001', { ...input, reason: '同一请求不能换内容' })).status, 409);
+  assert.equal((await request('/api/leaves', '20261001', { ...input, requestId: crypto.randomUUID() })).status, 409);
+  assert.equal((await request(`/api/leaves/${created.body.id}/withdraw`, '20261001', { revision: '0' })).status, 400);
+  assert.equal((await request(`/api/leaves/${created.body.id}`, '20261002')).status, 403);
+  assert.equal((await request(`/api/leaves/${created.body.id}/decision`, '20261002', { decision: 'approve', revision: 0 })).status, 403);
+  let detail = await request(`/api/leaves/${created.body.id}`, 'root001');
+  assert.equal(detail.body.memberName, '林悦');
+  assert.deepEqual(detail.body.departments, ['办公室']);
+  assert.equal(detail.body.impact.expected, 2);
+  assert.equal(detail.body.impact.afterApproval, 1);
+  assert.equal(detail.body.impact.checkedIn, false);
+  // Attendance is a separate fact: approval must not erase an actual arrival.
+  await db.prepare("INSERT INTO attendance_events(id,type,policy_code,policy_version,campus_id,business_date,starts_at,ends_at,created_by_member_id,created_at) VALUES('leave-event','duty','duty.v1','1.0.0','campus-nanhu','2026-11-09','2026-11-09T18:30:00+08:00','2026-11-09T21:00:00+08:00','member-root001','2026-10-15')").run();
+  await db.prepare("INSERT INTO attendance_records(id,member_id,event_id,dedupe_key,occurred_at,recorded_at,method) VALUES('leave-arrival','member-20261001','leave-event','leave-arrival','2026-11-09T18:50:00+08:00','2026-11-09T18:50:00+08:00','qr')").run();
+  const decision = { decision: 'approve', revision: 0, note: '已安排其他接待人员覆盖', requestId: crypto.randomUUID() };
+  assert.equal(await repository.updateLeave(created.body.id, 'approved', 'member-root001', 0, '', {
+    actorMemberId: 'member-root001', actorAccount: 'root001', authVersion: -1, action: 'rosters.leave.reviewed'
+  }), null, 'An authorization revision changed before commit must not approve a leave');
+  await db.prepare("CREATE TRIGGER reject_leave_audit BEFORE INSERT ON audit_events WHEN NEW.action='rosters.leave.reviewed' BEGIN SELECT RAISE(ABORT,'LEAVE_AUDIT_FAILURE'); END").run();
+  try {
+    assert.equal((await request(`/api/leaves/${created.body.id}/decision`, 'root001', decision)).status, 500);
+    assert.equal((await repository.leaveById(created.body.id)).status, 'pending');
+  } finally { await db.prepare('DROP TRIGGER reject_leave_audit').run(); }
+  const approved = await request(`/api/leaves/${created.body.id}/decision`, 'root001', decision);
+  assert.equal(approved.status, 200, JSON.stringify(approved.body));
+  assert.equal((await request(`/api/leaves/${created.body.id}/decision`, 'root001', decision)).status, 200);
+  assert.equal((await request(`/api/leaves/${created.body.id}/decision`, 'root001', { ...decision, decision: 'reject' })).status, 409);
+  detail = await request(`/api/leaves/${created.body.id}`, 'root001');
+  assert.equal(detail.body.impact.expected, 1);
+  assert.equal(detail.body.impact.checkedIn, true);
+  assert.equal(detail.body.impact.arrived, 1);
+  assert.equal((await repository.listAssignments('member-20261001', '2026-11-09'))[0].leaveStatus, 'approved');
+  const pending = await request('/api/leaves', '20261001', { assignmentId: own[1].id, reason: '课程补课需要请假', requestId: crypto.randomUUID() });
+  assert.equal(pending.status, 201);
+  generated = await request('/api/rosters/generate', 'root001', { taskId: task.body.id });
+  assert.equal(generated.body.assignments.find(row => row.id === own[0].id).leaveStatus, 'approved');
+  assert.equal((await request(`/api/rosters/${generated.body.version.id}/publish`, 'root001', { version: generated.body.version.version })).status, 200);
+  const republished = (await repository.listAssignments('member-20261001', '2026-11-09'));
+  assert.notEqual(republished[0].id, own[0].id);
+  assert.equal(republished[0].originAssignmentId, own[0].id);
+  assert.equal(republished[0].leaveStatus, 'approved');
+  assert.equal(republished[1].leaveStatus, 'pending');
+  assert.equal((await request('/api/leaves', '20261001', input)).body.id, created.body.id);
+  assert.equal((await request(`/api/leaves/${pending.body.id}`, 'root001')).body.assignment.id, republished[1].id);
+  assert.equal((await request('/api/leaves', '20261001', { ...input, assignmentId: republished[0].id, requestId: crypto.randomUUID() })).status, 409);
+  assert.equal((await request('/api/leaves', '20261001', { assignmentId: own[2].id, reason: '不能提交旧班次', requestId: crypto.randomUUID() })).status, 409);
+  generated = await request('/api/rosters/generate', 'root001', { taskId: task.body.id });
+  const removed = generated.body.assignments.filter(row => !(row.memberId === 'member-20261001' && row.businessDate === own[1].businessDate)).map(row => ({ ...row, id: undefined, originAssignmentId: 'untrusted', leaveStatus: '' }));
+  saved = await request(`/api/rosters/${generated.body.version.id}`, 'root001', { version: generated.body.version.version, assignments: removed }, 'PATCH');
+  assert.equal(saved.body.assignments.find(row => row.memberId === 'member-20261001' && row.businessDate === own[0].businessDate).leaveStatus, 'approved');
+  assert.equal((await request(`/api/rosters/${saved.body.id}/publish`, 'root001', { version: saved.body.version })).status, 200);
+  detail = await request(`/api/leaves/${pending.body.id}`, 'root001');
+  assert.equal(detail.body.actions.approve, false);
+  assert.equal(detail.body.actions.review, true);
+  assert.equal((await request(`/api/leaves/${pending.body.id}/decision`, 'root001', { ...decision, requestId: crypto.randomUUID() })).status, 409);
+  assert.equal((await request(`/api/leaves/${pending.body.id}/decision`, 'root001', { decision: 'reject', revision: 0, note: '原班次已调整' })).status, 200);
+  assert.equal((await repository.listAssignments('member-20261001', '2026-11-09')).some(row => row.businessDate === own[1].businessDate), false);
+});
+
 test('office managers publish daily assignments, preserve repair tasks and reject duplicate or conflicting coverage', async () => {
   const input = { dutyType: 'office', weekStart: '2026-11-02', campusId: 'campus-nanhu', slotStart: '19:00', slotEnd: '21:00', deadline: '2026-11-01T10:00:00Z' };
   assert.equal((await request('/api/roster-tasks', '20261002', input)).status, 403);

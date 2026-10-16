@@ -65,6 +65,7 @@ export const staffPlatformRoutes = [
   ['POST', /^\/api\/swaps\/([^/]+)\/decision$/, async (context, match) => json(await context.services.staffPlatform.swapDecision(await context.role('technician'), decodeURIComponent(match[1]), await readBody(context.request)))],
   ['POST', /^\/api\/leaves$/, async context => json(await context.services.staffPlatform.leave(await context.role('technician'), await readBody(context.request)), 201)],
   ['GET', /^\/api\/leaves$/, async context => json(await context.services.staffPlatform.leaves(await context.role('technician'), context.query))],
+  ['GET', /^\/api\/leaves\/([^/]+)$/, async (context, match) => json(await context.services.staffPlatform.leaveDetail(await context.role('technician'), decodeURIComponent(match[1])))],
   ['POST', /^\/api\/leaves\/([^/]+)\/decision$/, async (context, match) => json(await context.services.staffPlatform.leaveDecision(await context.role('technician'), decodeURIComponent(match[1]), await readBody(context.request)))],
   ['POST', /^\/api\/leaves\/([^/]+)\/withdraw$/, async (context, match) => json(await context.services.staffPlatform.leaveWithdraw(await context.role('technician'), decodeURIComponent(match[1]), await readBody(context.request)))],
   ['GET', /^\/api\/audit$/, async context => json(await context.services.staffPlatform.audit(await context.role('technician'), context.query))]

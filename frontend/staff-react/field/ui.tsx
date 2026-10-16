@@ -26,6 +26,7 @@ export function Status({ value }: { value: string }) {
           available: "空闲",
           repairing: "维修中",
           unsigned: "待签到",
+          on_leave: "已请假",
           away: "暂时离岗",
           off_duty: "已结束",
           closed: "非工作时间",

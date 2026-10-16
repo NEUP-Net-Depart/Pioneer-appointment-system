@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { request } from './request.js';
+import { requestStatusLabel } from '../../shared/staff-request-status.js';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { Modal } from './field/ui';
 import { addDays, dateKey, weekRange } from '../../shared/time.js';
@@ -7,7 +8,7 @@ import './roster.css';
 import './office-roster.css';
 
 type Slot = { businessDate: string; campusId: string; startAt: string; endAt: string; dutyType: string };
-type Assignment = Slot & { memberId: string; roleKind?: string };
+type Assignment = Slot & { memberId: string; roleKind?: string; leaveStatus?: string };
 type Member = { memberId: string; name: string; available: Slot[]; departmentNames?: string[] };
 type Task = { id: string; weekStart: string; campusScope: { campusIds: string[] }; slotStart: string; slotEnd: string; dutyType: string };
 type State = { members: Member[]; slots: Slot[]; draft: null | { id: string; version: number; status: string; assignments: Assignment[]; validation: { valid: boolean; errors: { code: string; slot?: Slot }[] } }; publishedAssignments: Assignment[] };
@@ -89,9 +90,10 @@ export function OfficeRoster({ user }: { user: { authorizedCampuses?: string[] }
       <div className="office-day-tabs" aria-label="选择值班日期">{data.slots.map((slot, index) => <button key={slotKey(slot)} aria-pressed={selectedDay === index} onClick={() => setSelectedDay(index)}><span>{slot.businessDate.slice(5).replace("-", "/")}</span><small>周{"日一二三四五六"[new Date(slot.businessDate + "T12:00:00").getDay()]}</small></button>)}</div>
       <div className="planner-days office-days">{data.slots.map((slot, index) => {
         const assigned = rows.filter(row => slotKey(row) === slotKey(slot));
-        return <section className="react-card office-day" data-selected={selectedDay === index} key={slotKey(slot)}><div className="office-day-heading"><h2>{dateLabel(slot.businessDate)}</h2><span>{assigned.length} 人</span></div><p>{campusName(slot.campusId)} · {slot.startAt}–{slot.endAt}</p>
-          {!assigned.length && <p className="planner-warning">尚未安排接待人员</p>}
-          <ul>{assigned.map(row => <li className="office-assignment" key={row.memberId}><div><strong>{names.get(row.memberId) || '成员资格已变化'}</strong>{row.roleKind === 'coordinator' && <small>当日协调人</small>}</div>{editable && <div className="office-row-actions"><label><input type="checkbox" disabled={busy} checked={row.roleKind === 'coordinator'} onChange={event => change(rows.map(item => item === row ? { ...item, roleKind: event.target.checked ? 'coordinator' : '' } : item))} />协调人</label><button disabled={busy} aria-label={`移除${names.get(row.memberId) || '成员'} ${slot.businessDate}`} onClick={() => change(rows.filter(item => item !== row))}>移除</button></div>}</li>)}</ul>
+        const expected = assigned.filter(row => row.leaveStatus !== 'approved');
+        return <section className="react-card office-day" data-selected={selectedDay === index} key={slotKey(slot)}><div className="office-day-heading"><h2>{dateLabel(slot.businessDate)}</h2><span>预计 {expected.length} 人</span></div><p>{campusName(slot.campusId)} · {slot.startAt}–{slot.endAt}</p>
+          {!expected.length && <p className="planner-warning">{assigned.length ? '已排班人员均已请假，请安排补位' : '尚未安排接待人员'}</p>}
+          <ul>{assigned.map(row => <li className="office-assignment" key={row.memberId}><div><strong>{names.get(row.memberId) || '成员资格已变化'}</strong>{row.roleKind === 'coordinator' && <small>当日协调人</small>}{row.leaveStatus && <small>请假 · {requestStatusLabel(row.leaveStatus)}</small>}</div>{editable && <div className="office-row-actions"><label><input type="checkbox" disabled={busy} checked={row.roleKind === 'coordinator'} onChange={event => change(rows.map(item => item === row ? { ...item, roleKind: event.target.checked ? 'coordinator' : '' } : item))} />协调人</label><button disabled={busy} aria-label={`移除${names.get(row.memberId) || '成员'} ${slot.businessDate}`} onClick={() => change(rows.filter(item => item !== row))}>移除</button></div>}</li>)}</ul>
           {editable && <button className="office-add" disabled={busy} onClick={() => { setQuery(''); setChoosing(slot); }}>添加办公人员</button>}
         </section>;
       })}</div>

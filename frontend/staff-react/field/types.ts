@@ -46,6 +46,7 @@ export interface Person {
   canReceive: boolean;
   reason: string;
   scheduled: boolean;
+  leaveStatus?: string;
   currentRepair?: { id: string; deviceModel: string };
 }
 export interface Home {

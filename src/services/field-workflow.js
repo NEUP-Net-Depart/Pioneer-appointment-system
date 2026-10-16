@@ -268,9 +268,9 @@ export function fieldWorkflow({
             : { allowed: false, reason: "成员或账号已停用" };
         return {
           ...person,
-          state: ready.current ? "repairing" : person.state || "unsigned",
+          state: ready.current ? "repairing" : person.state || (person.leaveStatus === 'approved' ? 'on_leave' : 'unsigned'),
           canReceive: ready.allowed,
-          reason: ready.reason,
+          reason: person.leaveStatus === 'approved' ? person.state ? `${ready.reason || '已实际到岗'} · 原请假已批准` : '请假已批准，实际到岗后仍可签到' : ready.reason,
           currentRepair: ready.current
             ? { id: ready.current.id, deviceModel: ready.current.deviceModel }
             : null,

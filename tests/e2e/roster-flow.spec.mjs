@@ -9,6 +9,75 @@ async function expandGroup(page, name) {
 
 test.skip(process.env.E2E_FIELD !== 'true', 'Uses the isolated staff fixture');
 
+test('member submits leave and reviewer checks coverage in one responsive approval workspace', async ({ page, request }) => {
+  await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': '192.0.2.96' });
+  const session = await request.post('/api/auth/login', { data: { account: 'root001', password: process.env.E2E_ROOT_PASSWORD } }).then(response => response.json());
+  const headers = { Authorization: `Bearer ${session.token}` };
+  async function command(path, data, method = 'POST') {
+    const response = await request.fetch(path, { method, headers, data });
+    const body = await response.json();
+    expect(response.ok(), JSON.stringify(body)).toBe(true);
+    return body;
+  }
+  const task = await command('/api/roster-tasks', { dutyType: 'office', weekStart: '2026-11-16', campusId: 'campus-nanhu', slotStart: '19:00', slotEnd: '21:00', deadline: '2026-11-15T10:00:00Z' });
+  const generated = await command('/api/rosters/generate', { taskId: task.id });
+  const state = await command(`/api/roster-tasks/${task.id}/roster`, undefined, 'GET');
+  const saved = await command(`/api/rosters/${generated.version.id}`, { version: generated.version.version, assignments: state.slots.flatMap(slot => ['member-20261001','member-root001'].map(memberId => ({ ...slot, memberId }))) }, 'PATCH');
+  await command(`/api/rosters/${saved.id}/publish`, { version: saved.version });
+  async function login(account) {
+    await page.goto('/staff/');
+    await page.locator('#login-form').getByLabel('学号', { exact: true }).fill(account);
+    await page.locator('#login-form').getByLabel('密码', { exact: true }).fill(account === 'root001' ? process.env.E2E_ROOT_PASSWORD : 'StaffTest!2026');
+    await page.getByRole('button', { name: '进入系统' }).click();
+    await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();
+  }
+  await login('20261001');
+  await expandGroup(page, '我的');
+  await page.locator('.field-sidebar').getByRole('button', { name: '班次与排班', exact: true }).click();
+  await page.getByLabel('值班周', { exact: true }).fill('2026-11-16');
+  await expect(page.locator('.duty-card')).toHaveCount(4);
+  await page.locator('.duty-card').first().getByRole('button', { name: '请假', exact: true }).click();
+  await page.getByLabel('请假原因', { exact: true }).fill('审批闭环：课程考试');
+  await page.getByRole('button', { name: '提交请假申请', exact: true }).click();
+  await expect(page.getByText('请假申请已提交，等待负责人处理', { exact: true })).toBeVisible();
+  await expect(page.locator('.request-row').filter({ hasText: '审批闭环：课程考试' })).toContainText('待处理');
+  await page.locator('.field-sidebar').getByRole('button', { name: '退出登录', exact: true }).click();
+  await login('root001');
+  await expandGroup(page, '值班管理');
+  await page.locator('.field-sidebar').getByRole('button', { name: '请假审批', exact: true }).click();
+  await page.getByLabel('查找申请', { exact: true }).fill('审批闭环：课程考试');
+  await page.getByRole('button', { name: /林悦.*待处理/ }).click();
+  await expect(page.getByRole('heading', { name: '林悦的请假申请', exact: true })).toBeVisible();
+  await expect(page.locator('.leave-coverage')).toContainText('预计出勤2');
+  await expect(page.locator('.leave-coverage')).toContainText('批准后1');
+  for (const width of [1440,390,320]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(page.getByRole('heading', { name: '林悦的请假申请', exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    if (width < 650) expect(await page.getByRole('dialog', { name: '请假申请', exact: true }).evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await page.screenshot({ path: `output/field-workflow/leave-review-${width}.png`, fullPage: true });
+  }
+  await page.getByLabel('审批说明', { exact: true }).fill('已安排接待补位');
+  await page.getByRole('button', { name: '批准请假', exact: true }).click();
+  const confirmation = page.getByRole('dialog', { name: '确认批准请假', exact: true });
+  await expect(confirmation).toContainText('批准后预计 1 人出勤');
+  await confirmation.getByRole('button', { name: '确认操作', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: '请假已批准' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '林悦的请假申请', exact: true })).toBeVisible();
+  await expect(page.getByText('已安排接待补位', { exact: true })).toBeVisible();
+  await page.getByRole('dialog', { name: '请假申请', exact: true }).getByRole('button', { name: '关闭', exact: true }).click();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.locator('.field-sidebar').getByRole('button', { name: '退出登录', exact: true }).click();
+  await login('20261001');
+  await expandGroup(page, '我的');
+  await page.locator('.field-sidebar').getByRole('button', { name: '班次与排班', exact: true }).click();
+  await page.getByLabel('值班周', { exact: true }).fill('2026-11-16');
+  await expect(page.locator('.duty-card').first()).toContainText('请假 · 已批准');
+  await expect(page.locator('.duty-card').first().getByRole('button', { name: '请假', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: /我的申请/ }).click();
+  await expect(page.locator('.request-row').filter({ hasText: '审批闭环：课程考试' })).toContainText('审批说明：已安排接待补位');
+});
+
 test('office roster assigns one member across working days, publishes a coordinator and fits each screen', async ({ page, request }) => {
   await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': '192.0.2.95' });
   await page.goto('/staff/');
@@ -35,6 +104,7 @@ test('office roster assigns one member across working days, publishes a coordina
   await expect(page.getByRole('dialog')).toContainText('安排 1 人、4 班');
   await page.getByRole('button', { name: '发布办公排班', exact: true }).click();
   await expect(page.getByText('办公班表已发布，成员可在个人中心查看。')).toBeVisible();
+  const publishedTaskId = await page.getByRole('combobox', { name: '排班周与校区', exact: true }).inputValue();
   await expect(page.locator('.office-assignment').getByText('当日协调人', { exact: true })).toHaveCount(1);
   for (const width of [1440, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
@@ -54,6 +124,8 @@ test('office roster assigns one member across working days, publishes a coordina
   await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();
   await expandGroup(page, '值班管理');
   await page.locator('.field-sidebar').getByRole('button', { name: '办公排班管理', exact: true }).click();
+  // Several real weeks can coexist; explicitly reopen the week published above.
+  await page.getByRole('combobox', { name: '排班周与校区', exact: true }).selectOption(publishedTaskId);
   await expect(page.getByText('已发布班表', { exact: true })).toBeVisible();
   await expect(page.locator('.office-assignment')).toHaveCount(4);
   await page.locator('.field-sidebar').getByRole('button', { name: '退出登录', exact: true }).click();
