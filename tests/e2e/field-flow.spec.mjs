@@ -546,6 +546,9 @@ test('switching work modules retains local filters and pauses the hidden board',
 });
 
 test('security and business settings have separate workflows and consistent page headings', async ({ page }) => {
+  // Compare settled layout coordinates, not the transient 4px route-entry
+  // translation; retain the same strict alignment check on every platform.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await login(page, 'root001');
   const sidebar = page.locator('.field-sidebar');
   async function open(group, name) {
