@@ -6,6 +6,7 @@ import { addDays, dateKey, weekRange } from '../../shared/time.js';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import './roster.css';
 import { staffPermission } from '../../shared/staff-access.js';
+import { RosterScopeFields } from './RosterScopeFields.jsx';
 
 const campusNames = { 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' };
 const campusIds = { '南湖': 'campus-nanhu', '浑南': 'campus-hunnan' };
@@ -30,10 +31,11 @@ function RosterManager({ user }) {
   const [dirty, setDirty] = useState(false), [busy, setBusy] = useState(false), [loading, setLoading] = useState(false);
   const [error, setError] = useState(''), [notice, setNotice] = useState('');
   const [creating, setCreating] = useState(false), [confirming, setConfirming] = useState(false);
+  const [scopeReady,setScopeReady] = useState(false);
   const serial = useRef(0), commandLock = useRef(false);
   const campuses = (user?.authorizedCampuses || []).map(value => ({ id: campusIds[value] || value, name: value }));
   const nextWeek = addDays(weekRange(dateKey()).start, 7);
-  const [form, setForm] = useState({ weekStart: nextWeek, campusId: campuses[0]?.id || '', slotStart: '19:00', slotEnd: '21:00', deadline: `${addDays(nextWeek, -1)}T18:00`, description: '' });
+  const [form, setForm] = useState({ weekStart: nextWeek, campusId: campuses[0]?.id || '', departmentIds:[], slotStart: '19:00', slotEnd: '21:00', deadline: `${addDays(nextWeek, -1)}T18:00`, description: '' });
   const task = tasks.find(item => item.id === taskId);
   const draft = data?.draft;
   const editable = draft?.status === 'draft';
@@ -48,7 +50,7 @@ function RosterManager({ user }) {
 
   async function loadTasks() {
     const result = await request('/api/roster-tasks');
-    const available = (result.items || []).filter(item => item.dutyType !== 'office' && item.campusScope?.campusIds?.length);
+    const available = (result.items || []).filter(item => item.actions?.manage && item.dutyType !== 'office' && item.campusScope?.campusIds?.length);
     setTasks(available);
     setTaskId(current => current || available[0]?.id || '');
   }
@@ -97,6 +99,7 @@ function RosterManager({ user }) {
   }); }
   function create(event) {
     event.preventDefault();
+    if (!scopeReady) return;
     return run(async () => {
       const result = await request('/api/roster-tasks', { method: 'POST', body: { ...form, deadline: new Date(form.deadline).toISOString(), requestId: crypto.randomUUID() } });
       await loadTasks(); setTaskId(result.id); setCreating(false); setNotice('收集任务已创建，成员现在可以填报时间。');
@@ -115,10 +118,10 @@ function RosterManager({ user }) {
   }).length;
 
   return <section className="react-page roster-planner">
-    <WorkspaceHeader group="值班管理" title="维修排班管理" description="收集可用时间，核对人员安排，再发布给成员。"><button type="button" disabled={busy || dirty} onClick={() => setCreating(true)}>新建收集任务</button></WorkspaceHeader>
+    <WorkspaceHeader group="值班管理" title="维修排班管理" description="收集可用时间，核对人员安排，再发布给成员。"><button type="button" disabled={busy || dirty} onClick={() => {setScopeReady(false); setCreating(true);}}>新建收集任务</button></WorkspaceHeader>
     {error && <p className="react-error" role="alert">{error}</p>}
     {notice && <p className="react-message" role="status">{notice}</p>}
-    <div className="planner-toolbar"><label>排班周与校区<select disabled={busy || dirty} value={taskId} onChange={event => setTaskId(event.target.value)}><option value="">选择收集任务</option>{tasks.map(item => <option key={item.id} value={item.id}>{item.weekStart} · {item.campusScope.campusIds.map(id => campusNames[id] || id).join('、')} · {item.slotStart}–{item.slotEnd}</option>)}</select></label><button type="button" disabled={!taskId || busy || dirty || loading} onClick={() => load(taskId)}>刷新</button></div>
+    <div className="planner-toolbar"><label>排班周与校区<select disabled={busy || dirty} value={taskId} onChange={event => setTaskId(event.target.value)}><option value="">选择收集任务</option>{tasks.map(item => <option key={item.id} value={item.id}>{item.weekStart} · {item.scopeLabel || item.campusScope.campusIds.map(id => campusNames[id] || id).join('、')} · {item.slotStart}–{item.slotEnd}</option>)}</select></label><button type="button" disabled={!taskId || busy || dirty || loading} onClick={() => load(taskId)}>刷新</button></div>
     {!taskId && <div className="react-card empty-state"><strong>先收集成员的可用时间</strong><span>创建任务后，成员在个人页面填报；生成的草稿会保存在服务端。</span></div>}
     {task && <p className="react-muted">填报截止：{new Date(task.deadline).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}{task.description ? ` · ${task.description}` : ''}</p>}
     {loading && <p role="status">正在读取最新安排…</p>}
@@ -141,7 +144,7 @@ function RosterManager({ user }) {
         {editable && !dirty && <button type="button" className="react-primary" disabled={busy || loading || !draft.validation.valid} onClick={() => setConfirming(true)}>预览并发布</button>}
       </div></div>
     </>}
-    {creating && <Modal title="收集下周可用时间" onClose={() => { if (!busy) setCreating(false); }}><form className="roster-create-form" onSubmit={create}><label>周一日期<input type="date" required value={form.weekStart} onChange={event => setForm({ ...form, weekStart: event.target.value })} /></label><label>校区<select required value={form.campusId} onChange={event => setForm({ ...form, campusId: event.target.value })}>{campuses.map(campus => <option key={campus.id} value={campus.id}>{campus.name}</option>)}</select></label><div className="react-inline"><label>开始<input type="time" required value={form.slotStart} onChange={event => setForm({ ...form, slotStart: event.target.value })} /></label><label>结束<input type="time" required value={form.slotEnd} onChange={event => setForm({ ...form, slotEnd: event.target.value })} /></label></div><label>填报截止<input type="datetime-local" required value={form.deadline} onChange={event => setForm({ ...form, deadline: event.target.value })} /></label><label>说明<input value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} /></label>{error && <p role="alert" className="react-error">{error}</p>}<button className="field-primary" disabled={busy}>创建收集任务</button></form></Modal>}
+    {creating && <Modal title="收集下周可用时间" onClose={() => { if (!busy) setCreating(false); }}><form className="roster-create-form" onSubmit={create}><label>周一日期<input type="date" required value={form.weekStart} onChange={event => setForm({ ...form, weekStart: event.target.value })} /></label><RosterScopeFields dutyType="repair" value={form} onChange={scope => setForm(current => ({...current,...scope}))} onReady={setScopeReady} disabled={busy} /><div className="react-inline"><label>开始<input type="time" required value={form.slotStart} onChange={event => setForm({ ...form, slotStart: event.target.value })} /></label><label>结束<input type="time" required value={form.slotEnd} onChange={event => setForm({ ...form, slotEnd: event.target.value })} /></label></div><label>填报截止<input type="datetime-local" required value={form.deadline} onChange={event => setForm({ ...form, deadline: event.target.value })} /></label><label>说明<input value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} /></label>{error && <p role="alert" className="react-error">{error}</p>}<button className="field-primary" disabled={busy || !scopeReady}>创建收集任务</button></form></Modal>}
     {confirming && <Modal title="确认发布排班" onClose={() => { if (!busy) setConfirming(false); }}><p>{task?.weekStart} 起的班表，共安排 {rows.length} 人。</p><p>{changes} 位成员的安排与当前发布班表不同。确认后，成员端将显示这份班表。</p>{error && <p role="alert" className="react-error">{error}</p>}<div className="field-actions"><button disabled={busy} onClick={() => setConfirming(false)}>返回核对</button><button className="field-primary" disabled={busy} onClick={publish}>确认发布</button></div></Modal>}
   </section>;
 }

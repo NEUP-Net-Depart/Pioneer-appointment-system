@@ -10,6 +10,63 @@ async function expandGroup(page, name) {
 
 test.skip(process.env.E2E_FIELD !== 'true', 'Uses the isolated staff fixture');
 
+test('department manager creates only authorized roster scopes across screen sizes', async ({ page, request }) => {
+  await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': '192.0.2.119' });
+  const root = await request.post('/api/auth/login', { data: { account: 'root001', password: process.env.E2E_ROOT_PASSWORD } }).then(response => response.json());
+  const headers = { Authorization: `Bearer ${root.token}` };
+  async function command(path, data, method = data ? 'POST' : 'GET') {
+    const response = await request.fetch(path, { method, headers, ...(data ? { data } : {}) });
+    const result = await response.json();
+    expect(response.ok(), JSON.stringify(result)).toBe(true);
+    return result;
+  }
+  const original = await command('/api/members/member-20261004');
+  const role = await command('/api/roles', { code: 'department_browser_' + Date.now(), name: '部门排班负责人', grants: [
+    { permissionCode: 'roster.repair.manage', scope: { campusIds: ['campus-nanhu'], departmentIds: ['dept-hardware'] }, conditions: [{ code: 'activeDutyRole', version: 1, parameters: { kind: 'repair_lead' } }] },
+  ] });
+  try {
+    await command('/api/members/member-20261004/roles', { revision: original.member.revision, bindings: [{ roleId: role.id, scope: { campusIds: ['campus-nanhu','campus-hunnan'] }, effectiveFrom: '2026-01-01' }] }, 'PUT');
+    await page.goto('/staff/');
+    await page.locator('#login-id').fill('20261004'); await page.locator('#login-password').fill('StaffTest!2026');
+    await page.getByRole('button', { name: '进入系统' }).click();
+    await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();
+    await expandGroup(page, '值班管理');
+    await page.locator('.field-sidebar').getByRole('button', { name: '维修排班管理', exact: true }).click();
+    await page.getByRole('button', { name: '新建收集任务', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: '收集下周可用时间', exact: true });
+    const campus = dialog.getByRole('combobox', { name: '校区', exact: true });
+    // The account is bound only to Nanhu: a grant for Hunnan cannot extend it.
+    await expect(campus.locator('option')).toHaveCount(1);
+    await expect(campus).toHaveValue('campus-nanhu');
+    const departments = dialog.getByRole('group', { name: '参与部门', exact: true });
+    await expect(departments.getByRole('button', { name: '硬件部', exact: true })).toHaveAttribute('aria-pressed','true');
+    await expect(departments.getByRole('button', { name: '办公室', exact: true })).toHaveCount(0);
+    await expect(departments.getByRole('button', { name: '全部部门', exact: true })).toHaveCount(0);
+    await departments.getByRole('button', { name: '硬件部', exact: true }).click();
+    await expect(dialog.getByRole('button', { name: '创建收集任务', exact: true })).toBeDisabled();
+    await departments.getByRole('button', { name: '硬件部', exact: true }).click();
+    await dialog.getByLabel('周一日期', { exact: true }).fill('2026-12-07');
+    await dialog.getByLabel('填报截止', { exact: true }).fill('2026-12-06T18:00');
+    await mkdir('output/field-workflow', { recursive: true });
+    for (const width of [1440,390,320]) {
+      await page.setViewportSize({ width,height:900 });
+      expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.screenshot({ path: `output/field-workflow/department-roster-${width}.png`,fullPage:true });
+    }
+    const created = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/roster-tasks');
+    await dialog.getByRole('button', { name: '创建收集任务', exact: true }).click();
+    const response = await created;
+    expect(response.ok(), await response.text()).toBe(true);
+    expect(response.request().postDataJSON().departmentIds).toEqual(['dept-hardware']);
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByLabel('排班周与校区')).toContainText('硬件部');
+  } finally {
+    const latest = await command('/api/members/member-20261004');
+    await command('/api/members/member-20261004/roles', { revision: latest.member.revision, bindings: original.bindings }, 'PUT');
+  }
+});
+
 test('members preview, confirm and recover a swap through responsive personal workspaces', async ({ browser }) => {
   const contexts = await Promise.all([1,2].map(index => browser.newContext({ baseURL:process.env.E2E_BASE_URL,viewport:{ width:1440,height:1000 },extraHTTPHeaders:{ 'CF-Connecting-IP':`192.0.2.${100 + index}` } })));
   try {
@@ -290,6 +347,9 @@ test('manager restores a saved draft, adjusts a member and cannot publish missin
   await expect(page.getByText('草稿已保存。请核对人员安排和覆盖提示。')).toBeVisible();
   await page.reload();
   await openManager();
+  // A different department's later-week task can sort first. Restore the
+  // exact saved draft instead of assuming this suite created the only task.
+  await page.getByRole('combobox', { name: '排班周与校区', exact: true }).selectOption(task.id);
   await expect(page.getByLabel('安排陈宇', { exact: true })).toHaveValue('2026-10-20:campus-nanhu:18:00:19:00');
   await page.locator('.field-sidebar').evaluate(node => { node.dataset.persisted = 'yes'; });
   const navigation = await page.locator('.field-sidebar nav button').allTextContents();

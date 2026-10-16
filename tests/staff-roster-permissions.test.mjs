@@ -11,7 +11,8 @@ function setup(memberId = 'target', allowedCampuses = ['campus-nanhu']) {
   };
   const swap = { id: 'swap', from_assignment_id: 'a', to_assignment_id: 'b', from_member_id: 'sender', to_member_id: 'target', from_revision: 0, to_revision: 0, status: 'pending', revision: 0 };
   const repository = {
-    availability: async () => [{ memberId: 'target', campusId: 'campus-nanhu' }, { memberId: 'sender', campusId: 'campus-hunnan' }],
+    availability: async () => [{ memberId: 'target', campusId: 'campus-nanhu', businessDate:'2026-10-19' }, { memberId: 'sender', campusId: 'campus-hunnan', businessDate:'2026-10-19' }],
+    rosterTaskById: async () => ({id:'task',weekStart:'2026-10-19',campusScope:{campusIds:['campus-nanhu']},memberIds:[],dutyType:'repair'}),
     assignmentById: async id => assignments[id], swapById: async () => swap,
     effectiveAssignment: async id => assignments[id], swapFingerprint: async () => 'unchanged', swapCoverage: async () => Object.values(assignments), receipt: async () => null,
     memberRow: async id => ({ id, name: id }), memberships: async () => [],

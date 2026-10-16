@@ -15,7 +15,7 @@
   },
   "include": [
     "src/modules/rosters/**/*.ts",
-    "frontend/staff-react/field/**/*.ts",
-    "frontend/staff-react/field/**/*.tsx"
+    "frontend/staff-react/**/*.ts",
+    "frontend/staff-react/**/*.tsx"
   ]
 }

@@ -546,14 +546,17 @@ export function staffPlatformRepository(db) {
           AND (effective_to IS NULL OR effective_to>?)`).bind(...ids,weekStart,weekStart),
         db.prepare(`SELECT da.*,rv.task_id FROM duty_assignments da JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published'
           WHERE da.member_id IN (${placeholders}) AND da.business_date>=? AND da.business_date<=date(?,'+6 day')`).bind(...ids,weekStart,weekStart),
-        db.prepare(`SELECT mm.member_id,d.name FROM member_department_memberships mm JOIN departments d ON d.id=mm.department_id
-          WHERE mm.member_id IN (${placeholders}) AND mm.effective_from<=? AND (mm.effective_to IS NULL OR mm.effective_to>?) ORDER BY mm.is_primary DESC,d.name`).bind(...ids,weekStart,weekStart)
+        db.prepare(`SELECT mm.*,d.name AS department_name FROM member_department_memberships mm JOIN departments d ON d.id=mm.department_id
+          WHERE mm.member_id IN (${placeholders}) AND mm.effective_from<=date(?,'+6 day') AND (mm.effective_to IS NULL OR mm.effective_to>?) ORDER BY mm.is_primary DESC,d.name`).bind(...ids,weekStart,weekStart)
       ]);
-      for (const row of rows(results[0])) facts.set(row.id, { memberId: row.id, name: row.name, active: row.status === 'active' && !!row.enabled, campuses: [], profiles: [], assignments: [], departmentNames: [] });
+      for (const row of rows(results[0])) facts.set(row.id, { memberId: row.id, name: row.name, active: row.status === 'active' && !!row.enabled, campuses: [], profiles: [], assignments: [], departmentNames: [], memberships: [] });
       for (const row of rows(results[1])) facts.get(row.member_id)?.campuses.push(row.campus);
       for (const row of rows(results[2])) facts.get(row.member_id)?.profiles.push(profile(row));
       for (const row of rows(results[3])) facts.get(row.member_id)?.assignments.push({ ...assignment(row), taskId: row.task_id });
-      for (const row of rows(results[4])) facts.get(row.member_id)?.departmentNames.push(row.name);
+      for (const row of rows(results[4])) {
+        const fact = facts.get(row.member_id);
+        if (fact) { fact.memberships.push(membership(row)); if (!fact.departmentNames.includes(row.department_name)) fact.departmentNames.push(row.department_name); }
+      }
     }
     return [...facts.values()];
   }

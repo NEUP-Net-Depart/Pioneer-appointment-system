@@ -51,6 +51,7 @@ export const staffPlatformRoutes = [
   ['PATCH', /^\/api\/presence\/me$/, async context => json(await context.services.staffPlatform.presence(await context.role('technician'), await readBody(context.request)))],
 
   ['GET', /^\/api\/roster-tasks$/, async context => json(await context.services.staffPlatform.rosterTasks(await context.role('technician'), context.query))],
+  ['GET', /^\/api\/roster-tasks\/options$/, async context => json(await context.services.staffPlatform.rosterOptions(await context.role('technician'), context.query))],
   ['GET', /^\/api\/roster-tasks\/([^/]+)\/availability$/, async (context, match) => json(await context.services.staffPlatform.taskAvailability(await context.role('technician'), decodeURIComponent(match[1])))],
   ['POST', /^\/api\/roster-tasks$/, async context => json(await context.services.staffPlatform.createRosterTask(await context.role('technician'), await readBody(context.request)), 201)],
   ['PUT', /^\/api\/roster-tasks\/([^/]+)\/availability$/, async (context, match) => json(await context.services.staffPlatform.saveAvailability(await context.role('technician'), decodeURIComponent(match[1]), await readBody(context.request)))],

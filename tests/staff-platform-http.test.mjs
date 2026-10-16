@@ -570,3 +570,68 @@ test('roster generation and publication use server facts and reject forged clien
   await db.prepare("DELETE FROM member_work_profiles WHERE id='qualified-0'").run();
   assert.equal((await post(`/api/rosters/${finalDraft.body.version.id}/publish`, { version: finalDraft.body.version.version })).response.status, 409);
 });
+
+test('department roster scopes govern creation, task entries, participants, availability and shift-date transfers', async () => {
+  const db = await mf.getD1Database('DB'), repository = staffPlatformRepository(db);
+  const rootLogin = await request('/api/auth/login',{method:'POST',body:JSON.stringify({account:'root001',password:'staff-platform-password'})});
+  const rootHeaders = {Authorization:`Bearer ${rootLogin.body.token}`};
+  const command = (path,body,headers = rootHeaders,method = body ? 'POST' : 'GET') => request(path,{method,headers,...(body ? {body:JSON.stringify(body)} : {})});
+  for (const [account,name] of [['20998901','部门排班负责人'],['20998902','硬件维修员'],['20998903','办公部门维修员'],['20998904','周中转部门成员']]) {
+    await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,?,'technician','南湖',?,'2026-01-01')").bind(account,name,hashPassword('roster-scope-test-password')).run();
+    await db.batch(['南湖','浑南'].map(campus => db.prepare('INSERT INTO staff_campus_grants(account,campus) VALUES(?,?)').bind(account,campus)));
+  }
+  await db.prepare("UPDATE member_department_memberships SET department_id='dept-office' WHERE member_id='member-20998903'").run();
+  await db.prepare("UPDATE member_department_memberships SET effective_to='2026-11-04' WHERE member_id='member-20998904'").run();
+  await repository.addMembership('member-20998904',{departmentId:'dept-office',assignmentType:'primary',isPrimary:true,effectiveFrom:'2026-11-04'},0);
+  const roles = [];
+  for (const [code,campusId,departmentId] of [['south_hw','campus-nanhu','dept-hardware'],['north_office','campus-hunnan','dept-office']]) roles.push(await repository.createRole({code:`roster_scope_${code}`,name:code,
+    grants:[{permissionCode:'roster.repair.manage',scope:{campusIds:[campusId],departmentIds:[departmentId]}}]}));
+  const manager = await repository.memberRow('member-20998901');
+  await repository.bindRoles(manager.id,roles.map(role => ({roleId:role.id,scope:{},effectiveFrom:'2026-01-01'})),manager.revision);
+  const managerLogin = await command('/api/auth/login',{account:'20998901',password:'roster-scope-test-password'});
+  const managerHeaders = {Authorization:`Bearer ${managerLogin.body.token}`};
+  const options = await command('/api/roster-tasks/options?dutyType=repair',undefined,managerHeaders);
+  assert.equal(options.response.status,200,JSON.stringify(options.body));
+  assert.deepEqual(options.body.items.map(item => [item.campusId,item.allDepartments,item.departments.map(value => value.id)]).sort(),[
+    ['campus-hunnan',false,['dept-office']],['campus-nanhu',false,['dept-hardware']]
+  ]);
+  const base = {weekStart:'2026-11-02',slotStart:'19:00',slotEnd:'21:00',deadline:'2026-11-01T18:00:00+08:00',campusId:'campus-nanhu'};
+  for (const extra of [{departmentIds:['dept-office']},{departmentIds:['dept-hardware','dept-office']},{departmentIds:[]}]) assert.equal((await command('/api/roster-tasks',{...base,...extra},managerHeaders)).response.status,403);
+  const south = await command('/api/roster-tasks',{...base,departmentIds:['dept-hardware']},managerHeaders);
+  assert.equal(south.response.status,201,JSON.stringify(south.body));
+  assert.equal((await command('/api/roster-tasks',{...base,departmentIds:['dept-hardware']},managerHeaders)).response.status,409);
+  const north = await command('/api/roster-tasks',{...base,campusId:'campus-hunnan',departmentIds:['dept-office']},managerHeaders);
+  const forbidden = await command('/api/roster-tasks',{...base,departmentIds:['dept-office']});
+  const unrestricted = await command('/api/roster-tasks',base);
+  for (const created of [north,forbidden,unrestricted]) assert.equal(created.response.status,201,JSON.stringify(created.body));
+  const invitation = await command('/api/roster-tasks',{...base,slotStart:'18:00',departmentIds:['dept-hardware'],memberIds:['member-20998903']},managerHeaders);
+  assert.equal(invitation.response.status,403,'an out-of-department invitation cannot expand the scope');
+  const entries = await command('/api/roster-tasks',undefined,managerHeaders);
+  assert.equal(entries.response.status,200);
+  assert.ok(entries.body.items.some(item => item.id === south.body.id && item.actions.manage));
+  assert.ok(entries.body.items.some(item => item.id === north.body.id && item.actions.manage));
+  assert.ok(!entries.body.items.some(item => item.id === forbidden.body.id));
+  assert.ok(!entries.body.items.some(item => item.id === unrestricted.body.id),'a department manager cannot manage an unrestricted task');
+  for (const path of [`/api/roster-tasks/${forbidden.body.id}/roster`,`/api/roster-tasks/${forbidden.body.id}/availability`]) assert.equal((await command(path,undefined,managerHeaders)).response.status,403);
+  for (const [id,memberId,businessDate] of [['scope-good','member-20998902','2026-11-02'],['scope-poison','member-20998903','2026-11-02'],['scope-transfer-before','member-20998904','2026-11-02'],['scope-transfer-after','member-20998904','2026-11-04']]) await db.prepare('INSERT INTO availability(id,task_id,member_id,business_date,start_at,end_at,campus_id) VALUES(?,?,?,?,?,?,?)').bind(id,south.body.id,memberId,businessDate,'19:00','21:00','campus-nanhu').run();
+  const available = await command(`/api/roster-tasks/${south.body.id}/availability`,undefined,managerHeaders);
+  assert.deepEqual(available.body.items.map(item => item.id).sort(),['scope-good','scope-transfer-before']);
+  const state = await command(`/api/roster-tasks/${south.body.id}/roster`,undefined,managerHeaders);
+  assert.equal(state.response.status,200,JSON.stringify(state.body));
+  assert.ok(!state.body.members.some(item => item.memberId === 'member-20998903'));
+  assert.deepEqual(state.body.members.find(item => item.memberId === 'member-20998904').available.map(item => item.businessDate),['2026-11-02']);
+  const transferLogin = await command('/api/auth/login',{account:'20998904',password:'roster-scope-test-password'});
+  const transferHeaders = {Authorization:`Bearer ${transferLogin.body.token}`};
+  const ownEntries = await command('/api/roster-tasks',undefined,transferHeaders);
+  assert.ok(ownEntries.body.items.some(item => item.id === south.body.id && item.actions.fill && !item.actions.manage));
+  assert.ok(ownEntries.body.items.every(item => item.memberIds === undefined && item.createdByMemberId === undefined));
+  const save = (id,businessDate) => command(`/api/roster-tasks/${id}/availability`,{businessDate,campusId:'campus-nanhu',startAt:'19:00',endAt:'21:00'},transferHeaders,'PUT');
+  assert.equal((await save(south.body.id,'2026-11-03')).response.status,200);
+  assert.equal((await save(south.body.id,'2026-11-04')).response.status,403);
+  assert.equal((await save(forbidden.body.id,'2026-11-04')).response.status,200);
+  assert.equal((await save(south.body.id,'2026-11-06')).response.status,400);
+  const ordinaryOptions = await command('/api/roster-tasks/options',undefined,transferHeaders);
+  assert.equal(ordinaryOptions.response.status,403);
+  await repository.updateRole(roles[0].id,{grants:[]},roles[0].revision);
+  assert.equal((await command(`/api/roster-tasks/${south.body.id}/roster`,undefined,managerHeaders)).response.status,401,'revocation invalidates the old manager session immediately');
+});
