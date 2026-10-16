@@ -7,7 +7,7 @@ import {createServer} from 'node:net';
 import {root,config} from './cli.mjs';
 import {hashPassword} from '../src/lib/passwords.js';
 import {nowIso} from '../shared/time.js';
-import {dateKey} from '../shared/time.js';
+import {dateKey,expirationDeadline} from '../shared/time.js';
 import {fieldSeed} from '../tests/fixtures/field-seed.mjs';
 
 await import('./build.mjs');
@@ -81,7 +81,7 @@ try{
   if(!ready)throw new Error('Local Preview did not become ready:\n'+startup+'\n'+diagnostics);
   console.log(`Isolated local Preview ready: ${base} (Preview quota; fresh D1/R2; no remote resources)`);
   if(process.argv.includes('--serve')){
-    if(process.argv.includes('--field')) {
+    if(process.argv.includes('--field') && Date.now() < Date.parse(expirationDeadline(dateKey()))) {
       const session=await fetch(base+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account:'20261001',password:'StaffTest!2026'})}).then(r=>r.json());
       const signature=[Array.from({length:10},(_,i)=>[.1+i*.05,.2+i*.03])];
       for(const [index,deviceModel,faultType] of [[1,'ThinkPad T14','系统问题'],[2,'MacBook Air','网络问题'],[3,'拯救者 Y7000','清灰换硅脂']]) {
@@ -90,13 +90,14 @@ try{
         if(!response.ok) throw new Error(`Local fixture creation failed: ${value.error}`);
         console.log(`Local sample: ${value.id} / ${deviceModel}`);
       }
-    }
+    } else if(process.argv.includes('--field')) console.log('Local service remains available; customer samples are omitted after the daily registration deadline.');
     console.log(`Local root001 password is in ${resolve(dir,'.dev.vars.preview')}. Stop with Ctrl+C; temporary data is removed.`);
     await new Promise(resolve=>{process.once('SIGINT',resolve);process.once('SIGTERM',resolve);});
   }else{
     const runner=fileURLToPath(new URL('../node_modules/@playwright/test/cli.js',import.meta.url));
+    const testOutput=resolve(root,'output/playwright',inside);
     exitCode=await new Promise((resolve,reject)=>{
-      const child=spawn(process.execPath,[runner,'test','--config','playwright.config.mjs',...process.argv.slice(2).filter(arg=>arg!=='--field')],{cwd:root,env:{...env,E2E_BASE_URL:base,E2E_ROOT_PASSWORD:rootPassword,E2E_FIELD:process.argv.includes('--field')?'true':'false'},stdio:'inherit'});
+      const child=spawn(process.execPath,[runner,'test','--config','playwright.config.mjs',...process.argv.slice(2).filter(arg=>arg!=='--field')],{cwd:root,env:{...env,E2E_OUTPUT_DIR:testOutput,E2E_BASE_URL:base,E2E_ROOT_PASSWORD:rootPassword,E2E_FIELD:process.argv.includes('--field')?'true':'false'},stdio:'inherit'});
       child.once('error',reject);child.once('exit',code=>resolve(code ?? 1));
     });
   }
