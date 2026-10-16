@@ -28,6 +28,22 @@ async function tokenDigest(value) {
   return Array.from(new Uint8Array(bytes), item => item.toString(16).padStart(2, '0')).join('');
 }
 
+function rosterEligibilitySnapshot(source) {
+  const ordered = values => [...values].sort((a,b) => stableJson(a).localeCompare(stableJson(b)));
+  return {
+    taskRevision: source.taskRevision, requireLead: !!source.requireLead,
+    slots: ordered(source.slots),
+    members: source.members.map(member => ({ memberId: member.memberId, available: ordered(member.available || []), leadSlots: ordered(member.leadSlots || []) }))
+      .sort((a,b) => a.memberId.localeCompare(b.memberId))
+  };
+}
+
+function rosterAssignmentSnapshot(assignments) {
+  return assignments.map(item => ({ memberId:item.memberId, businessDate:item.businessDate, campusId:item.campusId,
+    startAt:item.startAt,endAt:item.endAt,roleKind:item.roleKind || '',leaveStatus:item.leaveStatus || '' }))
+    .sort((a,b) => stableJson(a).localeCompare(stableJson(b)));
+}
+
 function inputString(input, key, max, required = false) {
   const value = input?.[key];
   if (value === undefined && !required) return '';
@@ -661,8 +677,12 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const latest = versions.find(item => ['draft','published'].includes(item.status));
     const published = versions.find(item => item.status === 'published');
     const assignments = latest ? await repository.versionAssignments(latest.id) : [];
+    const savedEligibility = latest?.inputSnapshotRef?.eligibility;
+    const savedAssignments = latest?.inputSnapshotRef?.optimization && latest.inputSnapshotRef.generatedAssignments;
+    const sourceChanged = !!savedEligibility && stableJson(savedEligibility) !== stableJson(rosterEligibilitySnapshot(source)) ||
+      !!savedAssignments && stableJson(savedAssignments) !== stableJson(rosterAssignmentSnapshot(assignments));
     return { taskId, dutyType: source.dutyType, members: source.members, slots: source.slots,
-      draft: latest ? { ...latest, assignments, validation: validateRoster({ assignments }, source) } : null,
+      draft: latest ? { ...latest, assignments, sourceChanged, validation: validateRoster({ assignments }, source) } : null,
       publishedAssignments: published ? await repository.versionAssignments(published.id) : [] };
   }
   async function generate(actor, input) {
@@ -671,11 +691,16 @@ export function staffPlatformService({ repository, platform, manifests }) {
     source.locked = previous ? (await repository.versionAssignments(previous.id)).filter(item => item.locked) : [];
     const context = await contextFor(actor);
     const result = source.dutyType === 'office' ? { assignments: previous ? await repository.versionAssignments(previous.id) : [], ruleVersion: 'office-daily-v1', algorithmVersion: 'manual-office-v1', solverStatus: 'needs_review', inputSnapshotRef: { dutyType: 'office' } } : generateRoster(source);
+    const beforeLeaves = result.assignments.map(item => item.leaveStatus || '');
     result.assignments = await inheritAssignmentLeaves(source.taskId, result.assignments);
+    if (result.inputSnapshotRef.optimization && result.assignments.some((item,index) => (item.leaveStatus || '') !== beforeLeaves[index])) {
+      result.inputSnapshotRef.optimization = { ...result.inputSnapshotRef.optimization, complete: false, reason: 'attendance_changed', objective: null };
+      result.solverStatus = 'feasible';
+    }
     const validation = validateRoster(result, source);
-    result.solverStatus = validation.valid ? 'feasible' : 'needs_review';
+    result.solverStatus = validation.valid ? (result.solverStatus === 'optimal' ? 'optimal' : 'feasible') : 'needs_review';
     const version = await repository.createRosterVersion({ taskId: source.taskId, assignments: result.assignments.map(item => ({ ...item, id: undefined })),
-      inputSnapshotRef: { ...result.inputSnapshotRef, taskRevision: source.taskRevision, lockedMemberIds: source.locked.map(item => item.memberId) }, ruleVersion: result.ruleVersion,
+      inputSnapshotRef: { ...result.inputSnapshotRef, eligibility: rosterEligibilitySnapshot(source), generatedAssignments: rosterAssignmentSnapshot(result.assignments), lockedAssignments: source.locked, taskRevision: source.taskRevision, lockedMemberIds: source.locked.map(item => item.memberId) }, ruleVersion: result.ruleVersion,
       algorithmVersion: result.algorithmVersion, solverStatus: result.solverStatus, validation });
     await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.generated', sourceRef: publicResourceRef('rosters','version',version.id), after: { version, validation }, requestId: input.requestId });
     const names = new Map(source.members.map(item => [item.memberId, item.name]));

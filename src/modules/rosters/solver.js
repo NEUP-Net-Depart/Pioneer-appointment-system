@@ -1,3 +1,5 @@
+import { optimizeRoster } from './optimizer.ts';
+
 function key(value) { return `${value.memberId}:${value.businessDate}:${value.campusId}:${value.startAt || ''}:${value.endAt || ''}`; }
 function slotKey(value) { return `${value.businessDate}:${value.campusId}:${value.startAt || ''}:${value.endAt || ''}`; }
 function weekKey(value) {
@@ -16,10 +18,10 @@ function leadFor(member, slot) {
   return Array.isArray(member.leadSlots) ? member.leadSlots.some(item => slotKey(item) === slotKey(slot)) : member.isLead === true;
 }
 
-export function generateRoster(input) {
+function diagnosticAssignments(input) {
   const members = [...(input.members || [])].sort((a, b) => String(a.memberId).localeCompare(String(b.memberId)));
   const slots = [...(input.slots || [])].sort((a, b) => slotKey(a).localeCompare(slotKey(b)));
-  const assignments = (input.locked || []).map(item => ({ ...item, locked: true }));
+  const assignments = [...(input.locked || [])].sort((a,b) => key(a).localeCompare(key(b))).map(item => ({ ...item, locked: true }));
   const assigned = new Set(assignments.map(item => item.memberId));
   // Augmenting paths reserve scarce qualified leaders without stranding a slot
   // when a flexible leader could cover a different day.
@@ -53,17 +55,33 @@ export function generateRoster(input) {
     assignments.push({ memberId: member.memberId, ...slot, roleKind: leadFor(member, slot) ? 'repair_lead' : '' });
     assigned.add(member.memberId);
   }
-  const counts = slots.map(slot => assignments.filter(item => slotKey(item) === slotKey(slot)).length);
+  return assignments;
+}
+
+export function generateRoster(input) {
+  const members = input.members || [], slots = input.slots || [];
+  const optimized = optimizeRoster({ ...input, members, slots });
+  const assignments = optimized.assignments || diagnosticAssignments(input);
+  const assigned = new Set(assignments.map(item => item.memberId));
+  const effective = assignments.filter(item => item.leaveStatus !== 'approved');
+  const counts = slots.map(slot => effective.filter(item => slotKey(item) === slotKey(slot)).length);
   const covered = counts.filter(count => count > 0).length;
+  const campuses = [...new Set(slots.map(slot => slot.campusId))].sort().map(campusId => {
+    const values = slots.map((slot,index) => slot.campusId === campusId ? counts[index] : null).filter(value => value !== null);
+    return { campusId, counts: values, spread: Math.max(...values) - Math.min(...values) };
+  });
   const result = {
     assignments, unassigned: members.filter(member => !assigned.has(member.memberId)).map(member => member.memberId),
     coverage: { required: slots.length, covered, complete: covered === slots.length },
     balance: { min: counts.length ? Math.min(...counts) : 0, max: counts.length ? Math.max(...counts) : 0, spread: counts.length ? Math.max(...counts) - Math.min(...counts) : 0 },
-    inputSnapshotRef: { memberCount: members.length, slotCount: slots.length }, ruleVersion: input.ruleVersion || '1.0.0', algorithmVersion: 'qualified-balanced-v2',
+    inputSnapshotRef: { memberCount: members.length, slotCount: slots.length, optimization: {
+      complete: optimized.complete, reason: optimized.reason, work: optimized.work, flowRuns: optimized.flowRuns,
+      objective: optimized.objective, campuses
+    } }, ruleVersion: input.ruleVersion || '1.0.0', algorithmVersion: 'bounded-flow-campus-v3',
     roleCoverage: { required: slots.filter(slot => input.requireLead || slot.requireLead).length,
-      covered: slots.filter(slot => assignments.some(item => slotKey(item) === slotKey(slot) && item.roleKind === 'repair_lead')).length }
+      covered: slots.filter(slot => (input.requireLead || slot.requireLead) && effective.some(item => slotKey(item) === slotKey(slot) && item.roleKind === 'repair_lead')).length }
   };
-  return { ...result, solverStatus: validateRoster(result, input).valid ? 'feasible' : 'needs_review' };
+  return { ...result, solverStatus: validateRoster(result, input).valid ? (optimized.complete ? 'optimal' : 'feasible') : 'needs_review' };
 }
 
 export function validateRoster(result, input) {

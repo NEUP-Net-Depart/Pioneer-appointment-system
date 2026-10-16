@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Cloudflare Pages with isolated Production, Preview and Staff Staging resources",
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.18.0"
   },
   "scripts": {
     "build": "node scripts/build.mjs",

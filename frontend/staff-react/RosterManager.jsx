@@ -37,6 +37,14 @@ function RosterManager({ user }) {
   const task = tasks.find(item => item.id === taskId);
   const draft = data?.draft;
   const editable = draft?.status === 'draft';
+  const optimization = draft?.inputSnapshotRef?.optimization;
+  const balance = [...new Set((data?.slots || []).map(slot => slot.campusId))].map(campusId => {
+    const counts = data.slots.filter(slot => slot.campusId === campusId).map(slot => rows.filter(item => item.leaveStatus !== 'approved' && slotKey(item) === slotKey(slot)).length);
+    return { campusId, counts, spread: Math.max(...counts) - Math.min(...counts) };
+  });
+  const optimizationLabel = dirty ? '已调整，保存后重新校验' : draft?.sourceChanged ? '人员或可用时间已变化，请重新生成或核对' : !draft?.validation?.valid ? '覆盖或资格待补齐' :
+    optimization?.complete && draft.solverStatus === 'optimal' ? '已完成均衡优化' :
+    optimization?.reason === 'budget_exhausted' ? '已生成可行草稿，均衡优化尚未完成' : '已通过资格与覆盖校验';
 
   async function loadTasks() {
     const result = await request('/api/roster-tasks');
@@ -116,6 +124,7 @@ function RosterManager({ user }) {
     {loading && <p role="status">正在读取最新安排…</p>}
     {data && <>
       <div className="planner-summary"><strong>{draft ? (editable ? '排班草稿' : '已发布班表') : '等待生成草稿'}</strong><span>已安排 {rows.length} / {members.length} 人</span>{dirty && <span>有未保存的调整</span>}</div>
+      {draft && <section className="planner-balance" aria-label="排班覆盖与均衡"><div><strong>{optimizationLabel}</strong><p>先安排可参加人员，再平衡各校区每日人数。发布时重新核验。</p></div><ul>{balance.map(campus => <li key={campus.campusId}><strong>{campusNames[campus.campusId] || campus.campusId}</strong><span>每日 {campus.counts.join(' / ')} 人</span><span>人数差 {campus.spread}</span></li>)}</ul></section>}
       <div className="planner-days">{data.slots.map(slot => {
         const assigned = rows.filter(item => slotKey(item) === slotKey(slot));
         const expected = assigned.filter(item => item.leaveStatus !== 'approved');

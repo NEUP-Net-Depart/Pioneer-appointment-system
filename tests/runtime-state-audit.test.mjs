@@ -9,3 +9,8 @@ test('runtime audit rejects module caches but permits request-local indexes', ()
   assert.deepEqual(runtimeStateErrors('export function requestHandler() { const index = new Map(); return index; }'), []);
   assert.deepEqual(runtimeStateErrors('export const createRepository = () => { const index = new Map(); return { lookup: key => index.get(key) }; };'), []);
 });
+
+test('TypeScript runtime modules receive the same shared-state checks', () => {
+  assert.equal(runtimeStateErrors('const cache: Map<string, number> = new Map();',{typescript:true}).length,1);
+  assert.deepEqual(runtimeStateErrors('export function solve(value: number) { const local: Map<string, number> = new Map(); return local.set("answer",value); }',{typescript:true}),[]);
+});

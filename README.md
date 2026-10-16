@@ -45,7 +45,7 @@ flowchart LR
 
 ## 本地运行
 
-需要 Node.js 22+：
+需要 Node.js 22.18+（本地测试直接运行 TypeScript 排班模块）：
 
 ```bash
 npm ci

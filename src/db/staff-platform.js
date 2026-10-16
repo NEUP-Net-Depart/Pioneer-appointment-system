@@ -629,8 +629,8 @@ export function staffPlatformRepository(db) {
         SELECT ?,?,?,? WHERE ${guard}`)
         .bind(`duty-role-${assignmentId}-${item.roleKind}`,assignmentId,item.roleKind,json(item.effectiveRange || {}),id,revision));
     }
-    statements.push(db.prepare(`UPDATE roster_versions SET version=version+1,validation_result=?,input_snapshot_ref=json_set(input_snapshot_ref,'$.lockedMemberIds',json(?)) WHERE id=? AND version=? AND status='draft'`)
-      .bind(json(validation,{}),json((input.assignments || []).filter(item => item.locked).map(item => item.memberId),[]),id,revision));
+    statements.push(db.prepare(`UPDATE roster_versions SET version=version+1,validation_result=?,solver_status=?,input_snapshot_ref=json_set(json_remove(input_snapshot_ref,'$.optimization'),'$.lockedMemberIds',json(?),'$.manuallyAdjusted',json('true')) WHERE id=? AND version=? AND status='draft'`)
+      .bind(json(validation,{}),validation.valid ? 'feasible' : 'needs_review',json((input.assignments || []).filter(item => item.locked).map(item => item.memberId),[]),id,revision));
     const result = await db.batch(statements);
     if (!result.at(-1)?.meta?.changes) return null;
     return rosterVersionById(id);

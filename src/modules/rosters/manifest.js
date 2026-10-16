@@ -1,5 +1,5 @@
 export const rostersManifest = {
-  code: 'rosters', version: '1.3.0', contractVersion: '1', requiredSchemaVersion: '0017',
+  code: 'rosters', version: '1.4.0', contractVersion: '1', requiredSchemaVersion: '0017',
   dependencies: ['identity@1','organization@1','duty@1'], releaseState: 'ready',
   permissions: ['roster.read','roster.repair.manage','roster.office.manage','leave.review'],
   routes: ['/api/roster-tasks','/api/rosters','/api/swaps','/api/leaves'], navigation: [{ id: 'rosters', path: '/staff/rosters', title: '排班', permission: 'roster.read' },

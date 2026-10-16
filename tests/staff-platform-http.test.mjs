@@ -499,11 +499,16 @@ test('draft edits are atomic, including role-free drafts and stale replacements'
   const db = await mf.getD1Database('DB');
   const repository = staffPlatformRepository(db);
   const root = await repository.ensureMember('root001');
-  const other = await repository.ensureMember('20268801');
+  await db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,?,?,?,?,?)')
+    .bind('20999801','草稿测试成员','technician','南湖','test-only-unused-password','2026-01-01').run();
+  const other = await repository.ensureMember('20999801');
+  const task = await repository.createRosterTask({ weekStart:'2026-10-19',slotStart:'17:00',slotEnd:'18:00',deadline:'2026-10-18' },root);
   const original = { memberId: root, businessDate: '2026-10-19', campusId: 'campus-nanhu', startAt: '18:00', endAt: '19:00' };
-  const draft = await repository.createRosterVersion({ taskId: 'swap-test-task', assignments: [original] });
+  const draft = await repository.createRosterVersion({ taskId: task.id, assignments: [original], solverStatus:'optimal', inputSnapshotRef:{ optimization:{complete:true} } });
   const edited = await repository.updateRosterDraft(draft.id, { assignments: [{ ...original, memberId: other }] }, draft.version);
   assert.ok(edited);
+  assert.equal(edited.solverStatus,'needs_review');
+  assert.equal(edited.inputSnapshotRef.optimization,undefined,'manual editing removes the obsolete optimality claim');
   assert.deepEqual((await repository.versionAssignments(draft.id)).map(item => item.memberId), [other]);
   const before = await repository.versionAssignments(draft.id);
   assert.equal(await repository.updateRosterDraft(draft.id, { assignments: [{ ...original, roleKind: 'repair_lead' }] }, draft.version), null);
@@ -535,6 +540,20 @@ test('roster generation and publication use server facts and reject forged clien
   assert.equal(generated.response.status, 201, JSON.stringify(generated.body));
   assert.equal(generated.body.assignments.length, 4);
   assert.equal(generated.body.validation.valid, true);
+  assert.equal(generated.body.solverStatus,'optimal');
+  assert.equal(generated.body.version.solverStatus,'optimal');
+  assert.equal(generated.body.version.inputSnapshotRef.optimization.complete,true);
+  const restored = await request(`/api/roster-tasks/${task.body.id}/roster`,{headers});
+  assert.equal(restored.body.draft.solverStatus,'optimal');
+  assert.equal(restored.body.draft.sourceChanged,false);
+  assert.equal(restored.body.draft.inputSnapshotRef.eligibility.members.length,4);
+  assert.deepEqual(restored.body.draft.inputSnapshotRef.optimization,generated.body.inputSnapshotRef.optimization);
+  await db.prepare('INSERT INTO availability(id,task_id,member_id,business_date,start_at,end_at,campus_id) VALUES(?,?,?,?,?,?,?)')
+    .bind('changed-optimizer-input',task.body.id,ids[0],'2026-10-20','18:00','19:00','campus-nanhu').run();
+  const changedInput = await request(`/api/roster-tasks/${task.body.id}/roster`,{headers});
+  assert.equal(changedInput.body.draft.validation.valid,true,'the saved assignment can remain feasible after the input expands');
+  assert.equal(changedInput.body.draft.sourceChanged,true,'feasibility must not conceal an obsolete optimization input');
+  await db.prepare("DELETE FROM availability WHERE id='changed-optimizer-input'").run();
   const version = generated.body.version;
   const published = await post(`/api/rosters/${version.id}/publish`, { version: version.version });
   assert.equal(published.response.status, 200, JSON.stringify(published.body));
@@ -544,6 +563,8 @@ test('roster generation and publication use server facts and reject forged clien
   const edited = await post(`/api/rosters/${next.body.version.id}`, { version: next.body.version.version, assignments: [], validation: { valid: true } }, 'PATCH');
   assert.equal(edited.response.status, 200, JSON.stringify(edited.body));
   assert.equal(edited.body.validation.valid, false);
+  assert.equal(edited.body.solverStatus,'needs_review');
+  assert.equal(edited.body.inputSnapshotRef.optimization,undefined);
   assert.equal((await post(`/api/rosters/${next.body.version.id}/publish`, { version: edited.body.version })).response.status, 409);
   const finalDraft = await post('/api/rosters/generate', { taskId: task.body.id });
   await db.prepare("DELETE FROM member_work_profiles WHERE id='qualified-0'").run();

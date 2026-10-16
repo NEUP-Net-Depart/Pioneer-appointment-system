@@ -44,7 +44,7 @@ for (const path of runtime) {
   graph.set(resolve(root, path), imports);
   if (path.startsWith('src') || path.startsWith('functions')) {
     assert.ok(!/process\.env|CREATE TABLE|ALTER TABLE|CREATE TRIGGER/i.test(source), `Runtime initialization or process state in ${path}`);
-    assert.deepEqual(runtimeStateErrors(source), [], `Shared runtime state in ${path}`);
+    assert.deepEqual(runtimeStateErrors(source, { typescript:path.endsWith('.ts') }), [], `Shared runtime state in ${path}`);
     if (!path.startsWith(join('src', 'db'))) assert.ok(!/\.prepare\(|\.batch\(|SELECT\s+.+\s+FROM\s|INSERT INTO\s/i.test(source), `D1 SQL outside repositories in ${path}`);
   }
   if (path.startsWith(join('src', 'routes'))) assert.ok(!/from ['"].*\/db\//.test(source), `Route bypasses services in ${path}`);

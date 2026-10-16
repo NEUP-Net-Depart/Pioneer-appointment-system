@@ -271,7 +271,11 @@ test('manager restores a saved draft, adjusts a member and cannot publish missin
   await page.getByRole('button', { name: '生成草稿', exact: true }).click();
   const member = page.getByLabel('安排陈宇', { exact: true });
   await expect(member).toBeVisible();
+  const balance = page.getByRole('region', { name:'排班覆盖与均衡',exact:true });
+  await expect(balance).toContainText('覆盖或资格待补齐');
+  await expect(balance).toContainText('人数差 1');
   await member.selectOption('2026-10-20:campus-nanhu:18:00:19:00');
+  await expect(balance).toContainText('已调整，保存后重新校验');
   await page.locator('.field-sidebar').getByRole('button', { name: '预约记录', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '有未保存的调整' })).toBeVisible();
   await page.getByRole('button', { name: '留在当前页面', exact: true }).click();
