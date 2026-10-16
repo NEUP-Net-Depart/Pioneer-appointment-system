@@ -1,6 +1,6 @@
-import { BUSINESS_TIME_ZONE, dateKey, nowIso, weekRange, validDate } from '../../shared/time.js';
+import { BUSINESS_TIME_ZONE, dateKey, nowIso, weekRange, validDate, addDays } from '../../shared/time.js';
 
-export { BUSINESS_TIME_ZONE, dateKey, nowIso, weekRange, validDate };
+export { BUSINESS_TIME_ZONE, dateKey, nowIso, weekRange, validDate, addDays };
 
 export function eventWindow(start, end, now = new Date()) {
   const from = new Date(start).getTime();

@@ -119,6 +119,16 @@ test('staff platform auth context, modular permissions and policy attendance are
   assert.equal(event.response.status, 201, JSON.stringify(event.body));
   const token = await request(`/api/attendance/events/${event.body.id}/token`, { method: 'POST', headers, body: JSON.stringify({ revision: event.body.revision }) });
   assert.equal(token.response.status, 200, JSON.stringify(token.body));
+  const attendancePreview = await request('/api/attendance/preview', { method: 'POST', headers, body: JSON.stringify({ token: token.body.token }) });
+  assert.equal(attendancePreview.response.status, 200);
+  const beforeConfirmation = await request('/api/me/attendance', { headers });
+  assert.equal(beforeConfirmation.body.items.length, 0, 'preview must not create attendance');
+  const futureEvent = await request('/api/attendance/events', { method: 'POST', headers, body: JSON.stringify({ type: 'duty', campusId: 'campus-hunnan', businessDate: dateKey(), startsAt: new Date(now + 3_600_000).toISOString(), endsAt: new Date(now + 7_200_000).toISOString(), requestId: 'attendance-future-preview' }) });
+  const futureToken = await request(`/api/attendance/events/${futureEvent.body.id}/token`, { method: 'POST', headers, body: JSON.stringify({ revision: futureEvent.body.revision }) });
+  for (const endpoint of ['preview', 'check-ins']) {
+    const invalid = await request(`/api/attendance/${endpoint}`, { method: 'POST', headers, body: JSON.stringify({ token: futureToken.body.token }) });
+    assert.equal(invalid.response.status, 409, 'preview and confirmation must share attendance-window validation');
+  }
   const first = await request('/api/attendance/check-ins', { method: 'POST', headers, body: JSON.stringify({ token: token.body.token, method: 'qr', requestId: 'attendance-checkin-001' }) });
   assert.equal(first.response.status, 200, JSON.stringify(first.body));
   const duplicate = await request('/api/attendance/check-ins', { method: 'POST', headers, body: JSON.stringify({ token: token.body.token, method: 'nfc' }) });
@@ -344,4 +354,60 @@ test('swap acceptance rolls both assignments back when either revision is stale'
   assert.equal((await repository.assignmentById('swap-a')).memberId, other);
   assert.equal((await repository.assignmentById('swap-b')).memberId, root);
   assert.equal(await repository.updateSwap(fresh.id, 'accepted', other, 0), null);
+});
+
+
+test('draft edits are atomic, including role-free drafts and stale replacements', async () => {
+  const db = await mf.getD1Database('DB');
+  const repository = staffPlatformRepository(db);
+  const root = await repository.ensureMember('root001');
+  const other = await repository.ensureMember('20268801');
+  const original = { memberId: root, businessDate: '2026-10-19', campusId: 'campus-nanhu', startAt: '18:00', endAt: '19:00' };
+  const draft = await repository.createRosterVersion({ taskId: 'swap-test-task', assignments: [original] });
+  const edited = await repository.updateRosterDraft(draft.id, { assignments: [{ ...original, memberId: other }] }, draft.version);
+  assert.ok(edited);
+  assert.deepEqual((await repository.versionAssignments(draft.id)).map(item => item.memberId), [other]);
+  const before = await repository.versionAssignments(draft.id);
+  assert.equal(await repository.updateRosterDraft(draft.id, { assignments: [{ ...original, roleKind: 'repair_lead' }] }, draft.version), null);
+  assert.deepEqual(await repository.versionAssignments(draft.id), before);
+  await assert.rejects(repository.updateRosterDraft(draft.id, { assignments: [{ ...original, memberId: 'missing-member' }] }, edited.version));
+  assert.deepEqual(await repository.versionAssignments(draft.id), before);
+  assert.equal((await repository.rosterVersionById(draft.id)).version, edited.version);
+});
+
+test('roster generation and publication use server facts and reject forged client validation', async () => {
+  const db = await mf.getD1Database('DB');
+  const login = await request('/api/auth/login', { method: 'POST', body: JSON.stringify({ account: 'root001', password: 'staff-platform-password' }) });
+  const headers = { Authorization: `Bearer ${login.body.token}` };
+  const post = (path, body, method = 'POST') => request(path, { method, headers, body: JSON.stringify(body) });
+  const ids = [];
+  for (let index = 0; index < 4; index += 1) {
+    const account = `2099000${index}`;
+    await db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,?,?,?,?,?)')
+      .bind(account, `排班成员${index}`, 'technician', '南湖', 'test-only-unused-password', '2026-01-01').run();
+    await db.prepare('INSERT INTO staff_campus_grants(account,campus) VALUES(?,?)').bind(account, '南湖').run();
+    const id = `member-${account}`; ids.push(id);
+    await db.prepare("INSERT INTO member_work_profiles(id,member_id,profile_code,effective_from) VALUES(?,?,'repair_lead','2026-01-01')").bind(`qualified-${index}`,id).run();
+  }
+  const task = await post('/api/roster-tasks', { weekStart: '2026-10-19', campusId: 'campus-nanhu', slotStart: '18:00', slotEnd: '19:00', deadline: '2026-10-18T10:00:00+08:00', memberIds: ids });
+  assert.equal(task.response.status, 201, JSON.stringify(task.body));
+  for (let index = 0; index < 4; index += 1) await db.prepare('INSERT INTO availability(id,task_id,member_id,business_date,start_at,end_at,campus_id) VALUES(?,?,?,?,?,?,?)')
+    .bind(`window-${index}`,task.body.id,ids[index],`2026-10-${19+index}`,'18:00','19:00','campus-nanhu').run();
+  const generated = await post('/api/rosters/generate', { taskId: task.body.id, members: [], slots: [], validation: { valid: true }, campusId: 'campus-hunnan' });
+  assert.equal(generated.response.status, 201, JSON.stringify(generated.body));
+  assert.equal(generated.body.assignments.length, 4);
+  assert.equal(generated.body.validation.valid, true);
+  const version = generated.body.version;
+  const published = await post(`/api/rosters/${version.id}/publish`, { version: version.version });
+  assert.equal(published.response.status, 200, JSON.stringify(published.body));
+  const next = await post('/api/rosters/generate', { taskId: task.body.id });
+  assert.equal(next.response.status, 201, JSON.stringify(next.body));
+  assert.ok(next.body.version.version > version.version);
+  const edited = await post(`/api/rosters/${next.body.version.id}`, { version: next.body.version.version, assignments: [], validation: { valid: true } }, 'PATCH');
+  assert.equal(edited.response.status, 200, JSON.stringify(edited.body));
+  assert.equal(edited.body.validation.valid, false);
+  assert.equal((await post(`/api/rosters/${next.body.version.id}/publish`, { version: edited.body.version })).response.status, 409);
+  const finalDraft = await post('/api/rosters/generate', { taskId: task.body.id });
+  await db.prepare("DELETE FROM member_work_profiles WHERE id='qualified-0'").run();
+  assert.equal((await post(`/api/rosters/${finalDraft.body.version.id}/publish`, { version: finalDraft.body.version.version })).response.status, 409);
 });

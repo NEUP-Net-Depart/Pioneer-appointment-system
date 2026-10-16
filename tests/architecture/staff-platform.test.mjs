@@ -42,3 +42,32 @@ test('roster generation is deterministic and independently verifiable', () => {
   assert.equal(validateRoster(first, input).valid, true);
   assert.equal(first.ruleVersion, '1.0.0');
 });
+
+
+test('rosters assign all available members instead of stopping after one person per slot', () => {
+  const slots = [12,13,14,15].map(day => ({ businessDate: `2026-10-${day}`, campusId: 'campus-nanhu', startAt: '19:00', endAt: '21:00' }));
+  const members = Array.from({ length: 8 }, (_, i) => ({ memberId: `member-${i}`, available: slots, leadSlots: i < 4 ? slots : [] }));
+  const input = { members, slots, requireLead: true };
+  const result = generateRoster(input);
+  assert.equal(result.assignments.length, 8);
+  assert.equal(result.balance.spread, 0);
+  assert.equal(result.roleCoverage.covered, 4);
+  assert.equal(validateRoster(result, input).valid, true);
+  assert.equal(validateRoster({ assignments: [] }, { members: [], slots: [] }).valid, false);
+});
+
+test('independent roster validation rejects forged qualifications, unavailable members and altered locks', () => {
+  const slot = { businessDate: '2026-10-12', campusId: 'campus-nanhu', startAt: '19:00', endAt: '21:00' };
+  const input = { slots: [slot], members: [{ memberId: 'member-a', available: [slot], leadSlots: [] }], locked: [{ memberId: 'member-a', ...slot }] };
+  const errors = validateRoster({ assignments: [{ memberId: 'outsider', ...slot, roleKind: 'repair_lead' }] }, input).errors.map(item => item.code);
+  assert.ok(errors.includes('MEMBER_UNAVAILABLE'));
+  assert.ok(errors.includes('LEAD_INELIGIBLE'));
+  assert.ok(errors.includes('LOCKED_ASSIGNMENT_CHANGED'));
+});
+
+test('scarce leadership uses reassignment instead of leaving a covered alternative empty', () => {
+  const slots = [12,13].map(day => ({ businessDate: `2026-10-${day}`, campusId: 'campus-nanhu', startAt: '19:00', endAt: '21:00' }));
+  const members = [{ memberId: 'a-flexible', available: slots, leadSlots: slots }, { memberId: 'b-monday-only', available: [slots[0]], leadSlots: [slots[0]] }];
+  const input = { slots, members, requireLead: true };
+  assert.equal(validateRoster(generateRoster(input), input).valid, true);
+});

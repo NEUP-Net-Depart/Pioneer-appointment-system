@@ -1,10 +1,10 @@
 import { fail } from '../lib/http.js';
-import { dateKey, eventWindow, instant, nowIso, weekRange, validDate } from '../platform/time.js';
+import { dateKey, eventWindow, instant, nowIso, weekRange, validDate, addDays } from '../platform/time.js';
 import { requestId, stableJson, publicResourceRef, SCHEMA_VERSION } from '../platform/contracts.js';
 import { memberPublic } from '../modules/identity/public.js';
 import { generateRoster, validateRoster } from '../modules/rosters/solver.js';
 import { attendanceMethod, policyFor } from '../modules/attendance/public.js';
-import { validScope } from '../modules/authorization/scopes.js';
+import { validScope, campusId as normalizeCampusId } from '../modules/authorization/scopes.js';
 import { validGrantValidity } from '../modules/authorization/public.js';
 
 function randomToken() {
@@ -411,7 +411,8 @@ export function staffPlatformService({ repository, platform, manifests }) {
     if (!result) fail(409, '签到场次已被更新，请刷新');
     return { eventId, token: `pioneer:attendance:v1:${token}`, version: result.version, expiresAt: result.expires_at, tokenId: result.id };
   }
-  async function checkIn(actor, input) {
+  async function attendanceCredential(actor, input) {
+    if (typeof input.token !== 'string' || !input.token.trim() || input.token.length > 256) fail(400, '签到凭证不正确');
     const rawToken = input.token?.startsWith('pioneer:attendance:v1:') ? input.token.slice('pioneer:attendance:v1:'.length) : input.token;
     if (!rawToken) fail(400, '签到凭证不正确');
     const found = await repository.findEventByToken(await tokenDigest(rawToken)); if (!found) fail(404, '签到凭证已失效');
@@ -423,6 +424,10 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const policy = policyFor(event); if (!policy) fail(400, '签到策略不存在');
     const now = nowIso(); if (!eventWindow(event.startsAt, event.endsAt, now)) fail(409, '当前不在签到时间窗口');
     const eligible = policy.checkEligibility({ event, context: { ...context, attendanceEligible: authorization.result.allowed } }); if (!eligible) fail(403, '当前成员没有该场次的签到资格');
+    return { found, event, context, policy, now };
+  }
+  async function checkIn(actor, input) {
+    const { found, event, context, policy, now } = await attendanceCredential(actor, input);
     const dedupeKey = policy.getDedupeScope({ memberId: context.actor.memberId, event });
     const existing = await repository.findAttendanceByDedupe(dedupeKey); if (existing) return { ...existing, isExisting: true, result: policy.describeResult(existing) };
     const method = attendanceMethod(input.method);
@@ -442,14 +447,8 @@ export function staffPlatformService({ repository, platform, manifests }) {
     return record;
   }
   async function previewAttendance(actor, input) {
-    if (typeof input.token !== 'string' || input.token.length > 256) fail(400, '签到凭证不正确');
-    const raw = input.token.replace(/^pioneer:attendance:v1:/, '');
-    const found = await repository.findEventByToken(await tokenDigest(raw));
-    if (!found) fail(404, '签到凭证已失效');
-    const event = found.event;
-    await requirePermission(actor, 'attendance.self', { campusId: event.campusId }, event.businessDate);
+    const { event } = await attendanceCredential(actor, input);
     const campusName = { 'campus-nanhu':'南湖', 'campus-hunnan':'浑南' }[event.campusId];
-    if (!actor.authorizedCampuses.includes(campusName)) fail(403, '没有该校区的签到权限');
     return { campusName, businessDate:event.businessDate, startsAt:event.startsAt, endsAt:event.endsAt, type:event.type };
   }
   async function attendanceList(actor, query) {
@@ -532,33 +531,112 @@ export function staffPlatformService({ repository, platform, manifests }) {
       evaluate(context, 'roster.office.manage', { campusId: item.campusId }).allowed) };
   }
   async function createRosterTask(actor, input) {
-    await requirePermission(actor, 'roster.repair.manage', { campusId: input.campusId }, input.weekStart || dateKey());
-    if (!input.weekStart || !input.slotStart || !input.slotEnd || !input.deadline) fail(400, '排班任务字段不完整');
+    await requirePermission(actor, 'roster.repair.manage', { campusId: input.campusId });
+    if (!validDate(input.weekStart) || weekRange(input.weekStart).start !== input.weekStart || !input.campusId ||
+      !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.slotStart) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.slotEnd) || input.slotEnd <= input.slotStart ||
+      !Number.isFinite(Date.parse(input.deadline))) fail(400, '请选择周一、有效校区、完整班次时间和填报截止时间');
     const context = await contextFor(actor); const result = await repository.createRosterTask({ ...input, campusScope: { campusIds: [input.campusId] } }, context.actor.memberId);
     await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.task.created', sourceRef: publicResourceRef('rosters','task',result.id), after: result, requestId: input.requestId });
     return result;
   }
   async function saveAvailability(actor, taskId, input) {
-    if (!input.businessDate || !input.startAt || !input.endAt || input.endAt <= input.startAt) fail(400, '可用时间范围不正确');
-    const context = await contextFor(actor, input.businessDate);
+    if (!validDate(input.businessDate) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.startAt) ||
+      !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.endAt) || input.endAt <= input.startAt) fail(400, '可用时间范围不正确');
+    const context = await contextFor(actor);
+    await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId });
+    const task = await repository.rosterTaskById(taskId);
+    if (!task) fail(404, '排班任务不存在');
+    if (task.memberIds?.length && !task.memberIds.includes(context.actor.memberId)) fail(403, '该任务未邀请你填报');
+    if (Date.parse(task.deadline) <= Date.now()) fail(409, '该任务已截止，请联系负责人调整');
+    if (weekRange(input.businessDate).start !== task.weekStart) fail(400, '请选择任务所在周的日期');
+    const campusIds = task.campusScope?.campusIds || [];
+    const allowed = (await repository.memberCampuses(context.actor.memberId)).map(normalizeCampusId);
+    if (!campusIds.includes(input.campusId) || !allowed.includes(input.campusId)) fail(403, '该校区不在本次任务或你的授权范围内');
     return repository.saveAvailability(taskId, context.actor.memberId, input, input.revision);
   }
+  async function rosterInput(actor, taskId) {
+    const task = await repository.rosterTaskById(taskId);
+    if (!task) fail(404, '排班任务不存在');
+    const campusIds = task.campusScope?.campusIds;
+    if (!validDate(task.weekStart) || weekRange(task.weekStart).start !== task.weekStart || !campusIds?.length)
+      fail(409, '该任务缺少有效的周起始日期或校区，请重新创建收集任务');
+    for (const campusId of campusIds) await requirePermission(actor, 'roster.repair.manage', { campusId });
+    const slots = Array.from({ length: 4 }, (_, offset) => campusIds.map(campusId => ({
+      businessDate: addDays(task.weekStart, offset), campusId, startAt: task.slotStart, endAt: task.slotEnd, dutyType: 'repair', requireLead: true
+    }))).flat();
+    const windows = await repository.availability(taskId);
+    const memberIds = [...new Set(task.memberIds?.length ? task.memberIds : windows.map(item => item.memberId))];
+    if (memberIds.length > 300) fail(400, '单个排班任务最多支持 300 名成员');
+    const members = [];
+    const facts = await repository.rosterMemberFacts(memberIds, task.weekStart);
+    for (const fact of facts) {
+      if (!fact.active) continue;
+      const memberId = fact.memberId;
+      const campusAccess = fact.campuses.map(normalizeCampusId);
+      const other = fact.assignments.filter(item => item.taskId !== taskId);
+      const available = [], leadSlots = [];
+      for (const slot of slots) {
+        if (!campusAccess.includes(slot.campusId)) continue;
+        const profiles = fact.profiles.filter(profile => profile.effectiveFrom <= slot.businessDate && (!profile.effectiveTo || slot.businessDate < profile.effectiveTo));
+        if (!profiles.some(item => ['repair','exchange'].includes(item.profileCode))) continue;
+        if (other.some(item => item.dutyType === 'repair' || item.businessDate === slot.businessDate && item.startAt < slot.endAt && slot.startAt < item.endAt)) continue;
+        if (!windows.some(item => item.memberId === memberId && item.businessDate === slot.businessDate &&
+          (!item.campusId || item.campusId === slot.campusId) && item.startAt <= slot.startAt && item.endAt >= slot.endAt)) continue;
+        available.push(slot);
+        if (profiles.some(item => item.profileCode === 'repair_lead')) leadSlots.push(slot);
+      }
+      members.push({ memberId, name: fact.name, available, leadSlots });
+    }
+    return { taskId, taskRevision: task.revision, weekStart: task.weekStart, members, slots, requireLead: true };
+  }
+  async function rosterTaskState(actor, taskId) {
+    const source = await rosterInput(actor, taskId);
+    const versions = await repository.rosterVersionsForTask(taskId);
+    const latest = versions.find(item => ['draft','published'].includes(item.status));
+    const published = versions.find(item => item.status === 'published');
+    const assignments = latest ? await repository.versionAssignments(latest.id) : [];
+    return { taskId, members: source.members, slots: source.slots,
+      draft: latest ? { ...latest, assignments, validation: validateRoster({ assignments }, source) } : null,
+      publishedAssignments: published ? await repository.versionAssignments(published.id) : [] };
+  }
   async function generate(actor, input) {
-    await requirePermission(actor, 'roster.repair.manage', { campusId: input.campusId }, input.weekStart || dateKey());
-    const context = await contextFor(actor); const result = generateRoster(input); const validation = validateRoster(result, input);
-    const version = await repository.createRosterVersion({ taskId: input.taskId, assignments: result.assignments, inputSnapshotRef: result.inputSnapshotRef, ruleVersion: result.ruleVersion, algorithmVersion: result.algorithmVersion, solverStatus: result.solverStatus, validation }, context.actor.memberId);
+    const source = await rosterInput(actor, input.taskId);
+    const previous = (await repository.rosterVersionsForTask(source.taskId)).find(item => ['draft','published'].includes(item.status));
+    source.locked = previous ? (await repository.versionAssignments(previous.id)).filter(item => item.locked) : [];
+    const context = await contextFor(actor); const result = generateRoster(source); const validation = validateRoster(result, source);
+    const version = await repository.createRosterVersion({ taskId: source.taskId, assignments: result.assignments.map(item => ({ ...item, id: undefined })),
+      inputSnapshotRef: { ...result.inputSnapshotRef, taskRevision: source.taskRevision, lockedMemberIds: source.locked.map(item => item.memberId) }, ruleVersion: result.ruleVersion,
+      algorithmVersion: result.algorithmVersion, solverStatus: result.solverStatus, validation });
     await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.generated', sourceRef: publicResourceRef('rosters','version',version.id), after: { version, validation }, requestId: input.requestId });
-    return { ...result, validation, version };
+    const names = new Map(source.members.map(item => [item.memberId, item.name]));
+    return { ...result, assignments: result.assignments.map(item => ({ ...item, memberName: names.get(item.memberId) })), validation, version };
   }
   async function updateRoster(actor, id, input) {
-    await requirePermission(actor, 'roster.repair.manage', { campusId: input.campusId }, input.businessDate || dateKey());
-    if (!Number.isInteger(input.version) || !Array.isArray(input.assignments)) fail(400, '排班草稿字段不完整');
-    const result = await repository.updateRosterDraft(id, input, input.version);
+    if (!Number.isInteger(input.version) || !Array.isArray(input.assignments) || input.assignments.length > 300 ||
+      input.assignments.some(item => !item || typeof item.memberId !== 'string' || !validDate(item.businessDate) ||
+        typeof item.campusId !== 'string' || typeof item.startAt !== 'string' || typeof item.endAt !== 'string')) fail(400, '排班草稿字段不完整');
+    const version = await repository.rosterVersionById(id);
+    if (!version) fail(404, '排班草稿不存在');
+    const source = await rosterInput(actor, version.taskId);
+    const validation = validateRoster({ assignments: input.assignments }, source);
+    const result = await repository.updateRosterDraft(id, { assignments: input.assignments, validation }, input.version);
     if (!result) fail(409, '排班版本已变化，请刷新');
     await repository.audit({ actorMemberId: (await contextFor(actor)).actor.memberId, actorAccount: actor.account, action: 'rosters.updated', sourceRef: publicResourceRef('rosters','version',id), after: result, requestId: input.requestId });
     return { ...result, assignments: input.assignments, revision: result.version };
   }
-  async function publish(actor, id, input) { await requirePermission(actor, 'roster.repair.manage', { campusId: input.campusId }, input.businessDate || dateKey()); const result = await repository.publishRoster(id, input.version); if (!result) fail(409, '排班版本已变化，请刷新'); const context = await contextFor(actor); await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.published', sourceRef: publicResourceRef('rosters','version',id), after: result, requestId: input.requestId }); return result; }
+  async function publish(actor, id, input) {
+    const version = await repository.rosterVersionById(id);
+    if (!version) fail(404, '排班草稿不存在');
+    const source = await rosterInput(actor, version.taskId);
+    const assignments = await repository.versionAssignments(id);
+    const validation = validateRoster({ assignments }, source);
+    if (!validation.valid) fail(409, '当前人员资格或班次覆盖不满足发布条件，请重新生成或调整草稿');
+    const result = await repository.publishRoster(id, input.version);
+    if (!result) fail(409, '排班版本已变化，请刷新');
+    const context = await contextFor(actor);
+    await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.published', sourceRef: publicResourceRef('rosters','version',id), after: result, requestId: input.requestId });
+    return result;
+  }
   async function rosterMine(actor, query = {}) { const context = await contextFor(actor); return { items: await repository.listAssignments(context.actor.memberId, query.weekStart || weekRange(dateKey()).start), weekStart: query.weekStart || weekRange(dateKey()).start }; }
   async function leave(actor, input) {
     const context = await contextFor(actor);
@@ -669,7 +747,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
   async function audit(actor, query) { await requirePermission(actor, 'audit.read'); return { items: await repository.listAudit(query || {}) }; }
 
   return { contextFor, requirePermission, memberList, memberDetail, updateMember, addMembership, endMembership, permissions, roles, createRole, updateRole, previewRole, bindMemberRoles,
-    organization, importMembers, deskSummary, workbench, createAttendanceEvent, issueAttendanceToken, checkIn, previewAttendance, attendanceList, correctAttendance, presence, rosterTasks, taskAvailability, createRosterTask, saveAvailability, generate, updateRoster, publish, rosterMine,
+    organization, importMembers, deskSummary, workbench, createAttendanceEvent, issueAttendanceToken, checkIn, previewAttendance, attendanceList, correctAttendance, presence, rosterTasks, taskAvailability, createRosterTask, saveAvailability, rosterTaskState, generate, updateRoster, publish, rosterMine,
     leave, leaves, leaveDecision, leaveWithdraw, swapCandidates, swap, swaps, swapDecision, attendanceExport, audit,
     recordAudit: input => repository.audit(input) };
 }

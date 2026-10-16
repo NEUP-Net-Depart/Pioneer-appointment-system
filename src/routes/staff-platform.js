@@ -52,6 +52,7 @@ export const staffPlatformRoutes = [
   ['GET', /^\/api\/roster-tasks\/([^/]+)\/availability$/, async (context, match) => json(await context.services.staffPlatform.taskAvailability(await context.role('technician'), decodeURIComponent(match[1])))],
   ['POST', /^\/api\/roster-tasks$/, async context => json(await context.services.staffPlatform.createRosterTask(await context.role('technician'), await readBody(context.request)), 201)],
   ['PUT', /^\/api\/roster-tasks\/([^/]+)\/availability$/, async (context, match) => json(await context.services.staffPlatform.saveAvailability(await context.role('technician'), decodeURIComponent(match[1]), await readBody(context.request)))],
+  ['GET', /^\/api\/roster-tasks\/([^/]+)\/roster$/, async (context, match) => json(await context.services.staffPlatform.rosterTaskState(await context.role('technician'), decodeURIComponent(match[1])))],
   ['POST', /^\/api\/rosters\/generate$/, async context => json(await context.services.staffPlatform.generate(await context.role('technician'), await readBody(context.request)), 201)],
   ['PATCH', /^\/api\/rosters\/([^/]+)$/, async (context, match) => json(await context.services.staffPlatform.updateRoster(await context.role('technician'), decodeURIComponent(match[1]), await readBody(context.request)))],
   ['POST', /^\/api\/rosters\/([^/]+)\/publish$/, async (context, match) => json(await context.services.staffPlatform.publish(await context.role('technician'), decodeURIComponent(match[1]), await readBody(context.request)))],
