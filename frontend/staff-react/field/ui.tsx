@@ -56,6 +56,7 @@ export function Empty({
     </div>
   );
 }
+let openModalCount=0,previousRootOverflow='';
 export function Modal({
   title,
   children,
@@ -81,9 +82,11 @@ export function Modal({
     const dialog = ref.current!;
     const previous = document.activeElement as HTMLElement;
     dialog.showModal();
+    if(openModalCount++===0){previousRootOverflow=document.documentElement.style.overflow;document.documentElement.style.overflow='hidden';}
     if (initialFocus) dialog.querySelector<HTMLElement>(initialFocus)?.focus();
     return () => {
       dialog.close();
+      if(--openModalCount===0)document.documentElement.style.overflow=previousRootOverflow;
       if (previous && !previous.closest('[hidden]')) previous.focus?.();
     };
   }, [active, initialFocus]);

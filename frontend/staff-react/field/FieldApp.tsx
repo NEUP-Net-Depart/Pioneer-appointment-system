@@ -59,7 +59,8 @@ export function FieldApp({
     [filter, setFilter] = useState("all"),
     [search, setSearch] = useState(""),
     [tab, setTab] = useState("appointments"),
-    [showAvailable, setShowAvailable] = useState(false);
+    [showAvailable, setShowAvailable] = useState(false),
+    [peopleQuery, setPeopleQuery] = useState('');
   const result = useField(
       campus,
       scene,
@@ -181,6 +182,7 @@ export function FieldApp({
         .includes(search.toLowerCase()),
   );
   const people = [...(data?.staffPresence || [])].sort(compareFieldPeople);
+  const visiblePeople=people.filter(person=>(!showAvailable||person.canReceive)&&`${person.name} ${person.department||''} ${person.identities?.map(identity=>identity.label).join(' ')||''}`.includes(peopleQuery.trim()));
   const campusName = data?.campuses.find((c) => c.id === campus)?.name || "";
   return (
     <>
@@ -481,6 +483,7 @@ export function FieldApp({
                         <button
                           key={value}
                           className={filter === value ? "active" : ""}
+                          aria-pressed={filter === value}
                           onClick={() =>
                             setFilter(filter === value ? "all" : value)
                           }
@@ -524,14 +527,15 @@ export function FieldApp({
                       <h2>现场人员</h2>
                       <button
                         className="field-text"
+                        aria-pressed={showAvailable}
                         onClick={() => setShowAvailable(!showAvailable)}
                       >
                         {showAvailable ? "查看全部" : "只看空闲"}
                       </button>
                     </div>
                     <p className="field-muted field-person-summary">已到岗 {people.filter(person=>person.signedInAt).length} 人 · 维修排班 {people.filter(person=>person.scheduledRepair).length} 人 · 已到岗负责人 {people.filter(person=>person.signedInAt && person.identities?.some(identity=>identity.code==='repair_lead')).length} 人</p>
-                    {people
-                      .filter((p) => !showAvailable || p.canReceive)
+                    <label className="workspace-search-label">查找现场人员<input type="search" value={peopleQuery} onChange={event=>setPeopleQuery(event.target.value)} placeholder="姓名、部门或身份"/></label>
+                    <div className="field-people-list">{visiblePeople
                       .map((person,index,visible) => (
                         <React.Fragment key={person.memberId}>
                         {!showAvailable && fieldPersonGroup(person)==='other' && (index===0 || fieldPersonGroup(visible[index-1])!=='other') && <div className="field-person-divider">其他人员</div>}
@@ -564,7 +568,8 @@ export function FieldApp({
                           <Status value={person.state} />
                         </div>
                         </React.Fragment>
-                      ))}
+                      ))}</div>
+                    {people.length>0&&!visiblePeople.length&&<Empty title="没有匹配的现场人员">更换搜索词或切换为查看全部人员。</Empty>}
                     {!data.staffPresence && result.loading && <div className="workspace-skeleton" aria-label="正在读取人员"><span /><span /></div>}
                     {data.staffPresence && !people.length && (
                       <Empty title="暂无现场人员">

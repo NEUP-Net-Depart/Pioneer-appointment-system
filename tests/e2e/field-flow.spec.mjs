@@ -183,6 +183,18 @@ test('platform startup errors never reveal old pages or start legacy record refr
   expect(legacyReads).toBe(0);
 });
 
+test('work launcher groups compact entries, searches only granted pages and restores scrolling',async({page})=>{
+  await page.setExtraHTTPHeaders({'CF-Connecting-IP':'192.0.2.176'});await page.setViewportSize({width:390,height:900});await login(page,'root001');
+  await page.getByRole('button',{name:'更多',exact:true}).click();const dialog=page.getByRole('dialog',{name:'工作入口',exact:true}),nav=dialog.getByRole('navigation',{name:'全部工作入口',exact:true});
+  await expect(nav.getByRole('button',{name:'成员管理',exact:true})).toBeVisible();await expect(nav.locator('[aria-current=page]')).toHaveText('接待台');
+  expect(await page.evaluate(()=>document.documentElement.style.overflow)).toBe('hidden');
+  await dialog.getByLabel('查找功能',{exact:true}).fill('排班');await expect(nav.getByRole('button')).toHaveCount(3);await expect(nav.getByRole('button',{name:'成员管理',exact:true})).toHaveCount(0);
+  await dialog.getByLabel('查找功能',{exact:true}).fill('不存在的功能');await expect(dialog.getByText('没有匹配的功能',{exact:true})).toBeVisible();await dialog.getByLabel('查找功能',{exact:true}).fill('');
+  for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await dialog.evaluate(node=>node.scrollWidth<=node.clientWidth)).toBe(true);const boxes=await nav.getByRole('button').evaluateAll(nodes=>nodes.map(node=>({width:node.getBoundingClientRect().width,height:node.getBoundingClientRect().height})));expect(Math.min(...boxes.map(box=>box.width))).toBeGreaterThanOrEqual(100);expect(Math.min(...boxes.map(box=>box.height))).toBeGreaterThanOrEqual(44);expect(Math.max(...boxes.map(box=>box.height))).toBeLessThan(90);await page.screenshot({path:`output/field-workflow/work-launcher-${width}.png`});}
+  await page.setViewportSize({width:390,height:900});await page.keyboard.press('Escape');await expect(dialog).toBeHidden();expect(await page.evaluate(()=>document.documentElement.style.overflow)).not.toBe('hidden');await expect(page.getByRole('button',{name:'更多',exact:true})).toBeFocused();
+  await page.getByRole('button',{name:'更多',exact:true}).click();await page.getByRole('dialog',{name:'工作入口',exact:true}).getByRole('button',{name:'账号安全',exact:true}).click();await expect(page.getByRole('heading',{name:'账号安全',exact:true})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.style.overflow)).not.toBe('hidden');
+});
+
 test("reception layout remains usable at desktop, phone and narrow-phone widths", async ({
   page,
 }) => {
@@ -701,6 +713,7 @@ test('management keeps its shell and readable results during refresh at all widt
   for (const width of [1440, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    if(width===1440){const tops=await page.locator('.react-members-page .workspace-heading-actions>button').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect().top));expect(Math.max(...tops)-Math.min(...tops)).toBeLessThan(1);}
     await page.screenshot({ path: `output/field-workflow/members-${width}.png`, fullPage: true });
   }
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -990,8 +1003,9 @@ test('account workspace imports, reviews and updates an account with server acti
   for (const width of [1440, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    const tabTops = await workspace.getByRole('navigation', { name: '账号管理功能' }).getByRole('button').evaluateAll(buttons => buttons.map(button => button.getBoundingClientRect().top));
-    expect(Math.max(...tabTops) - Math.min(...tabTops)).toBeLessThan(1);
+    const tabs = await workspace.getByRole('navigation', { name: '账号管理功能' }).getByRole('button').evaluateAll(buttons => buttons.map(button => {const rect=button.getBoundingClientRect();return {top:rect.top,width:rect.width,height:rect.height};}));
+    if(width>=768)expect(Math.max(...tabs.map(tab=>tab.top))-Math.min(...tabs.map(tab=>tab.top))).toBeLessThan(1);
+    else {expect(Math.max(...tabs.map(tab=>tab.width))-Math.min(...tabs.map(tab=>tab.width))).toBeLessThan(1);expect(Math.min(...tabs.map(tab=>tab.height))).toBeGreaterThanOrEqual(44);expect(Math.max(...tabs.map(tab=>tab.height))).toBeLessThan(90);}
     await page.screenshot({ path: `output/field-workflow/accounts-${width}.png`, fullPage: true });
   }
 });

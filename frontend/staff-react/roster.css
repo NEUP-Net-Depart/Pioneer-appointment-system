@@ -2,7 +2,7 @@
 
 .planner-member .planner-lock{display:flex;align-items:center;flex-direction:row;gap:8px;font-weight:400;grid-column:2;margin:0}.planner-lock input{width:18px!important;height:18px;min-height:18px!important;padding:0}@media(max-width:600px){.planner-member .planner-lock{grid-column:1}}
 
-.roster-area>.react-page,.workspace-module>.react-page{padding:0;max-width:none}.workspace-more{display:grid;gap:10px}.field-app .planner-days h2{font-size:24px}.field-app .planner-editor h2,.field-app .planner-issues h2{margin-bottom:12px}.field-app .roster-page .react-heading p{margin-top:6px}
+.roster-area>.react-page,.workspace-module>.react-page{padding:0;max-width:none}.field-app .planner-days h2{font-size:24px}.field-app .planner-editor h2,.field-app .planner-issues h2{margin-bottom:12px}.field-app .roster-page .react-heading p{margin-top:6px}
 
 .field-mode #app-shell>main:not(:has(.view.is-active)){display:none}.workspace-operational>.view{max-width:none}.field-sidebar nav{overflow-y:auto;min-height:0}.workspace-operational .page-heading{margin-top:0}
 

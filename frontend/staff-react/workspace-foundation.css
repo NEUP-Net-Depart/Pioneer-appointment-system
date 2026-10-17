@@ -88,7 +88,7 @@ fieldset.staffing-editor { border:0; padding:0; min-width:0; }
   line-height: 22px;
   margin: 10px 0 0;
 }
-.workspace-heading-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px 12px; flex-wrap: wrap; max-width: 52%; padding-top: 28px; }
+.workspace-heading-actions { display: flex; flex:0 0 auto; width:max-content; align-items: center; justify-content: flex-end; gap: 8px 12px; flex-wrap: wrap; max-width: 52%; padding-top: 28px; }
 .field-app h2, .field-modal h2 { line-height: 1.4; font-weight: 650; }
 .field-app h3, .field-modal h3 { line-height: 1.5; font-weight: 600; }
 .field-app .field-card, .field-app .react-card { border: 1px solid var(--line); border-radius: var(--workspace-radius); background: var(--workspace-surface); padding: 24px; box-shadow: none; min-width: 0; }
@@ -270,3 +270,71 @@ fieldset.staffing-editor { border:0; padding:0; min-width:0; }
 .attendance-member-options { display:grid; gap:8px; max-height:240px; overflow:auto; }
 .attendance-member-options > button { display:flex; flex-wrap:wrap; align-items:center; gap:8px; min-height:48px; text-align:left; padding:12px; }
 .attendance-member-options > button > small { flex-basis:100%; color:var(--field-muted,#64748b); }
+
+/* Repeated controls share alignment and sizing instead of sizing to each label. */
+.field-app :is(.workspace-list-tools,.planner-toolbar,.report-filters,.members-tools,.permission-tools) { display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px; }
+.field-app :is(.workspace-list-tools,.planner-toolbar,.report-filters,.members-tools,.permission-tools)>label:not(:has(input[type=checkbox])) { display:grid; gap:8px; flex:1 1 180px; min-width:0; max-width:none; margin:0; }
+.field-app :is(.workspace-list-tools,.members-tools,.permission-tools)>label:first-child { flex-grow:2; }
+.field-app :is(.workspace-list-tools,.planner-toolbar,.report-filters,.members-tools,.permission-tools)>label>:is(input,select) { width:100%; }
+.field-app :is(.workspace-list-tools,.planner-toolbar,.report-filters,.members-tools,.permission-tools)>span { flex-basis:100%; font-size:13px; padding:0; color:var(--muted); }
+.field-app :is(.field-actions,.react-editor-actions):not(.personal-actions),.field-modal :is(.field-actions,.react-editor-actions) { display:flex; flex-wrap:wrap; align-items:center; gap:12px; }
+.field-app :is(.field-actions,.react-editor-actions,.workspace-heading-actions)>button,.field-modal :is(.field-actions,.react-editor-actions,.roster-modal-actions)>button { min-width:min(100%,88px); max-width:100%; white-space:normal; overflow-wrap:anywhere; line-height:1.5; }
+.field-app .workspace-heading-actions>button { min-width:88px; }
+.field-app :is(.workspace-check,.react-check,.permission-filter),.field-modal :is(.workspace-check,.react-check,.roster-choice-row>label) { display:flex; flex-direction:row; align-items:center; justify-content:flex-start; gap:10px; min-height:44px; }
+.field-app :is(.workspace-check,.react-check,.permission-filter)>input,.field-modal :is(.workspace-check,.react-check,.roster-choice-row>label)>input { flex:0 0 20px; width:20px; height:20px; min-height:20px; padding:0; margin:0; }
+.field-app .staff-identity,.field-modal .staff-identity { max-width:100%; overflow-wrap:anywhere; }
+.field-app .field-filter { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+.field-app .field-filter button { min-width:0; padding:10px 4px; font-size:13px; }
+.field-app .field-person { display:grid; grid-template-columns:32px minmax(0,1fr) auto; align-items:start; gap:12px; }
+.field-app .field-person .field-avatar { width:32px; height:32px; font-size:12px; }
+.field-app .field-person .field-status { white-space:nowrap; }
+.field-app .field-person small { font-size:12px; line-height:1.6; color:var(--muted); }
+.field-app .field-person .field-text { text-align:left; overflow-wrap:anywhere; }
+.workspace-search-label { display:grid; gap:8px; margin:16px 0; font-size:13px; color:var(--muted); }
+.workspace-search-label input { width:100%; }
+.field-modal .workspace-binding>summary { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:64px; padding:8px 0; cursor:pointer; list-style:none; }
+.workspace-binding>summary::-webkit-details-marker { display:none; }
+.workspace-binding>summary>span:first-child { display:grid; gap:6px; min-width:0; }
+.workspace-binding>summary strong { font-size:15px; font-weight:600; }
+.workspace-binding>summary small { color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
+.workspace-binding-hint { flex-shrink:0; font-size:12px; color:var(--muted); }
+.workspace-binding[open] .workspace-binding-hint { font-size:0; }
+.workspace-binding[open] .workspace-binding-hint::after { content:'收起'; font-size:12px; }
+.workspace-binding-fields { display:grid; gap:16px; padding:16px 0 4px; }
+.workspace-binding-fields>label { display:grid; gap:8px; }
+.workspace-binding-fields>button { justify-self:start; color:#a33434; }
+.workspace-launcher { display:grid; gap:28px; }
+.workspace-launcher-search { display:grid; gap:16px; }
+.workspace-launcher-search>p { margin:0; font-size:13px; color:var(--muted); }
+.workspace-launcher-search>p strong { font-weight:500; color:var(--ink); }
+.workspace-launcher-search>label { display:grid; gap:8px; font-size:13px; }
+.workspace-launcher-search input { width:100%; }
+.workspace-launcher-groups { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:28px 24px; align-items:start; }
+.workspace-launcher-group { min-width:0; }
+.workspace-launcher-group>header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+.field-modal .workspace-launcher-group h3 { margin:0; font-size:13px; font-weight:600; color:var(--muted); }
+.workspace-launcher-group>header>span { font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
+.workspace-launcher-group>div { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-auto-rows:minmax(56px,auto); gap:8px; }
+.field-modal .workspace-launcher-group button { width:100%; min-width:0; height:100%; padding:12px; border:1px solid transparent; border-radius:10px; background:var(--workspace-subtle); color:var(--ink); text-align:left; font-size:14px; line-height:1.5; white-space:normal; overflow-wrap:anywhere; }
+.field-modal .workspace-launcher-group button:hover { border-color:#bdc6d2; background:#edf0f4; }
+.field-modal .workspace-launcher-group button[aria-current=page] { background:#edf0f4; border-color:#cbd3dd; box-shadow:inset 3px 0 var(--ink); font-weight:650; }
+@media(max-width:600px) { .workspace-launcher-groups { grid-template-columns:minmax(0,1fr); gap:24px; } }
+.workspace-more-actions { position:relative; width:max-content; max-width:100%; }
+.workspace-more-actions>summary { display:flex; align-items:center; justify-content:center; gap:12px; min-height:44px; padding:10px 14px; border:1px solid var(--line); border-radius:10px; background:white; color:var(--ink); cursor:pointer; list-style:none; font-weight:500; }
+.workspace-more-actions>summary::-webkit-details-marker { display:none; }
+.workspace-more-actions>summary::after { content:''; width:6px; height:6px; border:solid currentColor; border-width:0 1.5px 1.5px 0; transform:rotate(45deg) translateY(-2px); }
+.workspace-more-actions[open]>summary { background:var(--workspace-subtle); }
+.workspace-more-actions>summary:focus-visible,.workspace-binding>summary:focus-visible { outline:2px solid #46668b; outline-offset:3px; }
+.workspace-more-action-list { position:absolute; top:calc(100% + 8px); left:0; z-index:20; display:grid; gap:4px; width:max-content; min-width:200px; max-width:calc(100vw - 48px); padding:8px; border:1px solid var(--line); border-radius:12px; background:white; box-shadow:0 8px 28px #17202b14; }
+.field-app .workspace-more-action-list>button { width:100%; text-align:left; min-height:44px; padding:10px 12px; border:0; background:transparent; white-space:normal; }
+.field-app .workspace-more-action-list>button:hover:not(:disabled) { background:var(--workspace-subtle); }
+@media(min-width:1101px) { .field-people-list { max-height:720px; overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:stable; } }
+@media(max-width:767px) {
+  .field-app :is(.workspace-list-tools,.planner-toolbar,.report-filters,.members-tools,.permission-tools)>label:not(:has(input[type=checkbox])) { flex-basis:calc(50% - 6px); }
+  .field-app :is(.workspace-list-tools,.members-tools,.permission-tools)>label:first-child { flex-basis:100%; }
+  .field-app :is(.workspace-list-tools,.planner-toolbar,.report-filters)>button { flex:1 1 120px; }
+  .field-app .workspace-section-nav,.field-modal .workspace-section-nav,.field-app .permissions-workspace .workspace-section-nav { display:grid; grid-template-columns:repeat(var(--workspace-section-columns,2),minmax(0,1fr)); align-items:stretch; gap:8px; }
+  .field-app .workspace-section-nav button,.field-modal .workspace-section-nav button { height:100%; min-width:0; white-space:normal; overflow-wrap:anywhere; padding:10px 8px; line-height:1.5; }
+  .field-modal :is(.field-actions,.react-editor-actions,.roster-modal-actions)>button { flex:1 1 120px; }
+}
+@media(max-width:359px) { .field-app .workspace-section-nav,.field-modal .workspace-section-nav,.field-app .permissions-workspace .workspace-section-nav { grid-template-columns:repeat(var(--workspace-section-narrow,2),minmax(0,1fr)); } }

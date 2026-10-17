@@ -96,12 +96,15 @@ export function MemberEditor({ member, canManageRoles, onClose, onSaved }) {
       {canManageRoles && !detail.account?.protected && <form hidden={section !== 'roles'} onSubmit={saveBindings}><fieldset disabled={busy || !roles.length}><legend>角色授权{bindingsDirty ? ' · 未保存' : ''}</legend>
         <p className="react-muted">授权校区独立于所属校区；结束日期当天起失效。</p>
         {bindings.map((binding, index) => {
-          return <section className="react-binding" key={binding.id || `new-${index}`}>
+          return <details className="react-binding workspace-binding" open={index===0||!binding.id} key={binding.id || `new-${index}`}>
+            <summary><span><strong>{roles.find(role=>role.id===binding.roleId)?.name||'待选择角色'}</strong><small>{binding.scope?.campusIds?.length?binding.scope.campusIds.map(id=>campuses.find(campus=>campus.id===id)?.name||'指定校区').join('、'):'按授权范围'} · {binding.effectiveFrom||'待设置生效日期'}{binding.effectiveTo?` 至 ${binding.effectiveTo}`:' 起，长期有效'}</small></span><span className="workspace-binding-hint">展开编辑</span></summary>
+            <div className="workspace-binding-fields">
             <label>角色<select value={binding.roleId} onChange={event => editBinding(index, { roleId: event.target.value })}>{roles.map(role => <option key={role.id} value={role.id}>{role.name}{role.enabled ? '' : '（已停用）'}</option>)}</select></label>
             <ScopeFields value={binding.scope} onChange={scope => editBinding(index, { scope })} campuses={campuses} departments={departments} />
             <div className="react-form-grid"><label>生效日期<input type="date" required value={binding.effectiveFrom || ''} onChange={event => editBinding(index, { effectiveFrom: event.target.value })} /></label><label>结束日期（可选）<input type="date" min={binding.effectiveFrom || undefined} value={binding.effectiveTo || ''} onChange={event => editBinding(index, { effectiveTo: event.target.value || null })} /></label></div>
             <button type="button" onClick={() => setBindings(current => current.filter((_, i) => i !== index))}>移除此项授权</button>
-          </section>;
+            </div>
+          </details>;
         })}
         <div className="react-editor-actions"><button type="button" onClick={() => setBindings(current => [...current, { roleId: roles.find(role => role.enabled)?.id || roles[0]?.id, scope: { campusIds: [profile.homeCampusId] }, effectiveFrom: dateKey(), effectiveTo: null }])}>添加角色</button><button className="react-primary">保存角色授权</button></div>
       </fieldset></form>}

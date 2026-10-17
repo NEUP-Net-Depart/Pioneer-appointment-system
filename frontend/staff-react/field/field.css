@@ -1071,7 +1071,7 @@
 .workspace-nav-group { margin:0 0 16px; }
 .field-app .workspace-nav-group h2,.field-modal .workspace-nav-group h2 { margin:12px 12px 5px; font-size:12px; font-weight:600; color:#737b89; }
 .workspace-nav-group button { width:100%; text-align:left; }
-.workspace-more { display:grid; gap:8px; }
+
 
 .field-sidebar .workspace-nav-group h2 { margin:4px 0; }
 .field-sidebar .workspace-group-toggle { display:flex; justify-content:space-between; align-items:center; padding:8px 12px; min-height:36px; border:0; background:transparent; color:var(--muted); font-size:12px; font-weight:600; }
