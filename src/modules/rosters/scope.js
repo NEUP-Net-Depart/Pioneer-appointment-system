@@ -7,10 +7,10 @@ export function rosterScope(task) {
   return {valid,campusIds:valid ? [...new Set(scope.campusIds.map(campusId))] : [],departmentIds:valid ? [...new Set(departments)] : []};
 }
 
-export function rosterTaskManaged(context, authorizer, task) {
+export function rosterTaskManaged(context, authorizer, task, permissionCode) {
   const scope = rosterScope(task);
   if (!scope.valid) return false;
-  const code = task.dutyType === 'office' ? 'roster.office.manage' : 'roster.repair.manage';
+  const code = permissionCode || (task.dutyType === 'office' ? 'roster.office.manage' : 'roster.repair.manage');
   // A task controls every campus/department pair in its declared scope. Test
   // actual pairs; passing arrays to an any-match grant evaluator widens access.
   return scope.campusIds.every(campusId => (scope.departmentIds.length ? scope.departmentIds : [undefined]).every(departmentId =>

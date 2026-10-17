@@ -11,6 +11,7 @@ import { validateSwap } from '../modules/rosters/swap-validation.js';
 import { csvLine } from '../lib/csv.js';
 import { rosterScope, rosterTaskManaged, rosterDepartments, rosterMemberInScope, rosterMemberReadable } from '../modules/rosters/scope.js';
 import { staffIdentities } from '../../shared/staff-identities.js';
+import { repairRosterPool, rosterFactContext } from '../modules/rosters/qualification.js';
 
 function randomToken() {
   const bytes = new Uint8Array(24);
@@ -33,9 +34,9 @@ async function tokenDigest(value) {
 function rosterEligibilitySnapshot(source) {
   const ordered = values => [...values].sort((a,b) => stableJson(a).localeCompare(stableJson(b)));
   return {
-    taskRevision: source.taskRevision, requireLead: !!source.requireLead,
+    taskRevision: source.taskRevision, requireLead: !!source.requireLead, ruleVersion:source.ruleVersion || 'legacy',
     slots: ordered(source.slots),
-    members: source.members.map(member => ({ memberId: member.memberId, available: ordered(member.available || []), leadSlots: ordered(member.leadSlots || []) }))
+    members: source.members.map(member => ({ memberId: member.memberId, pool:member.pool || '', available: ordered(member.available || []), leadSlots: ordered(member.leadSlots || []) }))
       .sort((a,b) => a.memberId.localeCompare(b.memberId))
   };
 }
@@ -497,7 +498,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const occurredAt = now;
     if (!eventWindow(event.startsAt, event.endsAt, occurredAt)) fail(400, '签到发生时间不在场次窗口内');
     const record = await withReceipt(actor, 'attendance.checkin', input, async () => {
-      const created = await repository.insertAttendance({ id: crypto.randomUUID(), memberId: context.actor.memberId, eventId: event.id, dedupeKey, occurredAt, recordedAt: now, method, sourceRef: event.sourceRef, campusId: event.campusId, businessDate: event.businessDate, departmentId: context.memberships.find(item => item.isPrimary)?.departmentId, departmentName: context.memberships.find(item => item.isPrimary)?.departmentName, identitySnapshot: { name: context.actor.name, memberId: context.actor.memberId, identities:context.identities }, nonScheduled: context.todayDuties.length === 0, actorAccount: actor.account,
+      const created = await repository.insertAttendance({ id: crypto.randomUUID(), memberId: context.actor.memberId, eventId: event.id, dedupeKey, occurredAt, recordedAt: now, method, sourceRef: event.sourceRef, campusId: event.campusId, businessDate: event.businessDate, departmentId: context.memberships.find(item => item.isPrimary)?.departmentId, departmentName: context.memberships.find(item => item.isPrimary)?.departmentName, identitySnapshot: { name: context.actor.name, memberId: context.actor.memberId, identities:context.identities }, nonScheduled: !context.todayDuties.some(duty=>duty.campusId===event.campusId), actorAccount: actor.account,
         checkInAudit: true, tokenId: found.token.id, authVersion: context.authVersion, requestId: requestId(input.requestId), payloadHash: hashPayload(input), type: event.type }, event.type === 'duty');
       if (!created) {
         const concurrent = await repository.findAttendanceByDedupe(dedupeKey);
@@ -515,8 +516,9 @@ export function staffPlatformService({ repository, platform, manifests }) {
   }
   async function attendanceList(actor, query) {
     const context = await contextFor(actor);
-    const filters = { memberId:query?.memberId,businessDate:query?.businessDate,type:inputString(query || {},'type',80),campusId:query?.campusId ? normalizeCampusId(query.campusId) : undefined };
+    const filters = { memberId:query?.memberId,businessDate:query?.businessDate,month:query?.month,departmentId:query?.departmentId,type:inputString(query || {},'type',80),campusId:query?.campusId ? normalizeCampusId(query.campusId) : undefined };
     if (query?.businessDate && !validDate(query.businessDate)) fail(400, '签到日期不正确');
+    if(query?.month && !validDate(`${query.month}-01`)) fail(400,'月份不正确');
     const all = query?.all === true || query?.all === '1' || query?.all === 'true';
     const otherMember = query?.memberId && query.memberId !== context.actor.memberId;
     const managing = all || otherMember;
@@ -524,7 +526,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     // grant version. Check every record with one complete current grant.
     if (managing && !context.permissions['attendance.correct']) fail(403, '没有查看其他成员签到记录的权限');
     if (all) {
-      delete filters.memberId;
+      filters.memberId=query?.memberId || undefined;
     } else {
       if (!otherMember) await requirePermission(actor, 'attendance.self', { memberId: context.actor.memberId });
       filters.memberId = query?.memberId || context.actor.memberId;
@@ -551,6 +553,18 @@ export function staffPlatformService({ repository, platform, manifests }) {
       if (records.length < 101) return {items,nextCursor:null,definition};
       const last = records.at(-1); after = {occurredAt:last.occurredAt,id:last.id};
     }
+  }
+  async function attendanceOptions(actor,query={}) {
+    const context=await contextFor(actor);
+    if(!context.permissions['attendance.correct']) fail(403,'没有考勤修正权限');
+    const businessDate=query.businessDate || dateKey(),campusId=normalizeCampusId(query.campusId);
+    if(!validDate(businessDate) || !campusId) fail(400,'请选择有效日期和校区');
+    const result=await repository.attendanceOptions({businessDate,campusId,q:inputString(query,'q',80)});
+    const events=result.events.filter(item=>(context.grants || []).some(grant=>(grant.scope?.departmentIds || grant.scope?.departments || [undefined]).some(departmentId=>
+      platform.authorizer.evaluate(context.actor,'attendance.correct',{id:item.id,campusId:item.campusId,departmentId},context,[grant]).allowed)));
+    const members=result.members.filter(member=>events.some(item=>evaluate(context,'attendance.correct',{id:item.id,memberId:member.memberId,campusId:item.campusId,departmentId:member.departmentId}).allowed));
+    const identities=await repository.fieldContexts(members.map(item=>item.memberId),businessDate);
+    return {events,members:members.map(member=>({...member,identities:identities.has(member.memberId)?staffIdentities(identities.get(member.memberId),platform.authorizer,{campusId}):[]}))};
   }
   async function attendanceExport(actor, query = {}) {
     const month = query.month === undefined ? dateKey().slice(0, 7) : query.month;
@@ -582,12 +596,14 @@ export function staffPlatformService({ repository, platform, manifests }) {
     if (input.requestId !== undefined && !requestId(input.requestId)) fail(400, '请求编号不正确');
     if (!Number.isFinite(Date.parse(input.occurredAt))) fail(400, '补录时间不正确');
     const context = await contextFor(actor);
+    const previousRecord=input.recordId ? await repository.attendanceById(input.recordId) : null;
+    if(input.recordId && (!previousRecord || previousRecord.memberId!==input.memberId || previousRecord.eventId!==input.eventId)) fail(404,'签到记录不存在');
     const occurredAt = instant(input.occurredAt);
     const fingerprint = await repository.attendanceCorrectionFingerprint(input.memberId,input.eventId,context.actor.memberId,context.businessDate,occurredAt);
     const event = await repository.attendanceEvent?.(input.eventId); if (!event) fail(404, '签到场次不存在');
     if (input.campusId && normalizeCampusId(input.campusId) !== event.campusId || input.businessDate && input.businessDate !== event.businessDate) fail(400, '补录范围与签到场次不一致');
     if (!eventWindow(event.startsAt, event.endsAt, occurredAt) || Date.parse(occurredAt) > Date.now()) fail(400, '补录时间必须位于场次窗口内且不能晚于现在');
-    const primary = (await repository.memberships(input.memberId, dateKey(new Date(occurredAt)))).find(item => item.isPrimary) || null;
+    const primary = previousRecord ? {departmentId:previousRecord.primaryDepartmentIdSnapshot,departmentName:previousRecord.primaryDepartmentNameSnapshot} : (await repository.memberships(input.memberId, dateKey(new Date(occurredAt)))).find(item => item.isPrimary) || null;
     if (!evaluate(context, 'attendance.correct', { id:event.id, memberId:input.memberId, campusId:event.campusId, departmentId:primary?.departmentId }).allowed) fail(403, '没有修正该校区与部门考勤的权限');
     const policy = policyFor(event); if (!policy) fail(400, '签到策略不存在');
     if (!policy.checkEligibility({event,context:{actor:{memberId:input.memberId},attendanceEligible:true}})) fail(403, '该成员不在此场次的可参加范围内');
@@ -602,9 +618,10 @@ export function staffPlatformService({ repository, platform, manifests }) {
       return {...previous.result,idempotent:true};
     };
     const previous = await replay(); if (previous) return previous;
+    if(previousRecord && (!Number.isInteger(input.revision) || input.revision!==previousRecord.revision)) fail(409,'签到已被其他人修正，请刷新后核对');
     const duties = await repository.todayDuties(input.memberId,event.businessDate);
     if (fingerprint !== await repository.attendanceCorrectionFingerprint(input.memberId,input.eventId,context.actor.memberId,context.businessDate,occurredAt)) fail(409, '成员资料、当日岗位或签到场次已变化，请重新核对');
-    const created = await repository.correctAttendance({ id:crypto.randomUUID(),memberId:input.memberId,eventId:input.eventId,dedupeKey,occurredAt,recordedAt:nowIso(),
+    const created = await repository.correctAttendance({ id:previousRecord?.id || crypto.randomUUID(),previous:previousRecord,memberId:input.memberId,eventId:input.eventId,dedupeKey,occurredAt,recordedAt:nowIso(),
       sourceRef:event.sourceRef,departmentId:primary?.departmentId,departmentName:primary?.departmentName || 'unknown',
       identitySnapshot:{name:target.name,studentId:target.student_id || '',memberId:target.id},nonScheduled:!duties.length },
     {actorMemberId:context.actor.memberId,actorAccount:actor.account,authVersion:context.authVersion,businessDate:context.businessDate,action:'attendance.corrected',reason,requestId:receipt.id},receipt,fingerprint);
@@ -632,8 +649,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
   function rosterParticipant(context, task, fact) {
     if (task.dutyType === 'office' || !validDate(task.weekStart) || task.memberIds?.length && !task.memberIds.includes(context.actor.memberId) || !fact?.active) return false;
     return Array.from({length:4},(_,offset) => addDays(task.weekStart,offset)).some(day =>
-      fact.profiles.some(profile => profile.profileCode==='repair' && profile.effectiveFrom <= day && (!profile.effectiveTo || day < profile.effectiveTo)) &&
-      !fact.profiles.some(profile => profile.profileCode==='exchange' && profile.effectiveFrom <= day && (!profile.effectiveTo || day < profile.effectiveTo)) &&
+      !!repairRosterPool(fact,platform.authorizer,day,{id:task.id,campusIds:rosterScope(task).campusIds}) &&
       rosterScope(task).campusIds.some(campusId => rosterMemberReadable(context,platform.authorizer,fact,task,day,campusId)));
   }
   async function rosterOptions(actor, query = {}) {
@@ -650,19 +666,20 @@ export function staffPlatformService({ repository, platform, manifests }) {
   }
   async function rosterTasks(actor) {
     const context = await contextFor(actor);
-    if (!['roster.read','roster.repair.manage','roster.office.manage'].some(code => context.permissions[code])) fail(403, '没有查看排班任务的权限');
+    if (!['roster.read','roster.repair.manage','roster.office.manage','roster.repair.configure'].some(code => context.permissions[code])) fail(403, '没有查看排班任务的权限');
     const [tasks,departments,campuses] = await Promise.all([repository.listRosterTasks(),repository.listDepartments(true),repository.listCampuses(true)]);
     const ownFacts = new Map(), items = [];
     for (const task of tasks) {
       const manage = rosterTaskManaged(context,platform.authorizer,task);
+      const configure = task.dutyType!=='office' && rosterTaskManaged(context,platform.authorizer,task,'roster.repair.configure');
       if (context.permissions['roster.read'] && !ownFacts.has(task.weekStart)) ownFacts.set(task.weekStart,await rosterOwnFact(context,task));
       const fill = rosterParticipant(context,task,ownFacts.get(task.weekStart));
-      if (!manage && !fill) continue;
+      if (!manage && !fill && !configure) continue;
       const scope = rosterScope(task);
       const label = [...scope.campusIds.map(id => campuses.find(item => item.id === id)?.name || id),
         ...scope.departmentIds.map(id => departments.find(item => item.id === id)?.name || id)];
       const {memberIds,createdByMemberId,...summary} = task;
-      items.push({...summary,...(manage ? {memberIds,createdByMemberId} : {}),scopeLabel:label.join(' · '),actions:{manage,fill}});
+      items.push({...summary,...(manage ? {memberIds,createdByMemberId} : {}),scopeLabel:label.join(' · '),actions:{manage,fill,configure}});
     }
     return {items};
   }
@@ -688,6 +705,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const departmentIds = [...new Set(input.departmentIds || [])].sort();
     const campusId = normalizeCampusId(input.campusId);
     const task = {...input,id:crypto.randomUUID(),dutyType,memberIds:[...new Set(input.memberIds || [])].sort(),campusScope:{campusIds:[campusId],...(departmentIds.length ? {departmentIds} : {})}};
+    if(dutyType==='repair') task.requirements=normalizedRequirements(task,input.requirements);
     const context = await contextFor(actor);
     if (!rosterTaskManaged(context,platform.authorizer,task)) fail(403,'没有管理所选校区与部门排班的权限');
     const [campuses,departments] = await Promise.all([repository.listCampuses(),repository.listDepartments()]);
@@ -699,6 +717,25 @@ export function staffPlatformService({ repository, platform, manifests }) {
     catch (error) { if (String(error.message).includes('UNIQUE constraint failed: roster_tasks.')) fail(409,'本周此校区、部门和时段已有同类任务，请打开现有任务'); throw error; }
     await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.task.created', sourceRef: publicResourceRef('rosters','task',result.id), after: result, requestId: input.requestId });
     return result;
+  }
+  function normalizedRequirements(task,values) {
+    const slots=Array.from({length:4},(_,offset)=>rosterScope(task).campusIds.map(campusId=>({businessDate:addDays(task.weekStart,offset),campusId}))).flat();
+    if(values===undefined) return slots.map(slot=>({...slot,ordinaryMinimum:1}));
+    if(!Array.isArray(values) || values.length!==slots.length || slots.some(slot=>values.filter(item=>item?.businessDate===slot.businessDate && item.campusId===slot.campusId).length!==1) ||
+      values.some(item=>!Number.isInteger(item.ordinaryMinimum) || item.ordinaryMinimum<0 || item.ordinaryMinimum>300)) fail(400,'请为周一至周四的每个校区填写 0–300 名普通维修人员最低需求');
+    return slots.map(slot=>({...slot,ordinaryMinimum:values.find(item=>item.businessDate===slot.businessDate && item.campusId===slot.campusId).ordinaryMinimum}));
+  }
+  async function rosterRequirements(actor,taskId,input) {
+    const context=await contextFor(actor),task=await repository.rosterTaskById(taskId);
+    if(!task) fail(404,'排班任务不存在');
+    if(task.dutyType==='office' || !rosterTaskManaged(context,platform.authorizer,task,'roster.repair.configure')) fail(403,'没有配置此范围维修人员需求的权限');
+    if(!input) return {task,requirements:task.requirements?.length ? task.requirements : normalizedRequirements(task),requiresRuleConfirmation:task.ruleVersion!=='repair-minimum-v2'};
+    if(!Number.isInteger(input.revision) || input.revision!==task.revision) fail(409,'需求已被其他人更新，请刷新后核对；当前输入尚未清除');
+    const requirements=normalizedRequirements(task,input.requirements);
+    const result=await repository.saveRosterRequirements(task,{revision:input.revision,requirements},{actorMemberId:context.actor.memberId,actorAccount:actor.account,authVersion:context.authVersion,
+      action:'rosters.requirements.updated',sourceRef:publicResourceRef('rosters','task',taskId),before:{requirements:task.requirements,ruleVersion:task.ruleVersion},after:{requirements,ruleVersion:'repair-minimum-v2'},requestId:input.requestId});
+    if(!result) fail(409,'需求或权限已变化，请刷新后核对');
+    return {task:result,requirements:result.requirements,requiresRuleConfirmation:false};
   }
   async function saveAvailability(actor, taskId, input) {
     if (!validDate(input.businessDate) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.startAt) ||
@@ -716,7 +753,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const allowed = (await repository.memberCampuses(context.actor.memberId)).map(normalizeCampusId);
     if (!campusIds.includes(input.campusId) || !allowed.includes(input.campusId)) fail(403, '该校区不在本次任务或你的授权范围内');
     const fact = await rosterOwnFact(context,task);
-    const qualified = fact?.profiles.some(profile => profile.profileCode==='repair' && profile.effectiveFrom <= input.businessDate && (!profile.effectiveTo || input.businessDate < profile.effectiveTo));
+    const qualified = fact && !!repairRosterPool(fact,platform.authorizer,input.businessDate,{id:task.id,campusId:input.campusId});
     if (!qualified || !rosterParticipant(context,task,fact) || !rosterMemberReadable(context,platform.authorizer,fact,task,input.businessDate,input.campusId)) fail(403,'该日期的校区、部门或填报资格不在你的授权范围内');
     return repository.saveAvailability(taskId, context.actor.memberId, input, input.revision);
   }
@@ -730,7 +767,8 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const context = await contextFor(actor);
     if (!rosterTaskManaged(context,platform.authorizer,task)) fail(403,'没有管理该任务全部校区与部门的权限');
     const slots = Array.from({ length: 4 }, (_, offset) => campusIds.map(campusId => ({
-      businessDate: addDays(task.weekStart, offset), campusId, startAt: task.slotStart, endAt: task.slotEnd, dutyType: office ? 'office' : 'repair', requireLead: !office
+      businessDate: addDays(task.weekStart, offset), campusId, startAt: task.slotStart, endAt: task.slotEnd, dutyType: office ? 'office' : 'repair', requireLead: !office,
+      ...(!office && task.ruleVersion==='repair-minimum-v2' ? {ordinaryMinimum:task.requirements?.find(item=>item.businessDate===addDays(task.weekStart,offset) && item.campusId===campusId)?.ordinaryMinimum ?? 1} : {})
     }))).flat();
     const windows = await repository.availability(taskId);
     const memberIds = [...new Set(office ? await repository.officeRosterMemberIds(task.weekStart, campusIds) : task.memberIds?.length ? task.memberIds : windows.map(item => item.memberId))];
@@ -744,22 +782,30 @@ export function staffPlatformService({ repository, platform, manifests }) {
       const campusAccess = fact.campuses.map(normalizeCampusId);
       const other = fact.assignments.filter(item => item.taskId !== taskId);
       const available = [], leadSlots = [];
+      let ordinaryEligible=false;
       for (const slot of slots) {
         if (!campusAccess.includes(slot.campusId) || !rosterMemberInScope(fact,task,slot.businessDate,slot.campusId)) continue;
         const profiles = fact.profiles.filter(profile => profile.effectiveFrom <= slot.businessDate && (!profile.effectiveTo || slot.businessDate < profile.effectiveTo));
-        if (!profiles.some(item => (office ? ['office'] : ['repair']).includes(item.profileCode)) || !office && profiles.some(item=>item.profileCode==='exchange')) continue;
+        const departments = rosterDepartments(fact,slot.businessDate,task);
+        const pools = office ? [] : (departments.length ? departments : [{departmentId:undefined}]).map(item=>repairRosterPool(fact,platform.authorizer,slot.businessDate,{id:taskId,campusId:slot.campusId,departmentId:item.departmentId}));
+        const pool = pools.includes('lead') ? 'lead' : pools.includes('ordinary') ? 'ordinary' : '';
+        if (office ? !profiles.some(item => item.profileCode==='office') : !pool) continue;
+        if (pool==='lead') leadSlots.push(slot);
+        if (pool==='ordinary') ordinaryEligible=true;
         if (other.some(item => (!office && item.dutyType === 'repair') || item.businessDate === slot.businessDate &&
           ((office && item.dutyType === 'office') || item.startAt < slot.endAt && slot.startAt < item.endAt))) continue;
         if (!office && !windows.some(item => item.memberId === memberId && item.businessDate === slot.businessDate &&
           (!item.campusId || item.campusId === slot.campusId) && item.startAt <= slot.startAt && item.endAt >= slot.endAt)) continue;
         available.push(slot);
-        if (profiles.some(item => item.profileCode === 'repair_lead')) leadSlots.push(slot);
       }
       if (office && !available.length) continue;
+      if (!office && !leadSlots.length && !ordinaryEligible) continue;
       const departmentNames = [...new Set(slots.flatMap(slot => rosterDepartments(fact,slot.businessDate,task).map(item => item.departmentName)).filter(Boolean))];
-      members.push({ memberId, name: fact.name, available, leadSlots, ...(office ? { departmentNames } : {}) });
+      const pool = !office && leadSlots.length ? 'lead' : 'ordinary';
+      members.push({ memberId, name: fact.name, available:!office && pool==='lead' ? available.filter(slot=>leadSlots.includes(slot)) : available, leadSlots, pool,
+        identities:staffIdentities(rosterFactContext(fact,task.weekStart),platform.authorizer), departmentNames });
     }
-    return { taskId, dutyType: task.dutyType || 'repair', taskRevision: task.revision, weekStart: task.weekStart, members, slots, requireLead: !office };
+    return { taskId, dutyType: task.dutyType || 'repair', taskRevision: task.revision, ruleVersion:task.ruleVersion || 'legacy', weekStart: task.weekStart, members, slots, requireLead: !office };
   }
   async function rosterTaskState(actor, taskId) {
     const source = await rosterInput(actor, taskId);
@@ -771,12 +817,13 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const savedAssignments = latest?.inputSnapshotRef?.optimization && latest.inputSnapshotRef.generatedAssignments;
     const sourceChanged = !!savedEligibility && stableJson(savedEligibility) !== stableJson(rosterEligibilitySnapshot(source)) ||
       !!savedAssignments && stableJson(savedAssignments) !== stableJson(rosterAssignmentSnapshot(assignments));
-    return { taskId, dutyType: source.dutyType, members: source.members, slots: source.slots,
+    return { taskId, dutyType: source.dutyType, ruleVersion:source.ruleVersion, requiresRuleConfirmation:source.dutyType!=='office' && source.ruleVersion!=='repair-minimum-v2', members: source.members, slots: source.slots,
       draft: latest ? { ...latest, assignments, sourceChanged, validation: validateRoster({ assignments }, source) } : null,
       publishedAssignments: published ? await repository.versionAssignments(published.id) : [] };
   }
   async function generate(actor, input) {
     const source = await rosterInput(actor, input.taskId);
+    if(source.dutyType!=='office' && source.ruleVersion!=='repair-minimum-v2') fail(409,'旧任务需先确认每日最低人员需求，再生成新规则草稿');
     const previous = (await repository.rosterVersionsForTask(source.taskId)).find(item => ['draft','published'].includes(item.status));
     source.locked = previous ? (await repository.versionAssignments(previous.id)).filter(item => item.locked) : [];
     const context = await contextFor(actor);
@@ -805,7 +852,8 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const source = await rosterInput(actor, version.taskId);
     const assignments = await inheritAssignmentLeaves(source.taskId, input.assignments);
     const validation = validateRoster({ assignments }, source);
-    const result = await repository.updateRosterDraft(id, { assignments, validation }, input.version);
+    if(source.dutyType!=='office' && source.ruleVersion!=='repair-minimum-v2') fail(409,'请先确认每日最低人员需求');
+    const result = await repository.updateRosterDraft(id, { assignments, validation,ruleVersion:source.ruleVersion,eligibility:rosterEligibilitySnapshot(source) }, input.version);
     if (!result) fail(409, '排班版本已变化，请刷新');
     await repository.audit({ actorMemberId: (await contextFor(actor)).actor.memberId, actorAccount: actor.account, action: 'rosters.updated', sourceRef: publicResourceRef('rosters','version',id), after: result, requestId: input.requestId });
     return { ...result, assignments, revision: result.version };
@@ -821,16 +869,24 @@ export function staffPlatformService({ repository, platform, manifests }) {
     if (!Number.isInteger(input.version) || input.version < 1) fail(400, '请选择有效的班表版本');
     const version = await repository.rosterVersionById(id);
     if (!version) fail(404, '排班草稿不存在');
+    const fingerprint=repository.rosterFingerprint ? await repository.rosterFingerprint(version.taskId) : undefined;
     const source = await rosterInput(actor, version.taskId);
     if (version.status === 'published' && version.version === input.version) return version;
+    if(source.dutyType!=='office' && (source.ruleVersion!=='repair-minimum-v2' || version.ruleVersion!==source.ruleVersion)) fail(409,'请先确认需求，并重新生成或保存校验草稿');
+    if(version.inputSnapshotRef?.eligibility?.taskRevision!==undefined && version.inputSnapshotRef.eligibility.taskRevision!==source.taskRevision) fail(409,'最低人员需求已变更，请重新生成或保存校验草稿');
     const assignments = await repository.versionAssignments(id);
     const validation = validateRoster({ assignments }, source);
     if (!validation.valid) fail(409, '当前人员资格或班次覆盖不满足发布条件，请重新生成或调整草稿');
     const context = await contextFor(actor);
     let result;
-    try { result = await repository.publishRoster(id, input.version, { actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.published', sourceRef: publicResourceRef('rosters','version',id), before: version, after: { ...version, status: 'published' }, requestId: input.requestId }); }
-    catch (error) { if (String(error.message).includes('ROSTER_SCHEDULE_CONFLICT')) fail(409, '人员已在其他班表被安排，请刷新并重新核对'); throw error; }
-    if (!result) fail(409, '排班版本已变化，请刷新');
+    try { result = await repository.publishRoster(id, input.version, { actorMemberId: context.actor.memberId, actorAccount: actor.account, authVersion:context.authVersion, action: 'rosters.published', sourceRef: publicResourceRef('rosters','version',id), before: version, after: { ...version, status: 'published' }, requestId: input.requestId },fingerprint); }
+    catch (error) {
+      if (String(error.message).includes('ROSTER_SCHEDULE_CONFLICT')) fail(409, '人员已在其他班表被安排，请刷新并重新核对');
+      if (String(error.message).includes('ROSTER_CAMPUS_LEADER_CONFLICT')) fail(409,'该校区当天已有其他班表发布的负责人，请先协调现有班表');
+      if (String(error.message).includes('ROSTER_REPAIR_MINIMUM_MISSING')) fail(409,'负责人或普通人员覆盖已变化，请重新校验');
+      throw error;
+    }
+    if (!result) fail(409, '班表、人员资格、可用时间或需求已变化，请刷新并重新校验');
     return result;
   }
   async function rosterMine(actor, query = {}) { const context = await contextFor(actor); await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId }); return { items: await repository.listAssignments(context.actor.memberId, query.weekStart || weekRange(dateKey()).start), weekStart: query.weekStart || weekRange(dateKey()).start }; }
@@ -953,7 +1009,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
       const weekStart = weekRange(from.businessDate).start;
       const [facts,coverage] = await Promise.all([repository.rosterMemberFacts([from.memberId,to.memberId],weekStart),repository.swapCoverage(weekStart)]);
       if (fingerprint !== await repository.swapFingerprint(fromId,toId)) continue;
-      const validation = validateSwap({ from,to,facts,coverage });
+      const validation = validateSwap({ from,to,facts,coverage,authorizer:platform.authorizer });
       if (owners && current.some((row,index) => row.memberId !== owners[index])) validation.errors.push('班次人员已变化，请重新发起换班');
       validation.allowed = !validation.errors.length;
       const named = row => ({ ...row,memberName:facts.find(item => item.memberId === row.memberId)?.name || '成员' });
@@ -971,7 +1027,12 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const source = await repository.assignmentById(query.assignmentId);
     if (!source || source.memberId !== context.actor.memberId) fail(403, '请先选择本人的班次');
     if (source.versionStatus !== 'published' || source.leaveStatus) fail(409, '该班次已调整或已请假，请刷新班表');
-    return { items: await repository.swapCandidates({ ...source,weekStart:weekRange(source.businessDate).start }) };
+    const candidates=await repository.swapCandidates({ ...source,weekStart:weekRange(source.businessDate).start });
+    const facts=new Map((await repository.rosterMemberFacts([...new Set([source.memberId,...candidates.map(item=>item.memberId)])],weekRange(source.businessDate).start)).map(item=>[item.memberId,item]));
+    const eligible=(fact,slot)=>slot.dutyType==='office' ? fact?.active && fact.profiles.some(item=>item.profileCode==='office' && item.effectiveFrom<=slot.businessDate && (!item.effectiveTo || slot.businessDate<item.effectiveTo)) : fact && !!repairRosterPool(fact,platform.authorizer,slot.businessDate,{id:slot.taskId,campusId:slot.campusId});
+    if(!eligible(facts.get(source.memberId),source)) fail(403,'当前工作资格不支持该班次换班，请联系负责人处理');
+    return {items:candidates.filter(item=>eligible(facts.get(item.memberId),source) && eligible(facts.get(source.memberId),item)).map(item=>({...item,
+      identities:staffIdentities(rosterFactContext(facts.get(item.memberId),item.businessDate),platform.authorizer)}))};
   }
   async function swapPreview(actor, input) {
     const context = await contextFor(actor);
@@ -1096,7 +1157,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
   async function audit(actor, query) { await requirePermission(actor, 'audit.read'); return { items: await repository.listAudit(query || {}) }; }
 
   return { contextFor, requirePermission, scopedActor, memberList, memberDetail, updateMember, addMembership, endMembership, permissions, roles, createRole, updateRole, previewRole, bindMemberRoles,
-    organization, importMembers, saveWorkProfile, deskSummary, workbench, createAttendanceEvent, issueAttendanceToken, checkIn, previewAttendance, attendanceList, correctAttendance, presence, rosterOptions, rosterTasks, taskAvailability, createRosterTask, saveAvailability, rosterTaskState, generate, updateRoster, publish, rosterMine,
+    organization, importMembers, saveWorkProfile, deskSummary, workbench, createAttendanceEvent, issueAttendanceToken, checkIn, previewAttendance, attendanceList, attendanceOptions, correctAttendance, presence, rosterOptions, rosterTasks, taskAvailability, createRosterTask, rosterRequirements, saveAvailability, rosterTaskState, generate, updateRoster, publish, rosterMine,
     leave, leaves, leaveDetail, leaveDecision, leaveWithdraw, swapCandidates, swapPreview, swapDetail, swap, swaps, swapDecision, attendanceExport, audit,
     recordAudit: input => repository.audit(input) };
 }

@@ -2,7 +2,7 @@
   "branch": "next/staff-platform",
   "baseCommit": "53b53db110d4d867c2f4277fa0954f1d97d74c7d",
   "contractVersion": "staff-platform.v1",
-  "schemaVersion": "0020",
+  "schemaVersion": "0021",
   "businessTimeZone": "Asia/Shanghai",
   "migrations": [
     {
@@ -84,6 +84,10 @@
     {
       "name": "0020_signed_repair_leads.sql",
       "sha256": "b65031ce0308474f8e718ffb8e5b0906470ee4632fce93ba883c97accb4f3b28"
+    },
+    {
+      "name": "0021_roster_staffing_requirements.sql",
+      "sha256": "df429fe91ac9d6a30c90c0020f4724672a009144811b96c5ec1eeb6009cb544f"
     }
   ],
   "modules": [
@@ -119,14 +123,14 @@
     },
     {
       "code": "attendance",
-      "version": "1.1.0",
-      "manifestHash": "9dd3553c",
+      "version": "1.2.0",
+      "manifestHash": "a9b59f7b",
       "releaseState": "ready"
     },
     {
       "code": "rosters",
-      "version": "1.6.0",
-      "manifestHash": "cfa7ee7f",
+      "version": "1.7.0",
+      "manifestHash": "18f21f93",
       "releaseState": "ready"
     },
     {
@@ -227,6 +231,10 @@
     {
       "name": "0018_signed_repair_leads.sql",
       "sha256": "b65031ce0308474f8e718ffb8e5b0906470ee4632fce93ba883c97accb4f3b28"
+    },
+    {
+      "name": "0019_roster_staffing_requirements.sql",
+      "sha256": "df429fe91ac9d6a30c90c0020f4724672a009144811b96c5ec1eeb6009cb544f"
     }
   ],
   "staffMigrationsDirectory": "database/staff-migrations"

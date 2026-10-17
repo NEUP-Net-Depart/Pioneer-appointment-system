@@ -1,6 +1,6 @@
 {
   "contractVersion": "staff-platform.v1",
-  "schemaVersion": "0020",
+  "schemaVersion": "0021",
   "authContext": ["actor", "identities", "memberships", "workProfiles", "grants", "permissions", "todayDuties", "navigation", "resumeTasks", "modules", "authVersion", "schemaVersion"],
   "errors": ["VALIDATION_ERROR", "SESSION_EXPIRED", "PERMISSION_REQUIRED", "REVISION_CONFLICT", "REQUEST_CONFLICT", "PRESENCE_CHANGED", "ACTIVE_REPAIR_EXISTS"],
   "routes": {
@@ -9,8 +9,8 @@
     "authorization": ["GET /api/permissions", "GET /api/roles", "POST /api/roles", "PATCH /api/roles/:id", "POST /api/roles/preview", "PUT /api/members/:memberId/roles"],
     "repairs": ["POST /api/scan/resolve", "GET /api/scan/current", "POST /api/scan/onsite", "PATCH /api/appointments/:id/status", "POST /api/appointments/:id/transfer", "PATCH /api/appointments/:id/correction"],
     "field": ["GET /api/field/home", "GET /api/field/board", "GET /api/field/appointments/:id"],
-    "attendance": ["POST /api/attendance/preview", "POST /api/attendance/events", "POST /api/attendance/events/:id/token", "POST /api/attendance/check-ins", "GET /api/attendance", "GET /api/attendance/export.csv", "GET /api/export/attendance.csv", "GET /api/me/attendance", "POST /api/attendance/corrections", "PATCH /api/presence/me"],
-    "rosters": ["GET /api/roster-tasks", "GET /api/roster-tasks/options", "GET /api/roster-tasks/:id/availability", "POST /api/roster-tasks", "PUT /api/roster-tasks/:id/availability", "POST /api/rosters/generate", "PATCH /api/rosters/:id", "POST /api/rosters/:id/publish", "GET /api/me/roster", "POST /api/swaps", "GET /api/swaps", "GET /api/swaps/candidates", "POST /api/swaps/preview", "GET /api/swaps/:id", "POST /api/swaps/:id/decision", "POST /api/leaves", "GET /api/leaves", "GET /api/leaves/:id", "POST /api/leaves/:id/decision", "POST /api/leaves/:id/withdraw"],
+    "attendance": ["POST /api/attendance/preview", "POST /api/attendance/events", "POST /api/attendance/events/:id/token", "POST /api/attendance/check-ins", "GET /api/attendance", "GET /api/attendance/options", "GET /api/attendance/export.csv", "GET /api/export/attendance.csv", "GET /api/me/attendance", "POST /api/attendance/corrections", "PATCH /api/presence/me"],
+    "rosters": ["GET /api/roster-tasks", "GET /api/roster-tasks/options", "GET /api/roster-tasks/:id/availability", "POST /api/roster-tasks", "GET /api/roster-tasks/:id/requirements", "PUT /api/roster-tasks/:id/requirements", "PUT /api/roster-tasks/:id/availability", "POST /api/rosters/generate", "PATCH /api/rosters/:id", "POST /api/rosters/:id/publish", "GET /api/me/roster", "POST /api/swaps", "GET /api/swaps", "GET /api/swaps/candidates", "POST /api/swaps/preview", "GET /api/swaps/:id", "POST /api/swaps/:id/decision", "POST /api/leaves", "GET /api/leaves", "GET /api/leaves/:id", "POST /api/leaves/:id/decision", "POST /api/leaves/:id/withdraw"],
     "audit": ["GET /api/audit"]
   },
   "idempotency": "actorMemberId + action + requestId",

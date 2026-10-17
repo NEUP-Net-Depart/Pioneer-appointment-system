@@ -1,4 +1,5 @@
 import { optimizeRoster } from './optimizer.ts';
+import { optimizeRepairMinimum } from './repair-minimum.ts';
 
 function key(value) { return `${value.memberId}:${value.businessDate}:${value.campusId}:${value.startAt || ''}:${value.endAt || ''}`; }
 function slotKey(value) { return `${value.businessDate}:${value.campusId}:${value.startAt || ''}:${value.endAt || ''}`; }
@@ -60,7 +61,8 @@ function diagnosticAssignments(input) {
 
 export function generateRoster(input) {
   const members = input.members || [], slots = input.slots || [];
-  const optimized = optimizeRoster({ ...input, members, slots });
+  const pooled = input.ruleVersion === 'repair-minimum-v2';
+  const optimized = pooled ? optimizeRepairMinimum({ ...input, members, slots }) : optimizeRoster({ ...input, members, slots });
   const assignments = optimized.assignments || diagnosticAssignments(input);
   const assigned = new Set(assignments.map(item => item.memberId));
   const effective = assignments.filter(item => item.leaveStatus !== 'approved');
@@ -71,13 +73,14 @@ export function generateRoster(input) {
     return { campusId, counts: values, spread: Math.max(...values) - Math.min(...values) };
   });
   const result = {
-    assignments, unassigned: members.filter(member => !assigned.has(member.memberId)).map(member => member.memberId),
+    assignments, unassigned: members.filter(member => !assigned.has(member.memberId) && (!pooled || member.pool !== 'lead')).map(member => member.memberId),
+    optionalUnassigned: pooled ? members.filter(member => member.pool === 'lead' && !assigned.has(member.memberId)).map(member => member.memberId) : [],
     coverage: { required: slots.length, covered, complete: covered === slots.length },
     balance: { min: counts.length ? Math.min(...counts) : 0, max: counts.length ? Math.max(...counts) : 0, spread: counts.length ? Math.max(...counts) - Math.min(...counts) : 0 },
     inputSnapshotRef: { memberCount: members.length, slotCount: slots.length, optimization: {
       complete: optimized.complete, reason: optimized.reason, work: optimized.work, flowRuns: optimized.flowRuns,
       objective: optimized.objective, campuses
-    } }, ruleVersion: input.ruleVersion || '1.0.0', algorithmVersion: 'bounded-flow-campus-v3',
+    } }, ruleVersion: input.ruleVersion || '1.0.0', algorithmVersion: pooled ? 'bounded-flow-pools-v1' : 'bounded-flow-campus-v3',
     roleCoverage: { required: slots.filter(slot => input.requireLead || slot.requireLead).length,
       covered: slots.filter(slot => (input.requireLead || slot.requireLead) && effective.some(item => slotKey(item) === slotKey(slot) && item.roleKind === 'repair_lead')).length }
   };
@@ -86,6 +89,7 @@ export function generateRoster(input) {
 
 export function validateRoster(result, input) {
   const errors = [];
+  const pooled = input.ruleVersion === 'repair-minimum-v2';
   const seen = [];
   const effective = (result.assignments || []).filter(item => item.leaveStatus !== 'approved');
   if (!input.slots?.length) errors.push({ code: 'SLOTS_REQUIRED' });
@@ -95,6 +99,7 @@ export function validateRoster(result, input) {
     if (!member || !slot || !availableFor(member, item)) errors.push({ code: 'MEMBER_UNAVAILABLE', memberId: item.memberId, slot: item });
     const office = slot?.dutyType === 'office';
     if (item.roleKind && (office ? item.roleKind !== 'coordinator' : item.roleKind !== 'repair_lead' || !member || !leadFor(member, item))) errors.push({ code: 'LEAD_INELIGIBLE', memberId: item.memberId });
+    if (pooled && member && (item.roleKind === 'repair_lead') !== (member.pool === 'lead')) errors.push({code:'POOL_MISMATCH',memberId:item.memberId});
     if (item.dutyType && item.dutyType !== (slot?.dutyType || 'repair')) errors.push({ code: 'DUTY_TYPE_MISMATCH', memberId: item.memberId });
     const week = weekKey(item.businessDate);
     if (seen.some(value => value.memberId === item.memberId && (office ? value.businessDate === item.businessDate : weekKey(value.businessDate) === week))) errors.push({ code: office ? 'MEMBER_DAY_DUPLICATE' : 'MEMBER_WEEK_DUPLICATE', memberId: item.memberId });
@@ -104,6 +109,16 @@ export function validateRoster(result, input) {
   for (const slot of input.slots || []) {
     if (!effective.some(item => slotKey(item) === slotKey(slot))) errors.push({ code: 'COVERAGE_MISSING', slot });
     if ((input.requireLead || slot.requireLead) && !effective.some(item => slotKey(item) === slotKey(slot) && item.roleKind === 'repair_lead')) errors.push({ code: 'LEAD_COVERAGE_MISSING', slot });
+    if (pooled) {
+      const assigned = effective.filter(item => slotKey(item) === slotKey(slot));
+      const leadCount = assigned.filter(item => item.roleKind === 'repair_lead').length;
+      const ordinaryCount = assigned.length - leadCount;
+      if (leadCount > 1) errors.push({code:'LEAD_SURPLUS',slot,actual:leadCount,required:1});
+      if (ordinaryCount < (slot.ordinaryMinimum ?? 1)) errors.push({code:'ORDINARY_COVERAGE_MISSING',slot,actual:ordinaryCount,required:slot.ordinaryMinimum ?? 1});
+    }
+  }
+  if (pooled) for (const member of input.members || []) {
+    if (member.pool === 'ordinary' && !(result.assignments || []).some(item => item.memberId === member.memberId)) errors.push({code:'MEMBER_WEEK_MISSING',memberId:member.memberId});
   }
   return { valid: errors.length === 0, errors };
 }

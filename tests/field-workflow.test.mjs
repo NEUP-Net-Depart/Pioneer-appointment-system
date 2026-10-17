@@ -413,6 +413,22 @@ before(async () => {
 });
 after(async () => mf?.dispose());
 
+test('unscheduled ordinary technician joins the working day through check-in without a roster assignment',async()=>{
+  const account='20261983',memberId=`member-${account}`;
+  await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,'未排班维修人员','technician','南湖',?,'2026-01-01')").bind(account,hashPassword('StaffTest!2026')).run();
+  await db.prepare("INSERT INTO staff_campus_grants VALUES(?,'南湖')").bind(account).run();
+  tokens[account]=(await request('/api/auth/login',null,{account,password:'StaffTest!2026'})).body.token;
+  assert.equal((await request('/api/field/home',account)).body.todayDuties.length,0);
+  assert.equal((await request('/api/field/board','root001')).body.staffPresence.some(item=>item.memberId===memberId),false);
+  const credential=await request('/api/attendance/events/field-event/token','root001',{revision:(await staffPlatformRepository(db).attendanceEvent('field-event')).revision});
+  const signed=await request('/api/attendance/check-ins',account,{token:credential.body.token,requestId:crypto.randomUUID()});
+  assert.equal(signed.status,200,JSON.stringify(signed.body));assert.equal(signed.body.nonScheduled,true);
+  const home=(await request('/api/field/home',account)).body;assert.equal(home.state,'available');assert.equal(home.capability['repair.start'],true);
+  const person=(await request('/api/field/board','root001')).body.staffPresence.find(item=>item.memberId===memberId);
+  assert.equal(person.scheduled,false);assert.equal(person.canReceive,true);assert.equal(person.group,'repair');assert.ok(person.identities.some(item=>item.code==='repair'));
+  await db.prepare('DELETE FROM staff_presence WHERE member_id=?').bind(memberId).run();
+});
+
 test('unscheduled lead keeps identity, signs in without repair qualification and stays within campus authorization',async()=>{
   const account='20261981';
   await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,'未排班负责人','technician','南湖',?,'2026-01-01')").bind(account,hashPassword('StaffTest!2026')).run();

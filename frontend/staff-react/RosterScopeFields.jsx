@@ -38,7 +38,7 @@ export function RosterScopeFields({dutyType,value,onChange,onReady,disabled}) {
     {loading && <p role="status" className="react-muted">正在读取可管理的校区与部门…</p>}
     {error && <div role="alert" className="react-error">{error}<button type="button" onClick={() => setRetry(value => value+1)}>重试</button></div>}
     {!loading && !error && !items.length && <p role="status">当前授权不支持新建任务，请联系管理员调整管理范围。</p>}
-    {!!items.length && !loading && <><label>校区<select required value={value.campusId} disabled={disabled} onChange={event => chooseCampus(event.target.value)}>{items.map(item => <option key={item.campusId} value={item.campusId}>{item.name}</option>)}</select></label>
+    {!!items.length && !loading && <><label>校区<select aria-label="校区" required value={value.campusId} disabled={disabled} onChange={event => chooseCampus(event.target.value)}>{items.map(item => <option key={item.campusId} value={item.campusId}>{item.name}</option>)}</select></label>
       <fieldset className="roster-scope-fields" disabled={disabled}><legend>参与部门</legend><div className="roster-scope-options">
         {campus?.allDepartments && <button type="button" aria-pressed={all} onClick={() => {setAll(true); onChange({departmentIds:[]}); onReady(true);}}>全部部门</button>}
         {campus?.departments.map(item => <button type="button" key={item.id} aria-pressed={!all && selected.includes(item.id)} onClick={() => toggle(item.id)}>{item.name}</button>)}

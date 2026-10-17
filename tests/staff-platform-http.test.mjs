@@ -193,6 +193,12 @@ test('attendance corrections commit atomically, preserve historical scope and ca
   assert.equal((await db.prepare('SELECT COUNT(*) AS total FROM staff_presence WHERE member_id=?').bind(input.memberId).first()).total,0,'Historical correction must not make a member available now');
   assert.equal((await send({...input,reason:'同键不同内容'})).response.status,409);
   assert.equal((await send({...input,requestId:crypto.randomUUID()})).response.status,409);
+  const original=accepted[0].body;
+  const correction={...input,recordId:original.id,revision:original.revision,occurredAt:`${day}T10:15:00+08:00`,reason:'核查实际到岗时间',requestId:crypto.randomUUID()};
+  const revised=await send(correction);assert.equal(revised.response.status,201,JSON.stringify(revised.body));
+  assert.equal(revised.body.revision,original.revision+1);assert.deepEqual(revised.body.identitySnapshot,original.identitySnapshot);assert.equal(revised.body.primaryDepartmentIdSnapshot,original.primaryDepartmentIdSnapshot);
+  assert.equal((await send(correction)).body.idempotent,true);
+  assert.equal((await send({...correction,requestId:crypto.randomUUID()})).response.status,409);
   assert.equal((await send({...input,memberId:'member-20269712',requestId:crypto.randomUUID()},scoped)).response.status,403,'Matching campus cannot borrow another grant department');
   assert.equal((await send({...input,memberId:'member-20269713',eventId:events['campus-hunnan'].id,campusId:'campus-nanhu',requestId:crypto.randomUUID()},scoped)).response.status,400,'Body campus cannot spoof the actual event');
   assert.equal((await send({...input,memberId:'member-20269713',eventId:events['campus-hunnan'].id,requestId:crypto.randomUUID()},scoped)).response.status,403);
@@ -524,21 +530,21 @@ test('roster generation and publication use server facts and reject forged clien
   const headers = { Authorization: `Bearer ${login.body.token}` };
   const post = (path, body, method = 'POST') => request(path, { method, headers, body: JSON.stringify(body) });
   const ids = [];
-  for (let index = 0; index < 4; index += 1) {
+  for (let index = 0; index < 8; index += 1) {
     const account = `2099000${index}`;
     await db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,?,?,?,?,?)')
       .bind(account, `排班成员${index}`, 'technician', '南湖', 'test-only-unused-password', '2026-01-01').run();
     await db.prepare('INSERT INTO staff_campus_grants(account,campus) VALUES(?,?)').bind(account, '南湖').run();
     const id = `member-${account}`; ids.push(id);
-    await db.prepare("INSERT INTO member_work_profiles(id,member_id,profile_code,effective_from) VALUES(?,?,'repair_lead','2026-01-01')").bind(`qualified-${index}`,id).run();
+    if(index<4) await db.prepare("INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from) VALUES(?,?,'role-repair-lead','{\"campusIds\":[\"campus-nanhu\"]}','2026-01-01')").bind(`qualified-${index}`,id).run();
   }
   const task = await post('/api/roster-tasks', { weekStart: '2026-10-19', campusId: 'campus-nanhu', slotStart: '18:00', slotEnd: '19:00', deadline: '2026-10-18T10:00:00+08:00', memberIds: ids });
   assert.equal(task.response.status, 201, JSON.stringify(task.body));
-  for (let index = 0; index < 4; index += 1) await db.prepare('INSERT INTO availability(id,task_id,member_id,business_date,start_at,end_at,campus_id) VALUES(?,?,?,?,?,?,?)')
-    .bind(`window-${index}`,task.body.id,ids[index],`2026-10-${19+index}`,'18:00','19:00','campus-nanhu').run();
+  for (let index = 0; index < 8; index += 1) await db.prepare('INSERT INTO availability(id,task_id,member_id,business_date,start_at,end_at,campus_id) VALUES(?,?,?,?,?,?,?)')
+    .bind(`window-${index}`,task.body.id,ids[index],`2026-10-${19+index%4}`,'18:00','19:00','campus-nanhu').run();
   const generated = await post('/api/rosters/generate', { taskId: task.body.id, members: [], slots: [], validation: { valid: true }, campusId: 'campus-hunnan' });
   assert.equal(generated.response.status, 201, JSON.stringify(generated.body));
-  assert.equal(generated.body.assignments.length, 4);
+  assert.equal(generated.body.assignments.length, 8);
   assert.equal(generated.body.validation.valid, true);
   assert.equal(generated.body.solverStatus,'optimal');
   assert.equal(generated.body.version.solverStatus,'optimal');
@@ -546,7 +552,7 @@ test('roster generation and publication use server facts and reject forged clien
   const restored = await request(`/api/roster-tasks/${task.body.id}/roster`,{headers});
   assert.equal(restored.body.draft.solverStatus,'optimal');
   assert.equal(restored.body.draft.sourceChanged,false);
-  assert.equal(restored.body.draft.inputSnapshotRef.eligibility.members.length,4);
+  assert.equal(restored.body.draft.inputSnapshotRef.eligibility.members.length,8);
   assert.deepEqual(restored.body.draft.inputSnapshotRef.optimization,generated.body.inputSnapshotRef.optimization);
   await db.prepare('INSERT INTO availability(id,task_id,member_id,business_date,start_at,end_at,campus_id) VALUES(?,?,?,?,?,?,?)')
     .bind('changed-optimizer-input',task.body.id,ids[0],'2026-10-20','18:00','19:00','campus-nanhu').run();
@@ -567,8 +573,55 @@ test('roster generation and publication use server facts and reject forged clien
   assert.equal(edited.body.inputSnapshotRef.optimization,undefined);
   assert.equal((await post(`/api/rosters/${next.body.version.id}/publish`, { version: edited.body.version })).response.status, 409);
   const finalDraft = await post('/api/rosters/generate', { taskId: task.body.id });
-  await db.prepare("DELETE FROM member_work_profiles WHERE id='qualified-0'").run();
+  await db.prepare("DELETE FROM member_roles WHERE id='qualified-0'").run();
   assert.equal((await post(`/api/rosters/${finalDraft.body.version.id}/publish`, { version: finalDraft.body.version.version })).response.status, 409);
+});
+
+test('staffing demand is independently scoped, versioned and never rewrites a published roster',async()=>{
+  const db=await mf.getD1Database('DB'),repository=staffPlatformRepository(db);
+  const call=(path,token,body,method=body?'POST':'GET')=>request(path,{method,headers:{...(token?{Authorization:`Bearer ${token}`} : {}),'CF-Connecting-IP':'192.0.2.188'},...(body?{body:JSON.stringify(body)}:{})});
+  const root=(await call('/api/auth/login',null,{account:'root001',password:'staff-platform-password'})).body.token;
+  await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('20998501','需求负责人','technician','南湖',?,'2026-01-01')").bind(hashPassword('demand-password')).run();
+  await db.prepare("INSERT INTO staff_campus_grants VALUES('20998501','南湖')").run();
+  const member=await repository.memberRow('member-20998501');
+  await repository.bindRoles(member.id,[{roleId:'role-office-lead',scope:{campusIds:['campus-nanhu']},effectiveFrom:'2026-01-01'}],member.revision);
+  const manager=(await call('/api/auth/login',null,{account:'20998501',password:'demand-password'})).body.token;
+  const task=(await call('/api/roster-tasks',root,{weekStart:'2027-02-01',campusId:'campus-nanhu',slotStart:'18:00',slotEnd:'19:00',deadline:'2027-01-31T10:00:00Z',memberIds:Array.from({length:8},(_,i)=>`member-2099000${i}`)})).body;
+  const path=`/api/roster-tasks/${task.id}/requirements`;
+  const context=(await call('/api/auth/me',manager)).body;
+  assert.equal(context.permissions['roster.repair.configure'],true);
+  assert.notEqual(context.permissions['roster.repair.manage'],true);
+  assert.equal((await call(`/api/roster-tasks/${task.id}/roster`,manager)).response.status,403);
+  const initial=await call(path,manager);assert.equal(initial.response.status,200,JSON.stringify(initial.body));
+  assert.equal(initial.body.requirements.length,4);
+  const requirements=initial.body.requirements.map((row,i)=>({...row,ordinaryMinimum:i===0?2:1}));
+  const changed=await call(path,manager,{revision:task.revision,requirements},'PUT');assert.equal(changed.response.status,200,JSON.stringify(changed.body));
+  assert.equal((await call(path,manager,{revision:task.revision,requirements},'PUT')).response.status,409);
+  for(let i=0;i<8;i++) await db.prepare('INSERT INTO availability(id,task_id,member_id,business_date,start_at,end_at,campus_id) VALUES(?,?,?,?,?,?,?)')
+    .bind(`demand-${i}`,task.id,`member-2099000${i}`,`2027-02-0${1+i%4}`,'18:00','19:00','campus-nanhu').run();
+  // Restore the leader authorization revoked by the preceding regression.
+  await db.prepare("INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from) VALUES('demand-lead-0','member-20990000','role-repair-lead','{\"campusIds\":[\"campus-nanhu\"]}','2026-01-01')").run();
+  const shortage=(await call('/api/rosters/generate',root,{taskId:task.id})).body;
+  assert.equal(shortage.validation.valid,false);
+  assert.ok(shortage.validation.errors.some(item=>item.code==='ORDINARY_COVERAGE_MISSING'));
+  assert.equal((await call(`/api/rosters/${shortage.version.id}/publish`,root,{version:shortage.version.version})).response.status,409);
+  const lowered=await call(path,manager,{revision:changed.body.task.revision,requirements:requirements.map(row=>({...row,ordinaryMinimum:1}))},'PUT');
+  assert.equal(lowered.response.status,200,JSON.stringify(lowered.body));
+  const ready=(await call('/api/rosters/generate',root,{taskId:task.id})).body;
+  assert.equal(ready.validation.valid,true,JSON.stringify(ready.validation));
+  const stamp=await repository.rosterFingerprint(task.id);
+  await db.prepare("UPDATE member_work_profiles SET revision=revision+1 WHERE member_id='member-20990004'").run();
+  assert.equal(await repository.publishRoster(ready.version.id,ready.version.version,undefined,stamp),null,'concurrent qualification changes cannot pass the publication transaction');
+  assert.equal((await call(`/api/rosters/${ready.version.id}/publish`,root,{version:ready.version.version})).response.status,200);
+  const published=await repository.versionAssignments(ready.version.id);
+  const newer=await call(path,manager,{revision:lowered.body.task.revision,requirements},'PUT');assert.equal(newer.response.status,200);
+  assert.deepEqual(await repository.versionAssignments(ready.version.id),published,'published history is immutable when demands change');
+  assert.equal((await repository.rosterVersionById(ready.version.id)).status,'published');
+  const legacy=await repository.createRosterTask({weekStart:'2027-02-08',campusScope:{campusIds:['campus-nanhu']},slotStart:'18:00',slotEnd:'19:00',deadline:'2027-02-07'},'member-root001');
+  await db.prepare("UPDATE roster_tasks SET rule_version='legacy' WHERE id=?").bind(legacy.id).run();
+  assert.equal((await call('/api/rosters/generate',root,{taskId:legacy.id})).response.status,409);
+  const old=await call(`/api/roster-tasks/${legacy.id}/requirements`,manager);assert.equal(old.body.requiresRuleConfirmation,true);
+  assert.equal((await call(`/api/roster-tasks/${legacy.id}/requirements`,manager,{revision:legacy.revision,requirements:old.body.requirements},'PUT')).response.status,200);
 });
 
 test('long-term managers can schedule off duty while field coordination remains restricted', async () => {

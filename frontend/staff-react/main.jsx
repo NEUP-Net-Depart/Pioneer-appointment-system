@@ -5,6 +5,7 @@ import { setWorkspaceSession, clearWorkspaceState } from './workspace-state.js';
 import './workspace.css';
 import { request } from './request.js';
 import { Attendance } from './Attendance';
+import {AttendanceManagement} from './AttendanceManagement.jsx';
 import { Members } from './Members.jsx';
 import { Permissions } from './Permissions.jsx';
 import { statusLabels } from '../../shared/constants.js';
@@ -22,6 +23,7 @@ import { staffPermission, staffViewAllowed, staffSceneAllowed } from '../../shar
 import { OfficeRoster } from './OfficeRoster';
 import { LeaveReview } from './LeaveReview';
 import { WorkspacePage } from './WorkspacePage';
+import { StaffingRequirements } from './StaffingRequirements.jsx';
 import './workspace-foundation.css';
 
 const roles = { technician: '维修人员', admin: '管理员', superadmin: '最高权限者' };
@@ -112,7 +114,9 @@ function Root() {
     ...(publishedView('rosters', 'roster') ? [{ id: 'roster', label: '班次与排班', group: '我的' }] : []),
     ...(staffPermission(effectiveUser, 'roster.repair.manage') ? [{ id: 'roster-manage', label: '维修排班管理', group: '值班管理' }] : []),
     ...(staffPermission(effectiveUser, 'roster.office.manage') ? [{ id: 'office-roster', label: '办公排班管理', group: '值班管理' }] : []),
+    ...(staffPermission(effectiveUser, 'roster.repair.configure') ? [{id:'staffing',label:'维修人员需求',group:'值班管理'}] : []),
     ...(staffPermission(effectiveUser, 'leave.review') ? [{ id: 'leave-review', label: '请假审批', group: '值班管理' }] : []),
+    ...(staffPermission(effectiveUser, 'attendance.correct') ? [{id:'attendance-manage',label:'考勤核查',group:'值班管理'}] : []),
     ...(field && staffPermission(effectiveUser, 'repair.summary.read') ? [{ id: 'staff', label: '预约记录', group: '今日工作' }] : []),
     ...(publishedView('members', 'members') ? [{ id: 'members', label: '成员管理', group: '平台管理' }] : []),
     ...(publishedView('roles', 'permissions') ? [{ id: 'permissions', label: '授权管理', group: '平台管理' }] : []),
@@ -144,6 +148,8 @@ function Root() {
   const moduleRoutes = [
     route('leave-review', <LeaveReview user={effectiveUser} onNavigate={navigate} />, staffPermission(effectiveUser, 'leave.review')),
     route('office-roster', <section className="roster-area"><OfficeRoster user={effectiveUser} /></section>, staffPermission(effectiveUser, 'roster.office.manage')),
+    route('staffing',<StaffingRequirements/>,staffPermission(effectiveUser,'roster.repair.configure')),
+    route('attendance-manage',<AttendanceManagement user={effectiveUser}/>,staffPermission(effectiveUser,'attendance.correct')),
     route('staff', <Records user={effectiveUser} />, workspaceLinks.some(entry => entry.id === 'staff')),
     route('stats', <Statistics />, workspaceLinks.some(entry => entry.id === 'stats')),
     route('settings', <AccountSettings user={effectiveUser} section={settingsSection} onNavigate={navigate} />),

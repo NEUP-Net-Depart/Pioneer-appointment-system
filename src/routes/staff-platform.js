@@ -3,6 +3,7 @@ import { json, readBody, fail, securityHeaders } from '../lib/http.js';
 function bodyWithRevision(body) { return body && typeof body === 'object' ? body : {}; }
 
 export const staffPlatformRoutes = [
+  ['GET', /^\/api\/attendance\/options$/, async context=>json(await context.services.staffPlatform.attendanceOptions(await context.role('technician'),context.query))],
   ['GET', /^\/api\/field\/home$/, async context => json(await context.services.field.home(await context.role('technician'), context.query))],
   ['GET', /^\/api\/field\/board$/, async context => json(await context.services.field.board(await context.role('technician'), context.query))],
   ['GET', /^\/api\/field\/appointments\/([^/]+)$/, async (context, match) => json(await context.services.field.detail(await context.role('technician'), decodeURIComponent(match[1])))],
@@ -55,6 +56,8 @@ export const staffPlatformRoutes = [
   ['GET', /^\/api\/roster-tasks\/options$/, async context => json(await context.services.staffPlatform.rosterOptions(await context.role('technician'), context.query))],
   ['GET', /^\/api\/roster-tasks\/([^/]+)\/availability$/, async (context, match) => json(await context.services.staffPlatform.taskAvailability(await context.role('technician'), decodeURIComponent(match[1])))],
   ['POST', /^\/api\/roster-tasks$/, async context => json(await context.services.staffPlatform.createRosterTask(await context.role('technician'), await readBody(context.request)), 201)],
+  ['GET', /^\/api\/roster-tasks\/([^/]+)\/requirements$/, async (context,match)=>json(await context.services.staffPlatform.rosterRequirements(await context.role('technician'),decodeURIComponent(match[1])))],
+  ['PUT', /^\/api\/roster-tasks\/([^/]+)\/requirements$/, async (context,match)=>json(await context.services.staffPlatform.rosterRequirements(await context.role('technician'),decodeURIComponent(match[1]),await readBody(context.request)))],
   ['PUT', /^\/api\/roster-tasks\/([^/]+)\/availability$/, async (context, match) => json(await context.services.staffPlatform.saveAvailability(await context.role('technician'), decodeURIComponent(match[1]), await readBody(context.request)))],
   ['GET', /^\/api\/roster-tasks\/([^/]+)\/roster$/, async (context, match) => json(await context.services.staffPlatform.rosterTaskState(await context.role('technician'), decodeURIComponent(match[1])))],
   ['POST', /^\/api\/rosters\/generate$/, async context => json(await context.services.staffPlatform.generate(await context.role('technician'), await readBody(context.request)), 201)],

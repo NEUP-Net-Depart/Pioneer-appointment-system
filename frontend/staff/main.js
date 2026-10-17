@@ -41,6 +41,8 @@ export function initStaffApplication({ onSession, onView, onLogout }) {
   }
   function navigate(view) {
     if (currentUser?.staffWorkflowEnabled && !staffViewAllowed(currentUser, view)) return;
+    // Enabled React routes do not need a hidden legacy DOM link to exist.
+    if(currentUser?.staffWorkflowEnabled){activeView=view;onView(view);return;}
     const link = document.querySelector(`[data-view-link="${view}"]`);
     if (!role || !link || link.hidden) return;
     if (link.dataset.platformPermission) platform.dataset.view = view;

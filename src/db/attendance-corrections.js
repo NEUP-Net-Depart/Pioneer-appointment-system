@@ -32,15 +32,22 @@ export function attendanceCorrections(db,{auditStatement,commandAuthorization}) 
     const key = [audit.actorMemberId,receipt.action,receipt.id,receipt.hash,marker];
     const authorization = commandAuthorization(audit);
     const gate = `EXISTS(SELECT 1 FROM operation_receipts WHERE actor_member_id=? AND action=? AND request_id=? AND payload_hash=? AND resource_ref=? AND result_status='pending')`;
+    const recordGuard=record.previous
+      ? {sql:'EXISTS(SELECT 1 FROM attendance_records WHERE id=? AND member_id=? AND event_id=? AND revision=?)',args:[record.id,record.memberId,record.eventId,record.previous.revision]}
+      : {sql:'NOT EXISTS(SELECT 1 FROM attendance_records WHERE dedupe_key=?)',args:[record.dedupeKey]};
+    const factStatement=record.previous
+      ? db.prepare(`UPDATE attendance_records SET occurred_at=?,recorded_at=?,revision=revision+1 WHERE id=? AND revision=? AND ${gate}`)
+        .bind(record.occurredAt,record.recordedAt,record.id,record.previous.revision,...key)
+      : db.prepare(`INSERT INTO attendance_records(id,member_id,event_id,dedupe_key,occurred_at,recorded_at,method,source_ref,primary_department_id_snapshot,primary_department_name_snapshot,identity_snapshot,non_scheduled)
+        SELECT ?,?,?,?,?,?,'manual',?,?,?,?,? WHERE ${gate}`)
+        .bind(record.id,record.memberId,record.eventId,record.dedupeKey,record.occurredAt,record.recordedAt,JSON.stringify(record.sourceRef || {}),record.departmentId || null,
+          record.departmentName || null,JSON.stringify(record.identitySnapshot),record.nonScheduled ? 1 : 0,...key);
     const statements = [db.prepare(`INSERT OR IGNORE INTO operation_receipts(actor_member_id,action,request_id,payload_hash,resource_ref,result_json,result_status,created_at)
       SELECT ?,?,?,?,?,'{}','pending',? WHERE (${fingerprintSql})=?
-      AND NOT EXISTS(SELECT 1 FROM attendance_records WHERE dedupe_key=?) AND date(?,'+8 hours')=? ${authorization.sql}`)
-      .bind(...key,record.recordedAt,...snapshotArgs(record.memberId,record.eventId,audit.actorMemberId,audit.businessDate,record.occurredAt),fingerprint,record.dedupeKey,record.recordedAt,audit.businessDate,...authorization.args),
-    db.prepare(`INSERT INTO attendance_records(id,member_id,event_id,dedupe_key,occurred_at,recorded_at,method,source_ref,primary_department_id_snapshot,primary_department_name_snapshot,identity_snapshot,non_scheduled)
-      SELECT ?,?,?,?,?,?,'manual',?,?,?,?,? WHERE ${gate}`)
-      .bind(record.id,record.memberId,record.eventId,record.dedupeKey,record.occurredAt,record.recordedAt,JSON.stringify(record.sourceRef || {}),record.departmentId || null,
-        record.departmentName || null,JSON.stringify(record.identitySnapshot),record.nonScheduled ? 1 : 0,...key),
-    auditStatement({...audit,sourceRef:{module:'attendance',type:'record',id:record.id},after:{memberId:record.memberId,eventId:record.eventId,occurredAt:record.occurredAt}},true),
+      AND ${recordGuard.sql} AND date(?,'+8 hours')=? ${authorization.sql}`)
+      .bind(...key,record.recordedAt,...snapshotArgs(record.memberId,record.eventId,audit.actorMemberId,audit.businessDate,record.occurredAt),fingerprint,...recordGuard.args,record.recordedAt,audit.businessDate,...authorization.args),
+    factStatement,
+    auditStatement({...audit,sourceRef:{module:'attendance',type:'record',id:record.id},before:record.previous || undefined,after:{memberId:record.memberId,eventId:record.eventId,occurredAt:record.occurredAt}},true),
     db.prepare(`UPDATE operation_receipts SET result_status='success',resource_ref=?,result_json=(${resultSql})
       WHERE actor_member_id=? AND action=? AND request_id=? AND payload_hash=? AND resource_ref=? AND result_status='pending'`)
       .bind(JSON.stringify({module:'attendance',type:'record',id:record.id}),record.id,...key)];

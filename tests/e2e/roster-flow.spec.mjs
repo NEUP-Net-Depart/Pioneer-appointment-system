@@ -10,6 +10,75 @@ async function expandGroup(page, name) {
 
 test.skip(process.env.E2E_FIELD !== 'true', 'Uses the isolated staff fixture');
 
+test('attendance managers correct historical time without altering identity and can export the same month',async({page,request})=>{
+  const ip={'CF-Connecting-IP':'192.0.2.197'};await page.setExtraHTTPHeaders(ip);
+  const login=await request.post('/api/auth/login',{headers:ip,data:{account:'root001',password:process.env.E2E_ROOT_PASSWORD}});
+  const headers={...ip,Authorization:`Bearer ${(await login.json()).token}`},day='2026-10-15';
+  const imported=await request.post('/api/members/import',{headers,data:{csv:'studentId,name,homeCampusId,departmentId\n20261990,考勤核查样例,campus-nanhu,dept-hardware',confirm:true}});expect(imported.ok(),await imported.text()).toBe(true);
+  const memberId=(await imported.json()).items[0].memberId;
+  const event=await request.post('/api/attendance/events',{headers,data:{type:'duty',businessDate:day,campusId:'campus-nanhu',startsAt:`${day}T08:00:00+08:00`,endsAt:`${day}T22:00:00+08:00`,requestId:crypto.randomUUID()}});
+  expect(event.ok(),await event.text()).toBe(true);
+  const saved=await request.post('/api/attendance/corrections',{headers,data:{memberId,eventId:(await event.json()).id,occurredAt:`${day}T09:00:00+08:00`,reason:'核查测试记录',requestId:crypto.randomUUID()}});
+  expect(saved.ok(),await saved.text()).toBe(true);const original=await saved.json();
+  await page.goto('/staff/');await page.locator('#login-id').fill('root001');await page.locator('#login-password').fill(process.env.E2E_ROOT_PASSWORD);await page.getByRole('button',{name:'进入系统'}).click();
+  await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();await expandGroup(page,'值班管理');await page.locator('.field-sidebar').getByRole('button',{name:'考勤核查',exact:true}).click();
+  await page.getByLabel('考勤月份',{exact:true}).fill(day.slice(0,7));
+  const row=page.locator('.attendance-history-list li').filter({hasText:'考勤核查样例'}).filter({hasText:day});await row.getByRole('button',{name:'修正时间',exact:true}).click();
+  const dialog=page.getByRole('dialog');await dialog.getByLabel('实际签到时间',{exact:true}).fill(`${day}T09:15`);await dialog.getByLabel('修正原因',{exact:true}).fill('核对线下登记时间');
+  await dialog.getByRole('button',{name:'关闭',exact:true}).click();await expect(dialog.getByText('修改尚未保存，是否放弃？',{exact:true})).toBeVisible();await dialog.getByRole('button',{name:'继续填写',exact:true}).click();await expect(dialog.getByLabel('修正原因',{exact:true})).toHaveValue('核对线下登记时间');
+  for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:`output/field-workflow/attendance-correction-${width}.png`,fullPage:true});}
+  await dialog.getByRole('button',{name:'确认保存考勤',exact:true}).click();await expect(dialog).not.toBeVisible();await expect(row).toContainText('09:15');
+  const records=await request.get(`/api/attendance?all=1&businessDate=${day}`,{headers});const record=(await records.json()).items.find(item=>item.id===original.id);expect(record.revision).toBe(original.revision+1);expect(record.identitySnapshot).toEqual(original.identitySnapshot);
+  const download=page.waitForEvent('download');await page.getByRole('button',{name:'导出本月汇总',exact:true}).click();expect((await download).suggestedFilename()).toBe(`考勤-${day.slice(0,7)}.csv`);
+});
+
+test('collection creation saves the chosen campus daily minimums before availability collection',async({page,request})=>{
+  await page.setExtraHTTPHeaders({'CF-Connecting-IP':'192.0.2.199'});
+  await page.goto('/staff/');await page.locator('#login-id').fill('root001');await page.locator('#login-password').fill(process.env.E2E_ROOT_PASSWORD);await page.getByRole('button',{name:'进入系统'}).click();
+  await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();await expandGroup(page,'值班管理');
+  await page.locator('.field-sidebar').getByRole('button',{name:'维修排班管理',exact:true}).click();
+  await page.getByRole('button',{name:'新建收集任务',exact:true}).click();
+  const dialog=page.getByRole('dialog');
+  await dialog.getByLabel('周一日期',{exact:true}).fill('2027-05-03');
+  await dialog.getByLabel('校区',{exact:true}).selectOption('campus-hunnan');
+  await dialog.getByRole('spinbutton',{name:'整周最低人数',exact:true}).fill('3');
+  await dialog.getByRole('button',{name:'应用到四个工作日',exact:true}).click();
+  await dialog.getByRole('spinbutton',{name:'周三最低人数',exact:true}).fill('5');
+  await dialog.getByLabel('填报截止',{exact:true}).fill('2027-05-02T18:00');
+  const responsePromise=page.waitForResponse(response=>response.url().endsWith('/api/roster-tasks') && response.request().method()==='POST');
+  await dialog.getByRole('button',{name:'创建收集任务',exact:true}).click();
+  const response=await responsePromise;expect(response.ok(),await response.text()).toBe(true);
+  const task=await response.json();expect(task.campusScope.campusIds).toEqual(['campus-hunnan']);
+  const login=await request.post('/api/auth/login',{headers:{'CF-Connecting-IP':'192.0.2.199'},data:{account:'root001',password:process.env.E2E_ROOT_PASSWORD}});
+  const saved=await request.get(`/api/roster-tasks/${task.id}/requirements`,{headers:{Authorization:`Bearer ${(await login.json()).token}`}});
+  const rows=(await saved.json()).requirements;expect(rows.map(row=>row.ordinaryMinimum)).toEqual([3,3,5,3]);expect(rows.every(row=>row.campusId==='campus-hunnan')).toBe(true);
+});
+
+test('staffing needs support a weekly default, per-day adjustments and responsive independent navigation',async({page,request})=>{
+  await page.setExtraHTTPHeaders({'CF-Connecting-IP':'192.0.2.198'});
+  const login=await request.post('/api/auth/login',{headers:{'CF-Connecting-IP':'192.0.2.198'},data:{account:'root001',password:process.env.E2E_ROOT_PASSWORD}});
+  const token=(await login.json()).token,headers={Authorization:`Bearer ${token}`};
+  const created=await request.post('/api/roster-tasks',{headers,data:{weekStart:'2027-04-05',campusId:'campus-nanhu',slotStart:'19:00',slotEnd:'21:00',deadline:'2027-04-04T10:00:00Z'}});
+  expect(created.ok(),await created.text()).toBe(true);const task=await created.json();
+  await page.goto('/staff/');await page.locator('#login-id').fill('root001');await page.locator('#login-password').fill(process.env.E2E_ROOT_PASSWORD);await page.getByRole('button',{name:'进入系统'}).click();
+  await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();await expandGroup(page,'值班管理');
+  await page.locator('.field-sidebar').getByRole('button',{name:'维修人员需求',exact:true}).click();
+  await page.getByRole('combobox',{name:'排班任务',exact:true}).selectOption(task.id);
+  await page.getByRole('spinbutton',{name:'普通人员最低人数',exact:true}).fill('4');
+  await page.getByRole('button',{name:'应用到整周工作日',exact:true}).click();
+  await expect(page.getByRole('spinbutton',{name:'2027-04-05普通人员最低人数',exact:true})).toHaveValue('4');
+  await page.getByRole('spinbutton',{name:'2027-04-06普通人员最低人数',exact:true}).fill('2');
+  for(const width of [320,390,768,1440]){
+    await page.setViewportSize({width,height:900});
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await page.screenshot({path:`output/field-workflow/staffing-needs-${width}.png`,fullPage:true});
+  }
+  await page.getByRole('button',{name:'保存人员需求',exact:true}).click();
+  await expect(page.getByText('需求已保存。已发布班表保持原样，待发布草稿需要重新校验。',{exact:true})).toBeVisible();
+  const saved=await request.get(`/api/roster-tasks/${task.id}/requirements`,{headers});
+  expect((await saved.json()).requirements.map(row=>row.ordinaryMinimum)).toEqual([4,2,4,4]);
+});
+
 test('off-duty leaders can prepare schedules without gaining field coordination', async ({ page, request }) => {
   await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': '192.0.2.120' });
   const root = await request.post('/api/auth/login', { data: { account: 'root001', password: process.env.E2E_ROOT_PASSWORD } }).then(response => response.json());

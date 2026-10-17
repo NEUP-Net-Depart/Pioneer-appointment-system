@@ -3,10 +3,13 @@ import { dateKey, nowIso } from '../platform/time.js';
 import { intersectScopes } from '../modules/authorization/scopes.js';
 import { rosterSwapCommands } from './roster-swaps.js';
 import { attendanceCorrections } from './attendance-corrections.js';
+import { rosterFingerprintSql } from './roster-fingerprint.js';
 
 const memberColumns = `m.id,m.name,m.student_id,m.home_campus_id,m.status,m.revision,m.created_at,m.updated_at`;
 const assignmentLeaveColumn = `(SELECT lr.status FROM roster_leave_facts lr WHERE lr.origin_assignment_id=COALESCE(da.origin_assignment_id,da.id) AND lr.member_id=da.member_id
   AND lr.status IN ('pending','approved') ORDER BY CASE lr.status WHEN 'approved' THEN 0 ELSE 1 END,lr.created_at DESC,lr.id DESC LIMIT 1) AS leave_status`;
+const rosterTaskColumns = `rt.*,(SELECT json_group_array(json_object('businessDate',business_date,'campusId',campus_id,'ordinaryMinimum',ordinary_minimum))
+  FROM (SELECT * FROM roster_staffing_requirements WHERE task_id=rt.id ORDER BY business_date,campus_id)) AS requirements_json`;
 
 function rows(result) { return result?.results || []; }
 function json(value, fallback) { return JSON.stringify(value ?? fallback); }
@@ -26,7 +29,8 @@ function assignment(row) {
     id: row.id, versionId: row.version_id, memberId: row.member_id, businessDate: row.business_date,
     campusId: row.campus_id, campusName: row.campus_name || '', dutyType: row.duty_type,
     startAt: row.start_at, endAt: row.end_at, revision: row.revision, roleKind: row.role_kind || '',
-    leaveStatus: row.leave_status || '', versionStatus: row.version_status || '', originAssignmentId: row.origin_assignment_id || '', previousAssignmentId: row.previous_assignment_id || ''
+    leaveStatus: row.leave_status || '', versionStatus: row.version_status || '', originAssignmentId: row.origin_assignment_id || '', previousAssignmentId: row.previous_assignment_id || '',
+    taskId:row.task_id || '',ruleVersion:row.rule_version || '',ordinaryMinimum:parseJson(row.input_snapshot_ref,{}).eligibility?.slots?.find(slot=>slot.businessDate===row.business_date && slot.campusId===row.campus_id && slot.startAt===row.start_at && slot.endAt===row.end_at)?.ordinaryMinimum
   } : null;
 }
 
@@ -525,12 +529,24 @@ export function staffPlatformRepository(db) {
     if (filters.memberId) { conditions.push('ar.member_id=?'); args.push(filters.memberId); }
     if (filters.businessDate) { conditions.push('e.business_date=?'); args.push(filters.businessDate); }
     if (filters.type) { conditions.push('e.type=?'); args.push(filters.type); }
+    if (filters.month) {conditions.push("e.business_date>=? AND e.business_date<date(?,'+1 month')");args.push(`${filters.month}-01`,`${filters.month}-01`);}
+    if (filters.departmentId) {conditions.push('ar.primary_department_id_snapshot=?');args.push(filters.departmentId);}
     if (filters.campusId) { conditions.push('e.campus_id=?'); args.push(filters.campusId); }
     if (filters.campusIds?.length) { conditions.push(`e.campus_id IN (${filters.campusIds.map(() => '?').join(',')})`); args.push(...filters.campusIds); }
     if (filters.after) { conditions.push('(ar.occurred_at<? OR (ar.occurred_at=? AND ar.id<?))'); args.push(filters.after.occurredAt,filters.after.occurredAt,filters.after.id); }
     const result = await db.prepare(`SELECT ar.*,e.type,e.business_date,e.campus_id FROM attendance_records ar JOIN attendance_events e ON e.id=ar.event_id
       ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''} ORDER BY ar.occurred_at DESC,ar.id DESC LIMIT 101`).bind(...args).all();
     return rows(result).map(attendanceRecord);
+  }
+  async function attendanceById(id) {return attendanceRecord(await db.prepare('SELECT ar.*,e.type,e.business_date,e.campus_id FROM attendance_records ar JOIN attendance_events e ON e.id=ar.event_id WHERE ar.id=?').bind(id).first());}
+  async function attendanceOptions(filters) {
+    const result=await db.batch([
+      db.prepare('SELECT * FROM attendance_events WHERE business_date=? AND campus_id=? ORDER BY starts_at,id LIMIT 101').bind(filters.businessDate,filters.campusId),
+      db.prepare(`SELECT m.*,mm.department_id,d.name AS department_name FROM members m LEFT JOIN member_department_memberships mm ON mm.member_id=m.id
+        AND mm.is_primary=1 AND mm.effective_from<=? AND (mm.effective_to IS NULL OR mm.effective_to>?) LEFT JOIN departments d ON d.id=mm.department_id
+        WHERE ?<>'' AND (instr(m.name,?)>0 OR instr(COALESCE(m.student_id,''),?)>0) ORDER BY m.name,m.id LIMIT 51`).bind(filters.businessDate,filters.businessDate,filters.q,filters.q,filters.q)
+    ]);
+    return {events:rows(result[0]).map(event),members:rows(result[1]).map(row=>({memberId:row.id,name:row.name,studentId:row.student_id,departmentId:row.department_id,departmentName:row.department_name}))};
   }
 
   async function attendanceExport(filters = {}) {
@@ -612,7 +628,8 @@ export function staffPlatformRepository(db) {
     for (let offset = 0; offset < memberIds.length; offset += 80) {
       const ids = memberIds.slice(offset, offset + 80), placeholders = ids.map(() => '?').join(',');
       const results = await db.batch([
-        db.prepare(`SELECT m.id,m.name,m.status,MAX(CASE WHEN sa.status='enabled' THEN 1 ELSE 0 END) AS enabled
+        db.prepare(`SELECT m.id,m.name,m.status,MAX(CASE WHEN sa.status='enabled' THEN 1 ELSE 0 END) AS enabled,
+          (SELECT role FROM staff_accounts WHERE member_id=m.id AND status='enabled' ORDER BY account LIMIT 1) AS role
           FROM members m LEFT JOIN staff_accounts sa ON sa.member_id=m.id WHERE m.id IN (${placeholders}) GROUP BY m.id`).bind(...ids),
         db.prepare(`SELECT DISTINCT sa.member_id,g.campus FROM staff_accounts sa JOIN staff_campus_grants g ON g.account=sa.account
           WHERE sa.member_id IN (${placeholders}) AND sa.status='enabled'`).bind(...ids),
@@ -621,9 +638,12 @@ export function staffPlatformRepository(db) {
         db.prepare(`SELECT da.*,rv.task_id FROM duty_assignments da JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published'
           WHERE da.member_id IN (${placeholders}) AND da.business_date>=? AND da.business_date<=date(?,'+6 day')`).bind(...ids,weekStart,weekStart),
         db.prepare(`SELECT mm.*,d.name AS department_name FROM member_department_memberships mm JOIN departments d ON d.id=mm.department_id
-          WHERE mm.member_id IN (${placeholders}) AND mm.effective_from<=date(?,'+6 day') AND (mm.effective_to IS NULL OR mm.effective_to>?) ORDER BY mm.is_primary DESC,d.name`).bind(...ids,weekStart,weekStart)
+          WHERE mm.member_id IN (${placeholders}) AND mm.effective_from<=date(?,'+6 day') AND (mm.effective_to IS NULL OR mm.effective_to>?) ORDER BY mm.is_primary DESC,d.name`).bind(...ids,weekStart,weekStart),
+        db.prepare(`SELECT mr.member_id,mr.effective_from AS binding_from,mr.effective_to AS binding_to,mr.scope_bindings,rg.*
+          FROM member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1 JOIN role_grants rg ON rg.role_id=r.id
+          WHERE mr.member_id IN (${placeholders}) AND mr.effective_from<=date(?,'+6 day') AND (mr.effective_to IS NULL OR mr.effective_to>?)`).bind(...ids,weekStart,weekStart)
       ]);
-      for (const row of rows(results[0])) facts.set(row.id, { memberId: row.id, name: row.name, active: row.status === 'active' && !!row.enabled, campuses: [], profiles: [], assignments: [], departmentNames: [], memberships: [] });
+      for (const row of rows(results[0])) facts.set(row.id, { memberId: row.id, name: row.name, role:row.role, active: row.status === 'active' && !!row.enabled, campuses: [], profiles: [], assignments: [], departmentNames: [], memberships: [], grants:[] });
       for (const row of rows(results[1])) facts.get(row.member_id)?.campuses.push(row.campus);
       for (const row of rows(results[2])) facts.get(row.member_id)?.profiles.push(profile(row));
       for (const row of rows(results[3])) facts.get(row.member_id)?.assignments.push({ ...assignment(row), taskId: row.task_id });
@@ -631,11 +651,14 @@ export function staffPlatformRepository(db) {
         const fact = facts.get(row.member_id);
         if (fact) { fact.memberships.push(membership(row)); if (!fact.departmentNames.includes(row.department_name)) fact.departmentNames.push(row.department_name); }
       }
+      for (const row of rows(results[5])) facts.get(row.member_id)?.grants.push({id:row.id,roleId:row.role_id,permissionCode:row.permission_code,
+        scope:intersectScopes(parseJson(row.scope_spec,{}),parseJson(row.scope_bindings,{})),conditions:parseJson(row.condition_spec,[]),validity:parseJson(row.validity_spec,{}),
+        binding:{effectiveFrom:row.binding_from,effectiveTo:row.binding_to}});
     }
     return [...facts.values()];
   }
   async function rosterTaskById(id) {
-    return rosterTask(await db.prepare('SELECT * FROM roster_tasks WHERE id=?').bind(id).first());
+    return rosterTask(await db.prepare(`SELECT ${rosterTaskColumns} FROM roster_tasks rt WHERE rt.id=?`).bind(id).first());
   }
   async function memberCampuses(memberId) {
     return rows(await db.prepare(`SELECT DISTINCT scg.campus FROM staff_campus_grants scg
@@ -643,12 +666,28 @@ export function staffPlatformRepository(db) {
   }
   async function createRosterTask(input, actorMemberId) {
     const id = input.id || crypto.randomUUID(); const at = nowIso();
-    await db.prepare(`INSERT INTO roster_tasks(id,week_start,campus_scope,slot_start,slot_end,member_ids,deadline,description,created_by_member_id,created_at,duty_type) VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
-      .bind(id,input.weekStart,json(input.campusScope,{}),input.slotStart,input.slotEnd,json(input.memberIds,[]),input.deadline,input.description || '',actorMemberId,at,input.dutyType || 'repair').run();
-    return rosterTask(await db.prepare('SELECT * FROM roster_tasks WHERE id=?').bind(id).first());
+    await db.batch([db.prepare(`INSERT INTO roster_tasks(id,week_start,campus_scope,slot_start,slot_end,member_ids,deadline,description,created_by_member_id,created_at,duty_type,rule_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .bind(id,input.weekStart,json(input.campusScope,{}),input.slotStart,input.slotEnd,json(input.memberIds,[]),input.deadline,input.description || '',actorMemberId,at,input.dutyType || 'repair',input.dutyType==='office' ? 'office-daily-v1' : 'repair-minimum-v2'),
+      ...(input.requirements || []).map(item=>db.prepare('INSERT INTO roster_staffing_requirements(task_id,business_date,campus_id,ordinary_minimum) VALUES(?,?,?,?)').bind(id,item.businessDate,item.campusId,item.ordinaryMinimum))]);
+    return rosterTaskById(id);
   }
-  function rosterTask(row) { return row ? { id: row.id, dutyType: row.duty_type || 'repair', weekStart: row.week_start, campusScope: parseJson(row.campus_scope,{}), slotStart: row.slot_start, slotEnd: row.slot_end, memberIds: parseJson(row.member_ids,[]), deadline: row.deadline, description: row.description, revision: row.revision, createdAt: row.created_at } : null; }
-  async function listRosterTasks() { const result = await db.prepare('SELECT * FROM roster_tasks ORDER BY week_start DESC,id DESC LIMIT 101').all(); return rows(result).map(rosterTask); }
+  function rosterTask(row) { return row ? { id: row.id, dutyType: row.duty_type || 'repair', ruleVersion:row.rule_version || 'legacy', requirements:parseJson(row.requirements_json,[]), weekStart: row.week_start, campusScope: parseJson(row.campus_scope,{}), slotStart: row.slot_start, slotEnd: row.slot_end, memberIds: parseJson(row.member_ids,[]), deadline: row.deadline, description: row.description, revision: row.revision, createdAt: row.created_at } : null; }
+  async function listRosterTasks() { const result = await db.prepare(`SELECT ${rosterTaskColumns} FROM roster_tasks rt ORDER BY rt.week_start DESC,rt.id DESC LIMIT 101`).all(); return rows(result).map(rosterTask); }
+  async function saveRosterRequirements(task,input,auditRecord) {
+    const authorization=commandAuthorization(auditRecord);
+    const guard="EXISTS(SELECT 1 FROM roster_tasks WHERE id=? AND revision=?)";
+    // Guard every dependent write with the new revision and the authorized
+    // command marker. A stale command must not replace another editor's demand.
+    const marker=crypto.randomUUID();
+    const gate=`${guard} AND EXISTS(SELECT 1 FROM audit_events WHERE id=? AND action='rosters.requirements.updated')`;
+    const statements=[db.prepare(`UPDATE roster_tasks SET revision=revision+1,rule_version='repair-minimum-v2' WHERE id=? AND revision=? ${authorization.sql}`).bind(task.id,input.revision,...authorization.args),
+      auditStatement({...auditRecord,id:marker},true),
+      db.prepare(`DELETE FROM roster_staffing_requirements WHERE task_id=? AND ${gate}`).bind(task.id,task.id,input.revision+1,marker)];
+    for(const item of input.requirements) statements.push(db.prepare(`INSERT INTO roster_staffing_requirements(task_id,business_date,campus_id,ordinary_minimum) SELECT ?,?,?,? WHERE ${gate}`)
+      .bind(task.id,item.businessDate,item.campusId,item.ordinaryMinimum,task.id,input.revision+1,marker));
+    const result=await db.batch(statements);
+    return result[0]?.meta?.changes ? rosterTaskById(task.id) : null;
+  }
   async function saveAvailability(taskId, memberId, input) {
     const id = input.id || crypto.randomUUID();
     await db.prepare(`INSERT INTO availability(id,task_id,member_id,business_date,start_at,end_at,campus_id,revision) VALUES(?,?,?,?,?,?,?,0)
@@ -706,18 +745,21 @@ export function staffPlatformRepository(db) {
         SELECT ?,?,?,? WHERE ${guard}`)
         .bind(`duty-role-${assignmentId}-${item.roleKind}`,assignmentId,item.roleKind,json(item.effectiveRange || {}),id,revision));
     }
-    statements.push(db.prepare(`UPDATE roster_versions SET version=version+1,validation_result=?,solver_status=?,input_snapshot_ref=json_set(json_remove(input_snapshot_ref,'$.optimization'),'$.lockedMemberIds',json(?),'$.manuallyAdjusted',json('true')) WHERE id=? AND version=? AND status='draft'`)
-      .bind(json(validation,{}),validation.valid ? 'feasible' : 'needs_review',json((input.assignments || []).filter(item => item.locked).map(item => item.memberId),[]),id,revision));
+    statements.push(db.prepare(`UPDATE roster_versions SET version=version+1,validation_result=?,solver_status=?,rule_version=COALESCE(?,rule_version),input_snapshot_ref=json_set(json_remove(input_snapshot_ref,'$.optimization'),'$.lockedMemberIds',json(?),'$.manuallyAdjusted',json('true'),'$.eligibility',json(COALESCE(?,json_extract(input_snapshot_ref,'$.eligibility'),'{}'))) WHERE id=? AND version=? AND status='draft'`)
+      .bind(json(validation,{}),validation.valid ? 'feasible' : 'needs_review',input.ruleVersion || null,json((input.assignments || []).filter(item => item.locked).map(item => item.memberId),[]),input.eligibility ? json(input.eligibility,{}) : null,id,revision));
     const result = await db.batch(statements);
     if (!result.at(-1)?.meta?.changes) return null;
     return rosterVersionById(id);
   }
-  async function publishRoster(id, revision, auditRecord) {
+  async function rosterFingerprint(taskId) {return (await db.prepare(rosterFingerprintSql).bind(taskId).first()).fingerprint;}
+  async function publishRoster(id, revision, auditRecord, fingerprint) {
     const at = nowIso();
     const current = await db.prepare(`SELECT task_id FROM roster_versions WHERE id=? AND version=? AND status='draft'`).bind(id,revision).first();
     if (!current) return null;
+    const authorization=commandAuthorization(auditRecord);
     const result = await db.batch([
-      db.prepare(`UPDATE roster_versions SET status='published',published_at=? WHERE id=? AND version=? AND status='draft' AND COALESCE(json_extract(validation_result,'$.valid'),0)=1`).bind(at,id,revision),
+      db.prepare(`UPDATE roster_versions SET status='published',published_at=? WHERE id=? AND version=? AND status='draft' AND COALESCE(json_extract(validation_result,'$.valid'),0)=1
+        ${fingerprint ? `AND (${rosterFingerprintSql})=?` : ''} ${authorization.sql}`).bind(at,id,revision,...(fingerprint ? [current.task_id,fingerprint] : []),...authorization.args),
       ...(auditRecord ? [auditStatement({ ...auditRecord, occurredAt: at }, true)] : []),
       db.prepare(`UPDATE roster_versions SET status='superseded' WHERE task_id=? AND status='published' AND id<>? AND changes()>0`).bind(current.task_id,id)
     ]);
@@ -728,18 +770,18 @@ export function staffPlatformRepository(db) {
     return rows(result).map(assignment);
   }
   async function assignmentById(id) {
-    const row = await db.prepare(`SELECT da.*,c.name AS campus_name,dr.role_kind,rv.status AS version_status,${assignmentLeaveColumn} FROM duty_assignments da JOIN campuses c ON c.id=da.campus_id
+    const row = await db.prepare(`SELECT da.*,c.name AS campus_name,dr.role_kind,rv.status AS version_status,rv.task_id,rv.rule_version,rv.input_snapshot_ref,${assignmentLeaveColumn} FROM duty_assignments da JOIN campuses c ON c.id=da.campus_id
       JOIN roster_versions rv ON rv.id=da.version_id LEFT JOIN duty_roles dr ON dr.assignment_id=da.id WHERE da.id=?`).bind(id).first();
     return assignment(row);
   }
   async function effectiveAssignment(id, memberId) {
-    const row = await db.prepare(`SELECT da.*,c.name AS campus_name,dr.role_kind,rv.status AS version_status,${assignmentLeaveColumn}
+    const row = await db.prepare(`SELECT da.*,c.name AS campus_name,dr.role_kind,rv.status AS version_status,rv.task_id,rv.rule_version,rv.input_snapshot_ref,${assignmentLeaveColumn}
       FROM duty_assignments da JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published' JOIN campuses c ON c.id=da.campus_id
       LEFT JOIN duty_roles dr ON dr.assignment_id=da.id WHERE COALESCE(da.origin_assignment_id,da.id)=(SELECT COALESCE(original.origin_assignment_id,original.id) FROM duty_assignments original WHERE original.id=?) AND da.member_id=? LIMIT 1`).bind(id,memberId).first();
     return row ? assignment(row) : assignmentById(id);
   }
   async function swapCandidates(source) {
-    const result = await db.prepare(`SELECT da.*,c.name AS campus_name,m.name AS member_name,dr.role_kind,rv.status AS version_status
+    const result = await db.prepare(`SELECT da.*,c.name AS campus_name,m.name AS member_name,dr.role_kind,rv.status AS version_status,rv.task_id,rv.rule_version,rv.input_snapshot_ref
       FROM duty_assignments da JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published'
       JOIN campuses c ON c.id=da.campus_id JOIN members m ON m.id=da.member_id AND m.status='active'
       LEFT JOIN duty_roles dr ON dr.assignment_id=da.id
@@ -802,7 +844,8 @@ export function staffPlatformRepository(db) {
     return { scheduled: count(facts), expected: count(expected), afterApproval: count(after),
       leaders: count(expected.filter(item => item.is_lead)), leadersAfterApproval: count(after.filter(item => item.is_lead)),
       checkedIn: !!applicant?.checked_in, arrived: count(facts.filter(item => item.checked_in)),
-      needsReplacement: !after.length || target.dutyType === 'repair' && !after.some(item => item.is_lead) };
+      ordinaryAfterApproval:count(after.filter(item=>!item.is_lead)),ordinaryMinimum:target.ordinaryMinimum ?? null,
+      needsReplacement: !after.length || target.dutyType === 'repair' && (!after.some(item => item.is_lead) || target.ruleVersion==='repair-minimum-v2' && count(after.filter(item=>!item.is_lead))<(target.ordinaryMinimum ?? 1)) };
   }
   async function updateLeave(id, status, actorMemberId, revision, note = '', auditRecord) {
     const authorization = commandAuthorization(auditRecord);
@@ -834,7 +877,7 @@ export function staffPlatformRepository(db) {
     return (await db.prepare("SELECT COUNT(*) AS total FROM swap_requests WHERE to_member_id=? AND status='pending'").bind(memberId).first()).total;
   }
   async function swapCoverage(weekStart) {
-    return rows(await db.prepare(`SELECT da.*,c.name AS campus_name,dr.role_kind,rv.status AS version_status,${assignmentLeaveColumn}
+    return rows(await db.prepare(`SELECT da.*,c.name AS campus_name,dr.role_kind,rv.status AS version_status,rv.task_id,rv.rule_version,rv.input_snapshot_ref,${assignmentLeaveColumn}
       FROM duty_assignments da JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published'
       JOIN campuses c ON c.id=da.campus_id LEFT JOIN duty_roles dr ON dr.assignment_id=da.id
       WHERE da.business_date>=? AND da.business_date<=date(?,'+6 day') ORDER BY da.id`).bind(weekStart,weekStart).all()).map(assignment);
@@ -843,5 +886,5 @@ export function staffPlatformRepository(db) {
   return { effectiveAssignment, effectiveLeaveAssignment: effectiveAssignment, swapFingerprint, swapCoverage, pendingSwapInvitations, accountRow, accountForMember, ensureMember, memberRow, memberships, membershipsForMembers, profiles, profileHistory, saveWorkProfile, grants, todayDuties, authorizationContext, listMembers, updateMember, listMemberships, addMembership, endMembership,
     listCampuses, listDepartments, listLocations, listPresence, activeRepair, importMembers, dutyEvent, latestIntake, repairIdentitySnapshot, fieldPeople, fieldContexts,
     roleBindings, permissionDefinitions, listRoles, createRole, updateRole, bindRoles, modules, createEvent, issueToken, findEventByToken, findAttendanceByDedupe, insertAttendance, listAttendance, attendanceExport, attendanceCorrectionFingerprint, correctAttendance, setPresence,
-    attendanceEvent, eventById: attendanceEvent, createReceipt, claimReceipt, releaseReceipt, receipt, audit, listAudit, leaveImpact, officeRosterMemberIds, rosterMemberFacts, rosterTaskById, memberCampuses, createRosterTask, listRosterTasks, saveAvailability, availability, createRosterVersion, rosterVersionById, rosterVersionsForTask, versionAssignments, updateRosterDraft, publishRoster, listAssignments, assignmentById, swapCandidates, createLeave, leaveById, listLeaves, updateLeave, createSwap, swapById, listSwaps, updateSwap };
+    attendanceEvent, eventById: attendanceEvent, attendanceById, attendanceOptions, createReceipt, claimReceipt, releaseReceipt, receipt, audit, listAudit, leaveImpact, officeRosterMemberIds, rosterMemberFacts, rosterTaskById, memberCampuses, createRosterTask, listRosterTasks, saveRosterRequirements, saveAvailability, availability, createRosterVersion, rosterVersionById, rosterVersionsForTask, versionAssignments, updateRosterDraft, rosterFingerprint, publishRoster, listAssignments, assignmentById, swapCandidates, createLeave, leaveById, listLeaves, updateLeave, createSwap, swapById, listSwaps, updateSwap };
 }

@@ -19,7 +19,11 @@ const fingerprintSql = `WITH selected AS (SELECT * FROM duty_assignments WHERE i
     'members',(SELECT json_group_array(json_array(id,name,status,revision)) FROM (SELECT * FROM members WHERE id IN (SELECT member_id FROM selected) ORDER BY id)),
     'accounts',(SELECT json_group_array(json_array(account,member_id,status,auth_version)) FROM (SELECT * FROM staff_accounts WHERE member_id IN (SELECT member_id FROM selected) ORDER BY account)),
     'campuses',(SELECT json_group_array(json_array(account,campus)) FROM (SELECT * FROM staff_campus_grants WHERE account IN (SELECT account FROM staff_accounts WHERE member_id IN (SELECT member_id FROM selected)) ORDER BY account,campus)),
-    'profiles',(SELECT json_group_array(json_array(id,member_id,profile_code,effective_from,effective_to,revision)) FROM (SELECT * FROM member_work_profiles WHERE member_id IN (SELECT member_id FROM selected) ORDER BY id))
+    'profiles',(SELECT json_group_array(json_array(id,member_id,profile_code,effective_from,effective_to,revision)) FROM (SELECT * FROM member_work_profiles WHERE member_id IN (SELECT member_id FROM selected) ORDER BY id)),
+    'memberships',(SELECT json_group_array(json_array(id,department_id,effective_from,effective_to,revision)) FROM (SELECT * FROM member_department_memberships WHERE member_id IN (SELECT member_id FROM selected) ORDER BY id)),
+    'bindings',(SELECT json_group_array(json_array(id,role_id,scope_bindings,effective_from,effective_to)) FROM (SELECT * FROM member_roles WHERE member_id IN (SELECT member_id FROM selected) ORDER BY id)),
+    'grants',(SELECT json_group_array(json_array(id,permission_code,scope_spec,condition_spec,validity_spec)) FROM (SELECT * FROM role_grants WHERE role_id IN (SELECT role_id FROM member_roles WHERE member_id IN (SELECT member_id FROM selected)) ORDER BY id)),
+    'roleDefinitions',(SELECT json_group_array(json_array(id,enabled,revision)) FROM (SELECT * FROM roles WHERE id IN (SELECT role_id FROM member_roles WHERE member_id IN (SELECT member_id FROM selected)) ORDER BY id))
   ) AS fingerprint`;
 
 const storedResultSql = `SELECT json_object('id',id,'from_assignment_id',from_assignment_id,'to_assignment_id',to_assignment_id,
