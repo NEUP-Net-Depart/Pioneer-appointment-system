@@ -1,5 +1,5 @@
 export const CONTRACT_VERSION = 'staff-platform.v1';
-export const SCHEMA_VERSION = '0021';
+export const SCHEMA_VERSION = '0022';
 
 export const errorCodes = {
   VALIDATION_ERROR: 'VALIDATION_ERROR',

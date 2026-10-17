@@ -23,7 +23,7 @@ import { staffPermission, staffViewAllowed, staffSceneAllowed } from '../../shar
 import { OfficeRoster } from './OfficeRoster';
 import { LeaveReview } from './LeaveReview';
 import { WorkspacePage } from './WorkspacePage';
-import { StaffingRequirements } from './StaffingRequirements.jsx';
+import { RosterWorkflow } from './RosterWorkflow.jsx';
 import './workspace-foundation.css';
 
 const roles = { technician: '维修人员', admin: '管理员', superadmin: '最高权限者' };
@@ -112,9 +112,8 @@ function Root() {
     ...(field ? field.contexts.filter(context => staffSceneAllowed(effectiveUser, field, context.id)).map(context => ({ ...context, id: `scene:${context.id}`, group: '今日工作' })) : [{ id: 'workbench', label: '工作台', group: '今日工作' }]),
     ...(field ? [{ id: 'scene:mine', label: '个人中心', group: '我的' }] : []),
     ...(publishedView('rosters', 'roster') ? [{ id: 'roster', label: '班次与排班', group: '我的' }] : []),
-    ...(staffPermission(effectiveUser, 'roster.repair.manage') ? [{ id: 'roster-manage', label: '维修排班管理', group: '值班管理' }] : []),
+    ...(staffPermission(effectiveUser, 'roster.repair.manage') || staffPermission(effectiveUser,'roster.repair.configure') ? [{ id: 'roster-manage', label: '维修排班管理', group: '值班管理' }] : []),
     ...(staffPermission(effectiveUser, 'roster.office.manage') ? [{ id: 'office-roster', label: '办公排班管理', group: '值班管理' }] : []),
-    ...(staffPermission(effectiveUser, 'roster.repair.configure') ? [{id:'staffing',label:'维修人员需求',group:'值班管理'}] : []),
     ...(staffPermission(effectiveUser, 'leave.review') ? [{ id: 'leave-review', label: '请假审批', group: '值班管理' }] : []),
     ...(staffPermission(effectiveUser, 'attendance.correct') ? [{id:'attendance-manage',label:'考勤核查',group:'值班管理'}] : []),
     ...(field && staffPermission(effectiveUser, 'repair.summary.read') ? [{ id: 'staff', label: '预约记录', group: '今日工作' }] : []),
@@ -144,11 +143,11 @@ function Root() {
   const visible = view => page === view;
   const route = (view, child, allowed = true) => allowed && staffViewAllowed(effectiveUser, view) && visited.includes(view) ? <ActivityContext.Provider key={view} value={visible(view)}><WorkspacePage route={view} active={visible(view)}>{child}</WorkspacePage></ActivityContext.Provider> : null;
   const fieldRoute = route('workbench', <FieldApp initial={field} active={visible('workbench')} onNavigate={navigate} requestedScene={workScene} onSceneChange={setWorkScene} onContextChange={setField} workspaceLinks={workspaceLinks} />);
-  const rosterRoute = route('roster', <RosterArea user={effectiveUser} section={rosterSection} requestSignal={rosterRequestSignal} />, published.has('rosters') || staffPermission(effectiveUser, 'roster.repair.manage'));
+  const rosterRoute = route('roster', <RosterArea user={effectiveUser} section={rosterSection} requestSignal={rosterRequestSignal} />, published.has('rosters') || staffPermission(effectiveUser, 'roster.repair.manage') || staffPermission(effectiveUser,'roster.repair.configure'));
   const moduleRoutes = [
     route('leave-review', <LeaveReview user={effectiveUser} onNavigate={navigate} />, staffPermission(effectiveUser, 'leave.review')),
     route('office-roster', <section className="roster-area"><OfficeRoster user={effectiveUser} /></section>, staffPermission(effectiveUser, 'roster.office.manage')),
-    route('staffing',<StaffingRequirements/>,staffPermission(effectiveUser,'roster.repair.configure')),
+    route('staffing',<RosterWorkflow user={effectiveUser}/>,staffPermission(effectiveUser,'roster.repair.configure')),
     route('attendance-manage',<AttendanceManagement user={effectiveUser}/>,staffPermission(effectiveUser,'attendance.correct')),
     route('staff', <Records user={effectiveUser} />, workspaceLinks.some(entry => entry.id === 'staff')),
     route('stats', <Statistics />, workspaceLinks.some(entry => entry.id === 'stats')),

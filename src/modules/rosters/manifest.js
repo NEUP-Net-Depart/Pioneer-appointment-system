@@ -1,11 +1,10 @@
 export const rostersManifest = {
-  code: 'rosters', version: '1.7.0', contractVersion: '1', requiredSchemaVersion: '0021',
+  code: 'rosters', version: '1.8.0', contractVersion: '1', requiredSchemaVersion: '0022',
   dependencies: ['identity@1','organization@1','duty@1'], releaseState: 'ready',
   permissions: ['roster.read','roster.repair.manage','roster.office.manage','roster.repair.configure','leave.review'],
-  routes: ['/api/roster-tasks','/api/rosters','/api/swaps','/api/leaves'], navigation: [{ id: 'rosters', path: '/staff/rosters', title: '排班', permission: 'roster.read' },
+  routes: ['/api/roster-tasks','/api/roster-series','/api/me/availability-preferences','/api/rosters','/api/swaps','/api/leaves'], navigation: [{ id: 'rosters', path: '/staff/rosters', title: '排班', permission: 'roster.read' },
     { id: 'roster-manage', path: '/staff/roster-manage', title: '维修排班管理', permission: 'roster.repair.manage' },
     { id: 'office-roster', path: '/staff/office-roster', title: '办公排班管理', permission: 'roster.office.manage' },
-    { id: 'leave-review', path: '/staff/leave-review', title: '请假审批', permission: 'leave.review' },
-    { id: 'staffing', path: '/staff/staffing', title: '维修人员需求', permission: 'roster.repair.configure' }],
-  attendancePolicies: [], workbenchProviders: ['rosters.pending'], reports: ['rosters.coverage'], auditActions: ['rosters.requirements.updated','rosters.generated','rosters.updated','rosters.published','rosters.leave.created','rosters.leave.reviewed','rosters.leave.withdrawn','rosters.swap.created','rosters.swap.decided']
+    { id: 'leave-review', path: '/staff/leave-review', title: '请假审批', permission: 'leave.review' }],
+  attendancePolicies: [], workbenchProviders: ['rosters.pending'], reports: ['rosters.coverage'], auditActions: ['rosters.task.created','rosters.collection.closed','rosters.collection.reopened','rosters.participants.added','rosters.availability.submitted','rosters.series.updated','rosters.requirements.updated','rosters.generated','rosters.revised','rosters.updated','rosters.published','rosters.leave.created','rosters.leave.reviewed','rosters.leave.withdrawn','rosters.swap.created','rosters.swap.decided']
 };

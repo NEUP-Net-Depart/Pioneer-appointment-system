@@ -4,14 +4,20 @@ import { validateEnv } from './lib/env.js';
 import { fail, HttpError, json } from './lib/http.js';
 import { conflictMessage } from './db/errors.js';
 
-export async function handleRequest(request, env) {
+let lastRosterAutomation=0;
+export async function handleRequest(request, env, execution={}) {
   let context;
   try {
     validateEnv(env);
     const origin = request.headers.get('origin');
     if (['POST','PATCH','DELETE'].includes(request.method) && origin && origin !== new URL(request.url).origin) fail(403, '不允许跨站操作');
     context = createContext(request, env);
-    return await dispatch(context);
+    const response=await dispatch(context);
+    if(response.ok&&env.STAFF_WORKFLOW_ENABLED==='true'&&context.url.pathname==='/api/roster-tasks'&&execution.waitUntil&&Date.now()-lastRosterAutomation>60000) {
+      lastRosterAutomation=Date.now();
+      execution.waitUntil(context.services.staffPlatform.processRosterAutomation().catch(error=>console.error('Roster automation failed',error.name)));
+    }
+    return response;
   } catch (error) {
     if (error instanceof HttpError) {
       const code = error.code || (error.status === 401 ? 'SESSION_EXPIRED' : error.status === 403 ? 'PERMISSION_REQUIRED' : error.status === 409 ? 'REVISION_CONFLICT' : error.status === 400 ? 'VALIDATION_ERROR' : undefined);

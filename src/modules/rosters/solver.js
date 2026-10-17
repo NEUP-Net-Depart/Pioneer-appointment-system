@@ -12,6 +12,7 @@ function weekKey(value) {
 }
 
 function availableFor(member, slot) {
+  if (slot.manualOverride === true && (member.manualSlots || []).some(item=>slotKey(item)===slotKey(slot))) return true;
   return (member.available || []).some(window => window.businessDate === slot.businessDate &&
     window.startAt <= slot.startAt && window.endAt >= slot.endAt && (!window.campusId || window.campusId === slot.campusId));
 }
@@ -96,10 +97,11 @@ export function validateRoster(result, input) {
   for (const item of result.assignments || []) {
     const member = (input.members || []).find(candidate => candidate.memberId === item.memberId);
     const slot = (input.slots || []).find(candidate => slotKey(candidate) === slotKey(item));
-    if (!member || !slot || !availableFor(member, item)) errors.push({ code: 'MEMBER_UNAVAILABLE', memberId: item.memberId, slot: item });
+    const preserved=(input.preservedAssignments || []).some(previous=>key(previous)===key(item)&&(previous.roleKind || '')===(item.roleKind || '')&&(previous.dutyType || 'repair')===(item.dutyType || 'repair'));
+    if (!slot || !preserved && (!member || !availableFor(member, item))) errors.push({ code: 'MEMBER_UNAVAILABLE', memberId: item.memberId, slot: item });
     const office = slot?.dutyType === 'office';
-    if (item.roleKind && (office ? item.roleKind !== 'coordinator' : item.roleKind !== 'repair_lead' || !member || !leadFor(member, item))) errors.push({ code: 'LEAD_INELIGIBLE', memberId: item.memberId });
-    if (pooled && member && (item.roleKind === 'repair_lead') !== (member.pool === 'lead')) errors.push({code:'POOL_MISMATCH',memberId:item.memberId});
+    if (!preserved && item.roleKind && (office ? item.roleKind !== 'coordinator' : item.roleKind !== 'repair_lead' || !member || !leadFor(member, item))) errors.push({ code: 'LEAD_INELIGIBLE', memberId: item.memberId });
+    if (!preserved && pooled && member && (item.roleKind === 'repair_lead') !== (member.pool === 'lead')) errors.push({code:'POOL_MISMATCH',memberId:item.memberId});
     if (item.dutyType && item.dutyType !== (slot?.dutyType || 'repair')) errors.push({ code: 'DUTY_TYPE_MISMATCH', memberId: item.memberId });
     const week = weekKey(item.businessDate);
     if (seen.some(value => value.memberId === item.memberId && (office ? value.businessDate === item.businessDate : weekKey(value.businessDate) === week))) errors.push({ code: office ? 'MEMBER_DAY_DUPLICATE' : 'MEMBER_WEEK_DUPLICATE', memberId: item.memberId });
@@ -107,7 +109,8 @@ export function validateRoster(result, input) {
   }
   for (const locked of input.locked || []) if (!(result.assignments || []).some(item => key(item) === key(locked))) errors.push({ code: 'LOCKED_ASSIGNMENT_CHANGED', memberId: locked.memberId });
   for (const slot of input.slots || []) {
-    if (!effective.some(item => slotKey(item) === slotKey(slot))) errors.push({ code: 'COVERAGE_MISSING', slot });
+    if ((slot.dutyType!=='office'||(slot.ordinaryMinimum??1)>0)&&!effective.some(item => slotKey(item) === slotKey(slot))) errors.push({ code: 'COVERAGE_MISSING', slot });
+    if(slot.dutyType==='office'&&effective.filter(item=>slotKey(item)===slotKey(slot)).length<(slot.ordinaryMinimum??1))errors.push({code:'OFFICE_COVERAGE_MISSING',slot,required:slot.ordinaryMinimum??1});
     if ((input.requireLead || slot.requireLead) && !effective.some(item => slotKey(item) === slotKey(slot) && item.roleKind === 'repair_lead')) errors.push({ code: 'LEAD_COVERAGE_MISSING', slot });
     if (pooled) {
       const assigned = effective.filter(item => slotKey(item) === slotKey(slot));

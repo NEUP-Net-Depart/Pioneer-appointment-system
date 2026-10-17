@@ -12,6 +12,9 @@ import { csvLine } from '../lib/csv.js';
 import { rosterScope, rosterTaskManaged, rosterDepartments, rosterMemberInScope, rosterMemberReadable } from '../modules/rosters/scope.js';
 import { staffIdentities } from '../../shared/staff-identities.js';
 import { repairRosterPool, rosterFactContext } from '../modules/rosters/qualification.js';
+import {collectionState,rosterStage,sameAssignment} from '../modules/rosters/workflow.js';
+import {generateOfficeRoster} from '../modules/rosters/office.ts';
+import {collectionInstant,validateRecurrence} from '../modules/rosters/recurrence.js';
 
 function randomToken() {
   const bytes = new Uint8Array(24);
@@ -36,7 +39,7 @@ function rosterEligibilitySnapshot(source) {
   return {
     taskRevision: source.taskRevision, requireLead: !!source.requireLead, ruleVersion:source.ruleVersion || 'legacy',
     slots: ordered(source.slots),
-    members: source.members.map(member => ({ memberId: member.memberId, pool:member.pool || '', available: ordered(member.available || []), leadSlots: ordered(member.leadSlots || []) }))
+    members: source.members.map(member => ({ memberId: member.memberId, pool:member.pool || '', available: ordered(member.available || []), manualSlots:ordered(member.manualSlots || []),leadSlots: ordered(member.leadSlots || []) }))
       .sort((a,b) => a.memberId.localeCompare(b.memberId))
   };
 }
@@ -647,9 +650,9 @@ export function staffPlatformService({ repository, platform, manifests }) {
     return (await repository.rosterMemberFacts([context.actor.memberId],task.weekStart)).find(item => item.memberId === context.actor.memberId);
   }
   function rosterParticipant(context, task, fact) {
-    if (task.dutyType === 'office' || !validDate(task.weekStart) || task.memberIds?.length && !task.memberIds.includes(context.actor.memberId) || !fact?.active) return false;
+    if (task.dutyType === 'office' && task.workflowVersion!==1 || !validDate(task.weekStart) || task.memberIds?.length && !task.memberIds.includes(context.actor.memberId) || !fact?.active) return false;
     return Array.from({length:4},(_,offset) => addDays(task.weekStart,offset)).some(day =>
-      !!repairRosterPool(fact,platform.authorizer,day,{id:task.id,campusIds:rosterScope(task).campusIds}) &&
+      (task.dutyType==='office' ? fact.profiles.some(item=>item.profileCode==='office'&&item.effectiveFrom<=day&&(!item.effectiveTo||day<item.effectiveTo)) : !!repairRosterPool(fact,platform.authorizer,day,{id:task.id,campusIds:rosterScope(task).campusIds})) &&
       rosterScope(task).campusIds.some(campusId => rosterMemberReadable(context,platform.authorizer,fact,task,day,campusId)));
   }
   async function rosterOptions(actor, query = {}) {
@@ -664,6 +667,118 @@ export function staffPlatformService({ repository, platform, manifests }) {
         departments:departments.filter(department => rosterTaskManaged(context,platform.authorizer,task([department.id])))};
     }).filter(campus => campus.allDepartments || campus.departments.length)};
   }
+  async function rosterCandidates(actor,input) {
+    const task=input.campusScope ? input : {...input,dutyType:input.dutyType || 'repair',campusScope:{campusIds:input.campusIds || [],departmentIds:input.departmentIds || []}};
+    if(!validDate(task.weekStart) || !rosterScope(task).valid) fail(400,'请先选择工作周和校区');
+    const context=await contextFor(actor);
+    if(!rosterTaskManaged(context,platform.authorizer,task)) fail(403,'没有管理此范围排班的权限');
+    const facts=await repository.rosterMemberFacts(await repository.rosterAudience(),task.weekStart);
+    const items=facts.filter(fact=>fact.active && Array.from({length:4},(_,i)=>addDays(task.weekStart,i)).some(day=>rosterScope(task).campusIds.some(campusId=>rosterMemberInScope(fact,task,day,campusId) && (task.dutyType==='office' ? fact.profiles.some(item=>item.profileCode==='office'&&item.effectiveFrom<=day&&(!item.effectiveTo||day<item.effectiveTo)) : (rosterDepartments(fact,day,task).length ? rosterDepartments(fact,day,task) : [{}]).some(item=>repairRosterPool(fact,platform.authorizer,day,{campusId,departmentId:item.departmentId}))))));
+    return {items:items.map(fact=>({memberId:fact.memberId,name:fact.name,identities:staffIdentities(rosterFactContext(fact,task.weekStart),platform.authorizer)}))};
+  }
+  const commandRecord=(actor,context,input)=>({actorMemberId:context.actor.memberId,actorAccount:actor.account,authVersion:context.authVersion,requestId:requestId(input.requestId) || crypto.randomUUID()});
+  const configurableCampuses=(context,task)=>rosterScope(task).campusIds.filter(campusId=>rosterTaskManaged(context,platform.authorizer,{...task,campusScope:{...task.campusScope,campusIds:[campusId]}},task.dutyType==='office'?'roster.office.manage':'roster.repair.configure'));
+  async function collectionCommand(actor,taskId,input) {
+    const task=await repository.rosterTaskById(taskId),context=await contextFor(actor);
+    if(!task) fail(404,'收集任务不存在');
+    if(!rosterTaskManaged(context,platform.authorizer,task)) fail(403,'没有结束或重新开放收集的权限');
+    const record=commandRecord(actor,context,input);
+    const replay=await repository.rosterCommandReceipt(record.actorMemberId,'collection',record.requestId);
+    if(replay) {
+      if(replay.resourceId!==taskId || replay.payload!==JSON.stringify(input)) fail(409,'请求编号已用于其他操作');
+      return repository.rosterTaskById(taskId);
+    }
+    if(!['close','reopen'].includes(input.action) || input.revision!==task.revision) fail(409,'任务状态已更新，请刷新核对');
+    if(input.action==='reopen' && (!Number.isFinite(Date.parse(input.deadline)) || Date.parse(input.deadline)<=Date.now())) fail(400,'请选择未来的截止时间');
+    try {await repository.changeCollection(task,input,record);} catch(error) {if(String(error.message).includes('constraint')) fail(409,'任务或权限已变化，请刷新核对');throw error;}
+    return repository.rosterTaskById(taskId);
+  }
+  async function addParticipants(actor,taskId,input) {
+    const task=await repository.rosterTaskById(taskId),context=await contextFor(actor);
+    if(!task)fail(404,'收集任务不存在');
+    if(!rosterTaskManaged(context,platform.authorizer,task))fail(403,'没有增补参与人员的权限');
+    const record=commandRecord(actor,context,input),replay=await repository.rosterCommandReceipt(record.actorMemberId,'participants',record.requestId);
+    if(replay){if(replay.resourceId!==taskId||replay.payload!==JSON.stringify(input))fail(409,'请求编号已被使用');return repository.rosterTaskById(taskId);}
+    if(input.revision!==task.revision||!Array.isArray(input.memberIds)||!input.memberIds.length||new Set([...task.memberIds,...input.memberIds]).size>300)fail(400,'请核对任务版本与增补名单');
+    const candidates=await rosterCandidates(actor,task);
+    if(input.memberIds.some(id=>!candidates.items.some(member=>member.memberId===id)))fail(403,'增补人员必须具有本任务范围的有效排班资格');
+    try{await repository.addRosterParticipants(task,input,record);}catch(error){if(String(error.message).includes('constraint'))fail(409,'任务或权限已变化，请刷新核对');throw error;}
+    return repository.rosterTaskById(taskId);
+  }
+  async function submitAvailability(actor,taskId,input,{carried=false}={}) {
+    const task=await repository.rosterTaskById(taskId),context=await contextFor(actor);
+    if(!task) fail(404,'收集任务不存在');
+    const fact=await rosterOwnFact(context,task);
+    if(!rosterParticipant(context,task,fact)) fail(403,'你不在本次收集范围内');
+    const record=commandRecord(actor,context,input),replay=await repository.rosterCommandReceipt(record.actorMemberId,'availability',record.requestId);
+    if(replay) {
+      if(replay.resourceId!==taskId || replay.payload!==JSON.stringify({...input,carried})) fail(409,'请求编号已用于其他填报');
+      return taskAvailability(actor,taskId);
+    }
+    if(collectionState(task)!=='open') fail(409,'收集已结束，请联系负责人重新开放');
+    if(!Array.isArray(input.windows) || input.windows.length>64 || !input.windows.length && input.unavailable!==true || input.windows.length && input.unavailable) fail(400,'请填写可用时间，或选择整周无法参加');
+    for(const window of input.windows) {
+      if(!validDate(window.businessDate) || window.businessDate<task.weekStart || window.businessDate>addDays(task.weekStart,3) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(window.startAt) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(window.endAt) || window.endAt<=window.startAt) fail(400,'请填写本周工作日的有效时间');
+      if(!rosterMemberReadable(context,platform.authorizer,fact,task,window.businessDate,window.campusId) || !(task.dutyType==='office' ? fact.profiles.some(item=>item.profileCode==='office'&&item.effectiveFrom<=window.businessDate&&(!item.effectiveTo||window.businessDate<item.effectiveTo)) : (rosterDepartments(fact,window.businessDate,task).length ? rosterDepartments(fact,window.businessDate,task) : [{}]).some(item=>repairRosterPool(fact,platform.authorizer,window.businessDate,{campusId:window.campusId,departmentId:item.departmentId})))) fail(403,'填报日期或校区不在有效资格和授权范围内');
+    }
+    const payload={...input,carried};
+    try {await repository.replaceRosterAvailability(task,context.actor.memberId,payload,record);} catch(error) {if(String(error.message).toLowerCase().includes('constraint')) fail(409,'填报、收集状态或权限已变化，输入已保留，请重新核对');throw error;}
+    return taskAvailability(actor,taskId);
+  }
+  async function automationActor(memberId) {
+    const row=await repository.accountForMember(memberId);
+    if(!row||row.status!=='enabled')fail(403,'循环任务的负责人账号已停用');
+    return {account:row.account,memberId,role:row.role,homeCampus:row.home_campus,authorizedCampuses:await repository.memberCampuses(memberId),authVersion:row.auth_version};
+  }
+  async function processRosterAutomation() {
+    if(!repository.dueRosterSeries)return {published:0,carried:0,skipped:0,errors:[]};
+    const summary={published:0,carried:0,skipped:0,errors:[]};
+    for(const series of await repository.dueRosterSeries(nowIso())) {
+      try {
+        const actor=await automationActor(series.owner_member_id),template=await repository.rosterTaskById(series.template_task_id);
+        const deadline=collectionInstant(series.next_week,series.deadline_weekday,series.deadline_time),nextWeek=addDays(series.next_week,7);
+        if(Date.parse(deadline)>Date.now()) {
+          const existing=(await repository.listRosterTasks()).find(task=>task.seriesId===series.id&&task.weekStart===series.next_week);
+          if(!existing) {
+            // Select eligibility for the actual new duty week, not the template week.
+            const targetCandidates=await rosterCandidates(actor,{...template,weekStart:series.next_week});
+            const eligibleIds=template.memberIds.filter(id=>targetCandidates.items.some(item=>item.memberId===id));
+            if(!eligibleIds.length)fail(409,'下周没有有效参与人员');
+            await createRosterTask(actor,{weekStart:series.next_week,campusIds:template.campusScope.campusIds,departmentIds:template.campusScope.departmentIds||[],dutyType:template.dutyType,
+              slotStart:template.slotStart,slotEnd:template.slotEnd,deadline,description:template.description,memberIds:eligibleIds,workflowVersion:1,seriesId:series.id,
+              requirements:template.requirements.map(row=>({...row,businessDate:addDays(series.next_week,Math.round((Date.parse(row.businessDate)-Date.parse(template.weekStart))/86400000))})),requestId:`series:${series.id}:${series.next_week}`},{automated:true});
+            summary.published++;
+          }
+        }
+        await repository.advanceRosterSeries(series,nextWeek,collectionInstant(nextWeek,series.publish_weekday,series.publish_time));
+      }catch(error){summary.errors.push({seriesId:series.id,message:error.message});await repository.advanceRosterSeries(series,series.next_week,new Date(Date.now()+3600000).toISOString(),error.message);}
+    }
+    for(const task of (await repository.listRosterTasks()).filter(task=>task.workflowVersion===1&&collectionState(task)==='open')) {
+      for(const preference of await repository.pendingRosterPreferences(task.id)) {
+        try {
+          const actor=await automationActor(preference.member_id);
+          const windows=JSON.parse(preference.windows).filter(window=>task.campusScope.campusIds.includes(window.campusId)).map(({weekday,...window})=>({...window,businessDate:addDays(task.weekStart,weekday-1)}));
+          if(!preference.unavailable&&!windows.length)continue;
+          await submitAvailability(actor,task.id,{windows,unavailable:!!preference.unavailable,revision:-1,requestId:`carry:${task.id}:${preference.member_id}:${preference.revision}`},{carried:true});summary.carried++;
+        }catch(error){if([403,409].includes(error.status))summary.skipped++;else summary.errors.push({taskId:task.id,memberId:preference.member_id,message:error.message});}
+      }
+    }
+    return summary;
+  }
+  async function seriesCommand(actor,id,input) {
+    const series=await repository.rosterSeries(id),context=await contextFor(actor);
+    if(!series)fail(404,'循环收集不存在');
+    const task=await repository.rosterTaskById(series.template_task_id);
+    if(!rosterTaskManaged(context,platform.authorizer,task))fail(403,'没有管理此循环任务的权限');
+    if(input.revision!==series.revision||typeof input.enabled!=='boolean')fail(409,'循环配置已变化，请重新读取');
+    await repository.updateRosterSeries(series,input,commandRecord(actor,context,input));
+    return repository.rosterSeries(id);
+  }
+  async function availabilityPreferences(actor,input) {
+    const context=await contextFor(actor);
+    if(input){if(!['repair','office'].includes(input.dutyType)||input.enabled!==false)fail(400,'请选择需要关闭的自动延续');await repository.disableRosterPreference(context.actor.memberId,input.dutyType);}
+    return {items:await repository.rosterPreferences(context.actor.memberId)};
+  }
   async function rosterTasks(actor) {
     const context = await contextFor(actor);
     if (!['roster.read','roster.repair.manage','roster.office.manage','roster.repair.configure'].some(code => context.permissions[code])) fail(403, '没有查看排班任务的权限');
@@ -671,7 +786,8 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const ownFacts = new Map(), items = [];
     for (const task of tasks) {
       const manage = rosterTaskManaged(context,platform.authorizer,task);
-      const configure = task.dutyType!=='office' && rosterTaskManaged(context,platform.authorizer,task,'roster.repair.configure');
+      const writableCampuses=configurableCampuses(context,task);
+      const configure = writableCampuses.length>0;
       if (context.permissions['roster.read'] && !ownFacts.has(task.weekStart)) ownFacts.set(task.weekStart,await rosterOwnFact(context,task));
       const fill = rosterParticipant(context,task,ownFacts.get(task.weekStart));
       if (!manage && !fill && !configure) continue;
@@ -679,7 +795,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
       const label = [...scope.campusIds.map(id => campuses.find(item => item.id === id)?.name || id),
         ...scope.departmentIds.map(id => departments.find(item => item.id === id)?.name || id)];
       const {memberIds,createdByMemberId,...summary} = task;
-      items.push({...summary,...(manage ? {memberIds,createdByMemberId} : {}),scopeLabel:label.join(' · '),actions:{manage,fill,configure}});
+      items.push({...summary,...(!manage&&!fill ? {campusScope:{...task.campusScope,campusIds:writableCampuses},requirements:summary.requirements.filter(item=>writableCampuses.includes(item.campusId))}:{}),collectionState:collectionState(task),...(manage ? {memberIds,createdByMemberId} : {}),scopeLabel:!manage&&!fill ? writableCampuses.map(id=>campuses.find(item=>item.id===id)?.name||id).join(' · ') : label.join(' · '),actions:{manage,fill:fill && collectionState(task)==='open',configure}});
     }
     return {items};
   }
@@ -691,31 +807,55 @@ export function staffPlatformService({ repository, platform, manifests }) {
     if (!manage && !rosterParticipant(context,task,own)) fail(403,'没有查看该任务填报信息的权限');
     const rows = await repository.availability(taskId);
     const facts = new Map((await repository.rosterMemberFacts([...new Set(rows.map(row => row.memberId))],task.weekStart)).map(item => [item.memberId,item]));
-    return {items:rows.filter(item => rosterMemberInScope(facts.get(item.memberId),task,item.businessDate,item.campusId) &&
+    const submission=repository.rosterSubmissions ? (await repository.rosterSubmissions(taskId)).find(item=>item.memberId===context.actor.memberId) : null;
+    const preference=repository.rosterPreferences ? (await repository.rosterPreferences(context.actor.memberId)).find(item=>item.duty_type===task.dutyType) : null;
+    const selectableSlots=Array.from({length:4},(_,i)=>addDays(task.weekStart,i)).flatMap(businessDate=>rosterScope(task).campusIds.filter(campusId=>own?.active&&rosterMemberReadable(context,platform.authorizer,own,task,businessDate,campusId)&&
+      (task.dutyType==='office'?own.profiles.some(profile=>profile.profileCode==='office'&&profile.effectiveFrom<=businessDate&&(!profile.effectiveTo||businessDate<profile.effectiveTo)):!!repairRosterPool(own,platform.authorizer,businessDate,{id:task.id,campusId}))).map(campusId=>({businessDate,campusId})));
+    return {submission,selectableSlots,autoContinue:!!preference?.enabled,items:rows.filter(item => rosterMemberInScope(facts.get(item.memberId),task,item.businessDate,item.campusId) &&
       (manage || item.memberId === context.actor.memberId && rosterMemberReadable(context,platform.authorizer,own,task,item.businessDate,item.campusId)))};
   }
-  async function createRosterTask(actor, input) {
+  async function createRosterTask(actor, input, {automated=false}={}) {
     const dutyType = input.dutyType || 'repair';
     if (!['repair','office'].includes(dutyType)) fail(400, '岗位类型不正确');
-    if (!validDate(input.weekStart) || weekRange(input.weekStart).start !== input.weekStart || !input.campusId ||
+    if (!validDate(input.weekStart) || weekRange(input.weekStart).start !== input.weekStart || !(input.campusId || input.campusIds?.length) ||
       !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.slotStart) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.slotEnd) || input.slotEnd <= input.slotStart ||
       !Number.isFinite(Date.parse(input.deadline))) fail(400, '请选择周一、有效校区、完整班次时间和填报截止时间');
     if (input.departmentIds !== undefined && (!Array.isArray(input.departmentIds) || input.departmentIds.length > 100 || input.departmentIds.some(id => typeof id !== 'string' || !id.trim()))) fail(400,'部门范围不正确');
     if (input.memberIds !== undefined && (!Array.isArray(input.memberIds) || input.memberIds.length > 300 || input.memberIds.some(id => typeof id !== 'string' || !id.trim()))) fail(400,'邀请名单不正确');
     const departmentIds = [...new Set(input.departmentIds || [])].sort();
-    const campusId = normalizeCampusId(input.campusId);
-    const task = {...input,id:crypto.randomUUID(),dutyType,memberIds:[...new Set(input.memberIds || [])].sort(),campusScope:{campusIds:[campusId],...(departmentIds.length ? {departmentIds} : {})}};
-    if(dutyType==='repair') task.requirements=normalizedRequirements(task,input.requirements);
+    if(input.campusIds!==undefined && (!Array.isArray(input.campusIds) || !input.campusIds.length || input.campusIds.some(id=>typeof id!=='string'))) fail(400,'请选择有效校区');
+    const selectedCampuses=[...new Set((input.campusIds || [input.campusId]).map(normalizeCampusId))].sort();
+    const task = {...input,id:crypto.randomUUID(),dutyType,memberIds:[...new Set(input.memberIds || [])].sort(),campusScope:{campusIds:selectedCampuses,...(departmentIds.length ? {departmentIds} : {})}};
+    if(!automated)delete task.seriesId;
+    if(input.recurrence?.enabled) {
+      if(input.workflowVersion!==1||!validateRecurrence(input.recurrence))fail(400,'请设置有效的每周发布时间和截止时间，截止须晚于发布，均为值班前一周');
+      task.recurrence={...input.recurrence,nextWeek:addDays(task.weekStart,7),nextPublishAt:collectionInstant(addDays(task.weekStart,7),input.recurrence.publishWeekday,input.recurrence.publishTime)};
+    }
+    if(dutyType==='repair'||input.workflowVersion===1) task.requirements=normalizedRequirements(task,input.requirements);
     const context = await contextFor(actor);
     if (!rosterTaskManaged(context,platform.authorizer,task)) fail(403,'没有管理所选校区与部门排班的权限');
+    if(input.workflowVersion===1) {
+      const record=commandRecord(actor,context,input),signature=stableJson(input);
+      const replay=await repository.rosterCommandReceipt(record.actorMemberId,'create-task',record.requestId);
+      if(replay){if(JSON.parse(replay.payload).signature!==signature)fail(409,'请求编号已用于其他任务');return repository.rosterTaskById(replay.resourceId);}
+      task.commandRecord=record;task.commandSignature=signature;
+    }
     const [campuses,departments] = await Promise.all([repository.listCampuses(),repository.listDepartments()]);
-    if (!campuses.some(item => item.id === campusId) || departmentIds.some(id => !departments.some(item => item.id === id))) fail(400,'请选择有效校区和部门');
+    if (selectedCampuses.some(id=>!campuses.some(item => item.id === id)) || departmentIds.some(id => !departments.some(item => item.id === id))) fail(400,'请选择有效校区和部门');
+    if(input.workflowVersion===1) {
+      if(Date.parse(input.deadline)<=Date.now()) fail(400,'收集截止时间应晚于现在');
+      const candidates=await rosterCandidates(actor,task);
+      if(!input.memberIds?.length) task.memberIds=candidates.items.map(item=>item.memberId);
+      else if(input.memberIds.some(id=>!candidates.items.some(item=>item.memberId===id))) fail(403,'名单中存在无有效排班资格的成员');
+      if(!task.memberIds.length || task.memberIds.length>300) fail(400,'请选择 1–300 名参与人员');
+      if((await repository.listRosterTasks()).some(other=>other.dutyType===dutyType && other.weekStart===task.weekStart && other.slotStart<task.slotEnd && task.slotStart<other.slotEnd && rosterScope(other).campusIds.some(id=>selectedCampuses.includes(id)) && (!departmentIds.length || !rosterScope(other).departmentIds.length || departmentIds.some(id=>rosterScope(other).departmentIds.includes(id))))) fail(409,'所选范围已有收集任务，请打开现有任务继续处理');
+    }
     const invited = await repository.rosterMemberFacts(task.memberIds,task.weekStart);
-    if (invited.length !== task.memberIds.length || invited.some(fact => !Array.from({length:4},(_,offset) => addDays(task.weekStart,offset)).some(day => rosterMemberInScope(fact,task,day,campusId)))) fail(403,'邀请名单包含排班范围外的成员');
+    if (invited.length !== task.memberIds.length || invited.some(fact => !Array.from({length:4},(_,offset) => addDays(task.weekStart,offset)).some(day => selectedCampuses.some(campusId=>rosterMemberInScope(fact,task,day,campusId))))) fail(403,'邀请名单包含排班范围外的成员');
     let result;
-    try { result = await repository.createRosterTask(task,context.actor.memberId); }
-    catch (error) { if (String(error.message).includes('UNIQUE constraint failed: roster_tasks.')) fail(409,'本周此校区、部门和时段已有同类任务，请打开现有任务'); throw error; }
-    await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.task.created', sourceRef: publicResourceRef('rosters','task',result.id), after: result, requestId: input.requestId });
+    try { result = await rosterWrite(()=>repository.createRosterTask(task,context.actor.memberId)); }
+    catch (error) { if (String(error.message).includes('UNIQUE constraint failed: roster_tasks.') || String(error.message).includes('ROSTER_TASK_SCOPE_OVERLAP')) fail(409,'本周此校区、部门和时段已有同类任务，请打开现有任务'); throw error; }
+    if(!task.commandRecord || !repository.rosterAudit) await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.task.created', sourceRef: publicResourceRef('rosters','task',result.id), after: result, requestId: input.requestId });
     return result;
   }
   function normalizedRequirements(task,values) {
@@ -728,14 +868,17 @@ export function staffPlatformService({ repository, platform, manifests }) {
   async function rosterRequirements(actor,taskId,input) {
     const context=await contextFor(actor),task=await repository.rosterTaskById(taskId);
     if(!task) fail(404,'排班任务不存在');
-    if(task.dutyType==='office' || !rosterTaskManaged(context,platform.authorizer,task,'roster.repair.configure')) fail(403,'没有配置此范围维修人员需求的权限');
-    if(!input) return {task,requirements:task.requirements?.length ? task.requirements : normalizedRequirements(task),requiresRuleConfirmation:task.ruleVersion!=='repair-minimum-v2'};
+    const writableCampuses=configurableCampuses(context,task);
+    if(!writableCampuses.length) fail(403,'没有配置此范围人员需求的权限');
+    const visibleTask={...task,memberIds:undefined,campusScope:{...task.campusScope,campusIds:writableCampuses},requirements:task.requirements.filter(item=>writableCampuses.includes(item.campusId))};
+    if(!input) return {task:visibleTask,requirements:visibleTask.requirements?.length ? visibleTask.requirements : normalizedRequirements(visibleTask),requiresRuleConfirmation:task.dutyType!=='office'&&task.ruleVersion!=='repair-minimum-v2'};
     if(!Number.isInteger(input.revision) || input.revision!==task.revision) fail(409,'需求已被其他人更新，请刷新后核对；当前输入尚未清除');
-    const requirements=normalizedRequirements(task,input.requirements);
+    const edited=normalizedRequirements(visibleTask,input.requirements);
+    const requirements=normalizedRequirements(task).map(row=>edited.find(item=>item.businessDate===row.businessDate&&item.campusId===row.campusId) || task.requirements.find(item=>item.businessDate===row.businessDate&&item.campusId===row.campusId) || row);
     const result=await repository.saveRosterRequirements(task,{revision:input.revision,requirements},{actorMemberId:context.actor.memberId,actorAccount:actor.account,authVersion:context.authVersion,
       action:'rosters.requirements.updated',sourceRef:publicResourceRef('rosters','task',taskId),before:{requirements:task.requirements,ruleVersion:task.ruleVersion},after:{requirements,ruleVersion:'repair-minimum-v2'},requestId:input.requestId});
     if(!result) fail(409,'需求或权限已变化，请刷新后核对');
-    return {task:result,requirements:result.requirements,requiresRuleConfirmation:false};
+    return {task:{...visibleTask,revision:result.revision,ruleVersion:result.ruleVersion},requirements:result.requirements.filter(item=>writableCampuses.includes(item.campusId)),requiresRuleConfirmation:false};
   }
   async function saveAvailability(actor, taskId, input) {
     if (!validDate(input.businessDate) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.startAt) ||
@@ -744,9 +887,9 @@ export function staffPlatformService({ repository, platform, manifests }) {
     await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId });
     const task = await repository.rosterTaskById(taskId);
     if (!task) fail(404, '排班任务不存在');
-    if (task.dutyType === 'office') fail(400, '办公班次由负责人直接安排，无需填报');
+    if (task.dutyType === 'office'&&task.workflowVersion!==1) fail(400, '旧办公班表无需填报');
     if (task.memberIds?.length && !task.memberIds.includes(context.actor.memberId)) fail(403, '该任务未邀请你填报');
-    if (Date.parse(task.deadline) <= Date.now()) fail(409, '该任务已截止，请联系负责人调整');
+    if (collectionState(task)!=='open') fail(409, '该任务已结束收集，请联系负责人重新开放');
     if (weekRange(input.businessDate).start !== task.weekStart) fail(400, '请选择任务所在周的日期');
     if (input.businessDate > addDays(task.weekStart,3)) fail(400,'请选择周一至周四的服务日期');
     const campusIds = task.campusScope?.campusIds || [];
@@ -768,10 +911,10 @@ export function staffPlatformService({ repository, platform, manifests }) {
     if (!rosterTaskManaged(context,platform.authorizer,task)) fail(403,'没有管理该任务全部校区与部门的权限');
     const slots = Array.from({ length: 4 }, (_, offset) => campusIds.map(campusId => ({
       businessDate: addDays(task.weekStart, offset), campusId, startAt: task.slotStart, endAt: task.slotEnd, dutyType: office ? 'office' : 'repair', requireLead: !office,
-      ...(!office && task.ruleVersion==='repair-minimum-v2' ? {ordinaryMinimum:task.requirements?.find(item=>item.businessDate===addDays(task.weekStart,offset) && item.campusId===campusId)?.ordinaryMinimum ?? 1} : {})
+      ...((!office && task.ruleVersion==='repair-minimum-v2'||office&&task.workflowVersion===1) ? {ordinaryMinimum:task.requirements?.find(item=>item.businessDate===addDays(task.weekStart,offset) && item.campusId===campusId)?.ordinaryMinimum ?? 1} : {})
     }))).flat();
     const windows = await repository.availability(taskId);
-    const memberIds = [...new Set(office ? await repository.officeRosterMemberIds(task.weekStart, campusIds) : task.memberIds?.length ? task.memberIds : windows.map(item => item.memberId))];
+    const memberIds = [...new Set(task.memberIds?.length ? task.memberIds : office ? await repository.officeRosterMemberIds(task.weekStart, campusIds) : windows.map(item => item.memberId))];
     if (memberIds.length > 300) fail(400, '单个排班任务最多支持 300 名成员');
     const members = [];
     const facts = await repository.rosterMemberFacts(memberIds, task.weekStart);
@@ -781,7 +924,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
       const memberId = fact.memberId;
       const campusAccess = fact.campuses.map(normalizeCampusId);
       const other = fact.assignments.filter(item => item.taskId !== taskId);
-      const available = [], leadSlots = [];
+      const available = [], manualSlots = [], leadSlots = [];
       let ordinaryEligible=false;
       for (const slot of slots) {
         if (!campusAccess.includes(slot.campusId) || !rosterMemberInScope(fact,task,slot.businessDate,slot.campusId)) continue;
@@ -794,18 +937,20 @@ export function staffPlatformService({ repository, platform, manifests }) {
         if (pool==='ordinary') ordinaryEligible=true;
         if (other.some(item => (!office && item.dutyType === 'repair') || item.businessDate === slot.businessDate &&
           ((office && item.dutyType === 'office') || item.startAt < slot.endAt && slot.startAt < item.endAt))) continue;
-        if (!office && !windows.some(item => item.memberId === memberId && item.businessDate === slot.businessDate &&
+        manualSlots.push(slot);
+        if ((!office || task.workflowVersion===1) && !windows.some(item => item.memberId === memberId && item.businessDate === slot.businessDate &&
           (!item.campusId || item.campusId === slot.campusId) && item.startAt <= slot.startAt && item.endAt >= slot.endAt)) continue;
         available.push(slot);
       }
-      if (office && !available.length) continue;
+      if (office && !manualSlots.length) continue;
       if (!office && !leadSlots.length && !ordinaryEligible) continue;
       const departmentNames = [...new Set(slots.flatMap(slot => rosterDepartments(fact,slot.businessDate,task).map(item => item.departmentName)).filter(Boolean))];
       const pool = !office && leadSlots.length ? 'lead' : 'ordinary';
-      members.push({ memberId, name: fact.name, available:!office && pool==='lead' ? available.filter(slot=>leadSlots.includes(slot)) : available, leadSlots, pool,
+      members.push({ memberId, name: fact.name, available:!office && pool==='lead' ? available.filter(slot=>leadSlots.includes(slot)) : available, manualSlots, reportedWindows:windows.filter(item=>item.memberId===memberId),existingAssignments:other, leadSlots, pool,
         identities:staffIdentities(rosterFactContext(fact,task.weekStart),platform.authorizer), departmentNames });
     }
-    return { taskId, dutyType: task.dutyType || 'repair', taskRevision: task.revision, ruleVersion:task.ruleVersion || 'legacy', weekStart: task.weekStart, members, slots, requireLead: !office };
+    return { taskId, task, dutyType: task.dutyType || 'repair', taskRevision: task.revision, ruleVersion:task.ruleVersion || 'legacy', weekStart: task.weekStart, members, slots, requireLead: !office,
+      preservedAssignments:repository.protectedRosterAssignments ? await repository.protectedRosterAssignments(taskId) : [] };
   }
   async function rosterTaskState(actor, taskId) {
     const source = await rosterInput(actor, taskId);
@@ -817,17 +962,39 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const savedAssignments = latest?.inputSnapshotRef?.optimization && latest.inputSnapshotRef.generatedAssignments;
     const sourceChanged = !!savedEligibility && stableJson(savedEligibility) !== stableJson(rosterEligibilitySnapshot(source)) ||
       !!savedAssignments && stableJson(savedAssignments) !== stableJson(rosterAssignmentSnapshot(assignments));
-    return { taskId, dutyType: source.dutyType, ruleVersion:source.ruleVersion, requiresRuleConfirmation:source.dutyType!=='office' && source.ruleVersion!=='repair-minimum-v2', members: source.members, slots: source.slots,
+    const submissions=repository.rosterSubmissions ? await repository.rosterSubmissions(taskId) : [];
+    const audience=source.task.memberIds || [];
+    const facts=audience.length ? await repository.rosterMemberFacts(audience,source.weekStart) : [];
+    const progress={total:audience.length,submitted:submissions.filter(item=>audience.includes(item.memberId)).length,
+      people:facts.map(item=>({memberId:item.memberId,name:item.name,active:item.active,submission:submissions.find(row=>row.memberId===item.memberId) || null})),
+      coverage:source.slots.map(slot=>({...slot,ordinary:source.members.filter(member=>member.pool==='ordinary' && member.available.some(item=>sameAssignment({...item,memberId:''},{...slot,memberId:''}))).length,
+        leads:source.members.filter(member=>member.pool==='lead' && member.available.some(item=>item.businessDate===slot.businessDate && item.campusId===slot.campusId)).length}))};
+    return { taskId,task:source.task,series:source.task.seriesId&&repository.rosterSeries ? await repository.rosterSeries(source.task.seriesId) : null,collectionState:collectionState(source.task),stage:rosterStage(source.task,versions),progress,
+      protectedAssignments:repository.protectedRosterAssignments ? await repository.protectedRosterAssignments(taskId) : [],publishedVersion:published || null,
+      dutyType: source.dutyType, ruleVersion:source.ruleVersion, requiresRuleConfirmation:source.dutyType!=='office' && source.ruleVersion!=='repair-minimum-v2', members: source.members, slots: source.slots,
       draft: latest ? { ...latest, assignments, sourceChanged, validation: validateRoster({ assignments }, source) } : null,
       publishedAssignments: published ? await repository.versionAssignments(published.id) : [] };
   }
+  async function rosterWrite(write) {
+    try { return await write(); }
+    catch(error) {
+      if(/CHECK constraint failed|UNIQUE constraint failed: roster_command_receipts/.test(String(error.message))) fail(409,'任务、权限或班表已变化，请重新读取并核对；你的修改可以保留后重试');
+      throw error;
+    }
+  }
   async function generate(actor, input) {
     const source = await rosterInput(actor, input.taskId);
+    if(source.task.workflowVersion===1 && collectionState(source.task)!=='closed') fail(409,'请先结束收集，再生成自动排班');
+    const context = await contextFor(actor),record=commandRecord(actor,context,input);
+    record.command='generate';
+    if(repository.rosterCommandReceipt) {
+      const replay=await repository.rosterCommandReceipt(record.actorMemberId,record.command,record.requestId);
+      if(replay) {if(JSON.parse(replay.payload).taskId!==input.taskId) fail(409,'请求编号已用于其他任务');return {version:await repository.rosterVersionById(replay.resourceId),idempotent:true};}
+    }
     if(source.dutyType!=='office' && source.ruleVersion!=='repair-minimum-v2') fail(409,'旧任务需先确认每日最低人员需求，再生成新规则草稿');
     const previous = (await repository.rosterVersionsForTask(source.taskId)).find(item => ['draft','published'].includes(item.status));
-    source.locked = previous ? (await repository.versionAssignments(previous.id)).filter(item => item.locked) : [];
-    const context = await contextFor(actor);
-    const result = source.dutyType === 'office' ? { assignments: previous ? await repository.versionAssignments(previous.id) : [], ruleVersion: 'office-daily-v1', algorithmVersion: 'manual-office-v1', solverStatus: 'needs_review', inputSnapshotRef: { dutyType: 'office' } } : generateRoster(source);
+    source.locked = previous ? (await repository.versionAssignments(previous.id)).filter(item => item.locked || source.preservedAssignments.some(row=>sameAssignment(row,item))) : [];
+    const result = source.dutyType === 'office' ? source.task.workflowVersion===1 ? generateOfficeRoster(source) : { assignments: previous ? await repository.versionAssignments(previous.id) : [], ruleVersion: 'office-daily-v1', algorithmVersion: 'manual-office-v1', solverStatus: 'needs_review', inputSnapshotRef: { dutyType: 'office' } } : generateRoster(source);
     const beforeLeaves = result.assignments.map(item => item.leaveStatus || '');
     result.assignments = await inheritAssignmentLeaves(source.taskId, result.assignments);
     if (result.inputSnapshotRef.optimization && result.assignments.some((item,index) => (item.leaveStatus || '') !== beforeLeaves[index])) {
@@ -836,12 +1003,31 @@ export function staffPlatformService({ repository, platform, manifests }) {
     }
     const validation = validateRoster(result, source);
     result.solverStatus = validation.valid ? (result.solverStatus === 'optimal' ? 'optimal' : 'feasible') : 'needs_review';
-    const version = await repository.createRosterVersion({ taskId: source.taskId, assignments: result.assignments.map(item => ({ ...item, id: undefined })),
-      inputSnapshotRef: { ...result.inputSnapshotRef, eligibility: rosterEligibilitySnapshot(source), generatedAssignments: rosterAssignmentSnapshot(result.assignments), lockedAssignments: source.locked, taskRevision: source.taskRevision, lockedMemberIds: source.locked.map(item => item.memberId) }, ruleVersion: result.ruleVersion,
-      algorithmVersion: result.algorithmVersion, solverStatus: result.solverStatus, validation });
-    await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.generated', sourceRef: publicResourceRef('rosters','version',version.id), after: { version, validation }, requestId: input.requestId });
+    const version = await rosterWrite(async()=>repository.createRosterVersion({ taskId: source.taskId, assignments: result.assignments.map(item => ({ ...item, id: undefined })),
+      commandRecord:record,requireClosed:source.task.workflowVersion===1,inputSnapshotRef: { ...result.inputSnapshotRef,publicationBase:(await repository.rosterVersionsForTask(source.taskId)).find(item=>item.status==='published')?.id || '',manualOverrides:result.assignments.filter(item=>item.manualOverride),eligibility: rosterEligibilitySnapshot(source), generatedAssignments: rosterAssignmentSnapshot(result.assignments), lockedAssignments: source.locked, taskRevision: source.taskRevision, lockedMemberIds: source.locked.map(item => item.memberId) }, ruleVersion: result.ruleVersion,
+      algorithmVersion: result.algorithmVersion, solverStatus: result.solverStatus, validation }));
+    if(!repository.rosterAudit) await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'rosters.generated', sourceRef: publicResourceRef('rosters','version',version.id), after: { version, validation }, requestId: input.requestId });
     const names = new Map(source.members.map(item => [item.memberId, item.name]));
     return { ...result, assignments: result.assignments.map(item => ({ ...item, memberName: names.get(item.memberId) })), validation, version };
+  }
+  async function reviseRoster(actor,taskId,input) {
+    const source=await rosterInput(actor,taskId),versions=await repository.rosterVersionsForTask(taskId);
+    const published=versions.find(item=>item.status==='published');
+    if(!published || published.id!==input.publishedVersionId) fail(409,'当前发布班表已变化，请重新打开');
+    const context=await contextFor(actor),record={...commandRecord(actor,context,input),command:'revise'};
+    const replay=await repository.rosterCommandReceipt(record.actorMemberId,record.command,record.requestId);
+    if(replay) {if(JSON.parse(replay.payload).taskId!==taskId) fail(409,'请求编号已用于其他任务');return repository.rosterVersionById(replay.resourceId);}
+    if(versions.some(item=>item.status==='draft')) fail(409,'已有未发布修订，请继续编辑现有草稿');
+    const assignments=await repository.versionAssignments(published.id);
+    return rosterWrite(()=>repository.createRosterVersion({taskId,assignments:assignments.map(item=>({...item,id:undefined})),commandRecord:record,
+      ruleVersion:source.ruleVersion,algorithmVersion:'published-copy-v1',validation:validateRoster({assignments},source),
+      inputSnapshotRef:{basePublishedVersionId:published.id,publicationBase:published.id,eligibility:rosterEligibilitySnapshot(source),manualOverrides:assignments.filter(item=>item.manualOverride),lockedAssignments:assignments.filter(item=>item.locked),lockedMemberIds:assignments.filter(item=>item.locked).map(item=>item.memberId)}}));
+  }
+  async function checkProtected(taskId,assignments) {
+    if(!repository.protectedRosterAssignments) return;
+    const protectedRows=await repository.protectedRosterAssignments(taskId);
+    if(protectedRows.some(row=>!assignments.some(item=>sameAssignment(row,item)))) fail(409,'已签到或过去日期的原班次不能变更，请保留原安排，通过现场协调或考勤修正处理');
+    if(assignments.some(row=>row.businessDate<dateKey()&&!protectedRows.some(item=>sameAssignment(row,item))))fail(409,'过去日期不能新增或更改排班，请通过考勤修正处理');
   }
   async function updateRoster(actor, id, input) {
     if (!Number.isInteger(input.version) || !Array.isArray(input.assignments) || input.assignments.length > 300 ||
@@ -849,13 +1035,21 @@ export function staffPlatformService({ repository, platform, manifests }) {
         typeof item.campusId !== 'string' || typeof item.startAt !== 'string' || typeof item.endAt !== 'string')) fail(400, '排班草稿字段不完整');
     const version = await repository.rosterVersionById(id);
     if (!version) fail(404, '排班草稿不存在');
+    const context=await contextFor(actor),record={...commandRecord(actor,context,input),command:'save'};
+    if(repository.rosterCommandReceipt){const replay=await repository.rosterCommandReceipt(record.actorMemberId,'save',record.requestId);if(replay){if(replay.resourceId!==id||JSON.parse(replay.payload).signature!==stableJson(input))fail(409,'请求编号已用于其他调整');await rosterInput(actor,version.taskId);return {...await repository.rosterVersionById(id),idempotent:true};}}
+    const fingerprint=repository.rosterFingerprint ? await repository.rosterFingerprint(version.taskId) : undefined;
     const source = await rosterInput(actor, version.taskId);
     const assignments = await inheritAssignmentLeaves(source.taskId, input.assignments);
+    await checkProtected(source.taskId,assignments);
+    for(const item of assignments) {
+      const member=source.members.find(person=>person.memberId===item.memberId);
+      item.manualOverride=!!member && !member.available.some(slot=>slot.businessDate===item.businessDate && slot.campusId===item.campusId && slot.startAt<=item.startAt && slot.endAt>=item.endAt);
+    }
     const validation = validateRoster({ assignments }, source);
     if(source.dutyType!=='office' && source.ruleVersion!=='repair-minimum-v2') fail(409,'请先确认每日最低人员需求');
-    const result = await repository.updateRosterDraft(id, { assignments, validation,ruleVersion:source.ruleVersion,eligibility:rosterEligibilitySnapshot(source) }, input.version);
+    const result = await rosterWrite(()=>repository.updateRosterDraft(id, { assignments, validation,ruleVersion:source.ruleVersion,eligibility:rosterEligibilitySnapshot(source),commandRecord:record,signature:stableJson(input),fingerprint,taskId:source.taskId }, input.version));
     if (!result) fail(409, '排班版本已变化，请刷新');
-    await repository.audit({ actorMemberId: (await contextFor(actor)).actor.memberId, actorAccount: actor.account, action: 'rosters.updated', sourceRef: publicResourceRef('rosters','version',id), after: result, requestId: input.requestId });
+    if(!repository.rosterAudit) await repository.audit({ actorMemberId: (await contextFor(actor)).actor.memberId, actorAccount: actor.account, action: 'rosters.updated', sourceRef: publicResourceRef('rosters','version',id), after: result, requestId: input.requestId });
     return { ...result, assignments, revision: result.version };
   }
   async function inheritAssignmentLeaves(taskId, assignments) {
@@ -875,12 +1069,15 @@ export function staffPlatformService({ repository, platform, manifests }) {
     if(source.dutyType!=='office' && (source.ruleVersion!=='repair-minimum-v2' || version.ruleVersion!==source.ruleVersion)) fail(409,'请先确认需求，并重新生成或保存校验草稿');
     if(version.inputSnapshotRef?.eligibility?.taskRevision!==undefined && version.inputSnapshotRef.eligibility.taskRevision!==source.taskRevision) fail(409,'最低人员需求已变更，请重新生成或保存校验草稿');
     const assignments = await repository.versionAssignments(id);
+    await checkProtected(source.taskId,assignments);
     const validation = validateRoster({ assignments }, source);
     if (!validation.valid) fail(409, '当前人员资格或班次覆盖不满足发布条件，请重新生成或调整草稿');
     const context = await contextFor(actor);
     let result;
     try { result = await repository.publishRoster(id, input.version, { actorMemberId: context.actor.memberId, actorAccount: actor.account, authVersion:context.authVersion, action: 'rosters.published', sourceRef: publicResourceRef('rosters','version',id), before: version, after: { ...version, status: 'published' }, requestId: input.requestId },fingerprint); }
     catch (error) {
+      if(String(error.message).includes('ROSTER_ATTENDED_ASSIGNMENT_CHANGED')) fail(409,'人员已签到，原班次不能更改，请重新核对');
+      if(String(error.message).includes('ROSTER_PUBLICATION_BASE_CHANGED'))fail(409,'已有新的班表发布，请基于最新班表核对修订');
       if (String(error.message).includes('ROSTER_SCHEDULE_CONFLICT')) fail(409, '人员已在其他班表被安排，请刷新并重新核对');
       if (String(error.message).includes('ROSTER_CAMPUS_LEADER_CONFLICT')) fail(409,'该校区当天已有其他班表发布的负责人，请先协调现有班表');
       if (String(error.message).includes('ROSTER_REPAIR_MINIMUM_MISSING')) fail(409,'负责人或普通人员覆盖已变化，请重新校验');
@@ -1157,7 +1354,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
   async function audit(actor, query) { await requirePermission(actor, 'audit.read'); return { items: await repository.listAudit(query || {}) }; }
 
   return { contextFor, requirePermission, scopedActor, memberList, memberDetail, updateMember, addMembership, endMembership, permissions, roles, createRole, updateRole, previewRole, bindMemberRoles,
-    organization, importMembers, saveWorkProfile, deskSummary, workbench, createAttendanceEvent, issueAttendanceToken, checkIn, previewAttendance, attendanceList, attendanceOptions, correctAttendance, presence, rosterOptions, rosterTasks, taskAvailability, createRosterTask, rosterRequirements, saveAvailability, rosterTaskState, generate, updateRoster, publish, rosterMine,
+    organization, importMembers, saveWorkProfile, deskSummary, workbench, createAttendanceEvent, issueAttendanceToken, checkIn, previewAttendance, attendanceList, attendanceOptions, correctAttendance, presence, rosterOptions, rosterTasks, rosterCandidates,collectionCommand,addParticipants,submitAvailability,reviseRoster,taskAvailability, createRosterTask, rosterRequirements, saveAvailability, rosterTaskState, generate, updateRoster, publish, rosterMine,processRosterAutomation,seriesCommand,availabilityPreferences,
     leave, leaves, leaveDetail, leaveDecision, leaveWithdraw, swapCandidates, swapPreview, swapDetail, swap, swaps, swapDecision, attendanceExport, audit,
     recordAudit: input => repository.audit(input) };
 }

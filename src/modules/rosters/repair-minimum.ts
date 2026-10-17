@@ -1,9 +1,9 @@
 import { BoundedFlow, SolverBudget, SolverBudgetExceeded, type FlowEdge } from './bounded-flow.ts';
 
 type Slot = { businessDate: string; campusId: string; startAt: string; endAt: string; ordinaryMinimum?: number };
-type Member = { memberId: string; pool: 'lead' | 'ordinary'; available: Slot[]; leadSlots?: Slot[] };
-type Assignment = Slot & { memberId: string; roleKind?: string; leaveStatus?: string; locked?: boolean };
-type Input = { slots: Slot[]; members: Member[]; locked?: Assignment[]; optimizationBudget?: number };
+type Member = { memberId: string; pool: 'lead' | 'ordinary'; available: Slot[]; leadSlots?: Slot[]; manualSlots?: Slot[] };
+type Assignment = Slot & { memberId: string; roleKind?: string; leaveStatus?: string; locked?: boolean; manualOverride?: boolean };
+type Input = { slots: Slot[]; members: Member[]; locked?: Assignment[]; preservedAssignments?: Assignment[]; optimizationBudget?: number };
 const key = (slot: Slot) => `${slot.businessDate}:${slot.campusId}:${slot.startAt}:${slot.endAt}`;
 const available = (member: Member, slot: Slot) => member.available.some(window => window.businessDate === slot.businessDate &&
   window.campusId === slot.campusId && window.startAt <= slot.startAt && window.endAt >= slot.endAt) &&
@@ -17,7 +17,7 @@ export function optimizeRepairMinimum(input: Input) {
   const members = [...input.members].sort((a,b) => a.memberId.localeCompare(b.memberId));
   const locked = (input.locked || []).map(row => ({...row,locked:true}));
   const result = (assignments: Assignment[], complete: boolean, reason: string) => ({assignments,complete,reason,work:budget.work,flowRuns:budget.runs});
-  if (new Set(locked.map(row => row.memberId)).size !== locked.length || locked.some(row => !members.some(member => member.memberId === row.memberId && available(member,row) &&
+  if (new Set(locked.map(row => row.memberId)).size !== locked.length || locked.some(row => !(input.preservedAssignments || []).some(old=>old.memberId===row.memberId&&key(old)===key(row)&&(old.roleKind || '')===(row.roleKind || '')) && !members.some(member => member.memberId === row.memberId && (available(member,row) || row.manualOverride && member.manualSlots?.some(slot=>key(slot)===key(row))) &&
     (row.roleKind === 'repair_lead') === (member.pool === 'lead')) || !slots.some(slot => key(slot) === key(row)))) return result(locked,false,'invalid_locks_or_slots');
   try {
     const flow = new BoundedFlow(budget), source = flow.node(), sink = flow.node();

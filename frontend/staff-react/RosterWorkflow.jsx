@@ -1,0 +1,185 @@
+import React,{useContext,useEffect,useRef,useState} from 'react';
+import {request} from './request.js';
+import {ActivityContext,Modal} from './field/ui';
+import {WorkspaceHeader} from './WorkspaceHeader';
+import {StaffIdentity} from './StaffIdentity';
+import {RequirementEditor} from './StaffingRequirements.jsx';
+import {staffPermission} from '../../shared/staff-access.js';
+import {addDays,dateKey,weekRange} from '../../shared/time.js';
+import './roster.css';
+import './roster-workflow.css';
+
+const campuses={'campus-nanhu':'南湖校区','campus-hunnan':'浑南校区'};
+const days=['周一','周二','周三','周四'];
+const key=slot=>`${slot.businessDate}:${slot.campusId}:${slot.startAt}:${slot.endAt}`;
+const label=slot=>`${slot.businessDate.slice(5).replace('-','/')} · ${campuses[slot.campusId]} · ${slot.startAt}–${slot.endAt}`;
+const issueLabels={OFFICE_COVERAGE_MISSING:'办公人员未达到目标',COVERAGE_MISSING:'尚未安排人员',LEAD_COVERAGE_MISSING:'缺少负责人',ORDINARY_COVERAGE_MISSING:'普通人员低于最低需求',LEAD_SURPLUS:'只能安排一名负责人',MEMBER_WEEK_MISSING:'本周尚未安排',MEMBER_WEEK_DUPLICATE:'本周重复安排',MEMBER_DAY_DUPLICATE:'同日重复安排',MEMBER_UNAVAILABLE:'资格、授权或班次冲突',LEAD_INELIGIBLE:'负责人资格不符',POOL_MISMATCH:'人员身份与名额不符',LOCKED_ASSIGNMENT_CHANGED:'锁定安排已改变',DUTY_TYPE_MISMATCH:'岗位不匹配'};
+const repairStages=['发布收集','收集进度','调整班表','检查发布'];
+export function RosterStage({stage}) {
+  const steps=repairStages;
+  const current=stage==='collecting' ? 1 : stage==='ready' ? 1 : stage==='published' ? 3 : 2;
+  return <ol className="roster-steps" aria-label="排班流程">{steps.map((text,i)=><li key={text} aria-current={i===current ? 'step':undefined} data-complete={i<current}><span>{i+1}</span>{text}</li>)}</ol>;
+}
+
+function CollectionComposer({office,onClose,onCreated,onError}) {
+  const next=addDays(weekRange(dateKey()).start,7);
+  const [form,setForm]=useState({weekStart:next,campusIds:[],departmentIds:[],slotStart:'19:00',slotEnd:'21:00',deadline:`${addDays(next,-1)}T18:00`,description:'',recurrence:{enabled:false,publishWeekday:4,publishTime:'18:00',deadlineWeekday:7,deadlineTime:'18:00'}});
+  const [options,setOptions]=useState([]),[people,setPeople]=useState([]),[selected,setSelected]=useState([]),[requirements,setRequirements]=useState({}),[uniform,setUniform]=useState(1);
+  const [busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState(''),[search,setSearch]=useState('');
+  const lock=useRef(false),id=useRef(crypto.randomUUID());
+  const change=patch=>setForm(current=>({...current,...patch}));
+  useEffect(()=>{const controller=new AbortController();request(`/api/roster-tasks/options?dutyType=${office?'office':'repair'}`,{signal:controller.signal}).then(result=>{
+    setOptions(result.items);const first=result.items[0];if(first)change({campusIds:[first.campusId],departmentIds:first.allDepartments ? [] : [first.departments[0]?.id].filter(Boolean)});
+  }).catch(failure=>{if(!controller.signal.aborted)setError(failure.message);});return()=>controller.abort();},[office]);
+  useEffect(()=>{
+    if(!form.campusIds.length)return;
+    const controller=new AbortController();setLoading(true);
+    const timer=setTimeout(()=>request('/api/roster-tasks/candidates',{method:'POST',body:{...form,dutyType:office?'office':'repair'},signal:controller.signal}).then(result=>{setPeople(result.items);setSelected(result.items.map(item=>item.memberId));setError('');}).catch(failure=>{if(!controller.signal.aborted){setError(failure.message);setPeople([]);}}).finally(()=>{if(!controller.signal.aborted)setLoading(false);}),250);
+    return()=>{clearTimeout(timer);controller.abort();};
+  },[office,form.weekStart,JSON.stringify(form.campusIds),JSON.stringify(form.departmentIds)]);
+  const chosen=options.filter(item=>form.campusIds.includes(item.campusId));
+  const allDepartments=chosen.length>0 && chosen.every(item=>item.allDepartments);
+  const departments=(chosen[0]?.departments || []).filter(dept=>chosen.every(item=>item.departments.some(row=>row.id===dept.id)));
+  function chooseCampus(campusId) {
+    const ids=form.campusIds.includes(campusId)?form.campusIds.filter(id=>id!==campusId):[...form.campusIds,campusId];
+    const scope=options.filter(item=>ids.includes(item.campusId));
+    const shared=(scope[0]?.departments || []).filter(item=>scope.every(row=>row.departments.some(dept=>dept.id===item.id)));
+    change({campusIds:ids,departmentIds:scope.every(item=>item.allDepartments)?[]:shared.slice(0,1).map(item=>item.id)});
+  }
+  async function submit(event) {
+    event.preventDefault();if(lock.current)return;lock.current=true;setBusy(true);setError('');
+    try {
+      const result=await request('/api/roster-tasks',{method:'POST',body:{...form,campusId:form.campusIds[0],dutyType:office?'office':'repair',workflowVersion:1,
+        deadline:new Date(form.deadline).toISOString(),memberIds:selected,
+        requirements:form.campusIds.flatMap(campusId=>days.map((_,index)=>({campusId,businessDate:addDays(form.weekStart,index),ordinaryMinimum:Number(requirements[`${campusId}:${index}`] ?? 1)}))),requestId:id.current}});
+      onCreated(result.id);
+    }catch(failure){setError(failure.message);onError?.(failure.message);}finally{lock.current=false;setBusy(false);}
+  }
+  return <Modal title={office?'发布办公收集任务':'发布收集任务'} onClose={()=>{if(!busy)onClose();}}><form className="roster-compose" onSubmit={submit}>
+    <label>周一日期<input type="date" required value={form.weekStart} onChange={event=>change({weekStart:event.target.value})}/></label>
+    <fieldset disabled={busy}><legend>参与校区</legend><div className="roster-choice-row">{options.map(item=><label key={item.campusId}><input type="checkbox" checked={form.campusIds.includes(item.campusId)} onChange={()=>chooseCampus(item.campusId)}/>{item.name}</label>)}</div></fieldset>
+    <fieldset disabled={busy}><legend>参与部门</legend><div className="roster-choice-row">{allDepartments && <button type="button" aria-pressed={!form.departmentIds.length} onClick={()=>change({departmentIds:[]})}>全部部门</button>}{departments.map(item=><button type="button" aria-pressed={form.departmentIds.includes(item.id)} key={item.id} onClick={()=>change({departmentIds:form.departmentIds.includes(item.id)?form.departmentIds.filter(id=>id!==item.id):[...form.departmentIds,item.id]})}>{item.name}</button>)}</div>{!allDepartments&&!form.departmentIds.length&&<p className="react-error">请至少选择一个可管理的部门。</p>}</fieldset>
+    {<fieldset className="roster-demand-matrix" disabled={busy}><legend>{office?'每日办公人员目标人数':'每日普通维修人员最低需求'}</legend><p className="react-muted">{office?'自动排班按目标人数安排，优先均衡周内次数，每人每天最多一班。':'每个校区每天另排 1 名负责人，普通人员允许超过最低人数。'}</p><div className="roster-uniform"><label>统一人数<input type="number" min="0" max="300" required value={uniform} onChange={event=>setUniform(event.target.value)}/></label><button type="button" onClick={()=>setRequirements(Object.fromEntries(form.campusIds.flatMap(id=>days.map((_,i)=>[`${id}:${i}`,Number(uniform)]))))}>应用到所有工作日</button></div>
+      {form.campusIds.map(campusId=><div className="roster-campus-demand" key={campusId}><div><strong>{campuses[campusId]}</strong><button type="button" onClick={()=>setRequirements(current=>({...current,...Object.fromEntries(days.map((_,i)=>[`${campusId}:${i}`,current[`${campusId}:0`] ?? 1]))}))}>周一复制到整周</button></div><div>{days.map((day,i)=><label key={day}>{day}<small>{addDays(form.weekStart,i).slice(5)}</small><input aria-label={`${campuses[campusId]}${day}最低人数`} required type="number" min="0" max="300" value={requirements[`${campusId}:${i}`] ?? 1} onChange={event=>setRequirements(current=>({...current,[`${campusId}:${i}`]:event.target.value}))}/></label>)}</div></div>)}
+    </fieldset>}
+    <div className="roster-time-fields"><label>开始时间<input type="time" required value={form.slotStart} onChange={event=>change({slotStart:event.target.value})}/></label><label>结束时间<input type="time" required value={form.slotEnd} onChange={event=>change({slotEnd:event.target.value})}/></label></div>
+    {<><label>填报截止<input type="datetime-local" required value={form.deadline} onChange={event=>change({deadline:event.target.value})}/></label><details className="roster-audience"><summary>参与名单 · {loading?'正在读取':`${selected.length} 人`}</summary><p className="react-muted">排班资格按工作周判断，交流人员不参加维修收集。发布后保存本次名单。</p><label>查找成员<input value={search} onChange={event=>setSearch(event.target.value)}/></label><button type="button" onClick={()=>setSelected(people.map(item=>item.memberId))}>选择全部</button><div>{people.filter(item=>item.name.includes(search)).map(item=><label key={item.memberId}><input type="checkbox" checked={selected.includes(item.memberId)} onChange={()=>setSelected(current=>current.includes(item.memberId)?current.filter(id=>id!==item.memberId):[...current,item.memberId])}/><span>{item.name}<StaffIdentity identities={item.identities}/></span></label>)}</div></details><label>任务说明<textarea maxLength={500} value={form.description} onChange={event=>change({description:event.target.value})}/></label></>}
+    <fieldset><legend>后续收集</legend><label className="roster-choice-row"><input type="checkbox" checked={form.recurrence.enabled} onChange={event=>change({recurrence:{...form.recurrence,enabled:event.target.checked}})}/>每周自动发布收集任务</label>{form.recurrence.enabled&&<><p className="react-muted">以下时间均为值班前一周，北京时间。首次任务立即发布，后续按此设置循环。可在任务设置中暂停。</p>{[['publish','自动发布'],['deadline','填报截止']].map(([prefix,text])=><div className="roster-time-fields" key={prefix}><label>{text}星期<select aria-label={`${text}星期`} value={form.recurrence[`${prefix}Weekday`]} onChange={event=>change({recurrence:{...form.recurrence,[`${prefix}Weekday`]:Number(event.target.value)}})}>{[1,2,3,4,5,6,7].map(i=><option key={i} value={i}>周{['一','二','三','四','五','六','日'][i-1]}</option>)}</select></label><label>{text}时间<input type="time" required value={form.recurrence[`${prefix}Time`]} onChange={event=>change({recurrence:{...form.recurrence,[`${prefix}Time`]:event.target.value}})}/></label></div>)}</>}</fieldset>{error&&<p role="alert" className="react-error">{error}</p>}<div className="roster-modal-actions"><button type="button" disabled={busy} onClick={onClose}>取消</button><button className="field-primary" disabled={busy||loading||!form.campusIds.length||!allDepartments&&!form.departmentIds.length||!selected.length}>{busy?'正在提交…':office?'发布办公收集':'发布收集任务'}</button></div>
+  </form></Modal>;
+}
+
+export function RosterWorkflow({user,office=false}) {
+  const active=useContext(ActivityContext),canCreate=staffPermission(user,office?'roster.office.manage':'roster.repair.manage');
+  const [tasks,setTasks]=useState([]),[taskId,setTaskId]=useState(''),[data,setData]=useState(null),[rows,setRows]=useState([]);
+  const [loading,setLoading]=useState(false),[busy,setBusy]=useState(false),[dirty,setDirty]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
+  const [creating,setCreating]=useState(false),[panel,setPanel]=useState(''),[choosing,setChoosing]=useState(null),[query,setQuery]=useState(''),[confirmOverride,setConfirmOverride]=useState(null);
+  const [mobileDay,setMobileDay]=useState(0),[reopenDeadline,setReopenDeadline]=useState(''),[requirementsDirty,setRequirementsDirty]=useState(false);
+  const [extraPeople,setExtraPeople]=useState([]),[addedPeople,setAddedPeople]=useState([]);
+  const lock=useRef(false),serial=useRef(0),readController=useRef(null),command=useRef(null);
+  const listedTask=tasks.find(item=>item.id===taskId);
+  const manage=!!listedTask?.actions?.manage;
+  const task=data?.task ? {...listedTask,...data.task} : listedTask,draft=data?.draft,editable=manage&&draft?.status==='draft',collecting=data?.collectionState==='open';
+  async function loadTasks(preferred) {
+    const result=await request('/api/roster-tasks');const items=result.items.filter(item=>(office?item.dutyType==='office':item.dutyType!=='office')&&(item.actions?.manage||item.actions?.configure));
+    setTasks(items);setTaskId(current=>preferred||current||items[0]?.id||'');
+  }
+  async function load(id,{background=false}={}) {
+    const seq=++serial.current;readController.current?.abort();const controller=new AbortController();readController.current=controller;
+    if(!background)setLoading(true);
+    try {
+      const result=await request(`/api/roster-tasks/${encodeURIComponent(id)}/${manage?'roster':'requirements'}`,{signal:controller.signal});
+      if(seq!==serial.current)return;
+      setData(result);setRows(result.draft?.assignments||[]);setError('');
+    }catch(failure){if(!controller.signal.aborted)setError(failure.message);}finally{if(seq===serial.current)setLoading(false);}
+  }
+  useEffect(()=>{loadTasks().catch(failure=>setError(failure.message));},[office]);
+  useEffect(()=>{setData(null);setRows([]);setDirty(false);setPanel('');if(taskId)load(taskId);return()=>{serial.current++;readController.current?.abort();};},[taskId,manage]);
+  useEffect(()=>{
+    if(!active||!taskId||dirty||requirementsDirty||busy||panel||choosing)return;
+    const refresh=()=>{if(!document.hidden)load(taskId,{background:true});};
+    const timer=setInterval(refresh,30000);const visibility=()=>{if(document.hidden)readController.current?.abort();else refresh();};
+    document.addEventListener('visibilitychange',visibility);return()=>{clearInterval(timer);readController.current?.abort();document.removeEventListener('visibilitychange',visibility);};
+  },[active,taskId,dirty,requirementsDirty,busy,panel,choosing]);
+  useEffect(()=>{
+    if(!dirty&&!requirementsDirty)return;
+    const guard=event=>event.preventDefault(),unload=event=>{event.preventDefault();event.returnValue='';};
+    if(active)window.addEventListener('staff-before-navigation',guard);window.addEventListener('beforeunload',unload);
+    return()=>{window.removeEventListener('staff-before-navigation',guard);window.removeEventListener('beforeunload',unload);};
+  },[dirty,requirementsDirty,active]);
+  async function run(kind,path,body,method='POST') {
+    if(lock.current)return;lock.current=true;setBusy(true);setError('');setNotice('');
+    const signature=JSON.stringify([kind,path,body]);if(command.current?.signature!==signature)command.current={signature,id:crypto.randomUUID()};
+    try{await request(path,{method,body:{...body,requestId:command.current.id}});command.current=null;setDirty(false);setPanel('');await load(taskId);await loadTasks();setNotice(({save:'调整已保存，已重新校验。',publish:'班表已发布，成员端将显示最新安排。',close:'收集已结束，可以生成自动排班。',reopen:'收集已重新开放，现有班表保持不变。',generate:'已生成排班草稿，请处理缺口并核对安排。',revise:'已复制当前班表。修订发布前，原班表继续生效。',series:'循环配置已更新。',participants:'参与人员已增补。'})[kind]);}
+    catch(failure){setError(failure.message);}finally{lock.current=false;setBusy(false);}
+  }
+  async function openParticipants() {
+    setError('');
+    try{const result=await request('/api/roster-tasks/candidates',{method:'POST',body:task});setExtraPeople(result.items.filter(item=>!task.memberIds.includes(item.memberId)));setAddedPeople([]);setPanel('participants');}catch(failure){setError(failure.message);}
+  }
+  const change=next=>{serial.current++;readController.current?.abort();setRows(next);setDirty(true);setNotice('');};
+  const members=data?.members||[],slots=data?.slots||[],names=new Map(members.map(item=>[item.memberId,item.name]));
+  const protectedRows=data?.protectedAssignments||[];
+  const protectedPerson=row=>protectedRows.some(item=>item.memberId===row.memberId&&item.businessDate===row.businessDate);
+  function assign(member,slot,override=false) {
+    if(rows.some(row=>row.memberId===member.memberId&&(!office||row.businessDate===slot.businessDate)&&protectedPerson(row)))return;
+    const reported=member.available.some(item=>key(item)===key(slot));
+    if(!reported&&!override){setConfirmOverride({member,slot});return;}
+    const retained=rows.filter(row=>(row.memberId!==member.memberId || office&&row.businessDate!==slot.businessDate)&&!(choosing?.replaceId===row.memberId&&key(row)===key(slot)));
+    change([...retained,{...slot,memberId:member.memberId,roleKind:office?'':member.pool==='lead'?'repair_lead':'',manualOverride:!reported,locked:false}]);
+    setConfirmOverride(null);
+  }
+  const previous=data?.publishedAssignments||[];
+  const signature=row=>`${row.memberId}:${key(row)}:${row.roleKind||''}`;
+  const differences=[...previous.filter(row=>!rows.some(item=>signature(item)===signature(row))).map(row=>({row,kind:'移除'})),...rows.filter(row=>!previous.some(item=>signature(item)===signature(row))).map(row=>({row,kind:'安排'}))];
+  const unassigned=members.filter(member=>!rows.some(row=>row.memberId===member.memberId));
+  const candidateSlots=member=>member.manualSlots||member.available;
+  const stage=data?.stage||'ready';
+  const showBoard=manage&&!!draft&&!collecting;
+  return <section className="react-page roster-workflow">
+    <WorkspaceHeader group="值班管理" title={office?'办公排班管理':'维修排班管理'} description="收集整周可用时间，自动排班后人工核对，再发布给成员。">{canCreate&&<button disabled={busy||dirty||requirementsDirty} onClick={()=>setCreating(true)}>{office?'新建办公收集任务':'新建收集任务'}</button>}</WorkspaceHeader>
+    <div className="roster-range"><label>排班周与校区<select aria-label="排班周与校区" value={taskId} disabled={busy||dirty||requirementsDirty} onChange={event=>setTaskId(event.target.value)}><option value="">选择{office?'办公班表':'收集任务'}</option>{tasks.map(item=><option value={item.id} key={item.id}>{item.weekStart} · {item.scopeLabel}</option>)}</select></label><button disabled={!taskId||busy||dirty||requirementsDirty||loading} onClick={()=>load(taskId)}>刷新</button>{task?.actions?.configure&&<button disabled={dirty||busy||requirementsDirty||loading||!data} onClick={()=>setPanel('settings')}>任务设置</button>}</div>
+    {error&&<p role="alert" className="react-error">{error}</p>}{notice&&<p role="status" className="react-message">{notice}</p>}
+    {!taskId&&<section className="roster-start"><strong>{'从发布可用时间收集开始'}</strong><p>{'在同一任务中设置参与校区、成员和每天的人数。成员提交后，再结束收集并生成班表。'}</p>{canCreate?<button className="field-primary" onClick={()=>setCreating(true)}>{'发布收集任务'}</button>:<p>暂无可配置任务，请联系维修排班负责人发布收集。</p>}</section>}
+    {loading&&!data&&<div className="roster-loading" role="status">正在读取本周安排…</div>}
+    {data&&manage&&<><RosterStage office={office} stage={stage}/><section className="roster-next"><div><span className="react-eyebrow">{task.weekStart} 起 · {task.slotStart}–{task.slotEnd}</span><h2>{({collecting:'正在收集可用时间',ready:'收集已结束，可以自动排班',adjusting:'核对并调整班表',revising:'正在修订已发布班表',published:'班表已发布'})[stage]}</h2><p>{collecting?`${data.progress.submitted} / ${data.progress.total} 人已提交 · 截止 ${new Date(task.deadline).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'})}`:stage==='published'?'成员正在使用当前班表。修改时先建立修订稿，确认后再发布。':dirty?'有未保存调整，请先保存并校验。':data.publishedVersion?'原班表继续生效，修订发布后才会替换。':'完成覆盖和资格检查后，成员才能看到班次。'}</p></div><div>
+      {collecting&&<button className="field-primary" disabled={busy||dirty} onClick={()=>setPanel('close')}>结束收集</button>}
+      {stage==='ready'&&<button className="field-primary" disabled={busy||data.requiresRuleConfirmation} onClick={()=>run('generate','/api/rosters/generate',{taskId})}>{'生成自动排班'}</button>}
+      {stage==='published'&&<button className="field-primary" disabled={busy} onClick={()=>run('revise',`/api/roster-tasks/${taskId}/revision`,{publishedVersionId:data.publishedVersion.id})}>调整已发布班表</button>}
+      {editable&&!collecting&&(dirty?<button className="field-primary" disabled={busy} onClick={()=>run('save',`/api/rosters/${draft.id}`,{version:draft.version,assignments:rows},'PATCH')}>保存并校验</button>:<button className="field-primary" disabled={busy||!draft.validation.valid||draft.sourceChanged} onClick={()=>setPanel('publish')}>检查并发布</button>)}
+    </div></section>
+    {collecting&&<section className="roster-collection"><div className="roster-section-title"><h2>收集情况</h2><span>填报人数反映已提交，不代表一定可覆盖全部班次</span></div><progress max={Math.max(1,data.progress.total)} value={data.progress.submitted} aria-label="填报进度"/><div className="roster-coverage">{data.progress.coverage.map(slot=><article key={key(slot)}><strong>{label(slot)}</strong>{!office&&<span>负责人可用 {slot.leads} / 需 1 名</span>}<span>{office?'办公':'普通'}人员可用 {slot.ordinary} / {office?'目标':'最低'} {slot.ordinaryMinimum ?? 1} 名</span></article>)}</div><details><summary>查看成员填报情况 · {data.progress.total-data.progress.submitted} 人未提交</summary><ul className="roster-progress-people">{data.progress.people.map(person=><li key={person.memberId}><strong>{person.name}</strong><span>{!person.active?'资格或账号已变化':!person.submission?'尚未提交':person.submission.unavailable?'整周无法参加':'已提交可用时间'}</span></li>)}</ul></details>{data.publishedVersion&&<p className="react-muted">此次重新收集不改变当前有效班表。</p>}</section>}
+    {!collecting&&<div className="roster-secondary-actions"><button disabled={busy||dirty} onClick={()=>{setReopenDeadline(`${addDays(dateKey(),1)}T18:00`);setPanel('reopen');}}>重新开放收集</button>{editable&&<button disabled={busy||dirty} onClick={()=>setPanel('regenerate')}>重新自动排班</button>}</div>}
+    {showBoard&&<><div className="roster-board-heading"><h2>{editable?'班表草稿':'当前有效班表'}</h2><span>{rows.length} 班 · {new Set(rows.map(row=>row.memberId)).size} 人</span>{dirty&&<button onClick={()=>{setRows(draft.assignments);setDirty(false);}}>撤销未保存调整</button>}</div>
+    <div className="roster-mobile-days" aria-label="选择值班日期">{days.map((day,i)=><button key={day} aria-pressed={mobileDay===i} onClick={()=>setMobileDay(i)}>{day}<small>{addDays(task.weekStart,i).slice(5)}</small></button>)}</div>
+    <div className="roster-board-layout" inert={busy || undefined} aria-busy={busy}><div className="roster-campus-boards">{[...new Set(slots.map(slot=>slot.campusId))].map(campusId=><section className="roster-campus-board" key={campusId}><h3>{campuses[campusId]}</h3><div className="roster-week-columns">{slots.filter(slot=>slot.campusId===campusId).map((slot,index)=>{
+      const assigned=rows.filter(row=>key(row)===key(slot)),effective=assigned.filter(row=>row.leaveStatus!=='approved');
+      const leads=effective.filter(row=>row.roleKind==='repair_lead').length,ordinary=effective.length-leads;
+      return <article className="roster-day-column" data-visible={mobileDay===index} key={key(slot)} onDragOver={event=>{if(editable)event.preventDefault();}} onDrop={event=>{event.preventDefault();const member=members.find(item=>item.memberId===event.dataTransfer.getData('text/plain'));if(member&&candidateSlots(member).some(item=>key(item)===key(slot)))assign(member,slot);}}><header><strong>{days[index]}</strong><span>{slot.businessDate.slice(5)}</span></header><p className="roster-coverage-caption">{office?`已排 ${effective.length} / 目标 ${slot.ordinaryMinimum ?? 1} 人`:`负责人 ${leads}/1 · 普通 ${ordinary}/${slot.ordinaryMinimum ?? 1}`}</p>
+        {!office&&(leads!==1||ordinary<(slot.ordinaryMinimum??1))&&<span className="roster-gap">{leads!==1?'负责人需处理':'普通人员缺额'}</span>}
+        <ul>{assigned.map(row=><li className="roster-person" key={row.memberId} draggable={editable&&!protectedPerson(row)} onDragStart={event=>event.dataTransfer.setData('text/plain',row.memberId)}><strong>{names.get(row.memberId)||'资格已变化的成员'}</strong><StaffIdentity identities={members.find(item=>item.memberId===row.memberId)?.identities}/>{row.roleKind==='coordinator'&&<span>当日协调人</span>}{row.leaveStatus&&<span className="roster-gap">{row.leaveStatus==='approved'?'已请假，不计覆盖':'请假审批中'}</span>}{row.manualOverride&&<small>人工安排 · 超出填报</small>}{protectedPerson(row)&&<small>已签到或已结束，保留原班次</small>}{editable&&!protectedPerson(row)&&<div className="roster-person-actions"><button onClick={()=>{setQuery('');setChoosing({slot,memberId:row.memberId});}}>调整</button><button onClick={()=>{setQuery('');setChoosing({slot,replaceId:row.memberId});}}>替换</button><button onClick={()=>change(rows.filter(item=>item!==row))}>移除</button>{<label><input type="checkbox" checked={!!row.locked} onChange={event=>change(rows.map(item=>item===row?{...item,locked:event.target.checked}:item))}/>锁定</label>}{office&&<label><input type="checkbox" checked={row.roleKind==='coordinator'} onChange={event=>change(rows.map(item=>item===row?{...item,roleKind:event.target.checked?'coordinator':''}:item))}/>协调人</label>}</div>}</li>)}</ul>
+        {editable&&<button className="roster-add-person" disabled={busy} onClick={()=>{setQuery('');setChoosing({slot});}}>添加{office?'办公':'维修'}人员</button>}
+      </article>;
+    })}</div></section>)}</div><aside className="roster-unassigned"><h3>{office?'人员班次数':'尚未安排'}</h3><p className="react-muted">{office?'同一成员每日一班。选择日期下的添加按钮安排人员。':'负责人可以本周不排班。普通人员未安排的问题需在发布前处理。'}</p>{(office?members:unassigned).map(member=><div className="roster-unassigned-person" key={member.memberId} draggable={editable} onDragStart={event=>event.dataTransfer.setData('text/plain',member.memberId)}><strong>{member.name}</strong><StaffIdentity identities={member.identities}/><small>{office?`本周已排 ${rows.filter(row=>row.memberId===member.memberId).length} 班 · `:''}{member.available.length?'已填报可参加时间':'暂无完整班次填报'}</small>{editable&&<button onClick={()=>{setQuery('');setChoosing({memberId:member.memberId,slot:slots[0]});}}>安排到日期</button>}</div>)}</aside></div>
+    {draft.sourceChanged&&!dirty&&<p role="status" className="react-message">任务或人员数据已变化。请核对安排后保存并重新校验。<button onClick={()=>setDirty(true)}>核对当前班表</button></p>}
+    {!!draft.validation.errors.length&&!dirty&&<section className="roster-issues"><h3>发布前需要处理</h3><ul>{draft.validation.errors.map((issue,i)=><li key={i}><span>{names.get(issue.memberId)||''} {issueLabels[issue.code]||'安排需要核对'} {issue.slot?label(issue.slot):''}</span>{editable&&issue.slot&&<button onClick={()=>setChoosing({slot:issue.slot})}>处理此班次</button>}</li>)}</ul></section>}
+    </>}
+    </>}
+    {data&&!manage&&<section className="roster-start"><h2>收集任务设置</h2><p>你可以配置授权校区每日需求。收集、人员安排与发布由维修排班负责人处理。</p><RequirementEditor taskId={taskId} onDirty={setRequirementsDirty}/></section>}
+    {creating&&<CollectionComposer office={office} onClose={()=>setCreating(false)} onCreated={id=>{setCreating(false);loadTasks(id).catch(failure=>setError(failure.message));setNotice('收集任务已发布，成员现在可以填报时间。');}}/>}
+    {panel==='participants'&&<Modal title="增补参与人员" onClose={()=>setPanel('')}><p>增补仅加入本次任务，已有填报和已发布安排不会自动改变。</p><div className="roster-choice-row">{extraPeople.map(person=><label key={person.memberId}><input type="checkbox" checked={addedPeople.includes(person.memberId)} onChange={()=>setAddedPeople(current=>current.includes(person.memberId)?current.filter(id=>id!==person.memberId):[...current,person.memberId])}/>{person.name}<StaffIdentity identities={person.identities}/></label>)}</div>{!extraPeople.length&&<p>当前范围没有其他符合资格的人员。</p>}{error&&<p role="alert" className="react-error">{error}</p>}<div className="roster-modal-actions"><button onClick={()=>setPanel('')}>取消</button><button className="field-primary" disabled={busy||!addedPeople.length} onClick={()=>run('participants',`/api/roster-tasks/${taskId}/participants`,{revision:task.revision,memberIds:addedPeople})}>确认增补</button></div></Modal>}
+    {panel==='automation'&&data?.series&&<Modal title="每周循环收集" onClose={()=>setPanel('')}><p>值班前一周的周{['一','二','三','四','五','六','日'][data.series.publish_weekday-1]} {data.series.publish_time} 发布，周{['一','二','三','四','五','六','日'][data.series.deadline_weekday-1]} {data.series.deadline_time} 截止。</p><p>{data.series.enabled?'已开启':'已暂停'} · 下一次发布 {new Date(data.series.next_publish_at).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai'})}</p>{data.series.last_error&&<p role="alert" className="react-error">上次执行需要处理：{data.series.last_error}</p>}<p className="react-muted">后台定期检查到期任务，已有填报和班表不受暂停影响。</p><button disabled={busy} onClick={()=>run('series',`/api/roster-series/${data.series.id}`,{revision:data.series.revision,enabled:!data.series.enabled},'PATCH')}>{data.series.enabled?'暂停后续自动发布':'恢复自动发布'}</button>{error&&<p role="alert" className="react-error">{error}</p>}</Modal>}
+    {panel==='settings'&&<Modal title="收集任务设置" onClose={()=>{if(!requirementsDirty)setPanel('');}}><p>{task.weekStart} · {task.description||'本周可用时间收集'}</p><RequirementEditor taskId={taskId} onDirty={setRequirementsDirty} onSaved={()=>load(taskId)}/>{requirementsDirty&&<p className="react-message">有未保存的需求调整。<button onClick={()=>{setRequirementsDirty(false);setPanel('');}}>放弃修改并关闭</button></p>}{manage&&<button disabled={busy||requirementsDirty} onClick={openParticipants}>增补参与人员</button>}{data?.series&&<button disabled={busy||requirementsDirty} onClick={()=>setPanel('automation')}>每周循环收集设置</button>}</Modal>}
+    {['close','reopen','regenerate','publish'].includes(panel)&&<Modal title={({close:'结束本次收集',reopen:'重新开放收集',regenerate:'重新生成自动排班',publish:'检查并发布班表'})[panel]} onClose={()=>{if(!busy)setPanel('');}}><div className="roster-confirm">
+      {panel==='close'&&<><p>{data.progress.submitted} / {data.progress.total} 人已提交。结束后成员将不能修改填报。</p>{data.progress.people.filter(item=>!item.submission).length>0&&<p className="roster-gap">尚未提交：{data.progress.people.filter(item=>!item.submission).map(item=>item.name).join('、')}</p>}</>}
+      {panel==='reopen'&&<><p>保留已填报时间和当前班表。新的提交不会自动改变安排。</p><label>新的截止时间<input type="datetime-local" required value={reopenDeadline} onChange={event=>setReopenDeadline(event.target.value)}/></label></>}
+      {panel==='regenerate'&&<p>重新计算尚未锁定的安排。锁定的人工安排会保留，原已发布班表继续生效。</p>}
+      {panel==='publish'&&<><p>{task.weekStart} 起 · {task.campusScope.campusIds.map(id=>campuses[id]).join('、')}</p><p>{rows.length} 班，{new Set(rows.map(row=>row.memberId)).size} 人。以下变化确认后才生效。</p><ul className="roster-diff">{differences.map(({row,kind},i)=><li key={i}><span>{kind}</span><strong>{names.get(row.memberId)||'成员'}</strong><span>{label(row)}</span>{row.manualOverride&&<small>人工安排，超出原填报</small>}</li>)}</ul><p>发布时将再次核对资格、人数、签到和班次冲突。</p></>}
+      {error&&<p role="alert" className="react-error">{error}</p>}<div className="roster-modal-actions"><button disabled={busy} onClick={()=>setPanel('')}>返回核对</button><button className="field-primary" disabled={busy||panel==='reopen'&&(!reopenDeadline||!Number.isFinite(Date.parse(reopenDeadline)))} onClick={()=>panel==='publish'?run('publish',`/api/rosters/${draft.id}/publish`,{version:draft.version}):panel==='regenerate'?run('generate','/api/rosters/generate',{taskId}):run(panel,`/api/roster-tasks/${taskId}/collection`,{action:panel,revision:task.revision,...(panel==='reopen'?{deadline:new Date(reopenDeadline).toISOString()}:{})})}>{({close:'确认结束收集',reopen:'重新开放',regenerate:'重新生成',publish:'确认发布'})[panel]}</button></div>
+    </div></Modal>}
+    {choosing&&<Modal title={choosing.memberId?'调整人员安排':`安排 ${label(choosing.slot)}`} onClose={()=>{setChoosing(null);setConfirmOverride(null);}}><div className="roster-picker"><label>目标班次<select aria-label="目标班次" value={key(choosing.slot)} onChange={event=>{setChoosing(current=>({...current,slot:slots.find(slot=>key(slot)===event.target.value)}));setConfirmOverride(null);}}>{slots.map(slot=><option value={key(slot)} key={key(slot)}>{label(slot)}</option>)}</select></label><label>查找成员<input value={query} onChange={event=>setQuery(event.target.value)} placeholder="输入姓名"/></label><p className="react-muted">已填报时间供参考。人工安排仍检查资格、授权和已有班次。</p>{members.filter(member=>(!choosing.memberId||member.memberId===choosing.memberId)&&member.name.includes(query)).map(member=>{
+      const eligible=candidateSlots(member).some(slot=>key(slot)===key(choosing.slot)),reported=member.available.some(slot=>key(slot)===key(choosing.slot));
+      const same=rows.some(row=>row.memberId===member.memberId&&key(row)===key(choosing.slot)),protectedMember=rows.some(row=>row.memberId===member.memberId&&(!office||row.businessDate===choosing.slot.businessDate)&&protectedPerson(row));
+      return <article className="roster-candidate" key={member.memberId}><div><strong>{member.name}</strong><StaffIdentity identities={member.identities}/><p>{member.reportedWindows?.length?`原填报：${member.reportedWindows.map(window=>label(window)).join('；')}`:office?'具有办公资格':'尚无可用时间填报'}</p>{member.existingAssignments?.length>0&&<small>其他班次：{member.existingAssignments.map(row=>label(row)).join('；')}</small>}<span>{!eligible?'此班次资格、授权或已有安排冲突':protectedMember?'原班次已签到或结束':same?'已在本班次':reported?'可安排':'未填报此时段 · 可人工安排'}</span></div><button disabled={!eligible||protectedMember||same} onClick={()=>assign(member,choosing.slot)}>{rows.some(row=>row.memberId===member.memberId&&(!office||row.businessDate===choosing.slot.businessDate))?'移动到本班次':'添加'}</button></article>;
+    })}{confirmOverride&&<section className="roster-override-confirm" role="alert"><p>{confirmOverride.member.name} 未填报此班次可用时间，是否仍安排？原填报不会改变。</p><button onClick={()=>setConfirmOverride(null)}>取消</button><button className="field-primary" onClick={()=>assign(confirmOverride.member,confirmOverride.slot,true)}>确认人工安排</button></section>}<button onClick={()=>{setChoosing(null);setConfirmOverride(null);}}>完成调整</button></div></Modal>}
+  </section>;
+}

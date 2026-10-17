@@ -4,6 +4,7 @@ import { intersectScopes } from '../modules/authorization/scopes.js';
 import { rosterSwapCommands } from './roster-swaps.js';
 import { attendanceCorrections } from './attendance-corrections.js';
 import { rosterFingerprintSql } from './roster-fingerprint.js';
+import { rosterCollectionRepository } from './roster-collection.js';
 
 const memberColumns = `m.id,m.name,m.student_id,m.home_campus_id,m.status,m.revision,m.created_at,m.updated_at`;
 const assignmentLeaveColumn = `(SELECT lr.status FROM roster_leave_facts lr WHERE lr.origin_assignment_id=COALESCE(da.origin_assignment_id,da.id) AND lr.member_id=da.member_id
@@ -35,6 +36,7 @@ function assignment(row) {
 }
 
 export function staffPlatformRepository(db) {
+  const collection = rosterCollectionRepository(db);
   async function accountRow(account) {
     return db.prepare(`SELECT staff_accounts.*,m.id AS mapped_member_id,m.status AS member_status
       FROM staff_accounts LEFT JOIN members m ON m.id=staff_accounts.member_id WHERE staff_accounts.account=?`).bind(account).first();
@@ -666,12 +668,16 @@ export function staffPlatformRepository(db) {
   }
   async function createRosterTask(input, actorMemberId) {
     const id = input.id || crypto.randomUUID(); const at = nowIso();
-    await db.batch([db.prepare(`INSERT INTO roster_tasks(id,week_start,campus_scope,slot_start,slot_end,member_ids,deadline,description,created_by_member_id,created_at,duty_type,rule_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`)
-      .bind(id,input.weekStart,json(input.campusScope,{}),input.slotStart,input.slotEnd,json(input.memberIds,[]),input.deadline,input.description || '',actorMemberId,at,input.dutyType || 'repair',input.dutyType==='office' ? 'office-daily-v1' : 'repair-minimum-v2'),
-      ...(input.requirements || []).map(item=>db.prepare('INSERT INTO roster_staffing_requirements(task_id,business_date,campus_id,ordinary_minimum) VALUES(?,?,?,?)').bind(id,item.businessDate,item.campusId,item.ordinaryMinimum))]);
+    await db.batch([...(input.commandRecord ? [collection.rosterVersionGuard(input.commandRecord,'1=1',[])] : []),db.prepare(`INSERT INTO roster_tasks(id,week_start,campus_scope,slot_start,slot_end,member_ids,deadline,description,created_by_member_id,created_at,duty_type,rule_version,workflow_version,series_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .bind(id,input.weekStart,json(input.campusScope,{}),input.slotStart,input.slotEnd,json(input.memberIds,[]),input.deadline,input.description || '',actorMemberId,at,input.dutyType || 'repair',input.dutyType==='office' ? input.workflowVersion===1 ? 'office-daily-v2' : 'office-daily-v1' : 'repair-minimum-v2',input.workflowVersion || 0,input.seriesId || (input.recurrence?.enabled ? id : null)),
+      ...(input.requirements || []).map(item=>db.prepare('INSERT INTO roster_staffing_requirements(task_id,business_date,campus_id,ordinary_minimum) VALUES(?,?,?,?)').bind(id,item.businessDate,item.campusId,item.ordinaryMinimum)),
+      ...(input.commandRecord ? [collection.rosterVersionReceipt(input.commandRecord,'create-task',id,{signature:input.commandSignature})] : []),
+      ...(input.recurrence?.enabled ? [db.prepare('INSERT INTO roster_collection_series(id,owner_member_id,template_task_id,publish_weekday,publish_time,deadline_weekday,deadline_time,next_week,next_publish_at) VALUES(?,?,?,?,?,?,?,?,?)')
+        .bind(id,actorMemberId,id,input.recurrence.publishWeekday,input.recurrence.publishTime,input.recurrence.deadlineWeekday,input.recurrence.deadlineTime,input.recurrence.nextWeek,input.recurrence.nextPublishAt)] : []),
+      ...(input.commandRecord ? [collection.rosterAudit(input.commandRecord,'rosters.task.created',id,{weekStart:input.weekStart,campusScope:input.campusScope}),db.prepare('DELETE FROM roster_command_guards')] : [])]);
     return rosterTaskById(id);
   }
-  function rosterTask(row) { return row ? { id: row.id, dutyType: row.duty_type || 'repair', ruleVersion:row.rule_version || 'legacy', requirements:parseJson(row.requirements_json,[]), weekStart: row.week_start, campusScope: parseJson(row.campus_scope,{}), slotStart: row.slot_start, slotEnd: row.slot_end, memberIds: parseJson(row.member_ids,[]), deadline: row.deadline, description: row.description, revision: row.revision, createdAt: row.created_at } : null; }
+  function rosterTask(row) { return row ? { id: row.id, seriesId:row.series_id || '',dutyType: row.duty_type || 'repair', workflowVersion:row.workflow_version || 0, collectionClosedAt:row.collection_closed_at, ruleVersion:row.rule_version || 'legacy', requirements:parseJson(row.requirements_json,[]), weekStart: row.week_start, campusScope: parseJson(row.campus_scope,{}), slotStart: row.slot_start, slotEnd: row.slot_end, memberIds: parseJson(row.member_ids,[]), deadline: row.deadline, description: row.description, revision: row.revision, createdAt: row.created_at } : null; }
   async function listRosterTasks() { const result = await db.prepare(`SELECT ${rosterTaskColumns} FROM roster_tasks rt ORDER BY rt.week_start DESC,rt.id DESC LIMIT 101`).all(); return rows(result).map(rosterTask); }
   async function saveRosterRequirements(task,input,auditRecord) {
     const authorization=commandAuthorization(auditRecord);
@@ -680,7 +686,7 @@ export function staffPlatformRepository(db) {
     // command marker. A stale command must not replace another editor's demand.
     const marker=crypto.randomUUID();
     const gate=`${guard} AND EXISTS(SELECT 1 FROM audit_events WHERE id=? AND action='rosters.requirements.updated')`;
-    const statements=[db.prepare(`UPDATE roster_tasks SET revision=revision+1,rule_version='repair-minimum-v2' WHERE id=? AND revision=? ${authorization.sql}`).bind(task.id,input.revision,...authorization.args),
+    const statements=[db.prepare(`UPDATE roster_tasks SET revision=revision+1,rule_version=CASE WHEN duty_type='office' THEN 'office-daily-v2' ELSE 'repair-minimum-v2' END WHERE id=? AND revision=? ${authorization.sql}`).bind(task.id,input.revision,...authorization.args),
       auditStatement({...auditRecord,id:marker},true),
       db.prepare(`DELETE FROM roster_staffing_requirements WHERE task_id=? AND ${gate}`).bind(task.id,task.id,input.revision+1,marker)];
     for(const item of input.requirements) statements.push(db.prepare(`INSERT INTO roster_staffing_requirements(task_id,business_date,campus_id,ordinary_minimum) SELECT ?,?,?,? WHERE ${gate}`)
@@ -691,7 +697,7 @@ export function staffPlatformRepository(db) {
   async function saveAvailability(taskId, memberId, input) {
     const id = input.id || crypto.randomUUID();
     await db.prepare(`INSERT INTO availability(id,task_id,member_id,business_date,start_at,end_at,campus_id,revision) VALUES(?,?,?,?,?,?,?,0)
-      ON CONFLICT(task_id,member_id,business_date,start_at,end_at) DO UPDATE SET campus_id=excluded.campus_id,revision=availability.revision+1`)
+      ON CONFLICT(task_id,member_id,business_date,start_at,end_at,campus_id) DO UPDATE SET revision=availability.revision+1`)
       .bind(id,taskId,memberId,input.businessDate,input.startAt,input.endAt,input.campusId || null).run();
     const result = await db.prepare('SELECT * FROM availability WHERE task_id=? AND member_id=? ORDER BY business_date,start_at').bind(taskId,memberId).all();
     return rows(result).map(row => ({ id: row.id, taskId: row.task_id, memberId: row.member_id, businessDate: row.business_date, startAt: row.start_at, endAt: row.end_at, campusId: row.campus_id, revision: row.revision }));
@@ -701,6 +707,7 @@ export function staffPlatformRepository(db) {
     const id = input.id || crypto.randomUUID(); const at = nowIso();
     const statements = [db.prepare(`INSERT INTO roster_versions(id,task_id,status,version,rule_version,algorithm_version,input_snapshot_ref,solver_status,validation_result,created_at) SELECT ?,?,?,COALESCE(MAX(version),0)+1,?,?,?,?,?,? FROM roster_versions WHERE task_id=?`)
       .bind(id,input.taskId,input.status || 'draft',input.ruleVersion || '1.0.0',input.algorithmVersion || 'deterministic-greedy-v1',json(input.inputSnapshotRef,{}),input.solverStatus || 'feasible',json(input.validation,{}),at,input.taskId)];
+    statements.push(db.prepare("UPDATE roster_versions SET status='superseded' WHERE task_id=? AND status='draft' AND id<>?").bind(input.taskId,id));
     for (const item of input.assignments || []) {
       const assignmentId = item.id || crypto.randomUUID();
       statements.push(db.prepare(`INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at,origin_assignment_id)
@@ -709,6 +716,10 @@ export function staffPlatformRepository(db) {
         .bind(assignmentId,id,item.memberId,item.businessDate,item.campusId,item.dutyType || 'repair',item.startAt,item.endAt,input.taskId,item.memberId,item.businessDate,item.campusId,item.dutyType || 'repair',item.startAt,item.endAt));
       if (item.roleKind) statements.push(db.prepare('INSERT INTO duty_roles(id,assignment_id,role_kind,effective_range) VALUES(?,?,?,?)')
         .bind(`duty-role-${assignmentId}-${item.roleKind}`,assignmentId,item.roleKind,json(item.effectiveRange || {})));
+    }
+    if(input.commandRecord) {
+      statements.unshift(collection.rosterVersionGuard(input.commandRecord,`EXISTS(SELECT 1 FROM roster_tasks WHERE id=? AND revision=? ${input.requireClosed ? "AND (collection_closed_at IS NOT NULL OR julianday(deadline)<=julianday('now'))" : ''})`,[input.taskId,input.inputSnapshotRef.eligibility.taskRevision]));
+      statements.push(collection.rosterVersionReceipt(input.commandRecord,input.commandRecord.command,id,{taskId:input.taskId}),collection.rosterAudit(input.commandRecord,input.commandRecord.command==='revise'?'rosters.revised':'rosters.generated',input.taskId,{versionId:id}),db.prepare('DELETE FROM roster_command_guards'));
     }
     await db.batch(statements);
     return rosterVersion(await db.prepare('SELECT * FROM roster_versions WHERE id=?').bind(id).first());
@@ -722,10 +733,11 @@ export function staffPlatformRepository(db) {
   }
   async function versionAssignments(id) {
     return rows(await db.prepare(`SELECT da.*,c.name AS campus_name,dr.role_kind,${assignmentLeaveColumn},
-      EXISTS(SELECT 1 FROM json_each(rv.input_snapshot_ref,'$.lockedMemberIds') WHERE value=da.member_id) AS locked
+      EXISTS(SELECT 1 FROM json_each(rv.input_snapshot_ref,'$.manualOverrides') j WHERE json_extract(j.value,'$.memberId')=da.member_id AND json_extract(j.value,'$.businessDate')=da.business_date AND json_extract(j.value,'$.campusId')=da.campus_id) AS manual_override,
+      (EXISTS(SELECT 1 FROM json_each(rv.input_snapshot_ref,'$.lockedAssignments') j WHERE json_extract(j.value,'$.memberId')=da.member_id AND json_extract(j.value,'$.businessDate')=da.business_date AND json_extract(j.value,'$.campusId')=da.campus_id AND json_extract(j.value,'$.startAt')=da.start_at AND json_extract(j.value,'$.endAt')=da.end_at) OR (json_type(rv.input_snapshot_ref,'$.lockedAssignments') IS NULL AND EXISTS(SELECT 1 FROM json_each(rv.input_snapshot_ref,'$.lockedMemberIds') WHERE value=da.member_id))) AS locked
       FROM duty_assignments da JOIN roster_versions rv ON rv.id=da.version_id
       JOIN campuses c ON c.id=da.campus_id LEFT JOIN duty_roles dr ON dr.assignment_id=da.id WHERE da.version_id=?
-      ORDER BY da.business_date,da.start_at,da.member_id`).bind(id).all()).map(row => ({ ...assignment(row), locked: !!row.locked }));
+      ORDER BY da.business_date,da.start_at,da.member_id`).bind(id).all()).map(row => ({ ...assignment(row), locked: !!row.locked,manualOverride:!!row.manual_override }));
   }
   async function updateRosterDraft(id, input, revision) {
     const validation = input.validation || { valid: false, errors: [{ code: 'DRAFT_CHANGED_REQUIRES_VALIDATION' }] };
@@ -745,10 +757,13 @@ export function staffPlatformRepository(db) {
         SELECT ?,?,?,? WHERE ${guard}`)
         .bind(`duty-role-${assignmentId}-${item.roleKind}`,assignmentId,item.roleKind,json(item.effectiveRange || {}),id,revision));
     }
-    statements.push(db.prepare(`UPDATE roster_versions SET version=version+1,validation_result=?,solver_status=?,rule_version=COALESCE(?,rule_version),input_snapshot_ref=json_set(json_remove(input_snapshot_ref,'$.optimization'),'$.lockedMemberIds',json(?),'$.manuallyAdjusted',json('true'),'$.eligibility',json(COALESCE(?,json_extract(input_snapshot_ref,'$.eligibility'),'{}'))) WHERE id=? AND version=? AND status='draft'`)
-      .bind(json(validation,{}),validation.valid ? 'feasible' : 'needs_review',input.ruleVersion || null,json((input.assignments || []).filter(item => item.locked).map(item => item.memberId),[]),input.eligibility ? json(input.eligibility,{}) : null,id,revision));
+    statements.push(db.prepare(`UPDATE roster_versions SET version=version+1,validation_result=?,solver_status=?,rule_version=COALESCE(?,rule_version),input_snapshot_ref=json_set(json_remove(input_snapshot_ref,'$.optimization'),'$.lockedMemberIds',json(?),'$.lockedAssignments',json(?),'$.manualOverrides',json(?),'$.manuallyAdjusted',json('true'),'$.eligibility',json(COALESCE(?,json_extract(input_snapshot_ref,'$.eligibility'),'{}'))) WHERE id=? AND version=? AND status='draft'`)
+      .bind(json(validation,{}),validation.valid ? 'feasible' : 'needs_review',input.ruleVersion || null,json((input.assignments || []).filter(item => item.locked).map(item => item.memberId),[]),json((input.assignments || []).filter(item=>item.locked),[]),json((input.assignments || []).filter(item=>item.manualOverride),[]),input.eligibility ? json(input.eligibility,{}) : null,id,revision));
+    if(input.commandRecord)statements.unshift(collection.rosterVersionGuard(input.commandRecord,`EXISTS(SELECT 1 FROM roster_versions WHERE id=? AND version=? AND status='draft') ${input.fingerprint ? `AND (${rosterFingerprintSql})=?` : ''}`,[id,revision,...(input.fingerprint?[input.taskId,input.fingerprint]:[])]));
+    const updateIndex=statements.length-1;
+    if(input.commandRecord)statements.push(collection.rosterVersionReceipt(input.commandRecord,'save',id,{signature:input.signature}),collection.rosterAudit(input.commandRecord,'rosters.updated',input.taskId,{versionId:id,validation}),db.prepare('DELETE FROM roster_command_guards'));
     const result = await db.batch(statements);
-    if (!result.at(-1)?.meta?.changes) return null;
+    if (!result[updateIndex]?.meta?.changes) return null;
     return rosterVersionById(id);
   }
   async function rosterFingerprint(taskId) {return (await db.prepare(rosterFingerprintSql).bind(taskId).first()).fingerprint;}
@@ -761,7 +776,7 @@ export function staffPlatformRepository(db) {
       db.prepare(`UPDATE roster_versions SET status='published',published_at=? WHERE id=? AND version=? AND status='draft' AND COALESCE(json_extract(validation_result,'$.valid'),0)=1
         ${fingerprint ? `AND (${rosterFingerprintSql})=?` : ''} ${authorization.sql}`).bind(at,id,revision,...(fingerprint ? [current.task_id,fingerprint] : []),...authorization.args),
       ...(auditRecord ? [auditStatement({ ...auditRecord, occurredAt: at }, true)] : []),
-      db.prepare(`UPDATE roster_versions SET status='superseded' WHERE task_id=? AND status='published' AND id<>? AND changes()>0`).bind(current.task_id,id)
+      db.prepare(`UPDATE roster_versions SET status='superseded' WHERE task_id=? AND status IN ('published','draft') AND id<>? AND EXISTS(SELECT 1 FROM roster_versions WHERE id=? AND status='published' AND version=?)`).bind(current.task_id,id,id,revision)
     ]);
     return result[0]?.meta?.changes ? rosterVersion(await db.prepare('SELECT * FROM roster_versions WHERE id=?').bind(id).first()) : null;
   }
@@ -886,5 +901,5 @@ export function staffPlatformRepository(db) {
   return { effectiveAssignment, effectiveLeaveAssignment: effectiveAssignment, swapFingerprint, swapCoverage, pendingSwapInvitations, accountRow, accountForMember, ensureMember, memberRow, memberships, membershipsForMembers, profiles, profileHistory, saveWorkProfile, grants, todayDuties, authorizationContext, listMembers, updateMember, listMemberships, addMembership, endMembership,
     listCampuses, listDepartments, listLocations, listPresence, activeRepair, importMembers, dutyEvent, latestIntake, repairIdentitySnapshot, fieldPeople, fieldContexts,
     roleBindings, permissionDefinitions, listRoles, createRole, updateRole, bindRoles, modules, createEvent, issueToken, findEventByToken, findAttendanceByDedupe, insertAttendance, listAttendance, attendanceExport, attendanceCorrectionFingerprint, correctAttendance, setPresence,
-    attendanceEvent, eventById: attendanceEvent, attendanceById, attendanceOptions, createReceipt, claimReceipt, releaseReceipt, receipt, audit, listAudit, leaveImpact, officeRosterMemberIds, rosterMemberFacts, rosterTaskById, memberCampuses, createRosterTask, listRosterTasks, saveRosterRequirements, saveAvailability, availability, createRosterVersion, rosterVersionById, rosterVersionsForTask, versionAssignments, updateRosterDraft, rosterFingerprint, publishRoster, listAssignments, assignmentById, swapCandidates, createLeave, leaveById, listLeaves, updateLeave, createSwap, swapById, listSwaps, updateSwap };
+    ...collection,attendanceEvent, eventById: attendanceEvent, attendanceById, attendanceOptions, createReceipt, claimReceipt, releaseReceipt, receipt, audit, listAudit, leaveImpact, officeRosterMemberIds, rosterMemberFacts, rosterTaskById, memberCampuses, createRosterTask, listRosterTasks, saveRosterRequirements, saveAvailability, availability, createRosterVersion, rosterVersionById, rosterVersionsForTask, versionAssignments, updateRosterDraft, rosterFingerprint, publishRoster, listAssignments, assignmentById, swapCandidates, createLeave, leaveById, listLeaves, updateLeave, createSwap, swapById, listSwaps, updateSwap };
 }
