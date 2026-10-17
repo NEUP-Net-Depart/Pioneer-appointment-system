@@ -7,8 +7,9 @@ import { request } from './request.js';
 import { requestStatusLabel } from '../../shared/staff-request-status.js';
 import { staffPermission } from '../../shared/staff-access.js';
 import './leave-review.css';
+import { StaffIdentity } from './StaffIdentity';
 
-type Leave = { id: string; memberName: string; memberId: string; reason: string; status: string; revision: number; reviewNote: string; createdAt: string; departments: string[];
+type Leave = { id: string; memberName: string; memberId: string; identities?:{code:string;label:string}[]; reason: string; status: string; revision: number; reviewNote: string; createdAt: string; departments: string[];
   assignment: { campusId: string; campusName: string; businessDate: string; startAt: string; endAt: string; dutyType: string };
   actions: { review: boolean; approve: boolean; reason: string };
   impact?: { scheduled: number; expected: number; afterApproval: number; leaders: number; leadersAfterApproval: number; checkedIn: boolean; arrived: number; needsReplacement: boolean } };
@@ -40,7 +41,7 @@ export function LeaveReview({ user, onNavigate }: { user: object; onNavigate: (v
   }
   const detailContent = <>{!selected ? <div className="empty-state"><strong>选择一份申请</strong><span>在这里查看签到事实、批准后的覆盖与申请原因。</span></div> : <>
         {detail.error && <p role="alert" className="react-error">{detail.error}</p>}{!current && !detail.error && <p role="status">正在读取申请详情…</p>}
-        {current && <><header className="leave-row-title"><h2>{current.memberName}的请假申请</h2><span className="account-state" data-state={current.status}>{requestStatusLabel(current.status)}</span></header>
+        {current && <><header className="leave-row-title"><h2>{current.memberName}的请假申请</h2><span className="account-state" data-state={current.status}>{requestStatusLabel(current.status)}</span></header><StaffIdentity identities={current.identities}/>
           <dl className="leave-facts"><div><dt>班次</dt><dd>{current.assignment?.businessDate} · {current.assignment?.startAt}–{current.assignment?.endAt}</dd></div><div><dt>岗位与校区</dt><dd>{current.assignment?.dutyType === 'office' ? '办公接待' : '维修值班'} · {current.assignment?.campusName}</dd></div><div><dt>所属部门</dt><dd>{current.departments.join('、') || '未登记部门'}</dd></div><div><dt>实际签到</dt><dd>{current.impact?.checkedIn ? '已签到，请假不会删除实际到岗记录' : '尚无本日该校区签到记录'}</dd></div></dl>
           <section className="leave-detail-section"><h3>申请原因</h3><p>{current.reason}</p></section>
           {current.impact && <section className="leave-detail-section"><h3>{current.status === 'pending' ? '批准后人员覆盖' : '当前人员覆盖'}</h3><div className="leave-coverage"><div><span>预计出勤</span><strong>{current.impact.expected}<small> 人</small></strong></div><div><span>{current.status === 'pending' ? '批准后' : '实际签到'}</span><strong>{current.status === 'pending' ? current.impact.afterApproval : current.impact.arrived}<small> 人</small></strong></div>{current.assignment?.dutyType === 'repair' && <div><span>{current.status === 'pending' ? '批准后负责人' : '预计负责人'}</span><strong>{current.status === 'pending' ? current.impact.leadersAfterApproval : current.impact.leaders}<small> 人</small></strong></div>}</div><p className="field-muted">原排班 {current.impact.scheduled} 人 · 实际签到 {current.impact.arrived} 人。签到与请假分别记录。</p>

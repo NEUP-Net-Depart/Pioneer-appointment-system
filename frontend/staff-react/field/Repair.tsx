@@ -286,7 +286,8 @@ export function Repair({
             <p className="field-muted">
               {item.campus}校区 · {item.date} · {item.timeSlot}
             </p>
-            {item.assignedToName && <p>维修人员：{item.assignedToName}</p>}
+            {item.assignedToName && <><p>维修人员：{item.assignedToName} · {(item.assigneeIdentities || []).map(identity=>identity.label).join(' / ') || '当前无有效工作身份'}</p>
+              {item.assigneeIdentitySnapshot && <p className="field-muted">接手时：{item.assigneeIdentitySnapshot.name} · {item.assigneeIdentitySnapshot.identities.map(identity=>identity.label).join(' / ') || '已记录'}</p>}</>}
             {item.name && (
               <p>
                 {item.name} · {item.studentId}
@@ -486,7 +487,7 @@ export function Repair({
                     .filter((p) => p.canReceive)
                     .map((p) => (
                       <option key={p.memberId} value={p.account}>
-                        {p.name} · {p.department || "维修人员"}
+                          {p.name} · {(p.identities || []).map(item=>item.label).join(' / ') || p.department || "维修人员"}
                       </option>
                     ))}
                 </select>

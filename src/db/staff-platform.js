@@ -99,6 +99,27 @@ export function staffPlatformRepository(db) {
     return rows(result).map(profile);
   }
 
+  async function profileHistory(memberId) {
+    return rows(await db.prepare('SELECT * FROM member_work_profiles WHERE member_id=? ORDER BY effective_from DESC,id').bind(memberId).all()).map(profile);
+  }
+
+  async function saveWorkProfile(memberId, input, revision, auditRecord) {
+    const at = nowIso(), id = input.id || crypto.randomUUID();
+    const authorization = commandAuthorization(auditRecord);
+    const guard = input.id ? 'AND EXISTS(SELECT 1 FROM member_work_profiles WHERE id=? AND member_id=? AND revision=?)' :
+      'AND NOT EXISTS(SELECT 1 FROM member_work_profiles WHERE member_id=? AND profile_code=? AND effective_from<COALESCE(?,\'9999-12-31\') AND (effective_to IS NULL OR effective_to>?))';
+    const args = input.id ? [id,memberId,input.profileRevision] : [memberId,input.profileCode,input.effectiveTo || null,input.effectiveFrom];
+    const statements = [db.prepare(`UPDATE members SET revision=revision+1,updated_at=? WHERE id=? AND revision=? ${guard} ${authorization.sql}`)
+      .bind(at,memberId,revision,...args,...authorization.args),
+      input.id ? db.prepare('UPDATE member_work_profiles SET effective_to=?,revision=revision+1 WHERE id=? AND member_id=? AND changes()>0').bind(input.effectiveTo,id,memberId) :
+        db.prepare('INSERT INTO member_work_profiles(id,member_id,profile_code,effective_from,effective_to) SELECT ?,?,?,?,? WHERE changes()>0').bind(id,memberId,input.profileCode,input.effectiveFrom,input.effectiveTo || null),
+      auditStatement({...auditRecord,sourceRef:{module:'identity',type:'work-profile',id}},true),
+      db.prepare('UPDATE staff_accounts SET token_version=token_version+1,auth_version=auth_version+1 WHERE member_id=? AND changes()>0').bind(memberId),
+    ];
+    const result = await db.batch(statements);
+    return result[0]?.meta?.changes ? profileHistory(memberId) : null;
+  }
+
   async function grants(memberId, businessDate = dateKey()) {
     const result = await db.prepare(`SELECT rg.id,rg.role_id,rg.permission_code,rg.scope_spec,rg.condition_spec,rg.validity_spec,mr.scope_bindings,r.code AS role_code
       FROM member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1
@@ -250,10 +271,19 @@ export function staffPlatformRepository(db) {
     return parseJson(row?.verification_json, null);
   }
 
+  async function repairIdentitySnapshot(id) {
+    const row=await db.prepare(`SELECT json_extract(after_json,'$.assigneeIdentity') AS snapshot FROM audit_events
+      WHERE json_extract(source_ref,'$.module')='repairs' AND json_extract(source_ref,'$.id')=?
+      AND action IN ('repairs.claimed','repairs.transferred') ORDER BY occurred_at DESC,rowid DESC LIMIT 1`).bind(id).first();
+    return parseJson(row?.snapshot,null);
+  }
+
   async function fieldPeople(day, campus) {
     const result = await db.prepare(`SELECT m.id AS memberId,m.name,
       (SELECT account FROM staff_accounts WHERE member_id=m.id AND status='enabled' ORDER BY account LIMIT 1) AS account,
       sp.state,sp.revision,
+      (SELECT MIN(ar.occurred_at) FROM attendance_records ar JOIN attendance_events ae ON ae.id=ar.event_id
+        WHERE ar.member_id=m.id AND ae.type='duty' AND ae.business_date=sp.business_date AND ae.campus_id=sp.campus_id) AS signedInAt,
       (SELECT GROUP_CONCAT(d.name,'、') FROM member_department_memberships mm JOIN departments d ON d.id=mm.department_id
        WHERE mm.member_id=m.id AND mm.effective_from<=? AND (mm.effective_to IS NULL OR mm.effective_to>?)) AS department,
       EXISTS(SELECT 1 FROM duty_assignments da JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published'
@@ -269,18 +299,50 @@ export function staffPlatformRepository(db) {
     return rows(result);
   }
 
+  async function fieldContexts(memberIds, day) {
+    const contexts = new Map();
+    for (let offset = 0; offset < memberIds.length; offset += 80) {
+      const ids = memberIds.slice(offset, offset + 80), marks = ids.map(() => '?').join(',');
+      const result = await db.batch([
+        db.prepare(`SELECT m.*,sa.account,sa.role,sa.status AS account_status,sa.auth_version,
+          (SELECT json_group_array(campus) FROM staff_campus_grants WHERE account=sa.account) AS campuses
+          FROM members m LEFT JOIN staff_accounts sa ON sa.account=(SELECT account FROM staff_accounts WHERE member_id=m.id ORDER BY status='enabled' DESC,account LIMIT 1)
+          WHERE m.id IN (${marks})`).bind(...ids),
+        db.prepare(`SELECT * FROM member_work_profiles WHERE member_id IN (${marks}) AND effective_from<=? AND (effective_to IS NULL OR effective_to>?)`).bind(...ids,day,day),
+        db.prepare(`SELECT mr.member_id,rg.*,mr.scope_bindings,r.code AS role_code FROM member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1
+          JOIN role_grants rg ON rg.role_id=r.id WHERE mr.member_id IN (${marks}) AND mr.effective_from<=? AND (mr.effective_to IS NULL OR mr.effective_to>?)`).bind(...ids,day,day),
+        db.prepare(`SELECT da.*,dr.role_kind FROM duty_assignments da JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published'
+          LEFT JOIN duty_roles dr ON dr.assignment_id=da.id WHERE da.member_id IN (${marks}) AND da.business_date=?`).bind(...ids,day),
+        db.prepare(`SELECT * FROM staff_presence WHERE member_id IN (${marks}) AND business_date=?`).bind(...ids,day),
+        db.prepare(`SELECT ar.member_id,a.id,a.device_model FROM active_repairs ar JOIN appointments a ON a.id=ar.appointment_id WHERE ar.member_id IN (${marks})`).bind(...ids),
+        db.prepare(`SELECT mm.*,d.name AS department_name FROM member_department_memberships mm JOIN departments d ON d.id=mm.department_id
+          WHERE mm.member_id IN (${marks}) AND mm.effective_from<=? AND (mm.effective_to IS NULL OR mm.effective_to>?)`).bind(...ids,day,day),
+      ]);
+      for (const row of rows(result[0])) contexts.set(row.id, { actor: { memberId: row.id,account:row.account,role:row.role,name:row.name,status:row.account_status,memberStatus:row.status,authorizedCampuses:parseJson(row.campuses,[]) }, businessDate:day, workProfiles:[],grants:[],todayDuties:[],memberships:[],presence:null,current:null });
+      for (const row of rows(result[1])) contexts.get(row.member_id)?.workProfiles.push(profile(row));
+      for (const row of rows(result[2])) contexts.get(row.member_id)?.grants.push({id:row.id,roleId:row.role_id,roleCode:row.role_code,permissionCode:row.permission_code,
+        scope:intersectScopes(parseJson(row.scope_spec,{}),parseJson(row.scope_bindings,{})),conditions:parseJson(row.condition_spec,[]),validity:parseJson(row.validity_spec,{})});
+      for (const row of rows(result[3])) contexts.get(row.member_id)?.todayDuties.push(assignment(row));
+      for (const row of rows(result[4])) { const item=contexts.get(row.member_id); if(item) item.presence={businessDate:row.business_date,campusId:row.campus_id,state:row.state,revision:row.revision}; }
+      for (const row of rows(result[5])) { const item=contexts.get(row.member_id); if(item) item.current={id:row.id,deviceModel:row.device_model}; }
+      for (const row of rows(result[6])) contexts.get(row.member_id)?.memberships.push(membership(row));
+    }
+    return contexts;
+  }
+
   async function activeRepair(memberId) {
     return db.prepare(`SELECT ar.member_id,ar.account,ar.appointment_id FROM active_repairs ar
       WHERE ar.member_id=? LIMIT 1`).bind(memberId).first();
   }
 
-  async function importMembers(items) {
+  async function importMembers(items, actorAccount, auditRecord) {
     const at = nowIso();
     const statements = [];
     const roleRows = rows(await db.prepare('SELECT id,code FROM roles WHERE enabled=1').all());
     const rolesByCode = Object.fromEntries(roleRows.map(row => [row.code, row.id]));
     for (const item of items) {
-      const id = item.memberId || `member-${item.studentId}`;
+      const existing = await db.prepare('SELECT id FROM members WHERE student_id=?').bind(item.studentId).first();
+      const id = existing?.id || item.memberId || `member-${item.studentId}`;
       statements.push(db.prepare(`INSERT INTO members(id,name,student_id,home_campus_id,status,created_at,updated_at)
         VALUES(?,?,?,?,?,?,?)
         ON CONFLICT(student_id) DO UPDATE SET name=excluded.name,home_campus_id=excluded.home_campus_id,status=excluded.status,
@@ -297,13 +359,25 @@ export function staffPlatformRepository(db) {
           VALUES(?,?,?,?,?)`).bind(`member-role-import-${item.studentId}-${roleCode}`,id,rolesByCode[roleCode],json(campusIds.length ? { campusIds } : {},),item.effectiveFrom || dateKey()));
       }
       const account = await db.prepare('SELECT account FROM staff_accounts WHERE member_id=?').bind(id).first();
-      const campusIds = (item.authorizedCampuses || []).map(value => ({ 南湖: '南湖', 浑南: '浑南' }[value] || value));
+      const campusIds = (item.authorizedCampuses || []).map(value => ({ 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' }[value] || value));
       if (account && campusIds.length) {
         statements.push(db.prepare('DELETE FROM staff_campus_grants WHERE account=?').bind(account.account));
         for (const campus of campusIds) statements.push(db.prepare('INSERT OR IGNORE INTO staff_campus_grants(account,campus) VALUES(?,?)').bind(account.account,campus));
       }
+      if(account) statements.push(db.prepare('UPDATE staff_accounts SET token_version=token_version+1,auth_version=auth_version+1 WHERE member_id=?').bind(id));
+      if (!account && item.workProfiles?.length && item.roleCodes?.length && campusIds.length) {
+        statements.push(db.prepare(`INSERT INTO staff_whitelist(student_id,expected_name,expected_role,created_by,created_at)
+          VALUES(?,?,?,?,?) ON CONFLICT(student_id) DO UPDATE SET expected_name=excluded.expected_name,expected_role=excluded.expected_role,revision=staff_whitelist.revision+1
+          WHERE staff_whitelist.status='open'`).bind(item.studentId,item.name,item.workProfiles.includes('office') && !item.workProfiles.some(code=>['repair','exchange'].includes(code)) ? 'admin' : 'technician',actorAccount,at));
+        statements.push(db.prepare('INSERT OR IGNORE INTO activation_member_bindings(student_id,member_id) VALUES(?,?)').bind(item.studentId,id));
+        statements.push(db.prepare("DELETE FROM whitelist_campus_grants WHERE student_id=? AND EXISTS(SELECT 1 FROM staff_whitelist WHERE student_id=? AND status='open')").bind(item.studentId,item.studentId));
+        for(const campus of campusIds) statements.push(db.prepare("INSERT OR IGNORE INTO whitelist_campus_grants(student_id,campus) SELECT ?,? WHERE EXISTS(SELECT 1 FROM staff_whitelist WHERE student_id=? AND status='open')").bind(item.studentId,campus,item.studentId));
+      }
     }
-    if (statements.length) await db.batch(statements);
+    if (statements.length) {
+      if(auditRecord) statements.push(auditStatement(auditRecord));
+      await db.batch(statements);
+    }
     const result = await db.prepare(`SELECT ${memberColumns} FROM members m WHERE m.student_id IN (${items.map(() => '?').join(',')}) ORDER BY m.student_id`).bind(...items.map(item => item.studentId)).all();
     return rows(result);
   }
@@ -766,8 +840,8 @@ export function staffPlatformRepository(db) {
       WHERE da.business_date>=? AND da.business_date<=date(?,'+6 day') ORDER BY da.id`).bind(weekStart,weekStart).all()).map(assignment);
   }
 
-  return { effectiveAssignment, effectiveLeaveAssignment: effectiveAssignment, swapFingerprint, swapCoverage, pendingSwapInvitations, accountRow, accountForMember, ensureMember, memberRow, memberships, membershipsForMembers, profiles, grants, todayDuties, authorizationContext, listMembers, updateMember, listMemberships, addMembership, endMembership,
-    listCampuses, listDepartments, listLocations, listPresence, activeRepair, importMembers, dutyEvent, latestIntake, fieldPeople,
+  return { effectiveAssignment, effectiveLeaveAssignment: effectiveAssignment, swapFingerprint, swapCoverage, pendingSwapInvitations, accountRow, accountForMember, ensureMember, memberRow, memberships, membershipsForMembers, profiles, profileHistory, saveWorkProfile, grants, todayDuties, authorizationContext, listMembers, updateMember, listMemberships, addMembership, endMembership,
+    listCampuses, listDepartments, listLocations, listPresence, activeRepair, importMembers, dutyEvent, latestIntake, repairIdentitySnapshot, fieldPeople, fieldContexts,
     roleBindings, permissionDefinitions, listRoles, createRole, updateRole, bindRoles, modules, createEvent, issueToken, findEventByToken, findAttendanceByDedupe, insertAttendance, listAttendance, attendanceExport, attendanceCorrectionFingerprint, correctAttendance, setPresence,
     attendanceEvent, eventById: attendanceEvent, createReceipt, claimReceipt, releaseReceipt, receipt, audit, listAudit, leaveImpact, officeRosterMemberIds, rosterMemberFacts, rosterTaskById, memberCampuses, createRosterTask, listRosterTasks, saveAvailability, availability, createRosterVersion, rosterVersionById, rosterVersionsForTask, versionAssignments, updateRosterDraft, publishRoster, listAssignments, assignmentById, swapCandidates, createLeave, leaveById, listLeaves, updateLeave, createSwap, swapById, listSwaps, updateSwap };
 }

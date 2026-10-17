@@ -1,10 +1,10 @@
 {
   "contractVersion": "staff-platform.v1",
-  "schemaVersion": "0019",
-  "authContext": ["actor", "memberships", "workProfiles", "grants", "permissions", "todayDuties", "navigation", "resumeTasks", "modules", "authVersion", "schemaVersion"],
+  "schemaVersion": "0020",
+  "authContext": ["actor", "identities", "memberships", "workProfiles", "grants", "permissions", "todayDuties", "navigation", "resumeTasks", "modules", "authVersion", "schemaVersion"],
   "errors": ["VALIDATION_ERROR", "SESSION_EXPIRED", "PERMISSION_REQUIRED", "REVISION_CONFLICT", "REQUEST_CONFLICT", "PRESENCE_CHANGED", "ACTIVE_REPAIR_EXISTS"],
   "routes": {
-    "identity": ["GET /api/auth/me", "GET /api/members", "GET /api/members/:memberId", "PATCH /api/members/:memberId", "POST /api/members/import", "GET /api/workbench", "GET /api/desk/summary"],
+    "identity": ["GET /api/auth/me", "GET /api/members", "GET /api/members/:memberId", "PATCH /api/members/:memberId", "POST /api/members/import", "POST /api/members/:memberId/work-profiles", "GET /api/workbench", "GET /api/desk/summary"],
     "organization": ["GET /api/organization/campuses", "GET /api/organization/departments", "GET /api/organization/locations"],
     "authorization": ["GET /api/permissions", "GET /api/roles", "POST /api/roles", "PATCH /api/roles/:id", "POST /api/roles/preview", "PUT /api/members/:memberId/roles"],
     "repairs": ["POST /api/scan/resolve", "GET /api/scan/current", "POST /api/scan/onsite", "PATCH /api/appointments/:id/status", "POST /api/appointments/:id/transfer", "PATCH /api/appointments/:id/correction"],

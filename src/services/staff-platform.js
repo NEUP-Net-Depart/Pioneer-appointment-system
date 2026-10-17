@@ -10,6 +10,7 @@ import { workspacePermissions } from '../modules/authorization/workspace.js';
 import { validateSwap } from '../modules/rosters/swap-validation.js';
 import { csvLine } from '../lib/csv.js';
 import { rosterScope, rosterTaskManaged, rosterDepartments, rosterMemberInScope, rosterMemberReadable } from '../modules/rosters/scope.js';
+import { staffIdentities } from '../../shared/staff-identities.js';
 
 function randomToken() {
   const bytes = new Uint8Array(24);
@@ -113,7 +114,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const context = await platform.authContext(actor, { businessDate });
     if (context.member?.status && context.member.status !== 'active') fail(401, '成员已停用，请联系管理员');
     const effective = { ...context, businessDate, actor: { ...context.actor, role: actor.role, authorizedCampuses: actor.authorizedCampuses || [], homeCampus: actor.homeCampus }, grants: context.grants || [] };
-    return { ...effective, permissions: workspacePermissions(effective.actor, effective, platform.authorizer) };
+    return { ...effective, identities: staffIdentities(effective, platform.authorizer), permissions: workspacePermissions(effective.actor, effective, platform.authorizer) };
   }
 
   async function scopedActor(actor, permissionCode) {
@@ -195,6 +196,10 @@ export function staffPlatformService({ repository, platform, manifests }) {
       homeCampusId: inputString(filters, 'homeCampusId', 80), businessDate: context.businessDate };
     let after = parseMemberCursor(filters.cursor);
     const items = [];
+    const withIdentities=async items=>{
+      const contexts=await repository.fieldContexts(items.map(item=>item.memberId),context.businessDate);
+      return items.map(item=>({...item,identities:staffIdentities(contexts.get(item.memberId),platform.authorizer)}));
+    };
     // Scan in bounded database pages, but fill a page with authorized members.
     // The public cursor references only the last returned (visible) member.
     for (;;) {
@@ -209,9 +214,9 @@ export function staffPlatformService({ repository, platform, manifests }) {
         const memberships = byMember.get(item.memberId) || [];
         if (!evaluate(context, 'members.manage', memberTarget(item, memberships)).allowed) continue;
         items.push({ ...item, memberships });
-        if (items.length === 101) return { items: items.slice(0, 100), nextCursor: memberCursor(items[99]), schemaVersion: SCHEMA_VERSION };
+        if (items.length === 101) return { items: await withIdentities(items.slice(0, 100)), nextCursor: memberCursor(items[99]), schemaVersion: SCHEMA_VERSION };
       }
-      if (candidates.length < 101) return { items, nextCursor: null, schemaVersion: SCHEMA_VERSION };
+      if (candidates.length < 101) return { items:await withIdentities(items), nextCursor: null, schemaVersion: SCHEMA_VERSION };
       const last = candidates.at(-1);
       after = { name: last.name, memberId: last.memberId };
     }
@@ -222,8 +227,32 @@ export function staffPlatformService({ repository, platform, manifests }) {
     if (!target) fail(404, '成员不存在');
     await requireMemberPermission(actor, target);
     if (!validDate(businessDate)) fail(400, '业务日期不正确');
-    const [memberMemberships, workProfiles, account] = await Promise.all([repository.listMemberships(memberId), repository.profiles(memberId, businessDate), repository.accountForMember(memberId)]);
-    return { bindings: await repository.roleBindings(memberId), member: memberPublic(target, { memberships: memberMemberships, profiles: workProfiles }), account: account ? { account: account.account, status: account.status, protected: !!account.protected, role: account.role, authVersion: account.auth_version || 0 } : null };
+    const [memberMemberships, workProfiles, account, contexts] = await Promise.all([repository.listMemberships(memberId), repository.profileHistory(memberId), repository.accountForMember(memberId), repository.fieldContexts([memberId],businessDate)]);
+    return { bindings: await repository.roleBindings(memberId), member: {...memberPublic(target, { memberships: memberMemberships, profiles: workProfiles }),identities:staffIdentities(contexts.get(memberId),platform.authorizer)}, account: account ? { account: account.account, status: account.status, protected: !!account.protected, role: account.role, authVersion: account.auth_version || 0 } : null };
+  }
+
+  async function saveWorkProfile(actor, memberId, input) {
+    const member = await repository.memberRow(memberId);
+    if (!member) fail(404,'成员不存在');
+    const {context} = await requireMemberPermission(actor,member);
+    if (actor.role !== 'superadmin') fail(403,'工作资格和交流培训结果由最高管理员确认');
+    if (!Number.isInteger(input.revision) || input.revision<0) fail(400,'成员版本不正确');
+    let before = null;
+    const reason = inputString(input,'reason',300), receipt = input.requestId;
+    if (input.id) {
+      before = (await repository.profileHistory(memberId)).find(item=>item.id===input.id);
+      if (!before) fail(404,'工作资格不存在');
+      if (!Number.isInteger(input.profileRevision) || input.profileRevision<0 || !validDate(input.effectiveTo) || input.effectiveTo<before.effectiveFrom) fail(400,'资格结束日期或版本不正确');
+      if (before.effectiveTo && input.effectiveTo>before.effectiveTo) fail(400,'已结束资格不能延长，请新增审核记录');
+      input = {id:before.id,effectiveTo:input.effectiveTo,profileRevision:input.profileRevision,revision:input.revision};
+    } else {
+      if (!['repair','exchange','office'].includes(input.profileCode) || !validDate(input.effectiveFrom) || input.effectiveTo && (!validDate(input.effectiveTo) || input.effectiveTo<=input.effectiveFrom)) fail(400,'工作资格或有效期不正确');
+      if (input.profileCode==='exchange' && input.trainingConfirmed!==true) fail(400,'请先确认交流人员已通过维修培训');
+    }
+    const result = await repository.saveWorkProfile(memberId,input,input.revision,{actorMemberId:context.actor.memberId,actorAccount:actor.account,authVersion:context.authVersion,
+      action:before ? 'identity.qualification.ended' : 'identity.qualification.granted',before,after:input,reason,requestId:receipt});
+    if (!result) fail(409,'成员或资格已变化，或有效期与已有资格重叠，请刷新后重试');
+    return {items:result,authVersionChanged:true};
   }
 
   async function updateMember(actor, memberId, input) {
@@ -369,6 +398,9 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const rows = csvRows(String(input.csv || '').replace(/^\uFEFF/, ''));
     if (rows.length < 2) fail(400, '成员导入至少需要表头和一行数据');
     const headers = rows.shift().map(value => value.trim());
+    if (rows.length>200) fail(400,'每次最多导入 200 名成员，请分批导入');
+    const roleCodes = new Set((await repository.listRoles()).filter(role=>role.enabled).map(role=>role.code));
+    const departments = new Set((await repository.listDepartments()).map(item=>item.id));
     const index = key => headers.indexOf(key);
     for (const key of ['studentId','name','homeCampusId']) if (index(key) < 0) fail(400, `缺少导入列：${key}`);
     const items = rows.map((cells, lineIndex) => {
@@ -377,12 +409,17 @@ export function staffPlatformService({ repository, platform, manifests }) {
       const item = { studentId: cells[index('studentId')], name: cells[index('name')], homeCampusId: cells[index('homeCampusId')],
         departmentId: index('departmentId') >= 0 ? cells[index('departmentId')] : '', assignmentType: index('assignmentType') >= 0 ? cells[index('assignmentType')] : 'primary',
         effectiveFrom: index('effectiveFrom') >= 0 ? cells[index('effectiveFrom')] : dateKey(),
+        trainingConfirmed:index('trainingConfirmed')>=0 && cells[index('trainingConfirmed')]==='true',
         workProfiles: index('workProfiles') >= 0 ? cells[index('workProfiles')].split('|').map(value => value.trim()).filter(Boolean) : [],
         roleCodes: index('roleCodes') >= 0 ? cells[index('roleCodes')].split('|').map(value => value.trim()).filter(Boolean) : [],
         authorizedCampuses: index('authorizedCampuses') >= 0 ? cells[index('authorizedCampuses')].split('|').map(value => value.trim()).filter(Boolean) : [] };
       if (!/^\d{6,20}$/.test(item.studentId) || !item.name || !['campus-nanhu','campus-hunnan'].includes(item.homeCampusId)) fail(400, `第 ${lineIndex + 2} 行成员数据不正确`);
       if (item.workProfiles.some(value => !['repair','exchange','office','repair_lead','office_lead'].includes(value))) fail(400, `第 ${lineIndex + 2} 行工作属性不正确`);
       if (item.authorizedCampuses.some(value => !['campus-nanhu','campus-hunnan','南湖','浑南'].includes(value))) fail(400, `第 ${lineIndex + 2} 行授权校区不正确`);
+      if (!validDate(item.effectiveFrom) || item.departmentId && !departments.has(item.departmentId) || !['primary','secondary','exchange','temporary'].includes(item.assignmentType)) fail(400,`第 ${lineIndex+2} 行任职或生效日期不正确`);
+      if (actor.role !== 'superadmin' && (item.roleCodes.length || item.workProfiles.length || item.authorizedCampuses.length)) fail(403, '角色、工作资格和账号校区授权由最高管理员配置');
+      if (item.roleCodes.some(code=>!roleCodes.has(code) || code==='superadmin')) fail(400,`第 ${lineIndex+2} 行角色不存在、已停用或不能通过名单导入`);
+      if (item.workProfiles.includes('exchange') && (!item.trainingConfirmed || item.workProfiles.includes('repair'))) fail(400,`第 ${lineIndex+2} 行须确认交流培训通过，且不能同时导入普通维修资格`);
       return item;
     });
     if (new Set(items.map(item => item.studentId)).size !== items.length) fail(400, '导入文件包含重复学号');
@@ -393,10 +430,9 @@ export function staffPlatformService({ repository, platform, manifests }) {
       if (existing) await requireMemberPermission(actor, existing);
     }
     if (!input.confirm) return { mode: 'preview', items: items.map(item => ({ ...item, memberId: `member-${item.studentId}` })), warnings: items.flatMap(item => item.roleCodes.length || item.workProfiles.length ? [] : [{ studentId: item.studentId, message: '未设置工作属性或角色，导入后仅建立成员资料' }]), requestId: input.requestId || '' };
-    const memberRows = await repository.importMembers(items);
+    const memberRows = await repository.importMembers(items,actor.account,{ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'identity.members.imported', sourceRef: publicResourceRef('identity','import',input.requestId || crypto.randomUUID()), after: { count: items.length }, requestId: input.requestId });
     const byStudentId = Object.fromEntries(memberRows.map(row => [row.student_id, row]));
     const result = items.map(item => ({ memberId: byStudentId[item.studentId]?.id || `member-${item.studentId}`, studentId: item.studentId, name: item.name, status: 'updated' }));
-    await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'identity.members.imported', sourceRef: publicResourceRef('identity','import',input.requestId || crypto.randomUUID()), after: { count: result.length }, requestId: input.requestId });
     return { mode: 'confirmed', items: result, count: result.length, requestId: input.requestId || '' };
   }
 
@@ -461,7 +497,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const occurredAt = now;
     if (!eventWindow(event.startsAt, event.endsAt, occurredAt)) fail(400, '签到发生时间不在场次窗口内');
     const record = await withReceipt(actor, 'attendance.checkin', input, async () => {
-      const created = await repository.insertAttendance({ id: crypto.randomUUID(), memberId: context.actor.memberId, eventId: event.id, dedupeKey, occurredAt, recordedAt: now, method, sourceRef: event.sourceRef, campusId: event.campusId, businessDate: event.businessDate, departmentId: context.memberships.find(item => item.isPrimary)?.departmentId, departmentName: context.memberships.find(item => item.isPrimary)?.departmentName, identitySnapshot: { name: context.actor.name, memberId: context.actor.memberId }, nonScheduled: context.todayDuties.length === 0, actorAccount: actor.account,
+      const created = await repository.insertAttendance({ id: crypto.randomUUID(), memberId: context.actor.memberId, eventId: event.id, dedupeKey, occurredAt, recordedAt: now, method, sourceRef: event.sourceRef, campusId: event.campusId, businessDate: event.businessDate, departmentId: context.memberships.find(item => item.isPrimary)?.departmentId, departmentName: context.memberships.find(item => item.isPrimary)?.departmentName, identitySnapshot: { name: context.actor.name, memberId: context.actor.memberId, identities:context.identities }, nonScheduled: context.todayDuties.length === 0, actorAccount: actor.account,
         checkInAudit: true, tokenId: found.token.id, authVersion: context.authVersion, requestId: requestId(input.requestId), payloadHash: hashPayload(input), type: event.type }, event.type === 'duty');
       if (!created) {
         const concurrent = await repository.findAttendanceByDedupe(dedupeKey);
@@ -596,7 +632,8 @@ export function staffPlatformService({ repository, platform, manifests }) {
   function rosterParticipant(context, task, fact) {
     if (task.dutyType === 'office' || !validDate(task.weekStart) || task.memberIds?.length && !task.memberIds.includes(context.actor.memberId) || !fact?.active) return false;
     return Array.from({length:4},(_,offset) => addDays(task.weekStart,offset)).some(day =>
-      fact.profiles.some(profile => ['repair','exchange'].includes(profile.profileCode) && profile.effectiveFrom <= day && (!profile.effectiveTo || day < profile.effectiveTo)) &&
+      fact.profiles.some(profile => profile.profileCode==='repair' && profile.effectiveFrom <= day && (!profile.effectiveTo || day < profile.effectiveTo)) &&
+      !fact.profiles.some(profile => profile.profileCode==='exchange' && profile.effectiveFrom <= day && (!profile.effectiveTo || day < profile.effectiveTo)) &&
       rosterScope(task).campusIds.some(campusId => rosterMemberReadable(context,platform.authorizer,fact,task,day,campusId)));
   }
   async function rosterOptions(actor, query = {}) {
@@ -679,7 +716,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const allowed = (await repository.memberCampuses(context.actor.memberId)).map(normalizeCampusId);
     if (!campusIds.includes(input.campusId) || !allowed.includes(input.campusId)) fail(403, '该校区不在本次任务或你的授权范围内');
     const fact = await rosterOwnFact(context,task);
-    const qualified = fact?.profiles.some(profile => ['repair','exchange'].includes(profile.profileCode) && profile.effectiveFrom <= input.businessDate && (!profile.effectiveTo || input.businessDate < profile.effectiveTo));
+    const qualified = fact?.profiles.some(profile => profile.profileCode==='repair' && profile.effectiveFrom <= input.businessDate && (!profile.effectiveTo || input.businessDate < profile.effectiveTo));
     if (!qualified || !rosterParticipant(context,task,fact) || !rosterMemberReadable(context,platform.authorizer,fact,task,input.businessDate,input.campusId)) fail(403,'该日期的校区、部门或填报资格不在你的授权范围内');
     return repository.saveAvailability(taskId, context.actor.memberId, input, input.revision);
   }
@@ -710,7 +747,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
       for (const slot of slots) {
         if (!campusAccess.includes(slot.campusId) || !rosterMemberInScope(fact,task,slot.businessDate,slot.campusId)) continue;
         const profiles = fact.profiles.filter(profile => profile.effectiveFrom <= slot.businessDate && (!profile.effectiveTo || slot.businessDate < profile.effectiveTo));
-        if (!profiles.some(item => (office ? ['office'] : ['repair','exchange']).includes(item.profileCode))) continue;
+        if (!profiles.some(item => (office ? ['office'] : ['repair']).includes(item.profileCode)) || !office && profiles.some(item=>item.profileCode==='exchange')) continue;
         if (other.some(item => (!office && item.dutyType === 'repair') || item.businessDate === slot.businessDate &&
           ((office && item.dutyType === 'office') || item.startAt < slot.endAt && slot.startAt < item.endAt))) continue;
         if (!office && !windows.some(item => item.memberId === memberId && item.businessDate === slot.businessDate &&
@@ -846,7 +883,9 @@ export function staffPlatformService({ repository, platform, manifests }) {
     if (!access.allowed && row.member_id !== context.actor.memberId) fail(403, '没有查看该请假申请的权限');
     if (!access.allowed) await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId });
     const member = await repository.memberRow(row.member_id);
+    const identityContext=repository.fieldContexts ? (await repository.fieldContexts([row.member_id],context.businessDate)).get(row.member_id) : null;
     return { ...publicLeave(row), memberName: member?.name || '成员', assignment,
+      identities:identityContext ? staffIdentities(identityContext,platform.authorizer) : [],
       departments: access.departments.map(item => item.departmentName), actions: leaveActions(row, assignment, context, access.allowed),
       impact: access.allowed && assignment ? await repository.leaveImpact(assignment) : null };
   }
@@ -856,6 +895,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     if (!all) await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId });
     if (query.status && !['pending','approved','rejected','withdrawn'].includes(query.status)) fail(400, '请假状态不正确');
     const rows = await repository.listLeaves({ status: query.status, memberId: all ? undefined : context.actor.memberId });
+    const identities=repository.fieldContexts ? await repository.fieldContexts([...new Set(rows.map(row=>row.member_id))],context.businessDate) : new Map();
     const assignments = new Map(await Promise.all(rows.map(async row => [row.id, row.assignment?.versionStatus === 'published' ? row.assignment : await currentLeaveAssignment(row)])));
     const memberships = new Map();
     if (repository.membershipsForMembers) for (const day of new Set([...assignments.values()].filter(Boolean).map(item => item.businessDate))) {
@@ -870,6 +910,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
       if (all && !canReview) continue;
       if (query.campusId && assignment?.campusId !== query.campusId) continue;
       items.push({ ...publicLeave(row), assignment, memberName: row.member_name || '', departments: access.departments.map(item => item.departmentName),
+        identities:identities.has(row.member_id) ? staffIdentities(identities.get(row.member_id),platform.authorizer) : [],
         actions: leaveActions(row, assignment, context, canReview) });
     }
     return { items };
@@ -1055,7 +1096,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
   async function audit(actor, query) { await requirePermission(actor, 'audit.read'); return { items: await repository.listAudit(query || {}) }; }
 
   return { contextFor, requirePermission, scopedActor, memberList, memberDetail, updateMember, addMembership, endMembership, permissions, roles, createRole, updateRole, previewRole, bindMemberRoles,
-    organization, importMembers, deskSummary, workbench, createAttendanceEvent, issueAttendanceToken, checkIn, previewAttendance, attendanceList, correctAttendance, presence, rosterOptions, rosterTasks, taskAvailability, createRosterTask, saveAvailability, rosterTaskState, generate, updateRoster, publish, rosterMine,
+    organization, importMembers, saveWorkProfile, deskSummary, workbench, createAttendanceEvent, issueAttendanceToken, checkIn, previewAttendance, attendanceList, correctAttendance, presence, rosterOptions, rosterTasks, taskAvailability, createRosterTask, saveAvailability, rosterTaskState, generate, updateRoster, publish, rosterMine,
     leave, leaves, leaveDetail, leaveDecision, leaveWithdraw, swapCandidates, swapPreview, swapDetail, swap, swaps, swapDecision, attendanceExport, audit,
     recordAudit: input => repository.audit(input) };
 }

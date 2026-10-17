@@ -5,6 +5,8 @@ import { Repair } from "./Repair";
 import { Registration } from "./Registration";
 import type { Home } from "./types";
 import { WorkspaceHeader } from '../WorkspaceHeader';
+import { StaffIdentity } from '../StaffIdentity';
+import { compareFieldPeople, fieldPersonGroup } from '../../../shared/staff-identities.js';
 import "./field.css";
 
 export function FieldApp({
@@ -178,11 +180,7 @@ export function FieldApp({
         .toLowerCase()
         .includes(search.toLowerCase()),
   );
-  const people = [...(data?.staffPresence || [])].sort(
-    (a, b) =>
-      Number(b.canReceive) - Number(a.canReceive) ||
-      a.name.localeCompare(b.name, "zh-CN"),
-  );
+  const people = [...(data?.staffPresence || [])].sort(compareFieldPeople);
   const campusName = data?.campuses.find((c) => c.id === campus)?.name || "";
   return (
     <>
@@ -531,19 +529,24 @@ export function FieldApp({
                         {showAvailable ? "查看全部" : "只看空闲"}
                       </button>
                     </div>
+                    <p className="field-muted field-person-summary">已到岗 {people.filter(person=>person.signedInAt).length} 人 · 维修排班 {people.filter(person=>person.scheduledRepair).length} 人 · 已到岗负责人 {people.filter(person=>person.signedInAt && person.identities?.some(identity=>identity.code==='repair_lead')).length} 人</p>
                     {people
                       .filter((p) => !showAvailable || p.canReceive)
-                      .map((person) => (
-                        <div className="field-person" key={person.memberId}>
+                      .map((person,index,visible) => (
+                        <React.Fragment key={person.memberId}>
+                        {!showAvailable && fieldPersonGroup(person)==='other' && (index===0 || fieldPersonGroup(visible[index-1])!=='other') && <div className="field-person-divider">其他人员</div>}
+                        <div className="field-person">
                           <span className="field-avatar">
                             {person.name.slice(-2)}
                           </span>
                           <div>
                             <strong>{person.name}</strong>
+                            <StaffIdentity identities={person.identities} />
                             <small>
                               {person.department || "工作人员"}
                               {!person.scheduled ? " · 非排班到岗" : ""}
                             </small>
+                            {person.signedInAt && <small>签到 {time(person.signedInAt)}</small>}
                             {person.currentRepair ? (
                               <button
                                 className="field-text"
@@ -560,6 +563,7 @@ export function FieldApp({
                           </div>
                           <Status value={person.state} />
                         </div>
+                        </React.Fragment>
                       ))}
                     {!data.staffPresence && result.loading && <div className="workspace-skeleton" aria-label="正在读取人员"><span /><span /></div>}
                     {data.staffPresence && !people.length && (
@@ -574,7 +578,7 @@ export function FieldApp({
             {scene === "mine" && (
               <div className="field-work-grid personal-workspace">
                 <section className="field-card personal-schedule">
-                  <div className="personal-identity"><span className="field-avatar" aria-hidden="true">{initial.actor.name.slice(-2)}</span><div><h2>{initial.actor.name}</h2><p className="field-muted">个人安排与账号</p></div></div>
+                  <div className="personal-identity"><span className="field-avatar" aria-hidden="true">{initial.actor.name.slice(-2)}</span><div><h2>{initial.actor.name}</h2><StaffIdentity identities={data.identities} /><p className="field-muted">个人安排与账号</p></div></div>
                   <h3>今日安排</h3>
                   {data.todayDuties.map((d) => (
                     <div className="field-shift" key={d.id}>

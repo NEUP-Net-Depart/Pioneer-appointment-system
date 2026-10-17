@@ -2,7 +2,7 @@
   "branch": "next/staff-platform",
   "baseCommit": "53b53db110d4d867c2f4277fa0954f1d97d74c7d",
   "contractVersion": "staff-platform.v1",
-  "schemaVersion": "0019",
+  "schemaVersion": "0020",
   "businessTimeZone": "Asia/Shanghai",
   "migrations": [
     {
@@ -80,6 +80,10 @@
     {
       "name": "0019_longterm_roster_permissions.sql",
       "sha256": "524c8fca13c4bcabb0ea802e4383b5f6512c2d2ad5714dbf992b3e3dbbd372c1"
+    },
+    {
+      "name": "0020_signed_repair_leads.sql",
+      "sha256": "b65031ce0308474f8e718ffb8e5b0906470ee4632fce93ba883c97accb4f3b28"
     }
   ],
   "modules": [
@@ -219,6 +223,10 @@
     {
       "name": "0017_longterm_roster_permissions.sql",
       "sha256": "524c8fca13c4bcabb0ea802e4383b5f6512c2d2ad5714dbf992b3e3dbbd372c1"
+    },
+    {
+      "name": "0018_signed_repair_leads.sql",
+      "sha256": "b65031ce0308474f8e718ffb8e5b0906470ee4632fce93ba883c97accb4f3b28"
     }
   ],
   "staffMigrationsDirectory": "database/staff-migrations"

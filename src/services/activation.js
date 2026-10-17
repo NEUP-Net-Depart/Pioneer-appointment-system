@@ -76,7 +76,12 @@ export function activationService(repository,users){
         if(item.status!=='pending' || (status==='approved' && item.whitelistStatus!=='open'))fail(409,'申请或资格已更新，请刷新');
         items.push(item);
       }
-      const result=await repository.review(items,status,note,actor.account,nowIso());
+      let result;
+      try { result=await repository.review(items,status,note,actor.account,nowIso()); }
+      catch(error) {
+        if(String(error.message).includes('ACTIVATION_QUALIFICATION_CHANGED')) fail(409,'成员资格或授权已变化，请先在成员管理中核实，再审核激活');
+        throw error;
+      }
       if(!result.applied.length)fail(409,'申请已被其他管理员处理，请刷新');
       return result;
     }

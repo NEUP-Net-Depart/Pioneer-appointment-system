@@ -3,6 +3,12 @@ import { mkdir } from "node:fs/promises";
 
 // Keep this suite's login limits independent from the other browser suites.
 test.use({ extraHTTPHeaders: { 'CF-Connecting-IP': '192.0.2.91' } });
+test.beforeEach(async ({context},info)=>{
+  // Each independent scenario gets its own rate-limit bucket. Production
+  // throttling stays enabled, including the tests that exercise it explicitly.
+  let hash=0;for(const char of info.title) hash=(Math.imul(hash,31)+char.charCodeAt(0))>>>0;
+  await context.setExtraHTTPHeaders({'CF-Connecting-IP':`198.18.${(hash>>>8)&255}.${hash&255}`});
+});
 
 test.skip(
   process.env.E2E_FIELD !== "true",
@@ -34,6 +40,35 @@ async function api(request, path, token, body, method = body ? "POST" : "GET") {
 async function recordFixture(request, token, studentId) {
   return api(request, '/api/scan/onsite', token, { requestId: crypto.randomUUID(), registrationFlow: 'frontdesk', campus: '南湖', name: '记录测试同学', studentId, social: 'record-test', deviceType: '笔记本电脑', brand: '联想', deviceModel: 'ThinkPad Records', warranty: '否', faultType: '系统问题', signature: [Array.from({ length: 10 }, (_,i) => [0.1 + i * 0.05, 0.2 + i * 0.03])] });
 }
+
+test('member qualification and roster import panels preserve drafts and fit staff viewports',async({page})=>{
+  await login(page,'root001');
+  const sidebar=page.locator('.field-sidebar');
+  const group=sidebar.getByRole('button',{name:'平台管理',exact:true});
+  if(await group.getAttribute('aria-expanded')==='false') await group.click();
+  await sidebar.getByRole('button',{name:'成员管理',exact:true}).click();
+  await page.getByRole('button',{name:'编辑成员与权限',exact:true}).first().click();
+  const dialog=page.getByRole('dialog');
+  await dialog.getByRole('button',{name:'工作资格',exact:true}).click();
+  await dialog.getByRole('combobox',{name:'工作资格',exact:true}).selectOption('exchange');
+  await expect(dialog.getByLabel('已核验该成员通过维修培训')).toBeVisible();
+  for(const width of [320,390,768,1440]) {
+    await page.setViewportSize({width,height:900});
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    const box=await dialog.boundingBox();expect(box.x).toBeGreaterThanOrEqual(0);expect(box.x+box.width).toBeLessThanOrEqual(width+1);
+    await page.screenshot({path:`output/field-workflow/member-qualification-${width}.png`,fullPage:true});
+  }
+  await dialog.getByRole('button',{name:'关闭',exact:true}).click();
+  await expect(dialog.getByText('放弃未保存的修改？',{exact:true})).toBeVisible();
+  await dialog.getByRole('button',{name:'返回继续编辑',exact:true}).click();
+  await expect(dialog.getByRole('combobox',{name:'工作资格',exact:true})).toHaveValue('exchange');
+  await dialog.getByRole('button',{name:'关闭',exact:true}).click();
+  await dialog.getByRole('button',{name:'放弃修改并关闭',exact:true}).click();
+  await page.getByRole('button',{name:'导入名单',exact:true}).click();
+  await dialog.getByRole('combobox',{name:'名单类型',exact:true}).selectOption('exchange');
+  await expect(dialog.getByText('核验培训通过后',{exact:false})).toBeVisible();
+  await dialog.getByRole('button',{name:'关闭',exact:true}).click();
+});
 
 for (const account of ['20261001', '20261002']) test(`ordinary staff ${account} cannot see or force open management workspaces`, async ({ page }) => {
   await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': account === '20261001' ? '192.0.2.71' : '192.0.2.72' });
@@ -295,6 +330,7 @@ test("duty lead transfers a real repair and recipient completes it", async ({
   const office = await session("20261001"),
     tech = await session("20261002"),
     next = await session("20261003");
+  const lead = await session('20261004');
   const home = await api(request, "/api/field/home", office.token);
   const credential = await api(
     request,
@@ -306,6 +342,8 @@ test("duty lead transfers a real repair and recipient completes it", async ({
     token: credential.token,
     requestId: crypto.randomUUID(),
   });
+  await api(request,'/api/attendance/check-ins',lead.token,{token:credential.token,requestId:crypto.randomUUID()});
+  await api(request,'/api/attendance/check-ins',tech.token,{token:credential.token,requestId:crypto.randomUUID()});
   const order = await api(request, "/api/scan/onsite", office.token, {
     requestId: crypto.randomUUID(),
     registrationFlow: "frontdesk",

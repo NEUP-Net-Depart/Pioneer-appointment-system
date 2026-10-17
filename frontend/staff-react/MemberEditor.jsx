@@ -5,6 +5,8 @@ import { ScopeFields } from './ScopeFields.jsx';
 import { roleBindingsPayload } from './authorization-drafts.js';
 import { ActivityContext, Modal } from './field/ui';
 import { WorkspaceSections } from './WorkspaceSections';
+import { MemberQualifications } from './MemberQualifications.jsx';
+import { StaffIdentity } from './StaffIdentity';
 
 const campuses = [{ id: 'campus-nanhu', name: '南湖' }, { id: 'campus-hunnan', name: '浑南' }];
 
@@ -19,9 +21,10 @@ export function MemberEditor({ member, canManageRoles, onClose, onSaved }) {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [section, setSection] = useState('profile'), [confirmClose, setConfirmClose] = useState(false);
+  const [qualificationDirty,setQualificationDirty]=useState(false);
   const profileDirty = detail && ['name', 'homeCampusId', 'status'].some(key => profile[key] !== detail.member[key]);
   const bindingsDirty = detail && JSON.stringify(bindings) !== JSON.stringify(detail.bindings || []);
-  const dirty = profileDirty || bindingsDirty;
+  const dirty = profileDirty || bindingsDirty || qualificationDirty;
   useEffect(() => {
     if (!dirty) return;
     const guard = event => event.preventDefault();
@@ -71,12 +74,18 @@ export function MemberEditor({ member, canManageRoles, onClose, onSaved }) {
     setBindings(current => current.map((binding, i) => i === index ? { ...binding, ...patch } : binding));
   }
   function close() { if (!busy) { if (dirty) setConfirmClose(true); else onClose(); } }
+  async function reload() {
+    const data = await request(`/api/members/${encodeURIComponent(member.memberId)}`);
+    setDetail(data); onSaved();
+  }
   return <Modal title={member.name} sidePanel dismissible={!busy} onClose={close}><div className="member-detail-editor">
-    {confirmClose ? <><h3>放弃未保存的修改？</h3><p>成员资料和角色授权中的未保存输入都会丢失。</p><div className="field-actions"><button onClick={() => setConfirmClose(false)}>返回继续编辑</button><button onClick={onClose}>放弃修改并关闭</button></div></> : <>
+    {confirmClose && <><h3>放弃未保存的修改？</h3><p>成员资料和角色授权中的未保存输入都会丢失。</p><div className="field-actions"><button onClick={() => setConfirmClose(false)}>返回继续编辑</button><button onClick={onClose}>放弃修改并关闭</button></div></>}<div hidden={confirmClose}>
     <p className="field-muted">成员资料与角色授权分别保存，所属校区不会自动改变授权范围。</p>
-    <WorkspaceSections label="成员详情" value={section} onChange={setSection} items={[{ id: 'profile', label: '成员资料' }, ...(canManageRoles && !detail?.account?.protected ? [{ id: 'roles', label: '角色授权' }] : [])]} />
+    <StaffIdentity identities={detail?.member.identities} />
+    <WorkspaceSections label="成员详情" value={section} onChange={setSection} items={[{ id: 'profile', label: '成员资料' }, ...(canManageRoles ? [{id:'qualifications',label:'工作资格'}] : []), ...(canManageRoles && !detail?.account?.protected ? [{ id: 'roles', label: '角色授权' }] : [])]} />
     {error && <p className="react-error" role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     {!detail ? <p role="status">正在读取成员资料…</p> : <>
+      {canManageRoles && (section==='qualifications' || qualificationDirty) && <div hidden={section!=='qualifications'}><MemberQualifications detail={detail} onSaved={reload} onDirty={setQualificationDirty} onBusy={setBusy}/></div>}
       <form hidden={section !== 'profile'} onSubmit={saveProfile}><fieldset disabled={busy}><legend>成员资料{profileDirty ? ' · 未保存' : ''}</legend>
         <label>姓名<input required value={profile.name} onChange={event => setProfile({ ...profile, name: event.target.value })} /></label>
         <label>所属校区<select value={profile.homeCampusId} onChange={event => setProfile({ ...profile, homeCampusId: event.target.value })}>{campuses.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
@@ -97,6 +106,6 @@ export function MemberEditor({ member, canManageRoles, onClose, onSaved }) {
         <div className="react-editor-actions"><button type="button" onClick={() => setBindings(current => [...current, { roleId: roles.find(role => role.enabled)?.id || roles[0]?.id, scope: { campusIds: [profile.homeCampusId] }, effectiveFrom: dateKey(), effectiveTo: null }])}>添加角色</button><button className="react-primary">保存角色授权</button></div>
       </fieldset></form>}
     </>}
-    </>}
+    </div>
   </div></Modal>;
 }

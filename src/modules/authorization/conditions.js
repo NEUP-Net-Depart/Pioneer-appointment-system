@@ -47,6 +47,11 @@ export function conditionProviders() {
           (!parameters.dutyType || duty.dutyType === parameters.dutyType));
       }
     },
+    signedDutyPresence: {
+      code: 'signedDutyPresence', version: 1, description: '当天已在目标校区签到', parameterSchema: schema({}),
+      check: ({ context, resource }) => !!context?.presence && context.presence.businessDate === context.businessDate &&
+        !!resource?.campusId && campusId(context.presence.campusId) === campusId(resource.campusId)
+    },
     activeDepartmentMembership: {
       code: 'activeDepartmentMembership', version: 1, description: '当前成员在业务日期具有有效任职',
       parameterSchema: schema({ departmentId: string, departmentIds: strings, assignmentType: string, isPrimary: { type: 'boolean' } }),
@@ -63,6 +68,12 @@ export function conditionProviders() {
     repairWorkEligible: {
       code: 'repairWorkEligible', version: 1, description: '成员具备维修工作资格', parameterSchema: schema({}),
       check: ({ context }) => (context?.workProfiles || []).some(item => activeOn(item, context) && ['repair', 'exchange'].includes(item.profileCode))
+    },
+    rosterParticipantEligible: {
+      code:'rosterParticipantEligible',version:1,description:'普通维修或办公排班资格',parameterSchema:schema({}),
+      check:({context}) => (context?.workProfiles || []).some(item=>activeOn(item,context) && item.profileCode==='office') ||
+        (context?.workProfiles || []).some(item=>activeOn(item,context) && item.profileCode==='repair') &&
+        !(context?.workProfiles || []).some(item=>activeOn(item,context) && item.profileCode==='exchange')
     },
     attendanceEligible: {
       code: 'attendanceEligible', version: 1, description: '成员可参加该签到场次', parameterSchema: schema({}),

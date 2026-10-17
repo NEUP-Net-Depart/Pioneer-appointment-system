@@ -20,7 +20,7 @@ export function validateSwap({ from, to, facts, coverage }) {
     const profiles = (fact?.profiles || []).filter(item => activeOn(item, slot.businessDate));
     if (!fact?.active) errors.push('接手成员已停用或没有可登录账号');
     if (!(fact?.campuses || []).some(value => campusId(value) === slot.campusId)) errors.push('接手成员没有目标校区的适用授权');
-    if (!profiles.some(item => (slot.dutyType === 'office' ? ['office'] : ['repair', 'exchange']).includes(item.profileCode))) errors.push('接手成员在目标日期没有对应工作资格');
+    if (!profiles.some(item => (slot.dutyType === 'office' ? ['office'] : ['repair']).includes(item.profileCode)) || slot.dutyType==='repair' && profiles.some(item=>item.profileCode==='exchange')) errors.push('接手成员没有对应排班工作资格，交流人员不参与维修换班');
     if ((fact?.assignments || []).filter(row => ![from.id, to.id].includes(row.id)).some(row =>
       slot.dutyType === 'repair' && row.dutyType === 'repair' && weekRange(row.businessDate).start === weekRange(slot.businessDate).start ||
       row.businessDate === slot.businessDate && (slot.dutyType === 'office' && row.dutyType === 'office' || row.startAt < slot.endAt && slot.startAt < row.endAt))) errors.push('交换后与接手成员的其他已发布班次冲突');

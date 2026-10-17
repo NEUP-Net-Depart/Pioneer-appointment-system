@@ -12,6 +12,7 @@ export const staffPlatformRoutes = [
   ['GET', /^\/api\/organization\/(campuses|departments|locations)$/, async (context, match) => json(await context.services.staffPlatform.organization(await context.role('technician'), match[1], context.query))],
   ['GET', /^\/api\/members\/([^/]+)$/, async (context, match) => json(await context.services.staffPlatform.memberDetail(await context.role('technician'), decodeURIComponent(match[1]), context.query.businessDate))],
   ['PATCH', /^\/api\/members\/([^/]+)$/, async (context, match) => json(await context.services.staffPlatform.updateMember(await context.role('technician'), decodeURIComponent(match[1]), bodyWithRevision(await readBody(context.request))))],
+  ['POST', /^\/api\/members\/([^/]+)\/work-profiles$/, async (context, match) => json(await context.services.staffPlatform.saveWorkProfile(await context.role('technician'), decodeURIComponent(match[1]), await readBody(context.request)))],
   ['POST', /^\/api\/members\/import$/, async context => {
     const actor = await context.role('technician'); const input = await readBody(context.request);
     if (typeof input.csv !== 'string' || input.csv.length > 1024 * 1024) fail(400, '成员导入内容不正确');

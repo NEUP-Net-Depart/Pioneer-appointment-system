@@ -4,6 +4,7 @@ import { campusId } from "../modules/authorization/scopes.js";
 import { scanCode } from "../lib/scan-code.js";
 import { presentAppointment } from "./appointments.js";
 import { requestId, stableJson } from "../platform/contracts.js";
+import { staffIdentities, fieldPersonGroup, compareFieldPeople } from '../../shared/staff-identities.js';
 
 // The UI consumes these decisions; commands recompute them against current facts.
 export function fieldWorkflow({
@@ -120,6 +121,7 @@ export function fieldWorkflow({
       reason: ready.reason,
       currentRepair: current,
       todayDuties: context.todayDuties,
+      identities: staffIdentities(context, authorizer, {campusId:selected}),
       pendingSwapInvitations: context.permissions['roster.read'] ? await repository.pendingSwapInvitations(context.actor.memberId) : 0,
       presence: context.presence,
       event: ready.event,
@@ -205,8 +207,11 @@ export function fieldWorkflow({
       };
     const visible = await project(actor, item, context);
     if (!visible) fail(403, "没有该预约的访问权限");
+    const assigneeContexts = item.assignedMemberId ? await repository.fieldContexts([item.assignedMemberId],context.businessDate) : new Map();
     return {
       ...visible,
+      assigneeIdentities:item.assignedMemberId && assigneeContexts.has(item.assignedMemberId) ? staffIdentities(assigneeContexts.get(item.assignedMemberId),authorizer,{campusId:target.campusId}) : [],
+      assigneeIdentitySnapshot:await repository.repairIdentitySnapshot(id),
       canCorrect: allowed(context, 'repair.correct', target),
       canRecoverCredential: allowed(context, 'repair.correct', target),
       original: visible.canReadDetails && (item.assignedMemberId === context.actor.memberId || allowed(context, 'customer.identity.read', target)) ? {
@@ -260,24 +265,27 @@ export function fieldWorkflow({
       data.businessDate,
       data.campusId,
     );
-    const staffPresence = await Promise.all(
-      people.map(async (person) => {
-        const user = await users.find(person.account);
-        const ready =
-          user?.status === "enabled" && user.memberStatus !== "inactive"
-            ? await eligibility(user, data.campusId)
-            : { allowed: false, reason: "成员或账号已停用" };
-        return {
+    const contexts = await repository.fieldContexts(people.map(person => person.memberId),data.businessDate);
+    const staffPresence = people.filter(person=>allowed(context,'repair.summary.read',{campusId:data.campusId,memberId:person.memberId,
+      departmentIds:(contexts.get(person.memberId)?.memberships || []).map(item=>item.departmentId)})).map(person => {
+        const personContext=contexts.get(person.memberId), current=personContext?.current;
+        const qualified=personContext?.workProfiles.some(item=>['repair','exchange'].includes(item.profileCode));
+        const reason=!personContext || personContext.actor.status!=='enabled' || personContext.actor.memberStatus!=='active' ? '成员或账号已停用' :
+          !qualified || !allowed(personContext,'repair.start',{campusId:data.campusId}) ? '当前没有该校区的维修资格' : current ? '请先完成当前维修' :
+          !personContext.presence || personContext.presence.campusId!==data.campusId ? '请先完成该校区到岗签到' : personContext.presence.state!=='available' ? '请先返回岗位' :
+          !data.event || !eventWindow(data.event.startsAt,data.event.endsAt,new Date().toISOString()) ? '当前不在值班工作窗口' : '';
+        const result = {
           ...person,
-          state: ready.current ? "repairing" : person.state || (person.leaveStatus === 'approved' ? 'on_leave' : 'unsigned'),
-          canReceive: ready.allowed,
-          reason: person.leaveStatus === 'approved' ? person.state ? `${ready.reason || '已实际到岗'} · 原请假已批准` : '请假已批准，实际到岗后仍可签到' : ready.reason,
-          currentRepair: ready.current
-            ? { id: ready.current.id, deviceModel: ready.current.deviceModel }
-            : null,
+          scheduled:!!person.scheduled,
+          identities:personContext ? staffIdentities(personContext,authorizer,{campusId:data.campusId}) : [],
+          scheduledRepair:personContext?.todayDuties.some(duty=>duty.campusId===data.campusId && duty.dutyType==='repair') || false,
+          state: current ? "repairing" : person.state || (person.leaveStatus === 'approved' ? 'on_leave' : 'unsigned'),
+          canReceive:!reason,
+          reason: person.leaveStatus === 'approved' ? person.state ? `${reason || '已实际到岗'} · 原请假已批准` : '请假已批准，实际到岗后仍可签到' : reason,
+          currentRepair:current || null,
         };
-      }),
-    );
+        return {...result,group:fieldPersonGroup(result)};
+      }).sort(compareFieldPeople);
     const items = list.items
       .filter((item) =>
         allowed(context, "repair.summary.read", {

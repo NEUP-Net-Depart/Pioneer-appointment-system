@@ -161,7 +161,8 @@ export function appointmentRepository(db, { workflowSchema = false } = {}) {
         const auditId = crypto.randomUUID();
         statements.push(db.prepare(`INSERT INTO audit_events(id,actor_member_id,actor_account,action,source_ref,before_json,after_json,reason,request_id,occurred_at)
           SELECT ?,?,?,?,?,?,?,?,?,? WHERE changes()>0`).bind(auditId,workflow.actor.memberId,workflow.actor.account,workflow.action,
-          JSON.stringify({module:'repairs',type:'appointment',id:item.id}),JSON.stringify({status:item.status,assignedTo:item.assignedTo}),JSON.stringify({status:patch.status || item.status,assignedTo:patch.assignedTo || item.assignedTo}),workflow.reason || '',workflow.requestId || null,workflow.at));
+          JSON.stringify({module:'repairs',type:'appointment',id:item.id}),JSON.stringify({status:item.status,assignedTo:item.assignedTo}),JSON.stringify({status:patch.status || item.status,assignedTo:patch.assignedTo || item.assignedTo,
+            ...(workflow.eligibility?.context ? {assigneeIdentity:{memberId:workflow.eligibility.context.actor.memberId,name:workflow.eligibility.context.actor.name,identities:workflow.eligibility.context.identities || []}} : {})}),workflow.reason || '',workflow.requestId || null,workflow.at));
         if (start) statements.push(db.prepare(`INSERT INTO repair_intake_records(id,appointment_id,member_id,account,front_photo_id,back_photo_id,verified_at,verification_json)
           SELECT ?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM audit_events WHERE id=?)`).bind(`intake-${item.id}-${item.revision+1}`,item.id,workflow.actor.memberId,patch.assignedTo,patch.frontPhotoId,patch.backPhotoId,workflow.at,JSON.stringify(workflow.verification),auditId));
         statements.push(db.prepare(`INSERT INTO operation_receipts(actor_member_id,action,request_id,payload_hash,resource_ref,result_json,result_status,created_at)

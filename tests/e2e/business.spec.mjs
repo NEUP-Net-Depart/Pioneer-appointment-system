@@ -202,7 +202,11 @@ test('student booking, private links, whitelist activation, staff permissions, r
     const completed = await contexts[0].request.get(`/api/appointments/${item.id}`,{headers:{'X-Appointment-Token':secret}});
     expect((await completed.json()).repairNumber).toBeNull();
 
-    await root.getByRole('button',{name:'维修后台',exact:true}).click();await root.locator(`[data-detail="${item.id}"]`).click();
+    await root.getByRole('button',{name:'维修后台',exact:true}).click();
+    // Another browser completed this repair. Wait for the refreshed list before
+    // opening its cached row, rather than racing the navigation's background read.
+    await expect(root.locator('tr').filter({has:root.locator(`[data-detail="${item.id}"]`)})).toContainText('修复成功');
+    await root.locator(`[data-detail="${item.id}"]`).click();
     await root.locator('#correction-panel summary').click();
     await root.locator('#correction-outcome').selectOption('not_needed');await root.locator('#detail-repair-note').fill('浏览器验收：复测后无需维修');
     root.once('dialog',dialog=>dialog.accept());await root.locator('#apply-correction').click();await expect(root.locator('#detail-modal')).toBeHidden();

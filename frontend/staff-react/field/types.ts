@@ -13,6 +13,8 @@ export interface Appointment {
   warranty?: string;
   assignedToName?: string;
   assignedMemberId?: string;
+  assigneeIdentities?: {code:string;label:string}[];
+  assigneeIdentitySnapshot?: {memberId:string;name:string;identities:{code:string;label:string}[]} | null;
   startedAt?: string;
   repairNote?: string;
   outcome?: string;
@@ -38,6 +40,10 @@ export interface Verification {
   note: string;
 }
 export interface Person {
+  identities?: { code: string; label: string }[];
+  signedInAt?: string;
+  scheduledRepair?: boolean;
+  group?: string;
   memberId: string;
   name: string;
   account: string;
@@ -50,6 +56,7 @@ export interface Person {
   currentRepair?: { id: string; deviceModel: string };
 }
 export interface Home {
+  identities?: { code: string; label: string }[];
   permissions: Record<string, boolean>;
   navigation: { id: string }[];
   enabled: boolean;

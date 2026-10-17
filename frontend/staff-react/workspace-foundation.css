@@ -1,4 +1,16 @@
 /* Shell geometry and shared controls live here, after module styles. */
+.staff-identities { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-block: 5px; }
+.staff-identity { display: inline-flex; font-size: 12px; font-weight: 500; line-height: 20px; padding: 1px 7px; border-radius: 5px; background: #f0f2f5; color: #536174; }
+.member-import-preview { max-height: 40vh; overflow: auto; }
+.member-qualifications > form { margin-top: 24px; }
+.member-qualifications .react-form-grid { grid-template-columns: repeat(auto-fit,minmax(min(100%,180px),1fr)); }
+.field-modal .member-qualification-confirm { display: flex; align-items: flex-start; gap: 10px; min-height: 44px; }
+.field-modal .member-qualification-confirm input { flex-shrink: 0; width: 18px; height: 18px; margin: 2px 0 0; }
+.staff-identity[data-identity=repair_lead], .staff-identity[data-identity=office_lead] { color: #805b22; background: #f8f1e6; }
+.staff-identity[data-identity=exchange] { color: #416d68; background: #edf5f3; }
+.field-person-divider { display: flex; align-items: center; gap: 12px; color: #7d8794; font-size: 12px; padding-top: 16px; }
+.field-person-divider::after { content: ''; flex: 1; height: 1px; background: #e6e9ee; }
+.field-person-summary { font-size: 12px; }
 .field-app, .field-modal {
   --workspace-gutter: clamp(24px, 3vw, 48px);
   --workspace-top: 32px;
@@ -225,7 +237,7 @@
   .field-app .react-form-grid { grid-template-columns: minmax(0, 1fr); }
   .field-app input:not([type=checkbox]):not([type=radio]), .field-app select, .field-app textarea,
   .field-modal input:not([type=checkbox]):not([type=radio]), .field-modal select, .field-modal textarea { font-size: 16px; }
-  .field-modal[open] { inset: 0; margin: 0; width: 100%; max-width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; }
+  .field-modal[open] { inset: 0; margin: 0; width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; }
   .field-modal > header { padding: calc(12px + env(safe-area-inset-top)) 16px 12px; }
   .workspace-dialog-body { padding: 20px 16px calc(24px + env(safe-area-inset-bottom)); }
   .field-modal .react-form-grid, .field-modal .field-form-grid { grid-template-columns: minmax(0, 1fr); }

@@ -413,6 +413,68 @@ before(async () => {
 });
 after(async () => mf?.dispose());
 
+test('unscheduled lead keeps identity, signs in without repair qualification and stays within campus authorization',async()=>{
+  const account='20261981';
+  await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,'未排班负责人','technician','南湖',?,'2026-01-01')").bind(account,hashPassword('StaffTest!2026')).run();
+  await db.prepare("INSERT INTO staff_campus_grants VALUES(?,'南湖'),(?,'浑南')").bind(account,account).run();
+  await db.prepare('DELETE FROM member_work_profiles WHERE member_id=?').bind(`member-${account}`).run();
+  await db.prepare("INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from) VALUES('unscheduled-lead',?,'role-repair-lead','{\"campusIds\":[\"campus-nanhu\"]}','2026-01-01')").bind(`member-${account}`).run();
+  tokens[account]=(await request('/api/auth/login',null,{account,password:'StaffTest!2026'})).body.token;
+  let home=(await request('/api/field/home',account)).body;
+  assert.equal(home.todayDuties.length,0);
+  assert.deepEqual(home.identities.map(item=>item.code),['repair_lead']);
+  assert.equal(home.capability['repair.transfer'],false);
+  const credential=await request('/api/attendance/events/field-event/token','root001',{revision:(await staffPlatformRepository(db).attendanceEvent('field-event')).revision});
+  assert.equal(credential.status,200,JSON.stringify(credential.body));
+  assert.equal((await request('/api/attendance/check-ins',account,{token:credential.body.token,requestId:crypto.randomUUID()})).status,200);
+  home=(await request('/api/field/home',account)).body;
+  assert.equal(home.capability['repair.transfer'],true);
+  assert.equal(home.capability['repair.start'],false);
+  assert.equal((await request('/api/field/home?campusId=campus-hunnan',account)).body.capability['repair.transfer'],false);
+  const board=await request('/api/field/board',account);
+  const person=board.body.staffPresence.find(item=>item.account===account);
+  assert.equal(person.group,'repair');assert.equal(person.canReceive,false);assert.equal(person.scheduled,false);assert.ok(person.signedInAt);
+  await db.prepare("UPDATE member_roles SET effective_to='2026-10-15' WHERE id='unscheduled-lead'").run();
+  home=(await request('/api/field/home',account)).body;
+  assert.equal(home.capability['repair.transfer'],false);assert.equal(home.identities.some(item=>item.code==='repair_lead'),false);
+});
+
+test('exchange import, activation, check-in and qualification revocation preserve the same member and exclude roster participation',async()=>{
+  const repository=staffPlatformRepository(db);
+  const account='20261982',memberId=`member-${account}`;
+  const csv=`studentId,name,homeCampusId,departmentId,workProfiles,roleCodes,authorizedCampuses,trainingConfirmed\n${account},交流测试人员,campus-nanhu,dept-office,exchange,technician,campus-nanhu,true`;
+  assert.equal((await request('/api/members/import','root001',{csv:csv.replace(',true',',false')})).status,400);
+  assert.equal((await request('/api/members/import','root001',{csv})).body.mode,'preview');
+  assert.equal(await repository.memberRow(memberId),null);
+  assert.equal((await request('/api/members/import','root001',{csv,confirm:true})).status,200);
+  const activation=await request('/api/activation',null,{studentId:account,name:'交流测试人员',homeCampus:'南湖',password:'StaffTest!2026'});
+  assert.equal(activation.status,201,JSON.stringify(activation.body));
+  assert.equal((await request('/api/activation-requests/review','root001',{ids:[activation.body.id],status:'approved',identityVerified:true})).status,200);
+  tokens[account]=(await request('/api/auth/login',null,{account,password:'StaffTest!2026'})).body.token;
+  let home=(await request('/api/field/home',account)).body;
+  assert.equal(home.actor.memberId,memberId);assert.deepEqual(home.identities.map(item=>item.code),['exchange']);
+  assert.equal(home.permissions['roster.read'],false);
+  assert.equal((await request('/api/me/roster',account)).status,403);
+  assert.deepEqual((await repository.profiles(memberId,'2026-10-15')).map(item=>item.profileCode),['exchange']);
+  const credential=await request('/api/attendance/events/field-event/token','root001',{revision:(await repository.attendanceEvent('field-event')).revision});
+  const signed=await request('/api/attendance/check-ins',account,{token:credential.body.token,requestId:crypto.randomUUID()});
+  assert.equal(signed.status,200,JSON.stringify(signed.body));
+  home=(await request('/api/field/home',account)).body;assert.equal(home.state,'available');
+  let person=(await request('/api/field/board','root001')).body.staffPresence.find(item=>item.memberId===memberId);
+  assert.equal(person.canReceive,true);assert.equal(person.group,'repair');assert.equal(person.scheduled,false);
+  const detail=(await request(`/api/members/${memberId}`,'root001')).body;
+  const profile=detail.member.workProfiles[0];
+  assert.equal((await request(`/api/members/${memberId}/work-profiles`,'20261002',{revision:detail.member.revision,id:profile.id,profileRevision:profile.revision,effectiveTo:'2026-10-15'})).status,403);
+  const end={revision:detail.member.revision,id:profile.id,profileRevision:profile.revision,effectiveTo:'2026-10-15'};
+  assert.equal((await request(`/api/members/${memberId}/work-profiles`,'root001',end)).status,200);
+  assert.equal((await request(`/api/members/${memberId}/work-profiles`,'root001',end)).status,409);
+  assert.equal((await request('/api/field/home',account)).status,401);
+  tokens[account]=(await request('/api/auth/login',null,{account,password:'StaffTest!2026'})).body.token;
+  home=(await request('/api/field/home',account)).body;assert.notEqual(home.state,'available');
+  person=(await request('/api/field/board','root001')).body.staffPresence.find(item=>item.memberId===memberId);
+  assert.equal(person.canReceive,false);assert.equal(person.identities.some(item=>item.code==='exchange'),false);
+});
+
 test('ordinary reception and repair roles cannot enter management or use legacy admin API shortcuts', async () => {
   for (const account of ['20261001', '20261002']) {
     const profile = await request('/api/auth/me', account);
@@ -526,7 +588,9 @@ test("field day: reception, attendance, intake, transfer and completion share au
     { revision: event.body.revision },
   );
   assert.equal(credential.status, 200, JSON.stringify(credential.body));
-  for (const account of [tech, next]) {
+  assert.equal((await request('/api/field/home',lead)).body.capability['repair.transfer'],false);
+  assert.ok((await request('/api/field/home',lead)).body.identities.some(item => item.code==='repair_lead'));
+  for (const account of [tech, next, lead]) {
     const signed = await request("/api/attendance/check-ins", account, {
       token: credential.body.token,
       requestId: `field-check-${account}`,
@@ -539,7 +603,8 @@ test("field day: reception, attendance, intake, transfer and completion share au
   assert.equal(duplicate.body.isExisting, true);
   const board = await request("/api/field/board", office);
   assert.equal(board.status, 200, JSON.stringify(board.body));
-  assert.equal(board.body.staffPresence.filter((p) => p.canReceive).length, 2);
+  assert.equal(board.body.staffPresence.filter((p) => p.canReceive).length, 3);
+  assert.ok(board.body.staffPresence.find(p => p.account===lead).identities.some(item=>item.code==='repair_lead'));
   const signature = [
     Array.from({ length: 10 }, (_, i) => [0.1 + i * 0.05, 0.2 + i * 0.03]),
   ];
