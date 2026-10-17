@@ -32,12 +32,12 @@ export function Accounts({ user }) {
     try { await navigator.clipboard.writeText(activationUrl); setCopyMessage('激活网址已复制，可发给已获得加入资格的成员。'); }
     catch { setCopyMessage(`请复制激活网址：${activationUrl}`); }
   }
-  return <main className="field-main accounts-workspace">
+  return <section className="accounts-workspace">
     <WorkspaceHeader group="平台管理" title="账号管理" description="先授予加入资格，再核实激活申请；已有账号在这里维护。"><button onClick={copy}>复制激活网址</button></WorkspaceHeader>
     <Notice>{copyMessage}</Notice>
     <WorkspaceSections label="账号管理功能" items={sections} value={section} onChange={id => { setSection(id); setVisited(current => current.includes(id) ? current : [...current, id]); }} />
     {sections.map(item => visited.includes(item.id) && <ActivityContext.Provider key={item.id} value={active && section === item.id}><div hidden={section !== item.id}>{item.id === 'accounts' ? <AccountList user={user} /> : item.id === 'review' ? <ActivationReview /> : <Invitations user={user} />}</div></ActivityContext.Provider>)}
-  </main>;
+  </section>;
 }
 
 function AccountList({ user }) {

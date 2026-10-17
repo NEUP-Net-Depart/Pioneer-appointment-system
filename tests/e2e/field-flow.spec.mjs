@@ -555,6 +555,95 @@ test('an expired reception permission removes its scene and returns to personal 
   await page.unrouteAll({ behavior: 'wait' });
 });
 
+test('all workspaces share title geometry and scrollable navigation across screen sizes', async ({ page }) => {
+  await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': '192.0.2.177' });
+  await login(page, 'root001');
+  const entries = [
+    ['维修工作台', '维修工作台'], ['接待台', '接待台'], ['现场管理', '现场管理'],
+    ['个人中心', '个人中心'], ['预约记录', '预约记录'], ['班次与排班', '我的值班安排'],
+    ['本人签到记录', '本人签到记录'], ['账号安全', '账号安全'], ['成员管理', '成员管理'],
+    ['授权管理', '授权管理'], ['账号管理', '账号管理'], ['维修排班管理', '维修排班管理'],
+    ['办公排班管理', '办公排班管理'], ['请假审批', '请假审批'], ['预约配置', '预约配置'], ['统计分析', '统计分析'],
+  ];
+  await mkdir('output/field-workflow/ui-consistency', { recursive: true });
+  for (const width of [1440, 768, 390, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    let reference;
+    for (const [label, title] of entries) {
+      if (width < 768 && label === '个人中心') await page.getByRole('navigation', { name: '手机岗位导航' }).getByRole('button', { name: '我的', exact: true }).click();
+      else if (width < 768) {
+        await page.getByRole('button', { name: '更多', exact: true }).click();
+        await page.getByRole('dialog', { name: '工作入口', exact: true }).getByRole('button', { name: label, exact: true }).click();
+      } else {
+        const nav = page.locator('.field-sidebar');
+        const target = nav.getByRole('button', { name: label, exact: true });
+        if (!await target.isVisible()) {
+          const group = nav.locator('.workspace-nav-group').filter({ has: target });
+          await group.getByRole('button', { expanded: false }).click();
+        }
+        await target.click();
+      }
+      const route = page.locator('.workspace-page:not([hidden])');
+      const heading = route.getByRole('heading', { name: title, exact: true, level: 1 });
+      await expect(heading).toBeVisible();
+      await page.evaluate(() => window.scrollTo(0, 0));
+      const geometry = await heading.evaluate(node => {
+        const rect = node.getBoundingClientRect(), style = getComputedStyle(node);
+        return { x: rect.x, y: rect.y, size: style.fontSize, line: style.lineHeight, font: style.fontFamily, weight: style.fontWeight };
+      });
+      if (!reference) reference = geometry;
+      expect(geometry, `${width}px ${label}`).toEqual(reference);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width}px ${label} overflow`).toBe(true);
+      expect(await route.locator('main').count()).toBe(0);
+      if (width === 768 && ['接待台', '现场管理'].includes(label)) {
+        const customer = route.locator('.field-order > span:first-child').first();
+        if (await customer.count()) expect((await customer.boundingBox()).width, 'customer identity stays readable beside the sidebar').toBeGreaterThan(120);
+      }
+      await page.screenshot({ path: `output/field-workflow/ui-consistency/${title}-${width}.png`, fullPage: true });
+    }
+    if (width >= 768) {
+      const nav = page.locator('.field-sidebar > nav');
+      expect(await nav.evaluate(node => getComputedStyle(node).scrollbarWidth)).toBe('none');
+      await page.setViewportSize({ width, height: 500 });
+      await nav.evaluate(node => { node.scrollTop = node.scrollHeight; });
+      expect(await nav.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+      const bottomEntry = nav.getByRole('button', { name: '统计分析', exact: true });
+      await bottomEntry.focus();
+      await expect(bottomEntry).toBeInViewport();
+      await expect(page.locator('.field-sidebar-bottom')).toBeInViewport();
+      await page.setViewportSize({ width, height: 900 });
+    }
+  }
+});
+
+test('member detail keeps its header fixed while long forms scroll and restores focus', async ({ page }) => {
+  await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': '192.0.2.178' });
+  await login(page, 'root001');
+  await page.locator('.field-sidebar').getByRole('button', { name: '成员管理', exact: true }).click();
+  const opener = page.locator('.members-results .react-row').filter({ hasText: '陈宇' }).getByRole('button', { name: '编辑成员与权限' });
+  await opener.click();
+  const dialog = page.getByRole('dialog', { name: '陈宇', exact: true });
+  await dialog.getByRole('button', { name: '角色授权', exact: true }).click();
+  await dialog.getByRole('button', { name: '添加角色', exact: true }).click();
+  for (const width of [1440, 768, 390, 320]) {
+    await page.setViewportSize({ width, height: 650 });
+    const header = dialog.locator(':scope > header');
+    const body = dialog.locator('.workspace-dialog-body');
+    const before = await header.boundingBox();
+    await body.evaluate(node => { node.scrollTop = node.scrollHeight; });
+    expect(await body.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+    expect(await header.boundingBox()).toEqual(before);
+    await expect(dialog.getByRole('button', { name: '关闭', exact: true })).toBeInViewport();
+    expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    expect(await body.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await page.screenshot({ path: `output/field-workflow/ui-consistency/成员详情滚动-${width}.png` });
+  }
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
+  await dialog.getByRole('button', { name: '放弃修改并关闭', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused();
+});
+
 test('management keeps its shell and readable results during refresh at all widths', async ({ page }) => {
   await login(page, 'root001');
   const sidebar = page.locator('.field-sidebar');

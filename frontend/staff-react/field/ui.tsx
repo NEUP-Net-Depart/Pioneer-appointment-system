@@ -63,6 +63,7 @@ export function Modal({
   sidePanel = false,
   initialFocus,
   dismissible = true,
+  compact = false,
 }: {
   title: string;
   children: ReactNode;
@@ -70,6 +71,7 @@ export function Modal({
   sidePanel?: boolean;
   initialFocus?: string;
   dismissible?: boolean;
+  compact?: boolean;
 }) {
   const titleId = useId();
   const ref = useRef<HTMLDialogElement>(null);
@@ -87,7 +89,7 @@ export function Modal({
   }, [active, initialFocus]);
   return (
     <dialog
-      className={`field-modal${sidePanel ? ' field-side-panel' : ''}`}
+      className={`field-modal${sidePanel ? ' field-side-panel' : ''}${compact ? ' workspace-confirm-dialog' : ''}`}
       ref={ref}
       aria-labelledby={titleId}
       onKeyDown={event => {
@@ -110,7 +112,7 @@ export function Modal({
           关闭
         </button>
       </header>
-      {children}
+      <div className="workspace-dialog-body">{children}</div>
     </dialog>
   );
 }

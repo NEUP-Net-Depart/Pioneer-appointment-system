@@ -67,10 +67,7 @@ export function Registration({
         if (!busy) onClose();
       }}
     >
-      <p className="field-muted">
-        {campus}校区 ·{" "}
-        {step === 0 ? "1 / 2　填写机主与设备信息" : "2 / 2　机主确认与签名"}
-      </p>
+      <div className="workspace-flow-context"><span>{campus}校区</span><strong>{step === 0 ? '填写机主与设备信息' : '机主确认与签名'}</strong><ol aria-label="登记进度"><li aria-current={step === 0 ? 'step' : undefined}>填写信息</li><li aria-current={step === 1 ? 'step' : undefined}>确认与签名</li></ol></div>
       <Notice>{error}</Notice>
       {step === 0 ? (
         <form

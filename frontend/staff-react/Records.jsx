@@ -35,7 +35,7 @@ export function Records({ user }) {
   const period = filters.dateFrom ? `本周 ${filters.dateFrom.slice(5)}–${filters.dateTo.slice(5)}` : filters.date ? dayLabel(filters.date) : '全部日期';
   const summaries = { createdAt: '姓名、学号与预约编号', date: [period, filters.timeSlot].filter(Boolean).join(' · '), status: statusText, campus: filters.campus === 'all' ? '全部校区' : `${filters.campus}校区` };
   const sortButton = key => { const index = sorts.findIndex(item => item.key === key), value = sorts[index]; return <button className="record-sort" aria-label={`${columns[key]}${value ? `，第${index + 1}排序，${value.direction === 'asc' ? '升序' : '降序'}` : '，未排序'}；点击${!value ? '升序' : value.direction === 'asc' ? '降序' : '清除排序'}`} onClick={() => cycle(key)}><strong>{columns[key]} {value && <small>{value.direction === 'asc' ? '↑' : '↓'}{index + 1}</small>}</strong><span>{summaries[key]}</span></button>; };
-  return <main className="field-main records-workspace">
+  return <section className="records-workspace">
     <WorkspaceHeader group="今日工作" title="预约记录" description="从近期概览定位预约，再查看设备、处理进展与维修记录。"><button disabled={list.loading || overview.loading} onClick={refresh}>刷新记录</button>{staffPermission(user, 'statistics.read') && <button onClick={exportRecords}>导出全部可见记录</button>}</WorkspaceHeader>
     <Notice>{message}</Notice>
     <RecordOverview result={overview} onOpen={setOverviewOpen} onFilter={patch => { setSearch(''); update({ ...patch, q: '' }); }} />
@@ -49,7 +49,7 @@ export function Records({ user }) {
     </section>
     {menu && <RecordFilter menu={menu} filters={filters} counts={counts} campuses={user.authorizedCampuses} slots={[...new Set([...TIME_SLOTS, ...(overview.data?.items || []).map(item => item.timeSlot)])]} onChange={update} onClose={() => setMenu('')} />}
     {selected && <Repair key={selected} id={selected} memberId={user.memberId || user.account} people={[]} onClose={() => setSelected('')} onChanged={refresh} returnLabel="返回预约记录" sidePanel />}
-  </main>;
+  </section>;
 }
 
 function RecordFilter({ menu, filters, counts, campuses, slots, onChange, onClose }) {

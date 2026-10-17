@@ -31,7 +31,7 @@ export function AccountSettings({ user, section, onNavigate }: { user: { name: s
   }
   // Passwords are never retained in an invisible workspace or a saved draft.
   useEffect(() => { if (!active || !security) { form.current?.reset(); setConfirm(false); } }, [active, security]);
-  return <main className="field-main settings-workspace">
+  return <section className="settings-workspace">
     <WorkspaceHeader group={security ? '我的' : '业务管理'} title={security ? '账号安全' : '预约配置'} description={security ? '管理登录密码与设备会话。' : '按校区维护每周的预约名额。'} />
     <div hidden={!security} className="security-layout">
       <section className="field-card security-profile"><h2>当前账号</h2><dl><div><dt>姓名</dt><dd>{user.name}</dd></div><div><dt>账号</dt><dd>{user.account}</dd></div><div><dt>所属校区</dt><dd>{user.homeCampus}</dd></div><div><dt>授权校区</dt><dd>{user.authorizedCampuses?.join('、')}</dd></div></dl></section>
@@ -44,6 +44,6 @@ export function AccountSettings({ user, section, onNavigate }: { user: { name: s
       <section className="field-card security-sessions"><div><h2>设备会话</h2><p className="field-muted">无法确认其他设备是否安全时，可让所有设备退出登录，包含当前设备。</p></div><button type="button" disabled={busy} onClick={() => { setError(''); setConfirm(true); }}>撤销所有登录会话</button></section>
     </div>
     {allowed && <div hidden={security}><CapacityEditor active={active && !security} onNavigate={onNavigate} /></div>}
-    {confirm && <Modal title="撤销所有登录会话？" onClose={() => { if (!busy) setConfirm(false); }}><p>所有设备都会退出登录，你需要重新登录后继续工作。</p><div className="field-actions"><button disabled={busy} onClick={() => setConfirm(false)}>取消</button><button className="field-primary" disabled={busy} onClick={revoke}>{busy ? '正在撤销…' : '确认撤销并退出'}</button></div></Modal>}
-  </main>;
+    {confirm && <Modal title="撤销所有登录会话？" compact onClose={() => { if (!busy) setConfirm(false); }}><p>所有设备都会退出登录，你需要重新登录后继续工作。</p><div className="field-actions"><button disabled={busy} onClick={() => setConfirm(false)}>取消</button><button className="field-primary" disabled={busy} onClick={revoke}>{busy ? '正在撤销…' : '确认撤销并退出'}</button></div></Modal>}
+  </section>;
 }

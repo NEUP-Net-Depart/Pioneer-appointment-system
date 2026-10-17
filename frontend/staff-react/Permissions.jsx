@@ -4,11 +4,22 @@ import { ActivityContext } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { ScopeFields, ConditionFields } from './ScopeFields.jsx';
 import { setGrantEnabled, withGrantValidity } from './authorization-drafts.js';
+import { WorkspaceSections } from './WorkspaceSections';
+
+const permissionGroups = [
+  { id: 'all', label: '全部功能' },
+  { id: 'repair', label: '接待与维修' },
+  { id: 'roster', label: '排班与申请' },
+  { id: 'attendance', label: '签到与在岗' },
+  { id: 'management', label: '管理与数据' },
+];
+const permissionGroup = code => /^(repair|onsite)\./.test(code) ? 'repair' : /^(roster|leave|swap)\./.test(code) ? 'roster' : /^(attendance|presence|meeting)\./.test(code) ? 'attendance' : 'management';
 
 export function Permissions({ user }) {
   const routeActive = useContext(ActivityContext);
   const [search, setSearch] = useState('');
   const [enabledOnly, setEnabledOnly] = useState(false);
+  const [group, setGroup] = useState('all');
   const [permissions, setPermissions] = useState([]);
   const [providers, setProviders] = useState([]);
   const [campuses, setCampuses] = useState([]);
@@ -41,7 +52,7 @@ export function Permissions({ user }) {
     window.addEventListener('beforeunload', unload);
     return () => { window.removeEventListener('staff-before-navigation', guard); window.removeEventListener('beforeunload', unload); };
   }, [dirty, routeActive]);
-  const visiblePermissions = permissions.filter(permission => (!enabledOnly || codes.has(permission.code)) && `${permission.name} ${permission.description || ''}`.includes(search.trim()));
+  const visiblePermissions = permissions.filter(permission => (!enabledOnly || codes.has(permission.code)) && (search.trim() || group === 'all' || permissionGroup(permission.code) === group) && `${permission.name} ${permission.description || ''}`.includes(search.trim()));
   function select(role) {
     setSelected(role); setDraft(structuredClone(role.grants || [])); setError(''); setMessage('');
   }
@@ -67,6 +78,7 @@ export function Permissions({ user }) {
       {protectedRole && <p className="react-muted">最高管理员权限包受保护，请选择其他角色配置。</p>}
       {user.role !== 'superadmin' && <p className="react-muted">角色配置与分配由最高管理员管理，当前可查看已有配置。</p>}
       <div className="permission-tools"><label>查找权限<input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="按功能名称查找" /></label><label className="permission-filter"><input type="checkbox" checked={enabledOnly} onChange={event => setEnabledOnly(event.target.checked)} />只看已启用</label><span>已启用 {codes.size} 项 · 当前显示 {visiblePermissions.length} 项</span></div>
+      <WorkspaceSections label="权限功能分类" value={search.trim() ? 'all' : group} onChange={value => { setGroup(value); setSearch(''); }} items={permissionGroups} />
       <fieldset disabled={busy || !selected || readOnly} className="react-permission-fields"><legend className="sr-only">角色权限</legend>
         {visiblePermissions.map(permission => <section className="react-permission-item" key={permission.code}>
           <label className="react-permission"><input type="checkbox" checked={codes.has(permission.code)} onChange={event => setDraft(current => setGrantEnabled(current, permission, event.target.checked, selected.grants || []))} />

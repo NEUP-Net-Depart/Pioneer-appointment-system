@@ -469,7 +469,7 @@ export function Repair({
             </button>
           )}
           {transfer && (
-            <form className="field-form" onSubmit={handoff}>
+            <form className="field-form workspace-handoff" onSubmit={handoff}>
               <h3>选择接手人员</h3>
               <p className="field-muted">
                 仅可选择已签到、空闲且具备本校区维修资格的人员。

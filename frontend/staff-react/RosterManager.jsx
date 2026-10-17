@@ -21,7 +21,7 @@ export function RosterArea({ user, section = 'mine', requestSignal = 0 }) {
   if (!canRead && canManage) section = 'manage';
   const [visited, setVisited] = useState([section]);
   useEffect(() => { setVisited(current => current.includes(section) ? current : [...current, section]); }, [section]);
-  return <main className="field-main roster-area">{visited.includes('manage') && canManage && <ActivityContext.Provider value={active && section === 'manage'}><div hidden={section !== 'manage'} className="roster-section"><RosterManager user={user} /></div></ActivityContext.Provider>}{visited.includes('mine') && canRead && <ActivityContext.Provider value={active && section !== 'manage'}><div hidden={section === 'manage'} className="roster-section"><Roster user={user} requestSignal={requestSignal} /></div></ActivityContext.Provider>}</main>;
+  return <section className="roster-area">{visited.includes('manage') && canManage && <ActivityContext.Provider value={active && section === 'manage'}><div hidden={section !== 'manage'} className="roster-section"><RosterManager user={user} /></div></ActivityContext.Provider>}{visited.includes('mine') && canRead && <ActivityContext.Provider value={active && section !== 'manage'}><div hidden={section === 'manage'} className="roster-section"><Roster user={user} requestSignal={requestSignal} /></div></ActivityContext.Provider>}</section>;
 }
 
 function RosterManager({ user }) {

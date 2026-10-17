@@ -21,6 +21,8 @@ import { Accounts } from './Accounts';
 import { staffPermission, staffViewAllowed, staffSceneAllowed } from '../../shared/staff-access.js';
 import { OfficeRoster } from './OfficeRoster';
 import { LeaveReview } from './LeaveReview';
+import { WorkspacePage } from './WorkspacePage';
+import './workspace-foundation.css';
 
 const roles = { technician: '维修人员', admin: '管理员', superadmin: '最高权限者' };
 function Workbench({ user, onNavigate }) {
@@ -122,9 +124,9 @@ function Root() {
   ];
   if (!field) {
     if (page === 'workbench') return <Workbench user={user} onNavigate={navigate} />;
-    if (page === 'roster') return <RosterArea user={user} section={rosterSection} />;
+    if (page === 'roster') return <main className="field-main"><RosterArea user={user} section={rosterSection} /></main>;
     if (page === 'office-roster') return <main className="field-main roster-area"><OfficeRoster user={user} /></main>;
-    if (page === 'leave-review') return <LeaveReview user={user} onNavigate={navigate} />;
+    if (page === 'leave-review') return <main className="field-main"><LeaveReview user={user} onNavigate={navigate} /></main>;
     // Native pages retain their original host while the field platform is off.
     if (['staff','scan','stats','users','settings'].includes(page)) return null;
     const module = page === 'attendance' ? <Attendance onNavigate={navigate} /> : page === 'members' ? <Members user={user} /> : page === 'permissions' ? <Permissions user={user} /> : null;
@@ -136,19 +138,19 @@ function Root() {
   // dialog state survive a trip through the sidebar. Hidden field routes pass
   // `active=false`, which stops their polling and device-backed UI.
   const visible = view => page === view;
-  const route = (view, child, allowed = true) => allowed && staffViewAllowed(effectiveUser, view) && visited.includes(view) ? <ActivityContext.Provider key={view} value={visible(view)}><div className="workspace-route" data-route={view} hidden={!visible(view)} aria-hidden={!visible(view)}>{child}</div></ActivityContext.Provider> : null;
+  const route = (view, child, allowed = true) => allowed && staffViewAllowed(effectiveUser, view) && visited.includes(view) ? <ActivityContext.Provider key={view} value={visible(view)}><WorkspacePage route={view} active={visible(view)}>{child}</WorkspacePage></ActivityContext.Provider> : null;
   const fieldRoute = route('workbench', <FieldApp initial={field} active={visible('workbench')} onNavigate={navigate} requestedScene={workScene} onSceneChange={setWorkScene} onContextChange={setField} workspaceLinks={workspaceLinks} />);
   const rosterRoute = route('roster', <RosterArea user={effectiveUser} section={rosterSection} requestSignal={rosterRequestSignal} />, published.has('rosters') || staffPermission(effectiveUser, 'roster.repair.manage'));
   const moduleRoutes = [
     route('leave-review', <LeaveReview user={effectiveUser} onNavigate={navigate} />, staffPermission(effectiveUser, 'leave.review')),
-    route('office-roster', <main className="field-main roster-area"><OfficeRoster user={effectiveUser} /></main>, staffPermission(effectiveUser, 'roster.office.manage')),
+    route('office-roster', <section className="roster-area"><OfficeRoster user={effectiveUser} /></section>, staffPermission(effectiveUser, 'roster.office.manage')),
     route('staff', <Records user={effectiveUser} />, workspaceLinks.some(entry => entry.id === 'staff')),
     route('stats', <Statistics />, workspaceLinks.some(entry => entry.id === 'stats')),
     route('settings', <AccountSettings user={effectiveUser} section={settingsSection} onNavigate={navigate} />),
     route('users', <Accounts user={user} />, workspaceLinks.some(entry => entry.id === 'users')),
-    route('attendance', <main className="field-main workspace-module"><Attendance onNavigate={navigate} /></main>, published.has('attendance')),
-    route('members', <main className="field-main workspace-module"><Members user={effectiveUser} /></main>, published.has('members')),
-    route('permissions', <main className="field-main workspace-module"><Permissions user={user} /></main>, published.has('roles')),
+    route('attendance', <section className="workspace-module"><Attendance onNavigate={navigate} /></section>, published.has('attendance')),
+    route('members', <section className="workspace-module"><Members user={effectiveUser} /></section>, published.has('members')),
+    route('permissions', <section className="workspace-module"><Permissions user={user} /></section>, published.has('roles')),
   ];
   return <WorkspacePortal key={`${user.memberId || user.account}:${user.authVersion}:${JSON.stringify(effectiveUser.permissions || {})}`}><StaffWorkspace name={user.name || ''} entries={workspaceLinks} active={active} onSelect={navigate}>{fieldRoute}{rosterRoute}{moduleRoutes}</StaffWorkspace></WorkspacePortal>;
 
