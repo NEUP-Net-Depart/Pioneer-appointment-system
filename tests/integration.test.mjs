@@ -912,7 +912,8 @@ test('HTTP D1 maintenance adapter reuses real repositories and rejects API error
     assert.equal(options.headers.Authorization, `Bearer ${token}`);
     if (url.endsWith('/r2/buckets/test-bucket')) return Response.json({ success: true, result: { name: 'test-bucket' } });
     assert.equal(url, `https://api.cloudflare.com/client/v4/accounts/${account}/d1/database/test-database/query`);
-    const { batch } = JSON.parse(options.body);
+    const input = JSON.parse(options.body);
+    const batch = input.batch || [input];
     assert.ok(batch.every(item => item.params.every(value => typeof value === 'string')));
     const result = await db.batch(batch.map(item => db.prepare(item.sql).bind(...item.params)));
     return Response.json({ success: true, result });
@@ -922,10 +923,14 @@ test('HTTP D1 maintenance adapter reuses real repositories and rejects API error
   const result = await cleanupAttachments(remoteRepository, key => bucket.delete(key), { apply: true });
   assert.equal(result.deleted, 1); assert.equal(result.failed, 0);
   assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 0);
+  const batchDatabase = client.database('test-database');
+  assert.equal((await batchDatabase.batch([batchDatabase.prepare('SELECT 1 AS n'),batchDatabase.prepare('SELECT 2 AS n')])).length,2);
   for (const response of [() => new Response('', { status: 403 }), () => Response.json({ success: false }), () => Response.json({ success: true, result: [{ success: false }] })]) {
     const failing = cloudflareClient(account, token, async () => response()).database('test-database');
     await assert.rejects(failing.prepare('SELECT 1').first(), /Cloudflare|D1/);
   }
+  const detailed = cloudflareClient(account, token, async () => Response.json({errors:[{code:7500,message:'private SQL parameter'}]}, {status:400})).database('test-database');
+  await assert.rejects(detailed.prepare('SELECT 1').first(), error => error.message.includes('7500') && !error.message.includes('private SQL parameter'));
   assert.throws(() => cloudflareClient('', ''), /CLOUDFLARE/);
 });
 
