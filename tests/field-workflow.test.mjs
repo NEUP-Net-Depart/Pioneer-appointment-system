@@ -413,6 +413,17 @@ before(async () => {
 });
 after(async () => mf?.dispose());
 
+test('legacy desk summary shares current field authorization and rejects historical duty replay',async()=>{
+  assert.equal((await request('/api/desk/summary?campusId=campus-nanhu','20261002')).status,403);
+  assert.equal((await request('/api/desk/summary?campusId=campus-hunnan','20261001')).status,403);
+  assert.equal((await request('/api/desk/summary?businessDate=2026-10-14','20261001')).status,400);
+  const legacy=await request('/api/desk/summary?campusId=campus-nanhu','20261001');
+  const current=await request('/api/field/board?campusId=campus-nanhu','20261001');
+  assert.equal(legacy.status,200,JSON.stringify(legacy.body));
+  assert.deepEqual(legacy.body.appointments,current.body.appointments);
+  assert.deepEqual(legacy.body.staffPresence,current.body.staffPresence);
+});
+
 test('unscheduled ordinary technician joins the working day through check-in without a roster assignment',async()=>{
   const account='20261983',memberId=`member-${account}`;
   await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,'未排班维修人员','technician','南湖',?,'2026-01-01')").bind(account,hashPassword('StaffTest!2026')).run();

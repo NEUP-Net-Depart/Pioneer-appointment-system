@@ -38,38 +38,45 @@ export function userRepository(db) {
           (status='in_progress' OR (status='completed' AND outcome IN ('repaired','unrepaired','not_needed','legacy_unknown')))) AS workload
         FROM staff_accounts ORDER BY role DESC,name`).all()).results.map(publicUser);
     },
-    async update(target, patch, { selfPassword = false } = {}) {
+    async update(target, patch, { selfPassword = false, auditRecord } = {}) {
       const fields = [], args = [];
       for (const [key,column] of Object.entries({ role:'role',status:'status',name:'name',homeCampus:'home_campus',passwordHash:'password_hash' })) {
         if (patch[key] !== undefined) { fields.push(`${column}=?`); args.push(patch[key]); }
       }
       if (['role','status','passwordHash','authorizedCampuses'].some(key => patch[key] !== undefined)) fields.push('token_version=token_version+1','auth_version=auth_version+1');
       const protection = selfPassword ? '' : ' AND protected=0';
-      const eligible = `EXISTS(SELECT 1 FROM staff_accounts WHERE account=? AND revision=?${protection})`;
+      const authorization=auditRecord ? " AND EXISTS(SELECT 1 FROM staff_accounts writer JOIN members m ON m.id=writer.member_id WHERE writer.account=? AND writer.member_id=? AND writer.auth_version=? AND writer.status='enabled' AND m.status='active')" : '';
+      const authorizationArgs=auditRecord ? [auditRecord.actorAccount,auditRecord.actorMemberId,auditRecord.authVersion] : [];
+      const eligible = `EXISTS(SELECT 1 FROM staff_accounts WHERE account=? AND revision=?${protection})${authorization}`;
+      const eligibleArgs=[target.account,target.revision,...authorizationArgs];
       const statements = [];
       // Grants change before the final revision increment, in the same D1 transaction.
       // A stale revision therefore changes neither account nor grants.
       if (patch.authorizedCampuses !== undefined) {
-        statements.push(db.prepare(`DELETE FROM staff_campus_grants WHERE account=? AND ${eligible}`).bind(target.account,target.account,target.revision));
+        statements.push(db.prepare(`DELETE FROM staff_campus_grants WHERE account=? AND ${eligible}`).bind(target.account,...eligibleArgs));
         statements.push(...patch.authorizedCampuses.map(campus => db.prepare(`INSERT INTO staff_campus_grants(account,campus) SELECT ?,? WHERE ${eligible}`)
-          .bind(target.account,campus,target.account,target.revision)));
+          .bind(target.account,campus,...eligibleArgs)));
       }
       if (patch.name !== undefined || patch.homeCampus !== undefined) {
         const memberFields = [], memberArgs = [];
         if (patch.name !== undefined) { memberFields.push('name=?'); memberArgs.push(patch.name); }
         if (patch.homeCampus !== undefined) { memberFields.push('home_campus_id=?'); memberArgs.push(patch.homeCampus === '浑南' ? 'campus-hunnan' : 'campus-nanhu'); }
         statements.push(db.prepare(`UPDATE members SET ${memberFields.join(',')},revision=revision+1,updated_at=? WHERE id=(SELECT member_id FROM staff_accounts WHERE account=?) AND ${eligible}`)
-          .bind(...memberArgs,new Date().toISOString(),target.account,target.account,target.revision));
+          .bind(...memberArgs,new Date().toISOString(),target.account,...eligibleArgs));
         const aliasFields = [], aliasArgs = [];
         if (patch.name !== undefined) { aliasFields.push('name=?'); aliasArgs.push(patch.name); }
         if (patch.homeCampus !== undefined) { aliasFields.push('home_campus=?', 'token_version=token_version+1', 'auth_version=auth_version+1'); aliasArgs.push(patch.homeCampus); }
         statements.push(db.prepare(`UPDATE staff_accounts SET ${aliasFields.join(',')},revision=revision+1
           WHERE member_id=(SELECT member_id FROM staff_accounts WHERE account=?) AND account<>? AND ${eligible}`)
-          .bind(...aliasArgs,target.account,target.account,target.account,target.revision));
+          .bind(...aliasArgs,target.account,target.account,...eligibleArgs));
       }
       const accountStatementIndex = statements.length;
-      statements.push(db.prepare(`UPDATE staff_accounts SET ${fields.length ? fields.join(',')+',' : ''}revision=revision+1 WHERE account=? AND revision=?${protection} RETURNING account`)
-        .bind(...args,target.account,target.revision));
+      statements.push(db.prepare(`UPDATE staff_accounts SET ${fields.length ? fields.join(',')+',' : ''}revision=revision+1 WHERE account=? AND revision=?${protection}${authorization} RETURNING account`)
+        .bind(...args,target.account,target.revision,...authorizationArgs));
+      if(auditRecord)statements.push(db.prepare(`INSERT INTO audit_events(id,actor_member_id,actor_account,action,source_ref,before_json,after_json,occurred_at)
+        SELECT ?,?,?,'authorization.account.updated',?,?,?,? WHERE changes()>0`).bind(crypto.randomUUID(),auditRecord.actorMemberId,auditRecord.actorAccount,
+        JSON.stringify({module:'identity',type:'account',id:target.account}),JSON.stringify(publicUserView(target)),
+        JSON.stringify({...Object.fromEntries(Object.entries(patch).filter(([key])=>key!=='passwordHash')),passwordChanged:patch.passwordHash!==undefined}),new Date().toISOString()));
       const results = await db.batch(statements);
       return results[accountStatementIndex]?.results?.length ? publicUserView(await find(target.account)) : null;
     },

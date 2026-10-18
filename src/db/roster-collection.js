@@ -37,6 +37,7 @@ export function rosterCollectionRepository(db) {
     const current=await db.prepare('SELECT revision FROM roster_submissions WHERE task_id=? AND member_id=?').bind(task.id,memberId).first();
     await db.batch([
       guard(record,`EXISTS(SELECT 1 FROM roster_tasks WHERE id=? AND revision=? AND collection_closed_at IS NULL AND julianday(deadline)>julianday(?)) AND COALESCE((SELECT revision FROM roster_submissions WHERE task_id=? AND member_id=?),-1)=?`,[task.id,task.revision,nowIso(),task.id,memberId,input.revision ?? -1]),
+      ...(input.carried ? [guard(record,'EXISTS(SELECT 1 FROM roster_availability_preferences WHERE member_id=? AND duty_type=? AND enabled=1 AND revision=?)',[memberId,task.dutyType,record.preferenceRevision ?? -1])] : []),
       receipt(record,'availability',task.id,input),
       db.prepare('DELETE FROM availability WHERE task_id=? AND member_id=?').bind(task.id,memberId),
       ...input.windows.map(window=>db.prepare('INSERT INTO availability(id,task_id,member_id,business_date,start_at,end_at,campus_id) VALUES(?,?,?,?,?,?,?)').bind(crypto.randomUUID(),task.id,memberId,window.businessDate,window.startAt,window.endAt,window.campusId)),

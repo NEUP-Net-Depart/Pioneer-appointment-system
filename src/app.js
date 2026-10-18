@@ -10,7 +10,7 @@ export async function handleRequest(request, env, execution={}) {
   try {
     validateEnv(env);
     const origin = request.headers.get('origin');
-    if (['POST','PATCH','DELETE'].includes(request.method) && origin && origin !== new URL(request.url).origin) fail(403, '不允许跨站操作');
+    if (!['GET','HEAD','OPTIONS'].includes(request.method) && origin && origin !== new URL(request.url).origin) fail(403, '不允许跨站操作');
     context = createContext(request, env);
     const response=await dispatch(context);
     if(response.ok&&env.STAFF_WORKFLOW_ENABLED==='true'&&context.url.pathname==='/api/roster-tasks'&&execution.waitUntil&&Date.now()-lastRosterAutomation>60000) {

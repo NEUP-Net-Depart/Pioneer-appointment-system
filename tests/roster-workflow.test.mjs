@@ -62,6 +62,8 @@ test('both migration chains support collection, atomic weekly submissions, revis
     const week=addDays(weekRange(dateKey()).start,7),campusIds=['campus-nanhu','campus-hunnan'];
     const input={workflowVersion:1,dutyType:'office',weekStart:week,campusIds,slotStart:'19:00',slotEnd:'21:00',memberIds:[one.memberId,two.memberId],deadline:new Date(Date.now()+86400000).toISOString(),requestId:crypto.randomUUID(),recurrence:{enabled:true,publishWeekday:4,publishTime:'18:00',deadlineWeekday:7,deadlineTime:'18:00'}};
     const task=await service.createRosterTask(root,input);assert.equal((await service.createRosterTask(root,input)).id,task.id);
+    await assert.rejects(service.saveAvailability(one,task.id,{businessDate:week,campusId:'campus-nanhu',startAt:'19:00',endAt:'21:00'}),error=>error.status===409,'legacy writes cannot mutate whole-week collections');
+    assert.equal((await repo.availability(task.id)).length,0);
     await assert.rejects(service.generate(root,{taskId:task.id}),error=>error.status===409);
     await assert.rejects(service.createRosterTask(root,{...input,requestId:crypto.randomUUID()}),error=>error.status===409);
     const windows=Array.from({length:4},(_,i)=>addDays(week,i)).flatMap(businessDate=>campusIds.map(campusId=>({businessDate,campusId,startAt:'19:00',endAt:'21:00'})));
@@ -98,6 +100,13 @@ test('both migration chains support collection, atomic weekly submissions, revis
     assert.equal((await service.processRosterAutomation()).published,0);
     const next=(await repo.listRosterTasks()).find(row=>row.seriesId===task.seriesId&&row.id!==task.id);
     const submission=(await repo.rosterSubmissions(next.id)).find(row=>row.memberId===one.memberId);assert.equal(submission.source,'carried');
+    const preference=(await repo.rosterPreferences(one.memberId)).find(row=>row.duty_type==='office');
+    const beforeDisable=await repo.availability(next.id);
+    await repo.disableRosterPreference(one.memberId,'office');
+    await assert.rejects(repo.replaceRosterAvailability(next,one.memberId,{windows:[],unavailable:true,carried:true,revision:submission.revision},
+      {actorMemberId:one.memberId,actorAccount:one.account,authVersion:one.authVersion,requestId:crypto.randomUUID(),preferenceRevision:preference.revision}),/constraint/i);
+    assert.deepEqual(await repo.availability(next.id),beforeDisable,'in-flight automation cannot submit after continuation was disabled');
+    await db.prepare("UPDATE roster_availability_preferences SET enabled=1,revision=revision+1 WHERE member_id=? AND duty_type='office'").bind(one.memberId).run();
     const nextWindows=await repo.availability(next.id);assert.equal(nextWindows.length,8);assert.equal(nextWindows[0].businessDate,addDays(week,7));
     const changedWeek=addDays(week,21);
     const changedTask=await service.createRosterTask(root,{...input,weekStart:changedWeek,recurrence:{enabled:false},requestId:crypto.randomUUID()});

@@ -274,10 +274,9 @@ export function staffPlatformService({ repository, platform, manifests }) {
       if (!['campus-nanhu', 'campus-hunnan'].includes(patch.homeCampusId)) fail(400, '所属校区不正确');
     }
     if (input.status !== undefined) { if (!['active', 'inactive'].includes(input.status)) fail(400, '成员状态不正确'); patch.status = input.status; }
-    const after = await repository.updateMember(memberId, patch, input.revision);
+    const after = await repository.updateMember(memberId, patch, input.revision, { actorMemberId: context.actor.memberId, actorAccount: actor.account, authVersion:context.authVersion, action: 'identity.member.updated', sourceRef: publicResourceRef('identity','member',memberId), before, after:patch, requestId: input.requestId, reason: input.reason });
     if (!after) fail(409, '成员已被其他操作修改，请刷新');
     const account = await repository.accountForMember(memberId);
-    await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'identity.member.updated', sourceRef: publicResourceRef('identity','member',memberId), before, after, requestId: input.requestId, reason: input.reason });
     return { member: memberPublic(after), revision: after.revision, affectedResources: [{ module: 'identity', type: 'member', id: memberId }], accountStatus: account?.status || '' };
   }
 
@@ -288,11 +287,11 @@ export function staffPlatformService({ repository, platform, manifests }) {
     if (!['primary','secondary','exchange','temporary'].includes(input.assignmentType || 'secondary')) fail(400, '任职类型不正确');
     if (input.effectiveTo && input.effectiveTo <= input.effectiveFrom) fail(400, '任职有效期不正确');
     const member = await repository.memberRow(memberId); if (!member) fail(404, '成员不存在');
-    await requireMemberPermission(actor, member);
+    const { context } = await requireMemberPermission(actor, member);
     await requireMemberPermission(actor, member, { departmentIds: [input.departmentId] });
-    const result = await repository.addMembership(memberId, input, input.revision);
+    if (!(await repository.listDepartments()).some(item=>item.id===input.departmentId)) fail(400, '请选择有效部门');
+    const result = await repository.addMembership(memberId, input, input.revision, { actorMemberId: context.actor.memberId, actorAccount: actor.account, authVersion:context.authVersion, action: 'organization.membership.updated', after: input, requestId: input.requestId });
     if (!result) fail(409, '成员版本或任职范围已变化，请刷新');
-    await repository.audit({ actorMemberId: (await contextFor(actor)).actor.memberId, actorAccount: actor.account, action: 'organization.membership.updated', sourceRef: publicResourceRef('organization','membership',result.id), after: result, requestId: input.requestId });
     return result;
   }
 
@@ -301,19 +300,17 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const existing = (await repository.listMemberships(memberId)).find(item => item.id === membershipId);
     if (!existing) fail(404, '任职关系不存在');
     const member = await repository.memberRow(memberId); if (!member) fail(404, '成员不存在');
-    await requireMemberPermission(actor, member, { departmentIds: [existing.departmentId] });
+    const { context } = await requireMemberPermission(actor, member, { departmentIds: [existing.departmentId] });
     if (input.effectiveTo <= existing.effectiveFrom) fail(400, '任职结束日期必须晚于生效日期');
-    const result = await repository.endMembership(memberId, membershipId, input.effectiveTo, input.revision);
+    const result = await repository.endMembership(memberId, membershipId, input.effectiveTo, input.revision, { actorMemberId: context.actor.memberId, actorAccount: actor.account, authVersion:context.authVersion, action: 'organization.membership.ended', sourceRef: publicResourceRef('organization','membership',membershipId), before: existing, after:{...existing,effectiveTo:input.effectiveTo}, requestId: input.requestId, reason: input.reason });
     if (!result) fail(409, '任职已被其他操作修改，请刷新');
-    const context = await contextFor(actor);
-    await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'organization.membership.ended', sourceRef: publicResourceRef('organization','membership',membershipId), before: existing, after: result, requestId: input.requestId, reason: input.reason });
     return result;
   }
 
   async function permissions(actor) { await requirePermission(actor, 'roles.manage'); return { items: await repository.permissionDefinitions(), conditionProviders: platform.authorizer.conditionDefinitions(), contractVersion: 'staff-platform.v1' }; }
   async function roles(actor) { await requirePermission(actor, 'roles.manage'); return { items: await repository.listRoles() }; }
   async function createRole(actor, input) {
-    await requirePermission(actor, 'roles.manage');
+    const {context} = await requirePermission(actor, 'roles.manage');
     if (actor.role !== 'superadmin') fail(403, '角色配置与分配由最高管理员管理');
     const code = inputString(input, 'code', 80, true); if (!/^[a-z][a-z0-9_.-]+$/.test(code)) fail(400, '角色 code 不正确');
     const name = inputString(input, 'name', 80, true); const level = Number.isSafeInteger(input.level) ? input.level : 1;
@@ -326,16 +323,19 @@ export function staffPlatformService({ repository, platform, manifests }) {
       if (!definitions[grant.permissionCode]) fail(400, `未知权限：${grant.permissionCode || ''}`);
       validateGrant(definitions[grant.permissionCode], grant, actor, platform.authorizer);
     }
-    const result = await repository.createRole({ ...input, code, name, level }, actor.account);
-    const context = await contextFor(actor);
-    await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'authorization.role.created', sourceRef: publicResourceRef('authorization','role',result.id), after: result, requestId: input.requestId });
+    const result = await repository.createRole({ ...input, code, name, level }, { actorMemberId: context.actor.memberId, actorAccount: actor.account, authVersion:context.authVersion, action: 'authorization.role.created', after: {code,name,level,grants:input.grants || []}, requestId: input.requestId });
+    if (!result) fail(409, '权限已变化，请重新登录后重试');
     return result;
   }
   async function updateRole(actor, id, input) {
-    await requirePermission(actor, 'roles.manage');
+    const {context} = await requirePermission(actor, 'roles.manage');
     if (actor.role !== 'superadmin') fail(403, '角色配置与分配由最高管理员管理');
     if (id === 'role-superadmin') fail(403, '最高管理员权限包受保护');
     if (!Number.isInteger(input.revision)) fail(400, '角色版本不正确');
+    if (input.level !== undefined && (!Number.isInteger(input.level) || input.level<1 || input.level>=4)) fail(400, '角色等级应为 1–3');
+    if (input.enabled !== undefined && typeof input.enabled !== 'boolean') fail(400, '角色启用状态不正确');
+    if (input.name !== undefined) inputString(input,'name',80,true);
+    if (input.description !== undefined) inputString(input,'description',500);
     if (input.grants !== undefined) {
       if (!Array.isArray(input.grants)) fail(400, '权限集合必须是数组');
       const codes = input.grants.map(grant => grant?.permissionCode);
@@ -344,9 +344,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
       if (codes.some(code => !definitions[code])) fail(400, '角色包含未知权限');
       for (const grant of input.grants) validateGrant(definitions[grant.permissionCode], grant, actor, platform.authorizer);
     }
-    const result = await repository.updateRole(id, input, input.revision); if (!result) fail(409, '角色已被其他操作修改，请刷新');
-    const context = await contextFor(actor);
-    await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'authorization.grant.updated', sourceRef: publicResourceRef('authorization','role',id), after: result, requestId: input.requestId });
+    const result = await repository.updateRole(id, input, input.revision, { actorMemberId: context.actor.memberId, actorAccount: actor.account, authVersion:context.authVersion, action: 'authorization.grant.updated', sourceRef: publicResourceRef('authorization','role',id), after: input, requestId: input.requestId }); if (!result) fail(409, '角色或权限已被其他操作修改，请刷新');
     return { ...result, authVersionChanged: true };
   }
   async function previewRole(actor, input) {
@@ -361,7 +359,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
   }
   async function bindMemberRoles(actor, memberId, input) {
     const member = await repository.memberRow(memberId); if (!member) fail(404, '成员不存在');
-    await requirePermission(actor, 'roles.manage', memberTarget(member, await repository.memberships(memberId)));
+    const {context} = await requirePermission(actor, 'roles.manage', memberTarget(member, await repository.memberships(memberId)));
     if (actor.role !== 'superadmin') fail(403, '角色配置与分配由最高管理员管理');
     if ((await repository.accountForMember(memberId))?.protected) fail(403, '受保护的负责人授权不能更改');
     if (!Number.isInteger(input.revision)) fail(400, '成员版本不正确');
@@ -374,8 +372,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
       for (const value of [binding.effectiveFrom, binding.effectiveTo]) if (value !== undefined && value !== null && (typeof value !== 'string' || !validDate(value))) fail(400, '角色有效期不正确');
       if (binding.effectiveFrom && binding.effectiveTo && binding.effectiveTo <= binding.effectiveFrom) fail(400, '角色有效期不正确');
     }
-    const ok = await repository.bindRoles(memberId, input.bindings || [], input.revision); if (!ok) fail(409, '成员授权已被其他操作修改，请刷新');
-    const context = await contextFor(actor); await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'authorization.member_roles.updated', sourceRef: publicResourceRef('authorization','member',memberId), after: input.bindings || [], requestId: input.requestId });
+    const ok = await repository.bindRoles(memberId, input.bindings || [], input.revision, { actorMemberId: context.actor.memberId, actorAccount: actor.account, authVersion:context.authVersion, action: 'authorization.member_roles.updated', sourceRef: publicResourceRef('authorization','member',memberId), after: input.bindings || [], requestId: input.requestId }); if (!ok) fail(409, '成员授权已被其他操作修改，请刷新');
     return { memberId, bindings: input.bindings || [], authVersionInvalidated: true };
   }
 
@@ -441,36 +438,34 @@ export function staffPlatformService({ repository, platform, manifests }) {
   }
 
   async function deskSummary(actor, query = {}) {
-    const businessDate = query.businessDate || dateKey();
-    await requirePermission(actor, 'repair.summary.read', { campusId: query.campusId }, businessDate);
-    const campuses = actor.authorizedCampuses || [];
-    const campusName = { 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' }[query.campusId] || query.campusId;
-    const scopedCampuses = campusName ? campuses.filter(item => item === campusName) : campuses;
-    const appointmentView = await platform.repairs.list({ date: businessDate, campus: campusName, status: 'all' }, { campuses: scopedCampuses, technician: '' });
-    const campusIds = { '南湖': 'campus-nanhu', '浑南': 'campus-hunnan' };
-    const presence = query.campusId
-      ? await repository.listPresence(businessDate, query.campusId)
-      : (await Promise.all((actor.authorizedCampuses || []).map(campus => repository.listPresence(businessDate, campusIds[campus] || campus)))).flat();
-    return { businessDate, campusId: query.campusId || null, appointments: appointmentView.items.map(item => ({ id: item.id, campus: item.campus, date: item.date, timeSlot: item.timeSlot, status: item.status, deviceType: item.deviceType, assignedTo: item.assignedTo || '' })), counts: appointmentView.counts, staffPresence: presence };
+    if (!this.field?.enabled) fail(404, '现场工作台尚未启用');
+    if (query.businessDate && query.businessDate !== dateKey()) fail(400, '接待现场仅展示今天，请通过记录页面查询历史');
+    // Keep the compatibility URL behind the same role, scope and field projection
+    // as the current desk; a summary-read grant alone does not open the staff board.
+    const board = await this.field.board(actor, { ...query, campusId: query.campusId ? normalizeCampusId(query.campusId) : undefined });
+    const counts = Object.fromEntries(['booked','in_progress','completed','cancelled','expired'].map(status => [status, board.appointments.filter(item => item.status === status).length]));
+    return { ...board, counts };
   }
 
   async function createAttendanceEvent(actor, input) {
-    await requirePermission(actor, 'attendance.session.manage', { campusId: input.campusId }, input.businessDate || dateKey());
+    await requirePermission(actor, 'attendance.session.manage', { campusId: input.campusId });
     const type = ['duty','meeting'].includes(input.type) ? input.type : 'duty';
     const businessDate = input.businessDate || dateKey();
     const startsAt = instant(input.startsAt || `${businessDate}T18:30:00+08:00`); const endsAt = instant(input.endsAt || `${businessDate}T21:30:00+08:00`);
     if (endsAt <= startsAt) fail(400, '签到窗口不正确');
-    const context = await contextFor(actor, businessDate);
+    if (!validDate(businessDate)) fail(400, '签到日期不正确');
+    const context = await contextFor(actor);
     return withReceipt(actor, 'attendance.event.create', input, async () => {
-      const created = await repository.createEvent({ type, policyCode: input.policyCode || `${type}.v1`, policyVersion: input.policyVersion || '1.0.0', ruleSnapshot: input.ruleSnapshot || { timezone: 'Asia/Shanghai' }, campusId: input.campusId || null, businessDate, startsAt, endsAt, sourceRef: input.sourceRef || {} }, context.actor.memberId);
-      await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'attendance.event.created', sourceRef: publicResourceRef('attendance','event',created.id), after: created, requestId: input.requestId });
+      const created = await repository.createEvent({ type, policyCode: input.policyCode || `${type}.v1`, policyVersion: input.policyVersion || '1.0.0', ruleSnapshot: input.ruleSnapshot || { timezone: 'Asia/Shanghai' }, campusId: input.campusId || null, businessDate, startsAt, endsAt, sourceRef: input.sourceRef || {} }, context.actor.memberId,
+        { actorMemberId: context.actor.memberId, actorAccount: actor.account, authVersion:context.authVersion, action: 'attendance.event.created', after:{type,businessDate,campusId:input.campusId,startsAt,endsAt}, requestId: input.requestId });
+      if(!created)fail(409,'权限已变化，请重新登录后重试');
       return created;
     });
   }
   async function issueAttendanceToken(actor, eventId, input = {}) {
     const context = await contextFor(actor); const event = await repository.attendanceEvent?.(eventId);
     if (!event) fail(404, '签到场次不存在');
-    await requirePermission(actor, 'attendance.session.manage', { campusId: event?.campusId }, event?.businessDate || dateKey());
+    await requirePermission(actor, 'attendance.session.manage', { campusId: event.campusId });
     const token = randomToken(); const expiresAt = instant(input.expiresAt || event.endsAt);
     if (Date.parse(expiresAt) <= Date.now() || Date.parse(expiresAt) > Date.parse(event.endsAt)) fail(400, '签到凭证到期时间不正确');
     const result = await repository.issueToken(eventId, await tokenDigest(token), expiresAt, context.actor.memberId, input.revision ?? event.revision);
@@ -483,7 +478,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     if (!rawToken) fail(400, '签到凭证不正确');
     const found = await repository.findEventByToken(await tokenDigest(rawToken)); if (!found) fail(404, '签到凭证已失效');
     const { event } = found;
-    const authorization = await requirePermission(actor, 'attendance.self', { campusId: event.campusId }, event.businessDate);
+    const authorization = await requirePermission(actor, 'attendance.self', { campusId: event.campusId });
     const context = authorization.context;
     const campusNames = { 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' };
     if (event.campusId && !(actor.authorizedCampuses || []).some(value => value === event.campusId || value === campusNames[event.campusId])) fail(403, '没有该校区的签到权限');
@@ -493,11 +488,13 @@ export function staffPlatformService({ repository, platform, manifests }) {
     return { found, event, context, policy, now };
   }
   async function checkIn(actor, input) {
+    // Public requests prove QR possession only. Hardware evidence must come from a
+    // trusted server adapter; body flags cannot attest NFC or manual attendance.
+    if (input.method !== undefined && input.method !== 'qr') fail(403, '此入口仅支持扫码签到，补录请使用考勤修正');
     const { found, event, context, policy, now } = await attendanceCredential(actor, input);
     const dedupeKey = policy.getDedupeScope({ memberId: context.actor.memberId, event });
     const existing = await repository.findAttendanceByDedupe(dedupeKey); if (existing) return { ...existing, isExisting: true, result: policy.describeResult(existing) };
     const method = attendanceMethod(input.method);
-    if (method === 'nfc' && input.nfcEvidence?.verified !== true && input.verifiedEvidence?.method !== 'nfc') fail(403, 'NFC 凭证未通过服务端核验');
     const occurredAt = now;
     if (!eventWindow(event.startsAt, event.endsAt, occurredAt)) fail(400, '签到发生时间不在场次窗口内');
     const record = await withReceipt(actor, 'attendance.checkin', input, async () => {
@@ -635,14 +632,14 @@ export function staffPlatformService({ repository, platform, manifests }) {
   async function presence(actor, input) {
     if (input.businessDate && input.businessDate !== dateKey()) fail(400, '只能修改今天的在岗状态');
     const context = await contextFor(actor, input.businessDate || dateKey());
-    await requirePermission(actor, 'attendance.self', { campusId: input.campusId }, input.businessDate || dateKey());
     if (!['available','away','off_duty'].includes(input.state)) fail(400, '在岗状态不正确');
     if (!context.presence) fail(409, '请先完成到岗签到');
+    await requirePermission(actor, 'attendance.self', { campusId: context.presence.campusId });
     if (input.campusId && input.campusId !== context.presence.campusId) fail(409, '在岗校区以签到记录为准');
     if (input.state !== 'available' && await repository.activeRepair(context.actor.memberId)) fail(409, '当前仍有进行中的维修，不能离岗', 'PRESENCE_CHANGED');
-    const result = await repository.setPresence(context.actor.memberId, { ...input, businessDate: input.businessDate || dateKey() }, input.revision ?? 0, context.actor);
+    const result = await repository.setPresence(context.actor.memberId, { ...input, businessDate: input.businessDate || dateKey() }, input.revision ?? 0, context.actor,
+      {actorMemberId:context.actor.memberId,actorAccount:actor.account,authVersion:context.authVersion,action:'duty.presence.changed',sourceRef:publicResourceRef('duty','presence',`${context.actor.memberId}:${context.businessDate}`),before:context.presence,after:{state:input.state,campusId:context.presence.campusId},requestId:input.requestId});
     if (!result) fail(409, '在岗状态已被其他操作修改，请刷新');
-    await repository.audit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'duty.presence.changed', sourceRef: publicResourceRef('duty','presence',`${context.actor.memberId}:${result.businessDate}`), after: result, requestId: input.requestId });
     return result;
   }
 
@@ -705,7 +702,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     try{await repository.addRosterParticipants(task,input,record);}catch(error){if(String(error.message).includes('constraint'))fail(409,'任务或权限已变化，请刷新核对');throw error;}
     return repository.rosterTaskById(taskId);
   }
-  async function submitAvailability(actor,taskId,input,{carried=false}={}) {
+  async function submitAvailability(actor,taskId,input,{carried=false,preferenceRevision}={}) {
     const task=await repository.rosterTaskById(taskId),context=await contextFor(actor);
     if(!task) fail(404,'收集任务不存在');
     const fact=await rosterOwnFact(context,task);
@@ -722,7 +719,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
       if(!rosterMemberReadable(context,platform.authorizer,fact,task,window.businessDate,window.campusId) || !(task.dutyType==='office' ? fact.profiles.some(item=>item.profileCode==='office'&&item.effectiveFrom<=window.businessDate&&(!item.effectiveTo||window.businessDate<item.effectiveTo)) : (rosterDepartments(fact,window.businessDate,task).length ? rosterDepartments(fact,window.businessDate,task) : [{}]).some(item=>repairRosterPool(fact,platform.authorizer,window.businessDate,{campusId:window.campusId,departmentId:item.departmentId})))) fail(403,'填报日期或校区不在有效资格和授权范围内');
     }
     const payload={...input,carried};
-    try {await repository.replaceRosterAvailability(task,context.actor.memberId,payload,record);} catch(error) {if(String(error.message).toLowerCase().includes('constraint')) fail(409,'填报、收集状态或权限已变化，输入已保留，请重新核对');throw error;}
+    try {await repository.replaceRosterAvailability(task,context.actor.memberId,payload,{...record,preferenceRevision});} catch(error) {if(String(error.message).toLowerCase().includes('constraint')) fail(409,'填报、收集状态或权限已变化，输入已保留，请重新核对');throw error;}
     return taskAvailability(actor,taskId);
   }
   async function automationActor(memberId) {
@@ -759,7 +756,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
           const actor=await automationActor(preference.member_id);
           const windows=JSON.parse(preference.windows).filter(window=>task.campusScope.campusIds.includes(window.campusId)).map(({weekday,...window})=>({...window,businessDate:addDays(task.weekStart,weekday-1)}));
           if(!preference.unavailable&&!windows.length)continue;
-          await submitAvailability(actor,task.id,{windows,unavailable:!!preference.unavailable,revision:-1,requestId:`carry:${task.id}:${preference.member_id}:${preference.revision}`},{carried:true});summary.carried++;
+          await submitAvailability(actor,task.id,{windows,unavailable:!!preference.unavailable,revision:-1,requestId:`carry:${task.id}:${preference.member_id}:${preference.revision}`},{carried:true,preferenceRevision:preference.revision});summary.carried++;
         }catch(error){if([403,409].includes(error.status))summary.skipped++;else summary.errors.push({taskId:task.id,memberId:preference.member_id,message:error.message});}
       }
     }
@@ -887,6 +884,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId });
     const task = await repository.rosterTaskById(taskId);
     if (!task) fail(404, '排班任务不存在');
+    if (task.workflowVersion === 1) fail(409, '请使用整周填报提交，避免覆盖已提交的收集结果');
     if (task.dutyType === 'office'&&task.workflowVersion!==1) fail(400, '旧办公班表无需填报');
     if (task.memberIds?.length && !task.memberIds.includes(context.actor.memberId)) fail(403, '该任务未邀请你填报');
     if (collectionState(task)!=='open') fail(409, '该任务已结束收集，请联系负责人重新开放');
@@ -1351,7 +1349,14 @@ export function staffPlatformService({ repository, platform, manifests }) {
     if (concurrent) return concurrent;
     fail(409, '换班申请、班次或人员资格已变化，请刷新');
   }
-  async function audit(actor, query) { await requirePermission(actor, 'audit.read'); return { items: await repository.listAudit(query || {}) }; }
+  async function audit(actor, query) {
+    const context=await contextFor(actor);
+    // Historical records do not yet carry a consistent campus/department scope.
+    // Never turn one scoped grant into access to the complete audit journal.
+    const globalGrants=context.grants.filter(grant=>!Object.keys(grant.scope || {}).some(key=>key!=='all'));
+    if(!platform.authorizer.evaluate(context.actor,'audit.read',{},context,globalGrants).allowed) fail(403,'当前授权不能查看全局审计记录');
+    return {items:await repository.listAudit(query || {})};
+  }
 
   return { contextFor, requirePermission, scopedActor, memberList, memberDetail, updateMember, addMembership, endMembership, permissions, roles, createRole, updateRole, previewRole, bindMemberRoles,
     organization, importMembers, saveWorkProfile, deskSummary, workbench, createAttendanceEvent, issueAttendanceToken, checkIn, previewAttendance, attendanceList, attendanceOptions, correctAttendance, presence, rosterOptions, rosterTasks, rosterCandidates,collectionCommand,addParticipants,submitAvailability,reviseRoster,taskAvailability, createRosterTask, rosterRequirements, saveAvailability, rosterTaskState, generate, updateRoster, publish, rosterMine,processRosterAutomation,seriesCommand,availabilityPreferences,

@@ -34,7 +34,8 @@ export function userService(users, staff = null) {
       }
       if (patch.password !== undefined) { patch.passwordHash = hashPassword(patch.password); delete patch.password; }
       if (!Object.keys(patch).length) fail(400, '没有可更新的字段');
-      const updated = await users.update(target, patch);
+      const context=staff?.field?.enabled ? await staff.contextFor(actor) : null;
+      const updated = await users.update(target, patch, context ? {auditRecord:{actorAccount:actor.account,actorMemberId:context.actor.memberId,authVersion:context.authVersion}} : undefined);
       if (!updated) fail(409, '账号已被其他操作修改，请刷新');
       return updated;
     }

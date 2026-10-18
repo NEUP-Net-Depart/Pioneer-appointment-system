@@ -184,7 +184,7 @@ export function staffPlatformRepository(db) {
       primaryDepartment: row.primary_department || '', revision: row.revision, memberships: [] }));
   }
 
-  async function updateMember(memberId, patch, revision) {
+  async function updateMember(memberId, patch, revision, auditRecord) {
     const fields = [], args = [];
     if (patch.name !== undefined) { fields.push('name=?'); args.push(patch.name); }
     if (patch.studentId !== undefined) { fields.push('student_id=?'); args.push(patch.studentId || null); }
@@ -193,10 +193,12 @@ export function staffPlatformRepository(db) {
     if (!fields.length) return (await memberRow(memberId));
     const at = nowIso();
     fields.push('revision=revision+1','updated_at=?'); args.push(at, memberId, revision);
+    const authorization = commandAuthorization(auditRecord);
     const account = await accountForMember(memberId);
-    // Related writes test the original revision; advance it last in the same D1 batch.
-    // Testing revision + 1 after a failed CAS would admit an earlier successful request.
-    const statements = [];
+    // All effects follow the successful CAS in the same transaction, including
+    // the audit. A failed audit must not leave a changed member or session behind.
+    const statements = [db.prepare(`UPDATE members SET ${fields.join(',')} WHERE id=? AND revision=? ${authorization.sql}`).bind(...args,...authorization.args)];
+    if (auditRecord) statements.push(auditStatement(auditRecord,true));
     if (account && (patch.name !== undefined || patch.status !== undefined || patch.homeCampusId !== undefined)) {
       const accountFields = [], accountArgs = [];
       if (patch.name !== undefined) { accountFields.push('name=?'); accountArgs.push(patch.name); }
@@ -206,12 +208,11 @@ export function staffPlatformRepository(db) {
         accountArgs.push(patch.homeCampusId === 'campus-hunnan' ? '浑南' : patch.homeCampusId === 'campus-nanhu' ? '南湖' : patch.homeCampusId);
       }
       if (patch.status !== undefined || patch.homeCampusId !== undefined) accountFields.push('token_version=token_version+1','auth_version=auth_version+1');
-      statements.push(db.prepare(`UPDATE staff_accounts SET ${accountFields.join(',')} WHERE member_id=? AND EXISTS(SELECT 1 FROM members WHERE id=? AND revision=?)`)
-        .bind(...accountArgs, memberId, memberId, revision));
+      statements.push(db.prepare(`UPDATE staff_accounts SET ${accountFields.join(',')} WHERE member_id=? AND changes()>0`)
+        .bind(...accountArgs, memberId));
     }
-    statements.push(db.prepare(`UPDATE members SET ${fields.join(',')} WHERE id=? AND revision=?`).bind(...args));
     const result = await db.batch(statements);
-    if (!result.at(-1)?.meta?.changes) return null;
+    if (!result[0]?.meta?.changes) return null;
     return memberRow(memberId);
   }
 
@@ -221,23 +222,31 @@ export function staffPlatformRepository(db) {
     return rows(result).map(membership);
   }
 
-  async function addMembership(memberId, input, revision) {
+  async function addMembership(memberId, input, revision, auditRecord) {
     const id = input.id || crypto.randomUUID();
     const createdAt = nowIso();
+    const authorization = commandAuthorization(auditRecord);
     const statements = [
-      db.prepare(`UPDATE members SET revision=revision+1,updated_at=? WHERE id=? AND revision=?`).bind(createdAt, memberId, revision),
+      db.prepare(`UPDATE members SET revision=revision+1,updated_at=? WHERE id=? AND revision=? ${authorization.sql}`).bind(createdAt, memberId, revision,...authorization.args),
       db.prepare(`INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,effective_from,effective_to,created_at) SELECT ?,?,?,?,?,?,?,? WHERE changes()>0`)
         .bind(id, memberId, input.departmentId, input.assignmentType || 'secondary', input.isPrimary ? 1 : 0, input.effectiveFrom, input.effectiveTo || null, createdAt)
     ];
+    if (auditRecord) statements.push(auditStatement({...auditRecord,sourceRef:{module:'organization',type:'membership',id}},true));
+    statements.push(db.prepare('UPDATE staff_accounts SET token_version=token_version+1,auth_version=auth_version+1 WHERE member_id=? AND changes()>0').bind(memberId));
     const result = await db.batch(statements);
     if (!result[0]?.meta?.changes && !result[0]?.results?.length) return null;
     return (await listMemberships(memberId)).find(item => item.id === id) || null;
   }
 
-  async function endMembership(memberId, membershipId, effectiveTo, revision) {
-    const result = await db.prepare(`UPDATE member_department_memberships SET effective_to=?,revision=revision+1
-      WHERE id=? AND member_id=? AND revision=? AND (effective_to IS NULL OR effective_to>?)`).bind(effectiveTo, membershipId, memberId, revision, effectiveTo).run();
-    return result.meta?.changes ? (await listMemberships(memberId)).find(item => item.id === membershipId) : null;
+  async function endMembership(memberId, membershipId, effectiveTo, revision, auditRecord) {
+    const authorization = commandAuthorization(auditRecord);
+    const statements = [db.prepare(`UPDATE member_department_memberships SET effective_to=?,revision=revision+1
+      WHERE id=? AND member_id=? AND revision=? AND (effective_to IS NULL OR effective_to>?) ${authorization.sql}`).bind(effectiveTo, membershipId, memberId, revision, effectiveTo,...authorization.args)];
+    if (auditRecord) statements.push(auditStatement(auditRecord,true));
+    statements.push(db.prepare('UPDATE members SET revision=revision+1,updated_at=? WHERE id=? AND changes()>0').bind(nowIso(),memberId),
+      db.prepare('UPDATE staff_accounts SET token_version=token_version+1,auth_version=auth_version+1 WHERE member_id=? AND changes()>0').bind(memberId));
+    const result = await db.batch(statements);
+    return result[0]?.meta?.changes ? (await listMemberships(memberId)).find(item => item.id === membershipId) : null;
   }
 
   async function listCampuses(includeDisabled = false) {
@@ -384,8 +393,12 @@ export function staffPlatformRepository(db) {
       if(auditRecord) statements.push(auditStatement(auditRecord));
       await db.batch(statements);
     }
-    const result = await db.prepare(`SELECT ${memberColumns} FROM members m WHERE m.student_id IN (${items.map(() => '?').join(',')}) ORDER BY m.student_id`).bind(...items.map(item => item.studentId)).all();
-    return rows(result);
+    const result = [];
+    for (let offset=0;offset<items.length;offset+=90) {
+      const page=items.slice(offset,offset+90);
+      result.push(...rows(await db.prepare(`SELECT ${memberColumns} FROM members m WHERE m.student_id IN (${page.map(() => '?').join(',')})`).bind(...page.map(item => item.studentId)).all()));
+    }
+    return result.sort((a,b)=>a.student_id.localeCompare(b.student_id));
   }
 
   async function permissionDefinitions() {
@@ -400,29 +413,35 @@ export function staffPlatformRepository(db) {
       grants: parseJson(row.grants, []).filter(item => item.id).map(item => ({ ...item, scope: parseJson(item.scope, {}), conditions: parseJson(item.conditions, []), validity: parseJson(item.validity, {}) })) }));
   }
 
-  async function createRole(input) {
+  async function createRole(input, auditRecord) {
     const id = input.id || crypto.randomUUID(); const at = nowIso();
-    const statements = [db.prepare('INSERT INTO roles(id,code,name,description,level,enabled,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)')
-      .bind(id,input.code,input.name,input.description || '',input.level || 1,input.enabled === false ? 0 : 1,at,at)];
-    for (const grant of input.grants || []) statements.push(db.prepare('INSERT INTO role_grants(id,role_id,permission_code,scope_spec,condition_spec,validity_spec) VALUES(?,?,?,?,?,?)')
-      .bind(grant.id || crypto.randomUUID(),id,grant.permissionCode,json(grant.scope,{}),json(grant.conditions,[]),json(grant.validity,{})));
+    const authorization = commandAuthorization(auditRecord);
+    const marker=crypto.randomUUID(), gate=auditRecord ? 'EXISTS(SELECT 1 FROM audit_events WHERE id=?)' : '1=1',gateArgs=auditRecord ? [marker] : [];
+    const statements = auditRecord ? [auditStatement({...auditRecord,id:marker,sourceRef:{module:'authorization',type:'role',id}},false,{sql:`1=1 ${authorization.sql}`,args:authorization.args})] : [];
+    statements.push(db.prepare(`INSERT INTO roles(id,code,name,description,level,enabled,created_at,updated_at) SELECT ?,?,?,?,?,?,?,? WHERE ${gate}`)
+      .bind(id,input.code,input.name,input.description || '',input.level || 1,input.enabled === false ? 0 : 1,at,at,...gateArgs));
+    for (const grant of input.grants || []) statements.push(db.prepare(`INSERT INTO role_grants(id,role_id,permission_code,scope_spec,condition_spec,validity_spec) SELECT ?,?,?,?,?,? WHERE ${gate}`)
+      .bind(grant.id || crypto.randomUUID(),id,grant.permissionCode,json(grant.scope,{}),json(grant.conditions,[]),json(grant.validity,{}),...gateArgs));
     await db.batch(statements);
     return (await listRoles()).find(role => role.id === id);
   }
 
-  async function updateRole(id, input, revision) {
+  async function updateRole(id, input, revision, auditRecord) {
     const at = nowIso();
     const fields = [], args = [];
     for (const [key, column] of [['name','name'],['description','description'],['level','level'],['enabled','enabled']]) if (input[key] !== undefined) { fields.push(`${column}=?`); args.push(key === 'enabled' ? (input[key] ? 1 : 0) : input[key]); }
     fields.push('revision=revision+1','updated_at=?'); args.push(at,id,revision);
-    const statements = [];
+    const authorization=commandAuthorization(auditRecord),marker=crypto.randomUUID();
+    const gate=auditRecord ? 'EXISTS(SELECT 1 FROM audit_events WHERE id=?)' : 'EXISTS(SELECT 1 FROM roles WHERE id=? AND revision=?)';
+    const gateArgs=auditRecord ? [marker] : [id,revision];
+    const statements = auditRecord ? [auditStatement({...auditRecord,id:marker},false,{sql:`EXISTS(SELECT 1 FROM roles WHERE id=? AND revision=?) ${authorization.sql}`,args:[id,revision,...authorization.args]})] : [];
     if (input.grants) {
-      statements.push(db.prepare('DELETE FROM role_grants WHERE role_id=? AND EXISTS(SELECT 1 FROM roles WHERE id=? AND revision=?)').bind(id,id,revision));
-      for (const grant of input.grants) statements.push(db.prepare('INSERT INTO role_grants(id,role_id,permission_code,scope_spec,condition_spec,validity_spec) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM roles WHERE id=? AND revision=?)')
-        .bind(grant.id || crypto.randomUUID(),id,grant.permissionCode,json(grant.scope,{}),json(grant.conditions,[]),json(grant.validity,{}),id,revision));
+      statements.push(db.prepare(`DELETE FROM role_grants WHERE role_id=? AND ${gate}`).bind(id,...gateArgs));
+      for (const grant of input.grants) statements.push(db.prepare(`INSERT INTO role_grants(id,role_id,permission_code,scope_spec,condition_spec,validity_spec) SELECT ?,?,?,?,?,? WHERE ${gate}`)
+        .bind(grant.id || crypto.randomUUID(),id,grant.permissionCode,json(grant.scope,{}),json(grant.conditions,[]),json(grant.validity,{}),...gateArgs));
     }
-    statements.push(db.prepare(`UPDATE staff_accounts SET token_version=token_version+1,auth_version=auth_version+1 WHERE member_id IN (SELECT member_id FROM member_roles WHERE role_id=?) AND EXISTS(SELECT 1 FROM roles WHERE id=? AND revision=?)`).bind(id,id,revision));
-    statements.push(db.prepare(`UPDATE roles SET ${fields.join(',')} WHERE id=? AND revision=?`).bind(...args));
+    statements.push(db.prepare(`UPDATE staff_accounts SET token_version=token_version+1,auth_version=auth_version+1 WHERE member_id IN (SELECT member_id FROM member_roles WHERE role_id=?) AND ${gate}`).bind(id,...gateArgs));
+    statements.push(db.prepare(`UPDATE roles SET ${fields.join(',')} WHERE id=? AND revision=? AND ${gate}`).bind(...args,...gateArgs));
     const result = await db.batch(statements);
     if (!result.at(-1)?.meta?.changes) return null;
     return (await listRoles()).find(role => role.id === id) || null;
@@ -433,14 +452,17 @@ export function staffPlatformRepository(db) {
     return rows(result).map(row => ({ id: row.id, roleId: row.role_id, scope: parseJson(row.scope_bindings, {}), effectiveFrom: row.effective_from, effectiveTo: row.effective_to, revision: row.revision }));
   }
 
-  async function bindRoles(memberId, bindings, revision) {
+  async function bindRoles(memberId, bindings, revision, auditRecord) {
     const at = nowIso();
-    const statements = [
-      db.prepare('DELETE FROM member_roles WHERE member_id=? AND EXISTS(SELECT 1 FROM members WHERE id=? AND revision=?)').bind(memberId,memberId,revision),
-      db.prepare('UPDATE staff_accounts SET token_version=token_version+1,auth_version=auth_version+1 WHERE member_id=? AND EXISTS(SELECT 1 FROM members WHERE id=? AND revision=?)').bind(memberId,memberId,revision)];
-    for (const binding of bindings) statements.push(db.prepare('INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from,effective_to) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM members WHERE id=? AND revision=?)')
-      .bind(binding.id || crypto.randomUUID(),memberId,binding.roleId,json(binding.scope,{}),binding.effectiveFrom || dateKey(),binding.effectiveTo || null,memberId,revision));
-    statements.push(db.prepare('UPDATE members SET revision=revision+1,updated_at=? WHERE id=? AND revision=?').bind(at,memberId,revision));
+    const authorization=commandAuthorization(auditRecord),marker=crypto.randomUUID();
+    const gate=auditRecord ? 'EXISTS(SELECT 1 FROM audit_events WHERE id=?)' : 'EXISTS(SELECT 1 FROM members WHERE id=? AND revision=?)';
+    const gateArgs=auditRecord ? [marker] : [memberId,revision];
+    const statements = auditRecord ? [auditStatement({...auditRecord,id:marker},false,{sql:`EXISTS(SELECT 1 FROM members WHERE id=? AND revision=?) ${authorization.sql}`,args:[memberId,revision,...authorization.args]})] : [];
+    statements.push(db.prepare(`DELETE FROM member_roles WHERE member_id=? AND ${gate}`).bind(memberId,...gateArgs),
+      db.prepare(`UPDATE staff_accounts SET token_version=token_version+1,auth_version=auth_version+1 WHERE member_id=? AND ${gate}`).bind(memberId,...gateArgs));
+    for (const binding of bindings) statements.push(db.prepare(`INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from,effective_to) SELECT ?,?,?,?,?,? WHERE ${gate}`)
+      .bind(binding.id || crypto.randomUUID(),memberId,binding.roleId,json(binding.scope,{}),binding.effectiveFrom || dateKey(),binding.effectiveTo || null,...gateArgs));
+    statements.push(db.prepare(`UPDATE members SET revision=revision+1,updated_at=? WHERE id=? AND revision=? AND ${gate}`).bind(at,memberId,revision,...gateArgs));
     const result = await db.batch(statements);
     return !!result.at(-1)?.meta?.changes;
   }
@@ -450,16 +472,20 @@ export function staffPlatformRepository(db) {
     return rows(result).map(row => ({ code: row.code, version: row.version, manifestHash: row.manifest_hash, contractVersion: row.contract_version, requiredSchemaVersion: row.required_schema_version, releaseState: row.release_state, manifest: parseJson(row.manifest_json, {}) }));
   }
 
-  async function createEvent(input, actorMemberId) {
+  async function createEvent(input, actorMemberId, auditRecord) {
     if (input.type === 'duty') {
       const existing = await db.prepare(`SELECT * FROM attendance_events WHERE type='duty' AND business_date=? AND COALESCE(campus_id,'')=COALESCE(?, '') ORDER BY created_at LIMIT 1`)
         .bind(input.businessDate, input.campusId || null).first();
       if (existing) return event(existing);
     }
     const id = input.id || crypto.randomUUID(); const at = nowIso();
-    await db.prepare(`INSERT INTO attendance_events(id,type,policy_code,policy_version,rule_snapshot,campus_id,business_date,starts_at,ends_at,source_ref,created_by_member_id,created_at)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`).bind(id,input.type,input.policyCode,input.policyVersion,json(input.ruleSnapshot,{}),input.campusId || null,input.businessDate,input.startsAt,input.endsAt,json(input.sourceRef,{}),actorMemberId,at).run();
-    return event(await db.prepare('SELECT * FROM attendance_events WHERE id=?').bind(id).first());
+    const authorization=commandAuthorization(auditRecord);
+    const statements=[db.prepare(`INSERT INTO attendance_events(id,type,policy_code,policy_version,rule_snapshot,campus_id,business_date,starts_at,ends_at,source_ref,created_by_member_id,created_at)
+      SELECT ?,?,?,?,?,?,?,?,?,?,?,? WHERE (?<>'duty' OR NOT EXISTS(SELECT 1 FROM attendance_events WHERE type='duty' AND business_date=? AND COALESCE(campus_id,'')=COALESCE(?,''))) ${authorization.sql}`)
+      .bind(id,input.type,input.policyCode,input.policyVersion,json(input.ruleSnapshot,{}),input.campusId || null,input.businessDate,input.startsAt,input.endsAt,json(input.sourceRef,{}),actorMemberId,at,input.type,input.businessDate,input.campusId || null,...authorization.args)];
+    if(auditRecord)statements.push(auditStatement({...auditRecord,sourceRef:{module:'attendance',type:'event',id}},true));
+    await db.batch(statements);
+    return event(await db.prepare("SELECT * FROM attendance_events WHERE id=? OR (?='duty' AND type='duty' AND business_date=? AND COALESCE(campus_id,'')=COALESCE(?,'')) ORDER BY created_at,id LIMIT 1").bind(id,input.type,input.businessDate,input.campusId || null).first());
   }
 
   async function issueToken(eventId, tokenHash, expiresAt, actorMemberId, revision) {
@@ -572,17 +598,19 @@ export function staffPlatformRepository(db) {
       departmentId: row.primary_department_id_snapshot || '', department: row.primary_department_name_snapshot || '' }));
   }
 
-  async function setPresence(memberId, input, revision, actor) {
+  async function setPresence(memberId, input, revision, actor, auditRecord) {
     const at = nowIso();
     const existing = await db.prepare('SELECT * FROM staff_presence WHERE member_id=? AND business_date=?').bind(memberId,input.businessDate).first();
     const expected = existing ? revision : 0;
-    const statement = existing ? db.prepare(`UPDATE staff_presence SET state=?,campus_id=?,revision=revision+1,updated_at=? WHERE member_id=? AND business_date=? AND revision=?`)
-      .bind(input.state,input.campusId || existing.campus_id,at,memberId,input.businessDate,expected)
+    const authorization=commandAuthorization(auditRecord);
+    if (auditRecord && !existing) return null;
+    const statement = existing ? db.prepare(`UPDATE staff_presence SET state=?,campus_id=?,revision=revision+1,updated_at=? WHERE member_id=? AND business_date=? AND revision=? ${authorization.sql}`)
+      .bind(input.state,input.campusId || existing.campus_id,at,memberId,input.businessDate,expected,...authorization.args)
       : db.prepare(`INSERT INTO staff_presence(member_id,business_date,campus_id,state,revision,updated_at) VALUES(?,?,?,?,0,?)`).bind(memberId,input.businessDate,input.campusId || null,input.state,at);
     const expectedRevision = existing ? Number(expected) + 1 : 0;
     const result = await db.batch([statement,db.prepare(`INSERT INTO presence_events(id,member_id,business_date,from_state,to_state,occurred_at,actor_member_id,actor_account)
       SELECT ?,?,?,?,?,?,?,? WHERE changes()>0`)
-      .bind(crypto.randomUUID(),memberId,input.businessDate,existing?.state || null,input.state,at,actor.memberId,actor.account)]);
+      .bind(crypto.randomUUID(),memberId,input.businessDate,existing?.state || null,input.state,at,actor.memberId,actor.account),...(auditRecord ? [auditStatement(auditRecord,true)] : [])]);
     return result[0]?.meta?.changes ? { memberId,businessDate:input.businessDate,campusId:input.campusId || existing?.campus_id || null,state:input.state,revision:expectedRevision } : null;
   }
 
@@ -604,9 +632,9 @@ export function staffPlatformRepository(db) {
     const row = await db.prepare('SELECT * FROM operation_receipts WHERE actor_member_id=? AND action=? AND request_id=?').bind(actorMemberId,action,requestIdValue).first();
     return row ? { payloadHash: row.payload_hash, resourceRef: parseJson(row.resource_ref, {}), result: parseJson(row.result_json, {}), resultStatus: row.result_status, createdAt: row.created_at } : null;
   }
-  function auditStatement(input, conditional = false) {
+  function auditStatement(input, conditional = false, guard) {
     return db.prepare(`INSERT INTO audit_events(id,actor_member_id,actor_account,action,action_version,source_ref,before_json,after_json,reason,request_id,request_trace_id,occurred_at)
-      SELECT ?,?,?,?,?,?,?,?,?,?,?,? ${conditional ? 'WHERE changes()>0' : ''}`).bind(input.id || crypto.randomUUID(),input.actorMemberId || null,input.actorAccount || null,input.action,input.actionVersion || '1',json(input.sourceRef,{}),input.before === undefined ? null : json(input.before,{}),input.after === undefined ? null : json(input.after,{}),input.reason || '',input.requestId || null,input.requestTraceId || null,input.occurredAt || nowIso());
+      SELECT ?,?,?,?,?,?,?,?,?,?,?,? ${guard ? `WHERE ${guard.sql}` : conditional ? 'WHERE changes()>0' : ''}`).bind(input.id || crypto.randomUUID(),input.actorMemberId || null,input.actorAccount || null,input.action,input.actionVersion || '1',json(input.sourceRef,{}),input.before === undefined ? null : json(input.before,{}),input.after === undefined ? null : json(input.after,{}),input.reason || '',input.requestId || null,input.requestTraceId || null,input.occurredAt || nowIso(),...(guard?.args || []));
   }
   async function audit(input) { await auditStatement(input).run(); }
   async function listAudit(filters = {}) {

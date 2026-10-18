@@ -37,6 +37,106 @@ before(async () => {
 });
 after(async () => mf?.dispose());
 
+test('member, membership and authorization commands roll back on audit failure and reject revoked writers', async () => {
+  const db=await mf.getD1Database('DB'),repo=staffPlatformRepository(db),users=userRepository(db);
+  await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('20268981','审计原子性','technician','南湖',?,'2026-01-01')").bind(hashPassword('audit-test-password')).run();
+  const memberId='member-20268981',root=await users.find('root001');
+  const record={actorMemberId:root.memberId,actorAccount:root.account,authVersion:root.authVersion,action:'audit.test.command',sourceRef:{module:'identity',type:'member',id:memberId}};
+  const role=await repo.createRole({code:'audit-atomic-role',name:'测试角色',level:1,grants:[{permissionCode:'attendance.self',scope:{self:true}}]});
+  const membership=await repo.addMembership(memberId,{departmentId:'dept-hardware',effectiveFrom:'2026-01-01'},(await repo.memberRow(memberId)).revision);
+  const snapshot=async()=>({member:await repo.memberRow(memberId),account:await repo.accountForMember(memberId),memberships:await repo.listMemberships(memberId),bindings:await repo.roleBindings(memberId),roles:await repo.listRoles()});
+  const initial=await snapshot();
+  const writes=[
+    ()=>repo.updateMember(memberId,{name:'不能留下',status:'inactive'},initial.member.revision,record),
+    ()=>repo.addMembership(memberId,{departmentId:'dept-office',effectiveFrom:'2026-01-01'},initial.member.revision,record),
+    ()=>repo.endMembership(memberId,membership.id,'2026-10-17',membership.revision,record),
+    ()=>repo.createRole({code:'audit-rejected-role',name:'不能留下',level:1},record),
+    ()=>repo.updateRole(role.id,{name:'不能留下',grants:[]},role.revision,record),
+    ()=>repo.bindRoles(memberId,[{roleId:role.id}],initial.member.revision,record)
+  ];
+  await db.prepare("CREATE TRIGGER reject_management_audit BEFORE INSERT ON audit_events WHEN NEW.action='audit.test.command' BEGIN SELECT RAISE(ABORT,'AUDIT_TEST_FAILURE'); END").run();
+  try {for(const write of writes){await assert.rejects(write(),/AUDIT_TEST_FAILURE/);assert.deepEqual(await snapshot(),initial);}}
+  finally {await db.prepare('DROP TRIGGER reject_management_audit').run();}
+  record.authVersion--;
+  for(const write of writes){await write();assert.deepEqual(await snapshot(),initial,'stale writer must not change any related fact');}
+  record.authVersion++;
+  await repo.endMembership(memberId,membership.id,'2026-10-17',membership.revision,record);
+  assert.equal((await repo.accountForMember(memberId)).token_version,initial.account.token_version+1);
+  assert.equal((await repo.accountForMember(memberId)).auth_version,initial.account.auth_version+1);
+  assert.equal((await repo.memberRow(memberId)).revision,initial.member.revision+1);
+});
+
+test('cross-origin PUT is rejected before role or availability mutation',async()=>{
+  const response=await request('/api/members/member-root001/roles',{method:'PUT',headers:{Origin:'https://untrusted.test'},body:JSON.stringify({bindings:[],revision:0})});
+  assert.equal(response.response.status,403);
+  assert.match(response.body.error,/跨站/);
+});
+
+test('account management commits its audit with changes, rejects revoked writers and never logs password material',async()=>{
+  const db=await mf.getD1Database('DB'),users=userRepository(db),root=await users.find('root001'),target=await users.find('20268981');
+  const auditRecord={actorAccount:root.account,actorMemberId:root.memberId,authVersion:root.authVersion};
+  const patch={name:'账号管理测试',authorizedCampuses:['浑南'],passwordHash:hashPassword('new-audit-test-password')};
+  await db.prepare("CREATE TRIGGER reject_account_audit BEFORE INSERT ON audit_events WHEN NEW.action='authorization.account.updated' BEGIN SELECT RAISE(ABORT,'ACCOUNT_AUDIT_FAILURE'); END").run();
+  try{await assert.rejects(users.update(target,patch,{auditRecord}),/ACCOUNT_AUDIT_FAILURE/);assert.deepEqual(await users.find(target.account),target);}
+  finally{await db.prepare('DROP TRIGGER reject_account_audit').run();}
+  assert.equal(await users.update(target,patch,{auditRecord:{...auditRecord,authVersion:root.authVersion-1}}),null);
+  assert.deepEqual(await users.find(target.account),target);
+  assert.ok(await users.update(target,patch,{auditRecord}));
+  const row=await db.prepare("SELECT before_json,after_json FROM audit_events WHERE action='authorization.account.updated' AND json_extract(source_ref,'$.id')=?").bind(target.account).first();
+  assert.equal(JSON.parse(row.after_json).passwordChanged,true);
+  assert.ok(!JSON.stringify(row).includes(patch.passwordHash));assert.ok(!JSON.stringify(row).includes(target.passwordHash));
+});
+
+test('presence changes and opening a duty session are audited atomically and concurrent opening is deduplicated',async()=>{
+  const db=await mf.getD1Database('DB'),repo=staffPlatformRepository(db),root=await userRepository(db).find('root001');
+  const actor={memberId:root.memberId,account:root.account};
+  const record={actorMemberId:root.memberId,actorAccount:root.account,authVersion:root.authVersion,action:'audit.test.presence'};
+  const day='2027-03-01';
+  const initial=await repo.setPresence(root.memberId,{businessDate:day,campusId:'campus-nanhu',state:'available'},0,actor);
+  const event={type:'duty',policyCode:'duty.v1',policyVersion:'1',businessDate:day,campusId:'campus-nanhu',startsAt:`${day}T18:30:00+08:00`,endsAt:`${day}T21:30:00+08:00`};
+  await db.prepare("CREATE TRIGGER reject_presence_audit BEFORE INSERT ON audit_events WHEN NEW.action='audit.test.presence' BEGIN SELECT RAISE(ABORT,'PRESENCE_AUDIT_TEST_FAILURE'); END").run();
+  try {
+    await assert.rejects(repo.setPresence(root.memberId,{businessDate:day,state:'away'},initial.revision,actor,record),/PRESENCE_AUDIT_TEST_FAILURE/);
+    assert.equal((await db.prepare('SELECT state FROM staff_presence WHERE member_id=? AND business_date=?').bind(root.memberId,day).first()).state,'available');
+    await assert.rejects(repo.createEvent(event,root.memberId,record),/PRESENCE_AUDIT_TEST_FAILURE/);
+    assert.equal(await repo.dutyEvent(day,'campus-nanhu'),null);
+  } finally {await db.prepare('DROP TRIGGER reject_presence_audit').run();}
+  const opened=await Promise.all([1,2].map(()=>repo.createEvent(event,root.memberId,record)));
+  assert.equal(opened[0].id,opened[1].id);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM attendance_events WHERE type='duty' AND business_date=?").bind(day).first()).n,1);
+  await db.prepare('DELETE FROM presence_events WHERE member_id=? AND business_date=?').bind(root.memberId,day).run();
+  await db.prepare('DELETE FROM staff_presence WHERE member_id=? AND business_date=?').bind(root.memberId,day).run();
+});
+
+test('two-hundred-member imports respect the D1 per-statement parameter limit',async()=>{
+  const db=await mf.getD1Database('DB');let largest=0;
+  const limited={prepare(sql){const statement=db.prepare(sql);return {all:()=>statement.all(),bind(...args){largest=Math.max(largest,args.length);assert.ok(args.length<=100,'D1 maximum is 100 bound parameters per statement');return statement.bind(...args);}};},batch:statements=>db.batch(statements)};
+  const items=Array.from({length:200},(_,i)=>({studentId:String(20268000+i),name:`批量成员${i}`,homeCampusId:'campus-nanhu'}));
+  const result=await staffPlatformRepository(limited).importMembers(items,'root001');
+  assert.equal(result.length,200);assert.ok(largest<=100);
+});
+
+test('expired attendance management cannot be revived by choosing a historical business date',async()=>{
+  const db=await mf.getD1Database('DB'),repo=staffPlatformRepository(db),account='20268983',memberId=`member-${account}`;
+  await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,'已过期签到负责人','technician','南湖',?,'2026-01-01')").bind(account,hashPassword('audit-test-password')).run();
+  await db.prepare("INSERT INTO staff_campus_grants VALUES(?,'南湖')").bind(account).run();
+  const role=await repo.createRole({code:'expired-attendance-audit',name:'已过期权限',level:1,grants:[{permissionCode:'attendance.session.manage',scope:{campusIds:['campus-nanhu']}}]});
+  await repo.bindRoles(memberId,[{roleId:role.id,effectiveFrom:'2026-01-01',effectiveTo:dateKey()}],(await repo.memberRow(memberId)).revision);
+  const login=await request('/api/auth/login',{method:'POST',body:JSON.stringify({account,password:'audit-test-password'})});
+  const result=await request('/api/attendance/events',{method:'POST',headers:{Authorization:`Bearer ${login.body.token}`},body:JSON.stringify({campusId:'campus-nanhu',businessDate:addDays(dateKey(),-1),startsAt:new Date().toISOString(),endsAt:new Date(Date.now()+3600000).toISOString()})});
+  assert.equal(result.response.status,403);
+});
+
+test('a campus-limited audit grant cannot disclose the global audit journal',async()=>{
+  const db=await mf.getD1Database('DB'),repo=staffPlatformRepository(db),account='20268984',memberId=`member-${account}`;
+  await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,'校区审计员','technician','南湖',?,'2026-01-01')").bind(account,hashPassword('audit-test-password')).run();
+  await db.prepare("INSERT INTO staff_campus_grants VALUES(?,'南湖')").bind(account).run();
+  const role=await repo.createRole({code:'campus-audit-test',name:'校区审计',level:1,grants:[{permissionCode:'audit.read',scope:{campusIds:['campus-nanhu']}}]});
+  await repo.bindRoles(memberId,[{roleId:role.id}],(await repo.memberRow(memberId)).revision);
+  const login=await request('/api/auth/login',{method:'POST',body:JSON.stringify({account,password:'audit-test-password'})});
+  for(const query of ['', '?campusId=campus-nanhu','?all=1'])assert.equal((await request(`/api/audit${query}`,{headers:{Authorization:`Bearer ${login.body.token}`}})).response.status,403);
+});
+
 test('stale member, role, binding and attendance commands leave all related rows unchanged', async () => {
   const db = await mf.getD1Database('DB');
   const repository = staffPlatformRepository(db);
@@ -129,9 +229,14 @@ test('staff platform auth context, modular permissions and policy attendance are
     const invalid = await request(`/api/attendance/${endpoint}`, { method: 'POST', headers, body: JSON.stringify({ token: futureToken.body.token }) });
     assert.equal(invalid.response.status, 409, 'preview and confirmation must share attendance-window validation');
   }
+  for (const method of ['nfc','manual','unknown']) {
+    const forged = await request('/api/attendance/check-ins', { method: 'POST', headers, body: JSON.stringify({ token: token.body.token, method, nfcEvidence:{verified:true}, verifiedEvidence:{method:'nfc'} }) });
+    assert.equal(forged.response.status,403,'client evidence cannot attest attendance method');
+  }
+  assert.equal((await request('/api/me/attendance',{headers})).body.items.length,0);
   const first = await request('/api/attendance/check-ins', { method: 'POST', headers, body: JSON.stringify({ token: token.body.token, method: 'qr', requestId: 'attendance-checkin-001' }) });
   assert.equal(first.response.status, 200, JSON.stringify(first.body));
-  const duplicate = await request('/api/attendance/check-ins', { method: 'POST', headers, body: JSON.stringify({ token: token.body.token, method: 'nfc' }) });
+  const duplicate = await request('/api/attendance/check-ins', { method: 'POST', headers, body: JSON.stringify({ token: token.body.token, method: 'qr' }) });
   assert.equal(duplicate.response.status, 200, JSON.stringify(duplicate.body));
   assert.equal(duplicate.body.isExisting, true);
   const records = await request('/api/me/attendance', { headers });
@@ -660,7 +765,7 @@ test('department roster scopes govern creation, task entries, participants, avai
   const db = await mf.getD1Database('DB'), repository = staffPlatformRepository(db);
   const rootLogin = await request('/api/auth/login',{method:'POST',body:JSON.stringify({account:'root001',password:'staff-platform-password'})});
   const rootHeaders = {Authorization:`Bearer ${rootLogin.body.token}`};
-  const command = (path,body,headers = rootHeaders,method = body ? 'POST' : 'GET') => request(path,{method,headers,...(body ? {body:JSON.stringify(body)} : {})});
+  const command = (path,body,headers = rootHeaders,method = body ? 'POST' : 'GET') => request(path,{method,headers:{...headers,'CF-Connecting-IP':'192.0.2.167'},...(body ? {body:JSON.stringify(body)} : {})});
   for (const [account,name] of [['20998901','部门排班负责人'],['20998902','硬件维修员'],['20998903','办公部门维修员'],['20998904','周中转部门成员']]) {
     await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,?,'technician','南湖',?,'2026-01-01')").bind(account,name,hashPassword('roster-scope-test-password')).run();
     await db.batch(['南湖','浑南'].map(campus => db.prepare('INSERT INTO staff_campus_grants(account,campus) VALUES(?,?)').bind(account,campus)));
@@ -692,7 +797,8 @@ test('department roster scopes govern creation, task entries, participants, avai
   const invitation = await command('/api/roster-tasks',{...base,slotStart:'18:00',departmentIds:['dept-hardware'],memberIds:['member-20998903']},managerHeaders);
   assert.equal(invitation.response.status,403,'an out-of-department invitation cannot expand the scope');
   const entries = await command('/api/roster-tasks',undefined,managerHeaders);
-  assert.equal(entries.response.status,200);
+  assert.equal(entries.response.status,200,JSON.stringify(entries.body));
+  assert.ok(Array.isArray(entries.body.items),JSON.stringify(entries.body));
   assert.ok(entries.body.items.some(item => item.id === south.body.id && item.actions.manage));
   assert.ok(entries.body.items.some(item => item.id === north.body.id && item.actions.manage));
   assert.ok(!entries.body.items.some(item => item.id === forbidden.body.id));
@@ -706,8 +812,10 @@ test('department roster scopes govern creation, task entries, participants, avai
   assert.ok(!state.body.members.some(item => item.memberId === 'member-20998903'));
   assert.deepEqual(state.body.members.find(item => item.memberId === 'member-20998904').available.map(item => item.businessDate),['2026-11-02']);
   const transferLogin = await command('/api/auth/login',{account:'20998904',password:'roster-scope-test-password'});
+  assert.equal(transferLogin.response.status,200,JSON.stringify(transferLogin.body));
   const transferHeaders = {Authorization:`Bearer ${transferLogin.body.token}`};
   const ownEntries = await command('/api/roster-tasks',undefined,transferHeaders);
+  assert.equal(ownEntries.response.status,200,JSON.stringify(ownEntries.body));
   assert.ok(ownEntries.body.items.some(item => item.id === south.body.id && item.actions.fill && !item.actions.manage));
   assert.ok(ownEntries.body.items.every(item => item.memberIds === undefined && item.createdByMemberId === undefined));
   const save = (id,businessDate) => command(`/api/roster-tasks/${id}/availability`,{businessDate,campusId:'campus-nanhu',startAt:'19:00',endAt:'21:00'},transferHeaders,'PUT');
