@@ -4,7 +4,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { Miniflare } from 'miniflare';
 import { config, wrangler } from '../scripts/cli.mjs';
 import { hashPassword } from '../src/lib/passwords.js';
-import { dateKey, addDays } from '../shared/time.js';
+import { dateKey, addDays, weekRange } from '../shared/time.js';
 import { staffPlatformRepository } from '../src/db/staff-platform.js';
 import { userRepository } from '../src/db/users.js';
 
@@ -567,16 +567,18 @@ test('role writes reject malformed ranges and protect administrator identities f
 
 
 test('swap acceptance rolls both assignments back when either revision is stale', async () => {
+  const week=addDays(weekRange(dateKey()).start,7),next=addDays(week,1);
   const db = await mf.getD1Database('DB');
   const repository = staffPlatformRepository(db);
   const root = await repository.ensureMember('root001');
   const other = await repository.ensureMember('20268801');
-  await db.prepare(`INSERT INTO roster_tasks(id,week_start,slot_start,slot_end,deadline,created_at) VALUES('swap-test-task','2026-10-19','19:00','21:00','2026-10-18','2026-10-15')`).run();
+  await db.prepare(`INSERT INTO roster_tasks(id,week_start,slot_start,slot_end,deadline,created_at) VALUES('swap-test-task','${week}','19:00','21:00','${addDays(week,-1)}','2026-10-15')`).run();
   await db.prepare(`INSERT INTO roster_versions(id,task_id,status,version,rule_version,algorithm_version,created_at) VALUES('swap-test-version','swap-test-task','published',1,'1','1','2026-10-15')`).run();
   await db.batch([
-    db.prepare(`INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at) VALUES('swap-a','swap-test-version',?,'2026-10-19','campus-nanhu','repair','19:00','21:00')`).bind(root),
-    db.prepare(`INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at) VALUES('swap-b','swap-test-version',?,'2026-10-20','campus-nanhu','repair','19:00','21:00')`).bind(other)
+    db.prepare(`INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at) VALUES('swap-a','swap-test-version',?,'${week}','campus-nanhu','repair','19:00','21:00')`).bind(root),
+    db.prepare(`INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at) VALUES('swap-b','swap-test-version',?,'${next}','campus-nanhu','repair','19:00','21:00')`).bind(other)
   ]);
+  await db.prepare("UPDATE roster_versions SET input_snapshot_ref='{\"publicationBase\":\"previous-published-version\"}' WHERE id='swap-test-version'").run();
   const source = await repository.assignmentById('swap-a'), target = await repository.assignmentById('swap-b');
   const input = { fromAssignmentId:source.id,toAssignmentId:target.id,toMemberId:other,fromRevision:0,toRevision:0,note:'' };
   const audit = { actorMemberId:root,actorAccount:'root001',action:'rosters.swap.created' };
@@ -596,8 +598,25 @@ test('swap acceptance rolls both assignments back when either revision is stale'
   await repository.updateSwap(swap,'declined',0,responder,receipt('swap.decide'));
   const freshSnapshot = { ...snapshot,to:before[1],fingerprint:await repository.swapFingerprint(source.id,target.id) };
   const fresh = await repository.createSwap({ ...input,toRevision:1 },audit,receipt('swap.create'),freshSnapshot);
+  await db.prepare(`INSERT INTO attendance_events(id,type,policy_code,policy_version,business_date,campus_id,starts_at,ends_at,created_at) VALUES('swap-attendance-event','duty','duty.v1','1','${week}','campus-nanhu','${week}T18:30:00+08:00','${week}T21:30:00+08:00','${week}')`).run();
+  await db.prepare(`INSERT INTO attendance_records(id,member_id,event_id,dedupe_key,occurred_at,recorded_at,method,source_ref,identity_snapshot) VALUES('swap-attendance-record',?,'swap-attendance-event','swap-attendance-key','${week}T19:00:00+08:00','${week}T19:00:00+08:00','qr','{}','{}')`).bind(root).run();
+  const signedReceipt=receipt('swap.decide');
+  assert.equal(await repository.updateSwap(fresh,'accepted',0,responder,signedReceipt,freshSnapshot),null,'sign-in after preview prevents the entire swap');
+  assert.equal(await repository.receipt(other,signedReceipt.action,signedReceipt.id),null);
+  assert.equal((await repository.swapById(fresh.id)).status,'pending');
+  assert.equal((await repository.rosterVersionsForTask('swap-test-task')).length,1);
+  const signedSnapshot={...freshSnapshot,fingerprint:await repository.swapFingerprint(source.id,target.id)};
+  assert.notEqual(signedSnapshot.fingerprint,freshSnapshot.fingerprint);
+  assert.equal(await repository.updateSwap(fresh,'accepted',0,responder,receipt('swap.decide'),signedSnapshot),null,'even a fresh snapshot cannot exchange signed assignments');
+  assert.equal(await repository.createSwap({ ...input,toRevision:1 },audit,receipt('swap.create'),signedSnapshot),null);
+  const protectedRows=await repository.protectedRosterAssignments(undefined,week);
+  assert.ok(protectedRows.some(row=>row.memberId===root && row.businessDate===week));
+  await db.prepare("DELETE FROM attendance_records WHERE id='swap-attendance-record'").run();
   const accepted = await repository.updateSwap(fresh,'accepted',0,responder,receipt('swap.decide'),freshSnapshot);
   assert.equal(accepted.status,'accepted');
+  const successor=await repository.rosterVersionById((await repository.assignmentById(accepted.applied_from_assignment_id)).versionId);
+  assert.equal(successor.inputSnapshotRef.publicationBase,undefined,'a swap must not inherit an old manual revision publication base');
+  assert.equal(successor.inputSnapshotRef.previousVersionId,'swap-test-version');
   assert.equal((await repository.assignmentById('swap-a')).memberId,root);
   assert.equal((await repository.assignmentById('swap-b')).memberId,other);
   assert.equal((await repository.assignmentById(accepted.applied_from_assignment_id)).memberId,other);

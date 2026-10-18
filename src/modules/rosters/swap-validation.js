@@ -8,9 +8,14 @@ const sameSlot = (a, b) => a.businessDate === b.businessDate && a.campusId === b
 
 // This pure projection is shared by preview and confirmation. Database commands
 // reassert current versions, qualification and coverage inside their transaction.
-export function validateSwap({ from, to, facts, coverage, authorizer=createAuthorizer() }) {
+export function assignmentProtected(row, protectedAssignments = [], today = '') {
+  return !!row && (today && row.businessDate < today || protectedAssignments.some(item => item.memberId === row.memberId && item.businessDate === row.businessDate && item.campusId === row.campusId));
+}
+
+export function validateSwap({ from, to, facts, coverage, protectedAssignments = [], today = '', authorizer=createAuthorizer() }) {
   const errors = [];
   if (!from || !to) return { allowed: false, errors: ['班次不存在，请重新选择'], after: [] };
+  if ([from, to].some(row => assignmentProtected(row, protectedAssignments, today))) errors.push('已签到或已结束的班次不能换班，请联系负责人处理');
   if (from.memberId === to.memberId || from.id === to.id) errors.push('请选择另一位成员的班次');
   if (weekRange(from.businessDate).start !== weekRange(to.businessDate).start) errors.push('只能交换同一周的班次');
   if (from.dutyType !== to.dutyType) errors.push('只能交换相同岗位类型的班次');

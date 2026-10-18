@@ -100,6 +100,10 @@
     {
       "name": "0011_historical_booking_dates.sql",
       "sha256": "72685533850d4dc3d74fa42c1a66b9f6ddb6c04748537e3e048a0d3795c5c6d4"
+    },
+    {
+      "name": "0023_office_attendance_export.sql",
+      "sha256": "161d307ed59f041ff6feef871622157d77a40d4251b370421bfcd1b53a7bff72"
     }
   ],
   "modules": [
@@ -279,6 +283,10 @@
     {
       "name": "0022_historical_booking_dates.sql",
       "sha256": "72685533850d4dc3d74fa42c1a66b9f6ddb6c04748537e3e048a0d3795c5c6d4"
+    },
+    {
+      "name": "0023_office_attendance_export.sql",
+      "sha256": "161d307ed59f041ff6feef871622157d77a40d4251b370421bfcd1b53a7bff72"
     }
   ],
   "staffMigrationsDirectory": "database/staff-migrations"

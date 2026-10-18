@@ -7,7 +7,7 @@ import { attendanceMethod, policyFor } from '../modules/attendance/public.js';
 import { validScope, campusId as normalizeCampusId } from '../modules/authorization/scopes.js';
 import { validGrantValidity } from '../modules/authorization/public.js';
 import { workspacePermissions } from '../modules/authorization/workspace.js';
-import { validateSwap } from '../modules/rosters/swap-validation.js';
+import { assignmentProtected, validateSwap } from '../modules/rosters/swap-validation.js';
 import { csvLine } from '../lib/csv.js';
 import { rosterScope, rosterTaskManaged, rosterDepartments, rosterMemberInScope, rosterMemberReadable } from '../modules/rosters/scope.js';
 import { staffIdentities } from '../../shared/staff-identities.js';
@@ -1202,9 +1202,9 @@ export function staffPlatformService({ repository, platform, manifests }) {
       const current = owners ? await Promise.all(original.map((row,index) => repository.effectiveAssignment(row.id,owners[index]))) : original;
       const [from,to] = current;
       const weekStart = weekRange(from.businessDate).start;
-      const [facts,coverage] = await Promise.all([repository.rosterMemberFacts([from.memberId,to.memberId],weekStart),repository.swapCoverage(weekStart)]);
+      const [facts,coverage,protectedAssignments] = await Promise.all([repository.rosterMemberFacts([from.memberId,to.memberId],weekStart),repository.swapCoverage(weekStart),repository.protectedRosterAssignments(undefined,weekStart)]);
       if (fingerprint !== await repository.swapFingerprint(fromId,toId)) continue;
-      const validation = validateSwap({ from,to,facts,coverage,authorizer:platform.authorizer });
+      const validation = validateSwap({ from,to,facts,coverage,protectedAssignments,today:dateKey(),authorizer:platform.authorizer });
       if (owners && current.some((row,index) => row.memberId !== owners[index])) validation.errors.push('班次人员已变化，请重新发起换班');
       validation.allowed = !validation.errors.length;
       const named = row => ({ ...row,memberName:facts.find(item => item.memberId === row.memberId)?.name || '成员' });
@@ -1222,11 +1222,13 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const source = await repository.assignmentById(query.assignmentId);
     if (!source || source.memberId !== context.actor.memberId) fail(403, '请先选择本人的班次');
     if (source.versionStatus !== 'published' || source.leaveStatus) fail(409, '该班次已调整或已请假，请刷新班表');
+    const protectedAssignments=await repository.protectedRosterAssignments(undefined,weekRange(source.businessDate).start);
+    if(assignmentProtected(source,protectedAssignments,dateKey())) fail(409,'已签到或已结束的班次不能换班，请联系负责人处理');
     const candidates=await repository.swapCandidates({ ...source,weekStart:weekRange(source.businessDate).start });
     const facts=new Map((await repository.rosterMemberFacts([...new Set([source.memberId,...candidates.map(item=>item.memberId)])],weekRange(source.businessDate).start)).map(item=>[item.memberId,item]));
     const eligible=(fact,slot)=>slot.dutyType==='office' ? fact?.active && fact.profiles.some(item=>item.profileCode==='office' && item.effectiveFrom<=slot.businessDate && (!item.effectiveTo || slot.businessDate<item.effectiveTo)) : fact && !!repairRosterPool(fact,platform.authorizer,slot.businessDate,{id:slot.taskId,campusId:slot.campusId});
     if(!eligible(facts.get(source.memberId),source)) fail(403,'当前工作资格不支持该班次换班，请联系负责人处理');
-    return {items:candidates.filter(item=>eligible(facts.get(item.memberId),source) && eligible(facts.get(source.memberId),item)).map(item=>({...item,
+    return {items:candidates.filter(item=>!assignmentProtected(item,protectedAssignments,dateKey()) && eligible(facts.get(item.memberId),source) && eligible(facts.get(source.memberId),item)).map(item=>({...item,
       identities:staffIdentities(rosterFactContext(facts.get(item.memberId),item.businessDate),platform.authorizer)}))};
   }
   async function swapPreview(actor, input) {
@@ -1341,7 +1343,8 @@ export function staffPlatformService({ repository, platform, manifests }) {
       result = await repository.updateSwap(row,input.decision === 'accept' ? 'accepted' : 'declined',input.revision,
         { actorMemberId:context.actor.memberId,actorAccount:actor.account,authVersion:context.authVersion,action:'rosters.swap.decided',before:publicSwap(row),requestId:command.receipt.id },command.receipt,snapshot);
     } catch (error) {
-      if (/SWAP_REVISION_CONFLICT|ROSTER_SCHEDULE_CONFLICT/.test(String(error.message))) fail(409, '班次已变化或出现时间冲突，请刷新后重新发起');
+      if (/ROSTER_ATTENDED_ASSIGNMENT_CHANGED/.test(String(error.message))) fail(409,'人员已签到或班次已结束，不能换班，请重新核对');
+      if (/SWAP_REVISION_CONFLICT|ROSTER_SCHEDULE_CONFLICT|ROSTER_PUBLICATION_BASE_CHANGED/.test(String(error.message))) fail(409, '班次已变化或出现时间冲突，请刷新后重新发起');
       throw error;
     }
     if (result) return publicSwap(result);

@@ -1,11 +1,35 @@
 import { test, expect } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
+import {addDays,dateKey,weekRange} from '../../shared/time.js';
 
 test.use({ extraHTTPHeaders: { 'CF-Connecting-IP': '192.0.2.92' } });
 
 async function expandGroup(page, name) {
   const group = page.locator('.field-sidebar').getByRole('button', { name, exact: true }).first();
   if (await group.getAttribute('aria-expanded') === 'false') await group.click();
+}
+
+async function prepareUnsignedSwapWeek(request,offset) {
+  const headers={'CF-Connecting-IP':`192.0.2.${200+offset}`};
+  const login=await request.post('/api/auth/login',{headers,data:{account:'root001',password:process.env.E2E_ROOT_PASSWORD}});
+  headers.Authorization=`Bearer ${(await login.json()).token}`;
+  async function command(path,data,method=data?'POST':'GET'){
+    const response=await request.fetch(path,{headers,method,...(data?{data}:{})});const value=await response.json();expect(response.ok(),JSON.stringify(value)).toBe(true);return value;
+  }
+  const weekStart=addDays(weekRange(dateKey()).start,offset*7),memberIds=['member-20261002','member-20261003'];
+  for(const memberId of memberIds){
+    const detail=await command(`/api/members/${memberId}`);
+    if(!detail.member.workProfiles.some(row=>row.profileCode==='office'))await command(`/api/members/${memberId}/work-profiles`,{profileCode:'office',effectiveFrom:'2026-01-01',revision:detail.member.revision,requestId:crypto.randomUUID()});
+  }
+  const task=await command('/api/roster-tasks',{workflowVersion:1,dutyType:'office',weekStart,campusIds:['campus-nanhu'],slotStart:'19:00',slotEnd:'21:00',deadline:`${weekStart}T18:00:00+08:00`,memberIds,requestId:crypto.randomUUID()});
+  for(const account of ['20261002','20261003']){
+    const actor=await request.post('/api/auth/login',{headers:{'CF-Connecting-IP':headers['CF-Connecting-IP']},data:{account,password:'StaffTest!2026'}}).then(response=>response.json());
+    const response=await request.put(`/api/roster-tasks/${task.id}/submission`,{headers:{...headers,Authorization:`Bearer ${actor.token}`},data:{windows:Array.from({length:4},(_,day)=>({businessDate:addDays(weekStart,day),campusId:'campus-nanhu',startAt:'19:00',endAt:'21:00'})),unavailable:false,autoContinue:false,revision:-1,requestId:crypto.randomUUID()}});expect(response.ok(),await response.text()).toBe(true);
+  }
+  await command(`/api/roster-tasks/${task.id}/collection`,{action:'close',revision:task.revision,requestId:crypto.randomUUID()});
+  const draft=await command('/api/rosters/generate',{taskId:task.id,requestId:crypto.randomUUID()});expect(draft.validation.valid).toBe(true);
+  await command(`/api/rosters/${draft.version.id}/publish`,{version:draft.version.version,requestId:crypto.randomUUID()});
+  return weekStart;
 }
 
 test.skip(process.env.E2E_FIELD !== 'true', 'Uses the isolated staff fixture');
@@ -31,6 +55,22 @@ test('dense rosters keep seven people per shift readable and expose one contextu
     await page.screenshot({path:`output/field-workflow/dense-roster-${width}.png`,fullPage:true});
   }
   await page.setViewportSize({width:1440,height:1000});await first.getByRole('button').click();await page.getByRole('dialog').getByRole('button',{name:'移除此安排',exact:true}).click();await expect(page.locator('.roster-person')).toHaveCount(55);await page.getByRole('button',{name:'撤销未保存调整',exact:true}).click();await expect(page.locator('.roster-person')).toHaveCount(56);
+  assignments[1].leaveStatus='approved';
+  members.push({memberId:'replacement-person',name:'待补位维修人员',pool:'ordinary',available:[slots[0]],manualSlots:[slots[0]],reportedWindows:[slots[0]]});
+  await page.locator('.roster-range').getByRole('button',{name:'刷新',exact:true}).click();
+  const leaveRow=page.locator('.roster-person').filter({hasText:'欧阳测试长姓名'});
+  await expect(leaveRow).toHaveAttribute('draggable','false');
+  await leaveRow.getByRole('button',{name:'为欧阳测试长姓名安排补位人员',exact:true}).click();
+  const replacement=page.getByRole('dialog',{name:'安排补位人员',exact:true});
+  await expect(replacement).toContainText('原请假班次与审批记录会保留');
+  await expect(replacement.getByLabel('目标班次',{exact:true})).toBeDisabled();
+  await expect(replacement.getByRole('button',{name:'移除此安排',exact:true})).toHaveCount(0);
+  await replacement.getByLabel('查找成员',{exact:true}).fill('待补位');
+  await replacement.getByRole('button',{name:'添加',exact:true}).click();
+  await replacement.getByRole('button',{name:'完成调整',exact:true}).click();
+  await expect(page.locator('.roster-person')).toHaveCount(57);
+  await expect(leaveRow).toContainText('已请假');
+  await expect(page.locator('.roster-person').filter({hasText:'待补位维修人员'})).toBeVisible();
 });
 
 test('attendance managers correct historical time without altering identity and can export the same month',async({page,request})=>{
@@ -199,7 +239,8 @@ test('department manager creates only authorized roster scopes across screen siz
   }
 });
 
-test('members preview, confirm and recover a swap through responsive personal workspaces', async ({ browser }) => {
+test('members preview, confirm and recover a swap through responsive personal workspaces', async ({ browser,request }) => {
+  const weekStart=await prepareUnsignedSwapWeek(request,20);
   const contexts = await Promise.all([1,2].map(index => browser.newContext({ baseURL:process.env.E2E_BASE_URL,viewport:{ width:1440,height:1000 },extraHTTPHeaders:{ 'CF-Connecting-IP':`192.0.2.${100 + index}` } })));
   try {
     const [sender,invitee] = await Promise.all(contexts.map(context => context.newPage()));
@@ -211,14 +252,15 @@ test('members preview, confirm and recover a swap through responsive personal wo
       await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();
       await expandGroup(page,'我的');
       await page.locator('.field-sidebar').getByRole('button', { name:'班次与排班',exact:true }).click();
-      await expect(page.locator('.duty-card')).toHaveCount(1);
+      await page.getByLabel('值班周',{exact:true}).fill(weekStart);
+      await expect(page.locator('.duty-card')).toHaveCount(2);
     }
     await open(sender,'20261002'); await open(invitee,'20261003');
     // A second member's update must reach an already-open personal route.
-    await sender.getByRole('button', { name:'发起换班',exact:true }).click();
+    await sender.getByRole('button', { name:'发起换班',exact:true }).first().click();
     const targets = sender.getByRole('combobox', { name:'希望调换到',exact:true });
-    await expect(targets.locator('option').filter({ hasText:'周宁' })).toHaveCount(1);
-    await targets.selectOption({ label:await targets.locator('option').filter({ hasText:'周宁' }).textContent() });
+    await expect(targets.locator('option').filter({ hasText:'周宁' })).toHaveCount(2);
+    await targets.selectOption({ label:await targets.locator('option').filter({ hasText:'周宁' }).first().textContent() });
     const projection = sender.getByRole('region', { name:'交换后的班次',exact:true });
     await expect(projection).toContainText('陈宇'); await expect(projection).toContainText('周宁');
     await expect(sender.getByRole('button', { name:'发送换班邀请',exact:true })).toBeEnabled();
@@ -361,7 +403,8 @@ test('office collection generates a balanced roster, publishes a coordinator and
   const mine=await request.get('/api/me/roster?weekStart=2026-11-09',{headers:{Authorization:'Bearer '+login.token}});expect((await mine.json()).items.filter(item=>item.dutyType==='office')).toHaveLength(4);
 });
 
-test('member reaches roster from My, chooses named shifts and can use narrow screens', async ({ page }) => {
+test('member reaches roster from My, chooses named shifts and can use narrow screens', async ({ page,request }) => {
+  const weekStart=await prepareUnsignedSwapWeek(request,22);
   await page.goto('/staff/');
   await page.locator('#login-form').getByLabel('学号', { exact: true }).fill('20261002');
   await page.locator('#login-form').getByLabel('密码', { exact: true }).fill('StaffTest!2026');
@@ -373,6 +416,8 @@ test('member reaches roster from My, chooses named shifts and can use narrow scr
   await page.locator('.field-sidebar').getByRole('button', { name: '个人中心', exact: true }).click();
   await page.getByRole('button', { name: '我的班次与申请' }).click();
   await expect(page.getByRole('heading', { name: '我的值班安排' })).toBeVisible();
+  await page.getByLabel('值班周',{exact:true}).fill(weekStart);
+  await expect(page.locator('.duty-card')).toHaveCount(2);
   await page.getByRole('button', { name: '发起换班', exact: true }).first().click();
   await expect(page.getByLabel('希望调换到')).toBeEnabled();
   await expect(page.getByLabel('希望调换到').locator('option')).not.toHaveCount(1);

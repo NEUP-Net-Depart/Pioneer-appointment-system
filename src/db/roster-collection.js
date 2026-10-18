@@ -50,11 +50,11 @@ export function rosterCollectionRepository(db) {
       db.prepare('DELETE FROM roster_command_guards')
     ]);
   }
-  async function protectedRosterAssignments(taskId) {
+  async function protectedRosterAssignments(taskId, weekStart) {
     return list(`SELECT da.member_id AS memberId,da.business_date AS businessDate,da.campus_id AS campusId,da.start_at AS startAt,da.end_at AS endAt,da.duty_type AS dutyType,COALESCE(dr.role_kind,'') AS roleKind
       FROM duty_assignments da JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published'
-      LEFT JOIN duty_roles dr ON dr.assignment_id=da.id WHERE rv.task_id=? AND (da.business_date<? OR EXISTS (
-        SELECT 1 FROM attendance_records ar JOIN attendance_events ae ON ae.id=ar.event_id WHERE ar.member_id=da.member_id AND ae.business_date=da.business_date AND ae.campus_id=da.campus_id AND ae.type='duty'))`,taskId,dateKey());
+      LEFT JOIN duty_roles dr ON dr.assignment_id=da.id WHERE ${weekStart ? "da.business_date BETWEEN ? AND date(?,'+6 day')" : 'rv.task_id=?'} AND (da.business_date<? OR EXISTS (
+        SELECT 1 FROM attendance_records ar JOIN attendance_events ae ON ae.id=ar.event_id WHERE ar.member_id=da.member_id AND ae.business_date=da.business_date AND ae.campus_id=da.campus_id AND ae.type='duty'))`,...(weekStart ? [weekStart,weekStart] : [taskId]),dateKey());
   }
   async function addRosterParticipants(task,input,record) {
     await db.batch([guard(record,'EXISTS(SELECT 1 FROM roster_tasks WHERE id=? AND revision=?)',[task.id,input.revision]),receipt(record,'participants',task.id,input),

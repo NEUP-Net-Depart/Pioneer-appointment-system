@@ -1,4 +1,4 @@
-import { nowIso } from '../platform/time.js';
+import { dateKey, nowIso } from '../platform/time.js';
 
 // The same snapshot used for validation is compared inside the write batch.
 // This keeps preview and commands on one business validator without trusting a
@@ -16,6 +16,9 @@ const fingerprintSql = `WITH selected AS (SELECT * FROM duty_assignments WHERE i
     'roles',(SELECT json_group_array(json_array(id,assignment_id,role_kind,effective_range)) FROM (SELECT * FROM duty_roles WHERE assignment_id IN (SELECT id FROM current) ORDER BY id)),
     'leaves',(SELECT json_group_array(json_array(id,origin_assignment_id,member_id,status,revision)) FROM (SELECT * FROM roster_leave_facts
       WHERE origin_assignment_id IN (SELECT COALESCE(origin_assignment_id,id) FROM current) ORDER BY id)),
+    'attendance',(SELECT json_group_array(json_array(id,member_id,business_date,campus_id,type)) FROM (SELECT ar.id,ar.member_id,ae.business_date,ae.campus_id,ae.type FROM attendance_records ar
+      JOIN attendance_events ae ON ae.id=ar.event_id WHERE ae.type='duty' AND EXISTS (SELECT 1 FROM selected s
+        WHERE s.member_id=ar.member_id AND s.business_date=ae.business_date AND s.campus_id=ae.campus_id) ORDER BY ar.id)),
     'members',(SELECT json_group_array(json_array(id,name,status,revision)) FROM (SELECT * FROM members WHERE id IN (SELECT member_id FROM selected) ORDER BY id)),
     'accounts',(SELECT json_group_array(json_array(account,member_id,status,auth_version)) FROM (SELECT * FROM staff_accounts WHERE member_id IN (SELECT member_id FROM selected) ORDER BY account)),
     'campuses',(SELECT json_group_array(json_array(account,campus)) FROM (SELECT * FROM staff_campus_grants WHERE account IN (SELECT account FROM staff_accounts WHERE member_id IN (SELECT member_id FROM selected)) ORDER BY account,campus)),
@@ -25,6 +28,10 @@ const fingerprintSql = `WITH selected AS (SELECT * FROM duty_assignments WHERE i
     'grants',(SELECT json_group_array(json_array(id,permission_code,scope_spec,condition_spec,validity_spec)) FROM (SELECT * FROM role_grants WHERE role_id IN (SELECT role_id FROM member_roles WHERE member_id IN (SELECT member_id FROM selected)) ORDER BY id)),
     'roleDefinitions',(SELECT json_group_array(json_array(id,enabled,revision)) FROM (SELECT * FROM roles WHERE id IN (SELECT role_id FROM member_roles WHERE member_id IN (SELECT member_id FROM selected)) ORDER BY id))
   ) AS fingerprint`;
+
+const mutableSql = `NOT EXISTS(SELECT 1 FROM duty_assignments da WHERE da.id IN (?,?) AND (da.business_date<? OR EXISTS (
+  SELECT 1 FROM attendance_records ar JOIN attendance_events ae ON ae.id=ar.event_id WHERE ar.member_id=da.member_id
+    AND ae.business_date=da.business_date AND ae.campus_id=da.campus_id AND ae.type='duty')))`;
 
 const storedResultSql = `SELECT json_object('id',id,'from_assignment_id',from_assignment_id,'to_assignment_id',to_assignment_id,
   'from_member_id',from_member_id,'to_member_id',to_member_id,'from_revision',from_revision,'to_revision',to_revision,
@@ -50,11 +57,11 @@ export function rosterSwapCommands(db, { auditStatement, commandAuthorization })
   }
   async function createSwap(input, audit, receipt, snapshot) {
     const id = crypto.randomUUID();
-    const state = command(audit,receipt,`(${fingerprintSql})=? AND NOT EXISTS(
+    const state = command(audit,receipt,`(${fingerprintSql})=? AND ${mutableSql} AND NOT EXISTS(
       SELECT 1 FROM swap_requests s JOIN duty_assignments a ON a.id=s.from_assignment_id JOIN duty_assignments b ON b.id=s.to_assignment_id
       WHERE s.status='pending' AND ((COALESCE(a.origin_assignment_id,a.id)=? AND COALESCE(b.origin_assignment_id,b.id)=?)
         OR (COALESCE(a.origin_assignment_id,a.id)=? AND COALESCE(b.origin_assignment_id,b.id)=?)))`,
-    [input.fromAssignmentId,input.toAssignmentId,snapshot.fingerprint,
+    [input.fromAssignmentId,input.toAssignmentId,snapshot.fingerprint,input.fromAssignmentId,input.toAssignmentId,dateKey(),
       snapshot.from.originAssignmentId || snapshot.from.id,snapshot.to.originAssignmentId || snapshot.to.id,
       snapshot.to.originAssignmentId || snapshot.to.id,snapshot.from.originAssignmentId || snapshot.from.id]);
     state.statements.push(db.prepare(`INSERT INTO swap_requests(id,from_assignment_id,to_assignment_id,from_member_id,to_member_id,from_revision,to_revision,note,created_at)
@@ -67,8 +74,8 @@ export function rosterSwapCommands(db, { auditStatement, commandAuthorization })
   }
   async function updateSwap(request, status, revision, audit, receipt, snapshot) {
     const guard = `EXISTS(SELECT 1 FROM swap_requests WHERE id=? AND to_member_id=? AND status='pending' AND revision=?)`;
-    const state = command(audit,receipt,`${guard}${status === 'accepted' ? ` AND (${fingerprintSql})=?` : ''}`,
-      [request.id,audit.actorMemberId,revision,...(status === 'accepted' ? [request.from_assignment_id,request.to_assignment_id,snapshot.fingerprint] : [])]);
+    const state = command(audit,receipt,`${guard}${status === 'accepted' ? ` AND (${fingerprintSql})=? AND ${mutableSql}` : ''}`,
+      [request.id,audit.actorMemberId,revision,...(status === 'accepted' ? [request.from_assignment_id,request.to_assignment_id,snapshot.fingerprint,request.from_assignment_id,request.to_assignment_id,dateKey()] : [])]);
     let appliedFrom = null, appliedTo = null;
     if (status === 'accepted') {
       const { from,to } = snapshot;
@@ -77,7 +84,7 @@ export function rosterSwapCommands(db, { auditStatement, commandAuthorization })
       for (const [oldId,newId] of versions) {
         state.statements.push(db.prepare(`INSERT INTO roster_versions(id,task_id,status,version,rule_version,algorithm_version,input_snapshot_ref,solver_status,validation_result,created_at)
           SELECT ?,rv.task_id,'draft',(SELECT MAX(v.version)+1 FROM roster_versions v WHERE v.task_id=rv.task_id),rv.rule_version,'mutual-swap-v1',
-            json_set(rv.input_snapshot_ref,'$.swapRequestId',?,'$.previousVersionId',rv.id),'feasible',?,? FROM roster_versions rv WHERE rv.id=? AND ${state.gate}`)
+            json_set(json_remove(rv.input_snapshot_ref,'$.publicationBase'),'$.swapRequestId',?,'$.previousVersionId',rv.id),'feasible',?,? FROM roster_versions rv WHERE rv.id=? AND ${state.gate}`)
           .bind(newId,request.id,JSON.stringify({ valid:true,swapRequestId:request.id }),state.at,oldId,...state.key));
         state.statements.push(db.prepare(`INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at,revision,origin_assignment_id,previous_assignment_id)
           SELECT CASE da.id WHEN ? THEN ? WHEN ? THEN ? ELSE lower(hex(randomblob(16))) END,?,
@@ -96,6 +103,8 @@ export function rosterSwapCommands(db, { auditStatement, commandAuthorization })
       }
       // Supersede both sources before either successor is published. Otherwise
       // the publication trigger would see a false conflict across source tasks.
+      // Manual revision publicationBase belongs to the old draft. This command
+      // instead gates both sources with the transaction's complete fingerprint.
       for (const oldId of versions.keys()) state.statements.push(db.prepare(`UPDATE roster_versions SET status='superseded' WHERE id=? AND status='published' AND ${state.gate}`).bind(oldId,...state.key));
       for (const newId of versions.values()) state.statements.push(db.prepare(`UPDATE roster_versions SET status='published',published_at=? WHERE id=? AND status='draft' AND ${state.gate}`).bind(state.at,newId,...state.key));
     }

@@ -2,19 +2,22 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { staffPlatformService } from '../src/services/staff-platform.js';
 import { createAuthorizer } from '../src/modules/authorization/public.js';
+import {dateKey,weekRange,addDays} from '../shared/time.js';
 
 function setup(memberId = 'target', allowedCampuses = ['campus-nanhu']) {
+  const week=addDays(weekRange(dateKey()).start,7);
   const changes = [];
   const assignments = {
-    a: { id: 'a', memberId: 'sender', businessDate: '2026-10-19', campusId: 'campus-nanhu', dutyType: 'repair', revision: 0, versionStatus: 'published', startAt: '19:00', endAt: '21:00' },
-    b: { id: 'b', memberId: 'target', businessDate: '2026-10-20', campusId: 'campus-hunnan', dutyType: 'repair', revision: 0, versionStatus: 'published', startAt: '19:00', endAt: '21:00' }
+    a: { id: 'a', memberId: 'sender', businessDate: week, campusId: 'campus-nanhu', dutyType: 'repair', revision: 0, versionStatus: 'published', startAt: '19:00', endAt: '21:00' },
+    b: { id: 'b', memberId: 'target', businessDate: addDays(week,1), campusId: 'campus-hunnan', dutyType: 'repair', revision: 0, versionStatus: 'published', startAt: '19:00', endAt: '21:00' }
   };
   const swap = { id: 'swap', from_assignment_id: 'a', to_assignment_id: 'b', from_member_id: 'sender', to_member_id: 'target', from_revision: 0, to_revision: 0, status: 'pending', revision: 0 };
   const repository = {
-    availability: async () => [{ memberId: 'target', campusId: 'campus-nanhu', businessDate:'2026-10-19' }, { memberId: 'sender', campusId: 'campus-hunnan', businessDate:'2026-10-19' }],
-    rosterTaskById: async () => ({id:'task',weekStart:'2026-10-19',campusScope:{campusIds:['campus-nanhu']},memberIds:[],dutyType:'repair'}),
+    availability: async () => [{ memberId: 'target', campusId: 'campus-nanhu', businessDate:week }, { memberId: 'sender', campusId: 'campus-hunnan', businessDate:week }],
+    rosterTaskById: async () => ({id:'task',weekStart:week,campusScope:{campusIds:['campus-nanhu']},memberIds:[],dutyType:'repair'}),
     assignmentById: async id => assignments[id], swapById: async () => swap,
     effectiveAssignment: async id => assignments[id], swapFingerprint: async () => 'unchanged', swapCoverage: async () => Object.values(assignments), receipt: async () => null,
+    protectedRosterAssignments:async()=>[],
     memberRow: async id => ({ id, name: id }), memberships: async () => [],
     rosterMemberFacts: async () => ['sender','target'].map(memberId => ({ memberId,name:memberId,active:true,campuses:['南湖','浑南'],
       profiles:['repair','repair_lead'].map(profileCode => ({ profileCode,effectiveFrom:'2026-01-01' })),assignments:Object.values(assignments).filter(row => row.memberId === memberId) })),
@@ -57,7 +60,7 @@ test('stale and cross-week swap proposals fail before creating a request', async
   const { service, assignments } = setup('sender');
   const input = { fromAssignmentId: 'a', toAssignmentId: 'b', toMemberId: 'target', fromRevision: 1, toRevision: 0 };
   await assert.rejects(service.swap({ account: 'sender' }, input), error => error.status === 409);
-  assignments.b.businessDate = '2026-10-26';
+  assignments.b.businessDate = addDays(assignments.a.businessDate,7);
   await assert.rejects(service.swap({ account: 'sender' }, { ...input, fromRevision: 0 }), error => error.status === 400);
 });
 
