@@ -162,6 +162,8 @@ export function fieldWorkflow({
       "brand",
       "deviceModel",
       "warranty",
+      "liquidMetal",
+      "dellG15",
       "faultType",
       "issue",
       "assignedTo",
@@ -175,7 +177,7 @@ export function fieldWorkflow({
       "backPhotoId",
     ];
     if (identity) keys.push("name", "studentId");
-    if (contact) keys.push("phone", "social");
+    if (contact) keys.push("phone", "social", "email", "contactType", "contactValue");
     const visible = Object.fromEntries(
       keys.map((key) => [key, publicItem[key]]),
     );

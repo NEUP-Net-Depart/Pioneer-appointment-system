@@ -1,22 +1,32 @@
 import { readQr } from '/shared/zxing.js';
 
-export function createScanner({ video, status, torch, switchCamera, onCode, onState = (state) => { void state; } }) {
+export function createScanner({ video, status = null, torch, switchCamera, onCode, onState = state => { void state; }, canStart = () => true }) {
   let stream, timer, generation = 0, facing = 'environment', cameras = [], deviceId, lit = false;
   const canvas = document.createElement('canvas'), context = canvas.getContext('2d', { willReadFrequently: true });
   function stop() {
     generation++; clearTimeout(timer);
     stream?.getTracks().forEach(track => track.stop()); stream = undefined;
     video.srcObject = null; lit = false; torch.disabled = true; torch.setAttribute('aria-pressed', 'false');
+    switchCamera.disabled = true;
     onState('idle');
   }
   async function start() {
+    if (!canStart()) return;
     stop(); const current = generation;
-    status.textContent = '正在打开摄像头…';
     onState('opening');
+    if (status) status.textContent = '正在开启摄像头…';
     try {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error('当前浏览器无法使用摄像头');
-      const media = await navigator.mediaDevices.getUserMedia({ audio: false, video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: facing }, width: { ideal: 1280 } } });
-      if (current !== generation) { media.getTracks().forEach(track => track.stop()); return; }
+      const videoOptions = deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { exact: facing }, width: { ideal: 1280 } };
+      let media;
+      try { media = await navigator.mediaDevices.getUserMedia({ audio: false, video: videoOptions }); }
+      catch (error) {
+        if (current !== generation) return;
+        if (deviceId || !['OverconstrainedError','NotFoundError'].includes(error.name)) throw error;
+        // Phones should choose the rear lens; single-camera devices may not expose facing modes.
+        media = await navigator.mediaDevices.getUserMedia({ audio: false, video: { ...videoOptions, facingMode: { ideal: facing } } });
+      }
+      if (current !== generation || !canStart()) { media.getTracks().forEach(track => track.stop()); return; }
       stream = media; video.srcObject = stream; await video.play();
       if (current !== generation) return;
       const track = stream.getVideoTracks()[0];
@@ -24,8 +34,9 @@ export function createScanner({ video, status, torch, switchCamera, onCode, onSt
       cameras = (await navigator.mediaDevices.enumerateDevices?.().catch(() => []) || []).filter(device => device.kind === 'videoinput');
       if (current !== generation) return;
       deviceId = track.getSettings?.().deviceId;
-      status.textContent = '将机主二维码对准扫描框';
+      switchCamera.disabled = false;
       onState('running');
+      if (status) status.textContent = '将二维码对准扫描框';
       async function frame() {
         if (current !== generation) return;
         try {
@@ -38,20 +49,22 @@ export function createScanner({ video, status, torch, switchCamera, onCode, onSt
             if (codes[0]?.text) { stop(); await onCode(codes[0].text); return; }
           }
           timer = setTimeout(frame, 220);
-        } catch (error) { if (current === generation) { stop(); onState('error'); status.textContent = `识别失败：${error.message}。可选择相册或输入编号。`; } }
+        } catch { if (current === generation) { stop(); onState('error'); } }
       }
       frame();
-    } catch (error) {
+    } catch {
       if (current !== generation) return;
-      stop(); onState('error'); status.textContent = error.name === 'NotAllowedError' ? '未获得相机权限，可使用相册或输入编号' : '相机暂不可用，可重试、使用相册或输入编号';
+      stop(); onState('error');
+      if (status) status.textContent = '摄像头未能开启。若已阻止权限，请在浏览器的网站设置中允许摄像头，或使用相册和编号查询。';
     }
   }
   torch.addEventListener('click', async () => {
     const track = stream?.getVideoTracks()[0]; if (!track) return;
     try { await track.applyConstraints({ advanced: [{ torch: !lit }] }); lit = !lit; torch.setAttribute('aria-pressed', String(lit)); }
-    catch { status.textContent = '此摄像头无法开启手电筒'; }
+    catch { /* Some cameras expose torch controls that cannot be applied. */ }
   });
   switchCamera.addEventListener('click', () => {
+    if (!stream || !canStart()) return;
     if (cameras.length > 1) deviceId = cameras[(cameras.findIndex(device => device.deviceId === deviceId) + 1) % cameras.length].deviceId;
     else { deviceId = undefined; facing = facing === 'environment' ? 'user' : 'environment'; }
     start();

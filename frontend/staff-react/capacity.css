@@ -1,4 +1,18 @@
 .capacity-editor { max-width: 1320px; }
+.capacity-location-form { max-width: 720px; margin-top: 16px; }
+.capacity-location-form label { display: grid; gap: 8px; }
+.capacity-location-form textarea { width: 100%; resize: vertical; }
+.capacity-location-dates { display: flex; align-items: end; flex-wrap: wrap; gap: 16px; }
+.capacity-location-dates label { display: grid; gap: 8px; width: 180px; }
+.capacity-location-days { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; flex: 0 1 360px; }
+.field-app .capacity-location-days button { min-width: 0; padding-inline: 6px; font-size: 13px; white-space: nowrap; }
+.field-app .capacity-location-days button[aria-pressed=true] { background: var(--ink); color: white; border-color: var(--ink); }
+.capacity-location-conflict { border-block: 1px solid var(--line); padding-block: 16px; }
+.capacity-location-details { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 16px; overflow-wrap: anywhere; }
+.capacity-location-details summary { min-height: 44px; cursor: pointer; font-weight: 600; }
+.capacity-location-details ul { padding-left: 20px; }
+.capacity-location-details li { padding-block: 8px; }
+.capacity-location-details li span { display: block; color: var(--muted); }
 .capacity-context, .capacity-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
 .capacity-campus-switch { display: flex; flex-wrap: wrap; gap: 8px; }
 .field-app .capacity-campus-switch button[aria-pressed=true], .field-app .capacity-mobile-days button[aria-pressed=true], .field-app .capacity-actual-date button[aria-pressed=true] { background: var(--ink); color: white; border-color: var(--ink); }
@@ -61,6 +75,8 @@
 .capacity-mobile-days, .capacity-mobile-inputs { display: none; }
 .field-app .capacity-editor input[aria-invalid=true] { border-color: #b14e45; background: #fff8f6; }
 @media (max-width: 700px) {
+  .capacity-location-dates label, .capacity-location-days { width: 100%; flex-basis: 100%; }
+  .field-app .capacity-editor .workspace-section-nav button:last-child:nth-child(3) { grid-column: 1 / -1; }
   .capacity-editor .workspace-section-nav { display: flex; }
   .capacity-editor .workspace-section-nav button { flex: 1; }
   .capacity-context { align-items: start; }

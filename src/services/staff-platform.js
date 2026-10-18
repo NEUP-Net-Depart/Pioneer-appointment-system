@@ -1358,7 +1358,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     return {items:await repository.listAudit(query || {})};
   }
 
-  return { contextFor, requirePermission, scopedActor, memberList, memberDetail, updateMember, addMembership, endMembership, permissions, roles, createRole, updateRole, previewRole, bindMemberRoles,
+  return { contextFor, requirePermission, scopedActor, evaluate, memberList, memberDetail, updateMember, addMembership, endMembership, permissions, roles, createRole, updateRole, previewRole, bindMemberRoles,
     organization, importMembers, saveWorkProfile, deskSummary, workbench, createAttendanceEvent, issueAttendanceToken, checkIn, previewAttendance, attendanceList, attendanceOptions, correctAttendance, presence, rosterOptions, rosterTasks, rosterCandidates,collectionCommand,addParticipants,submitAvailability,reviseRoster,taskAvailability, createRosterTask, rosterRequirements, saveAvailability, rosterTaskState, generate, updateRoster, publish, rosterMine,processRosterAutomation,seriesCommand,availabilityPreferences,
     leave, leaves, leaveDetail, leaveDecision, leaveWithdraw, swapCandidates, swapPreview, swapDetail, swap, swaps, swapDecision, attendanceExport, audit,
     recordAudit: input => repository.audit(input) };

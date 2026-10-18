@@ -1,5 +1,6 @@
 import { initNavigation } from '/shared/navigation.js';
-import { useStaffSession } from '/shared/api.js';
+import { useStaffSession, apiJson } from '/shared/api.js';
+import { $, $$, showToast } from '/shared/utils.js';
 import { initAuth } from './auth.js';
 import { initActivation } from './activation.js';
 import { initStaff } from './staff.js';
@@ -10,28 +11,39 @@ import { initStaffHost } from './app-shell.js';
 import { initScan } from './scan.js';
 import { initWorkbench } from './workbench.js';
 import { staffViewAllowed } from '/shared/staff-access.js';
+import { initInputLimits } from '/shared/input-limits.js';
 
 // One session and navigation lifecycle for both DOM and React feature modules.
 export function initStaffApplication({ onSession, onView, onLogout }) {
   useStaffSession();
+  initInputLimits();
   const host = initStaffHost();
   const controllers = { staff: initStaff(), stats: initStats(), users: initUsers(), settings: initSettings(), scan: initScan() };
-  let role = '', activeView = 'staff', scanReady = false, currentUser = null;
+  let role = '', activeView = 'staff', scanReady = false, currentUser = null, loginGeneration = 0, scanEnabled = false, workbenchSettings = false;
   const platform = document.getElementById('staff-platform-view');
   const platformLinks = [...document.querySelectorAll('[data-platform-permission]')];
   const workbench = initWorkbench({
-    onSettings: () => navigate('settings'), onAdmin: () => navigate('staff'),
-    onBack: () => navigate('scan'), onOverlay: open => controllers.scan.activate(!open && activeView === 'scan')
+    onSettings: () => { workbenchSettings = true; navigate('settings'); $('#current-password').focus(); },
+    onAdmin: () => { workbenchSettings = false; navigate('staff'); },
+    onBack: () => { workbenchSettings = false; navigate('scan'); }, onOverlay: open => controllers.scan.activate(!open && activeView === 'scan')
   });
   const nativeSwitch = initNavigation(view => {
     activeView = view;
-    workbench.show(view === 'scan');
+    const personal = view === 'settings' && scanEnabled && (role === 'technician' || workbenchSettings);
+    workbench.show(view === 'scan' || personal, personal);
     controllers.scan.activate(view === 'scan' && !document.body.classList.contains('staff-workspace-enabled'));
     onView(view);
     if (view === 'scan' && !scanReady) {
       scanReady = true;
       controllers.scan.restore().then(() => controllers.scan.activate(activeView === 'scan'));
     } else refresh();
+  }, view => {
+    if (!role) return false;
+    if (currentUser?.staffWorkflowEnabled) return staffViewAllowed(currentUser, view);
+    if (view === 'scan') return scanEnabled;
+    if (view === 'settings') return true;
+    if (platformLinks.some(link => link.dataset.viewLink === view)) return true;
+    return ['admin', 'superadmin'].includes(role) || (view === 'staff' && !scanEnabled);
   });
   function refresh() {
     if (!role || document.hidden || document.body.classList.contains('staff-workspace-enabled')) return;
@@ -70,13 +82,29 @@ export function initStaffApplication({ onSession, onView, onLogout }) {
     nativeSwitch(link.dataset.viewLink);
   });
   if (!initActivation()) initAuth({
-    onLogin(nextRole) {
-      role = nextRole; scanReady = false;
+    async onLogin(nextRole, user) {
+      const current = ++loginGeneration;
+      role = nextRole; currentUser = user; scanReady = false; scanEnabled = false; workbenchSettings = false;
       Object.values(controllers).forEach(controller => controller.clear());
-      nativeSwitch('staff');
+      if (user.staffWorkflowEnabled) { navigate('workbench'); return; }
+      workbench.profile(user);
+      $$('.view').forEach(view => view.classList.remove('is-active'));
+      const account = sessionStorage.getItem('pioneerAccount');
+      try {
+        const { enabled } = await apiJson('/api/scan/config');
+        if (current !== loginGeneration || account !== sessionStorage.getItem('pioneerAccount')) return;
+        scanEnabled = enabled;
+        $('[data-view-link="scan"]').hidden = !enabled;
+        $('[data-view-link="staff"]').hidden = enabled && role === 'technician';
+        document.body.classList.toggle('scan-technician', enabled && role === 'technician');
+        const unfinished = enabled && await controllers.scan.restore(); scanReady = enabled;
+        if (current !== loginGeneration || account !== sessionStorage.getItem('pioneerAccount')) return;
+        nativeSwitch(enabled && (role === 'technician' || unfinished) ? 'scan' : 'staff');
+      } catch (error) { showToast('工作台配置读取失败，请刷新重试：' + error.message); }
     },
     onLogout() {
-      role = ''; scanReady = false; currentUser = null; workbench.clear();
+      loginGeneration++; role = ''; scanReady = false; currentUser = null; scanEnabled = false; workbenchSettings = false; workbench.clear();
+      document.body.classList.remove('scan-technician');
       Object.values(controllers).forEach(controller => controller.clear());
       for (const link of platformLinks) link.hidden = true;
       onLogout();

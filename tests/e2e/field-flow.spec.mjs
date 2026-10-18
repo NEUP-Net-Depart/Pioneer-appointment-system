@@ -136,9 +136,18 @@ for (const capability of [
     await expect(page.locator(capability.selector)).toBeVisible();
     const staleToken = await page.evaluate(() => sessionStorage.getItem('pioneerToken'));
     expect((await page.request.get(capability.endpoint, { headers: { Authorization: `Bearer ${staleToken}` } })).status()).toBe(200);
+    if (capability.code === 'settings.manage') {
+      const locations=await api(request,'/api/service-locations',staleToken);
+      expect(locations.campuses).toEqual(['南湖']);
+      expect(locations.items.every(item=>item.campus==='南湖')).toBe(true);
+      const headers={Authorization:`Bearer ${staleToken}`};
+      expect((await request.get('/api/service-locations/history?campus=浑南&date=2026-10-15',{headers})).status()).toBe(403);
+      expect((await request.patch('/api/service-locations',{headers,data:{campus:'浑南',date:'2026-10-15',location:'禁止跨校区修改',revision:0}})).status()).toBe(403);
+    }
     await api(request, `/api/roles/${role.id}`, admin.token, { revision: role.revision, grants: [] }, 'PATCH');
     // Revocation is enforced by the server immediately, before the shell's next refresh.
     expect((await page.request.get(capability.endpoint, { headers: { Authorization: `Bearer ${staleToken}` } })).status()).toBe(401);
+    if (capability.code === 'settings.manage') expect((await request.get('/api/service-locations',{headers:{Authorization:`Bearer ${staleToken}`}})).status()).toBe(401);
     const staleWrite = await page.request.patch('/api/members/member-20261002', {
       headers: { Authorization: `Bearer ${staleToken}` }, data: { name: '禁止撤权后修改', revision: 0 }
     });
@@ -153,6 +162,7 @@ for (const capability of [
     await expect(page.locator(capability.selector)).toHaveCount(0);
     const currentToken = await page.evaluate(() => sessionStorage.getItem('pioneerToken'));
     expect((await page.request.get(capability.endpoint, { headers: { Authorization: `Bearer ${currentToken}` } })).status()).toBe(403);
+    if (capability.code === 'settings.manage') expect((await request.get('/api/service-locations',{headers:{Authorization:`Bearer ${currentToken}`}})).status()).toBe(403);
   } finally {
     const latest = await api(request, '/api/members/member-20261003', admin.token);
     await api(request, '/api/members/member-20261003/roles', admin.token, { revision: latest.member.revision, bindings: member.bindings }, 'PUT');
@@ -958,6 +968,46 @@ test('capacity workspace preserves drafts, reconciles conflicts and supports mob
     const current = (await api(request, '/api/slot-capacities', token)).items;
     const updates = current.filter(item => original.find(old => old.campus === item.campus && old.weekday === item.weekday && old.timeSlot === item.timeSlot)?.capacity !== item.capacity).map(item => ({ ...item, capacity: original.find(old => old.campus === item.campus && old.weekday === item.weekday && old.timeSlot === item.timeSlot).capacity }));
     if (updates.length) await api(request, '/api/slot-capacities', token, { items: updates }, 'PATCH');
+  }
+});
+
+test('dated service locations retain drafts, reconcile concurrent changes and update public booking information', async ({ page, request }) => {
+  await login(page,'root001');
+  await page.locator('.field-sidebar').getByRole('button',{name:'预约配置',exact:true}).click();
+  await page.getByRole('button',{name:'维修地点',exact:true}).click();
+  const editor=page.getByRole('region',{name:'维修地点设置'}),input=editor.getByLabel('具体维修地点',{exact:true});
+  await editor.getByLabel('维修日期',{exact:true}).fill('2026-10-15');
+  await expect(input).toBeEnabled();
+  const token=await page.evaluate(()=>sessionStorage.getItem('pioneerToken'));
+  const endpoint='/api/service-locations?dateFrom=2026-10-15&dateTo=2026-10-15';
+  const original=(await api(request,endpoint,token)).items.find(item=>item.campus==='南湖');
+  try {
+    await input.fill('图书馆一层服务区');
+    await page.getByRole('button',{name:'每周模板',exact:true}).click();
+    await page.getByRole('button',{name:'维修地点',exact:true}).click();
+    await expect(input).toHaveValue('图书馆一层服务区');
+    await api(request,'/api/service-locations',token,{...original,location:'他人调整的地点'},'PATCH');
+    await editor.getByRole('button',{name:'读取最新地点',exact:true}).click();
+    await expect(editor.locator('.capacity-location-conflict')).toContainText('他人调整的地点');
+    await expect(input).toHaveValue('图书馆一层服务区');
+    await expect(editor.getByRole('button',{name:'检查并保存地点'})).toBeDisabled();
+    await editor.getByRole('button',{name:'保留我的修改',exact:true}).click();
+    for (const width of [320,390,768,1440]) {
+      await page.setViewportSize({width,height:900});
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+      await page.screenshot({path:`output/field-workflow/service-locations-${width}.png`,fullPage:true});
+    }
+    await editor.getByRole('button',{name:'检查并保存地点'}).click();
+    await page.getByRole('dialog',{name:'确认修改维修地点'}).getByRole('button',{name:'确认保存地点'}).click();
+    await expect(editor.getByRole('status').filter({hasText:'已保存。'})).toBeVisible();
+    const publicInfo=await api(request,'/api/booking-availability?campus=南湖&date=2026-10-15','');
+    expect(publicInfo.location).toBe('图书馆一层服务区');
+    await expect(editor.locator('.capacity-location-conflict')).toHaveCount(0);
+    const denied=await api(request,'/api/auth/login','',{account:'20261003',password:'StaffTest!2026'});
+    expect((await request.get(endpoint,{headers:{Authorization:`Bearer ${denied.token}`}})).status()).toBe(403);
+  } finally {
+    const latest=(await api(request,endpoint,token)).items.find(item=>item.campus==='南湖');
+    await api(request,'/api/service-locations',token,{...latest,location:original.location},'PATCH');
   }
 });
 

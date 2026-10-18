@@ -293,11 +293,13 @@ export function Repair({
                 {item.name} · {item.studentId}
               </p>
             )}
-            {item.social && (
+            {(item.contactValue || item.social || item.phone) && (
               <p>
-                联系方式：{item.social} {item.phone}
+                联系方式：{item.contactValue ? `${item.contactType === 'qq' ? 'QQ' : '微信'}：${item.contactValue}` : [item.social, item.phone].filter(Boolean).join(' · ')}
               </p>
             )}
+            {item.email && <p>邮箱：{item.email}</p>}
+            {item.liquidMetal && <p className="field-muted">客户填写液金情况：{item.liquidMetal}{item.dellG15 ? ` · Dell G15：${item.dellG15}` : ''}；请现场核实。</p>}
           </div>
           {item.canStart && (
             <form onSubmit={start} className="field-form">

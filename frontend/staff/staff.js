@@ -1,16 +1,18 @@
 import {initIntake} from './intake.js';
 import {initOverview} from './overview.js';
 import {initColumnMenus} from './column-menus.js';
+import {initAssigneePicker} from './assignee-picker.js';
 import {drawSignature} from '/shared/signature.js';
 import {attachmentSize,attachmentUrl} from '/shared/attachments.js';
-import {$,$$,showToast,escapeHtml} from '/shared/utils.js';
+import {$,$$,showToast,escapeHtml,assigneeLabel} from '/shared/utils.js';
 import {apiFetch,apiJson} from '/shared/api.js';
-import {formatDate,formatInstant} from '/shared/time.js';
-import {statusLabels,statusClass,outcomeLabels,repairOutcomes,roleLevel} from '/shared/constants.js';
+import {formatDate,formatInstant,dateKey,timeLabel} from '/shared/time.js';
+import {statusLabels,statusClass,outcomeLabels,repairOutcomes,roleLevel,endTimeLabels,expirationMessage} from '/shared/constants.js';
 export function initStaff(){
   let activeFilter='all',generation=0,searchTimer,detailItem;
   let appointments=[],counts={},filteredCounts={};
   const menus=initColumnMenus(()=>refreshList());
+  const assigneePicker=initAssigneePicker();
   const overview=initOverview(selection=>{
     $('#staff-campus-filter').value=selection.campus;$('#staff-date-filter').value=selection.date;$('#staff-slot-filter').value=selection.timeSlot;
     $('#staff-date-filter').dataset.from=selection.dateFrom || '';$('#staff-date-filter').dataset.to=selection.dateTo || '';
@@ -53,6 +55,7 @@ export function initStaff(){
     link.href=url;link.download='维修附件';link.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
   }
   function close(){
+    assigneePicker.reset();
     detailItem=undefined;$('#detail-modal').hidden=true;$('#recovered-link').value='';$('#recovery-result').hidden=true;
     $('#recovery-verified').checked=false;$('#recovery-reason').value='';
   }
@@ -62,29 +65,33 @@ export function initStaff(){
     try{files=(await apiJson(`/api/appointments/${encodeURIComponent(item.id)}/attachments`)).items;}
     catch(error){showToast(error.message);return;}
     if(detailItem!==item)return;
-    $('#detail-summary').innerHTML=`<strong>${escapeHtml(item.name)} · 预约编号 ${escapeHtml(item.id)}</strong>${item.repairNumber ? `<span>历史维修编号：${escapeHtml(item.repairNumber)}</span>` : ''}<span>${escapeHtml(item.studentId)} · ${escapeHtml(item.campus)} · ${formatDate(item.date)} ${escapeHtml(item.timeSlot)}</span><span>${escapeHtml(item.deviceType)} · ${escapeHtml(item.brand)} ${escapeHtml(item.deviceModel)} · 保修 ${escapeHtml(item.warranty)}</span><span>QQ / 微信：${escapeHtml(item.social)} · 手机：${escapeHtml(item.phone || '未填写')}</span><p>${escapeHtml(item.issue || '未填写故障描述')}</p>${item.note ? `<p>备注：${escapeHtml(item.note)}</p>` : ''}<div class="detail-attachments">${files.map(file=>`<button class="attachment-link" data-attachment-id="${file.id}" type="button">${escapeHtml(file.filename)} <small>${attachmentSize(file.size)}</small></button>`).join('')}</div>`;
+    $('#detail-summary').innerHTML=`<strong>${escapeHtml(item.name)} · 预约编号 ${escapeHtml(item.id)}</strong>${item.repairNumber ? `<span>历史维修编号：${escapeHtml(item.repairNumber)}</span>` : ''}<span>${escapeHtml(item.studentId)} · ${escapeHtml(item.campus)} · ${formatDate(item.date)} ${escapeHtml(item.timeSlot)}</span><span>${escapeHtml(item.deviceType)} · ${escapeHtml(item.brand)} ${escapeHtml(item.deviceModel)} · 保修 ${escapeHtml(item.warranty)}</span>${item.liquidMetal ? `<span>液金散热：${escapeHtml(item.liquidMetal)}${item.dellG15 ? ' · Dell G15：'+escapeHtml(item.dellG15) : ''}</span>` : ''}<span>QQ / 微信：${escapeHtml(item.social)} · 手机：${escapeHtml(item.phone || '未填写')}</span>${item.email ? `<span>联系邮箱：${escapeHtml(item.email)}</span>` : ''}<p>${escapeHtml(item.issue || '未填写故障描述')}</p>${item.note ? `<p>备注：${escapeHtml(item.note)}</p>` : ''}<div class="detail-attachments">${files.map(file=>`<button class="attachment-link" data-attachment-id="${file.id}" type="button">${escapeHtml(file.filename)} <small>${attachmentSize(file.size)}</small></button>`).join('')}</div>`;
     $$('[data-attachment-id]',$('#detail-summary')).forEach(button=>button.addEventListener('click',()=>openAttachment(item,button.dataset.attachmentId).catch(error=>showToast(error.message))));
     $('#detail-signature').hidden=!item.signature;
     if(item.signature)drawSignature($('#detail-signature'),JSON.parse(item.signature));
     $('#detail-state').textContent=statusLabels[item.status]+(item.outcome ? ` · ${outcomeLabels[item.outcome]}` : '');
-    $('#detail-assigned').value=item.assignedTo;$('#detail-repair-note').value=item.repairNote;
+    $('#detail-assigned').value=assigneeLabel(item.assignedTo,item.assignedToName);$('#detail-repair-note').value=item.repairNote;
     $('#detail-repair-note').readOnly=item.status!=='in_progress' && !admin();
-    $('#detail-times').textContent=`开始：${formatInstant(item.startedAt)} · 结束：${formatInstant(item.completedAt)}`;
+    $('#detail-times').textContent=`开始：${formatInstant(item.startedAt)} · ${endTimeLabels[item.status] || '结束时间'}：${formatInstant(item.completedAt)} · 有效截止：${formatInstant(item.expiresAt)}`;
+    $('#detail-expiration-message').hidden=item.status!=='expired';$('#detail-expiration-message').textContent=expirationMessage;
     $('#detail-outcome').innerHTML='<option value="">请选择维修结果</option>'+repairOutcomes.map(value=>`<option value="${value}" ${item.outcome===value ? 'selected' : ''}>${outcomeLabels[value]}</option>`).join('');
     $('#repair-result-field').hidden=item.status!=='in_progress';
     $('#save-detail').hidden=item.status!=='in_progress';$('#complete-detail').hidden=item.status!=='in_progress';
     $('#start-detail').hidden=item.status!=='booked';
     $('#correction-panel').hidden=!admin();$('#correction-panel').open=false;
     $('#correction-status').innerHTML=Object.entries(statusLabels).map(([value,label])=>`<option value="${value}" ${value===item.status ? 'selected' : ''}>${label}</option>`).join('');
-    $('#correction-assigned').value=item.assignedTo;
-    $('#correction-outcome').innerHTML='<option value="">保留现有结果</option>'+Object.entries(outcomeLabels).filter(([value])=>value!=='legacy_unknown').map(([value,label])=>`<option value="${value}" ${value===item.outcome ? 'selected' : ''}>${label}</option>`).join('');
+    assigneePicker.reset(admin() ? item : undefined);
+    $('#correction-outcome').innerHTML='<option value="">保留现有结果</option>'+repairOutcomes.map(value=>`<option value="${value}" ${value===item.outcome ? 'selected' : ''}>${outcomeLabels[value]}</option>`).join('');
+    $('#correction-reason').value='';
+    $('#correction-expires').value=item.expiresAt ? `${dateKey(new Date(item.expiresAt))}T${timeLabel(new Date(item.expiresAt))}` : '';
+    updateCorrectionFields();
     $('#recovery-panel').hidden=!admin();$('#recovery-result').hidden=true;$('#recovered-link').value='';
     $('#recovery-verified').checked=false;$('#recovery-reason').value='';
     $('#detail-modal').hidden=false;$('#close-detail').focus();
   }
   function render(){
-    for(const [suffix,key] of [['total','all'],['booked','booked'],['progress','in_progress'],['done','completed']])$('#metric-'+suffix).textContent=counts[key] || 0;
-    for(const [suffix,key] of [['all','all'],['booked','booked'],['progress','in_progress'],['done','completed']])$('#count-'+suffix).textContent=filteredCounts[key] || 0;
+    for(const [suffix,key] of [['total','all'],['booked','booked'],['progress','in_progress'],['done','completed'],['cancelled','cancelled'],['expired','expired']])$('#metric-'+suffix).textContent=counts[key] || 0;
+    for(const [suffix,key] of [['all','all'],['booked','booked'],['progress','in_progress'],['done','completed'],['cancelled','cancelled'],['expired','expired']])$('#count-'+suffix).textContent=filteredCounts[key] || 0;
     $('#count-pending').textContent=(filteredCounts.booked || 0)+(filteredCounts.in_progress || 0);
     $('#staff-list-summary').textContent=`当前 ${appointments.length} 条 · 状态数量按当前筛选统计`;
     $('#appointments-table').innerHTML=appointments.map(item=>{
@@ -114,11 +121,21 @@ export function initStaff(){
     finally{button.disabled=false;}
   });
   $('#start-detail').addEventListener('click',()=>{ if(detailItem)intake.open(detailItem); });
+  function updateCorrectionFields(){
+    $('#correction-result-field').hidden=$('#correction-status').value!=='completed';
+    $('#correction-expiry-field').hidden=$('#correction-status').value!=='booked';
+  }
+  $('#correction-status').addEventListener('change',updateCorrectionFields);
   $('#apply-correction').addEventListener('click',async()=>{
-    if(!detailItem || !window.confirm('确认修正此记录？撤回签到会清空人员、时间和维修说明。'))return;
+    if(!detailItem)return;
+    const status=$('#correction-status').value,correctionReason=$('#correction-reason').value.trim();
+    if(correctionReason.length<8){showToast('请填写至少 8 字的纠错原因');return;}
+    const deadline=$('#correction-expires').value;
+    if(status==='booked' && (!deadline || !Number.isFinite(Date.parse(`${deadline}:00+08:00`)))){showToast('请填写新的有效截止时间');return;}
+    if(!window.confirm('确认修正此记录？恢复为已预约会清空原签到信息，并要求重新签到。'))return;
     const button=$('#apply-correction');button.disabled=true;
     const outcome=$('#correction-outcome').value;
-    try{await patch(detailItem,{action:'correct',status:$('#correction-status').value,assignedTo:$('#correction-assigned').value.trim(),repairNote:$('#detail-repair-note').value.trim(),...(outcome ? {outcome} : {})});close();showToast('记录已修正');}
+    try{await patch(detailItem,{action:'correct',status,correctionReason,assignedTo:assigneePicker.value(),repairNote:$('#detail-repair-note').value.trim(),...(status==='completed' && outcome ? {outcome} : {}),...(status==='booked' ? {expiresAt:`${deadline}:00+08:00`} : {})});close();showToast('记录已修正');}
     catch(error){showToast(error.message);}
     finally{button.disabled=false;}
   });

@@ -20,11 +20,12 @@ try {
   assert.ok(schema.success && keys.success && capacities.success);
   assert.deepEqual(keys.results, [], 'D1 foreign key violations');
   const names = new Set(schema.results.map(row => row.name));
-  for (const name of ['staff_accounts','staff_campus_grants','staff_whitelist','whitelist_campus_grants','activation_requests','credential_recoveries','appointments','appointment_attachments','rate_limits','storage_quota','attachment_storage','attachment_storage_reserve','attachment_storage_release','idx_attachment_expiry','idx_storage_expiry','idx_storage_pending','appointment_capacity_insert','appointment_capacity_update','idx_active_student_slot','idx_active_queue']) assert.ok(names.has(name), `Missing D1 schema object: ${name}`);
+  for (const name of ['staff_accounts','staff_campus_grants','staff_whitelist','whitelist_campus_grants','activation_requests','credential_recoveries','appointments','appointment_attachments','rate_limits','storage_quota','attachment_storage','attachment_storage_reserve','attachment_storage_release','idx_attachment_expiry','idx_storage_expiry','idx_storage_pending','appointment_capacity_insert','appointment_capacity_update','idx_online_student_day','appointment_student_day_insert','appointment_student_day_update','service_locations','service_location_changes','booking_requests','appointment_location_insert','appointment_new_slot_deadline','idx_pending_student_photos','idx_active_queue']) assert.ok(names.has(name), `Missing D1 schema object: ${name}`);
   assert.ok(names.has('activation_approve'),'Missing atomic activation approval trigger');
   assert.ok(names.has('idx_one_pending_activation') && names.has('idx_one_approved_activation'),'Missing activation uniqueness constraints');
   assert.ok(names.has('idx_repair_number'), 'Missing repair number uniqueness index');
-  for (const name of ['active_repairs','appointment_active_insert','appointment_active_update','appointment_active_delete','idx_onsite_request','idx_one_pending_onsite_registration','appointment_overlap_insert','appointment_overlap_update']) assert.ok(names.has(name), `Missing scan workbench constraint: ${name}`);
+  for (const name of ['active_repairs','appointment_active_insert','appointment_active_update','appointment_active_delete','idx_onsite_request','idx_one_pending_onsite_registration']) assert.ok(names.has(name), `Missing scan workbench constraint: ${name}`);
+  for (const name of ['appointment_overlap_insert','appointment_overlap_update','idx_active_student_slot']) assert.ok(!names.has(name), `Retired same-slot rule still exists: ${name}`);
   assert.ok(names.has('idx_booked_expiry'),'Missing booked expiry index');
   assert.ok(names.has('appointment_corrections'), 'Missing five-state correction history');
   assert.ok(names.has('slot_capacities') && names.has('weekday_slot_capacities') && names.has('booking_day_slots'), 'Missing campus/slot capacity settings');

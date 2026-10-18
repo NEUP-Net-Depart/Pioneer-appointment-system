@@ -24,10 +24,13 @@ import { staffPlatformService } from './services/staff-platform.js';
 import { requestTrace } from './platform/observability.js';
 import { scanService } from './services/scan.js';
 import { fieldWorkflow } from './services/field-workflow.js';
+import { serviceLocationRepository } from './db/service-locations.js';
+import { serviceLocationService } from './services/service-locations.js';
 
 export function createContext(request, env) {
   // Request-scoped D1 session, explicitly injected into D1 repositories. No startup I/O.
   const db = env.DB.withSession('first-primary');
+  const clock = () => new Date();
   const users = userRepository(db), appointments = appointmentRepository(db, { workflowSchema: env.STAFF_WORKFLOW_ENABLED === 'true' });
   const staffPlatform = staffPlatformRepository(db);
   const platform = composeStaffPlatform({ repository: staffPlatform, repairs: appointments });
@@ -38,17 +41,19 @@ export function createContext(request, env) {
   const services = {
     auth: authService(users, env.JWT_SECRET), users: userService(users, staffPlatformServiceInstance),
     activation: activationService(activationRepository(db),users),
-    appointments: appointmentService(appointments, users, env.PII_ENCRYPTION_KEY, undefined, staffPlatformServiceInstance),
+    appointments: appointmentService(appointments, users, env.PII_ENCRYPTION_KEY, clock, staffPlatformServiceInstance),
     attachments: attachmentService(appointments, attachmentRepository(db), env.ATTACHMENTS, storageLimit(env), field),
-    queue: queueService(appointments, queueRepository(db)), stats: statsService(statsRepository(db), appointments, undefined, staffPlatformServiceInstance),
-    export: exportService(appointments, env.PII_ENCRYPTION_KEY, undefined, field),
+    queue: queueService(appointments, queueRepository(db), clock), stats: statsService(statsRepository(db), appointments, clock, staffPlatformServiceInstance),
+    export: exportService(appointments, env.PII_ENCRYPTION_KEY, clock, field),
     limits: rateLimitService(rateLimitRepository(db), env.JWT_SECRET),
     slotCapacities: slotCapacityService(slotCapacityRepository(db, { workflowSchema: env.STAFF_WORKFLOW_ENABLED === 'true' }), staffPlatformServiceInstance),
     staffPlatform: staffPlatformServiceInstance,
     field,
     async health() { await Promise.all([users.health(), env.ATTACHMENTS.list({ limit: 1 })]); return { ok: true, service: 'pioneer-repair-api', database: 'd1', attachments: 'r2' }; }
   };
-  services.scan = scanService(appointments, services.appointments, env.PII_ENCRYPTION_KEY, env.JWT_SECRET, env.SCAN_WORKBENCH_ENABLED !== 'false', undefined, field);
+  const scanSecret = field.enabled ? env.JWT_SECRET : env.SCAN_QR_SECRET || env.PII_ENCRYPTION_KEY;
+  services.scan = scanService(appointments, services.appointments, env.PII_ENCRYPTION_KEY, scanSecret, field.enabled || env.SCAN_WORKBENCH_ENABLED === 'true', clock, field);
+  services.serviceLocations = serviceLocationService(serviceLocationRepository(db, { workflowSchema: field.enabled }),appointments,services.queue,env.PII_ENCRYPTION_KEY,clock,staffPlatformServiceInstance);
   let authentication;
   const authenticate = () => authentication ||= services.auth.authenticate(request.headers.get('authorization'));
   const url = new URL(request.url);

@@ -13,7 +13,7 @@
   <p>实时调整当前预览，保留已填内容和有效选择。名额均为模拟数据，预约提交已禁用。</p>
   <div class="panel controls">
     <label>模拟今天<select id="days"><option value="4" selected>周一 · 可选周一至周四</option><option value="3">周二 · 可选周二至周四</option><option value="2">周三 · 可选周三、周四</option><option value="1">周四 · 仅可选周四</option><option value="friday">周五 · 仅可选下周一</option><option value="saturday">周六 · 可选下周一、周二</option><option value="sunday">周日 · 可选下周一至周三</option></select></label>
-    <label>时段数量<select id="slots"><option value="2">2 个 · 当前配置</option><option value="4">4 个 · 拆分示例</option></select></label>
+    <label>时段数量<select id="slots"><option value="4" selected>4 个 · 到场窗口</option></select></label>
     <button id="choose" type="button" disabled>展开第一个日期</button><span id="update-status" role="status">正在读取预览…</span>
   </div>
   <div class="panel controls">
@@ -28,13 +28,13 @@
   <div id="metrics" role="status"></div><div class="stage"><iframe id="preview" title="预约页面设备预览"></iframe></div>
 </main>
 <script type="module">
-import { bookingDates } from '/scenario/4/2/shared/booking-slots.js';
+import { bookingDates } from '/scenario/4/4/shared/booking-slots.js';
 const $=selector=>document.querySelector(selector);
 const frame=$('#preview'),days=$('#days'),slots=$('#slots'),device=$('#device'),width=$('#width'),height=$('#height'),metrics=$('#metrics'),campus=$('#capacity-campus'),date=$('#capacity-date'),rows=$('#capacity-rows');
 const scenarioInstant=value=>'2026-10-'+({friday:16,saturday:17,sunday:18}[value]||16-Number(value))+'T12:00:00+08:00';
-const config={days:4,instant:scenarioInstant('4'),slotCount:2,overrides:{}};
+const config={days:4,instant:scenarioInstant('4'),slotCount:4,overrides:{}};
 let observer,ready=false,revision=0;
-const timeSlots=()=>config.slotCount===4?['19:00–19:30','19:30–20:00','20:00–20:30','20:30–21:00']:['19:00–20:00','20:00–21:00'];
+const timeSlots=()=>['19:00–19:30','19:30–20:00','20:00–20:30','20:30–21:00'];
 const key=(day,slot)=>JSON.stringify([campus.value,day,slot]);
 function counts(slot,index){return config.overrides[key(date.value,slot)]||config.overrides[key('*',slot)]||{capacity:10,remaining:10-index-(campus.value==='浑南'?3:1)};}
 function measure(){const picker=frame.contentDocument?.querySelector('#booking-picker');if(!picker)return;const rect=picker.getBoundingClientRect();metrics.textContent='容器高度 '+Math.round(rect.height)+' px / 屏幕高度 '+frame.height+' px · 容器顶部 '+Math.round(rect.top)+' px · '+(rect.top>=-1&&rect.bottom<=Number(frame.height)?'整个容器在一屏内':'可手动滚动查看');}
@@ -50,5 +50,5 @@ for(const control of [campus,date])control.addEventListener('change',renderCount
 $('#reset-capacity').addEventListener('click',()=>{for(const slot of timeSlots())delete config.overrides[key(date.value,slot)];renderCounts();void update();});
 $('#choose').addEventListener('click',()=>frame.contentDocument?.querySelector('#booking-days button:not(:disabled)')?.click());
 frame.addEventListener('load',async()=>{await frame.contentWindow.__bookingPreviewReady;ready=true;$('#choose').disabled=false;observer=new MutationObserver(measure);observer.observe(frame.contentDocument.querySelector('#booking-picker'),{subtree:true,childList:true,attributes:true,characterData:true});frame.contentWindow.addEventListener('scroll',measure);frame.contentWindow.addEventListener('resize',measure);await update();});
-renderDates();renderCounts();resize();frame.src='/scenario/4/2/';
+renderDates();renderCounts();resize();frame.src='/scenario/4/4/';
 </script></body></html>

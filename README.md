@@ -1,8 +1,8 @@
 # 先锋硬件部维修预约系统
 
-面向南湖、浑南校区的免费维修预约系统，支持预约、排队、接单、维修记录、统计和附件。学生免注册；工作人员使用账号密码登录。
+面向南湖、浑南校区的免费维修预约系统，提供学生预约与查询、工作人员扫码签到与维修记录、管理员账号及预约管理。
 
-项目由一个 Cloudflare Pages 项目组成，包含用户端 `/`、工作人员端 `/staff/` 和同源 `/api/*`。Pages Functions 执行业务逻辑，D1 保存业务数据，私有 R2 保存附件。项目没有独立的 Cloudflare Worker；应用使用自身的 JWT/RBAC 鉴权，不依赖 Cloudflare Access。
+原生 HTML/CSS/JavaScript 前端，Cloudflare Pages Functions API，D1 数据库与私有 R2 附件存储。入口为学生端 `/`、工作人员端 `/staff/` 和同源 `/api/*`。
 
 GitHub Actions 在所有分支推送和 PR 上运行验证：`main` 发布 Production，`dev` 发布共享 Preview，`next/staff-platform` 发布独立 Staff Staging；`feat/staff-*` 只进行隔离验证。其他分支继续发布各自的共享 Preview 地址。只有 `dev` 自动迁移共享测试库；Production 与 Staff Staging 均在目标 D1 迁移成功后发布。
 
@@ -49,35 +49,23 @@ flowchart LR
 
 ```bash
 npm ci
-npx playwright install chromium
+npx playwright install chromium webkit
 npm run setup:local
 npm run dev
 ```
 
-打开 [用户端](http://127.0.0.1:8788/) 或 [工作人员端](http://127.0.0.1:8788/staff/)，健康检查为 `/api/health`。`setup:local` 会生成随机 `.dev.vars`、应用初始迁移并初始化 `root001`、`root002`；密码保存在该文件中，不写入日志或 Git。
+访问 [学生端](http://127.0.0.1:8788/) 或 [工作人员端](http://127.0.0.1:8788/staff/)。本地配置和管理员密码在 `.dev.vars`，数据在 `.wrangler/`；初始化不覆盖已有密码。
 
-`.dev.vars`、`.wrangler/`、`dist/` 和测试输出均不提交。停止本地服务不会影响任何远程资源。
-
-预约布局模拟：运行 `npm run preview:booking-layout`，打开 `http://127.0.0.1:8790/`，可调整日期、时段、屏幕尺寸和名额；使用模拟数据并禁用提交，不进入正式构建。回归检查运行 `npm run test:booking-layout`。
-
-## 代码结构
-
-| 位置 | 职责 |
+| 命令 | 用途 |
 |---|---|
-| [frontend/user/](frontend/user/) | 学生预约、查询、取消和附件 |
-| [frontend/staff/](frontend/staff/) | 工作人员登录、预约处理、激活和账号管理 |
-| [shared/](shared/) | 公共 API、状态、时间、附件和样式 |
-| [functions/api/](functions/api/) | Pages Functions API 入口 |
-| [src/routes/](src/routes/) | HTTP 路由适配 |
-| [src/services/](src/services/) | 业务、权限和事务编排 |
-| [src/db/](src/db/) | D1 仓库与 SQL |
-| [src/lib/](src/lib/) | JWT、密码、加密和校验 |
-| [migrations/](migrations/) | D1 schema 与迁移 |
-| [scripts/](scripts/) | 构建、测试、部署和维护命令 |
+| `npm run verify` | 代码、架构、单元/集成、迁移与浏览器检查 |
+| `npm run preview:local` | 使用独立本地数据库和附件存储的预览 |
+| `npm run preview:booking-layout` | 8790 端口布局预览，模拟数据、禁用提交 |
+| `npm run test:booking-layout` | 预约布局回归 |
 
-构建产物只包含静态资源；Functions 随 Pages 一起发布。数据库迁移由显式命令执行，运行时不会自动迁移或初始化账号。
+页面位于 `frontend/`，公共配置与校验位于 `shared/`；API 按 `functions/api/` → `src/routes/` → `src/services/` → `src/db/` 分层。
 
-## 常用检查
+## 文档
 
 ```bash
 npm run verify

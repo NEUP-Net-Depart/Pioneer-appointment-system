@@ -92,6 +92,14 @@
     {
       "name": "0022_roster_collection_workflow.sql",
       "sha256": "9e5993a896f65d2c2443b3704b5a30e1f4a224bb6313c20fab1a0bc688c0e431"
+    },
+    {
+      "name": "0010_student_booking.sql",
+      "sha256": "f126b683cce432be3394aac64f1ed094e2ab2fe32f0e2ba9e83db151b32fc64b"
+    },
+    {
+      "name": "0011_historical_booking_dates.sql",
+      "sha256": "72685533850d4dc3d74fa42c1a66b9f6ddb6c04748537e3e048a0d3795c5c6d4"
     }
   ],
   "modules": [
@@ -263,6 +271,14 @@
     {
       "name": "0020_roster_collection_workflow.sql",
       "sha256": "9e5993a896f65d2c2443b3704b5a30e1f4a224bb6313c20fab1a0bc688c0e431"
+    },
+    {
+      "name": "0021_student_booking.sql",
+      "sha256": "f126b683cce432be3394aac64f1ed094e2ab2fe32f0e2ba9e83db151b32fc64b"
+    },
+    {
+      "name": "0022_historical_booking_dates.sql",
+      "sha256": "72685533850d4dc3d74fa42c1a66b9f6ddb6c04748537e3e048a0d3795c5c6d4"
     }
   ],
   "staffMigrationsDirectory": "database/staff-migrations"

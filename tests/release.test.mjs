@@ -16,6 +16,14 @@ const bindings=(id,bucket)=>({d1_databases:[{binding:'DB',database_name:bucket,d
 const cfg=()=>({name:'existing-pages',...bindings('11111111-1111-4111-8111-111111111111','production-private'),env:{preview:bindings('22222222-2222-4222-8222-222222222222','preview-private')}});
 
 const ciEnv=(event,branch)=>({GITHUB_ACTIONS:'true',GITHUB_EVENT_NAME:event,GITHUB_REF:`refs/heads/${branch}`,CLOUDFLARE_ACCOUNT_ID:'test-account',CLOUDFLARE_API_TOKEN:'test-token',SITE_URL:'https://example.test'});
+
+test('every workflow npm command resolves to an available package script',async()=>{
+  const {scripts}=JSON.parse(await readFile('package.json','utf8'));
+  for(const file of readdirSync('.github/workflows').filter(name=>/\.ya?ml$/.test(name))){
+    const source=await readFile(join('.github/workflows',file),'utf8');
+    for(const match of source.matchAll(/\bnpm run ([\w:-]+)/g))assert.ok(Object.hasOwn(scripts,match[1]),`${file} calls missing npm script ${match[1]}`);
+  }
+});
 test('CI releases all repository branches, with production restricted to main pushes',()=>{
   assert.equal(ciReleaseTarget(ciEnv('push','main')),'production');
   for(const branch of ['dev','feat/nfc-checkin','fix/booking-status','experiment/nested/change']){
@@ -34,6 +42,10 @@ test('Pages URLs use actual branch aliases and retain the production site origin
     assert.equal(ciReleasePlan({...ciEnv('push',branch),SITE_URL:'https://dev.example.test'}, {name:'pioneer-appointment-system'}).url,expected);
     assert.equal(ciReleasePlan({...ciEnv('push',branch),SITE_URL:''},{name:'pioneer-appointment-system'}).url,expected);
   }
+  assert.equal(
+    pagesSiteUrl('pioneer-appointment-system','feat/photo-compatibility-and-compresssion'),
+    'https://feat-photo-compatibility-and.pioneer-appointment-system.pages.dev',
+  );
   assert.equal(pagesSiteUrl('pioneer-appointment-system','main'),'https://pioneer-appointment-system.pages.dev');
   assert.equal(ciReleasePlan(ciEnv('push','main'),cfg()).url,'https://example.test');
   for(const url of ['http://example.test','https://user:pass@example.test','https://example.test/path','https://example.test/?branch=dev','https://example.test/#dev'])assert.throws(()=>ciReleasePlan({...ciEnv('push','main'),SITE_URL:url},cfg()),/HTTPS site origin/);

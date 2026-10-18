@@ -32,7 +32,7 @@ export function AccountSettings({ user, section, onNavigate }: { user: { name: s
   // Passwords are never retained in an invisible workspace or a saved draft.
   useEffect(() => { if (!active || !security) { form.current?.reset(); setConfirm(false); } }, [active, security]);
   return <section className="settings-workspace">
-    <WorkspaceHeader group={security ? '我的' : '业务管理'} title={security ? '账号安全' : '预约配置'} description={security ? '管理登录密码与设备会话。' : '按校区维护每周的预约名额。'} />
+    <WorkspaceHeader group={security ? '我的' : '业务管理'} title={security ? '账号安全' : '预约配置'} description={security ? '管理登录密码与设备会话。' : '按校区维护预约名额与每日维修地点。'} />
     <div hidden={!security} className="security-layout">
       <section className="field-card security-profile"><h2>当前账号</h2><dl><div><dt>姓名</dt><dd>{user.name}</dd></div><div><dt>账号</dt><dd>{user.account}</dd></div><div><dt>所属校区</dt><dd>{user.homeCampus}</dd></div><div><dt>授权校区</dt><dd>{user.authorizedCampuses?.join('、')}</dd></div></dl></section>
       <section className="field-card"><h2>修改密码</h2><p className="field-muted">修改成功后，所有设备均需重新登录。</p><form ref={form} className="workspace-form" onSubmit={changePassword}>

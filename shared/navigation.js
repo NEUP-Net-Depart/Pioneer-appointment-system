@@ -1,6 +1,7 @@
 import { $, $$ } from './utils.js';
-export function initNavigation(onChange = () => {}) {
+export function initNavigation(onChange = () => {}, canNavigate = () => true) {
   function switchView(view) {
+    if (!canNavigate(view)) return;
     const target = $(`[data-view="${view}"]`);
     const link = $(`[data-view-link="${view}"]`);
     if (!target || link?.hidden) return;

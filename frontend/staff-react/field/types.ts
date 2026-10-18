@@ -22,6 +22,11 @@ export interface Appointment {
   studentId?: string;
   phone?: string;
   social?: string;
+  email?: string;
+  contactType?: string;
+  contactValue?: string;
+  liquidMetal?: string;
+  dellG15?: string;
   repairCode?: string;
   canStart?: boolean;
   canFinish?: boolean;

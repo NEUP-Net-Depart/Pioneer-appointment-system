@@ -1,235 +1,147 @@
 import { $ } from '/shared/utils.js';
 import { apiJson } from '/shared/api.js';
 import { startVisiblePolling } from '/shared/polling.js';
-import { CAMPUSES, TIME_SLOTS } from '/shared/constants.js';
-import { timeLabel } from '/shared/time.js';
-import { availableSlots, bookingDates, slotAvailability } from '/shared/booking-slots.js';
-import { initBookingFloat } from './booking-float.js';
+import { CAMPUSES,TIME_SLOTS } from '/shared/constants.js';
+import { bookingDates,slotAvailability } from '/shared/booking-slots.js';
+import { animateLayout,reveal } from './motion.js';
 
-const weekday = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', weekday: 'short' });
-const dayLabel = date => `${weekday.format(new Date(`${date}T12:00:00+08:00`))} · ${Number(date.slice(5, 7))}/${Number(date.slice(8))}`;
-
+const weekday = new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',weekday:'short'});
 function updateCount(count, remaining) {
-  const value = String(remaining ?? 0), previous = count.dataset.value || '0';
-  if (count.dataset.value === value) return;
-  count.getAnimations({ subtree: true }).forEach(animation => animation.cancel());
-  count.dataset.value = value;
-  if (remaining === undefined || matchMedia('(prefers-reduced-motion: reduce)').matches || previous === value) {
-    count.textContent = value; return;
-  }
-  // Expose the real count immediately; decorative reels never affect validation.
-  const accessible = document.createElement('span'); accessible.className = 'booking-count-value'; accessible.textContent = value;
-  const reel = document.createElement('span'); reel.className = 'booking-count-reel'; reel.setAttribute('aria-hidden', 'true');
-  const oldDigits = previous.padStart(value.length, '0').slice(-value.length);
-  for (const [index, digit] of [...value].entries()) {
-    const column = document.createElement('span'); column.className = 'booking-count-column';
-    const track = document.createElement('span'); track.className = 'booking-count-track';
-    const start = Number(oldDigits[index]), target = Number(digit), end = target + (target <= start ? 10 : 0);
-    for (let step = 0; step <= end; step++) {
-      const cell = document.createElement('span'); cell.className = 'booking-count-digit'; cell.dataset.digit = String(step % 10); track.append(cell);
+  const value=remaining===undefined ? 'pending' : String(remaining),previous=/^\d+$/.test(count.dataset.value || '') ? count.dataset.value : '0';
+  if(count.dataset.value===value)return;
+  count.getAnimations({subtree:true}).forEach(animation=>animation.cancel());
+  count.dataset.value=value;
+  if(remaining===undefined || matchMedia('(prefers-reduced-motion: reduce)').matches || previous===value){count.textContent=remaining===undefined ? '—' : value;return;}
+  const accessible=document.createElement('span');accessible.className='booking-count-value';accessible.textContent=value;
+  const reel=document.createElement('span');reel.className='booking-count-reel';reel.setAttribute('aria-hidden','true');
+  const oldDigits=previous.padStart(value.length,'0').slice(-value.length);
+  for(const [index,digit] of [...value].entries()){
+    const column=document.createElement('span');column.className='booking-count-column';
+    const track=document.createElement('span');track.className='booking-count-track';
+    const start=Number(oldDigits[index]),target=Number(digit),end=target+(target<=start ? 10 : 0);
+    for(let step=0;step<=end;step++){
+      const cell=document.createElement('span');cell.className='booking-count-digit';cell.dataset.digit=String(step%10);track.append(cell);
     }
-    track.style.transform = `translateY(-${end}em)`;
-    column.append(track); reel.append(column);
-    if (start !== target) track.animate([
-      { transform: `translateY(-${start}em)` }, { transform: `translateY(-${end}em)` }
-    ], { duration: 380 + index * 25, easing: 'cubic-bezier(.18,.7,.25,1)' });
+    track.style.transform=`translateY(-${end}em)`;column.append(track);reel.append(column);
+    if(start!==target)track.animate([{transform:`translateY(-${start}em)`},{transform:`translateY(-${end}em)`}],{duration:380+index*25,easing:'cubic-bezier(.18,.7,.25,1)'});
   }
-  count.replaceChildren(accessible, reel);
+  count.replaceChildren(accessible,reel);
 }
-
-function choiceButton(value, attribute, title) {
-  const button = document.createElement('button');
-  button.type = 'button'; button.dataset[attribute] = value;
-  button.className = 'booking-choice'; button.setAttribute('aria-pressed', 'false');
-  const heading = document.createElement('strong'); heading.textContent = title;
-  if (attribute === 'date') {
-    const [weekday, date] = title.split(' · ');
-    const weekdayLabel = document.createElement('span'); weekdayLabel.className = 'booking-weekday'; weekdayLabel.textContent = weekday;
-    const separator = document.createElement('span'); separator.className = 'booking-date-separator'; separator.textContent = ' · ';
-    const dateLabel = document.createElement('span'); dateLabel.className = 'booking-date-number'; dateLabel.textContent = date;
-    heading.replaceChildren(weekdayLabel, separator, dateLabel);
+function showRemaining(button,remaining,label) {
+  const detail=button.querySelector('.booking-remaining');
+  let count=detail.querySelector('.booking-remaining-count');
+  if(label){
+    count?.getAnimations({subtree:true}).forEach(animation=>animation.cancel());
+    if(detail.textContent!==label)detail.textContent=label;
+  }else{
+    if(!count){count=document.createElement('span');count.className='booking-remaining-count';detail.replaceChildren('剩余 ',count,' 名');}
+    updateCount(count,remaining);
   }
-  const detail = document.createElement('small');
-  if (attribute !== 'campus') {
-    const remaining = document.createElement('span'); remaining.className = 'booking-remaining';
-    const count = document.createElement('span'); count.className = 'booking-remaining-count'; count.textContent = '0'; count.dataset.value = '0';
-    remaining.append('剩余 ', count, ' 名'); detail.append(remaining);
-    if (attribute === 'slot') {
-      const capacity = document.createElement('span'); capacity.className = 'booking-slot-limit'; capacity.textContent = '最多 - 人';
-      detail.append(capacity);
-    }
-  }
-  button.append(heading, detail);
-  return button;
 }
-
-export function initSlotPicker() {
-  const campusInput = $('[name="campus"]'), dateInput = $('[name="date"]'), slotInput = $('[name="timeSlot"]');
-  const campusButtons = $('#booking-campuses'), days = $('#booking-days'), slots = $('#booking-slots');
-  const status = $('#booking-selection'), updated = $('#booking-updated'), retry = $('#booking-retry');
-  const floating = initBookingFloat($('#booking-picker'));
-  let generation = 0, summaries = new Map(), dates = [], notice = '', disposed = false, refreshing = false;
-  let selectionIssue = '';
-  campusInput.value = CAMPUSES[0];
-  const campusSummaries = new Map([[campusInput.value, summaries]]), campusUpdated = new Map();
-  function slotsFor(date) {
-    const summary = summaries.get(date);
-    const previous = date === dateInput.value && slots.children.length ? [...slots.children].map(button => button.dataset.slot) : TIME_SLOTS;
-    const schedule = summary?.timeSlots || (summary ? Object.keys(summary.slotCapacities) : previous);
-    return availableSlots(date, new Date(), schedule);
+export function initSlotPicker({onChange = () => {}} = {}) {
+  const campusInput=$('[name=campus]'),dateInput=$('[name=date]'),slotInput=$('[name=timeSlot]');
+  const campuses=$('#booking-campuses'),days=$('#booking-days'),slots=$('#booking-slots');
+  let summaries=new Map(),failed=new Set(),generation=0,loading=false,notice='',offset=0,active=true,loadFailed=false,selectionIssue='';
+  const campusSummaries=new Map();
+  const now=() => new Date(Date.now()+offset);
+  function button(value,key,title) {
+    const item=document.createElement('button'); item.type='button';item.className='booking-choice';item.dataset[key]=value;
+    const strong=document.createElement('strong');strong.textContent=title;
+    item.append(strong);if(key!=='campus'){const detail=document.createElement('small'),remaining=document.createElement('span');remaining.className='booking-remaining';detail.append(remaining);item.append(detail);}return item;
   }
-
-  function selected(button, value) {
-    button.setAttribute('aria-pressed', String(button.dataset.campus === value || button.dataset.date === value || button.dataset.slot === value));
-  }
-  function showRemaining(button, remaining, label) {
-    const detail = button.querySelector('.booking-remaining');
-    let count = detail.querySelector('.booking-remaining-count');
-    if (label) {
-      count?.getAnimations({ subtree: true }).forEach(animation => animation.cancel());
-      if (detail.textContent !== label) detail.textContent = label;
-    } else {
-      if (!count) {
-        count = document.createElement('span'); count.className = 'booking-remaining-count';
-        detail.replaceChildren('剩余 ', count, ' 名');
-      }
-      updateCount(count, remaining);
-    }
-  }
+  for (const campus of CAMPUSES) campuses.append(button(campus,'campus',campus+'校区'));
+  for (const slot of TIME_SLOTS) slots.append(button(slot,'slot',slot));
+  const availability=(date,slot) => summaries.get(date) && slotAvailability(summaries.get(date),date,slot,now());
+  const selectable=date => !failed.has(date) && TIME_SLOTS.some(slot => availability(date,slot) && !availability(date,slot).disabled);
   function render() {
-    $('#booking-picker').setAttribute('aria-busy', String(refreshing));
-    const currentDates = bookingDates();
-    for (const cache of campusSummaries.values()) for (const date of cache.keys()) if (!currentDates.includes(date)) cache.delete(date);
-    if (dates.join() !== currentDates.join()) {
-      dates = currentDates;
-      days.replaceChildren(...dates.map(date => choiceButton(date, 'date', dayLabel(date))));
+    const dates=bookingDates(now());
+    for(const cache of campusSummaries.values())for(const date of cache.keys())if(!dates.includes(date))cache.delete(date);
+    if ([...days.children].map(item=>item.dataset.date).join()!==dates.join()) {
+      days.replaceChildren(...dates.map(date=>{
+        const item=button(date,'date','');
+        const strong=item.querySelector('strong');
+        const day=document.createElement('span');day.className='booking-weekday';day.textContent=weekday.format(new Date(date+'T12:00:00+08:00'));
+        const number=document.createElement('span');number.className='booking-date-number';number.textContent=`${Number(date.slice(5,7))}/${Number(date.slice(8))}`;
+        strong.append(day,number);return item;
+      }));
     }
-    days.dataset.count = String(dates.length);
-    days.style.setProperty('--booking-day-count', String(Math.max(1, dates.length)));
-    const reservedSlots = Math.max(1, ...dates.map(date => slotsFor(date).length));
-    $('.booking-picker-body').style.setProperty('--booking-slot-count', String(reservedSlots));
-    if (!dates.includes(dateInput.value)) {
-      if (slotInput.value) selectionIssue = notice = '时段已过期，请重新选择';
-      dateInput.value = ''; slotInput.value = '';
+    days.dataset.count=String(dates.length);
+    days.style.setProperty('--booking-day-count',String(Math.max(1,dates.length)));
+    const calendar=$('#booking-calendar'),slotPanel=$('#booking-slot-panel'),location=$('#booking-location');
+    if(calendar.hidden===Boolean(campusInput.value) || slotPanel.hidden===Boolean(dateInput.value)){
+      animateLayout($('#booking-picker'),()=>{calendar.hidden=!campusInput.value;slotPanel.hidden=!dateInput.value;location.hidden=!dateInput.value;},{resize:true});
+      if(dateInput.value)for(const [index,item] of [...slots.children].entries())reveal(item,{delay:index*30,distance:6});
     }
-    for (const button of campusButtons.children) selected(button, campusInput.value);
-    for (const button of days.children) {
-      const date = button.dataset.date, summary = summaries.get(date);
-      selected(button, dateInput.value);
-      const remaining = summary ? slotsFor(date).reduce((total, slot) => total + slotAvailability(summary, date, slot).remaining, 0) : 0;
-      button.disabled = !summary || remaining === 0;
-      button.dataset.loading = String(refreshing && (!summary || remaining > 0));
-      showRemaining(button, summary ? remaining : undefined, summary && remaining === 0 ? slotsFor(date).every(slot => summary.slotCapacities[slot] === 0) ? '暂停预约' : '预约已满' : summary === null ? '读取失败' : undefined);
+    $('#booking-picker').setAttribute('aria-busy',String(loading));
+    for (const item of campuses.children) item.setAttribute('aria-pressed',String(item.dataset.campus===campusInput.value));
+    if (dateInput.value && !dates.includes(dateInput.value)) { dateInput.value='';slotInput.value='';selectionIssue=notice='原日期已不在预约范围内，请重新选择。'; }
+    if (slotInput.value && !failed.has(dateInput.value) && availability(dateInput.value,slotInput.value)?.disabled) {
+      selectionIssue=notice=`${availability(dateInput.value,slotInput.value).label}，请重新选择时段。`;slotInput.value='';onChange();
     }
-    $('#booking-empty').hidden = dates.length > 0;
-    $('#booking-slot-panel').hidden = !dateInput.value;
-    const summary = summaries.get(dateInput.value);
-    const previousSlots = slots.children.length ? [...slots.children].map(button => button.dataset.slot) : TIME_SLOTS;
-    const timeSlots = summary?.timeSlots || (summary ? Object.keys(summary.slotCapacities) : previousSlots);
-    if ([...slots.children].map(button => button.dataset.slot).join() !== timeSlots.join()) {
-      const existing = new Map([...slots.children].map(button => [button.dataset.slot, button]));
-      slots.replaceChildren(...timeSlots.map(slot => existing.get(slot) || choiceButton(slot, 'slot', slot)));
+    for (const item of days.children) {
+      const date=item.dataset.date,summary=summaries.get(date);
+      const unavailable=!selectable(date);
+      item.disabled=loading || unavailable;item.dataset.loading=String(loading && (!summary || !unavailable));item.setAttribute('aria-pressed',String(date===dateInput.value));
+      const count=TIME_SLOTS.reduce((sum,slot)=>sum+(availability(date,slot)?.disabled ? 0 : availability(date,slot)?.remaining || 0),0);
+      showRemaining(item,summary ? count : undefined,failed.has(date) ? '读取失败' : !summary ? '' : !summary.location ? '地点未配置' : count ? '' : '暂无名额');
     }
-    if (slotInput.value && (!summary || slotAvailability(summary, dateInput.value, slotInput.value).disabled)) {
-      selectionIssue = notice = summary ? `${slotAvailability(summary, dateInput.value, slotInput.value).label}，请重新选择` : '名额读取失败，请重试';
-      slotInput.value = '';
+    for (const item of slots.children) {
+      const state=availability(dateInput.value,item.dataset.slot);
+      item.disabled=loading || failed.has(dateInput.value) || !state || state.disabled;
+      item.dataset.loading=String(loading && (!state || !state.disabled));
+      item.setAttribute('aria-pressed',String(item.dataset.slot===slotInput.value));
+      showRemaining(item,state?.remaining,failed.has(dateInput.value) ? '暂时无法更新' : state?.disabled ? state.label : '');
     }
-    $('#booking-slot-title').textContent = dateInput.value ? `${campusInput.value} · ${dayLabel(dateInput.value)}，请选择时段` : '';
-    for (const button of slots.children) {
-      const slot = button.dataset.slot;
-      button.hidden = !dateInput.value || !slotsFor(dateInput.value).includes(slot);
-      const availability = summary && slotAvailability(summary, dateInput.value, slot);
-      button.disabled = !availability || availability.disabled;
-      button.dataset.loading = String(refreshing && (!availability || !availability.disabled));
-      showRemaining(button, availability?.remaining, availability?.disabled ? availability.label : summary === null ? '读取失败' : undefined);
-      const capacity = button.querySelector('.booking-slot-limit');
-      const capacityLabel = `最多 ${availability?.capacity ?? '-'} 人`;
-      if (capacity.textContent !== capacityLabel) capacity.textContent = capacityLabel;
-      selected(button, slotInput.value);
-    }
-    slots.dataset.count = String([...slots.children].filter(button => !button.hidden).length);
-    status.textContent = slotInput.value ? `已选：${campusInput.value} · ${dayLabel(dateInput.value)} · ${slotInput.value}` : notice || (dateInput.value ? '请选择可预约时段。' : '先选日期，再选时段。');
-    floating.update(campusInput.value, dateInput.value ? dayLabel(dateInput.value) : '', slotInput.value, selectionIssue);
+    $('#booking-slot-panel').hidden=!dateInput.value;
+    const noDates=!loading && !loadFailed && !failed.size && !dates.some(selectable);
+    $('#booking-empty').hidden=!noDates;
+    $('#booking-retry').hidden=!campusInput.value || loading || (!loadFailed && !failed.size && !noDates);
+    const feedback=$('#booking-selection');
+    feedback.textContent=notice || (loadFailed || failed.size ? '暂时无法更新名额，请重试。' : loading && !summaries.size && !dateInput.value ? '正在读取可预约日期…' : '');
+    feedback.parentElement.hidden=!feedback.textContent && $('#booking-retry').hidden;
+    location.hidden=!dateInput.value;
+    location.textContent=summaries.get(dateInput.value)?.location ? `维修地点：${summaries.get(dateInput.value).location}` : loading ? '维修地点：更新中…' : '维修地点尚未配置';
   }
-  async function refresh({ date } = {}) {
-    if (disposed) return false;
-    const requestGeneration = ++generation, campus = campusInput.value;
-    const requestedDates = date && bookingDates().includes(date) ? [date] : bookingDates();
-    refreshing = true; retry.disabled = true;
-    render();
-    const results = await Promise.allSettled(requestedDates.map(date => apiJson(`/api/live/summary?${new URLSearchParams({ campus, date })}`)));
-    if (disposed || requestGeneration !== generation) return false;
-    for (const [index, date] of requestedDates.entries()) summaries.set(date, results[index].status === 'fulfilled' ? results[index].value : null);
-    refreshing = false; retry.disabled = false;
-    const failed = bookingDates().some(date => summaries.get(date) === null);
-    retry.hidden = !failed;
-    updated.textContent = failed ? '名额读取失败，可重试' : `更新于 ${timeLabel()}`;
-    campusUpdated.set(campus, updated.textContent);
-    render();
-    return results.every(result => result.status === 'fulfilled');
+  async function refresh() {
+    if (!campusInput.value) {render();return true;}
+    const current=++generation,campus=campusInput.value;loading=true;render();
+    let result;
+    try {result=await apiJson('/api/booking-availability?'+new URLSearchParams({campus}),{timeoutMs:15000});}
+    catch {if(current!==generation)return false;loading=false;loadFailed=true;failed=new Set(bookingDates(now()));render();return false;}
+    if(current!==generation)return false;
+    loading=false;loadFailed=false;failed=new Set();offset=Date.parse(result.serverNow)-Date.now();const dates=bookingDates(now());
+    summaries=new Map(result.items.map(summary=>[summary.date,summary]));campusSummaries.set(campus,summaries);
+    if (!dateInput.value || (!failed.has(dateInput.value) && !selectable(dateInput.value))) {
+      if(dateInput.value){const summary=summaries.get(dateInput.value);selectionIssue=notice=(summary && !summary.location ? '原日期的维修地点未配置' : '原日期当前没有可预约时段')+'，请重新选择日期和到场时段。';}
+      dateInput.value=dates.find(selectable) || '';slotInput.value='';
+    }
+    render();onChange();return !failed.size;
   }
-  function changeCampus(value) {
-    if (!CAMPUSES.includes(value)) value = CAMPUSES[0];
-    campusInput.value = value; slotInput.value = ''; notice = ''; selectionIssue = '';
-    if (!campusSummaries.has(value)) campusSummaries.set(value, new Map());
-    summaries = campusSummaries.get(value);
-    updated.textContent = campusUpdated.get(value) || '更新于 --:--';
-    retry.hidden = true;
-    render(); void refresh();
-  }
-  for (const campus of CAMPUSES) {
-    const button = choiceButton(campus, 'campus', `${campus}校区`);
-    button.querySelector('small').remove(); campusButtons.append(button);
-  }
-  campusButtons.addEventListener('click', event => {
-    const button = event.target.closest('[data-campus]');
-    if (!button) return;
-    if (button.dataset.campus !== campusInput.value) changeCampus(button.dataset.campus);
-    else void refresh();
+  campuses.addEventListener('click',event=>{
+    const item=event.target.closest('[data-campus]');if(!item)return;
+    if(campusInput.value!==item.dataset.campus){campusInput.value=item.dataset.campus;slotInput.value='';summaries=campusSummaries.get(campusInput.value) || new Map();failed=new Set();loadFailed=false;selectionIssue=notice='';onChange();}
+    void refresh();
   });
-  campusInput.addEventListener('change', () => changeCampus(campusInput.value));
-  days.addEventListener('click', event => {
-    const button = event.target.closest('[data-date]');
-    if (!button || button.disabled) return;
-    const changedDate = dateInput.value !== button.dataset.date;
-    if (changedDate) { slotInput.value = ''; selectionIssue = ''; }
-    dateInput.value = button.dataset.date; notice = ''; render();
-    void refresh({ date: dateInput.value });
+  days.addEventListener('click',event=>{
+    const item=event.target.closest('[data-date]');if(!item || item.disabled)return;
+    if(dateInput.value!==item.dataset.date)slotInput.value='';dateInput.value=item.dataset.date;notice='';render();onChange();
   });
-  slots.addEventListener('click', event => {
-    const button = event.target.closest('[data-slot]');
-    if (!button || button.disabled) return;
-    slotInput.value = button.dataset.slot; notice = ''; selectionIssue = '';
-    render();
-    void refresh({ date: dateInput.value });
+  slots.addEventListener('click',event=>{
+    const item=event.target.closest('[data-slot]');if(!item || item.disabled)return;
+    slotInput.value=item.dataset.slot;selectionIssue=notice='';render();onChange();
   });
-  retry.addEventListener('click', () => { void refresh(); });
+  $('#booking-retry').addEventListener('click',()=>void refresh());
+  const stop=startVisiblePolling(()=>active && !loading ? refresh() : undefined);
   render();
-  const stopPolling = startVisiblePolling(() => refreshing ? undefined : refresh());
   return {
-    validate() {
-      render();
-      const summary = summaries.get(dateInput.value);
-      const valid = bookingDates().includes(dateInput.value) && slotInput.value && summary && !slotAvailability(summary, dateInput.value, slotInput.value).disabled;
-      if (!valid) {
-        notice = '请先在上方选择可预约的日期和时段。'; render();
-        const target = dateInput.value ? slots : days;
-        (target.querySelector('button:not(:disabled):not([hidden])') || campusButtons.querySelector('button')).focus();
-      }
-      return Boolean(valid);
-    },
-    async recover(message) {
-      slotInput.value = ''; selectionIssue = notice = `${message}，请重新选择时段。`;
-      await refresh({ date: dateInput.value });
-      const target = dateInput.value ? slots : days;
-      (target.querySelector('button:not(:disabled):not([hidden])') || campusButtons.querySelector('button')).focus({ preventScroll: true });
-    },
-    dispose() {
-      disposed = true; generation++;
-      stopPolling();
-      floating.dispose();
-      $('#booking-picker').getAnimations({ subtree: true }).forEach(animation => animation.cancel());
-      $('#booking-picker').hidden = true;
-    }
+    refresh,issue:()=>selectionIssue,
+    value(){return {campus:campusInput.value,date:dateInput.value,timeSlot:slotInput.value,location:summaries.get(dateInput.value)?.location || ''};},
+    validate(){render();const valid=Boolean(campusInput.value && dateInput.value && slotInput.value && selectable(dateInput.value) && !availability(dateInput.value,slotInput.value)?.disabled);
+      if(!valid){notice=notice || '请选择可预约的校区、日期和到场时段。';render();(campuses.querySelector('button[aria-pressed=true]') || campuses.querySelector('button')).focus();}return valid;},
+    async recover(message){slotInput.value='';notice=message;await refresh();render();},
+    async restore(value){campusInput.value=CAMPUSES.includes(value.campus) ? value.campus : '';dateInput.value=value.date || '';slotInput.value=value.timeSlot || '';summaries=new Map();await refresh();render();},
+    reset(){generation++;loading=false;campusInput.value=dateInput.value=slotInput.value='';summaries=new Map();campusSummaries.clear();failed=new Set();loadFailed=false;selectionIssue=notice='';render();},
+    setActive(value){active=value;if(value)void refresh();},
+    dispose(){generation++;stop();$('#booking-picker').getAnimations({subtree:true}).forEach(animation=>animation.cancel());}
   };
 }

@@ -1,15 +1,21 @@
+import { initAppointmentSearch } from './appointment-search.js';
 import { $, $$, showToast } from '/shared/utils.js';
 import { apiJson, apiFetch } from '/shared/api.js';
 import { uploadAttachments, attachmentUrl, attachmentSize } from '/shared/attachments.js';
+import { createPhotoInput } from '/shared/photo-input.js';
 import { drawSignature, validSignature } from '/shared/signature.js';
 import { createScanner } from './scanner.js';
 import { renderScanDetails } from './scan-details.js';
+import { terminalStatuses,statusLabels,expirationMessage } from '/shared/constants.js';
 
 export function initScan() {
   let item, active = false, ready = false, busy = false, generation = 0, legacyCount = 0, onsiteRequest;
   let strokes = [], pointer;
+  let cameraPaused = false, pageActive = true;
   const root = $('#scan-view'), form = $('#scan-onsite-form'), canvas = $('#onsite-signature');
+  const suggestions = initAppointmentSearch({ isActive: () => active, onSelect: id => resolve({ id }) });
   const account = () => sessionStorage.getItem('pioneerAccount');
+  const owns = value => value.assignedTo === account() || !!value.assignedMemberId && value.assignedMemberId === sessionStorage.getItem('pioneerMemberId');
   const key = suffix => `pioneerScan:${account()}:${suffix}`;
   const read = suffix => { try { return JSON.parse(localStorage.getItem(key(suffix)) || 'null'); } catch { return null; } };
   function write(suffix, value) {
@@ -17,11 +23,30 @@ export function initScan() {
     catch { return false; }
   }
   const message = text => { $('#scan-message').textContent = text; };
-  const scanner = createScanner({ video: $('#scan-video'), status: $('#camera-status'), torch: $('#scan-torch'), switchCamera: $('#scan-switch-camera'), onCode: code => resolve({ code }), onState(state) {
+  const photoInputs = Object.fromEntries(['front','back'].map(side => [side, createPhotoInput({
+    input: $('#scan-'+side), preview: $('#scan-'+side+'-preview'), meta: $('#scan-'+side+'-state'), progress: $('#scan-'+side+'-progress'),
+    getContext: () => `${generation}:${account()}:${item?.id}`,
+    onChange() {
+      if (!item) return;
+      const uploaded = photos(); delete uploaded[side]; write(`photos:${item.id}`, uploaded);
+    },
+    async upload(file) {
+      const [attachment] = await uploadAttachments(item, [file], 'intake_' + side);
+      return attachment;
+    },
+    onUploaded(file) {
+      const uploaded = photos(); uploaded[side] = file.id; write(`photos:${item.id}`, uploaded);
+    },
+  })]));
+  const canStartCamera = () => active && ready && !cameraPaused && pageActive && !document.hidden && !$('#scan-home').hidden;
+  const scanner = createScanner({ video: $('#scan-video'), torch: $('#scan-torch'), switchCamera: $('#scan-switch-camera'), canStart: canStartCamera, onCode: code => resolve({ code }), onState(state) {
     $('.scanner-frame').dataset.cameraState = state;
-    $('#scan-camera').hidden = state === 'running';
+    $('#scan-camera').hidden = false;
+    $('#scan-camera').textContent = ['running','opening'].includes(state) ? '关闭摄像头' : '开启摄像头';
+    $('#scan-camera').setAttribute('aria-pressed', String(['running','opening'].includes(state)));
   } });
   function panels(id) {
+    suggestions.clear();
     scanner.stop();
     const changingPanel = id && $('#'+id).hidden;
     for (const panel of ['scan-home','scan-manual-form','scan-detail','scan-onsite-form']) $('#'+panel).hidden = panel !== id;
@@ -32,16 +57,13 @@ export function initScan() {
   }
   function photos() { return read(`photos:${item.id}`) || {}; }
   function resetPreviews() {
-    for (const side of ['front','back']) {
-      const preview = $('#scan-'+side+'-preview'); URL.revokeObjectURL(preview.src); preview.removeAttribute('src'); preview.hidden = true; $('#scan-'+side).value = '';
-    }
+    for (const photo of Object.values(photoInputs)) photo.reset();
   }
   function resetRegistration() {
     onsiteRequest = undefined; write('onsiteRequest', null); form.reset(); strokes = []; pointer = undefined; drawSignature(canvas, strokes);
   }
-  const owns = value => value.assignedTo === account() || !!value.assignedMemberId && value.assignedMemberId === sessionStorage.getItem('pioneerMemberId');
   function showItem(value) {
-    if (item?.id !== value.id) resetPreviews();
+    if (item?.id !== value.id || value.status !== 'booked') resetPreviews();
     item = value; write('selected', item.id); panels('scan-detail');
     renderScanDetails($('#scan-detail-info'), item);
     $('#scan-intake-form').hidden = item.status !== 'booked';
@@ -58,8 +80,8 @@ export function initScan() {
     $('#scan-note').value = draft?.note ?? item.repairNote ?? '';
     $('#scan-outcome').value = draft?.outcome || '';
     $('#scan-draft-state').textContent = draft ? '已恢复此账号在本机保存的维修草稿。' : '';
-    for (const side of ['front','back']) $('#scan-'+side+'-state').textContent = photos()[side] ? '照片已上传，可直接重试签到' : '';
-    message(item.status === 'in_progress' ? '维修进行中，完成后请填写结果。' : item.status === 'completed' ? '此工单已结束。' : '');
+    for (const side of ['front','back']) if (photos()[side]) photoInputs[side].setStatus('照片已上传，可直接重试签到');
+    message(item.status === 'in_progress' ? '维修进行中，完成后请填写结果。' : item.status === 'expired' ? expirationMessage : terminalStatuses.includes(item.status) ? `此工单${statusLabels[item.status]}。` : '');
   }
   async function loadFiles() {
     const selected = item, current = generation;
@@ -95,6 +117,7 @@ export function initScan() {
   }
   async function restore() {
     const current = ++generation; ready = false; scanner.stop(); message('正在恢复当前维修…');
+    resetPreviews();
     const selected = read('selected');
     try {
       const registrationRequestId = onsiteRequest || read('onsiteRequest');
@@ -111,7 +134,7 @@ export function initScan() {
           throw error;
         });
         if (current !== generation) return false;
-        if (selectedItem.status !== 'completed') { showItem(selectedItem); return true; }
+        if (!terminalStatuses.includes(selectedItem.status)) { showItem(selectedItem); return true; }
         write(`draft:${selected}`, null); write(`photos:${selected}`, null);
       }
       item = undefined; write('selected', null); panels('scan-home'); message('准备接待下一台设备');
@@ -158,8 +181,14 @@ export function initScan() {
     if (current === generation) { $('#scan-add-files').value = ''; await loadFiles(); message('维修附件已保存'); }
   }));
   $('#scan-manual').addEventListener('click', () => { if (ready) { panels('scan-manual-form'); $('#scan-number').focus(); } });
-  $('#scan-manual-form').addEventListener('submit', event => { event.preventDefault(); resolve({ id: $('#scan-number').value.trim() }); });
-  $('#scan-camera').addEventListener('click', () => { if (ready && active) scanner.start(); });
+  $('#scan-manual-form').addEventListener('submit', event => { event.preventDefault(); suggestions.clear(); resolve({ id: $('#scan-number').value.trim() }); });
+  $('#scan-camera').addEventListener('click', () => {
+    if (['running','opening'].includes($('.scanner-frame').dataset.cameraState)) {
+      cameraPaused = true; scanner.stop();
+    } else {
+      cameraPaused = false; scanner.start();
+    }
+  });
   $('#scan-image').addEventListener('change', async event => {
     if (!ready || busy) return;
     const file = event.target.files[0]; if (!file) return;
@@ -167,24 +196,14 @@ export function initScan() {
   });
   $('#scan-recover').addEventListener('click', () => { if (!busy) restore().then(() => { if (ready && active && !item) scanner.start(); }); });
   for (const button of [...$$('[data-scan-back]'), $('#scan-detail-back')]) button.addEventListener('click', () => run(home));
-  for (const side of ['front','back']) $('#scan-'+side).addEventListener('change', event => {
-    const preview = $('#scan-'+side+'-preview'); URL.revokeObjectURL(preview.src); preview.removeAttribute('src'); preview.hidden = true;
-    const uploaded = photos(); delete uploaded[side]; write(`photos:${item.id}`, uploaded); $('#scan-'+side+'-state').textContent = '';
-    const file = event.target.files[0]; if (file) { preview.src = URL.createObjectURL(file); preview.hidden = false; }
-  });
   $('#scan-intake-form').addEventListener('submit', event => {
     event.preventDefault(); run(async current => {
+      if (!item || item.status !== 'booked') throw new Error('当前工单不能签到，请重新读取当前工单');
       const uploaded = photos();
-      for (const side of ['front','back']) {
-        const file = $('#scan-'+side).files[0];
-        if (!uploaded[side] && (!file || file.size > 5 * 1024 * 1024 || !['image/jpeg','image/png','image/webp'].includes(file.type))) throw new Error('照片无效');
-      }
-      for (const side of ['front','back']) if (!uploaded[side]) {
-        const [file] = await uploadAttachments(item, [$('#scan-'+side).files[0]], 'intake_'+side);
-        if (current !== generation) return;
-        uploaded[side] = file.id; write(`photos:${item.id}`, uploaded); $('#scan-'+side+'-state').textContent = '照片已上传';
-      }
-      await update({ status: 'in_progress', frontPhotoId: uploaded.front, backPhotoId: uploaded.back }, current);
+      const [frontPhotoId, backPhotoId] = await Promise.all(['front','back'].map(async side =>
+        uploaded[side] || (await photoInputs[side].getUploaded()).id));
+      if (current !== generation) return;
+      await update({ status: 'in_progress', frontPhotoId, backPhotoId }, current);
       if (current === generation) showToast('照片已保存，已签到并开始维修');
     });
   });
@@ -192,7 +211,7 @@ export function initScan() {
     if (!item || !window.confirm('确认取消这条尚未签到的临时登记？')) return;
     run(async current => {
       const id = item.id;
-      await update({ status: 'completed', outcome: 'cancelled' }, current);
+      await update({ status: 'cancelled' }, current);
       if (current !== generation) return;
       write(`draft:${id}`, null); write(`photos:${id}`, null); write('selected', null);
       await home();
@@ -241,7 +260,10 @@ export function initScan() {
     if (document.hidden) scanner.stop();
     else if (active && ready && !busy && !$('#scan-home').hidden) scanner.start();
   });
-  window.addEventListener('pagehide', () => scanner.stop());
+  window.addEventListener('pagehide', () => { pageActive = false; scanner.stop(); });
+  window.addEventListener('pageshow', () => { pageActive = true; if (canStartCamera()) scanner.start(); });
+  window.addEventListener('blur', () => { pageActive = false; scanner.stop(); });
+  window.addEventListener('focus', () => { pageActive = true; if (canStartCamera()) scanner.start(); });
   window.addEventListener('offline', () => { if (active) message('网络已断开，填写内容会保留。联网后可重试提交或重新读取工单。'); });
   window.addEventListener('online', () => { if (active) message('网络已恢复，可以重试提交或重新读取当前工单。'); });
   return {
@@ -249,9 +271,11 @@ export function initScan() {
     refresh() {},
     activate(value) {
       active = value;
+      if (!active) suggestions.clear();
       if (active && ready && !$('#scan-home').hidden && !document.hidden) scanner.start(); else scanner.stop();
     },
     clear() {
+      cameraPaused = false;
       generation++; active = ready = busy = false; item = undefined; onsiteRequest = undefined; scanner.stop(); resetPreviews();
       root.removeAttribute('aria-busy'); root.querySelectorAll('button,input,select,textarea').forEach(element => element.disabled = false);
       $('#scan-torch').disabled = true; $('#scan-detail-info').replaceChildren(); $('#scan-files').replaceChildren(); $('#scan-add-files').value = ''; $('#scan-note').value = ''; $('#scan-outcome').value = ''; form.reset();

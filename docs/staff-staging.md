@@ -91,7 +91,7 @@ npm run smoke -- https://pioneer-staff-staging.pages.dev
 
 ```bash
 npm run attachments:cleanup -- --staff-staging --dry-run
-npm run appointments:end-no-shows -- --staff-staging --dry-run
+npm run appointments:expire -- --staff-staging --dry-run
 ```
 
 查看候选后可将 `--dry-run` 改为 `--apply`。GitHub 的 `Staff Staging maintenance` 手动运行选择集成分支，默认 dry-run。独立维护 Token 配置并验证后，设置仓库变量 `STAFF_MAINTENANCE_ENABLED=true`；基础设施 PR 合入默认分支 dev 后，每天北京时间 21:35 从 dev 派发到 next。现有生产/Preview 维护任务保持原逻辑。

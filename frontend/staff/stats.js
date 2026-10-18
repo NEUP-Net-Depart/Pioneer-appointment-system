@@ -1,5 +1,5 @@
 import { apiJson } from '/shared/api.js';
-import { $, escapeHtml, showToast } from '/shared/utils.js';
+import { $, escapeHtml, showToast, assigneeLabel } from '/shared/utils.js';
 import { formatDate } from '/shared/time.js';
 
 function renderBars(target, values, total) {
@@ -11,11 +11,12 @@ function renderBars(target, values, total) {
 function renderStats(stats) {
   const { daily, faults, campuses, technicians } = stats;
   const completed = stats.completed;
-  const noShow = stats.noShow;
   $('#stats-total').textContent = stats.total;
   $('#stats-completed').textContent = completed;
   $('#stats-rate').textContent = `${stats.repairSuccessRate || 0}%`;
-  $('#stats-no-show').textContent = `${stats.total ? Math.round(noShow / stats.total * 100) : 0}%`;
+  $('#stats-cancelled').textContent = stats.cancelled || 0;
+  $('#stats-expired-rate').textContent = `${stats.expiredRate || 0}%`;
+  $('#stats-expired').textContent = stats.expired || 0;
 
   const days = Object.entries(daily);
   const maxDay = Math.max(...days.map(([, value]) => value.total), 1);
@@ -24,12 +25,12 @@ function renderStats(stats) {
   renderBars($('#campus-chart'), Object.entries(campuses), stats.total);
   // Integer-like account keys lose SQL ordering when represented as a JSON object.
   const workload = Object.entries(technicians).sort((a, b) => b[1].completed - a[1].completed);
-  $('#technician-chart').innerHTML = workload.length ? `<div class="workload-head"><span>维修人员</span><span>开始数</span><span>完成数</span><span>完成率</span></div>${workload.map(([name, value]) => `<div class="workload-row"><strong>${escapeHtml(name)}</strong><span>${value.started}</span><span>${value.completed}</span><span>${value.started ? Math.round(value.completed / value.started * 100) : 0}%</span></div>`).join('')}` : '<p class="stats-empty">暂无已分配的维修记录</p>';
+  $('#technician-chart').innerHTML = workload.length ? `<div class="workload-head"><span>维修人员</span><span>开始数</span><span>完成数</span><span>完成率</span></div>${workload.map(([account, value]) => `<div class="workload-row"><strong>${escapeHtml(assigneeLabel(account,value.assignedToName))}</strong><span>${value.started}</span><span>${value.completed}</span><span>${value.started ? Math.round(value.completed / value.started * 100) : 0}%</span></div>`).join('')}` : '<p class="stats-empty">暂无已分配的维修记录</p>';
 }
 
 export function initStats() {
   let generation = 0;
-  function empty() { renderStats({ total: 0, completed: 0, noShow: 0, daily: {}, faults: {}, campuses: {}, technicians: {} }); }
+  function empty() { renderStats({ total: 0, completed: 0, cancelled: 0, expired: 0, daily: {}, faults: {}, campuses: {}, technicians: {} }); }
   async function refresh() {
     const current = ++generation;
     const query = new URLSearchParams({ range: $('#stats-range').value, day: $('#stats-day').value });

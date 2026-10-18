@@ -10,7 +10,7 @@ async function asset(path) {
   if (seen.has(path)) return;
   seen.add(path);
   const response = await get(path);
-  if (path.endsWith('.js')) {
+  if (/\.m?js$/.test(path)) {
     assert.ok(response.headers.get('content-type')?.includes('javascript'), `${path} is not JavaScript`);
     for (const [, dependency] of (await response.text()).matchAll(/(?:from\s+|import\s+)['"]([^'"]+)['"]/g)) {
       await asset(new URL(dependency, new URL(path, base)).pathname);
@@ -21,7 +21,7 @@ for (const entry of ['/','/staff/']) {
   const response = await get(entry), html = await response.text();
   assert.ok(response.headers.get('content-type')?.includes('text/html'));
   assert.ok(html.includes(entry === '/' ? 'id="booking-form"' : 'id="login-form"'));
-  for (const [, path] of html.matchAll(/(?:src|href)="(\/[^"?#]+\.(?:js|css|jpg))"/g)) await asset(path);
+  for (const [, path] of html.matchAll(/(?:src|href)="(\/[^"?#]+\.(?:m?js|css|jpg))"/g)) await asset(path);
 }
 for (const path of ['/user.html','/staff.html','/app.js','/src/app.js','/.dev.vars','/wrangler.jsonc']) await get(path, 404);
 assert.equal((await (await get('/api/health')).json()).ok, true);

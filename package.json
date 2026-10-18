@@ -15,7 +15,7 @@
     "db:migrate:remote": "node scripts/migrate-remote.mjs",
     "db:seed": "node scripts/seed.mjs",
     "attachments:cleanup": "node scripts/cleanup-attachments.mjs",
-    "appointments:end-no-shows": "node scripts/end-no-shows.mjs",
+    "appointments:expire": "node scripts/expire-appointments.mjs",
     "check": "node scripts/check.mjs",
     "test": "npm run build && node --test tests/*.test.mjs tests/architecture/*.test.mjs tests/extension/meeting-fixture/*.test.mjs",
     "deploy": "node scripts/deploy.mjs",
@@ -41,7 +41,7 @@
     "@playwright/test": "1.64.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "esbuild": "^0.27.0",
+    "esbuild": "0.28.2",
     "eslint": "10.12.0",
     "globals": "17.13.0",
     "miniflare": "5.20261006.1-alpha",
@@ -50,6 +50,7 @@
     "wrangler": "4.149.0"
   },
   "dependencies": {
+    "blueimp-load-image": "5.16.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "zxing-wasm": "3.1.5"

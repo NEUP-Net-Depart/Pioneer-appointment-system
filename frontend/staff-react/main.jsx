@@ -61,7 +61,7 @@ function Root() {
   }, [field, user, page, rosterSection, settingsSection, workScene]);
   useEffect(() => {
     let active = true; const controller = new AbortController();
-    if (!user) { setField(null); return; }
+    if (!user || !user.staffWorkflowEnabled) { setField(null); return; }
     setBootError('');
     request('/api/field/home', { signal: controller.signal }).then(data => {
       if (!active) return;

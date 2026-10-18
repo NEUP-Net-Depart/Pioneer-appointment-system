@@ -20,7 +20,7 @@ export function previewBranch(env=process.env){
 export function pagesSiteUrl(project,branch,productionBranch='main'){
   if(!/^[a-z\d][a-z\d-]*$/.test(project))throw new Error('Configure a valid Pages project name.');
   if(branch===productionBranch)return `https://${project}.pages.dev`;
-  const alias=branch.toLowerCase().replace(/[^a-z\d]/g,'-');
+  const alias=branch.toLowerCase().replace(/[^a-z\d]/g,'-').slice(0,28).replace(/-+$/,'');
   if(!alias || alias.length>63 || !/^[a-z\d].*[a-z\d]$|^[a-z\d]$/.test(alias))throw new Error('The branch must produce a valid Pages DNS alias of 1–63 characters.');
   return `https://${alias}.${project}.pages.dev`;
 }

@@ -1,11 +1,11 @@
 export class HttpError extends Error {
-  constructor(status, message, code = '') { super(message); this.status = status; this.code = code; }
+  constructor(status, message, code = '', fields) { super(message); this.status = status; this.code = code; this.fields = fields; }
 }
-export const fail = (status, message, code = '') => { throw new HttpError(status, message, code); };
+export const fail = (status, message, code = '', fields) => { throw new HttpError(status, message, code, fields); };
 export const securityHeaders = {
   'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store',
-  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+  'Permissions-Policy': 'camera=(self), microphone=(), geolocation=()',
   'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'; sandbox"
 };
 export function json(payload, status = 200) {

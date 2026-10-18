@@ -28,7 +28,6 @@
 .scanner-frame { position: relative; width: 100%; height: 280px; height: clamp(230px, 39svh, 380px); overflow: hidden; border-radius: 9px; background: var(--navy); }
 .scanner-frame video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .scanner-guide { position: absolute; top: 50%; left: 50%; width: min(86%, 300px); height: 90%; object-fit: contain; transform: translate(-50%, -50%); filter: invert(1) drop-shadow(0 1px 2px #00000060); pointer-events: none; opacity: .9; }
-#camera-status { margin: 6px 0 0; min-height: 24px; padding: 0 4px; text-align: center; font-size: 13px; line-height: 1.6; color: #c8d7df; }
 .scanner-retry { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; margin: 6px auto 0; padding: 8px 16px; border: 1px solid #ffffff40; border-radius: 10px; color: #fff; background: transparent; }
 .scanner-retry .workbench-icon { width: 18px; height: 18px; }
 .workbench-actions { display: grid; gap: 12px; }
@@ -60,6 +59,14 @@
 .scan-panel details details { margin-top: 16px; }
 .scan-panel details > p { color: var(--muted); font-size: 13px; }
 .scan-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.scan-number-suggestions { display: grid; gap: 8px; margin: 0 0 14px; }
+.scan-number-suggestion { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px 12px; width: 100%; min-height: 82px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink); text-align: left; cursor: pointer; }
+.scan-number-suggestion strong { grid-column: 1 / -1; font-size: 15px; line-height: 1.4; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; letter-spacing: .015em; }
+.scan-number-suggestion span { align-self: center; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.scan-number-suggestion em { align-self: center; justify-self: end; font-style: normal; white-space: nowrap; }
+.scan-number-suggestion:hover { background: #f8faf9; border-color: #a7bdb4; }
+.scan-number-suggestion:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+@media (max-width: 380px) { .scan-number-suggestion { padding: 13px 12px; gap: 8px; } .scan-number-suggestion strong { font-size: 14px; } }
 .scan-actions > button { flex: 1 1 130px; padding: 12px; }
 .scan-actions > .primary-btn { flex-grow: 2; }
 .scan-help, #scan-draft-state { color: var(--muted); font-size: 13px; line-height: 1.65; margin: 0 0 16px; }
@@ -69,6 +76,8 @@
 .scan-status-pill[data-status=booked] { color: #a54a27; background: #fff0e8; }
 .scan-status-pill[data-status=in_progress] { color: #0e6178; background: #dff4f5; }
 .scan-status-pill[data-status=completed] { color: #13715f; background: #dcf4e8; }
+.scan-status-pill[data-status=cancelled] { color: #536474; background: #edf1f5; }
+.scan-status-pill[data-status=expired] { color: #855300; background: #fff2d5; }
 .scan-device-card h2 { margin-bottom: 4px; font-size: 22px; overflow-wrap: anywhere; }
 .scan-device-type { margin: 0; font-size: 13px; color: var(--muted); }
 .scan-order-code { margin: 12px 0 0; font-family: ui-monospace, Consolas, monospace; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
@@ -83,6 +92,7 @@
 .scan-photo-field > span { font-size: 12px; color: var(--muted); }
 .scan-workbench .intake-photos .workbench-icon { width: 26px; height: 26px; }
 .scan-photo-field .scan-photo-preview { max-width: 100%; max-height: 140px; border-radius: 8px; object-fit: contain; }
+.scan-photo-column .intake-photo-meta { overflow-wrap: anywhere; font-size: 12px; }
 #onsite-signature { width: 100%; height: 170px; border: 1px solid #c4d7de; background: #fff; border-radius: 9px; touch-action: none; }
 #scan-signed { display: block; width: 100%; height: auto; background: #fff; }
 #scan-files { display: grid; gap: 8px; margin: 10px 0; }
