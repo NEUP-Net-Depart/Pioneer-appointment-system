@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { api, Empty, Modal, Notice, CredentialCard, Scanner, Status, time } from "./ui";
 import { useField } from "./useField";
 import { Repair } from "./Repair";
+import {AppointmentLookup} from './AppointmentLookup';
 import { Registration } from "./Registration";
 import type { Home } from "./types";
 import { WorkspaceHeader } from '../WorkspaceHeader';
@@ -43,8 +44,7 @@ export function FieldApp({
     [selected, setSelected] = useState(""),
     [scanOpen, setScanOpen] = useState(false),
     [registration, setRegistration] = useState(false);
-  const [code, setCode] = useState(""),
-    [message, setMessage] = useState(""),
+  const [message, setMessage] = useState(""),
     [token, setToken] = useState<{ token: string; expiresAt: string } | null>(
       null,
     ),
@@ -290,24 +290,7 @@ export function FieldApp({
                       <h2>接待设备</h2>
                       <span>核验后才会建立维修记录</span>
                     </div>
-                    <form
-                      className="field-search"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        resolve(code.trim());
-                      }}
-                    >
-                      <input
-                        aria-label="预约编号"
-                        placeholder="输入完整预约编号"
-                        value={code}
-                        onChange={(e) => setCode(e.target.value)}
-                        required
-                      />
-                      <button disabled={busy || data.state !== "available"}>
-                        查询
-                      </button>
-                    </form>
+                    <AppointmentLookup active={active && scene==='repair'} disabled={busy} onSelect={resolve}/>
                     <div className="field-actions">
                       <button
                         disabled={data.state !== "available"}

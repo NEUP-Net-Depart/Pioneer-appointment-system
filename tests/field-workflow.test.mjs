@@ -579,6 +579,24 @@ test('actual capacity keeps date snapshots and scopes staffing by existing roste
   await db.prepare('UPDATE weekday_slot_capacities SET capacity=?,revision=revision+1 WHERE campus=? AND weekday=4 AND time_slot=?').bind(cell.capacity, cell.campus, cell.time_slot).run();
 });
 
+test('field number suggestions preserve suffix/date rules and campus privacy without decrypting customer fields',async()=>{
+  const ids=['reserve020261015-89','reserve020261014-89','reserve120261015-89'];
+  try{
+    for(const [index,id] of ids.entries())await db.prepare(`INSERT INTO appointments(id,student_id,name,campus,social,device_type,brand,device_model,warranty,fault_type,date,time_slot,status,access_token_hash,credential_rotated_at,created_at,agreement_at,agreement_version,source,expires_at,outcome)
+      VALUES(?,?,? ,?,'private-social','笔记本电脑','测试','测试','否','系统问题',?,'19:00–19:30','completed',?,'2026-10-15','2026-10-15','2026-10-15','v1.0','onsite','2026-10-15T13:30:00.000Z','repaired')`)
+      .bind(id,`2090990${index}`,'private-name',index===2?'浑南':'南湖',index===1?'2026-10-14':'2026-10-15',String(index+1).repeat(64)).run();
+    assert.equal((await request('/api/scan/search',null,{q:'89'})).status,401);
+    assert.deepEqual((await request('/api/scan/search','20261002',{q:'8'})).body,{items:[],hasMore:false});
+    const suffix=await request('/api/scan/search','20261002',{q:'89'});
+    assert.equal(suffix.status,200,JSON.stringify(suffix.body));assert.deepEqual(suffix.body.items.map(item=>item.id),[ids[0]]);
+    assert.deepEqual(Object.keys(suffix.body.items[0]).sort(),['campus','date','id','status','timeSlot']);
+    const history=await request('/api/scan/search','20261002',{q:'20261014-89'});
+    assert.equal(history.status,200,JSON.stringify(history.body));assert.deepEqual(history.body.items.map(item=>item.id),[ids[1]]);
+    assert.equal((await request('/api/scan/search','20261002',{q:'20261015-89'})).body.items.some(item=>item.campus==='浑南'),false);
+    assert.equal((await request('/api/scan/search','20261002',{q:'%'})).status,400);
+  }finally{await db.batch(ids.map(id=>db.prepare('DELETE FROM appointments WHERE id=?').bind(id)));}
+});
+
 test("field day: reception, attendance, intake, transfer and completion share authoritative facts", async () => {
   const office = "20261001",
     tech = "20261002",

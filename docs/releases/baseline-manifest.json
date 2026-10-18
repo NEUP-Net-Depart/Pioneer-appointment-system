@@ -104,6 +104,10 @@
     {
       "name": "0023_office_attendance_export.sql",
       "sha256": "161d307ed59f041ff6feef871622157d77a40d4251b370421bfcd1b53a7bff72"
+    },
+    {
+      "name": "0024_recurring_collection_identity.sql",
+      "sha256": "9b8220e2bbcaae2f8d92ae47257f08853a50f3a11a82db905c0bbe97fbb4a0f6"
     }
   ],
   "modules": [
@@ -287,6 +291,10 @@
     {
       "name": "0023_office_attendance_export.sql",
       "sha256": "161d307ed59f041ff6feef871622157d77a40d4251b370421bfcd1b53a7bff72"
+    },
+    {
+      "name": "0024_recurring_collection_identity.sql",
+      "sha256": "9b8220e2bbcaae2f8d92ae47257f08853a50f3a11a82db905c0bbe97fbb4a0f6"
     }
   ],
   "staffMigrationsDirectory": "database/staff-migrations"

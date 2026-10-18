@@ -9,7 +9,19 @@ import {staffPlatformService} from '../src/services/staff-platform.js';
 import {dateKey,weekRange,addDays} from '../shared/time.js';
 import {generateOfficeRoster} from '../src/modules/rosters/office.ts';
 import {validateRoster} from '../src/modules/rosters/solver.js';
-import {collectionInstant,validateRecurrence} from '../src/modules/rosters/recurrence.js';
+import {collectionInstant,validateRecurrence,recurringPeriodWeek} from '../src/modules/rosters/recurrence.js';
+import {rosterCollections,preferredRosterPeriod} from '../shared/roster-collections.js';
+
+test('one published collection follows the current calendar week and keeps independent weekly history',()=>{
+  const series={publish_weekday:4,publish_time:'18:00'};
+  assert.equal(recurringPeriodWeek(series,'2026-10-05',new Date('2026-10-22T17:59:59+08:00')),'2026-10-19');
+  assert.equal(recurringPeriodWeek(series,'2026-10-05',new Date('2026-10-22T18:00:00+08:00')),'2026-10-26');
+  assert.equal(recurringPeriodWeek(series,'2026-10-05',new Date('2027-01-15T18:00:00+08:00')),'2027-01-18','long absences jump to the current period without catch-up tasks');
+  assert.equal(recurringPeriodWeek(series,'2026-11-02',new Date('2026-10-18T12:00:00+08:00')),'2026-11-02','the initial immediately-opened period is retained');
+  const periods=[{id:'p1',seriesId:'collection',weekStart:'2026-10-19',dutyType:'office',collectionState:'closed'}, {id:'p2',seriesId:'collection',weekStart:'2026-10-26',dutyType:'office',collectionState:'open'}];
+  const groups=rosterCollections(periods);assert.equal(groups.length,1);assert.equal(groups[0].id,'collection');assert.equal(groups[0].periods.length,2);
+  assert.equal(preferredRosterPeriod(periods,'2026-10-23').id,'p2');
+});
 
 async function migrate(db,directory){
   for(const file of (await readdir(directory)).filter(file=>file.endsWith('.sql')).sort()) {
@@ -52,7 +64,7 @@ test('both migration chains support collection, atomic weekly submissions, revis
   const mf=new Miniflare({telemetry:{enabled:false},workers:[{config:{name:'roster-workflow',compatibilityDate:'2026-10-01',manifest:{mainModule:'index.js',modules:{'index.js':{type:'esm',contents:'export default {fetch(){return new Response("ok");}}'}}},env:{DEV:{type:'d1',id:'workflow-dev'},STAFF:{type:'d1',id:'workflow-staff'}}}}]});
   try{for(const [binding,directory] of [['DEV','migrations'],['STAFF','database/staff-migrations']]){
     const db=await mf.getD1Database(binding);await migrate(db,directory);
-    for(const [account,role] of [['root001','superadmin'],['20265501','technician'],['20265502','technician']]){
+    for(const [account,role] of [['root001','superadmin'],['20265501','technician'],['20265502','technician'],['20265503','superadmin']]){
       await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,protected,password_hash,created_at) VALUES(?,?,?,'南湖',?,'test','2026-01-01')").bind(account,account,role,account==='root001'?1:0).run();
       await db.batch(['南湖','浑南'].map(campus=>db.prepare('INSERT INTO staff_campus_grants VALUES(?,?)').bind(account,campus)));
       if(role==='technician')await db.prepare("INSERT INTO member_work_profiles(id,member_id,profile_code,effective_from) VALUES(?,?,'office','2026-01-01')").bind(`office-${account}`,`member-${account}`).run();
@@ -94,11 +106,20 @@ test('both migration chains support collection, atomic weekly submissions, revis
     assert.equal((await repo.rosterVersionById(published.id)).status,'superseded');
     const secondRevision=await service.reviseRoster(root,task.id,{publishedVersionId:republished.id,requestId:crypto.randomUUID()});
     assert.equal(secondRevision.status,'draft','old drafts must not block the next revision');
-    // A forced due tick models the scheduler; next week's deadline remains in the future.
-    await db.prepare("UPDATE roster_collection_series SET next_publish_at='2020-01-01' WHERE id=?").bind(task.seriesId).run();
-    const result=await service.processRosterAutomation();assert.equal(result.published,1,JSON.stringify(result));assert.equal(result.carried,1,JSON.stringify(result));
-    assert.equal((await service.processRosterAutomation()).published,0);
+    // Opening the same ordinary collection resolves only the calendar's current
+    // week. No scheduled worker, catch-up queue or separate publication occurs.
+    const nextWeek=addDays(week,7),openedAt=new Date(Date.parse(collectionInstant(nextWeek,4,'18:00'))+3600000);
+    const currentService=staffPlatformService({repository:repo,platform,manifests:platform.manifests,calendarClock:()=>openedAt});
+    const currentList=await currentService.rosterTasks(root);
+    assert.equal(currentList.collections.length,1);
+    assert.equal(currentList.collections[0].id,task.seriesId);
+    assert.equal(currentList.collections[0].periods.length,2);
     const next=(await repo.listRosterTasks()).find(row=>row.seriesId===task.seriesId&&row.id!==task.id);
+    assert.equal(next.weekStart,nextWeek);
+    await currentService.rosterTaskState(root,next.id);
+    await currentService.rosterTasks(root);
+    assert.equal((await repo.listRosterTasks()).length,2,'reopening does not duplicate the current week');
+    assert.equal((await repo.rosterSubmissions(task.id)).length,2,'old weekly submissions remain independent');
     const submission=(await repo.rosterSubmissions(next.id)).find(row=>row.memberId===one.memberId);assert.equal(submission.source,'carried');
     const preference=(await repo.rosterPreferences(one.memberId)).find(row=>row.duty_type==='office');
     const beforeDisable=await repo.availability(next.id);
@@ -108,16 +129,50 @@ test('both migration chains support collection, atomic weekly submissions, revis
     assert.deepEqual(await repo.availability(next.id),beforeDisable,'in-flight automation cannot submit after continuation was disabled');
     await db.prepare("UPDATE roster_availability_preferences SET enabled=1,revision=revision+1 WHERE member_id=? AND duty_type='office'").bind(one.memberId).run();
     const nextWindows=await repo.availability(next.id);assert.equal(nextWindows.length,8);assert.equal(nextWindows[0].businessDate,addDays(week,7));
+    const series=await repo.rosterSeries(task.seriesId),originalOpensAt=(await repo.rosterTaskById(next.id)).collectionOpensAt;
+    const settings={enabled:true,name:'办公每周可用时间',revision:series.revision,recurrence:{publishWeekday:3,publishTime:'12:00',deadlineWeekday:7,deadlineTime:'18:00'},requestId:crypto.randomUUID()};
+    await assert.rejects(service.seriesCommand(one,series.id,settings),error=>error.status===403);
+    const updatedSeries=await service.seriesCommand(root,series.id,settings);
+    assert.equal((await service.seriesCommand(root,series.id,settings)).revision,updatedSeries.revision,'settings retries are idempotent');
+    await assert.rejects(service.seriesCommand(root,series.id,{...settings,requestId:crypto.randomUUID()}),error=>error.status===409);
+    assert.equal((await repo.rosterTaskById(next.id)).collectionOpensAt,originalOpensAt,'changing future opening times never changes existing weekly snapshots');
+    assert.equal((await service.rosterTasks(root)).collections[0].name,settings.name);
+    const lateWeek=addDays(week,14),lateDeadline=new Date(Date.parse(collectionInstant(lateWeek,7,'18:00'))).toISOString();
+    const lateTask=await service.createRosterTask(root,{...input,weekStart:lateWeek,deadline:lateDeadline,recurrence:{enabled:false},requestId:crypto.randomUUID()});
+    const afterDeadline=new Date(Date.parse(lateDeadline)+3600000);
+    // Nobody visits this week. Changes made after its cutoff cannot rewrite the
+    // choice that was effective during collection, or enroll another member late.
+    await db.prepare("UPDATE roster_availability_preferences SET enabled=0,revision=revision+1,updated_at=? WHERE member_id=? AND duty_type='office'").bind(afterDeadline.toISOString(),one.memberId).run();
+    await db.prepare("UPDATE roster_availability_preferences SET enabled=1,revision=revision+1,updated_at=? WHERE member_id=? AND duty_type='office'").bind(afterDeadline.toISOString(),two.memberId).run();
+    const lateService=staffPlatformService({repository:repo,platform,manifests:platform.manifests,calendarClock:()=>afterDeadline});
+    await Promise.all([lateService.rosterTaskState(root,lateTask.id),lateService.rosterTaskState(root,lateTask.id)]);
+    const lateSubmissions=await repo.rosterSubmissions(lateTask.id);
+    assert.equal(lateSubmissions.length,1);assert.equal(lateSubmissions[0].memberId,one.memberId);assert.equal(lateSubmissions[0].source,'carried');
+    await assert.rejects(lateService.submitAvailability(two,lateTask.id,{...body,requestId:crypto.randomUUID()}),error=>error.status===409,'historical continuation never permits ordinary late submission');
+    assert.equal((await repo.availability(lateTask.id)).length,8);
     const changedWeek=addDays(week,21);
     const changedTask=await service.createRosterTask(root,{...input,weekStart:changedWeek,recurrence:{enabled:false},requestId:crypto.randomUUID()});
     await db.prepare("UPDATE member_work_profiles SET effective_to=? WHERE member_id=? AND profile_code='office'").bind(changedWeek,one.memberId).run();
-    const afterRevocation=await service.processRosterAutomation();
-    assert.ok(afterRevocation.skipped>0,'a qualification revoked after collection creation must stop automatic submission');
-    assert.equal(afterRevocation.errors.length,0,'expected eligibility changes are not scheduler failures');
+    await service.rosterTaskState(root,changedTask.id);
+    await assert.rejects(service.taskAvailability(one,changedTask.id),error=>error.status===403);
+
     assert.equal((await repo.rosterSubmissions(changedTask.id)).length,0);
     await service.availabilityPreferences(one,{dutyType:'office',enabled:false});assert.equal((await service.availabilityPreferences(one)).items[0].enabled,0);
     const reopened=await service.collectionCommand(root,task.id,{action:'reopen',revision:(await repo.rosterTaskById(task.id)).revision,deadline:new Date(Date.now()+86400000).toISOString(),requestId:crypto.randomUUID()});
     assert.equal(reopened.collectionClosedAt,null);assert.equal((await repo.rosterVersionById(republished.id)).status,'published');
+    const owner=await users.find('20265503'),latestSeries=await repo.rosterSeries(series.id);
+    await service.seriesCommand(owner,series.id,{enabled:true,revision:latestSeries.revision,requestId:crypto.randomUUID()});
+    await db.prepare("UPDATE staff_accounts SET status='disabled' WHERE account='20265503'").run();
+    try{
+      const stillReadable=await lateService.rosterTasks(two);
+      assert.ok(stillReadable.items.some(item=>item.seriesId===task.seriesId&&item.collectionIssue),'an unavailable owner only pauses that collection and cannot break the ordinary task list');
+    }finally{await db.prepare("UPDATE staff_accounts SET status='enabled' WHERE account='20265503'").run();}
+    const distantWeek=addDays(week,42),distantAt=new Date(Date.parse(collectionInstant(distantWeek,3,'12:00'))+3600000);
+    const distantService=staffPlatformService({repository:repo,platform,manifests:platform.manifests,calendarClock:()=>distantAt});
+    await distantService.rosterTasks(two);
+    const actualPeriods=(await repo.listRosterTasks()).filter(item=>item.seriesId===task.seriesId);
+    assert.equal(actualPeriods.length,3,'after weeks without visits, resolve only one current period, never a backlog of published tasks');
+    assert.ok(actualPeriods.some(item=>item.weekStart===distantWeek));
     assert.deepEqual((await db.prepare('PRAGMA foreign_key_check').all()).results,[]);
   }}finally{await mf.dispose();}
 });

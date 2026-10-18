@@ -1087,3 +1087,14 @@
 .attendance-history-list span,.attendance-history-list small { color:var(--muted); font-size:13px; }
 
 .field-credential--attendance { border:0; border-radius:0; padding:8px 0; margin:12px auto 24px; }
+.field-lookup { position:relative; min-width:0; }
+.field-lookup-input { flex:1; min-width:0; display:grid; gap:8px; margin:0; }
+.field-search:has(.field-lookup-input) { align-items:flex-end; }
+.field-lookup-help { font-size:13px; line-height:1.6; color:var(--muted); margin:10px 0; }
+.field-lookup-results { display:grid; gap:4px; margin:12px 0; max-height:360px; overflow:auto; overscroll-behavior:contain; border:1px solid var(--line); border-radius:12px; padding:6px; }
+.field-app .field-lookup-results>button { display:flex; width:100%; justify-content:space-between; align-items:center; gap:12px; border:0; border-radius:8px; text-align:left; padding:12px; background:transparent; min-height:64px; }
+.field-lookup-results>button>span:first-child { display:grid; gap:6px; min-width:0; }
+.field-lookup-results strong { font-size:14px; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+.field-lookup-results small { color:var(--muted); font-size:12px; line-height:1.5; }
+.field-app .field-lookup-results>button[aria-selected=true],.field-app .field-lookup-results>button:hover { background:var(--workspace-subtle); }
+@media(max-width:400px){.field-app .field-lookup-results>button { flex-wrap:wrap; gap:8px; }.field-search:has(.field-lookup-input){display:flex;flex-wrap:wrap;}.field-lookup-input{flex-basis:100%;}}

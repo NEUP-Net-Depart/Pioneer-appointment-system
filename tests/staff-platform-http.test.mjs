@@ -650,6 +650,9 @@ test('draft edits are atomic, including role-free drafts and stale replacements'
 
 test('roster generation and publication use server facts and reject forged client validation', async () => {
   const db = await mf.getD1Database('DB');
+  // Keep this publication independent of the live-day attendance fixture. A
+  // fixed October date collided with that fixture when the calendar rolled over.
+  const week=addDays(weekRange(dateKey()).start,14);
   const login = await request('/api/auth/login', { method: 'POST', body: JSON.stringify({ account: 'root001', password: 'staff-platform-password' }) });
   const headers = { Authorization: `Bearer ${login.body.token}` };
   const post = (path, body, method = 'POST') => request(path, { method, headers, body: JSON.stringify(body) });
@@ -662,10 +665,10 @@ test('roster generation and publication use server facts and reject forged clien
     const id = `member-${account}`; ids.push(id);
     if(index<4) await db.prepare("INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from) VALUES(?,?,'role-repair-lead','{\"campusIds\":[\"campus-nanhu\"]}','2026-01-01')").bind(`qualified-${index}`,id).run();
   }
-  const task = await post('/api/roster-tasks', { weekStart: '2026-10-19', campusId: 'campus-nanhu', slotStart: '18:00', slotEnd: '19:00', deadline: '2026-10-18T10:00:00+08:00', memberIds: ids });
+  const task = await post('/api/roster-tasks', { weekStart: week, campusId: 'campus-nanhu', slotStart: '18:00', slotEnd: '19:00', deadline: `${addDays(week,-1)}T10:00:00+08:00`, memberIds: ids });
   assert.equal(task.response.status, 201, JSON.stringify(task.body));
   for (let index = 0; index < 8; index += 1) await db.prepare('INSERT INTO availability(id,task_id,member_id,business_date,start_at,end_at,campus_id) VALUES(?,?,?,?,?,?,?)')
-    .bind(`window-${index}`,task.body.id,ids[index],`2026-10-${19+index%4}`,'18:00','19:00','campus-nanhu').run();
+    .bind(`window-${index}`,task.body.id,ids[index],addDays(week,index%4),'18:00','19:00','campus-nanhu').run();
   const generated = await post('/api/rosters/generate', { taskId: task.body.id, members: [], slots: [], validation: { valid: true }, campusId: 'campus-hunnan' });
   assert.equal(generated.response.status, 201, JSON.stringify(generated.body));
   assert.equal(generated.body.assignments.length, 8);
@@ -679,7 +682,7 @@ test('roster generation and publication use server facts and reject forged clien
   assert.equal(restored.body.draft.inputSnapshotRef.eligibility.members.length,8);
   assert.deepEqual(restored.body.draft.inputSnapshotRef.optimization,generated.body.inputSnapshotRef.optimization);
   await db.prepare('INSERT INTO availability(id,task_id,member_id,business_date,start_at,end_at,campus_id) VALUES(?,?,?,?,?,?,?)')
-    .bind('changed-optimizer-input',task.body.id,ids[0],'2026-10-20','18:00','19:00','campus-nanhu').run();
+    .bind('changed-optimizer-input',task.body.id,ids[0],addDays(week,1),'18:00','19:00','campus-nanhu').run();
   const changedInput = await request(`/api/roster-tasks/${task.body.id}/roster`,{headers});
   assert.equal(changedInput.body.draft.validation.valid,true,'the saved assignment can remain feasible after the input expands');
   assert.equal(changedInput.body.draft.sourceChanged,true,'feasibility must not conceal an obsolete optimization input');
@@ -699,6 +702,7 @@ test('roster generation and publication use server facts and reject forged clien
   const finalDraft = await post('/api/rosters/generate', { taskId: task.body.id });
   await db.prepare("DELETE FROM member_roles WHERE id='qualified-0'").run();
   assert.equal((await post(`/api/rosters/${finalDraft.body.version.id}/publish`, { version: finalDraft.body.version.version })).response.status, 409);
+  await db.prepare("UPDATE roster_versions SET status='superseded' WHERE task_id=? AND status='published'").bind(task.body.id).run();
 });
 
 test('staffing demand is independently scoped, versioned and never rewrites a published roster',async()=>{

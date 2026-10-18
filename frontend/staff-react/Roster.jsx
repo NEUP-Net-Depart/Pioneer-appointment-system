@@ -28,7 +28,7 @@ export function Roster({ user, requestSignal = 0 }) {
       const requests = [request(`/api/me/roster?weekStart=${encodeURIComponent(weekStart)}`, { signal:current.signal }), request('/api/roster-tasks', { signal:current.signal }), request('/api/leaves', { signal:current.signal }), request('/api/swaps', { signal:current.signal })];
       const [mine, taskData, leaveData, swapData] = await Promise.all(requests);
       if (sequence !== readSerial.current) return;
-      taskData.items = (taskData.items || []).filter(task => task.actions?.fill);
+      taskData.items = (taskData.items || []).filter(task => task.actions?.fill||task.actions?.readOwn);
       fetchedAt.current = Date.now();
       setAssignments(mine.items || []); setTasks(taskData.items || []); setLeaves(leaveData.items || []); setSwaps(swapData.items || []);
 

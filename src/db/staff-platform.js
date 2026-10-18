@@ -9,7 +9,7 @@ import { rosterCollectionRepository } from './roster-collection.js';
 const memberColumns = `m.id,m.name,m.student_id,m.home_campus_id,m.status,m.revision,m.created_at,m.updated_at`;
 const assignmentLeaveColumn = `(SELECT lr.status FROM roster_leave_facts lr WHERE lr.origin_assignment_id=COALESCE(da.origin_assignment_id,da.id) AND lr.member_id=da.member_id
   AND lr.status IN ('pending','approved') ORDER BY CASE lr.status WHEN 'approved' THEN 0 ELSE 1 END,lr.created_at DESC,lr.id DESC LIMIT 1) AS leave_status`;
-const rosterTaskColumns = `rt.*,(SELECT json_group_array(json_object('businessDate',business_date,'campusId',campus_id,'ordinaryMinimum',ordinary_minimum))
+const rosterTaskColumns = `rt.*,(SELECT name FROM roster_collection_series WHERE id=rt.series_id) AS collection_name,(SELECT json_group_array(json_object('businessDate',business_date,'campusId',campus_id,'ordinaryMinimum',ordinary_minimum))
   FROM (SELECT * FROM roster_staffing_requirements WHERE task_id=rt.id ORDER BY business_date,campus_id)) AS requirements_json`;
 
 function rows(result) { return result?.results || []; }
@@ -696,16 +696,17 @@ export function staffPlatformRepository(db) {
   }
   async function createRosterTask(input, actorMemberId) {
     const id = input.id || crypto.randomUUID(); const at = nowIso();
-    await db.batch([...(input.commandRecord ? [collection.rosterVersionGuard(input.commandRecord,'1=1',[])] : []),db.prepare(`INSERT INTO roster_tasks(id,week_start,campus_scope,slot_start,slot_end,member_ids,deadline,description,created_by_member_id,created_at,duty_type,rule_version,workflow_version,series_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-      .bind(id,input.weekStart,json(input.campusScope,{}),input.slotStart,input.slotEnd,json(input.memberIds,[]),input.deadline,input.description || '',actorMemberId,at,input.dutyType || 'repair',input.dutyType==='office' ? input.workflowVersion===1 ? 'office-daily-v2' : 'office-daily-v1' : 'repair-minimum-v2',input.workflowVersion || 0,input.seriesId || (input.recurrence?.enabled ? id : null)),
+    await db.batch([...(input.commandRecord ? [collection.rosterVersionGuard(input.commandRecord,'1=1',[])] : []),db.prepare(`INSERT INTO roster_tasks(id,week_start,campus_scope,slot_start,slot_end,member_ids,deadline,description,created_by_member_id,created_at,duty_type,rule_version,workflow_version,series_id,collection_opens_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .bind(id,input.weekStart,json(input.campusScope,{}),input.slotStart,input.slotEnd,json(input.memberIds,[]),input.deadline,input.description || '',actorMemberId,at,input.dutyType || 'repair',input.dutyType==='office' ? input.workflowVersion===1 ? 'office-daily-v2' : 'office-daily-v1' : 'repair-minimum-v2',input.workflowVersion || 0,input.seriesId || (input.recurrence?.enabled ? id : null),input.collectionOpensAt || null),
       ...(input.requirements || []).map(item=>db.prepare('INSERT INTO roster_staffing_requirements(task_id,business_date,campus_id,ordinary_minimum) VALUES(?,?,?,?)').bind(id,item.businessDate,item.campusId,item.ordinaryMinimum)),
       ...(input.commandRecord ? [collection.rosterVersionReceipt(input.commandRecord,'create-task',id,{signature:input.commandSignature})] : []),
-      ...(input.recurrence?.enabled ? [db.prepare('INSERT INTO roster_collection_series(id,owner_member_id,template_task_id,publish_weekday,publish_time,deadline_weekday,deadline_time,next_week,next_publish_at) VALUES(?,?,?,?,?,?,?,?,?)')
-        .bind(id,actorMemberId,id,input.recurrence.publishWeekday,input.recurrence.publishTime,input.recurrence.deadlineWeekday,input.recurrence.deadlineTime,input.recurrence.nextWeek,input.recurrence.nextPublishAt)] : []),
+      ...(input.recurrence?.enabled ? [db.prepare('INSERT INTO roster_collection_series(id,owner_member_id,template_task_id,publish_weekday,publish_time,deadline_weekday,deadline_time,next_week,next_publish_at,name) VALUES(?,?,?,?,?,?,?,?,?,?)')
+        // Legacy queue columns remain for schema compatibility only; no queue is populated.
+        .bind(id,actorMemberId,id,input.recurrence.publishWeekday,input.recurrence.publishTime,input.recurrence.deadlineWeekday,input.recurrence.deadlineTime,input.weekStart,'',input.collectionName||'')] : []),
       ...(input.commandRecord ? [collection.rosterAudit(input.commandRecord,'rosters.task.created',id,{weekStart:input.weekStart,campusScope:input.campusScope}),db.prepare('DELETE FROM roster_command_guards')] : [])]);
     return rosterTaskById(id);
   }
-  function rosterTask(row) { return row ? { id: row.id, seriesId:row.series_id || '',dutyType: row.duty_type || 'repair', workflowVersion:row.workflow_version || 0, collectionClosedAt:row.collection_closed_at, ruleVersion:row.rule_version || 'legacy', requirements:parseJson(row.requirements_json,[]), weekStart: row.week_start, campusScope: parseJson(row.campus_scope,{}), slotStart: row.slot_start, slotEnd: row.slot_end, memberIds: parseJson(row.member_ids,[]), deadline: row.deadline, description: row.description, revision: row.revision, createdAt: row.created_at } : null; }
+  function rosterTask(row) { return row ? { id: row.id, collectionOpensAt:row.collection_opens_at || null, collectionName:row.collection_name || '', seriesId:row.series_id || '',dutyType: row.duty_type || 'repair', workflowVersion:row.workflow_version || 0, collectionClosedAt:row.collection_closed_at, ruleVersion:row.rule_version || 'legacy', requirements:parseJson(row.requirements_json,[]), weekStart: row.week_start, campusScope: parseJson(row.campus_scope,{}), slotStart: row.slot_start, slotEnd: row.slot_end, memberIds: parseJson(row.member_ids,[]), deadline: row.deadline, description: row.description, revision: row.revision, createdAt: row.created_at } : null; }
   async function listRosterTasks() { const result = await db.prepare(`SELECT ${rosterTaskColumns} FROM roster_tasks rt ORDER BY rt.week_start DESC,rt.id DESC LIMIT 101`).all(); return rows(result).map(rosterTask); }
   async function saveRosterRequirements(task,input,auditRecord) {
     const authorization=commandAuthorization(auditRecord);

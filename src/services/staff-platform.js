@@ -14,7 +14,8 @@ import { staffIdentities } from '../../shared/staff-identities.js';
 import { repairRosterPool, rosterFactContext } from '../modules/rosters/qualification.js';
 import {collectionState,rosterStage,sameAssignment} from '../modules/rosters/workflow.js';
 import {generateOfficeRoster} from '../modules/rosters/office.ts';
-import {collectionInstant,validateRecurrence} from '../modules/rosters/recurrence.js';
+import {collectionInstant,validateRecurrence,recurringPeriodWeek} from '../modules/rosters/recurrence.js';
+import {rosterCollections} from '../../shared/roster-collections.js';
 
 function randomToken() {
   const bytes = new Uint8Array(24);
@@ -113,7 +114,8 @@ function csvRows(value) {
   return rows;
 }
 
-export function staffPlatformService({ repository, platform, manifests }) {
+export function staffPlatformService({ repository, platform, manifests, calendarClock=()=>new Date() }) {
+  const collectionStatus=task=>collectionState(task,calendarClock().getTime());
   async function contextFor(actor, businessDate = dateKey()) {
     const context = await platform.authContext(actor, { businessDate });
     if (context.member?.status && context.member.status !== 'active') fail(401, '成员已停用，请联系管理员');
@@ -702,7 +704,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     try{await repository.addRosterParticipants(task,input,record);}catch(error){if(String(error.message).includes('constraint'))fail(409,'任务或权限已变化，请刷新核对');throw error;}
     return repository.rosterTaskById(taskId);
   }
-  async function submitAvailability(actor,taskId,input,{carried=false,preferenceRevision}={}) {
+  async function submitAvailability(actor,taskId,input,{carried=false,preferenceRevision,continuationAt}={}) {
     const task=await repository.rosterTaskById(taskId),context=await contextFor(actor);
     if(!task) fail(404,'收集任务不存在');
     const fact=await rosterOwnFact(context,task);
@@ -712,63 +714,86 @@ export function staffPlatformService({ repository, platform, manifests }) {
       if(replay.resourceId!==taskId || replay.payload!==JSON.stringify({...input,carried})) fail(409,'请求编号已用于其他填报');
       return taskAvailability(actor,taskId);
     }
-    if(collectionState(task)!=='open') fail(409,'收集已结束，请联系负责人重新开放');
+    const state=collectionStatus(task),continuationClosed=carried&&state==='closed'&&continuationAt===continuationCutoff(task);
+    if(state!=='open'&&!continuationClosed) fail(409,'收集已结束，请联系负责人重新开放');
     if(!Array.isArray(input.windows) || input.windows.length>64 || !input.windows.length && input.unavailable!==true || input.windows.length && input.unavailable) fail(400,'请填写可用时间，或选择整周无法参加');
     for(const window of input.windows) {
       if(!validDate(window.businessDate) || window.businessDate<task.weekStart || window.businessDate>addDays(task.weekStart,3) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(window.startAt) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(window.endAt) || window.endAt<=window.startAt) fail(400,'请填写本周工作日的有效时间');
       if(!rosterMemberReadable(context,platform.authorizer,fact,task,window.businessDate,window.campusId) || !(task.dutyType==='office' ? fact.profiles.some(item=>item.profileCode==='office'&&item.effectiveFrom<=window.businessDate&&(!item.effectiveTo||window.businessDate<item.effectiveTo)) : (rosterDepartments(fact,window.businessDate,task).length ? rosterDepartments(fact,window.businessDate,task) : [{}]).some(item=>repairRosterPool(fact,platform.authorizer,window.businessDate,{campusId:window.campusId,departmentId:item.departmentId})))) fail(403,'填报日期或校区不在有效资格和授权范围内');
     }
     const payload={...input,carried};
-    try {await repository.replaceRosterAvailability(task,context.actor.memberId,payload,{...record,preferenceRevision});} catch(error) {if(String(error.message).toLowerCase().includes('constraint')) fail(409,'填报、收集状态或权限已变化，输入已保留，请重新核对');throw error;}
+    try {await repository.replaceRosterAvailability(task,context.actor.memberId,payload,{...record,preferenceRevision,continuationAt,continuationClosed});} catch(error) {if(String(error.message).toLowerCase().includes('constraint')) fail(409,'填报、收集状态或权限已变化，输入已保留，请重新核对');throw error;}
     return taskAvailability(actor,taskId);
   }
-  async function automationActor(memberId) {
+  async function collectionMember(memberId) {
     const row=await repository.accountForMember(memberId);
-    if(!row||row.status!=='enabled')fail(403,'循环任务的负责人账号已停用');
+    if(!row||row.status!=='enabled')fail(403,'收集任务负责人账号已停用，请联系管理员接管');
     return {account:row.account,memberId,role:row.role,homeCampus:row.home_campus,authorizedCampuses:await repository.memberCampuses(memberId),authVersion:row.auth_version};
   }
-  async function processRosterAutomation() {
-    if(!repository.dueRosterSeries)return {published:0,carried:0,skipped:0,errors:[]};
-    const summary={published:0,carried:0,skipped:0,errors:[]};
-    for(const series of await repository.dueRosterSeries(nowIso())) {
-      try {
-        const actor=await automationActor(series.owner_member_id),template=await repository.rosterTaskById(series.template_task_id);
-        const deadline=collectionInstant(series.next_week,series.deadline_weekday,series.deadline_time),nextWeek=addDays(series.next_week,7);
-        if(Date.parse(deadline)>Date.now()) {
-          const existing=(await repository.listRosterTasks()).find(task=>task.seriesId===series.id&&task.weekStart===series.next_week);
-          if(!existing) {
-            // Select eligibility for the actual new duty week, not the template week.
-            const targetCandidates=await rosterCandidates(actor,{...template,weekStart:series.next_week});
-            const eligibleIds=template.memberIds.filter(id=>targetCandidates.items.some(item=>item.memberId===id));
-            if(!eligibleIds.length)fail(409,'下周没有有效参与人员');
-            await createRosterTask(actor,{weekStart:series.next_week,campusIds:template.campusScope.campusIds,departmentIds:template.campusScope.departmentIds||[],dutyType:template.dutyType,
-              slotStart:template.slotStart,slotEnd:template.slotEnd,deadline,description:template.description,memberIds:eligibleIds,workflowVersion:1,seriesId:series.id,
-              requirements:template.requirements.map(row=>({...row,businessDate:addDays(series.next_week,Math.round((Date.parse(row.businessDate)-Date.parse(template.weekStart))/86400000))})),requestId:`series:${series.id}:${series.next_week}`},{automated:true});
-            summary.published++;
-          }
-        }
-        await repository.advanceRosterSeries(series,nextWeek,collectionInstant(nextWeek,series.publish_weekday,series.publish_time));
-      }catch(error){summary.errors.push({seriesId:series.id,message:error.message});await repository.advanceRosterSeries(series,series.next_week,new Date(Date.now()+3600000).toISOString(),error.message);}
-    }
-    for(const task of (await repository.listRosterTasks()).filter(task=>task.workflowVersion===1&&collectionState(task)==='open')) {
-      for(const preference of await repository.pendingRosterPreferences(task.id)) {
-        try {
-          const actor=await automationActor(preference.member_id);
-          const windows=JSON.parse(preference.windows).filter(window=>task.campusScope.campusIds.includes(window.campusId)).map(({weekday,...window})=>({...window,businessDate:addDays(task.weekStart,weekday-1)}));
-          if(!preference.unavailable&&!windows.length)continue;
-          await submitAvailability(actor,task.id,{windows,unavailable:!!preference.unavailable,revision:-1,requestId:`carry:${task.id}:${preference.member_id}:${preference.revision}`},{carried:true,preferenceRevision:preference.revision});summary.carried++;
-        }catch(error){if([403,409].includes(error.status))summary.skipped++;else summary.errors.push({taskId:task.id,memberId:preference.member_id,message:error.message});}
+  async function currentCollectionPeriods(actor,context,tasks) {
+    const ids=[...new Set(tasks.map(task=>task.seriesId).filter(Boolean))];
+    for(const id of ids){
+      const series=await repository.rosterSeries(id);
+      if(!series?.enabled)continue;
+      const template=await repository.rosterTaskById(series.template_task_id);
+      if(!template)continue;
+      const own=await rosterOwnFact(context,template);
+      if(!rosterTaskManaged(context,platform.authorizer,template)&&!rosterParticipant(context,template,own)&&!configurableCampuses(context,template).length)continue;
+      const first=tasks.filter(task=>task.seriesId===id).sort((a,b)=>a.weekStart.localeCompare(b.weekStart))[0];
+      const week=recurringPeriodWeek(series,first.weekStart,calendarClock());
+      if(tasks.some(task=>task.seriesId===id&&task.weekStart===week))continue;
+      // Only opening the ordinary collection resolves the current period. There
+      // is no cron, timer, catch-up queue or future task publication.
+      try{
+        const owner=await collectionMember(series.owner_member_id);
+        const candidates=await rosterCandidates(owner,{...template,weekStart:week});
+        const memberIds=template.memberIds.filter(id=>candidates.items.some(item=>item.memberId===id));
+        if(!memberIds.length){for(const task of tasks.filter(task=>task.seriesId===id))task.collectionIssue='当前参与名单已无符合条件的人员，请负责人更新收集设置。';continue;}
+        const period=await createRosterTask(owner,{weekStart:week,campusIds:template.campusScope.campusIds,departmentIds:template.campusScope.departmentIds||[],dutyType:template.dutyType,
+          slotStart:template.slotStart,slotEnd:template.slotEnd,collectionOpensAt:collectionInstant(week,series.publish_weekday,series.publish_time),deadline:collectionInstant(week,series.deadline_weekday,series.deadline_time),description:template.description,memberIds,workflowVersion:1,seriesId:id,
+          requirements:template.requirements.map(row=>({...row,businessDate:addDays(week,Math.round((Date.parse(row.businessDate)-Date.parse(template.weekStart))/86400000))})),requestId:`period:${id}:${week}`},{period:true,allowClosedPeriod:true});
+        tasks.push(period);
+      }catch(error){
+        if(error.status===403){for(const task of tasks.filter(task=>task.seriesId===id))task.collectionIssue='收集负责人的账号或授权已变化，请有管理权限的负责人保存收集设置后继续。';continue;}
+        if(error.status!==409)throw error;
+        const concurrent=(await repository.listRosterTasks()).find(task=>task.seriesId===id&&task.weekStart===week);
+        if(concurrent)tasks.push(concurrent);else for(const task of tasks.filter(task=>task.seriesId===id))task.collectionIssue='当前工作周已有重叠任务，请负责人核对范围后继续。';
       }
     }
-    return summary;
+    return tasks.sort((a,b)=>b.weekStart.localeCompare(a.weekStart));
+  }
+  function continuationCutoff(task) {
+    return new Date(Math.min(calendarClock().getTime(),Date.parse(task.deadline),task.collectionClosedAt?Date.parse(task.collectionClosedAt):Infinity)).toISOString();
+  }
+  async function applyAvailabilityContinuation(task,memberId) {
+    if(collectionStatus(task)==='scheduled'||!repository.pendingRosterPreferences)return;
+    const continuationAt=continuationCutoff(task);
+    for(const preference of await repository.pendingRosterPreferences(task.id,continuationAt)){
+      if(memberId&&preference.member_id!==memberId)continue;
+      try{
+        const actor=await collectionMember(preference.member_id);
+        const windows=JSON.parse(preference.windows).filter(window=>task.campusScope.campusIds.includes(window.campusId)).map(({weekday,...window})=>({...window,businessDate:addDays(task.weekStart,weekday-1)}));
+        if(!preference.unavailable&&!windows.length)continue;
+        await submitAvailability(actor,task.id,{windows,unavailable:!!preference.unavailable,revision:-1,requestId:`carry:${task.id}:${preference.member_id}:${preference.revision}`},{carried:true,preferenceRevision:preference.revision,continuationAt});
+      }catch(error){if(![403,409].includes(error.status))throw error;}
+    }
   }
   async function seriesCommand(actor,id,input) {
     const series=await repository.rosterSeries(id),context=await contextFor(actor);
     if(!series)fail(404,'循环收集不存在');
     const task=await repository.rosterTaskById(series.template_task_id);
     if(!rosterTaskManaged(context,platform.authorizer,task))fail(403,'没有管理此循环任务的权限');
+    const record=commandRecord(actor,context,input),signature=stableJson({id,input});
+    const replay=await repository.rosterCommandReceipt(record.actorMemberId,'series',record.requestId);
+    if(replay){if(JSON.parse(replay.payload).signature!==signature)fail(409,'请求编号已用于其他循环设置');return repository.rosterSeries(id);}
     if(input.revision!==series.revision||typeof input.enabled!=='boolean')fail(409,'循环配置已变化，请重新读取');
-    await repository.updateRosterSeries(series,input,commandRecord(actor,context,input));
+    if(input.name!==undefined&&(typeof input.name!=='string'||!input.name.trim()||input.name.trim().length>80))fail(400,'收集名称须为 1–80 个字符');
+    if(input.recurrence&&!validateRecurrence(input.recurrence))fail(400,'请设置有效的开放和截止时间，均为值班前一周，截止须晚于开放');
+    const template=input.templateTaskId?await repository.rosterTaskById(input.templateTaskId):task;
+    if(!template||template.seriesId!==id||!rosterTaskManaged(context,platform.authorizer,template))fail(403,'不能使用此周次作为后续收集设置');
+    if(input.templateTaskId&&input.templateRevision!==template.revision)fail(409,'本周设置已变化，请重新读取后再应用到后续周期');
+    await rosterWrite(()=>repository.updateRosterSeries(series,{...input,name:input.name?.trim()??series.name,templateTaskId:template.id,templateRevision:template.revision,
+      recurrence:input.recurrence||{publishWeekday:series.publish_weekday,publishTime:series.publish_time,deadlineWeekday:series.deadline_weekday,deadlineTime:series.deadline_time},signature},record));
     return repository.rosterSeries(id);
   }
   async function availabilityPreferences(actor,input) {
@@ -779,7 +804,8 @@ export function staffPlatformService({ repository, platform, manifests }) {
   async function rosterTasks(actor) {
     const context = await contextFor(actor);
     if (!['roster.read','roster.repair.manage','roster.office.manage','roster.repair.configure'].some(code => context.permissions[code])) fail(403, '没有查看排班任务的权限');
-    const [tasks,departments,campuses] = await Promise.all([repository.listRosterTasks(),repository.listDepartments(true),repository.listCampuses(true)]);
+    const [storedTasks,departments,campuses] = await Promise.all([repository.listRosterTasks(),repository.listDepartments(true),repository.listCampuses(true)]);
+    const tasks=await currentCollectionPeriods(actor,context,storedTasks);
     const ownFacts = new Map(), items = [];
     for (const task of tasks) {
       const manage = rosterTaskManaged(context,platform.authorizer,task);
@@ -792,9 +818,9 @@ export function staffPlatformService({ repository, platform, manifests }) {
       const label = [...scope.campusIds.map(id => campuses.find(item => item.id === id)?.name || id),
         ...scope.departmentIds.map(id => departments.find(item => item.id === id)?.name || id)];
       const {memberIds,createdByMemberId,...summary} = task;
-      items.push({...summary,...(!manage&&!fill ? {campusScope:{...task.campusScope,campusIds:writableCampuses},requirements:summary.requirements.filter(item=>writableCampuses.includes(item.campusId))}:{}),collectionState:collectionState(task),...(manage ? {memberIds,createdByMemberId} : {}),scopeLabel:!manage&&!fill ? writableCampuses.map(id=>campuses.find(item=>item.id===id)?.name||id).join(' · ') : label.join(' · '),actions:{manage,fill:fill && collectionState(task)==='open',configure}});
+      items.push({...summary,...(!manage&&!fill ? {campusScope:{...task.campusScope,campusIds:writableCampuses},requirements:summary.requirements.filter(item=>writableCampuses.includes(item.campusId))}:{}),collectionState:collectionStatus(task),...(manage ? {memberIds,createdByMemberId} : {}),scopeLabel:!manage&&!fill ? writableCampuses.map(id=>campuses.find(item=>item.id===id)?.name||id).join(' · ') : label.join(' · '),actions:{manage,readOwn:fill,fill:fill && collectionStatus(task)==='open',configure}});
     }
-    return {items};
+    return {items,collections:rosterCollections(items)};
   }
   async function taskAvailability(actor, taskId) {
     const context = await contextFor(actor);
@@ -802,6 +828,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     if (!task) fail(404,'排班任务不存在');
     const manage = rosterTaskManaged(context,platform.authorizer,task), own = await rosterOwnFact(context,task);
     if (!manage && !rosterParticipant(context,task,own)) fail(403,'没有查看该任务填报信息的权限');
+    await applyAvailabilityContinuation(task,context.actor.memberId);
     const rows = await repository.availability(taskId);
     const facts = new Map((await repository.rosterMemberFacts([...new Set(rows.map(row => row.memberId))],task.weekStart)).map(item => [item.memberId,item]));
     const submission=repository.rosterSubmissions ? (await repository.rosterSubmissions(taskId)).find(item=>item.memberId===context.actor.memberId) : null;
@@ -811,9 +838,10 @@ export function staffPlatformService({ repository, platform, manifests }) {
     return {submission,selectableSlots,autoContinue:!!preference?.enabled,items:rows.filter(item => rosterMemberInScope(facts.get(item.memberId),task,item.businessDate,item.campusId) &&
       (manage || item.memberId === context.actor.memberId && rosterMemberReadable(context,platform.authorizer,own,task,item.businessDate,item.campusId)))};
   }
-  async function createRosterTask(actor, input, {automated=false}={}) {
+  async function createRosterTask(actor, input, {period=false,allowClosedPeriod=false}={}) {
     const dutyType = input.dutyType || 'repair';
     if (!['repair','office'].includes(dutyType)) fail(400, '岗位类型不正确');
+    if(input.collectionName!==undefined&&(typeof input.collectionName!=='string'||input.collectionName.trim().length>80))fail(400,'收集名称最多 80 个字符');
     if (!validDate(input.weekStart) || weekRange(input.weekStart).start !== input.weekStart || !(input.campusId || input.campusIds?.length) ||
       !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.slotStart) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.slotEnd) || input.slotEnd <= input.slotStart ||
       !Number.isFinite(Date.parse(input.deadline))) fail(400, '请选择周一、有效校区、完整班次时间和填报截止时间');
@@ -823,10 +851,10 @@ export function staffPlatformService({ repository, platform, manifests }) {
     if(input.campusIds!==undefined && (!Array.isArray(input.campusIds) || !input.campusIds.length || input.campusIds.some(id=>typeof id!=='string'))) fail(400,'请选择有效校区');
     const selectedCampuses=[...new Set((input.campusIds || [input.campusId]).map(normalizeCampusId))].sort();
     const task = {...input,id:crypto.randomUUID(),dutyType,memberIds:[...new Set(input.memberIds || [])].sort(),campusScope:{campusIds:selectedCampuses,...(departmentIds.length ? {departmentIds} : {})}};
-    if(!automated)delete task.seriesId;
+    if(!period){delete task.seriesId;delete task.collectionOpensAt;}
     if(input.recurrence?.enabled) {
-      if(input.workflowVersion!==1||!validateRecurrence(input.recurrence))fail(400,'请设置有效的每周发布时间和截止时间，截止须晚于发布，均为值班前一周');
-      task.recurrence={...input.recurrence,nextWeek:addDays(task.weekStart,7),nextPublishAt:collectionInstant(addDays(task.weekStart,7),input.recurrence.publishWeekday,input.recurrence.publishTime)};
+      if(input.workflowVersion!==1||!validateRecurrence(input.recurrence))fail(400,'请设置有效的每周开放和截止时间，截止须晚于开放，均为值班前一周');
+      task.recurrence={...input.recurrence};
     }
     if(dutyType==='repair'||input.workflowVersion===1) task.requirements=normalizedRequirements(task,input.requirements);
     const context = await contextFor(actor);
@@ -840,7 +868,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     const [campuses,departments] = await Promise.all([repository.listCampuses(),repository.listDepartments()]);
     if (selectedCampuses.some(id=>!campuses.some(item => item.id === id)) || departmentIds.some(id => !departments.some(item => item.id === id))) fail(400,'请选择有效校区和部门');
     if(input.workflowVersion===1) {
-      if(Date.parse(input.deadline)<=Date.now()) fail(400,'收集截止时间应晚于现在');
+      if(!allowClosedPeriod&&Date.parse(input.deadline)<=Date.now()) fail(400,'收集截止时间应晚于现在');
       const candidates=await rosterCandidates(actor,task);
       if(!input.memberIds?.length) task.memberIds=candidates.items.map(item=>item.memberId);
       else if(input.memberIds.some(id=>!candidates.items.some(item=>item.memberId===id))) fail(403,'名单中存在无有效排班资格的成员');
@@ -887,7 +915,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     if (task.workflowVersion === 1) fail(409, '请使用整周填报提交，避免覆盖已提交的收集结果');
     if (task.dutyType === 'office'&&task.workflowVersion!==1) fail(400, '旧办公班表无需填报');
     if (task.memberIds?.length && !task.memberIds.includes(context.actor.memberId)) fail(403, '该任务未邀请你填报');
-    if (collectionState(task)!=='open') fail(409, '该任务已结束收集，请联系负责人重新开放');
+    if (collectionStatus(task)!=='open') fail(409, '该任务已结束收集，请联系负责人重新开放');
     if (weekRange(input.businessDate).start !== task.weekStart) fail(400, '请选择任务所在周的日期');
     if (input.businessDate > addDays(task.weekStart,3)) fail(400,'请选择周一至周四的服务日期');
     const campusIds = task.campusScope?.campusIds || [];
@@ -951,6 +979,8 @@ export function staffPlatformService({ repository, platform, manifests }) {
       preservedAssignments:repository.protectedRosterAssignments ? await repository.protectedRosterAssignments(taskId) : [] };
   }
   async function rosterTaskState(actor, taskId) {
+    const initial=await rosterInput(actor,taskId);
+    await applyAvailabilityContinuation(initial.task);
     const source = await rosterInput(actor, taskId);
     const versions = await repository.rosterVersionsForTask(taskId);
     const latest = versions.find(item => ['draft','published'].includes(item.status));
@@ -967,7 +997,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
       people:facts.map(item=>({memberId:item.memberId,name:item.name,active:item.active,submission:submissions.find(row=>row.memberId===item.memberId) || null})),
       coverage:source.slots.map(slot=>({...slot,ordinary:source.members.filter(member=>member.pool==='ordinary' && member.available.some(item=>sameAssignment({...item,memberId:''},{...slot,memberId:''}))).length,
         leads:source.members.filter(member=>member.pool==='lead' && member.available.some(item=>item.businessDate===slot.businessDate && item.campusId===slot.campusId)).length}))};
-    return { taskId,task:source.task,series:source.task.seriesId&&repository.rosterSeries ? await repository.rosterSeries(source.task.seriesId) : null,collectionState:collectionState(source.task),stage:rosterStage(source.task,versions),progress,
+    return { taskId,task:source.task,series:source.task.seriesId&&repository.rosterSeries ? await repository.rosterSeries(source.task.seriesId) : null,collectionState:collectionStatus(source.task),stage:rosterStage(source.task,versions,calendarClock().getTime()),progress,
       protectedAssignments:repository.protectedRosterAssignments ? await repository.protectedRosterAssignments(taskId) : [],publishedVersion:published || null,
       dutyType: source.dutyType, ruleVersion:source.ruleVersion, requiresRuleConfirmation:source.dutyType!=='office' && source.ruleVersion!=='repair-minimum-v2', members: source.members, slots: source.slots,
       draft: latest ? { ...latest, assignments, sourceChanged, validation: validateRoster({ assignments }, source) } : null,
@@ -981,8 +1011,10 @@ export function staffPlatformService({ repository, platform, manifests }) {
     }
   }
   async function generate(actor, input) {
+    const task=await repository.rosterTaskById(input.taskId);
+    if(task){const context=await contextFor(actor);if(rosterTaskManaged(context,platform.authorizer,task))await applyAvailabilityContinuation(task);}
     const source = await rosterInput(actor, input.taskId);
-    if(source.task.workflowVersion===1 && collectionState(source.task)!=='closed') fail(409,'请先结束收集，再生成自动排班');
+    if(source.task.workflowVersion===1 && collectionStatus(source.task)!=='closed') fail(409,'请先结束收集，再生成自动排班');
     const context = await contextFor(actor),record=commandRecord(actor,context,input);
     record.command='generate';
     if(repository.rosterCommandReceipt) {
@@ -1362,7 +1394,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
   }
 
   return { contextFor, requirePermission, scopedActor, evaluate, memberList, memberDetail, updateMember, addMembership, endMembership, permissions, roles, createRole, updateRole, previewRole, bindMemberRoles,
-    organization, importMembers, saveWorkProfile, deskSummary, workbench, createAttendanceEvent, issueAttendanceToken, checkIn, previewAttendance, attendanceList, attendanceOptions, correctAttendance, presence, rosterOptions, rosterTasks, rosterCandidates,collectionCommand,addParticipants,submitAvailability,reviseRoster,taskAvailability, createRosterTask, rosterRequirements, saveAvailability, rosterTaskState, generate, updateRoster, publish, rosterMine,processRosterAutomation,seriesCommand,availabilityPreferences,
+    organization, importMembers, saveWorkProfile, deskSummary, workbench, createAttendanceEvent, issueAttendanceToken, checkIn, previewAttendance, attendanceList, attendanceOptions, correctAttendance, presence, rosterOptions, rosterTasks, rosterCandidates,collectionCommand,addParticipants,submitAvailability,reviseRoster,taskAvailability, createRosterTask, rosterRequirements, saveAvailability, rosterTaskState, generate, updateRoster, publish, rosterMine,seriesCommand,availabilityPreferences,
     leave, leaves, leaveDetail, leaveDecision, leaveWithdraw, swapCandidates, swapPreview, swapDetail, swap, swaps, swapDecision, attendanceExport, audit,
     recordAudit: input => repository.audit(input) };
 }

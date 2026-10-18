@@ -35,9 +35,10 @@ export function rosterCollectionRepository(db) {
   }
   async function replaceRosterAvailability(task,memberId,input,record) {
     const current=await db.prepare('SELECT revision FROM roster_submissions WHERE task_id=? AND member_id=?').bind(task.id,memberId).first();
+    const retrospective=input.carried&&record.continuationClosed;
     await db.batch([
-      guard(record,`EXISTS(SELECT 1 FROM roster_tasks WHERE id=? AND revision=? AND collection_closed_at IS NULL AND julianday(deadline)>julianday(?)) AND COALESCE((SELECT revision FROM roster_submissions WHERE task_id=? AND member_id=?),-1)=?`,[task.id,task.revision,nowIso(),task.id,memberId,input.revision ?? -1]),
-      ...(input.carried ? [guard(record,'EXISTS(SELECT 1 FROM roster_availability_preferences WHERE member_id=? AND duty_type=? AND enabled=1 AND revision=?)',[memberId,task.dutyType,record.preferenceRevision ?? -1])] : []),
+      guard(record,`EXISTS(SELECT 1 FROM roster_tasks WHERE id=? AND revision=? ${retrospective?'':'AND collection_closed_at IS NULL AND julianday(deadline)>julianday(?)'}) AND COALESCE((SELECT revision FROM roster_submissions WHERE task_id=? AND member_id=?),-1)=?`,[task.id,task.revision,...(retrospective?[]:[nowIso()]),task.id,memberId,input.revision ?? -1]),
+      ...(input.carried ? [guard(record,retrospective?`EXISTS(SELECT 1 FROM roster_preference_history h WHERE member_id=? AND duty_type=? AND enabled=1 AND revision=? AND julianday(updated_at)<=julianday(?) AND NOT EXISTS(SELECT 1 FROM roster_preference_history newer WHERE newer.member_id=h.member_id AND newer.duty_type=h.duty_type AND newer.revision>h.revision AND julianday(newer.updated_at)<=julianday(?)))`:'EXISTS(SELECT 1 FROM roster_availability_preferences WHERE member_id=? AND duty_type=? AND enabled=1 AND revision=?)',[memberId,task.dutyType,record.preferenceRevision ?? -1,...(retrospective?[record.continuationAt,record.continuationAt]:[])])] : []),
       receipt(record,'availability',task.id,input),
       db.prepare('DELETE FROM availability WHERE task_id=? AND member_id=?').bind(task.id,memberId),
       ...input.windows.map(window=>db.prepare('INSERT INTO availability(id,task_id,member_id,business_date,start_at,end_at,campus_id) VALUES(?,?,?,?,?,?,?)').bind(crypto.randomUUID(),task.id,memberId,window.businessDate,window.startAt,window.endAt,window.campusId)),
@@ -62,18 +63,19 @@ export function rosterCollectionRepository(db) {
       audit(record,'rosters.participants.added',task.id,input),db.prepare('DELETE FROM roster_command_guards')]);
   }
   async function rosterSeries(id) {return db.prepare('SELECT * FROM roster_collection_series WHERE id=?').bind(id).first();}
-  async function dueRosterSeries(at) {return list('SELECT * FROM roster_collection_series WHERE enabled=1 AND julianday(next_publish_at)<=julianday(?) ORDER BY next_publish_at LIMIT 20',at);}
-  async function advanceRosterSeries(series,nextWeek,nextPublishAt,error='') {
-    await db.prepare('UPDATE roster_collection_series SET next_week=?,next_publish_at=?,last_error=?,revision=revision+1 WHERE id=? AND revision=?').bind(nextWeek,nextPublishAt,error,series.id,series.revision).run();
-  }
   async function updateRosterSeries(series,input,record) {
-    await db.batch([guard(record,'EXISTS(SELECT 1 FROM roster_collection_series WHERE id=? AND revision=?)',[series.id,input.revision]),
-      db.prepare('UPDATE roster_collection_series SET enabled=?,revision=revision+1,last_error=? WHERE id=? AND revision=?').bind(input.enabled?1:0,'',series.id,input.revision),audit(record,'rosters.series.updated',series.template_task_id,input),db.prepare('DELETE FROM roster_command_guards')]);
+    const recurrence=input.recurrence;
+    await db.batch([guard(record,'EXISTS(SELECT 1 FROM roster_collection_series WHERE id=? AND revision=?) AND EXISTS(SELECT 1 FROM roster_tasks WHERE id=? AND revision=?)',[series.id,input.revision,input.templateTaskId,input.templateRevision]),
+      receipt(record,'series',series.id,{signature:input.signature}),
+      db.prepare('UPDATE roster_collection_series SET enabled=?,name=?,template_task_id=?,owner_member_id=?,publish_weekday=?,publish_time=?,deadline_weekday=?,deadline_time=?,revision=revision+1,last_error=? WHERE id=? AND revision=?')
+        .bind(input.enabled?1:0,input.name,input.templateTaskId,record.actorMemberId,recurrence.publishWeekday,recurrence.publishTime,recurrence.deadlineWeekday,recurrence.deadlineTime,'',series.id,input.revision),
+      audit(record,'rosters.series.updated',series.template_task_id,{...input,signature:undefined}),db.prepare('DELETE FROM roster_command_guards')]);
   }
   async function rosterPreferences(memberId) {return list('SELECT * FROM roster_availability_preferences WHERE member_id=?',memberId);}
-  async function pendingRosterPreferences(taskId) {return list(`SELECT p.* FROM roster_availability_preferences p JOIN roster_tasks t ON t.id=? AND t.duty_type=p.duty_type
+  async function pendingRosterPreferences(taskId,at=nowIso()) {return list(`SELECT p.* FROM roster_preference_history p JOIN roster_tasks t ON t.id=? AND t.duty_type=p.duty_type JOIN roster_tasks origin ON origin.id=p.source_task_id AND origin.week_start<t.week_start
     WHERE p.enabled=1 AND NOT EXISTS(SELECT 1 FROM roster_submissions s WHERE s.task_id=t.id AND s.member_id=p.member_id)
-    AND (json_array_length(t.member_ids)=0 OR EXISTS(SELECT 1 FROM json_each(t.member_ids) WHERE value=p.member_id))`,taskId);}
+    AND julianday(p.updated_at)<=julianday(?) AND NOT EXISTS(SELECT 1 FROM roster_preference_history newer WHERE newer.member_id=p.member_id AND newer.duty_type=p.duty_type AND newer.revision>p.revision AND julianday(newer.updated_at)<=julianday(?))
+    AND (json_array_length(t.member_ids)=0 OR EXISTS(SELECT 1 FROM json_each(t.member_ids) WHERE value=p.member_id))`,taskId,at,at);}
   async function disableRosterPreference(memberId,dutyType) {await db.prepare('UPDATE roster_availability_preferences SET enabled=0,revision=revision+1,updated_at=? WHERE member_id=? AND duty_type=?').bind(nowIso(),memberId,dutyType).run();}
-  return {rosterAudience,rosterSubmissions,rosterCommandReceipt,changeCollection,replaceRosterAvailability,protectedRosterAssignments,addRosterParticipants,rosterSeries,dueRosterSeries,advanceRosterSeries,updateRosterSeries,rosterPreferences,pendingRosterPreferences,disableRosterPreference,rosterVersionReceipt:receipt,rosterVersionGuard:guard,rosterAudit:audit};
+  return {rosterAudience,rosterSubmissions,rosterCommandReceipt,changeCollection,replaceRosterAvailability,protectedRosterAssignments,addRosterParticipants,rosterSeries,updateRosterSeries,rosterPreferences,pendingRosterPreferences,disableRosterPreference,rosterVersionReceipt:receipt,rosterVersionGuard:guard,rosterAudit:audit};
 }

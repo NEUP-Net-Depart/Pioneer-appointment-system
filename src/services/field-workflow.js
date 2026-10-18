@@ -5,6 +5,7 @@ import { scanCode } from "../lib/scan-code.js";
 import { presentAppointment } from "./appointments.js";
 import { requestId, stableJson } from "../platform/contracts.js";
 import { staffIdentities, fieldPersonGroup, compareFieldPeople } from '../../shared/staff-identities.js';
+import {APPOINTMENT_SEARCH_LIMIT} from '../../shared/appointment-search.js';
 
 // The UI consumes these decisions; commands recompute them against current facts.
 export function fieldWorkflow({
@@ -128,20 +129,16 @@ export function fieldWorkflow({
       updatedAt: new Date().toISOString(),
     };
   }
-  async function project(actor, item, providedContext) {
-    const context = providedContext || (await staff.contextFor(actor)),
-      target = {
+  const appointmentTarget=item=>({
         campusId: campusId(item.campus),
         assignedMemberId: item.assignedMemberId,
         id: item.id,
         businessDate: item.date,
-      };
-    if (
-      !allowed(context, "repair.summary.read", target) &&
-      item.assignedMemberId !== context.actor.memberId
-    )
-      return null;
-    if (!(actor.authorizedCampuses || []).includes(item.campus)) return null;
+      });
+  const canReadSummary=(actor,item,context)=>(allowed(context,'repair.summary.read',appointmentTarget(item))||item.assignedMemberId===context.actor.memberId)&&(actor.authorizedCampuses||[]).includes(item.campus);
+  async function project(actor, item, providedContext) {
+    const context = providedContext || (await staff.contextFor(actor)),target=appointmentTarget(item);
+    if(!canReadSummary(actor,item,context))return null;
     const publicItem = await presentAppointment(item, encryptionKey, {
       staff: true,
     });
@@ -195,6 +192,23 @@ export function fieldWorkflow({
     return (
       await Promise.all(items.map((item) => project(actor, item, context)))
     ).filter(Boolean);
+  }
+  async function search(actor,query) {
+    const context=await staff.contextFor(actor);
+    if(!context.permissions['repair.summary.read'])fail(403,'没有查询维修预约的权限');
+    const scope={campuses:actor.authorizedCampuses||[]};
+    await appointments.expirePending(new Date().toISOString(),scope);
+    const items=[];
+    // Apply the same current authorization and field projection as details,
+    // before counting or limiting candidates. Hidden matches cannot fill the list.
+    for(let offset=0;;offset+=100){
+      const batch=await appointments.searchNumbers(query.text,query.acrossDates?null:dateKey(),scope,[[]],{full:true,limit:100,offset});
+      for(const row of batch){
+          if(canReadSummary(actor,row,context))items.push(Object.fromEntries(['id','campus','date','timeSlot','status'].map(key=>[key,row[key]])));
+        if(items.length>APPOINTMENT_SEARCH_LIMIT)return {items:items.slice(0,APPOINTMENT_SEARCH_LIMIT),hasMore:true};
+      }
+      if(batch.length<100)return {items,hasMore:false};
+    }
   }
   async function detail(actor, id) {
     if (!enabled) fail(404, "现场工作台尚未启用");
@@ -357,6 +371,7 @@ export function fieldWorkflow({
   return {
     enabled,
     projectList,
+    search,
     home,
     board,
     detail,

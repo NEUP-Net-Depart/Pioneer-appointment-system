@@ -295,10 +295,18 @@ test("technician completes a real intake and repair; drafts survive reload and c
     page.getByRole("button", { name: "扫描维修码", exact: true }),
   ).toBeVisible();
   await page
-    .getByRole("textbox", { name: "预约编号", exact: true })
-    .fill(order.id);
-  await page.getByRole("button", { name: "查询", exact: true }).click();
+    .getByRole("combobox", { name: "预约编号", exact: true })
+    .fill(order.id.slice(-2,-1));
+  let searches=0;page.on('request',request=>{if(request.url().includes('/api/scan/search'))searches++;});
+  await page.waitForTimeout(350);expect(searches).toBe(0);
+  await page.getByRole('combobox',{name:'预约编号',exact:true}).fill(order.id.slice(-2));
+  const option=page.getByRole('option').filter({hasText:order.id});
+  await expect(option).toBeVisible();
+  for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);}
+  await page.setViewportSize({width:390,height:844});
+  await option.click();
   await expect(page.getByRole("dialog")).toBeVisible();
+  const searchesAtSelection=searches;await page.waitForTimeout(350);expect(searches).toBe(searchesAtSelection);
   await expect(page.getByLabel("型号", { exact: true })).toHaveValue(
     "ThinkPad UI",
   );

@@ -25,7 +25,7 @@ export function appointmentRepository(db, { workflowSchema = false } = {}) {
   const writeColumns = { ...columns };
   if (!workflowSchema) delete writeColumns.registrationFlow;
   return {
-    async searchNumbers(text, date, { campuses }, accessRules) {
+    async searchNumbers(text, date, { campuses }, accessRules, {full=false,limit=APPOINTMENT_SEARCH_LIMIT+1,offset=0}={}) {
       const scope = campuses.length ? `campus IN (${campuses.map(() => '?').join(',')})` : '0';
       const accessArgs = [];
       const access = accessRules.map(conditions => conditions.length ? '(' + conditions.map(({field,operator,value}) => {
@@ -33,10 +33,11 @@ export function appointmentRepository(db, { workflowSchema = false } = {}) {
         accessArgs.push(value);
         return `${columns[field]} ${operator === 'ne' ? '<>' : '='} ?`;
       }).join(' AND ') + ')' : '1').join(' OR ') || '0';
-      return (await db.prepare(`SELECT id,campus,date,time_slot AS timeSlot,status FROM appointments
+      const result=(await db.prepare(`${full ? select : 'SELECT id,campus,date,time_slot AS timeSlot,status FROM appointments'}
         WHERE ${scope} AND (${access}) AND ${date ? "date=? AND instr(substr(id,instr(id,'-')+1),?)>0" : 'instr(id,?)>0'}
-        ORDER BY CASE WHEN status IN (${terminalStatuses.map(() => '?').join(',')}) THEN 1 ELSE 0 END,date DESC,time_slot,id LIMIT ?`)
-        .bind(...campuses,...accessArgs,...(date ? [date] : []),text,...terminalStatuses,APPOINTMENT_SEARCH_LIMIT + 1).all()).results;
+        ORDER BY CASE WHEN status IN (${terminalStatuses.map(() => '?').join(',')}) THEN 1 ELSE 0 END,date DESC,time_slot,id LIMIT ? OFFSET ?`)
+        .bind(...campuses,...accessArgs,...(date ? [date] : []),text,...terminalStatuses,limit,offset).all()).results;
+      return full ? result.map(fromRow) : result;
     },
     async location(date, campus) {
       return db.prepare('SELECT location,revision FROM service_locations WHERE date=? AND campus=?').bind(date,campus).first();

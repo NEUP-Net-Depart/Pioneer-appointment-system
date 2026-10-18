@@ -44,10 +44,10 @@ export function scanService(appointments, service, encryptionKey, secret, enable
     },
     async search(input, actor) {
       available();
-      if (field?.enabled) fail(404, '请使用人员平台查单入口');
       const query = parseAppointmentSearch(input.q);
       if (!query) fail(400, '请输入预约编号中的数字');
       if (!query.ready) return { items: [], hasMore: false };
+      if (field?.enabled) return field.search(actor,query);
       const now = clock(), scope = appointmentScope(actor);
       await expire(now, { campuses: scope.campuses });
       const items = await appointments.searchNumbers(query.text, query.acrossDates ? null : dateKey(now), scope, appointmentAccessRules(actor, { start: true }));
