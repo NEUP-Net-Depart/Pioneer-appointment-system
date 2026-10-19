@@ -1,3 +1,5 @@
+import { dateKey } from '../../shared/time.js';
+
 const select = `SELECT staff_accounts.*,(SELECT status FROM members WHERE id=staff_accounts.member_id) AS member_status,
   (SELECT json_group_array(campus) FROM staff_campus_grants WHERE account=staff_accounts.account) AS campuses
   FROM staff_accounts`;
@@ -5,7 +7,8 @@ export function publicUser(row) {
   return row ? { account: row.account, memberId: row.member_id || '', memberStatus: row.member_status || 'active', name: row.name, role: row.role, status: row.status,
     homeCampus: row.home_campus, authorizedCampuses: JSON.parse(row.campuses || '[]'),
     protected: !!row.protected, createdAt: row.created_at, workload: row.workload ?? 0,
-    authVersion: row.auth_version ?? row.token_version ?? 0 } : null;
+    authVersion: row.auth_version ?? row.token_version ?? 0,
+    ...(row.role_names !== undefined ? { roleNames: JSON.parse(row.role_names || '[]') } : {}) } : null;
 }
 export function publicUserView(user) {
   if (!user) return null;
@@ -32,11 +35,14 @@ export function userRepository(db) {
         ORDER BY name,account`).bind(campus,search,search).all()).results;
     },
     async list() {
+      const day = dateKey();
       return (await db.prepare(`SELECT staff_accounts.*,(SELECT status FROM members WHERE id=staff_accounts.member_id) AS member_status,
         (SELECT json_group_array(campus) FROM staff_campus_grants WHERE account=staff_accounts.account) AS campuses,
+        (SELECT json_group_array(name) FROM (SELECT DISTINCT r.name FROM member_roles mr JOIN roles r ON r.id=mr.role_id
+          WHERE mr.member_id=staff_accounts.member_id AND r.enabled=1 AND mr.effective_from<=? AND (mr.effective_to IS NULL OR mr.effective_to>?) ORDER BY r.level DESC,r.name)) AS role_names,
         (SELECT COUNT(*) FROM appointments WHERE assigned_to=staff_accounts.account AND
           (status='in_progress' OR (status='completed' AND outcome IN ('repaired','unrepaired','not_needed','legacy_unknown')))) AS workload
-        FROM staff_accounts ORDER BY role DESC,name`).all()).results.map(publicUser);
+        FROM staff_accounts ORDER BY role DESC,name`).bind(day,day).all()).results.map(publicUser);
     },
     async update(target, patch, { selfPassword = false, auditRecord } = {}) {
       const fields = [], args = [];

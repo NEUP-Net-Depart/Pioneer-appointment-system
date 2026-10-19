@@ -108,6 +108,10 @@
     {
       "name": "0024_recurring_collection_identity.sql",
       "sha256": "9b8220e2bbcaae2f8d92ae47257f08853a50f3a11a82db905c0bbe97fbb4a0f6"
+    },
+    {
+      "name": "0025_exchange_role.sql",
+      "sha256": "63d7dbc2eaef2fb4432f3538229efbad80274d5e371c0c8dd874b34ebbb18bd5"
     }
   ],
   "modules": [
@@ -295,6 +299,10 @@
     {
       "name": "0024_recurring_collection_identity.sql",
       "sha256": "9b8220e2bbcaae2f8d92ae47257f08853a50f3a11a82db905c0bbe97fbb4a0f6"
+    },
+    {
+      "name": "0025_exchange_role.sql",
+      "sha256": "63d7dbc2eaef2fb4432f3538229efbad80274d5e371c0c8dd874b34ebbb18bd5"
     }
   ],
   "staffMigrationsDirectory": "database/staff-migrations"

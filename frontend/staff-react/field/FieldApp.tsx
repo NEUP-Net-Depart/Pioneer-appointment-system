@@ -227,6 +227,7 @@ export function FieldApp({
                     <div className="field-actions">
                       <Status value={data.state} />
                       <span className="field-muted">{campusName}校区</span>
+                      <StaffIdentity identities={data.identities} />
                     </div>
                     <h2>
                       {data.currentRepair
@@ -309,7 +310,7 @@ export function FieldApp({
                     </div>
                   </section>
                   <section className="field-card">
-                    <h2>今日班次</h2>
+                    <h2>{data.identities?.some(identity=>identity.code==='exchange') && !data.permissions['roster.read'] ? '到岗参与维修' : '今日班次'}</h2>
                     {data.todayDuties.length ? (
                       data.todayDuties.map((d) => (
                         <div key={d.id} className="field-shift">
@@ -324,7 +325,9 @@ export function FieldApp({
                       ))
                     ) : (
                       <p className="field-muted">
-                        今天没有排班。具备资格的成员仍可到场签到。
+                        {data.identities?.some(identity=>identity.code==='exchange')
+                          ? '交流人员不参与维修排班、填报或换班。到场后扫描工作人员签到码，签到后即可参与维修。'
+                          : '今天没有排班。具备资格的成员仍可到场签到。'}
                       </p>
                     )}
                     {data.state === "available" && (

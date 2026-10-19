@@ -3,7 +3,7 @@ import { request } from './request.js';
 import { Modal } from './field/ui';
 
 const header = 'studentId,name,homeCampusId,departmentId,workProfiles,roleCodes,authorizedCampuses,trainingConfirmed';
-const templates = {repair:{label:'普通维修',department:'dept-hardware',role:'technician'},exchange:{label:'交流人员',department:'',role:'technician'},office:{label:'办公人员',department:'dept-office',role:'office'}};
+const templates = {repair:{label:'普通维修',department:'dept-hardware',role:'technician'},exchange:{label:'交流人员',department:'',role:'exchange'},office:{label:'办公人员',department:'dept-office',role:'office'}};
 export function MemberImport({onClose,onSaved}) {
   const [kind,setKind] = useState('repair'), [csv,setCsv] = useState(''), [preview,setPreview] = useState(null);
   const [busy,setBusy] = useState(false), [error,setError] = useState(''), [done,setDone] = useState(null);
