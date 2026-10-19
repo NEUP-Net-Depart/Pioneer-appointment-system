@@ -62,6 +62,7 @@ export interface Person {
   currentRepair?: { id: string; deviceModel: string };
 }
 export interface Home {
+  directAttendance?:{allowed:boolean;reason:string};
   identities?: { code: string; label: string }[];
   permissions: Record<string, boolean>;
   navigation: { id: string }[];

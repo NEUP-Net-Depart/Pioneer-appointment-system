@@ -1087,6 +1087,10 @@
 .attendance-history-list span,.attendance-history-list small { color:var(--muted); font-size:13px; }
 
 .field-credential--attendance { border:0; border-radius:0; padding:8px 0; margin:12px auto 24px; }
+.field-checkin-result { display:grid; justify-items:center; gap:16px; text-align:center; padding:12px 0; }
+.field-checkin-result :is(h2,p) { margin:0; }
+.field-checkin-result>strong { font-size:clamp(24px,6vw,36px); font-variant-numeric:tabular-nums; }
+.field-checkin-result>.field-primary { width:100%; margin-top:8px; }
 .field-lookup { position:relative; min-width:0; }
 .field-lookup-input { flex:1; min-width:0; display:grid; gap:8px; margin:0; }
 .field-search:has(.field-lookup-input) { align-items:flex-end; }

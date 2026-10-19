@@ -157,7 +157,7 @@ function Root() {
     route('members', <section className="workspace-module"><Members user={effectiveUser} /></section>, published.has('members')),
     route('permissions', <section className="workspace-module"><Permissions user={user} /></section>, published.has('roles')),
   ];
-  return <WorkspacePortal key={`${user.memberId || user.account}:${user.authVersion}:${JSON.stringify(effectiveUser.permissions || {})}`}><StaffWorkspace name={user.name || ''} entries={workspaceLinks} active={active} onSelect={navigate}>{fieldRoute}{rosterRoute}{moduleRoutes}</StaffWorkspace></WorkspacePortal>;
+  return <WorkspacePortal key={`${user.memberId || user.account}:${user.authVersion}`}><StaffWorkspace name={user.name || ''} entries={workspaceLinks} active={active} onSelect={navigate}>{fieldRoute}{rosterRoute}{moduleRoutes}</StaffWorkspace></WorkspacePortal>;
 
 }
 

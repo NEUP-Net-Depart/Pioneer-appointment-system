@@ -49,6 +49,7 @@ export function FieldApp({
       null,
     ),
     [checkToken, setCheckToken] = useState("");
+  const [checkResult,setCheckResult]=useState<{occurredAt:string;type?:string;campusId?:string;isExisting?:boolean;nonScheduled?:boolean;identitySnapshot?:{identities?:{code:string;label:string}[]}}|null>(null);
   const [checkPreview, setCheckPreview] = useState<{
     campusName: string;
     businessDate: string;
@@ -77,6 +78,8 @@ export function FieldApp({
     setScanOpen(false);
     setToken(null);
     setCheckToken("");
+    setCheckPreview(null);
+    setCheckResult(null);
   }, [active]);
   useEffect(() => {
     if (!data) return;
@@ -149,12 +152,20 @@ export function FieldApp({
       setToken(credential);
     });
   }
+  function openAttendance(){if(data?.directAttendance?.allowed)void checkIn('');else{setMessage('');setScanOpen(true);}}
   async function checkIn(value: string) {
     await execute(async () => {
-      await api("/api/attendance/check-ins", {
+      let record;
+      try {record=await api<NonNullable<typeof checkResult>>(value?"/api/attendance/check-ins":"/api/attendance/self-check-in", {
         method: "POST",
-        body: { token: value, method: "qr", requestId: crypto.randomUUID() },
-      });
+        body: value?{ token: value, method: "qr", requestId: crypto.randomUUID() }:{campusId:campus,requestId:crypto.randomUUID()},
+      });}catch(error){
+        const recovered=await api<{items:NonNullable<typeof checkResult>[]}>("/api/me/attendance?businessDate="+(data?.businessDate||initial.businessDate));
+        const existing=recovered.items.find(item=>item.type==='duty'&&item.campusId===campus);
+        if(!existing)throw error;
+        record={...existing,isExisting:true};
+      }
+      setCheckResult(record);
       setCheckToken("");
       setScanOpen(false);
       setMessage("签到成功，已更新到岗状态");
@@ -209,7 +220,7 @@ export function FieldApp({
             </label>
           </div>
         </WorkspaceHeader>
-        <Notice>{message || result.error}</Notice>
+        <Notice>{message || result.error}</Notice>{data?.directAttendance?.allowed&&!data.presence&&scene!=="repair"&&<div className="field-actions"><button className="field-primary" disabled={busy} onClick={openAttendance}>本人到岗签到</button></div>}
         <div className="workspace-update" role="status" aria-live="polite">{result.loading ? "正在更新当前区域…" : ""}</div>
         {!data ? (
           <Empty
@@ -258,10 +269,7 @@ export function FieldApp({
                     ) : data.state === "unsigned" && data.capability['attendance.self'] ? (
                       <button
                         className="field-primary"
-                        onClick={() => {
-                          setMessage("");
-                          setScanOpen(true);
-                        }}
+                        onClick={openAttendance} disabled={busy}
                       >
                         到岗签到
                       </button>
@@ -592,12 +600,9 @@ export function FieldApp({
                       退出登录
                     </button>
 {data.capability["attendance.self"] && <button
-                      onClick={() => {
-                        setMessage("");
-                        setScanOpen(true);
-                      }}
-                    >
-                      到岗签到
+                      onClick={openAttendance} disabled={busy}
+                      >
+                        到岗签到
                     </button>}
                   </div>
                 </section>
@@ -631,6 +636,7 @@ export function FieldApp({
           </>
         )}
       </section>
+      {checkResult&&<Modal title={checkResult.isExisting?'你已完成到岗签到':'到岗签到成功'} compact onClose={()=>setCheckResult(null)}><div className="field-checkin-result"><span className="react-eyebrow">工作人员到岗</span><h2>{initial.actor.name}</h2><StaffIdentity identities={checkResult.identitySnapshot?.identities||data?.identities}/><p>{campusName}校区 · {data?.businessDate}</p><strong>{time(checkResult.occurredAt)}</strong><p className="field-muted">{checkResult.nonScheduled?'非排班到场参与工作':'当天排班已到岗'}{checkResult.isExisting?' · 保留首次签到时间':''}</p><button className="field-primary" onClick={()=>setCheckResult(null)}>返回工作台</button></div></Modal>}
       {scanOpen && (
         <Modal
           title="扫一扫"
@@ -675,13 +681,7 @@ export function FieldApp({
             <button disabled={busy} onClick={showAttendance}>
               更新签到码
             </button>
-            <button
-              className="field-primary"
-              disabled={busy}
-              onClick={() => checkIn(token.token)}
-            >
-              本人确认签到
-            </button>
+
           </div>
         </Modal>
       )}

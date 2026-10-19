@@ -117,6 +117,7 @@ export function fieldWorkflow({
       campusId: selected,
       contexts,
       capability,
+      directAttendance:await staff.directAttendanceAction(actor,selected),
       permissions: context.permissions,
       navigation: context.navigation,
       state,

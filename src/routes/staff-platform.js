@@ -38,6 +38,7 @@ export const staffPlatformRoutes = [
   ['POST', /^\/api\/attendance\/events$/, async context => json(await context.services.staffPlatform.createAttendanceEvent(await context.role('technician'), await readBody(context.request)), 201)],
   ['POST', /^\/api\/attendance\/events\/([^/]+)\/token$/, async (context, match) => json(await context.services.staffPlatform.issueAttendanceToken(await context.role('technician'), decodeURIComponent(match[1]), await readBody(context.request)))],
   ['POST', /^\/api\/attendance\/check-ins$/, async context => json(await context.services.staffPlatform.checkIn(await context.role('technician'), await readBody(context.request)))],
+  ['POST', /^\/api\/attendance\/self-check-in$/, async context => json(await context.services.staffPlatform.directCheckIn(await context.role('technician'), await readBody(context.request)))],
   ['POST', /^\/api\/attendance\/preview$/, async context => json(await context.services.staffPlatform.previewAttendance(await context.role('technician'), await readBody(context.request)))],
   ['GET', /^\/api\/attendance$/, async context => json(await context.services.staffPlatform.attendanceList(await context.role('technician'), context.query))],
   ['GET', /^\/api\/attendance\/export\.csv$/, async context => {

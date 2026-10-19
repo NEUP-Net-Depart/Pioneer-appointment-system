@@ -165,7 +165,8 @@ fieldset.staffing-editor { border:0; padding:0; min-width:0; }
 .workspace-flow-context [aria-current=step] { color: var(--ink); font-weight: 650; }
 .field-modal .workspace-handoff { padding-top: 24px; margin-top: 24px; border-top: 1px solid var(--line); }
 .field-modal .field-confirm { padding: 20px; background: var(--workspace-subtle); border: 1px solid var(--line); border-radius: 12px; }
-.field-modal.workspace-confirm-dialog[open] { width: min(480px, calc(100vw - 32px)); height: auto; max-height: calc(100dvh - 48px); margin: auto; border: 1px solid var(--line); border-radius: 16px; }
+.field-modal.workspace-confirm-dialog[open] { width: min(480px, calc(100vw - 32px)); height: fit-content; max-height: calc(100dvh - 48px); margin: auto; border: 1px solid var(--line); border-radius: 16px; }
+.field-modal.workspace-confirm-dialog .workspace-dialog-body { scrollbar-gutter: auto; }
 @media (min-width: 768px) {
   .field-modal.field-side-panel[open] { width: min(680px, 60vw); max-height: 100dvh; height: 100dvh; margin: 0 0 0 auto; border-radius: 0; }
 }
@@ -257,7 +258,7 @@ fieldset.staffing-editor { border:0; padding:0; min-width:0; }
   .field-modal .field-actions { flex-wrap: wrap; }
   .field-modal .field-actions button { min-width: 0; }
   .field-modal .react-editor-actions { display: flex; flex-wrap: wrap; }
-  .field-modal.workspace-confirm-dialog[open] { width: calc(100vw - 32px); height: auto; max-height: calc(100dvh - 48px); margin: auto; border: 1px solid var(--line); border-radius: 16px; }
+  .field-modal.workspace-confirm-dialog[open] { width: calc(100vw - 32px); height: fit-content; max-height: calc(100dvh - 48px); margin: auto; border: 1px solid var(--line); border-radius: 16px; }
   .field-modal.workspace-confirm-dialog > header { padding-top: 16px; }
   .field-modal.workspace-confirm-dialog .workspace-dialog-body { padding-bottom: 20px; }
   .field-app .field-desk-grid { gap: 16px; }

@@ -527,8 +527,9 @@ export function staffPlatformRepository(db) {
   async function insertAttendance(record, presence) {
     const previousPresence = presence ? await db.prepare('SELECT state FROM staff_presence WHERE member_id=? AND business_date=?')
       .bind(record.memberId, record.businessDate).first() : null;
-    const guard = record.tokenId ? ` WHERE EXISTS(SELECT 1 FROM attendance_tokens t JOIN attendance_events e ON e.id=t.event_id WHERE t.id=? AND t.revoked_at IS NULL AND julianday(t.expires_at)>julianday(?) AND julianday(e.starts_at)<=julianday(?) AND julianday(e.ends_at)>=julianday(?)) AND EXISTS(SELECT 1 FROM staff_accounts sa JOIN members m ON m.id=sa.member_id WHERE sa.account=? AND sa.auth_version=? AND sa.status='enabled' AND m.status='active')` : '';
-    const guardArgs = record.tokenId ? [record.tokenId,record.recordedAt,record.recordedAt,record.recordedAt,record.actorAccount,record.authVersion] : [];
+    const authGuard="EXISTS(SELECT 1 FROM staff_accounts sa JOIN members m ON m.id=sa.member_id WHERE sa.account=? AND sa.auth_version=? AND sa.status='enabled' AND m.status='active')";
+    const guard = record.tokenId ? ` WHERE EXISTS(SELECT 1 FROM attendance_tokens t JOIN attendance_events e ON e.id=t.event_id WHERE t.id=? AND t.revoked_at IS NULL AND julianday(t.expires_at)>julianday(?) AND julianday(e.starts_at)<=julianday(?) AND julianday(e.ends_at)>=julianday(?)) AND ${authGuard}` : record.direct?` WHERE ${authGuard} AND EXISTS(SELECT 1 FROM attendance_events e WHERE e.id=? AND julianday(e.starts_at)<=julianday(?) AND julianday(e.ends_at)>=julianday(?)) AND (?=1 OR EXISTS(SELECT 1 FROM duty_assignments da JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published' WHERE da.member_id=? AND da.business_date=? AND da.campus_id=? AND da.duty_type='office' AND NOT EXISTS(SELECT 1 FROM roster_leave_facts lf WHERE lf.origin_assignment_id=COALESCE(da.origin_assignment_id,da.id) AND lf.member_id=da.member_id AND lf.status='approved')))` : '';
+    const guardArgs = record.tokenId ? [record.tokenId,record.recordedAt,record.recordedAt,record.recordedAt,record.actorAccount,record.authVersion] : record.direct?[record.actorAccount,record.authVersion,record.eventId,record.recordedAt,record.recordedAt,record.directLeader?1:0,record.memberId,record.businessDate,record.campusId]:[];
     const statements = [db.prepare(`INSERT INTO attendance_records(id,member_id,event_id,dedupe_key,occurred_at,recorded_at,method,source_ref,primary_department_id_snapshot,primary_department_name_snapshot,identity_snapshot,non_scheduled)
       SELECT ?,?,?,?,?,?,?,?,?,?,?,?${guard}`).bind(record.id,record.memberId,record.eventId,record.dedupeKey,record.occurredAt,record.recordedAt,record.method,json(record.sourceRef,{}),record.departmentId || null,record.departmentName || null,json(record.identitySnapshot,{}),record.nonScheduled ? 1 : 0,...guardArgs)];
     if (presence) {
@@ -546,7 +547,7 @@ export function staffPlatformRepository(db) {
     }
     try {
       const result = await db.batch(statements);
-      return result[0]?.meta?.changes ? attendanceRecord(await db.prepare(`SELECT ar.*,e.type,e.business_date,e.campus_id FROM attendance_records ar JOIN attendance_events e ON e.id=ar.event_id WHERE ar.id=?`).bind(record.id).first()) : null;
+      return result[0]?.meta?.changes ? attendanceRecord(await db.prepare(`SELECT ar.*,(SELECT paused FROM service_day_overrides s WHERE s.business_date=e.business_date AND s.campus_id=e.campus_id) AS service_paused,e.type,e.business_date,e.campus_id FROM attendance_records ar JOIN attendance_events e ON e.id=ar.event_id WHERE ar.id=?`).bind(record.id).first()) : null;
     } catch (error) {
       if (`${error.message || ''}`.includes('attendance_records.dedupe_key')) return null;
       throw error;

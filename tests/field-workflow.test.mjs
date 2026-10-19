@@ -451,9 +451,10 @@ test('unscheduled lead keeps identity, signs in without repair qualification and
   assert.equal(home.todayDuties.length,0);
   assert.deepEqual(home.identities.map(item=>item.code),['repair_lead']);
   assert.equal(home.capability['repair.transfer'],false);
-  const credential=await request('/api/attendance/events/field-event/token','root001',{revision:(await staffPlatformRepository(db).attendanceEvent('field-event')).revision});
-  assert.equal(credential.status,200,JSON.stringify(credential.body));
-  assert.equal((await request('/api/attendance/check-ins',account,{token:credential.body.token,requestId:crypto.randomUUID()})).status,200);
+  assert.equal(home.directAttendance.allowed,true,'an authorized unscheduled leader can self-check-in');
+  assert.equal((await request('/api/attendance/self-check-in',account,{campusId:'campus-hunnan',requestId:crypto.randomUUID()})).status,403,'campus grants alone do not grant a leader identity outside its scope');
+  const signed=await request('/api/attendance/self-check-in',account,{campusId:'campus-nanhu',requestId:crypto.randomUUID()});
+  assert.equal(signed.status,200,JSON.stringify(signed.body));assert.equal(signed.body.nonScheduled,true);
   home=(await request('/api/field/home',account)).body;
   assert.equal(home.capability['repair.transfer'],true);
   assert.equal(home.capability['repair.start'],false);
@@ -464,6 +465,8 @@ test('unscheduled lead keeps identity, signs in without repair qualification and
   await db.prepare("UPDATE member_roles SET effective_to='2026-10-15' WHERE id='unscheduled-lead'").run();
   home=(await request('/api/field/home',account)).body;
   assert.equal(home.capability['repair.transfer'],false);assert.equal(home.identities.some(item=>item.code==='repair_lead'),false);
+  assert.equal(home.directAttendance.allowed,false);
+  assert.equal((await request('/api/attendance/self-check-in',account,{campusId:'campus-nanhu',directLeader:true,requestId:crypto.randomUUID()})).status,403,'body flags cannot restore expired leader authorization');
 });
 
 test('exchange import, activation, check-in and qualification revocation preserve the same member and exclude roster participation',async()=>{

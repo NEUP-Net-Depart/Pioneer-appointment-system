@@ -241,7 +241,7 @@ test("reception layout remains usable at desktop, phone and narrow-phone widths"
   expect(errors).toEqual([]);
 });
 
-test("technician completes a real intake and repair; drafts survive reload and camera stays opt-in", async ({
+test("technician completes a real intake and repair; opening scanner starts camera and leaving releases it", async ({
   page,
   request,
 }) => {
@@ -500,8 +500,6 @@ test("field polling pauses when hidden and scanner releases every acquired track
   await page.clock.fastForward(30000);
   await expect.poll(() => reads).toBeGreaterThan(initial);
   await page.getByRole("button", { name: "扫描维修码", exact: true }).click();
-  expect(await page.evaluate(() => window.fieldCameraStreams.length)).toBe(0);
-  await page.getByRole("button", { name: "开启摄像头", exact: true }).click();
   await expect
     .poll(() => page.evaluate(() => window.fieldCameraStreams.length))
     .toBe(1);

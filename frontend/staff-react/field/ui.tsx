@@ -162,7 +162,7 @@ export function CredentialCard({ kind, code, context, detail }: {
   </section>;
 }
 
-export function Scanner({ onCode }: { onCode: (code: string) => void }) {
+export function Scanner({ onCode,autoStart=true }: { onCode: (code: string) => void;autoStart?:boolean }) {
   const video = useRef<HTMLVideoElement>(null),
     status = useRef<HTMLParagraphElement>(null),
     torch = useRef<HTMLButtonElement>(null),
@@ -177,11 +177,12 @@ export function Scanner({ onCode }: { onCode: (code: string) => void }) {
       status: status.current!,
       torch: torch.current!,
       switchCamera: switcher.current!,
-      onCode: (code) => callback.current(code),
+      onCode: (code) => {instance.stop();callback.current(code);},
       onState: (state) =>
         setRunning(state === "running" || state === "opening"),
     });
     scanner.current = instance;
+    if(autoStart&&!document.hidden)void instance.start();
     const hide = () => {
         if (document.hidden) instance.stop();
       },
@@ -193,7 +194,7 @@ export function Scanner({ onCode }: { onCode: (code: string) => void }) {
       document.removeEventListener("visibilitychange", hide);
       window.removeEventListener("pagehide", stop);
     };
-  }, []);
+  }, [autoStart]);
   return (
     <div className="field-scanner">
       <div className="field-camera">

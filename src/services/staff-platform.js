@@ -498,15 +498,37 @@ export function staffPlatformService({ repository, platform, manifests, calendar
     // Public requests prove QR possession only. Hardware evidence must come from a
     // trusted server adapter; body flags cannot attest NFC or manual attendance.
     if (input.method !== undefined && input.method !== 'qr') fail(403, '此入口仅支持扫码签到，补录请使用考勤修正');
-    const { found, event, context, policy, now } = await attendanceCredential(actor, input);
+    return commitAttendance(actor,input,await attendanceCredential(actor,input));
+  }
+  async function directAttendanceAction(actor,campusId) {
+    const context=await contextFor(actor),identities=staffIdentities(context,platform.authorizer,{campusId});
+    const scheduled=context.todayDuties.filter(duty=>duty.campusId===campusId&&duty.leaveStatus!=='approved');
+    const leader=identities.some(item=>['repair_lead','office_lead','superadmin'].includes(item.code));
+    const qualified=scheduled.some(duty=>duty.dutyType==='office')||leader;
+    const permission=evaluate(context,'attendance.self',{campusId,memberId:context.actor.memberId}).allowed;
+    const paused=!!(await repository.serviceDay(dateKey(),campusId))?.paused;
+    const reason=paused?'今天暂停维修，停止签到':!permission?'没有该校区的签到权限':!qualified?'请扫描工作人员签到码完成签到':'';
+    return {allowed:!reason,reason};
+  }
+  async function directCheckIn(actor,input) {
+    const campusId=normalizeCampusId(input.campusId),decision=await directAttendanceAction(actor,campusId);
+    if(!decision.allowed)fail(403,decision.reason);
+    const {context}=await requirePermission(actor,'attendance.self',{campusId});
+    const businessDate=dateKey(),now=nowIso();
+    const event=await repository.dutyEvent(businessDate,campusId)||await repository.createEvent({type:'duty',policyCode:'duty.v1',policyVersion:'1.0.0',ruleSnapshot:{timezone:'Asia/Shanghai'},campusId,businessDate,startsAt:`${businessDate}T18:30:00+08:00`,endsAt:`${businessDate}T21:30:00+08:00`,sourceRef:{}},context.actor.memberId,
+      {actorMemberId:context.actor.memberId,actorAccount:actor.account,authVersion:context.authVersion,action:'attendance.event.created',requestId:input.requestId});
+    if(!event||!eventWindow(event.startsAt,event.endsAt,now))fail(409,'当前不在签到时间窗口');
+    return commitAttendance(actor,input,{found:null,event,context,policy:policyFor(event),now},true);
+  }
+  async function commitAttendance(actor,input,{found,event,context,policy,now},direct=false) {
     const dedupeKey = policy.getDedupeScope({ memberId: context.actor.memberId, event });
     const existing = await repository.findAttendanceByDedupe(dedupeKey); if (existing) return { ...existing, isExisting: true, result: policy.describeResult(existing) };
-    const method = attendanceMethod(input.method);
+    const method = direct?'manual':attendanceMethod(input.method);
     const occurredAt = now;
     if (!eventWindow(event.startsAt, event.endsAt, occurredAt)) fail(400, '签到发生时间不在场次窗口内');
     const record = await withReceipt(actor, 'attendance.checkin', input, async () => {
       const created = await repository.insertAttendance({ id: crypto.randomUUID(), memberId: context.actor.memberId, eventId: event.id, dedupeKey, occurredAt, recordedAt: now, method, sourceRef: event.sourceRef, campusId: event.campusId, businessDate: event.businessDate, departmentId: context.memberships.find(item => item.isPrimary)?.departmentId, departmentName: context.memberships.find(item => item.isPrimary)?.departmentName, identitySnapshot: { name: context.actor.name, memberId: context.actor.memberId, identities:context.identities }, nonScheduled: !context.todayDuties.some(duty=>duty.campusId===event.campusId), actorAccount: actor.account,
-        checkInAudit: true, tokenId: found.token.id, authVersion: context.authVersion, requestId: requestId(input.requestId), payloadHash: hashPayload(input), type: event.type }, event.type === 'duty');
+        checkInAudit: true, direct,directLeader:direct&&staffIdentities(context,platform.authorizer,{campusId:event.campusId}).some(item=>['repair_lead','office_lead','superadmin'].includes(item.code)),tokenId: found?.token.id, authVersion: context.authVersion, requestId: requestId(input.requestId), payloadHash: hashPayload(input), type: event.type }, event.type === 'duty');
       if (!created) {
         const concurrent = await repository.findAttendanceByDedupe(dedupeKey);
         if (concurrent) return { ...concurrent, isExisting: true, result: policy.describeResult(concurrent) };
@@ -1421,7 +1443,7 @@ export function staffPlatformService({ repository, platform, manifests, calendar
   }
 
   return { contextFor, requirePermission, scopedActor, evaluate, memberList, memberDetail, updateMember, addMembership, endMembership, permissions, roles, createRole, updateRole, previewRole, bindMemberRoles,
-    organization, importMembers, saveWorkProfile, deskSummary, workbench, createAttendanceEvent, issueAttendanceToken, checkIn, previewAttendance, attendanceList, attendanceOptions, correctAttendance, presence, rosterOptions, rosterTasks, rosterCandidates,collectionCommand,addParticipants,submitAvailability,reviseRoster,taskAvailability, createRosterTask, rosterRequirements, saveAvailability, rosterTaskState, generate, updateRoster, publish, rosterMine,seriesCommand,availabilityPreferences,
+    organization, importMembers, saveWorkProfile, deskSummary, workbench, createAttendanceEvent, issueAttendanceToken, checkIn, directCheckIn, directAttendanceAction, previewAttendance, attendanceList, attendanceOptions, correctAttendance, presence, rosterOptions, rosterTasks, rosterCandidates,collectionCommand,addParticipants,submitAvailability,reviseRoster,taskAvailability, createRosterTask, rosterRequirements, saveAvailability, rosterTaskState, generate, updateRoster, publish, rosterMine,seriesCommand,availabilityPreferences,
     leave, leaves, leaveDetail, leaveDecision, leaveWithdraw, swapCandidates, swapPreview, swapDetail, swap, swaps, swapDecision, attendanceExport, audit,
     recordAudit: input => repository.audit(input) };
 }
