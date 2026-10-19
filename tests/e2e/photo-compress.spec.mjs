@@ -399,9 +399,19 @@ test('scanner restores uploaded IDs after reload, rejects HEIC and reuses only t
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   const { uploads, starts, controls, user } = await scanHarness(page);
   controls.failStart = true;
-  for (const side of ['front', 'back']) await page.locator('#scan-' + side).setInputFiles({ name: side + '.png', mimeType: '', buffer: png });
+  // Upload the back first deliberately: attachment IDs must follow their side,
+  // not the request order (compression and uploads may finish independently).
+  for (const side of ['back', 'front']) {
+    await page.locator('#scan-' + side).setInputFiles({ name: side + '.png', mimeType: '', buffer: png });
+    await expect(page.locator('#scan-' + side + '-state')).toContainText('已上传');
+  }
   await page.getByRole('button', { name: '确认照片并开始维修' }).click();
   await expect(page.locator('#toast')).toContainText('模拟签到失败');
+  const frontUpload = uploads.find(input => input.purpose === 'intake_front');
+  const backUpload = uploads.find(input => input.purpose === 'intake_back');
+  expect(frontUpload.filename).toBe('front.png');
+  expect(backUpload.filename).toBe('back.png');
+  expect(starts[0]).toMatchObject({ frontPhotoId: frontUpload.id, backPhotoId: backUpload.id });
   await page.reload();
   await expect(page.locator('#scan-intake-form')).toBeVisible();
   for (const side of ['front', 'back']) {
@@ -413,11 +423,13 @@ test('scanner restores uploaded IDs after reload, rejects HEIC and reuses only t
   await page.getByRole('button', { name: '确认照片并开始维修' }).click();
   await expect(page.locator('#toast')).toContainText('转为 JPG');
   expect(starts).toHaveLength(1); expect(uploads).toHaveLength(2);
-  expect(await page.evaluate(account => JSON.parse(localStorage.getItem(`pioneerScan:${account}:photos:photo-test`)), user.account)).toEqual({ front: uploads[0].id });
+  expect(await page.evaluate(account => JSON.parse(localStorage.getItem(`pioneerScan:${account}:photos:photo-test`)), user.account)).toEqual({ front: frontUpload.id });
   await page.locator('#scan-back').setInputFiles({ name: 'new-back.png', mimeType: '', buffer: png });
   await page.getByRole('button', { name: '确认照片并开始维修' }).click();
   await expect(page.locator('#scan-result-form')).toBeVisible();
-  expect(uploads.map(input => input.filename)).toEqual(['front.png', 'back.png', 'new-back.png']);
-  expect(starts[1]).toMatchObject({ frontPhotoId: uploads[0].id, backPhotoId: uploads[2].id });
+  expect(uploads.map(input => input.filename).sort()).toEqual(['front.png', 'back.png', 'new-back.png'].sort());
+  const replacement = uploads.find(input => input.filename === 'new-back.png');
+  expect(replacement.purpose).toBe('intake_back');
+  expect(starts[1]).toMatchObject({ frontPhotoId: frontUpload.id, backPhotoId: replacement.id });
   expect(errors).toEqual([]);
 });

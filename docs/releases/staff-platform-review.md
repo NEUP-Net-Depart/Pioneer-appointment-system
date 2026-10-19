@@ -98,6 +98,8 @@ npm run verify
 
 `verify` 顺序执行 lint、TypeScript、架构／平台审计、构建检查、Node 测试、两条迁移链验证、通用浏览器及工作人员浏览器。不要并行运行会重新构建 dist 的套件。浏览器及 Node 使用临时数据与测试时钟，不访问云端业务库或现有人工验收库。
 
+最终 CI 排查还修正了一处照片测试的顺序假设：上传请求可独立完成，不能将第一个附件当成正面照片。专项测试明确先上传背面，按用途验证刷新恢复、HEIC 拒绝和仅重传替换面；原断言在 Chromium／WebKit 均可稳定复现失败，修正不改变业务上传逻辑。
+
 | 风险 | 主要证据入口 |
 | --- | --- |
 | 原库带数据升级、迁移中断回滚、外键、历史凭证与附件 | `tests/staff-upgrade.test.mjs`、各 `*-upgrade.test.mjs`、`scripts/verify-migrations.mjs` |
