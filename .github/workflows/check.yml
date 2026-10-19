@@ -32,6 +32,14 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium webkit
       - run: npm run verify
+      - name: Preserve isolated UI acceptance screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: staff-platform-screenshots-${{ github.run_id }}-${{ github.run_attempt }}
+          path: output/field-workflow/**/*.png
+          if-no-files-found: ignore
+          retention-days: 14
   migrate-preview:
     needs: test
     if: github.ref == 'refs/heads/dev' && ((github.event_name == 'push' && github.event.deleted != true) || github.event_name == 'workflow_dispatch')

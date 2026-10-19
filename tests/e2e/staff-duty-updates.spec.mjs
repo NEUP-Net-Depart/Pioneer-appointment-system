@@ -21,7 +21,15 @@ async function checkSizes(page,name){
   for(const width of [320,390,768,1440]){
     await page.setViewportSize({width,height:1000});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     const dialog=page.getByRole('dialog');await expect(dialog).toBeVisible();expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
-    await page.screenshot({path:`output/field-workflow/duty-updates/${name}-${width}.png`,fullPage:true});
+    const body=dialog.locator('.workspace-dialog-body');await body.evaluate(el=>{el.scrollTop=0;});
+    // A full-document capture includes the inert page below a fixed dialog's
+    // viewport, making the screenshot look as if content leaks out of the modal.
+    await page.screenshot({path:`output/field-workflow/duty-updates/${name}-${width}.png`});
+    if(await body.evaluate(el=>el.scrollHeight>el.clientHeight+1)){
+      await body.evaluate(el=>{el.scrollTop=el.scrollHeight;});
+      const last=body.getByRole('button').last();await expect(last).toBeInViewport();
+      await page.screenshot({path:`output/field-workflow/duty-updates/${name}-${width}-actions.png`});
+    }
   }
 }
 

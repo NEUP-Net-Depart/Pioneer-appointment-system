@@ -2,7 +2,7 @@
 
 面向南湖、浑南校区的免费维修预约系统，提供学生预约与查询、工作人员扫码签到与维修记录、管理员账号及预约管理。
 
-原生 HTML/CSS/JavaScript 前端，Cloudflare Pages Functions API，D1 数据库与私有 R2 附件存储。入口为学生端 `/`、工作人员端 `/staff/` 和同源 `/api/*`。
+学生端使用原生 HTML/CSS/JavaScript，工作人员平台使用 React、TypeScript 与 Vite；Cloudflare Pages Functions 提供 API，D1 保存业务数据，私有 R2 保存附件。入口为学生端 `/`、工作人员端 `/staff/` 和同源 `/api/*`。新版工作人员工作区按环境的 `STAFF_WORKFLOW_ENABLED` 开关启用。
 
 GitHub Actions 在所有分支推送和 PR 上运行验证：`main` 发布 Production，`dev` 发布共享 Preview，`next/staff-platform` 发布独立 Staff Staging；`feat/staff-*` 只进行隔离验证。其他分支继续发布各自的共享 Preview 地址。只有 `dev` 自动迁移共享测试库；Production 与 Staff Staging 均在目标 D1 迁移成功后发布。
 
@@ -17,6 +17,7 @@ GitHub Actions 在所有分支推送和 PR 上运行验证：`main` 发布 Produ
 - [身份与组织映射](docs/architecture/identity-mapping.md)
 - [权限与签到契约](docs/architecture/authorization.md)
 - [长期集成分支与 Staff Staging](docs/staff-staging.md)
+- [本次人员平台集成的审阅、验收与已知缺口](docs/releases/staff-platform-review.md)
 
 ## Cloudflare 架构
 
