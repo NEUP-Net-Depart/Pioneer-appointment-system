@@ -120,6 +120,10 @@
     {
       "name": "0027_collection_close_advance.sql",
       "sha256": "4a658dfd964992028d9dd4c5ea08365252d9757a858b53b605e250e67a1e6874"
+    },
+    {
+      "name": "0028_roster_publication_overrides.sql",
+      "sha256": "f1bd5a02e8f13b3dbef766270d219af3b63ee3d14f6de33a619882f35fb2eed0"
     }
   ],
   "modules": [
@@ -319,6 +323,10 @@
     {
       "name": "0027_collection_close_advance.sql",
       "sha256": "4a658dfd964992028d9dd4c5ea08365252d9757a858b53b605e250e67a1e6874"
+    },
+    {
+      "name": "0028_roster_publication_overrides.sql",
+      "sha256": "f1bd5a02e8f13b3dbef766270d219af3b63ee3d14f6de33a619882f35fb2eed0"
     }
   ],
   "staffMigrationsDirectory": "database/staff-migrations"

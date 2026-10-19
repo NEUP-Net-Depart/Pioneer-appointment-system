@@ -90,19 +90,23 @@ export function generateRoster(input) {
 
 export function validateRoster(result, input) {
   const errors = [];
+  const overridable=new Set(['COVERAGE_MISSING','OFFICE_COVERAGE_MISSING','LEAD_COVERAGE_MISSING','LEAD_SURPLUS','ORDINARY_COVERAGE_MISSING','MEMBER_WEEK_MISSING','MEMBER_WEEK_DUPLICATE','MEMBER_DAY_DUPLICATE']);
   const pooled = input.ruleVersion === 'repair-minimum-v2';
   const seen = [];
   const effective = (result.assignments || []).filter(item => item.leaveStatus !== 'approved');
-  if (!input.slots?.length) errors.push({ code: 'SLOTS_REQUIRED' });
+  if (!input.slots?.length&&!input.allSuspended) errors.push({ code: 'SLOTS_REQUIRED' });
   for (const item of result.assignments || []) {
     const member = (input.members || []).find(candidate => candidate.memberId === item.memberId);
     const slot = (input.slots || []).find(candidate => slotKey(candidate) === slotKey(item));
     const preserved=(input.preservedAssignments || []).some(previous=>key(previous)===key(item)&&(previous.roleKind || '')===(item.roleKind || '')&&(previous.dutyType || 'repair')===(item.dutyType || 'repair'));
-    if (!slot || !preserved && (!member || !availableFor(member, item))) errors.push({ code: 'MEMBER_UNAVAILABLE', memberId: item.memberId, slot: item });
-    const office = slot?.dutyType === 'office';
+    if (!slot && !preserved || !preserved && (!member || !availableFor(member, item))) errors.push({ code: 'MEMBER_UNAVAILABLE', memberId: item.memberId, slot: item });
+    if(!preserved&&member&&(member.existingAssignments||[]).some(other=>other.businessDate===item.businessDate&&other.startAt<item.endAt&&item.startAt<other.endAt)) errors.push({code:'TIME_CONFLICT',memberId:item.memberId,slot:item});
+    if(seen.some(other=>other.memberId===item.memberId&&other.businessDate===item.businessDate&&other.startAt<item.endAt&&item.startAt<other.endAt)) errors.push({code:'TIME_CONFLICT',memberId:item.memberId,slot:item});
+    const office = (slot?.dutyType||item.dutyType) === 'office';
     if (!preserved && item.roleKind && (office ? item.roleKind !== 'coordinator' : item.roleKind !== 'repair_lead' || !member || !leadFor(member, item))) errors.push({ code: 'LEAD_INELIGIBLE', memberId: item.memberId });
     if (!preserved && pooled && member && (item.roleKind === 'repair_lead') !== (member.pool === 'lead')) errors.push({code:'POOL_MISMATCH',memberId:item.memberId});
-    if (item.dutyType && item.dutyType !== (slot?.dutyType || 'repair')) errors.push({ code: 'DUTY_TYPE_MISMATCH', memberId: item.memberId });
+    if (!preserved&&item.dutyType && item.dutyType !== (slot?.dutyType || 'repair')) errors.push({ code: 'DUTY_TYPE_MISMATCH', memberId: item.memberId });
+    if(member&&(member.existingAssignments||[]).some(other=>office?other.dutyType==='office'&&other.businessDate===item.businessDate:other.dutyType==='repair'&&weekKey(other.businessDate)===weekKey(item.businessDate)))errors.push({code:office?'MEMBER_DAY_DUPLICATE':'MEMBER_WEEK_DUPLICATE',memberId:item.memberId,slot:item});
     const week = weekKey(item.businessDate);
     if (seen.some(value => value.memberId === item.memberId && (office ? value.businessDate === item.businessDate : weekKey(value.businessDate) === week))) errors.push({ code: office ? 'MEMBER_DAY_DUPLICATE' : 'MEMBER_WEEK_DUPLICATE', memberId: item.memberId });
     seen.push(item);
@@ -123,5 +127,5 @@ export function validateRoster(result, input) {
   if (pooled) for (const member of input.members || []) {
     if (member.pool === 'ordinary' && !(result.assignments || []).some(item => item.memberId === member.memberId)) errors.push({code:'MEMBER_WEEK_MISSING',memberId:member.memberId});
   }
-  return { valid: errors.length === 0, errors };
+  return { valid: errors.length === 0, blocking:errors.some(issue=>!overridable.has(issue.code)), errors:errors.map((issue,index)=>({...issue,id:`${issue.code}:${issue.memberId||''}:${issue.slot?slotKey(issue.slot):''}:${index}`,severity:overridable.has(issue.code)?'overridable':'blocking'})) };
 }

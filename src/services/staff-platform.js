@@ -969,9 +969,9 @@ export function staffPlatformService({ repository, platform, manifests, calendar
         if (office ? !profiles.some(item => item.profileCode==='office') : !pool) continue;
         if (pool==='lead') leadSlots.push(slot);
         if (pool==='ordinary') ordinaryEligible=true;
-        if (other.some(item => (!office && item.dutyType === 'repair') || item.businessDate === slot.businessDate &&
-          ((office && item.dutyType === 'office') || item.startAt < slot.endAt && slot.startAt < item.endAt))) continue;
+        if (other.some(item => item.businessDate===slot.businessDate&&item.startAt<slot.endAt&&slot.startAt<item.endAt)) continue;
         manualSlots.push(slot);
+        if(other.some(item=>(!office&&item.dutyType==='repair')||(office&&item.dutyType==='office'&&item.businessDate===slot.businessDate)))continue;
         if ((!office || task.workflowVersion===1) && !windows.some(item => item.memberId === memberId && item.businessDate === slot.businessDate &&
           (!item.campusId || item.campusId === slot.campusId) && item.startAt <= slot.startAt && item.endAt >= slot.endAt)) continue;
         available.push(slot);
@@ -1005,10 +1005,12 @@ export function staffPlatformService({ repository, platform, manifests, calendar
       people:facts.map(item=>({memberId:item.memberId,name:item.name,active:item.active,submission:submissions.find(row=>row.memberId===item.memberId) || null})),
       coverage:source.slots.map(slot=>({...slot,ordinary:source.members.filter(member=>member.pool==='ordinary' && member.available.some(item=>sameAssignment({...item,memberId:''},{...slot,memberId:''}))).length,
         leads:source.members.filter(member=>member.pool==='lead' && member.available.some(item=>item.businessDate===slot.businessDate && item.campusId===slot.campusId)).length}))};
+    const validation=validateRoster({assignments},source);
+    const confirmation=latest?await tokenDigest(stableJson({version:latest.version,validation,fingerprint:await repository.rosterFingerprint(taskId)})):'';
     return { taskId,task:source.task,series:source.task.seriesId&&repository.rosterSeries ? await repository.rosterSeries(source.task.seriesId) : null,collectionState:collectionStatus(source.task),stage:rosterStage(source.task,versions,calendarClock().getTime()),progress,
       protectedAssignments:repository.protectedRosterAssignments ? await repository.protectedRosterAssignments(taskId) : [],publishedVersion:published || null,
       dutyType: source.dutyType, ruleVersion:source.ruleVersion, requiresRuleConfirmation:source.dutyType!=='office' && source.ruleVersion!=='repair-minimum-v2', members: source.members, slots: source.slots,
-      draft: latest ? { ...latest, assignments, sourceChanged, validation: validateRoster({ assignments }, source) } : null,
+      draft: latest ? { ...latest, assignments, sourceChanged, validation,confirmation } : null,
       publishedAssignments: published ? await repository.versionAssignments(published.id) : [] };
   }
   async function rosterWrite(write) {
@@ -1109,10 +1111,16 @@ export function staffPlatformService({ repository, platform, manifests, calendar
     const assignments = await repository.versionAssignments(id);
     await checkProtected(source.taskId,assignments);
     const validation = validateRoster({ assignments }, source);
-    if (!validation.valid) fail(409, '当前人员资格或班次覆盖不满足发布条件，请重新生成或调整草稿');
+    let override=null;
+    if (!validation.valid) {
+      if(validation.blocking) fail(409,'存在资格、授权、实际时间冲突或受保护班次问题，必须处理后再发布');
+      const confirmation=await tokenDigest(stableJson({version:version.version,validation,fingerprint}));
+      if(input.confirmation!==confirmation||typeof input.overrideReason!=='string'||input.overrideReason.trim().length<2||input.overrideReason.length>500||!Array.isArray(input.overrideIssues)||stableJson([...input.overrideIssues].sort())!==stableJson(validation.errors.map(issue=>issue.id).sort())) fail(409,'请重新读取当前检查结果，逐项确认问题并填写发布原因');
+      override={issues:validation.errors,reason:input.overrideReason.trim(),confirmation};
+    }
     const context = await contextFor(actor);
     let result;
-    try { result = await repository.publishRoster(id, input.version, { actorMemberId: context.actor.memberId, actorAccount: actor.account, authVersion:context.authVersion, action: 'rosters.published', sourceRef: publicResourceRef('rosters','version',id), before: version, after: { ...version, status: 'published' }, requestId: input.requestId },fingerprint); }
+    try { result = await repository.publishRoster(id, input.version, { actorMemberId: context.actor.memberId, actorAccount: actor.account, authVersion:context.authVersion, action: 'rosters.published', sourceRef: publicResourceRef('rosters','version',id), before: version, after: { ...version, status: 'published',override }, requestId: input.requestId },fingerprint,override); }
     catch (error) {
       if(String(error.message).includes('ROSTER_ATTENDED_ASSIGNMENT_CHANGED')) fail(409,'人员已签到，原班次不能更改，请重新核对');
       if(String(error.message).includes('ROSTER_PUBLICATION_BASE_CHANGED'))fail(409,'已有新的班表发布，请基于最新班表核对修订');

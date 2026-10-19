@@ -796,18 +796,22 @@ export function staffPlatformRepository(db) {
     return rosterVersionById(id);
   }
   async function rosterFingerprint(taskId) {return (await db.prepare(rosterFingerprintSql).bind(taskId).first()).fingerprint;}
-  async function publishRoster(id, revision, auditRecord, fingerprint) {
+  async function publishRoster(id, revision, auditRecord, fingerprint, override=null) {
     const at = nowIso();
     const current = await db.prepare(`SELECT task_id FROM roster_versions WHERE id=? AND version=? AND status='draft'`).bind(id,revision).first();
     if (!current) return null;
     const authorization=commandAuthorization(auditRecord);
     const result = await db.batch([
-      db.prepare(`UPDATE roster_versions SET status='published',published_at=? WHERE id=? AND version=? AND status='draft' AND COALESCE(json_extract(validation_result,'$.valid'),0)=1
+      ...(override?[db.prepare(`INSERT INTO roster_publication_overrides(version_id,draft_version,actor_member_id,issues_json,reason,confirmation,request_id,created_at)
+        SELECT ?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM roster_versions WHERE id=? AND version=? AND status='draft')
+        ${fingerprint?`AND (${rosterFingerprintSql})=?`:''} ${authorization.sql}`)
+        .bind(id,revision,auditRecord.actorMemberId,JSON.stringify(override.issues),override.reason,override.confirmation,auditRecord.requestId||'',at,id,revision,...(fingerprint?[current.task_id,fingerprint]:[]),...authorization.args)]:[]),
+      db.prepare(`UPDATE roster_versions SET status='published',published_at=? WHERE id=? AND version=? AND status='draft' AND (COALESCE(json_extract(validation_result,'$.valid'),0)=1 OR EXISTS(SELECT 1 FROM roster_publication_overrides WHERE version_id=roster_versions.id AND draft_version=roster_versions.version))
         ${fingerprint ? `AND (${rosterFingerprintSql})=?` : ''} ${authorization.sql}`).bind(at,id,revision,...(fingerprint ? [current.task_id,fingerprint] : []),...authorization.args),
       ...(auditRecord ? [auditStatement({ ...auditRecord, occurredAt: at }, true)] : []),
       db.prepare(`UPDATE roster_versions SET status='superseded' WHERE task_id=? AND status IN ('published','draft') AND id<>? AND EXISTS(SELECT 1 FROM roster_versions WHERE id=? AND status='published' AND version=?)`).bind(current.task_id,id,id,revision)
     ]);
-    return result[0]?.meta?.changes ? rosterVersion(await db.prepare('SELECT * FROM roster_versions WHERE id=?').bind(id).first()) : null;
+    return result[override?1:0]?.meta?.changes ? rosterVersion(await db.prepare('SELECT * FROM roster_versions WHERE id=?').bind(id).first()) : null;
   }
   async function listAssignments(memberId, weekStart) {
     const result = await db.prepare(`SELECT da.*,c.name AS campus_name,dr.role_kind,${assignmentLeaveColumn} FROM duty_assignments da JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published' JOIN campuses c ON c.id=da.campus_id LEFT JOIN duty_roles dr ON dr.assignment_id=da.id WHERE da.member_id=? AND da.business_date>=? AND da.business_date<=date(?, '+6 day') ORDER BY da.business_date,da.start_at`).bind(memberId,weekStart,weekStart).all();

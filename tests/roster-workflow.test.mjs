@@ -177,6 +177,16 @@ test('both migration chains support collection, atomic weekly submissions, revis
     const actualPeriods=(await repo.listRosterTasks()).filter(item=>item.seriesId===task.seriesId);
     assert.equal(actualPeriods.length,3,'after weeks without visits, resolve only one current period, never a backlog of published tasks');
     assert.ok(actualPeriods.some(item=>item.weekStart===distantWeek));
+    const shortTask=await service.createRosterTask(root,{...input,weekStart:addDays(week,56),memberIds:[two.memberId],recurrence:{enabled:false},requestId:crypto.randomUUID()});
+    await service.submitAvailability(two,shortTask.id,{windows:[],unavailable:true,revision:-1,requestId:crypto.randomUUID()});
+    await service.collectionCommand(root,shortTask.id,{action:'close',revision:shortTask.revision,requestId:crypto.randomUUID()});
+    const shortage=await service.generate(root,{taskId:shortTask.id,requestId:crypto.randomUUID()});
+    const review=(await service.rosterTaskState(root,shortTask.id)).draft;
+    assert.equal(review.validation.valid,false);assert.equal(review.validation.blocking,false);
+    await assert.rejects(service.publish(root,shortage.version.id,{version:review.version}),error=>error.status===409);
+    const force={version:review.version,confirmation:review.confirmation,overrideIssues:review.validation.errors.map(issue=>issue.id),overrideReason:'人员不足，经负责人确认临时发布',requestId:crypto.randomUUID()};
+    assert.equal((await service.publish(root,shortage.version.id,force)).status,'published');
+    assert.equal((await db.prepare('SELECT reason FROM roster_publication_overrides WHERE version_id=?').bind(shortage.version.id).first()).reason,force.overrideReason);
     assert.deepEqual((await db.prepare('PRAGMA foreign_key_check').all()).results,[]);
   }}finally{await mf.dispose();}
 });
