@@ -599,6 +599,16 @@ export function staffPlatformRepository(db) {
       memberName: row.member_name || '', studentId: row.student_id || '', attendanceCount: Number(row.attendance_count || 0),
       departmentId: row.primary_department_id_snapshot || '', department: row.primary_department_name_snapshot || '' }));
   }
+  async function weeklyAttendanceData(start,end) {
+    const result=await db.batch([
+      db.prepare(`SELECT ar.*,(SELECT paused FROM service_day_overrides s WHERE s.business_date=e.business_date AND s.campus_id=e.campus_id) AS service_paused,e.type,e.business_date,e.campus_id,m.name AS member_name,m.student_id FROM attendance_records ar JOIN attendance_events e ON e.id=ar.event_id JOIN members m ON m.id=ar.member_id
+        WHERE e.type='duty' AND e.business_date BETWEEN ? AND ? ORDER BY ar.occurred_at,ar.id`).bind(start,end),
+      db.prepare(`SELECT m.id AS memberId,m.name,m.student_id AS studentId,(SELECT json_group_array(DISTINCT g.campus) FROM staff_accounts a JOIN staff_campus_grants g ON g.account=a.account WHERE a.member_id=m.id) AS campuses FROM members m
+        WHERE EXISTS(SELECT 1 FROM member_roles mr WHERE mr.member_id=m.id AND mr.effective_from<=? AND (mr.effective_to IS NULL OR mr.effective_to>?))`).bind(end,start)
+    ]);
+    return {records:rows(result[0]).map(row=>({...attendanceRecord(row),memberName:row.member_name,studentId:row.student_id})),members:rows(result[1]).map(row=>({...row,campuses:parseJson(row.campuses,[])}))};
+  }
+
   async function setPresence(memberId, input, revision, actor, auditRecord) {
     const at = nowIso();
     const existing = await db.prepare('SELECT * FROM staff_presence WHERE member_id=? AND business_date=?').bind(memberId,input.businessDate).first();
@@ -659,7 +669,7 @@ export function staffPlatformRepository(db) {
     for (let offset = 0; offset < memberIds.length; offset += 80) {
       const ids = memberIds.slice(offset, offset + 80), placeholders = ids.map(() => '?').join(',');
       const results = await db.batch([
-        db.prepare(`SELECT m.id,m.name,m.status,MAX(CASE WHEN sa.status='enabled' THEN 1 ELSE 0 END) AS enabled,
+        db.prepare(`SELECT m.id,m.name,m.student_id,m.status,MAX(CASE WHEN sa.status='enabled' THEN 1 ELSE 0 END) AS enabled,
           (SELECT role FROM staff_accounts WHERE member_id=m.id AND status='enabled' ORDER BY account LIMIT 1) AS role
           FROM members m LEFT JOIN staff_accounts sa ON sa.member_id=m.id WHERE m.id IN (${placeholders}) GROUP BY m.id`).bind(...ids),
         db.prepare(`SELECT DISTINCT sa.member_id,g.campus FROM staff_accounts sa JOIN staff_campus_grants g ON g.account=sa.account
@@ -674,7 +684,7 @@ export function staffPlatformRepository(db) {
           FROM member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1 JOIN role_grants rg ON rg.role_id=r.id
           WHERE mr.member_id IN (${placeholders}) AND mr.effective_from<=date(?,'+6 day') AND (mr.effective_to IS NULL OR mr.effective_to>?)`).bind(...ids,weekStart,weekStart)
       ]);
-      for (const row of rows(results[0])) facts.set(row.id, { memberId: row.id, name: row.name, role:row.role, active: row.status === 'active' && !!row.enabled, campuses: [], profiles: [], assignments: [], departmentNames: [], memberships: [], grants:[] });
+      for (const row of rows(results[0])) facts.set(row.id, { memberId: row.id, name: row.name,studentId:row.student_id, role:row.role, active: row.status === 'active' && !!row.enabled, campuses: [], profiles: [], assignments: [], departmentNames: [], memberships: [], grants:[] });
       for (const row of rows(results[1])) facts.get(row.member_id)?.campuses.push(row.campus);
       for (const row of rows(results[2])) facts.get(row.member_id)?.profiles.push(profile(row));
       for (const row of rows(results[3])) facts.get(row.member_id)?.assignments.push({ ...assignment(row), taskId: row.task_id });
@@ -934,6 +944,6 @@ export function staffPlatformRepository(db) {
 
   return { ...serviceDayRepository(db),effectiveAssignment, effectiveLeaveAssignment: effectiveAssignment, swapFingerprint, swapCoverage, pendingSwapInvitations, accountRow, accountForMember, ensureMember, memberRow, memberships, membershipsForMembers, profiles, profileHistory, saveWorkProfile, grants, todayDuties, authorizationContext, listMembers, updateMember, listMemberships, addMembership, endMembership,
     listCampuses, listDepartments, listLocations, listPresence, activeRepair, importMembers, dutyEvent, latestIntake, repairIdentitySnapshot, fieldPeople, fieldContexts,
-    roleBindings, permissionDefinitions, listRoles, createRole, updateRole, bindRoles, modules, createEvent, issueToken, findEventByToken, findAttendanceByDedupe, insertAttendance, listAttendance, attendanceExport, attendanceCorrectionFingerprint, correctAttendance, setPresence,
+    roleBindings, permissionDefinitions, listRoles, createRole, updateRole, bindRoles, modules, createEvent, issueToken, findEventByToken, findAttendanceByDedupe, insertAttendance, listAttendance, attendanceExport,weeklyAttendanceData, attendanceCorrectionFingerprint, correctAttendance, setPresence,
     ...collection,attendanceEvent, eventById: attendanceEvent, attendanceById, attendanceOptions, createReceipt, claimReceipt, releaseReceipt, receipt, audit, listAudit, leaveImpact, officeRosterMemberIds, rosterMemberFacts, rosterTaskById, memberCampuses, createRosterTask, listRosterTasks, saveRosterRequirements, saveAvailability, availability, createRosterVersion, rosterVersionById, rosterVersionsForTask, versionAssignments, updateRosterDraft, rosterFingerprint, publishRoster, listAssignments, assignmentById, swapCandidates, createLeave, leaveById, listLeaves, updateLeave, createSwap, swapById, listSwaps, updateSwap };
 }

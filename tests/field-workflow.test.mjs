@@ -413,6 +413,58 @@ before(async () => {
 });
 after(async () => mf?.dispose());
 
+test('service pause preserves orders, scopes configuration and atomically stops arrivals and repairs',async(t)=>{
+  const businessDate='2026-10-15',campusId='campus-nanhu',account='20261972',memberId=`member-${account}`;
+  t.after(async()=>db.batch([
+    db.prepare('DELETE FROM staff_presence WHERE member_id=?').bind(memberId),
+    db.prepare('DELETE FROM attendance_records WHERE member_id=?').bind(memberId),
+    db.prepare("DELETE FROM duty_assignments WHERE id='pause-test-shift'"),
+    db.prepare("DELETE FROM appointments WHERE student_id IN ('20309972','20309973')"),
+    db.prepare('DELETE FROM service_day_overrides WHERE business_date=? AND campus_id=?').bind(businessDate,campusId)
+  ]));
+  await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,'签到核算测试负责人','technician','南湖',?,'2026-01-01')").bind(account,hashPassword('StaffTest!2026')).run();
+  await db.prepare("INSERT INTO staff_campus_grants VALUES(?,'南湖')").bind(account).run();
+  await db.prepare("INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from) VALUES('pause-test-lead',?,'role-repair-lead','{\"campusIds\":[\"campus-nanhu\"]}','2026-01-01')").bind(memberId).run();
+  await db.prepare("INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at) VALUES('pause-test-shift','field-roster',?,?,'campus-nanhu','repair','00:00','23:59')").bind(memberId,businessDate).run();
+  tokens[account]=(await request('/api/auth/login',null,{account,password:'StaffTest!2026'})).body.token;
+  const root='root001',onsite={requestId:crypto.randomUUID(),registrationFlow:'frontdesk',campus:'南湖',name:'暂停日期测试机主',studentId:'20309972',social:'private-contact',deviceType:'笔记本电脑',brand:'联想',deviceModel:'测试电脑',warranty:'否',faultType:'系统问题',signature:[Array.from({length:10},(_,i)=>[.1+i*.05,.2+i*.03])]};
+  const created=await request('/api/scan/onsite',root,onsite);assert.equal(created.status,201,JSON.stringify(created.body));
+  const credential=await request('/api/attendance/events/field-event/token',root,{revision:(await staffPlatformRepository(db).attendanceEvent('field-event')).revision});
+  const initial=await request('/api/service-days?date='+businessDate+'&campus=南湖',root);
+  assert.equal(initial.status,200);assert.ok(initial.body.affected.some(item=>item.id===created.body.id));
+  assert.ok(initial.body.affected.every(item=>!('name' in item)&&!('social' in item)));
+  const input={businessDate,campusId,paused:true,revision:initial.body.item?.revision??-1,reason:'临时检修暂停服务',requestId:crypto.randomUUID()};
+  assert.equal((await request('/api/service-days',account,input,'PATCH')).status,403);
+  assert.equal((await request('/api/service-days?date='+businessDate+'&campus=浑南','20261001')).status,403);
+  const concurrent=await Promise.all([request('/api/service-days',root,input,'PATCH'),request('/api/service-days',root,input,'PATCH')]);
+  assert.deepEqual(concurrent.map(item=>item.status),[200,200],JSON.stringify(concurrent));
+  try{
+    assert.equal((await request('/api/service-days',root,{...input,reason:'不同内容'},'PATCH')).status,409);
+    assert.equal((await request('/api/service-days',root,{...input,requestId:crypto.randomUUID()},'PATCH')).status,409);
+    const availability=await request('/api/booking-availability?campus=南湖&date='+businessDate);
+    assert.equal(availability.body.paused,true);assert.equal(availability.body.pauseReason,input.reason);
+    assert.equal((await request('/api/attendance/self-check-in',account,{campusId,requestId:crypto.randomUUID()})).status,403);
+    assert.equal((await request('/api/attendance/check-ins',account,{token:credential.body.token,requestId:crypto.randomUUID()})).status,409);
+    assert.equal((await request('/api/scan/onsite',root,{...onsite,studentId:'20309973',requestId:crypto.randomUUID()})).status,409);
+    const detail=await request('/api/field/appointments/'+created.body.id,root);assert.equal(detail.status,200);assert.equal(detail.body.servicePaused,true);
+    await assert.rejects(db.prepare("UPDATE appointments SET status='in_progress',started_at='2026-10-15T02:00:00.000Z' WHERE id=?").bind(created.body.id).run(),/SERVICE_DAY_PAUSED/);
+    assert.equal((await db.prepare('SELECT status FROM appointments WHERE id=?').bind(created.body.id).first()).status,'booked');
+    const summary=await request('/api/attendance/weekly-summary?weekStart=2026-10-12&leadersOnce=1&memberId='+memberId,root);
+    assert.equal(summary.status,200,JSON.stringify(summary.body));assert.equal(summary.body.rows[0].creditedCount,1);assert.equal(summary.body.rows[0].actualCount,0);
+  }finally{
+    const current=(await request('/api/service-days?date='+businessDate+'&campus=南湖',root)).body.item;
+    assert.equal((await request('/api/service-days',root,{...input,paused:false,revision:current.revision,requestId:crypto.randomUUID()},'PATCH')).status,200);
+  }
+  const signed=await request('/api/attendance/self-check-in',account,{campusId,requestId:crypto.randomUUID()});assert.equal(signed.status,200,JSON.stringify(signed.body));
+  const duplicate=await request('/api/attendance/self-check-in',account,{campusId,requestId:crypto.randomUUID()});assert.equal(duplicate.body.isExisting,true);assert.equal(duplicate.body.occurredAt,signed.body.occurredAt);
+  assert.equal((await request('/api/attendance/self-check-in','20261002',{campusId,requestId:crypto.randomUUID()})).status,403,'ordinary technicians still prove QR possession');
+  const query='weekStart=2026-10-12&firstOnly=1&leadersOnce=1&memberId='+memberId;
+  const weekly=await request('/api/attendance/weekly-summary?'+query,root);assert.equal(weekly.status,200);assert.equal(weekly.body.rows[0].actualCount,1);assert.equal(weekly.body.rows[0].creditedCount,1);
+  const csv=await mf.dispatchFetch('https://field.test/api/attendance/export.csv?'+query,{headers:{Authorization:`Bearer ${tokens[root]}`}});
+  assert.equal(csv.status,200);assert.deepEqual(new Uint8Array(await csv.arrayBuffer()),new TextEncoder().encode(weekly.body.csv));
+  assert.equal((await request('/api/attendance/weekly-summary?'+query,'20261002')).status,403);
+});
+
 test('legacy desk summary shares current field authorization and rejects historical duty replay',async()=>{
   assert.equal((await request('/api/desk/summary?campusId=campus-nanhu','20261002')).status,403);
   assert.equal((await request('/api/desk/summary?campusId=campus-hunnan','20261001')).status,403);

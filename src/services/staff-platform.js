@@ -17,6 +17,7 @@ import {generateOfficeRoster} from '../modules/rosters/office.ts';
 import {collectionInstant,validateRecurrence,recurringPeriodWeek} from '../modules/rosters/recurrence.js';
 import {rosterCollections} from '../../shared/roster-collections.js';
 import {dutyEnd} from '../../shared/duty-window.js';
+import {weeklyAttendanceRows} from '../modules/attendance/weekly-export.js';
 
 function randomToken() {
   const bytes = new Uint8Array(24);
@@ -596,6 +597,7 @@ export function staffPlatformService({ repository, platform, manifests, calendar
     return {events,members:members.map(member=>({...member,identities:identities.has(member.memberId)?staffIdentities(identities.get(member.memberId),platform.authorizer,{campusId}):[]}))};
   }
   async function attendanceExport(actor, query = {}) {
+    if(query.weekStart)return weeklyAttendanceExport(actor,query);
     const month = query.month === undefined ? dateKey().slice(0, 7) : query.month;
     if (typeof month !== 'string' || !/^\d{4}-\d{2}$/.test(month)) fail(400, '月份不正确');
     const [year, monthNumber] = month.split('-').map(Number);
@@ -616,6 +618,22 @@ export function staffPlatformService({ repository, platform, manifests, calendar
     const header = ['校区','人员','学号','签到次数','部门'];
     const body = rows.map(row => csvLine([row.campus,row.memberName,row.studentId ? `'${row.studentId}` : '',row.attendanceCount,row.department]));
     return { month, rows, csv: `\uFEFF${header.join(',')}\r\n${body.join('')}` };
+  }
+  async function weeklyAttendanceExport(actor,query={}) {
+    const start=query.weekStart,end=query.weekEnd||start;
+    if(!validDate(start)||!validDate(end)||weekRange(start).start!==start||weekRange(end).start!==end||end<start||Date.parse(end)-Date.parse(start)>25*7*86400000)fail(400,'请选择最多 26 周的周一范围');
+    const context=await contextFor(actor);
+    if(!context.permissions['attendance.export'])fail(403,'没有导出考勤的权限');
+    if(query.campusId&&!['campus-nanhu','campus-hunnan'].includes(query.campusId))fail(400,'校区不正确');
+    const data=await repository.weeklyAttendanceData(start,addDays(end,6)),paused=await repository.serviceDays(start,addDays(end,6));
+    const members=new Map(data.members.map(member=>[member.memberId,member])),rows=[];
+    const canExport=target=>(!query.memberId||query.memberId===target.memberId)&&(!query.departmentId||query.departmentId===target.departmentId)&&(!query.campusId||query.campusId===target.campusId)&&evaluate(context,'attendance.export',target).allowed;
+    for(let week=start;week<=end;week=addDays(week,7)){
+      const facts=query.leadersOnce==='1'?(await repository.rosterMemberFacts([...members.keys()],week)).map(fact=>({...fact,campuses:members.get(fact.memberId).campuses})):[];
+      rows.push(...weeklyAttendanceRows({week,records:data.records.filter(row=>row.businessDate>=week&&row.businessDate<=addDays(week,6)),facts,paused,authorizer:platform.authorizer,canExport,firstOnly:query.firstOnly==='1',leadersOnce:query.leadersOnce==='1'}));
+    }
+    const header=['值班周','姓名','学号','部门','身份','校区','实际有效签到次数','暂停日排除次数','核算次数','核算依据'];
+    return {weekStart:start,weekEnd:end,rows,definition:{firstOnly:query.firstOnly==='1',leadersOnce:query.leadersOnce==='1',unit:'member_week',timezone:'Asia/Shanghai'},csv:`\uFEFF${header.join(',')}\r\n${rows.map(row=>csvLine([row.weekStart,row.name,row.studentId?`'${row.studentId}`:'',row.departments,row.identities,row.campuses,row.actualCount,row.excludedCount,row.creditedCount,row.basis])).join('')}`};
   }
   async function correctAttendance(actor, input) {
     if (typeof input.memberId !== 'string' || !input.memberId || input.memberId.length > 128 ||

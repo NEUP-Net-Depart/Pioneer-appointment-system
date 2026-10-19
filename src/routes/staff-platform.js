@@ -3,6 +3,7 @@ import { json, readBody, fail, securityHeaders } from '../lib/http.js';
 function bodyWithRevision(body) { return body && typeof body === 'object' ? body : {}; }
 
 export const staffPlatformRoutes = [
+  ['GET', /^\/api\/attendance\/weekly-summary$/, async context=>json(await context.services.staffPlatform.attendanceExport(await context.role('technician'),context.query))],
   ['GET', /^\/api\/attendance\/options$/, async context=>json(await context.services.staffPlatform.attendanceOptions(await context.role('technician'),context.query))],
   ['GET', /^\/api\/field\/home$/, async context => json(await context.services.field.home(await context.role('technician'), context.query))],
   ['GET', /^\/api\/field\/board$/, async context => json(await context.services.field.board(await context.role('technician'), context.query))],
@@ -43,7 +44,7 @@ export const staffPlatformRoutes = [
   ['GET', /^\/api\/attendance$/, async context => json(await context.services.staffPlatform.attendanceList(await context.role('technician'), context.query))],
   ['GET', /^\/api\/attendance\/export\.csv$/, async context => {
     const result = await context.services.staffPlatform.attendanceExport(await context.role('technician'), context.query);
-    return new Response(result.csv, { headers: { ...securityHeaders, 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="attendance-${result.month}.csv"` } });
+    return new Response(result.csv, { headers: { ...securityHeaders, 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="attendance-${result.weekStart||result.month}.csv"` } });
   }],
   ['GET', /^\/api\/export\/attendance\.csv$/, async context => {
     const result = await context.services.staffPlatform.attendanceExport(await context.role('technician'), context.query);

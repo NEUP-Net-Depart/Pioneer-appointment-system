@@ -1,4 +1,5 @@
 import React,{useContext,useEffect,useRef,useState} from 'react';
+import {WeeklyAttendanceExport} from './WeeklyAttendanceExport';
 import {ActivityContext,Modal,time} from './field/ui';
 import {WorkspaceHeader} from './WorkspaceHeader';
 import {StaffIdentity} from './StaffIdentity';
@@ -18,7 +19,7 @@ export function AttendanceManagement({user}){
   const [loading,setLoading]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
   const [form,setForm]=useState(null),[options,setOptions]=useState({events:[],members:[]}),[query,setQuery]=useState(''),[finding,setFinding]=useState(false);
   const [dirty,setDirty]=useState(false);
-  const [discarding,setDiscarding]=useState(false);
+  const [discarding,setDiscarding]=useState(false),[exportOpen,setExportOpen]=useState(false);
   useEffect(()=>{
     if(!active)return;const controller=new AbortController();setLoading(true);setError('');
     const params=new URLSearchParams({...filters,all:'1',type:'duty',...(cursor?{cursor}:{})});
@@ -58,12 +59,13 @@ export function AttendanceManagement({user}){
   }
   return <section className="react-page attendance-management"><WorkspaceHeader group="值班管理" title="考勤核查" description="按月份核对到岗记录；补录与修正保留历史归属，并记录操作原因。"><button disabled={busy} onClick={()=>edit(null)}>补录签到</button></WorkspaceHeader>
     {error && !form && <p className="react-error" role="alert">{error}</p>}{notice && <p className="react-message" role="status">{notice}</p>}
-    <div className="planner-toolbar"><label>考勤月份<input aria-label="考勤月份" type="month" required value={filters.month} onChange={event=>{if(event.target.value)changeFilters({month:event.target.value});}}/></label><label>校区<select aria-label="考勤校区" value={filters.campusId} onChange={event=>changeFilters({campusId:event.target.value})}>{campuses.map(campus=><option key={campus.id} value={campus.id}>{campus.name}</option>)}</select></label><button disabled={loading} onClick={()=>{setCursor('');setRefresh(value=>value+1);}}>刷新</button>{user.permissions?.['attendance.export'] && <button disabled={busy} onClick={download}>导出本月汇总</button>}</div>
+    <div className="planner-toolbar"><label>考勤月份<input aria-label="考勤月份" type="month" required value={filters.month} onChange={event=>{if(event.target.value)changeFilters({month:event.target.value});}}/></label><label>校区<select aria-label="考勤校区" value={filters.campusId} onChange={event=>changeFilters({campusId:event.target.value})}>{campuses.map(campus=><option key={campus.id} value={campus.id}>{campus.name}</option>)}</select></label><button disabled={loading} onClick={()=>{setCursor('');setRefresh(value=>value+1);}}>刷新</button>{user.permissions?.['attendance.export'] && <><button disabled={busy} onClick={()=>setExportOpen(true)}>按周核算导出</button><button disabled={busy} onClick={download}>按月导出</button></>}</div>
     <section className="react-card" aria-busy={loading}><div className="field-section-heading"><h2>到岗记录</h2><span className="react-muted">{loading?'正在更新…':`已显示 ${items.length} 条`}</span></div>
       {!items.length && <p className="react-muted">{loading?'正在读取考勤…':'当前范围内没有可查看的签到记录。'}</p>}
       <ul className="attendance-history-list">{items.map(item=><li key={item.id}><div><strong>{item.identitySnapshot?.name || '工作人员'}</strong><StaffIdentity identities={item.identitySnapshot?.identities}/><span>{item.primaryDepartmentNameSnapshot || '历史部门未记录'} · {item.nonScheduled?'非排班到岗':'排班到岗'}{item.servicePaused?' · 暂停日记录，不计有效考勤':''}</span></div><div><strong>{item.businessDate} · {time(item.occurredAt)}</strong><span>{campusNames[item.campusId] || '指定校区'}</span><button disabled={busy} onClick={()=>edit(item)}>修正时间</button></div></li>)}</ul>
       {next && <div className="field-actions"><button disabled={loading} onClick={()=>setCursor(next)}>加载更多</button></div>}
     </section>
+    {exportOpen&&<WeeklyAttendanceExport campuses={campuses} onClose={()=>setExportOpen(false)}/>}
     {form && <Modal title={form.recordId?'修正签到时间':'补录工作人员签到'} onClose={()=>{if(busy)return;if(dirty)setDiscarding(true);else setForm(null);}}><form className="roster-create-form" onSubmit={save}>
       {discarding && <div className="react-error" role="alert"><p>修改尚未保存，是否放弃？</p><div className="field-actions"><button type="button" onClick={()=>setDiscarding(false)}>继续填写</button><button type="button" onClick={()=>{setForm(null);setDirty(false);setDiscarding(false);}}>放弃修改</button></div></div>}
       <p className="react-muted">这是历史考勤记录操作。需要加入今天工作时，请使用现场工作人员签到码。</p>

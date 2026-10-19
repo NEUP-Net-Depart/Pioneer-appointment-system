@@ -137,6 +137,16 @@
 .roster-choice-row { display:flex; flex-wrap:wrap; gap:10px; }
 .roster-choice-row>label { display:flex; gap:8px; align-items:center; min-height:44px; }
 .roster-choice-row input,.roster-audience input[type=checkbox] { width:20px; height:20px; min-height:20px; flex-shrink:0; }
+.field-modal label.roster-choice-row { display:flex; flex-direction:row; flex-wrap:nowrap; align-items:flex-start; min-height:44px; gap:10px; line-height:1.6; }
+.field-modal label.roster-choice-row>span { flex:1; min-width:0; overflow-wrap:anywhere; }
+.field-modal label.roster-choice-row input { width:20px; height:20px; min-height:20px; margin:2px 0; flex:0 0 20px; }
+.roster-override-confirm { display:grid; gap:12px; }
+.roster-export-preview { min-width:0; }
+.roster-export-preview table { width:100%; border-collapse:collapse; text-align:left; }
+.roster-export-preview :is(th,td) { padding:12px; border-bottom:1px solid var(--line,#dce1e7); vertical-align:top; }
+.roster-paused-history { padding:16px 0; border-block:1px solid var(--line,#dce1e7); }
+.roster-paused-history ul { list-style:none; padding:0; display:grid; gap:8px; }
+.roster-paused-history li { display:flex; flex-wrap:wrap; gap:8px 16px; }
 .roster-uniform { display:flex; align-items:end; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
 .roster-uniform label { display:grid; gap:8px; flex:1; min-width:120px; }
 .roster-campus-demand { padding:16px 0; border-top:1px solid var(--ws-border,#e2e8f0); }
@@ -182,9 +192,3 @@
 }
 .week-picker{display:grid;gap:8px;min-width:0}.week-picker>div{display:flex;gap:8px;align-items:center}.week-picker select{min-width:0;flex:1}.week-picker button{min-height:44px;white-space:nowrap}.roster-time-fields output{display:flex;min-height:44px;align-items:center}.roster-candidate small{display:block;color:var(--text-muted,#596579)}
 @media(max-width:480px){.week-picker>div{flex-wrap:wrap}.week-picker select{order:-1;flex-basis:100%}.week-picker button{flex:1}}
-
-.roster-override-confirm { display:grid; gap:12px; }
-
-.roster-paused-history { padding:16px 0; border-block:1px solid var(--line,#dce1e7); }
-.roster-paused-history ul { list-style:none; padding:0; display:grid; gap:8px; }
-.roster-paused-history li { display:flex; flex-wrap:wrap; gap:8px 16px; }
