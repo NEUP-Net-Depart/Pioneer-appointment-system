@@ -52,6 +52,7 @@ test('both swap upgrades preserve legacy accepted requests and retain revisions 
       assert.deepEqual((await db.prepare('SELECT * FROM duty_assignments ORDER BY id').all()).results.map(({ previous_assignment_id,...row }) => {
         assert.equal(previous_assignment_id,null); return row;
       }),originals);
+      for(const file of (await readdir(directory)).filter(name=>name.endsWith('.sql')&&name>last).sort())await db.batch((await statements(`${directory}/${file}`)).map(sql=>db.prepare(sql)));
       const repository = staffPlatformRepository(db), assignment = await repository.assignmentById('old-a');
       const draft = await repository.createRosterVersion({ taskId:'old-swap-task',assignments:[{ ...assignment,id:undefined }] });
       const copied = (await repository.versionAssignments(draft.id))[0];
@@ -94,6 +95,7 @@ test('both leave-lineage upgrades preserve populated roster history and reconnec
       assert.equal(after.duty_assignments.find(row => row.id === 'history-shift2').origin_assignment_id, 'history-shift1');
       assert.equal(after.duty_assignments.find(row => row.id === 'history-shift3').origin_assignment_id, 'history-shift1');
       assert.equal(after.duty_assignments.find(row => row.id === 'rescheduled').origin_assignment_id, null);
+      for(const file of (await readdir(directory)).filter(name=>name.endsWith('.sql')&&name>last).sort())await db.batch((await statements(`${directory}/${file}`)).map(sql=>db.prepare(sql)));
       const repository = staffPlatformRepository(db);
       const current = await repository.effectiveLeaveAssignment('history-shift2', 'member-998811');
       assert.equal(current.id, 'history-shift3');

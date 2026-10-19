@@ -496,7 +496,7 @@ export function FieldApp({
                             {item.id} · {item.faultType}
                           </small>
                         </span>
-                        <span>{item.timeSlot}</span>
+                        <span>{item.timeSlot}{item.servicePaused&&<small>当日暂停维修</small>}</span>
                         <Status value={item.status} />
                         <span>{item.assignedToName || "等待接待"}</span>
                       </button>

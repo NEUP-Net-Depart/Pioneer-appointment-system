@@ -1,3 +1,4 @@
+import {serviceDayRepository} from './service-days.js';
 import { APPOINTMENT_SEARCH_LIMIT } from '../../shared/appointment-search.js';
 import { DEFAULT_SERVICE_LOCATIONS, terminalStatuses } from '../../shared/constants.js';
 import { scheduleStatement } from './slot-capacities.js';
@@ -16,15 +17,16 @@ const columns = {
 };
 const assigneeName = "(SELECT trim(name) FROM staff_accounts WHERE account=appointments.assigned_to AND status='enabled') AS assigned_to_name";
 const memberIdentity = "(SELECT member_id FROM staff_accounts WHERE account=appointments.assigned_to) AS assigned_member_id,(SELECT member_id FROM staff_accounts WHERE account=appointments.registered_by) AS registered_member_id";
-const select = `SELECT appointments.*,${assigneeName},${memberIdentity} FROM appointments`;
+const select = `SELECT appointments.*,(SELECT paused FROM service_day_overrides s JOIN campuses c ON c.id=s.campus_id WHERE s.business_date=appointments.date AND c.name=appointments.campus) AS service_paused,${assigneeName},${memberIdentity} FROM appointments`;
 const memberAccounts = '(SELECT account FROM staff_accounts WHERE member_id=(SELECT member_id FROM staff_accounts WHERE account=?))';
 function fromRow(row) {
-  return row ? { id: row.id, revision: row.revision, assignedToName: row.assigned_to_name || '', assignedMemberId: row.assigned_member_id || '', registeredMemberId: row.registered_member_id || '', ...Object.fromEntries(Object.entries(columns).map(([key, column]) => [key, row[column] ?? (['outcome','startedAt','completedAt','repairNumber','frontPhotoId','backPhotoId','liquidMetal','dellG15','locationRevision'].includes(key) ? null : '')])) } : null;
+  return row ? { id: row.id, servicePaused:!!row.service_paused, revision: row.revision, assignedToName: row.assigned_to_name || '', assignedMemberId: row.assigned_member_id || '', registeredMemberId: row.registered_member_id || '', ...Object.fromEntries(Object.entries(columns).map(([key, column]) => [key, row[column] ?? (['outcome','startedAt','completedAt','repairNumber','frontPhotoId','backPhotoId','liquidMetal','dellG15','locationRevision'].includes(key) ? null : '')])) } : null;
 }
 export function appointmentRepository(db, { workflowSchema = false } = {}) {
   const writeColumns = { ...columns };
   if (!workflowSchema) delete writeColumns.registrationFlow;
   return {
+    ...serviceDayRepository(db),
     async searchNumbers(text, date, { campuses }, accessRules, {full=false,limit=APPOINTMENT_SEARCH_LIMIT+1,offset=0}={}) {
       const scope = campuses.length ? `campus IN (${campuses.map(() => '?').join(',')})` : '0';
       const accessArgs = [];

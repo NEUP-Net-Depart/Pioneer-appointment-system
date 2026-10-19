@@ -187,6 +187,22 @@ test('both migration chains support collection, atomic weekly submissions, revis
     const force={version:review.version,confirmation:review.confirmation,overrideIssues:review.validation.errors.map(issue=>issue.id),overrideReason:'人员不足，经负责人确认临时发布',requestId:crypto.randomUUID()};
     assert.equal((await service.publish(root,shortage.version.id,force)).status,'published');
     assert.equal((await db.prepare('SELECT reason FROM roster_publication_overrides WHERE version_id=?').bind(shortage.version.id).first()).reason,force.overrideReason);
+    const publishedRows=await repo.versionAssignments(republished.id),pausedRow=publishedRows[0];
+    await repo.saveServiceDay({businessDate:pausedRow.businessDate,campusId:pausedRow.campusId,paused:true,reason:'测试暂停并保留已发布安排',revision:-1,requestId:crypto.randomUUID()},root);
+    const protectedState=await service.rosterTaskState(root,task.id);
+    assert.ok(protectedState.protectedAssignments.some(row=>row.memberId===pausedRow.memberId&&row.businessDate===pausedRow.businessDate));
+    const pausedRevision=(await repo.rosterVersionsForTask(task.id)).find(row=>row.status==='draft')||await service.reviseRoster(root,task.id,{publishedVersionId:republished.id,requestId:crypto.randomUUID()});
+    await assert.rejects(service.updateRoster(root,pausedRevision.id,{version:pausedRevision.version,assignments:publishedRows.filter(row=>row.id!==pausedRow.id),requestId:crypto.randomUUID()}),error=>error.status===409,'paused published facts cannot be silently deleted');
+    const latestTask=await repo.rosterTaskById(task.id);
+    await service.collectionCommand(root,task.id,{action:'close',revision:latestTask.revision,requestId:crypto.randomUUID()});
+    const regenerated=await service.generate(root,{taskId:task.id,requestId:crypto.randomUUID()});
+    assert.ok(regenerated.assignments.some(row=>row.memberId===pausedRow.memberId&&row.businessDate===pausedRow.businessDate&&row.campusId===pausedRow.campusId),'regeneration carries suspended published rows without assigning that slot anew');
+    const pausedWeek=addDays(week,70),pausedTask=await service.createRosterTask(root,{...input,weekStart:pausedWeek,memberIds:[two.memberId],recurrence:{enabled:false},requestId:crypto.randomUUID()});
+    for(let offset=0;offset<4;offset++)for(const campusId of campusIds)await repo.saveServiceDay({businessDate:addDays(pausedWeek,offset),campusId,paused:true,reason:'整周暂停',revision:-1,requestId:crypto.randomUUID()},root);
+    await service.collectionCommand(root,pausedTask.id,{action:'close',revision:pausedTask.revision,requestId:crypto.randomUUID()});
+    const noWork=await service.generate(root,{taskId:pausedTask.id,requestId:crypto.randomUUID()});
+    assert.equal(noWork.assignments.length,0);assert.equal(noWork.validation.valid,true,'a suspended whole week creates neither assignments nor artificial shortages');
+    assert.equal((await service.publish(root,noWork.version.id,{version:noWork.version.version})).status,'published');
     assert.deepEqual((await db.prepare('PRAGMA foreign_key_check').all()).results,[]);
   }}finally{await mf.dispose();}
 });

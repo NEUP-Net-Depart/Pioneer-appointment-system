@@ -105,6 +105,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       }
       const instant = clock(), today = dateKey(instant);
       const expiresAt = expirationDeadline(data.date);
+      if((await appointments.serviceDay(data.date,data.campus))?.paused)fail(409,'该日期暂停维修，请选择其他日期','SERVICE_DAY_PAUSED');
       if (!onsite) {
         if (data.date < today || data.date > addDays(today, 3)) fail(409, '预约日期必须为今天起 3 天内', 'DATE_UNAVAILABLE');
         if (!serviceDay(data.date)) fail(409, '预约日期必须为周一至周四', 'DATE_UNAVAILABLE');

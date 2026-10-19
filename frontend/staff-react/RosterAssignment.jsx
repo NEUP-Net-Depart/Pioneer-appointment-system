@@ -2,8 +2,8 @@ import React from 'react';
 import {StaffIdentity} from './StaffIdentity';
 
 export function RosterAssignment({row,member,editable,protectedRow,onEdit}) {
-  const name=member?.name||'资格已变化的成员';
-  const content=<><span className="roster-person-copy"><strong>{name}</strong><StaffIdentity identities={member?.identities}/>{(row.locked||row.manualOverride||row.leaveStatus||protectedRow||row.roleKind==='coordinator')&&<span className="roster-person-notes">{row.roleKind==='coordinator'&&<span>协调人</span>}{row.locked&&<span>已锁定</span>}{row.manualOverride&&<span>人工安排</span>}{row.leaveStatus&&<span className="roster-gap">{row.leaveStatus==='approved'?'已请假':'请假审批中'}</span>}{protectedRow&&<span>原班次保留</span>}</span>}</span>{editable&&!protectedRow&&<span className="roster-person-edit" aria-hidden="true">调整</span>}</>;
+  const name=member?.name||row.memberName||'资格已变化的成员';
+  const content=<><span className="roster-person-copy"><strong>{name}</strong><StaffIdentity identities={member?.identities}/>{row.servicePaused&&<span className="roster-gap">当天暂停 · 原班次保留</span>}{(row.locked||row.manualOverride||row.leaveStatus||protectedRow||row.roleKind==='coordinator')&&<span className="roster-person-notes">{row.roleKind==='coordinator'&&<span>协调人</span>}{row.locked&&<span>已锁定</span>}{row.manualOverride&&<span>人工安排</span>}{row.leaveStatus&&<span className="roster-gap">{row.leaveStatus==='approved'?'已请假':'请假审批中'}</span>}{protectedRow&&<span>原班次保留</span>}</span>}</span>{editable&&!protectedRow&&<span className="roster-person-edit" aria-hidden="true">调整</span>}</>;
   return <li className="roster-person" draggable={editable&&!protectedRow&&row.leaveStatus!=='approved'} onDragStart={event=>event.dataTransfer.setData('text/plain',row.memberId)}>{editable&&!protectedRow?<button className="roster-person-trigger" aria-label={row.leaveStatus==='approved'?`为${name}安排补位人员`:`调整${name}的安排`} onClick={onEdit}>{content}</button>:<div className="roster-person-trigger">{content}</div>}</li>;
 }
 

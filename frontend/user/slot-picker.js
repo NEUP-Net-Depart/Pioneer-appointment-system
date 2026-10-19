@@ -81,9 +81,9 @@ export function initSlotPicker({onChange = () => {}} = {}) {
     for (const item of days.children) {
       const date=item.dataset.date,summary=summaries.get(date);
       const unavailable=!selectable(date);
-      item.disabled=loading || unavailable;item.dataset.loading=String(loading && (!summary || !unavailable));item.setAttribute('aria-pressed',String(date===dateInput.value));
+      item.disabled=loading || unavailable&&!summary?.paused;item.dataset.loading=String(loading && (!summary || !unavailable));item.setAttribute('aria-pressed',String(date===dateInput.value));
       const count=TIME_SLOTS.reduce((sum,slot)=>sum+(availability(date,slot)?.disabled ? 0 : availability(date,slot)?.remaining || 0),0);
-      showRemaining(item,summary ? count : undefined,failed.has(date) ? '读取失败' : !summary ? '' : !summary.location ? '地点未配置' : count ? '' : '暂无名额');
+      showRemaining(item,summary ? count : undefined,failed.has(date) ? '读取失败' : !summary ? '' : summary.paused ? '暂停维修' : !summary.location ? '地点未配置' : count ? '' : '暂无名额');
     }
     for (const item of slots.children) {
       const state=availability(dateInput.value,item.dataset.slot);
@@ -111,7 +111,7 @@ export function initSlotPicker({onChange = () => {}} = {}) {
     if(current!==generation)return false;
     loading=false;loadFailed=false;failed=new Set();offset=Date.parse(result.serverNow)-Date.now();const dates=bookingDates(now());
     summaries=new Map(result.items.map(summary=>[summary.date,summary]));campusSummaries.set(campus,summaries);
-    if (!dateInput.value || (!failed.has(dateInput.value) && !selectable(dateInput.value))) {
+    if (!dateInput.value || (!summaries.get(dateInput.value)?.paused && !failed.has(dateInput.value) && !selectable(dateInput.value))) {
       if(dateInput.value){const summary=summaries.get(dateInput.value);selectionIssue=notice=(summary && !summary.location ? '原日期的维修地点未配置' : '原日期当前没有可预约时段')+'，请重新选择日期和到场时段。';}
       dateInput.value=dates.find(selectable) || '';slotInput.value='';
     }

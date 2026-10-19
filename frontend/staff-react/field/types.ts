@@ -5,6 +5,7 @@ export interface Appointment {
   date: string;
   timeSlot: string;
   status: string;
+  servicePaused?: boolean;
   deviceType: string;
   brand: string;
   deviceModel: string;

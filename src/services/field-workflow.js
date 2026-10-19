@@ -30,8 +30,9 @@ export function fieldWorkflow({
     const qualified = context.workProfiles.some((item) =>
       ["repair", "exchange"].includes(item.profileCode),
     );
+    const paused=!!(await repository.serviceDay(dateKey(),id))?.paused;
     const reason =
-      !qualified || !allowed(context, "repair.start", { campusId: id })
+      paused?'该校区今天暂停维修':!qualified || !allowed(context, "repair.start", { campusId: id })
         ? "当前没有该校区的维修资格"
         : current && current.id !== ignoreAppointment
           ? "请先完成当前维修"
@@ -154,6 +155,7 @@ export function fieldWorkflow({
       "date",
       "timeSlot",
       "status",
+      "servicePaused",
       "source",
       "deviceType",
       "brand",

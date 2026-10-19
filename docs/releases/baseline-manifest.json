@@ -124,6 +124,10 @@
     {
       "name": "0028_roster_publication_overrides.sql",
       "sha256": "f1bd5a02e8f13b3dbef766270d219af3b63ee3d14f6de33a619882f35fb2eed0"
+    },
+    {
+      "name": "0029_service_day_suspensions.sql",
+      "sha256": "7ea97d35a285d062e12ec9f1cbcc1284fc30d30190509ccb89e511133186fea6"
     }
   ],
   "modules": [
@@ -327,6 +331,10 @@
     {
       "name": "0028_roster_publication_overrides.sql",
       "sha256": "f1bd5a02e8f13b3dbef766270d219af3b63ee3d14f6de33a619882f35fb2eed0"
+    },
+    {
+      "name": "0029_service_day_suspensions.sql",
+      "sha256": "7ea97d35a285d062e12ec9f1cbcc1284fc30d30190509ccb89e511133186fea6"
     }
   ],
   "staffMigrationsDirectory": "database/staff-migrations"

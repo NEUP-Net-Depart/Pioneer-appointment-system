@@ -11,6 +11,7 @@ export const rosterFingerprintSql = `WITH target AS (SELECT * FROM roster_tasks 
     WHERE rv.status='published' AND da.member_id IN (SELECT id FROM people)
     AND da.business_date BETWEEN (SELECT week_start FROM target) AND date((SELECT week_start FROM target),'+6 day'))
   SELECT json_object(
+    'serviceDays',(SELECT json_group_array(json_array(business_date,campus_id,paused,revision)) FROM (SELECT * FROM service_day_overrides WHERE business_date BETWEEN (SELECT week_start FROM target) AND date((SELECT week_start FROM target),'+3 day') ORDER BY business_date,campus_id)),
     'task',(SELECT json_array(id,revision,rule_version) FROM target),
     'requirements',(SELECT json_group_array(json_array(business_date,campus_id,ordinary_minimum)) FROM (SELECT * FROM roster_staffing_requirements WHERE task_id=(SELECT id FROM target) ORDER BY business_date,campus_id)),
     'availability',(SELECT json_group_array(json_array(member_id,business_date,start_at,end_at,campus_id,revision)) FROM (SELECT * FROM availability WHERE task_id=(SELECT id FROM target) ORDER BY id)),

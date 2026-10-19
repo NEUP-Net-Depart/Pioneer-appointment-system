@@ -13,6 +13,7 @@ function setup(memberId = 'target', allowedCampuses = ['campus-nanhu']) {
   };
   const swap = { id: 'swap', from_assignment_id: 'a', to_assignment_id: 'b', from_member_id: 'sender', to_member_id: 'target', from_revision: 0, to_revision: 0, status: 'pending', revision: 0 };
   const repository = {
+    serviceDays: async () => [],
     availability: async () => [{ memberId: 'target', campusId: 'campus-nanhu', businessDate:week }, { memberId: 'sender', campusId: 'campus-hunnan', businessDate:week }],
     rosterTaskById: async () => ({id:'task',weekStart:week,campusScope:{campusIds:['campus-nanhu']},memberIds:[],dutyType:'repair'}),
     assignmentById: async id => assignments[id], swapById: async () => swap,

@@ -34,7 +34,8 @@ export function serviceLocationService(repository,appointments,queue,encryptionK
       const instant=clock();
       const [summary,location] = await Promise.all([queue.summary({campus,date}),bookingDates(instant).includes(date)
         ? appointments.ensureDefaultLocation(date,campus,instant.toISOString()) : appointments.location(date,campus)]);
-      return { campus,date,timeSlots:TIME_SLOTS,slotCapacities:summary.slotCapacities,slots:summary.slots,
+      const service=await appointments.serviceDay(date,campus);
+      return { campus,date,paused:!!service?.paused,pauseReason:service?.paused?service.reason:'',timeSlots:TIME_SLOTS,slotCapacities:summary.slotCapacities,slots:summary.slots,
         location:location?.location || '',locationRevision:location?.revision ?? null,serverNow:clock().toISOString() };
     },
     async list(actor,start = dateKey(clock()),end = addDays(start,6)) {

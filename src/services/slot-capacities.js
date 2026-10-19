@@ -3,7 +3,7 @@ import { requireRole, requireGrantScope, requireCampus } from './permissions.js'
 import { validDate } from '../../shared/time.js';
 import { campusId } from '../modules/authorization/scopes.js';
 
-export function slotCapacityService(repository, staff = null) {
+export function slotCapacityService(repository, staff = null, days=null) {
   async function authorize(actor, campuses = []) {
     if (!staff?.field?.enabled) {
       requireRole(actor, 'admin');
@@ -15,6 +15,21 @@ export function slotCapacityService(repository, staff = null) {
     return actor;
   }
   return {
+    async serviceDay(actor,query) {
+      if(!validDate(query.date)||!['南湖','浑南'].includes(query.campus)) fail(400,'请选择有效日期和校区');
+      await authorize(actor,[query.campus]);
+      const id=campusId(query.campus);
+      return {item:await days.serviceDay(query.date,id),affected:await days.affectedServiceDay(query.date,id)};
+    },
+    async saveServiceDay(actor,input) {
+      const campus={'campus-nanhu':'南湖','campus-hunnan':'浑南'}[input.campusId];
+      if(!campus||!validDate(input.businessDate)||typeof input.paused!=='boolean'||!Number.isInteger(input.revision)||typeof input.requestId!=='string'||input.requestId.length>128||!input.requestId||typeof input.reason!=='string'||input.reason.length>200)fail(400,'请核对日期、校区、状态、版本与说明');
+      actor=await authorize(actor,[campus]);
+      if(input.businessDate<new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Shanghai'}))fail(400,'历史服务日不能改写，请通过考勤修正处理');
+      const result=await days.saveServiceDay(input,actor);
+      if(!result||result.replay&&!result.matches)fail(409,'配置或权限已变化，请重新读取后确认');
+      return result.result;
+    },
     async actual(actor, { date, campus }) {
       actor = await authorize(actor, [campus]); requireCampus(actor, campus);
       if (!validDate(date)) fail(400, '请选择有效日期');

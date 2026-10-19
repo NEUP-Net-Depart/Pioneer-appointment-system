@@ -184,3 +184,7 @@
 @media(max-width:480px){.week-picker>div{flex-wrap:wrap}.week-picker select{order:-1;flex-basis:100%}.week-picker button{flex:1}}
 
 .roster-override-confirm { display:grid; gap:12px; }
+
+.roster-paused-history { padding:16px 0; border-block:1px solid var(--line,#dce1e7); }
+.roster-paused-history ul { list-style:none; padding:0; display:grid; gap:8px; }
+.roster-paused-history li { display:flex; flex-wrap:wrap; gap:8px 16px; }

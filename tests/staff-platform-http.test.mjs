@@ -718,8 +718,9 @@ test('staffing demand is independently scoped, versioned and never rewrites a pu
   const path=`/api/roster-tasks/${task.id}/requirements`;
   const context=(await call('/api/auth/me',manager)).body;
   assert.equal(context.permissions['roster.repair.configure'],true);
-  assert.notEqual(context.permissions['roster.repair.manage'],true);
-  assert.equal((await call(`/api/roster-tasks/${task.id}/roster`,manager)).response.status,403);
+  assert.equal(context.permissions['roster.repair.manage'],true,'office leaders share scoped repair roster management');
+  assert.notEqual(context.permissions['repair.transfer'],true,'roster management never grants unsiged field coordination');
+  assert.equal((await call(`/api/roster-tasks/${task.id}/roster`,manager)).response.status,200);
   const initial=await call(path,manager);assert.equal(initial.response.status,200,JSON.stringify(initial.body));
   assert.equal(initial.body.requirements.length,4);
   const requirements=initial.body.requirements.map((row,i)=>({...row,ordinaryMinimum:i===0?2:1}));
