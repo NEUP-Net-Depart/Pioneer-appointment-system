@@ -486,7 +486,7 @@ export function staffPlatformService({ repository, platform, manifests, calendar
     const found = await repository.findEventByToken(await tokenDigest(rawToken)); if (!found) fail(404, '签到凭证已失效');
     const { event } = found;
     if(event.type==='duty'&&(await repository.serviceDay(event.businessDate,event.campusId))?.paused)fail(409,'该日期暂停维修，不能签到','SERVICE_DAY_PAUSED');
-    const authorization = await requirePermission(actor, 'attendance.self', { campusId: event.campusId });
+    const authorization = await requirePermission(actor, 'attendance.self', { campusId: event.campusId, memberId: actor.memberId });
     const context = authorization.context;
     const campusNames = { 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' };
     if (event.campusId && !(actor.authorizedCampuses || []).some(value => value === event.campusId || value === campusNames[event.campusId])) fail(403, '没有该校区的签到权限');
@@ -514,7 +514,7 @@ export function staffPlatformService({ repository, platform, manifests, calendar
   async function directCheckIn(actor,input) {
     const campusId=normalizeCampusId(input.campusId),decision=await directAttendanceAction(actor,campusId);
     if(!decision.allowed)fail(403,decision.reason);
-    const {context}=await requirePermission(actor,'attendance.self',{campusId});
+    const {context}=await requirePermission(actor,'attendance.self',{campusId,memberId:actor.memberId});
     const businessDate=dateKey(),now=nowIso();
     const event=await repository.dutyEvent(businessDate,campusId)||await repository.createEvent({type:'duty',policyCode:'duty.v1',policyVersion:'1.0.0',ruleSnapshot:{timezone:'Asia/Shanghai'},campusId,businessDate,startsAt:`${businessDate}T18:30:00+08:00`,endsAt:`${businessDate}T21:30:00+08:00`,sourceRef:{}},context.actor.memberId,
       {actorMemberId:context.actor.memberId,actorAccount:actor.account,authVersion:context.authVersion,action:'attendance.event.created',requestId:input.requestId});
@@ -681,7 +681,7 @@ export function staffPlatformService({ repository, platform, manifests, calendar
     const context = await contextFor(actor, input.businessDate || dateKey());
     if (!['available','away','off_duty'].includes(input.state)) fail(400, '在岗状态不正确');
     if (!context.presence) fail(409, '请先完成到岗签到');
-    await requirePermission(actor, 'attendance.self', { campusId: context.presence.campusId });
+    await requirePermission(actor, 'attendance.self', { campusId: context.presence.campusId, memberId: context.actor.memberId });
     if (input.campusId && input.campusId !== context.presence.campusId) fail(409, '在岗校区以签到记录为准');
     if (input.state !== 'available' && await repository.activeRepair(context.actor.memberId)) fail(409, '当前仍有进行中的维修，不能离岗', 'PRESENCE_CHANGED');
     const result = await repository.setPresence(context.actor.memberId, { ...input, businessDate: input.businessDate || dateKey() }, input.revision ?? 0, context.actor,

@@ -318,12 +318,13 @@ async function sql(text) {
         await db.prepare(piece).run();
   }
 }
-async function request(path, account, body, method = body ? "POST" : "GET") {
+async function request(path, account, body, method = body ? "POST" : "GET", headers = {}) {
   const response = await mf.dispatchFetch(`https://field.test${path}`, {
     method,
     headers: {
       ...(account ? { Authorization: `Bearer ${tokens[account]}` } : {}),
       ...(body ? { "Content-Type": "application/json" } : {}),
+      ...headers,
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
@@ -412,6 +413,25 @@ before(async () => {
   }
 });
 after(async () => mf?.dispose());
+
+test('self-scoped contact access never reveals an unassigned customer to an on-duty receptionist',async(t)=>{
+  const ownRequest=(path,account,body)=>request(path,account,body,body?'POST':'GET',{'CF-Connecting-IP':'192.0.2.207'});
+  const grant=await db.prepare("SELECT scope_spec FROM role_grants WHERE id='grant-office-contact'").first();
+  let id;
+  t.after(async()=>{
+    await db.prepare("UPDATE role_grants SET scope_spec=? WHERE id='grant-office-contact'").bind(grant.scope_spec).run();
+    if(id)await db.prepare('DELETE FROM appointments WHERE id=?').bind(id).run();
+  });
+  const created=await ownRequest('/api/scan/onsite','root001',{requestId:crypto.randomUUID(),registrationFlow:'frontdesk',campus:'南湖',name:'本人范围测试客户',studentId:'20309968',social:'self-scope-private-contact',deviceType:'笔记本电脑',brand:'联想',deviceModel:'范围测试电脑',warranty:'否',faultType:'系统问题',signature:[Array.from({length:10},(_,i)=>[.1+i*.05,.2+i*.03])]});
+  assert.equal(created.status,201,JSON.stringify(created.body));id=created.body.id;
+  const before=await ownRequest(`/api/field/appointments/${id}`,'20261001');
+  assert.equal(before.status,200,JSON.stringify(before.body));assert.equal(before.body.social,'self-scope-private-contact');
+  await db.prepare("UPDATE role_grants SET scope_spec='{\"self\":true}' WHERE id='grant-office-contact'").run();
+  const restricted=await ownRequest(`/api/field/appointments/${id}`,'20261001');
+  assert.equal(restricted.status,200,JSON.stringify(restricted.body));
+  assert.equal(restricted.body.social,undefined,'An on-duty condition must not turn missing ownership into self ownership');
+  assert.equal(restricted.body.contactValue,undefined);
+});
 
 test('service pause preserves orders, scopes configuration and atomically stops arrivals and repairs',async(t)=>{
   const businessDate='2026-10-15',campusId='campus-nanhu',account='20261972',memberId=`member-${account}`;

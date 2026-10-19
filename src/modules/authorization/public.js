@@ -43,7 +43,7 @@ function scopeMatches(scope, target = {}, actor = {}) {
   }
   const departments = scope.departmentIds ?? scope.departments;
   if (departments !== undefined && !values(target.departmentId || target.departmentIds).some(value => values(departments).includes(value))) return false;
-  if (scope.self && (target.memberId || target.assignedMemberId) && (target.memberId || target.assignedMemberId) !== actor.memberId) return false;
+  if (scope.self && (!actor.memberId || (target.memberId || target.assignedMemberId) !== actor.memberId)) return false;
   if (scope.objectIds !== undefined && (!target.id || !values(scope.objectIds).includes(target.id))) return false;
   return true;
 }

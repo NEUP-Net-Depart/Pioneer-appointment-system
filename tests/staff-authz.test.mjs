@@ -29,6 +29,18 @@ test('condition and self scope remain required after a grant matches', () => {
   assert.equal(authorizer.evaluate(actor, 'repair.finish.own', { memberId: 'member-2', campusId: 'campus-nanhu' }, {}, grants).allowed, false);
 });
 
+test('self scope requires a known matching owner even without an ownResource condition', () => {
+  const actor = { memberId: 'member-1', authorizedCampuses: ['南湖'] };
+  const grants = [{ permissionCode: 'customer.contact.read', scope: { self: true }, conditions: [] }];
+  for (const target of [{}, { assignedMemberId: '' }, { memberId: 'member-2' }]) {
+    assert.equal(authorizer.evaluate(actor, 'customer.contact.read', target, {}, grants).allowed, false);
+  }
+  for (const target of [{ memberId: 'member-1' }, { assignedMemberId: 'member-1' }]) {
+    assert.equal(authorizer.evaluate(actor, 'customer.contact.read', target, {}, grants).allowed, true);
+  }
+  assert.equal(authorizer.evaluate({}, 'customer.contact.read', {}, {}, grants).allowed, false);
+});
+
 test('a complete campus grant also respects the account campus boundary', () => {
   const actor = { memberId: 'member-1', authorizedCampuses: ['南湖'] };
   const grants = [{ permissionCode: 'members.manage', scope: { campusIds: ['campus-nanhu', 'campus-hunnan'] } }];
