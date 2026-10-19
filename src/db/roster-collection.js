@@ -29,6 +29,7 @@ export function rosterCollectionRepository(db) {
       guard(record,'EXISTS(SELECT 1 FROM roster_tasks WHERE id=? AND revision=?)',[task.id,input.revision]),
       receipt(record,'collection',task.id,input),
       db.prepare('UPDATE roster_tasks SET collection_closed_at=?,deadline=?,revision=revision+1 WHERE id=? AND revision=?').bind(closedAt,reopen ? input.deadline : task.deadline,task.id,input.revision),
+      ...(!reopen&&task.seriesId?[db.prepare("UPDATE roster_collection_series SET current_week=date(?,'+7 day') WHERE id=? AND enabled=1 AND current_week<=?").bind(task.weekStart,task.seriesId,task.weekStart)]:[]),
       audit(record,reopen ? 'rosters.collection.reopened' : 'rosters.collection.closed',task.id,input),
       db.prepare('DELETE FROM roster_command_guards')
     ]);
@@ -68,7 +69,7 @@ export function rosterCollectionRepository(db) {
     await db.batch([guard(record,'EXISTS(SELECT 1 FROM roster_collection_series WHERE id=? AND revision=?) AND EXISTS(SELECT 1 FROM roster_tasks WHERE id=? AND revision=?)',[series.id,input.revision,input.templateTaskId,input.templateRevision]),
       receipt(record,'series',series.id,{signature:input.signature}),
       db.prepare('UPDATE roster_collection_series SET enabled=?,name=?,template_task_id=?,owner_member_id=?,publish_weekday=?,publish_time=?,deadline_weekday=?,deadline_time=?,revision=revision+1,last_error=? WHERE id=? AND revision=?')
-        .bind(input.enabled?1:0,input.name,input.templateTaskId,record.actorMemberId,recurrence.publishWeekday,recurrence.publishTime,recurrence.deadlineWeekday,recurrence.deadlineTime,'',series.id,input.revision),
+        .bind(input.enabled?1:0,input.name,input.templateTaskId,record.actorMemberId,recurrence.publishWeekday??1,recurrence.publishTime??'00:00',recurrence.deadlineWeekday,recurrence.deadlineTime,'',series.id,input.revision),
       audit(record,'rosters.series.updated',series.template_task_id,{...input,signature:undefined}),db.prepare('DELETE FROM roster_command_guards')]);
   }
   async function rosterPreferences(memberId) {return list('SELECT * FROM roster_availability_preferences WHERE member_id=?',memberId);}

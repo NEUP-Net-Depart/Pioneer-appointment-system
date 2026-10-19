@@ -112,6 +112,14 @@
     {
       "name": "0025_exchange_role.sql",
       "sha256": "63d7dbc2eaef2fb4432f3538229efbad80274d5e371c0c8dd874b34ebbb18bd5"
+    },
+    {
+      "name": "0026_office_lead_repair_roster.sql",
+      "sha256": "b18756aa2a1ddc5428a03817fcb1e43a80ee2e3d414462f353cd105854ae1cae"
+    },
+    {
+      "name": "0027_collection_close_advance.sql",
+      "sha256": "4a658dfd964992028d9dd4c5ea08365252d9757a858b53b605e250e67a1e6874"
     }
   ],
   "modules": [
@@ -303,6 +311,14 @@
     {
       "name": "0025_exchange_role.sql",
       "sha256": "63d7dbc2eaef2fb4432f3538229efbad80274d5e371c0c8dd874b34ebbb18bd5"
+    },
+    {
+      "name": "0026_office_lead_repair_roster.sql",
+      "sha256": "b18756aa2a1ddc5428a03817fcb1e43a80ee2e3d414462f353cd105854ae1cae"
+    },
+    {
+      "name": "0027_collection_close_advance.sql",
+      "sha256": "4a658dfd964992028d9dd4c5ea08365252d9757a858b53b605e250e67a1e6874"
     }
   ],
   "staffMigrationsDirectory": "database/staff-migrations"

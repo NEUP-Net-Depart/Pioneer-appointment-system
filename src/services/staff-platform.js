@@ -16,6 +16,7 @@ import {collectionState,rosterStage,sameAssignment} from '../modules/rosters/wor
 import {generateOfficeRoster} from '../modules/rosters/office.ts';
 import {collectionInstant,validateRecurrence,recurringPeriodWeek} from '../modules/rosters/recurrence.js';
 import {rosterCollections} from '../../shared/roster-collections.js';
+import {dutyEnd} from '../../shared/duty-window.js';
 
 function randomToken() {
   const bytes = new Uint8Array(24);
@@ -693,6 +694,7 @@ export function staffPlatformService({ repository, platform, manifests, calendar
     if(!['close','reopen'].includes(input.action) || input.revision!==task.revision) fail(409,'任务状态已更新，请刷新核对');
     if(input.action==='reopen' && (!Number.isFinite(Date.parse(input.deadline)) || Date.parse(input.deadline)<=Date.now())) fail(400,'请选择未来的截止时间');
     try {await repository.changeCollection(task,input,record);} catch(error) {if(String(error.message).includes('constraint')) fail(409,'任务或权限已变化，请刷新核对');throw error;}
+    if(input.action==='close'&&task.seriesId) await currentCollectionPeriods(actor,context,await repository.listRosterTasks());
     return repository.rosterTaskById(taskId);
   }
   async function addParticipants(actor,taskId,input) {
@@ -721,6 +723,7 @@ export function staffPlatformService({ repository, platform, manifests, calendar
     if(state!=='open'&&!continuationClosed) fail(409,'收集已结束，请联系负责人重新开放');
     if(!Array.isArray(input.windows) || input.windows.length>64 || !input.windows.length && input.unavailable!==true || input.windows.length && input.unavailable) fail(400,'请填写可用时间，或选择整周无法参加');
     for(const window of input.windows) {
+      if(window.startAt!==task.slotStart||window.endAt!==task.slotEnd) fail(400,'请选择完整值班日期和校区，不能只参加部分班次');
       if(!validDate(window.businessDate) || window.businessDate<task.weekStart || window.businessDate>addDays(task.weekStart,3) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(window.startAt) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(window.endAt) || window.endAt<=window.startAt) fail(400,'请填写本周工作日的有效时间');
       if(!rosterMemberReadable(context,platform.authorizer,fact,task,window.businessDate,window.campusId) || !(task.dutyType==='office' ? fact.profiles.some(item=>item.profileCode==='office'&&item.effectiveFrom<=window.businessDate&&(!item.effectiveTo||window.businessDate<item.effectiveTo)) : (rosterDepartments(fact,window.businessDate,task).length ? rosterDepartments(fact,window.businessDate,task) : [{}]).some(item=>repairRosterPool(fact,platform.authorizer,window.businessDate,{campusId:window.campusId,departmentId:item.departmentId})))) fail(403,'填报日期或校区不在有效资格和授权范围内');
     }
@@ -753,7 +756,7 @@ export function staffPlatformService({ repository, platform, manifests, calendar
         const memberIds=template.memberIds.filter(id=>candidates.items.some(item=>item.memberId===id));
         if(!memberIds.length){for(const task of tasks.filter(task=>task.seriesId===id))task.collectionIssue='当前参与名单已无符合条件的人员，请负责人更新收集设置。';continue;}
         const period=await createRosterTask(owner,{weekStart:week,campusIds:template.campusScope.campusIds,departmentIds:template.campusScope.departmentIds||[],dutyType:template.dutyType,
-          slotStart:template.slotStart,slotEnd:template.slotEnd,collectionOpensAt:collectionInstant(week,series.publish_weekday,series.publish_time),deadline:collectionInstant(week,series.deadline_weekday,series.deadline_time),description:template.description,memberIds,workflowVersion:1,seriesId:id,
+          slotStart:template.slotStart,slotEnd:template.slotEnd,collectionOpensAt:new Date(Math.min(calendarClock().getTime(),Date.parse(collectionInstant(addDays(week,-7),series.deadline_weekday,series.deadline_time)))).toISOString(),deadline:collectionInstant(week,series.deadline_weekday,series.deadline_time),description:template.description,memberIds,workflowVersion:1,seriesId:id,
           requirements:template.requirements.map(row=>({...row,businessDate:addDays(week,Math.round((Date.parse(row.businessDate)-Date.parse(template.weekStart))/86400000))})),requestId:`period:${id}:${week}`},{period:true,allowClosedPeriod:true});
         tasks.push(period);
       }catch(error){
@@ -775,7 +778,8 @@ export function staffPlatformService({ repository, platform, manifests, calendar
       if(memberId&&preference.member_id!==memberId)continue;
       try{
         const actor=await collectionMember(preference.member_id);
-        const windows=JSON.parse(preference.windows).filter(window=>task.campusScope.campusIds.includes(window.campusId)).map(({weekday,...window})=>({...window,businessDate:addDays(task.weekStart,weekday-1)}));
+        const origin=await repository.rosterTaskById(preference.source_task_id);
+        const windows=JSON.parse(preference.windows).filter(window=>task.campusScope.campusIds.includes(window.campusId)&&origin&&window.startAt<=origin.slotStart&&window.endAt>=origin.slotEnd).map(({weekday,...window})=>({...window,startAt:task.slotStart,endAt:task.slotEnd,businessDate:addDays(task.weekStart,weekday-1)}));
         if(!preference.unavailable&&!windows.length)continue;
         await submitAvailability(actor,task.id,{windows,unavailable:!!preference.unavailable,revision:-1,requestId:`carry:${task.id}:${preference.member_id}:${preference.revision}`},{carried:true,preferenceRevision:preference.revision,continuationAt});
       }catch(error){if(![403,409].includes(error.status))throw error;}
@@ -791,7 +795,7 @@ export function staffPlatformService({ repository, platform, manifests, calendar
     if(replay){if(JSON.parse(replay.payload).signature!==signature)fail(409,'请求编号已用于其他循环设置');return repository.rosterSeries(id);}
     if(input.revision!==series.revision||typeof input.enabled!=='boolean')fail(409,'循环配置已变化，请重新读取');
     if(input.name!==undefined&&(typeof input.name!=='string'||!input.name.trim()||input.name.trim().length>80))fail(400,'收集名称须为 1–80 个字符');
-    if(input.recurrence&&!validateRecurrence(input.recurrence))fail(400,'请设置有效的开放和截止时间，均为值班前一周，截止须晚于开放');
+    if(input.recurrence&&!validateRecurrence(input.recurrence))fail(400,'请设置每周截止星期和时间（值班前一周）');
     const template=input.templateTaskId?await repository.rosterTaskById(input.templateTaskId):task;
     if(!template||template.seriesId!==id||!rosterTaskManaged(context,platform.authorizer,template))fail(403,'不能使用此周次作为后续收集设置');
     if(input.templateTaskId&&input.templateRevision!==template.revision)fail(409,'本周设置已变化，请重新读取后再应用到后续周期');
@@ -848,6 +852,7 @@ export function staffPlatformService({ repository, platform, manifests, calendar
     if (!validDate(input.weekStart) || weekRange(input.weekStart).start !== input.weekStart || !(input.campusId || input.campusIds?.length) ||
       !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.slotStart) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.slotEnd) || input.slotEnd <= input.slotStart ||
       !Number.isFinite(Date.parse(input.deadline))) fail(400, '请选择周一、有效校区、完整班次时间和填报截止时间');
+    if(!period&&input.workflowVersion===1&&dutyEnd(input.slotStart)!==input.slotEnd) fail(400,'每次值班须为完整两小时，请调整开始时间');
     if (input.departmentIds !== undefined && (!Array.isArray(input.departmentIds) || input.departmentIds.length > 100 || input.departmentIds.some(id => typeof id !== 'string' || !id.trim()))) fail(400,'部门范围不正确');
     if (input.memberIds !== undefined && (!Array.isArray(input.memberIds) || input.memberIds.length > 300 || input.memberIds.some(id => typeof id !== 'string' || !id.trim()))) fail(400,'邀请名单不正确');
     const departmentIds = [...new Set(input.departmentIds || [])].sort();
@@ -856,8 +861,8 @@ export function staffPlatformService({ repository, platform, manifests, calendar
     const task = {...input,id:crypto.randomUUID(),dutyType,memberIds:[...new Set(input.memberIds || [])].sort(),campusScope:{campusIds:selectedCampuses,...(departmentIds.length ? {departmentIds} : {})}};
     if(!period){delete task.seriesId;delete task.collectionOpensAt;}
     if(input.recurrence?.enabled) {
-      if(input.workflowVersion!==1||!validateRecurrence(input.recurrence))fail(400,'请设置有效的每周开放和截止时间，截止须晚于开放，均为值班前一周');
-      task.recurrence={...input.recurrence};
+      if(input.workflowVersion!==1||!validateRecurrence(input.recurrence))fail(400,'请设置每周截止星期和时间（值班前一周）');
+      task.recurrence={publishWeekday:1,publishTime:'00:00',...input.recurrence};
     }
     if(dutyType==='repair'||input.workflowVersion===1) task.requirements=normalizedRequirements(task,input.requirements);
     const context = await contextFor(actor);

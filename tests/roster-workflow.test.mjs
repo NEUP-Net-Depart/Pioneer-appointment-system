@@ -13,9 +13,9 @@ import {collectionInstant,validateRecurrence,recurringPeriodWeek} from '../src/m
 import {rosterCollections,preferredRosterPeriod} from '../shared/roster-collections.js';
 
 test('one published collection follows the current calendar week and keeps independent weekly history',()=>{
-  const series={publish_weekday:4,publish_time:'18:00'};
-  assert.equal(recurringPeriodWeek(series,'2026-10-05',new Date('2026-10-22T17:59:59+08:00')),'2026-10-19');
-  assert.equal(recurringPeriodWeek(series,'2026-10-05',new Date('2026-10-22T18:00:00+08:00')),'2026-10-26');
+  const series={deadline_weekday:7,deadline_time:'18:00'};
+  assert.equal(recurringPeriodWeek(series,'2026-10-05',new Date('2026-10-25T17:59:59+08:00')),'2026-10-26');
+  assert.equal(recurringPeriodWeek(series,'2026-10-05',new Date('2026-10-25T18:00:00+08:00')),'2026-11-02');
   assert.equal(recurringPeriodWeek(series,'2026-10-05',new Date('2027-01-15T18:00:00+08:00')),'2027-01-18','long absences jump to the current period without catch-up tasks');
   assert.equal(recurringPeriodWeek(series,'2026-11-02',new Date('2026-10-18T12:00:00+08:00')),'2026-11-02','the initial immediately-opened period is retained');
   const periods=[{id:'p1',seriesId:'collection',weekStart:'2026-10-19',dutyType:'office',collectionState:'closed'}, {id:'p2',seriesId:'collection',weekStart:'2026-10-26',dutyType:'office',collectionState:'open'}];
@@ -46,7 +46,7 @@ test('office automatic scheduling balances repeated weekly shifts and enforces d
   assert.equal(regenerated.assignments.filter(row=>row.locked).length,1);
   assert.equal(validateRoster(regenerated,{slots,members,locked:[locked]}).valid,true);
   assert.equal(validateRecurrence({publishWeekday:4,publishTime:'18:00',deadlineWeekday:7,deadlineTime:'18:00'}),true);
-  assert.equal(validateRecurrence({publishWeekday:7,publishTime:'18:00',deadlineWeekday:4,deadlineTime:'18:00'}),false);
+  assert.equal(validateRecurrence({publishWeekday:7,publishTime:'18:00',deadlineWeekday:8,deadlineTime:'18:00'}),false);
   assert.equal(collectionInstant('2026-10-26',4,'18:00'),'2026-10-22T10:00:00.000Z');
 });
 
@@ -80,12 +80,16 @@ test('both migration chains support collection, atomic weekly submissions, revis
     await assert.rejects(service.createRosterTask(root,{...input,requestId:crypto.randomUUID()}),error=>error.status===409);
     const windows=Array.from({length:4},(_,i)=>addDays(week,i)).flatMap(businessDate=>campusIds.map(campusId=>({businessDate,campusId,startAt:'19:00',endAt:'21:00'})));
     const body={windows,unavailable:false,revision:-1,autoContinue:true,requestId:crypto.randomUUID()};
+    await assert.rejects(service.submitAvailability(one,task.id,{...body,windows:[{...windows[0],startAt:'19:30'}],requestId:crypto.randomUUID()}),error=>error.status===400);
     assert.equal((await service.submitAvailability(one,task.id,body)).items.length,8);
     assert.equal((await service.submitAvailability(one,task.id,body)).items.length,8);
     await assert.rejects(service.submitAvailability(one,task.id,{...body,requestId:crypto.randomUUID()}),error=>error.status===409);
     await service.submitAvailability(two,task.id,{...body,autoContinue:false,requestId:crypto.randomUUID()});
     let state=await service.rosterTaskState(root,task.id);assert.equal(state.progress.submitted,2);assert.equal(state.stage,'collecting');
     const close={action:'close',revision:task.revision,requestId:crypto.randomUUID()};await service.collectionCommand(root,task.id,close);await service.collectionCommand(root,task.id,close);
+    const advanced=(await repo.listRosterTasks()).filter(item=>item.seriesId===task.seriesId&&item.weekStart===addDays(week,7));
+    assert.equal(advanced.length,1,'early close immediately opens exactly one next period');
+    assert.equal((await repo.rosterSeries(task.seriesId)).current_week,addDays(week,7));
     await assert.rejects(service.submitAvailability(one,task.id,{...body,revision:0,requestId:crypto.randomUUID()}),error=>error.status===409);
     let generated=await service.generate(root,{taskId:task.id,requestId:crypto.randomUUID()});assert.equal(generated.validation.valid,true,JSON.stringify(generated.validation));
     const firstDraft=generated.version;

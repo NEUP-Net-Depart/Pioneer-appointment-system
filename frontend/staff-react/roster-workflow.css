@@ -180,3 +180,5 @@
   .roster-assignment-actions>button { flex:1 1 150px; }
   .roster-progress-people li { flex-wrap:wrap; gap:8px; }
 }
+.week-picker{display:grid;gap:8px;min-width:0}.week-picker>div{display:flex;gap:8px;align-items:center}.week-picker select{min-width:0;flex:1}.week-picker button{min-height:44px;white-space:nowrap}.roster-time-fields output{display:flex;min-height:44px;align-items:center}.roster-candidate small{display:block;color:var(--text-muted,#596579)}
+@media(max-width:480px){.week-picker>div{flex-wrap:wrap}.week-picker select{order:-1;flex-basis:100%}.week-picker button{flex:1}}
