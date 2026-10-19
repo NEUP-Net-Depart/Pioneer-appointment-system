@@ -121,6 +121,7 @@ before(async () => {
       HISTORICAL_DATE_UPGRADE_DB: { type: 'd1', id: 'historical-date-upgrade-db' },
       STABLE_UPGRADE_DB: { type: 'd1', id: 'stable-upgrade-db' },
       SCAN_WORKBENCH_ENABLED: { type: 'text', value: 'true' },
+      STAFF_WORKFLOW_ENABLED: { type: 'text', value: 'false' },
       JWT_SECRET: { type: 'text', value: JWT_SECRET }, PII_ENCRYPTION_KEY: { type: 'text', value: PII_ENCRYPTION_KEY } }
   } }] });
   db = await mf.getD1Database('DB'); bucket = await mf.getR2Bucket('ATTACHMENTS');
@@ -190,6 +191,33 @@ test('one staff member cannot start two jobs, retrying intake and completion is 
   await api(`/api/appointments/${started.id}/status`,{method:'PATCH',token:root,body:{action:'correct',status:'in_progress'}},409);
   assert.deepEqual((await db.prepare('SELECT account,appointment_id FROM active_repairs').all()).results,[{account:'993002',appointment_id:second.id}]);
   assert.deepEqual((await db.prepare('PRAGMA foreign_key_check').all()).results,[]);
+});
+
+test('transfers reject every non-progress status while the staff workflow is disabled', async () => {
+  const root = await login(), target = '993020';
+  await addUser(target);
+  for (const status of ['booked','cancelled','expired','completed']) {
+    let item = await book();
+    if (status === 'cancelled') await api(`/api/appointments/${item.id}/status`,{method:'PATCH',accessToken:item.accessToken,body:{status:'cancelled'}});
+    if (status === 'expired') {
+      await db.prepare('UPDATE appointments SET expires_at=? WHERE id=?').bind('2026-10-14T00:00:00.000Z',item.id).run();
+      await api(`/api/appointments/${item.id}`,{accessToken:item.accessToken});
+    }
+    if (status === 'completed') {
+      item = await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:root,body:{status:'in_progress',...await intake(item,root)}});
+      await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:root,body:{status:'completed',outcome:'repaired',repairNote:'已维修并复测'}});
+    }
+    const before = await appointmentRepository(db).find(item.id);
+    assert.equal(before.status,status);
+    await api(`/api/appointments/${item.id}/transfer`,{method:'POST',token:root,body:{assignedTo:target,reason:'交接维修',revision:before.revision}},409);
+    assert.deepEqual(await appointmentRepository(db).find(item.id),before);
+  }
+  let item = await book();
+  item = await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:root,body:{status:'in_progress',...await intake(item,root)}});
+  const transferred = await api(`/api/appointments/${item.id}/transfer`,{method:'POST',token:root,body:{assignedTo:target,reason:'交接维修',revision:item.revision}});
+  assert.equal(transferred.assignedTo,target);
+  assert.equal(transferred.status,'in_progress');
+  await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:await login(target),body:{status:'completed',outcome:'repaired',repairNote:'交接后已复测'}});
 });
 
 test('staff onsite registration is scoped, retry-safe, outside slot capacity and recoverable before intake', async () => {

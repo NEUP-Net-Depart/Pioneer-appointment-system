@@ -3,7 +3,7 @@ import { encryptText, decryptText } from '../lib/privacy.js';
 import { addDays, dateKey, serviceDay, slotDeadline, expirationDeadline, weekRange } from '../../shared/time.js';
 import { issueAccessToken, bookingDigest, hashAccessToken } from '../lib/access-tokens.js';
 import { guestAppointment } from './access.js';
-import { repairOutcomes } from '../../shared/constants.js';
+import { repairOutcomes, statusLabels } from '../../shared/constants.js';
 import { appointmentScope, requireRole, requireAppointmentAccess, requireCampus, ownsRepair, ownsRegistration } from './permissions.js';
 
 export async function presentAppointment(item, encryptionKey, { staff = false } = {}) {
@@ -74,11 +74,16 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       const scope = appointmentScope(user);
       await expire(clock(), { campuses: scope.campuses });
       if(staffPlatform?.field?.enabled) {
-        const result=await appointments.list({...query,q:''},scope);
+        // Status facets describe all searchable, visible matches before the
+        // selected status is applied, so projection must see every status.
+        const result=await appointments.list({...query,q:'',status:'all'},scope);
         const visible=await staffPlatform.field.projectList(user,result.items);
         const q=(query.q || '').toLowerCase();
-        const items=visible.filter(item=>!q || [item.id,item.repairNumber,item.deviceModel,item.campus,item.name,item.studentId].some(value=>String(value || '').toLowerCase().includes(q)));
-        return {...result,items};
+        const matches=visible.filter(item=>!q || [item.id,item.repairNumber,item.deviceModel,item.campus,item.name,item.studentId].some(value=>String(value || '').toLowerCase().includes(q)));
+        const filteredCounts={all:matches.length,...Object.fromEntries(Object.keys(statusLabels).map(status=>[status,0]))};
+        for (const item of matches) filteredCounts[item.status]++;
+        const items=matches.filter(item=>!query.status || query.status==='all' || (query.status==='pending' ? ['booked','in_progress'].includes(item.status) : item.status===query.status));
+        return {...result,items,filteredCounts};
       }
       const result = await appointments.list(query, scope);
       const items = await Promise.all(result.items.map(async item => {
@@ -142,7 +147,9 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       if (actor.role === 'admin' || actor.role === 'superadmin') requireRole(actor, 'admin');
       else if (staffPlatform) await staffPlatform.requirePermission(actor, 'repair.transfer', { campusId: item.campus });
       else requireRole(actor, 'admin');
-      requireCampus(actor, item.campus); const account = await assignee(input.assignedTo, item.campus);
+      requireCampus(actor, item.campus);
+      if (item.status !== 'in_progress') fail(409, '只有维修中的工单可以转派');
+      const account = await assignee(input.assignedTo, item.campus);
       if (!input.reason || input.reason.trim().length < 2) fail(400, '请填写转派原因');
       if (input.revision !== undefined && input.revision !== item.revision) fail(409, '预约已被其他工作人员修改，请刷新后重试');
       const eligibility = staffPlatform?.field?.enabled ? await staffPlatform.field.assertTransfer(actor, item, account) : null;

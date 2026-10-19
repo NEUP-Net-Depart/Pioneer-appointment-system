@@ -141,6 +141,16 @@ test('both migration chains support collection, atomic weekly submissions, revis
     await assert.rejects(service.seriesCommand(root,series.id,{...settings,requestId:crypto.randomUUID()}),error=>error.status===409);
     assert.equal((await repo.rosterTaskById(next.id)).collectionOpensAt,originalOpensAt,'changing future opening times never changes existing weekly snapshots');
     assert.equal((await service.rosterTasks(root)).collections[0].name,settings.name);
+    // Changed hours must stay pending until the member submits again; unchanged
+    // hours retain the member's existing continuation preference.
+    for (const [offset,slotStart,slotEnd,compatible] of [[28,'17:00','19:00',false],[35,'20:00','22:00',false],[49,'19:00','21:00',true]]) {
+      const adjusted=await service.createRosterTask(root,{...input,weekStart:addDays(week,offset),slotStart,slotEnd,recurrence:{enabled:false},requestId:crypto.randomUUID()});
+      await service.rosterTaskState(root,adjusted.id);
+      const carried=await repo.rosterSubmissions(adjusted.id),availability=await repo.availability(adjusted.id);
+      assert.equal(carried.length,compatible?1:0,`${slotStart}–${slotEnd} must be covered by the original preference`);
+      assert.equal(availability.length,compatible?8:0);
+      assert.ok(availability.every(row=>row.startAt===slotStart&&row.endAt===slotEnd));
+    }
     const lateWeek=addDays(week,14),lateDeadline=new Date(Date.parse(collectionInstant(lateWeek,7,'18:00'))).toISOString();
     const lateTask=await service.createRosterTask(root,{...input,weekStart:lateWeek,deadline:lateDeadline,recurrence:{enabled:false},requestId:crypto.randomUUID()});
     const afterDeadline=new Date(Date.parse(lateDeadline)+3600000);

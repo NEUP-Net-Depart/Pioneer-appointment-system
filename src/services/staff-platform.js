@@ -19,6 +19,10 @@ import {rosterCollections} from '../../shared/roster-collections.js';
 import {dutyEnd} from '../../shared/duty-window.js';
 import {weeklyAttendanceRows} from '../modules/attendance/weekly-export.js';
 
+function assertDutyAttendanceDate(event, status = 400) {
+  if (event.type === 'duty' && [event.startsAt, event.endsAt].some(value => dateKey(new Date(value)) !== event.businessDate)) fail(status, '值班签到窗口必须与业务日期一致');
+}
+
 function randomToken() {
   const bytes = new Uint8Array(24);
   crypto.getRandomValues(bytes);
@@ -461,6 +465,7 @@ export function staffPlatformService({ repository, platform, manifests, calendar
     const startsAt = instant(input.startsAt || `${businessDate}T18:30:00+08:00`); const endsAt = instant(input.endsAt || `${businessDate}T21:30:00+08:00`);
     if (endsAt <= startsAt) fail(400, '签到窗口不正确');
     if (!validDate(businessDate)) fail(400, '签到日期不正确');
+    assertDutyAttendanceDate({ type, businessDate, startsAt, endsAt });
     const context = await contextFor(actor);
     return withReceipt(actor, 'attendance.event.create', input, async () => {
       const created = await repository.createEvent({ type, policyCode: input.policyCode || `${type}.v1`, policyVersion: input.policyVersion || '1.0.0', ruleSnapshot: input.ruleSnapshot || { timezone: 'Asia/Shanghai' }, campusId: input.campusId || null, businessDate, startsAt, endsAt, sourceRef: input.sourceRef || {} }, context.actor.memberId,
@@ -492,6 +497,7 @@ export function staffPlatformService({ repository, platform, manifests, calendar
     if (event.campusId && !(actor.authorizedCampuses || []).some(value => value === event.campusId || value === campusNames[event.campusId])) fail(403, '没有该校区的签到权限');
     const policy = policyFor(event); if (!policy) fail(400, '签到策略不存在');
     const now = nowIso(); if (!eventWindow(event.startsAt, event.endsAt, now)) fail(409, '当前不在签到时间窗口');
+    assertDutyAttendanceDate(event, 409);
     const eligible = policy.checkEligibility({ event, context: { ...context, attendanceEligible: authorization.result.allowed } }); if (!eligible) fail(403, '当前成员没有该场次的签到资格');
     return { found, event, context, policy, now };
   }
@@ -522,6 +528,7 @@ export function staffPlatformService({ repository, platform, manifests, calendar
     return commitAttendance(actor,input,{found:null,event,context,policy:policyFor(event),now},true);
   }
   async function commitAttendance(actor,input,{found,event,context,policy,now},direct=false) {
+    assertDutyAttendanceDate(event, 409);
     const dedupeKey = policy.getDedupeScope({ memberId: context.actor.memberId, event });
     const existing = await repository.findAttendanceByDedupe(dedupeKey); if (existing) return { ...existing, isExisting: true, result: policy.describeResult(existing) };
     const method = direct?'manual':attendanceMethod(input.method);
@@ -823,7 +830,7 @@ export function staffPlatformService({ repository, platform, manifests, calendar
         const actor=await collectionMember(preference.member_id);
         const origin=await repository.rosterTaskById(preference.source_task_id);
         const paused=await repository.serviceDays(task.weekStart,addDays(task.weekStart,3));
-        const windows=JSON.parse(preference.windows).filter(window=>task.campusScope.campusIds.includes(window.campusId)&&origin&&window.startAt<=origin.slotStart&&window.endAt>=origin.slotEnd).map(({weekday,...window})=>({...window,startAt:task.slotStart,endAt:task.slotEnd,businessDate:addDays(task.weekStart,weekday-1)})).filter(window=>!paused.some(day=>day.paused&&day.businessDate===window.businessDate&&day.campusId===window.campusId));
+        const windows=JSON.parse(preference.windows).filter(window=>task.campusScope.campusIds.includes(window.campusId)&&origin&&window.startAt<=task.slotStart&&window.endAt>=task.slotEnd).map(({weekday,...window})=>({...window,startAt:task.slotStart,endAt:task.slotEnd,businessDate:addDays(task.weekStart,weekday-1)})).filter(window=>!paused.some(day=>day.paused&&day.businessDate===window.businessDate&&day.campusId===window.campusId));
         if(!preference.unavailable&&!windows.length)continue;
         await submitAvailability(actor,task.id,{windows,unavailable:!!preference.unavailable,revision:-1,requestId:`carry:${task.id}:${preference.member_id}:${preference.revision}`},{carried:true,preferenceRevision:preference.revision,continuationAt});
       }catch(error){if(![403,409].includes(error.status))throw error;}
