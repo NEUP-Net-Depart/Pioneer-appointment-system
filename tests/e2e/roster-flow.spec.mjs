@@ -92,7 +92,7 @@ test('attendance managers correct historical time without altering identity and 
   for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:`output/field-workflow/attendance-correction-${width}.png`,fullPage:true});}
   await dialog.getByRole('button',{name:'确认保存考勤',exact:true}).click();await expect(dialog).not.toBeVisible();await expect(row).toContainText('09:15');
   const records=await request.get(`/api/attendance?all=1&businessDate=${day}`,{headers});const record=(await records.json()).items.find(item=>item.id===original.id);expect(record.revision).toBe(original.revision+1);expect(record.identitySnapshot).toEqual(original.identitySnapshot);
-  const download=page.waitForEvent('download');await page.getByRole('button',{name:'导出本月汇总',exact:true}).click();expect((await download).suggestedFilename()).toBe(`考勤-${day.slice(0,7)}.csv`);
+  const download=page.waitForEvent('download');await page.getByRole('button',{name:'按月导出',exact:true}).click();expect((await download).suggestedFilename()).toBe(`考勤-${day.slice(0,7)}.csv`);
 });
 
 test('collection creation saves the chosen campus daily minimums before availability collection',async({page,request})=>{
@@ -102,7 +102,7 @@ test('collection creation saves the chosen campus daily minimums before availabi
   await page.locator('.field-sidebar').getByRole('button',{name:'维修排班管理',exact:true}).click();
   await page.getByRole('button',{name:'新建收集任务',exact:true}).click();
   const dialog=page.getByRole('dialog');
-  await dialog.getByLabel('周一日期',{exact:true}).fill('2027-05-03');
+  await dialog.getByLabel('周一日期',{exact:true}).selectOption('2027-05-03');
   await dialog.getByRole('group',{name:'参与校区',exact:true}).getByLabel('南湖',{exact:true}).uncheck();
   await dialog.getByRole('group',{name:'参与校区',exact:true}).getByLabel('浑南',{exact:true}).check();
   await dialog.getByLabel('填报截止',{exact:true}).fill('2027-05-02T18:00');
@@ -173,7 +173,7 @@ test('off-duty leaders can prepare schedules without gaining field coordination'
   await nav.getByRole('button',{name:'维修排班管理',exact:true}).click();
   await page.getByRole('button',{name:'新建收集任务',exact:true}).click();
   const dialog = page.getByRole('dialog',{name:'发布收集任务',exact:true});
-  await dialog.getByLabel('周一日期',{exact:true}).fill('2027-01-11');
+  await dialog.getByLabel('周一日期',{exact:true}).selectOption('2027-01-11');
   await dialog.getByLabel('填报截止',{exact:true}).fill('2027-01-10T18:00');
   await dialog.getByRole('button',{name:'下一步：人数与名单',exact:true}).click();
   await dialog.getByRole('button',{name:'下一步：确认发布',exact:true}).click();
@@ -221,7 +221,7 @@ test('department manager creates only authorized roster scopes across screen siz
     await departments.getByRole('button', { name: '硬件部', exact: true }).click();
     await expect(dialog.getByRole('button', { name: '下一步：人数与名单', exact: true })).toBeDisabled();
     await departments.getByRole('button', { name: '硬件部', exact: true }).click();
-    await dialog.getByLabel('周一日期', { exact: true }).fill('2026-12-07');
+    await dialog.getByLabel('周一日期', { exact: true }).selectOption('2026-12-07');
     await dialog.getByLabel('填报截止', { exact: true }).fill('2026-12-06T18:00');
     await mkdir('output/field-workflow', { recursive: true });
     for (const width of [1440,390,320]) {
@@ -258,7 +258,7 @@ test('members preview, confirm and recover a swap through responsive personal wo
       await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();
       await expandGroup(page,'我的');
       await page.locator('.field-sidebar').getByRole('button', { name:'班次与排班',exact:true }).click();
-      await page.getByLabel('值班周',{exact:true}).fill(weekStart);
+      await page.getByLabel('值班周',{exact:true}).selectOption(weekStart);
       await expect(page.locator('.duty-card')).toHaveCount(2);
     }
     await open(sender,'20261002'); await open(invitee,'20261003');
@@ -339,7 +339,7 @@ test('member submits leave and reviewer checks coverage in one responsive approv
   await login('20261001');
   await expandGroup(page, '我的');
   await page.locator('.field-sidebar').getByRole('button', { name: '班次与排班', exact: true }).click();
-  await page.getByLabel('值班周', { exact: true }).fill('2026-11-16');
+  await page.getByLabel('值班周', { exact: true }).selectOption('2026-11-16');
   await expect(page.locator('.duty-card')).toHaveCount(4);
   await page.locator('.duty-card').first().getByRole('button', { name: '请假', exact: true }).click();
   await page.getByLabel('请假原因', { exact: true }).fill('审批闭环：课程考试');
@@ -376,7 +376,7 @@ test('member submits leave and reviewer checks coverage in one responsive approv
   await login('20261001');
   await expandGroup(page, '我的');
   await page.locator('.field-sidebar').getByRole('button', { name: '班次与排班', exact: true }).click();
-  await page.getByLabel('值班周', { exact: true }).fill('2026-11-16');
+  await page.getByLabel('值班周', { exact: true }).selectOption('2026-11-16');
   await expect(page.locator('.duty-card').first()).toContainText('请假 · 已批准');
   await expect(page.locator('.duty-card').first().getByRole('button', { name: '请假', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: /我的申请/ }).click();
@@ -388,8 +388,8 @@ test('office collection generates a balanced roster, publishes a coordinator and
   await page.goto('/staff/');await page.locator('#login-id').fill('root001');await page.locator('#login-password').fill(process.env.E2E_ROOT_PASSWORD);await page.getByRole('button',{name:'进入系统'}).click();
   await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();await expandGroup(page,'值班管理');await page.locator('.field-sidebar').getByRole('button',{name:'办公排班管理',exact:true}).click();
   await page.getByRole('button',{name:'新建办公收集任务',exact:true}).click();const dialog=page.getByRole('dialog');
-  await dialog.getByLabel('周一日期',{exact:true}).fill('2026-11-09');await dialog.getByLabel('填报截止',{exact:true}).fill('2026-11-08T18:00');
-  await dialog.getByLabel('每周开放填报',{exact:true}).check();await dialog.getByLabel('开放星期',{exact:true}).selectOption('4');
+  await dialog.getByLabel('周一日期',{exact:true}).selectOption('2026-11-09');await dialog.getByLabel('填报截止',{exact:true}).fill('2026-11-08T18:00');
+  await dialog.getByLabel('结束后继续收集下一周',{exact:true}).check();await expect(dialog.getByLabel('开放星期',{exact:true})).toHaveCount(0);
   await dialog.getByRole('button',{name:'下一步：人数与名单',exact:true}).click();
   await dialog.getByRole('button',{name:'下一步：确认发布',exact:true}).click();
   const createdPromise=page.waitForResponse(r=>r.url().endsWith('/api/roster-tasks')&&r.request().method()==='POST');
@@ -424,7 +424,7 @@ test('member reaches roster from My, chooses named shifts and can use narrow scr
   await page.locator('.field-sidebar').getByRole('button', { name: '个人中心', exact: true }).click();
   await page.getByRole('button', { name: '我的班次与申请' }).click();
   await expect(page.getByRole('heading', { name: '我的值班安排' })).toBeVisible();
-  await page.getByLabel('值班周',{exact:true}).fill(weekStart);
+  await page.getByLabel('值班周',{exact:true}).selectOption(weekStart);
   await expect(page.locator('.duty-card')).toHaveCount(2);
   await page.getByRole('button', { name: '发起换班', exact: true }).first().click();
   await expect(page.getByLabel('希望调换到')).toBeEnabled();
@@ -472,15 +472,16 @@ test('repair manager closes collection, manually overrides availability, locks a
   await page.setExtraHTTPHeaders({'CF-Connecting-IP':'192.0.2.94'});
   const root=await request.post('/api/auth/login',{data:{account:'root001',password:process.env.E2E_ROOT_PASSWORD}}).then(r=>r.json());
   const headers={Authorization:'Bearer '+root.token};
-  const created=await request.post('/api/roster-tasks',{headers,data:{workflowVersion:1,weekStart:'2026-10-19',campusIds:['campus-nanhu'],slotStart:'18:00',slotEnd:'19:00',deadline:'2026-10-18T10:00:00Z',memberIds:['member-20261002'],requestId:crypto.randomUUID()}});expect(created.ok(),await created.text()).toBe(true);const task=await created.json();
+  const created=await request.post('/api/roster-tasks',{headers,data:{workflowVersion:1,weekStart:'2026-10-19',campusIds:['campus-nanhu'],slotStart:'18:00',slotEnd:'20:00',deadline:'2026-10-18T10:00:00Z',memberIds:['member-20261002'],requestId:crypto.randomUUID()}});expect(created.ok(),await created.text()).toBe(true);const task=await created.json();
   const technician=await request.post('/api/auth/login',{data:{account:'20261002',password:'StaffTest!2026'}}).then(r=>r.json());
-  const fill=await request.put('/api/roster-tasks/'+task.id+'/submission',{headers:{Authorization:'Bearer '+technician.token},data:{windows:[{businessDate:'2026-10-19',campusId:'campus-nanhu',startAt:'18:00',endAt:'19:00'}],unavailable:false,revision:-1,requestId:crypto.randomUUID()}});expect(fill.ok(),await fill.text()).toBe(true);
+  const fill=await request.put('/api/roster-tasks/'+task.id+'/submission',{headers:{Authorization:'Bearer '+technician.token},data:{windows:[{businessDate:'2026-10-19',campusId:'campus-nanhu',startAt:'18:00',endAt:'20:00'}],unavailable:false,revision:-1,requestId:crypto.randomUUID()}});expect(fill.ok(),await fill.text()).toBe(true);
   await page.goto('/staff/');await page.locator('#login-id').fill('root001');await page.locator('#login-password').fill(process.env.E2E_ROOT_PASSWORD);await page.getByRole('button',{name:'进入系统'}).click();await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();await expandGroup(page,'值班管理');await page.locator('.field-sidebar').getByRole('button',{name:'维修排班管理',exact:true}).click();await page.getByLabel('收集任务',{exact:true}).selectOption(task.seriesId||task.id);await page.getByLabel('排班周与校区',{exact:true}).selectOption(task.id);
   await page.getByRole('button',{name:'结束收集',exact:true}).click();await page.getByRole('button',{name:'确认结束收集',exact:true}).click();await page.getByRole('button',{name:'生成自动排班',exact:true}).click();
-  const person=page.locator('.roster-person').filter({hasText:'陈宇'});await expect(person).toHaveCount(1);await expect(page.getByRole('button',{name:'检查并发布',exact:true})).toBeDisabled();
-  await person.getByRole('button',{name:/^调整/}).click();const picker=page.getByRole('dialog');await picker.getByLabel('目标班次',{exact:true}).selectOption('2026-10-20:campus-nanhu:18:00:19:00');await picker.getByRole('button',{name:'移动到本班次',exact:true}).click();await expect(picker.getByRole('alert')).toContainText('未填报');await picker.getByRole('button',{name:'确认人工安排',exact:true}).click();await picker.getByRole('button',{name:'完成调整',exact:true}).click();
+  const person=page.locator('.roster-person').filter({hasText:'陈宇'});await expect(person).toHaveCount(1);await expect(page.getByRole('button',{name:'检查并发布',exact:true})).toBeEnabled();
+  await page.getByRole('button',{name:'检查并发布',exact:true}).click();const publication=page.getByRole('dialog');await expect(publication.getByRole('button',{name:'确认发布',exact:true})).toBeDisabled();await publication.getByLabel('发布原因',{exact:true}).fill('已核实人员不足，临时发布');for(const box of await publication.locator('input[type=checkbox]').all())await box.check();await expect(publication.getByRole('button',{name:'确认发布',exact:true})).toBeEnabled();for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await publication.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);await page.screenshot({path:`output/field-workflow/force-publication-${width}.png`,fullPage:true});}await publication.getByRole('button',{name:'关闭',exact:true}).click();
+  await person.getByRole('button',{name:/^调整/}).click();const picker=page.getByRole('dialog');await picker.getByLabel('目标班次',{exact:true}).selectOption('2026-10-20:campus-nanhu:18:00:20:00');await picker.getByRole('button',{name:'移动到本班次',exact:true}).click();await expect(picker.getByRole('alert')).toContainText('未填报');await picker.getByRole('button',{name:'确认人工安排',exact:true}).click();await picker.getByRole('button',{name:'完成调整',exact:true}).click();
   await person.getByRole('button',{name:/^调整/}).click();await page.getByRole('dialog').getByLabel('锁定此班次',{exact:true}).check();await page.getByRole('dialog').getByRole('button',{name:'完成调整',exact:true}).click();await page.locator('.field-sidebar').getByRole('button',{name:'预约记录',exact:true}).click();await expect(page.getByRole('dialog',{name:'有未保存的调整'})).toBeVisible();await page.getByRole('button',{name:'留在当前页面',exact:true}).click();
-  await page.getByRole('button',{name:'保存并校验',exact:true}).click();await expect(page.getByText('调整已保存，已重新校验。',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'检查并发布',exact:true})).toBeDisabled();
+  await page.getByRole('button',{name:'保存并校验',exact:true}).click();await expect(page.getByText('调整已保存，已重新校验。',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'检查并发布',exact:true})).toBeEnabled();
   await page.locator('.workspace-more-actions>summary').click();await page.getByRole('button',{name:'重新自动排班',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'重新生成',exact:true}).click();await expect(page.getByText('已生成排班草稿，请处理缺口并核对安排。',{exact:true})).toBeVisible();await expect(person).toContainText('已锁定');
   await page.reload();await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();await expandGroup(page,'值班管理');await page.locator('.field-sidebar').getByRole('button',{name:'维修排班管理',exact:true}).click();await page.getByLabel('收集任务',{exact:true}).selectOption(task.seriesId||task.id);await page.getByLabel('排班周与校区',{exact:true}).selectOption(task.id);await expect(person).toContainText('人工安排');await expect(person).toContainText('已锁定');
   const day=page.locator('.roster-day-column').filter({hasText:'10-20'});await expect(day).toContainText('陈宇');

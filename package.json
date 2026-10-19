@@ -33,7 +33,7 @@
     "test:booking-layout": "npm run build && node --test tests/preview/booking-layout.test.mjs",
     "release:plan": "node scripts/release-plan.mjs",
     "typecheck": "tsc --noEmit",
-    "test:field": "node scripts/test-e2e.mjs --field tests/e2e/field-flow.spec.mjs tests/e2e/roster-flow.spec.mjs",
+    "test:field": "node scripts/test-e2e.mjs --field tests/e2e/field-flow.spec.mjs tests/e2e/roster-flow.spec.mjs tests/e2e/staff-duty-updates.spec.mjs",
     "preview:field": "node scripts/test-e2e.mjs --serve --field"
   },
   "devDependencies": {
