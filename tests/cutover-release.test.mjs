@@ -6,7 +6,7 @@ import { smoke } from '../scripts/smoke.mjs';
 import { rehearseSnapshot } from '../scripts/rehearse-preview.mjs';
 import { STAFF_RELEASE } from '../src/db/staff-readiness.js';
 
-async function baselineDump({ deployed = false } = {}) {
+async function baselineDump({ deployed = false, interleaved = false } = {}) {
   const db = new DatabaseSync(':memory:');
   try {
     db.exec('CREATE TABLE d1_migrations(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE,applied_at TEXT DEFAULT CURRENT_TIMESTAMP);');
@@ -32,8 +32,7 @@ async function baselineDump({ deployed = false } = {}) {
     const quote = value => value === null ? 'NULL' : typeof value === 'number' ? String(value) : "'" + String(value).replaceAll("'", "''") + "'";
     const tables = objects.filter(row => row.type === 'table');
     return [
-      ...tables.map(row => row.sql + ';'),
-      ...tables.flatMap(table => db.prepare(`SELECT * FROM "${table.name}"`).all().map(row => `INSERT INTO "${table.name}" VALUES(${Object.values(row).map(quote).join(',')});`)),
+      ...(interleaved ? tables.flatMap(table => [table.sql+';',...db.prepare(`SELECT * FROM "${table.name}"`).all().map(row => `INSERT INTO "${table.name}" VALUES(${Object.values(row).map(quote).join(',')});`)]) : [...tables.map(row => row.sql + ';'),...tables.flatMap(table => db.prepare(`SELECT * FROM "${table.name}"`).all().map(row => `INSERT INTO "${table.name}" VALUES(${Object.values(row).map(quote).join(',')});`))]),
       ...objects.filter(row => row.type !== 'table').map(row => row.sql + ';'),
     ].join('\n');
   } finally { db.close(); }
@@ -51,6 +50,14 @@ test('the existing Preview migration ledger and populated accounts rehearse thro
 test('later deployments respect deliberately ungranted administrators and revoked technician roles',async()=>{
   const report=await rehearseSnapshot(await baselineDump({deployed:true}));
   assert.equal(report.applied,0);assert.equal(report.accounts['admin → '],1);assert.equal(report.accounts['technician → '],1);
+});
+
+test('current D1 snapshots restore with interleaved table definitions and cyclic account/member references',async()=>{
+  const report=await rehearseSnapshot(await baselineDump({deployed:true,interleaved:true}));assert.equal(report.applied,0);assert.equal(report.accounts['admin → legacy_admin'],1);
+});
+test('snapshot restore rejects broken references before attempting migrations',async()=>{
+  const dump=(await baselineDump({deployed:true,interleaved:true})).replace(/^INSERT INTO "members" VALUES\('member-20260002'.*;\n/m,'');
+  await assert.rejects(rehearseSnapshot(dump),/snapshot has invalid foreign keys/);
 });
 
 async function deploymentFetch(url) {

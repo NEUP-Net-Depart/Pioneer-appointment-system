@@ -30,11 +30,13 @@ const preserved = ['staff_accounts', 'staff_campus_grants', 'appointments', 'app
 export async function rehearseSnapshot(dump, directory = resolve(root, 'migrations')) {
   const sqlite = new DatabaseSync(':memory:');
   try {
-    // D1 imports a SQL file as a batch. Defer foreign keys while restoring
-    // account/member references whose tables may appear in either order.
-    sqlite.exec('BEGIN; PRAGMA defer_foreign_keys=ON;');
-    try { sqlite.exec(dump); sqlite.exec('COMMIT;'); }
+    // D1 exports may interleave CREATE TABLE and INSERT statements. Restore
+    // the snapshot first, then validate all references before applying any
+    // migrations with foreign-key enforcement enabled.
+    sqlite.exec('PRAGMA foreign_keys=OFF; BEGIN;');
+    try { sqlite.exec(dump); sqlite.exec('COMMIT; PRAGMA foreign_keys=ON;'); }
     catch { throw new Error('Preview snapshot could not be imported locally'); }
+    assert.equal(sqlite.prepare('PRAGMA foreign_key_check').all().length,0,'Preview snapshot has invalid foreign keys');
     const ledger = new Set(sqlite.prepare('SELECT name FROM d1_migrations').all().map(row => row.name));
     const upgradingLegacyAdmins = !ledger.has('0030_react_cutover_access.sql');
     const upgradingLegacyTechnicians = !sqlite.prepare('PRAGMA table_info(staff_accounts)').all().some(row => row.name === 'member_id');
