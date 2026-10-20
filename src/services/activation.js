@@ -23,6 +23,7 @@ export function activationService(repository,users){
       const existing=new Set([...staff.map(item=>item.account),...whitelist.map(item=>item.studentId)]);
       for(const item of items){
         manageable(actor,item);
+        if(item.expectedRole==='admin')fail(400,'管理员请通过成员管理导入，并明确配置角色和授权校区；普通加入名单仅支持维修人员');
         if(existing.has(item.studentId))skipped.push(item.studentId);
         else fresh.push(item);
       }
@@ -48,6 +49,7 @@ export function activationService(repository,users){
       const password=passwordInput(input.password);
       const whitelist=await repository.findWhitelist(studentId);
       if(!whitelist || whitelist.status!=='open' || (whitelist.expectedName && whitelist.expectedName!==name) || await users.find(studentId))fail(400,'当前资料无法提交激活申请，请联系管理员核实');
+      if(whitelist.expectedRole==='admin' && !whitelist.activationMemberId)fail(409,'管理员资格尚未配置角色和校区，请联系最高管理员通过成员管理导入并显式授权');
       const receipt=issueAccessToken(),id=crypto.randomUUID();
       if(!await repository.submit({id,studentId,name,homeCampus:input.homeCampus,passwordHash:hashPassword(password),receiptHash:receipt.hash,createdAt:nowIso()},whitelist.revision))fail(409,'资格已更新，请联系管理员');
       return {id,receipt:receipt.token,status:'pending'};
@@ -79,6 +81,7 @@ export function activationService(repository,users){
       let result;
       try { result=await repository.review(items,status,note,actor.account,nowIso()); }
       catch(error) {
+        if(String(error.message).includes('ACTIVATION_ADMIN_AUTHORIZATION_REQUIRED')) fail(409,'管理员资格尚未配置角色和校区，请先通过成员管理导入并显式授权，再审核激活');
         if(String(error.message).includes('ACTIVATION_QUALIFICATION_CHANGED')) fail(409,'成员资格或授权已变化，请先在成员管理中核实，再审核激活');
         throw error;
       }

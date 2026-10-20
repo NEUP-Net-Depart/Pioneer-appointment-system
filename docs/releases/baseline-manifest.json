@@ -132,6 +132,10 @@
     {
       "name": "0030_react_cutover_access.sql",
       "sha256": "78856792c07f2564bf60bb38c353e5a9fb5c7908ac55a949ebb03b5ff899dd19"
+    },
+    {
+      "name": "0031_admin_invitation_and_login_scope.sql",
+      "sha256": "e9b49784f6c6bbbe8ce32bebd6ca431e1a55e76b7bade1365b5a3a289ab35da5"
     }
   ],
   "modules": [
@@ -343,6 +347,10 @@
     {
       "name": "0030_react_cutover_access.sql",
       "sha256": "78856792c07f2564bf60bb38c353e5a9fb5c7908ac55a949ebb03b5ff899dd19"
+    },
+    {
+      "name": "0031_admin_invitation_and_login_scope.sql",
+      "sha256": "e9b49784f6c6bbbe8ce32bebd6ca431e1a55e76b7bade1365b5a3a289ab35da5"
     }
   ],
   "staffMigrationsDirectory": "database/staff-migrations"

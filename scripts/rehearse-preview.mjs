@@ -80,6 +80,12 @@ export async function rehearseSnapshot(dump, directory = resolve(root, 'migratio
       const key = `${row.role} → ${roleCodes.join('+')}`; counts[key] = (counts[key] || 0) + 1;
       if (user.status === 'enabled' && user.memberStatus !== 'inactive' && user.authorizedCampuses.length) {
         const context = await staff.contextFor(user);
+        const legacy = sqlite.prepare('SELECT campus_ids FROM legacy_admin_logins WHERE account=? AND member_id=?').get(user.account,user.memberId);
+        const compatibilityGrants = context.grants.filter(grant => grant.roleCode === 'legacy_admin');
+        if (row.role !== 'admin' || !legacy) assert.equal(compatibilityGrants.length,0,'An unrelated login inherited legacy administrator authorization');
+        if (legacy) for (const grant of compatibilityGrants) {
+          assert.ok(grant.scope.campusIds.every(campus => JSON.parse(legacy.campus_ids).includes(campus)),'Legacy authorization exceeded the original login campus snapshot');
+        }
         if (row.role === 'technician' && upgradingLegacyTechnicians) {
           assert.equal(context.permissions['repair.summary.read'], true, 'Migrated technician lost repair summary access');
           assert.notEqual(context.permissions['roles.manage'], true, 'Technician gained role management');

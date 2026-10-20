@@ -1,9 +1,10 @@
-const whitelistSelect=`SELECT w.*,(SELECT json_group_array(campus) FROM whitelist_campus_grants WHERE student_id=w.student_id) AS campuses FROM staff_whitelist w`;
+const whitelistSelect=`SELECT w.*,(SELECT member_id FROM activation_member_bindings WHERE student_id=w.student_id) AS activation_member_id,
+  (SELECT json_group_array(campus) FROM whitelist_campus_grants WHERE student_id=w.student_id) AS campuses FROM staff_whitelist w`;
 const requestSelect=`SELECT r.*,w.expected_role,w.expected_name,w.status AS whitelist_status,w.revision AS whitelist_revision,
   (SELECT json_group_array(campus) FROM whitelist_campus_grants WHERE student_id=r.student_id) AS campuses
   FROM activation_requests r JOIN staff_whitelist w ON w.student_id=r.student_id`;
 function whitelist(row){
-  return row ? {studentId:row.student_id,expectedName:row.expected_name,expectedRole:row.expected_role,status:row.status,authorizedCampuses:JSON.parse(row.campuses),revision:row.revision,createdAt:row.created_at} : null;
+  return row ? {studentId:row.student_id,expectedName:row.expected_name,expectedRole:row.expected_role,activationMemberId:row.activation_member_id || null,status:row.status,authorizedCampuses:JSON.parse(row.campuses),revision:row.revision,createdAt:row.created_at} : null;
 }
 function application(row){
   return row ? {id:row.id,studentId:row.student_id,name:row.name,homeCampus:row.home_campus,

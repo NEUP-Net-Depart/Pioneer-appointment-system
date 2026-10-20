@@ -419,19 +419,22 @@ export function staffPlatformService({ repository, platform, manifests, calendar
         departmentId: index('departmentId') >= 0 ? cells[index('departmentId')] : '', assignmentType: index('assignmentType') >= 0 ? cells[index('assignmentType')] : 'primary',
         effectiveFrom: index('effectiveFrom') >= 0 ? cells[index('effectiveFrom')] : dateKey(),
         trainingConfirmed:index('trainingConfirmed')>=0 && cells[index('trainingConfirmed')]==='true',
+        accountRole: index('accountRole') >= 0 ? cells[index('accountRole')] : '',
         workProfiles: index('workProfiles') >= 0 ? cells[index('workProfiles')].split('|').map(value => value.trim()).filter(Boolean) : [],
         roleCodes: index('roleCodes') >= 0 ? cells[index('roleCodes')].split('|').map(value => value.trim()).filter(Boolean) : [],
         authorizedCampuses: index('authorizedCampuses') >= 0 ? cells[index('authorizedCampuses')].split('|').map(value => value.trim()).filter(Boolean) : [] };
       if (!/^\d{6,20}$/.test(item.studentId) || !item.name || !['campus-nanhu','campus-hunnan'].includes(item.homeCampusId)) fail(400, `第 ${lineIndex + 2} 行成员数据不正确`);
       if (item.workProfiles.some(value => !['repair','exchange','office','repair_lead','office_lead'].includes(value))) fail(400, `第 ${lineIndex + 2} 行工作属性不正确`);
+      if (item.accountRole && !['technician','admin'].includes(item.accountRole)) fail(400, `第 ${lineIndex + 2} 行账号类型不正确`);
+      if (item.accountRole === 'admin' && (!item.roleCodes.length || !item.authorizedCampuses.length)) fail(400, `第 ${lineIndex + 2} 行管理员邀请必须明确配置角色和授权校区`);
       if (item.authorizedCampuses.some(value => !['campus-nanhu','campus-hunnan','南湖','浑南'].includes(value))) fail(400, `第 ${lineIndex + 2} 行授权校区不正确`);
       if (!validDate(item.effectiveFrom) || item.departmentId && !departments.has(item.departmentId) || !['primary','secondary','exchange','temporary'].includes(item.assignmentType)) fail(400,`第 ${lineIndex+2} 行任职或生效日期不正确`);
-      if (actor.role !== 'superadmin' && (item.roleCodes.length || item.workProfiles.length || item.authorizedCampuses.length)) fail(403, '角色、工作资格和账号校区授权由最高管理员配置');
+      if (actor.role !== 'superadmin' && (item.accountRole || item.roleCodes.length || item.workProfiles.length || item.authorizedCampuses.length)) fail(403, '角色、工作资格和账号校区授权由最高管理员配置');
       if (item.workProfiles.includes('exchange') && (!item.trainingConfirmed || item.workProfiles.includes('repair'))) fail(400,`第 ${lineIndex+2} 行须确认交流培训通过，且不能同时导入普通维修资格`);
       // Older exchange CSVs used the technician package. Keep accepting them,
       // but bind the distinct exchange role without changing actual membership.
       if (item.workProfiles.includes('exchange')) item.roleCodes=[...new Set(item.roleCodes.map(code=>code==='technician'?'exchange':code))];
-      if (item.roleCodes.some(code=>!roleCodes.has(code) || code==='superadmin')) fail(400,`第 ${lineIndex+2} 行角色不存在、已停用或不能通过名单导入`);
+      if (item.roleCodes.some(code=>!roleCodes.has(code) || ['superadmin','legacy_admin'].includes(code))) fail(400,`第 ${lineIndex+2} 行角色不存在、已停用或不能通过名单导入`);
       return item;
     });
     if (new Set(items.map(item => item.studentId)).size !== items.length) fail(400, '导入文件包含重复学号');

@@ -39,7 +39,7 @@ export function userRepository(db) {
       return (await db.prepare(`SELECT staff_accounts.*,(SELECT status FROM members WHERE id=staff_accounts.member_id) AS member_status,
         (SELECT json_group_array(campus) FROM staff_campus_grants WHERE account=staff_accounts.account) AS campuses,
         (SELECT json_group_array(name) FROM (SELECT DISTINCT r.name FROM member_roles mr JOIN roles r ON r.id=mr.role_id
-          WHERE mr.member_id=staff_accounts.member_id AND r.enabled=1 AND mr.effective_from<=? AND (mr.effective_to IS NULL OR mr.effective_to>?) ORDER BY r.level DESC,r.name)) AS role_names,
+          WHERE mr.member_id=staff_accounts.member_id AND r.enabled=1 AND (r.code<>'legacy_admin' OR EXISTS(SELECT 1 FROM legacy_admin_logins l WHERE l.account=staff_accounts.account AND l.member_id=staff_accounts.member_id AND staff_accounts.role='admin')) AND mr.effective_from<=? AND (mr.effective_to IS NULL OR mr.effective_to>?) ORDER BY r.level DESC,r.name)) AS role_names,
         (SELECT COUNT(*) FROM appointments WHERE assigned_to=staff_accounts.account AND
           (status='in_progress' OR (status='completed' AND outcome IN ('repaired','unrepaired','not_needed','legacy_unknown')))) AS workload
         FROM staff_accounts ORDER BY role DESC,name`).bind(day,day).all()).results.map(publicUser);

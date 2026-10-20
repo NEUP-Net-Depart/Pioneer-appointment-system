@@ -42,6 +42,58 @@ before(async () => {
 });
 after(async () => mf?.dispose());
 
+test('administrator invitations require explicit member roles and campus scope, without inventing a work post', async () => {
+  const db=await mf.getD1Database('DB');
+  const identityHeaders={'CF-Connecting-IP':'192.0.2.170'};
+  const login=await request('/api/auth/login',{headers:identityHeaders,method:'POST',body:JSON.stringify({account:'root001',password:'staff-platform-password'})});
+  const headers={...identityHeaders,Authorization:`Bearer ${login.body.token}`};
+  const post=(path,body)=>request(path,{headers,method:'POST',body:JSON.stringify(body)});
+  // Both the default field and a per-row CSV override must be rejected before
+  // any eligibility is written, including mixed batches.
+  for (const input of [
+    {csv:'studentId,expectedName\n20269971,普通管理员',expectedRole:'admin'},
+    {csv:'studentId,expectedRole\n20269972,technician\n20269973,admin',expectedRole:'technician'},
+  ]) {
+    const result=await post('/api/staff-whitelist/import',{...input,authorizedCampuses:['南湖']});
+    assert.equal(result.response.status,400,JSON.stringify(result.body));
+    assert.match(result.body.error,/成员管理/);
+  }
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM staff_whitelist WHERE student_id BETWEEN '20269971' AND '20269973'").first()).n,0);
+  const role=await post('/api/roles',{code:'invited-campus-manager',name:'受邀校区管理员',grants:['accounts.manage','settings.manage','statistics.read'].map(permissionCode=>({permissionCode,scope:{campusIds:['campus-nanhu']}}))});
+  assert.equal(role.response.status,201,JSON.stringify(role.body));
+  for (const csv of [
+    'studentId,name,homeCampusId,accountRole,authorizedCampuses\n20269974,缺少角色,campus-nanhu,admin,南湖',
+    'studentId,name,homeCampusId,accountRole,roleCodes\n20269974,缺少校区,campus-nanhu,admin,invited-campus-manager',
+    'studentId,name,homeCampusId,accountRole,roleCodes,authorizedCampuses\n20269974,不得借用旧角色,campus-nanhu,admin,legacy_admin,南湖',
+  ]) assert.equal((await post('/api/members/import',{csv,confirm:true})).response.status,400);
+  const csv='studentId,name,homeCampusId,accountRole,roleCodes,authorizedCampuses\n20269975,显式管理授权,campus-nanhu,admin,invited-campus-manager,南湖';
+  const preview=await post('/api/members/import',{csv,confirm:false});
+  assert.equal(preview.response.status,200);assert.equal(preview.body.items[0].accountRole,'admin');assert.deepEqual(preview.body.items[0].workProfiles,[]);
+  assert.equal((await post('/api/members/import',{csv,confirm:true})).response.status,200);
+  const apply=await request('/api/activation',{headers:identityHeaders,method:'POST',body:JSON.stringify({studentId:'20269975',name:'显式管理授权',homeCampus:'南湖',password:'invited-manager-password'})});
+  assert.equal(apply.response.status,201,JSON.stringify(apply.body));
+  // Removing a role after application must prevent approval atomically.
+  await db.prepare('UPDATE roles SET enabled=0 WHERE id=?').bind(role.body.id).run();
+  const review={ids:[apply.body.id],status:'approved',identityVerified:true};
+  assert.equal((await post('/api/activation-requests/review',review)).response.status,409);
+  assert.equal(await db.prepare("SELECT account FROM staff_accounts WHERE account='20269975'").first(),null);
+  assert.equal((await db.prepare('SELECT status FROM activation_requests WHERE id=?').bind(apply.body.id).first()).status,'pending');
+  await db.prepare('UPDATE roles SET enabled=1 WHERE id=?').bind(role.body.id).run();
+  assert.equal((await post('/api/activation-requests/review',review)).response.status,200);
+  const signedIn=await request('/api/auth/login',{headers:identityHeaders,method:'POST',body:JSON.stringify({account:'20269975',password:'invited-manager-password'})});
+  assert.equal(signedIn.response.status,200);
+  const managerHeaders={Authorization:`Bearer ${signedIn.body.token}`};
+  const me=await request('/api/auth/me',{headers:managerHeaders});
+  assert.equal(me.body.role,'admin');assert.deepEqual(me.body.authorizedCampuses,['南湖']);
+  for (const permission of ['accounts.manage','settings.manage','statistics.read']) assert.equal(me.body.permissions[permission],true,permission);
+  for (const permission of ['roles.manage','repair.start','onsite.frontdesk.create']) assert.notEqual(me.body.permissions[permission],true,permission);
+  for (const table of ['member_department_memberships','member_work_profiles','legacy_admin_logins']) assert.equal((await db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE member_id='member-20269975'`).first()).n,0);
+  assert.equal((await request('/api/users',{headers:managerHeaders})).response.status,200);
+  const capacities=await request('/api/slot-capacities',{headers:managerHeaders});
+  assert.equal(capacities.response.status,200);assert.ok(capacities.body.items.every(item=>item.campus==='南湖'));
+  assert.equal((await request('/api/slot-capacities',{headers:managerHeaders,method:'PATCH',body:JSON.stringify({...capacities.body.items[0],campus:'浑南',capacity:4})})).response.status,403);
+});
+
 test('member, membership and authorization commands roll back on audit failure and reject revoked writers', async () => {
   const db=await mf.getD1Database('DB'),repo=staffPlatformRepository(db),users=userRepository(db);
   await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('20268981','审计原子性','technician','南湖',?,'2026-01-01')").bind(hashPassword('audit-test-password')).run();

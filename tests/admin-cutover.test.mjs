@@ -6,6 +6,7 @@ import { Miniflare } from 'miniflare';
 import { config, wrangler } from '../scripts/cli.mjs';
 import { hashPassword } from '../src/lib/passwords.js';
 import { AGREEMENT_VERSION } from '../shared/student-booking.js';
+import { staffPlatformRepository } from '../src/db/staff-platform.js';
 
 let cfg, worker;
 const password = 'cutover-original-password', day = '2026-10-15';
@@ -46,7 +47,7 @@ for (const directory of ['migrations','database/staff-migrations']) test(`${dire
     for (const table of ['member_roles','member_work_profiles','member_department_memberships']) await db.prepare(`UPDATE ${table} SET revision=1 WHERE member_id='member-20268002'`).run();
     // Login aliases share a person, while their authorized campus sets remain
     // separate. Technician aliases must not broaden a migrated admin grant.
-    for (const [account,role,memberId,campus] of [['20268006','technician','member-20268001','浑南'],['20268007','admin','member-20268001','南湖'],['20268008','admin','member-20268002','浑南']]) {
+    for (const [account,role,memberId,campus] of [['20268006','technician','member-20268001','浑南'],['20268007','admin','member-20268001','南湖'],['20268008','admin','member-20268002','浑南'],['20268009','technician','member-20268001','南湖']]) {
       await db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at,member_id) VALUES(?,?,?,?,?,?,?)').bind(account,account,role,campus,originalHash,'2026-01-01',memberId).run();
       await db.prepare('INSERT INTO staff_campus_grants VALUES(?,?)').bind(account,campus).run();
     }
@@ -57,7 +58,14 @@ for (const directory of ['migrations','database/staff-migrations']) test(`${dire
     const login=account=>call('/api/auth/login',{method:'POST',body:{account,password}});
     const oldToken=(await login('20268001')).token;
     await migrate(db,directory,'0030_react_cutover_access.sql');
+    // An ordinary admin invitation and pending application may predate the fix.
+    await db.prepare("INSERT INTO staff_whitelist(student_id,expected_name,expected_role,created_by,created_at) VALUES('20268011','待授权管理员','admin','root001','2026-01-01')").run();
+    await db.prepare("INSERT INTO whitelist_campus_grants VALUES('20268011','南湖')").run();
+    await db.prepare("INSERT INTO activation_requests(id,student_id,name,home_campus,contact,password_hash,receipt_hash,created_at) VALUES('old-admin-request','20268011','待授权管理员','南湖','',?,?,'2026-01-01')").bind(originalHash,'a'.repeat(64)).run();
+    const preFixAliasToken=(await login('20268009')).token;
+    await migrate(db,directory,'0031_admin_invitation_and_login_scope.sql');
     await call('/api/auth/me',{token:oldToken,status:401});
+    await call('/api/auth/me',{token:preFixAliasToken,status:401});
     const admin=await login('20268001'), token=admin.token, me=await call('/api/auth/me',{token});
     assert.equal(me.role,'admin');assert.deepEqual(me.authorizedCampuses,['南湖']);
     for (const permission of ['accounts.manage','settings.manage','statistics.read','repair.correct','customer.identity.read','customer.contact.read']) assert.equal(me.permissions[permission],true,permission);
@@ -70,10 +78,22 @@ for (const directory of ['migrations','database/staff-migrations']) test(`${dire
     await call('/api/users/20268003',{token,method:'PATCH',body:{name:'原校区管理员直接修改'}});
     await call('/api/users/20268004',{token,method:'PATCH',body:{name:'越界修改'},status:403});
     await call('/api/roles',{token,status:403});
-    const technicianAlias=(await login('20268006')).token;
-    for (const path of ['/api/users','/api/slot-capacities','/api/stats/summary?range=all']) await call(path,{token:technicianAlias,status:403});
+    for (const account of ['20268006','20268009']) {
+      const technicianAlias=(await login(account)).token;
+      const aliasMe=await call('/api/auth/me',{token:technicianAlias});
+      assert.ok(!aliasMe.grants.some(grant=>grant.roleCode==='legacy_admin'));
+      for (const path of ['/api/users','/api/slot-capacities','/api/stats/summary?range=all']) await call(path,{token:technicianAlias,status:403});
+      assert.ok(!accounts.items.find(row=>row.account===account)?.roleNames.includes('原后台管理员'));
+    }
     const adminAlias=(await login('20268008')).token;
     assert.ok((await call('/api/slot-capacities',{token:adminAlias})).items.every(row=>row.campus==='浑南'),'All original admin aliases retain their own campus without borrowing another login scope');
+    await db.prepare("INSERT INTO staff_campus_grants VALUES('20268008','南湖')").run();
+    assert.ok((await call('/api/slot-capacities',{token:adminAlias})).items.every(row=>row.campus==='浑南'),'Expanding the login campuses cannot borrow another original admin login snapshot');
+    const rootToken=(await login('root001')).token;
+    await call('/api/activation-requests/review',{token:rootToken,method:'POST',body:{ids:['old-admin-request'],status:'approved',identityVerified:true},status:409});
+    assert.equal((await db.prepare("SELECT status FROM activation_requests WHERE id='old-admin-request'").first()).status,'pending');
+    assert.equal(await db.prepare("SELECT account FROM staff_accounts WHERE account='20268011'").first(),null);
+    await call('/api/activation',{method:'POST',body:{studentId:'20268011',name:'待授权管理员',homeCampus:'南湖',password},status:409});
     const capacities=await call('/api/slot-capacities',{token});assert.ok(capacities.items.every(row=>row.campus==='南湖'));
     const cell=capacities.items[0];await call('/api/slot-capacities',{token,method:'PATCH',body:{...cell,capacity:7}});
     await call('/api/slot-capacities',{token,method:'PATCH',body:{...cell,campus:'浑南',capacity:7},status:403});
@@ -95,6 +115,27 @@ for (const directory of ['migrations','database/staff-migrations']) test(`${dire
     // A future admin login label must assign neither a work post nor a management role.
     await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('20268005','新账号','admin','南湖',?,'2026-01-01')").bind(originalHash).run();
     for (const table of ['member_roles','member_work_profiles','member_department_memberships']) assert.equal((await db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE member_id='member-20268005'`).first()).n,0);
+    await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at,member_id) VALUES('20268010','新管理员别名','admin','南湖',?,'2026-01-01','member-20268001')").bind(originalHash).run();
+    await db.prepare("INSERT INTO staff_campus_grants VALUES('20268010','南湖')").run();
+    await call('/api/slot-capacities',{token:(await login('20268010')).token,status:403});
+    await db.prepare("UPDATE staff_accounts SET role='admin' WHERE account='20268009'").run();
+    await call('/api/slot-capacities',{token:(await login('20268009')).token,status:403});
+    await db.prepare("UPDATE staff_accounts SET role='technician' WHERE account='20268009'").run();
+    // Explicit person-wide grants remain shared intentionally; only the legacy
+    // compatibility package is restricted to the captured original logins.
+    const repository=staffPlatformRepository(db);
+    const sharedRole=await repository.createRole({code:'explicit-shared-statistics',name:'显式成员统计',grants:[{permissionCode:'statistics.read',scope:{campusIds:['campus-nanhu']}}]});
+    await db.prepare('INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from) VALUES(?,?,?,?,?)').bind('shared-statistics','member-20268001',sharedRole.id,'{"campusIds":["campus-nanhu"]}','2026-01-01').run();
+    const sharedAlias=(await login('20268009')).token;
+    await call('/api/stats/summary?range=all',{token:sharedAlias});
+    await call('/api/slot-capacities',{token:sharedAlias,status:403});
+    await db.prepare("DELETE FROM staff_accounts WHERE account='20268007'").run();
+    await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at,member_id) VALUES('20268007','重建管理员别名','admin','南湖',?,'2026-01-01','member-20268001')").bind(originalHash).run();
+    await db.prepare("INSERT INTO staff_campus_grants VALUES('20268007','南湖')").run();
+    await call('/api/slot-capacities',{token:(await login('20268007')).token,status:403});
+    await db.prepare("UPDATE staff_accounts SET role='technician' WHERE account='20268008'").run();
+    await db.prepare("UPDATE staff_accounts SET role='admin' WHERE account='20268008'").run();
+    assert.equal(await db.prepare("SELECT account FROM legacy_admin_logins WHERE account='20268008'").first(),null);
     await db.prepare("DELETE FROM member_roles WHERE member_id='member-20268003'").run();
     await db.prepare("DELETE FROM staff_accounts WHERE account='20268003'").run();
     await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('20268003','重建登录','technician','南湖',?,'2026-01-01')").bind(originalHash).run();

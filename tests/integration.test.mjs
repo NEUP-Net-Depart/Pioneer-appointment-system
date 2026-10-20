@@ -626,7 +626,7 @@ test('onsite creation stops at the inclusive Shanghai deadline', async () => {
 });
 
 test('health verifies D1 schema and R2; API paths return JSON and security headers', async () => {
-  assert.deepEqual(await api('/api/health'), { ok: true, service: 'pioneer-repair-api', database: 'd1', attachments: 'r2', staffRelease: 'staff-react-0030', workflow: 'staff-platform' });
+  assert.deepEqual(await api('/api/health'), { ok: true, service: 'pioneer-repair-api', database: 'd1', attachments: 'r2', staffRelease: 'staff-react-0031', workflow: 'staff-platform' });
   for (const path of ['/api','/api/unknown']) await api(path, {}, 404);
   const response = await request('/api/health');
   assert.equal(response.headers.get('cache-control'), 'no-store');
@@ -1472,7 +1472,7 @@ test('identity mismatch, duplicate pending attempts, rejection and reapplication
 
 test('CSV import validates the entire roster, handles quoted cells and never overwrites existing eligibility',async()=>{
   const token=await login();
-  const csv='\uFEFFstudentId,expectedName,expectedRole,authorizedCampuses\r\n840001,"张三,成员",technician,南湖|浑南\r\n840002,李四,admin,浑南';
+  const csv='\uFEFFstudentId,expectedName,expectedRole,authorizedCampuses\r\n840001,"张三,成员",technician,南湖|浑南\r\n840002,李四,technician,浑南';
   const result=await api('/api/staff-whitelist/import',{method:'POST',token,body:{csv}});assert.equal(result.imported.length,2);
   assert.equal((await api('/api/staff-whitelist',{token})).items.find(item=>item.studentId==='840001').expectedName,'张三,成员');
   assert.equal((await api('/api/staff-whitelist/import',{method:'POST',token,body:{csv}})).skipped.length,2);

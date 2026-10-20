@@ -69,6 +69,27 @@ test('student booking, private links, React activation, staff permissions and cr
   await student.locator('.field-sidebar').getByRole('button',{name:'退出登录',exact:true}).click();await expect(student.locator('#login-form')).toBeVisible();
  }finally{await Promise.all(contexts.map(c=>c.close()));}
 });
+test('React administrator invitations require explicit roles and activate into usable campus management',async({browser})=>{
+ const contexts=await Promise.all([43,44].map(n=>browser.newContext({baseURL:process.env.E2E_BASE_URL,extraHTTPHeaders:{'CF-Connecting-IP':`198.51.100.${n}`}}))),root=await contexts[0].newPage(),member=await contexts[1].newPage();
+ try{
+  await login(root,'root001',process.env.E2E_ROOT_PASSWORD);
+  const token=await root.evaluate(()=>sessionStorage.getItem('pioneerToken')),headers={Authorization:`Bearer ${token}`};
+  await staffPage(root,'账号管理');await root.getByRole('button',{name:'加入资格',exact:true}).click();await root.getByRole('button',{name:'导入名单',exact:true}).click();
+  const invitation=root.getByRole('dialog');await expect(invitation.getByLabel('默认角色').locator('option')).toHaveText(['维修人员']);await expect(invitation).toContainText('成员管理');await invitation.getByRole('button',{name:'取消',exact:true}).click();
+  const role=await root.request.post('/api/roles',{headers,data:{code:'e2e-campus-manager',name:'浏览器校区管理员',grants:['accounts.manage','settings.manage','statistics.read'].map(permissionCode=>({permissionCode,scope:{campusIds:['campus-nanhu']}}))}});expect(role.ok(),await role.text()).toBe(true);
+  await staffPage(root,'成员管理');await root.getByRole('button',{name:'导入名单',exact:true}).click();
+  const importer=root.getByRole('dialog');await importer.getByLabel('名单内容').fill('studentId,name,homeCampusId,accountRole,roleCodes,authorizedCampuses\n20308104,管理邀请测试,campus-nanhu,admin,e2e-campus-manager,南湖');await importer.getByRole('button',{name:'预览并核对',exact:true}).click();
+  await expect(importer).toContainText('e2e-campus-manager');await expect(importer).toContainText('未设置工作资格');await importer.getByRole('button',{name:'确认名单与培训结果并导入',exact:true}).click();await expect(importer).toContainText('已导入 1 名成员');await importer.getByRole('button',{name:'完成',exact:true}).click();
+  await application(member,'20308104','管理邀请测试');
+  await staffPage(root,'账号管理');await root.getByRole('button',{name:'激活审核',exact:true}).click();await root.getByLabel('选择 20308104',{exact:true}).check();await root.getByLabel('我已逐一核实选中申请的本人身份').check();await root.getByRole('button',{name:'批准申请',exact:true}).click();
+  await member.getByRole('button',{name:'刷新审核结果',exact:true}).click();await expect(member.locator('#activation-status')).toContainText('审核已通过');await member.getByRole('link',{name:'前往登录',exact:true}).click();await member.locator('#login-id').fill('20308104');await member.locator('#login-password').fill(memberPassword);await member.getByRole('button',{name:'进入系统'}).click();await expect(member.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();
+  await staffPage(member,'账号管理');await expect(member.getByRole('heading',{name:'账号管理',exact:true})).toBeVisible();
+  const managerToken=await member.evaluate(()=>sessionStorage.getItem('pioneerToken')),managerHeaders={Authorization:`Bearer ${managerToken}`},me=await(await member.request.get('/api/auth/me',{headers:managerHeaders})).json();
+  for(const code of ['accounts.manage','settings.manage','statistics.read'])expect(me.permissions[code],code).toBe(true);expect(me.permissions['roles.manage']).not.toBe(true);expect(me.workProfiles).toEqual([]);expect(me.memberships).toEqual([]);
+  const capacities=await(await member.request.get('/api/slot-capacities',{headers:managerHeaders})).json();expect(capacities.items.every(item=>item.campus==='南湖')).toBe(true);expect((await member.request.patch('/api/slot-capacities',{headers:managerHeaders,data:{...capacities.items[0],campus:'浑南',capacity:4}})).status()).toBe(403);
+ }finally{await Promise.all(contexts.map(c=>c.close()));}
+});
+
 test('historical private links preserve identifiers and React corrections submit the original booking ID',async({page})=>{
  const item={id:'reverse020261012-07',repairNumber:'020261015-03',campus:'南湖',date:'2026-10-12',timeSlot:'19:00–19:30',status:'completed',outcome:'repaired',repairNote:'历史维修',assignedTo:'root001',canReadDetails:true,canCorrect:true,canRecoverCredential:true,revision:0},writes=[];
  await mockStaff(page);await page.route('**/api/appointments?*',route=>route.fulfill({json:{items:[item],counts:{all:1}}}));await page.route('**/api/field/appointments/'+item.id,route=>route.fulfill({json:item}));await page.route('**/api/appointments/*/correction',route=>{writes.push({path:new URL(route.request().url()).pathname,body:route.request().postDataJSON()});return route.fulfill({json:item});});await loginStaff(page);await staffPage(page,'预约记录');await page.getByRole('searchbox',{name:'查找预约'}).fill(item.repairNumber);await expect(page.locator('.records-table')).toContainText(item.id);await expect(page.locator('.records-table')).toContainText(item.repairNumber);await page.getByRole('button',{name:'查看详情',exact:true}).click();await page.getByRole('button',{name:'修正预约记录',exact:true}).click();await page.getByLabel('纠错原因',{exact:true}).fill('核实旧编号后补充历史维修说明');await page.getByRole('button',{name:'核对修改',exact:true}).click();await page.getByRole('button',{name:'确认修正记录',exact:true}).click();await expect.poll(()=>writes.length).toBe(1);expect(writes[0].path).toBe('/api/appointments/'+item.id+'/correction');

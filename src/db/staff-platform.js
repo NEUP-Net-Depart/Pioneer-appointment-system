@@ -110,14 +110,18 @@ export function staffPlatformRepository(db) {
     return result[0]?.meta?.changes ? profileHistory(memberId) : null;
   }
 
-  async function grants(memberId, businessDate = dateKey()) {
-    const result = await db.prepare(`SELECT rg.id,rg.role_id,rg.permission_code,rg.scope_spec,rg.condition_spec,rg.validity_spec,mr.scope_bindings,r.code AS role_code
+  async function grants(memberId, businessDate = dateKey(), loginAccount = null) {
+    const result = await db.prepare(`SELECT rg.id,rg.role_id,rg.permission_code,rg.scope_spec,rg.condition_spec,rg.validity_spec,mr.scope_bindings,r.code AS role_code,legacy.campus_ids AS login_campuses
       FROM member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1
       JOIN role_grants rg ON rg.role_id=r.id
+      LEFT JOIN legacy_admin_logins legacy ON legacy.member_id=mr.member_id AND legacy.account=?
+        AND EXISTS(SELECT 1 FROM staff_accounts sa WHERE sa.account=legacy.account AND sa.member_id=legacy.member_id AND sa.role='admin')
       WHERE mr.member_id=? AND mr.effective_from<=? AND (mr.effective_to IS NULL OR ?<mr.effective_to)
-      ORDER BY rg.permission_code`).bind(memberId, businessDate, businessDate).all();
+        AND (r.code<>'legacy_admin' OR legacy.account IS NOT NULL)
+      ORDER BY rg.permission_code`).bind(loginAccount, memberId, businessDate, businessDate).all();
     return rows(result).map(row => {
-      const scope = intersectScopes(parseJson(row.scope_spec, {}), parseJson(row.scope_bindings, {}));
+      let scope = intersectScopes(parseJson(row.scope_spec, {}), parseJson(row.scope_bindings, {}));
+      if (row.role_code === 'legacy_admin') scope = intersectScopes(scope, { campusIds: parseJson(row.login_campuses, []) });
       return { id: row.id, roleId: row.role_id, roleCode: row.role_code, permissionCode: row.permission_code,
         scope, conditions: parseJson(row.condition_spec, []), validity: parseJson(row.validity_spec, {}) };
     });
@@ -135,7 +139,7 @@ export function staffPlatformRepository(db) {
     const memberId = await ensureMember(user.account, user);
     const member = await memberRow(memberId);
     const [membershipItems, profileItems, grantItems, duties, presence] = await Promise.all([
-      memberships(memberId, businessDate), profiles(memberId, businessDate), grants(memberId, businessDate), todayDuties(memberId, businessDate),
+      memberships(memberId, businessDate), profiles(memberId, businessDate), grants(memberId, businessDate, user.account), todayDuties(memberId, businessDate),
       db.prepare('SELECT * FROM staff_presence WHERE member_id=? AND business_date=?').bind(memberId, businessDate).first()
     ]);
     const authVersion = user.authVersion ?? user.tokenVersion ?? 0;
@@ -309,7 +313,7 @@ export function staffPlatformRepository(db) {
           WHERE m.id IN (${marks})`).bind(...ids),
         db.prepare(`SELECT * FROM member_work_profiles WHERE member_id IN (${marks}) AND effective_from<=? AND (effective_to IS NULL OR effective_to>?)`).bind(...ids,day,day),
         db.prepare(`SELECT mr.member_id,rg.*,mr.scope_bindings,r.code AS role_code FROM member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1
-          JOIN role_grants rg ON rg.role_id=r.id WHERE mr.member_id IN (${marks}) AND mr.effective_from<=? AND (mr.effective_to IS NULL OR mr.effective_to>?)`).bind(...ids,day,day),
+          JOIN role_grants rg ON rg.role_id=r.id WHERE r.code<>'legacy_admin' AND mr.member_id IN (${marks}) AND mr.effective_from<=? AND (mr.effective_to IS NULL OR mr.effective_to>?)`).bind(...ids,day,day),
         db.prepare(`SELECT da.*,dr.role_kind FROM duty_assignments da JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published'
           LEFT JOIN duty_roles dr ON dr.assignment_id=da.id WHERE da.member_id IN (${marks}) AND da.business_date=?`).bind(...ids,day),
         db.prepare(`SELECT * FROM staff_presence WHERE member_id IN (${marks}) AND business_date=?`).bind(...ids,day),
@@ -364,10 +368,10 @@ export function staffPlatformRepository(db) {
         for (const campus of campusIds) statements.push(db.prepare('INSERT OR IGNORE INTO staff_campus_grants(account,campus) VALUES(?,?)').bind(account.account,campus));
       }
       if(account) statements.push(db.prepare('UPDATE staff_accounts SET token_version=token_version+1,auth_version=auth_version+1 WHERE member_id=?').bind(id));
-      if (!account && item.workProfiles?.length && item.roleCodes?.length && campusIds.length) {
+      if (!account && (item.workProfiles?.length || item.accountRole === 'admin') && item.roleCodes?.length && campusIds.length) {
         statements.push(db.prepare(`INSERT INTO staff_whitelist(student_id,expected_name,expected_role,created_by,created_at)
           VALUES(?,?,?,?,?) ON CONFLICT(student_id) DO UPDATE SET expected_name=excluded.expected_name,expected_role=excluded.expected_role,revision=staff_whitelist.revision+1
-          WHERE staff_whitelist.status='open'`).bind(item.studentId,item.name,item.workProfiles.includes('office') && !item.workProfiles.some(code=>['repair','exchange'].includes(code)) ? 'admin' : 'technician',actorAccount,at));
+          WHERE staff_whitelist.status='open'`).bind(item.studentId,item.name,item.accountRole || (item.workProfiles.includes('office') && !item.workProfiles.some(code=>['repair','exchange'].includes(code)) ? 'admin' : 'technician'),actorAccount,at));
         statements.push(db.prepare('INSERT OR IGNORE INTO activation_member_bindings(student_id,member_id) VALUES(?,?)').bind(item.studentId,id));
         statements.push(db.prepare("DELETE FROM whitelist_campus_grants WHERE student_id=? AND EXISTS(SELECT 1 FROM staff_whitelist WHERE student_id=? AND status='open')").bind(item.studentId,item.studentId));
         for(const campus of campusIds) statements.push(db.prepare("INSERT OR IGNORE INTO whitelist_campus_grants(student_id,campus) SELECT ?,? WHERE EXISTS(SELECT 1 FROM staff_whitelist WHERE student_id=? AND status='open')").bind(item.studentId,campus,item.studentId));
@@ -665,7 +669,7 @@ export function staffPlatformRepository(db) {
           WHERE mm.member_id IN (${placeholders}) AND mm.effective_from<=date(?,'+6 day') AND (mm.effective_to IS NULL OR mm.effective_to>?) ORDER BY mm.is_primary DESC,d.name`).bind(...ids,weekStart,weekStart),
         db.prepare(`SELECT mr.member_id,mr.effective_from AS binding_from,mr.effective_to AS binding_to,mr.scope_bindings,rg.*
           FROM member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1 JOIN role_grants rg ON rg.role_id=r.id
-          WHERE mr.member_id IN (${placeholders}) AND mr.effective_from<=date(?,'+6 day') AND (mr.effective_to IS NULL OR mr.effective_to>?)`).bind(...ids,weekStart,weekStart)
+          WHERE r.code<>'legacy_admin' AND mr.member_id IN (${placeholders}) AND mr.effective_from<=date(?,'+6 day') AND (mr.effective_to IS NULL OR mr.effective_to>?)`).bind(...ids,weekStart,weekStart)
       ]);
       for (const row of rows(results[0])) facts.set(row.id, { memberId: row.id, name: row.name,studentId:row.student_id, role:row.role, active: row.status === 'active' && !!row.enabled, campuses: [], profiles: [], assignments: [], departmentNames: [], memberships: [], grants:[] });
       for (const row of rows(results[1])) facts.get(row.member_id)?.campuses.push(row.campus);
