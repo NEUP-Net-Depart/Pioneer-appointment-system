@@ -914,13 +914,23 @@ test('capacity workspace preserves drafts, reconciles conflicts and supports mob
     await input.fill('8');
     await expect(editor.getByText('1 项待保存', { exact: true })).toBeVisible();
     await sidebar.getByRole('button', { name: '账号安全', exact: true }).click();
-    await page.getByRole('button', { name: '保留草稿并切换', exact: true }).click();
-    await expect(page.getByRole('heading', { name: '账号安全', exact: true })).toBeVisible();
-    // A preserved draft still protects against leaving/reloading the browser,
-    // even when its workspace is hidden.
-    expect(await page.evaluate(() => window.dispatchEvent(new Event('beforeunload', { cancelable: true })))).toBe(false);
-    await sidebar.getByRole('button', { name: '预约配置', exact: true }).click();
+    const navigation = page.getByRole('dialog', { name: '有未保存的调整' });
+    for (const width of [320, 390, 768, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      expect(await navigation.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+      await page.screenshot({ path: `output/field-workflow/unsaved-navigation-${width}.png` });
+    }
+    await navigation.getByRole('button', { name: '取消切换', exact: true }).click();
     await expect(input).toHaveValue('8');
+    expect(writes).toBe(0);
+    await sidebar.getByRole('button', { name: '账号安全', exact: true }).click();
+    await navigation.getByRole('button', { name: '丢弃并切换', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '账号安全', exact: true })).toBeVisible();
+    expect(await page.evaluate(() => window.dispatchEvent(new Event('beforeunload', { cancelable: true })))).toBe(true);
+    await sidebar.getByRole('button', { name: '预约配置', exact: true }).click();
+    await expect(navigation).toHaveCount(0);
+    await expect(input).toHaveValue(String(first.capacity));
+    await input.fill('8');
     await api(request, '/api/slot-capacities', token, { items: [{ ...first, capacity: 9 }] }, 'PATCH');
     await editor.getByRole('button', { name: '读取最新配置', exact: true }).click();
     await expect(editor.getByRole('region', { name: '配置冲突' })).toContainText('最新值 9');
@@ -970,6 +980,31 @@ test('capacity workspace preserves drafts, reconciles conflicts and supports mob
     await expect(editor.locator('.capacity-staffing')).toContainText('1 人');
     await expect(editor.locator('.capacity-actual-slots article')).toHaveCount(4);
     await page.screenshot({ path: 'output/field-workflow/capacity-actual-1440.png', fullPage: true });
+    await editor.getByRole('button', { name: '每周模板', exact: true }).click();
+    await input.fill('12');
+    await sidebar.getByRole('button', { name: '账号安全', exact: true }).click();
+    // A rejected write must keep both the current page and the unsaved input.
+    let rejectSave = true;
+    await page.route('**/api/slot-capacities', async route => {
+      if (route.request().method() === 'PATCH' && rejectSave) {
+        rejectSave = false;
+        await route.fulfill({ status: 500, json: { error: '模拟保存失败' } });
+      } else await route.fallback();
+    });
+    await navigation.getByRole('button', { name: '保存并切换', exact: true }).click();
+    await expect(navigation.getByRole('alert')).toContainText('尚未保存成功');
+    await navigation.getByRole('button', { name: '取消切换', exact: true }).click();
+    await expect(input).toHaveValue('12');
+    await sidebar.getByRole('button', { name: '账号安全', exact: true }).click();
+    await navigation.getByRole('button', { name: '保存并切换', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '账号安全', exact: true })).toBeVisible();
+    const saved = (await api(request, '/api/slot-capacities', token)).items;
+    expect(saved.find(item => item.campus === first.campus && item.weekday === first.weekday && item.timeSlot === first.timeSlot).capacity).toBe(12);
+    await sidebar.getByRole('button', { name: '预约配置', exact: true }).click();
+    await expect(input).toHaveValue('12');
+    await expect(navigation).toHaveCount(0);
+    await sidebar.getByRole('button', { name: '账号安全', exact: true }).click();
+    await expect(navigation).toHaveCount(0);
   } finally {
     const current = (await api(request, '/api/slot-capacities', token)).items;
     const updates = current.filter(item => original.find(old => old.campus === item.campus && old.weekday === item.weekday && old.timeSlot === item.timeSlot)?.capacity !== item.capacity).map(item => ({ ...item, capacity: original.find(old => old.campus === item.campus && old.weekday === item.weekday && old.timeSlot === item.timeSlot).capacity }));

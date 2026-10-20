@@ -13,6 +13,7 @@ import {dutyEnd} from '../../shared/duty-window.js';
 import {CollectionScope} from './CollectionScope';
 import {CollectionSettings} from './CollectionSettings';
 import {preferredRosterPeriod} from '../../shared/roster-collections.js';
+import {useUnsavedChanges} from './useUnsavedChanges.js';
 import './roster.css';
 import './roster-workflow.css';
 
@@ -112,17 +113,13 @@ export function RosterWorkflow({user,office=false}) {
     const timer=setInterval(refresh,30000);const visibility=()=>{if(document.hidden)readController.current?.abort();else refresh();};
     document.addEventListener('visibilitychange',visibility);return()=>{clearInterval(timer);readController.current?.abort();document.removeEventListener('visibilitychange',visibility);};
   },[active,taskId,dirty,requirementsDirty,busy,panel,choosing]);
-  useEffect(()=>{
-    if(!dirty&&!requirementsDirty)return;
-    const guard=event=>event.preventDefault(),unload=event=>{event.preventDefault();event.returnValue='';};
-    if(active)window.addEventListener('staff-before-navigation',guard);window.addEventListener('beforeunload',unload);
-    return()=>{window.removeEventListener('staff-before-navigation',guard);window.removeEventListener('beforeunload',unload);};
-  },[dirty,requirementsDirty,active]);
+  useUnsavedChanges({dirty,active,busy,save:()=>run('save',`/api/rosters/${draft.id}`,{version:draft.version,assignments:rows},'PATCH'),discard:()=>{setRows(draft.assignments);setDirty(false);setChoosing(null);setConfirmOverride(null);setPanel('');}});
   async function run(kind,path,body,method='POST') {
     if(lock.current)return;lock.current=true;setBusy(true);setError('');setNotice('');
     const signature=JSON.stringify([kind,path,body]);if(command.current?.signature!==signature)command.current={signature,id:crypto.randomUUID()};
     try{await request(path,{method,body:{...body,requestId:command.current.id}});command.current=null;setDirty(false);setPanel('');if(['generate','save','publish','revise'].includes(kind))setView('roster');else if(['close','reopen'].includes(kind))setView('auto');await load(taskId);await loadTasks();setNotice(({save:'调整已保存，已重新校验。',publish:'班表已发布，成员端将显示最新安排。',close:'收集已结束，可以生成自动排班。',reopen:'收集已重新开放，现有班表保持不变。',generate:'已生成排班草稿，请处理缺口并核对安排。',revise:'已复制当前班表。修订发布前，原班表继续生效。',series:'收集设置已更新。',participants:'参与人员已增补。'})[kind]);}
-    catch(failure){setError(failure.message);}finally{lock.current=false;setBusy(false);}
+    catch(failure){setError(failure.message);return false;}finally{lock.current=false;setBusy(false);}
+    return true;
   }
   async function openParticipants() {
     setError('');

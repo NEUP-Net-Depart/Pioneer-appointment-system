@@ -6,6 +6,7 @@ import {StaffIdentity} from './StaffIdentity';
 import {request} from './request.js';
 import {apiFetch} from '../../shared/api.js';
 import {dateKey} from '../../shared/time.js';
+import {useUnsavedChanges} from './useUnsavedChanges.js';
 
 const campusNames={'campus-nanhu':'南湖校区','campus-hunnan':'浑南校区'};
 const campusIds={'南湖':'campus-nanhu','浑南':'campus-hunnan'};
@@ -33,11 +34,7 @@ export function AttendanceManagement({user}){
       .then(result=>{if(!controller.signal.aborted)setOptions(result);}).catch(failure=>{if(!controller.signal.aborted)setError(failure.message);}).finally(()=>{if(!controller.signal.aborted)setFinding(false);}),250);
     return()=>{clearTimeout(timer);controller.abort();};
   },[active,form?.businessDate,form?.campusId,query,!!form]);
-  useEffect(()=>{
-    if(!dirty)return;const guard=event=>event.preventDefault(),unload=event=>{event.preventDefault();event.returnValue='';};
-    if(active)window.addEventListener('staff-before-navigation',guard);window.addEventListener('beforeunload',unload);
-    return()=>{window.removeEventListener('staff-before-navigation',guard);window.removeEventListener('beforeunload',unload);};
-  },[dirty,active]);
+  const navigationForm=useUnsavedChanges({dirty,active,busy,save,discard:()=>{setForm(null);setDirty(false);setDiscarding(false);}});
   function changeFilters(value){setCursor('');setFilters(current=>({...current,...value}));}
   function edit(item){
     setError('');setQuery('');setOptions({events:[],members:[]});setDirty(false);setDiscarding(false);
@@ -49,6 +46,7 @@ export function AttendanceManagement({user}){
     event.preventDefault();if(lock.current)return;lock.current=true;setBusy(true);setError('');
     try{await request('/api/attendance/corrections',{method:'POST',body:{...form,occurredAt:new Date(`${form.occurredAt}:00+08:00`).toISOString()}});
       setForm(null);setDirty(false);setCursor('');setRefresh(value=>value+1);setNotice('考勤已保存，历史身份和归属保留；不会改变今天的在岗状态。');
+      return true;
     }catch(failure){setError(failure.message);}finally{lock.current=false;setBusy(false);}
   }
   async function download(){
@@ -66,7 +64,7 @@ export function AttendanceManagement({user}){
       {next && <div className="field-actions"><button disabled={loading} onClick={()=>setCursor(next)}>加载更多</button></div>}
     </section>
     {exportOpen&&<WeeklyAttendanceExport campuses={campuses} onClose={()=>setExportOpen(false)}/>}
-    {form && <Modal title={form.recordId?'修正签到时间':'补录工作人员签到'} onClose={()=>{if(busy)return;if(dirty)setDiscarding(true);else setForm(null);}}><form className="roster-create-form" onSubmit={save}>
+    {form && <Modal title={form.recordId?'修正签到时间':'补录工作人员签到'} onClose={()=>{if(busy)return;if(dirty)setDiscarding(true);else setForm(null);}}><form ref={navigationForm} className="roster-create-form" onSubmit={save}>
       {discarding && <div className="react-error" role="alert"><p>修改尚未保存，是否放弃？</p><div className="field-actions"><button type="button" onClick={()=>setDiscarding(false)}>继续填写</button><button type="button" onClick={()=>{setForm(null);setDirty(false);setDiscarding(false);}}>放弃修改</button></div></div>}
       <p className="react-muted">这是历史考勤记录操作。需要加入今天工作时，请使用现场工作人员签到码。</p>
       {error && <p className="react-error" role="alert">{error}</p>}

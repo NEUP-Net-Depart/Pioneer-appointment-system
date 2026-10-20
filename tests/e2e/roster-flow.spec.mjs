@@ -463,8 +463,24 @@ test('member submits a whole week, keeps input between tabs and controls automat
   await form.getByLabel('南湖校区',{exact:true}).first().check();await form.getByLabel('后续同岗位收集自动延续本周选择',{exact:true}).check();
   await page.getByRole('button',{name:/我的申请/}).click();await page.getByRole('button',{name:/^班次/}).filter({hasNotText:'排班'}).first().click();await expect(form.getByLabel('南湖校区',{exact:true}).first()).toBeChecked();
   for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:`output/field-workflow/weekly-availability-${width}.png`,fullPage:true});}
-  await form.getByRole('button',{name:'提交整周可用时间',exact:true}).click();await expect(form.getByText('整周可用时间已提交，截止前可以修改。',{exact:true})).toBeVisible();await expect(form.getByText('维修可用时间自动延续已开启',{exact:true})).toBeVisible();
+  const sidebar=page.locator('.field-sidebar'),navigation=page.getByRole('dialog',{name:'有未保存的调整'});
+  await sidebar.getByRole('button',{name:'个人中心',exact:true}).click();
+  await navigation.getByRole('button',{name:'保存并切换',exact:true}).click();
+  await expect(form).toBeHidden();
+  await sidebar.getByRole('button',{name:'班次与排班',exact:true}).click();
+  await expect(navigation).toHaveCount(0);
+  await expect(form.getByLabel('南湖校区',{exact:true}).first()).toBeChecked();
+  await expect(form.getByText('整周可用时间已提交，截止前可以修改。',{exact:true})).toBeVisible();await expect(form.getByText('维修可用时间自动延续已开启',{exact:true})).toBeVisible();
   await form.getByRole('button',{name:'关闭后续自动延续',exact:true}).click();await expect(form.getByText('维修可用时间自动延续已开启',{exact:true})).toHaveCount(0);
+  await form.getByLabel('整周无法参加',{exact:true}).check();
+  await sidebar.getByRole('button',{name:'个人中心',exact:true}).click();
+  await navigation.getByRole('button',{name:'丢弃并切换',exact:true}).click();
+  await expect(form).toBeHidden();
+  await sidebar.getByRole('button',{name:'班次与排班',exact:true}).click();
+  await expect(navigation).toHaveCount(0);
+  await expect(form.getByLabel('整周无法参加',{exact:true})).not.toBeChecked();
+  await expect(form.getByLabel('后续同岗位收集自动延续本周选择',{exact:true})).not.toBeChecked();
+  await expect(form.getByLabel('南湖校区',{exact:true}).first()).toBeChecked();
   await form.getByLabel('整周无法参加',{exact:true}).check();await form.getByRole('button',{name:'提交整周可用时间',exact:true}).click();await expect(form.getByText('整周可用时间已提交，截止前可以修改。',{exact:true})).toBeVisible();await page.reload();await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();await expandGroup(page,'我的');await page.locator('.field-sidebar').getByRole('button',{name:'班次与排班',exact:true}).click();await form.getByLabel('收集任务',{exact:true}).selectOption(task.id);await expect(form.getByLabel('整周无法参加',{exact:true})).toBeChecked();
 });
 
@@ -480,7 +496,7 @@ test('repair manager closes collection, manually overrides availability, locks a
   const person=page.locator('.roster-person').filter({hasText:'陈宇'});await expect(person).toHaveCount(1);await expect(page.getByRole('button',{name:'检查并发布',exact:true})).toBeEnabled();
   await page.getByRole('button',{name:'检查并发布',exact:true}).click();const publication=page.getByRole('dialog');await expect(publication.getByRole('button',{name:'确认发布',exact:true})).toBeDisabled();await publication.getByLabel('发布原因',{exact:true}).fill('已核实人员不足，临时发布');for(const box of await publication.locator('input[type=checkbox]').all())await box.check();await expect(publication.getByRole('button',{name:'确认发布',exact:true})).toBeEnabled();for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await publication.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);await page.screenshot({path:`output/field-workflow/force-publication-${width}.png`,fullPage:true});}await publication.getByRole('button',{name:'关闭',exact:true}).click();
   await person.getByRole('button',{name:/^调整/}).click();const picker=page.getByRole('dialog');await picker.getByLabel('目标班次',{exact:true}).selectOption('2026-10-20:campus-nanhu:18:00:20:00');await picker.getByRole('button',{name:'移动到本班次',exact:true}).click();await expect(picker.getByRole('alert')).toContainText('未填报');await picker.getByRole('button',{name:'确认人工安排',exact:true}).click();await picker.getByRole('button',{name:'完成调整',exact:true}).click();
-  await person.getByRole('button',{name:/^调整/}).click();await page.getByRole('dialog').getByLabel('锁定此班次',{exact:true}).check();await page.getByRole('dialog').getByRole('button',{name:'完成调整',exact:true}).click();await page.locator('.field-sidebar').getByRole('button',{name:'预约记录',exact:true}).click();await expect(page.getByRole('dialog',{name:'有未保存的调整'})).toBeVisible();await page.getByRole('button',{name:'留在当前页面',exact:true}).click();
+  await person.getByRole('button',{name:/^调整/}).click();await page.getByRole('dialog').getByLabel('锁定此班次',{exact:true}).check();await page.getByRole('dialog').getByRole('button',{name:'完成调整',exact:true}).click();await page.locator('.field-sidebar').getByRole('button',{name:'预约记录',exact:true}).click();await expect(page.getByRole('dialog',{name:'有未保存的调整'})).toBeVisible();await page.getByRole('button',{name:'取消切换',exact:true}).click();
   await page.getByRole('button',{name:'保存并校验',exact:true}).click();await expect(page.getByText('调整已保存，已重新校验。',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'检查并发布',exact:true})).toBeEnabled();
   await page.locator('.workspace-more-actions>summary').click();await page.getByRole('button',{name:'重新自动排班',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'重新生成',exact:true}).click();await expect(page.getByText('已生成排班草稿，请处理缺口并核对安排。',{exact:true})).toBeVisible();await expect(person).toContainText('已锁定');
   await page.reload();await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();await expandGroup(page,'值班管理');await page.locator('.field-sidebar').getByRole('button',{name:'维修排班管理',exact:true}).click();await page.getByLabel('收集任务',{exact:true}).selectOption(task.seriesId||task.id);await page.getByLabel('排班周与校区',{exact:true}).selectOption(task.id);await expect(person).toContainText('人工安排');await expect(person).toContainText('已锁定');

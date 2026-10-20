@@ -5,6 +5,7 @@ import { WorkspaceHeader } from './WorkspaceHeader';
 import { ScopeFields, ConditionFields } from './ScopeFields.jsx';
 import { setGrantEnabled, withGrantValidity } from './authorization-drafts.js';
 import { WorkspaceSections } from './WorkspaceSections';
+import { useUnsavedChanges } from './useUnsavedChanges.js';
 
 const permissionGroups = [
   { id: 'all', label: '全部功能' },
@@ -44,14 +45,7 @@ export function Permissions({ user }) {
     }).catch(err => { if (active) setError(err.message); });
     return () => { active = false; };
   }, []);
-  useEffect(() => {
-    if (!dirty) return;
-    const guard = event => event.preventDefault();
-    const unload = event => { event.preventDefault(); event.returnValue = ''; };
-    if (routeActive) window.addEventListener('staff-before-navigation', guard);
-    window.addEventListener('beforeunload', unload);
-    return () => { window.removeEventListener('staff-before-navigation', guard); window.removeEventListener('beforeunload', unload); };
-  }, [dirty, routeActive]);
+  useUnsavedChanges({dirty,active:routeActive,busy,save,discard:()=>{setDraft(structuredClone(selected.grants || []));setError('');}});
   const visiblePermissions = permissions.filter(permission => (!enabledOnly || codes.has(permission.code)) && (search.trim() || group === 'all' || permissionGroup(permission.code) === group) && `${permission.name} ${permission.description || ''}`.includes(search.trim()));
   function select(role) {
     setSelected(role); setDraft(structuredClone(role.grants || [])); setError(''); setMessage('');
@@ -66,6 +60,7 @@ export function Permissions({ user }) {
       setRoles(current => current.map(role => role.id === updated.id ? updated : role));
       setSelected(updated); setDraft(structuredClone(updated.grants || []));
       setMessage('权限已保存，受影响的账号需要重新登录');
+      return true;
     } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
   return <section className="react-page permissions-workspace">

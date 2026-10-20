@@ -7,6 +7,7 @@ import {ServiceDayEditor} from './ServiceDayEditor';
 import { ActualDayCapacity } from './ActualDayCapacity';
 import { ServiceLocationEditor } from './ServiceLocationEditor';
 import { WorkspaceSections } from './WorkspaceSections';
+import {useUnsavedChanges} from './useUnsavedChanges.js';
 import './capacity.css';
 
 const days = ['周一', '周二', '周三', '周四'];
@@ -61,14 +62,7 @@ export function CapacityEditor({ active, onNavigate }) {
     document.addEventListener('visibilitychange', visibility);
     return () => { reading.current?.abort(); setLoading(false); document.removeEventListener('visibilitychange', visibility); };
   }, [active, refresh]);
-  useEffect(() => {
-    if (!changes.length) return;
-    const guard = event => event.preventDefault();
-    const unload = event => { event.preventDefault(); event.returnValue = ''; };
-    if (active) window.addEventListener('staff-before-navigation', guard);
-    window.addEventListener('beforeunload', unload);
-    return () => { window.removeEventListener('staff-before-navigation', guard); window.removeEventListener('beforeunload', unload); };
-  }, [active, changes.length]);
+  useUnsavedChanges({dirty:!!changes.length,active,busy,save,discard:()=>{setDrafts({});setUndo(null);setReview(false);setDiscard(false);setError('');}});
   useEffect(() => { if (!active) { drag.current = null; setPreview(null); setEditing(''); } }, [active]);
 
   function apply(updates, remember = true) {
@@ -198,6 +192,7 @@ export function CapacityEditor({ active, onNavigate }) {
       setItems(current => current.map(item => saved.get(keyOf(item)) || item));
       setDrafts(current => Object.fromEntries(Object.entries(current).filter(([key]) => !saved.has(key))));
       setUndo(null); setReview(false); setRevision(current => current + 1); setMessage(`已保存 ${result.items.length} 项。已形成快照的日期保持原容量。`);
+      return true;
     } catch (failure) {
       setReview(false); setError(failure.status === 409 ? '配置已被其他人更新，请核对最新值和你的草稿后再保存。' : `${failure.message}。草稿已保留，正在核对保存结果。`);
       // Refresh only after unlocking, and merge matching values instead of
@@ -256,7 +251,7 @@ export function CapacityEditor({ active, onNavigate }) {
     <ActivityContext.Provider value={active && mode === 'serviceDays'}><div hidden={mode !== 'serviceDays'}>{campus && <ServiceDayEditor campus={campus} onNavigate={onNavigate}/>}</div></ActivityContext.Provider>
     <ActivityContext.Provider value={active && mode === 'locations'}><div hidden={mode !== 'locations'}>{campus && <ServiceLocationEditor campus={campus} />}</div></ActivityContext.Provider>
     {conflicts.length > 0 && <section className="field-card capacity-conflicts" aria-label="配置冲突"><h2>核对其他人的修改</h2><p>以下格子在你编辑期间已更新。草稿完整保留，逐项选择后再保存。</p>{conflicts.map(item => <article key={keyOf(item)}><strong>{label(item)}</strong><div><span>编辑前 {drafts[keyOf(item)].original}</span><span>最新值 <b>{item.capacity}</b></span><span>我的草稿 <b>{value(item) || '空白'}</b></span></div><div className="field-actions"><button disabled={busy} onClick={() => reconcile(item, false)}>使用最新值</button><button disabled={busy} onClick={() => reconcile(item, true)}>保留我的修改</button></div></article>)}</section>}
-    {!!changes.length && <footer className="capacity-save-bar"><div><strong>{changes.length} 项待保存</strong><span>{conflicts.length ? `${conflicts.length} 项冲突待核对` : invalid.length ? `${invalid.length} 项人数格式不正确` : '切换页面保留草稿，刷新页面前请保存。'}</span></div><div className="field-actions"><button disabled={busy || !undo} onClick={() => { setDrafts(undo); setUndo(null); }}>撤销上一步</button><button disabled={busy} onClick={() => setDiscard(true)}>放弃修改</button><button className="field-primary" disabled={busy || !!conflicts.length || !!invalid.length} onClick={() => setReview(true)}>预览并保存</button></div></footer>}
+    {!!changes.length && <footer className="capacity-save-bar"><div><strong>{changes.length} 项待保存</strong><span>{conflicts.length ? `${conflicts.length} 项冲突待核对` : invalid.length ? `${invalid.length} 项人数格式不正确` : '切换页面前请选择保存或丢弃改动。'}</span></div><div className="field-actions"><button disabled={busy || !undo} onClick={() => { setDrafts(undo); setUndo(null); }}>撤销上一步</button><button disabled={busy} onClick={() => setDiscard(true)}>放弃修改</button><button className="field-primary" disabled={busy || !!conflicts.length || !!invalid.length} onClick={() => setReview(true)}>预览并保存</button></div></footer>}
     {review && <Modal title="确认预约人数调整" dismissible={!busy} onClose={() => { if (!busy) setReview(false); }}><p>保存全部校区的 {changes.length} 项修改；已有日期快照保持不变。</p><div className="capacity-review-list">{changes.map(item => <div key={keyOf(item)}><span>{label(item)}</span><strong>{item.capacity} → {value(item)} 名</strong></div>)}</div><div className="field-actions"><button disabled={busy} onClick={() => setReview(false)}>返回编辑</button><button className="field-primary" disabled={busy || !!conflicts.length || !!invalid.length} onClick={save}>{busy ? '正在保存…' : '确认保存全部修改'}</button></div></Modal>}
     {discard && <Modal title="放弃全部未保存修改？" onClose={() => setDiscard(false)}><p>所有校区的未保存人数将恢复为最近读取的配置。</p><div className="field-actions"><button onClick={() => setDiscard(false)}>继续编辑</button><button onClick={() => { setDrafts({}); setUndo(null); setDiscard(false); setError(''); }}>确认放弃修改</button></div></Modal>}
   </div>;

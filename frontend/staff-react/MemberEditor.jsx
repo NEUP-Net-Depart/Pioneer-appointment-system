@@ -7,6 +7,7 @@ import { ActivityContext, Modal } from './field/ui';
 import { WorkspaceSections } from './WorkspaceSections';
 import { MemberQualifications } from './MemberQualifications.jsx';
 import { StaffIdentity } from './StaffIdentity';
+import { useUnsavedChanges } from './useUnsavedChanges.js';
 
 const campuses = [{ id: 'campus-nanhu', name: '南湖' }, { id: 'campus-hunnan', name: '浑南' }];
 
@@ -25,14 +26,8 @@ export function MemberEditor({ member, canManageRoles, onClose, onSaved }) {
   const profileDirty = detail && ['name', 'homeCampusId', 'status'].some(key => profile[key] !== detail.member[key]);
   const bindingsDirty = detail && JSON.stringify(bindings) !== JSON.stringify(detail.bindings || []);
   const dirty = profileDirty || bindingsDirty || qualificationDirty;
-  useEffect(() => {
-    if (!dirty) return;
-    const guard = event => event.preventDefault();
-    const unload = event => { event.preventDefault(); event.returnValue = ''; };
-    if (active) window.addEventListener('staff-before-navigation', guard);
-    window.addEventListener('beforeunload', unload);
-    return () => { window.removeEventListener('staff-before-navigation', guard); window.removeEventListener('beforeunload', unload); };
-  }, [active, dirty]);
+  const profileForm=useUnsavedChanges({dirty:profileDirty,active,busy,save:saveProfile,discard:()=>{setProfile({name:detail.member.name,homeCampusId:detail.member.homeCampusId,status:detail.member.status});setConfirmClose(false);}});
+  const rolesForm=useUnsavedChanges({dirty:bindingsDirty,active,busy,save:saveBindings,discard:()=>{setBindings(structuredClone(detail.bindings||[]));setConfirmClose(false);}});
   useEffect(() => {
     let active = true;
     request(`/api/members/${encodeURIComponent(member.memberId)}`).then(data => {
@@ -55,6 +50,7 @@ export function MemberEditor({ member, canManageRoles, onClose, onSaved }) {
       });
       setDetail(current => ({ ...current, member: data.member }));
       setMessage('成员资料已保存'); onSaved();
+      return true;
     } catch (err) { setError(err.message); } finally { lock.current = false; setBusy(false); }
   }
 
@@ -68,6 +64,7 @@ export function MemberEditor({ member, canManageRoles, onClose, onSaved }) {
       const data = await request(`/api/members/${encodeURIComponent(member.memberId)}`);
       setDetail(data); setBindings(data.bindings || []);
       setMessage('角色授权已保存，相关账号需要重新登录'); onSaved();
+      return true;
     } catch (err) { setError(err.message); } finally { lock.current = false; setBusy(false); }
   }
   function editBinding(index, patch) {
@@ -86,14 +83,14 @@ export function MemberEditor({ member, canManageRoles, onClose, onSaved }) {
     {error && <p className="react-error" role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     {!detail ? <p role="status">正在读取成员资料…</p> : <>
       {canManageRoles && (section==='qualifications' || qualificationDirty) && <div hidden={section!=='qualifications'}><MemberQualifications detail={detail} onSaved={reload} onDirty={setQualificationDirty} onBusy={setBusy}/></div>}
-      <form hidden={section !== 'profile'} onSubmit={saveProfile}><fieldset disabled={busy}><legend>成员资料{profileDirty ? ' · 未保存' : ''}</legend>
+      <form ref={profileForm} hidden={section !== 'profile'} onSubmit={saveProfile}><fieldset disabled={busy}><legend>成员资料{profileDirty ? ' · 未保存' : ''}</legend>
         <label>姓名<input required value={profile.name} onChange={event => setProfile({ ...profile, name: event.target.value })} /></label>
         <label>所属校区<select value={profile.homeCampusId} onChange={event => setProfile({ ...profile, homeCampusId: event.target.value })}>{campuses.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <label>成员状态<select value={profile.status} onChange={event => setProfile({ ...profile, status: event.target.value })}><option value="active">正常</option><option value="inactive">停用</option></select></label>
         <button className="react-primary">保存资料</button>
       </fieldset></form>
       {detail.account?.protected && <p className="react-muted">此负责人账号受保护，不能停用或移除其授权。</p>}
-      {canManageRoles && !detail.account?.protected && <form hidden={section !== 'roles'} onSubmit={saveBindings}><fieldset disabled={busy || !roles.length}><legend>角色授权{bindingsDirty ? ' · 未保存' : ''}</legend>
+      {canManageRoles && !detail.account?.protected && <form ref={rolesForm} hidden={section !== 'roles'} onSubmit={saveBindings}><fieldset disabled={busy || !roles.length}><legend>角色授权{bindingsDirty ? ' · 未保存' : ''}</legend>
         <p className="react-muted">授权校区独立于所属校区；结束日期当天起失效。</p>
         {bindings.map((binding, index) => {
           return <details className="react-binding workspace-binding" open={index===0||!binding.id} key={binding.id || `new-${index}`}>

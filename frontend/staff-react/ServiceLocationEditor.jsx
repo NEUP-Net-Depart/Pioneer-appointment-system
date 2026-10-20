@@ -2,6 +2,7 @@ import React, { useCallback, useContext, useEffect, useRef, useState } from 'rea
 import { addDays, dateKey, formatInstant } from '../../shared/time.js';
 import { request } from './request.js';
 import { ActivityContext, Modal, Notice } from './field/ui';
+import {useUnsavedChanges} from './useUnsavedChanges.js';
 
 export function ServiceLocationEditor({ campus }) {
   const active = useContext(ActivityContext);
@@ -40,12 +41,7 @@ export function ServiceLocationEditor({ campus }) {
     return () => { reading.current?.abort(); document.removeEventListener('visibilitychange', visibility); };
   }, [refresh]);
   useEffect(() => { setReview(false); setMessage(''); }, [active, key]);
-  useEffect(() => {
-    if (!Object.keys(drafts).length) return;
-    const unload = event => { event.preventDefault(); event.returnValue = ''; };
-    window.addEventListener('beforeunload', unload);
-    return () => window.removeEventListener('beforeunload', unload);
-  }, [drafts]);
+  useUnsavedChanges({dirty:!!Object.keys(drafts).length,active,busy,save:()=>save(true),discard:()=>{setDrafts({});setReview(false);setError('');}});
   function edit(value) {
     setDrafts(current => {
       const next = { ...current };
@@ -55,14 +51,18 @@ export function ServiceLocationEditor({ campus }) {
     });
     setMessage('');
   }
-  async function save() {
-    if (!data || !draft || conflict || lock.current) return;
+  async function save(all = false) {
+    if (lock.current || all !== true && (!data || !draft || conflict)) return;
     lock.current = true; reading.current?.abort(); setBusy(true); setLoading(false); setError('');
     try {
-      const result = await request('/api/service-locations', { method: 'PATCH', body: { campus, date, location: value.trim(), revision: data.revision } });
-      setSnapshot({ ...result, key });
-      setDrafts(current => { const next = { ...current }; delete next[key]; return next; });
+      for (const [savedKey, entry] of all === true ? Object.entries(drafts) : [[key, draft]]) {
+        const [savedCampus, savedDate] = savedKey.split('/');
+        const result = await request('/api/service-locations', { method: 'PATCH', body: { campus:savedCampus, date:savedDate, location:entry.value.trim(), revision:entry.revision } });
+        if(savedKey === key)setSnapshot({ ...result, key });
+        setDrafts(current => { const next = { ...current }; delete next[savedKey]; return next; });
+      }
       setMessage('已保存。已有预约同步显示最新地点；需要时请人工通知客户。');
+      return true;
     } catch (failure) {
       lock.current = false; await refresh();
       setError(failure.status === 409 ? '地点已被其他人修改，请核对最新地点和你的草稿。' : `${failure.message}。已核对保存结果，未确认的输入仍保留。`);
