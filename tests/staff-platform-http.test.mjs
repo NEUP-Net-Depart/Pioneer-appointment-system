@@ -42,6 +42,31 @@ before(async () => {
 });
 after(async () => mf?.dispose());
 
+test('member profile imports preserve account scopes and multiple aliases require an explicit selection', async () => {
+  const db=await mf.getD1Database('DB');
+  await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('20269980','多账号成员','technician','南湖',?,'2026-01-01')").bind(hashPassword('multi-account-password')).run();
+  const {member_id:memberId}=await db.prepare("SELECT member_id FROM staff_accounts WHERE account='20269980'").first();
+  await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at,member_id) VALUES('20269981','多账号别名','admin','浑南',?,'2026-01-01',?)").bind(hashPassword('multi-account-password'),memberId).run();
+  await db.batch([db.prepare("INSERT INTO staff_campus_grants VALUES('20269980','南湖')"),db.prepare("INSERT INTO staff_campus_grants VALUES('20269981','浑南')")]);
+  const signedIn=await request('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account:'root001',password:'staff-platform-password'})});
+  const headers={'Content-Type':'application/json',Authorization:`Bearer ${signedIn.body.token}`};
+  const run=csv=>request('/api/members/import',{method:'POST',headers,body:JSON.stringify({csv,confirm:true})});
+  const grants=async()=>(await db.prepare("SELECT account,campus FROM staff_campus_grants WHERE account IN ('20269980','20269981') ORDER BY account,campus").all()).results;
+  const original=await grants();
+  assert.equal((await run('studentId,name,homeCampusId\n20269980,只改资料,campus-nanhu')).response.status,200);
+  assert.deepEqual(await grants(),original);
+  const ambiguous=await run('studentId,name,homeCampusId,authorizedCampuses\n20269980,不得隐式选择,campus-nanhu,南湖');
+  assert.equal(ambiguous.response.status,400);assert.match(ambiguous.body.error,/accountTargets/);assert.deepEqual(await grants(),original);
+  assert.equal((await run('studentId,name,homeCampusId,authorizedCampuses,accountTargets\n20269980,无关账号,campus-nanhu,南湖,root001')).response.status,400);
+  assert.equal((await run('studentId,name,homeCampusId,authorizedCampuses,accountTargets\n20269980,单账号调整,campus-nanhu,南湖|浑南,20269980')).response.status,200);
+  assert.deepEqual((await grants()).filter(row=>row.account==='20269981'),original.filter(row=>row.account==='20269981'));
+  const before=(await db.prepare("SELECT account,auth_version FROM staff_accounts WHERE member_id=? ORDER BY account").bind(memberId).all()).results;
+  assert.equal((await run('studentId,name,homeCampusId,authorizedCampuses,accountTargets\n20269980,明确清空全部,campus-nanhu,,*')).response.status,200);
+  assert.deepEqual(await grants(),[]);
+  const after=(await db.prepare("SELECT account,auth_version FROM staff_accounts WHERE member_id=? ORDER BY account").bind(memberId).all()).results;
+  assert.ok(after.every((row,i)=>row.auth_version>before[i].auth_version));
+});
+
 test('administrator invitations require explicit member roles and campus scope, without inventing a work post', async () => {
   const db=await mf.getD1Database('DB');
   const identityHeaders={'CF-Connecting-IP':'192.0.2.170'};
@@ -280,8 +305,11 @@ test('staff platform auth context, modular permissions and policy attendance are
   assert.equal(attendancePreview.response.status, 200);
   const beforeConfirmation = await request('/api/me/attendance', { headers });
   assert.equal(beforeConfirmation.body.items.length, 0, 'preview must not create attendance');
-  const futureEvent = await request('/api/attendance/events', { method: 'POST', headers, body: JSON.stringify({ type: 'duty', campusId: 'campus-hunnan', businessDate: dateKey(), startsAt: new Date(now + 3_600_000).toISOString(), endsAt: new Date(now + 7_200_000).toISOString(), requestId: 'attendance-future-preview' }) });
+  const futureDay=addDays(dateKey(),1);
+  const futureEvent = await request('/api/attendance/events', { method: 'POST', headers, body: JSON.stringify({ type: 'duty', campusId: 'campus-hunnan', businessDate: futureDay, startsAt: `${futureDay}T12:00:00+08:00`, endsAt: `${futureDay}T13:00:00+08:00`, requestId: 'attendance-future-preview' }) });
+  assert.equal(futureEvent.response.status,201,JSON.stringify(futureEvent.body));
   const futureToken = await request(`/api/attendance/events/${futureEvent.body.id}/token`, { method: 'POST', headers, body: JSON.stringify({ revision: futureEvent.body.revision }) });
+  assert.equal(futureToken.response.status,200,JSON.stringify(futureToken.body));
   for (const endpoint of ['preview', 'check-ins']) {
     const invalid = await request(`/api/attendance/${endpoint}`, { method: 'POST', headers, body: JSON.stringify({ token: futureToken.body.token }) });
     assert.equal(invalid.response.status, 409, 'preview and confirmation must share attendance-window validation');

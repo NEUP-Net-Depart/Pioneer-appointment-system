@@ -6,27 +6,31 @@ export const UnsavedPageContext = createContext(null);
 // participate, and navigation cannot silently leave an editor dirty.
 export function useUnsavedChanges({ dirty, active = true, busy = false, save, discard }) {
   const pageActive = useContext(UnsavedPageContext);
-  const current = useRef(null), form = useRef(null);
-  current.current = { dirty, active:pageActive ?? active, busy, save, discard };
+  const current = useRef(null),
+    form = useRef(null);
+  current.current = { dirty, active: pageActive ?? active, busy, save, discard };
   useEffect(() => {
-    const guard = event => {
-      if (!current.current.active || !current.current.dirty) return;
+    const guard = (event) => {
+      if ((!current.current.active && !event.detail?.includeHidden) || !current.current.dirty)
+        return;
       event.preventDefault();
       event.detail?.editors.push({
         async save() {
           if (current.current.busy) throw new Error('当前操作正在提交，请稍后再试。');
-          if (form.current && !form.current.checkValidity()) throw new Error('有必填项或格式需要检查，请取消切换后修正。');
+          if (form.current && !form.current.checkValidity())
+            throw new Error('有必填项或格式需要检查，请取消切换后修正。');
           return current.current.save({ preventDefault() {} });
         },
         discard() {
           if (current.current.busy) throw new Error('当前操作正在提交，请稍后再试。');
           current.current.discard();
-        },
+        }
       });
     };
-    const unload = event => {
+    const unload = (event) => {
       if (!current.current.active || !current.current.dirty) return;
-      event.preventDefault(); event.returnValue = '';
+      event.preventDefault();
+      event.returnValue = '';
     };
     window.addEventListener('staff-before-navigation', guard);
     window.addEventListener('beforeunload', unload);
@@ -38,8 +42,13 @@ export function useUnsavedChanges({ dirty, active = true, busy = false, save, di
   return form;
 }
 
-export function pendingEditors() {
+export function pendingEditors({ includeHidden = false } = {}) {
   const editors = [];
-  window.dispatchEvent(new CustomEvent('staff-before-navigation', { cancelable: true, detail: { editors } }));
+  window.dispatchEvent(
+    new CustomEvent('staff-before-navigation', {
+      cancelable: true,
+      detail: { editors, includeHidden }
+    })
+  );
   return editors;
 }

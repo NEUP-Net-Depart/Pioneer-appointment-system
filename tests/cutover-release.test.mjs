@@ -58,7 +58,7 @@ test('later deployments respect deliberately ungranted administrators and revoke
 
 test('already applied 0030 upgrades forward without authorizing a same-campus technician alias',async()=>{
   const report=await rehearseSnapshot(await baselineDump({deployed:true,beforeLoginScope:true,interleaved:true}));
-  assert.equal(report.applied,1);assert.equal(report.accounts['admin → legacy_admin'],1);assert.equal(report.accounts['admin → '],1);
+  assert.equal(report.applied,2);assert.equal(report.accounts['admin → legacy_admin'],1);assert.equal(report.accounts['admin → '],1);
 });
 
 test('current D1 snapshots restore with interleaved table definitions and cyclic account/member references',async()=>{

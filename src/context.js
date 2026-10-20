@@ -43,7 +43,7 @@ export function createContext(request, env) {
   staffPlatformServiceInstance.field = field;
   const services = {
     auth: authService(users, env.JWT_SECRET), users: userService(users, staffPlatformServiceInstance),
-    activation: activationService(activationRepository(db),users),
+    activation: activationService(activationRepository(db),users,staffPlatformServiceInstance),
     appointments: appointmentService(appointments, users, env.PII_ENCRYPTION_KEY, clock, staffPlatformServiceInstance),
     attachments: attachmentService(appointments, attachmentRepository(db), env.ATTACHMENTS, storageLimit(env), field),
     queue: queueService(appointments, queueRepository(db), clock), stats: statsService(statsRepository(db), appointments, clock, staffPlatformServiceInstance),

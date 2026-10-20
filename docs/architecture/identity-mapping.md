@@ -11,3 +11,7 @@
 - `attendance_records` 保存发生时部门、姓名等快照；转部门后历史事实仍按发生时归属统计。
 
 旧接口的中文校区由边界适配映射至 `campus-nanhu` / `campus-hunnan`。新 API 使用 `memberId` 和字典 ID。
+
+成员 CSV 导入省略 `authorizedCampuses` 列时，只修改成员资料，不调整任何登录账号的校区。提供该列表示替换所选账号的校区授权，空值表示清空；已有多个账号时必须同时提供 `accountTargets`，用 `|` 分隔账号，或单独填写 `*` 明确选择全部账号。单账号成员可省略 `accountTargets`。预览返回实际目标；不属于该成员的账号、含糊的多账号更新会被拒绝。账号校区调整仅允许最高管理员执行；同一成员的所有会话版本随成员资料更新而失效。
+
+新成员的 `authorizedCampuses` 还用于角色绑定范围和激活邀请；管理员邀请仍须明确填写 `accountRole=admin`、`roleCodes` 和非空校区。历史 `legacy_admin_logins` 与原校区兼容快照不由成员导入改写。

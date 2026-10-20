@@ -136,6 +136,10 @@
     {
       "name": "0031_admin_invitation_and_login_scope.sql",
       "sha256": "e9b49784f6c6bbbe8ce32bebd6ca431e1a55e76b7bade1365b5a3a289ab35da5"
+    },
+    {
+      "name": "0032_appointment_list_indexes.sql",
+      "sha256": "81a16635e12a649ea9c23a1ea60d865fc3fda3e17c50040e2366091930cafa87"
     }
   ],
   "modules": [
@@ -351,6 +355,10 @@
     {
       "name": "0031_admin_invitation_and_login_scope.sql",
       "sha256": "e9b49784f6c6bbbe8ce32bebd6ca431e1a55e76b7bade1365b5a3a289ab35da5"
+    },
+    {
+      "name": "0032_appointment_list_indexes.sql",
+      "sha256": "81a16635e12a649ea9c23a1ea60d865fc3fda3e17c50040e2366091930cafa87"
     }
   ],
   "staffMigrationsDirectory": "database/staff-migrations"

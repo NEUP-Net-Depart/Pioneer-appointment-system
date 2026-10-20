@@ -555,6 +555,22 @@ test('failed and stale corrections never leave audit rows or bypass capacity and
   assert.deepEqual(await service.lookup(item.id,item.accessToken),guestRestored);
 });
 
+test('correction audit failures roll back the appointment and correction snapshot together', async () => {
+  const actor = await userRepository(db).find('root001'), item = await book();
+  const repository = appointmentRepository(db), service = appointmentService(repository,userRepository(db),PII_ENCRYPTION_KEY,() => new Date(testNow));
+  const cancelled = await service.update(item.id,{patch:{status:'cancelled'}},null,item.accessToken);
+  const beforeAudit = await db.prepare("SELECT COUNT(*) AS n FROM audit_events WHERE action='repairs.corrected' AND json_extract(source_ref,'$.id')=?").bind(item.id).first();
+  const beforeCorrections = await db.prepare('SELECT COUNT(*) AS n FROM appointment_corrections WHERE appointment_id=?').bind(item.id).first();
+  await db.prepare("CREATE TRIGGER correction_test_audit_failure BEFORE INSERT ON audit_events WHEN NEW.action='repairs.corrected' BEGIN SELECT RAISE(ABORT,'CORRECTION_AUDIT_FAILURE'); END").run();
+  await assert.rejects(service.update(item.id,{action:'correct',revision:cancelled.revision,correctionReason:'管理员核实误取消记录后恢复预约',patch:{status:'booked'}},actor));
+  await db.prepare('DROP TRIGGER correction_test_audit_failure').run();
+  const stored = await repository.find(item.id);
+  assert.equal(stored.status,'cancelled');
+  assert.equal(stored.revision,cancelled.revision);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_events WHERE action='repairs.corrected' AND json_extract(source_ref,'$.id')=?").bind(item.id).first()).n,beforeAudit.n);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointment_corrections WHERE appointment_id=?').bind(item.id).first()).n,beforeCorrections.n);
+});
+
 test('restored repairs reject earlier photos and remain in progress beyond the extended deadline', async () => {
   const root = await login(), actor = await userRepository(db).find('root001'), item = await book();
   const oldPhotos = await intake(item,root), repository = appointmentRepository(db);
@@ -1151,6 +1167,34 @@ test('staff sorting and slot filters compose while contextual counts ignore only
     await api(`/api/appointments?${new URLSearchParams({sorts})}`, { token }, 400);
   }
   for (const query of ['sort=invalid','sort=created_at%20DESC','direction=invalid','timeSlot=invalid']) await api(`/api/appointments?${query}`, { token }, 400);
+});
+
+test('appointment listing uses bounded keyset pages without repeating records', async () => {
+  const token = await login();
+  const items = await Promise.all([book(), book(), book()]);
+  const first = await api('/api/appointments?limit=2', { token });
+  assert.equal(first.items.length, 2);
+  assert.ok(first.nextCursor);
+  const second = await api(`/api/appointments?${new URLSearchParams({ limit: '2', cursor: first.nextCursor })}`, { token });
+  assert.equal(second.items.length, 1);
+  assert.equal(new Set([...first.items, ...second.items].map(item => item.id)).size, 3);
+  assert.deepEqual([...first.items, ...second.items].map(item => item.createdAt), [...first.items, ...second.items].map(item => item.createdAt).sort().reverse());
+  await api('/api/appointments?limit=0', { token }, 400);
+  await api('/api/appointments?cursor=not-json', { token }, 400);
+  assert.ok(items.every(item => [first.items, second.items].flat().some(row => row.id === item.id)));
+});
+
+test('explicit account management grants permit technician reviewers without granting protected account control', async()=>{
+  await addUser('650191');await addUser('650192');
+  await grantTestManagement(db,'650191');
+  const token=await login('650191');
+  await api('/api/users/650192',{token,method:'PATCH',body:{name:'已授权管理修改'}});
+  await api('/api/users/650192',{token,method:'PATCH',body:{role:'admin'}},403);
+  await api('/api/users/root001',{token,method:'PATCH',body:{status:'disabled'}},403);
+  await api('/api/staff-whitelist/import',{token,method:'POST',body:{csv:'studentId,expectedName\n650193,明确授权审批',expectedRole:'technician',authorizedCampuses:['南湖']}});
+  const application=await applyStaff('650193',{name:'明确授权审批'});
+  await api('/api/activation-requests/review',{token,method:'POST',body:{ids:[application.id],status:'approved',identityVerified:true}});
+  assert.equal((await db.prepare("SELECT status FROM activation_requests WHERE id=?").bind(application.id).first()).status,'approved');
 });
 
 test('staff overview uses real capacity and cancellation rules without exposing student data or other campuses', async () => {

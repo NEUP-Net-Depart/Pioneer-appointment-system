@@ -35,6 +35,20 @@ async function dragBetween(page, from, to) {
   await page.mouse.move(end.x + end.width / 2,end.y + end.height / 2,{ steps:12 });
   await page.mouse.up();
 }
+
+test('logout keeps unsaved capacity edits until the user saves or discards them',async({page})=>{
+  const {writes,cell}=await fixture(page);
+  await cell(0,0).dblclick();await cell(0,0).locator('input').fill('17');await cell(0,0).locator('input').press('Enter');
+  const logout=page.locator('.field-sidebar').getByRole('button',{name:'退出登录',exact:true});
+  await logout.click();const dialog=page.getByRole('dialog',{name:'有未保存的调整'});
+  await expect(dialog).toBeVisible();expect(writes).toHaveLength(0);
+  await dialog.getByRole('button',{name:'取消退出',exact:true}).click();await expect(cell(0,0).locator('input')).toHaveValue('17');
+  expect(await page.evaluate(()=>sessionStorage.getItem('pioneerToken'))).toBeTruthy();
+  await logout.click();await dialog.getByRole('button',{name:'保存并退出',exact:true}).click();
+  await expect(page.locator('#login-form')).toBeVisible();expect(writes).toHaveLength(1);
+  expect(writes[0].items.some(item=>item.capacity===17)).toBe(true);
+  expect(await page.evaluate(()=>sessionStorage.getItem('pioneerToken'))).toBeNull();
+});
 test('React capacity drag fill repeats blocks in both axes and undo preserves the stored configuration', async ({page}) => {
   const {writes,cell} = await fixture(page);
   const handle = page.getByRole('button',{name:'拖动复制选区人数',exact:true});

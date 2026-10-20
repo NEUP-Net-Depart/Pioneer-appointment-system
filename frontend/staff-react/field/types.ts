@@ -14,8 +14,12 @@ export interface Appointment {
   warranty?: string;
   assignedToName?: string;
   assignedMemberId?: string;
-  assigneeIdentities?: {code:string;label:string}[];
-  assigneeIdentitySnapshot?: {memberId:string;name:string;identities:{code:string;label:string}[]} | null;
+  assigneeIdentities?: { code: string; label: string }[];
+  assigneeIdentitySnapshot?: {
+    memberId: string;
+    name: string;
+    identities: { code: string; label: string }[];
+  } | null;
   startedAt?: string;
   repairNote?: string;
   outcome?: string;
@@ -35,7 +39,15 @@ export interface Appointment {
   canReadDetails?: boolean;
   canCorrect?: boolean;
   canRecoverCredential?: boolean;
-  original?: { note?: string; signature?: string; agreementAt?: string; agreementVersion?: string; college?: string; serial?: string; liquidDrop?: string } | null;
+  original?: {
+    note?: string;
+    signature?: string;
+    agreementAt?: string;
+    agreementVersion?: string;
+    college?: string;
+    serial?: string;
+    liquidDrop?: string;
+  } | null;
   intake?: Verification;
 }
 export interface Verification {
@@ -62,7 +74,7 @@ export interface Person {
   currentRepair?: { id: string; deviceModel: string };
 }
 export interface Home {
-  directAttendance?:{allowed:boolean;reason:string};
+  directAttendance?: { allowed: boolean; reason: string };
   identities?: { code: string; label: string }[];
   permissions: Record<string, boolean>;
   navigation: { id: string }[];

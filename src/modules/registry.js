@@ -64,7 +64,7 @@ export function validateManifests(items = manifests) {
 }
 
 export function publishedManifests(items = manifests) {
-  return items.filter(item => ['ready', 'test'].includes(item.releaseState));
+  return items.filter(item => item.releaseState === 'ready');
 }
 
 export function navigationFor(actor, grants = [], items = manifests, context = {}) {

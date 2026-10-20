@@ -11,6 +11,24 @@ async function fixture(page,campuses=['南湖','浑南']){
   await loginStaff(page);await staffPage(page,'预约记录');
 }
 const query=page=>page.waitForRequest(req=>new URL(req.url()).pathname==='/api/appointments');
+
+test('record pages retain loaded rows through polling and allow continuation with a custom sort',async({page})=>{
+  await page.clock.install();await mockStaff(page);
+  const reads=[];
+  await page.route('**/api/appointments?*',route=>{
+    const params=new URL(route.request().url()).searchParams;reads.push(params);
+    const next=!!params.get('cursor');
+    return route.fulfill({json:{items:(next?[3,4]:[1,2]).map(n=>({...item,id:`page-${n}`,name:`分页学生${n}`})),counts:{all:4,completed:4},filteredCounts:{all:4,completed:4},nextCursor:next?null:'second-page'}});
+  });
+  await loginStaff(page);await staffPage(page,'预约记录');
+  const rows=page.locator('.records-table tbody tr');await expect(rows).toHaveCount(2);
+  await page.getByRole('button',{name:'加载更多预约',exact:true}).click();await expect(rows).toHaveCount(4);
+  await page.clock.fastForward(31000);await expect.poll(()=>reads.length).toBeGreaterThanOrEqual(4);
+  await expect(rows).toHaveCount(4);await expect(rows.locator('strong').filter({hasText:'分页学生'})).toHaveText(['分页学生1','分页学生2','分页学生3','分页学生4']);
+  await page.getByRole('button',{name:/^校区，/}).click();await expect(rows).toHaveCount(2);
+  await page.getByRole('button',{name:'加载更多预约',exact:true}).click();await expect(rows).toHaveCount(4);
+  expect(reads.at(-1).get('sorts')).toBe('campus:asc');expect(reads.at(-1).get('limit')).toBe('100');
+});
 test('staff search and details retain historical booking and repair identifiers',async({page})=>{
   await fixture(page);
   for(const number of [item.id,item.repairNumber]){
@@ -20,6 +38,23 @@ test('staff search and details retain historical booking and repair identifiers'
     await expect(page.getByRole('dialog')).toContainText(item.id);await expect(page.locator('.records-table')).toContainText(item.repairNumber);
     await page.getByRole('button',{name:'关闭',exact:true}).click();
   }
+});
+
+test('an expired session preserves the member repair draft for the next login',async({page})=>{
+  await page.clock.install();await fixture(page);
+  let expired=false;
+  await page.route('**/api/field/appointments/*',route=>expired
+    ? route.fulfill({status:401,json:{error:'登录已过期'}})
+    : route.fulfill({json:{...item,status:'in_progress',canFinish:true}}));
+  await page.getByRole('button',{name:'查看详情'}).click();
+  const note=page.getByRole('dialog').getByRole('textbox',{name:'维修说明',exact:true});
+  await note.fill('退出后继续核查的维修草稿');
+  const draftKey=`field:member-root001:${item.id}`;
+  await expect.poll(()=>page.evaluate(key=>JSON.parse(sessionStorage.getItem(key)||'{}').note,draftKey)).toBe('退出后继续核查的维修草稿');
+  expired=true;await page.clock.fastForward(31000);await expect(page.locator('#login-form')).toBeVisible();
+  expect(await page.evaluate(key=>JSON.parse(sessionStorage.getItem(key)).note,draftKey)).toBe('退出后继续核查的维修草稿');
+  expired=false;await loginStaff(page);await staffPage(page,'预约记录');await page.getByRole('button',{name:'查看详情'}).click();
+  await expect(page.getByRole('dialog').getByRole('textbox',{name:'维修说明',exact:true})).toHaveValue('退出后继续核查的维修草稿');
 });
 for(const width of [320,390,768,1440])test(`overview, responsive records and filters remain usable at ${width}px`,async({page})=>{
   await page.setViewportSize({width,height:900});await fixture(page);await page.getByText('近期预约概览',{exact:true}).click();

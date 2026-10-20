@@ -13,7 +13,7 @@ PR #58 将 next/staff-platform 集成到 dev。合入 dev 的推送须自动完�
 | 1 | [运行上下文](../../src/context.js)、[应用组合](../../src/app/compose.js)、[模块注册](../../src/modules/registry.js)、[契约](../../docs/contracts/staff-platform.json) | React 单入口及统一工作流；依赖方向；请求级数据库会话；模块契约。 |
 | 2 | [身份映射](../architecture/identity-mapping.md)、[授权实现](../../src/modules/authorization/public.js)、[条件](../../src/modules/authorization/conditions.js)、[界面权限](../../shared/staff-access.js)、[身份摘要](../../shared/staff-identities.js) | memberId 与登录账号分离；同一个完整 grant 的范围交集；有效期、签到条件、客户字段及撤权。 |
 | 3 | [现场流程](../../src/services/field-workflow.js)、[预约存储](../../src/db/appointments.js)、[维修页面](../../frontend/staff-react/field/Repair.tsx)、[工作台](../../frontend/staff-react/field/FieldApp.tsx) | 到岗与工单扫码区分；接单／转派／完成的原子性、回执和一人一单。 |
-| 4 | [人员与排班服务](../../src/services/staff-platform.js)、[持久化](../../src/db/staff-platform.js)、[收集存储](../../src/db/roster-collection.js)、[排班算法](../../src/modules/rosters/)、[排班界面](../../frontend/staff-react/RosterWorkflow.jsx) | 两种排班的完整流程；循环周期；人工覆盖；发布竞争；签到和申请保护。大型 service/repository 仍是后续拆分重点。 |
+| 4 | [人员与排班服务](../../src/services/staff-platform.js)、[持久化](../../src/db/staff-platform.js)、[收集存储](../../src/db/roster-collection.js)、[排班算法](../../src/modules/rosters/)、[排班界面](../../frontend/staff-react/RosterWorkflow.jsx) | 两种排班的完整流程；循环周期；人工覆盖；发布竞争；签到和申请保护。service/repository 按业务领域组合；跨表命令保持原子性。 |
 | 5 | [考勤核算](../../src/modules/attendance/weekly-export.js)、[暂停日期](../../src/db/service-days.js)、[成员资格](../../frontend/staff-react/MemberQualifications.jsx)、[成员编辑](../../frontend/staff-react/MemberEditor.jsx) | 历史身份、实际事实与核算分离；暂停日禁止写入；资格撤销；授权不能等同维修资格。 |
 | 6 | [React 入口](../../frontend/staff-react/main.jsx)、[统一侧栏](../../frontend/staff-react/StaffWorkspace.tsx)、[查询生命周期](../../frontend/staff-react/useWorkspaceQuery.js)、[页面基础样式](../../frontend/staff-react/workspace-foundation.css)、[现场共享组件](../../frontend/staff-react/field/ui.tsx) | 页面不整壳重挂载；草稿和焦点保留；隐藏页面暂停；弹窗焦点、触控尺寸、长列表与窄屏。 |
 | 7 | [升级说明](../../database/upgrades/README.md)、[迁移清单和指纹](baseline-manifest.json)、[CI](../../.github/workflows/check.yml)、[发布编排](../../scripts/ci-release.mjs)、[运维](../operations.md) | 两条真实历史升级链；原库原密钥；管理员权限兼容；迁移先于部署；回退边界。 |
@@ -97,7 +97,7 @@ npx playwright install chromium webkit
 npm run verify
 ```
 
-`verify` 顺序执行 lint、TypeScript、架构／平台审计、构建检查、Node 测试、两条迁移链验证、通用浏览器及工作人员浏览器。浏览器及 Node 回归使用临时数据与测试时钟；CI 的 Preview 演练仅导出现有库到临时本地数据库，不进行远程写入。
+`verify` 顺序执行工作人员源码格式检查、lint、TypeScript、架构／平台审计、构建检查、Node 测试、两条迁移链验证、通用浏览器及工作人员浏览器。浏览器及 Node 回归使用临时数据与测试时钟；CI 的 Preview 演练仅导出现有库到临时本地数据库，不进行远程写入。
 
 | 风险 | 主要证据入口 |
 | --- | --- |
@@ -133,8 +133,8 @@ npm run verify
 - **数据管理：** “范围选择 → 数量预览 → 确认删除 → 结果回执”的完整管理流程尚未交付；预约纠错和私人凭证重发不等同于这个功能。
 - **历史身份：** 新事实保存发生时身份；原系统未保留的旧授权编辑内容无法可靠重建，不按今天的身份伪造过去。
 - **扩展与设备：** 完整会议业务、真实 NFC 硬件不在本次范围；会议策略夹具不算产品交付。真实 iOS／内置浏览器摄像头、镜头切换及权限阻止恢复仍需设备验证。
-- **规模：** 自动化覆盖 200 人导入、多人排班与常见冲突，但未做生产峰值容量／Cloudflare 端到端压测；复杂 service/repository 的进一步拆分仍有维护成本。
+- **规模：** 自动化覆盖 200 人导入、多人排班与常见冲突，但未做生产峰值容量／Cloudflare 端到端压测。
 
-本 PR 的合并门槛是 React 独立运行、兼容迁移演练通过、完整 CI 全绿及独立 Staff Staging 发布和 Smoke 成功。本次更新 PR，不自动合并；合入 dev 后无需手工启用或清理。
+本 PR 的合并门槛是 React 独立运行、兼容迁移演练通过、完整 CI 全绿及独立 Staff Staging 发布和 Smoke 成功。代码推送不自动合并；合入 dev 后无需手工启用或清理。
 
 普通加入名单仅邀请 technician，后端同时拒绝默认 admin 和 CSV 单行覆盖。管理员通过成员管理导入，accountRole=admin、roleCodes、authorizedCampuses 必须明确填写；部门和工作资格按实际任职填写，可留空。成员导入预览展示账号类型、角色与授权校区。已有普通 admin 邀请必须补齐成员授权后才能申请或通过审批，失效角色不能通过审核；审批失败保留待审核申请且不会生成账号。基础账号类型仍不自动授予任何管理权限。

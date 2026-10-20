@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { manifests, validateManifests } from '../../src/modules/registry.js';
+import { manifests, validateManifests, publishedManifests, navigationFor, workbenchProviders } from '../../src/modules/registry.js';
 import { createAuthorizer } from '../../src/modules/authorization/public.js';
 import { generateRoster, validateRoster } from '../../src/modules/rosters/solver.js';
 import { dutyPolicy, meetingPolicy } from '../../src/modules/attendance/policies.js';
@@ -9,6 +9,9 @@ test('module manifests have unique contracts and resolvable dependencies', () =>
   const result = validateManifests(manifests);
   assert.equal(result.valid, true, result.errors.join('; '));
   assert.ok(result.summary.some(item => item.code === 'meetings' && item.releaseState === 'test'));
+  assert.ok(publishedManifests().every(item => item.releaseState === 'ready'));
+  assert.ok(!workbenchProviders().some(item => item.module === 'meetings'));
+  assert.ok(!navigationFor({memberId:'test',role:'superadmin',authorizedCampuses:['南湖']},[{permissionCode:'meetings.read.own',scope:{all:true}}]).some(item => item.module === 'meetings'));
 });
 
 test('complete grants combine scope and condition without widening unrelated campuses', () => {
