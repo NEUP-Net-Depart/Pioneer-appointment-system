@@ -42,6 +42,36 @@ before(async () => {
 });
 after(async () => mf?.dispose());
 
+test('member import previews distinguish preserving, replacing and clearing a single login scope', async () => {
+  const db = await mf.getD1Database('DB');
+  await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('20269982','单账号成员','technician','南湖',?,'2026-01-01')").bind(hashPassword('single-account-password')).run();
+  await db.prepare("INSERT INTO staff_campus_grants VALUES('20269982','南湖')").run();
+  const identityHeaders = { 'Content-Type': 'application/json', 'CF-Connecting-IP': '192.0.2.169' };
+  const signedIn = await request('/api/auth/login', { method: 'POST', headers: identityHeaders, body: JSON.stringify({ account: 'root001', password: 'staff-platform-password' }) });
+  const headers = { ...identityHeaders, Authorization: `Bearer ${signedIn.body.token}` };
+  const run = (csv, confirm = false) => request('/api/members/import', { method: 'POST', headers, body: JSON.stringify({ csv, confirm }) });
+  const grants = async () => (await db.prepare("SELECT campus FROM staff_campus_grants WHERE account='20269982' ORDER BY campus").all()).results;
+  const profile = await run('studentId,name,homeCampusId\n20269982,保留校区,campus-nanhu');
+  assert.equal(profile.response.status, 200);
+  assert.equal(profile.body.items[0].updateAccountCampuses, false);
+  assert.deepEqual(profile.body.items[0].accountTargets, []);
+  assert.ok(profile.body.warnings.every(item => !item.message.includes('仅建立成员资料')));
+  const replacement = await run('studentId,name,homeCampusId,authorizedCampuses\n20269982,替换校区,campus-nanhu,浑南');
+  assert.equal(replacement.response.status, 200);
+  assert.deepEqual(replacement.body.items[0].accountTargets, ['20269982']);
+  assert.ok(replacement.body.warnings.some(item => /替换.*20269982.*浑南/.test(item.message)));
+  const csv = 'studentId,name,homeCampusId,authorizedCampuses\n20269982,清空校区,campus-nanhu,';
+  const clearing = await run(csv);
+  assert.equal(clearing.response.status, 200);
+  assert.deepEqual(clearing.body.items[0].accountTargets, ['20269982']);
+  assert.deepEqual(clearing.body.items[0].authorizedCampuses, []);
+  assert.ok(clearing.body.warnings.some(item => /清空.*20269982.*全部校区授权/.test(item.message)));
+  assert.ok(clearing.body.warnings.every(item => !item.message.includes('仅建立成员资料')));
+  assert.deepEqual(await grants(), [{ campus: '南湖' }]);
+  assert.equal((await run(csv, true)).response.status, 200);
+  assert.deepEqual(await grants(), []);
+});
+
 test('member profile imports preserve account scopes and multiple aliases require an explicit selection', async () => {
   const db=await mf.getD1Database('DB');
   await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('20269980','多账号成员','technician','南湖',?,'2026-01-01')").bind(hashPassword('multi-account-password')).run();
@@ -61,6 +91,11 @@ test('member profile imports preserve account scopes and multiple aliases requir
   assert.equal((await run('studentId,name,homeCampusId,authorizedCampuses,accountTargets\n20269980,单账号调整,campus-nanhu,南湖|浑南,20269980')).response.status,200);
   assert.deepEqual((await grants()).filter(row=>row.account==='20269981'),original.filter(row=>row.account==='20269981'));
   const before=(await db.prepare("SELECT account,auth_version FROM staff_accounts WHERE member_id=? ORDER BY account").bind(memberId).all()).results;
+  const preview=await request('/api/members/import',{method:'POST',headers,body:JSON.stringify({csv:'studentId,name,homeCampusId,authorizedCampuses,accountTargets\n20269980,明确清空全部,campus-nanhu,,*'})});
+  assert.equal(preview.response.status,200);
+  assert.deepEqual(preview.body.items[0].accountTargets,['20269980','20269981']);
+  assert.ok(preview.body.warnings.some(item=>/清空.*20269980.*20269981/.test(item.message)));
+  assert.notDeepEqual(await grants(),[]);
   assert.equal((await run('studentId,name,homeCampusId,authorizedCampuses,accountTargets\n20269980,明确清空全部,campus-nanhu,,*')).response.status,200);
   assert.deepEqual(await grants(),[]);
   const after=(await db.prepare("SELECT account,auth_version FROM staff_accounts WHERE member_id=? ORDER BY account").bind(memberId).all()).results;
@@ -294,9 +329,12 @@ test('staff platform auth context, modular permissions and policy attendance are
   assert.equal(permissions.response.status, 200);
   assert.ok(permissions.body.items.some(permission => permission.code === 'repair.start'));
 
-  const now = Date.now();
+  const now = Date.now(), today = dateKey();
+  // Keep this live window inside the Shanghai business date, including after 23:00.
+  const startsAt = new Date(Math.max(now - 60_000, Date.parse(`${today}T00:00:00+08:00`))).toISOString();
+  const endsAt = new Date(Math.min(now + 3_600_000, Date.parse(`${today}T23:59:59.999+08:00`))).toISOString();
   const event = await request('/api/attendance/events', { method: 'POST', headers, body: JSON.stringify({
-    type: 'duty', campusId: 'campus-nanhu', businessDate: dateKey(), startsAt: new Date(now - 60_000).toISOString(), endsAt: new Date(now + 3_600_000).toISOString(), requestId: 'attendance-event-001'
+    type: 'duty', campusId: 'campus-nanhu', businessDate: today, startsAt, endsAt, requestId: 'attendance-event-001'
   }) });
   assert.equal(event.response.status, 201, JSON.stringify(event.body));
   const token = await request(`/api/attendance/events/${event.body.id}/token`, { method: 'POST', headers, body: JSON.stringify({ revision: event.body.revision }) });

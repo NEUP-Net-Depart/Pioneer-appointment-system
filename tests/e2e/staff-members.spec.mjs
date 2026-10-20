@@ -1,5 +1,38 @@
-import { staffSession } from './support/staff.mjs';
+import { readFile } from 'node:fs/promises';
+import { staffSession, mockStaff, loginStaff, staffPage } from './support/staff.mjs';
 import { test, expect } from '@playwright/test';
+
+test('member import templates explain account selection and previews show each login scope change', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 900 });
+  await mockStaff(page);
+  const cases = [
+    { csv: 'studentId,name,homeCampusId\n20269982,保留校区,campus-nanhu', updateAccountCampuses: false, accountTargets: [], authorizedCampuses: [], expected: '登录账号校区：保持不变' },
+    { csv: 'studentId,name,homeCampusId,authorizedCampuses\n20269982,清空校区,campus-nanhu,', updateAccountCampuses: true, accountTargets: ['20269982'], authorizedCampuses: [], expected: '20269982 → 清空全部校区授权' },
+    { csv: 'studentId,name,homeCampusId,authorizedCampuses,accountTargets\n20269982,替换全部校区,campus-nanhu,南湖|浑南,*', updateAccountCampuses: true, accountTargets: ['20269982', '20269983'], authorizedCampuses: ['南湖', '浑南'], expected: '20269982、20269983 → 南湖、浑南' }
+  ];
+  await page.route('**/api/members/import', route => {
+    const input = route.request().postDataJSON();
+    const item = cases.find(item => item.csv === input.csv);
+    return route.fulfill({ json: input.confirm ? { count: 1 } : { items: [{ ...item, studentId: '20269982', name: '测试成员', homeCampusId: 'campus-nanhu', workProfiles: [], roleCodes: [] }], warnings: [] } });
+  });
+  await loginStaff(page);
+  await staffPage(page, '成员管理');
+  await page.getByRole('button', { name: '导入名单', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '导入成员与激活资格' });
+  await expect(dialog).toContainText('空值会清空授权');
+  await expect(dialog).toContainText('多账号成员须用 accountTargets');
+  const pendingDownload = page.waitForEvent('download');
+  await dialog.getByRole('button', { name: '下载 CSV 模板' }).click();
+  const download = await pendingDownload;
+  expect((await readFile(await download.path(), 'utf8')).trim().split(',')).toContain('accountTargets');
+  for (const item of cases) {
+    await dialog.getByLabel('名单内容').fill(item.csv);
+    await dialog.getByRole('button', { name: '预览并核对' }).click();
+    await expect(dialog.locator('.member-import-preview')).toContainText(item.expected);
+    expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await dialog.getByRole('button', { name: '返回修改' }).click();
+  }
+});
 
 test('member pages append without duplicates and an obsolete page cannot replace a new search', async ({ page }) => {
   const session = staffSession({ permissions: { 'members.manage': true } });

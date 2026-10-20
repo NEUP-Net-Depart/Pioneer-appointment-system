@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useRef, useState } from 'react';
-import { roleLabels, roleLevel, CAMPUSES } from '../../shared/constants.js';
+import { roleLabels, CAMPUSES } from '../../shared/constants.js';
 import { request } from './request.js';
 import { ActivityContext, Modal, Notice } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
@@ -267,7 +267,10 @@ function AccountEditor({ user, item, onClose, onSaved }) {
               onChange={(event) => setDraft({ ...draft, role: event.target.value })}
             >
               {Object.entries(roleLabels)
-                .filter(([role]) => roleLevel[role] < roleLevel[user.role])
+                .filter(
+                  ([role]) =>
+                    role === 'technician' || (role === 'admin' && user.role === 'superadmin')
+                )
                 .map(([role, label]) => (
                   <option key={role} value={role}>
                     {label}
@@ -650,15 +653,7 @@ function Invitations({ user }) {
               <label>
                 默认角色
                 <select value={role} onChange={(event) => setRole(event.target.value)}>
-                  {Object.entries(roleLabels)
-                    .filter(
-                      ([value]) => value === 'technician' && roleLevel[value] < roleLevel[user.role]
-                    )
-                    .map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
+                  <option value="technician">{roleLabels.technician}</option>
                 </select>
               </label>
               <fieldset className="workspace-checks">

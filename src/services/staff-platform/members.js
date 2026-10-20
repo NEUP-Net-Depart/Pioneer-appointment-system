@@ -414,6 +414,7 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
     });
     if (new Set(items.map((item) => item.studentId)).size !== items.length)
       fail(400, '导入文件包含重复学号');
+    const previewItems = [];
     for (const item of items) {
       if (
         !evaluate(context, 'members.manage', {
@@ -445,16 +446,28 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
         fail(400, '多账号成员必须用 accountTargets 指定登录账号，或填写 * 更新全部账号');
       if (item.updateAccountCampuses && accounts.length === 1 && !item.accountTargets.length)
         item.accountTargets = accounts;
+      previewItems.push({
+        ...item,
+        memberId: `member-${item.studentId}`,
+        accountTargets: item.accountTargets.includes('*') ? accounts : item.accountTargets
+      });
     }
     if (!input.confirm)
       return {
         mode: 'preview',
-        items: items.map((item) => ({ ...item, memberId: `member-${item.studentId}` })),
-        warnings: items.flatMap((item) =>
-          item.roleCodes.length || item.workProfiles.length
-            ? []
-            : [{ studentId: item.studentId, message: '未设置工作属性或角色，导入后仅建立成员资料' }]
-        ),
+        items: previewItems,
+        warnings: previewItems.flatMap((item) => {
+          const messages = [];
+          if (!item.roleCodes.length && !item.workProfiles.length)
+            messages.push('未设置工作属性或角色，本次导入不会新增工作资格或角色授权');
+          if (item.updateAccountCampuses && item.accountTargets.length)
+            messages.push(
+              item.authorizedCampuses.length
+                ? `将替换登录账号 ${item.accountTargets.join('、')} 的校区授权为：${item.authorizedCampuses.join('、')}`
+                : `将清空登录账号 ${item.accountTargets.join('、')} 的全部校区授权`
+            );
+          return messages.map((message) => ({ studentId: item.studentId, message }));
+        }),
         requestId: input.requestId || ''
       };
     const memberRows = await repository.importMembers(items, actor.account, {

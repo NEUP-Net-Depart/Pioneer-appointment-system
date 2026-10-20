@@ -3,7 +3,7 @@ import { request } from './request.js';
 import { Modal } from './field/ui';
 
 const header =
-  'studentId,name,homeCampusId,departmentId,workProfiles,roleCodes,authorizedCampuses,trainingConfirmed,accountRole';
+  'studentId,name,homeCampusId,departmentId,workProfiles,roleCodes,authorizedCampuses,trainingConfirmed,accountRole,accountTargets';
 const templates = {
   repair: { label: '普通维修', department: 'dept-hardware', role: 'technician' },
   exchange: { label: '交流人员', department: '', role: 'exchange' },
@@ -68,6 +68,12 @@ export function MemberImport({ onClose, onSaved }) {
             先准备名单，再预览核对。交流人员的导入即确认培训结果，保留交流资格。管理员邀请填写
             accountRole=admin，并在 roleCodes、authorizedCampuses
             明确指定业务管理角色和校区；部门、工作资格按实际任职填写，可留空。
+          </p>
+          <p className="field-muted">
+            更新已有成员时，省略 authorizedCampuses
+            列可保留登录账号的校区授权；提供该列会替换授权，空值会清空授权。多账号成员须用
+            accountTargets 指定登录账号，多个账号用 | 分隔，单独填写 *
+            表示全部账号；单账号成员可省略 accountTargets。
           </p>
           {!preview ? (
             <>
@@ -145,6 +151,14 @@ export function MemberImport({ onClose, onSaved }) {
                       账号类型：{item.accountRole === 'admin' ? '管理员' : '按工作资格确定'} ·
                       角色：{item.roleCodes.join('、') || '未授权'} · 授权校区：
                       {item.authorizedCampuses.join('、') || '未设置'}
+                    </p>
+                    <p>
+                      登录账号校区：
+                      {!item.updateAccountCampuses
+                        ? '保持不变'
+                        : item.accountTargets.length
+                          ? `${item.accountTargets.join('、')} → ${item.authorizedCampuses.join('、') || '清空全部校区授权'}`
+                          : '无已有登录账号；所填校区用于角色授权与激活资格'}
                     </p>
                   </article>
                 ))}

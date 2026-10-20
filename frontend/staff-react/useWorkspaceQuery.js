@@ -10,17 +10,19 @@ export function useWorkspaceQuery(path, active, revision) {
     [loadingMore, setLoadingMore] = useState(false),
     [nextCursor, setNextCursor] = useState(null);
   const latest = useRef(0),
+    paginationRef = useRef({ path: null, pages: 1 }),
     nextCursorRef = useRef(null),
     loadMoreRef = useRef(() => Promise.resolve());
   useEffect(() => {
     if (!active || !path) return;
+    if (paginationRef.current.path !== path) paginationRef.current = { path, pages: 1 };
+    const pagination = paginationRef.current;
     latest.current = 0;
     nextCursorRef.current = null;
     setNextCursor(null);
     let controller,
       stopped = false,
-      inFlight = false,
-      pages = 1;
+      inFlight = false;
     async function read(cursor = '', append = false) {
       if (inFlight || stopped) return;
       if (document.hidden) {
@@ -38,9 +40,9 @@ export function useWorkspaceQuery(path, active, revision) {
       setError('');
       try {
         let data = await request(target, { signal: current.signal });
+        let loaded = 1;
         if (!append) {
-          let loaded = 1;
-          while (loaded < pages && data.nextCursor) {
+          while (loaded < pagination.pages && data.nextCursor) {
             const page = await request(
               `${path}${path.includes('?') ? '&' : '?'}cursor=${encodeURIComponent(data.nextCursor)}`,
               { signal: current.signal }
@@ -48,7 +50,6 @@ export function useWorkspaceQuery(path, active, revision) {
             data = { ...page, items: [...(data.items || []), ...(page.items || [])] };
             loaded++;
           }
-          pages = loaded;
         }
         if (!stopped && !current.signal.aborted) {
           setSnapshot((previous) =>
@@ -69,7 +70,7 @@ export function useWorkspaceQuery(path, active, revision) {
                 }
               : { path, data }
           );
-          if (append) pages++;
+          pagination.pages = append ? pagination.pages + 1 : loaded;
           nextCursorRef.current = data.nextCursor || null;
           setNextCursor(nextCursorRef.current);
           latest.current = Date.now();
@@ -77,6 +78,7 @@ export function useWorkspaceQuery(path, active, revision) {
       } catch (failure) {
         if (!stopped && !current.signal.aborted) {
           if ([401, 403].includes(failure.status)) {
+            pagination.pages = 1;
             setSnapshot(null);
             nextCursorRef.current = null;
             setNextCursor(null);
