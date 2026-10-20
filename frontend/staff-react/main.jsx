@@ -24,7 +24,6 @@ import { staffPermission, staffViewAllowed, staffSceneAllowed } from '../../shar
 import { OfficeRoster } from './OfficeRoster';
 import { LeaveReview } from './LeaveReview';
 import { WorkspacePage } from './WorkspacePage';
-import { RosterWorkflow } from './RosterWorkflow.jsx';
 import './workspace-foundation.css';
 
 function Workspace({ user, onLogout }) {
@@ -257,11 +256,6 @@ function Workspace({ user, onLogout }) {
         <OfficeRoster user={effectiveUser} />
       </section>,
       staffPermission(effectiveUser, 'roster.office.manage')
-    ),
-    route(
-      'staffing',
-      <RosterWorkflow user={effectiveUser} />,
-      staffPermission(effectiveUser, 'roster.repair.configure')
     ),
     route(
       'attendance-manage',

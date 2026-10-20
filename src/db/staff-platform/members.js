@@ -558,17 +558,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
           VALUES(?,?,?,?,?) ON CONFLICT(student_id) DO UPDATE SET expected_name=excluded.expected_name,expected_role=excluded.expected_role,revision=staff_whitelist.revision+1
           WHERE staff_whitelist.status='open'`
             )
-            .bind(
-              item.studentId,
-              item.name,
-              item.accountRole ||
-                (item.workProfiles.includes('office') &&
-                !item.workProfiles.some((code) => ['repair', 'exchange'].includes(code))
-                  ? 'admin'
-                  : 'technician'),
-              actorAccount,
-              at
-            )
+            .bind(item.studentId, item.name, item.accountRole || 'technician', actorAccount, at)
         );
         statements.push(
           db

@@ -9,7 +9,7 @@ export function staffViewAllowed(user, view) {
   const permissions = {
     staff: 'repair.summary.read', members: 'members.manage', permissions: 'roles.manage',
     roster: 'roster.read', 'roster-manage': 'roster.repair.manage', attendance: 'attendance.self','attendance-manage':'attendance.correct',
-    users: 'accounts.manage', stats: 'statistics.read', capacity: 'settings.manage', 'office-roster': 'roster.office.manage', 'leave-review': 'leave.review', staffing:'roster.repair.configure',
+    users: 'accounts.manage', stats: 'statistics.read', capacity: 'settings.manage', 'office-roster': 'roster.office.manage', 'leave-review': 'leave.review',
   };
   if (['workbench', 'settings'].includes(view)) return true;
   if (view === 'roster-requests') return staffPermission(user, 'roster.read');

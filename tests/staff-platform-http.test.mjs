@@ -154,6 +154,54 @@ test('administrator invitations require explicit member roles and campus scope, 
   assert.equal((await request('/api/slot-capacities',{headers:managerHeaders,method:'PATCH',body:JSON.stringify({...capacities.body.items[0],campus:'浑南',capacity:4})})).response.status,403);
 });
 
+test('office member imports default to ordinary accounts and stay manageable by scoped administrators', async () => {
+  const db = await mf.getD1Database('DB'), repository = staffPlatformRepository(db);
+  const identityHeaders = { 'CF-Connecting-IP': '192.0.2.171' };
+  const login = async (account, password) => request('/api/auth/login', { headers: identityHeaders, method: 'POST', body: JSON.stringify({ account, password }) });
+  const root = await login('root001', 'staff-platform-password');
+  const rootHeaders = { ...identityHeaders, Authorization: `Bearer ${root.body.token}` };
+  const run = (csv, confirm = false) => request('/api/members/import', { headers: rootHeaders, method: 'POST', body: JSON.stringify({ csv, confirm }) });
+  await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('20269960','办公激活审核员','admin','南湖',?,'2026-01-01')").bind(hashPassword('office-reviewer-password')).run();
+  await db.prepare("INSERT INTO staff_campus_grants VALUES('20269960','南湖')").run();
+  const reviewer = await repository.memberRow('member-20269960');
+  const role = await repository.createRole({ code: 'office-import-reviewer', name: '办公激活审核', grants: [{ permissionCode: 'accounts.manage', scope: { campusIds: ['campus-nanhu'] } }] });
+  await repository.bindRoles(reviewer.id, [{ roleId: role.id, scope: {}, effectiveFrom: '2026-01-01' }], reviewer.revision);
+  const signedReviewer = await login('20269960', 'office-reviewer-password');
+  assert.equal(signedReviewer.response.status, 200);
+  const reviewerHeaders = { ...identityHeaders, Authorization: `Bearer ${signedReviewer.body.token}` };
+  // Cover both omitting the column and leaving the template's column empty.
+  for (const [studentId, suffix, value] of [['20269961', '', ''], ['20269962', ',accountRole', ',']]) {
+    const name = `办公成员${studentId}`;
+    const csv = `studentId,name,homeCampusId,workProfiles,roleCodes,authorizedCampuses${suffix}\n${studentId},${name},campus-nanhu,office,office,南湖${value}`;
+    const preview = await run(csv);
+    assert.equal(preview.response.status, 200, JSON.stringify(preview.body));
+    assert.equal(await db.prepare('SELECT student_id FROM staff_whitelist WHERE student_id=?').bind(studentId).first(), null);
+    const imported = await run(csv, true);
+    assert.equal(imported.response.status, 200, JSON.stringify(imported.body));
+    assert.equal((await db.prepare('SELECT expected_role FROM staff_whitelist WHERE student_id=?').bind(studentId).first()).expected_role, 'technician');
+    const application = await request('/api/activation', { headers: identityHeaders, method: 'POST', body: JSON.stringify({ studentId, name, homeCampus: '南湖', password: 'office-member-password' }) });
+    assert.equal(application.response.status, 201, JSON.stringify(application.body));
+    const approved = await request('/api/activation-requests/review', { headers: reviewerHeaders, method: 'POST', body: JSON.stringify({ ids: [application.body.id], status: 'approved', identityVerified: true }) });
+    assert.equal(approved.response.status, 200, JSON.stringify(approved.body));
+    const signedIn = await login(studentId, 'office-member-password');
+    assert.equal(signedIn.response.status, 200);
+    const me = await request('/api/auth/me', { headers: { Authorization: `Bearer ${signedIn.body.token}` } });
+    assert.equal(me.body.role, 'technician');
+    assert.deepEqual(me.body.authorizedCampuses, ['南湖']);
+    assert.notEqual(me.body.permissions['accounts.manage'], true);
+    assert.notEqual(me.body.permissions['roles.manage'], true);
+    const memberId = `member-${studentId}`;
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM member_work_profiles WHERE member_id=? AND profile_code='office'").bind(memberId).first()).n, 1);
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM member_roles WHERE member_id=? AND role_id='role-office'").bind(memberId).first()).n, 1);
+    // Reimporting an activated office member must preserve its account type.
+    assert.equal((await run(csv, true)).response.status, 200);
+    assert.equal((await db.prepare('SELECT role FROM staff_accounts WHERE account=?').bind(studentId).first()).role, 'technician');
+    const accounts = await request('/api/users', { headers: reviewerHeaders });
+    assert.equal(accounts.response.status, 200);
+    assert.ok(accounts.body.items.some(item => item.account === studentId));
+  }
+});
+
 test('member, membership and authorization commands roll back on audit failure and reject revoked writers', async () => {
   const db=await mf.getD1Database('DB'),repo=staffPlatformRepository(db),users=userRepository(db);
   await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('20268981','审计原子性','technician','南湖',?,'2026-01-01')").bind(hashPassword('audit-test-password')).run();
