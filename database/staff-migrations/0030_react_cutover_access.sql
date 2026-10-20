@@ -14,8 +14,15 @@ SELECT 'grant-legacy-admin-'||code,'role-legacy-admin',code,'{"campuses":"bound"
 FROM permission_definitions WHERE code IN
  ('repair.summary.read','repair.correct','repair.transfer','statistics.read','accounts.manage','settings.manage','customer.identity.read','customer.contact.read');
 INSERT OR IGNORE INTO member_roles(id,member_id,role_id,scope_bindings,effective_from)
-SELECT 'legacy-admin-'||account,member_id,'role-legacy-admin','{"campuses":"legacy"}',substr(created_at,1,10)
-FROM staff_accounts WHERE role='admin' AND member_id IS NOT NULL;
+-- Snapshot the original administrator campus set per person. Another login's
+-- campus grants must never broaden these management capabilities.
+SELECT 'legacy-admin-'||sa.member_id,sa.member_id,'role-legacy-admin',
+  json_object('campusIds',json((SELECT json_group_array(DISTINCT CASE g.campus
+    WHEN '南湖' THEN 'campus-nanhu' WHEN '浑南' THEN 'campus-hunnan' END)
+    FROM staff_campus_grants g JOIN staff_accounts administrator ON administrator.account=g.account
+    WHERE administrator.member_id=sa.member_id AND administrator.role='admin'))),
+  MIN(substr(sa.created_at,1,10))
+FROM staff_accounts sa WHERE sa.role='admin' AND sa.member_id IS NOT NULL GROUP BY sa.member_id;
 UPDATE staff_accounts SET token_version=token_version+1,auth_version=auth_version+1 WHERE role='admin';
 
 -- Remove only untouched defaults that earlier migrations inferred from the

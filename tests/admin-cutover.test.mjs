@@ -44,6 +44,12 @@ for (const directory of ['migrations','database/staff-migrations']) test(`${dire
     for (const file of files.filter(name=>name>='0010' && name<'0030')) await migrate(db,directory,file);
     // Explicitly revised assignments are independent facts; the cutover must retain them.
     for (const table of ['member_roles','member_work_profiles','member_department_memberships']) await db.prepare(`UPDATE ${table} SET revision=1 WHERE member_id='member-20268002'`).run();
+    // Login aliases share a person, while their authorized campus sets remain
+    // separate. Technician aliases must not broaden a migrated admin grant.
+    for (const [account,role,memberId,campus] of [['20268006','technician','member-20268001','浑南'],['20268007','admin','member-20268001','南湖'],['20268008','admin','member-20268002','浑南']]) {
+      await db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at,member_id) VALUES(?,?,?,?,?,?,?)').bind(account,account,role,campus,originalHash,'2026-01-01',memberId).run();
+      await db.prepare('INSERT INTO staff_campus_grants VALUES(?,?)').bind(account,campus).run();
+    }
     const call = async (path, {token,method='GET',body,status=200}={}) => {
       const response=await mf.dispatchFetch('https://cutover.test'+path,{method,headers:{...(path==='/api/appointments'&&method==='POST'?{'Idempotency-Key':randomBytes(32).toString('base64url')}:{}),...(token?{Authorization:'Bearer '+token}:{}),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
       const result=await response.json();assert.equal(response.status,status,JSON.stringify(result));return result;
@@ -64,6 +70,10 @@ for (const directory of ['migrations','database/staff-migrations']) test(`${dire
     await call('/api/users/20268003',{token,method:'PATCH',body:{name:'原校区管理员直接修改'}});
     await call('/api/users/20268004',{token,method:'PATCH',body:{name:'越界修改'},status:403});
     await call('/api/roles',{token,status:403});
+    const technicianAlias=(await login('20268006')).token;
+    for (const path of ['/api/users','/api/slot-capacities','/api/stats/summary?range=all']) await call(path,{token:technicianAlias,status:403});
+    const adminAlias=(await login('20268008')).token;
+    assert.ok((await call('/api/slot-capacities',{token:adminAlias})).items.every(row=>row.campus==='浑南'),'All original admin aliases retain their own campus without borrowing another login scope');
     const capacities=await call('/api/slot-capacities',{token});assert.ok(capacities.items.every(row=>row.campus==='南湖'));
     const cell=capacities.items[0];await call('/api/slot-capacities',{token,method:'PATCH',body:{...cell,capacity:7}});
     await call('/api/slot-capacities',{token,method:'PATCH',body:{...cell,campus:'浑南',capacity:7},status:403});

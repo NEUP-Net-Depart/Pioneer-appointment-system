@@ -30,8 +30,14 @@ const preserved = ['staff_accounts', 'staff_campus_grants', 'appointments', 'app
 export async function rehearseSnapshot(dump, directory = resolve(root, 'migrations')) {
   const sqlite = new DatabaseSync(':memory:');
   try {
-    sqlite.exec(dump);
+    // D1 imports a SQL file as a batch. Defer foreign keys while restoring
+    // account/member references whose tables may appear in either order.
+    sqlite.exec('BEGIN; PRAGMA defer_foreign_keys=ON;');
+    try { sqlite.exec(dump); sqlite.exec('COMMIT;'); }
+    catch { throw new Error('Preview snapshot could not be imported locally'); }
     const ledger = new Set(sqlite.prepare('SELECT name FROM d1_migrations').all().map(row => row.name));
+    const upgradingLegacyAdmins = !ledger.has('0030_react_cutover_access.sql');
+    const upgradingLegacyTechnicians = !sqlite.prepare('PRAGMA table_info(staff_accounts)').all().some(row => row.name === 'member_id');
     const originals = preserved.map(table => {
       const columns = sqlite.prepare(`PRAGMA table_info(${table})`).all().map(row => row.name);
       assert.ok(columns.length, `Missing baseline table: ${table}`);
@@ -72,16 +78,16 @@ export async function rehearseSnapshot(dump, directory = resolve(root, 'migratio
       const key = `${row.role} → ${roleCodes.join('+')}`; counts[key] = (counts[key] || 0) + 1;
       if (user.status === 'enabled' && user.memberStatus !== 'inactive' && user.authorizedCampuses.length) {
         const context = await staff.contextFor(user);
-        if (row.role === 'technician') {
+        if (row.role === 'technician' && upgradingLegacyTechnicians) {
           assert.equal(context.permissions['repair.summary.read'], true, 'Migrated technician lost repair summary access');
           assert.notEqual(context.permissions['roles.manage'], true, 'Technician gained role management');
         }
-        if (row.role === 'admin') {
+        if (row.role === 'admin' && upgradingLegacyAdmins) {
           for (const code of ['repair.summary.read','repair.correct','repair.transfer','statistics.read','accounts.manage','settings.manage','customer.identity.read','customer.contact.read']) {
             assert.equal(context.permissions[code], true, 'Migrated administrator lost an original management capability');
             for (const campusId of ['campus-nanhu','campus-hunnan']) {
               if (user.authorizedCampuses.some(value => (value === '南湖' ? 'campus-nanhu' : value === '浑南' ? 'campus-hunnan' : value) === campusId)) continue;
-              assert.equal(platform.authorizer.evaluate(context.actor,code,{campusId},context,context.grants).allowed,false,'Migrated administrator exceeded the original campus scope');
+              assert.equal(platform.authorizer.evaluate(context.actor,code,{campusId},context,context.grants.filter(grant => grant.roleCode === 'legacy_admin')).allowed,false,'Migrated administrator exceeded the original campus scope');
             }
           }
         }

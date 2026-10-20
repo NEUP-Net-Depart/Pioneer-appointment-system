@@ -6,7 +6,7 @@ import { smoke } from '../scripts/smoke.mjs';
 import { rehearseSnapshot } from '../scripts/rehearse-preview.mjs';
 import { STAFF_RELEASE } from '../src/db/staff-readiness.js';
 
-async function baselineDump() {
+async function baselineDump({ deployed = false } = {}) {
   const db = new DatabaseSync(':memory:');
   try {
     db.exec('CREATE TABLE d1_migrations(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE,applied_at TEXT DEFAULT CURRENT_TIMESTAMP);');
@@ -17,6 +17,16 @@ async function baselineDump() {
     for (const [account, role, protectedAccount] of [['root001', 'superadmin', 1], ['20260001', 'admin', 0], ['20260002', 'technician', 0]]) {
       db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,protected,password_hash,created_at) VALUES(?,?,?,?,?,?,?)').run(account, '历史成员', role, '南湖', protectedAccount, 'preserved-password-hash', '2026-01-01');
       db.prepare("INSERT INTO staff_campus_grants VALUES(?,'南湖')").run(account);
+    }
+    if (deployed) {
+      for (const name of (await readdir('migrations')).filter(name => name.endsWith('.sql') && name >= '0010').sort()) {
+        db.exec(await readFile('migrations/'+name,'utf8'));db.prepare('INSERT INTO d1_migrations(name) VALUES(?)').run(name);
+      }
+      for (const [account,role] of [['20260003','admin'],['20260004','technician']]) {
+        db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,?,?,?,?,?)').run(account,'独立授权成员',role,'南湖','preserved-password-hash','2026-01-01');
+        db.prepare("INSERT INTO staff_campus_grants VALUES(?,'南湖')").run(account);
+      }
+      db.exec("DELETE FROM member_roles WHERE member_id='member-20260004';");
     }
     const objects = db.prepare("SELECT name,sql,type FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type='trigger',type='index'").all();
     const quote = value => value === null ? 'NULL' : typeof value === 'number' ? String(value) : "'" + String(value).replaceAll("'", "''") + "'";
@@ -36,6 +46,11 @@ test('the existing Preview migration ledger and populated accounts rehearse thro
   assert.equal(result.accounts['technician → technician'], 1);
   assert.equal(result.accounts['admin → legacy_admin'], 1);
   assert.equal(result.accounts['superadmin → superadmin'], 1);
+});
+
+test('later deployments respect deliberately ungranted administrators and revoked technician roles',async()=>{
+  const report=await rehearseSnapshot(await baselineDump({deployed:true}));
+  assert.equal(report.applied,0);assert.equal(report.accounts['admin → '],1);assert.equal(report.accounts['technician → '],1);
 });
 
 async function deploymentFetch(url) {
