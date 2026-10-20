@@ -32,6 +32,7 @@ export async function smoke(base, fetcher = fetch, output = new URL('../dist/', 
     assert.ok(html.includes(entry === '/' ? 'id="booking-form"' : 'id="staff-react-root"'));
     if (entry === '/staff/') {
       assert.doesNotMatch(html, /id="(?:app-shell|staff-view|users-table|login-form)"/);
+      assert.doesNotMatch(html, /(?:src|href)\s*=\s*["'](?:\/staff\/|\.\/)?(?:main|auth|scan)\.js(?:[?#][^"']*)?["']/, 'Staff HTML must not reference legacy scripts');
       const local = await readFile(new URL('staff/index.html', output), 'utf8');
       const modules = value => [...value.matchAll(/src="(\/staff\/assets\/[^"?]+\.js)"/g)].map(match => match[1]);
       assert.ok(modules(html).length, 'React entry module is missing');
@@ -39,7 +40,8 @@ export async function smoke(base, fetcher = fetch, output = new URL('../dist/', 
     }
     for (const [, path] of html.matchAll(/(?:src|href)="(\/[^"?#]+\.(?:m?js|css|jpg))"/g)) await asset(path);
   }
-  for (const path of ['/user.html', '/staff.html', '/app.js', '/src/app.js', '/.dev.vars', '/wrangler.jsonc', '/staff/main.js', '/staff/auth.js', '/staff/scan.js']) await get(path, 404);
+  // Pages may retain removed static assets in CDN caches; check their absence in the build instead.
+  for (const path of ['/user.html', '/staff.html', '/app.js', '/src/app.js', '/.dev.vars', '/wrangler.jsonc']) await get(path, 404);
   const health = await (await get('/api/health')).json();
   assert.equal(health.ok, true); assert.equal(health.staffRelease, STAFF_RELEASE); assert.equal(health.workflow, 'staff-platform');
   assert.deepEqual(await (await get('/api/scan/config')).json(), { enabled: true });

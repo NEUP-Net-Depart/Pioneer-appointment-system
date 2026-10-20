@@ -84,6 +84,29 @@ async function deploymentFetch(url) {
 test('smoke validates built React bytes, schema readiness and the new workflow APIs', async () => {
   assert.ok((await smoke('https://deployment.test', deploymentFetch)).assets >= 4);
 });
+test('smoke tolerates cached legacy scripts and still checks health, authentication and private paths', async () => {
+  const requested = new Set();
+  const result = await smoke('https://deployment.test', url => {
+    requested.add(url.pathname);
+    if (['/staff/main.js', '/staff/auth.js', '/staff/scan.js'].includes(url.pathname)) return new Response('cached legacy script', { headers: { 'Content-Type': 'text/javascript' } });
+    return deploymentFetch(url);
+  });
+  assert.ok(result.assets >= 4);
+  for (const path of ['/api/health', '/api/scan/config', '/api/field/home', '/api/field/board', '/api/roster-tasks', '/api/me/attendance', '/api/members', '/api/unknown', '/.dev.vars', '/wrangler.jsonc']) assert.ok(requested.has(path), path + ' must still be checked');
+});
+test('smoke rejects staff HTML referencing any legacy script even with a valid React entry', async () => {
+  const html = await readFile(new URL('../dist/staff/index.html', import.meta.url), 'utf8');
+  for (const path of ['/staff/main.js', '/staff/auth.js?cached=1', './scan.js']) {
+    await assert.rejects(smoke('https://deployment.test', url => url.pathname === '/staff/'
+      ? new Response(html + `<script src="${path}"></script>`, { headers: { 'Content-Type': 'text/html' } })
+      : deploymentFetch(url)), /Staff HTML must not reference legacy scripts/);
+  }
+});
+test('smoke continues to reject exposed secrets and configuration', async () => {
+  for (const path of ['/.dev.vars', '/wrangler.jsonc']) {
+    await assert.rejects(smoke('https://deployment.test', url => url.pathname === path ? new Response('exposed') : deploymentFetch(url)), { code: 'ERR_ASSERTION', actual: 200, expected: 404 });
+  }
+});
 test('smoke rejects stale assets, a legacy entry, incomplete migrations and missing workflow routes', async () => {
   for (const [path, response] of [
     ['/staff/', () => new Response('<div id="login-form"></div>', { headers: { 'Content-Type': 'text/html' } })],

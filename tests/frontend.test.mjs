@@ -17,6 +17,7 @@ test('each HTML entry contains only its own features and valid assets with uniqu
   assert.ok(!user.includes('id="login-view"') && !user.includes('id="staff-view"'));
   assert.ok(staff.includes('id="staff-react-root"'));
   assert.doesNotMatch(staff, /id="(?:app-shell|staff-view|users-table|login-form)"/);
+  assert.doesNotMatch(staff, /(?:src|href)\s*=\s*["'](?:\/staff\/|\.\/)?(?:main|auth|scan)\.js(?:[?#][^"']*)?["']/);
   assert.match(staff, /src="\/staff\/assets\/[^"]+\.js"/);
   assert.ok(!staff.includes('id="booking-form"') && !staff.includes('id="lookup-results"'));
   for (const html of [user, staff]) {
