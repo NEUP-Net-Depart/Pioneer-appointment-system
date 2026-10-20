@@ -85,7 +85,7 @@ for (const account of ['20261001', '20261002']) test(`ordinary staff ${account} 
   const sidebar = page.locator('.field-sidebar');
   for (const label of ['成员管理','授权管理','账号管理','预约配置','统计分析','维修排班管理','办公排班管理','请假审批','现场管理']) await expect(sidebar.getByRole('button', { name: label, exact: true })).toHaveCount(0);
   for (const view of ['members','permissions','users','stats','capacity','roster-manage','office-roster','leave-review']) {
-    await page.evaluate(view => window.dispatchEvent(new CustomEvent('staff-navigate', { detail: view })), view);
+    await page.evaluate(view => window.dispatchEvent(new CustomEvent('staff-request-navigation', { detail: view })), view);
     await expect(page.locator('.workspace-route:not([hidden])')).toHaveAttribute('data-route', 'workbench');
   }
   expect(managementReads).toEqual([]);
@@ -158,7 +158,7 @@ for (const capability of [
     await page.clock.resume();
     await login(page, '20261003');
     await expect(page.locator('.field-sidebar').getByRole('button', { name: capability.label, exact: true })).toHaveCount(0);
-    await page.evaluate(view => window.dispatchEvent(new CustomEvent('staff-navigate', { detail: view })), capability.view);
+    await page.evaluate(view => window.dispatchEvent(new CustomEvent('staff-request-navigation', { detail: view })), capability.view);
     await expect(page.locator(capability.selector)).toHaveCount(0);
     const currentToken = await page.evaluate(() => sessionStorage.getItem('pioneerToken'));
     expect((await page.request.get(capability.endpoint, { headers: { Authorization: `Bearer ${currentToken}` } })).status()).toBe(403);

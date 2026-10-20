@@ -42,8 +42,11 @@ test('weekday capacity configuration preserves booked days and unsaved edits',as
   await login(root,'root001',process.env.E2E_ROOT_PASSWORD);token=await root.evaluate(()=>sessionStorage.getItem('pioneerToken'));const headers={Authorization:`Bearer ${token}`};
   const list=await (await root.request.get('/api/slot-capacities',{headers})).json();template=list.items.find(item=>item.campus==='南湖'&&item.weekday===4&&item.timeSlot==='19:00–19:30');
   await staffPage(root,'预约配置');const cell=root.getByRole('gridcell',{name:'南湖 周四 19:00–19:30',exact:true});
-  await cell.dblclick();await cell.locator('input').fill('7');await cell.locator('input').press('Enter');await staffPage(root,'账号安全');await staffPage(root,'预约配置');await expect(cell.locator('input')).toHaveValue('7');
-  await root.getByRole('button',{name:'预览并保存',exact:true}).click();await root.getByRole('button',{name:'确认保存全部修改',exact:true}).click();await expect(root.getByRole('button',{name:'预览并保存',exact:true})).toBeDisabled();
+  await cell.dblclick();await cell.locator('input').fill('7');await cell.locator('input').press('Enter');
+  await root.locator('.field-sidebar').getByRole('button',{name:'账号安全',exact:true}).click();
+  await root.getByRole('dialog',{name:'有未保存的调整'}).getByRole('button',{name:'取消切换',exact:true}).click();await expect(cell.locator('input')).toHaveValue('7');
+  await staffPage(root,'账号安全');await expect(root.getByRole('heading',{name:'账号安全',exact:true})).toBeVisible();
+  await staffPage(root,'预约配置');await expect(cell.locator('input')).toHaveValue('7');await expect(root.getByRole('button',{name:'预览并保存',exact:true})).toBeDisabled();
   const item=await booking(student,'20308101',{file:false});const before=await (await root.request.get('/api/slot-capacities/actual?'+new URLSearchParams({campus:'南湖',date}),{headers})).json();expect(before.source).toBe('snapshot');
   await cell.dblclick();await cell.locator('input').fill('9');await cell.locator('input').press('Enter');await root.getByRole('button',{name:'预览并保存',exact:true}).click();await root.getByRole('button',{name:'确认保存全部修改',exact:true}).click();
   const after=await (await root.request.get('/api/slot-capacities/actual?'+new URLSearchParams({campus:'南湖',date}),{headers})).json();expect(after.items).toEqual(before.items);expect(item.id).toContain('reserve');

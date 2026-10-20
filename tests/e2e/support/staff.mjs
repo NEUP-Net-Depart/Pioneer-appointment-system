@@ -32,6 +32,6 @@ export async function staffPage(page, label) {
     await page.getByRole('navigation', { name: '手机岗位导航' }).getByRole('button', { name: '更多' }).click();
     await page.getByRole('dialog', { name: '工作入口' }).getByRole('button', { name: new RegExp(label) }).click();
   }
-  const keep = page.getByRole('button', { name: '保留草稿并切换', exact: true });
+  const keep = page.getByRole('button', { name: '保存并切换', exact: true });
   if (await keep.isVisible()) await keep.click();
 }
