@@ -5,7 +5,6 @@ PII_ENCRYPTION_KEY=replace-with-64-hexadecimal-characters
 # Optional stable QR signing secret (32+ characters). If unset, uses the PII key
 # with a separate HMAC domain. Keep it stable: rotation invalidates printed codes.
 # SCAN_QR_SECRET=replace-with-a-stable-random-secret
-# Set false in Pages vars to restore the legacy technician workbench.
 # Used ONLY by the local seed script, never by an HTTP endpoint:
 ROOT001_PASSWORD=replace-with-a-strong-unique-password
 ROOT002_PASSWORD=replace-with-another-strong-password

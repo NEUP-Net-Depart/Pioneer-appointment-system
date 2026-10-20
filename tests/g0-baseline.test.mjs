@@ -6,7 +6,7 @@ import { migrationFingerprint } from '../scripts/migration-fingerprint.mjs';
 test('both migration chains preserve the deployed Staff baseline and original dev migrations', async () => {
   const staff = await readFile('database/staff-migrations/0007_staff_platform.sql');
   assert.equal(migrationFingerprint(staff), '2914ae0739b6496591af1f2f95aeaf83ff3daa694cc97502f001825c505c1cdd');
-  const manifest = JSON.parse(await readFile('docs/releases/baseline-manifest.json', 'utf8'));
+  const manifest = JSON.parse(await readFile('docs/contracts/baseline-manifest.json', 'utf8'));
   for (const item of manifest.migrations.filter(item => item.name < '0007')) {
     assert.equal(migrationFingerprint(await readFile(`database/staff-migrations/${item.name}`)), item.sha256);
   }
