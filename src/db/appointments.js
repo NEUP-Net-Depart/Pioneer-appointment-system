@@ -22,9 +22,8 @@ const memberAccounts = '(SELECT account FROM staff_accounts WHERE member_id=(SEL
 function fromRow(row) {
   return row ? { id: row.id, servicePaused:!!row.service_paused, revision: row.revision, assignedToName: row.assigned_to_name || '', assignedMemberId: row.assigned_member_id || '', registeredMemberId: row.registered_member_id || '', ...Object.fromEntries(Object.entries(columns).map(([key, column]) => [key, row[column] ?? (['outcome','startedAt','completedAt','repairNumber','frontPhotoId','backPhotoId','liquidMetal','dellG15','locationRevision'].includes(key) ? null : '')])) } : null;
 }
-export function appointmentRepository(db, { workflowSchema = false } = {}) {
+export function appointmentRepository(db) {
   const writeColumns = { ...columns };
-  if (!workflowSchema) delete writeColumns.registrationFlow;
   return {
     ...serviceDayRepository(db),
     async searchNumbers(text, date, { campuses }, accessRules, {full=false,limit=APPOINTMENT_SEARCH_LIMIT+1,offset=0}={}) {
@@ -69,7 +68,7 @@ export function appointmentRepository(db, { workflowSchema = false } = {}) {
       return fromRow(await db.prepare(`${select} WHERE registered_by IN ${memberAccounts} AND registration_key=?`).bind(account,key).first());
     },
     async pendingRegistration(account) {
-      return fromRow(await db.prepare(`${select} WHERE registered_by IN ${memberAccounts} AND source='onsite' ${workflowSchema ? "AND registration_flow<>'frontdesk'" : ''} AND status='booked' ORDER BY created_at DESC,id DESC LIMIT 1`).bind(account).first());
+      return fromRow(await db.prepare(`${select} WHERE registered_by IN ${memberAccounts} AND source='onsite' AND registration_flow<>'frontdesk' AND status='booked' ORDER BY created_at DESC,id DESC LIMIT 1`).bind(account).first());
     },
     async intakePhotos(id, account, front, back, now) {
       if (!front || !back || front === back) return false;

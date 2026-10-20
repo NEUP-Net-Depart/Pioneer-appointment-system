@@ -154,7 +154,7 @@ for (const capability of [
     expect(staleWrite.status()).toBe(401);
     await page.clock.fastForward(31000);
     await expect(page.locator('#login-view')).toBeVisible();
-    await expect(page.locator('#staff-platform-root')).toBeEmpty();
+    await expect(page.locator('.field-app')).toHaveCount(0);
     await page.clock.resume();
     await login(page, '20261003');
     await expect(page.locator('.field-sidebar').getByRole('button', { name: capability.label, exact: true })).toHaveCount(0);
@@ -738,9 +738,9 @@ test('management keeps its shell and readable results during refresh at all widt
   const memberDialog = page.getByRole('dialog', { name: '陈宇', exact: true });
   const memberName = memberDialog.getByLabel('姓名', { exact: true });
   await memberName.fill('陈宇测试草稿');
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent('staff-navigate', { detail: 'settings' })));
-  await expect(memberDialog).toBeHidden();
-  await sidebar.getByRole('button', { name: '成员管理', exact: true }).click();
+  await sidebar.getByRole('button', { name: '账号安全', exact: true }).evaluate(button => button.click());
+  await page.getByRole('dialog', { name: '有未保存的调整' }).getByRole('button', { name: '取消切换', exact: true }).click();
+  await expect(memberDialog).toBeVisible();
   await expect(memberName).toHaveValue('陈宇测试草稿');
   await memberDialog.getByRole('button', { name: '关闭', exact: true }).click();
   await expect(memberDialog.getByRole('heading', { name: '放弃未保存的修改？' })).toBeVisible();

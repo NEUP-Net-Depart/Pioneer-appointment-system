@@ -4,7 +4,7 @@
 
 .roster-area>.react-page,.workspace-module>.react-page{padding:0;max-width:none}.field-app .planner-days h2{font-size:24px}.field-app .planner-editor h2,.field-app .planner-issues h2{margin-bottom:12px}.field-app .roster-page .react-heading p{margin-top:6px}
 
-.field-mode #app-shell>main:not(:has(.view.is-active)){display:none}.workspace-operational>.view{max-width:none}.field-sidebar nav{overflow-y:auto;min-height:0}.workspace-operational .page-heading{margin-top:0}
+.workspace-operational>.view{max-width:none}.field-sidebar nav{overflow-y:auto;min-height:0}.workspace-operational .page-heading{margin-top:0}
 
 .roster-scope-fields{border:0;padding:0;margin:0;min-width:0}.roster-scope-fields legend{font-weight:600;margin-bottom:10px}.roster-scope-options{display:flex;gap:8px;flex-wrap:wrap}.roster-scope-options button{min-height:44px;padding:10px 14px;border:1px solid #dce1e6;border-radius:10px;background:white;font:inherit}.roster-scope-options button[aria-pressed=true]{background:#17212b;color:white;border-color:#17212b}.roster-scope-fields p{font-size:13px;line-height:1.6;margin:8px 0 0}
 

@@ -15,6 +15,11 @@ export function fieldSeed(day) {
       ([account, name, role]) =>
         `INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('${account}','${name}','${role}','南湖','${password}','2026-01-01T00:00:00.000Z'); INSERT INTO staff_campus_grants VALUES('${account}','南湖');`,
     ),
+    // This fixture deliberately assigns the reception post independently of
+    // the login's legacy admin label.
+    `INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from) VALUES('field-office-role','member-20261001','role-office','{"campuses":"legacy"}','2026-01-01');`,
+    `INSERT INTO member_work_profiles(id,member_id,profile_code,effective_from) VALUES('field-office-profile','member-20261001','office','2026-01-01');`,
+    `INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,effective_from,created_at) VALUES('field-office-membership','member-20261001','dept-office','primary',1,'2026-01-01','2026-01-01');`,
     `INSERT INTO roster_tasks(id,week_start,slot_start,slot_end,deadline,created_at,created_by_member_id) VALUES('field-task','${day}','00:00','23:59','${at}','${at}','member-root001');`,
     `INSERT INTO roster_versions(id,task_id,status,version,rule_version,algorithm_version,created_at) VALUES('field-roster','field-task','published',1,'1.0.0','fixture','${at}');`,
     ...people.map(

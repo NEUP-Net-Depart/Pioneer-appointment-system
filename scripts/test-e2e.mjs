@@ -8,6 +8,7 @@ import {root,config} from './cli.mjs';
 import {hashPassword} from '../src/lib/passwords.js';
 import {nowIso} from '../shared/time.js';
 import {dateKey,expirationDeadline} from '../shared/time.js';
+import {smoke} from './smoke.mjs';
 import {fieldSeed} from '../tests/fixtures/field-seed.mjs';
 
 await import('./build.mjs');
@@ -34,7 +35,7 @@ const vars=`JWT_SECRET=${randomBytes(48).toString('base64url')}\nPII_ENCRYPTION_
 await writeFile(resolve(dir,'.dev.vars'),vars,{mode:0o600});
 await writeFile(resolve(dir,'.dev.vars.preview'),vars,{mode:0o600});
 const bindings={
-  vars:{...cfg.env.preview.vars,...(process.argv.includes('--field')?{STAFF_WORKFLOW_ENABLED:'true'}:{})},
+  vars:{...cfg.env.preview.vars},
   d1_databases:[{binding:'DB',database_name:'pioneer-local-e2e',database_id:'00000000-0000-4000-8000-000000000001',migrations_dir:resolve(root,'migrations')}],
   r2_buckets:[{binding:'ATTACHMENTS',bucket_name:'pioneer-local-e2e'}]
 };
@@ -79,6 +80,7 @@ try{
     await new Promise(resolve=>setTimeout(resolve,250));
   }
   if(!ready)throw new Error('Local Preview did not become ready:\n'+startup+'\n'+diagnostics);
+  await smoke(base);
   console.log(`Isolated local Preview ready: ${base} (Preview quota; fresh D1/R2; no remote resources)`);
   if(process.argv.includes('--serve')){
     if(process.argv.includes('--field') && Date.now() < Date.parse(expirationDeadline(dateKey()))) {

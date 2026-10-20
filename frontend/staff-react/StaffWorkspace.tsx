@@ -5,8 +5,8 @@ import { pendingEditors } from './useUnsavedChanges.js';
 import './field/field.css';
 
 type Entry = { id: string; label: string; group?: string };
-export function StaffWorkspace({ children, name, entries, active, onSelect }: {
-  children: ReactNode; name: string; entries: Entry[]; active: string; onSelect: (id: string) => void;
+export function StaffWorkspace({ children, name, entries, active, onSelect, onLogout }: {
+  children: ReactNode; name: string; entries: Entry[]; active: string; onSelect: (id: string) => void; onLogout: () => void;
 }) {
   const [more, setMore] = useState(false);
   const sidebar = useRef<HTMLElement>(null);
@@ -67,7 +67,7 @@ export function StaffWorkspace({ children, name, entries, active, onSelect }: {
     <aside className="field-sidebar" ref={sidebar}>
       <a className="field-brand" href="/staff/"><img src="/assets/organization-logo.jpg" alt="" /><span>先锋<span>工作人员平台</span></span></a>
       <nav aria-label="岗位工作导航">{groups.map(group => <section className="workspace-nav-group" key={group.label}><h2><button className="workspace-group-toggle" type="button" aria-expanded={expanded.includes(group.label)} onClick={() => setExpanded(current => current.includes(group.label) ? current.filter(item => item !== group.label) : [...current, group.label])}>{group.label}<span aria-hidden="true">{expanded.includes(group.label) ? '−' : '+'}</span></button></h2><div hidden={!expanded.includes(group.label)}>{group.items.map(entry => <button key={entry.id} type="button" className={active === entry.id ? 'active' : ''} aria-current={active === entry.id ? 'page' : undefined} onClick={() => choose(entry.id)}><span className="field-nav-dot" />{entry.label}</button>)}</div></section>)}</nav>
-      <div className="field-sidebar-bottom"><span className="field-avatar">{name.slice(-2)}</span><div><strong>{name}</strong><button type="button" onClick={() => document.getElementById('logout-btn')?.click()}>退出登录</button></div></div>
+      <div className="field-sidebar-bottom"><span className="field-avatar">{name.slice(-2)}</span><div><strong>{name}</strong><button type="button" onClick={onLogout}>退出登录</button></div></div>
     </aside>
     {children}
     <nav className="field-bottom-nav" aria-label="手机岗位导航">{primary.map(entry => <button key={entry.id} type="button" className={active === entry.id ? 'active' : ''} aria-current={active === entry.id ? 'page' : undefined} onClick={() => choose(entry.id)}>{entry.id === 'scene:mine' ? '我的' : entry.label === '工作台' ? '工作台' : entry.label.replace('工作台', '').replace('现场管理', '现场')}</button>)}{overflow.length > 0 && <button type="button" className={overflow.some(entry => entry.id === active) ? 'active' : ''} onClick={() => setMore(true)}>更多</button>}</nav>

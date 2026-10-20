@@ -128,6 +128,10 @@
     {
       "name": "0029_service_day_suspensions.sql",
       "sha256": "7ea97d35a285d062e12ec9f1cbcc1284fc30d30190509ccb89e511133186fea6"
+    },
+    {
+      "name": "0030_react_cutover_access.sql",
+      "sha256": "b5faaaeacc4a7fd7f5def5b095e12a2387b3ac3bafabc7159b904370a1298b0f"
     }
   ],
   "modules": [
@@ -335,6 +339,10 @@
     {
       "name": "0029_service_day_suspensions.sql",
       "sha256": "7ea97d35a285d062e12ec9f1cbcc1284fc30d30190509ccb89e511133186fea6"
+    },
+    {
+      "name": "0030_react_cutover_access.sql",
+      "sha256": "b5faaaeacc4a7fd7f5def5b095e12a2387b3ac3bafabc7159b904370a1298b0f"
     }
   ],
   "staffMigrationsDirectory": "database/staff-migrations"

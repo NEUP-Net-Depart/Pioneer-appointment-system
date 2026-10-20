@@ -9,4 +9,5 @@ dist/
 *.log
 
 output/playwright/
+output/field-workflow/
 .playwright-cli/

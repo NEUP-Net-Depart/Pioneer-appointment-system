@@ -66,7 +66,6 @@ export interface Home {
   identities?: { code: string; label: string }[];
   permissions: Record<string, boolean>;
   navigation: { id: string }[];
-  enabled: boolean;
   businessDate: string;
   actor: { memberId: string; name: string };
   authVersion: number;

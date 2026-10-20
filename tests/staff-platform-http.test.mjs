@@ -9,6 +9,11 @@ import { staffPlatformRepository } from '../src/db/staff-platform.js';
 import { userRepository } from '../src/db/users.js';
 
 let mf;
+async function officeMembership(db, account, day) {
+  // Department facts are explicit test inputs, independent of the login label.
+  await db.prepare("INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,effective_from,created_at) VALUES(?,?,'dept-office','primary',1,?,?)")
+    .bind('test-office-'+account,'member-'+account,day,day).run();
+}
 async function applyMigration(database, file) {
   const sql = (await readFile(`migrations/${file}`, 'utf8')).replace(/--[^\n]*/g, '');
   const statements = []; let buffer = '';
@@ -255,6 +260,7 @@ test('attendance corrections commit atomically, preserve historical scope and ca
     await db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,?,?,?,?,?)')
       .bind(account,`考勤范围${account}`,role,campus,hashPassword('attendance-scope-password'),'2026-01-01').run();
     await db.prepare('INSERT INTO staff_campus_grants VALUES(?,?)').bind(account,campus).run();
+    if (role === 'admin') await officeMembership(db,account,'2026-01-01');
   }
   await db.prepare("INSERT INTO staff_campus_grants VALUES('20269710','浑南')").run();
   const leadTask = await repository.createRosterTask({weekStart:today,slotStart:'01:02',slotEnd:'01:03',deadline:today,memberIds:['member-20269710'],campusScope:{campusIds:['campus-nanhu','campus-hunnan']}},'member-root001');
@@ -376,6 +382,7 @@ test('member reads, searches and writes share complete grants without mixing cam
     await db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,?,?,?,?,?)')
       .bind(id, `范围测试${id}`, role, campus, hashPassword('scope-test-password'), today).run();
     await db.prepare('INSERT INTO staff_campus_grants VALUES(?,?)').bind(id, campus).run();
+    if (role === 'admin') await officeMembership(db,id,today);
     return `member-${id}`;
   }
   const actorId = await account('20269910', '南湖');

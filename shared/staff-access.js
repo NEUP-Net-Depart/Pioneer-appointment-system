@@ -1,12 +1,11 @@
-// Enabled-platform entry points consume server-evaluated decisions. Never infer
+// Staff entry points consume server-evaluated decisions. Never infer
 // access from an account's historical admin/technician label.
 export function staffPermission(user, code) {
-  return user?.staffWorkflowEnabled ? user.permissions?.[code] === true :
-    (user?.grants || []).some(grant => grant.permissionCode === code);
+  return user?.permissions?.[code] === true;
 }
 
 export function staffViewAllowed(user, view) {
-  if (!user?.staffWorkflowEnabled) return true;
+  if (!user) return false;
   const permissions = {
     staff: 'repair.summary.read', members: 'members.manage', permissions: 'roles.manage',
     roster: 'roster.read', 'roster-manage': 'roster.repair.manage', attendance: 'attendance.self','attendance-manage':'attendance.correct',

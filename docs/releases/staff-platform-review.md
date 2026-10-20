@@ -1,8 +1,8 @@
-# 工作人员平台集成：审阅与验收指南
+# 工作人员平台一次性替换：审阅与验收
 
-本指南描述 `next/staff-platform → dev` 的交付范围，供本次集成审阅使用。核对基线为 `dev@62ad179`、`main@bd5a9ac`；分支已包含该 dev 的全部提交。规格来源为仓库根目录的 [v1.3](../../Pioneer_Staff_Development_Spec_v1.3.md)，下述后续确认规则优先于规格中的旧约定。
+PR #58 将 next/staff-platform 集成到 dev。合入 dev 的推送须自动完成现有 Preview D1 迁移、构建、Pages 部署和线上 Smoke，随后直接访问 https://dev.pioneer-appointment-system.pages.dev/staff/ 使用新 React 后台。登录、激活、会话恢复、退出和导航均由 React 处理，无需后续切换配置或清理代码。
 
-这是工作人员平台的集成版本，不代表 v1.3 全部条目已完成。历史 G0/G10 状态、首个停止节点和旧 PR #57 的说明保留为实施记录；当前行为、验证范围和缺口以本指南及代码为准。
+此次切换保留现有 PR 的 React 页面和业务交互。规格来源为仓库根目录的 [v1.3](../../Pioneer_Staff_Development_Spec_v1.3.md)，后续确认规则优先。下文仍列出原规格中超出当前后台既有功能的范围，不能将入口替换理解为新增全部规划功能。
 
 ## 1. 建议审阅顺序
 
@@ -10,13 +10,13 @@
 
 | 顺序 | 审阅主题与关键文件 | 重点检查 |
 | --- | --- | --- |
-| 1 | [运行上下文](../../src/context.js)、[应用组合](../../src/app/compose.js)、[模块注册](../../src/modules/registry.js)、[契约](../../docs/contracts/staff-platform.json) | 新旧宿主启用边界；依赖方向；请求级数据库会话；模块契约。 |
+| 1 | [运行上下文](../../src/context.js)、[应用组合](../../src/app/compose.js)、[模块注册](../../src/modules/registry.js)、[契约](../../docs/contracts/staff-platform.json) | React 单入口及统一工作流；依赖方向；请求级数据库会话；模块契约。 |
 | 2 | [身份映射](../architecture/identity-mapping.md)、[授权实现](../../src/modules/authorization/public.js)、[条件](../../src/modules/authorization/conditions.js)、[界面权限](../../shared/staff-access.js)、[身份摘要](../../shared/staff-identities.js) | memberId 与登录账号分离；同一个完整 grant 的范围交集；有效期、签到条件、客户字段及撤权。 |
 | 3 | [现场流程](../../src/services/field-workflow.js)、[预约存储](../../src/db/appointments.js)、[维修页面](../../frontend/staff-react/field/Repair.tsx)、[工作台](../../frontend/staff-react/field/FieldApp.tsx) | 到岗与工单扫码区分；接单／转派／完成的原子性、回执和一人一单。 |
 | 4 | [人员与排班服务](../../src/services/staff-platform.js)、[持久化](../../src/db/staff-platform.js)、[收集存储](../../src/db/roster-collection.js)、[排班算法](../../src/modules/rosters/)、[排班界面](../../frontend/staff-react/RosterWorkflow.jsx) | 两种排班的完整流程；循环周期；人工覆盖；发布竞争；签到和申请保护。大型 service/repository 仍是后续拆分重点。 |
 | 5 | [考勤核算](../../src/modules/attendance/weekly-export.js)、[暂停日期](../../src/db/service-days.js)、[成员资格](../../frontend/staff-react/MemberQualifications.jsx)、[成员编辑](../../frontend/staff-react/MemberEditor.jsx) | 历史身份、实际事实与核算分离；暂停日禁止写入；资格撤销；授权不能等同维修资格。 |
 | 6 | [React 入口](../../frontend/staff-react/main.jsx)、[统一侧栏](../../frontend/staff-react/StaffWorkspace.tsx)、[查询生命周期](../../frontend/staff-react/useWorkspaceQuery.js)、[页面基础样式](../../frontend/staff-react/workspace-foundation.css)、[现场共享组件](../../frontend/staff-react/field/ui.tsx) | 页面不整壳重挂载；草稿和焦点保留；隐藏页面暂停；弹窗焦点、触控尺寸、长列表与窄屏。 |
-| 7 | [升级说明](../../database/upgrades/README.md)、[迁移清单和指纹](baseline-manifest.json)、[CI](../../.github/workflows/check.yml)、[发布编排](../../scripts/ci-release.mjs)、[运维](../operations.md) | 两条真实历史升级链；原库原密钥；开关；迁移先于部署；回退边界。 |
+| 7 | [升级说明](../../database/upgrades/README.md)、[迁移清单和指纹](baseline-manifest.json)、[CI](../../.github/workflows/check.yml)、[发布编排](../../scripts/ci-release.mjs)、[运维](../operations.md) | 两条真实历史升级链；原库原密钥；管理员权限兼容；迁移先于部署；回退边界。 |
 
 ## 2. 岗位工作流程与验收矩阵
 
@@ -69,26 +69,27 @@ flowchart TD
 - **周核算不伪造签到。** “只计第一次”与“负责人每周计一次”分别开关、默认关闭；负责人按有效授权区间计周、兼任去重，授权服务日整周暂停计零。原签到时间与次数不会被改写。
 - **统一扫码入口、区分展示码。** 客户维修码进入工单核验，工作人员签到码进入到岗确认。打开扫描器即启动摄像头；识别、关闭、切页、页面隐藏或离开时释放，返回页面不自动重启。
 
-## 4. 数据迁移与发布边界
+## 4. 数据兼容与发布路径
 
-| 目标 | 原链与本次增量 | 发布路径 |
+| 目标 | 迁移历史 | 发布流程 |
 | --- | --- | --- |
-| dev／Production | 原 `migrations/0001～0009` 不改；追加 `0010～0029` | dev 先迁移共享 Preview D1，再部署；后续 main 使用原 Production D1/R2。 |
-| 独立 Staff Staging | 保留原 Staff `0001～0007` 内容，独立目录续接 `0008～0029` | `next/staff-platform` 先迁移独立 Staff D1，再部署 `pioneer-staff-staging` 并 smoke。 |
+| dev Preview | 保留 migrations 全部已执行文件，追加 0030_react_cutover_access.sql | 完整验证 → 现有 Preview 快照本地演练 → 迁移现有 Preview D1 → 构建部署 → 线上 Smoke |
+| 独立 Staff Staging | 保留 database/staff-migrations 历史，追加对应 0030 | 完整验证 → Preview 只读演练与独立 Staff 迁移 → 部署 Staff Staging → Smoke |
+| main | 本 PR 不推送 main | 继续运行 main 现有生产部署；将来合入 main 时使用生产发布流程 |
 
-序号不相同的双链先在 dev 0010／Staff 0008 收敛五状态及人员模型；后续加入成员别名、现场工作、授权、办公班表、请假换班谱系、收集范围与循环等。最新 `0025～0029` 分别是交流角色、办公负责人维修排班授权、收集结束推进、例外发布确认、日期暂停。全部文件及指纹见 [manifest](baseline-manifest.json)。契约中的 `schemaVersion=0022` 是共享契约基线，不是当前迁移账本最后序号。
+两条历史迁移链的文件与指纹见 [manifest](baseline-manifest.json)。schemaVersion=0022 是模块契约基线；发布就绪标识 staff-react-0030 要求真实结构、数据库触发器及本次迁移标记全部存在。
 
-迁移保留原账号密码、私人凭证哈希、加密联系方式、附件引用／配额、五种预约状态、容量快照及修正历史。旧工作人员账号映射到稳定成员；重新建立登录不恢复已撤销角色。已执行 SQL 不重写，不把 Staff 测试数据导入 dev，也不替换任何环境 D1/R2。
+0030 为旧 admin 增加独立管理角色，保留原授权校区内的账号管理、预约设置、统计、纠错、转派、客户资料与私人凭证恢复能力。不会提升为 superadmin。早期迁移依据 admin 登录标签生成且从未修改的办公角色、岗位和部门默认记录会被清理；明确修订或独立授予的记录保留。组织归属、工作资格与管理授权继续分离。维修人员以显式本人范围授权读取本人维修客户资料。旧会话在权限迁移后失效，原密码继续有效，无需人工重新授权。
 
-**启用开关必须显式检查：** 当前仓库仅 Staff Staging 配置 `STAFF_WORKFLOW_ENABLED=true`；`wrangler.jsonc` 中 Production／共享 Preview 未打开该开关。本 PR 本身不自动切换这些环境到新工作区。合并 dev 会执行追加迁移；若要在 dev 验收新版，需另行明确配置该环境的开关并按其发布流程部署。关闭开关时保留原后台宿主兼容路径；启用的新工作区不会在操作中跳转回旧页面。
+原 D1、私有 R2、JWT 和 PII 密钥保持不变；账号密码、私人凭证哈希、加密联系方式、附件引用、预约、容量快照及历史修正保留。维修码继续使用原 SCAN_QR_SECRET（未单设时使用原 PII 密钥）签名，并接受此前测试环境的 JWT 签名码；私人凭证重发不使维修码失效。历史迁移不会重写，测试数据不会导入 Preview。
 
-发布前按 [运维说明](../operations.md) 备份目标 D1、R2 与匹配的 PII 密钥；核对 `d1_migrations` 与指纹。PII 密钥必须继续匹配原有数据，JWT 或二维码签名域切换可能要求重新登录、重新展示码。不要把本地验收密码或凭证复制到远端。
+不存在工作人员新旧实现的运行时选择。React 唯一入口及后台行为由部署代码版本决定。dev 的完整 CI、迁移、部署链串行执行，迁移失败即停止部署。只读演练使用 Preview 导出，在临时本地数据库应用待执行迁移，并检查原始数据和实际角色权限；不修改远程 Preview，不把快照上传为 CI 工件。
 
-**回退限制：** 关闭工作区开关不会撤销数据库迁移。只能回退到已验证兼容新 schema 的应用；不能假定任何旧 commit 都能直接运行。需要结构回退时必须单独规划成对恢复、停写和备份后的新增记录处理，禁止直接删除迁移账本。
+回退必须使用已验证兼容新 schema 的应用版本。不得删除迁移账本或将旧结构直接覆盖到现有数据库；结构恢复需单独处理停写、成对备份和新增数据。
 
 ## 5. 自动化验收及复现方式
 
-本地业务回归证据：通用 Chromium／WebKit 浏览器测试 180 项、工作人员浏览器测试 41 项通过，周核算标签与截图调整另执行 2 项专项通过。审阅中新增本人范围安全修复后，完整 Node／后端测试增加至 256 项并全部通过，工作人员浏览器套件 41 项重新验证通过。通用套件中的 41 项工作人员场景按配置跳过，单独由 `test:field` 全部执行；不将跳过项计入通过数。PR 提交还需以远端相同 SHA 的完整 CI 为准。
+以 PR 最新提交 SHA 的完整 CI 为验收依据。工作人员真实 API 浏览器场景由 test:field 单独执行；通用套件中的对应场景按夹具配置跳过，不计入通过数。
 
 ```sh
 npm ci
@@ -96,13 +97,11 @@ npx playwright install chromium webkit
 npm run verify
 ```
 
-`verify` 顺序执行 lint、TypeScript、架构／平台审计、构建检查、Node 测试、两条迁移链验证、通用浏览器及工作人员浏览器。不要并行运行会重新构建 dist 的套件。浏览器及 Node 使用临时数据与测试时钟，不访问云端业务库或现有人工验收库。
-
-最终 CI 排查还修正了一处照片测试的顺序假设：上传请求可独立完成，不能将第一个附件当成正面照片。专项测试明确先上传背面，按用途验证刷新恢复、HEIC 拒绝和仅重传替换面；原断言在 Chromium／WebKit 均可稳定复现失败，修正不改变业务上传逻辑。
+`verify` 顺序执行 lint、TypeScript、架构／平台审计、构建检查、Node 测试、两条迁移链验证、通用浏览器及工作人员浏览器。浏览器及 Node 回归使用临时数据与测试时钟；CI 的 Preview 演练仅导出现有库到临时本地数据库，不进行远程写入。
 
 | 风险 | 主要证据入口 |
 | --- | --- |
-| 原库带数据升级、迁移中断回滚、外键、历史凭证与附件 | `tests/staff-upgrade.test.mjs`、各 `*-upgrade.test.mjs`、`scripts/verify-migrations.mjs` |
+| 原管理员权限、原库带数据升级、迁移中断回滚、外键、历史凭证与附件 | `tests/admin-cutover.test.mjs`、`tests/cutover-release.test.mjs`、`tests/staff-upgrade.test.mjs`、各 `*-upgrade.test.mjs`、`scripts/verify-migrations.mjs` |
 | 接单／转派并发、审计失败、重复请求、跨日维修 | `tests/field-workflow.test.mjs`、`tests/e2e/field-flow.spec.mjs` |
 | 校区／部门／对象范围、旧版本、撤权、导入 200 人 | `tests/staff-platform-http.test.mjs`、`tests/staff-authz.test.mjs`、`tests/e2e/staff-authorization.spec.mjs` |
 | 收集截止／重开／循环、偏好时效、整周提交、锁定、申请竞争 | `tests/roster-workflow.test.mjs`、`tests/e2e/roster-flow.spec.mjs`、`tests/roster-swap-protection.test.mjs` |
@@ -136,4 +135,4 @@ npm run verify
 - **扩展与设备：** 完整会议业务、真实 NFC 硬件不在本次范围；会议策略夹具不算产品交付。真实 iOS／内置浏览器摄像头、镜头切换及权限阻止恢复仍需设备验证。
 - **规模：** 自动化覆盖 200 人导入、多人排班与常见冲突，但未做生产峰值容量／Cloudflare 端到端压测；复杂 service/repository 的进一步拆分仍有维护成本。
 
-PR 可审阅与测试不等于允许直接切换正式环境。上线判断应同时考虑上述范围、目标环境开关、备份与真实岗位验收；本次只提交 PR，不自动合并。
+本 PR 的合并门槛是 React 独立运行、兼容迁移演练通过、完整 CI 全绿及独立 Staff Staging 发布和 Smoke 成功。本次更新 PR，不自动合并；合入 dev 后无需手工启用或清理。

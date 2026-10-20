@@ -2,7 +2,7 @@
 
 面向南湖、浑南校区的免费维修预约系统，提供学生预约与查询、工作人员扫码签到与维修记录、管理员账号及预约管理。
 
-学生端使用原生 HTML/CSS/JavaScript，工作人员平台使用 React、TypeScript 与 Vite；Cloudflare Pages Functions 提供 API，D1 保存业务数据，私有 R2 保存附件。入口为学生端 `/`、工作人员端 `/staff/` 和同源 `/api/*`。新版工作人员工作区按环境的 `STAFF_WORKFLOW_ENABLED` 开关启用。
+学生端使用原生 HTML/CSS/JavaScript，工作人员平台使用 React、TypeScript 与 Vite；Cloudflare Pages Functions 提供 API，D1 保存业务数据，私有 R2 保存附件。入口为学生端 `/`、工作人员端 `/staff/` 和同源 `/api/*`。工作人员端由 React 独立处理登录、激活、会话和导航；合入 dev 后自动迁移现有 Preview 数据库并部署，无需环境开关。
 
 GitHub Actions 在所有分支推送和 PR 上运行验证：`main` 发布 Production，`dev` 发布共享 Preview，`next/staff-platform` 发布独立 Staff Staging；`feat/staff-*` 只进行隔离验证。其他分支继续发布各自的共享 Preview 地址。只有 `dev` 自动迁移共享测试库；Production 与 Staff Staging 均在目标 D1 迁移成功后发布。
 
@@ -111,13 +111,13 @@ npm run release:plan
 | GET / POST | `/api/activation-requests` / `/api/activation-requests/review` | 申请审核 |
 | GET | `/api/export/appointments.csv` | admin+ 导出 |
 
-工作人员平台（dev 追加 `0010_staff_platform.sql`，Staff Staging 采用独立迁移目录，逻辑 schema `0010`）还提供稳定成员、模块授权、策略化签到和排班契约：`/api/members`、`/api/roles`、`/api/permissions`、`/api/workbench`、`/api/attendance/*`、`/api/presence/me`、`/api/roster-tasks`、`/api/rosters/*`、`/api/swaps`、`/api/leaves` 和 `/api/audit`。`GET /api/auth/me` 返回 `memberId`、任职、工作属性、完整授权、当日岗位、模块导航、恢复任务、`authVersion` 与 schema 版本。
+工作人员平台（dev 追加 `0010_staff_platform.sql`，Staff Staging 采用独立迁移目录，契约 schema `0022`）还提供稳定成员、模块授权、策略化签到和排班契约：`/api/members`、`/api/roles`、`/api/permissions`、`/api/workbench`、`/api/attendance/*`、`/api/presence/me`、`/api/roster-tasks`、`/api/rosters/*`、`/api/swaps`、`/api/leaves` 和 `/api/audit`。`GET /api/auth/me` 返回 `memberId`、任职、工作属性、完整授权、当日岗位、模块导航、恢复任务、`authVersion` 与 schema 版本。
 
 学生的查询、取消、排队和附件接口都要求预约访问凭证；预约编号仅用于展示和业务沟通，不能单独访问敏感数据。
 
 新预约编号为 `reserve{校区代码}{预约日期YYYYMMDD}-{序号}`，全流程复用，不再生成独立维修编号。历史编号保留并支持查询，主键和数据关联不变，详见 [业务规则](docs/requirements.md) 和 [数据库结构](docs/data-model.md)。
 
-管理员可在工作人员端“个人设置 → 预约人数设置”调整容量，业务规则见 [预约规则](docs/requirements.md#预约规则)。
+管理员可在工作人员端“预约配置”调整容量，业务规则见 [预约规则](docs/requirements.md#预约规则)。
 
 `GET /api/slot-capacities` 返回 `{ items: [{ campus, timeSlot, capacity, revision }] }`，只包含授权校区。PATCH 接受单项同形对象，capacity 为非负安全整数，revision 必须匹配当前版本；成功返回更新项并递增 revision，冲突返回 409，权限不足返回 403。
 

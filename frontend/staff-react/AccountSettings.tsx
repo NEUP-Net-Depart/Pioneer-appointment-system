@@ -5,7 +5,7 @@ import { WorkspaceHeader } from './WorkspaceHeader';
 import { CapacityEditor } from './CapacityEditor';
 import { staffPermission } from '../../shared/staff-access.js';
 
-export function AccountSettings({ user, section, onNavigate }: { user: { name: string; account: string; homeCampus: string; authorizedCampuses: string[]; role: string; staffWorkflowEnabled?: boolean; permissions?: Record<string, boolean> }; section: string; onNavigate?: (view: string) => void }) {
+export function AccountSettings({ user, section, onNavigate }: { user: { name: string; account: string; homeCampus: string; authorizedCampuses: string[]; role: string; permissions?: Record<string, boolean> }; section: string; onNavigate?: (view: string) => void }) {
   const active = useContext(ActivityContext);
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [confirm, setConfirm] = useState(false);
   const form = useRef<HTMLFormElement>(null);

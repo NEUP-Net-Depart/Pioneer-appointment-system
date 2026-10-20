@@ -1,4 +1,4 @@
-export function serviceLocationRepository(db, { workflowSchema = false } = {}) {
+export function serviceLocationRepository(db) {
   return {
     async list(start,end,campuses) {
       if (!campuses.length) return [];
@@ -23,7 +23,7 @@ export function serviceLocationRepository(db, { workflowSchema = false } = {}) {
       return results[1].results[0] || null;
     },
     async affected(campus,date) {
-      return (await db.prepare(`SELECT id,name,student_id AS studentId,${workflowSchema ? '(SELECT member_id FROM staff_accounts WHERE account=appointments.assigned_to)' : 'NULL'} AS assignedMemberId,contact_type AS contactType,contact_value AS contactValue,
+      return (await db.prepare(`SELECT id,name,student_id AS studentId,(SELECT member_id FROM staff_accounts WHERE account=appointments.assigned_to) AS assignedMemberId,contact_type AS contactType,contact_value AS contactValue,
         email,social,phone FROM appointments WHERE campus=? AND date=? AND source='booking' AND status IN ('booked','in_progress') ORDER BY time_slot,id`)
         .bind(campus,date).all()).results;
     },

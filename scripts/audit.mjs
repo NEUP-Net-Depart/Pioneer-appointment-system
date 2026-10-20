@@ -55,8 +55,9 @@ function visit(path) {
   visited.add(path);
   for (const dependency of graph.get(path) || []) visit(dependency);
 }
-for (const entry of ['frontend/user/main.js','frontend/staff/main.js','frontend/staff-react/main.jsx','functions/api/[[path]].js']) visit(resolve(root, entry));
-for (const path of graph.keys()) assert.ok(visited.has(path), `Unreachable runtime module: ${relative(root, path)}`);
+for (const entry of ['frontend/user/main.js','frontend/staff-react/main.jsx','functions/api/[[path]].js']) visit(resolve(root, entry));
+const unreachable = [...graph.keys()].filter(path => !visited.has(path)).map(path => relative(root,path));
+assert.equal(unreachable.length, 0, `Unreachable runtime modules: ${unreachable.join(', ')}`);
 const { manifests, validateManifests } = await import('../src/modules/registry.js');
 const manifestCheck = validateManifests(manifests);
 assert.ok(manifestCheck.valid, `Invalid module manifest: ${manifestCheck.errors.join('; ')}`);

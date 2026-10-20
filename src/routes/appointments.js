@@ -26,7 +26,7 @@ export const appointmentRoutes = [
     return json({ ...item, attachments: attachments.items });
   }],
   ['POST', /^\/api\/appointments\/([^/]+)\/credential$/, async (context,match) => {
-    const actor=await context.role(context.services.field.enabled ? 'technician' : 'admin');
+    const actor=await context.role('technician');
     await context.limit('write');
     return json(await context.services.appointments.recover(decodeURIComponent(match[1]),await readBody(context.request),actor));
   }],

@@ -1,11 +1,11 @@
 import { addDays, dateKey } from '../../shared/time.js';
 import { requireRole } from './permissions.js';
 
-export function statsService(stats, appointments, clock = () => new Date(), staff = null) {
+export function statsService(stats, appointments, clock = () => new Date(), staff) {
   return {
     async summary({ range, day },actor) {
-      requireRole(actor,staff?.field?.enabled ? 'technician' : 'admin');
-      if (staff?.field?.enabled) actor = await staff.scopedActor(actor, 'statistics.read');
+      requireRole(actor,'technician');
+      actor = await staff.scopedActor(actor, 'statistics.read');
       const instant = clock();
       await appointments.expirePending(instant.toISOString(), {campuses:actor.authorizedCampuses});
       const start = day || range === 'all' ? '' : addDays(dateKey(instant), -(Number(range) - 1));

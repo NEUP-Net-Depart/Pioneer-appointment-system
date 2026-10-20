@@ -24,8 +24,8 @@ test('workspace entries evaluate grant scope, validity and current duty rather t
   assert.equal(workspacePermissions(actor, context)['members.manage'], false);
 });
 
-test('an enabled workspace fails closed even when legacy admin labels and stale grants remain', () => {
-  const user = { staffWorkflowEnabled: true, role: 'superadmin', grants: [{ permissionCode: 'settings.manage' }], permissions: {} };
+test('the React workspace fails closed even when legacy admin labels and stale grants remain', () => {
+  const user = { role: 'superadmin', grants: [{ permissionCode: 'settings.manage' }], permissions: {} };
   for (const view of ['capacity','stats','users','members','permissions','roster-manage','office-roster','roster-requests','staff','unknown']) assert.equal(staffViewAllowed(user, view), false, view);
   assert.equal(staffViewAllowed(user, 'settings'), true);
   assert.equal(staffViewAllowed(user, 'workbench'), true);

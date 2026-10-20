@@ -4,7 +4,7 @@ import { addDays, dateKey, serviceDay, slotDeadline, expirationDeadline, weekRan
 import { issueAccessToken, bookingDigest, hashAccessToken } from '../lib/access-tokens.js';
 import { guestAppointment } from './access.js';
 import { repairOutcomes, statusLabels } from '../../shared/constants.js';
-import { appointmentScope, requireRole, requireAppointmentAccess, requireCampus, ownsRepair, ownsRegistration } from './permissions.js';
+import { appointmentScope, requireRole, requireCampus, ownsRepair, ownsRegistration } from './permissions.js';
 
 export async function presentAppointment(item, encryptionKey, { staff = false } = {}) {
   const [phone, social, email, contactValue] = await Promise.all([item.phone,item.social,item.email,item.contactValue].map(value => decryptText(value, encryptionKey)));
@@ -13,7 +13,7 @@ export async function presentAppointment(item, encryptionKey, { staff = false } 
   if (!staff) { delete visible.assignedToName; delete visible.assignedMemberId; delete visible.registeredMemberId; }
   return visible;
 }
-export function appointmentService(appointments, users, encryptionKey, clock = () => new Date(), staffPlatform = null) {
+export function appointmentService(appointments, users, encryptionKey, clock = () => new Date(), staffPlatform) {
   const present = async (item, staff = false) => {
     const [visible, location] = await Promise.all([presentAppointment(item,encryptionKey,{ staff }),appointments.location(item.date,item.campus)]);
     return { ...visible, serverNow:clock().toISOString(), location: location?.location || item.locationSnapshot || '', currentLocationRevision: location?.revision ?? null,
@@ -51,7 +51,7 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       return { found: true, appointment: { ...await this.lookup(item.id,token), accessToken: token } };
     },
     async overview(user) {
-      if (staffPlatform?.field?.enabled) user = await staffPlatform.scopedActor(user, 'repair.summary.read');
+      user = await staffPlatform.scopedActor(user, 'repair.summary.read');
       const instant = clock(), start = dateKey(instant), end = addDays(start, 6);
       const { campuses } = appointmentScope(user);
       await expire(instant, { campuses });
@@ -70,36 +70,23 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       return { start, end, dates, campuses, items: makeItems(dates), week: { ...week, dates: weekDates, items: makeItems(weekDates) }, updatedAt: instant.toISOString() };
     },
     async list(query, user) {
-      if (staffPlatform?.field?.enabled) user = await staffPlatform.scopedActor(user, 'repair.summary.read');
+      user = await staffPlatform.scopedActor(user, 'repair.summary.read');
       const scope = appointmentScope(user);
       await expire(clock(), { campuses: scope.campuses });
-      if(staffPlatform?.field?.enabled) {
-        // Status facets describe all searchable, visible matches before the
-        // selected status is applied, so projection must see every status.
-        const result=await appointments.list({...query,q:'',status:'all'},scope);
-        const visible=await staffPlatform.field.projectList(user,result.items);
-        const q=(query.q || '').toLowerCase();
-        const matches=visible.filter(item=>!q || [item.id,item.repairNumber,item.deviceModel,item.campus,item.name,item.studentId].some(value=>String(value || '').toLowerCase().includes(q)));
-        const filteredCounts={all:matches.length,...Object.fromEntries(Object.keys(statusLabels).map(status=>[status,0]))};
-        for (const item of matches) filteredCounts[item.status]++;
-        const items=matches.filter(item=>!query.status || query.status==='all' || (query.status==='pending' ? ['booked','in_progress'].includes(item.status) : item.status===query.status));
-        return {...result,items,filteredCounts};
-      }
-      const result = await appointments.list(query, scope);
-      const items = await Promise.all(result.items.map(async item => {
-        if (user.role === 'technician' && (item.status === 'booked' || (!ownsRepair(user, item) && !(item.source === 'onsite' && ownsRegistration(user, item))))) {
-          return Object.fromEntries(['id','revision','campus','date','timeSlot','deviceType','brand','deviceModel','faultType','status','createdAt','expiresAt'].map(key => [key, item[key]]));
-        }
-        return present(item, true);
-      }));
-      return { ...result, items };
+      // Status facets describe all searchable, visible matches before the
+      // selected status is applied, so projection must see every status.
+      const result=await appointments.list({...query,q:'',status:'all'},scope);
+      const visible=await staffPlatform.field.projectList(user,result.items);
+      const q=(query.q || '').toLowerCase();
+      const matches=visible.filter(item=>!q || [item.id,item.repairNumber,item.deviceModel,item.campus,item.name,item.studentId].some(value=>String(value || '').toLowerCase().includes(q)));
+      const filteredCounts={all:matches.length,...Object.fromEntries(Object.keys(statusLabels).map(status=>[status,0]))};
+      for (const item of matches) filteredCounts[item.status]++;
+      const items=matches.filter(item=>!query.status || query.status==='all' || (query.status==='pending' ? ['booked','in_progress'].includes(item.status) : item.status===query.status));
+      return {...result,items,filteredCounts};
     },
     async createOnsite(data, actor, requestId, registrationFlow = 'technician_intake') {
       requireRole(actor, 'technician'); requireCampus(actor, data.campus);
-      if (staffPlatform && !['admin', 'superadmin'].includes(actor.role)) {
-        await staffPlatform.requirePermission(actor, registrationFlow === 'frontdesk' ? 'onsite.frontdesk.create' : 'onsite.create', { campusId: data.campus });
-      }
-      if (staffPlatform?.field?.enabled) await staffPlatform.requirePermission(actor, registrationFlow === 'frontdesk' ? 'onsite.frontdesk.create' : 'onsite.create', { campusId: data.campus });
+      await staffPlatform.requirePermission(actor, registrationFlow === 'frontdesk' ? 'onsite.frontdesk.create' : 'onsite.create', { campusId: data.campus });
       return this.create(data, { actor: actor.account, requestId, registrationFlow });
     },
     async create(data, onsite, requestKey) {
@@ -142,34 +129,27 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
     },
     async transfer(id, input, actor) {
       const item = await appointments.find(id); if (!item) fail(404, '预约不存在');
-      const receipt = staffPlatform?.field?.enabled ? await staffPlatform.field.receipt(actor, 'repairs.transferred', { ...input, id }, id) : null;
+      const receipt = await staffPlatform.field.receipt(actor, 'repairs.transferred', { ...input, id }, id);
       if (receipt?.replay) return receipt.replay;
-      if (actor.role === 'admin' || actor.role === 'superadmin') requireRole(actor, 'admin');
-      else if (staffPlatform) await staffPlatform.requirePermission(actor, 'repair.transfer', { campusId: item.campus });
-      else requireRole(actor, 'admin');
+      await staffPlatform.requirePermission(actor, 'repair.transfer', { campusId: item.campus });
       requireCampus(actor, item.campus);
       if (item.status !== 'in_progress') fail(409, '只有维修中的工单可以转派');
       const account = await assignee(input.assignedTo, item.campus);
       if (!input.reason || input.reason.trim().length < 2) fail(400, '请填写转派原因');
       if (input.revision !== undefined && input.revision !== item.revision) fail(409, '预约已被其他工作人员修改，请刷新后重试');
-      const eligibility = staffPlatform?.field?.enabled ? await staffPlatform.field.assertTransfer(actor, item, account) : null;
-      const workflow = eligibility ? { eligibility, actor, action: 'repairs.transferred', reason: input.reason, requestId: input.requestId, payloadHash:receipt.payloadHash, at: clock().toISOString() } : null;
+      const eligibility = await staffPlatform.field.assertTransfer(actor, item, account);
+      const workflow = { eligibility, actor, action: 'repairs.transferred', reason: input.reason, requestId: input.requestId, payloadHash:receipt.payloadHash, at: clock().toISOString() };
       const updated = await appointments.update(item, { assignedTo: account }, undefined, workflow);
       if (!updated) fail(409, '预约已被其他操作修改，请刷新后重试');
-      if (staffPlatform && !workflow) {
-        const context = await staffPlatform.contextFor(actor);
-        await staffPlatform.recordAudit({ actorMemberId: context.actor.memberId, actorAccount: actor.account, action: 'repairs.transferred',
-          sourceRef: { module: 'repairs', type: 'appointment', id: updated.id }, before: item, after: updated, reason: input.reason, requestId: input.requestId || '' });
-      }
-      return workflow ? staffPlatform.field.detail(actor, updated.id) : present(updated);
+      return staffPlatform.field.detail(actor, updated.id);
     },
     async recover(id, input, actor) {
       const item = await appointments.find(id);
       if (!item) fail(404, '预约不存在');
-      if (staffPlatform?.field?.enabled) {
+      {
         requireCampus(actor, item.campus);
         await staffPlatform.requirePermission(actor, 'repair.correct', { campusId: item.campus, id: item.id, assignedMemberId: item.assignedMemberId, businessDate: item.date });
-      } else { requireRole(actor, 'admin'); requireAppointmentAccess(actor, item); }
+      }
       if (input.identityVerified !== true || typeof input.reason !== 'string' || input.reason.trim().length < 8 || input.reason.length > 300) fail(400, '请确认已人工核验身份，并记录至少 8 字的核验说明');
       const credential = issueAccessToken();
       if (!await appointments.rotateCredential(item, credential.hash, actor.account, input.reason.trim(), clock().toISOString())) fail(409, '预约已更新，请刷新后重试');
@@ -181,24 +161,21 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
       if (!item) fail(404, '预约不存在');
       if (user) requireCampus(user, item.campus);
       const workflowAction = input.status === 'in_progress' ? 'repairs.started' : input.status === 'completed' ? 'repairs.completed' : 'repairs.updated';
-      const receipt = user && staffPlatform?.field?.enabled && !action ? await staffPlatform.field.receipt(user, workflowAction, {input,revision,requestId,reason,verification,id},id) : null;
+      const receipt = user && !action ? await staffPlatform.field.receipt(user, workflowAction, {input,revision,requestId,reason,verification,id},id) : null;
       if (receipt?.replay) return receipt.replay;
       const instant = clock(), timestamp = instant.toISOString();
       await expire(instant, { id: item.id });
       item = user ? await appointments.find(item.id) : await guestAppointment(appointments, item.id, accessToken);
       // A lost response can be retried with the original revision and photo IDs.
       // Only an exact repeat by the recorded owner is treated as success.
-      if (repeated(item, input, user, action)) return staffPlatform?.field?.enabled ? staffPlatform.field.detail(user,item.id) : present(item,true);
+      if (repeated(item, input, user, action)) return staffPlatform.field.detail(user,item.id);
       if (revision !== undefined && revision !== item.revision) fail(409, '预约已更新，请刷新后重试');
       if ((input.frontPhotoId !== undefined || input.backPhotoId !== undefined) &&
           (action === 'correct' || input.status !== 'in_progress')) fail(400, '签到照片只能在签到时记录');
       if (input.expiresAt !== undefined && action !== 'correct') fail(400, '有效截止时间只能由管理员纠错设置');
       let patch, eligibility;
       if (action === 'correct') {
-        if (staffPlatform?.field?.enabled) await staffPlatform.requirePermission(user, 'repair.correct', { campusId: item.campus, assignedMemberId: item.assignedMemberId, id: item.id, businessDate: item.date });
-        else if (user?.role === 'admin' || user?.role === 'superadmin') requireRole(user, 'admin');
-        else if (staffPlatform) await staffPlatform.requirePermission(user, 'repair.correct', { campusId: item.campus, assignedMemberId: item.assignedMemberId, id: item.id, businessDate: item.date });
-        else requireRole(user, 'admin');
+        await staffPlatform.requirePermission(user, 'repair.correct', { campusId: item.campus, assignedMemberId: item.assignedMemberId, id: item.id, businessDate: item.date });
         requireCampus(user, item.campus);
         const status = input.status || item.status;
         if (input.expiresAt !== undefined && status !== 'booked') fail(400, '有效截止时间只能在恢复为已预约时设置');
@@ -238,10 +215,10 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
         patch = { status: 'cancelled', outcome: null, completedAt: timestamp };
       } else {
         const starting = item.status === 'booked' && input.status === 'in_progress';
-        requireAppointmentAccess(user, item, { start: starting });
+        requireCampus(user, item.campus);
         if (input.assignedTo !== undefined) fail(403, '维修人员由签到记录，转派请使用管理员纠错');
         if (starting) {
-          if (staffPlatform?.field?.enabled) {
+          {
             eligibility = await staffPlatform.field.requireEligible(user, item.campus);
             if (!verification) fail(400, '请完成现场设备核验');
           }
@@ -249,18 +226,17 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
           if (!await appointments.intakePhotos(item.id, user.account, input.frontPhotoId, input.backPhotoId, timestamp)) fail(400, '请由本次签到人员上传电脑正面和反面照片');
           patch = { status: 'in_progress', assignedTo: user.account, startedAt: timestamp, completedAt: null, outcome: null, frontPhotoId: input.frontPhotoId, backPhotoId: input.backPhotoId };
         } else if (item.status === 'booked' && input.status === 'cancelled' && input.outcome === undefined) {
-          if (staffPlatform?.field?.enabled) await staffPlatform.requirePermission(user, 'repair.correct', { campusId: item.campus, id: item.id, businessDate: item.date });
-          else requireRole(user, 'admin');
+          await staffPlatform.requirePermission(user, 'repair.correct', { campusId: item.campus, id: item.id, businessDate: item.date });
           patch = { status: 'cancelled', outcome: null, completedAt: timestamp };
         } else if (item.status === 'in_progress' && input.status === 'completed') {
-          if (staffPlatform?.field?.enabled) {
+          {
             if (!ownsRepair(user, item)) fail(403, '只能完成本人当前维修');
             await staffPlatform.requirePermission(user, 'repair.finish.own', { campusId: item.campus, assignedMemberId: item.assignedMemberId });
           }
           repairResult(input.outcome, input.repairNote);
           patch = { status: 'completed', outcome: input.outcome, repairNote: input.repairNote, completedAt: timestamp };
         } else if (item.status === 'in_progress' && input.status === undefined && input.outcome === undefined && input.repairNote !== undefined) {
-          if (staffPlatform?.field?.enabled) {
+          {
             if (!ownsRepair(user,item)) fail(403,'只能编辑本人当前维修');
             await staffPlatform.requirePermission(user,'repair.finish.own',{campusId:item.campus,assignedMemberId:item.assignedMemberId});
           }
@@ -268,14 +244,14 @@ export function appointmentService(appointments, users, encryptionKey, clock = (
         } else fail(409, '当前状态不能执行此操作，修正记录请使用管理员纠错');
       }
       const correction = action === 'correct' ? { actor: user.account, reason: correctionReason.trim(), instant: timestamp } : undefined;
-      const workflow = user && staffPlatform?.field?.enabled && !correction ? { eligibility, actor: user, action: workflowAction, verification, reason, requestId, payloadHash:receipt.payloadHash, at: timestamp } : null;
+      const workflow = user && !correction ? { eligibility, actor: user, action: workflowAction, verification, reason, requestId, payloadHash:receipt.payloadHash, at: timestamp } : null;
       const updated = await appointments.update(item, patch, correction, workflow);
       if (!updated) {
         const latest = await appointments.find(item.id);
-        if (latest && repeated(latest, input, user, action)) return staffPlatform?.field?.enabled ? staffPlatform.field.detail(user,latest.id) : present(latest,true);
+        if (latest && repeated(latest, input, user, action)) return staffPlatform.field.detail(user,latest.id);
         fail(409, '预约已被其他工作人员修改，请刷新后重试');
       }
-      if (user && staffPlatform && !workflow) {
+      if (user && !workflow) {
         const context = await staffPlatform.contextFor(user);
         await staffPlatform.recordAudit({ actorMemberId: context.actor.memberId, actorAccount: user.account,
           action: action === 'correct' ? 'repairs.corrected' : updated.status === 'in_progress' ? 'repairs.started' : updated.status === 'completed' ? 'repairs.completed' : 'repairs.updated',

@@ -18,6 +18,7 @@ export function FieldApp({
   onSceneChange,
   onContextChange,
   active = true,
+  onLogout,
 }: {
   initial: Home;
   workspaceLinks?: { id: string; label: string; group?: string }[];
@@ -25,6 +26,7 @@ export function FieldApp({
   onSceneChange?: (scene: string) => void;
   onContextChange?: (home: Home) => void;
   active?: boolean;
+  onLogout: () => void;
   onNavigate: (view: string) => void;
 }) {
   const key = `field-scene:${initial.actor.memberId}`;
@@ -593,9 +595,7 @@ export function FieldApp({
                       账号安全
                     </button>
                     <button
-                      onClick={() =>
-                        document.getElementById("logout-btn")?.click()
-                      }
+                      onClick={onLogout}
                     >
                       退出登录
                     </button>

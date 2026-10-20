@@ -1,4 +1,4 @@
-import { requireRole, requireCampus } from './permissions.js';
+import { requireCampus } from './permissions.js';
 import { fail } from '../lib/http.js';
 import { dateKey,addDays,serviceDay } from '../../shared/time.js';
 import { TIME_SLOTS } from '../../shared/constants.js';
@@ -7,19 +7,18 @@ import { bookingDates } from '../../shared/booking-slots.js';
 
 export function serviceLocationService(repository,appointments,queue,encryptionKey,clock = () => new Date(),staff = null) {
   async function authorize(actor,campus) {
-    if (staff?.field?.enabled) actor = await staff.scopedActor(actor,'settings.manage');
-    else requireRole(actor,'admin');
+    actor = await staff.scopedActor(actor,'settings.manage');
     if (campus) requireCampus(actor,campus);
     return actor;
   }
   async function affectedAppointments(campus,date,actor) {
     const affected=await repository.affected(campus,date);
-    const context=staff?.field?.enabled ? await staff.contextFor(actor,date) : null;
+    const context=await staff.contextFor(actor,date);
     // Reuse the same object, campus and ownership rules as the repair pages.
     // One context serves the whole list; configuration rights do not grant PII.
     return Promise.all(affected.map(async row=>{
       const target={id:row.id,campusId:campus,businessDate:date,assignedMemberId:row.assignedMemberId};
-      const permitted=code=>!context || staff.evaluate(context,code,target).allowed;
+      const permitted=code=>staff.evaluate(context,code,target).allowed;
       return {id:row.id,...(permitted('customer.identity.read') ? {name:row.name,studentId:row.studentId} : {}),
         ...(permitted('customer.contact.read') ? {contactType:row.contactType,...Object.fromEntries(await Promise.all(['phone','social','email','contactValue'].map(async key=>[key,await decryptText(row[key],encryptionKey)])))} : {})};
     }));

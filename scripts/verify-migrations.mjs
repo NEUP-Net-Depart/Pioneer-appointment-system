@@ -1,23 +1,25 @@
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { resolve, relative, isAbsolute } from 'node:path';
-import { randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { root, wrangler } from './cli.mjs';
 
 // Isolated workerd/D1 state; never touches the normal local or remote database.
 const parent = resolve(root, '.wrangler');
-const path = resolve(parent, `migration-check-${randomUUID()}`);
+await mkdir(parent, { recursive: true });
+// Keep workerd's nested SQLite paths within Windows path limits.
+const path = await mkdtemp(resolve(parent, 'db-'));
+
 const inside = relative(parent, path);
 if (!inside || inside.startsWith('..') || isAbsolute(inside)) throw new Error('Unsafe verification directory');
-await mkdir(path, { recursive: true });
 try {
  for (const config of ['wrangler.jsonc', 'wrangler.staff-staging.jsonc']) {
   const args = ['d1','migrations','apply','DB','--local','--persist-to',path,'--config',config];
   wrangler(args);
   wrangler(args); // The migration ledger must make the second application a no-op.
-  const [schema, keys, capacities, weekday] = JSON.parse(wrangler(['d1','execute','DB','--local','--persist-to',path,'--config',config,'--json','--command',
-    "SELECT name FROM sqlite_schema WHERE type IN ('table','trigger','index') ORDER BY name; PRAGMA foreign_key_check; SELECT campus,time_slot,capacity,revision FROM slot_capacities ORDER BY campus,time_slot; SELECT campus,weekday,time_slot,capacity,revision FROM weekday_slot_capacities ORDER BY campus,weekday,time_slot;"], { capture: true }));
+  const [schema, keys, capacities, weekday, release] = JSON.parse(wrangler(['d1','execute','DB','--local','--persist-to',path,'--config',config,'--json','--command',
+    "SELECT name FROM sqlite_schema WHERE type IN ('table','trigger','index') ORDER BY name; PRAGMA foreign_key_check; SELECT campus,time_slot,capacity,revision FROM slot_capacities ORDER BY campus,time_slot; SELECT campus,weekday,time_slot,capacity,revision FROM weekday_slot_capacities ORDER BY campus,weekday,time_slot; SELECT id FROM staff_release_markers;"], { capture: true }));
   assert.ok(schema.success && keys.success && capacities.success);
+  assert.deepEqual(release.results,[{id:'staff-react-0030'}], 'The cutover migration did not complete');
   assert.deepEqual(keys.results, [], 'D1 foreign key violations');
   const names = new Set(schema.results.map(row => row.name));
   for(const name of ['roster_collection_series','roster_submissions','roster_preference_history','roster_preference_created','roster_preference_changed'])assert.ok(names.has(name),`Missing persistent collection schema object: ${name}`);

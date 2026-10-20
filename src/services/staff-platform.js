@@ -449,7 +449,6 @@ export function staffPlatformService({ repository, platform, manifests, calendar
   }
 
   async function deskSummary(actor, query = {}) {
-    if (!this.field?.enabled) fail(404, '现场工作台尚未启用');
     if (query.businessDate && query.businessDate !== dateKey()) fail(400, '接待现场仅展示今天，请通过记录页面查询历史');
     // Keep the compatibility URL behind the same role, scope and field projection
     // as the current desk; a summary-read grant alone does not open the staff board.

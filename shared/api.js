@@ -21,7 +21,7 @@ export async function apiFetch(input, { json, suppressAuthExpired = false, timeo
   let response;
   try { response = await fetch(input, { ...options, headers, signal: limit.signal }); }
   finally { limit.dispose(); }
-  if (response.status === 401 && token && !suppressAuthExpired) { clearSession(); window.dispatchEvent(new CustomEvent('auth-expired')); }
+  if (response.status === 401 && token && token === sessionStorage.getItem('pioneerToken') && !suppressAuthExpired) { clearSession(); window.dispatchEvent(new CustomEvent('auth-expired')); }
   return response;
 }
 export async function apiJson(input, { timeoutMs, ...options } = {}) {

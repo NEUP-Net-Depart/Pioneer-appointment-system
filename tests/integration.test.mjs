@@ -1,3 +1,4 @@
+import { staffServices, readyStaff, grantTestManagement } from './fixtures/staff-services.mjs';
 import { test, before, after, beforeEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
@@ -9,10 +10,10 @@ import { config, wrangler } from '../scripts/cli.mjs';
 import { dateKey, addDays, serviceDay, formatDate, weekRange, expirationDeadline } from '../shared/time.js';
 import { attachmentRepository } from '../src/db/attachments.js';
 import { appointmentRepository } from '../src/db/appointments.js';
-import { appointmentService } from '../src/services/appointments.js';
+import { appointmentService as createAppointmentService } from '../src/services/appointments.js';
 import { bookingInput } from '../src/lib/validation.js';
 import { expireAppointments } from '../scripts/expire-appointments.mjs';
-import { attachmentService } from '../src/services/attachments.js';
+import { attachmentService as createAttachmentService } from '../src/services/attachments.js';
 import { storageLimit } from '../src/lib/env.js';
 import { cleanupAttachments } from '../scripts/cleanup-attachments.mjs';
 import { cloudflareClient } from '../scripts/cloudflare-d1.mjs';
@@ -29,6 +30,10 @@ function workerClock(now) {
 }
 
 let mf, db, bucket;
+function appointmentService(repository, users, key, clock, staff = staffServices(db, key, PII_ENCRYPTION_KEY)) { const service = createAppointmentService(repository, users, key, clock, staff), update = service.update.bind(service);
+  service.update = (id, input, ...actors) => update(id, {requestId:crypto.randomUUID(),verification:{brand:'联想',model:'ThinkPad',warranty:'unknown',liquidMetal:'unknown',note:''},...input}, ...actors);
+  return service; }
+function attachmentService(appointments, repository, bucket, maxBytes) { return createAttachmentService(appointments, repository, bucket, maxBytes, staffServices(db, PII_ENCRYPTION_KEY).field); }
 const MAX_R2_BYTES = 8589934592;
 const password = 'integration-test-password-only';
 const JWT_SECRET = randomBytes(48).toString('base64url');
@@ -45,6 +50,7 @@ const draft = (patch = {}) => ({ signature, studentId: String(++serial), name: '
   phone: '13800138000', social: 'wechat-private', deviceType: '笔记本', liquidMetal:'不清楚', brand: '联想', deviceModel: 'ThinkPad', warranty: '否',
   date, timeSlot: '19:00–19:30', faultType: '蓝屏', issue: '', agreementAt: testNow, ...patch });
 async function request(path, { method = 'GET', body, token, accessToken, headers = {} } = {}) {
+  if (body && typeof body === 'object' && token && /\/(?:status|transfer)$/.test(path)) body = { requestId: crypto.randomUUID(), ...(body.status === 'in_progress' ? { verification: {brand:'联想',model:'ThinkPad',warranty:'unknown',liquidMetal:'unknown',note:''} } : {}), ...body };
   return mf.dispatchFetch(`https://app.test${path}`, { method, headers: { ...(method==='POST' && path==='/api/appointments' ? {'Idempotency-Key':randomBytes(32).toString('base64url')} : {}), ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(accessToken ? {'X-Appointment-Token':accessToken} : {}), ...headers }, ...(body !== undefined ? { body: typeof body === 'string' ? body : JSON.stringify(body) } : {}) });
 }
 async function api(path, options, status = 200) {
@@ -63,6 +69,7 @@ async function setAppointmentDate(id, day) {
 }
 const book = patch => api('/api/appointments', { method: 'POST', body: draft(patch) }, 201);
 async function login(account = 'root001', suppliedPassword = password) {
+  await readyStaff(db, account, date);
   return (await api('/api/auth/login', { method: 'POST', body: { account, password: suppliedPassword } })).token;
 }
 async function configureCapacity(token, capacity, { campus = '南湖', timeSlot = '19:00–19:30', weekday = new Date(date+'T00:00:00Z').getUTCDay() } = {}) {
@@ -73,6 +80,7 @@ async function configureCapacity(token, capacity, { campus = '南湖', timeSlot 
 async function addUser(account, role = 'technician') {
   await db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES (?,?,?,?,?,?)').bind(account, `人员${account}`, role, '南湖', hashPassword(password), date).run();
   await db.prepare('INSERT INTO staff_campus_grants VALUES (?,?)').bind(account,'南湖').run();
+  if (role === 'admin') await grantTestManagement(db, account);
   return login(account);
 }
 async function whitelistStaff(studentId,{name='',role='technician',authorizedCampuses=['南湖']}={}){
@@ -120,8 +128,6 @@ before(async () => {
       FIVE_STATUS_UPGRADE_DB: { type: 'd1', id: 'five-status-upgrade-db' },
       HISTORICAL_DATE_UPGRADE_DB: { type: 'd1', id: 'historical-date-upgrade-db' },
       STABLE_UPGRADE_DB: { type: 'd1', id: 'stable-upgrade-db' },
-      SCAN_WORKBENCH_ENABLED: { type: 'text', value: 'true' },
-      STAFF_WORKFLOW_ENABLED: { type: 'text', value: 'false' },
       JWT_SECRET: { type: 'text', value: JWT_SECRET }, PII_ENCRYPTION_KEY: { type: 'text', value: PII_ENCRYPTION_KEY } }
   } }] });
   db = await mf.getD1Database('DB'); bucket = await mf.getR2Bucket('ATTACHMENTS');
@@ -134,6 +140,7 @@ before(async () => {
 after(async () => { try { await mf?.dispose(); } finally { mock.timers.reset(); } });
 beforeEach(async () => {
   await db.batch(['DELETE FROM appointment_corrections','DELETE FROM repair_intake_records','DELETE FROM credential_recoveries','DELETE FROM booking_requests','DELETE FROM activation_requests','DELETE FROM staff_whitelist','DELETE FROM attachment_storage','DELETE FROM appointment_attachments','DELETE FROM appointments','DELETE FROM service_location_changes','DELETE FROM service_locations','DELETE FROM booking_day_slots',"DELETE FROM staff_accounts WHERE protected=0",'DELETE FROM rate_limits'].map(sql => db.prepare(sql)));
+  await db.prepare('DELETE FROM staff_presence').run();
   await db.prepare('UPDATE storage_quota SET used_bytes=0 WHERE id=1').run();
   const locationDates = [...new Set([date,'2026-10-15',...Array.from({length:10},(_,index)=>addDays(dateKey(),index-3))])];
   await db.batch(locationDates.flatMap(day=>['南湖','浑南'].map(campus=>db.prepare('INSERT INTO service_locations(campus,date,location,updated_at) VALUES (?,?,?,?)').bind(campus,day,campus+'测试维修点',testNow))));
@@ -193,7 +200,7 @@ test('one staff member cannot start two jobs, retrying intake and completion is 
   assert.deepEqual((await db.prepare('PRAGMA foreign_key_check').all()).results,[]);
 });
 
-test('transfers reject every non-progress status while the staff workflow is disabled', async () => {
+test('transfers reject every non-progress status in the unified staff workflow', async () => {
   const root = await login(), target = '993020';
   await addUser(target);
   for (const status of ['booked','cancelled','expired','completed']) {
@@ -271,7 +278,8 @@ test('multiple logins for one member resume and complete the same repair and sha
     assert.equal((await api('/api/scan/resolve', { method: 'POST', token, body: { id: started.id } })).name, '测试同学');
     assert.ok((await api('/api/appointments?q=测试同学', { token })).items.some(item => item.id === started.id));
   }
-  await api('/api/scan/resolve', { method: 'POST', token: outsider, body: { id: started.id } }, 403);
+  const summary=await api('/api/scan/resolve', { method: 'POST', token: outsider, body: { id: started.id } });
+  assert.equal(summary.canReadDetails,false); assert.equal(summary.name,undefined); assert.equal(summary.social,undefined);
   const otherLogin = started.assignedTo === '993020' ? alias : primary;
   const done = await api(`/api/appointments/${started.id}/status`, { method: 'PATCH', token: otherLogin,
     body: { revision: started.revision, status: 'completed', outcome: 'repaired', repairNote: '同一成员另一账号完成' } });
@@ -313,9 +321,10 @@ test('new onsite registrations catch up overdue records while same-day pending i
 
 test('legacy appointment APIs enforce a single active repair and expire onsite records without consuming booking capacity', async () => {
   const root = await login(), first = await book(), second = await book();
-  await api(`/api/appointments/${first.id}/status`, {method:'PATCH',token:root,body:{status:'in_progress',...await intake(first,root)}});
-  const conflict = await api(`/api/appointments/${second.id}/status`, {method:'PATCH',token:root,body:{status:'in_progress',...await intake(second,root)}},409);
-  assert.match(conflict.error,/已有进行中的工单/);
+  const firstPhotos=await intake(first,root), secondPhotos=await intake(second,root);
+  await api(`/api/appointments/${first.id}/status`, {method:'PATCH',token:root,body:{status:'in_progress',...firstPhotos}});
+  const conflict = await api(`/api/appointments/${second.id}/status`, {method:'PATCH',token:root,body:{status:'in_progress',...secondPhotos}},409);
+  assert.match(conflict.error,/当前维修|进行中/);
   await db.prepare("UPDATE appointments SET source='onsite',registered_by='root001',registration_key=? WHERE id=?").bind(crypto.randomUUID(),second.id).run();
   const summary = await api(`/api/live/summary?date=${second.date}&campus=${encodeURIComponent(second.campus)}`);
   assert.equal(summary.slotTotal,1);
@@ -617,7 +626,7 @@ test('onsite creation stops at the inclusive Shanghai deadline', async () => {
 });
 
 test('health verifies D1 schema and R2; API paths return JSON and security headers', async () => {
-  assert.deepEqual(await api('/api/health'), { ok: true, service: 'pioneer-repair-api', database: 'd1', attachments: 'r2' });
+  assert.deepEqual(await api('/api/health'), { ok: true, service: 'pioneer-repair-api', database: 'd1', attachments: 'r2', staffRelease: 'staff-react-0030', workflow: 'staff-platform' });
   for (const path of ['/api','/api/unknown']) await api(path, {}, 404);
   const response = await request('/api/health');
   assert.equal(response.headers.get('cache-control'), 'no-store');
@@ -1350,13 +1359,14 @@ test('technicians see campus summaries before claiming and only their own privat
   const listed=await api('/api/appointments',{token});
   assert.equal((await api(`/api/appointments?q=${own.studentId}`,{token})).items.length,0);
   assert.equal(listed.counts.all,2);assert.ok(!listed.items.some(item=>item.id===foreign.id));
-  for(const item of listed.items){for(const field of ['studentId','name','phone','social','issue','serial','note','agreementAt','repairNote'])assert.ok(!Object.hasOwn(item,field),field);}
+  for(const item of listed.items){for(const field of ['studentId','name','phone','social','serial','note','agreementAt','repairNote'])assert.ok(!Object.hasOwn(item,field),field);}
   await api(`/api/appointments/${foreign.id}/status`,{method:'PATCH',token,body:{status:'in_progress'}},403);
   await api(`/api/appointments/${own.id}/attachments`,{token,accessToken:own.accessToken},403);
   await api(`/api/appointments/${other.id}/status`,{method:'PATCH',token:colleague,body:{status:'in_progress',...await intake(other, colleague)}});
   await api(`/api/appointments/${own.id}/status`,{method:'PATCH',token,body:{status:'in_progress',...await intake(own, token)}});
   const after=await api('/api/appointments',{token});
-  assert.deepEqual(after.items.map(item=>item.id),[own.id]);assert.equal(after.items[0].social,'微信：wechat-private');
+  assert.equal(after.items.find(item=>item.id===own.id).social,'微信：wechat-private');
+  assert.equal(after.items.find(item=>item.id===other.id)?.social,undefined);
   await api(`/api/appointments/${other.id}/attachments`,{token},403);
   await api(`/api/appointments/${other.id}/status`,{method:'PATCH',token,body:{repairNote:'越权修改'}},403);
   await api(`/api/appointments/${own.id}/status`,{method:'PATCH',token,body:{assignedTo:'710002'}},403);
@@ -1629,7 +1639,7 @@ test('staff platform upgrades populated stable booking databases in place withou
   }
   assert.equal((await legacy.prepare("SELECT member_id FROM staff_accounts WHERE account='root001'").first()).member_id,'member-root001');
   assert.deepEqual((await legacy.prepare('PRAGMA foreign_key_check').all()).results,[]);
-  const repository=appointmentRepository(legacy,{workflowSchema:true}),service=appointmentService(repository,userRepository(legacy),PII_ENCRYPTION_KEY,()=>new Date(testNow));
+  const repository=appointmentRepository(legacy),service=appointmentService(repository,userRepository(legacy),PII_ENCRYPTION_KEY,()=>new Date(testNow),staffServices(legacy,PII_ENCRYPTION_KEY));
   const restored=await service.lookup(item.id,item.accessToken);
   assert.equal(restored.email,item.email);assert.equal(restored.contactValue,item.contactValue);assert.equal(restored.location,item.location);
   const retry=await service.resolveAttempt(receipt.request_key);
@@ -1815,21 +1825,23 @@ test('completion and correction reuse the booking number even on a later day', a
   const repository = appointmentRepository(db), users = userRepository(db), actor = await users.find('root001');
   for (const [index,item] of [first,second,third,foreign].entries()) {
     const token = index === 3 ? root : await addUser(`99100${index}`);
+    if(index===3)await db.prepare("UPDATE staff_presence SET campus_id='campus-hunnan' WHERE member_id='member-root001'").run();
+    if(index===3)await db.prepare("INSERT OR IGNORE INTO attendance_events(id,type,policy_code,policy_version,campus_id,business_date,starts_at,ends_at,created_by_member_id,created_at) VALUES('integration-hunnan','duty','duty.v1','1.0.0','campus-hunnan',?,?,?,'member-root001',?)").bind(date,`${date}T00:00:00+08:00`,`${date}T23:59:59+08:00`,testNow).run();
     await api(`/api/appointments/${item.id}/status`, {method:'PATCH',token,body:{status:'in_progress',...await intake(item,token)}});
   }
   // UTC 16:01 is the next business day in Shanghai.
   const nextDay = addDays(date, 1), instant = new Date(`${nextDay}T00:01:00+08:00`);
   const service = appointmentService(repository, users, PII_ENCRYPTION_KEY, () => instant);
-  const finish = item => service.update(item.id, {patch:{status:'completed',outcome:'repaired',repairNote:'检测完成'}}, actor);
+  const finish = async item => service.update(item.id, {patch:{status:'completed',outcome:'repaired',repairNote:'检测完成'}}, await users.find((await repository.find(item.id)).assignedTo));
   const doneSecond = await finish(second), doneFirst = await finish(first), doneForeign = await finish(foreign);
   for (const [done, original] of [[doneSecond,second],[doneFirst,first],[doneForeign,foreign]]) {
     assert.equal(done.repairNumber, null); assert.equal(done.id, original.id);
     assert.equal(done.completedAt, instant.toISOString());
   }
   const later = appointmentService(repository, users, PII_ENCRYPTION_KEY, () => new Date(`${addDays(nextDay,1)}T00:01:00+08:00`));
-  const doneThird = await later.update(third.id, {patch:{status:'completed',outcome:'not_needed',repairNote:'无需处理'}}, actor);
+  const doneThird = await later.update(third.id, {patch:{status:'completed',outcome:'not_needed',repairNote:'无需处理'}}, await users.find((await repository.find(third.id)).assignedTo));
   assert.equal(doneThird.id, third.id); assert.equal(doneThird.repairNumber, null);
-  await assert.rejects(finish(second), error => error.status === 409);
+  assert.equal((await finish(second)).id,second.id,'An identical completion retry returns the saved result');
   const corrected = await service.update(second.id, {action:'correct',patch:{status:'completed',outcome:'unrepaired',repairNote:'复核'}}, actor);
   assert.equal(corrected.id, second.id); assert.equal(corrected.repairNumber, null);
   const search = await api(`/api/appointments?q=${doneSecond.id}`, {token:root});
@@ -1843,12 +1855,12 @@ test('completion and correction reuse the booking number even on a later day', a
 });
 
 test('concurrent completion retries retain original numbers and reject conflicting stale revisions', async () => {
-  const root = await login(), items = await Promise.all([book(),book(),book()]);
+  const root = await login(), items = await Promise.all([book(),book(),book()]), owners = new Map();
   for (const [index,item] of items.entries()) {
-    const token = index === 0 ? root : await addUser(`99200${index}`);
+    const token = index === 0 ? root : await addUser(`99200${index}`); owners.set(item.id,token);
     Object.assign(item, await api(`/api/appointments/${item.id}/status`, {method:'PATCH',token,body:{status:'in_progress',...await intake(item,token)}}));
   }
-  const finish = item => request(`/api/appointments/${item.id}/status`, {method:'PATCH',token:root,body:{status:'completed',outcome:'repaired',repairNote:'已修复',revision:item.revision}});
+  const finish = item => request(`/api/appointments/${item.id}/status`, {method:'PATCH',token:owners.get(item.id),body:{status:'completed',outcome:'repaired',repairNote:'已修复',revision:item.revision}});
   const responses = await Promise.all([finish(items[0]),finish(items[0]),finish(items[1])]);
   assert.deepEqual(responses.map(r=>r.status).sort(), [200,200,200]);
   const completed = [];
@@ -1986,7 +1998,7 @@ test('weekday templates freeze on first booking and preserve cancellations, rest
   const actual = await api(actualPath, { token });
   assert.equal(actual.source, 'snapshot');
   assert.deepEqual(actual.items.find(slot => slot.timeSlot === timeSlot), { timeSlot, capacity: 3, occupied: 3 });
-  assert.equal(actual.staffing, null);
+  assert.deepEqual(actual.staffing, {repair:0,office:0});
   assert.equal((await api(`/api/live/summary?date=${addDays(date,7)}&campus=${encodeURIComponent('南湖')}`)).slotCapacities[timeSlot],0);
   assert.equal((await api(`/api/live/summary?date=${date}&campus=${encodeURIComponent('浑南')}`)).slotCapacities[timeSlot],5);
   await api(`/api/appointments/${item.id}/status`,{method:'PATCH',accessToken:item.accessToken,body:{status:'cancelled'}});

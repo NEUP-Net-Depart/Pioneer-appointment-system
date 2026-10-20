@@ -16,19 +16,21 @@ test('fixed scan codes use a domain-separated HMAC and reject malformed or forge
   assert.throws(() => verifyScanCode(code, 't'.repeat(64)), error => error.status === 400);
 });
 
-test('the feature switch disables all scan routes without accessing the old workflow', async () => {
-  const service = scanService(null, null, '', '', false);
-  assert.deepEqual(service.config(), { enabled: false });
-  for (const task of [() => service.resolve({}, {}), () => service.current({}), () => service.onsite({}, {}), () => service.code('', '')]) {
-    await assert.rejects(task, error => error.status === 404);
-  }
+test('scan configuration always publishes the single workflow and accepts prior JWT-signed codes', async () => {
+  const id = 'reserve020261013-01', primary = 'p'.repeat(64), previous = 'j'.repeat(64);
+  const service = scanService({find:async()=>({id,campus:'南湖'}),expirePending:async()=>{}}, {lookup:async()=>({id})}, primary, undefined, {detail:async()=>({id})}, [previous]);
+  assert.deepEqual(service.config(), {enabled:true});
+  assert.equal((await service.code(id,'private')).code,scanCode(id,primary));
+  const actor={role:'technician',status:'enabled',authorizedCampuses:['南湖']};
+  assert.equal((await service.resolve({code:scanCode(id,previous)},actor)).id,id);
+  await assert.rejects(service.resolve({code:scanCode(id,'wrong')},actor),error=>error.status===400);
 });
 
 test('scan service accepts signed QR payloads and applies the technician campus boundary', async () => {
   const id = 'reserve020261013-01'; const secret = 's'.repeat(64);
   const item = { id, revision: 0, campus: '南湖', date: '2026-10-13', timeSlot: '19:00–19:30', deviceType: '笔记本电脑', brand: '联想', deviceModel: 'ThinkPad', faultType: '蓝屏', status: 'booked', source: 'booking', assignedTo: '' };
   const appointments = { find: async value => value === id ? item : null, expirePending: async () => {} };
-  const service = scanService(appointments, {}, '', secret, true, () => new Date('2026-10-12T12:00:00+08:00'));
+  const service = scanService(appointments, {}, secret, () => new Date('2026-10-12T12:00:00+08:00'), {detail:async()=>item});
   const actor = { role: 'technician', account: 'tech', status: 'enabled', authorizedCampuses: ['南湖'] };
   const result = await service.resolve({ code: scanCode(id, secret) }, actor);
   assert.equal(result.id, id);

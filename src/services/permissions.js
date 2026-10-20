@@ -18,11 +18,6 @@ export function canManageAccount(actor, target) {
   return !target.protected && roleLevel[target.role]<roleLevel[actor.role] &&
     target.authorizedCampuses.length>0 && target.authorizedCampuses.every(campus=>actor.authorizedCampuses.includes(campus));
 }
-export function requireAppointmentAccess(user, item, { start = false } = {}) {
-  requireCampus(user,item.campus);
-  if (user.role==='technician' && (item.status==='booked' || !ownsRepair(user, item)) &&
-      !(start && item.status === 'booked') && !(item.source === 'onsite' && ownsRegistration(user, item))) fail(403,'只能访问本人维修的预约');
-}
 export function appointmentScope(user) {
   requireRole(user,'technician');
   return { campuses:user.authorizedCampuses, technician:user.role==='technician' ? user.account : '' };

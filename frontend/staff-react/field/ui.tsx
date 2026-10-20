@@ -5,7 +5,7 @@ import React, { createContext, useContext, useEffect, useRef, useState, useId, t
 export const ActivityContext = createContext(true);
 import { statusLabels, statusClass } from "../../../shared/constants.js";
 import { qrImage } from "../../../shared/zxing.js";
-import { createScanner } from "../../staff/scanner.js";
+import { createScanner } from "./scanner.js";
 import { request } from "../request.js";
 
 export const api = <T,>(

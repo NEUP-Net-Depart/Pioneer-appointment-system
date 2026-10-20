@@ -1,15 +1,11 @@
 import { fail } from '../lib/http.js';
-import { requireRole, requireGrantScope, requireCampus } from './permissions.js';
+import { requireCampus } from './permissions.js';
 import { validDate } from '../../shared/time.js';
 import { campusId } from '../modules/authorization/scopes.js';
 
-export function slotCapacityService(repository, staff = null, days=null) {
+export function slotCapacityService(repository, staff, days=null) {
   async function authorize(actor, campuses = []) {
-    if (!staff?.field?.enabled) {
-      requireRole(actor, 'admin');
-      if (campuses.length) requireGrantScope(actor, campuses);
-      return actor;
-    }
+
     actor = await staff.scopedActor(actor, 'settings.manage');
     for (const campus of campuses) requireCampus(actor, campus);
     return actor;
@@ -34,7 +30,7 @@ export function slotCapacityService(repository, staff = null, days=null) {
       actor = await authorize(actor, [campus]); requireCampus(actor, campus);
       if (!validDate(date)) fail(400, '请选择有效日期');
       const dutyTypes = [];
-      if (staff?.field?.enabled) {
+      {
         // Aggregate staffing follows the same management permissions as rosters.
         // A capacity editor without those grants can still inspect capacity.
         for (const type of ['repair', 'office']) {

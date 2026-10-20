@@ -162,4 +162,4 @@ D1 备份：`npx wrangler d1 export DB --remote --output <受限备份路径>`�
 
 ## 扫码配置
 
-`SCAN_WORKBENCH_ENABLED=false` 可切换到列表工作台，一人一单约束仍生效。扫码依赖 HTTPS、摄像头授权和 [同源策略](../public/_headers)，支持相册及手动编号；手机镜头切换和手电筒需实机检查。
+工作人员端统一运行 React 工作区，一人一单约束始终生效。扫码依赖 HTTPS、摄像头授权和 [同源策略](../public/_headers)，支持相册及手动编号；手机镜头切换和手电筒需实机检查。

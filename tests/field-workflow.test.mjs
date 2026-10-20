@@ -367,8 +367,7 @@ before(async () => {
           env: {
             DB: { type: "d1", id: "field-tests" },
             ATTACHMENTS: { type: "r2", name: "field-tests" },
-            STAFF_WORKFLOW_ENABLED: { type: "text", value: "true" },
-            JWT_SECRET: {
+                JWT_SECRET: {
               type: "text",
               value: "field-test-secret-01234567890123456789",
             },

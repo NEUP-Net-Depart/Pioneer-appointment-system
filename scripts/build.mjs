@@ -15,8 +15,7 @@ await cp(join(root, 'frontend/assets'), join(out, 'assets'), { recursive: true }
 await mkdir(join(out, 'assets/vendor'), { recursive: true });
 await cp(join(root, 'node_modules/blueimp-load-image/js/load-image.all.min.js'), join(out, 'assets/vendor/load-image.all.min.js'));
 await cp(join(root, 'node_modules/blueimp-load-image/LICENSE.txt'), join(out, 'assets/vendor/blueimp-load-image-LICENSE.txt'));
-await cp(join(root, 'frontend/staff'), join(out, 'staff'), { recursive: true });
-// Keep the shared QR adapter's URLs stable for both React and legacy pages.
+// Keep the shared QR adapter's URLs stable for student and React staff pages.
 await mkdir(join(out, 'vendor'), { recursive: true });
 await cp(join(root, 'node_modules/zxing-wasm/LICENSE'), join(out, 'vendor/zxing-LICENSE'));
 for (const kind of ['reader', 'writer']) {

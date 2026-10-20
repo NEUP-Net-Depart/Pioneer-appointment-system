@@ -1,34 +1,8 @@
-import { test, expect } from '@playwright/test';
-
-test('repair desk uses five-state labels and separates manual identifiers from signed QR codes', async ({ page }) => {
-  const lookups = [];
-  await page.route('**/api/**', async route => {
-    const request = route.request(), path = new URL(request.url()).pathname;
-    let json = {};
-    if (path === '/api/auth/login') json = { token: 'test-token', account: 'root001', role: 'superadmin', authorizedCampuses: ['南湖', '浑南'] };
-    if (path === '/api/auth/me') json = { account: 'root001', name: '测试负责人', role: 'superadmin', authorizedCampuses: ['南湖', '浑南'], grants: [{ permissionCode: 'repair.summary.read' }] };
-    if (path === '/api/appointments') json = { counts: {}, filteredCounts: {}, items: [
-      { date: '2026-10-15', timeSlot: '19:00–19:30', id: 'reserve020261015-01', status: 'cancelled', campus: '南湖' },
-      { date: '2026-10-15', timeSlot: '19:00–19:30', id: 'reserve020261015-02', status: 'expired', campus: '南湖' },
-      { date: '2026-10-15', timeSlot: '19:00–19:30', id: 'reserve020261015-03', status: 'completed', campus: '南湖' }
-    ] };
-    if (path === '/api/scan/resolve') { lookups.push(request.postDataJSON()); json = { date: '2026-10-15', timeSlot: '19:00–19:30', id: 'reserve020261015-01', campus: '南湖', status: 'booked' }; }
-    await route.fulfill({ json });
-  });
-  await page.goto('/staff/');
-  const root = page.locator('#staff-react-root');
-  await root.locator('#login-view').getByLabel('学号', { exact: true }).fill('root001');
-  await root.locator('#login-view').getByLabel('密码', { exact: true }).fill('test-password');
-  await root.getByRole('button', { name: '进入系统' }).click();
-  await root.getByRole('button', { name: '工作台', exact: true }).click();
-  const input = root.getByPlaceholder('扫描或输入预约编号');
-  await input.fill(' reserve020261015-01 ');
-  await root.getByRole('button', { name: '查询工单' }).click();
-  await expect.poll(() => lookups).toEqual([{ id: 'reserve020261015-01' }]);
-  await input.fill('reserve020261015-01.abcdef012345');
-  await root.getByRole('button', { name: '查询工单' }).click();
-  await expect.poll(() => lookups.length).toBe(2);
-  expect(lookups[1]).toEqual({ code: 'reserve020261015-01.abcdef012345' });
-  await root.getByRole('button', { name: '维修后台', exact: true }).click();
-  for (const label of ['已取消', '已逾期', '已完成']) await expect(root.locator('#appointments-table').getByText(label, { exact: true })).toBeVisible();
+import {test,expect} from '@playwright/test';
+import {mockStaff,loginStaff} from './support/staff.mjs';
+test('React repair desk keeps manual identifiers separate from signed QR payloads',async({page})=>{
+ const id='reverse020261015-07',item={id,status:'expired',campus:'南湖',date:'2026-10-15',timeSlot:'19:00–19:30',canReadDetails:false,revision:0,deviceModel:'历史设备'},requests=[];
+ await mockStaff(page,{role:'technician',contexts:[{id:'repair',label:'维修工作台'}],permissions:{'repair.summary.read':true}});await page.route('**/api/scan/search',route=>route.fulfill({json:{items:[item],hasMore:false}}));await page.route('**/api/scan/resolve',route=>{requests.push(route.request().postDataJSON());return route.fulfill({json:item});});await page.route('**/api/field/appointments/'+id,route=>route.fulfill({json:item}));await loginStaff(page);
+ const input=page.getByRole('combobox',{name:'预约编号',exact:true});await input.fill(id);await input.press('Enter');await expect(page.getByRole('dialog')).toContainText('已逾期');expect(requests).toEqual([{id}]);await expect(page.getByRole('button',{name:'确认开始维修',exact:true})).toHaveCount(0);await page.getByRole('button',{name:'关闭',exact:true}).click();
+ await input.fill(id+'.123456abcdef');await expect(page.getByRole('button',{name:'查询',exact:true})).toBeDisabled();expect(requests).toHaveLength(1);
 });

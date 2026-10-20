@@ -45,26 +45,9 @@ export function staffPlatformRepository(db) {
 
   async function ensureMember(account) {
     const row = await accountRow(account);
-    if (!row) return null;
-    if (row.member_id && row.mapped_member_id) return row.member_id;
-    const memberId = `member-${row.account}`;
-    const createdAt = row.created_at || nowIso();
-    const campusId = row.home_campus === '浑南' ? 'campus-hunnan' : 'campus-nanhu';
-    const departmentId = ['admin', 'superadmin'].includes(row.role) ? 'dept-office' : 'dept-hardware';
-    const profileCode = ['admin', 'superadmin'].includes(row.role) ? 'office' : 'repair';
-    const roleId = row.role === 'technician' ? 'role-technician' : row.role === 'admin' ? 'role-office' : 'role-superadmin';
-    await db.batch([
-      db.prepare(`INSERT OR IGNORE INTO members(id,name,student_id,home_campus_id,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)`)
-        .bind(memberId, row.name, /^\d+$/.test(row.account) ? row.account : null, campusId, row.status === 'enabled' ? 'active' : 'inactive', createdAt, createdAt),
-      db.prepare(`UPDATE staff_accounts SET member_id=? WHERE account=? AND member_id IS NULL`).bind(memberId, row.account),
-      db.prepare(`INSERT OR IGNORE INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,effective_from,created_at) VALUES(?,?,?,?,?,?,?)`)
-        .bind(`membership-${row.account}`, memberId, departmentId, 'primary', 1, String(createdAt).slice(0, 10), createdAt),
-      db.prepare(`INSERT OR IGNORE INTO member_work_profiles(id,member_id,profile_code,effective_from) VALUES(?,?,?,?)`)
-        .bind(`profile-default-${row.account}`, memberId, profileCode, String(createdAt).slice(0, 10)),
-      db.prepare(`INSERT OR IGNORE INTO member_roles(id,member_id,role_id,scope_bindings,effective_from) VALUES(?,?,?,?,?)`)
-        .bind(`member-role-${row.account}`, memberId, roleId, row.protected ? '{"all":true}' : '{"campuses":"legacy"}', String(createdAt).slice(0, 10))
-    ]);
-    return memberId;
+    // Migrations and the insert trigger own identity creation. Reading a
+    // session must never recreate revoked roles, work posts or memberships.
+    return row?.mapped_member_id || null;
   }
 
   async function memberRow(memberId) {

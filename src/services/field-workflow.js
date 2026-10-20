@@ -16,7 +16,6 @@ export function fieldWorkflow({
   authorizer,
   encryptionKey,
   secret,
-  enabled,
 }) {
   const names = { "campus-nanhu": "南湖", "campus-hunnan": "浑南" };
   const allowed = (context, code, target = {}) =>
@@ -56,7 +55,6 @@ export function fieldWorkflow({
     return result;
   }
   async function home(actor, query = {}) {
-    if (!enabled) return { enabled: false };
     const context = await staff.contextFor(actor);
     const campuses = (actor.authorizedCampuses || []).map((value) => ({
       id: campusId(value),
@@ -109,8 +107,7 @@ export function fieldWorkflow({
             ? "available"
             : "closed";
     return {
-      enabled,
-      businessDate: dateKey(),
+        businessDate: dateKey(),
       actor: context.actor,
       authVersion: context.authVersion,
       campuses,
@@ -214,7 +211,6 @@ export function fieldWorkflow({
     }
   }
   async function detail(actor, id) {
-    if (!enabled) fail(404, "现场工作台尚未启用");
     const item = await appointments.find(id);
     if (!item) fail(404, "预约不存在");
     const context = await staff.contextFor(actor),
@@ -263,7 +259,6 @@ export function fieldWorkflow({
     return { items: data.staffPresence.filter(person => person.canReceive && person.memberId !== item.assignedMemberId) };
   }
   async function board(actor, query = {}) {
-    if (!enabled) fail(404, "现场工作台尚未启用");
     const data = await home(actor, query);
     if (!data.contexts.some((item) => ["desk", "operations"].includes(item.id)))
       fail(403, "当前没有该校区的现场岗位权限");
@@ -372,7 +367,6 @@ export function fieldWorkflow({
     return { payloadHash: hash };
   }
   return {
-    enabled,
     projectList,
     search,
     home,

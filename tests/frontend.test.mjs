@@ -15,7 +15,9 @@ test('each HTML entry contains only its own features and valid assets with uniqu
   const user = await readFile('dist/index.html', 'utf8'), staff = await readFile('dist/staff/index.html', 'utf8');
   assert.ok(user.includes('id="booking-form"') && user.includes('id="lookup-results"'));
   assert.ok(!user.includes('id="login-view"') && !user.includes('id="staff-view"'));
-  assert.ok(staff.includes('id="login-form"') && staff.includes('id="users-table"'));
+  assert.ok(staff.includes('id="staff-react-root"'));
+  assert.doesNotMatch(staff, /id="(?:app-shell|staff-view|users-table|login-form)"/);
+  assert.match(staff, /src="\/staff\/assets\/[^"]+\.js"/);
   assert.ok(!staff.includes('id="booking-form"') && !staff.includes('id="lookup-results"'));
   for (const html of [user, staff]) {
     assert.ok(!/[?&]mode=/.test(html));
@@ -49,7 +51,7 @@ test('all frontend module imports resolve; user graph cannot reach staff modules
   assert.ok(visited.has(resolve('dist/shared/api.js')));
 });
 test('frontend DOM selectors resolve only against their own HTML entry', async () => {
-  for (const area of ['user','staff']) {
+  for (const area of ['user']) {
     const html = await readFile(`frontend/${area}/index.html`, 'utf8');
     const ids = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]));
     const areaFiles=(await files(`frontend/${area}`)).filter(file=>file.endsWith('.js'));
@@ -63,7 +65,7 @@ test('frontend DOM selectors resolve only against their own HTML entry', async (
 test('public output excludes server source, secrets, old entrypoints and build tools', async () => {
   const output = (await files('dist')).map(path => path.replaceAll('\\','/'));
   assert.ok(!output.some(path => /(?:^|\/)(?:src|server|backend|functions|scripts|node_modules|\.dev\.vars)(?:\/|$)/.test(path)));
-  for (const path of ['dist/user.html','dist/staff.html','dist/app.js']) assert.ok(!output.includes(path));
+  for (const path of ['dist/user.html','dist/staff.html','dist/app.js','dist/staff/main.js','dist/staff/auth.js','dist/staff/scan.js']) assert.ok(!output.includes(path));
   const routes = JSON.parse(await readFile('dist/_routes.json', 'utf8'));
   assert.deepEqual(routes.include, ['/api','/api/*']);
   await access('dist/404.html');
@@ -114,40 +116,11 @@ test('visible polling pauses in background, refreshes on return and disposes cle
   }
 });
 
-test('view navigation resets scroll without introducing a moving transition', async () => {
-  const saved = { document: globalThis.document, window: globalThis.window };
-  const views = ['booking', 'lookup'].map(view => ({
-    dataset: { view },
-    classList: { toggle() {} }
-  }));
-  const links = ['booking', 'lookup'].map(view => ({
-    dataset: { viewLink: view },
-    hidden: false,
-    classList: { toggle() {} },
-    addEventListener() {}
-  }));
-  const scrolls = [];
-  globalThis.document = {
-    querySelector(selector) {
-      if (selector === '[data-view="lookup"]') return views[1];
-      if (selector === '[data-view-link="lookup"]') return links[1];
-      return null;
-    },
-    querySelectorAll(selector) {
-      if (selector === '.view') return views;
-      if (selector === '[data-view-link]') return links;
-      return [];
-    }
-  };
-  globalThis.window = { scrollTo: options => scrolls.push(options) };
-  try {
-    const { initNavigation } = await import(`../shared/navigation.js?stability=${Date.now()}`);
-    initNavigation()('lookup');
-    assert.deepEqual(scrolls, [{ top: 0, behavior: 'auto' }]);
-  } finally {
-    if (saved.document === undefined) delete globalThis.document; else globalThis.document = saved.document;
-    if (saved.window === undefined) delete globalThis.window; else globalThis.window = saved.window;
-  }
+test('a delayed 401 from an old session cannot revoke a newly established React session',async()=>{
+ const saved={fetch:globalThis.fetch,sessionStorage:globalThis.sessionStorage,window:globalThis.window};const values=new Map([['pioneerToken','old-token']]),events=[];let complete;
+ globalThis.sessionStorage={getItem:key=>values.get(key),removeItem:key=>values.delete(key)};globalThis.window={dispatchEvent:event=>events.push(event.type)};globalThis.fetch=()=>new Promise(resolve=>complete=resolve);
+ try{const api=await import('../shared/api.js?session-race');api.useStaffSession();const pending=api.apiFetch('/api/auth/me');values.set('pioneerToken','new-token');complete(new Response('{}',{status:401}));await pending;assert.equal(values.get('pioneerToken'),'new-token');assert.deepEqual(events,[]);}
+ finally{for(const[key,value]of Object.entries(saved)){if(value===undefined)delete globalThis[key];else globalThis[key]=value;}}
 });
 
 test('layout stability rules keep dynamic regions and view transitions fixed', async () => {
