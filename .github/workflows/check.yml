@@ -9,12 +9,12 @@ permissions:
 # One lock covers Staff CI, migrations, publication and smoke, including maintenance.
 # Other branches retain their existing job-level deployment concurrency.
 concurrency:
-  group: ${{ github.ref == 'refs/heads/next/staff-platform' && 'cloudflare-staff-staging' || format('cloudflare-ci-{0}', github.run_id) }}
+  group: ${{ github.ref == 'refs/heads/next/staff-platform' && 'cloudflare-staff-staging' || github.ref == 'refs/heads/dev' && 'cloudflare-dev-release' || format('cloudflare-ci-{0}', github.run_id) }}
   cancel-in-progress: false
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Validate manual release branch
         if: github.event_name == 'workflow_dispatch'
@@ -32,6 +32,38 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium webkit
       - run: npm run verify
+      - name: Preserve isolated UI acceptance screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: staff-platform-screenshots-${{ github.run_id }}-${{ github.run_attempt }}
+          path: output/field-workflow/**/*.png
+          if-no-files-found: ignore
+          retention-days: 14
+  rehearse-preview:
+    needs: test
+    if: github.ref == 'refs/heads/next/staff-platform' && ((github.event_name == 'push' && github.event.deleted != true) || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: preview-migrations
+      deployment: false
+    concurrency:
+      group: cloudflare-preview-migrations
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Rehearse the existing Preview data locally without remote writes
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PREVIEW_D1_API_TOKEN }}
+          WRANGLER_SEND_METRICS: 'false'
+        run: node scripts/rehearse-preview.mjs
   migrate-preview:
     needs: test
     if: github.ref == 'refs/heads/dev' && ((github.event_name == 'push' && github.event.deleted != true) || github.event_name == 'workflow_dispatch')
@@ -55,7 +87,9 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PREVIEW_D1_API_TOKEN }}
           WRANGLER_SEND_METRICS: 'false'
-        run: node scripts/ci-release.mjs --migrate-preview
+        run: |
+          node scripts/rehearse-preview.mjs
+          node scripts/ci-release.mjs --migrate-preview
   migrate-staff-staging:
     needs: test
     if: github.ref == 'refs/heads/next/staff-platform' && ((github.event_name == 'push' && github.event.deleted != true) || github.event_name == 'workflow_dispatch')
@@ -81,7 +115,7 @@ jobs:
           WRANGLER_SEND_METRICS: 'false'
         run: node scripts/ci-release.mjs --migrate-staff-staging
   release-staff-staging:
-    needs: [test, migrate-staff-staging]
+    needs: [test, migrate-staff-staging, rehearse-preview]
     if: github.ref == 'refs/heads/next/staff-platform' && needs.migrate-staff-staging.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20

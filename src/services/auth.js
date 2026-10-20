@@ -10,13 +10,13 @@ export function authService(users, secret) {
       const claims = verifyToken(authorization.startsWith('Bearer ') ? authorization.slice(7) : '', secret);
       if (!claims) fail(401, '登录已失效，请重新登录');
       const user = await users.find(claims.sub);
-      if (user?.status !== 'enabled' || user.role !== claims.role || user.tokenVersion !== claims.ver) fail(401, '登录已失效，请重新登录');
+      if ((user?.status !== 'enabled' || user.memberStatus === 'inactive') || user.role !== claims.role || user.tokenVersion !== claims.ver) fail(401, '登录已失效，请重新登录');
       return user;
     },
     async login(input) {
       const user = await users.find(account(input.account));
-      if (typeof input.password !== 'string' || input.password.length > 128 || user?.status !== 'enabled' || !verifyPassword(input.password, user.passwordHash)) fail(401, '账号或密码不正确');
-      return {account:user.account,name:user.name,role:user.role,status:user.status,homeCampus:user.homeCampus,authorizedCampuses:user.authorizedCampuses,
+      if (typeof input.password !== 'string' || input.password.length > 128 || (user?.status !== 'enabled' || user.memberStatus === 'inactive') || !verifyPassword(input.password, user.passwordHash)) fail(401, '账号或密码不正确');
+      return {account:user.account,memberId:user.memberId || `member-${user.account}`,name:user.name,role:user.role,status:user.status,homeCampus:user.homeCampus,authorizedCampuses:user.authorizedCampuses,authVersion:user.authVersion,
         token:signToken(user,secret),expiresIn:TOKEN_TTL_SECONDS};
     },
     async logout(user) { await users.revokeTokens(user.account); return { ok: true }; },

@@ -1,17 +1,20 @@
 import { fail } from '../lib/http.js';
 import { nowIso } from '../../shared/time.js';
 import { guestAppointment } from './access.js';
-import { requireAppointmentAccess } from './permissions.js';
+import { requireRole } from './permissions.js';
 
 function metadata(item) {
   return { id: item.id, appointmentId: item.appointmentId, filename: item.filename, mimeType: item.mimeType, size: item.size, createdAt: item.createdAt, expiresAt: item.expiresAt, purpose: item.purpose, uploadedBy: item.uploadedBy };
 }
-export function attachmentService(appointments, attachments, bucket, maxBytes) {
+export function attachmentService(appointments, attachments, bucket, maxBytes, field) {
   async function authorize(id, user, accessToken) {
     if (!user) return guestAppointment(appointments,id,accessToken);
     const item = await appointments.find(id);
     if (!item) fail(404, '预约或附件不存在');
-    requireAppointmentAccess(user,item);
+    {
+      const visible=await field.detail(user,id);
+      if(!visible.canReadDetails)fail(403,'没有该预约附件的访问权限');
+    }
     return item;
   }
   return {
@@ -21,9 +24,10 @@ export function attachmentService(appointments, attachments, bucket, maxBytes) {
     },
     async upload(id, input, user, accessToken) {
       if (input.purpose === 'intake_front' || input.purpose === 'intake_back') {
+        requireRole(user, 'technician');
         const appointment = await appointments.find(id);
         if (!appointment) fail(404, '预约不存在');
-        requireAppointmentAccess(user, appointment, { start: true });
+        await field.requireEligible(user,appointment.campus);
         if (appointment.status !== 'booked') fail(409, '当前预约不能上传签到照片');
         id = appointment.id;
       } else id = (await authorize(id, user, accessToken)).id;

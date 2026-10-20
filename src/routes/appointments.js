@@ -26,7 +26,7 @@ export const appointmentRoutes = [
     return json({ ...item, attachments: attachments.items });
   }],
   ['POST', /^\/api\/appointments\/([^/]+)\/credential$/, async (context,match) => {
-    const actor=await context.role('admin');
+    const actor=await context.role('technician');
     await context.limit('write');
     return json(await context.services.appointments.recover(decodeURIComponent(match[1]),await readBody(context.request),actor));
   }],
@@ -34,6 +34,15 @@ export const appointmentRoutes = [
     await context.limit('write');
     const input = appointmentPatch(await readBody(context.request));
     return json(await context.services.appointments.update(decodeURIComponent(match[1]),input,await context.authenticate(),context.accessToken));
+  }],
+  ['POST', /^\/api\/appointments\/([^/]+)\/transfer$/, async (context, match) => {
+    await context.limit('write');
+    return json(await context.services.appointments.transfer(decodeURIComponent(match[1]), await readBody(context.request), await context.role('technician')));
+  }],
+  ['PATCH', /^\/api\/appointments\/([^/]+)\/correction$/, async (context, match) => {
+    await context.limit('write');
+    const input = appointmentPatch({ ...await readBody(context.request), action: 'correct' });
+    return json(await context.services.appointments.update(decodeURIComponent(match[1]), { ...input, action: 'correct' }, await context.role('technician')));
   }],
   ['GET', /^\/api\/live\/summary$/, async context => {
     const query = liveQuery(context.query);

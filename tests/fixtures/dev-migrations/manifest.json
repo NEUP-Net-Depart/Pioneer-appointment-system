@@ -1,0 +1,17 @@
+{
+  "sourceCommit": "135da288204d20a9c06d9579d7bf61813b2587fc",
+  "migrations": [
+    {
+      "name": "0007_onsite_expiration.sql",
+      "sha256": "661246173420e0effe982e6369652a327b9d3a07805112f19cc166d0288120bd"
+    },
+    {
+      "name": "0008_five_statuses.sql",
+      "sha256": "3abe40fc10885f618bf7e9471586ae72e15e392a89b32de654a0ea2235b02504"
+    },
+    {
+      "name": "0009_weekday_booking_schedules.sql",
+      "sha256": "0dc521cb699ce7bef96610e13a5433d3ebf4882ba2bfc7a22e6984f80b520156"
+    }
+  ]
+}

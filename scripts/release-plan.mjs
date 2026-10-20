@@ -20,7 +20,6 @@ export function previewBranch(env=process.env){
 export function pagesSiteUrl(project,branch,productionBranch='main'){
   if(!/^[a-z\d][a-z\d-]*$/.test(project))throw new Error('Configure a valid Pages project name.');
   if(branch===productionBranch)return `https://${project}.pages.dev`;
-  // Match Pages' truncated branch alias without losing custom production branches.
   const alias=branch.toLowerCase().replace(/[^a-z\d]/g,'-').slice(0,28).replace(/-+$/,'');
   if(!alias || alias.length>63 || !/^[a-z\d].*[a-z\d]$|^[a-z\d]$/.test(alias))throw new Error('The branch must produce a valid Pages DNS alias of 1–63 characters.');
   return `https://${alias}.${project}.pages.dev`;
@@ -32,7 +31,7 @@ export async function releasePlan(operation,{preview=false,staffStaging=false,en
   const branch=staffStaging ? STAFF_BRANCH : preview ? previewBranch(env) : 'main',siteUrl=pagesSiteUrl(cfg.name,branch,staffStaging ? STAFF_BRANCH : 'main');
   if(preview && (branch===STAFF_BRANCH || branch.startsWith('feat/staff-')))throw new Error('Staff branches cannot publish to the shared Preview.');
   const database=bindings.d1_databases.find(item=>item.binding==='DB'),bucket=bindings.r2_buckets.find(item=>item.binding==='ATTACHMENTS');
-  const migrations=await Promise.all((await readdir(resolve(root,'migrations'))).filter(file=>file.endsWith('.sql')).sort().map(async file=>({file,sha256:createHash('sha256').update(await readFile(resolve(root,'migrations',file))).digest('hex')})));
+  const migrations=await Promise.all((await readdir(resolve(root,database.migrations_dir))).filter(file=>file.endsWith('.sql')).sort().map(async file=>({file,sha256:createHash('sha256').update(await readFile(resolve(root,database.migrations_dir,file))).digest('hex')})));
   return {operation,mode:'plan-only',environment:staffStaging ? 'staff-staging' : preview ? 'preview' : 'production',wranglerConfig:staffStaging ? 'wrangler.staff-staging.jsonc' : 'wrangler.jsonc',project:cfg.name,branch,siteUrl,automaticMigrations:['main','dev',STAFF_BRANCH].includes(branch),commit:git(['rev-parse','HEAD']),dirty:!!git(['status','--porcelain']),database:{binding:'DB',name:database.database_name,id:database.database_id},attachments:{binding:'ATTACHMENTS',bucket:bucket.bucket_name,public:false,maxBytes:bindings.vars.MAX_R2_BYTES},migrations,requiredSecrets:['JWT_SECRET','PII_ENCRYPTION_KEY'],requiredLocalRootPasswords:['ROOT001_PASSWORD','ROOT002_PASSWORD'],authorization:'Explicit human approval of the exact commit, resources and operation is required; flags alone do not grant approval.',runbook:'docs/operations.md'};
 }
 export function assertCleanRelease(plan){

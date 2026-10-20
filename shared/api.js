@@ -1,36 +1,49 @@
 let staffSession = false;
 export function useStaffSession() { staffSession = true; }
 export function clearSession() {
-  ['pioneerRole','pioneerAccount','pioneerToken','pioneerCampuses'].forEach(key => sessionStorage.removeItem(key));
+  ['pioneerRole','pioneerMemberId','pioneerAccount','pioneerToken','pioneerCampuses'].forEach(key => sessionStorage.removeItem(key));
 }
-export async function apiFetch(input, { json, timeoutMs, ...options } = {}) {
+function deadline(timeoutMs, signal) {
+  if (!timeoutMs) return { signal, dispose() {} };
+  const controller = new AbortController();
+  const abort = () => controller.abort(signal?.reason);
+  if (signal?.aborted) abort();
+  else signal?.addEventListener('abort', abort, { once: true });
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return { signal: controller.signal, dispose() { clearTimeout(timer); signal?.removeEventListener('abort', abort); } };
+}
+export async function apiFetch(input, { json, suppressAuthExpired = false, timeoutMs, ...options } = {}) {
   const headers = new Headers(options.headers || {});
   if (json !== undefined) { headers.set('Content-Type', 'application/json'); options.body = JSON.stringify(json); }
   const token = staffSession ? sessionStorage.getItem('pioneerToken') : null;
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  const controller = timeoutMs ? new AbortController() : null;
-  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  const limit = deadline(timeoutMs, options.signal);
   let response;
-  try { response = await fetch(input, { ...options, headers, ...(controller ? { signal: controller.signal } : {}) }); }
-  finally { clearTimeout(timer); }
-  if (response.status === 401 && token) { clearSession(); window.dispatchEvent(new CustomEvent('auth-expired')); }
+  try { response = await fetch(input, { ...options, headers, signal: limit.signal }); }
+  finally { limit.dispose(); }
+  if (response.status === 401 && token && token === sessionStorage.getItem('pioneerToken') && !suppressAuthExpired) { clearSession(); window.dispatchEvent(new CustomEvent('auth-expired')); }
   return response;
 }
 export async function apiJson(input, { timeoutMs, ...options } = {}) {
-  const controller=timeoutMs ? new AbortController() : null;
-  const timer=controller ? setTimeout(()=>controller.abort(),timeoutMs) : null;
+  const limit = deadline(timeoutMs, options.signal);
   try {
-    const response = await apiFetch(input,{...options,...(controller ? {signal:controller.signal} : {})});
-    const payload = await response.json();
-    if (!response.ok) { const error = new Error(payload.error || '请求失败，请稍后重试'); error.status = response.status; error.code = payload.code; error.fields = payload.fields; throw error; }
-    return payload;
-  } finally {clearTimeout(timer);}
+  const response = await apiFetch(input, { ...options, signal: limit.signal });
+  const payload = await response.json();
+  if (!response.ok) {
+    const error = new Error(payload.error || '请求失败，请稍后重试');
+    error.status = response.status;
+    error.code = payload.code;
+    error.fields = payload.fields;
+    throw error;
+  }
+  return payload;
+  } finally { limit.dispose(); }
 }
-export async function apiBlob(input, {timeoutMs=30000,...options} = {}) {
-  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+export async function apiBlob(input, { timeoutMs = 30000, ...options } = {}) {
+  const limit = deadline(timeoutMs, options.signal);
   try {
-    const response=await apiFetch(input,{...options,signal:controller.signal});
-    if(!response.ok){const error=new Error('附件暂时无法读取，请重试。');error.status=response.status;throw error;}
+    const response = await apiFetch(input, { ...options, signal: limit.signal });
+    if (!response.ok) { const error = new Error('附件暂时无法读取，请重试。'); error.status = response.status; throw error; }
     return await response.blob();
-  } finally {clearTimeout(timer);}
+  } finally { limit.dispose(); }
 }

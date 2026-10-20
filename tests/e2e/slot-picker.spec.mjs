@@ -39,6 +39,11 @@ for(const [now,count] of [['2026-10-15T10:00:00+08:00',1],['2026-10-14T10:00:00+
     }finally{release();}
     await expect(page.locator('#booking-picker')).toHaveAttribute('aria-busy','false');
     await expect(slots).toHaveCount(4);await expect(slots.first()).toBeVisible();await expect(slots.first()).toBeEnabled();
+    // The panel translates into place after loading. Measure its final hit area,
+    // not an interpolated DOMRect whose coordinates can lose floating precision.
+    await page.locator('#booking-picker').evaluate(async picker=>{
+      await Promise.all(picker.getAnimations({subtree:true}).map(animation=>animation.finished.catch(()=>{})));
+    });
     const positions=await slots.evaluateAll(buttons=>buttons.map(button=>({top:button.getBoundingClientRect().top,height:button.getBoundingClientRect().height})));
     for(const [index,box] of positions.entries()){
       expect(box.height).toBeGreaterThanOrEqual(44);

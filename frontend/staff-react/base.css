@@ -1,0 +1,923 @@
+#staff-react-root {
+  min-height: 100vh;
+}
+#staff-react-root * {
+  box-sizing: border-box;
+}
+.react-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 14px 4vw;
+  background: #102a43;
+  color: white;
+  box-shadow: 0 2px 12px #102a4333;
+}
+.react-topbar nav {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+.react-topbar button,
+.react-heading button,
+.react-card button {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: #e9f0f6;
+  color: #102a43;
+  cursor: pointer;
+}
+.react-topbar nav button {
+  background: transparent;
+  color: #d9e6f2;
+}
+.react-topbar nav button.is-active {
+  background: #2f80ed;
+  color: white;
+}
+.react-topbar > span {
+  white-space: nowrap;
+}
+.react-topbar > span button {
+  padding: 5px 9px;
+  margin-left: 8px;
+}
+.react-page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 36px 4vw 80px;
+}
+.react-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 22px;
+}
+.react-heading h1,
+.react-heading h2 {
+  margin: 0 0 6px;
+}
+.react-heading p {
+  margin: 0;
+  color: #627d98;
+}
+.react-eyebrow {
+  letter-spacing: 0.13em;
+  font-size: 12px;
+  color: #2f80ed;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.react-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 18px;
+  margin-bottom: 20px;
+}
+.react-card {
+  background: #fff;
+  border: 1px solid #d9e2ec;
+  border-radius: 14px;
+  padding: 22px;
+  box-shadow: 0 5px 18px #102a430d;
+}
+.react-card h2 {
+  margin-top: 0;
+}
+.react-card label,
+.react-form-grid label,
+.react-login label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0;
+  font-weight: 600;
+  font-size: 14px;
+}
+.react-card input,
+.react-card select,
+.react-card textarea,
+.react-login input,
+.react-toolbar input {
+  width: 100%;
+  border: 1px solid #bcccdc;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+  font: inherit;
+}
+.react-primary {
+  background: #2f80ed !important;
+  color: #fff !important;
+}
+.react-error {
+  color: #c53030;
+  background: #fff5f5;
+  border: 1px solid #feb2b2;
+  padding: 10px;
+  border-radius: 8px;
+}
+.react-message {
+  color: #1f7a4d;
+}
+.react-inline {
+  display: flex;
+  gap: 8px;
+  align-items: end;
+}
+.react-inline input {
+  flex: 1;
+}
+.react-result,
+.react-list-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e6edf3;
+}
+.react-table {
+  overflow: auto;
+}
+.react-row {
+  display: grid;
+  grid-template-columns: 1.2fr 1.3fr 1.3fr 0.8fr 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 13px 8px;
+  border-bottom: 1px solid #e6edf3;
+}
+.react-row-head {
+  font-size: 12px;
+  color: #627d98;
+  font-weight: 700;
+}
+.react-muted {
+  color: #829ab1;
+}
+.react-toolbar {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 15px;
+}
+.react-toolbar input {
+  max-width: 420px;
+}
+.react-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: #102a4366;
+}
+.react-modal > .react-card {
+  width: min(520px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+}
+.react-permission-layout {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.4fr) 1fr;
+  gap: 18px;
+}
+.react-permission-layout aside {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.react-permission-layout aside button {
+  text-align: left;
+  background: #f5f8fb;
+}
+.react-permission-layout aside button.is-selected {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.react-permission-layout aside small,
+.react-permission small {
+  display: block;
+  color: #627d98;
+  margin-top: 3px;
+}
+.react-permission {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid #e6edf3;
+}
+.react-permission input {
+  width: auto;
+}
+.react-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 12px;
+}
+.react-form-grid button {
+  grid-column: 1/-1;
+}
+.react-login {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: linear-gradient(135deg, #102a43, #2f80ed);
+}
+.react-login .react-card {
+  width: min(430px, 100%);
+  padding: 34px;
+}
+.react-login h1 {
+  margin: 0 0 6px;
+}
+.react-login .react-primary {
+  width: 100%;
+  margin-top: 10px;
+}
+.react-login form {
+  margin-top: 26px;
+}
+@media (max-width: 760px) {
+  .react-topbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .react-topbar nav {
+    order: 3;
+    flex-basis: 100%;
+    overflow: auto;
+  }
+  .react-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .react-row-head {
+    display: none;
+  }
+  .react-permission-layout {
+    grid-template-columns: 1fr;
+  }
+  .react-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.react-signature {
+  width: 100%;
+  height: 130px;
+  border: 1px dashed #829ab1;
+  border-radius: 8px;
+  background: #fff;
+  touch-action: none;
+}
+.react-list-item button {
+  margin: 4px;
+}
+.react-form-grid textarea {
+  min-height: 80px;
+}
+
+.react-member-editor {
+  width: min(700px, 100%) !important;
+}
+.react-member-editor fieldset {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  margin: 20px 0;
+}
+.react-member-editor legend {
+  font-size: 17px;
+  font-weight: 700;
+}
+.react-binding {
+  padding: 16px;
+  margin: 12px 0;
+  border: 1px solid #d9e2ec;
+  border-radius: 10px;
+}
+.react-check {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 10px !important;
+}
+.react-check input {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+.react-campus-options {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.react-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+.react-editor-actions > span {
+  margin-right: auto;
+  color: #627d98;
+}
+.react-permission-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.react-permission input {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+.react-member-editor button,
+.react-permission-layout button,
+.react-permission {
+  min-height: 44px;
+}
+.react-member-editor button:disabled,
+.react-permission-layout button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.react-member-editor :focus-visible,
+.react-permission-layout :focus-visible {
+  outline: 3px solid #93c5fd;
+  outline-offset: 3px;
+}
+
+.react-grant-details {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  background: #f7f9fc;
+  border-radius: 10px;
+}
+.react-grant-details summary {
+  cursor: pointer;
+  min-height: 32px;
+  color: #486581;
+}
+.react-scope-fields > fieldset {
+  margin: 14px 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.react-scope-fields legend {
+  font-weight: 600;
+  font-size: 14px;
+}
+.react-condition-fields .react-heading {
+  margin: 0;
+  align-items: center;
+}
+.react-grant-details input,
+.react-grant-details select {
+  min-height: 40px;
+}
+.react-grant-details input[type='checkbox'] {
+  min-height: 18px;
+}
+.react-condition-fields .react-binding {
+  margin: 10px 0;
+  background: #fff;
+}
+.react-permission-item {
+  border-bottom: 1px solid #e6edf3;
+}
+.react-permission-item .react-permission {
+  border: 0;
+}
+.react-members-page {
+  max-width: 1440px;
+}
+.react-members-page > .react-heading > button {
+  flex: none;
+  white-space: nowrap;
+}
+.react-members-page button {
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  padding: 10px 14px;
+  min-height: 42px;
+  background: #fff;
+  color: #23364a;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.react-members-page button:hover {
+  border-color: #64748b;
+  background: #f8fafc;
+}
+.react-members-page button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.react-members-page :focus-visible {
+  outline: 3px solid #93c5fd;
+  outline-offset: 3px;
+}
+.react-members-page .react-toolbar {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.react-members-page .react-toolbar input {
+  flex: 1;
+  min-width: 200px;
+  max-width: none;
+}
+.react-members-page .react-toolbar select {
+  width: auto;
+  border: 1px solid #bcccdc;
+  border-radius: 9px;
+  padding: 10px 12px;
+  background: #fff;
+  font: inherit;
+  font-size: 13px;
+}
+.react-members-page .react-toolbar [role='status'] {
+  font-size: 12px;
+  color: #627d98;
+  white-space: nowrap;
+}
+.react-members-page .react-table {
+  border: 1px solid #d9e2ec;
+  border-radius: 14px;
+  background: #fff;
+  padding: 0 20px;
+}
+.react-members-page .react-row {
+  grid-template-columns: minmax(200px, 1.6fr) 0.65fr 0.65fr 0.85fr minmax(145px, 1fr);
+  padding: 18px 0;
+}
+.react-members-page .react-row:last-child {
+  border-bottom: 0;
+}
+.react-member-identity {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.react-member-identity strong {
+  overflow-wrap: anywhere;
+}
+.react-member-identity small {
+  color: #627d98;
+  font-variant-numeric: tabular-nums;
+}
+.react-member-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #64748b;
+}
+.react-member-status:before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+.react-member-status.is-active {
+  color: #27644a;
+}
+.react-member-status.is-active:before {
+  background: #3b8869;
+}
+.react-members-page > .react-table + .react-primary,
+.react-members-page > .react-table + button {
+  display: block;
+  margin: 18px auto 0;
+}
+.react-members-page .react-table > .react-muted {
+  padding: 30px 10px;
+  text-align: center;
+}
+@media (max-width: 760px) {
+  .react-members-page {
+    padding: 26px 18px 60px;
+  }
+  .react-members-page > .react-heading {
+    gap: 12px;
+  }
+  .react-members-page > .react-heading h1 {
+    font-size: 25px;
+  }
+  .react-members-page .react-toolbar input {
+    flex-basis: 100%;
+  }
+  .react-members-page .react-toolbar select {
+    flex: 1;
+  }
+  .react-members-page .react-toolbar [role='status'] {
+    flex-basis: 100%;
+    padding: 2px 0 4px;
+  }
+  .react-members-page .react-row {
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+  }
+  .react-members-page .react-row-head {
+    display: none;
+  }
+  .react-members-page .react-row > span:last-child {
+    grid-column: 1/-1;
+  }
+  .react-members-page .react-row > span:last-child button {
+    width: 100%;
+    background: #f5f8fb;
+  }
+  .react-members-page .react-table {
+    padding: 0 16px;
+  }
+  .react-members-page .react-row > span:nth-child(2),
+  .react-members-page .react-row > span:nth-child(4) {
+    text-align: right;
+    font-size: 13px;
+    color: #627d98;
+  }
+}
+#staff-react-root .roster-page {
+  max-width: 1440px;
+}
+.roster-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid #d9e2ec;
+  margin: 0 0 20px;
+  overflow: auto;
+}
+.roster-tabs button {
+  border: 0;
+  background: transparent;
+  color: #627d98;
+  padding: 12px 16px;
+  font-weight: 700;
+  white-space: nowrap;
+  border-bottom: 3px solid transparent;
+}
+.roster-tabs button.is-active {
+  color: #102a43;
+  border-color: #2f80ed;
+}
+.roster-tabs span {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  margin-left: 5px;
+  padding: 0 6px;
+  border-radius: 99px;
+  background: #edf2f7;
+  font-size: 12px;
+}
+.roster-tabs .is-active span {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.roster-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+  gap: 18px;
+  align-items: start;
+}
+.card-title-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+.card-title-row h2 {
+  margin-bottom: 4px;
+}
+.roster-count {
+  color: #627d98;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.duty-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 16px 0;
+  border-bottom: 1px solid #e6edf3;
+  cursor: pointer;
+}
+.duty-card:last-of-type {
+  border-bottom: 0;
+}
+.duty-card.is-selected {
+  background: #f7fbff;
+  margin: 0 -12px;
+  padding-left: 12px;
+  padding-right: 12px;
+  border-radius: 10px;
+}
+.duty-card strong,
+.duty-card span,
+.duty-card small {
+  display: block;
+}
+.duty-card strong {
+  font-size: 17px;
+}
+.duty-card span {
+  color: #334e68;
+  margin-top: 4px;
+}
+.duty-card small {
+  color: #829ab1;
+  margin-top: 4px;
+}
+.duty-actions {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.duty-actions button,
+.review-actions button,
+.request-row button {
+  border: 1px solid #bcccdc;
+  background: #fff;
+  color: #243b53;
+  border-radius: 7px;
+  padding: 7px 10px;
+  white-space: nowrap;
+}
+.duty-actions button:first-child {
+  color: #b45309;
+  border-color: #f6c66d;
+}
+.roster-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.roster-form label {
+  margin: 0;
+}
+.roster-form h3 {
+  margin: 0;
+}
+.roster-form .react-primary {
+  align-self: flex-start;
+}
+.request-row,
+.review-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid #e6edf3;
+}
+.request-row > div,
+.review-row > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.request-row span:not(.status-pill),
+.review-row span {
+  color: #627d98;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.status-pill {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 9px;
+  border-radius: 99px;
+  font-size: 12px !important;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.status-pending {
+  background: #fff7ed;
+  color: #b45309;
+}
+.status-approved,
+.status-accepted {
+  background: #ecfdf3;
+  color: #047857;
+}
+.status-rejected,
+.status-declined,
+.status-withdrawn {
+  background: #f1f5f9;
+  color: #64748b;
+}
+.review-actions {
+  display: flex;
+  gap: 7px;
+}
+.review-actions button:first-child {
+  background: #102a43;
+  color: #fff;
+  border-color: #102a43;
+}
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 34px 8px;
+  color: #627d98;
+}
+.empty-state strong {
+  color: #243b53;
+}
+.react-card hr {
+  border: 0;
+  border-top: 1px solid #e6edf3;
+  margin: 24px 0;
+}
+@media (max-width: 760px) {
+  .roster-layout {
+    grid-template-columns: 1fr;
+  }
+  .roster-page {
+    padding-top: 24px;
+  }
+  .duty-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .duty-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+  .duty-actions button {
+    flex: 1;
+  }
+  .card-title-row {
+    flex-direction: column;
+    gap: 4px;
+  }
+  .request-row,
+  .review-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .request-row .status-pill {
+    margin-left: auto;
+  }
+  .review-actions {
+    width: 100%;
+  }
+  .review-actions button {
+    flex: 1;
+  }
+  .roster-tabs {
+    margin-left: -4px;
+    margin-right: -4px;
+  }
+  .roster-tabs button {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
+#staff-react-root {
+  background: #f5f7fa;
+  color: #243b53;
+}
+#staff-react-root button,
+#staff-react-root input,
+#staff-react-root select,
+#staff-react-root textarea {
+  min-height: 44px;
+}
+#staff-react-root button {
+  font: inherit;
+  font-weight: 600;
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    transform 0.16s ease;
+}
+#staff-react-root button:active {
+  transform: translateY(1px);
+}
+#staff-react-root button:focus-visible,
+#staff-react-root input:focus-visible,
+#staff-react-root select:focus-visible,
+#staff-react-root textarea:focus-visible {
+  outline: 3px solid #93c5fd;
+  outline-offset: 2px;
+}
+.react-page {
+  max-width: 1440px;
+}
+.react-card {
+  box-shadow: 0 2px 10px #102a430a;
+}
+.react-heading {
+  align-items: center;
+}
+.react-heading > button {
+  flex: none;
+  white-space: nowrap;
+}
+.react-message {
+  border: 1px solid #b7dec9;
+  background: #f0fdf4;
+  border-radius: 9px;
+  padding: 10px 12px;
+}
+.react-error {
+  margin: 0 0 16px;
+}
+.react-muted {
+  line-height: 1.55;
+}
+#staff-react-root .react-primary:hover {
+  background: #1d6fd1 !important;
+}
+#staff-react-root .duty-actions button:hover,
+#staff-react-root .request-row button:hover,
+#staff-react-root .review-actions button:hover {
+  border-color: #64748b;
+  background: #f8fafc;
+}
+@media (prefers-reduced-motion: reduce) {
+  #staff-react-root * {
+    scroll-behavior: auto !important;
+    transition: none !important;
+    animation: none !important;
+  }
+}
+#staff-react-root .roster-manager {
+  padding-top: 0;
+}
+.manager-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+.manager-layout h3 {
+  margin-top: 0;
+}
+.manager-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+.manager-actions button {
+  flex: 1;
+}
+.validation-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  margin-top: 18px;
+  border: 1px solid #f6c66d;
+  background: #fffaf0;
+  border-radius: 10px;
+}
+.validation-summary.is-valid {
+  border-color: #b7dec9;
+  background: #f0fdf4;
+}
+.validation-summary small {
+  color: #b45309;
+}
+.validation-summary.is-valid small {
+  color: #047857;
+}
+@media (max-width: 760px) {
+  .manager-layout {
+    grid-template-columns: 1fr;
+  }
+  .manager-actions {
+    position: sticky;
+    bottom: 12px;
+    padding: 10px;
+    background: #ffffffee;
+    border: 1px solid #d9e2ec;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px #102a4320;
+    z-index: 2;
+  }
+}

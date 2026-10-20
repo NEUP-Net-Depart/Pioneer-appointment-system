@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import {mockStaff,loginStaff} from './support/staff.mjs';
 import { setupStudent,chooseTime,fillDevice,goReview,submitStudent } from './support/student.mjs';
 for(const width of [320,1440])test(`student shows only the requested fault advice and review reminders at ${width}px`,async({page})=>{
   await page.setViewportSize({width,height:900});await setupStudent(page);await chooseTime(page);await fillDevice(page);
@@ -75,22 +76,16 @@ test('staff activation length limits retain overflow and stop submission until c
   }
   await page.locator('#activation-form [type=submit]').click();await expect(page.locator('#activation-status')).toContainText('等待管理员');expect(calls).toHaveLength(1);expect(calls[0].name).toBe('名'.repeat(80));
 });
-test('intake reminds staff to verify thermal materials only for thermal servicing', async ({ page }) => {
-  await page.route('**/api/scan/current', route => route.fulfill({ json: { items: [], pending: null } }));
-  await page.route('**/api/auth/login', route => route.fulfill({ json: { token: 'test-only', account: 'test-admin', role: 'admin', authorizedCampuses: ['南湖'] } }));
-  await page.route('**/api/appointments/overview', route => route.fulfill({ json: { dates: ['2026-10-12'], campuses: ['南湖'], items: [], updatedAt: '2026-10-12T08:00:00Z' } }));
-  await page.route('**/api/appointments?*', route => route.fulfill({ json: {
-    items: ['清灰换硅脂', '蓝屏'].map((faultType, index) => ({ id: `test-${index}`, faultType, studentId: '20260001', name: '测试同学', campus: '南湖', deviceType: '笔记本电脑', brand: '测试', deviceModel: '测试', date: '2026-10-12', timeSlot: '19:00–19:30', status: 'booked', repairNote: '' })),
-    counts: { all: 2, booked: 2, in_progress: 0, completed: 0, cancelled: 0, expired: 0 }
-  } }));
-  await page.goto('/staff/');
-  await page.locator('#login-id').fill('test-admin');
-  await page.locator('#login-password').fill('test-only-password');
-  await page.locator('#login-form button').click();
-  await page.locator('[data-start="test-0"]').click();
-  await expect(page.locator('#intake-thermal-advice')).toBeVisible();
-  await expect(page.locator('#intake-thermal-advice')).toContainText('确认设备是否使用液金');
-  await page.locator('#cancel-intake').click();
-  await page.locator('[data-start="test-1"]').click();
-  await expect(page.locator('#intake-thermal-advice')).toBeHidden();
+test('React intake presents customer thermal answers for staff verification', async ({ page }) => {
+  const items = ['清灰换硅脂','蓝屏'].map((faultType,index)=>({id:'reserve020261015-'+String(index+1).padStart(2,'0'),faultType,liquidMetal:'不清楚',status:'booked',campus:'南湖',brand:'联想',deviceModel:'ThinkPad',canReadDetails:true,canStart:true}));
+  await mockStaff(page,{contexts:[{id:'repair',label:'维修工作台'}]});
+  await page.route('**/api/scan/resolve',route=>route.fulfill({json:items.find(item=>item.id===route.request().postDataJSON().id)}));
+  await page.route('**/api/field/appointments/*',route=>route.fulfill({json:items.find(item=>route.request().url().endsWith(item.id))}));
+  await loginStaff(page);
+  for(const item of items){
+    await page.getByRole('combobox',{name:'预约编号',exact:true}).fill(item.id);await page.getByRole('button',{name:'查询',exact:true}).click();
+    await expect(page.getByRole('dialog')).toContainText('客户填写液金情况：不清楚');
+    await expect(page.getByRole('combobox',{name:'液金散热',exact:true})).toBeVisible();
+    await page.getByRole('button',{name:'关闭',exact:true}).click();
+  }
 });

@@ -16,6 +16,14 @@ const bindings=(id,bucket)=>({d1_databases:[{binding:'DB',database_name:bucket,d
 const cfg=()=>({name:'existing-pages',...bindings('11111111-1111-4111-8111-111111111111','production-private'),env:{preview:bindings('22222222-2222-4222-8222-222222222222','preview-private')}});
 
 const ciEnv=(event,branch)=>({GITHUB_ACTIONS:'true',GITHUB_EVENT_NAME:event,GITHUB_REF:`refs/heads/${branch}`,CLOUDFLARE_ACCOUNT_ID:'test-account',CLOUDFLARE_API_TOKEN:'test-token',SITE_URL:'https://example.test'});
+
+test('every workflow npm command resolves to an available package script',async()=>{
+  const {scripts}=JSON.parse(await readFile('package.json','utf8'));
+  for(const file of readdirSync('.github/workflows').filter(name=>/\.ya?ml$/.test(name))){
+    const source=await readFile(join('.github/workflows',file),'utf8');
+    for(const match of source.matchAll(/\bnpm run ([\w:-]+)/g))assert.ok(Object.hasOwn(scripts,match[1]),`${file} calls missing npm script ${match[1]}`);
+  }
+});
 test('CI releases all repository branches, with production restricted to main pushes',()=>{
   assert.equal(ciReleaseTarget(ciEnv('push','main')),'production');
   for(const branch of ['dev','feat/nfc-checkin','fix/booking-status','experiment/nested/change']){

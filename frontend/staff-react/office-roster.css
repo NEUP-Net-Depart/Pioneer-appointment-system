@@ -1,0 +1,214 @@
+.office-day-tabs {
+  display: none;
+}
+.office-day-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.field-app .office-day-heading h2 {
+  font-size: 19px;
+}
+.office-day-heading > span {
+  color: #64748b;
+  white-space: nowrap;
+}
+.office-days .office-day {
+  display: flex;
+  flex-direction: column;
+  min-height: 250px;
+}
+.office-days ul {
+  flex: 1;
+}
+.office-days .office-assignment {
+  display: block;
+  border-top: 1px solid #e5e9ef;
+  padding: 16px 0;
+}
+.office-assignment > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.office-assignment small {
+  padding: 3px 7px;
+  border: 1px solid #dce2e9;
+  border-radius: 6px;
+}
+.office-row-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.office-row-actions label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+}
+.office-row-actions input {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+}
+.office-row-actions button {
+  min-height: 44px;
+  padding: 8px 10px;
+}
+.office-add {
+  width: 100%;
+  min-height: 44px;
+  border: 1px dashed #aebbc9 !important;
+  background: transparent !important;
+  border-radius: 10px;
+}
+.office-member-search {
+  display: grid;
+  gap: 8px;
+}
+.office-member-search input {
+  font: inherit;
+  padding: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+}
+.office-member-options {
+  display: grid;
+  gap: 8px;
+  max-height: 50vh;
+  overflow: auto;
+  margin: 16px 0;
+}
+.office-member-options button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  text-align: left;
+  padding: 14px;
+  min-height: 52px;
+}
+.office-member-options button span {
+  color: #64748b;
+  font-size: 13px;
+}
+.office-publish-diff {
+  list-style: none;
+  padding: 0;
+  max-height: 45vh;
+  overflow: auto;
+}
+.office-publish-diff li {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 0;
+  border-bottom: 1px solid #e5e9ef;
+}
+.office-planner .empty-state {
+  margin-top: 24px;
+}
+.office-member-options button > div {
+  display: grid;
+  gap: 6px;
+}
+.office-member-options small {
+  font-size: 12px;
+  font-weight: 400;
+  color: #64748b;
+}
+.roster-week-nav {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 20px 0;
+}
+.roster-week-nav label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.roster-week-nav input {
+  font: inherit;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: white;
+  min-height: 44px;
+}
+.roster-week-nav button {
+  min-height: 44px;
+  padding: 10px 14px;
+}
+.roster-week-nav label {
+  max-width: 100%;
+}
+@media (max-width: 420px) {
+  .roster-week-nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .roster-week-nav label {
+    grid-column: 1/-1;
+    grid-row: 1;
+  }
+  .roster-week-nav button {
+    min-width: 0;
+  }
+  .roster-week-nav button:last-child {
+    grid-column: 1/-1;
+  }
+}
+@media (max-width: 650px) {
+  .office-day-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .office-day-tabs button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    min-height: 58px;
+    padding: 8px 4px;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  .office-day-tabs small {
+    font-size: 12px;
+    font-weight: 400;
+  }
+  .office-day-tabs button[aria-pressed='true'] {
+    background: #17212b;
+    color: white;
+    border-color: #17212b;
+  }
+  .office-days {
+    grid-template-columns: 1fr;
+  }
+  .office-days .office-day[data-selected='false'] {
+    display: none;
+  }
+  .office-days .office-day {
+    min-height: 220px;
+    padding: 20px;
+  }
+  .office-day-heading {
+    align-items: center;
+  }
+  .office-row-actions {
+    gap: 16px;
+  }
+  .office-publish-diff li {
+    font-size: 14px;
+  }
+}

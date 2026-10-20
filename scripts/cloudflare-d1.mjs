@@ -8,8 +8,11 @@ export function cloudflareClient(accountId, token, fetchImpl = fetch) {
       headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(30000)
     });
-    if (!response.ok) throw new Error(`Cloudflare request failed (${response.status})`);
-    const payload = await response.json();
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const codes = Array.isArray(payload?.errors) ? payload.errors.map(error => Number(error.code)).filter(Number.isSafeInteger).slice(0, 3) : [];
+      throw new Error(`Cloudflare request failed (${response.status}${codes.length ? `; codes ${codes.join(',')}` : ''})`);
+    }
     if (!payload.success) throw new Error('Cloudflare returned an unsuccessful result');
     return payload.result;
   }
@@ -17,9 +20,8 @@ export function cloudflareClient(accountId, token, fetchImpl = fetch) {
     async checkBucket(name) { await call(`/r2/buckets/${encodeURIComponent(name)}`); },
     database(id) {
       async function query(statements) {
-        const result = await call(`/d1/database/${encodeURIComponent(id)}/query`, {
-          batch: statements.map(({ sql, params }) => ({ sql, params: params.map(String) }))
-        });
+        const prepared = statements.map(({ sql, params }) => ({ sql, params: params.map(String) }));
+        const result = await call(`/d1/database/${encodeURIComponent(id)}/query`, prepared.length === 1 ? prepared[0] : { batch: prepared });
         if (!Array.isArray(result) || result.length !== statements.length || result.some(item => !item.success)) throw new Error('D1 query failed');
         return result;
       }
