@@ -193,14 +193,7 @@ export function Registration({
             >
               清空签名
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                strokes.current = [];
-                pointer.current = null;
-                setStep(0);
-              }}
-            >
+            <button type="button" onClick={() => setStep(0)}>
               返回修改
             </button>
             <button className="field-primary" disabled={busy}>

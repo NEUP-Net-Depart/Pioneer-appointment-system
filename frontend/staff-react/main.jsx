@@ -212,8 +212,8 @@ function Workspace({ user, onLogout }) {
         : page === 'settings' && settingsSection === 'capacity'
           ? 'capacity'
           : page;
-  // Keep loaded data, filters and selected records mounted. Navigation resolves
-  // unsaved edits first; hidden routes stop polling and device-backed UI.
+  // Keep loaded data, filters, selected records and retained drafts mounted.
+  // Hidden routes stop polling and device-backed UI.
   const visible = (view) => page === view;
   const route = (view, child, allowed = true) =>
     allowed && staffViewAllowed(effectiveUser, view) && visited.includes(view) ? (

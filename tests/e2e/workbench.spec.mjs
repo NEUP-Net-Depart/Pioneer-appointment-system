@@ -51,11 +51,11 @@ for (const width of [320,1440]) test(`React manual lookup waits for two digits a
   await expect.poll(()=>resolved.length).toBe(1);expect(resolved[0]).toEqual({id});
   await expect(page.getByRole('dialog')).toContainText(id);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
-test('onsite registration never reuses an invisible signature after returning to edit',async({page})=>{
- await fixture(page);let writes=0;await page.route('**/api/scan/onsite',route=>{writes++;return route.fulfill({json:{id:'reserve020261015-01'}});});
+test('onsite registration retains signature data after returning to edit',async({page})=>{
+ await fixture(page);const writes=[];await page.route('**/api/scan/onsite',route=>{writes.push(route.request().postDataJSON());return route.fulfill({json:{id:'reserve020261015-01'}});});
  await page.getByRole('button',{name:'临时维修登记',exact:true}).click();for(const [label,value]of [['姓名','机主同学'],['学号','20306001'],['QQ / 微信','qq123'],['设备厂商','联想'],['设备型号','ThinkPad']])await page.getByRole('dialog').getByLabel(label,{exact:true}).fill(value);
  await page.getByRole('button',{name:/下一步|确认信息/}).click();const canvas=page.getByLabel('机主签名',{exact:true}),box=await canvas.boundingBox();await page.mouse.move(box.x+20,box.y+20);await page.mouse.down();for(let i=0;i<12;i++)await page.mouse.move(box.x+20+i*8,box.y+20+(i%3)*12);await page.mouse.up();
- await page.getByRole('button',{name:'返回修改',exact:true}).click();await page.getByRole('button',{name:/下一步|确认信息/}).click();await page.getByLabel('机主已阅读并同意协议，确认重要数据已备份').check();await page.getByRole('button',{name:'确认登记',exact:true}).click();await expect(page.getByRole('status').filter({hasText:'请机主手写本人姓名'})).toBeVisible();expect(writes).toBe(0);
+ await page.getByRole('button',{name:'返回修改',exact:true}).click();await page.getByRole('dialog').getByLabel('姓名',{exact:true}).fill('机主修改后');await page.getByRole('button',{name:/下一步|确认信息/}).click();await page.getByLabel('机主已阅读并同意协议，确认重要数据已备份').check();await page.getByRole('button',{name:'确认登记',exact:true}).click();await expect.poll(()=>writes.length).toBe(1);expect(writes[0].name).toBe('机主修改后');expect(writes[0].signature[0].length).toBeGreaterThanOrEqual(8);
 });
 test('the React workspace restores a session and personal logout clears it without a DOM host',async({page})=>{
  await fixture(page);await page.reload();await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();await staffPage(page,'个人中心');await page.locator('.workspace-page:visible').getByRole('button',{name:'退出登录',exact:true}).click();await expect(page.locator('#login-form')).toBeVisible();expect(await page.evaluate(()=>sessionStorage.getItem('pioneerToken'))).toBeNull();await expect(page.locator('#app-shell')).toHaveCount(0);

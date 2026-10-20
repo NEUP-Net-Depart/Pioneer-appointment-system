@@ -199,7 +199,7 @@ export function StaffWorkspace({
           <p>
             {pending === '__logout__'
               ? '保存成功后退出登录，或丢弃本次未保存的改动。'
-              : '保存成功后切换页面，或丢弃本次未保存的改动。'}
+              : '你可以先保存；也可以保留当前草稿，稍后返回继续编辑。'}
           </p>
           {navigationError && (
             <p className="react-error" role="alert">
@@ -208,19 +208,38 @@ export function StaffWorkspace({
           )}
           <div className="field-actions">
             <button type="button" disabled={resolving} onClick={() => setPending(null)}>
-              {pending === '__logout__' ? '取消退出' : '取消切换'}
+              {pending === '__logout__' ? '取消退出' : '留在当前页面'}
             </button>
-            <button type="button" disabled={resolving} onClick={() => resolveNavigation('discard')}>
-              {pending === '__logout__' ? '丢弃并退出' : '丢弃并切换'}
-            </button>
-            <button
-              type="button"
-              className="field-primary"
-              disabled={resolving}
-              onClick={() => resolveNavigation('save')}
-            >
-              {resolving ? '正在处理…' : pending === '__logout__' ? '保存并退出' : '保存并切换'}
-            </button>
+            {pending === '__logout__' ? (
+              <>
+                <button
+                  type="button"
+                  disabled={resolving}
+                  onClick={() => resolveNavigation('discard')}
+                >
+                  丢弃并退出
+                </button>
+                <button
+                  type="button"
+                  className="field-primary"
+                  disabled={resolving}
+                  onClick={() => resolveNavigation('save')}
+                >
+                  {resolving ? '正在处理…' : '保存并退出'}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  const id = pending;
+                  setPending(null);
+                  finishNavigation(id);
+                }}
+              >
+                保留草稿并切换
+              </button>
+            )}
           </div>
         </Modal>
       )}

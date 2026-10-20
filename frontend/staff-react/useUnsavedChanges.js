@@ -2,13 +2,13 @@ import { createContext, useContext, useEffect, useRef } from 'react';
 
 export const UnsavedPageContext = createContext(null);
 
-// Each dirty editor owns its save/discard operation. Hidden routes never
-// participate, and navigation cannot silently leave an editor dirty.
+// Internal navigation may retain dirty editors. Logout collects their
+// save/discard operations, including editors on hidden routes.
 export function useUnsavedChanges({ dirty, active = true, busy = false, save, discard }) {
   const pageActive = useContext(UnsavedPageContext);
   const current = useRef(null),
     form = useRef(null);
-  current.current = { dirty, active: pageActive ?? active, busy, save, discard };
+  current.current = { dirty, active: (pageActive ?? true) && active, busy, save, discard };
   useEffect(() => {
     const guard = (event) => {
       if ((!current.current.active && !event.detail?.includeHidden) || !current.current.dirty)
@@ -28,7 +28,7 @@ export function useUnsavedChanges({ dirty, active = true, busy = false, save, di
       });
     };
     const unload = (event) => {
-      if (!current.current.active || !current.current.dirty) return;
+      if (!current.current.dirty) return;
       event.preventDefault();
       event.returnValue = '';
     };
