@@ -81,11 +81,7 @@ export function Statistics() {
     : [];
   return (
     <section className="report-workspace">
-      <WorkspaceHeader
-        group="数据与审计"
-        title="统计分析"
-        description="查看授权校区内的服务情况与人员工作量。"
-      >
+      <WorkspaceHeader group="数据与审计" title="统计分析">
         <button disabled={loading} onClick={() => setRevision((value) => value + 1)}>
           刷新统计
         </button>

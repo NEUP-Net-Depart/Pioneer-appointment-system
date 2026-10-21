@@ -435,7 +435,7 @@ html{scrollbar-gutter:stable}
 .booking-count-track { display: block; }
 .booking-count-digit { display: block; height: 1em; line-height: 1; }
 .booking-count-digit:before { content: attr(data-digit); }
-.booking-campuses .booking-choice { min-height: 36px; padding: 6px 18px; border-color: transparent; border-radius: 5px; background: transparent; text-align: center; }
+.booking-campuses .booking-choice { min-height: 44px; padding: 6px 18px; border-color: transparent; border-radius: 5px; background: transparent; text-align: center; }
 .booking-campuses .booking-choice strong { font-size: 12px; }
 .booking-campuses .booking-choice[aria-pressed=true] { background: #fff; color: var(--navy); box-shadow: 0 2px 6px rgba(16, 42, 67, .1); }
 .booking-rule { font-size: 12px; color: var(--muted); margin: 10px 0 22px; }

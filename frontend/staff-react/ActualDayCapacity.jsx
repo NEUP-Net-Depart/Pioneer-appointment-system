@@ -56,7 +56,6 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
       <div className="capacity-section-heading">
         <div>
           <h2>日期实际容量</h2>
-          <p className="field-muted">核对当天实际生效的名额和工作人员安排。</p>
         </div>
         <button disabled={loading || !date} onClick={() => setRetry((value) => value + 1)}>
           {loading ? '正在更新…' : '更新实际数据'}

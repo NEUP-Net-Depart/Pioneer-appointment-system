@@ -90,11 +90,7 @@ export function RosterWorkflow({ user, office = false }) {
   } = useRosterWorkflow({ user, office });
   return (
     <section className="react-page roster-workflow">
-      <WorkspaceHeader
-        group="值班管理"
-        title={office ? '办公排班管理' : '维修排班管理'}
-        description="收集整周可用时间，自动排班后人工核对，再发布给成员。"
-      >
+      <WorkspaceHeader group="值班管理" title={office ? '办公排班管理' : '维修排班管理'}>
         {canCreate && (
           <button disabled={busy || dirty || requirementsDirty} onClick={() => setCreating(true)}>
             {office ? '新建办公收集任务' : '新建收集任务'}
@@ -151,7 +147,6 @@ export function RosterWorkflow({ user, office = false }) {
       {!taskId && (
         <section className="roster-start">
           <strong>{'从发布可用时间收集开始'}</strong>
-          <p>{'在同一任务中设置参与校区、成员和每天的人数。成员提交后，再结束收集并生成班表。'}</p>
           {canCreate ? (
             <button className="field-primary" onClick={() => setCreating(true)}>
               {'发布收集任务'}

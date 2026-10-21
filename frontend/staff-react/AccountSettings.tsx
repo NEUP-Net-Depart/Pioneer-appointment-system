@@ -85,7 +85,6 @@ export function AccountSettings({
       <WorkspaceHeader
         group={security ? '我的' : '业务管理'}
         title={security ? '账号安全' : '预约配置'}
-        description={security ? '管理登录密码与设备会话。' : '按校区维护预约名额与每日维修地点。'}
       />
       <div hidden={!security} className="security-layout">
         <section className="field-card security-profile">

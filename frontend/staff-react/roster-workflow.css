@@ -255,7 +255,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--ws-muted, #64748b);
+  color: var(--ws-muted, #5d6c80);
   padding: 12px 0;
   border-bottom: 2px solid var(--ws-border, #e2e8f0);
   font-size: 14px;
@@ -281,6 +281,7 @@
 }
 .roster-next {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
@@ -297,11 +298,20 @@
 }
 .roster-next p {
   margin: 0;
-  color: var(--ws-muted, #64748b);
+  color: var(--ws-muted, #5d6c80);
   line-height: 1.6;
 }
 .roster-next > div:last-child {
-  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-width: 0;
+  max-width: 100%;
+}
+.roster-next > div,
+.roster-edit-hint {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .roster-start {
   background: white;
@@ -314,7 +324,7 @@
 }
 .roster-start p {
   max-width: 680px;
-  color: var(--ws-muted, #64748b);
+  color: var(--ws-muted, #5d6c80);
   line-height: 1.7;
 }
 .roster-loading {
@@ -336,7 +346,7 @@
   margin: 0;
 }
 .roster-section-title > span {
-  color: var(--ws-muted, #64748b);
+  color: var(--ws-muted, #5d6c80);
   font-size: 14px;
 }
 .roster-collection progress {
@@ -387,7 +397,7 @@
   margin: 0;
 }
 .roster-board-heading > span {
-  color: var(--ws-muted, #64748b);
+  color: var(--ws-muted, #5d6c80);
 }
 .roster-board-layout {
   display: grid;
@@ -426,7 +436,7 @@
 }
 .roster-day-column > header span,
 .roster-coverage-caption {
-  color: var(--ws-muted, #64748b);
+  color: var(--ws-muted, #5d6c80);
   font-size: 13px;
 }
 .roster-coverage-caption {
@@ -599,7 +609,7 @@
   margin-top: 6px;
 }
 .roster-unassigned-person small {
-  color: var(--ws-muted, #64748b);
+  color: var(--ws-muted, #5d6c80);
 }
 .roster-issues {
   margin-top: 20px;
@@ -851,7 +861,7 @@
   min-width: 0;
 }
 .roster-campus-demand small {
-  color: var(--ws-muted, #64748b);
+  color: var(--ws-muted, #5d6c80);
 }
 .roster-time-fields {
   display: grid;
@@ -915,7 +925,7 @@
 }
 .roster-candidate p {
   margin: 0;
-  color: var(--ws-muted, #64748b);
+  color: var(--ws-muted, #5d6c80);
   font-size: 14px;
   line-height: 1.6;
   overflow-wrap: anywhere;

@@ -313,7 +313,7 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
               disabled={busy}
               onClick={() => {
                 setConfirm(null);
-                onNavigate('records');
+                onNavigate('staff');
               }}
             >
               前往预约记录

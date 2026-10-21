@@ -327,15 +327,21 @@ function Workspace({ user, onLogout }) {
 function WorkspaceBootstrap({ error, onRetry, onLogout }) {
   return (
     <div data-workspace-host="true">
-      <div className="field-app workspace-bootstrap">
-        <main className="field-main">
+      <StaffWorkspace
+        loading
+        name=""
+        entries={[]}
+        active=""
+        onSelect={() => {}}
+        onLogout={onLogout}
+      >
+        <main className="workspace-page">
           <WorkspaceHeader
             group="工作人员平台"
             title={error ? '工作区暂时不可用' : '正在准备工作区'}
-            description="正在加载你的岗位、授权范围与当前任务。"
           />
           <section className="field-card">
-            <p role="status">{error || '请稍候，工作区准备完成后将自动进入。'}</p>
+            <p role="status">{error || '正在读取岗位与当前任务…'}</p>
             {!error && (
               <div className="workspace-skeleton" aria-hidden="true">
                 <span />
@@ -353,7 +359,7 @@ function WorkspaceBootstrap({ error, onRetry, onLogout }) {
             </div>
           </section>
         </main>
-      </div>
+      </StaffWorkspace>
     </div>
   );
 }

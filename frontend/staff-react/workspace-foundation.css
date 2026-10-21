@@ -112,7 +112,7 @@ fieldset.staffing-editor {
   display: flex;
   align-items: center;
   gap: 12px;
-  color: #7d8794;
+  color: #586575;
   font-size: 12px;
   padding-top: 16px;
 }
@@ -140,8 +140,18 @@ fieldset.staffing-editor {
   font-size: 14px;
   line-height: 1.6;
 }
-.field-mode {
-  scrollbar-gutter: stable;
+.staff-mode .login-panel {
+  --muted: #586b79;
+}
+.staff-mode .login-panel .eyebrow {
+  color: #b6371c;
+}
+/* Keep the login, activation and approved-result primary actions readable. */
+.staff-mode .login-panel .primary-btn {
+  background: #c43d20;
+}
+.staff-mode .login-panel .primary-btn:hover {
+  background: #a8321a;
 }
 .field-app {
   align-items: start;
@@ -816,6 +826,30 @@ fieldset.staffing-editor {
   }
 }
 @media (max-width: 767px) {
+  /* This entry-level rule also covers login/activation and nested form overrides. */
+  body.staff-mode
+    #staff-react-root
+    :is(input, select, textarea):not([type='checkbox']):not([type='radio']):not([type='file']):not(
+      [type='hidden']
+    ) {
+    font-size: max(16px, 1em);
+  }
+  .field-app .field-details > summary,
+  .field-modal .field-details > summary,
+  .field-app .capacity-quick-tools > summary,
+  .field-app .roster-collection > details > summary,
+  .staff-mode .roster-audience > summary,
+  .staff-mode .swap-coverage > summary,
+  .staff-mode .workspace-help > summary {
+    min-height: 44px;
+    padding-block: 10px;
+    cursor: pointer;
+  }
+  .field-app .field-file-button,
+  .field-modal .field-file-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
   .field-app {
     --workspace-gutter: 16px;
     --workspace-top: 24px;

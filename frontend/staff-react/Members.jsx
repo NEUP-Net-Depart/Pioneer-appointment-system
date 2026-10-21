@@ -85,11 +85,7 @@ export function Members({ user }) {
 
   return (
     <section className="react-page react-members-page">
-      <WorkspaceHeader
-        group="平台管理"
-        title="成员管理"
-        description="成员资料与角色授权分别维护，所属校区不改变授权范围。"
-      >
+      <WorkspaceHeader group="平台管理" title="成员管理">
         {staffPermission(user, 'members.manage') && (
           <button className="react-primary" onClick={() => setImporting(true)}>
             导入名单
@@ -181,7 +177,7 @@ export function Members({ user }) {
             </div>
           ))}
           {busy && !items.length && (
-            <div className="workspace-skeleton" aria-label="正在读取成员">
+            <div className="workspace-skeleton" aria-hidden="true">
               <span />
               <span />
               <span />

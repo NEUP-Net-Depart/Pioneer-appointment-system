@@ -206,7 +206,6 @@ export function SwapComposer({
   return (
     <form className="roster-form swap-composer" onSubmit={send}>
       <h3>发起换班</h3>
-      <p className="react-muted">先选择班次，查看双方交换后的安排，再发送邀请。</p>
       <fieldset disabled={busy}>
         <label>
           我的班次

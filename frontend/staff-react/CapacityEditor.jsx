@@ -569,7 +569,6 @@ export function CapacityEditor({ active, onNavigate }) {
           <div className="capacity-section-heading">
             <div>
               <h2>每周预约人数</h2>
-              <p className="field-muted">调整周一至周四的四个半小时时段。工作人员排班单独维护。</p>
             </div>
             <span className="capacity-template-badge">每周重复</span>
           </div>
@@ -769,11 +768,11 @@ export function CapacityEditor({ active, onNavigate }) {
                 </label>
               ))}
           </div>
-          <p className="capacity-sheet-hint field-muted">
-            点击选格，双击或键入数字编辑；支持 Shift 多选、拖动填充、Ctrl C / V 和跨校区复制。
-          </p>
           <details className="capacity-quick-tools">
             <summary>批量填写与复制</summary>
+            <p className="capacity-sheet-hint field-muted">
+              表格支持 Shift 多选、拖动填充和 Ctrl C / V；双击或键入数字编辑选格。
+            </p>
             <form onSubmit={quickFill}>
               <label>
                 统一人数

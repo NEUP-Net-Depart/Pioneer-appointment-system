@@ -54,9 +54,6 @@ export function DeskScene({
     <>
       <section className="field-overview">
         <div>
-          <p className="field-muted">
-            {scene === 'desk' ? '先找到预约，再安排现场交接' : '关注人员覆盖和正在处理的工单'}
-          </p>
           <h2>{scene === 'desk' ? '让每一位机主有序得到接待' : '今天的现场运行'}</h2>
         </div>
         <div className="field-actions">
