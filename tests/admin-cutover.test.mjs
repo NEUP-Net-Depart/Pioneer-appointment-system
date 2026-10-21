@@ -65,6 +65,7 @@ test('old administrators keep original campus management without inferred office
     await db.prepare("INSERT INTO activation_requests(id,student_id,name,home_campus,contact,password_hash,receipt_hash,created_at) VALUES('old-admin-request','20268011','待授权管理员','南湖','',?,?,'2026-01-01')").bind(originalHash,'a'.repeat(64)).run();
     const preFixAliasToken=(await login('20268009')).token;
     await migrate(db,directory,'0031_admin_invitation_and_login_scope.sql');
+    for(const file of (await readdir(directory)).filter(name=>name.endsWith('.sql') && name>'0031_admin_invitation_and_login_scope.sql').sort()) await migrate(db,directory,file);
     await call('/api/auth/me',{token:oldToken,status:401});
     await call('/api/auth/me',{token:preFixAliasToken,status:401});
     const admin=await login('20268001'), token=admin.token, me=await call('/api/auth/me',{token});

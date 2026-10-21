@@ -20,6 +20,8 @@ import { cloudflareClient } from '../scripts/cloudflare-d1.mjs';
 import { userRepository } from '../src/db/users.js';
 import { TIME_SLOTS } from '../shared/constants.js';
 import { AGREEMENT_VERSION } from '../shared/student-booking.js';
+import { bookingSettingsRepository } from '../src/db/booking-settings.js';
+import { bookingSettingsService } from '../src/services/booking-settings.js';
 
 // Test-only clock injection: no request header or deployment binding can enable it.
 function workerClock(now) {
@@ -139,6 +141,10 @@ before(async () => {
 });
 after(async () => { try { await mf?.dispose(); } finally { mock.timers.reset(); } });
 beforeEach(async () => {
+  await db.prepare('DELETE FROM service_day_receipts').run();
+  await db.prepare('DELETE FROM service_day_overrides').run();
+  await db.prepare('DELETE FROM booking_notices').run();
+  await db.prepare("UPDATE booking_settings SET release_time='10:00',revision=0,updated_by=NULL").run();
   await db.batch(['DELETE FROM appointment_corrections','DELETE FROM repair_intake_records','DELETE FROM credential_recoveries','DELETE FROM booking_requests','DELETE FROM activation_requests','DELETE FROM staff_whitelist','DELETE FROM attachment_storage','DELETE FROM appointment_attachments','DELETE FROM appointments','DELETE FROM service_location_changes','DELETE FROM service_locations','DELETE FROM booking_day_slots',"DELETE FROM staff_accounts WHERE protected=0",'DELETE FROM rate_limits'].map(sql => db.prepare(sql)));
   await db.prepare('DELETE FROM staff_presence').run();
   await db.prepare('UPDATE storage_quota SET used_bytes=0 WHERE id=1').run();
@@ -347,7 +353,7 @@ test('scan migration preserves duplicate historical work and blocks new claims u
     for (const key of ['source','registered_by','registration_key','expires_at','registration_flow']) delete row[key];
     row.status = index<2 ? 'in_progress' : 'booked'; row.assigned_to = index<2 ? '993004' : null;
     for(const key of ['email','contact_type','contact_value','liquid_metal','dell_g15','location_snapshot','location_revision'])delete row[key];
-    await legacy.prepare(`INSERT INTO appointments(${Object.keys(row).join(',')}) VALUES(${Object.keys(row).map(()=>'?').join(',')})`).bind(...Object.values(row)).run();
+    await insertHistoricalAppointment(legacy,row);
   }
   const before = (await legacy.prepare('SELECT id,status,assigned_to,revision,phone,social,signature FROM appointments ORDER BY id').all()).results;
   await applyMigration(legacy,'0006_scan_workbench.sql');
@@ -2235,4 +2241,121 @@ test('bulk capacity saves are atomic, revision checked and restricted to authori
   await api('/api/slot-capacities',{method:'PATCH',token:root,body:{items:[{...a,capacity:13},{...b,capacity:13}]}},409);
   assert.equal((await db.prepare('SELECT capacity FROM weekday_slot_capacities WHERE campus=? AND weekday=? AND time_slot=?').bind(a.campus,a.weekday,a.timeSlot).first()).capacity,11);
   await db.prepare('INSERT INTO weekday_slot_capacities(campus,weekday,time_slot,capacity,revision) VALUES(?,?,?,?,?)').bind(b.campus,b.weekday,b.timeSlot,b.capacity,b.revision).run();
+});
+
+test('booking settings require scoped management rights and recover retries, stale edits and concurrent saves', async () => {
+  const root = await login(), technician = await addUser('687701'), admin = await addUser('687702','admin');
+  const path='/api/booking-settings/manage?campus=南湖';
+  await api(path,{},401); await api(path,{token:technician},403);
+  assert.equal((await api(path,{token:admin})).settings.releaseTime,'10:00');
+  await api('/api/booking-settings/manage?campus=浑南',{token:admin},403);
+  for(const releaseTime of ['24:00','10:60','9:00','10:00:00']) await api('/api/booking-settings',{method:'PATCH',token:admin,body:{campus:'南湖',revision:0,requestId:crypto.randomUUID(),releaseTime}},400);
+  const input={campus:'南湖',revision:0,requestId:crypto.randomUUID(),releaseTime:'11:30'};
+  const saved=await api('/api/booking-settings',{method:'PATCH',token:admin,body:input});
+  assert.equal(saved.revision,1);
+  assert.deepEqual(await api('/api/booking-settings',{method:'PATCH',token:admin,body:input}),saved);
+  await api('/api/booking-settings',{method:'PATCH',token:admin,body:{...input,releaseTime:'12:30'}},409);
+  const writes=await Promise.all(['12:00','13:00'].map(releaseTime=>request('/api/booking-settings',{method:'PATCH',token:root,body:{campus:'南湖',revision:1,requestId:crypto.randomUUID(),releaseTime}})));
+  const statuses=[];for(const response of writes){await response.json();statuses.push(response.status);}assert.deepEqual(statuses.sort(),[200,409]);
+  const publicInfo=await api('/api/booking-settings?campus=南湖');
+  assert.ok(!JSON.stringify(publicInfo).includes('updatedBy'));
+  assert.equal((await api('/api/booking-settings?campus=浑南')).releaseTime,'10:00');
+});
+
+test('booking creation uses the same configurable horizon as availability and keeps existing bookings valid after a time change', async () => {
+  const root=await login(), actor=await userRepository(db).find('root001');
+  const clock=()=>new Date('2026-10-12T09:59:59+08:00');
+  const settings=bookingSettingsService(bookingSettingsRepository(db),staffServices(db,PII_ENCRYPTION_KEY),clock);
+  const service=createAppointmentService(appointmentRepository(db),userRepository(db),PII_ENCRYPTION_KEY,clock,staffServices(db,PII_ENCRYPTION_KEY),settings);
+  await assert.rejects(service.create(bookingInput(draft({date:'2026-10-15'}))),error=>error.code==='DATE_UNAVAILABLE');
+  await settings.save(actor,{campus:'南湖',revision:0,requestId:crypto.randomUUID(),releaseTime:'09:00'},'settings');
+  const item=await service.create(bookingInput(draft({date:'2026-10-15'})));
+  assert.equal(item.date,'2026-10-15');
+  await settings.save(actor,{campus:'南湖',revision:1,requestId:crypto.randomUUID(),releaseTime:'11:00'},'settings');
+  assert.equal((await api(`/api/appointments/${item.id}`,{accessToken:item.accessToken})).id,item.id);
+  await assert.rejects(service.create(bookingInput(draft({date:'2026-10-15'}))),error=>error.code==='DATE_UNAVAILABLE');
+  const availability=await api('/api/booking-availability?campus=南湖');
+  assert.equal(availability.bookingSettings.releaseTime,'11:00');
+  assert.ok(root);
+});
+
+test('notices are scoped, scheduled, safely projected and important versions are confirmed atomically with a booking', async () => {
+  const root=await login(), admin=await addUser('687703','admin');
+  const input={id:crypto.randomUUID(),campus:'南湖',revision:-1,requestId:crypto.randomUUID(),title:'到场须知',content:'请备份资料。<script>alert(1)</script>',important:false,enabled:true,startsAt:'2026-10-15T00:00:00+08:00',endsAt:'2026-10-16T00:00:00+08:00'};
+  const ordinary=await api('/api/booking-notices',{method:'PATCH',token:admin,body:input});
+  assert.equal(ordinary.displayMode,'inline');
+  await api('/api/booking-notices',{method:'PATCH',token:admin,body:{...input,id:crypto.randomUUID(),requestId:crypto.randomUUID(),displayMode:'banner'}},400);
+  assert.deepEqual(await api('/api/booking-notices',{method:'PATCH',token:admin,body:input}),ordinary);
+  await book();
+  const notice=await api('/api/booking-notices',{method:'PATCH',token:admin,body:{...ordinary,requestId:crypto.randomUUID(),important:true,displayMode:'modal'}});
+  const stale={id:notice.id,revision:notice.revision-1};
+  assert.equal((await api('/api/appointments',{method:'POST',body:draft()},409)).code,'BOOKING_NOTICE_CHANGED');
+  await api('/api/appointments',{method:'POST',body:draft({acceptedNotices:[stale]})},409);
+  const accepted={id:notice.id,revision:notice.revision};
+  const booked=await book({acceptedNotices:[accepted]});
+  const snapshot=JSON.parse((await db.prepare('SELECT booking_notices FROM appointments WHERE id=?').bind(booked.id).first()).booking_notices);
+  assert.equal(snapshot[0].title,notice.title); assert.equal(snapshot[0].content,notice.content);
+  const publicInfo=await api('/api/booking-settings?campus=南湖');
+  assert.equal(publicInfo.notices[0].revision,notice.revision);
+  assert.equal(publicInfo.notices[0].displayMode,'modal');
+  assert.equal(publicInfo.notices[0].enabled,undefined);
+  assert.deepEqual((await api('/api/booking-settings?campus=浑南')).notices,[]);
+  await api('/api/booking-notices',{method:'PATCH',token:root,body:{...input,campus:'浑南',requestId:crypto.randomUUID()}},409);
+  assert.equal((await api('/api/booking-settings?campus=南湖')).notices[0].content,input.content);
+  const next=await api('/api/booking-notices',{method:'PATCH',token:admin,body:{...notice,requestId:crypto.randomUUID(),content:'更新后的重要须知'}});
+  await api('/api/appointments',{method:'POST',body:draft({acceptedNotices:[accepted]})},409);
+  // Simulate a publication racing the last service read. The database trigger
+  // must reject an outdated confirmation and roll the entire write back.
+  const repository=appointmentRepository(db),settings=bookingSettingsService(bookingSettingsRepository(db),staffServices(db,PII_ENCRYPTION_KEY));
+  const racing={...repository,create:async(...args)=>{await db.prepare('UPDATE booking_notices SET revision=revision+1 WHERE id=?').bind(next.id).run();return repository.create(...args);}};
+  const service=createAppointmentService(racing,userRepository(db),PII_ENCRYPTION_KEY,()=>new Date(testNow),staffServices(db,PII_ENCRYPTION_KEY),settings);
+  await assert.rejects(service.create(bookingInput(draft({acceptedNotices:[{id:next.id,revision:next.revision}]}))),error=>String(error.message).includes('BOOKING_NOTICE_CHANGED'));
+  const current=(await api('/api/booking-settings/manage?campus=南湖',{token:admin})).notices[0];
+  await api('/api/booking-notices',{method:'PATCH',token:admin,body:{...current,requestId:crypto.randomUUID(),enabled:false}});
+  assert.deepEqual((await api('/api/booking-settings?campus=南湖')).notices,[]);
+  await book();
+  assert.deepEqual(JSON.parse((await db.prepare('SELECT booking_notices FROM appointments WHERE id=?').bind(booked.id).first()).booking_notices),snapshot);
+  await db.prepare('UPDATE booking_notices SET enabled=1,starts_at=?,ends_at=? WHERE id=?').bind(testNow,'2026-10-16T00:00:00.000Z',current.id).run();
+  assert.equal((await api('/api/booking-settings?campus=南湖')).notices.length,1);
+  await db.prepare('UPDATE booking_notices SET starts_at=?,ends_at=? WHERE id=?').bind('2026-10-15T00:00:00.000Z',testNow,current.id).run();
+  assert.deepEqual((await api('/api/booking-settings?campus=南湖')).notices,[]);
+  await db.prepare('UPDATE booking_notices SET starts_at=?,ends_at=? WHERE id=?').bind('2026-10-16T00:00:00.000Z','2026-10-17T00:00:00.000Z',current.id).run();
+  assert.deepEqual((await api('/api/booking-settings?campus=南湖')).notices,[]);
+});
+
+test('multiple service days commit atomically, replay safely and project one source of suspension announcements', async () => {
+  const root=await login(),admin=await addUser('687704','admin'),technician=await addUser('687705');
+  const booked=await book(),before=(await db.prepare('SELECT * FROM booking_day_slots ORDER BY campus,date,time_slot').all()).results;
+  const dates=['2026-10-15','2026-10-19'];
+  const input={requestId:crypto.randomUUID(),items:dates.map(businessDate=>({businessDate,campusId:'campus-nanhu',paused:true,reason:'校区维护 <script>不可执行</script>',revision:-1}))};
+  await api('/api/service-days',{method:'PATCH',token:technician,body:input},403);
+  await api('/api/service-days',{method:'PATCH',token:admin,body:{...input,items:[input.items[0],{...input.items[1],campusId:'campus-hunnan'}]}},403);
+  assert.equal((await db.prepare('SELECT COUNT(*) n FROM service_day_overrides').first()).n,0);
+  const range=await api('/api/service-days?campus=南湖&start=2026-10-12&end=2026-10-25',{token:admin});
+  assert.equal(range.items.length,8);assert.ok(range.items.every(item=>serviceDay(item.businessDate)));
+  assert.equal(range.items.find(item=>item.businessDate===dates[0]).affected[0].id,booked.id);
+  await api('/api/service-days?campus=浑南&start=2026-10-12&end=2026-10-25',{token:admin},403);
+  for(const businessDate of ['2026-10-14','2026-10-17','2026-10-26'])await api('/api/service-days',{method:'PATCH',token:root,body:{...input,items:[{...input.items[0],businessDate}]}},400);
+  await api('/api/service-days',{method:'PATCH',token:root,body:{...input,items:[input.items[0],input.items[0]]}},400);
+  const concurrent=await Promise.all([api('/api/service-days',{method:'PATCH',token:admin,body:input}),api('/api/service-days',{method:'PATCH',token:admin,body:input})]);
+  assert.deepEqual(concurrent[0],concurrent[1]);assert.deepEqual(concurrent[0].items.map(item=>item.revision),[0,0]);
+  await api('/api/service-days',{method:'PATCH',token:admin,body:{...input,items:input.items.map(item=>({...item,reason:'改变请求内容'}))}},409);
+  assert.equal((await db.prepare("SELECT COUNT(*) n FROM audit_events WHERE request_id=? AND action='service.days.changed'").bind(input.requestId).first()).n,1);
+  const news=(await api('/api/booking-settings?campus=南湖')).notices;
+  assert.deepEqual(news.map(item=>item.businessDate),dates);assert.ok(news.every(item=>item.type==='suspension'&&!item.important));
+  assert.equal(news[0].content,input.items[0].reason);
+  assert.deepEqual((await api('/api/booking-settings/manage?campus=南湖',{token:admin})).suspensions,news);
+  assert.deepEqual((await api('/api/booking-settings?campus=浑南')).notices,[]);
+  const later=bookingSettingsService(bookingSettingsRepository(db),staffServices(db,PII_ENCRYPTION_KEY),()=>new Date('2026-10-16T00:00:00+08:00'));
+  assert.deepEqual((await later.public('南湖')).notices.map(item=>item.businessDate),[dates[1]]);
+  const day=await api('/api/booking-availability?campus=南湖&date=2026-10-15');assert.equal(day.paused,true);assert.equal(day.pauseReason,news[0].content);
+  await api('/api/appointments',{method:'POST',body:draft()},409);
+  assert.equal((await api(`/api/appointments/${booked.id}`,{accessToken:booked.accessToken})).status,'booked');
+  assert.deepEqual((await db.prepare('SELECT * FROM booking_day_slots ORDER BY campus,date,time_slot').all()).results,before);
+  await api('/api/service-days',{method:'PATCH',token:admin,body:{...concurrent[0].items[1],paused:false,requestId:crypto.randomUUID()}});
+  await api('/api/service-days',{method:'PATCH',token:admin,body:{requestId:crypto.randomUUID(),items:concurrent[0].items.map(item=>({...item,reason:'不能部分写入'}))}},409);
+  assert.equal((await api('/api/service-days?date=2026-10-15&campus=南湖',{token:admin})).item.reason,input.items[0].reason);
+  const restored=await api('/api/service-days',{method:'PATCH',token:admin,body:{requestId:crypto.randomUUID(),items:concurrent[0].items.map((item,index)=>({...item,paused:false,revision:index,reason:''}))}});
+  assert.deepEqual(restored.items.map(item=>item.revision),[1,2]);
+  assert.deepEqual((await api('/api/booking-settings?campus=南湖')).notices,[]);
 });

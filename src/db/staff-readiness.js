@@ -18,9 +18,11 @@ export async function verifyStaffSchema(db) {
     roster_submissions: 'member_id',
     duty_assignments: 'member_id,origin_assignment_id',
     service_day_overrides: 'business_date,campus_id,paused',
+    booking_settings: 'campus,release_time,revision',
+    booking_notices: 'id,campus,revision',
   };
   await db.batch(Object.entries(projections).map(([table, columns]) => db.prepare(`SELECT ${columns} FROM ${table} LIMIT 0`)));
-  const required = ['staff_account_member_sync', 'legacy_admin_login_changed', 'activation_admin_submit_guard', 'activation_approve', 'active_repair_member_sync', 'field_presence_busy_guard', 'service_day_booking_insert', 'service_day_repair_start'];
+  const required = ['staff_account_member_sync', 'legacy_admin_login_changed', 'activation_admin_submit_guard', 'activation_approve', 'active_repair_member_sync', 'field_presence_busy_guard', 'service_day_booking_insert', 'service_day_repair_start', 'appointment_booking_notices'];
   const result = await db.prepare(`SELECT name FROM sqlite_schema WHERE type='trigger' AND name IN (${required.map(() => '?').join(',')})`).bind(...required).all();
   if (result.results.length !== required.length) throw new Error('Staff workflow database guards are missing');
   const marker = await db.prepare('SELECT id FROM staff_release_markers WHERE id=?').bind(STAFF_RELEASE).first();

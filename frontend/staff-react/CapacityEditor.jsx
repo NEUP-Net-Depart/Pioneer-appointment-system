@@ -14,6 +14,7 @@ import { ActualDayCapacity } from './ActualDayCapacity';
 import { ServiceLocationEditor } from './ServiceLocationEditor';
 import { WorkspaceSections } from './WorkspaceSections';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
+import { BookingSettingsEditor } from './BookingSettingsEditor';
 import './capacity.css';
 
 const days = ['周一', '周二', '周三', '周四'];
@@ -27,6 +28,48 @@ const single = {
 };
 
 export function CapacityEditor({ active, onNavigate }) {
+  const rulesEditor = useRef(null);
+  const noticesEditor = useRef(null),
+    serviceDaysEditor = useRef(null);
+  const [nextView, setNextView] = useState(null),
+    [switchError, setSwitchError] = useState(''),
+    [switchBusy, setSwitchBusy] = useState(false);
+  function switchView(next) {
+    const editor =
+      mode === 'rules'
+        ? rulesEditor.current
+        : mode === 'notices'
+          ? noticesEditor.current
+          : mode === 'serviceDays'
+            ? serviceDaysEditor.current
+            : null;
+    if (editor?.busy) return;
+    if (editor?.dirty) {
+      setSwitchError('');
+      setNextView(() => next);
+    } else next();
+  }
+  async function resolveSwitch(action) {
+    setSwitchBusy(true);
+    setSwitchError('');
+    try {
+      const editor =
+        mode === 'rules'
+          ? rulesEditor.current
+          : mode === 'notices'
+            ? noticesEditor.current
+            : serviceDaysEditor.current;
+      if (editor?.busy) throw new Error('正在保存，请稍后再试。');
+      await editor?.[action]();
+      const next = nextView;
+      setNextView(null);
+      next();
+    } catch (error) {
+      setSwitchError(error.message);
+    } finally {
+      setSwitchBusy(false);
+    }
+  }
   const [items, setItems] = useState([]),
     [drafts, setDrafts] = useState({});
   const [campus, setCampus] = useState(''),
@@ -477,10 +520,14 @@ export function CapacityEditor({ active, onNavigate }) {
           { id: 'template', label: '每周模板' },
           { id: 'actual', label: '日期实际容量' },
           { id: 'locations', label: '维修地点' },
-          { id: 'serviceDays', label: '暂停日期' }
+          { id: 'serviceDays', label: '暂停日期' },
+          { id: 'rules', label: '放号时间' },
+          { id: 'notices', label: '校区公告' }
         ]}
         value={mode}
-        onChange={setMode}
+        onChange={(value) => {
+          if (value !== mode) switchView(() => setMode(value));
+        }}
       />
       <div className="capacity-context">
         <div className="capacity-campus-switch" aria-label="选择校区">
@@ -490,8 +537,11 @@ export function CapacityEditor({ active, onNavigate }) {
               aria-pressed={campus === name}
               disabled={busy}
               onClick={() => {
-                setCampus(name);
-                setEditing('');
+                if (name !== campus)
+                  switchView(() => {
+                    setCampus(name);
+                    setEditing('');
+                  });
               }}
             >
               {name}校区
@@ -501,7 +551,7 @@ export function CapacityEditor({ active, onNavigate }) {
             </button>
           ))}
         </div>
-        {mode !== 'locations' && (
+        {['template', 'actual'].includes(mode) && (
           <button disabled={loading || busy} onClick={refresh}>
             {loading ? '正在读取…' : '读取最新配置'}
           </button>
@@ -853,7 +903,14 @@ export function CapacityEditor({ active, onNavigate }) {
       </ActivityContext.Provider>
       <ActivityContext.Provider value={active && mode === 'serviceDays'}>
         <div hidden={mode !== 'serviceDays'}>
-          {campus && <ServiceDayEditor campus={campus} onNavigate={onNavigate} />}
+          {campus && (
+            <ServiceDayEditor
+              key={campus}
+              campus={campus}
+              onNavigate={onNavigate}
+              editorRef={serviceDaysEditor}
+            />
+          )}
         </div>
       </ActivityContext.Provider>
       <ActivityContext.Provider value={active && mode === 'locations'}>
@@ -861,6 +918,51 @@ export function CapacityEditor({ active, onNavigate }) {
           {campus && <ServiceLocationEditor campus={campus} />}
         </div>
       </ActivityContext.Provider>
+      <ActivityContext.Provider value={active && mode === 'rules'}>
+        <div hidden={mode !== 'rules'}>
+          {campus && <BookingSettingsEditor key={campus} campus={campus} editorRef={rulesEditor} />}
+        </div>
+      </ActivityContext.Provider>
+      <ActivityContext.Provider value={active && mode === 'notices'}>
+        <div hidden={mode !== 'notices'}>
+          {campus && (
+            <BookingSettingsEditor
+              key={campus}
+              campus={campus}
+              mode="notices"
+              editorRef={noticesEditor}
+              onManageSuspension={() => switchView(() => setMode('serviceDays'))}
+            />
+          )}
+        </div>
+      </ActivityContext.Provider>
+      {nextView && (
+        <Modal
+          compact
+          title="有尚未保存的修改"
+          onClose={() => {
+            if (!switchBusy) setNextView(null);
+          }}
+        >
+          <p>请保存或丢弃修改后切换，也可以返回继续编辑。</p>
+          <Notice>{switchError}</Notice>
+          <div className="field-actions">
+            <button disabled={switchBusy} onClick={() => setNextView(null)}>
+              取消切换
+            </button>
+            <button disabled={switchBusy} onClick={() => resolveSwitch('discard')}>
+              丢弃并切换
+            </button>
+            <button
+              className="field-primary"
+              disabled={switchBusy}
+              onClick={() => resolveSwitch('save')}
+            >
+              保存并切换
+            </button>
+          </div>
+        </Modal>
+      )}
       {conflicts.length > 0 && (
         <section className="field-card capacity-conflicts" aria-label="配置冲突">
           <h2>核对其他人的修改</h2>

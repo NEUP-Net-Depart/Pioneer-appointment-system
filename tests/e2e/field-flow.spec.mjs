@@ -979,7 +979,7 @@ test('capacity workspace preserves drafts, reconciles conflicts and supports mob
     await expect(editor.getByRole('heading', { name: '工作人员', exact: true })).toBeVisible();
     await expect(editor.locator('.capacity-staffing')).toContainText('3 人');
     await expect(editor.locator('.capacity-staffing')).toContainText('1 人');
-    await expect(editor.locator('.capacity-actual-slots article')).toHaveCount(4);
+    await expect(editor.locator('.capacity-actual-slots tbody tr')).toHaveCount(4);
     await page.screenshot({ path: 'output/field-workflow/capacity-actual-1440.png', fullPage: true });
     await editor.getByRole('button', { name: '每周模板', exact: true }).click();
     // Incomplete drafts can leave the editor without validation or writes.

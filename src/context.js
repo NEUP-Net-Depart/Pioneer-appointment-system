@@ -28,6 +28,8 @@ import { scanService } from './services/scan.js';
 import { fieldWorkflow } from './services/field-workflow.js';
 import { serviceLocationRepository } from './db/service-locations.js';
 import { serviceLocationService } from './services/service-locations.js';
+import { bookingSettingsRepository } from './db/booking-settings.js';
+import { bookingSettingsService } from './services/booking-settings.js';
 
 export function createContext(request, env) {
   // Request-scoped D1 session, explicitly injected into D1 repositories. No startup I/O.
@@ -41,10 +43,12 @@ export function createContext(request, env) {
   const field = fieldWorkflow({ repository: staffPlatform, appointments, users, staff: staffPlatformServiceInstance, authorizer: platform.authorizer,
     encryptionKey: env.PII_ENCRYPTION_KEY, secret: scanSecret });
   staffPlatformServiceInstance.field = field;
+  const bookingSettings = bookingSettingsService(bookingSettingsRepository(db), staffPlatformServiceInstance, clock);
   const services = {
     auth: authService(users, env.JWT_SECRET), users: userService(users, staffPlatformServiceInstance),
     activation: activationService(activationRepository(db),users,staffPlatformServiceInstance),
-    appointments: appointmentService(appointments, users, env.PII_ENCRYPTION_KEY, clock, staffPlatformServiceInstance),
+    appointments: appointmentService(appointments, users, env.PII_ENCRYPTION_KEY, clock, staffPlatformServiceInstance, bookingSettings),
+    bookingSettings,
     attachments: attachmentService(appointments, attachmentRepository(db), env.ATTACHMENTS, storageLimit(env), field),
     queue: queueService(appointments, queueRepository(db), clock), stats: statsService(statsRepository(db), appointments, clock, staffPlatformServiceInstance),
     export: exportService(appointments, clock, field),
@@ -58,7 +62,7 @@ export function createContext(request, env) {
     }
   };
   services.scan = scanService(appointments, services.appointments, scanSecret, clock, field, [env.JWT_SECRET]);
-  services.serviceLocations = serviceLocationService(serviceLocationRepository(db),appointments,services.queue,env.PII_ENCRYPTION_KEY,clock,staffPlatformServiceInstance);
+  services.serviceLocations = serviceLocationService(serviceLocationRepository(db),appointments,services.queue,env.PII_ENCRYPTION_KEY,clock,staffPlatformServiceInstance,bookingSettings);
   let authentication;
   const authenticate = () => authentication ||= services.auth.authenticate(request.headers.get('authorization'));
   const url = new URL(request.url);

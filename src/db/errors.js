@@ -1,6 +1,7 @@
 // D1 keeps the SQL constraint failure in message/cause. No SQL or bindings leave the server.
 export function conflictMessage(error) {
   const message = `${error.message} ${error.cause?.message || ''}`;
+  if (message.includes('BOOKING_NOTICE_CHANGED')) return '预约公告已更新，请阅读并确认重要公告后重新提交';
   if (message.includes('SERVICE_DAY_PAUSED')) return '该日期暂停维修，不能预约、接单或签到；已有记录保留';
   if (message.includes('PRESENCE_BUSY')) return '当前仍有进行中的维修，不能离岗';
   if (message.includes('idx_one_pending_onsite_registration')) return '请先签到或取消当前临时登记';
@@ -28,5 +29,5 @@ export function conflictMessage(error) {
 }
 export function conflictCode(error) {
   const message = `${error.message} ${error.cause?.message || ''}`;
-  return ['SERVICE_DAY_PAUSED','STUDENT_DAY_EXISTS','LOCATION_MISSING','LOCATION_REQUIRED','SLOT_ENDED','SLOT_FULL','SLOT_PAUSED','SLOT_CHANGED'].find(code => message.includes(code)) || 'CONFLICT';
+  return ['BOOKING_NOTICE_CHANGED','SERVICE_DAY_PAUSED','STUDENT_DAY_EXISTS','LOCATION_MISSING','LOCATION_REQUIRED','SLOT_ENDED','SLOT_FULL','SLOT_PAUSED','SLOT_CHANGED'].find(code => message.includes(code)) || 'CONFLICT';
 }

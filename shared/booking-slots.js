@@ -1,14 +1,15 @@
 import { TIME_SLOTS } from './constants.js';
 import { addDays, dateKey, serviceDay, slotDeadline } from './time.js';
+import { bookingWindow, DEFAULT_RELEASE_TIME } from './booking-settings.js';
 
 export function availableSlots(date, instant = new Date(), slots = TIME_SLOTS) {
   return slots.filter(slot => Date.parse(slotDeadline(date, slot)) > instant.getTime());
 }
 
-export function bookingDates(instant = new Date()) {
-  const today = dateKey(instant);
+export function bookingDates(instant = new Date(), releaseTime = DEFAULT_RELEASE_TIME) {
+  const today = dateKey(instant), window = bookingWindow(instant, releaseTime);
   return [0, 1, 2, 3].map(offset => addDays(today, offset))
-    .filter(date => serviceDay(date) && availableSlots(date, instant).length > 0);
+    .filter(date => date <= window.end && serviceDay(date) && availableSlots(date, instant).length > 0);
 }
 
 export function slotAvailability(summary, date, slot, instant = new Date()) {

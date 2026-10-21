@@ -87,7 +87,7 @@ function fromRow(row) {
     : null;
 }
 export function appointmentRepository(db) {
-  const writeColumns = { ...columns };
+  const writeColumns = { ...columns, bookingNotices: 'booking_notices' };
   return {
     ...serviceDayRepository(db),
     async searchNumbers(
@@ -309,7 +309,7 @@ export function appointmentRepository(db) {
         ['locationSnapshot', 'locationRevision'].includes(key)
           ? [item.campus, item.date]
           : [
-              key === 'assignedTo'
+              key === 'bookingNotices' ? item[key] || '[]' : key === 'assignedTo'
                 ? item[key] || null
                 : key === 'source'
                   ? item[key] || 'booking'
