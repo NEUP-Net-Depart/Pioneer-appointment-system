@@ -195,11 +195,7 @@ export function AttendanceManagement({ user }) {
   }
   return (
     <section className="react-page attendance-management">
-      <WorkspaceHeader
-        group="值班管理"
-        title="考勤核查"
-        description="按月份核对到岗记录；补录与修正保留历史归属，并记录操作原因。"
-      >
+      <WorkspaceHeader group="值班管理" title="考勤核查">
         <button disabled={busy} onClick={() => edit(null)}>
           补录签到
         </button>

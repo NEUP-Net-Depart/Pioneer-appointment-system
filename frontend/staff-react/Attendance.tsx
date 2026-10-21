@@ -55,7 +55,7 @@ export function Attendance({ onNavigate }: { onNavigate: (route: string) => void
       <WorkspaceHeader
         group="我的"
         title="本人签到记录"
-        description="查看已完成的签到。当前是否在岗，以今日工作台为准。"
+        description="当前是否在岗，以今日工作台为准。"
       >
         <button type="button" onClick={() => onNavigate('scene:mine')}>
           返回个人中心

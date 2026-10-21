@@ -1,0 +1,533 @@
+{
+  "browser": "156.0.8078.4",
+  "scenario": {
+    "name": "cold-session",
+    "account": "root001"
+  },
+  "cssTiming": [],
+  "frames": [
+    {
+      "time": 257.7000000476837,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.34375
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 262.2999999523163,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.34375
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 280.39999997615814,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.34375
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 297.10000002384186,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.34375
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 313.7000000476837,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.34375
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 329.5,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.34375
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 345.2999999523163,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.34375
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 363.39999997615814,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.34375
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 380.10000002384186,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.34375
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 396.89999997615814,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.34375
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 413.39999997615814,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.34375
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 429.10000002384186,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.34375
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 446.2000000476837,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.34375
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 462.89999997615814,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.34375
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 480.5,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.34375
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 496.10000002384186,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.34375
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 513.1000000238419,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.34375
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 530.3999999761581,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.34375
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 546.3999999761581,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.34375
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 561.8999999761581,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.34375
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 580.3999999761581,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.34375
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 597.1000000238419,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.34375
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 622.8999999761581,
+      "bootstrap": false,
+      "main": {
+        "x": 216,
+        "y": 0,
+        "width": 1224,
+        "height": 759.359375
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 900
+      },
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 631,
+      "bootstrap": false,
+      "main": {
+        "x": 216,
+        "y": 0,
+        "width": 1224,
+        "height": 979.359375
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 900
+      },
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 663.7000000476837,
+      "bootstrap": false,
+      "main": {
+        "x": 216,
+        "y": 0,
+        "width": 1224,
+        "height": 979.359375
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 900
+      },
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 680.3999999761581,
+      "bootstrap": false,
+      "main": {
+        "x": 216,
+        "y": 0,
+        "width": 1224,
+        "height": 979.359375
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 900
+      },
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 697,
+      "bootstrap": false,
+      "main": {
+        "x": 216,
+        "y": 0,
+        "width": 1224,
+        "height": 979.359375
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 900
+      },
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 713.2999999523163,
+      "bootstrap": false,
+      "main": {
+        "x": 216,
+        "y": 0,
+        "width": 1224,
+        "height": 979.359375
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 900
+      },
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 730.3999999761581,
+      "bootstrap": false,
+      "main": {
+        "x": 216,
+        "y": 0,
+        "width": 1224,
+        "height": 979.359375
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 900
+      },
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 746,
+      "bootstrap": false,
+      "main": {
+        "x": 216,
+        "y": 0,
+        "width": 1224,
+        "height": 979.359375
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 900
+      },
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 762.7999999523163,
+      "bootstrap": false,
+      "main": {
+        "x": 216,
+        "y": 0,
+        "width": 1224,
+        "height": 979.359375
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 900
+      },
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    }
+  ],
+  "resources": [
+    {
+      "path": "/staff/assets/index-DAsnvv3i.js",
+      "startTime": 59.10000002384186,
+      "responseEnd": 157.10000002384186,
+      "transferSize": 145745
+    },
+    {
+      "path": "/staff/assets/index-BzLXJVS3.css",
+      "startTime": 59.299999952316284,
+      "responseEnd": 172.89999997615814,
+      "transferSize": 35517
+    },
+    {
+      "path": "/assets/vendor/load-image.all.min.js",
+      "startTime": 59.39999997615814,
+      "responseEnd": 162.79999995231628,
+      "transferSize": 9419
+    },
+    {
+      "path": "/api/auth/me",
+      "startTime": 260.7999999523163,
+      "responseEnd": 370.10000002384186,
+      "transferSize": 2088
+    },
+    {
+      "path": "/api/field/home",
+      "startTime": 373.5,
+      "responseEnd": 610.8999999761581,
+      "transferSize": 1516
+    },
+    {
+      "path": "/assets/organization-logo.jpg",
+      "startTime": 616.2999999523163,
+      "responseEnd": 644.6000000238419,
+      "transferSize": 57482
+    },
+    {
+      "path": "/api/field/board",
+      "startTime": 627.7999999523163,
+      "responseEnd": 765.2999999523163,
+      "transferSize": 1759
+    }
+  ]
+}

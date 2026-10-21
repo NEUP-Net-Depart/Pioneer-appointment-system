@@ -99,7 +99,7 @@ export function ServiceDayEditor({ campus, onNavigate }) {
             <div className="react-message">
               <strong>有 {data.affected.length} 个预约需要联系机主</strong>
               <p>订单会保留。联系方式仍按预约记录页权限显示。</p>
-              <button onClick={() => onNavigate?.('records')}>前往预约记录</button>
+              <button onClick={() => onNavigate?.('staff')}>前往预约记录</button>
               <ul>
                 {data.affected.map((item) => (
                   <li key={item.id}>

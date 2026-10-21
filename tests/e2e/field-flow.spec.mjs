@@ -66,6 +66,8 @@ test('member qualification and roster import panels preserve drafts and fit staf
   await dialog.getByRole('button',{name:'放弃修改并关闭',exact:true}).click();
   await page.getByRole('button',{name:'导入名单',exact:true}).click();
   await dialog.getByRole('combobox',{name:'名单类型',exact:true}).selectOption('exchange');
+  await expect(dialog.getByText('导入交流人员即确认培训通过，并保留交流资格。',{exact:true})).toBeVisible();
+  await dialog.getByText('名单格式与角色配置',{exact:true}).click();
   await expect(dialog.getByText('核验培训通过后',{exact:false})).toBeVisible();
   await dialog.getByRole('button',{name:'关闭',exact:true}).click();
 });

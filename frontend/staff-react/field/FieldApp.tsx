@@ -136,7 +136,6 @@ export function FieldApp({
                 <section className="field-roster-todo" aria-label="待响应的换班邀请">
                   <div>
                     <strong>{data.pendingSwapInvitations} 份换班邀请等待你确认</strong>
-                    <p>查看双方的新安排，再决定是否同意。</p>
                   </div>
                   <button onClick={() => onNavigate('roster-requests')}>查看邀请</button>
                 </section>
@@ -234,9 +233,6 @@ export function FieldApp({
         <Modal title="扫一扫" onClose={() => setScanOpen(false)}>
           <Scanner onCode={resolve} />
           <Notice>{message}</Notice>
-          <p className="field-muted">
-            支持客户维修码和工作人员签到码。识别后先核对信息，再确认接单或签到。
-          </p>
         </Modal>
       )}
       {checkToken && (

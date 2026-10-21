@@ -208,7 +208,7 @@ export function WeeklyAvailability({ tasks }) {
                 </p>
               )}
               <p className="react-muted">
-                勾选可以参加的日期和校区，一次提交。截止{' '}
+                截止{' '}
                 {new Date(task.deadline).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}
               </p>
               <label className="roster-choice-row">

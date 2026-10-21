@@ -260,7 +260,6 @@ export function Repair({
                   </label>
                 ))}
               </fieldset>
-              <p className="field-muted">填写内容会保留在当前登录会话中</p>
               <button type="button" disabled={busy} onClick={saveNote}>
                 保存维修说明
               </button>

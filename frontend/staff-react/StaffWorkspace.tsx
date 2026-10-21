@@ -11,7 +11,8 @@ export function StaffWorkspace({
   entries,
   active,
   onSelect,
-  onLogout
+  onLogout,
+  loading = false
 }: {
   children: ReactNode;
   name: string;
@@ -19,6 +20,7 @@ export function StaffWorkspace({
   active: string;
   onSelect: (id: string) => void;
   onLogout: () => void;
+  loading?: boolean;
 }) {
   const [more, setMore] = useState(false);
   const sidebar = useRef<HTMLElement>(null);
@@ -42,10 +44,6 @@ export function StaffWorkspace({
   const [resolving, setResolving] = useState(false),
     [navigationError, setNavigationError] = useState('');
   const navigationLock = useRef(false);
-  useEffect(() => {
-    document.body.classList.add('field-mode');
-    return () => document.body.classList.remove('field-mode');
-  }, []);
   function choose(id: string) {
     if (navigationLock.current || pending) return;
     setMore(false);
@@ -107,7 +105,7 @@ export function StaffWorkspace({
   if (!primary.length) primary.push(...entries.slice(0, 3));
   const overflow = entries.filter((entry) => !primary.some((item) => item.id === entry.id));
   return (
-    <div className="field-app">
+    <div className={`field-app${loading ? ' workspace-bootstrap' : ''}`} aria-busy={loading}>
       <aside className="field-sidebar" ref={sidebar}>
         <a className="field-brand" href="/staff/">
           <img src="/assets/organization-logo.jpg" alt="" />
@@ -116,6 +114,13 @@ export function StaffWorkspace({
           </span>
         </a>
         <nav aria-label="岗位工作导航">
+          {loading && (
+            <div className="workspace-skeleton" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </div>
+          )}
           {groups.map((group) => (
             <section className="workspace-nav-group" key={group.label}>
               <h2>

@@ -96,7 +96,6 @@ export function RosterCandidatePicker({
             placeholder="输入姓名"
           />
         </label>
-        <p className="react-muted">先选目标日期，再添加人员。会清楚提示原班次和未填报的时间。</p>
         {!choosing.memberId && (
           <div className="roster-candidate-filters">
             {!office && (

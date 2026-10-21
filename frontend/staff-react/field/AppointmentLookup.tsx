@@ -140,7 +140,10 @@ export function AppointmentLookup({
         </label>
         <button disabled={disabled || !query?.ready}>查询</button>
       </form>
-      <p className="field-lookup-help">两位及以上尾号只查当天；输入前段和“-”可跨日期查找。</p>
+      <details className="workspace-help field-lookup-help">
+        <summary>查询规则</summary>
+        <p>两位及以上尾号只查当天；输入前段和“-”可跨日期查找。</p>
+      </details>
       {pending && <p role="status">正在查找…</p>}
       {expanded && items.length > 0 && (
         <div className="field-lookup-results" role="listbox" id={id} aria-label="匹配的预约">

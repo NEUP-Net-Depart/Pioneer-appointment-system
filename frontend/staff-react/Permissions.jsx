@@ -118,11 +118,7 @@ export function Permissions() {
   }
   return (
     <section className="react-page permissions-workspace">
-      <WorkspaceHeader
-        group="平台管理"
-        title="授权管理"
-        description="选择角色，调整权限后统一保存。"
-      />
+      <WorkspaceHeader group="平台管理" title="授权管理" />
       {error && (
         <p className="react-error" role="alert">
           {error}

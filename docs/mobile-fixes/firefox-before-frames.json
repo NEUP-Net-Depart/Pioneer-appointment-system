@@ -1,0 +1,1021 @@
+{
+  "browser": "157.0",
+  "scenario": {
+    "name": "cold-session",
+    "account": "root001"
+  },
+  "cssTiming": [],
+  "frames": [
+    {
+      "time": 459,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 470,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 495,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 514,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 531,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 543,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 559,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 576,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 590,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 603,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 625,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 640,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 657,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 674,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 688,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 707,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 721,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 738,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 753,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 774,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 786,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 818,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 823,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 841,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 857,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 870,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 887,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 903,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 921,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 939,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 957,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 992,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1006,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1028,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1036,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1062,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1101,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1107,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1108,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1123,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1139,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1155,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1173,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1187,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1206,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1223,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1239,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1252,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1272,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1289,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1307,
+      "bootstrap": true,
+      "main": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 784.4000244140625
+      },
+      "sidebar": null,
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1329,
+      "bootstrap": false,
+      "main": {
+        "x": 216,
+        "y": 0,
+        "width": 1224,
+        "height": 759.4000244140625
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 900
+      },
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1342,
+      "bootstrap": false,
+      "main": {
+        "x": 216,
+        "y": 0,
+        "width": 1224,
+        "height": 979.4000244140625
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 900
+      },
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1365,
+      "bootstrap": false,
+      "main": {
+        "x": 216,
+        "y": 0,
+        "width": 1224,
+        "height": 979.4000244140625
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 900
+      },
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1372,
+      "bootstrap": false,
+      "main": {
+        "x": 216,
+        "y": 0,
+        "width": 1224,
+        "height": 979.4000244140625
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 900
+      },
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1392,
+      "bootstrap": false,
+      "main": {
+        "x": 216,
+        "y": 0,
+        "width": 1224,
+        "height": 979.4000244140625
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 900
+      },
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1402,
+      "bootstrap": false,
+      "main": {
+        "x": 216,
+        "y": 0,
+        "width": 1224,
+        "height": 979.4000244140625
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 900
+      },
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1424,
+      "bootstrap": false,
+      "main": {
+        "x": 216,
+        "y": 0,
+        "width": 1224,
+        "height": 1296.199951171875
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 900
+      },
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1441,
+      "bootstrap": false,
+      "main": {
+        "x": 216,
+        "y": 0,
+        "width": 1224,
+        "height": 1296.199951171875
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 900
+      },
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1454,
+      "bootstrap": false,
+      "main": {
+        "x": 216,
+        "y": 0,
+        "width": 1224,
+        "height": 1296.199951171875
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 900
+      },
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1472,
+      "bootstrap": false,
+      "main": {
+        "x": 216,
+        "y": 0,
+        "width": 1224,
+        "height": 1296.199951171875
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 900
+      },
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1489,
+      "bootstrap": false,
+      "main": {
+        "x": 216,
+        "y": 0,
+        "width": 1224,
+        "height": 1296.199951171875
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 900
+      },
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1508,
+      "bootstrap": false,
+      "main": {
+        "x": 216,
+        "y": 0,
+        "width": 1224,
+        "height": 1296.199951171875
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 900
+      },
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    },
+    {
+      "time": 1523,
+      "bootstrap": false,
+      "main": {
+        "x": 216,
+        "y": 0,
+        "width": 1224,
+        "height": 1296.199951171875
+      },
+      "sidebar": {
+        "x": 0,
+        "y": 0,
+        "width": 216,
+        "height": 900
+      },
+      "grid": "216px 1224px",
+      "viewport": 1440,
+      "documentWidth": 1440
+    }
+  ],
+  "resources": [
+    {
+      "path": "/staff/assets/index-DAsnvv3i.js",
+      "startTime": 237,
+      "responseEnd": 365,
+      "transferSize": 145745
+    },
+    {
+      "path": "/staff/assets/index-BzLXJVS3.css",
+      "startTime": 237,
+      "responseEnd": 376,
+      "transferSize": 35517
+    },
+    {
+      "path": "/assets/vendor/load-image.all.min.js",
+      "startTime": 238,
+      "responseEnd": 371,
+      "transferSize": 9419
+    },
+    {
+      "path": "/assets/organization-logo.jpg",
+      "startTime": 244,
+      "responseEnd": 560,
+      "transferSize": 57482
+    },
+    {
+      "path": "/api/auth/me",
+      "startTime": 464,
+      "responseEnd": 1103,
+      "transferSize": 2088
+    },
+    {
+      "path": "/api/field/home",
+      "startTime": 1115,
+      "responseEnd": 1300,
+      "transferSize": 1516
+    },
+    {
+      "path": "/assets/organization-logo.jpg",
+      "startTime": 1324,
+      "responseEnd": 1341,
+      "transferSize": 57482
+    },
+    {
+      "path": "/api/field/board",
+      "startTime": 1332,
+      "responseEnd": 1412,
+      "transferSize": 1759
+    }
+  ]
+}

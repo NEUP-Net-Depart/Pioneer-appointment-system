@@ -89,7 +89,7 @@ export function RosterAssignmentControls({ row, member, office, onChange, onRepl
           </label>
         )}
       </div>
-      <p className="react-muted">锁定后重新自动排班会保留此安排。修改下方目标班次可移动人员。</p>
+      <p className="react-muted">锁定后重新自动排班会保留此安排。</p>
       <div className="roster-assignment-actions">
         <button onClick={onReplace}>选择替换人员</button>
         <button className="roster-remove-person" onClick={onRemove}>

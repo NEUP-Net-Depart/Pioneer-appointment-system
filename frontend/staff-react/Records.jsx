@@ -128,11 +128,7 @@ export function Records({ user }) {
   };
   return (
     <section className="records-workspace">
-      <WorkspaceHeader
-        group="今日工作"
-        title="预约记录"
-        description="从近期概览定位预约，再查看设备、处理进展与维修记录。"
-      >
+      <WorkspaceHeader group="今日工作" title="预约记录">
         <button disabled={list.loading || overview.loading} onClick={refresh}>
           刷新记录
         </button>
@@ -354,7 +350,6 @@ function RecordFilter({ menu, filters, counts, campuses, slots, onChange, onClos
         )}
         {menu === 'date' && (
           <>
-            <p className="field-muted">今天起 3 天内的工作日；再次点击取消选中。</p>
             <div className="record-options">
               {dates.map((date) => (
                 <button
@@ -434,7 +429,6 @@ function RecordOverview({ result, onFilter, onOpen }) {
         <summary>
           <div>
             <h2>近期预约概览</h2>
-            <p className="field-muted">按校区、时段和状态人数，快速定位预约。</p>
           </div>
           <span className="records-overview-toggle">
             <span className="when-closed">查看概览 ＋</span>

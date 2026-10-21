@@ -63,11 +63,7 @@ export function Accounts({ user }) {
   }
   return (
     <section className="accounts-workspace">
-      <WorkspaceHeader
-        group="平台管理"
-        title="账号管理"
-        description="先授予加入资格，再核实激活申请；已有账号在这里维护。"
-      >
+      <WorkspaceHeader group="平台管理" title="账号管理">
         <button onClick={copy}>复制激活网址</button>
       </WorkspaceHeader>
       <Notice>{copyMessage}</Notice>
@@ -626,12 +622,10 @@ function Invitations({ user }) {
           <form className="workspace-form" onSubmit={submit}>
             <fieldset className="workspace-form-fields" disabled={busy}>
               <p className="field-muted">
-                上传 CSV
-                或粘贴内容；同时提供时使用文件。已有记录会跳过。管理员请由具备授权的负责人在“成员管理”导入，明确填写
-                accountRole=admin、roleCodes 和 authorizedCampuses；工作岗位按实际情况填写。
+                同时提供文件和文本时使用文件；已有记录会跳过。管理员邀请请在“成员管理”导入。
               </p>
               <label>
-                CSV 文件
+                CSV 文件（不超过 200 KB）
                 <input
                   type="file"
                   accept=".csv,text/csv"
@@ -672,10 +666,13 @@ function Invitations({ user }) {
                   </label>
                 ))}
               </fieldset>
-              <p className="field-muted">
-                可选列 expectedRole（仅 technician）、authorizedCampuses；多校区用 |
-                分隔。文件不超过 200 KB。
-              </p>
+              <details className="workspace-help">
+                <summary>CSV 格式</summary>
+                <p className="field-muted">
+                  必需列 studentId；可选列 expectedName、expectedRole（仅
+                  technician）、authorizedCampuses；多校区用 | 分隔。
+                </p>
+              </details>
             </fieldset>
             <Notice>{message}</Notice>
             <div className="field-actions">

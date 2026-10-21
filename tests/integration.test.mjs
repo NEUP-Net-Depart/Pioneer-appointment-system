@@ -2052,10 +2052,14 @@ test('weekday templates freeze on first booking and preserve cancellations, rest
   await db.prepare('DELETE FROM booking_day_slots').run();
   const token = await login(), timeSlot = '19:00–19:30';
   await configureCapacity(token, 3);
-  const responses = await Promise.all(Array.from({length:8}, () => request('/api/appointments', {method:'POST',body:draft({timeSlot})})));
+  // Consume each wrapped stream before waiting for the other concurrent requests.
+  const responses = await Promise.all(Array.from({length:8}, async () => {
+    const response = await request('/api/appointments', {method:'POST',body:draft({timeSlot})});
+    return {status:response.status, body:await response.json()};
+  }));
   assert.equal(responses.filter(r=>r.status===201).length,3);
   assert.equal(responses.filter(r=>r.status===409).length,5);
-  const item = await responses.find(r=>r.status===201).json();
+  const item = responses.find(r=>r.status===201).body;
   await configureCapacity(token,0);
   const summary = await api(`/api/live/summary?date=${date}&campus=${encodeURIComponent('南湖')}`);
   assert.deepEqual(summary.timeSlots,['19:00–19:30','19:30–20:00','20:00–20:30','20:30–21:00']);

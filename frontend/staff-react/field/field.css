@@ -127,7 +127,7 @@
 }
 .field-brand span span {
   display: block;
-  color: #8a919d;
+  color: #586575;
   font-size: 11px;
   font-weight: 400;
   letter-spacing: 0.1em;
@@ -135,7 +135,7 @@
 }
 .field-nav-label {
   font-size: 11px;
-  color: #9aa0ab;
+  color: #586575;
   margin: 14px 12px;
   letter-spacing: 0.1em;
 }
@@ -183,7 +183,7 @@
   border: 0;
   min-height: 28px;
   font-size: 12px;
-  color: #8a919d;
+  color: #586575;
 }
 .field-avatar {
   width: 36px;
@@ -191,7 +191,7 @@
   flex-shrink: 0;
   border-radius: 50%;
   background: #edf0f3;
-  color: #657184;
+  color: #586575;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -213,7 +213,7 @@
   gap: 20px;
 }
 .field-kicker {
-  color: #9299a3;
+  color: #586575;
   font-size: 11px;
   letter-spacing: 0.15em;
   margin: 0 0 8px;
@@ -222,7 +222,7 @@
   display: flex;
   align-items: center;
   gap: 18px;
-  color: #737b89;
+  color: #586575;
   font-size: 13px;
 }
 .field-scope select {
@@ -277,7 +277,7 @@
   margin-bottom: 18px;
 }
 .field-section-heading > span {
-  color: #8b929d;
+  color: #586575;
   font-size: 12px;
 }
 .field-muted {
@@ -312,7 +312,7 @@
   align-self: center;
   padding: 5px 9px;
   border-radius: 6px;
-  color: #647184;
+  color: #586575;
   background: #f0f2f5;
 }
 .field-status.status-progress {
@@ -321,16 +321,16 @@
 }
 .field-status.status-completed {
   background: #edf4f0;
-  color: #4c7a63;
+  color: #3d6b53;
 }
 .field-status.status-pending {
   background: #f7f2e9;
-  color: #947640;
+  color: #7b5e2c;
 }
 .field-status.status-expired,
 .field-status.status-cancelled {
   background: #f2f3f5;
-  color: #8b919a;
+  color: #586575;
 }
 .field-overview {
   display: flex;
@@ -366,7 +366,7 @@
 }
 .field-metrics button span {
   font-size: 13px;
-  color: #7e8794;
+  color: #586575;
 }
 .field-metrics button.selected {
   border-color: #596a80;
@@ -391,7 +391,7 @@
   padding: 7px 12px;
   min-height: 36px;
   background: transparent;
-  color: #7a8493;
+  color: #586575;
 }
 .field-filter button.active {
   background: #edf0f4;
@@ -406,7 +406,7 @@
 }
 .field-table-head {
   font-size: 11px;
-  color: #9ba2ad;
+  color: #586575;
   padding: 10px 0;
   border-bottom: 1px solid #e9ecf0;
 }
@@ -430,7 +430,7 @@
 .field-order small {
   display: block;
   font-size: 11px;
-  color: #8e96a3;
+  color: #586575;
   margin-top: 5px;
   overflow-wrap: anywhere;
 }
@@ -454,7 +454,7 @@
 .field-person small {
   display: block;
   font-size: 11px;
-  color: #8b93a0;
+  color: #586575;
   margin-top: 4px;
 }
 .field-person .field-status {
@@ -479,12 +479,12 @@
   border-bottom: 1px solid #edf0f3;
 }
 .field-shift span {
-  color: #8b93a0;
+  color: #586575;
 }
 .field-empty {
   padding: 42px 16px;
   text-align: center;
-  color: #929ba8;
+  color: #586575;
 }
 .field-empty strong {
   font-size: 15px;
@@ -499,7 +499,7 @@
   align-items: center;
   justify-content: space-between;
   font-size: 11px;
-  color: #98a0ac;
+  color: #586575;
 }
 .field-footer button {
   font-size: 12px;
@@ -901,8 +901,9 @@
     border: 0;
     border-radius: 0;
     background: none;
-    padding: 10px 2px;
-    color: #8b93a0;
+    min-width: 44px;
+    padding: 10px 8px;
+    color: #586575;
   }
   .field-mobile-tabs button.active {
     color: #243345;
@@ -927,7 +928,7 @@
     grid-column: 1;
     grid-row: 2;
     font-size: 12px;
-    color: #7c8796;
+    color: #586575;
   }
   .field-order > .field-status {
     grid-column: 2;
@@ -955,7 +956,7 @@
     background: none;
     padding: 12px 4px;
     font-size: 12px;
-    color: #8c95a3;
+    color: #586575;
   }
   .field-bottom-nav button.active {
     color: #20344b;
@@ -1126,7 +1127,7 @@
   margin: 12px 12px 5px;
   font-size: 12px;
   font-weight: 600;
-  color: #737b89;
+  color: #586575;
 }
 .workspace-nav-group button {
   width: 100%;
