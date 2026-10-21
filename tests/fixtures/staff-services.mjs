@@ -29,9 +29,7 @@ export async function readyStaff(db, account, day) {
 }
 
 export async function grantTestManagement(db, account) {
-  const at='2026-01-01';
-  await db.prepare("INSERT OR IGNORE INTO roles(id,code,name,created_at,updated_at) VALUES('integration-admin','integration_admin','回归测试管理员',?,?)").bind(at,at).run();
-  for(const code of ['repair.summary.read','repair.correct','repair.transfer','accounts.manage','settings.manage','statistics.read','customer.identity.read','customer.contact.read'])
-    await db.prepare("INSERT OR IGNORE INTO role_grants(id,role_id,permission_code,scope_spec,condition_spec) VALUES(?,'integration-admin',?,'{\"campuses\":\"bound\"}','[]')").bind('integration-admin-'+code,code).run();
-  await db.prepare("INSERT OR IGNORE INTO member_roles(id,member_id,role_id,scope_bindings,effective_from) SELECT 'integration-admin-'||account,member_id,'integration-admin','{\"campuses\":\"legacy\"}',? FROM staff_accounts WHERE account=?").bind(at,account).run();
+  await db.prepare(`INSERT OR IGNORE INTO member_roles(id,member_id,role_id,scope_bindings,effective_from)
+    SELECT 'integration-manager-'||account,member_id,'role-repair-lead','{"campuses":"bound"}','2026-01-01'
+    FROM staff_accounts WHERE account=?`).bind(account).run();
 }

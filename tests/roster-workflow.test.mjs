@@ -175,6 +175,7 @@ test('deployment migrations support collection, atomic weekly submissions, revis
     await service.availabilityPreferences(one,{dutyType:'office',enabled:false});assert.equal((await service.availabilityPreferences(one)).items[0].enabled,0);
     const reopened=await service.collectionCommand(root,task.id,{action:'reopen',revision:(await repo.rosterTaskById(task.id)).revision,deadline:new Date(Date.now()+86400000).toISOString(),requestId:crypto.randomUUID()});
     assert.equal(reopened.collectionClosedAt,null);assert.equal((await repo.rosterVersionById(republished.id)).status,'published');
+    await db.prepare("INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from) VALUES('workflow-owner','member-20265503','role-superadmin','{\"all\":true}','2026-01-01')").run();
     const owner=await users.find('20265503'),latestSeries=await repo.rosterSeries(series.id);
     await service.seriesCommand(owner,series.id,{enabled:true,revision:latestSeries.revision,requestId:crypto.randomUUID()});
     await db.prepare("UPDATE staff_accounts SET status='disabled' WHERE account='20265503'").run();

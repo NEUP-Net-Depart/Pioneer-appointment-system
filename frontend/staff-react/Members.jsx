@@ -90,7 +90,7 @@ export function Members({ user }) {
         title="成员管理"
         description="成员资料与角色授权分别维护，所属校区不改变授权范围。"
       >
-        {user.role === 'superadmin' && (
+        {staffPermission(user, 'members.manage') && (
           <button className="react-primary" onClick={() => setImporting(true)}>
             导入名单
           </button>
@@ -218,7 +218,16 @@ export function Members({ user }) {
       {selected && (
         <MemberEditor
           member={selected}
-          canManageRoles={user.role === 'superadmin' && staffPermission(user, 'roles.manage')}
+          canManageRoles={
+            staffPermission(user, 'roles.manage') &&
+            selected.memberId !== user.memberId &&
+            selected.role !== 'superadmin'
+          }
+          canManageQualifications={
+            staffPermission(user, 'members.manage') &&
+            selected.memberId !== user.memberId &&
+            selected.role !== 'superadmin'
+          }
           onClose={() => setSelected(null)}
           onSaved={() => load()}
         />

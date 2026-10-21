@@ -23,7 +23,7 @@ const permissionGroup = (code) =>
         ? 'attendance'
         : 'management';
 
-export function Permissions({ user }) {
+export function Permissions() {
   const routeActive = useContext(ActivityContext);
   const [search, setSearch] = useState('');
   const [enabledOnly, setEnabledOnly] = useState(false);
@@ -41,7 +41,7 @@ export function Permissions({ user }) {
   const dirty = selected && JSON.stringify(draft) !== JSON.stringify(selected.grants || []);
   const codes = useMemo(() => new Set(draft.map((grant) => grant.permissionCode)), [draft]);
   const protectedRole = selected?.id === 'role-superadmin';
-  const readOnly = user.role !== 'superadmin' || protectedRole;
+  const readOnly = protectedRole || selected?.actions?.edit === false;
   useEffect(() => {
     let active = true;
     Promise.all([
@@ -80,6 +80,7 @@ export function Permissions({ user }) {
   });
   const visiblePermissions = permissions.filter(
     (permission) =>
+      (permission.delegable !== false || codes.has(permission.code)) &&
       (!enabledOnly || codes.has(permission.code)) &&
       (search.trim() || group === 'all' || permissionGroup(permission.code) === group) &&
       `${permission.name} ${permission.description || ''}`.includes(search.trim())
@@ -153,8 +154,8 @@ export function Permissions({ user }) {
           {protectedRole && (
             <p className="react-muted">最高管理员权限包受保护，请选择其他角色配置。</p>
           )}
-          {user.role !== 'superadmin' && (
-            <p className="react-muted">角色配置与分配由最高管理员管理，当前可查看已有配置。</p>
+          {readOnly && !protectedRole && (
+            <p className="react-muted">此角色涉及本人、系统账号或管理范围以外的授权，仅可查看。</p>
           )}
           <div className="permission-tools">
             <label>

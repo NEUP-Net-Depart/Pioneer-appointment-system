@@ -16,15 +16,13 @@ export function activationService(repository, users, staff) {
     // A scoped accounts.manage grant is the source of truth for ordinary
     // activation work. Keep only the protected top-level identity boundary.
     if (
-      item.expectedRole === 'superadmin' ||
-      (item.expectedRole === 'admin' && actor.role !== 'superadmin')
+      item.expectedRole === 'superadmin'
     )
-      fail(403, '不能管理最高管理员或管理员激活资格');
+      fail(403, '不能管理系统管理员激活资格');
   }
   function inScope(actor, item) {
     return (
       item.expectedRole !== 'superadmin' &&
-      (item.expectedRole !== 'admin' || actor.role === 'superadmin') &&
       item.authorizedCampuses.length > 0 &&
       item.authorizedCampuses.every((campus) => actor.authorizedCampuses.includes(campus))
     );
@@ -83,7 +81,7 @@ export function activationService(repository, users, staff) {
       )
         fail(400, '当前资料无法提交激活申请，请联系管理员核实');
       if (whitelist.expectedRole === 'admin' && !whitelist.activationMemberId)
-        fail(409, '管理员资格尚未配置角色和校区，请联系最高管理员通过成员管理导入并显式授权');
+        fail(409, '管理员资格尚未配置角色和校区，请联系负责人通过成员管理导入并显式授权');
       const receipt = issueAccessToken(),
         id = crypto.randomUUID();
       if (

@@ -4,6 +4,7 @@ import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {config,root} from './cli.mjs';
 import {pagesSiteUrl,previewBranch} from './release-plan.mjs';
+import {STAFF_RELEASE} from '../src/db/staff-readiness.js';
 
 export function ciReleaseTarget(env){
   if(env.GITHUB_ACTIONS!=='true')throw new Error('CI releases must run in GitHub Actions.');
@@ -36,10 +37,22 @@ export function runCiPreviewMigration(env=process.env,run=execute(env)){
   credentials(env);
   step(run,'migrate-remote.mjs',['--preview','--execute','--approve-preview'],'preview');
 }
-export async function runCiRelease(env=process.env,run=execute(env)){
-  const plan=ciReleasePlan(env,await config());
+export async function runCiRelease(env=process.env,run=execute(env),fetcher=fetch){
+  const cfg=await config(),plan=ciReleasePlan(env,cfg);
   credentials(env);
   if(plan.branch==='dev' && env.PREVIEW_MIGRATIONS_APPLIED!=='true')throw new Error('The dev Preview migration job must succeed before publishing.');
+  if(plan.target==='preview' && plan.branch!=='dev'){
+    // Branch previews share dev's D1. Wait for dev's migration instead of
+    // publishing an incompatible worker or letting a feature branch migrate it.
+    const response=await fetcher(new URL('/api/health',pagesSiteUrl(cfg.name,'dev')),{signal:AbortSignal.timeout(20000),redirect:'error'});
+    if(!response.ok)throw new Error(`Shared Preview readiness check failed (${response.status}).`);
+    const health=await response.json();
+    if(health.ok!==true || health.workflow!=='staff-platform' || typeof health.staffRelease!=='string')throw new Error('Shared Preview readiness response is invalid.');
+    if(health.staffRelease!==STAFF_RELEASE){
+      console.log(`::notice::Preview publication deferred: shared dev database reports ${health.staffRelease}; this branch requires ${STAFF_RELEASE}. Publish again after dev migration completes.`);
+      return {...plan,skipped:true};
+    }
+  }
   const args=[...(plan.target==='preview' ? ['--preview'] : []),'--execute',`--approve-${plan.target}`];
   if(plan.target==='production')step(run,'migrate-remote.mjs',args,plan.target);
   step(run,'deploy.mjs',args,plan.target);

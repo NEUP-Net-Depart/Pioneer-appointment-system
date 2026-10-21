@@ -72,34 +72,14 @@ test('member import previews distinguish preserving, replacing and clearing a si
   assert.deepEqual(await grants(), []);
 });
 
-test('member profile imports preserve account scopes and multiple aliases require an explicit selection', async () => {
+test('member imports reject account selectors and a second login cannot be linked to a member', async()=>{
   const db=await mf.getD1Database('DB');
-  await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('20269980','多账号成员','technician','南湖',?,'2026-01-01')").bind(hashPassword('multi-account-password')).run();
-  const {member_id:memberId}=await db.prepare("SELECT member_id FROM staff_accounts WHERE account='20269980'").first();
-  await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at,member_id) VALUES('20269981','多账号别名','admin','浑南',?,'2026-01-01',?)").bind(hashPassword('multi-account-password'),memberId).run();
-  await db.batch([db.prepare("INSERT INTO staff_campus_grants VALUES('20269980','南湖')"),db.prepare("INSERT INTO staff_campus_grants VALUES('20269981','浑南')")]);
-  const signedIn=await request('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account:'root001',password:'staff-platform-password'})});
-  const headers={'Content-Type':'application/json',Authorization:`Bearer ${signedIn.body.token}`};
-  const run=csv=>request('/api/members/import',{method:'POST',headers,body:JSON.stringify({csv,confirm:true})});
-  const grants=async()=>(await db.prepare("SELECT account,campus FROM staff_campus_grants WHERE account IN ('20269980','20269981') ORDER BY account,campus").all()).results;
-  const original=await grants();
-  assert.equal((await run('studentId,name,homeCampusId\n20269980,只改资料,campus-nanhu')).response.status,200);
-  assert.deepEqual(await grants(),original);
-  const ambiguous=await run('studentId,name,homeCampusId,authorizedCampuses\n20269980,不得隐式选择,campus-nanhu,南湖');
-  assert.equal(ambiguous.response.status,400);assert.match(ambiguous.body.error,/accountTargets/);assert.deepEqual(await grants(),original);
-  assert.equal((await run('studentId,name,homeCampusId,authorizedCampuses,accountTargets\n20269980,无关账号,campus-nanhu,南湖,root001')).response.status,400);
-  assert.equal((await run('studentId,name,homeCampusId,authorizedCampuses,accountTargets\n20269980,单账号调整,campus-nanhu,南湖|浑南,20269980')).response.status,200);
-  assert.deepEqual((await grants()).filter(row=>row.account==='20269981'),original.filter(row=>row.account==='20269981'));
-  const before=(await db.prepare("SELECT account,auth_version FROM staff_accounts WHERE member_id=? ORDER BY account").bind(memberId).all()).results;
-  const preview=await request('/api/members/import',{method:'POST',headers,body:JSON.stringify({csv:'studentId,name,homeCampusId,authorizedCampuses,accountTargets\n20269980,明确清空全部,campus-nanhu,,*'})});
-  assert.equal(preview.response.status,200);
-  assert.deepEqual(preview.body.items[0].accountTargets,['20269980','20269981']);
-  assert.ok(preview.body.warnings.some(item=>/清空.*20269980.*20269981/.test(item.message)));
-  assert.notDeepEqual(await grants(),[]);
-  assert.equal((await run('studentId,name,homeCampusId,authorizedCampuses,accountTargets\n20269980,明确清空全部,campus-nanhu,,*')).response.status,200);
-  assert.deepEqual(await grants(),[]);
-  const after=(await db.prepare("SELECT account,auth_version FROM staff_accounts WHERE member_id=? ORDER BY account").bind(memberId).all()).results;
-  assert.ok(after.every((row,i)=>row.auth_version>before[i].auth_version));
+  await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('20269980','单账号成员','technician','南湖',?,'2026-01-01')").bind(hashPassword('single-password')).run();
+  await assert.rejects(db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at,member_id) VALUES('20269981','重复账号','admin','南湖',?,'2026-01-01','member-20269980')").bind(hashPassword('single-password')).run(),/UNIQUE/);
+  const login=await request('/api/auth/login',{method:'POST',body:JSON.stringify({account:'root001',password:'staff-platform-password'})});
+  const result=await request('/api/members/import',{method:'POST',headers:{Authorization:`Bearer ${login.body.token}`},body:JSON.stringify({csv:'studentId,name,homeCampusId,accountTargets\n20269980,错误选择,campus-nanhu,*',confirm:true})});
+  assert.equal(result.response.status,400);
+  assert.equal(await staffPlatformRepository(db).memberRow('member-20269981'),null);
 });
 
 test('administrator invitations require explicit member roles and campus scope, without inventing a work post', async () => {
@@ -147,7 +127,7 @@ test('administrator invitations require explicit member roles and campus scope, 
   assert.equal(me.body.role,'admin');assert.deepEqual(me.body.authorizedCampuses,['南湖']);
   for (const permission of ['accounts.manage','settings.manage','statistics.read']) assert.equal(me.body.permissions[permission],true,permission);
   for (const permission of ['roles.manage','repair.start','onsite.frontdesk.create']) assert.notEqual(me.body.permissions[permission],true,permission);
-  for (const table of ['member_department_memberships','member_work_profiles','legacy_admin_logins']) assert.equal((await db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE member_id='member-20269975'`).first()).n,0);
+  for (const table of ['member_department_memberships','member_work_profiles']) assert.equal((await db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE member_id='member-20269975'`).first()).n,0);
   assert.equal((await request('/api/users',{headers:managerHeaders})).response.status,200);
   const capacities=await request('/api/slot-capacities',{headers:managerHeaders});
   assert.equal(capacities.response.status,200);assert.ok(capacities.body.items.every(item=>item.campus==='南湖'));
@@ -588,13 +568,11 @@ test('member reads, searches and writes share complete grants without mixing cam
     VALUES('cross-office-membership',?,'dept-office','secondary',0,?,?)`).bind(nanhuHardware, today, today).run();
   assert.equal((await request(`/api/members/${nanhuHardware}/memberships/cross-office-membership`, { headers, method: 'PATCH', body: JSON.stringify({ effectiveTo: addDays(today, 1), revision: 0 }) })).response.status, 403);
 
-  // Explicit aliases reuse an existing person without seeding roles or an orphan member.
-  await db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at,member_id) VALUES(?,?,?,?,?,?,?)')
-    .bind('20269916', '其他登录名称', 'technician', '南湖', hashPassword('scope-test-password'), today, nanhuHardware).run();
-  assert.equal(await repository.memberRow('member-20269916'), null);
-  await assert.rejects(db.prepare("UPDATE staff_accounts SET member_id=? WHERE account='20269916'").bind(actorId).run(), /MEMBER_MAPPING_IMMUTABLE/);
-  const aliasSearch = await request('/api/members?q=20269916&status=active', { headers });
-  assert.deepEqual(aliasSearch.body.items.map(item => item.memberId), [nanhuHardware]);
+  // The database rejects aliases without creating an orphan person.
+  await assert.rejects(db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at,member_id) VALUES(?,?,?,?,?,?,?)')
+    .bind('20269916','重复登录','technician','南湖',hashPassword('scope-test-password'),today,nanhuHardware).run(),/UNIQUE/);
+  assert.equal(await repository.memberRow('member-20269916'),null);
+  await assert.rejects(db.prepare("UPDATE staff_accounts SET member_id=? WHERE account='20269911'").bind(actorId).run(),/MEMBER_MAPPING_IMMUTABLE/);
 
   const grants = [{ permissionCode: 'members.manage', scope: { campusIds: ['campus-hunnan'], departmentIds: ['dept-office'] } }];
   await repository.updateRole(extraRole.id, { grants }, extraRole.revision);
@@ -663,11 +641,11 @@ test('permission catalog exposes registered parameter schemas and rejects unsupp
   assert.equal(result.response.status, 201, JSON.stringify(result.body));
 });
 
-test('member status, account status and immutable aliases remain separate and never restore revoked default roles', async () => {
+test('member and login status remain separate without restoring revoked roles on login recreation', async () => {
   const db = await mf.getD1Database('DB'), repository = staffPlatformRepository(db), users = userRepository(db), today = dateKey();
   const add = (account, memberId = null) => db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at,member_id) VALUES(?,?,?,?,?,?,?)')
     .bind(account, '身份测试', 'technician', '南湖', hashPassword('identity-test-password'), today, memberId).run();
-  await add('20269801'); await add('20269802', 'member-20269801');
+  await add('20269801'); await add('20269802');
   await db.batch(['20269801', '20269802'].map(account => db.prepare('INSERT INTO staff_campus_grants VALUES(?,?)').bind(account, '南湖')));
   const signIn = account => request('/api/auth/login', { method: 'POST', body: JSON.stringify({ account, password: 'identity-test-password' }) });
   const first = await signIn('20269801'), alias = await signIn('20269802');
@@ -684,13 +662,13 @@ test('member status, account status and immutable aliases remain separate and ne
   await repository.updateMember('member-20269801', { status: 'active', name: '统一姓名' }, 1);
   assert.equal((await users.find('20269802')).status, 'disabled', 'reactivating a member must not enable a disabled login');
   assert.equal((await users.find('20269801')).name, '统一姓名');
-  assert.equal((await users.find('20269802')).name, '统一姓名');
+  assert.equal((await users.find('20269802')).name, '身份测试');
   const before = await users.find('20269801');
   await users.update(before, { name: '有效更新' });
   assert.equal(await users.update(before, { name: '过期覆盖', homeCampus: '浑南' }), null);
   assert.equal((await repository.memberRow('member-20269801')).name, '有效更新');
   assert.equal((await users.find('20269802')).homeCampus, '南湖');
-  assert.equal((await users.find('20269802')).name, '有效更新');
+  assert.equal((await users.find('20269802')).name, '身份测试');
 
   await repository.bindRoles('member-20269801', [], (await repository.memberRow('member-20269801')).revision);
   await db.prepare("DELETE FROM staff_accounts WHERE account='20269801'").run();
@@ -728,14 +706,14 @@ test('role writes reject malformed ranges and protect administrator identities f
   assert.equal((await request('/api/members/member-20269810/roles', { headers: adminHeaders, method: 'PUT', body: JSON.stringify({ revision: 0, bindings: [{ roleId: 'role-superadmin', effectiveFrom: dateKey() }] }) })).response.status, 403);
   for (const csv of ['studentId,name,homeCampusId\n20269811,越界成员,campus-hunnan',
     'studentId,name,homeCampusId,roleCodes\n20269812,越权成员,campus-nanhu,superadmin']) {
-    assert.equal((await request('/api/members/import', { headers: adminHeaders, method: 'POST', body: JSON.stringify({ csv, confirm: true }) })).response.status, 403);
+    assert.ok([400,403].includes((await request('/api/members/import', { headers: adminHeaders, method: 'POST', body: JSON.stringify({ csv, confirm: true }) })).response.status));
   }
   assert.equal((await db.prepare("SELECT COUNT(*) AS total FROM members WHERE student_id IN ('20269811','20269812')").first()).total, 0);
   const disabled = await request('/api/members/member-20269810', { headers: adminHeaders, method: 'PATCH', body: JSON.stringify({ revision: 1, status: 'inactive' }) });
-  assert.equal(disabled.response.status, 200, 'a committed self-deactivation must return its successful result');
-  assert.equal((await request('/api/auth/me', { headers: adminHeaders })).response.status, 401);
+  assert.equal(disabled.response.status,403,'management cannot change the acting identity');
+  assert.equal((await request('/api/auth/me', { headers: adminHeaders })).response.status,200);
   const audit = await db.prepare("SELECT COUNT(*) AS total FROM audit_events WHERE actor_account='20269810' AND action='identity.member.updated'").first();
-  assert.equal(audit.total, 1, 'capture the acting identity before deactivation so the successful write is still audited');
+  assert.equal(audit.total,0,'rejected self-modification leaves no successful update');
 });
 
 
@@ -926,7 +904,7 @@ test('staffing demand is independently scoped, versioned and never rewrites a pu
   assert.equal((await call(`/api/roster-tasks/${legacy.id}/requirements`,manager,{revision:legacy.revision,requirements:old.body.requirements},'PUT')).response.status,200);
 });
 
-test('long-term managers can schedule off duty while field coordination remains restricted', async () => {
+test('permanent repair managers can manage off duty while optional duty conditions stay effective', async () => {
   const call = (path,options = {}) => request(path,{...options,headers:{...options.headers,'CF-Connecting-IP':'192.0.2.165'}});
   const db = await mf.getD1Database('DB'), repository = staffPlatformRepository(db);
   const root = await call('/api/auth/login',{method:'POST',body:JSON.stringify({account:'root001',password:'staff-platform-password'})});
@@ -938,10 +916,44 @@ test('long-term managers can schedule off duty while field coordination remains 
     await repository.bindRoles(member.id,[{roleId,scope:{campusIds:['campus-nanhu']},effectiveFrom:'2026-01-01'}],member.revision);
     const login = await call('/api/auth/login',{method:'POST',body:JSON.stringify({account,password:'longterm-test-password'})});
     const headers = {Authorization:`Bearer ${login.body.token}`};
+    if (dutyType === 'repair') {
+      for (const [account,campus] of [['20998713','南湖'],['20998714','浑南']]) {
+        await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,'共享角色历史成员','technician',?,?, '2026-01-01')").bind(account,campus,hashPassword('shared-history-password')).run();
+        await db.prepare('INSERT INTO staff_campus_grants(account,campus) VALUES(?,?)').bind(account,campus).run();
+      }
+      const shared = await repository.createRole({code:'shared_history',name:'共享历史角色',grants:[{permissionCode:'statistics.read',scope:{campusIds:['campus-nanhu']}}]});
+      await repository.bindRoles('member-20998713',[{roleId:shared.id,scope:{campusIds:['campus-nanhu']},effectiveFrom:'2026-01-01'}],(await repository.memberRow('member-20998713')).revision);
+      await repository.bindRoles('member-20998714',[{roleId:shared.id,scope:{campusIds:['campus-hunnan']},effectiveFrom:'2025-01-01',effectiveTo:dateKey()}],(await repository.memberRow('member-20998714')).revision);
+      for(const memberId of [member.id,'member-root001'])await db.prepare("INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from,effective_to) VALUES(?,?,?,'{\"campusIds\":[\"campus-nanhu\"]}','2025-01-01',?)").bind('ended-shared-'+memberId,memberId,shared.id,dateKey()).run();
+      const history=await repository.roleBindings('member-20998714');
+      const managerVersion=await db.prepare('SELECT auth_version,token_version FROM staff_accounts WHERE member_id=?').bind(member.id).first();
+      const roleList = await call('/api/roles',{headers});
+      const listed = roleList.body.items.find(item=>item.id===shared.id);
+      assert.equal(listed.actions.edit,true,'expired shared-role history must not block an in-scope manager');
+      const edited = await call(`/api/roles/${shared.id}`,{headers,method:'PATCH',body:JSON.stringify({revision:listed.revision,name:'共享历史角色已更新'})});
+      assert.equal(edited.response.status,200,JSON.stringify(edited.body));
+      assert.deepEqual(await repository.roleBindings('member-20998714'),history,'editing a shared role preserves ended binding history');
+      assert.deepEqual(await db.prepare('SELECT auth_version,token_version FROM staff_accounts WHERE member_id=?').bind(member.id).first(),managerVersion,'expired bindings do not invalidate an unrelated active session');
+      for(const from of [dateKey(),addDays(dateKey(),1)]){
+        await db.prepare('UPDATE member_roles SET effective_from=?,effective_to=NULL WHERE member_id=? AND role_id=?').bind(from,'member-20998714',shared.id).run();
+        const current=(await call('/api/roles',{headers})).body.items.find(item=>item.id===shared.id);
+        assert.equal(current.actions.edit,false,'current and future out-of-scope members must remain protected');
+        const denied=await call(`/api/roles/${shared.id}`,{headers,method:'PATCH',body:JSON.stringify({revision:current.revision,name:'不能影响其他校区'})});
+        assert.equal(denied.response.status,403,JSON.stringify(denied.body));
+      }
+      await db.prepare("UPDATE member_roles SET effective_from='2025-01-01',effective_to=? WHERE member_id=? AND role_id=?").bind(dateKey(),'member-20998714',shared.id).run();
+      for(const memberId of [member.id,'member-root001']){
+        await db.prepare('UPDATE member_roles SET effective_from=?,effective_to=NULL WHERE id=?').bind(addDays(dateKey(),1),'ended-shared-'+memberId).run();
+        const current=(await call('/api/roles',{headers})).body.items.find(item=>item.id===shared.id);
+        assert.equal(current.actions.edit,false,'future self/protected bindings must remain protected');
+        assert.equal((await call(`/api/roles/${shared.id}`,{headers,method:'PATCH',body:JSON.stringify({revision:current.revision,name:'不能影响受保护身份'})})).response.status,403);
+        await db.prepare("UPDATE member_roles SET effective_from='2025-01-01',effective_to=? WHERE id=?").bind(dateKey(),'ended-shared-'+memberId).run();
+      }
+    }
     const context = await call('/api/auth/me',{headers});
     assert.deepEqual(context.body.todayDuties,[]);
     assert.equal(context.body.permissions[`roster.${dutyType}.manage`],true);
-    assert.notEqual(context.body.permissions['repair.transfer'],true);
+    assert.equal(context.body.permissions['repair.transfer']===true,dutyType==='repair');
     if (dutyType === 'office') assert.equal(context.body.permissions['leave.review'],true);
     const input = {dutyType,weekStart:'2027-01-04',campusId:'campus-nanhu',slotStart:'19:00',slotEnd:'21:00',deadline:'2027-01-03T10:00:00Z'};
     const created = await call('/api/roster-tasks',{headers,method:'POST',body:JSON.stringify(input)});

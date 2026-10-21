@@ -140,6 +140,10 @@
     {
       "name": "0032_appointment_list_indexes.sql",
       "sha256": "81a16635e12a649ea9c23a1ea60d865fc3fda3e17c50040e2366091930cafa87"
+    },
+    {
+      "name": "0033_staff_business_roles.sql",
+      "sha256": "112b2978ad4e4f82a454c2be74069d1dbd0e4789f4692fd4e4576f2bca72e421"
     }
   ],
   "modules": [
@@ -230,5 +234,139 @@
     "npm run audit:staff-platform",
     "npm run db:verify",
     "npm test"
+  ],
+  "staffMigrations": [
+    {
+      "name": "0001_initial.sql",
+      "sha256": "6f2b0cce7f26f98d82aff4cc2e2c4a213e3b58be436b0950906a53dc14f971dd"
+    },
+    {
+      "name": "0002_slot_capacity.sql",
+      "sha256": "702fe572a7ea2ccba08866303a4a9231ac0b0009d7bdb65ec563f93c85bdef5d"
+    },
+    {
+      "name": "0003_three_step_workflow.sql",
+      "sha256": "112a3db0dd1579df9bf89a60ea61eddcd7b319c835d9e334b0c4f1a6ca91454d"
+    },
+    {
+      "name": "0004_signatures_intake_numbers.sql",
+      "sha256": "bd715b259315233d436a2b5b41aab4b248e8b09cc0b41c84274f0631bd14cdc5"
+    },
+    {
+      "name": "0005_slot_capacity_settings.sql",
+      "sha256": "39b00893d2632d5c76224a10c27a670beacdfcb6a58544e84778d9b24b1e804e"
+    },
+    {
+      "name": "0006_scan_workbench.sql",
+      "sha256": "8c3484d1745e13992022afc111bc7d7f6b98b24ef8ee6d545c90b50365b23b02"
+    },
+    {
+      "name": "0007_staff_platform.sql",
+      "sha256": "2914ae0739b6496591af1f2f95aeaf83ff3daa694cc97502f001825c505c1cdd"
+    },
+    {
+      "name": "0008_five_statuses.sql",
+      "sha256": "b96e313d5b90100173514ad601400adfa493f6e7cd51199f4d69703a38937042"
+    },
+    {
+      "name": "0009_member_account_aliases.sql",
+      "sha256": "53873b618dc34e85ba28a379ebcdd1c3ba284a409d40a254c7e68193333d5c94"
+    },
+    {
+      "name": "0010_field_workflow.sql",
+      "sha256": "1f0dc5149bdcfaa02e5b49b3f1fb84a6f0e450c7f5fd07c35213e5be68ae6111"
+    },
+    {
+      "name": "0011_personal_roster_access.sql",
+      "sha256": "ace80afe1b862980962e7361c4241012c50bb8ece7f98152a137cfb842d45ffc"
+    },
+    {
+      "name": "0012_workspace_authorization.sql",
+      "sha256": "9c495e9b90f1805c10fa3de3d57cedbffd443fcbc0093525f7196f7cd1d86278"
+    },
+    {
+      "name": "0013_office_roster.sql",
+      "sha256": "c1ee84b3629325fa88741cc6475afd885b1efdc1f7e2f4cc994941dfdfe71d01"
+    },
+    {
+      "name": "0014_roster_leave_lineage.sql",
+      "sha256": "101ba31e96db8a8857b52f79574e217eff2940b251f3afee117eb860d972054f"
+    },
+    {
+      "name": "0015_swap_revisions.sql",
+      "sha256": "b7afd318fdb712081a4049bd7e5e1da66052fcd7bb82a2a869f189b504d43ab3"
+    },
+    {
+      "name": "0016_roster_task_scopes.sql",
+      "sha256": "05a093a1a8a19aa20a176bb76d1dd84c4a001e7a2279d293ce9204c86a4ada61"
+    },
+    {
+      "name": "0017_longterm_roster_permissions.sql",
+      "sha256": "524c8fca13c4bcabb0ea802e4383b5f6512c2d2ad5714dbf992b3e3dbbd372c1"
+    },
+    {
+      "name": "0018_signed_repair_leads.sql",
+      "sha256": "b65031ce0308474f8e718ffb8e5b0906470ee4632fce93ba883c97accb4f3b28"
+    },
+    {
+      "name": "0019_roster_staffing_requirements.sql",
+      "sha256": "df429fe91ac9d6a30c90c0020f4724672a009144811b96c5ec1eeb6009cb544f"
+    },
+    {
+      "name": "0020_roster_collection_workflow.sql",
+      "sha256": "9e5993a896f65d2c2443b3704b5a30e1f4a224bb6313c20fab1a0bc688c0e431"
+    },
+    {
+      "name": "0021_student_booking.sql",
+      "sha256": "f126b683cce432be3394aac64f1ed094e2ab2fe32f0e2ba9e83db151b32fc64b"
+    },
+    {
+      "name": "0022_historical_booking_dates.sql",
+      "sha256": "72685533850d4dc3d74fa42c1a66b9f6ddb6c04748537e3e048a0d3795c5c6d4"
+    },
+    {
+      "name": "0023_office_attendance_export.sql",
+      "sha256": "161d307ed59f041ff6feef871622157d77a40d4251b370421bfcd1b53a7bff72"
+    },
+    {
+      "name": "0024_recurring_collection_identity.sql",
+      "sha256": "9b8220e2bbcaae2f8d92ae47257f08853a50f3a11a82db905c0bbe97fbb4a0f6"
+    },
+    {
+      "name": "0025_exchange_role.sql",
+      "sha256": "63d7dbc2eaef2fb4432f3538229efbad80274d5e371c0c8dd874b34ebbb18bd5"
+    },
+    {
+      "name": "0026_office_lead_repair_roster.sql",
+      "sha256": "b18756aa2a1ddc5428a03817fcb1e43a80ee2e3d414462f353cd105854ae1cae"
+    },
+    {
+      "name": "0027_collection_close_advance.sql",
+      "sha256": "4a658dfd964992028d9dd4c5ea08365252d9757a858b53b605e250e67a1e6874"
+    },
+    {
+      "name": "0028_roster_publication_overrides.sql",
+      "sha256": "f1bd5a02e8f13b3dbef766270d219af3b63ee3d14f6de33a619882f35fb2eed0"
+    },
+    {
+      "name": "0029_service_day_suspensions.sql",
+      "sha256": "7ea97d35a285d062e12ec9f1cbcc1284fc30d30190509ccb89e511133186fea6"
+    },
+    {
+      "name": "0030_react_cutover_access.sql",
+      "sha256": "78856792c07f2564bf60bb38c353e5a9fb5c7908ac55a949ebb03b5ff899dd19"
+    },
+    {
+      "name": "0031_admin_invitation_and_login_scope.sql",
+      "sha256": "e9b49784f6c6bbbe8ce32bebd6ca431e1a55e76b7bade1365b5a3a289ab35da5"
+    },
+    {
+      "name": "0032_appointment_list_indexes.sql",
+      "sha256": "81a16635e12a649ea9c23a1ea60d865fc3fda3e17c50040e2366091930cafa87"
+    },
+    {
+      "name": "0033_staff_business_roles.sql",
+      "sha256": "112b2978ad4e4f82a454c2be74069d1dbd0e4789f4692fd4e4576f2bca72e421"
+    }
   ]
 }

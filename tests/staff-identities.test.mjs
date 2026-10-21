@@ -5,10 +5,10 @@ import {staffIdentities,fieldPersonGroup,compareFieldPeople} from '../shared/sta
 
 const authorizer=createAuthorizer();
 const context={actor:{memberId:'lead',authorizedCampuses:['南湖']},businessDate:'2026-10-17',todayDuties:[],workProfiles:[],grants:[{
-  permissionCode:'repair.transfer',scope:{campusIds:['campus-nanhu'],departmentIds:['hardware']},conditions:[{code:'signedDutyPresence',version:1}],validity:{effectiveTo:'2026-11-01'}
+  roleCode:'repair_lead',permissionCode:'repair.transfer',scope:{campusIds:['campus-nanhu'],departmentIds:['hardware']},conditions:[{code:'signedDutyPresence',version:1}],validity:{effectiveTo:'2026-11-01'}
 }]};
 test('identity exists without a scheduled duty while commands retain campus, department and check-in requirements',()=>{
-  assert.deepEqual(staffIdentities(context,authorizer),[{code:'repair_lead',label:'维修值班负责人'}]);
+  assert.deepEqual(staffIdentities(context,authorizer),[{code:'repair_lead',label:'维修负责人'}]);
   const target={campusId:'campus-nanhu',departmentId:'hardware',businessDate:'2026-10-16'};
   const check=(ctx,resource)=>authorizer.evaluate(ctx.actor,'repair.transfer',resource,ctx,ctx.grants).allowed;
   assert.equal(check(context,target),false);

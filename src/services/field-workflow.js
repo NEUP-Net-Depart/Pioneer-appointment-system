@@ -24,7 +24,6 @@ export function fieldWorkflow({
 }) {
   const names = { 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' };
   const allowed = (context, code, target = {}) =>
-    (code !== 'roles.manage' || context.actor.role === 'superadmin') &&
     authorizer.evaluate(context.actor, code, target, context, context.grants).allowed;
   async function eligibility(actor, campus, ignoreAppointment = '') {
     const context = await staff.contextFor(actor),

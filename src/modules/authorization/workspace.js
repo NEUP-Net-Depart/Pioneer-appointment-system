@@ -12,6 +12,6 @@ export function workspacePermissions(actor, context, authorizer = createAuthoriz
       return (actor.authorizedCampuses || []).some(campusId => departments.some(departmentId => objects.some(id =>
         authorizer.evaluate(actor, code, { campusId, departmentId, id, memberId: actor.memberId, businessDate: context.businessDate }, context, [grant]).allowed)));
     });
-    return [code, allowed && (code !== 'roles.manage' || actor.role === 'superadmin')];
+    return [code, allowed];
   }));
 }

@@ -1,4 +1,4 @@
-export const STAFF_RELEASE = 'staff-react-0031';
+export const STAFF_RELEASE = 'staff-business-0033';
 
 // Prepare real projections, including empty tables. A database with only the
 // old staff schema must fail readiness before CI accepts a deployment.
@@ -9,7 +9,6 @@ export async function verifyStaffSchema(db) {
     members: 'id,status',
     member_work_profiles: 'member_id,profile_code',
     member_roles: 'member_id,role_id,scope_bindings',
-    legacy_admin_logins: 'account,member_id,campus_ids',
     role_grants: 'permission_code,scope_spec,condition_spec',
     repair_intake_records: 'appointment_id,verification_json',
     operation_receipts: 'request_id,payload_hash,result_status',
@@ -20,9 +19,17 @@ export async function verifyStaffSchema(db) {
     service_day_overrides: 'business_date,campus_id,paused',
   };
   await db.batch(Object.entries(projections).map(([table, columns]) => db.prepare(`SELECT ${columns} FROM ${table} LIMIT 0`)));
-  const required = ['staff_account_member_sync', 'legacy_admin_login_changed', 'activation_admin_submit_guard', 'activation_approve', 'active_repair_member_sync', 'field_presence_busy_guard', 'service_day_booking_insert', 'service_day_repair_start'];
+  const required = ['staff_account_member_sync', 'staff_account_member_insert_guard', 'staff_account_member_update_guard', 'activation_admin_submit_guard', 'activation_approve', 'active_repair_member_sync', 'field_presence_busy_guard', 'service_day_booking_insert', 'service_day_repair_start'];
   const result = await db.prepare(`SELECT name FROM sqlite_schema WHERE type='trigger' AND name IN (${required.map(() => '?').join(',')})`).bind(...required).all();
   if (result.results.length !== required.length) throw new Error('Staff workflow database guards are missing');
+  const indexes = await db.prepare("PRAGMA index_list('staff_accounts')").all();
+  if (!indexes.results.some(index => index.name === 'idx_staff_accounts_member_id' && index.unique === 1 && index.partial === 0))
+    throw new Error('Staff member login uniqueness is missing');
+  const loginKey = await db.prepare("PRAGMA index_info('idx_staff_accounts_member_id')").all();
+  if (loginKey.results.length !== 1 || loginKey.results[0].name !== 'member_id')
+    throw new Error('Staff member login uniqueness targets the wrong column');
+  const retired = await db.prepare("SELECT name FROM sqlite_schema WHERE name IN ('legacy_admin_logins','legacy_admin_login_changed') UNION ALL SELECT code AS name FROM roles WHERE code='legacy_admin'").all();
+  if (retired.results.length) throw new Error('Retired administrator authorization is still present');
   const marker = await db.prepare('SELECT id FROM staff_release_markers WHERE id=?').bind(STAFF_RELEASE).first();
   if (!marker) throw new Error('Staff cutover migration is incomplete');
   return STAFF_RELEASE;

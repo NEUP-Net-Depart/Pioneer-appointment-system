@@ -165,7 +165,7 @@ export function fieldDomain({ db, event }) {
         db
           .prepare(
             `SELECT mr.member_id,rg.*,mr.scope_bindings,r.code AS role_code FROM member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1
-          JOIN role_grants rg ON rg.role_id=r.id WHERE r.code<>'legacy_admin' AND mr.member_id IN (${marks}) AND mr.effective_from<=? AND (mr.effective_to IS NULL OR mr.effective_to>?)`
+          JOIN role_grants rg ON rg.role_id=r.id WHERE mr.member_id IN (${marks}) AND mr.effective_from<=? AND (mr.effective_to IS NULL OR mr.effective_to>?)`
           )
           .bind(...ids, day, day),
         db

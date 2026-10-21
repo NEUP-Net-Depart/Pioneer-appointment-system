@@ -7,13 +7,16 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {validateRemoteConfig,remoteOptions} from '../scripts/release-guard.mjs';
 import {assertCleanRelease,pagesSiteUrl,previewBranch,releasePlan} from '../scripts/release-plan.mjs';
-import {ciReleaseTarget,ciReleasePlan,runCiRelease,runCiPreviewMigration} from '../scripts/ci-release.mjs';
+import {ciReleaseTarget,ciReleasePlan,runCiRelease as release,runCiPreviewMigration} from '../scripts/ci-release.mjs';
 import {publishPages} from '../scripts/pages-deploy.mjs';
+import {STAFF_RELEASE} from '../src/db/staff-readiness.js';
 
 const bindings=(id,bucket)=>({d1_databases:[{binding:'DB',database_name:bucket,database_id:id}],r2_buckets:[{binding:'ATTACHMENTS',bucket_name:bucket}]});
 const cfg=()=>({name:'existing-pages',...bindings('11111111-1111-4111-8111-111111111111','production-private'),env:{preview:bindings('22222222-2222-4222-8222-222222222222','preview-private')}});
 
 const ciEnv=(event,branch)=>({GITHUB_ACTIONS:'true',GITHUB_EVENT_NAME:event,GITHUB_REF:`refs/heads/${branch}`,CLOUDFLARE_ACCOUNT_ID:'test-account',CLOUDFLARE_API_TOKEN:'test-token',SITE_URL:'https://example.test'});
+const readyPreview=async()=>Response.json({ok:true,staffRelease:STAFF_RELEASE,workflow:'staff-platform'});
+const runCiRelease=(env,run)=>release(env,run,readyPreview);
 
 test('every workflow npm command resolves to an available package script',async()=>{
   const {scripts}=JSON.parse(await readFile('package.json','utf8'));
@@ -72,6 +75,23 @@ test('only dev can run the shared Preview migration, and publishing dev requires
   await assert.rejects(()=>runCiRelease(ciEnv('push','dev'),()=>assert.fail('Unexpected publication')),/migration job must succeed/);
 });
 
+test('branch publication waits for the shared dev schema without migrating or publishing incompatible code',async()=>{
+  for(const branch of ['fix/perm','feat/staff-permissions']){
+    const calls=[],requests=[];
+    const plan=await release({...ciEnv('push',branch),PREVIEW_MIGRATIONS_APPLIED:'false'},(script,args)=>{calls.push([script,args]);return {status:0};},async url=>{
+      requests.push(url.href);
+      return Response.json({ok:true,staffRelease:'staff-react-0031',workflow:'staff-platform'});
+    });
+    assert.equal(plan.skipped,true);
+    assert.deepEqual(calls,[]);
+    assert.deepEqual(requests,['https://dev.pioneer-appointment-system.pages.dev/api/health']);
+  }
+  for(const fetcher of [async()=>new Response('unavailable',{status:500}),async()=>Response.json({ok:true}),async()=>{throw new Error('network unavailable');}]){
+    await assert.rejects(release(ciEnv('push','fix/perm'),()=>assert.fail('Unexpected publication'),fetcher));
+  }
+  for(const branch of ['dev','main'])await release({...ciEnv('push',branch),PREVIEW_MIGRATIONS_APPLIED:'true'},()=>({status:0}),()=>assert.fail('Do not use dev readiness to gate migrated releases'));
+});
+
 test('CI stops on failed migrations, publication or smoke and rejects missing credentials before execution',async()=>{
   for(const failure of ['migrate-remote.mjs','deploy.mjs']){
     const calls=[];
@@ -98,6 +118,8 @@ test('GitHub deployment links are emitted only after the branch smoke check succ
     assert.equal(await readFile(output,'utf8'),'url=https://feat-nfc-checkin.pioneer-appointment-system.pages.dev\n');
     await writeFile(output,'');
     await assert.rejects(()=>runCiRelease(env,script=>({status:script==='smoke.mjs' ? 1 : 0})),/release stopped/);
+    assert.equal(await readFile(output,'utf8'),'');
+    await release(env,()=>assert.fail('Unexpected publication'),async()=>Response.json({ok:true,staffRelease:'staff-react-0031',workflow:'staff-platform'}));
     assert.equal(await readFile(output,'utf8'),'');
   }finally{
     await unlink(output);

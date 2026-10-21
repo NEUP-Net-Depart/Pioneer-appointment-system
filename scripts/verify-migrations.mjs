@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { resolve, relative, isAbsolute } from 'node:path';
 import assert from 'node:assert/strict';
 import { root, wrangler } from './cli.mjs';
@@ -12,18 +12,25 @@ const path = await mkdtemp(resolve(parent, 'db-'));
 const inside = relative(parent, path);
 if (!inside || inside.startsWith('..') || isAbsolute(inside)) throw new Error('Unsafe verification directory');
 try {
-  const config = 'wrangler.jsonc';
+  for (const directory of ['migrations','database/staff-migrations']) {
+  const config = resolve(path,directory==='migrations' ? 'main.json' : 'staff.json');
+  await writeFile(config,JSON.stringify({name:'migration-verification',compatibility_date:'2026-09-01',d1_databases:[{
+    binding:'DB',database_name:directory==='migrations' ? 'main-chain-verification' : 'staff-chain-verification',
+    database_id:directory==='migrations' ? '11111111-1111-1111-1111-111111111111' : '22222222-2222-2222-2222-222222222222',
+    migrations_dir:resolve(root,directory)
+  }]}));
   const args = ['d1','migrations','apply','DB','--local','--persist-to',path,'--config',config];
   wrangler(args);
   wrangler(args); // The migration ledger must make the second application a no-op.
   const [schema, keys, capacities, weekday, release] = JSON.parse(wrangler(['d1','execute','DB','--local','--persist-to',path,'--config',config,'--json','--command',
     "SELECT name FROM sqlite_schema WHERE type IN ('table','trigger','index') ORDER BY name; PRAGMA foreign_key_check; SELECT campus,time_slot,capacity,revision FROM slot_capacities ORDER BY campus,time_slot; SELECT campus,weekday,time_slot,capacity,revision FROM weekday_slot_capacities ORDER BY campus,weekday,time_slot; SELECT id FROM staff_release_markers ORDER BY id;"], { capture: true }));
   assert.ok(schema.success && keys.success && capacities.success);
-  assert.deepEqual(release.results,[{id:'staff-react-0030'},{id:'staff-react-0031'}], 'The cutover migration did not complete');
+  assert.deepEqual(release.results,[{id:'staff-business-0033'},{id:'staff-react-0030'},{id:'staff-react-0031'}], 'The cutover migration did not complete');
   assert.deepEqual(keys.results, [], 'D1 foreign key violations');
   const names = new Set(schema.results.map(row => row.name));
   for(const name of ['roster_collection_series','roster_submissions','roster_preference_history','roster_preference_created','roster_preference_changed'])assert.ok(names.has(name),`Missing persistent collection schema object: ${name}`);
   for (const name of ['staff_accounts','staff_campus_grants','staff_whitelist','whitelist_campus_grants','activation_requests','credential_recoveries','appointments','appointment_attachments','rate_limits','storage_quota','attachment_storage','attachment_storage_reserve','attachment_storage_release','idx_attachment_expiry','idx_storage_expiry','idx_storage_pending','appointment_capacity_insert','appointment_capacity_update','idx_online_student_day','appointment_student_day_insert','appointment_student_day_update','service_locations','service_location_changes','booking_requests','appointment_location_insert','appointment_new_slot_deadline','idx_pending_student_photos','idx_active_queue']) assert.ok(names.has(name), `Missing D1 schema object: ${name}`);
+  for(const name of ['legacy_admin_logins','legacy_admin_login_changed'])assert.ok(!names.has(name),`Retired authorization remains: ${name}`);
   assert.ok(names.has('activation_approve'),'Missing atomic activation approval trigger');
   assert.ok(names.has('idx_one_pending_activation') && names.has('idx_one_approved_activation'),'Missing activation uniqueness constraints');
   assert.ok(names.has('idx_repair_number'), 'Missing repair number uniqueness index');
@@ -38,5 +45,6 @@ try {
   assert.equal(weekday.results.length, 32, 'Expected four weekday half-hour templates per campus');
   assert.ok(weekday.results.every(row => row.capacity === 5 && row.revision === 0), 'Default half-hour capacity settings changed');
   assert.ok(!names.has('users') && !names.has('idx_appointments_queue') && !names.has('appointments_new') && !names.has('appointment_attachments_new') && !names.has('credential_recoveries_new'),'Retired or temporary schema still exists');
-  console.log(`D1 migrations verified for ${config}: fresh state, re-application and foreign keys.`);
+  console.log(`D1 migrations verified for ${directory}: fresh state, re-application and foreign keys.`);
+  }
 } finally { await rm(path, { recursive: true, force: true }); }

@@ -147,7 +147,7 @@ test('staffing needs support a weekly default, per-day adjustments and responsiv
   expect((await saved.json()).requirements.map(row=>row.ordinaryMinimum)).toEqual([4,2,4,4]);
 });
 
-test('off-duty leaders can prepare schedules without gaining field coordination', async ({ page, request }) => {
+test('permanent off-duty managers coordinate business and prepare schedules without repair authority', async ({ page, request }) => {
   await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': '192.0.2.120' });
   const root = await request.post('/api/auth/login', { data: { account: 'root001', password: process.env.E2E_ROOT_PASSWORD } }).then(response => response.json());
   async function command(path, data, method = data ? 'POST' : 'GET', token = root.token) {
@@ -158,16 +158,19 @@ test('off-duty leaders can prepare schedules without gaining field coordination'
   const application = await command('/api/activation', { studentId: '20998721',name:'提前排班负责人',homeCampus:'南湖',password:'ScheduleTest!2026' });
   await command('/api/activation-requests/review', { ids:[application.id],status:'approved',identityVerified:true });
   const member = await command('/api/members/member-20998721');
-  await command('/api/members/member-20998721/roles', { revision:member.member.revision,bindings:['role-repair-lead','role-office-lead'].map(roleId => ({roleId,scope:{campusIds:['campus-nanhu']},effectiveFrom:'2026-01-01'})) },'PUT');
+  await command('/api/members/member-20998721/roles', { revision:member.member.revision,bindings:[{roleId:'role-repair-lead',scope:{campusIds:['campus-nanhu']},effectiveFrom:'2026-01-01'}] },'PUT');
   await page.goto('/staff/'); await page.locator('#login-id').fill('20998721'); await page.locator('#login-password').fill('ScheduleTest!2026');
   await page.getByRole('button', {name:'进入系统'}).click();
   await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();
   const token = await page.evaluate(() => sessionStorage.getItem('pioneerToken'));
   const profile = await command('/api/auth/me',undefined,'GET',token);
   expect(profile.todayDuties).toEqual([]);
+  expect(profile.permissions['repair.correct']).toBe(true);
+  expect(profile.permissions['repair.transfer']).toBe(true);
+  expect(profile.permissions['repair.start']).not.toBe(true);
   const nav = page.locator('.field-sidebar');
-  await expect(nav.getByRole('button',{name:'现场管理',exact:true})).toHaveCount(0);
-  await expect(nav.getByRole('button',{name:'接待台',exact:true})).toHaveCount(0);
+  await expect(nav.getByRole('button',{name:'现场管理',exact:true})).toBeVisible();
+  await expect(nav.getByRole('button',{name:'接待台',exact:true})).toBeVisible();
   await expandGroup(page,'值班管理');
   for (const name of ['维修排班管理','办公排班管理','请假审批']) await expect(nav.getByRole('button',{name,exact:true})).toBeVisible();
   await nav.getByRole('button',{name:'维修排班管理',exact:true}).click();
