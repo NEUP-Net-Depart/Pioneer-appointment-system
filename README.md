@@ -24,9 +24,8 @@ flowchart LR
 | --- | --- | --- |
 | Production | `main` | [wrangler.jsonc](wrangler.jsonc) |
 | 共享 Preview | `dev` 及普通功能分支 | 同文件的 `env.preview` |
-| Staff Staging | `next/staff-platform` | [wrangler.staff-staging.jsonc](wrangler.staff-staging.jsonc) |
 
-三套环境独立保存数据、附件与密钥；普通 Preview 分支共用测试资源。推送会触发 CI，`main`、`dev`、`next/staff-platform` 验证后迁移并发布；`feat/staff-*` 仅验证，其他分支发布 Preview 且不迁移。**`main` 为生产分支，推送和远程操作须明确授权。**
+Production 与 Preview 独立保存数据、附件与密钥；Preview 分支共用测试资源。推送会触发 CI，`main`、`dev` 验证后迁移并发布，其他分支发布 Preview 且不迁移。**`main` 为生产分支，推送和远程操作须明确授权。**
 
 ## 本地运行
 
@@ -48,7 +47,7 @@ npm run dev
 | `npm run preview:field` | 带工作人员流程夹具的隔离预览 |
 | `npm run preview:booking-layout` | 8790 端口预约布局预览，模拟数据、禁用提交 |
 | `npm run test:booking-layout` | 预约布局回归 |
-| `npm run release:plan -- --staff-staging` | 查看 Staff Staging 发布计划，不执行远程操作 |
+| `npm run release:plan -- --preview` | 查看当前分支的 Preview 发布计划，不执行远程操作 |
 
 ## 文档
 

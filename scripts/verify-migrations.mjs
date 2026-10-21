@@ -12,7 +12,7 @@ const path = await mkdtemp(resolve(parent, 'db-'));
 const inside = relative(parent, path);
 if (!inside || inside.startsWith('..') || isAbsolute(inside)) throw new Error('Unsafe verification directory');
 try {
- for (const config of ['wrangler.jsonc', 'wrangler.staff-staging.jsonc']) {
+  const config = 'wrangler.jsonc';
   const args = ['d1','migrations','apply','DB','--local','--persist-to',path,'--config',config];
   wrangler(args);
   wrangler(args); // The migration ledger must make the second application a no-op.
@@ -39,5 +39,4 @@ try {
   assert.ok(weekday.results.every(row => row.capacity === 5 && row.revision === 0), 'Default half-hour capacity settings changed');
   assert.ok(!names.has('users') && !names.has('idx_appointments_queue') && !names.has('appointments_new') && !names.has('appointment_attachments_new') && !names.has('credential_recoveries_new'),'Retired or temporary schema still exists');
   console.log(`D1 migrations verified for ${config}: fresh state, re-application and foreign keys.`);
- }
 } finally { await rm(path, { recursive: true, force: true }); }

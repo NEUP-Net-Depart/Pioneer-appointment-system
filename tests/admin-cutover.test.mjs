@@ -26,7 +26,8 @@ async function migrate(db, directory, file) {
   await db.batch(statements.map(sql => db.prepare(sql)));
 }
 
-for (const directory of ['migrations','database/staff-migrations']) test(`${directory}: old administrators keep original campus management without inferred office work or elevation`, async () => {
+test('old administrators keep original campus management without inferred office work or elevation', async () => {
+  const directory = 'migrations';
   const clock = `const RealDate=Date;globalThis.Date=class extends RealDate{constructor(...args){super(...(args.length?args:[1792029600000]));}static now(){return 1792029600000;}};`;
   const mf = new Miniflare({ telemetry:{enabled:false}, workers:[{config:{
     name:'admin-cutover-tests',compatibilityDate:cfg.compatibility_date,compatibilityFlags:cfg.compatibility_flags,

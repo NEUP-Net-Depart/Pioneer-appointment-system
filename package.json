@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Cloudflare Pages with isolated Production, Preview and Staff Staging resources",
+  "description": "Cloudflare Pages with isolated Production and Preview resources",
   "engines": {
     "node": ">=22.18.0"
   },
@@ -20,7 +20,6 @@
     "test": "npm run build && node --test tests/*.test.mjs tests/architecture/*.test.mjs tests/extension/meeting-fixture/*.test.mjs",
     "deploy": "node scripts/deploy.mjs",
     "deploy:preview": "node scripts/deploy.mjs --preview",
-    "deploy:staff-staging": "node scripts/deploy.mjs --staff-staging",
     "smoke": "node scripts/smoke.mjs",
     "lint": "eslint . --max-warnings 0",
     "audit:architecture": "node scripts/audit.mjs",

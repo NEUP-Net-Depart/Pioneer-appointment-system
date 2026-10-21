@@ -4,25 +4,21 @@ import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {config,root} from './cli.mjs';
 import {pagesSiteUrl,previewBranch} from './release-plan.mjs';
-import {STAFF_BRANCH,validateStaffConfig} from './release-guard.mjs';
 
 export function ciReleaseTarget(env){
   if(env.GITHUB_ACTIONS!=='true')throw new Error('CI releases must run in GitHub Actions.');
   if(!env.GITHUB_REF?.startsWith('refs/heads/') || env.GITHUB_EVENT_DELETED==='true')throw new Error('Only live repository branches may release.');
-  if(env.GITHUB_REF.slice('refs/heads/'.length).startsWith('feat/staff-'))throw new Error('Staff feature branches use isolated PR verification only.');
   if(env.GITHUB_EVENT_NAME==='push' && env.GITHUB_REF==='refs/heads/main')return 'production';
   if(['push','workflow_dispatch'].includes(env.GITHUB_EVENT_NAME) && env.GITHUB_REF!=='refs/heads/main'){
     previewBranch(env);
-    if(env.GITHUB_REF===`refs/heads/${STAFF_BRANCH}`)return 'staff-staging';
     return 'preview';
   }
   throw new Error('Only branch pushes or manual runs on non-main branches may release.');
 }
-export function ciReleasePlan(env,cfg,staffCfg){
+export function ciReleasePlan(env,cfg){
   const target=ciReleaseTarget(env),branch=env.GITHUB_REF.slice('refs/heads/'.length);
   if(target==='production' && !env.SITE_URL)throw new Error('Configure SITE_URL before releasing.');
-  if(target==='staff-staging')validateStaffConfig(cfg,staffCfg);
-  const url=new URL(target==='production' ? env.SITE_URL : target==='staff-staging' ? pagesSiteUrl(staffCfg.name,branch,STAFF_BRANCH) : pagesSiteUrl(cfg.name,branch));
+  const url=new URL(target==='production' ? env.SITE_URL : pagesSiteUrl(cfg.name,branch));
   if(url.protocol!=='https:' || url.username || url.password || url.pathname!=='/' || url.search || url.hash)throw new Error('SITE_URL must be the HTTPS site origin.');
   return {target,branch,url:url.origin};
 }
@@ -40,18 +36,11 @@ export function runCiPreviewMigration(env=process.env,run=execute(env)){
   credentials(env);
   step(run,'migrate-remote.mjs',['--preview','--execute','--approve-preview'],'preview');
 }
-export function runCiStaffMigration(env=process.env,run=execute(env)){
-  if(ciReleaseTarget(env)!=='staff-staging')throw new Error('Only next/staff-platform may migrate Staff Staging.');
-  credentials(env);
-  step(run,'migrate-remote.mjs',['--staff-staging','--execute','--approve-staff-staging'],'staff-staging');
-  if(env.GITHUB_OUTPUT)appendFileSync(env.GITHUB_OUTPUT,`commit=${env.GITHUB_SHA}\n`);
-}
 export async function runCiRelease(env=process.env,run=execute(env)){
-  const plan=ciReleasePlan(env,await config(),await config({staffStaging:true}));
+  const plan=ciReleasePlan(env,await config());
   credentials(env);
   if(plan.branch==='dev' && env.PREVIEW_MIGRATIONS_APPLIED!=='true')throw new Error('The dev Preview migration job must succeed before publishing.');
-  if(plan.target==='staff-staging' && (!env.GITHUB_SHA || env.STAFF_MIGRATIONS_COMMIT!==env.GITHUB_SHA))throw new Error('The Staff Staging migration job must succeed for the same commit before publishing.');
-  const args=[...(plan.target==='staff-staging' ? ['--staff-staging'] : plan.target==='preview' ? ['--preview'] : []),'--execute',`--approve-${plan.target}`];
+  const args=[...(plan.target==='preview' ? ['--preview'] : []),'--execute',`--approve-${plan.target}`];
   if(plan.target==='production')step(run,'migrate-remote.mjs',args,plan.target);
   step(run,'deploy.mjs',args,plan.target);
   step(run,'smoke.mjs',[plan.url],plan.target);
@@ -62,9 +51,8 @@ export async function runCiRelease(env=process.env,run=execute(env)){
 if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const args=process.argv.slice(2);
   if(args.length===1 && args[0]==='--migrate-preview')runCiPreviewMigration();
-  else if(args.length===1 && args[0]==='--migrate-staff-staging')runCiStaffMigration();
   else if(!args.length)await runCiRelease();
   else{
-    throw new Error('Use ci-release.mjs, --migrate-preview or --migrate-staff-staging.');
+    throw new Error('Use ci-release.mjs or --migrate-preview.');
   }
 }

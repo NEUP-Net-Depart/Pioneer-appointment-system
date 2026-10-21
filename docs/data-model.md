@@ -1,6 +1,6 @@
 # 数据模型
 
-Production/Preview 的 schema 以 [migrations/](../migrations/) 为准，独立 Staff Staging 使用 [database/staff-migrations/](../database/staff-migrations/)。迁移只追加，运行时不建表；业务规则见 [业务规则与权限](requirements.md)。
+Production/Preview 共用 [migrations/](../migrations/) 中的 schema 迁移。迁移只追加，运行时不建表；业务规则见 [业务规则与权限](requirements.md)。
 
 ## 核心实体
 
@@ -44,14 +44,13 @@ Production/Preview 的 schema 以 [migrations/](../migrations/) 为准，独立 
 
 ## 迁移与兼容
 
-两条迁移历史由 [基线清单](contracts/baseline-manifest.json) 保存完整文件指纹；模块契约 schemaVersion 与迁移文件序号分别管理。发布就绪检查同时校验真实表结构、触发器和迁移标记，不能仅凭版本字符串判断。
+迁移历史由 [基线清单](contracts/baseline-manifest.json) 保存完整文件指纹；模块契约 schemaVersion 与迁移文件序号分别管理。发布就绪检查同时校验真实表结构、触发器和迁移标记，不能仅凭版本字符串判断。
 
 | 升级来源 | 正式迁移 | 回归脚本 |
 | --- | --- | --- |
 | dev 0009 | `migrations/0010_staff_platform.sql` | [dev 升级 SQL](../database/upgrades/dev-0009-to-staff-platform.sql) |
-| Staff 0007 | `database/staff-migrations/0008_five_statuses.sql` | [Staff 升级 SQL](../database/upgrades/staff-0007-to-five-statuses.sql) |
 
-`database/upgrades/` 是升级测试来源，须与对应正式迁移一致，不能绕过迁移账本直接重复执行；dev 历史夹具及原文指纹位于 `tests/fixtures/dev-migrations/`。`tests/staff-upgrade.test.mjs` 校验双路径结构一致、历史引用保留、失败回滚和外键完整性。
+`database/upgrades/` 是升级测试来源，须与对应正式迁移一致，不能绕过迁移账本直接重复执行；dev 历史夹具及原文指纹位于 `tests/fixtures/dev-migrations/`。`tests/staff-upgrade.test.mjs` 校验主迁移链升级时的历史引用保留、失败回滚和外键完整性。
 
 保留历史编号、`repair_number` 查询别名、凭证、附件、签名和时间；旧联系及设备字段继续读取，缺失结果保留 `legacy_unknown`。历史重复和多张在修不删除，处理完成前禁止新增冲突；旧小时段仅供历史读取。
 

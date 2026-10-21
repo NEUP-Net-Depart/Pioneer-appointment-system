@@ -11,9 +11,10 @@ async function statements(path){
   }
   assert.equal(buffer,'');return result;
 }
-test('both staffing upgrades preserve published history, flag old tasks and roll back interrupted changes',async()=>{
-  const mf=new Miniflare({telemetry:{enabled:false},workers:[{config:{name:'staffing-upgrade',compatibilityDate:'2026-10-01',manifest:{mainModule:'index.js',modules:{'index.js':{type:'esm',contents:'export default {fetch(){return new Response("ok");}}'}}},env:{DEV:{type:'d1',id:'staffing-dev'},STAFF:{type:'d1',id:'staffing-staff'}}}}]});
-  try{for(const [binding,directory,last] of [['DEV','migrations','0021_roster_staffing_requirements.sql'],['STAFF','database/staff-migrations','0019_roster_staffing_requirements.sql']]){
+test('staffing upgrades preserve published history, flag old tasks and roll back interrupted changes',async()=>{
+  const mf=new Miniflare({telemetry:{enabled:false},workers:[{config:{name:'staffing-upgrade',compatibilityDate:'2026-10-01',manifest:{mainModule:'index.js',modules:{'index.js':{type:'esm',contents:'export default {fetch(){return new Response("ok");}}'}}},env:{DEV:{type:'d1',id:'staffing-dev'}}}}]});
+  try{
+    const binding='DEV',directory='migrations',last='0021_roster_staffing_requirements.sql';
     const db=await mf.getD1Database(binding);
     for(const file of (await readdir(directory)).filter(file=>file.endsWith('.sql') && file<last).sort())await db.batch((await statements(`${directory}/${file}`)).map(sql=>db.prepare(sql)));
     await db.prepare("INSERT INTO roster_tasks(id,week_start,campus_scope,slot_start,slot_end,deadline,created_at) VALUES('old-task','2026-10-12','{\"campusIds\":[\"campus-nanhu\"]}','19:00','21:00','2026-10-11','2026-10-10')").run();
@@ -30,5 +31,5 @@ test('both staffing upgrades preserve published history, flag old tasks and roll
     assert.equal(office.scope_spec,'{"campuses":"bound"}');
     assert.equal(await db.prepare("SELECT id FROM role_grants WHERE role_id='role-office-lead' AND permission_code='roster.repair.manage'").first(),null);
     assert.deepEqual((await db.prepare('PRAGMA foreign_key_check').all()).results,[]);
-  }}finally{await mf.dispose();}
+  }finally{await mf.dispose();}
 });

@@ -6,13 +6,12 @@
 | --- | --- | --- | --- | --- |
 | Production | `main` | `pioneer-appointments-production-v2` | `pioneer-attachments-production-v2` | 8 GiB |
 | 共享 Preview | `dev` 及普通功能分支 | `pioneer-appointments-preview-v2` | `pioneer-attachments-preview-v2` | 512 MiB |
-| Staff Staging | `next/staff-platform` | `pioneer-appointments-staff-staging` | `pioneer-attachments-staff-staging` | 512 MiB |
 
-Production/Preview 使用 [wrangler.jsonc](../wrangler.jsonc)，Staff Staging 使用 [独立配置](../wrangler.staff-staging.jsonc)。绑定名固定为 `DB`、`ATTACHMENTS`，配额由 `MAX_R2_BYTES` 指定。三套环境不复用数据或密钥；普通 Preview 分支共用测试库、附件和应用密钥。
+Production/Preview 使用 [wrangler.jsonc](../wrangler.jsonc)。绑定名固定为 `DB`、`ATTACHMENTS`，配额由 `MAX_R2_BYTES` 指定。Production 与 Preview 不复用数据或密钥；普通 Preview 分支共用测试库、附件和应用密钥。
 
-入口：[生产](https://pioneer-appointment-system.pages.dev)、[dev](https://dev.pioneer-appointment-system.pages.dev)、[Staff Staging](https://pioneer-staff-staging.pages.dev/staff/)。其他分支地址由发布计划生成；[Pages 分支别名](https://developers.cloudflare.com/pages/configuration/preview-deployments/#preview-aliases)转换时须避免重名。
+入口：[生产](https://pioneer-appointment-system.pages.dev)、[dev](https://dev.pioneer-appointment-system.pages.dev)。其他分支地址由发布计划生成；[Pages 分支别名](https://developers.cloudflare.com/pages/configuration/preview-deployments/#preview-aliases)转换时须避免重名。
 
-Pages 通过 Actions Direct Upload 发布，关闭自动 Git 构建。构建命令 `npm run build`，输出 `dist`，Functions 位于 `functions/`，保留 `nodejs_compat` 和 `limits.cpu_ms=1000`。主项目生产分支为 `main`，Staff 项目 `pioneer-staff-staging` 的生产分支为 `next/staff-platform`。工作人员统一运行 React，版本由部署代码决定。
+Pages 通过 Actions Direct Upload 发布，关闭自动 Git 构建。构建命令 `npm run build`，输出 `dist`，Functions 位于 `functions/`，保留 `nodejs_compat` 和 `limits.cpu_ms=1000`。项目生产分支为 `main`。工作人员统一运行 React，版本由部署代码决定。
 
 ## Secrets 与初始化
 
@@ -22,7 +21,7 @@ Pages 通过 Actions Direct Upload 发布，关闭自动 Git 构建。构建命�
 | `PII_ENCRYPTION_KEY` | 64 位十六进制，须匹配已有联系方式数据 |
 | `SCAN_QR_SECRET` | 可选，至少 32 字符；缺省使用 PII 密钥及独立 HMAC 域，变更会使已打印维修码失效 |
 
-密钥保存于相应 Pages 环境；Staff 应用密钥同时由 GitHub `staff-staging` 环境提供。不得写入 Git、Wrangler vars、前端、日志或构建产物。私人凭证补发不使维修码失效；保留既有签名密钥，兼容历史测试环境的 JWT 签名维修码。
+密钥保存于相应 Pages 环境。不得写入 Git、Wrangler vars、前端、日志或构建产物。私人凭证补发不使维修码失效；保留既有签名密钥，兼容历史测试环境的 JWT 签名维修码。
 
 `root001`、`root002` 是受保护的 `superadmin`。首次 seed 从本机环境变量读取 `ROOT001_PASSWORD`、`ROOT002_PASSWORD`，各 16–128 字符；完成后清除。密码和密钥备份保存在仓库外的受限目录。seed 不覆盖已有密码，发布不初始化账号。
 
@@ -36,15 +35,13 @@ Pages 通过 Actions Direct Upload 发布，关闭自动 Git 构建。构建命�
 | --- | --- |
 | 推送 `main` | 验证 → Production D1 迁移 → 发布 → HTTP smoke |
 | 推送 `dev` | 验证 → Preview 快照本地演练 → 共享 Preview D1 迁移 → 发布 → smoke |
-| 推送 `next/staff-platform` | 验证 → Preview 只读演练与独立 Staff D1 迁移 → Staff 发布 → smoke |
-| 推送 `feat/staff-*` | 仅隔离本地验证 |
 | 推送其他分支 | 验证 → 分支 Preview 发布 → smoke，不迁移 |
 | 手动 CI | 仅非 `main` 分支，遵循对应分支规则 |
 | PR、标签、分支删除 | PR 仅验证；标签和删除不发布 |
 
-迁移或演练失败停止发布。dev 整条链由 `cloudflare-dev-release` 串行保护；Staff 发布与维护共用 `cloudflare-staff-staging` 锁，迁移 SHA 必须匹配发布 SHA。共享 Preview 演练和迁移使用 `cloudflare-preview-migrations` 锁；本地远程操作避开正在执行的 CI。
+迁移或演练失败停止发布。dev 整条链由 `cloudflare-dev-release` 串行保护。共享 Preview 演练和迁移使用 `cloudflare-preview-migrations` 锁；本地远程操作避开正在执行的 CI。
 
-Preview 演练仅将现有 D1 快照导出至临时本地数据库，应用待执行迁移，核验原数据及实际账号权限；不修改远程 Preview，不上传快照为 CI 工件。Staff 发布在临时目录使用标准 `wrangler.jsonc`，避免 Pages 不支持自定义配置路径；本地 Secrets 不进入发布目录。
+Preview 演练仅将现有 D1 快照导出至临时本地数据库，应用待执行迁移，核验原数据及实际账号权限；不修改远程 Preview，不上传快照为 CI 工件。本地 Secrets 不进入发布目录。
 
 仓库配置 `CLOUDFLARE_ACCOUNT_ID`，各 GitHub Environment 配置：
 
@@ -52,16 +49,14 @@ Preview 演练仅将现有 D1 快照导出至临时本地数据库，应用待�
 | --- | --- | --- |
 | `production` | `main` | `CLOUDFLARE_API_TOKEN`：D1 Edit、Pages Edit、R2 Storage Edit；变量 `SITE_URL` 为生产域名 |
 | `preview` | 普通 Preview 分支 | `CLOUDFLARE_PREVIEW_API_TOKEN`：Pages Edit |
-| `preview-migrations` | `dev`、`next/staff-platform` | `CLOUDFLARE_PREVIEW_D1_API_TOKEN`：D1 Edit；next 仅导出与本地演练，远程迁移仍限 dev |
+| `preview-migrations` | `dev` | `CLOUDFLARE_PREVIEW_D1_API_TOKEN`：D1 Edit，用于快照演练和远程迁移 |
 | `preview-maintenance` | `main` | `CLOUDFLARE_PREVIEW_MAINTENANCE_API_TOKEN`：D1 Edit、R2 Storage Edit |
-| `staff-staging` | `next/staff-platform` | `CLOUDFLARE_STAFF_PAGES_API_TOKEN`：Pages Edit；独立应用密钥与变量 `MAX_R2_BYTES=536870912` |
-| `staff-staging-migrations` | `next/staff-platform` | `CLOUDFLARE_STAFF_D1_API_TOKEN`：D1 Edit；`CLOUDFLARE_STAFF_MAINTENANCE_API_TOKEN`：D1 Edit、R2 Storage Edit |
 
-Token 限定目标账号，维护 Token 不提供给功能分支，R2 权限须支持删除。Pages Edit 无法仅限同项目 Preview。Staff 两个环境仅允许指定分支，关闭管理员绕过；[分支规则](../.github/staff-staging-ruleset.json)禁止强推和删除，要求最新基线、线性历史及 `test` 通过。
+Token 限定目标账号，维护 Token 不提供给功能分支，R2 权限须支持删除。Pages Edit 无法仅限同项目 Preview。
 
 ## 手动发布与回退
 
-远程操作须明确授权且工作树干净，默认仅打印计划。以下为 Preview 操作；生产移除 `--preview` 并改用 `--approve-production`，Staff 改为 `--staff-staging` 和 `--approve-staff-staging`。Preview 迁移从 `dev` 执行，Staff 从 `next/staff-platform` 执行。
+远程操作须明确授权且工作树干净，默认仅打印计划。以下为 Preview 操作；生产移除 `--preview` 并改用 `--approve-production`。Preview 迁移从 `dev` 执行。
 
 ```bash
 npm run release:plan -- --preview
@@ -80,21 +75,20 @@ npm run smoke -- https://<domain>
 | --- | --- | --- |
 | Production/Preview 附件清理 | 周一 03:17 | `ATTACHMENT_MAINTENANCE_ENABLED=true` |
 | Production/Preview 预约逾期 | 每日 21:35 | `BOOKING_MAINTENANCE_ENABLED=true` |
-| Staff Staging 预约逾期及附件清理 | 每日 21:35 | `STAFF_MAINTENANCE_ENABLED=true` |
 
-[维护工作流](../.github/workflows/)的定时入口从默认分支派发：Production/Preview 在 `main` 执行，Staff 在 `next/staff-platform` 执行。手动运行默认 dry-run；启用的定时任务使用 apply。维护不迁移 schema，附件清理覆盖到期文件、超过 24 小时的未完成上传和失败补偿，物理删除成功后才释放额度。
+[维护工作流](../.github/workflows/)的定时入口从默认分支派发，在 `main` 执行。手动运行默认 dry-run；启用的定时任务使用 apply。维护不迁移 schema，附件清理覆盖到期文件、超过 24 小时的未完成上传和失败补偿，物理删除成功后才释放额度。
 
 ```bash
 npm run appointments:expire -- --preview --dry-run
 npm run attachments:cleanup -- --preview --dry-run
 ```
 
-执行时将 `--dry-run` 改为 `--apply`；生产移除 `--preview`，Staff 换为 `--staff-staging`。
+执行时将 `--dry-run` 改为 `--apply`；生产移除 `--preview`。
 
-D1 备份使用 `npx wrangler d1 export DB --remote --output <受限备份路径>`；Preview 加 `--env preview`，Staff 加 `--config wrangler.staff-staging.jsonc`。R2 和密钥另行备份，均不入 Git；重建或删除远程资源须单独授权。
+D1 备份使用 `npx wrangler d1 export DB --remote --output <受限备份路径>`；Preview 加 `--env preview`。R2 和密钥另行备份，均不入 Git；重建或删除远程资源须单独授权。
 
 ## 验证范围
 
-`npm run verify` 覆盖格式、lint、类型、架构／平台审计、语法与 Functions 构建、Node 测试、双迁移链、通用浏览器和工作人员浏览器。测试使用隔离数据；本地通过不代表远程迁移或发布成功。线上 smoke 校验 React 入口、资源字节、真实结构及迁移标记、API 鉴权与私有路径。
+`npm run verify` 覆盖格式、lint、类型、架构／平台审计、语法与 Functions 构建、Node 测试、主迁移链、通用浏览器和工作人员浏览器。测试使用隔离数据；本地通过不代表远程迁移或发布成功。线上 smoke 校验 React 入口、资源字节、真实结构及迁移标记、API 鉴权与私有路径。
 
 设备检查须覆盖 HTTPS、摄像头授权、相册识别、手动编号、iOS／内置浏览器、镜头切换和手电筒；自动浏览器测试不能替代实机。使用测试成员和预约验证岗位范围，客户端越权请求仍须被服务端拒绝。

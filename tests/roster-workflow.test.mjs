@@ -60,9 +60,10 @@ test('historical signed assignments survive qualification changes but cannot aut
   assert.equal(validateRoster({assignments:[original]},{...source,preservedAssignments:[]}).valid,false);
 });
 
-test('both migration chains support collection, atomic weekly submissions, revisions, recurrence and preferences',async()=>{
-  const mf=new Miniflare({telemetry:{enabled:false},workers:[{config:{name:'roster-workflow',compatibilityDate:'2026-10-01',manifest:{mainModule:'index.js',modules:{'index.js':{type:'esm',contents:'export default {fetch(){return new Response("ok");}}'}}},env:{DEV:{type:'d1',id:'workflow-dev'},STAFF:{type:'d1',id:'workflow-staff'}}}}]});
-  try{for(const [binding,directory] of [['DEV','migrations'],['STAFF','database/staff-migrations']]){
+test('deployment migrations support collection, atomic weekly submissions, revisions, recurrence and preferences',async()=>{
+  const mf=new Miniflare({telemetry:{enabled:false},workers:[{config:{name:'roster-workflow',compatibilityDate:'2026-10-01',manifest:{mainModule:'index.js',modules:{'index.js':{type:'esm',contents:'export default {fetch(){return new Response("ok");}}'}}},env:{DEV:{type:'d1',id:'workflow-dev'}}}}]});
+  try{
+    const binding='DEV',directory='migrations';
     const db=await mf.getD1Database(binding);await migrate(db,directory);
     for(const [account,role] of [['root001','superadmin'],['20265501','technician'],['20265502','technician'],['20265503','superadmin']]){
       await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,protected,password_hash,created_at) VALUES(?,?,?,'南湖',?,'test','2026-01-01')").bind(account,account,role,account==='root001'?1:0).run();
@@ -214,5 +215,5 @@ test('both migration chains support collection, atomic weekly submissions, revis
     assert.equal(noWork.assignments.length,0);assert.equal(noWork.validation.valid,true,'a suspended whole week creates neither assignments nor artificial shortages');
     assert.equal((await service.publish(root,noWork.version.id,{version:noWork.version.version})).status,'published');
     assert.deepEqual((await db.prepare('PRAGMA foreign_key_check').all()).results,[]);
-  }}finally{await mf.dispose();}
+  }finally{await mf.dispose();}
 });
