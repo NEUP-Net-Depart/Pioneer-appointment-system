@@ -1,6 +1,6 @@
 # 后台移动端与首屏布局修复
 
-验证日期：2026-10-21，Asia/Shanghai。分支：`fix/mobile`；基线：`origin/dev` 的 `66ce1e08ca3c8f95aefd15f30b363e2b31481c9e`。
+验证日期：2026-10-21；CI 补充修复：2026-10-22，Asia/Shanghai。分支：`fix/mobile`；基线：`origin/dev` 的 `66ce1e08ca3c8f95aefd15f30b363e2b31481c9e`。
 
 本次完成后台辅助文案精简、桌面首屏布局修复及此前审查的 M01–M06。业务接口、权限判断、校验条件和数据库结构没有变更。
 
@@ -57,9 +57,9 @@
 
 所有操作均连接现有 `scripts/test-e2e.mjs` 创建的本机临时 D1/R2；移动端套件还限制请求只访问该 loopback 服务。未操作共享 Preview／生产数据。
 
-首屏测试共 **36 个场景**：Chromium / Firefox / WebKit × 393 / 1440px × 冷启动、硬刷新、延迟 CSS 与会话、CSS 不缓存的普通维修人员刷新、未登录、过期会话。使用响应闸门暂缓真实 CSS、`auth/me`、`field/home`，在释放前后连续 `requestAnimationFrame` 测量主区与侧栏边界，保存首屏／中间态／完成态截图、资源时序和浏览器版本。延迟条件由测试控制，不在产品中加入等待。
+首屏测试包含 **36 个基础场景**：Chromium / Firefox / WebKit × 393 / 1440px × 冷启动、硬刷新、延迟 CSS 与会话、CSS 不缓存的普通维修人员刷新、未登录、过期会话。另补充 Chromium 桌面／手机各 6 个固定 15px 占位滚动条场景，共 **48 个场景**。使用响应闸门暂缓真实 CSS、`auth/me`、`field/home`，在释放前后连续 `requestAnimationFrame` 测量根区域、工作区、主区与侧栏边界，保存首屏／中间态／完成态截图、资源时序和浏览器版本。延迟条件由测试控制，不在产品中加入等待。
 
-同一套断言在基线得到 **21 通过、15 失败**，失败均为桌面加载态；修复后 **36 通过、0 跳过**。断言要求每个已绘制的桌面帧都具备 216px 侧栏、正确主区位置和足够宽度，手机帧不显示桌面侧栏，所有帧无整页横向外溢。
+基础 36 个场景的断言在基线得到 **21 通过、15 失败**，失败均为桌面加载态；第一次本地修复后 **36 通过、0 跳过**。CI 发现滚动条占位差异后，补充修复的 **48 个场景全部通过**。现在断言要求工作区占满根区域，主区准确填满扣除侧栏后的可用宽度；桌面保留 216px 侧栏，手机不显示桌面侧栏，所有帧无整页横向外溢。
 
 | 命令 | 最终结果 |
 | --- | --- |
@@ -67,7 +67,7 @@
 | `npm run test:e2e` | 184 通过；41 个工作人员专用用例按配置跳过，由下行单独执行 |
 | `npm run test:field` | 41 通过，0 跳过 |
 | `npm run test:mobile` | 270 通过，0 跳过；最后局部调整另定向复跑 60 个组合，全部通过 |
-| `npm run test:layout` | 36 通过，0 跳过 |
+| `npm run test:layout` | CI 补充修复后 48 通过，0 跳过 |
 | `npm run format:staff:check`、`npm run lint`、`npm run typecheck` | 通过 |
 | `npm run audit:architecture`、`npm run audit:staff-platform`、`npm run check` | 通过 |
 | `npm run db:verify` | 新建、重复迁移及外键检查通过 |
@@ -89,6 +89,21 @@ node scripts/mobile-audit-summary.mjs
 ```
 
 `npm run verify` 已包含首屏回归；CI 安装 Firefox 并保存 `output/first-layout/` 截图与测量。全量移动矩阵保留为独立命令。新结果写入忽略的 `output/mobile-audit/` 与 `output/first-layout/`，不会覆盖此前审查的 `docs/mobile-audit/`。此前未提交的大体积审查证据保持原位置；本次提交本报告及精简后的修复证据。
+
+## CI 占位滚动条补充修复（2026-10-22）
+
+[`aa5cbaa` 的 CI](https://github.com/NEUP-Net-Depart/Pioneer-appointment-system/actions/runs/39628362996) 在新增首屏套件中得到 31 通过、5 失败，全部失败为 Chromium 393px 的加载态场景；此前的 289 项单元／集成、184 项常规 E2E、41 项工作人员流程均已通过。
+
+原因有两层：全局 `html` 与后台 `body.field-mode` 同时设置 `scrollbar-gutter: stable`，而 `body` 已有 `overflow-x: hidden`。Linux Chromium 为两个区域各预留 15px，393px 窗口中的根区域为 378px，后台主区却只有 363px。原断言按 `innerWidth × 95%` 要求主区大于 373.35px；macOS 默认叠加式滚动条不占宽度，所以首次本地验证没有暴露该差异。原先缺少侧栏导致的 216px 挤压没有复发。
+
+修复删除后台 `body` 的重复预留，仍由全局 `html` 稳定页面滚动条空间。同时将比例断言改成根区域／工作区／主区之间的严格几何关系，保留侧栏位置及横向溢出断言。新增的 15px 占位滚动条配置在 macOS 也能重现 Linux 情况：修复前手机 6 场景中 5 失败，修复后完整 48 场景全部通过。
+
+| 393px 视口 | 根区域 | 工作区／主区 |
+| --- | --- | --- |
+| 重复预留 | 378px | 363px |
+| 仅根区域预留 | 378px | 378px |
+
+[修复前截图](mobile-fixes/classic-before-bootstrap.png)、[修复后截图](mobile-fixes/classic-after-bootstrap.png)和[测量与测试摘要](mobile-fixes/ci-followup.json)保留了可复核证据。此次补充只修改一处生产样式及首屏测试，未改业务逻辑。
 
 ## 修改文件
 

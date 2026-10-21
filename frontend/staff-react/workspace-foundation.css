@@ -140,9 +140,6 @@ fieldset.staffing-editor {
   font-size: 14px;
   line-height: 1.6;
 }
-.field-mode {
-  scrollbar-gutter: stable;
-}
 .staff-mode .login-panel {
   --muted: #586b79;
 }

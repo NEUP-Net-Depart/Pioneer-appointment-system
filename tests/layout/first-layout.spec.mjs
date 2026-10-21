@@ -26,6 +26,7 @@ function observeLayout() {
       };
       window.__firstLayout.push({
         time: performance.now(), bootstrap: app.classList.contains('workspace-bootstrap'),
+        root: rect(document.documentElement), app: rect(app),
         main: rect(main), sidebar: sidebar && getComputedStyle(sidebar).display !== 'none' ? rect(sidebar) : null,
         grid: getComputedStyle(app).gridTemplateColumns, viewport: innerWidth,
         documentWidth: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth),
@@ -48,7 +49,8 @@ const scenarios = [
 for (const scenario of scenarios) test(scenario.name, async ({ page, context, request }, info) => {
   const directory = resolve('output/first-layout', process.env.LAYOUT_PHASE || 'regression', info.project.name, scenario.name);
   await mkdir(directory, { recursive: true });
-  const headers = { 'CF-Connecting-IP': `198.18.${['chromium', 'firefox', 'webkit'].indexOf(info.project.use.browserName) * 2 + (info.project.use.viewport.width > 767 ? 1 : 0)}.${scenarios.indexOf(scenario) + 1}` };
+  const classicScrollbars = !!info.project.metadata.classicScrollbars;
+  const headers = { 'CF-Connecting-IP': `198.18.${(classicScrollbars ? 6 : 0) + ['chromium', 'firefox', 'webkit'].indexOf(info.project.use.browserName) * 2 + (info.project.use.viewport.width > 767 ? 1 : 0)}.${scenarios.indexOf(scenario) + 1}` };
   await context.setExtraHTTPHeaders(headers);
   let token = scenario.expired ? 'expired-layout-session' : '';
   if (scenario.account) {
@@ -71,11 +73,13 @@ for (const scenario of scenarios) test(scenario.name, async ({ page, context, re
     if (hold) await home.promise;
     await route.continue();
   });
-  if (scenario.css) await page.route('**/*.css', async route => {
+  if (scenario.css || classicScrollbars) await page.route('**/*.css', async route => {
     cssTiming.push({ path: new URL(route.request().url()).pathname, event: 'requested', at: Date.now() });
-    if (hold) { cssRequested.release(); await css.promise; }
+    if (scenario.css && hold) { cssRequested.release(); await css.promise; }
     const response = await route.fetch();
-    await route.fulfill({ response, headers: { ...response.headers(), 'cache-control': 'no-store' } });
+    // Exercise native gutter allocation on macOS too, independently of its overlay-scrollbar preference.
+    const body = classicScrollbars ? `${await response.text()}\n::-webkit-scrollbar { width: 15px; height: 15px; }` : await response.body();
+    await route.fulfill({ response, body, headers: { ...response.headers(), 'cache-control': 'no-store' } });
     cssTiming.push({ path: new URL(route.request().url()).pathname, event: 'released', at: Date.now() });
   });
   try {
@@ -112,14 +116,19 @@ for (const scenario of scenarios) test(scenario.name, async ({ page, context, re
     await frames(page);
     await page.screenshot({ path: resolve(directory, 'ready.png') });
     const result = await page.evaluate(() => ({ frames: window.__firstLayout, resources: performance.getEntriesByType('resource').map(({ name, startTime, responseEnd, transferSize }) => ({ path: new URL(name).pathname, startTime, responseEnd, transferSize })) }));
-    await writeFile(resolve(directory, 'measurements.json'), JSON.stringify({ browser: context.browser().version(), scenario, cssTiming, ...result }, null, 2));
+    await writeFile(resolve(directory, 'measurements.json'), JSON.stringify({ browser: context.browser().version(), scenario, classicScrollbars, cssTiming, ...result }, null, 2));
     if (scenario.account) {
       expect(result.frames.some(frame => frame.bootstrap), 'Must observe a real pending bootstrap').toBe(true);
       expect(result.frames.some(frame => !frame.bootstrap), 'Must observe the loaded workspace').toBe(true);
     }
     for (const frame of result.frames) {
       const mobile = frame.viewport < 768;
-      expect.soft(frame.main.width, JSON.stringify(frame)).toBeGreaterThan(frame.viewport * (mobile ? 0.95 : 0.7));
+      // innerWidth includes classic scrollbars. Compare the actual root/app boxes instead.
+      if (classicScrollbars) expect.soft(frame.viewport - frame.root.width, 'The classic-scrollbar profile must reserve exactly one 15px root gutter').toBeCloseTo(15, 0);
+      expect.soft(frame.app.x, JSON.stringify(frame)).toBeCloseTo(frame.root.x, 0);
+      expect.soft(frame.app.width, 'The workspace must fill the root without reserving a second gutter').toBeCloseTo(frame.root.width, 0);
+      expect.soft(frame.main.x, JSON.stringify(frame)).toBeCloseTo(frame.app.x + (mobile ? 0 : 216), 0);
+      expect.soft(frame.main.width, JSON.stringify(frame)).toBeCloseTo(frame.app.width - (mobile ? 0 : 216), 0);
       expect.soft(frame.documentWidth, JSON.stringify(frame)).toBeLessThanOrEqual(frame.viewport + 1);
       if (mobile) expect.soft(frame.sidebar).toBeNull();
       else {

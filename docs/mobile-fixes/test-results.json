@@ -41,6 +41,14 @@
       "flaky": 0
     },
     "firstLayout": {
+      "startTime": "2026-10-21T17:25:08.682Z",
+      "duration": 42887.39000000001,
+      "expected": 48,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "initialFirstLayout": {
       "startTime": "2026-10-21T15:36:34.298Z",
       "duration": 42524.511,
       "expected": 36,
@@ -164,5 +172,6 @@
     "audit:staff-platform",
     "check",
     "db:verify"
-  ]
+  ],
+  "followupDate": "2026-10-22"
 }

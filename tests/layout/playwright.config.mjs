@@ -12,5 +12,10 @@ export default defineConfig({
   },
   projects: ['chromium', 'firefox', 'webkit'].flatMap(browserName => [393, 1440].map(width => ({
     name: `${browserName}-${width}`, use: { browserName, viewport: { width, height: 900 } },
+  }))).concat([393, 1440].map(width => ({
+    name: `chromium-classic-${width}`, metadata: { classicScrollbars: true },
+    use: { browserName: 'chromium', viewport: { width, height: 900 },
+      launchOptions: { ignoreDefaultArgs: ['--hide-scrollbars'], args: ['--disable-features=OverlayScrollbar'] },
+    },
   }))),
 });
