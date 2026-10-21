@@ -64,14 +64,12 @@ export function MemberImport({ onClose, onSaved }) {
         </>
       ) : (
         <>
-          <p className="field-muted">
-            先准备名单，再预览核对。交流人员的导入即确认培训结果，保留交流资格。管理员邀请填写
-            accountRole=admin，并在 roleCodes、authorizedCampuses
-            明确指定业务管理角色和校区；部门、工作资格按实际任职填写，可留空。
-          </p>
+          {kind === 'exchange' && (
+            <p className="field-muted">导入交流人员即确认培训通过，并保留交流资格。</p>
+          )}
           <p className="field-muted">
             更新已有成员时，省略 authorizedCampuses
-            列可保留登录账号的校区授权；提供该列会替换授权，空值会清空授权。每个成员只关联一个登录账号，多重身份通过角色组合配置。
+            列保留账号校区授权；提供该列会替换授权，空值会清空授权。
           </p>
           {!preview ? (
             <>
@@ -85,18 +83,27 @@ export function MemberImport({ onClose, onSaved }) {
                   ))}
                 </select>
               </label>
-              <p>
-                工作资格填写 <code>{kind}</code>；角色填写 <code>{templates[kind].role}</code>；部门
-                {templates[kind].department ? (
-                  <>
-                    填写 <code>{templates[kind].department}</code>
-                  </>
-                ) : (
-                  '按实际任职填写'
-                )}
-                。所属及授权校区使用 campus-nanhu 或 campus-hunnan；多校区用 | 分隔。
-                {kind === 'exchange' && '核验培训通过后，trainingConfirmed 填写 true。'}
-              </p>
+              <details className="workspace-help">
+                <summary>名单格式与角色配置</summary>
+                <p className="field-muted">
+                  工作资格填写 <code>{kind}</code>；角色填写 <code>{templates[kind].role}</code>
+                  ；部门
+                  {templates[kind].department ? (
+                    <>
+                      填写 <code>{templates[kind].department}</code>
+                    </>
+                  ) : (
+                    '按实际任职填写'
+                  )}
+                  。所属及授权校区使用 campus-nanhu 或 campus-hunnan；多校区用 | 分隔。
+                  {kind === 'exchange' && '核验培训通过后，trainingConfirmed 填写 true。'}
+                </p>
+                <p className="field-muted">
+                  管理员邀请填写 accountRole=admin，并在 roleCodes、authorizedCampuses
+                  明确指定业务管理角色和校区；部门、工作资格按实际任职填写，可留空。
+                  每个成员只关联一个登录账号，多重身份通过角色组合配置。
+                </p>
+              </details>
               <div className="field-actions">
                 <button onClick={download}>下载 CSV 模板</button>
                 <label>

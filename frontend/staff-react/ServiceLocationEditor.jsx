@@ -147,7 +147,7 @@ export function ServiceLocationEditor({ campus }) {
       <div className="capacity-section-heading">
         <div>
           <h2>维修地点</h2>
-          <p className="field-muted">按校区和日期设置；预约页面和已有预约都会显示最新地点。</p>
+          <p className="field-muted">已有预约同步显示最新地点。</p>
         </div>
         <button disabled={loading || busy || !date} onClick={refresh}>
           {loading ? '正在读取…' : '读取最新地点'}

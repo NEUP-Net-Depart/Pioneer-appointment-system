@@ -137,10 +137,8 @@ export function RosterTaskWorkspace({
               调整已发布班表
             </button>
           )}
-          {editable && !collectionView && (
-            <span className="roster-edit-hint">
-              {dirty ? '调整尚未保存' : '可点击人员调整，或在日期下添加人员'}
-            </span>
+          {editable && !collectionView && dirty && (
+            <span className="roster-edit-hint">调整尚未保存</span>
           )}
         </div>
       </section>
@@ -383,7 +381,7 @@ export function RosterTaskWorkspace({
               <h3>{office ? '人员班次数' : '尚未安排'}</h3>
               <p className="react-muted">
                 {office
-                  ? '同一成员每日一班。选择日期下的添加按钮安排人员。'
+                  ? '同一成员每日最多一班。'
                   : '负责人可以本周不排班。普通人员未安排的问题需在发布前处理。'}
               </p>
               <label className="workspace-search-label">

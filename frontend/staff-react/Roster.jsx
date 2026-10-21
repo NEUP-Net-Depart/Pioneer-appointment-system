@@ -123,11 +123,7 @@ export function Roster({ user, requestSignal = 0 }) {
   }
   return (
     <section className="react-page roster-page">
-      <WorkspaceHeader
-        group="我的"
-        title="我的值班安排"
-        description={`${user?.name} · 先确认班次，再处理需要交接的事项。`}
-      >
+      <WorkspaceHeader group="我的" title="我的值班安排">
         <button onClick={refresh}>刷新数据</button>
       </WorkspaceHeader>
       {message && (
@@ -163,7 +159,6 @@ export function Roster({ user, requestSignal = 0 }) {
               <div className="card-title-row">
                 <div>
                   <h2>已发布班次</h2>
-                  <p className="react-muted">从具体班次发起请假或换班，系统会自动带入版本。</p>
                 </div>
                 <span className="roster-count">{assignments.length} 个班次</span>
               </div>
@@ -239,7 +234,6 @@ export function Roster({ user, requestSignal = 0 }) {
             <div className="card-title-row">
               <div>
                 <h2>发起申请</h2>
-                <p className="react-muted">每次只处理一个明确的班次变化。</p>
               </div>
             </div>
             <WorkspaceSections
@@ -308,7 +302,6 @@ export function Roster({ user, requestSignal = 0 }) {
           </article>
           <article className="react-card">
             <h2>申请记录</h2>
-            <p className="react-muted">申请提交后可在这里查看结果，避免重复提交。</p>
             {leaves.map((item) => (
               <div className="request-row" key={`leave-${item.id}`}>
                 <div>

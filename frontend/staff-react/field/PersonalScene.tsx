@@ -33,7 +33,6 @@ export function PersonalScene({
           <div>
             <h2>{initial.actor.name}</h2>
             <StaffIdentity identities={data.identities} />
-            <p className="field-muted">个人安排与账号</p>
           </div>
         </div>
         <h3>今日安排</h3>
@@ -59,7 +58,6 @@ export function PersonalScene({
       {(data.capability['members.manage'] || data.capability['roles.manage']) && (
         <section className="field-card">
           <h2>平台管理</h2>
-          <p className="field-muted">管理入口使用同一套权限范围</p>
           <div className="field-actions personal-actions">
             {data.capability['members.manage'] && (
               <button onClick={() => onNavigate('members')}>成员管理</button>

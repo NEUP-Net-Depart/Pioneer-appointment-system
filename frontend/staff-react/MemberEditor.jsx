@@ -183,7 +183,7 @@ export function MemberEditor({
           </>
         )}
         <div hidden={confirmClose}>
-          <p className="field-muted">成员资料与角色授权分别保存，所属校区不会自动改变授权范围。</p>
+          <p className="field-muted">资料与授权分别保存；所属校区不改变授权范围。</p>
           <StaffIdentity identities={detail?.member.identities} />
           <WorkspaceSections
             label="成员详情"

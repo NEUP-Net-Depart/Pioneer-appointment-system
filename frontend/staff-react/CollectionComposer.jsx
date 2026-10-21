@@ -167,9 +167,6 @@ export function CollectionComposer({ office, onClose, onCreated, onError }) {
         {step === 0 && (
           <section className="roster-compose-section">
             <h2>先确定收集范围与时间</h2>
-            <p className="react-muted">
-              选择首个工作周及参与校区。每周开放的任务只需发布一次。
-            </p>{' '}
             <WeekPicker
               label="周一日期"
               value={form.weekStart}
@@ -334,7 +331,6 @@ export function CollectionComposer({ office, onClose, onCreated, onError }) {
         {step === 1 && (
           <section className="roster-compose-section">
             <h2>安排多少人，向谁收集</h2>
-            <p className="react-muted">人数需求与参与名单都保存在任务内，后续排班直接使用。</p>{' '}
             {
               <fieldset className="roster-demand-matrix" disabled={busy}>
                 <legend>{office ? '每日办公人员目标人数' : '每日普通维修人员最低需求'}</legend>
