@@ -143,7 +143,7 @@
     },
     {
       "name": "0033_staff_business_roles.sql",
-      "sha256": "f861f18c1386c47f5195bafc4ad4eba22fd03ef43b42616ae9cf7b44d5c5714d"
+      "sha256": "112b2978ad4e4f82a454c2be74069d1dbd0e4789f4692fd4e4576f2bca72e421"
     }
   ],
   "modules": [
@@ -366,7 +366,7 @@
     },
     {
       "name": "0033_staff_business_roles.sql",
-      "sha256": "f861f18c1386c47f5195bafc4ad4eba22fd03ef43b42616ae9cf7b44d5c5714d"
+      "sha256": "112b2978ad4e4f82a454c2be74069d1dbd0e4789f4692fd4e4576f2bca72e421"
     }
   ]
 }

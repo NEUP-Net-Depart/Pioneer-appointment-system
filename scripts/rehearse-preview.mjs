@@ -89,8 +89,12 @@ export async function rehearseSnapshot(dump, directory = resolve(root, 'migratio
           assert.notEqual(context.permissions['roles.manage'], true, 'Technician gained role management');
         }
         if (row.role === 'admin' && upgradingBusinessRoles) {
+          assert.ok(roleCodes.includes('repair_lead'), 'Migrated administrator is missing repair_lead');
+          assert.ok(roleCodes.includes('technician'), 'Migrated administrator is missing technician');
+          assert.ok((await repository.profileHistory(user.memberId)).some(profile => profile.profileCode === 'repair'), 'Migrated administrator is missing repair qualification configuration');
           for (const code of ['repair.summary.read','repair.correct','repair.transfer','statistics.read','accounts.manage','settings.manage','members.manage','roles.manage','roster.read','roster.repair.manage','roster.office.manage','attendance.correct','attendance.export','customer.identity.read','customer.contact.read']) {
-            assert.equal(context.permissions[code], true, 'Migrated administrator lost an original management capability');
+            // Explicit role scopes, conditions and validity may intentionally
+            // restrict access. The rehearsal must not require reopening them.
             for (const campusId of ['campus-nanhu','campus-hunnan']) {
               if (user.authorizedCampuses.some(value => (value === '南湖' ? 'campus-nanhu' : value === '浑南' ? 'campus-hunnan' : value) === campusId)) continue;
               assert.equal(platform.authorizer.evaluate(context.actor,code,{campusId},context,context.grants.filter(grant => grant.roleCode === 'repair_lead')).allowed,false,'Migrated administrator exceeded the account campus scope');

@@ -60,7 +60,7 @@ export function rolesDomain({
     if (role.code === 'superadmin') fail(403, '最高管理员权限包受保护');
     if (context.actor.role === 'superadmin') return;
     if (systemRole(role)) fail(403, '不能管理系统级角色');
-    for (const member of await repository.roleMembers(role.id))
+    for (const member of await repository.roleMembers(role.id, context.businessDate))
       await editableMember(repository, context, member, evaluate, 'roles.manage');
     // Updating a shared role affects every binding, including future bindings.
     // Require the complete old package to be within this manager's authority.
@@ -111,7 +111,10 @@ export function rolesDomain({
     const { context } = await requirePermission(actor, 'roles.manage');
     const role = (await repository.listRoles()).find((item) => item.id === id);
     if (!role) fail(404, '角色不存在');
-    const roleGuard = actor.role === 'superadmin' ? undefined : await repository.roleGuard(role.id);
+    const roleGuard =
+      actor.role === 'superadmin'
+        ? undefined
+        : await repository.roleGuard(role.id, context.businessDate);
     await assertEditableRole(context, role);
     if (actor.role !== 'superadmin' && input.level >= 3) fail(403, '不能配置系统级角色');
     if (!Number.isInteger(input.revision)) fail(400, '角色版本不正确');

@@ -35,7 +35,7 @@ Pages 通过 Actions Direct Upload 发布，关闭自动 Git 构建。构建命�
 | --- | --- |
 | 推送 `main` | 验证 → Production D1 迁移 → 发布 → HTTP smoke |
 | 推送 `dev` | 验证 → Preview 快照本地演练 → 共享 Preview D1 迁移 → 发布 → smoke |
-| 推送其他分支 | 验证 → 分支 Preview 发布 → smoke，不迁移 |
+| 推送其他分支 | 验证 → 检查 dev schema 版本 → 分支 Preview 发布 → smoke；版本不匹配时暂缓发布，不迁移 |
 | 手动 CI | 仅非 `main` 分支，遵循对应分支规则 |
 | PR、标签、分支删除 | PR 仅验证；标签和删除不发布 |
 

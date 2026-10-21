@@ -916,6 +916,40 @@ test('permanent repair managers can manage off duty while optional duty conditio
     await repository.bindRoles(member.id,[{roleId,scope:{campusIds:['campus-nanhu']},effectiveFrom:'2026-01-01'}],member.revision);
     const login = await call('/api/auth/login',{method:'POST',body:JSON.stringify({account,password:'longterm-test-password'})});
     const headers = {Authorization:`Bearer ${login.body.token}`};
+    if (dutyType === 'repair') {
+      for (const [account,campus] of [['20998713','南湖'],['20998714','浑南']]) {
+        await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,'共享角色历史成员','technician',?,?, '2026-01-01')").bind(account,campus,hashPassword('shared-history-password')).run();
+        await db.prepare('INSERT INTO staff_campus_grants(account,campus) VALUES(?,?)').bind(account,campus).run();
+      }
+      const shared = await repository.createRole({code:'shared_history',name:'共享历史角色',grants:[{permissionCode:'statistics.read',scope:{campusIds:['campus-nanhu']}}]});
+      await repository.bindRoles('member-20998713',[{roleId:shared.id,scope:{campusIds:['campus-nanhu']},effectiveFrom:'2026-01-01'}],(await repository.memberRow('member-20998713')).revision);
+      await repository.bindRoles('member-20998714',[{roleId:shared.id,scope:{campusIds:['campus-hunnan']},effectiveFrom:'2025-01-01',effectiveTo:dateKey()}],(await repository.memberRow('member-20998714')).revision);
+      for(const memberId of [member.id,'member-root001'])await db.prepare("INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from,effective_to) VALUES(?,?,?,'{\"campusIds\":[\"campus-nanhu\"]}','2025-01-01',?)").bind('ended-shared-'+memberId,memberId,shared.id,dateKey()).run();
+      const history=await repository.roleBindings('member-20998714');
+      const managerVersion=await db.prepare('SELECT auth_version,token_version FROM staff_accounts WHERE member_id=?').bind(member.id).first();
+      const roleList = await call('/api/roles',{headers});
+      const listed = roleList.body.items.find(item=>item.id===shared.id);
+      assert.equal(listed.actions.edit,true,'expired shared-role history must not block an in-scope manager');
+      const edited = await call(`/api/roles/${shared.id}`,{headers,method:'PATCH',body:JSON.stringify({revision:listed.revision,name:'共享历史角色已更新'})});
+      assert.equal(edited.response.status,200,JSON.stringify(edited.body));
+      assert.deepEqual(await repository.roleBindings('member-20998714'),history,'editing a shared role preserves ended binding history');
+      assert.deepEqual(await db.prepare('SELECT auth_version,token_version FROM staff_accounts WHERE member_id=?').bind(member.id).first(),managerVersion,'expired bindings do not invalidate an unrelated active session');
+      for(const from of [dateKey(),addDays(dateKey(),1)]){
+        await db.prepare('UPDATE member_roles SET effective_from=?,effective_to=NULL WHERE member_id=? AND role_id=?').bind(from,'member-20998714',shared.id).run();
+        const current=(await call('/api/roles',{headers})).body.items.find(item=>item.id===shared.id);
+        assert.equal(current.actions.edit,false,'current and future out-of-scope members must remain protected');
+        const denied=await call(`/api/roles/${shared.id}`,{headers,method:'PATCH',body:JSON.stringify({revision:current.revision,name:'不能影响其他校区'})});
+        assert.equal(denied.response.status,403,JSON.stringify(denied.body));
+      }
+      await db.prepare("UPDATE member_roles SET effective_from='2025-01-01',effective_to=? WHERE member_id=? AND role_id=?").bind(dateKey(),'member-20998714',shared.id).run();
+      for(const memberId of [member.id,'member-root001']){
+        await db.prepare('UPDATE member_roles SET effective_from=?,effective_to=NULL WHERE id=?').bind(addDays(dateKey(),1),'ended-shared-'+memberId).run();
+        const current=(await call('/api/roles',{headers})).body.items.find(item=>item.id===shared.id);
+        assert.equal(current.actions.edit,false,'future self/protected bindings must remain protected');
+        assert.equal((await call(`/api/roles/${shared.id}`,{headers,method:'PATCH',body:JSON.stringify({revision:current.revision,name:'不能影响受保护身份'})})).response.status,403);
+        await db.prepare("UPDATE member_roles SET effective_from='2025-01-01',effective_to=? WHERE id=?").bind(dateKey(),'ended-shared-'+memberId).run();
+      }
+    }
     const context = await call('/api/auth/me',{headers});
     assert.deepEqual(context.body.todayDuties,[]);
     assert.equal(context.body.permissions[`roster.${dutyType}.manage`],true);

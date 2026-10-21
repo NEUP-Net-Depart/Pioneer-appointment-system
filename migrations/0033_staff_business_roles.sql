@@ -23,39 +23,49 @@ UPDATE role_grants SET scope_spec=json_set(scope_spec,'$.campusIds','bound')
 -- repair_lead is a permanent business manager. Field work is independently
 -- authorized by technician/exchange plus a work qualification and presence.
 UPDATE roles SET name='维修负责人',description='部长及以上的长期业务管理角色；管理不依赖排班或签到',
-  level=2,enabled=1,revision=revision+1,updated_at=datetime('now') WHERE code='repair_lead';
-DELETE FROM role_grants WHERE role_id='role-repair-lead';
-INSERT INTO role_grants(id,role_id,permission_code,scope_spec,condition_spec)
+  revision=revision+1,updated_at=datetime('now')
+  WHERE code='repair_lead' AND name='维修值班负责人' AND description='当日维修运行与排班管理';
+-- Change only untouched historical defaults. Explicit grants retain their
+-- conditions, scopes and validity, including intentional duty restrictions.
+UPDATE role_grants SET condition_spec='[]',revision=revision+1
+WHERE role_id='role-repair-lead' AND revision=0
+  AND id IN ('grant-repair-lead-summary','grant-repair-lead-session','grant-repair-lead-correct',
+    'grant-repair-lead-transfer','grant-repair-lead-roster')
+  AND json(scope_spec)='{"campuses":"bound"}' AND json(validity_spec)='{}'
+  AND json(condition_spec) IN ('[{"code":"activeDutyRole","version":1}]',
+    '[{"code":"signedDutyPresence","version":1}]');
+INSERT OR IGNORE INTO role_grants(id,role_id,permission_code,scope_spec,condition_spec)
 SELECT 'grant-repair-lead-'||code,'role-repair-lead',code,'{"campuses":"bound"}','[]'
 FROM permission_definitions WHERE code IN (
   'repair.summary.read','repair.correct','repair.transfer','customer.identity.read','customer.contact.read',
   'onsite.frontdesk.create','statistics.read','settings.manage','accounts.manage','members.manage','roles.manage',
   'roster.read','roster.repair.manage','roster.repair.configure','roster.office.manage','leave.review',
   'attendance.session.manage','attendance.correct','attendance.export');
-INSERT INTO role_grants(id,role_id,permission_code,scope_spec,condition_spec)
+INSERT OR IGNORE INTO role_grants(id,role_id,permission_code,scope_spec,condition_spec)
 VALUES('grant-repair-lead-attendance','role-repair-lead','attendance.self','{"campuses":"bound"}',
   '[{"code":"attendanceEligible","version":1}]');
-UPDATE permission_definitions SET condition_kinds='[]' WHERE code IN (
-  'repair.summary.read','repair.correct','repair.transfer','customer.identity.read','customer.contact.read',
-  'onsite.frontdesk.create','attendance.session.manage','attendance.correct');
 
 -- Convert every existing admin once, using that account's current campus set.
--- Future accounts and logins never infer a management role from the base type.
+-- All historical administrators are hardware repair leads.
+-- Any existing configuration wins, including expired and future bindings.
+-- Seed only missing roles at cutover; never reopen or backdate authorization.
 INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from)
-SELECT 'business-lead-'||sa.account,sa.member_id,'role-repair-lead',
+SELECT 'business-'||required.key||'-'||sa.account,sa.member_id,required.role_id,
   json_object('campusIds',json((SELECT json_group_array(CASE g.campus
     WHEN '南湖' THEN 'campus-nanhu' WHEN '浑南' THEN 'campus-hunnan' END)
-    FROM staff_campus_grants g WHERE g.account=sa.account))),substr(sa.created_at,1,10)
+    FROM staff_campus_grants g WHERE g.account=sa.account))),
+  date('now','+8 hours')
+FROM staff_accounts sa CROSS JOIN (
+  SELECT 'lead' AS key,'role-repair-lead' AS role_id
+  UNION ALL SELECT 'technician','role-technician'
+) required WHERE sa.role='admin'
+  AND NOT EXISTS(SELECT 1 FROM member_roles mr WHERE mr.member_id=sa.member_id
+    AND mr.role_id=required.role_id);
+INSERT INTO member_work_profiles(id,member_id,profile_code,effective_from)
+SELECT 'business-repair-'||sa.account,sa.member_id,'repair',date('now','+8 hours')
 FROM staff_accounts sa WHERE sa.role='admin'
-ON CONFLICT(member_id,role_id,effective_from) DO UPDATE SET scope_bindings=excluded.scope_bindings,
-  effective_to=NULL,revision=member_roles.revision+1;
-
--- Keep explicit repair qualifications usable when the person is also a manager.
-INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from,effective_to)
-SELECT 'business-repair-'||p.id,sa.member_id,'role-technician','{"campuses":"bound"}',p.effective_from,p.effective_to
-FROM staff_accounts sa JOIN member_work_profiles p ON p.member_id=sa.member_id AND p.profile_code='repair'
-WHERE sa.role='admin' AND NOT EXISTS(SELECT 1 FROM member_roles mr
-  WHERE mr.member_id=sa.member_id AND mr.role_id='role-technician');
+  AND NOT EXISTS(SELECT 1 FROM member_work_profiles p WHERE p.member_id=sa.member_id
+    AND p.profile_code='repair');
 
 -- Hardware affiliation is separate from any explicitly maintained office post.
 -- Preserve existing appointments, qualifications and dated organization facts.
@@ -70,11 +80,11 @@ SELECT 'business-hardware-'||sa.account,sa.member_id,'dept-hardware',
     THEN 0 ELSE 1 END,date('now','+8 hours'),datetime('now')
 FROM staff_accounts sa WHERE sa.role IN ('admin','technician')
   AND NOT EXISTS(SELECT 1 FROM member_department_memberships mm WHERE mm.member_id=sa.member_id
-    AND mm.department_id='dept-hardware' AND mm.effective_from<=date('now','+8 hours')
-    AND (mm.effective_to IS NULL OR mm.effective_to>date('now','+8 hours')))
+    AND mm.department_id='dept-hardware')
   -- Already configured exchange/office members retain their actual department.
   AND (sa.role='admin' OR EXISTS(SELECT 1 FROM member_work_profiles p WHERE p.member_id=sa.member_id
-    AND p.profile_code='repair' AND (p.effective_to IS NULL OR p.effective_to>date('now','+8 hours'))));
+    AND p.profile_code='repair' AND p.effective_from<=date('now','+8 hours')
+    AND (p.effective_to IS NULL OR p.effective_to>date('now','+8 hours'))));
 
 DROP TRIGGER legacy_admin_login_changed;
 DROP TABLE legacy_admin_logins;
