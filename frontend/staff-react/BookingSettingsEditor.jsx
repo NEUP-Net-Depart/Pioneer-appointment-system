@@ -21,9 +21,11 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
     [retry, setRetry] = useState(0);
   const lock = useRef(false),
     attempt = useRef(null),
-    loaded = useRef(false);
+    loaded = useRef(false),
+    draftDirty = useRef(false);
   const timeDirty = !!data && releaseTime !== data.settings.releaseTime;
   const noticeDirty = !!editing && JSON.stringify(editing) !== JSON.stringify(original);
+  draftDirty.current = timeDirty || noticeDirty;
   useEffect(() => {
     if (!active) {
       loaded.current = false;
@@ -31,7 +33,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
     }
     let controller;
     function read() {
-      if (document.hidden || loaded.current || controller) return;
+      if (document.hidden || loaded.current || controller || draftDirty.current) return;
       const current = new AbortController();
       controller = current;
       setLoading(true);
@@ -39,7 +41,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
         signal: current.signal
       })
         .then((result) => {
-          if (current.signal.aborted) return;
+          if (current.signal.aborted || draftDirty.current) return;
           setData(result);
           setReleaseTime(result.settings.releaseTime);
           loaded.current = true;
@@ -190,7 +192,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
   }
   const update = (key, value) => setEditing((current) => ({ ...current, [key]: value }));
   return (
-    <div className="booking-settings-editor">
+    <div className="booking-settings-editor" aria-busy={loading}>
       <div className="field-actions">
         <button
           disabled={busy || loading || timeDirty || noticeDirty}

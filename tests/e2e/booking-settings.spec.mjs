@@ -171,8 +171,16 @@ test('administrators configure release and announcements with guarded navigation
   }
   await dialog.getByRole('button',{name:'保存公告',exact:true}).click();await expect(dialog).toBeHidden();await expect(page.locator('.booking-notice-list')).toContainText('维修到场须知');
   expect(writes[1].important).toBe(true);expect(writes[1].displayMode).toBe('modal');expect(writes[1].startsAt).toMatch(/Z$/);
+  let releaseRead,readStarted;
+  const pendingRead=new Promise(resolve=>{releaseRead=resolve;}),startedRead=new Promise(resolve=>{readStarted=resolve;});
+  await page.route('**/api/booking-settings/manage?*',async route=>{readStarted();await pendingRead;await route.fulfill({json:{settings,notices}});});
   await page.getByRole('button',{name:'放号时间',exact:true}).click();
-  await input.fill('12:00');await page.getByRole('button',{name:'浑南校区',exact:true}).click();await page.getByRole('button',{name:'丢弃并切换',exact:true}).click();
+  await startedRead;await input.fill('12:00');
+  const refreshed=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/booking-settings/manage');
+  releaseRead();await refreshed;await expect(page.locator('.booking-settings-editor:visible')).toHaveAttribute('aria-busy','false');
+  await expect(page.getByRole('button',{name:'读取最新规则',exact:true})).toBeDisabled();
+  await expect(input).toHaveValue('12:00');
+  await page.getByRole('button',{name:'浑南校区',exact:true}).click();await page.getByRole('button',{name:'丢弃并切换',exact:true}).click();
   await expect(page.getByRole('dialog',{name:'有尚未保存的修改'})).toBeHidden();
 });
 
