@@ -44,6 +44,8 @@ export function staffPlatformRepository(db) {
   const {
     permissionDefinitions,
     listRoles,
+    roleMembers,
+    roleGuard,
     createRole,
     updateRole,
     roleBindings,
@@ -154,6 +156,8 @@ export function staffPlatformRepository(db) {
     roleBindings,
     permissionDefinitions,
     listRoles,
+    roleMembers,
+    roleGuard,
     createRole,
     updateRole,
     bindRoles,

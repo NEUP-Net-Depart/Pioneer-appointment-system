@@ -17,10 +17,6 @@ export function requireCampus(user, campus) {
   if (!user.authorizedCampuses.includes(campus)) fail(403, '没有该校区的访问权限');
 }
 export function requireGrantScope(actor, campuses) {
-  // The permission engine decides whether the operation is available.  The
-  // legacy account role only proves that this is a staff session; keeping the
-  // old admin gate here made explicit grants such as accounts.manage unusable
-  // for otherwise eligible technicians.
   requireRole(actor, 'technician');
   if (!campuses.length || campuses.some((campus) => !actor.authorizedCampuses.includes(campus)))
     fail(403, '不能管理授权范围以外的校区');
@@ -29,8 +25,8 @@ export function canManageAccount(actor, target) {
   return (
     !target.protected &&
     target.account !== actor.account &&
+    (!target.memberId || target.memberId !== actor.memberId) &&
     target.role !== 'superadmin' &&
-    (target.role !== 'admin' || actor.role === 'superadmin') &&
     target.authorizedCampuses.length > 0 &&
     target.authorizedCampuses.every((campus) => actor.authorizedCampuses.includes(campus))
   );

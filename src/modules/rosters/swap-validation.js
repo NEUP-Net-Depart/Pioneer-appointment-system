@@ -27,14 +27,13 @@ export function validateSwap({ from, to, facts, coverage, protectedAssignments =
     const profiles = (fact?.profiles || []).filter(item => activeOn(item, slot.businessDate));
     if (!fact?.active) errors.push('接手成员已停用或没有可登录账号');
     if (!(fact?.campuses || []).some(value => campusId(value) === slot.campusId)) errors.push('接手成员没有目标校区的适用授权');
-    const pooled=slot.dutyType==='repair' && slot.ruleVersion==='repair-minimum-v2';
-    const pool=pooled && repairRosterPool(fact || {},authorizer,slot.businessDate,{id:slot.taskId,campusId:slot.campusId});
-    if (pooled ? !pool : !profiles.some(item => (slot.dutyType === 'office' ? ['office'] : ['repair']).includes(item.profileCode)) || slot.dutyType==='repair' && profiles.some(item=>item.profileCode==='exchange')) errors.push('接手成员没有对应排班工作资格，交流人员不参与维修换班');
+    const pool=slot.dutyType==='repair' && repairRosterPool(fact || {},authorizer,slot.businessDate,{id:slot.taskId,campusId:slot.campusId});
+    if (slot.dutyType==='repair' ? !pool : !profiles.some(item => (slot.dutyType === 'office' ? ['office'] : ['repair']).includes(item.profileCode)) || slot.dutyType==='repair' && profiles.some(item=>item.profileCode==='exchange')) errors.push('接手成员没有对应排班工作资格，交流人员不参与维修换班');
     if ((fact?.assignments || []).filter(row => ![from.id, to.id].includes(row.id)).some(row =>
       slot.dutyType === 'repair' && row.dutyType === 'repair' && weekRange(row.businessDate).start === weekRange(slot.businessDate).start ||
       row.businessDate === slot.businessDate && (slot.dutyType === 'office' && row.dutyType === 'office' || row.startAt < slot.endAt && slot.startAt < row.endAt))) errors.push('交换后与接手成员的其他已发布班次冲突');
     if (slot.dutyType === 'office' && slot.roleKind === 'office_lead' && !profiles.some(item => item.profileCode === 'office_lead')) errors.push('接手成员没有办公值班负责人资格');
-    const roleKind = slot.dutyType === 'office' ? slot.roleKind || '' : (pooled ? pool==='lead' : profiles.some(item => item.profileCode === 'repair_lead')) ? 'repair_lead' : '';
+    const roleKind = slot.dutyType === 'office' ? slot.roleKind || '' : pool==='lead' ? 'repair_lead' : '';
     return { ...slot, memberId, memberName: fact?.name || '成员', roleKind, leaveStatus: '' };
   });
   const effective = [...coverage.filter(row => ![from.id, to.id].includes(row.id) && row.leaveStatus !== 'approved'), ...after];

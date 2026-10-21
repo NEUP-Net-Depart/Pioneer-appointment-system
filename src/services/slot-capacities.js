@@ -25,6 +25,7 @@ export function slotCapacityService(repository, staff, days=null) {
       return {item:await days.serviceDay(query.date,id),affected:await days.affectedServiceDay(query.date,id)};
     },
     async saveServiceDay(actor,input) {
+      if(!input || typeof input!=='object' || Array.isArray(input))fail(400,'请核对暂停日期配置');
       if(input?.items!==undefined){
         if(!Array.isArray(input.items)||!input.items.length||input.items.length>8||typeof input.requestId!=='string'||!input.requestId||input.requestId.length>128)fail(400,'请选择1至8个维修日期');
         const items=input.items,seen=new Set(),today=dateKey(),end=addDays(weekRange(today).start,10),campuses=[];

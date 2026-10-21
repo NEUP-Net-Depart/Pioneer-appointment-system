@@ -126,11 +126,25 @@ export function commandsDomain({ db }) {
 
   function commandAuthorization(record) {
     if (record?.authVersion === undefined) return { sql: '', args: [] };
-    return {
-      sql: `AND EXISTS(SELECT 1 FROM staff_accounts account JOIN members actor ON actor.id=account.member_id
-      WHERE account.account=? AND account.member_id=? AND account.auth_version=? AND account.status='enabled' AND actor.status='active')`,
-      args: [record.actorAccount, record.actorMemberId, record.authVersion]
-    };
+    const sql = [
+      `AND EXISTS(SELECT 1 FROM staff_accounts account JOIN members actor ON actor.id=account.member_id
+      WHERE account.account=? AND account.member_id=? AND account.auth_version=? AND account.status='enabled' AND actor.status='active')`
+    ];
+    const args = [record.actorAccount, record.actorMemberId, record.authVersion];
+    if (record.roleVersions) {
+      sql.push(`AND NOT EXISTS(SELECT 1 FROM json_each(?) expected LEFT JOIN roles r ON r.id=json_extract(expected.value,'$.id')
+        WHERE r.id IS NULL OR r.revision<>json_extract(expected.value,'$.revision') OR r.enabled<>json_extract(expected.value,'$.enabled'))`);
+      args.push(JSON.stringify(record.roleVersions));
+    }
+    if (record.roleGuard) {
+      sql.push(`AND (${record.roleGuard.sql})=?`);
+      args.push(...record.roleGuard.args, record.roleGuard.value);
+    }
+    if (record.targetAccountVersion) {
+      sql.push('AND EXISTS(SELECT 1 FROM staff_accounts WHERE account=? AND auth_version=?)');
+      args.push(record.targetAccountVersion.account, record.targetAccountVersion.auth_version);
+    }
+    return { sql: sql.join(' '), args };
   }
   return {
     createReceipt,

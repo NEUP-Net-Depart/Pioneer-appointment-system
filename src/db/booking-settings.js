@@ -27,7 +27,9 @@ export function bookingSettingsRepository(db) {
     const args = kind === 'settings' ? [input.campus] : [input.id, input.campus];
     const statements = [auditStatement({ ...audit, id: marker, action,
       sourceRef: { module: 'settings', type: kind, id: kind === 'settings' ? input.campus : input.id }, after: result }, false,
-    { sql: `COALESCE((SELECT revision FROM ${table} WHERE ${guard}),-1)=? ${kind === 'notice' ? 'AND NOT EXISTS(SELECT 1 FROM booking_notices WHERE id=? AND campus<>?)' : ''} ${auth.sql}`, args: [...args, input.revision, ...(kind === 'notice' ? [input.id, input.campus] : []), ...auth.args] })];
+    { sql: `COALESCE((SELECT revision FROM ${table} WHERE ${guard}),-1)=? ${kind === 'notice' ? 'AND NOT EXISTS(SELECT 1 FROM booking_notices WHERE id=? AND campus<>?)' : ''}
+      ${kind === 'notice' && input.revision === -1 ? 'AND (SELECT COUNT(*) FROM booking_notices WHERE campus=?)<100' : ''} ${auth.sql}`,
+      args: [...args, input.revision, ...(kind === 'notice' ? [input.id, input.campus] : []), ...(kind === 'notice' && input.revision === -1 ? [input.campus] : []), ...auth.args] })];
     if (kind === 'settings') statements.push(db.prepare(`UPDATE booking_settings SET release_time=?,revision=revision+1,updated_at=?,updated_by=?
       WHERE campus=? AND EXISTS(SELECT 1 FROM audit_events WHERE id=?)`).bind(input.releaseTime, at, audit.actorAccount, input.campus, marker));
     else statements.push(db.prepare(`INSERT INTO booking_notices(id,campus,title,content,important,enabled,display_mode,starts_at,ends_at,revision,updated_at,updated_by)

@@ -7,7 +7,7 @@ export function userService(users, staff) {
   async function manageable(id, actor) {
     const target = await users.find(id);
     if (!target) fail(404, '账号不存在');
-    if (!canManageAccount(actor, target)) fail(403, '只能管理授权校区内低于自身且非保护的账号');
+    if (!canManageAccount(actor, target)) fail(403, '只能管理授权校区内其他成员的普通账号');
     return target;
   }
   return {
@@ -49,10 +49,9 @@ export function userService(users, staff) {
       if (patch.role !== undefined) {
         if (
           !Object.hasOwn(roleLevel, patch.role) ||
-          patch.role === 'superadmin' ||
-          (patch.role === 'admin' && actor.role !== 'superadmin')
+          patch.role === 'superadmin'
         )
-          fail(403, '最高管理员与管理员账号只能由最高管理员保护');
+          fail(403, '不能授予系统管理员身份');
       }
       if (patch.password !== undefined) {
         patch.passwordHash = hashPassword(patch.password);

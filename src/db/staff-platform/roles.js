@@ -45,6 +45,32 @@ export function rolesDomain({ db, auditStatement, commandAuthorization }) {
     }));
   }
 
+  async function roleMembers(roleId, businessDate = dateKey()) {
+    return rows(
+      await db
+        .prepare(
+          `SELECT DISTINCT m.* FROM members m JOIN member_roles mr ON mr.member_id=m.id
+      WHERE mr.role_id=? AND (mr.effective_to IS NULL OR ?<mr.effective_to)`
+        )
+        .bind(roleId, businessDate)
+        .all()
+    );
+  }
+
+  async function roleGuard(roleId, businessDate = dateKey()) {
+    const sql = `SELECT json_group_array(json_object('id',id,'scope',scope_bindings,'from',effective_from,'to',effective_to,
+      'member',member_id,'revision',member_revision,'account',account,'auth',auth_version)) AS value FROM (
+      SELECT mr.*,m.revision AS member_revision,sa.account,sa.auth_version FROM member_roles mr JOIN members m ON m.id=mr.member_id
+      LEFT JOIN staff_accounts sa ON sa.member_id=mr.member_id WHERE mr.role_id=?
+        AND (mr.effective_to IS NULL OR ?<mr.effective_to) ORDER BY mr.id)`;
+    const args = [roleId, businessDate];
+    const row = await db
+      .prepare(sql)
+      .bind(...args)
+      .first();
+    return { sql, args, value: row.value };
+  }
+
   async function createRole(input, auditRecord) {
     const id = input.id || crypto.randomUUID();
     const at = nowIso();
@@ -156,9 +182,11 @@ export function rolesDomain({ db, auditStatement, commandAuthorization }) {
     statements.push(
       db
         .prepare(
-          `UPDATE staff_accounts SET token_version=token_version+1,auth_version=auth_version+1 WHERE member_id IN (SELECT member_id FROM member_roles WHERE role_id=?) AND ${gate}`
+          `UPDATE staff_accounts SET token_version=token_version+1,auth_version=auth_version+1
+      WHERE member_id IN (SELECT member_id FROM member_roles WHERE role_id=?
+        AND (effective_to IS NULL OR ?<effective_to)) AND ${gate}`
         )
-        .bind(id, ...gateArgs)
+        .bind(id, dateKey(), ...gateArgs)
     );
     statements.push(
       db
@@ -255,6 +283,8 @@ export function rolesDomain({ db, auditStatement, commandAuthorization }) {
   return {
     permissionDefinitions,
     listRoles,
+    roleMembers,
+    roleGuard,
     createRole,
     updateRole,
     roleBindings,

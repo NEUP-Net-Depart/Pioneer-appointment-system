@@ -20,6 +20,8 @@ test('complete grants combine scope and condition without widening unrelated cam
   const grants = [{ id: 'nanhu-start', permissionCode: 'repair.start', scope: { campusIds: ['南湖'] }, conditions: [] }];
   assert.equal(authorizer.evaluate(actor, 'repair.start', { campusId: 'campus-nanhu' }, {}, grants).allowed, true);
   assert.equal(authorizer.evaluate(actor, 'repair.start', { campusId: 'campus-hunnan' }, {}, grants).allowed, false);
+  assert.equal(authorizer.evaluate(actor, 'repair.start', { campusId: 'campus-nanhu' }, {},
+    [{...grants[0],scope:{campuses:'legacy'}}]).allowed,false,'retired scope markers cannot authorize runtime requests');
 });
 
 test('duty and meeting policies keep independent same-day dedupe keys', () => {

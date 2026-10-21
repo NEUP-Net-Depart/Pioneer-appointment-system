@@ -267,10 +267,7 @@ function AccountEditor({ user, item, onClose, onSaved }) {
               onChange={(event) => setDraft({ ...draft, role: event.target.value })}
             >
               {Object.entries(roleLabels)
-                .filter(
-                  ([role]) =>
-                    role === 'technician' || (role === 'admin' && user.role === 'superadmin')
-                )
+                .filter(([role]) => role === 'technician' || role === 'admin')
                 .map(([role, label]) => (
                   <option key={role} value={role}>
                     {label}
@@ -630,7 +627,7 @@ function Invitations({ user }) {
             <fieldset className="workspace-form-fields" disabled={busy}>
               <p className="field-muted">
                 上传 CSV
-                或粘贴内容；同时提供时使用文件。已有记录会跳过。管理员请由最高管理员在“成员管理”导入，明确填写
+                或粘贴内容；同时提供时使用文件。已有记录会跳过。管理员请由具备授权的负责人在“成员管理”导入，明确填写
                 accountRole=admin、roleCodes 和 authorizedCampuses；工作岗位按实际情况填写。
               </p>
               <label>

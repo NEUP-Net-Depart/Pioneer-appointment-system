@@ -51,8 +51,6 @@ export function contextDomain({ repository, platform, calendarClock }) {
   }
 
   async function requirePermission(actor, permissionCode, target = {}, businessDate = dateKey()) {
-    if (permissionCode === 'roles.manage' && actor.role !== 'superadmin')
-      fail(403, '角色配置与分配由最高管理员管理');
     const context = await contextFor(actor, businessDate);
     const result = evaluate(context, permissionCode, target);
     if (!result.allowed) fail(403, `缺少权限：${permissionCode}`);

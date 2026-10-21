@@ -21,7 +21,7 @@ function setup(memberId = 'target', allowedCampuses = ['campus-nanhu']) {
     protectedRosterAssignments:async()=>[],
     memberRow: async id => ({ id, name: id }), memberships: async () => [],
     rosterMemberFacts: async () => ['sender','target'].map(memberId => ({ memberId,name:memberId,active:true,campuses:['南湖','浑南'],
-      profiles:['repair','repair_lead'].map(profileCode => ({ profileCode,effectiveFrom:'2026-01-01' })),assignments:Object.values(assignments).filter(row => row.memberId === memberId) })),
+      grants:[{roleCode:'repair_lead',permissionCode:'repair.transfer',scope:{campuses:'bound'}}],profiles:['repair'].map(profileCode => ({ profileCode,effectiveFrom:'2026-01-01' })),assignments:Object.values(assignments).filter(row => row.memberId === memberId) })),
     listSwaps: async () => [swap],
     listLeaves: async () => [{ id: 'north', assignment_id: 'b', member_id: 'target', status: 'pending' }, { id: 'south', assignment_id: 'a', member_id: 'sender', status: 'pending' }],
     updateSwap: async (...args) => { changes.push(args); return { ...swap, status: args[1] }; },
@@ -29,7 +29,7 @@ function setup(memberId = 'target', allowedCampuses = ['campus-nanhu']) {
   };
   const platform = {
     authContext: async () => ({ actor: { memberId }, grants: [] }),
-    authorizer: { evaluate: (_actor, permission, target) => ({ allowed: permission === 'roster.read' || allowedCampuses.includes(target.campusId) }) }
+    authorizer: { evaluate: (actor, permission, target, context, grants) => grants?.length ? createAuthorizer().evaluate(actor,permission,target,context,grants) : ({ allowed: permission === 'roster.read' || allowedCampuses.includes(target.campusId) }) }
   };
   return { service: staffPlatformService({ repository, platform, manifests: [] }), changes, assignments, repository, platform };
 }

@@ -35,7 +35,7 @@ function scopeMatches(scope, target = {}, actor = {}) {
   if (scope.all !== true && target.campusId && Array.isArray(actor.authorizedCampuses) &&
       !actor.authorizedCampuses.some(value => campusId(value) === campusId(target.campusId))) return false;
   const rawCampuses = scope.campusIds ?? scope.campuses;
-  const campusValues = rawCampuses === 'bound' || rawCampuses === 'legacy' ? actor.authorizedCampuses || [] : values(rawCampuses);
+  const campusValues = rawCampuses === 'bound' ? actor.authorizedCampuses || [] : values(rawCampuses);
   if (rawCampuses !== undefined) {
     const targets = values(target.campusId || target.campusIds || actor.authorizedCampuses);
     if (!campusValues.length || !targets.some(value => campusValues.some(candidate => campusId(candidate) === campusId(value)) &&

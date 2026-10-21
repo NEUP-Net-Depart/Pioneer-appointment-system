@@ -37,7 +37,8 @@ export function staffPlatformService({
     platform,
     contextFor,
     requirePermission,
-    memberTarget
+    memberTarget,
+    evaluate
   });
   const { workbench, organization, deskSummary, audit } = workspaceDomain({
     repository,

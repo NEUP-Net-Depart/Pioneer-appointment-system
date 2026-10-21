@@ -14,7 +14,13 @@ const campuses = [
   { id: 'campus-hunnan', name: '浑南' }
 ];
 
-export function MemberEditor({ member, canManageRoles, onClose, onSaved }) {
+export function MemberEditor({
+  member,
+  canManageRoles,
+  canManageQualifications = canManageRoles,
+  onClose,
+  onSaved
+}) {
   const active = useContext(ActivityContext),
     lock = useRef(false);
   const [detail, setDetail] = useState(null);
@@ -25,6 +31,7 @@ export function MemberEditor({ member, canManageRoles, onClose, onSaved }) {
   });
   const [bindings, setBindings] = useState([]);
   const [roles, setRoles] = useState([]);
+  const bindableRoles = roles.filter((role) => role.actions?.bind !== false);
   const [departments, setDepartments] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -184,8 +191,10 @@ export function MemberEditor({ member, canManageRoles, onClose, onSaved }) {
             onChange={setSection}
             items={[
               { id: 'profile', label: '成员资料' },
-              ...(canManageRoles ? [{ id: 'qualifications', label: '工作资格' }] : []),
-              ...(canManageRoles && !detail?.account?.protected
+              ...(canManageQualifications && detail?.actions?.edit !== false
+                ? [{ id: 'qualifications', label: '工作资格' }]
+                : []),
+              ...(canManageRoles && !detail?.account?.protected && detail?.actions?.edit !== false
                 ? [{ id: 'roles', label: '角色授权' }]
                 : [])
             ]}
@@ -200,18 +209,20 @@ export function MemberEditor({ member, canManageRoles, onClose, onSaved }) {
             <p role="status">正在读取成员资料…</p>
           ) : (
             <>
-              {canManageRoles && (section === 'qualifications' || qualificationDirty) && (
-                <div hidden={section !== 'qualifications'}>
-                  <MemberQualifications
-                    detail={detail}
-                    onSaved={reload}
-                    onDirty={setQualificationDirty}
-                    onBusy={setBusy}
-                  />
-                </div>
-              )}
+              {canManageQualifications &&
+                detail.actions?.edit !== false &&
+                (section === 'qualifications' || qualificationDirty) && (
+                  <div hidden={section !== 'qualifications'}>
+                    <MemberQualifications
+                      detail={detail}
+                      onSaved={reload}
+                      onDirty={setQualificationDirty}
+                      onBusy={setBusy}
+                    />
+                  </div>
+                )}
               <form ref={profileForm} hidden={section !== 'profile'} onSubmit={saveProfile}>
-                <fieldset disabled={busy}>
+                <fieldset disabled={busy || detail.actions?.edit === false}>
                   <legend>成员资料{profileDirty ? ' · 未保存' : ''}</legend>
                   <label>
                     姓名
@@ -250,9 +261,9 @@ export function MemberEditor({ member, canManageRoles, onClose, onSaved }) {
                 </fieldset>
               </form>
               {detail.account?.protected && (
-                <p className="react-muted">此负责人账号受保护，不能停用或移除其授权。</p>
+                <p className="react-muted">此系统账号受保护，仅本人可验证原密码后修改密码。</p>
               )}
-              {canManageRoles && !detail.account?.protected && (
+              {canManageRoles && !detail.account?.protected && detail.actions?.edit !== false && (
                 <form ref={rolesForm} hidden={section !== 'roles'} onSubmit={saveBindings}>
                   <fieldset disabled={busy || !roles.length}>
                     <legend>角色授权{bindingsDirty ? ' · 未保存' : ''}</legend>
@@ -297,7 +308,7 @@ export function MemberEditor({ member, canManageRoles, onClose, onSaved }) {
                                   editBinding(index, { roleId: event.target.value })
                                 }
                               >
-                                {roles.map((role) => (
+                                {bindableRoles.map((role) => (
                                   <option key={role.id} value={role.id}>
                                     {role.name}
                                     {role.enabled ? '' : '（已停用）'}
@@ -350,11 +361,12 @@ export function MemberEditor({ member, canManageRoles, onClose, onSaved }) {
                     <div className="react-editor-actions">
                       <button
                         type="button"
+                        disabled={!bindableRoles.some((role) => role.enabled)}
                         onClick={() =>
                           setBindings((current) => [
                             ...current,
                             {
-                              roleId: roles.find((role) => role.enabled)?.id || roles[0]?.id,
+                              roleId: bindableRoles.find((role) => role.enabled)?.id,
                               scope: { campusIds: [profile.homeCampusId] },
                               effectiveFrom: dateKey(),
                               effectiveTo: null

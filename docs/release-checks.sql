@@ -27,3 +27,7 @@ SELECT COUNT(*) AS booking_receipts FROM booking_requests;
 SELECT COUNT(*) AS location_changes FROM service_location_changes;
 SELECT COUNT(*) AS invalid_location_snapshots FROM appointments
   WHERE contact_type IN ('qq','wechat') AND source='booking' AND location_snapshot='';
+
+-- Staff schemas only (0010 and later): no identity may have multiple logins.
+SELECT member_id,COUNT(*) AS login_count FROM staff_accounts
+  GROUP BY member_id HAVING COUNT(*)>1;

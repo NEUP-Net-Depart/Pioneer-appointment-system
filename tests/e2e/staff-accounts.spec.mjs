@@ -20,7 +20,7 @@ for (const role of ['technician', 'admin', 'superadmin']) test(`account and invi
   const editor = page.getByRole('dialog', { name: '管理账号 · 普通成员' });
   const types = editor.getByLabel('基础账号类型');
   await expect(types).toHaveValue('technician');
-  await expect(types.locator('option')).toHaveText(role === 'superadmin' ? ['维修人员', '管理员'] : ['维修人员']);
+  await expect(types.locator('option')).toHaveText(['维修人员', '管理员']);
   await editor.getByLabel('姓名', { exact: true }).fill('更新后的成员');
   await editor.getByRole('button', { name: '保存账号', exact: true }).click();
   await expect(editor).toHaveCount(0);
