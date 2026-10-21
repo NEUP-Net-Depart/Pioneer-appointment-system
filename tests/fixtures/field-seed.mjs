@@ -17,7 +17,7 @@ export function fieldSeed(day) {
     ),
     // This fixture deliberately assigns the reception post independently of
     // the login's legacy admin label.
-    `INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from) VALUES('field-office-role','member-20261001','role-office','{"campuses":"legacy"}','2026-01-01');`,
+    `INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from) VALUES('field-office-role','member-20261001','role-office','{"campuses":"bound"}','2026-01-01');`,
     `INSERT INTO member_work_profiles(id,member_id,profile_code,effective_from) VALUES('field-office-profile','member-20261001','office','2026-01-01');`,
     `INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,effective_from,created_at) VALUES('field-office-membership','member-20261001','dept-office','primary',1,'2026-01-01','2026-01-01');`,
     `INSERT INTO roster_tasks(id,week_start,slot_start,slot_end,deadline,created_at,created_by_member_id) VALUES('field-task','${day}','00:00','23:59','${at}','${at}','member-root001');`,

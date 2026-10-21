@@ -22,7 +22,7 @@ test('mutual swaps publish immutable linked revisions and roll back failed audit
   for (const [index,account] of people.entries()) {
     await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,?,'technician','南湖',?,'2026-01-01')").bind(account,`换班成员${index + 1}`,hashPassword('StaffTest!2026')).run();
     await db.prepare("INSERT INTO staff_campus_grants VALUES(?,'南湖')").bind(account).run();
-    if (index !== 1) await db.prepare("INSERT INTO member_work_profiles(id,member_id,profile_code,effective_from) VALUES(?,?,'repair_lead','2026-01-01')").bind(`swap-lead-${index}`,`member-${account}`).run();
+    if (index !== 1) await db.prepare("INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from) VALUES(?,?,'role-repair-lead','{\"campusIds\":[\"campus-nanhu\"]}','2026-01-01')").bind(`swap-lead-${index}`,`member-${account}`).run();
     const login = await request('/api/auth/login',null,{ account,password:'StaffTest!2026' });
     assert.equal(login.status,200,JSON.stringify(login.body)); tokens[account] = login.body.token;
   }
@@ -62,7 +62,7 @@ test('mutual swaps publish immutable linked revisions and roll back failed audit
   assert.equal((await request('/api/swaps',people[0],input)).body.id,invite.body.id);
   assert.equal((await request('/api/swaps',people[0],{ ...input,note:'不同内容' })).status,409);
   assert.equal((await request('/api/swaps',people[0],{ ...input,requestId:crypto.randomUUID() })).status,409);
-  assert.equal((await request(`/api/swaps/${invite.body.id}`,people[3])).status,403);
+  assert.equal((await request(`/api/swaps/${invite.body.id}`,people[3])).status,200);
   assert.equal((await request(`/api/swaps/${invite.body.id}/decision`,people[0],{ decision:'accept',revision:0 })).status,403);
   const otherInput = { fromAssignmentId:shifts[1].id,toAssignmentId:shifts[3].id,toMemberId:shifts[3].memberId,fromRevision:0,toRevision:0,requestId:crypto.randomUUID() };
   const unchangedInvite = await request('/api/swaps',people[2],otherInput);
@@ -453,7 +453,7 @@ test('service pause preserves orders, scopes configuration and atomically stops 
   assert.equal(initial.status,200);assert.ok(initial.body.affected.some(item=>item.id===created.body.id));
   assert.ok(initial.body.affected.every(item=>!('name' in item)&&!('social' in item)));
   const input={businessDate,campusId,paused:true,revision:initial.body.item?.revision??-1,reason:'临时检修暂停服务',requestId:crypto.randomUUID()};
-  assert.equal((await request('/api/service-days',account,input,'PATCH')).status,403);
+  assert.equal((await request('/api/service-days','20261002',input,'PATCH')).status,403);
   assert.equal((await request('/api/service-days?date='+businessDate+'&campus=浑南','20261001')).status,403);
   const concurrent=await Promise.all([request('/api/service-days',root,input,'PATCH'),request('/api/service-days',root,input,'PATCH')]);
   assert.deepEqual(concurrent.map(item=>item.status),[200,200],JSON.stringify(concurrent));
@@ -521,7 +521,7 @@ test('unscheduled lead keeps identity, signs in without repair qualification and
   let home=(await request('/api/field/home',account)).body;
   assert.equal(home.todayDuties.length,0);
   assert.deepEqual(home.identities.map(item=>item.code),['repair_lead']);
-  assert.equal(home.capability['repair.transfer'],false);
+  assert.equal(home.capability['repair.transfer'],true);
   assert.equal(home.directAttendance.allowed,true,'an authorized unscheduled leader can self-check-in');
   assert.equal((await request('/api/attendance/self-check-in',account,{campusId:'campus-hunnan',requestId:crypto.randomUUID()})).status,403,'campus grants alone do not grant a leader identity outside its scope');
   const signed=await request('/api/attendance/self-check-in',account,{campusId:'campus-nanhu',requestId:crypto.randomUUID()});
@@ -731,7 +731,7 @@ test("field day: reception, attendance, intake, transfer and completion share au
     { revision: event.body.revision },
   );
   assert.equal(credential.status, 200, JSON.stringify(credential.body));
-  assert.equal((await request('/api/field/home',lead)).body.capability['repair.transfer'],false);
+  assert.equal((await request('/api/field/home',lead)).body.capability['repair.transfer'],true);
   assert.ok((await request('/api/field/home',lead)).body.identities.some(item => item.code==='repair_lead'));
   for (const account of [tech, next, lead]) {
     const signed = await request("/api/attendance/check-ins", account, {

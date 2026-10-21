@@ -1,6 +1,6 @@
 export const staffIdentityLabels = {
   repair: '维修工作人员', exchange: '交流人员', office: '办公工作人员',
-  repair_lead: '维修值班负责人', office_lead: '办公值班负责人', superadmin: '最高管理员',
+  repair_lead: '维修负责人', office_lead: '办公值班负责人', superadmin: '最高管理员',
 };
 
 // Identity is a description of effective qualifications/authorization, not an action grant.
@@ -10,7 +10,8 @@ export function staffIdentities(context, authorizer, target = {}) {
     .map(item => item.profileCode).filter(code => ['repair', 'exchange', 'office'].includes(code)));
   // Describe whether an authorization exists in its own range; this never grants
   // an action on an omitted department/object or removes a binding restriction.
-  const has = permission => (context.grants || []).some(grant => {
+  const has = (permission, roleCode) => (context.grants || []).some(grant => {
+    if (roleCode && grant.roleCode !== roleCode) return false;
     const scope = grant.scope || {};
     const departments = target.departmentId ? [target.departmentId] : scope.departmentIds || scope.departments || [undefined];
     const objects = target.id ? [target.id] : scope.objectIds || [undefined];
@@ -20,8 +21,8 @@ export function staffIdentities(context, authorizer, target = {}) {
   });
   if (context.actor?.role === 'superadmin') codes.add('superadmin');
   else {
-    if (has('repair.transfer') || has('repair.correct')) codes.add('repair_lead');
-    if (has('roster.office.manage')) codes.add('office_lead');
+    if (has('repair.transfer', 'repair_lead') || has('repair.correct', 'repair_lead')) codes.add('repair_lead');
+    if (has('roster.office.manage', 'office_lead')) codes.add('office_lead');
   }
   return [...codes].map(code => ({ code, label: staffIdentityLabels[code] || code }));
 }

@@ -3,7 +3,7 @@ import { request } from './request.js';
 import { Modal } from './field/ui';
 
 const header =
-  'studentId,name,homeCampusId,departmentId,workProfiles,roleCodes,authorizedCampuses,trainingConfirmed,accountRole,accountTargets';
+  'studentId,name,homeCampusId,departmentId,workProfiles,roleCodes,authorizedCampuses,trainingConfirmed,accountRole';
 const templates = {
   repair: { label: '普通维修', department: 'dept-hardware', role: 'technician' },
   exchange: { label: '交流人员', department: '', role: 'exchange' },
@@ -71,9 +71,7 @@ export function MemberImport({ onClose, onSaved }) {
           </p>
           <p className="field-muted">
             更新已有成员时，省略 authorizedCampuses
-            列可保留登录账号的校区授权；提供该列会替换授权，空值会清空授权。多账号成员须用
-            accountTargets 指定登录账号，多个账号用 | 分隔，单独填写 *
-            表示全部账号；单账号成员可省略 accountTargets。
+            列可保留登录账号的校区授权；提供该列会替换授权，空值会清空授权。每个成员只关联一个登录账号，多重身份通过角色组合配置。
           </p>
           {!preview ? (
             <>

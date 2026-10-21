@@ -8,7 +8,7 @@ const definitions = [
   { code: 'attendance.self', name: '本人签到', scopeKinds: ['self'], conditionKinds: [] }
 ];
 
-async function fixture(page, { manageRoles = true, roleName = 'superadmin' } = {}) {
+async function fixture(page, { manageRoles = true, roleName = 'superadmin', protectedFirstRole = false } = {}) {
   const session = staffSession({ role: roleName, permissions: { 'members.manage': true, 'roles.manage': manageRoles } });
   const writes = [];
   let revision = 4;
@@ -37,7 +37,10 @@ async function fixture(page, { manageRoles = true, roleName = 'superadmin' } = {
     }
     if (path === '/api/roles') {
       if (!manageRoles) return route.fulfill({ status: 403, json: { error: '缺少角色权限' } });
-      body = { items: [role] };
+      body = { items: [
+        ...(protectedFirstRole ? [{ id:'role-superadmin',code:'superadmin',name:'最高管理员',enabled:true,actions:{edit:false,bind:false} }] : []),
+        role
+      ] };
     }
     if (path === '/api/organization/campuses') body = { items: [{ id: 'campus-nanhu', name: '南湖' }, { id: 'campus-hunnan', name: '浑南' }] };
     if (path === '/api/organization/departments') body = { items: [{ id: 'hardware', name: '硬件部' }] };
@@ -160,4 +163,28 @@ test('operational and React pages share a session and navigation follows grants 
   await expect(root.locator('.react-members-page')).toHaveCount(0);
   await expect(root.getByRole('button', { name: '成员管理', exact: true }).first()).toBeHidden();
   expect(errors).toEqual([]);
+});
+
+
+test('a business role manager can configure ordinary grants with a technician base account',async({page})=>{
+  const {root,writes}=await fixture(page,{roleName:'technician'});
+  await root.getByRole('button',{name:'授权管理',exact:true}).click();
+  await root.getByRole('checkbox',{name:'本人签到'}).check();
+  await root.getByRole('button',{name:'保存权限',exact:true}).click();
+  await expect(root.locator('.permissions-workspace').getByRole('status')).toContainText('权限已保存');
+  expect(writes.filter(write=>write.path==='/api/roles/custom-role')).toHaveLength(1);
+});
+
+test('a business manager adds an ordinary role without defaulting to a hidden system role',async({page})=>{
+  const {root,writes}=await fixture(page,{roleName:'technician',protectedFirstRole:true});
+  await root.getByRole('button',{name:'成员管理',exact:true}).first().click();
+  await root.getByRole('button',{name:'编辑成员与权限'}).click();
+  const dialog=root.getByRole('dialog');
+  await dialog.getByRole('button',{name:'角色授权',exact:true}).click();
+  await dialog.getByRole('button',{name:'添加角色',exact:true}).click();
+  await expect(dialog.getByRole('combobox',{name:'角色',exact:true}).last()).toHaveValue('custom-role');
+  await expect(dialog.getByRole('option',{name:'最高管理员',exact:true})).toHaveCount(0);
+  await dialog.getByRole('button',{name:'保存角色授权',exact:true}).click();
+  await expect(dialog.getByRole('status')).toContainText('角色授权已保存');
+  expect(writes.find(write=>write.method==='PUT').body.bindings.every(binding=>binding.roleId==='custom-role')).toBe(true);
 });

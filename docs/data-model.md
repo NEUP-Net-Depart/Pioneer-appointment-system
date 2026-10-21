@@ -11,7 +11,6 @@ Production/Preview 共用 [migrations/](../migrations/) 中的 schema 迁移。�
 | `roles` / `role_grants` / `member_roles` / `permission_definitions` | 完整授权项、范围、条件与有效期 |
 | `staff_whitelist` / `whitelist_campus_grants` / `activation_member_bindings` | 激活邀请及成员授权关联 |
 | `activation_requests` | 每学号最多一条待审；批准时原子创建账号与授权，审核后清除密码哈希 |
-| `legacy_admin_logins` | 原管理员登录及迁移时校区快照，不向同成员的其他账号继承 |
 | `appointments` / `active_repairs` / `repair_intake_records` | 预约、签名、状态、维修占用及设备照片核验；同一成员最多一张进行中工单 |
 | `weekday_slot_capacities` / `booking_day_slots` | 每周容量模板及服务日冻结快照，包含并发版本 |
 | `booking_requests` | 幂等键、输入摘要、工单引用和加密凭证，与预约原子写入 |
@@ -48,12 +47,15 @@ Production/Preview 共用 [migrations/](../migrations/) 中的 schema 迁移。�
 
 | 升级来源 | 正式迁移 | 回归脚本 |
 | --- | --- | --- |
-| dev 0009 | `migrations/0010_staff_platform.sql` | [dev 升级 SQL](../database/upgrades/dev-0009-to-staff-platform.sql) |
+| dev 0009 | `migrations/0010_staff_platform.sql` 起 | [dev 升级 SQL](../database/upgrades/dev-0009-to-staff-platform.sql) |
+| 已迁移 Preview／历史 Staff Staging | 对应链追加 `0033_staff_business_roles.sql` | 账号冲突检查、历史快照及权限回归 |
+
+`database/staff-migrations/` 保留历史 Staff Staging 的独立迁移账本及追加升级，仅用于历史数据库兼容与隔离验证，不恢复已移除的远程部署环境。两条链均受文件指纹和 `db:verify` 检查。
 
 `database/upgrades/` 是升级测试来源，须与对应正式迁移一致，不能绕过迁移账本直接重复执行；dev 历史夹具及原文指纹位于 `tests/fixtures/dev-migrations/`。`tests/staff-upgrade.test.mjs` 校验主迁移链升级时的历史引用保留、失败回滚和外键完整性。
 
 保留历史编号、`repair_number` 查询别名、凭证、附件、签名和时间；旧联系及设备字段继续读取，缺失结果保留 `legacy_unknown`。历史重复和多张在修不删除，处理完成前禁止新增冲突；旧小时段仅供历史读取。
 
-原管理员的兼容权限绑定原登录及迁移时校区；角色变化、成员映射变化或删除重建使兼容快照失效，新别名不继承。显式成员角色仍按成员共享，兼容管理角色不用于推断排班资格。原密码与业务数据保留，权限迁移撤销旧会话。
+0033 删除旧管理员兼容角色、登录快照和触发器，撤销旧会话，将既有管理员一次性绑定为授权校区内的长期维修负责人；明确维修资格保留。成员登录唯一约束在检查无重复后建立，冲突阻断升级，原账号、密码、预约和历史事实保持不变。
 
 迁移、备份及回退步骤见 [部署与运维](operations.md)。

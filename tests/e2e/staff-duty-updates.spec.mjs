@@ -41,10 +41,10 @@ test('unscheduled leader signs in directly and sees an accessible result without
   const activation=await command(request,'/api/activation','',{studentId:account,name,homeCampus:'南湖',password:'StaffTest!2026'});
   await command(request,'/api/activation-requests/review',root.token,{ids:[activation.id],status:'approved',identityVerified:true});
   await page.addInitScript(()=>{window.cameraRequests=0;navigator.mediaDevices.getUserMedia=async()=>{window.cameraRequests++;throw new Error('Camera must not be used for self check-in');};});
-  await login(page,account);await page.getByRole('button',{name:'到岗签到',exact:true}).click();
-  const result=page.getByRole('dialog',{name:'到岗签到成功',exact:true});await expect(result).toContainText(name);await expect(result).toContainText('维修值班负责人');await expect(result).toContainText('非排班到场参与工作');
+  await login(page,account);await page.getByRole('button',{name:'本人到岗签到',exact:true}).click();
+  const result=page.getByRole('dialog',{name:'到岗签到成功',exact:true});await expect(result).toContainText(name);await expect(result).toContainText('维修负责人');await expect(result).toContainText('非排班到场参与工作');
   expect(await page.evaluate(()=>window.cameraRequests)).toBe(0);await checkSizes(page,'check-in-success');
-  await result.getByRole('button',{name:'返回工作台',exact:true}).click();await expect(result).toHaveCount(0);await page.reload();await expect(page.getByRole('button',{name:'到岗签到',exact:true})).toHaveCount(0);
+  await result.getByRole('button',{name:'返回工作台',exact:true}).click();await expect(result).toHaveCount(0);await page.reload();await expect(page.getByRole('button',{name:'本人到岗签到',exact:true})).toHaveCount(0);
 });
 
 test('date suspension has explicit confirmation and weekly accounting keeps export options off until selected',async({page,request})=>{

@@ -36,9 +36,10 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
   async function accountForMember(memberId) {
     return db
       .prepare(
-        `SELECT staff_accounts.*,m.id AS mapped_member_id,m.status AS member_status
+        `SELECT staff_accounts.*,m.id AS mapped_member_id,m.status AS member_status,
+      (SELECT json_group_array(campus) FROM staff_campus_grants WHERE account=staff_accounts.account) AS campuses
       FROM staff_accounts LEFT JOIN members m ON m.id=staff_accounts.member_id
-      WHERE staff_accounts.member_id=? ORDER BY staff_accounts.protected DESC,staff_accounts.account LIMIT 1`
+      WHERE staff_accounts.member_id=?`
       )
       .bind(memberId)
       .first();
@@ -140,34 +141,27 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
     return result[0]?.meta?.changes ? profileHistory(memberId) : null;
   }
 
-  async function grants(memberId, businessDate = dateKey(), loginAccount = null) {
+  async function grants(memberId, businessDate = dateKey()) {
     const result = await db
       .prepare(
-        `SELECT rg.id,rg.role_id,rg.permission_code,rg.scope_spec,rg.condition_spec,rg.validity_spec,mr.scope_bindings,r.code AS role_code,legacy.campus_ids AS login_campuses
+        `SELECT rg.*,mr.scope_bindings,mr.effective_from,mr.effective_to,r.code AS role_code
       FROM member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1
       JOIN role_grants rg ON rg.role_id=r.id
-      LEFT JOIN legacy_admin_logins legacy ON legacy.member_id=mr.member_id AND legacy.account=?
-        AND EXISTS(SELECT 1 FROM staff_accounts sa WHERE sa.account=legacy.account AND sa.member_id=legacy.member_id AND sa.role='admin')
       WHERE mr.member_id=? AND mr.effective_from<=? AND (mr.effective_to IS NULL OR ?<mr.effective_to)
-        AND (r.code<>'legacy_admin' OR legacy.account IS NOT NULL)
       ORDER BY rg.permission_code`
       )
-      .bind(loginAccount, memberId, businessDate, businessDate)
+      .bind(memberId, businessDate, businessDate)
       .all();
-    return rows(result).map((row) => {
-      let scope = intersectScopes(parseJson(row.scope_spec, {}), parseJson(row.scope_bindings, {}));
-      if (row.role_code === 'legacy_admin')
-        scope = intersectScopes(scope, { campusIds: parseJson(row.login_campuses, []) });
-      return {
-        id: row.id,
-        roleId: row.role_id,
-        roleCode: row.role_code,
-        permissionCode: row.permission_code,
-        scope,
-        conditions: parseJson(row.condition_spec, []),
-        validity: parseJson(row.validity_spec, {})
-      };
-    });
+    return rows(result).map((row) => ({
+      id: row.id,
+      roleId: row.role_id,
+      roleCode: row.role_code,
+      permissionCode: row.permission_code,
+      scope: intersectScopes(parseJson(row.scope_spec, {}), parseJson(row.scope_bindings, {})),
+      conditions: parseJson(row.condition_spec, []),
+      validity: parseJson(row.validity_spec, {}),
+      binding: { effectiveFrom: row.effective_from, effectiveTo: row.effective_to }
+    }));
   }
 
   async function todayDuties(memberId, businessDate = dateKey()) {
@@ -189,7 +183,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
     const [membershipItems, profileItems, grantItems, duties, presence] = await Promise.all([
       memberships(memberId, businessDate),
       profiles(memberId, businessDate),
-      grants(memberId, businessDate, user.account),
+      grants(memberId, businessDate),
       todayDuties(memberId, businessDate),
       db
         .prepare('SELECT * FROM staff_presence WHERE member_id=? AND business_date=?')
@@ -445,6 +439,35 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
   async function importMembers(items, actorAccount, auditRecord) {
     const at = nowIso();
     const statements = [];
+    const authorization = commandAuthorization(auditRecord);
+    if (auditRecord?.authVersion !== undefined)
+      statements.push(
+        db
+          .prepare(
+            `SELECT CASE WHEN 1=1 ${authorization.sql}
+      THEN 1 ELSE abs(-9223372036854775808) END AS authorized`
+          )
+          .bind(...authorization.args)
+      );
+    for (const item of items.filter((item) => Object.hasOwn(item, 'expectedMember'))) {
+      const expected = item.expectedMember;
+      let check = expected
+        ? 'EXISTS(SELECT 1 FROM members WHERE id=? AND revision=?)'
+        : 'NOT EXISTS(SELECT 1 FROM members WHERE student_id=?)';
+      const args = expected ? [expected.memberId, expected.revision] : [item.studentId];
+      if (expected && Object.hasOwn(expected, 'account')) {
+        check += expected.account
+          ? ' AND EXISTS(SELECT 1 FROM staff_accounts WHERE member_id=? AND account=? AND auth_version=?)'
+          : ' AND NOT EXISTS(SELECT 1 FROM staff_accounts WHERE member_id=?)';
+        args.push(expected.memberId);
+        if (expected.account) args.push(expected.account.account, expected.account.authVersion);
+      }
+      statements.push(
+        db
+          .prepare(`SELECT CASE WHEN ${check} THEN 1 ELSE abs(-9223372036854775808) END AS current`)
+          .bind(...args)
+      );
+    }
     const roleRows = rows(await db.prepare('SELECT id,code FROM roles WHERE enabled=1').all());
     const rolesByCode = Object.fromEntries(roleRows.map((row) => [row.code, row.id]));
     for (const item of items) {
@@ -510,7 +533,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
               `member-role-import-${item.studentId}-${roleCode}`,
               id,
               rolesByCode[roleCode],
-              json(campusIds.length ? { campusIds } : {}),
+              json(item.roleScope || (campusIds.length ? { campusIds } : {})),
               item.effectiveFrom || dateKey()
             )
         );
@@ -519,9 +542,9 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
       const campusIds = (item.authorizedCampuses || []).map(
         (value) => ({ 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' })[value] || value
       );
-      // Profile imports preserve login authorization. The service resolves an
-      // explicit account selection; '*' deliberately updates all current aliases.
-      const targets = item.accountTargets?.includes('*') ? accounts : item.accountTargets || [];
+      // Profile imports preserve login authorization. The service resolves a
+      // single login, enforced by the unique member index.
+      const targets = item.accountTargets || [];
       if (targets.some((account) => !accounts.includes(account)))
         throw new Error('IMPORT_ACCOUNT_CHANGED');
       for (const account of targets) {
@@ -547,7 +570,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
         );
       if (
         !accounts.length &&
-        (item.workProfiles?.length || item.accountRole === 'admin') &&
+        (item.workProfiles?.length || item.roleCodes?.length) &&
         item.roleCodes?.length &&
         campusIds.length
       ) {

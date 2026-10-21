@@ -6,7 +6,7 @@ import { smoke } from '../scripts/smoke.mjs';
 import { rehearseSnapshot } from '../scripts/rehearse-preview.mjs';
 import { STAFF_RELEASE } from '../src/db/staff-readiness.js';
 
-async function baselineDump({ deployed = false, interleaved = false, beforeLoginScope = false } = {}) {
+async function baselineDump({ deployed = false, interleaved = false, beforeLoginScope = false, withAliases = false } = {}) {
   const db = new DatabaseSync(':memory:');
   try {
     db.exec('CREATE TABLE d1_migrations(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE,applied_at TEXT DEFAULT CURRENT_TIMESTAMP);');
@@ -27,7 +27,7 @@ async function baselineDump({ deployed = false, interleaved = false, beforeLogin
         db.prepare("INSERT INTO staff_campus_grants VALUES(?,'南湖')").run(account);
       }
       db.exec("DELETE FROM member_roles WHERE member_id='member-20260004';");
-      if (beforeLoginScope) {
+      if (withAliases) {
         db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at,member_id) VALUES('20260005','同校区维修别名','technician','南湖','preserved-password-hash','2026-01-01','member-20260001')").run();
         db.prepare("INSERT INTO staff_campus_grants VALUES('20260005','南湖')").run();
       }
@@ -47,7 +47,7 @@ test('the existing Preview migration ledger and populated accounts rehearse thro
   assert.ok(result.applied > 0);
   assert.equal(result.preservedTables, 7);
   assert.equal(result.accounts['technician → technician'], 1);
-  assert.equal(result.accounts['admin → legacy_admin'], 1);
+  assert.equal(result.accounts['admin → repair_lead'], 1);
   assert.equal(result.accounts['superadmin → superadmin'], 1);
 });
 
@@ -56,13 +56,16 @@ test('later deployments respect deliberately ungranted administrators and revoke
   assert.equal(report.applied,0);assert.equal(report.accounts['admin → '],1);assert.equal(report.accounts['technician → '],1);
 });
 
-test('already applied 0030 upgrades forward without authorizing a same-campus technician alias',async()=>{
+test('already applied 0030 upgrades forward to explicit permanent manager roles',async()=>{
   const report=await rehearseSnapshot(await baselineDump({deployed:true,beforeLoginScope:true,interleaved:true}));
-  assert.equal(report.applied,2);assert.equal(report.accounts['admin → legacy_admin'],1);assert.equal(report.accounts['admin → '],1);
+  assert.equal(report.applied,3);assert.equal(report.accounts['admin → repair_lead'],2);
 });
 
+test('migration rehearsal rejects multi-account members before altering authorization',async()=>{
+  await assert.rejects(rehearseSnapshot(await baselineDump({deployed:true,beforeLoginScope:true,withAliases:true})),/multiple login accounts/);
+});
 test('current D1 snapshots restore with interleaved table definitions and cyclic account/member references',async()=>{
-  const report=await rehearseSnapshot(await baselineDump({deployed:true,interleaved:true}));assert.equal(report.applied,0);assert.equal(report.accounts['admin → legacy_admin'],1);
+  const report=await rehearseSnapshot(await baselineDump({deployed:true,interleaved:true}));assert.equal(report.applied,0);assert.equal(report.accounts['admin → repair_lead'],1);
 });
 test('snapshot restore rejects broken references before attempting migrations',async()=>{
   const dump=(await baselineDump({deployed:true,interleaved:true})).replace(/^INSERT INTO "members" VALUES\('member-20260002'.*;\n/m,'');

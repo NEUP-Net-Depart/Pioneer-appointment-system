@@ -38,8 +38,12 @@ export async function rehearseSnapshot(dump, directory = resolve(root, 'migratio
     catch { throw new Error('Preview snapshot could not be imported locally'); }
     assert.equal(sqlite.prepare('PRAGMA foreign_key_check').all().length,0,'Preview snapshot has invalid foreign keys');
     const ledger = new Set(sqlite.prepare('SELECT name FROM d1_migrations').all().map(row => row.name));
-    const upgradingLegacyAdmins = !ledger.has('0030_react_cutover_access.sql');
+    const upgradingBusinessRoles = !ledger.has('0033_staff_business_roles.sql');
     const upgradingLegacyTechnicians = !sqlite.prepare('PRAGMA table_info(staff_accounts)').all().some(row => row.name === 'member_id');
+    if (!upgradingLegacyTechnicians) {
+      const conflicts = sqlite.prepare('SELECT COUNT(*) AS count FROM (SELECT member_id FROM staff_accounts GROUP BY member_id HAVING COUNT(*)>1)').get().count;
+      if(conflicts)throw new Error(`Migration preflight failed: ${conflicts} members have multiple login accounts; no accounts were merged`);
+    }
     const originals = preserved.map(table => {
       const columns = sqlite.prepare(`PRAGMA table_info(${table})`).all().map(row => row.name);
       assert.ok(columns.length, `Missing baseline table: ${table}`);
@@ -80,26 +84,19 @@ export async function rehearseSnapshot(dump, directory = resolve(root, 'migratio
       const key = `${row.role} → ${roleCodes.join('+')}`; counts[key] = (counts[key] || 0) + 1;
       if (user.status === 'enabled' && user.memberStatus !== 'inactive' && user.authorizedCampuses.length) {
         const context = await staff.contextFor(user);
-        const legacy = sqlite.prepare('SELECT campus_ids FROM legacy_admin_logins WHERE account=? AND member_id=?').get(user.account,user.memberId);
-        const compatibilityGrants = context.grants.filter(grant => grant.roleCode === 'legacy_admin');
-        if (row.role !== 'admin' || !legacy) assert.equal(compatibilityGrants.length,0,'An unrelated login inherited legacy administrator authorization');
-        if (legacy) for (const grant of compatibilityGrants) {
-          assert.ok(grant.scope.campusIds.every(campus => JSON.parse(legacy.campus_ids).includes(campus)),'Legacy authorization exceeded the original login campus snapshot');
-        }
         if (row.role === 'technician' && upgradingLegacyTechnicians) {
           assert.equal(context.permissions['repair.summary.read'], true, 'Migrated technician lost repair summary access');
           assert.notEqual(context.permissions['roles.manage'], true, 'Technician gained role management');
         }
-        if (row.role === 'admin' && upgradingLegacyAdmins) {
-          for (const code of ['repair.summary.read','repair.correct','repair.transfer','statistics.read','accounts.manage','settings.manage','customer.identity.read','customer.contact.read']) {
+        if (row.role === 'admin' && upgradingBusinessRoles) {
+          for (const code of ['repair.summary.read','repair.correct','repair.transfer','statistics.read','accounts.manage','settings.manage','members.manage','roles.manage','roster.read','roster.repair.manage','roster.office.manage','attendance.correct','attendance.export','customer.identity.read','customer.contact.read']) {
             assert.equal(context.permissions[code], true, 'Migrated administrator lost an original management capability');
             for (const campusId of ['campus-nanhu','campus-hunnan']) {
               if (user.authorizedCampuses.some(value => (value === '南湖' ? 'campus-nanhu' : value === '浑南' ? 'campus-hunnan' : value) === campusId)) continue;
-              assert.equal(platform.authorizer.evaluate(context.actor,code,{campusId},context,context.grants.filter(grant => grant.roleCode === 'legacy_admin')).allowed,false,'Migrated administrator exceeded the original campus scope');
+              assert.equal(platform.authorizer.evaluate(context.actor,code,{campusId},context,context.grants.filter(grant => grant.roleCode === 'repair_lead')).allowed,false,'Migrated administrator exceeded the account campus scope');
             }
           }
         }
-        if (row.role !== 'superadmin') assert.notEqual(context.permissions['roles.manage'], true, 'Non-superadmin gained role management');
       }
     }
     return { applied, accounts: counts, preservedTables: preserved.length };

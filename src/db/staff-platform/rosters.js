@@ -70,9 +70,9 @@ export function rostersDomain({ db, collection, auditStatement, commandAuthoriza
           .bind(...ids, weekStart, weekStart),
         db
           .prepare(
-            `SELECT mr.member_id,mr.effective_from AS binding_from,mr.effective_to AS binding_to,mr.scope_bindings,rg.*
+            `SELECT mr.member_id,mr.effective_from AS binding_from,mr.effective_to AS binding_to,mr.scope_bindings,r.code AS role_code,rg.*
           FROM member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1 JOIN role_grants rg ON rg.role_id=r.id
-          WHERE r.code<>'legacy_admin' AND mr.member_id IN (${placeholders}) AND mr.effective_from<=date(?,'+6 day') AND (mr.effective_to IS NULL OR mr.effective_to>?)`
+          WHERE mr.member_id IN (${placeholders}) AND mr.effective_from<=date(?,'+6 day') AND (mr.effective_to IS NULL OR mr.effective_to>?)`
           )
           .bind(...ids, weekStart, weekStart)
       ]);
@@ -106,6 +106,7 @@ export function rostersDomain({ db, collection, auditStatement, commandAuthoriza
         facts.get(row.member_id)?.grants.push({
           id: row.id,
           roleId: row.role_id,
+          roleCode: row.role_code,
           permissionCode: row.permission_code,
           scope: intersectScopes(parseJson(row.scope_spec, {}), parseJson(row.scope_bindings, {})),
           conditions: parseJson(row.condition_spec, []),

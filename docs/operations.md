@@ -39,7 +39,7 @@ Pages 通过 Actions Direct Upload 发布，关闭自动 Git 构建。构建命�
 | 手动 CI | 仅非 `main` 分支，遵循对应分支规则 |
 | PR、标签、分支删除 | PR 仅验证；标签和删除不发布 |
 
-迁移或演练失败停止发布。dev 整条链由 `cloudflare-dev-release` 串行保护。共享 Preview 演练和迁移使用 `cloudflare-preview-migrations` 锁；本地远程操作避开正在执行的 CI。
+迁移或演练失败停止发布。0033 升级自动迁移业务角色并检查一人多账号冲突，无冲突时无需补权或切换开关；冲突时停止，不合并身份。dev 整条链由 `cloudflare-dev-release` 串行保护。共享 Preview 演练和迁移使用 `cloudflare-preview-migrations` 锁；本地远程操作避开正在执行的 CI。
 
 Preview 演练仅将现有 D1 快照导出至临时本地数据库，应用待执行迁移，核验原数据及实际账号权限；不修改远程 Preview，不上传快照为 CI 工件。本地 Secrets 不进入发布目录。
 
@@ -89,6 +89,6 @@ D1 备份使用 `npx wrangler d1 export DB --remote --output <受限备份路径
 
 ## 验证范围
 
-`npm run verify` 覆盖格式、lint、类型、架构／平台审计、语法与 Functions 构建、Node 测试、主迁移链、通用浏览器和工作人员浏览器。测试使用隔离数据；本地通过不代表远程迁移或发布成功。线上 smoke 校验 React 入口、资源字节、真实结构及迁移标记、API 鉴权与私有路径。
+`npm run verify` 覆盖格式、lint、类型、架构／平台审计、语法与 Functions 构建、Node 测试、正式及历史 Staff Staging 两条迁移链、通用浏览器和工作人员浏览器。测试使用隔离数据；本地通过不代表远程迁移或发布成功。线上 smoke 校验 React 入口、资源字节、真实结构及迁移标记、API 鉴权与私有路径。
 
 设备检查须覆盖 HTTPS、摄像头授权、相册识别、手动编号、iOS／内置浏览器、镜头切换和手电筒；自动浏览器测试不能替代实机。使用测试成员和预约验证岗位范围，客户端越权请求仍须被服务端拒绝。

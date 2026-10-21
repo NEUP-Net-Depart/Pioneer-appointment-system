@@ -5,7 +5,7 @@ import {createAuthorizer} from '../src/modules/authorization/public.js';
 
 const week='2026-10-19',authorizer=createAuthorizer(),canExport=target=>target.campusId==='campus-nanhu';
 const records=[0,1,2].map(i=>({id:`record-${i}`,memberId:'ordinary',businessDate:`2026-10-${19+i}`,campusId:'campus-nanhu',primaryDepartmentIdSnapshot:'hardware',primaryDepartmentNameSnapshot:'硬件部',identitySnapshot:{name:'维修甲',studentId:'20260001',identities:[{code:'repair',label:'维修工作人员'}]}}));
-const lead={memberId:'lead',name:'负责人乙',studentId:'20260002',campuses:['南湖','浑南'],memberships:[{departmentId:'office',departmentName:'办公部',isPrimary:true,effectiveFrom:'2026-01-01'}],grants:[{id:'lead-office',permissionCode:'roster.office.manage',scope:{campusIds:['campus-nanhu']},conditions:[],binding:{effectiveFrom:'2026-10-20',effectiveTo:'2026-10-22'}}]};
+const lead={memberId:'lead',name:'负责人乙',studentId:'20260002',campuses:['南湖','浑南'],memberships:[{departmentId:'office',departmentName:'办公部',isPrimary:true,effectiveFrom:'2026-01-01'}],grants:[{id:'lead-office',roleCode:'office_lead',permissionCode:'roster.office.manage',scope:{campusIds:['campus-nanhu']},conditions:[],binding:{effectiveFrom:'2026-10-20',effectiveTo:'2026-10-22'}}]};
 test('weekly aggregation filters before combining and keeps both accounting options independent',()=>{
   const input={week,records:[...records,{...records[0],id:'hidden',campusId:'campus-hunnan'}],facts:[lead],paused:[],authorizer,canExport};
   let rows=weeklyAttendanceRows(input);assert.equal(rows.length,1);assert.equal(rows[0].actualCount,3);assert.equal(rows[0].creditedCount,3);

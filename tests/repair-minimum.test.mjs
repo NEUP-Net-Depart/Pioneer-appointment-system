@@ -57,11 +57,13 @@ test('generation and manual validation agree on pools, weekly obligations and su
   assert.deepEqual(unavailable.unassigned,['unavailable']);
 });
 test('scheduling leaders are derived from effective scoped authorization; exchange never enters either pool',()=>{
-  const fact={memberId:'lead',active:true,campuses:['campus-nanhu'],profiles:[],grants:[{permissionCode:'repair.transfer',scope:{campusIds:['campus-nanhu']},conditions:[{code:'signedDutyPresence',version:1}],validity:{effectiveTo:'2026-10-21'}}]};
+  const fact={memberId:'lead',active:true,campuses:['campus-nanhu'],profiles:[],grants:[{roleCode:'repair_lead',permissionCode:'repair.transfer',scope:{campusIds:['campus-nanhu']},conditions:[{code:'signedDutyPresence',version:1}],validity:{effectiveTo:'2026-10-21'}}]};
   const authorizer=createAuthorizer();
   assert.equal(repairRosterPool(fact,authorizer,'2026-10-19',{campusId:'campus-nanhu'}),'lead');
   assert.equal(repairRosterPool(fact,authorizer,'2026-10-19',{campusId:'campus-hunnan'}),'');
   assert.equal(repairRosterPool(fact,authorizer,'2026-10-21',{campusId:'campus-nanhu'}),'');
   assert.equal(repairRosterPool({...fact,profiles:[{profileCode:'exchange',effectiveFrom:'2026-01-01'}]},authorizer,'2026-10-19',{campusId:'campus-nanhu'}),'');
   assert.equal(repairRosterPool({...fact,grants:[],profiles:[{profileCode:'repair_lead',effectiveFrom:'2026-01-01'}]},authorizer,'2026-10-19',{campusId:'campus-nanhu'}),'');
+  assert.equal(repairRosterPool({...fact,grants:fact.grants.map(grant=>({...grant,roleCode:'custom_coordinator'}))},authorizer,'2026-10-19',{campusId:'campus-nanhu'}),'');
+  assert.equal(repairRosterPool({...fact,grants:[],profiles:[{profileCode:'repair'}],assignments:[{roleKind:'repair_lead',businessDate:'2026-10-19'}]},authorizer,'2026-10-19',{campusId:'campus-nanhu'}),'ordinary');
 });

@@ -20,6 +20,14 @@ for (const migration of migrations) {
 }
 const migrationNames = (await readdir(new URL(`../${directory}/`, import.meta.url))).filter(name => name.endsWith('.sql')).sort();
 assert.deepEqual(migrations.map(item => item.name).sort(), migrationNames, `Baseline migration list is incomplete: ${directory}`);
+for (const migration of baseline.staffMigrations || []) {
+  const content = await readFile(new URL(`../database/staff-migrations/${migration.name}`, import.meta.url));
+  assert.equal(migrationFingerprint(content),migration.sha256,`Staff migration hash drift: ${migration.name}`);
+}
+assert.deepEqual((baseline.staffMigrations || []).map(item=>item.name).sort(),
+  (await readdir(new URL('../database/staff-migrations/',import.meta.url))).filter(name=>name.endsWith('.sql')).sort());
+assert.equal(await readFile(new URL('../migrations/0033_staff_business_roles.sql',import.meta.url),'utf8'),
+  await readFile(new URL('../database/staff-migrations/0033_staff_business_roles.sql',import.meta.url),'utf8'));
 for (const module of result.summary) {
   const recorded = baseline.modules.find(item => item.code === module.code);
   assert.equal(recorded?.manifestHash, module.manifestHash, `Manifest hash drift: ${module.code}`);

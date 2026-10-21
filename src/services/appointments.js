@@ -430,6 +430,14 @@ export function appointmentService(
           )
             fail(400, '请指定维修人员');
           if (status === 'in_progress') {
+            if (item.status === 'in_progress' && patch.assignedTo !== item.assignedTo)
+              eligibility = await staffPlatform.field.assertTransfer(user, item, patch.assignedTo);
+            else if (item.status !== 'in_progress')
+              eligibility = await staffPlatform.field.requireEligible(
+                await users.find(patch.assignedTo),
+                item.campus,
+                item.id
+              );
             patch.completedAt = null;
             patch.outcome = null;
           } else if (status === 'completed') {

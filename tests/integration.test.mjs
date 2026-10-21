@@ -227,6 +227,40 @@ test('transfers reject every non-progress status in the unified staff workflow',
   await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:await login(target),body:{status:'completed',outcome:'repaired',repairNote:'交接后已复测'}});
 });
 
+test('live reassignment through corrections requires the recipient role, qualification and presence while managers work off duty',async()=>{
+  const manager=await addUser('993023','admin'),technician=await addUser('993024');
+  await addUser('993025');
+  await db.prepare("DELETE FROM staff_presence WHERE member_id='member-993023'").run();
+  const item=await book();
+  const started=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:technician,body:{status:'in_progress',...await intake(item,technician)}});
+  const correct=(body,status=200)=>api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:manager,body:{action:'correct',...body}},status);
+  // A management identity and work profile do not replace a repair role.
+  await correct({assignedTo:'993023'},409);
+  await db.prepare("DELETE FROM member_work_profiles WHERE member_id='member-993025'").run();
+  await correct({assignedTo:'993025'},409);
+  await readyStaff(db,'993025',date);
+  await db.prepare("DELETE FROM staff_presence WHERE member_id='member-993025'").run();
+  await correct({assignedTo:'993025'},409);
+  assert.equal((await appointmentRepository(db).find(item.id)).revision,started.revision);
+  await readyStaff(db,'993025',date);
+  await db.prepare("INSERT INTO roles(id,code,name,level,created_at,updated_at) VALUES('correction-only','correction_only','仅纠错',1,?,?)").bind(testNow,testNow).run();
+  await db.prepare("INSERT INTO role_grants(id,role_id,permission_code,scope_spec) VALUES('correction-only-grant','correction-only','repair.correct','{\"campuses\":\"bound\"}')").run();
+  await db.prepare("UPDATE member_roles SET role_id='correction-only' WHERE member_id='member-993023' AND role_id='role-repair-lead'").run();
+  await correct({assignedTo:'993025'},403);
+  await db.prepare("UPDATE member_roles SET role_id='role-repair-lead' WHERE member_id='member-993023' AND role_id='correction-only'").run();
+  await db.prepare("DELETE FROM roles WHERE id='correction-only'").run();
+  const transferred=await correct({assignedTo:'993025'});
+  assert.equal(transferred.assignedTo,'993025');
+  await db.prepare("DELETE FROM staff_presence WHERE member_id='member-993025'").run();
+  const edited=await correct({repairNote:'修正记录不要求管理者或原维修人员到岗'});
+  assert.equal(edited.repairNote,'修正记录不要求管理者或原维修人员到岗');
+  await correct({status:'completed',outcome:'repaired',repairNote:'核对已完成的维修记录'});
+  await correct({status:'in_progress'},409);
+  assert.equal((await appointmentRepository(db).find(item.id)).status,'completed');
+  await readyStaff(db,'993025',date);
+  assert.equal((await correct({status:'in_progress'})).assignedTo,'993025');
+});
+
 test('staff onsite registration is scoped, retry-safe, outside slot capacity and recoverable before intake', async () => {
   const root = await login(), tech = await addUser('993003');
   await configureCapacity(root,0);
@@ -256,39 +290,27 @@ test('staff onsite registration is scoped, retry-safe, outside slot capacity and
   assert.notEqual(next.id,item.id);
 });
 
-test('multiple logins for one member resume and complete the same repair and share the active-work constraint', async () => {
-  const primary = await addUser('993020');
-  await db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at,member_id) VALUES(?,?,?,?,?,?,?)')
-    .bind('993021', '同一维修人员另一个登录', 'technician', '南湖', hashPassword(password), date, 'member-993020').run();
-  await db.prepare("INSERT INTO staff_campus_grants VALUES('993021','南湖')").run();
-  const alias = await login('993021'), outsider = await addUser('993022');
-  const first = await book(), second = await book();
-  const firstPhotos = await intake(first, primary), secondPhotos = await intake(second, alias);
-  const attempts = await Promise.all([
-    request(`/api/appointments/${first.id}/status`, { method: 'PATCH', token: primary, body: { status: 'in_progress', ...firstPhotos } }),
-    request(`/api/appointments/${second.id}/status`, { method: 'PATCH', token: alias, body: { status: 'in_progress', ...secondPhotos } })
-  ].map(async pending => { const response = await pending; return { status: response.status, body: await response.json() }; }));
-  assert.deepEqual(attempts.map(response => response.status).sort(), [200, 409]);
-  const started = attempts.find(response => response.status === 200).body;
-  assert.equal(started.assignedMemberId, 'member-993020');
-  for (const token of [primary, alias]) {
-    const current = await api('/api/scan/current', { token });
-    assert.deepEqual(current.items.map(item => item.id), [started.id]);
-    assert.equal(current.items[0].assignedMemberId, 'member-993020');
-    assert.equal((await api('/api/scan/resolve', { method: 'POST', token, body: { id: started.id } })).name, '测试同学');
-    assert.ok((await api('/api/appointments?q=测试同学', { token })).items.some(item => item.id === started.id));
-  }
-  const summary=await api('/api/scan/resolve', { method: 'POST', token: outsider, body: { id: started.id } });
-  assert.equal(summary.canReadDetails,false); assert.equal(summary.name,undefined); assert.equal(summary.social,undefined);
-  const otherLogin = started.assignedTo === '993020' ? alias : primary;
-  const done = await api(`/api/appointments/${started.id}/status`, { method: 'PATCH', token: otherLogin,
-    body: { revision: started.revision, status: 'completed', outcome: 'repaired', repairNote: '同一成员另一账号完成' } });
-  assert.equal(done.assignedMemberId, 'member-993020');
-  assert.equal(done.assignedTo, started.assignedTo, 'retain the original intake account for audit');
-  assert.equal((await api('/api/scan/current', { token: alias })).items.length, 0);
-  const guest = await api(`/api/appointments/${started.id}`, { accessToken: started.id === first.id ? first.accessToken : second.accessToken });
-  assert.equal(guest.assignedMemberId, undefined);
-  assert.equal(guest.registeredMemberId, undefined);
+test('one login combines identities while concurrent intake remains limited to one active repair', async () => {
+  const primary=await addUser('993020'),outsider=await addUser('993022');
+  await assert.rejects(db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at,member_id) VALUES(?,?,?,?,?,?,?)')
+    .bind('993021','重复登录','technician','南湖',hashPassword(password),date,'member-993020').run(),/UNIQUE/);
+  await db.prepare("INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from) VALUES('combined-lead','member-993020','role-repair-lead','{\"campusIds\":[\"campus-nanhu\"]}','2026-01-01')").run();
+  const me=await api('/api/auth/me',{token:primary});
+  assert.ok(me.identities.some(item=>item.code==='repair'));assert.ok(me.identities.some(item=>item.code==='repair_lead'));
+  const first=await book(),second=await book();
+  const firstPhotos=await intake(first,primary),secondPhotos=await intake(second,primary);
+  const attempts=await Promise.all([first,second].map(async(item,i)=>{
+    const response=await request(`/api/appointments/${item.id}/status`,{method:'PATCH',token:primary,body:{status:'in_progress',...[firstPhotos,secondPhotos][i]}});
+    return {status:response.status,body:await response.json()};
+  }));
+  assert.deepEqual(attempts.map(item=>item.status).sort(),[200,409]);
+  const started=attempts.find(item=>item.status===200).body;
+  assert.equal(started.assignedMemberId,'member-993020');
+  assert.deepEqual((await api('/api/scan/current',{token:primary})).items.map(item=>item.id),[started.id]);
+  const hidden=await api('/api/scan/resolve',{method:'POST',token:outsider,body:{id:started.id}});
+  assert.equal(hidden.canReadDetails,false);assert.equal(hidden.name,undefined);
+  const done=await api(`/api/appointments/${started.id}/status`,{method:'PATCH',token:primary,body:{revision:started.revision,status:'completed',outcome:'repaired',repairNote:'组合身份完成维修'}});
+  assert.equal(done.assignedTo,'993020');assert.equal((await api('/api/scan/current',{token:primary})).items.length,0);
 });
 
 test('expired onsite registrations cannot bypass photo intake through administrator corrections', async () => {
@@ -642,7 +664,7 @@ test('onsite creation stops at the inclusive Shanghai deadline', async () => {
 });
 
 test('health verifies D1 schema and R2; API paths return JSON and security headers', async () => {
-  assert.deepEqual(await api('/api/health'), { ok: true, service: 'pioneer-repair-api', database: 'd1', attachments: 'r2', staffRelease: 'staff-react-0031', workflow: 'staff-platform' });
+  assert.deepEqual(await api('/api/health'), { ok: true, service: 'pioneer-repair-api', database: 'd1', attachments: 'r2', staffRelease: 'staff-business-0033', workflow: 'staff-platform' });
   for (const path of ['/api','/api/unknown']) await api(path, {}, 404);
   const response = await request('/api/health');
   assert.equal(response.headers.get('cache-control'), 'no-store');
@@ -856,10 +878,13 @@ test('concurrent uploads atomically reserve the last bytes and reject excess bef
   const item = await book();
   await db.prepare('UPDATE storage_quota SET used_bytes=?').bind(MAX_R2_BYTES - 4).run();
   const input = { studentId: item.studentId, filename: 'a.txt', mimeType: 'text/plain', data: 'dGVzdA==' };
-  const responses = await Promise.all(Array.from({ length: 10 }, async () => request(`/api/appointments/${item.id}/attachments`, {token:await login(),method: 'POST', body: input })));
+  const responses = await Promise.all(Array.from({ length: 10 }, async () => {
+    const response=await request(`/api/appointments/${item.id}/attachments`, {token:await login(),method: 'POST', body: input });
+    return {status:response.status,body:await response.json()};
+  }));
   assert.equal(responses.filter(response => response.status === 201).length, 1);
   assert.equal(responses.filter(response => response.status === 507).length, 9);
-  assert.equal((await responses.find(response => response.status === 507).json()).error, '附件存储空间已满');
+  assert.equal(responses.find(response => response.status === 507).body.error, '附件存储空间已满');
   assert.equal((await bucket.list()).objects.length, 1);
   assert.equal((await db.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, MAX_R2_BYTES);
   assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM attachment_storage').first()).n, 1);
@@ -1189,7 +1214,7 @@ test('explicit account management grants permit technician reviewers without gra
   await grantTestManagement(db,'650191');
   const token=await login('650191');
   await api('/api/users/650192',{token,method:'PATCH',body:{name:'已授权管理修改'}});
-  await api('/api/users/650192',{token,method:'PATCH',body:{role:'admin'}},403);
+  await api('/api/users/650192',{token,method:'PATCH',body:{role:'admin'}});
   await api('/api/users/root001',{token,method:'PATCH',body:{status:'disabled'}},403);
   await api('/api/staff-whitelist/import',{token,method:'POST',body:{csv:'studentId,expectedName\n650193,明确授权审批',expectedRole:'technician',authorizedCampuses:['南湖']}});
   const application=await applyStaff('650193',{name:'明确授权审批'});
@@ -1530,7 +1555,7 @@ test('activation management rejects role and campus escalation and supports batc
   const root=await login(),admin=await addUser('850001','admin'),technician=await addUser('850002');
   await api('/api/staff-whitelist',{token:technician},403);
   await api('/api/activation-requests',{token:technician},403);
-  await api('/api/staff-whitelist/import',{method:'POST',token:admin,body:{csv:'studentId\n850003',expectedRole:'admin',authorizedCampuses:['南湖']}},403);
+  await api('/api/staff-whitelist/import',{method:'POST',token:admin,body:{csv:'studentId\n850003',expectedRole:'admin',authorizedCampuses:['南湖']}},400);
   await api('/api/staff-whitelist/import',{method:'POST',token:admin,body:{csv:'studentId\n850003',authorizedCampuses:['浑南']}},403);
   await api('/api/staff-whitelist/import',{method:'POST',token:root,body:{csv:'studentId\n850003\n850004',authorizedCampuses:['浑南']}});
   const first=await applyStaff('850003'),second=await applyStaff('850004');
