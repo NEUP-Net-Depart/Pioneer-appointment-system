@@ -1904,16 +1904,14 @@ test('concurrent completion retries retain original numbers and reject conflicti
     const token = index === 0 ? root : await addUser(`99200${index}`); owners.set(item.id,token);
     Object.assign(item, await api(`/api/appointments/${item.id}/status`, {method:'PATCH',token,body:{status:'in_progress',...await intake(item,token)}}));
   }
-  const finish = item => request(`/api/appointments/${item.id}/status`, {method:'PATCH',token:owners.get(item.id),body:{status:'completed',outcome:'repaired',repairNote:'已修复',revision:item.revision}});
-  const responses = await Promise.all([finish(items[0]),finish(items[0]),finish(items[1])]);
-  assert.deepEqual(responses.map(r=>r.status).sort(), [200,200,200]);
-  const completed = [];
-  for (const response of responses) if (response.status === 200) completed.push(await response.json());
+  // Parse each body immediately; Miniflare's wrapped response stream can be
+  // cancelled by Undici's finalizer while other concurrent requests finish.
+  const finish = item => api(`/api/appointments/${item.id}/status`, {method:'PATCH',token:owners.get(item.id),body:{status:'completed',outcome:'repaired',repairNote:'已修复',revision:item.revision}});
+  const completed = await Promise.all([finish(items[0]),finish(items[0]),finish(items[1])]);
   assert.deepEqual([...new Set(completed.map(item=>item.id))].sort(), items.slice(0,2).map(item=>item.id).sort());
   await api(`/api/appointments/${items[0].id}/status`, {method:'PATCH',token:root,body:{status:'completed',outcome:'unrepaired',repairNote:'不同结果',revision:items[0].revision}},409);
   assert.ok(completed.every(item=>item.repairNumber===null));
-  const last = await finish(items[2]); assert.equal(last.status, 200);
-  const done = await last.json(); assert.equal(done.id, items[2].id); assert.equal(done.repairNumber, null);
+  const done = await finish(items[2]); assert.equal(done.id, items[2].id); assert.equal(done.repairNumber, null);
   assert.equal((await book()).id.split('-')[1], '04');
 });
 
