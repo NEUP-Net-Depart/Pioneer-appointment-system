@@ -63,12 +63,12 @@ test('later deployments respect deliberately ungranted administrators and revoke
 
 test('already applied 0030 upgrades forward to explicit permanent manager roles',async()=>{
   const report=await rehearseSnapshot(await baselineDump({deployed:true,beforeLoginScope:true,interleaved:true}));
-  assert.equal(report.applied,3);assert.equal(report.accounts['admin → repair_lead+technician'],2);
+  assert.equal(report.applied,5);assert.equal(report.accounts['admin → repair_lead+technician'],2);
 });
 
 test('Preview rehearsal respects expired explicit authorization and custom grant conditions',async()=>{
   const report=await rehearseSnapshot(await baselineDump({deployed:true,beforeLoginScope:true,explicitAuthorization:true}));
-  assert.equal(report.applied,3);
+  assert.equal(report.applied,5);
   assert.equal(report.accounts['admin → repair_lead+technician'],2);
 });
 

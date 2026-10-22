@@ -11,6 +11,7 @@ import {
 import { issueAccessToken, bookingDigest, hashAccessToken } from '../lib/access-tokens.js';
 import { guestAppointment } from './access.js';
 import { repairOutcomes } from '../../shared/constants.js';
+import { bookingWindow } from '../../shared/booking-settings.js';
 import {
   appointmentScope,
   requireRole,
@@ -39,7 +40,8 @@ export function appointmentService(
   users,
   encryptionKey,
   clock = () => new Date(),
-  staffPlatform
+  staffPlatform,
+  bookingSettings = null
 ) {
   const present = async (item, staff = false) => {
     const [visible, location] = await Promise.all([
@@ -186,9 +188,15 @@ export function appointmentService(
       const expiresAt = expirationDeadline(data.date);
       if ((await appointments.serviceDay(data.date, data.campus))?.paused)
         fail(409, '该日期暂停维修，请选择其他日期', 'SERVICE_DAY_PAUSED');
+      let importantNotices = [];
       if (!onsite) {
-        if (data.date < today || data.date > addDays(today, 3))
+        const settings = bookingSettings ? await bookingSettings.public(data.campus) : null;
+        const window = bookingWindow(instant, settings?.releaseTime);
+        if (data.date < today || data.date > window.end)
           fail(409, '预约日期必须为今天起 3 天内', 'DATE_UNAVAILABLE');
+        importantNotices = settings?.notices.filter(notice => notice.important) || [];
+        if (importantNotices.some(notice => !data.acceptedNotices?.some(accepted => accepted.id === notice.id && accepted.revision === notice.revision)))
+          fail(409, '预约公告已更新，请阅读并确认重要公告后重新提交', 'BOOKING_NOTICE_CHANGED');
         if (!serviceDay(data.date)) fail(409, '预约日期必须为周一至周四', 'DATE_UNAVAILABLE');
         const schedule = await appointments.schedule(data.date, data.campus);
         if (!schedule.some((slot) => slot.time_slot === data.timeSlot))
@@ -211,6 +219,8 @@ export function appointmentService(
       );
       const item = {
         ...data,
+        bookingNotices: JSON.stringify(importantNotices
+          .map(notice => ({ ...notice, acceptedAt: instant.toISOString() }))),
         status: 'booked',
         assignedTo: '',
         repairNote: '',

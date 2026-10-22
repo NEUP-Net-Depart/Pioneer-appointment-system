@@ -126,6 +126,7 @@ for(const directory of ['migrations','database/staff-migrations']) {
       db.exec('ROLLBACK');
       assert.deepEqual(snapshot(db),before);
       db.exec('BEGIN;'+sql+'COMMIT;');
+      for(const file of (await readdir(directory)).filter(name=>name.endsWith('.sql') && name>'0033_staff_business_roles.sql').sort())db.exec(await readFile(directory+'/'+file,'utf8'));
       assert.equal(await verifyStaffSchema(adapter(db)),STAFF_RELEASE);
       for(const [table,column] of [['member_roles','scope_bindings'],['role_grants','scope_spec']])
         assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE json_extract(${column},'$.campuses')='legacy' OR json_extract(${column},'$.campusIds')='legacy'`).get().n,0);

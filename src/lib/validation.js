@@ -122,6 +122,10 @@ export function bookingInput(input) {
   data.serial = '';
   data.liquidDrop = '';
   data.note = '';
+  if (input.acceptedNotices !== undefined) {
+    if (!Array.isArray(input.acceptedNotices) || input.acceptedNotices.length > 100 || input.acceptedNotices.some(item => !item || typeof item.id !== 'string' || item.id.length > 80 || !Number.isSafeInteger(item.revision) || item.revision < 0)) fail(400, '公告确认记录不正确');
+    data.acceptedNotices = input.acceptedNotices.map(({ id, revision }) => ({ id, revision }));
+  }
   return data;
 }
 export function bookingRequestKey(value) {

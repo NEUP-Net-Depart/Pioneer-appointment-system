@@ -64,7 +64,7 @@ test('server location, full, paused and ended states disable the actual choices'
 test('empty availability and a network error have different feedback and a retry',async({page})=>{
   let unavailable=false;
   await setupStudent(page,{availability:async(result,route)=>{if(unavailable)return route.abort();result.items.forEach(item=>item.location='');await route.fulfill({json:result});}});
-  await page.locator('[data-campus=南湖]').click();await expect(page.locator('#booking-empty')).toContainText('未来三天内无可用日期');await expect(page.locator('#booking-retry')).toBeVisible();
+  await page.locator('[data-campus=南湖]').click();await expect(page.locator('#booking-empty')).toContainText('当前预约范围内无可用日期');await expect(page.locator('#booking-retry')).toBeVisible();
   unavailable=true;await page.locator('#booking-retry').click();await expect(page.locator('#booking-selection')).toContainText('暂时无法更新');await expect(page.locator('#booking-empty')).toBeHidden();
 });
 

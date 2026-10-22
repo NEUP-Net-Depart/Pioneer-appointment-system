@@ -6,7 +6,7 @@ test('booking dates preserve the four-day Shanghai window and Monday to Thursday
   assert.deepEqual(bookingDates(new Date('2026-10-12T10:00:00+08:00')), ['2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15']);
   assert.deepEqual(bookingDates(new Date('2026-10-15T10:00:00+08:00')), ['2026-10-15']);
   assert.deepEqual(bookingDates(new Date('2026-10-16T10:00:00+08:00')), ['2026-10-19']);
-  assert.deepEqual(bookingDates(new Date('2026-10-18T23:30:00Z')), ['2026-10-19', '2026-10-20', '2026-10-21', '2026-10-22']);
+  assert.deepEqual(bookingDates(new Date('2026-10-18T23:30:00Z')), ['2026-10-19', '2026-10-20', '2026-10-21']);
 });
 
 test('slots disappear at their existing end deadline, and fully ended days disappear', () => {

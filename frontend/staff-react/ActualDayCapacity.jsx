@@ -52,13 +52,13 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
   }, [campus, date, active, revision, retry]);
   const data = snapshot?.campus === campus && snapshot?.date === date ? snapshot : null;
   return (
-    <section className="field-card capacity-actual">
+    <section className="field-card capacity-actual" aria-busy={loading}>
       <div className="capacity-section-heading">
         <div>
           <h2>日期实际容量</h2>
         </div>
         <button disabled={loading || !date} onClick={() => setRetry((value) => value + 1)}>
-          更新实际数据
+          {loading ? '正在更新…' : '更新实际数据'}
         </button>
       </div>
       <div className="capacity-actual-date">
@@ -66,7 +66,7 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
           查看日期
           <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
         </label>
-        <div className="field-actions">
+        <div className="capacity-date-shortcuts" role="group" aria-label="快捷查看日期">
           {[0, 1, 2, 3].map((offset) => {
             const day = addDays(dateKey(), offset);
             return (
@@ -79,9 +79,11 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
       </div>
       <Notice>{error}</Notice>
       {error && <button onClick={() => setRetry((value) => value + 1)}>重试</button>}
-      <p className="workspace-update" role="status">
-        {loading ? '正在更新实际数据…' : !date ? '请选择日期。' : ''}
-      </p>
+      {((loading && !data) || !date) && (
+        <p className="workspace-update" role="status">
+          {loading ? '正在更新实际数据…' : '请选择日期。'}
+        </p>
+      )}
       {data && (
         <>
           <div className="capacity-source">
@@ -94,26 +96,30 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
           </div>
           <div className="capacity-actual-layout">
             <div>
-              <h3>预约人数</h3>
+              <h3>预约名额</h3>
               {data.items.length ? (
-                <div className="capacity-actual-slots">
-                  {data.items.map((item) => (
-                    <article key={item.timeSlot}>
-                      <strong>{item.timeSlot}</strong>
-                      <div>
-                        <span>
-                          名额 <b>{item.capacity}</b>
-                        </span>
-                        <span>
-                          已占用 <b>{item.occupied}</b>
-                        </span>
-                        <span>
-                          剩余 <b>{Math.max(0, item.capacity - item.occupied)}</b>
-                        </span>
-                      </div>
-                    </article>
-                  ))}
-                </div>
+                <table className="capacity-actual-slots" aria-label="各时段预约名额">
+                  <thead>
+                    <tr>
+                      <th scope="col">到场时段</th>
+                      <th scope="col">名额</th>
+                      <th scope="col">已占用</th>
+                      <th scope="col">剩余</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.items.map((item) => (
+                      <tr key={item.timeSlot}>
+                        <th scope="row">{item.timeSlot}</th>
+                        <td>{item.capacity}</td>
+                        <td>{item.occupied}</td>
+                        <td>
+                          <strong>{Math.max(0, item.capacity - item.occupied)}</strong>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               ) : (
                 <p className="field-muted">此日期没有配置预约时段。</p>
               )}
@@ -125,14 +131,24 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
               <h3>工作人员</h3>
               {data.staffing ? (
                 <>
-                  <dl>
+                  <p className="field-muted">{campus}校区 · 当日预计出勤</p>
+                  <div className="capacity-staffing-list">
                     {Object.entries(data.staffing).map(([type, count]) => (
-                      <div key={type}>
-                        <dt>{type === 'repair' ? '维修排班' : '办公排班'}</dt>
-                        <dd>{count} 人</dd>
+                      <div className="capacity-staffing-row" key={type}>
+                        <span>{type === 'repair' ? '维修排班' : '办公排班'}</span>
+                        <strong>{count} 人</strong>
+                        {onNavigate && (
+                          <button
+                            onClick={() =>
+                              onNavigate(type === 'repair' ? 'roster-manage' : 'office-roster')
+                            }
+                          >
+                            {type === 'repair' ? '查看维修排班' : '查看办公排班'}
+                          </button>
+                        )}
                       </div>
                     ))}
-                  </dl>
+                  </div>
                   <p className="field-muted">
                     预计出勤按已发布班次去重，并扣除已批准请假；实际到岗以签到记录为准。
                   </p>
@@ -140,7 +156,6 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
               ) : (
                 <p className="field-muted">人员安排请在有权限的排班管理页查看。</p>
               )}
-              {onNavigate && <button onClick={() => onNavigate('roster')}>查看我的班次</button>}
             </div>
           </div>
         </>

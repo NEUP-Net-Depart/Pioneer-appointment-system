@@ -77,6 +77,7 @@ for (const directory of ['migrations','database/staff-migrations']) test(`${dire
     assert.deepEqual((await db.prepare('SELECT account,name,role,home_campus,protected,password_hash,created_at,member_id FROM staff_accounts ORDER BY account').all()).results,before);
     assert.deepEqual((await db.prepare('SELECT * FROM staff_campus_grants ORDER BY account,campus').all()).results,grantsBefore);
     assert.deepEqual(await history(),historyBefore,'all historical record fields and links survive the upgrade');
+    for(const file of files.filter(name=>name>'0033_staff_business_roles.sql'))await migrate(db,directory,file);
     assert.deepEqual((await db.prepare("SELECT scope_bindings,effective_from,effective_to FROM member_roles WHERE id='preview-explicit-lead'").all()).results,[{scope_bindings:'{"campusIds":["campus-nanhu"]}',effective_from:'2026-01-01',effective_to:null}]);
     assert.deepEqual((await db.prepare("SELECT scope_bindings,effective_from,effective_to FROM member_roles WHERE id='expired-lead'").all()).results,[{scope_bindings:'{"campusIds":["campus-hunnan"]}',effective_from:'2026-01-01',effective_to:'2026-09-01'}]);
     assert.deepEqual((await db.prepare("SELECT scope_bindings FROM member_roles WHERE member_id='member-20268005' AND role_id='role-repair-lead' AND effective_to IS NULL").all()).results,[]);

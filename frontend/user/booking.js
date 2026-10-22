@@ -57,7 +57,7 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
   function go(next,{focus=true}={}){step=next;animateLayout(form,()=>{for(const panel of form.querySelectorAll('[data-step]'))panel.hidden=Number(panel.dataset.step)!==next;
     [...$('#booking-steps').children].forEach((item,index)=>{if(index+1===next)item.setAttribute('aria-current','step');else item.removeAttribute('aria-current');});
     if(next===3)review();else if(next===2)renderTime();},{stagger:true});
-    saveDraft();if(focus){const heading=form.querySelector(`[data-step="${next}"] h2`);heading.focus({preventScroll:true});heading.scrollIntoView({block:'start',behavior:'auto'});}}
+    saveDraft();if(focus){const heading=form.querySelector(`[data-step="${next}"] h2`);heading.focus({preventScroll:true});heading.scrollIntoView({block:'start',behavior:'auto'});}picker.setHome(next===1);}
   function error(message){setMessage($('#booking-error'),message);}
   function showErrors(errors,{focus=true}={}){const previous=new Map([...form.querySelectorAll('[data-error-for]')].map(target=>[target,target.textContent]));animateLayout(form,()=>{for(const target of form.querySelectorAll('[data-error-for]'))target.textContent='';for(const control of form.querySelectorAll('[aria-invalid]')){control.removeAttribute('aria-invalid');if(control.dataset.baseDescription)control.setAttribute('aria-describedby',control.dataset.baseDescription);else control.removeAttribute('aria-describedby');}
     for(const [key,message] of Object.entries(errors)){const name=key==='brand' && field('brand').value==='other' ? 'brandOther' : key==='college' && field('college').value==='other' ? 'collegeOther' : key==='contactValue' ? field('contactType').value==='qq' ? 'qqAccount' : 'wechatAccount' : key;
@@ -77,14 +77,14 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
   }
   form.addEventListener('input',changed);form.addEventListener('change',changed);form.addEventListener('compositionend',changed);
   form.querySelectorAll('[data-edit-step]').forEach(button=>button.addEventListener('click',()=>{if(!busy){error('');go(Number(button.dataset.editStep));}}));
-  $('#step-one-next').addEventListener('click',async()=>{if(busy)return;const button=$('#step-one-next');button.disabled=true;try{if(await picker.refresh() && picker.validate()){error('');go(2);}}finally{button.disabled=false;}});
+  $('#step-one-next').addEventListener('click',async()=>{if(busy)return;const button=$('#step-one-next');button.disabled=true;try{if(await picker.refresh() && picker.validate() && picker.confirmNotices()){error('');go(2);}}finally{button.disabled=button.dataset.paused==='true';}});
   $('#step-two-next').addEventListener('click',()=>{const errors=fieldErrors();showErrors(errors);if(Object.keys(errors).length || !photos.validity())return;if(!picker.validate()){go(1);error('原到场时段当前不可预约，请重新选择。其他已填信息已保留。');return;}error('');go(3);void picker.refresh();});
   $('#agreement-link').addEventListener('click',event=>{event.preventDefault();agreement.open();});$('#close-agreement').addEventListener('click',()=>agreement.close());
   $('#draft-prompt').hidden=!savedDraft;
   $('#draft-discard').addEventListener('click',()=>{savedDraft=null;clearDraft();$('#draft-prompt').hidden=true;});
   $('#draft-restore').addEventListener('click',async()=>{if(!savedDraft)return;restoring=true;const draft=savedDraft;savedDraft=null;form.reset();
     for(const control of form.querySelectorAll('[name]')){if(control.name==='agreement')continue;const value=draft.fields[control.name];if(control.type==='radio')control.checked=control.value===value;else if(value!==undefined)control.value=value;}
-    syncConditions();signature.reset();photos.reset();await picker.restore(draft.fields);restoring=false;$('#draft-prompt').hidden=true;notice('已恢复文本和选择。请重新选择照片、勾选协议并完成手写签名。');go(picker.validate() ? Math.min(Object.keys(fieldErrors()).length ? 2 : 3,Math.max(1,draft.step || 1)) : 1);changed();saveDraft();});
+    syncConditions();signature.reset();photos.reset();await picker.restore(draft.fields);restoring=false;$('#draft-prompt').hidden=true;notice('已恢复文本和选择。请重新选择照片、勾选协议并完成手写签名。');go(picker.validate() && !picker.hasUnacceptedNotices() ? Math.min(Object.keys(fieldErrors()).length ? 2 : 3,Math.max(1,draft.step || 1)) : 1);changed();saveDraft();});
   async function resolve(){if(!attempt)return null;const result=await apiJson('/api/booking-attempts/resolve',{method:'POST',json:{requestKey:attempt.key},timeoutMs:15000});return result.found ? result.appointment : null;}
   function renderUploads(entries){if(!created)return;$('#success-photos').hidden=!entries.length;
     const uploaded=entries.filter(entry=>entry.attachment).length,failures=entries.some(entry=>entry.state==='upload-error'),pending=uploaded<entries.length,uploading=entries.some(entry=>entry.state==='uploading');
@@ -108,10 +108,11 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
       if(Object.keys(errors).some(key=>!['agreement','signature'].includes(key))){go(2);showErrors(errors);return;}
       showErrors(errors);if(Object.keys(errors).length || !photos.validity())return;
       if(!await picker.refresh()){error('暂时无法核实时段和地点，请重试。已填信息已保留。');return;}if(!picker.validate()){go(1);error('到场时段当前不可预约，请重新选择。其他信息已保留。');return;}
+      if(picker.hasUnacceptedNotices()){go(1);error('所选校区有尚未确认的必读公告，请阅读确认后继续。已填信息和签名已保留。');picker.confirmNotices();return;}
       {const previousAt=payload?.agreementAt;const {brandOther,collegeOther,qqAccount,wechatAccount,...business}=values;
         // Draft-only alternative inputs never reach the server.
         void brandOther;void collegeOther;void qqAccount;void wechatAccount;
-        payload={...business,...picker.value(),agreementAccepted:true,agreementAt:previousAt || new Date().toISOString(),agreementVersion:AGREEMENT_VERSION,signature:signature.value()};delete payload.location;}
+        payload={...business,...picker.value(),acceptedNotices:picker.acceptedNotices(),agreementAccepted:true,agreementAt:previousAt || new Date().toISOString(),agreementVersion:AGREEMENT_VERSION,signature:signature.value()};delete payload.location;}
       attempt=attempt || {key:requestKey()};attempt.pending=true;
       if(!writeAttempt(attempt))notice('此浏览器无法保存提交标识。如网络中断，请保持页面打开并重试。');
       saveDraft();
@@ -121,7 +122,7 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
         let found;
         try{found=await resolve();}catch{error('暂时无法确认预约是否创建。请保持页面和原提交标识，点击提交重试核实；不要另开新预约。');return;}
         if(found){showSuccess(found);if(failure.code==='IDEMPOTENCY_MISMATCH')notice('原请求已经创建成功，当前展示的是原预约。后续修改没有另行提交。');return;}
-        if(['SLOT_FULL','SLOT_PAUSED','SLOT_ENDED','SLOT_CHANGED','DATE_UNAVAILABLE','LOCATION_MISSING'].includes(failure.code)){attempt=null;payload=null;clearAttempt();go(1);await picker.recover(failure.message);error(failure.message+'。其他信息和有效签名已保留。');}
+        if(['BOOKING_NOTICE_CHANGED','SERVICE_DAY_PAUSED','SLOT_FULL','SLOT_PAUSED','SLOT_ENDED','SLOT_CHANGED','DATE_UNAVAILABLE','LOCATION_MISSING'].includes(failure.code)){attempt=null;payload=null;clearAttempt();if(failure.code==='BOOKING_NOTICE_CHANGED'){await picker.refresh();go(1);picker.confirmNotices();}else{go(1);await picker.recover(failure.message);}error(failure.message+'。其他信息和有效签名已保留。');}
         else if(failure.code==='FIELD_INVALID'){attempt=null;payload=null;clearAttempt();go(Object.keys(failure.fields || {}).some(key=>!['agreement','signature'].includes(key)) ? 2 : 3);showErrors(failure.fields || {});error(failure.message);}
         else if(failure.status && failure.status<500){attempt=null;payload=null;clearAttempt();error(failure.message);}
         else error('尚未确认创建结果。可使用原提交标识安全重试核实，已填内容已保留。');

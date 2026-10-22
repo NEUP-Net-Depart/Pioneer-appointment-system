@@ -144,6 +144,14 @@
     {
       "name": "0033_staff_business_roles.sql",
       "sha256": "112b2978ad4e4f82a454c2be74069d1dbd0e4789f4692fd4e4576f2bca72e421"
+    },
+    {
+      "name": "0034_booking_settings.sql",
+      "sha256": "dc8ccb079db7d190f7cf2fad1b47938ac45a0a25a5388c5e74d0aa92ee4648bc"
+    },
+    {
+      "name": "0035_notice_display_mode.sql",
+      "sha256": "509b0b6f9b3e3914d456ad9f619154a65e6d4877ad60ac2e2fe89fd6cb5dc81f"
     }
   ],
   "modules": [
@@ -367,6 +375,14 @@
     {
       "name": "0033_staff_business_roles.sql",
       "sha256": "112b2978ad4e4f82a454c2be74069d1dbd0e4789f4692fd4e4576f2bca72e421"
+    },
+    {
+      "name": "0034_booking_settings.sql",
+      "sha256": "dc8ccb079db7d190f7cf2fad1b47938ac45a0a25a5388c5e74d0aa92ee4648bc"
+    },
+    {
+      "name": "0035_notice_display_mode.sql",
+      "sha256": "509b0b6f9b3e3914d456ad9f619154a65e6d4877ad60ac2e2fe89fd6cb5dc81f"
     }
   ]
 }

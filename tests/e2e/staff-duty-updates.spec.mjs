@@ -49,12 +49,22 @@ test('unscheduled leader signs in directly and sees an accessible result without
 
 test('date suspension has explicit confirmation and weekly accounting keeps export options off until selected',async({page,request})=>{
   await login(page,'root001');await open(page,'业务管理','预约配置');await page.getByRole('button',{name:'暂停日期',exact:true}).click();
-  await page.getByLabel('暂停维修日期',{exact:true}).fill('2026-10-20');await expect(page.getByRole('button',{name:'暂停当天维修',exact:true})).toBeVisible();
-  await page.getByLabel('对外说明（可选）',{exact:true}).fill('校区维护，暂停一天');await page.getByRole('button',{name:'暂停当天维修',exact:true}).click();
+  const dates=page.locator('.service-day-grid');await expect(dates.getByRole('button')).toHaveCount(8);
+  await dates.getByRole('button',{name:/2026-10-20/}).click();await dates.getByRole('button',{name:/2026-10-21/}).click();
+  await page.getByLabel('暂停说明（同步为公告，可选）',{exact:true}).fill('校区维护，暂停两天');await page.getByRole('button',{name:'暂停所选日期',exact:true}).click();
   await expect(page.getByRole('dialog',{name:'确认暂停维修',exact:true})).toContainText('已有预约不会取消');await checkSizes(page,'pause-confirmation');
-  await page.getByRole('button',{name:'确认暂停',exact:true}).click();await expect(page.getByRole('button',{name:'恢复当天维修',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'确认暂停',exact:true}).click();await expect(page.getByRole('button',{name:'恢复所选日期',exact:true})).toBeEnabled();
   const availability=await request.get('/api/booking-availability?campus=南湖&date=2026-10-20');expect((await availability.json()).paused).toBe(true);
-  await page.getByRole('button',{name:'恢复当天维修',exact:true}).click();await page.getByRole('button',{name:'确认恢复',exact:true}).click();
+  const another=await request.get('/api/booking-availability?campus=南湖&date=2026-10-21');expect((await another.json()).paused).toBe(true);
+  for(const width of [320,390,768,1440]){
+    await page.setViewportSize({width,height:1400});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    expect(await dates.evaluateAll(nodes=>nodes.every(node=>node.scrollWidth<=node.clientWidth))).toBe(true);
+    await page.screenshot({path:`output/field-workflow/duty-updates/multi-day-pause-${width}.png`,fullPage:true});
+  }
+  await page.getByRole('button',{name:'校区公告',exact:true}).click();await expect(page.locator('.booking-notice-list article')).toContainText(['2026-10-20','2026-10-21']);
+  await expect(page.locator('.booking-notice-list article')).toContainText(['校区维护，暂停两天','校区维护，暂停两天']);
+  await page.getByRole('button',{name:'管理暂停日期',exact:true}).click();
+  await page.getByRole('button',{name:'恢复所选日期',exact:true}).click();await page.getByRole('button',{name:'确认恢复',exact:true}).click();
   await open(page,'值班管理','考勤核查');await page.getByRole('button',{name:'按周核算导出',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'按周核算并导出考勤',exact:true}),flags=dialog.locator('input[type=checkbox]');
   for(const flag of await flags.all())await expect(flag).not.toBeChecked();

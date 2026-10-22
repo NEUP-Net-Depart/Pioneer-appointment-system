@@ -1,4 +1,32 @@
 /* Student theme and responsive layout. */
+.booking-release-hint { margin: 16px 0 0; color: var(--muted); font-size: 14px; line-height: 1.7; }
+.booking-notices { display: grid; gap: 12px; margin-bottom: 24px; }
+.booking-notice { border: 1px solid var(--line); border-radius: 9px; padding: 18px; background: white; min-width: 0; }
+.booking-notice h3 { font-size: 16px; margin: 0 0 8px; }
+.booking-notice p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; }
+.booking-notice.is-important { border-inline-start: 4px solid var(--navy); }
+.booking-notice .booking-notice-read { min-height: 44px; margin-top: 16px; white-space: normal; }
+.booking-notice-read[aria-pressed=true] { background: var(--navy); color: white; }
+.booking-notice-preview { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.booking-notice-preview>div { min-width: 0; }
+.booking-notice-preview h3 { overflow-wrap: anywhere; }
+.booking-notice-preview span { font-size: 13px; color: var(--muted); }
+.booking-notice-preview button { flex-shrink: 0; min-height: 44px; }
+.booking-notice-dialog { width: min(640px,100%); }
+.booking-notice-dialog h2 { margin: 0 0 20px; }
+.booking-notice-dialog .booking-notices { margin-bottom: 20px; }
+.booking-notice-dialog .modal-actions { display: flex; justify-content: flex-end; }
+@media(max-width:480px) { .booking-notice-preview { flex-wrap: wrap; } .booking-notice-preview button { width: 100%; } .booking-notice-read { width: 100%; } }
+.booking-time-panel:has(.booking-paused:not([hidden])) .booking-slot-placeholder { display: none; }
+.booking-paused { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 24px; margin-top: 16px; border: 1px solid #e7c9a2; border-radius: 10px; background: #fff8ee; color: #70451c; }
+.booking-paused-label { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 4px; background: #f5e4cd; }
+.booking-paused h3 { margin: 0; font-size: 20px; line-height: 1.5; }
+.booking-paused p { margin: 0; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+.booking-paused .secondary-btn { min-height: 44px; background: white; border: 1px solid #d8b689; border-radius: 6px; color: #70451c; margin-top: 8px; }
+.booking-choice[data-paused=true] .booking-remaining { color: #855122; }
+.booking-choice[data-paused=true][aria-pressed=true] .booking-remaining { color: #ffdbad; }
+@media(min-width:760px) { .booking-paused { margin-top: 0; flex: 1; padding: 20px; } }
+@media(max-width:480px) { .booking-paused { padding: 18px; } }
 .user-mode { --radius: 9px; --muted: #586b79; --green: #117b68; background: #f5f8fa; }
 .user-mode [hidden] { display: none !important; }
 .user-mode .topbar { position: relative; height: 72px; }

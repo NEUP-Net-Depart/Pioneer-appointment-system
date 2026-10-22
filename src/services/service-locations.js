@@ -5,7 +5,7 @@ import { TIME_SLOTS } from '../../shared/constants.js';
 import { decryptText } from '../lib/privacy.js';
 import { bookingDates } from '../../shared/booking-slots.js';
 
-export function serviceLocationService(repository,appointments,queue,encryptionKey,clock = () => new Date(),staff = null) {
+export function serviceLocationService(repository,appointments,queue,encryptionKey,clock = () => new Date(),staff = null,bookingSettings = null) {
   async function authorize(actor,campus) {
     actor = await staff.scopedActor(actor,'settings.manage');
     if (campus) requireCampus(actor,campus);
@@ -28,10 +28,12 @@ export function serviceLocationService(repository,appointments,queue,encryptionK
       actor=await authorize(actor,campus);
       return {changes:await repository.changes(campus,date),affectedAppointments:await affectedAppointments(campus,date,actor)};
     },
-    async availability(campus,date) {
-      if (!date) return {serverNow:clock().toISOString(),items:await Promise.all(bookingDates(clock()).map(day=>this.availability(campus,day)))};
+    async availability(campus,date,settings) {
+      settings ||= bookingSettings ? await bookingSettings.public(campus) : null;
+      const dates = bookingDates(clock(),settings?.releaseTime);
+      if (!date) return {serverNow:clock().toISOString(),...(settings ? {bookingSettings:settings} : {}),items:await Promise.all(dates.map(day=>this.availability(campus,day,settings)))};
       const instant=clock();
-      const [summary,location] = await Promise.all([queue.summary({campus,date}),bookingDates(instant).includes(date)
+      const [summary,location] = await Promise.all([queue.summary({campus,date}),dates.includes(date)
         ? appointments.ensureDefaultLocation(date,campus,instant.toISOString()) : appointments.location(date,campus)]);
       const service=await appointments.serviceDay(date,campus);
       return { campus,date,paused:!!service?.paused,pauseReason:service?.paused?service.reason:'',timeSlots:TIME_SLOTS,slotCapacities:summary.slotCapacities,slots:summary.slots,

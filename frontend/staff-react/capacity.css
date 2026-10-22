@@ -1,6 +1,240 @@
 .capacity-editor {
   max-width: 1320px;
 }
+.booking-settings-editor {
+  display: grid;
+  gap: 20px;
+}
+.service-day-editor {
+  display: grid;
+  gap: 24px;
+}
+.service-day-editor h2,
+.service-day-editor h3,
+.service-day-editor p {
+  margin: 0;
+}
+.service-day-editor p {
+  line-height: 1.8;
+}
+.service-day-editor .capacity-section-heading p {
+  margin-top: 8px;
+}
+.service-day-weeks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+.service-day-week {
+  min-width: 0;
+}
+.service-day-week-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.service-day-week-heading h3 {
+  font-size: 15px;
+}
+.service-day-week-heading h3 span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  margin-top: 4px;
+}
+.service-day-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.field-app .service-day-grid button {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 100px;
+  padding: 12px 4px;
+  white-space: nowrap;
+}
+.service-day-grid strong {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.service-day-grid :is(span, small) {
+  font-size: 12px;
+  font-weight: 400;
+}
+.service-day-grid button[data-paused='true'] small {
+  color: #8a4a18;
+}
+.field-app .service-day-grid button[aria-pressed='true'] {
+  background: var(--ink);
+  color: white;
+  border-color: var(--ink);
+}
+.service-day-grid button[aria-pressed='true'] small {
+  color: white;
+}
+.service-day-selection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding-block: 16px;
+  border-block: 1px solid var(--line);
+}
+.service-day-selection span {
+  flex: 1 1 180px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.service-day-reason {
+  display: grid;
+  gap: 8px;
+  max-width: 720px;
+}
+.service-day-reason textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+}
+.service-day-preview {
+  max-width: 720px;
+  padding: 20px;
+  border-left: 3px solid #b87935;
+  background: #fff8ee;
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+.service-day-preview h3 {
+  font-size: 16px;
+  color: #70451c;
+  margin-bottom: 8px;
+}
+.service-day-preview p {
+  white-space: pre-wrap;
+}
+.service-day-preview small {
+  display: block;
+  color: var(--muted);
+  margin-top: 12px;
+  line-height: 1.7;
+}
+.service-day-impact {
+  color: #70451c;
+}
+.service-day-confirm-dates {
+  list-style: none;
+  padding: 0;
+}
+.service-day-confirm-dates li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  justify-content: space-between;
+  padding-block: 12px;
+  border-bottom: 1px solid var(--line);
+}
+@media (max-width: 1100px) {
+  .service-day-weeks {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 390px) {
+  .service-day-grid strong {
+    font-size: 16px;
+  }
+}
+.booking-rule-card {
+  display: grid;
+  gap: 20px;
+}
+.booking-rule-card h2 {
+  margin: 0 0 8px;
+}
+.booking-rule-card p {
+  margin: 0;
+  line-height: 1.7;
+}
+.booking-rule-card form,
+.booking-notice-form {
+  display: grid;
+  gap: 16px;
+  max-width: 720px;
+}
+.booking-rule-card label,
+.booking-notice-form label {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.booking-rule-card input[type='time'] {
+  width: 180px;
+}
+.booking-notice-form :is(input:not([type='checkbox']), textarea) {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+.booking-notice-form textarea {
+  resize: vertical;
+}
+.booking-notice-times {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.booking-notice-form .booking-setting-check {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+}
+.booking-setting-check input {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+}
+.booking-notice-list > article {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 20px;
+  padding-block: 20px;
+  border-top: 1px solid var(--line);
+}
+.booking-notice-list > article > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.booking-notice-list p {
+  white-space: pre-wrap;
+  margin-block: 8px;
+}
+.booking-notice-meta {
+  display: block;
+  color: var(--muted);
+  margin-top: 6px;
+}
+.booking-notice-list button {
+  flex-shrink: 0;
+}
+@media (max-width: 600px) {
+  .booking-notice-times {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .booking-notice-list > article {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .booking-notice-list button {
+    align-self: flex-end;
+  }
+}
 .capacity-location-form {
   max-width: 720px;
   margin-top: 16px;
@@ -81,7 +315,7 @@
 }
 .field-app .capacity-campus-switch button[aria-pressed='true'],
 .field-app .capacity-mobile-days button[aria-pressed='true'],
-.field-app .capacity-actual-date button[aria-pressed='true'] {
+.field-app .capacity-date-shortcuts button[aria-pressed='true'] {
   background: var(--ink);
   color: white;
   border-color: var(--ink);
@@ -333,14 +567,40 @@
   display: flex;
   flex-wrap: wrap;
   align-items: end;
-  gap: 16px;
+  gap: 12px 20px;
+  margin-block: 20px 24px;
 }
-.capacity-actual-date input {
-  max-width: 220px;
+.capacity-actual-date > label {
+  flex: 0 1 200px;
+  min-width: 0;
+  margin: 0;
 }
-.capacity-actual-date .field-actions {
+.field-app .capacity-actual-date input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+.capacity-date-shortcuts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  flex: 0 1 356px;
+  min-width: 0;
   margin: 0;
   gap: 8px;
+}
+.field-app .capacity-date-shortcuts button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 12px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.capacity-actual > .capacity-section-heading {
+  align-items: start;
+}
+.capacity-actual .capacity-section-heading h2 {
+  margin: 0;
 }
 .capacity-source {
   padding: 16px 0;
@@ -360,46 +620,85 @@
   grid-template-columns: minmax(0, 1.5fr) minmax(180px, 1fr);
   gap: 32px;
 }
-.capacity-actual-slots article {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  padding: 16px 0;
+.capacity-actual-layout > div {
+  min-width: 0;
+}
+.capacity-actual-layout h3 {
+  margin: 0 0 16px;
+  font-size: 16px;
+}
+.capacity-actual-slots {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.capacity-actual-slots :is(th, td) {
+  padding: 16px 8px;
+  background: transparent;
+  font-size: inherit;
+  letter-spacing: normal;
+  text-align: right;
+  vertical-align: middle;
   border-bottom: 1px solid var(--line);
 }
-.capacity-actual-slots article > div {
-  display: flex;
-  gap: 20px;
-  font-size: 13px;
-  color: var(--muted);
+.capacity-actual-slots tbody tr:last-child td {
+  border-bottom: 1px solid var(--line);
 }
-.capacity-actual-slots b {
+.capacity-actual-slots tr > :first-child {
+  width: 42%;
+  padding-left: 0;
+  text-align: left;
+  white-space: nowrap;
+}
+.capacity-actual-slots tr > :last-child {
+  padding-right: 0;
+}
+.capacity-actual-slots thead th {
+  padding-top: 0;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.capacity-actual-slots tbody th,
+.capacity-actual-slots strong {
   color: var(--ink);
-  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 .capacity-actual-layout .field-muted {
   font-size: 12px;
+  line-height: 1.7;
 }
 .capacity-staffing {
   border-left: 1px solid var(--line);
   padding-left: 32px;
 }
-.capacity-staffing dl {
+.capacity-staffing-list {
   display: grid;
-  gap: 12px;
+  margin-block: 16px;
 }
-.capacity-staffing dl > div {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
+.capacity-staffing-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 16px;
+  padding-block: 16px;
+  border-bottom: 1px solid var(--line);
 }
-.capacity-staffing dt {
+.capacity-staffing-row > span {
   color: var(--muted);
 }
-.capacity-staffing dd {
-  margin: 0;
+.capacity-staffing-row > strong {
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.capacity-staffing-row > button {
+  grid-column: 1 / -1;
+  justify-self: start;
 }
 .capacity-mobile-days,
 .capacity-mobile-inputs {
@@ -518,17 +817,25 @@
     border-top: 1px solid var(--line);
     padding: 24px 0 0;
   }
-  .capacity-actual-date > label,
-  .capacity-actual-date input {
-    width: 100%;
-    max-width: none;
-  }
-  .capacity-actual-date .field-actions {
+  .capacity-actual-date {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  .capacity-actual-date > label,
+  .capacity-date-shortcuts {
     width: 100%;
   }
-  .field-app .capacity-actual-date button {
+  .field-app .capacity-date-shortcuts button {
     padding-inline: 6px;
+  }
+  .capacity-actual-slots {
+    font-size: 13px;
+  }
+  .capacity-actual-slots :is(th, td) {
+    padding-inline: 2px;
+  }
+  .capacity-actual-slots thead th {
+    font-size: 12px;
   }
 }

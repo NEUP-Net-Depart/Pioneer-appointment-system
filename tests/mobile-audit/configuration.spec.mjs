@@ -4,7 +4,7 @@ const fit = sample => expect.soft(sample.documentWidth, sample.id).toBeLessThanO
 
 test('configuration-previews-discard-and-affected-order-navigation', async ({ page, request, audit }, info) => {
   const office = await loginApi(request, '20261001');
-  await orderFixture(request, office.token, info);
+  const order = await orderFixture(request, office.token, info);
   await login(page);
   await navigate(page, '预约配置');
   const field = page.locator('input[aria-label$="预约人数"]:visible').first();
@@ -30,11 +30,13 @@ test('configuration-previews-discard-and-affected-order-navigation', async ({ pa
   await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
   await page.getByRole('button', { name: '撤销修改', exact: true }).click();
   await page.getByRole('button', { name: '暂停日期', exact: true }).click();
-  await page.getByRole('button', { name: '暂停当天维修', exact: true }).click();
+  await page.locator('.service-day-grid').getByRole('button', { name: new RegExp(order.date) }).click();
+  await page.getByRole('button', { name: '暂停所选日期', exact: true }).click();
+  const pause = page.getByRole('dialog', { name: '确认暂停维修', exact: true });
+  await expect(pause).toContainText(order.date);
   fit(await audit.capture('service-pause-confirm'));
-  await page.getByRole('dialog').getByRole('button', { name: '返回', exact: true }).click();
-  await expect(page.getByRole('button', { name: '前往预约记录', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '前往预约记录', exact: true }).click();
+  await pause.getByRole('button', { name: '前往预约记录', exact: true }).click();
   await audit.capture('affected-order-navigation-result');
-  await expect.soft(page.locator('.workspace-route:not([hidden])')).toHaveAttribute('data-route', 'staff');
+  await expect(page.locator('.workspace-route:not([hidden])')).toHaveAttribute('data-route', 'staff');
+  await expect(page.locator('.records-table')).toContainText(order.id);
 });

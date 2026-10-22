@@ -3,7 +3,9 @@ import { apiJson } from '/shared/api.js';
 import { startVisiblePolling } from '/shared/polling.js';
 import { CAMPUSES,TIME_SLOTS } from '/shared/constants.js';
 import { bookingDates,slotAvailability } from '/shared/booking-slots.js';
+import { DEFAULT_RELEASE_TIME } from '/shared/booking-settings.js';
 import { animateLayout,reveal } from './motion.js';
+import { initBookingNotices } from './booking-notices.js';
 
 const weekday = new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',weekday:'short'});
 function updateCount(count, remaining) {
@@ -43,6 +45,9 @@ export function initSlotPicker({onChange = () => {}} = {}) {
   const campuses=$('#booking-campuses'),days=$('#booking-days'),slots=$('#booking-slots');
   let summaries=new Map(),failed=new Set(),generation=0,loading=false,notice='',offset=0,active=true,loadFailed=false,selectionIssue='';
   const campusSummaries=new Map();
+  const settingsByCampus=new Map(),announcements=initBookingNotices();
+  const settings=()=>settingsByCampus.get(campusInput.value);
+  const datesNow=()=>bookingDates(now(),settings()?.releaseTime || DEFAULT_RELEASE_TIME);
   const now=() => new Date(Date.now()+offset);
   function button(value,key,title) {
     const item=document.createElement('button'); item.type='button';item.className='booking-choice';item.dataset[key]=value;
@@ -54,7 +59,10 @@ export function initSlotPicker({onChange = () => {}} = {}) {
   const availability=(date,slot) => summaries.get(date) && slotAvailability(summaries.get(date),date,slot,now());
   const selectable=date => !failed.has(date) && TIME_SLOTS.some(slot => availability(date,slot) && !availability(date,slot).disabled);
   function render() {
-    const dates=bookingDates(now());
+    const dates=datesNow();
+    announcements.render(settings()?.notices || [],campusInput.value);
+    const hint=$('#booking-release-hint');
+    if(hint)hint.textContent=campusInput.value ? `每日北京时间 ${settings()?.releaseTime || DEFAULT_RELEASE_TIME} 更新预约范围；当天未结束时段仍可预约。` : '';
     for(const cache of campusSummaries.values())for(const date of cache.keys())if(!dates.includes(date))cache.delete(date);
     if ([...days.children].map(item=>item.dataset.date).join()!==dates.join()) {
       days.replaceChildren(...dates.map(date=>{
@@ -67,10 +75,12 @@ export function initSlotPicker({onChange = () => {}} = {}) {
     }
     days.dataset.count=String(dates.length);
     days.style.setProperty('--booking-day-count',String(Math.max(1,dates.length)));
-    const calendar=$('#booking-calendar'),slotPanel=$('#booking-slot-panel'),location=$('#booking-location');
-    if(calendar.hidden===Boolean(campusInput.value) || slotPanel.hidden===Boolean(dateInput.value)){
-      animateLayout($('#booking-picker'),()=>{calendar.hidden=!campusInput.value;slotPanel.hidden=!dateInput.value;location.hidden=!dateInput.value;},{resize:true});
-      if(dateInput.value)for(const [index,item] of [...slots.children].entries())reveal(item,{delay:index*30,distance:6});
+    const paused=!!summaries.get(dateInput.value)?.paused;
+    const calendar=$('#booking-calendar'),slotPanel=$('#booking-slot-panel'),location=$('#booking-location'),pausePanel=$('#booking-paused');
+    const showSlots=!!dateInput.value && !paused;
+    if(calendar.hidden===Boolean(campusInput.value) || slotPanel.hidden===showSlots || pausePanel.hidden===paused){
+      animateLayout($('#booking-picker'),()=>{calendar.hidden=!campusInput.value;slotPanel.hidden=!showSlots;pausePanel.hidden=!paused;location.hidden=!dateInput.value || paused;},{resize:true});
+      if(showSlots)for(const [index,item] of [...slots.children].entries())reveal(item,{delay:index*30,distance:6});
     }
     $('#booking-picker').setAttribute('aria-busy',String(loading));
     for (const item of campuses.children) item.setAttribute('aria-pressed',String(item.dataset.campus===campusInput.value));
@@ -82,6 +92,7 @@ export function initSlotPicker({onChange = () => {}} = {}) {
       const date=item.dataset.date,summary=summaries.get(date);
       const unavailable=!selectable(date);
       item.disabled=loading || unavailable&&!summary?.paused;item.dataset.loading=String(loading && (!summary || !unavailable));item.setAttribute('aria-pressed',String(date===dateInput.value));
+      item.dataset.paused=String(!!summary?.paused);
       const count=TIME_SLOTS.reduce((sum,slot)=>sum+(availability(date,slot)?.disabled ? 0 : availability(date,slot)?.remaining || 0),0);
       showRemaining(item,summary ? count : undefined,failed.has(date) ? '读取失败' : !summary ? '' : summary.paused ? '暂停维修' : !summary.location ? '地点未配置' : count ? '' : '暂无名额');
     }
@@ -92,14 +103,24 @@ export function initSlotPicker({onChange = () => {}} = {}) {
       item.setAttribute('aria-pressed',String(item.dataset.slot===slotInput.value));
       showRemaining(item,state?.remaining,failed.has(dateInput.value) ? '暂时无法更新' : state?.disabled ? state.label : '');
     }
-    $('#booking-slot-panel').hidden=!dateInput.value;
+    $('#booking-slot-panel').hidden=!dateInput.value || paused;
+    pausePanel.hidden=!paused;
+    const nextButton=$('#step-one-next');
+    if(paused)nextButton.disabled=true;else if(nextButton.dataset.paused==='true')nextButton.disabled=false;
+    nextButton.dataset.paused=String(paused);
+    nextButton.textContent=paused ? '当日暂停，请选择其他日期' : '下一步 · 填写设备信息';
+    if(paused){
+      $('#booking-paused-date').textContent=`${campusInput.value}校区 · ${dateInput.value}（${weekday.format(new Date(dateInput.value+'T12:00:00+08:00'))}）`;
+      const announcement=settings()?.notices?.find(item=>item.type==='suspension' && item.businessDate===dateInput.value);
+      $('#booking-paused-reason').textContent=announcement?.content || summaries.get(dateInput.value)?.pauseReason || '该校区当日暂停维修，请选择其他日期。';
+    }
     const noDates=!loading && !loadFailed && !failed.size && !dates.some(selectable);
     $('#booking-empty').hidden=!noDates;
     $('#booking-retry').hidden=!campusInput.value || loading || (!loadFailed && !failed.size && !noDates);
     const feedback=$('#booking-selection');
     feedback.textContent=notice || (loadFailed || failed.size ? '暂时无法更新名额，请重试。' : loading && !summaries.size && !dateInput.value ? '正在读取可预约日期…' : '');
     feedback.parentElement.hidden=!feedback.textContent && $('#booking-retry').hidden;
-    location.hidden=!dateInput.value;
+    location.hidden=!dateInput.value || paused;
     location.textContent=summaries.get(dateInput.value)?.location ? `维修地点：${summaries.get(dateInput.value).location}` : loading ? '维修地点：更新中…' : '维修地点尚未配置';
   }
   async function refresh() {
@@ -107,9 +128,11 @@ export function initSlotPicker({onChange = () => {}} = {}) {
     const current=++generation,campus=campusInput.value;loading=true;render();
     let result;
     try {result=await apiJson('/api/booking-availability?'+new URLSearchParams({campus}),{timeoutMs:15000});}
-    catch {if(current!==generation)return false;loading=false;loadFailed=true;failed=new Set(bookingDates(now()));render();return false;}
+    catch {if(current!==generation)return false;loading=false;loadFailed=true;failed=new Set(datesNow());render();return false;}
     if(current!==generation)return false;
-    loading=false;loadFailed=false;failed=new Set();offset=Date.parse(result.serverNow)-Date.now();const dates=bookingDates(now());
+    loading=false;loadFailed=false;failed=new Set();offset=Date.parse(result.serverNow)-Date.now();
+    if(result.bookingSettings)settingsByCampus.set(campus,result.bookingSettings);
+    const dates=datesNow();
     summaries=new Map(result.items.map(summary=>[summary.date,summary]));campusSummaries.set(campus,summaries);
     if (!dateInput.value || (!summaries.get(dateInput.value)?.paused && !failed.has(dateInput.value) && !selectable(dateInput.value))) {
       if(dateInput.value){const summary=summaries.get(dateInput.value);selectionIssue=notice=(summary && !summary.location ? '原日期的维修地点未配置' : '原日期当前没有可预约时段')+'，请重新选择日期和到场时段。';}
@@ -131,17 +154,25 @@ export function initSlotPicker({onChange = () => {}} = {}) {
     slotInput.value=item.dataset.slot;selectionIssue=notice='';render();onChange();
   });
   $('#booking-retry').addEventListener('click',()=>void refresh());
+  $('#booking-change-date').addEventListener('click',()=>{
+    dateInput.value=datesNow().find(day=>day!==dateInput.value && selectable(day)) || '';slotInput.value='';selectionIssue=notice='';render();onChange();
+    (days.querySelector('[aria-pressed=true]') || campuses.querySelector('[aria-pressed=true]'))?.focus();
+  });
   const stop=startVisiblePolling(()=>active && !loading ? refresh() : undefined);
   render();
   return {
     refresh,issue:()=>selectionIssue,
+    acceptedNotices:announcements.accepted,
+    confirmNotices:announcements.confirm,
+    hasUnacceptedNotices:announcements.hasUnaccepted,
+    setHome:announcements.setHome,
     value(){return {campus:campusInput.value,date:dateInput.value,timeSlot:slotInput.value,location:summaries.get(dateInput.value)?.location || ''};},
     validate(){render();const valid=Boolean(campusInput.value && dateInput.value && slotInput.value && selectable(dateInput.value) && !availability(dateInput.value,slotInput.value)?.disabled);
       if(!valid){notice=notice || '请选择可预约的校区、日期和到场时段。';render();(campuses.querySelector('button[aria-pressed=true]') || campuses.querySelector('button')).focus();}return valid;},
     async recover(message){slotInput.value='';notice=message;await refresh();render();},
     async restore(value){campusInput.value=CAMPUSES.includes(value.campus) ? value.campus : '';dateInput.value=value.date || '';slotInput.value=value.timeSlot || '';summaries=new Map();await refresh();render();},
-    reset(){generation++;loading=false;campusInput.value=dateInput.value=slotInput.value='';summaries=new Map();campusSummaries.clear();failed=new Set();loadFailed=false;selectionIssue=notice='';render();},
-    setActive(value){active=value;if(value)void refresh();},
-    dispose(){generation++;stop();$('#booking-picker').getAnimations({subtree:true}).forEach(animation=>animation.cancel());}
+    reset(){generation++;loading=false;campusInput.value=dateInput.value=slotInput.value='';summaries=new Map();campusSummaries.clear();announcements.reset();failed=new Set();loadFailed=false;selectionIssue=notice='';render();},
+    setActive(value){active=value;announcements.setActive(value);if(value)void refresh();},
+    dispose(){generation++;stop();announcements.dispose();$('#booking-picker').getAnimations({subtree:true}).forEach(animation=>animation.cancel());}
   };
 }
