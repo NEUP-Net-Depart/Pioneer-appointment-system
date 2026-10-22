@@ -39,6 +39,7 @@ export async function rehearseSnapshot(dump, directory = resolve(root, 'migratio
     assert.equal(sqlite.prepare('PRAGMA foreign_key_check').all().length,0,'Preview snapshot has invalid foreign keys');
     const ledger = new Set(sqlite.prepare('SELECT name FROM d1_migrations').all().map(row => row.name));
     const upgradingBusinessRoles = !ledger.has('0033_staff_business_roles.sql');
+    const upgradingExpirations = !ledger.has('0036_appointment_expiration_time.sql');
     const upgradingLegacyTechnicians = !sqlite.prepare('PRAGMA table_info(staff_accounts)').all().some(row => row.name === 'member_id');
     if (!upgradingLegacyTechnicians) {
       const conflicts = sqlite.prepare('SELECT COUNT(*) AS count FROM (SELECT member_id FROM staff_accounts GROUP BY member_id HAVING COUNT(*)>1)').get().count;
@@ -69,8 +70,15 @@ export async function rehearseSnapshot(dump, directory = resolve(root, 'migratio
     for (const original of originals) {
       // Authorization migrations explicitly revoke existing sessions. Verify
       // every other historical field, including passwords and private tokens.
-      const normalize = rows => rows.map(value => { const row = JSON.parse(value); delete row.token_version; delete row.auth_version; return JSON.stringify(row); }).sort();
-      if (JSON.stringify(normalize(original.rows())) !== JSON.stringify(normalize(original.before))) throw new Error(`Historical data changed: ${original.table}`);
+      // The expiration migration changes only pending defaults and revisions.
+      const normalize = (rows, advanceExpiration = false) => rows.map(value => {
+        const row = JSON.parse(value); delete row.token_version; delete row.auth_version;
+        if (advanceExpiration && original.table === 'appointments' && row.status === 'booked' && row.started_at === null && row.expires_at === `${row.date}T13:30:00.000Z`) {
+          row.expires_at = `${row.date}T12:45:00.000Z`; row.revision++;
+        }
+        return JSON.stringify(row);
+      }).sort();
+      if (JSON.stringify(normalize(original.rows())) !== JSON.stringify(normalize(original.before, upgradingExpirations))) throw new Error(`Historical data changed: ${original.table}`);
     }
     assert.equal(sqlite.prepare('PRAGMA foreign_key_check').all().length, 0, 'Foreign key violations after migration');
     const db = adapter(sqlite); await verifyStaffSchema(db);

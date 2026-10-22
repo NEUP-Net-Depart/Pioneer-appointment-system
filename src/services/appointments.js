@@ -201,7 +201,10 @@ export function appointmentService(
         const schedule = await appointments.schedule(data.date, data.campus);
         if (!schedule.some((slot) => slot.time_slot === data.timeSlot))
           fail(409, '该日期的时段安排已更新，请重新选择', 'SLOT_CHANGED');
-        if (Date.parse(slotDeadline(data.date, data.timeSlot)) <= instant.getTime())
+        if (
+          Date.parse(expiresAt) <= instant.getTime() ||
+          Date.parse(slotDeadline(data.date, data.timeSlot)) <= instant.getTime()
+        )
           fail(409, '该预约时段已经结束', 'SLOT_ENDED');
         if (
           !(await appointments.ensureDefaultLocation(data.date, data.campus, instant.toISOString()))
@@ -253,7 +256,11 @@ export function appointmentService(
           }
         : undefined;
       const checkedAt = clock();
-      if (!onsite && Date.parse(slotDeadline(data.date, data.timeSlot)) <= checkedAt.getTime())
+      if (
+        !onsite &&
+        (Date.parse(expiresAt) <= checkedAt.getTime() ||
+          Date.parse(slotDeadline(data.date, data.timeSlot)) <= checkedAt.getTime())
+      )
         fail(409, '该预约时段已经结束', 'SLOT_ENDED');
       if (onsite && Date.parse(expiresAt) <= checkedAt.getTime())
         fail(400, '当天临时登记有效期限已结束');

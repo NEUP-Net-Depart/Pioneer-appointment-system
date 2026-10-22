@@ -10,7 +10,7 @@ const fixtures = () => Object.keys(statusLabels).map((status,index) => ({
   repairNote:status==='completed' ? '完成维修并复测' : '',createdAt:'2026-10-12T02:00:00.000Z',
   startedAt:['in_progress','completed'].includes(status) ? '2026-10-12T11:00:00.000Z' : null,
   completedAt:terminalStatuses.includes(status) ? '2026-10-12T13:30:00.000Z' : null,
-  expiresAt:'2026-10-12T13:30:00.000Z',attachments:[]
+  expiresAt:'2026-10-12T12:45:00.000Z',attachments:[]
 }));
 
 test('student list groups five real states, has no queue or card actions, and opens legacy details',async({page})=>{

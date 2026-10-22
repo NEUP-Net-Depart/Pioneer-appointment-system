@@ -1,6 +1,7 @@
 import { expect } from '@playwright/test';
 import { bookingDates } from '../../../shared/booking-slots.js';
 import { TIME_SLOTS } from '../../../shared/constants.js';
+import { expirationDeadline } from '../../../shared/time.js';
 export const NOW='2026-10-12T10:00:00+08:00';
 export const PHOTO=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=','base64');
 export async function setupStudent(page,{now=NOW,availability,create}={}) {
@@ -12,7 +13,7 @@ export async function setupStudent(page,{now=NOW,availability,create}={}) {
     const result={serverNow:now,items:bookingDates(new Date(now)).map(date=>summary(campus,date))};
     if(availability)await availability(result,route);else await route.fulfill({json:result});
   });
-  const make=(body,key)=>{const item={...body,id:`reserve0${body.date.replaceAll('-','')}-${String(appointments.size+1).padStart(2,'0')}`,accessToken:'a'.repeat(43),status:'booked',revision:0,location:body.campus+'校区测试维修室',locationSnapshot:body.campus+'校区测试维修室',attachments:[],createdAt:new Date(now).toISOString(),expiresAt:body.date+'T13:30:00.000Z'};appointments.set(item.id,item);receipts.set(key,item);return item;};
+  const make=(body,key)=>{const item={...body,id:`reserve0${body.date.replaceAll('-','')}-${String(appointments.size+1).padStart(2,'0')}`,accessToken:'a'.repeat(43),status:'booked',revision:0,location:body.campus+'校区测试维修室',locationSnapshot:body.campus+'校区测试维修室',attachments:[],createdAt:new Date(now).toISOString(),expiresAt:expirationDeadline(body.date)};appointments.set(item.id,item);receipts.set(key,item);return item;};
   await page.route('**/api/booking-attempts/resolve',route=>{const key=route.request().postDataJSON().requestKey;return route.fulfill({json:receipts.has(key) ? {found:true,appointment:receipts.get(key)} : {found:false}});});
   await page.route('**/api/appointments',async route=>{const body=route.request().postDataJSON(),key=route.request().headers()['idempotency-key'];calls.push({body,key});if(create)return create({route,body,key,make,appointments,receipts});return route.fulfill({status:201,json:receipts.get(key) || make(body,key)});});
   await page.route('**/api/appointments/*',route=>{const id=new URL(route.request().url()).pathname.split('/').at(-1);const item=appointments.get(id);return route.fulfill({status:item ? 200 : 404,json:item || {error:'预约或附件不存在'}});});

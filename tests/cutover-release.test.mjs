@@ -6,7 +6,7 @@ import { smoke } from '../scripts/smoke.mjs';
 import { rehearseSnapshot } from '../scripts/rehearse-preview.mjs';
 import { STAFF_RELEASE } from '../src/db/staff-readiness.js';
 
-async function baselineDump({ deployed = false, interleaved = false, beforeLoginScope = false, withAliases = false, explicitAuthorization = false } = {}) {
+async function baselineDump({ deployed = false, interleaved = false, beforeLoginScope = false, withAliases = false, explicitAuthorization = false, withAppointments = false } = {}) {
   const db = new DatabaseSync(':memory:');
   try {
     db.exec('CREATE TABLE d1_migrations(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE,applied_at TEXT DEFAULT CURRENT_TIMESTAMP);');
@@ -37,6 +37,16 @@ async function baselineDump({ deployed = false, interleaved = false, beforeLogin
         db.prepare("UPDATE role_grants SET condition_spec='[{\"code\":\"signedDutyPresence\",\"version\":1},{\"code\":\"activeDepartmentMembership\",\"parameters\":{\"departmentId\":\"dept-hardware\"}}]',revision=1 WHERE id='grant-repair-lead-correct'").run();
       }
     }
+    if (withAppointments) {
+      db.exec("INSERT INTO service_locations(campus,date,location,updated_at) VALUES('南湖','2026-10-12','历史维修地点','2026-10-01');");
+      for (const [index, [status, expiresAt]] of [['booked','2026-10-12T13:30:00.000Z'],['booked','2026-10-12T14:00:00.000Z'],['completed','2026-10-12T13:30:00.000Z']].entries()) {
+        db.prepare(`INSERT INTO appointments(id,student_id,name,campus,social,device_type,brand,device_model,warranty,fault_type,
+          date,time_slot,status,outcome,expires_at,access_token_hash,credential_rotated_at,created_at,agreement_at,agreement_version)
+          VALUES(?,?,'历史客户','南湖','private','笔记本','联想','T14','否','蓝屏','2026-10-12','19:00–19:30',?,?,?,?,
+          '2026-10-12T02:00:00.000Z','2026-10-12T02:00:00.000Z','2026-10-12T02:00:00.000Z','v1')`)
+          .run(`history-${index}`,String(20260010+index),status,status === 'completed' ? 'repaired' : null,expiresAt,String(index).padStart(64,'0'));
+      }
+    }
     const objects = db.prepare("SELECT name,sql,type FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type='trigger',type='index'").all();
     const quote = value => value === null ? 'NULL' : typeof value === 'number' ? String(value) : "'" + String(value).replaceAll("'", "''") + "'";
     const tables = objects.filter(row => row.type === 'table');
@@ -63,17 +73,21 @@ test('later deployments respect deliberately ungranted administrators and revoke
 
 test('already applied 0030 upgrades forward to explicit permanent manager roles',async()=>{
   const report=await rehearseSnapshot(await baselineDump({deployed:true,beforeLoginScope:true,interleaved:true}));
-  assert.equal(report.applied,5);assert.equal(report.accounts['admin → repair_lead+technician'],2);
+  assert.equal(report.applied,6);assert.equal(report.accounts['admin → repair_lead+technician'],2);
 });
 
 test('Preview rehearsal respects expired explicit authorization and custom grant conditions',async()=>{
   const report=await rehearseSnapshot(await baselineDump({deployed:true,beforeLoginScope:true,explicitAuthorization:true}));
-  assert.equal(report.applied,5);
+  assert.equal(report.applied,6);
   assert.equal(report.accounts['admin → repair_lead+technician'],2);
 });
 
 test('migration rehearsal rejects multi-account members before altering authorization',async()=>{
   await assert.rejects(rehearseSnapshot(await baselineDump({deployed:true,beforeLoginScope:true,withAliases:true})),/multiple login accounts/);
+});
+test('Preview rehearsal advances pending default deadlines while preserving custom deadlines and completed history',async()=>{
+  const report=await rehearseSnapshot(await baselineDump({deployed:true,beforeLoginScope:true,withAppointments:true}));
+  assert.equal(report.applied,6);assert.equal(report.preservedTables,7);
 });
 test('current D1 snapshots restore with interleaved table definitions and cyclic account/member references',async()=>{
   const report=await rehearseSnapshot(await baselineDump({deployed:true,interleaved:true}));assert.equal(report.applied,0);assert.equal(report.accounts['admin → repair_lead+technician'],1);

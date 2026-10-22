@@ -1,8 +1,9 @@
 import { TIME_SLOTS } from './constants.js';
-import { addDays, dateKey, serviceDay, slotDeadline } from './time.js';
+import { addDays, dateKey, expirationDeadline, serviceDay, slotDeadline } from './time.js';
 import { bookingWindow, DEFAULT_RELEASE_TIME } from './booking-settings.js';
 
 export function availableSlots(date, instant = new Date(), slots = TIME_SLOTS) {
+  if (Date.parse(expirationDeadline(date)) <= instant.getTime()) return [];
   return slots.filter(slot => Date.parse(slotDeadline(date, slot)) > instant.getTime());
 }
 

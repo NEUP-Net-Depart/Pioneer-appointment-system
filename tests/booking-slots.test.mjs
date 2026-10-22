@@ -9,11 +9,14 @@ test('booking dates preserve the four-day Shanghai window and Monday to Thursday
   assert.deepEqual(bookingDates(new Date('2026-10-18T23:30:00Z')), ['2026-10-19', '2026-10-20', '2026-10-21']);
 });
 
-test('slots disappear at their existing end deadline, and fully ended days disappear', () => {
+test('slots disappear at their end deadline or the inclusive 20:45 expiration, and fully ended days disappear', () => {
   assert.deepEqual(availableSlots('2026-10-12', new Date('2026-10-12T19:59:59+08:00')), ['19:30–20:00', '20:00–20:30', '20:30–21:00']);
   assert.deepEqual(availableSlots('2026-10-12', new Date('2026-10-12T20:00:00+08:00')), ['20:00–20:30', '20:30–21:00']);
+  assert.deepEqual(availableSlots('2026-10-12', new Date('2026-10-12T20:44:59.999+08:00')), ['20:30–21:00']);
+  assert.deepEqual(availableSlots('2026-10-12', new Date('2026-10-12T20:45:00+08:00')), []);
   assert.deepEqual(availableSlots('2026-10-12', new Date('2026-10-12T21:00:00+08:00')), []);
-  assert.deepEqual(bookingDates(new Date('2026-10-15T21:00:00+08:00')), []);
+  assert.deepEqual(bookingDates(new Date('2026-10-15T20:45:00+08:00')), []);
+  assert.deepEqual(bookingDates(new Date('2026-10-12T20:45:00+08:00')), ['2026-10-13', '2026-10-14', '2026-10-15']);
 });
 
 test('availability distinguishes open, paused, full, overbooked and expired slots', () => {
@@ -24,4 +27,7 @@ test('availability distinguishes open, paused, full, overbooked and expired slot
   assert.equal(slotAvailability(summary(3, 3), date, slot, now).label, '预约已满');
   assert.equal(slotAvailability(summary(3, 5), date, slot, now).remaining, 0);
   assert.equal(slotAvailability(summary(10, 0), date, slot, new Date(`${date}T20:00:00+08:00`)).disabled, true);
+  const lastSlot = '20:30–21:00', lastSummary = { slotCapacities: { [lastSlot]: 5 }, slots: {} };
+  assert.equal(slotAvailability(lastSummary, date, lastSlot, new Date(`${date}T20:44:59.999+08:00`)).disabled, false);
+  assert.equal(slotAvailability(lastSummary, date, lastSlot, new Date(`${date}T20:45:00+08:00`)).label, '时段已结束');
 });

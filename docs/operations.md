@@ -74,7 +74,7 @@ npm run smoke -- https://<domain>
 | 定时任务 | 北京时间 | 启用变量 |
 | --- | --- | --- |
 | Production/Preview 附件清理 | 周一 03:17 | `ATTACHMENT_MAINTENANCE_ENABLED=true` |
-| Production/Preview 预约逾期 | 每日 21:35 | `BOOKING_MAINTENANCE_ENABLED=true` |
+| Production/Preview 预约逾期 | 每日 20:50 | `BOOKING_MAINTENANCE_ENABLED=true` |
 
 [维护工作流](../.github/workflows/)的定时入口从默认分支派发，在 `main` 执行。手动运行默认 dry-run；启用的定时任务使用 apply。维护不迁移 schema，附件清理覆盖到期文件、超过 24 小时的未完成上传和失败补偿，物理删除成功后才释放额度。
 

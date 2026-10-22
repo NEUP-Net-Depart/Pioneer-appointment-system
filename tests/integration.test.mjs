@@ -431,12 +431,12 @@ test('onsite expiration migration preserves populated records, attachments, reco
   assert.equal((await legacy.prepare('SELECT used_bytes FROM storage_quota').first()).used_bytes, 0);
 });
 
-test('onsite maintenance observes 21:30, retains active repairs and reports a distinct expiration result', async () => {
+test('onsite maintenance observes 20:45, retains active repairs and reports a distinct expiration result', async () => {
   const root = await login();
   const input = { ...draft(), requestId: crypto.randomUUID() };
   const item = await api('/api/scan/onsite', { method: 'POST', token: root, body: input }, 201);
   const repository = appointmentRepository(db);
-  const before = new Date(`${item.date}T21:29:59+08:00`), deadline = new Date(`${item.date}T21:30:00+08:00`);
+  const before = new Date(`${item.date}T20:44:59+08:00`), deadline = new Date(`${item.date}T20:45:00+08:00`);
   assert.deepEqual(await expireAppointments(repository, { now: before }), { dryRun: true, eligible: 0, ended: 0 });
   assert.deepEqual(await expireAppointments(repository, { now: deadline }), { dryRun: true, eligible: 1, ended: 0 });
   assert.equal((await repository.find(item.id)).status, 'booked');
@@ -484,7 +484,7 @@ test('five-state migration preserves populated history, related records and all 
   const expected = before.map(row => ({...row,
     status: row.outcome === 'cancelled' ? 'cancelled' : ['no_show','expired'].includes(row.outcome) ? 'expired' : row.status,
     outcome: ['cancelled','no_show','expired'].includes(row.outcome) ? null : row.outcome,
-    expires_at: expirationDeadline(row.date)
+    expires_at: new Date(`${row.date}T21:30:00+08:00`).toISOString()
   }));
   assert.deepEqual((await legacy.prepare('SELECT * FROM appointments ORDER BY id').all()).results,expected);
   for (const [index,table] of relatedTables.entries()) assert.deepEqual((await legacy.prepare(`SELECT * FROM ${table}`).all()).results,related[index].results,table);
@@ -640,7 +640,7 @@ test('onsite recovery preserves campus and administrator permissions and one pen
 test('expiration racing with photo intake has one consistent winner and respects recorded starts', async () => {
   const root = await login(), actor = await userRepository(db).find('root001'), item = await book();
   const photos = await intake(item,root), repository = appointmentRepository(db);
-  const before = new Date(`${item.date}T21:29:59.999+08:00`), at = expirationDeadline(item.date);
+  const before = new Date(`${item.date}T20:44:59.999+08:00`), at = expirationDeadline(item.date);
   const service = appointmentService(repository,userRepository(db),PII_ENCRYPTION_KEY,() => before);
   const [start] = await Promise.allSettled([
     service.update(item.id,{revision:item.revision,patch:{status:'in_progress',...photos}},actor),
@@ -657,13 +657,30 @@ test('expiration racing with photo intake has one consistent winner and respects
   assert.equal((await repository.find(recorded.id)).status,'booked');
 });
 
+test('online creation stops at 20:45 Shanghai even while the last slot is still open', async () => {
+  const before = new Date(`${date}T20:44:59.999+08:00`), at = new Date(`${date}T20:45:00+08:00`);
+  let now = before;
+  const repository = appointmentRepository(db), users = userRepository(db);
+  const service = appointmentService(repository,users,PII_ENCRYPTION_KEY,() => now);
+  const data = () => bookingInput(draft({timeSlot:'20:30–21:00'}));
+  const item = await service.create(data());
+  assert.equal(item.expiresAt,`${date}T12:45:00.000Z`);
+  now = at;
+  await assert.rejects(service.create(data()),error => error.status===409 && error.code==='SLOT_ENDED');
+  assert.equal((await service.lookup(item.id,item.accessToken)).status,'expired');
+  let clockReads = 0;
+  const racing = appointmentService(repository,users,PII_ENCRYPTION_KEY,() => ++clockReads === 1 ? before : at);
+  await assert.rejects(racing.create(data()),error => error.status===409 && error.code==='SLOT_ENDED');
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointments').first()).n,1);
+});
+
 test('onsite creation stops at the inclusive Shanghai deadline', async () => {
   const actor = await userRepository(db).find('root001');
-  let now = new Date(`${date}T21:29:59.999+08:00`);
+  let now = new Date(`${date}T20:44:59.999+08:00`);
   const repository = appointmentRepository(db), service = appointmentService(repository,userRepository(db),PII_ENCRYPTION_KEY,() => now);
   const data = bookingInput(draft());
   const item = await service.createOnsite(data,actor,crypto.randomUUID());
-  assert.equal(item.expiresAt,expirationDeadline(date));
+  assert.equal(item.expiresAt,`${date}T12:45:00.000Z`);
   now = new Date(item.expiresAt);
   await assert.rejects(service.createOnsite(data,actor,crypto.randomUUID()),error => error.status===400);
   assert.equal((await service.lookup(item.id,item.accessToken)).status,'expired');
@@ -1619,7 +1636,7 @@ test('five-state workflow records the actor and server time, requires a result a
   assert.ok(csv.includes('维修结果') && csv.includes('开始时间(UTC)') && csv.includes('修复成功') && csv.includes('历史未分类'));
 });
 
-test('automatic expirations honor 21:30 Shanghai, dry-run, missed days, active repairs and idempotency',async()=>{
+test('automatic expirations honor 20:45 Shanghai, dry-run, missed days, active repairs and idempotency',async()=>{
   const waiting=await book(),past=await book(),active=await book(),future=await book();
   const token=await login();
   await api(`/api/appointments/${active.id}/status`,{method:'PATCH',token,body:{status:'in_progress',...await intake(active, token)}});
@@ -1632,7 +1649,7 @@ test('automatic expirations honor 21:30 Shanghai, dry-run, missed days, active r
   await setAppointmentDate(past.id, adjacentServiceDate(-1));
   await setAppointmentDate(future.id, adjacentServiceDate(1));
   const repository=appointmentRepository(db);
-  const before=new Date(`${date}T21:29:59.999+08:00`),at=new Date(`${date}T21:30:00+08:00`);
+  const before=new Date(`${date}T20:44:59.999+08:00`),at=new Date(`${date}T20:45:00+08:00`);
   assert.equal((await expireAppointments(repository,{now:before})).eligible,1);
   assert.equal((await repository.find(past.id)).status,'booked');
   assert.equal((await expireAppointments(repository,{apply:true,now:before})).ended,1);
@@ -1649,7 +1666,7 @@ test('automatic expirations honor 21:30 Shanghai, dry-run, missed days, active r
 
 test('queries and writes catch up missed automatic endings; unauthorized credentials cannot alter records',async()=>{
   const item=await book(),repository=appointmentRepository(db),users=userRepository(db);
-  const after=new Date(`${date}T21:30:00+08:00`);
+  const after=new Date(`${date}T20:45:00+08:00`);
   const service=appointmentService(repository,users,PII_ENCRYPTION_KEY,()=>after);
   await assert.rejects(service.lookup(item.id,'x'.repeat(43)),error=>error.status===404);
   assert.equal((await repository.find(item.id)).status,'booked');
@@ -1761,7 +1778,7 @@ test('admin corrections preserve start on reopening, validate reassignment and c
   const reset=await api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:root,body:{action:'correct',status:'booked'}});
   for(const key of ['startedAt','completedAt','outcome'])assert.equal(reset[key],null);
   assert.equal(reset.assignedTo,'');assert.equal(reset.repairNote,'');
-  const service=appointmentService(appointmentRepository(db),userRepository(db),PII_ENCRYPTION_KEY,()=>new Date(`${date}T21:30:00+08:00`));
+  const service=appointmentService(appointmentRepository(db),userRepository(db),PII_ENCRYPTION_KEY,()=>new Date(`${date}T20:45:00+08:00`));
   await assert.rejects(service.update(item.id,{action:'correct',patch:{status:'booked'}},await userRepository(db).find('root001')),error=>error.status===409);
 });
 

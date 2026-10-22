@@ -152,6 +152,10 @@
     {
       "name": "0035_notice_display_mode.sql",
       "sha256": "509b0b6f9b3e3914d456ad9f619154a65e6d4877ad60ac2e2fe89fd6cb5dc81f"
+    },
+    {
+      "name": "0036_appointment_expiration_time.sql",
+      "sha256": "73970c65f1a1d4eee6f97c7a7d5e639132f7171c3cd3d1a2e1ae2c2056687c0d"
     }
   ],
   "modules": [
@@ -383,6 +387,10 @@
     {
       "name": "0035_notice_display_mode.sql",
       "sha256": "509b0b6f9b3e3914d456ad9f619154a65e6d4877ad60ac2e2fe89fd6cb5dc81f"
+    },
+    {
+      "name": "0036_appointment_expiration_time.sql",
+      "sha256": "73970c65f1a1d4eee6f97c7a7d5e639132f7171c3cd3d1a2e1ae2c2056687c0d"
     }
   ]
 }
