@@ -1,14 +1,11 @@
-import { createHash } from 'node:crypto';
 import { fail } from '../lib/http.js';
-import { issueAccessToken } from '../lib/access-tokens.js';
+import { bookingDigest, issueAccessToken } from '../lib/access-tokens.js';
 import { guestAppointment } from './access.js';
 import { requireCampus } from './permissions.js';
-import { requestId, stableJson } from '../platform/contracts.js';
+import { requestId } from '../platform/contracts.js';
 import { dateKey, expirationDeadline, serviceDay, slotDeadline, validDate } from '../../shared/time.js';
 import { TIME_SLOTS } from '../../shared/constants.js';
 import { campusId } from '../modules/authorization/scopes.js';
-
-const hash = (value) => createHash('sha256').update(stableJson(value)).digest('hex');
 
 export function repairFollowupService(appointments, staffPlatform, clock = () => new Date()) {
   async function parent(id) {
@@ -42,7 +39,7 @@ export function repairFollowupService(appointments, staffPlatform, clock = () =>
       const operationId = requestId(input?.requestId);
       if (!operationId) fail(400, '请刷新页面后重新提交返修申请');
       if (reason.length < 2 || reason.length > 3000) fail(400, '请填写 2 至 3000 字的返修情况');
-      const fingerprint = hash({ parentAppointmentId: item.id, reason, requestSource: 'customer' });
+      const fingerprint = bookingDigest({ parentAppointmentId: item.id, reason, requestSource: 'customer' });
       const replay = await existingRequest(operationId, item.id, fingerprint);
       if (replay) return replay;
       const result = await appointments.createRepairFollowup({
@@ -66,7 +63,7 @@ export function repairFollowupService(appointments, staffPlatform, clock = () =>
       const operationId = requestId(input?.requestId);
       if (!operationId) fail(400, '请刷新工单后重试');
       if (reason.length < 2 || reason.length > 3000) fail(400, '请填写 2 至 3000 字的返修情况');
-      const fingerprint = hash({ parentAppointmentId: item.id, reason, requestSource: 'staff' });
+      const fingerprint = bookingDigest({ parentAppointmentId: item.id, reason, requestSource: 'staff' });
       const replay = await existingRequest(operationId, item.id, fingerprint);
       if (replay) return replay;
       const result = await appointments.createRepairFollowup({ parentAppointmentId: item.id, reason,
@@ -124,7 +121,7 @@ export function repairFollowupService(appointments, staffPlatform, clock = () =>
       const revision = Number(input.revision);
       if (!Number.isSafeInteger(revision) || revision < 0) fail(400, '返修申请版本无效，请刷新后重试');
       const timestamp = clock();
-      const decisionHash = hash({ action, followupId, revision, date: action === 'schedule' ? date : '',
+      const decisionHash = bookingDigest({ action, followupId, revision, date: action === 'schedule' ? date : '',
         timeSlot: action === 'schedule' ? timeSlot : '', reason });
       const prior = await appointments.followupByDecisionRequestId(operationId);
       if (prior) {
