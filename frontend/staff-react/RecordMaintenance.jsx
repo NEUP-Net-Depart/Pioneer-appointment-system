@@ -155,33 +155,57 @@ export function RecordMaintenance({ item, onChanged, busy: parentBusy }) {
       {item.canCorrect && item.status === 'completed' && (
         <section className="record-followup-create">
           <h4>从此工单追加返修</h4>
-          <p className="field-muted">建立待处理返修申请，之后由办公人员安排日期与时段；不会修改原工单。</p>
+          <p className="field-muted">
+            建立待处理返修申请，之后由办公人员安排日期与时段；不会修改原工单。
+          </p>
           <label>
             返修情况
-            <textarea value={followupReason} maxLength={3000} rows={3}
-              onChange={(event) => setFollowupReason(event.target.value)} />
+            <textarea
+              value={followupReason}
+              maxLength={3000}
+              rows={3}
+              onChange={(event) => setFollowupReason(event.target.value)}
+            />
           </label>
-          <button disabled={disabled || followupReason.trim().length < 2} onClick={() => run(async () => {
-            const text = followupReason.trim();
-            if (!followupCommand.current || followupCommand.current.reason !== text)
-              followupCommand.current = { reason: text, requestId: crypto.randomUUID() };
-            await request('/api/appointments/' + encodeURIComponent(item.id) + '/repair-followups/staff', {
-              method: 'POST',
-              body: { reason: text, requestId: followupCommand.current.requestId }
-            });
-            followupCommand.current = null;
-            setFollowupReason('');
-            setMessage('返修申请已加入待处理队列。');
-            await onChanged();
-          })}>追加返修申请</button>
+          <button
+            disabled={disabled || followupReason.trim().length < 2}
+            onClick={() =>
+              run(async () => {
+                const text = followupReason.trim();
+                if (!followupCommand.current || followupCommand.current.reason !== text)
+                  followupCommand.current = { reason: text, requestId: crypto.randomUUID() };
+                await request(
+                  '/api/appointments/' + encodeURIComponent(item.id) + '/repair-followups/staff',
+                  {
+                    method: 'POST',
+                    body: { reason: text, requestId: followupCommand.current.requestId }
+                  }
+                );
+                followupCommand.current = null;
+                setFollowupReason('');
+                setMessage('返修申请已加入待处理队列。');
+                await onChanged();
+              })
+            }
+          >
+            追加返修申请
+          </button>
           {item.repairHistory?.followups?.length > 0 && (
             <div className="record-followup-history" aria-label="关联返修记录">
-              {item.repairHistory.followups.filter((entry) => entry.parentAppointmentId === item.id).map((entry) => (
-                <p key={entry.id}>
-                  <strong>{entry.status === 'pending' ? '待处理' : entry.status === 'scheduled' ? '已安排' : '已退回'}</strong>
-                  <span>{entry.reason}</span>
-                </p>
-              ))}
+              {item.repairHistory.followups
+                .filter((entry) => entry.parentAppointmentId === item.id)
+                .map((entry) => (
+                  <p key={entry.id}>
+                    <strong>
+                      {entry.status === 'pending'
+                        ? '待处理'
+                        : entry.status === 'scheduled'
+                          ? '已安排'
+                          : '已退回'}
+                    </strong>
+                    <span>{entry.reason}</span>
+                  </p>
+                ))}
             </div>
           )}
         </section>

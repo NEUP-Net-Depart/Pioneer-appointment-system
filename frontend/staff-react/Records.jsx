@@ -138,7 +138,10 @@ export function Records({ user }) {
         )}
       </WorkspaceHeader>
       <Notice>{message}</Notice>
-      <RepairFollowups active={active && staffPermission(user, 'repair.followup.manage')} onChanged={refresh} />
+      <RepairFollowups
+        active={active && staffPermission(user, 'repair.followup.manage')}
+        onChanged={refresh}
+      />
       <RecordOverview
         result={overview}
         onOpen={setOverviewOpen}
