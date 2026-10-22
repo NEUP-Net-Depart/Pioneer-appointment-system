@@ -146,7 +146,7 @@ beforeEach(async () => {
   await db.prepare('DELETE FROM service_day_overrides').run();
   await db.prepare('DELETE FROM booking_notices').run();
   await db.prepare("UPDATE booking_settings SET release_time='10:00',revision=0,updated_by=NULL").run();
-  await db.batch(['DELETE FROM appointment_corrections','DELETE FROM repair_intake_records','DELETE FROM credential_recoveries','DELETE FROM booking_requests','DELETE FROM activation_requests','DELETE FROM staff_whitelist','DELETE FROM attachment_storage','DELETE FROM appointment_attachments','DELETE FROM appointments','DELETE FROM service_location_changes','DELETE FROM service_locations','DELETE FROM booking_day_slots',"DELETE FROM staff_accounts WHERE protected=0",'DELETE FROM rate_limits'].map(sql => db.prepare(sql)));
+  await db.batch(['DELETE FROM appointment_corrections','DELETE FROM repair_followups','DELETE FROM repair_intake_records','DELETE FROM credential_recoveries','DELETE FROM booking_requests','DELETE FROM activation_requests','DELETE FROM staff_whitelist','DELETE FROM attachment_storage','DELETE FROM appointment_attachments','DELETE FROM appointments','DELETE FROM service_location_changes','DELETE FROM service_locations','DELETE FROM booking_day_slots',"DELETE FROM staff_accounts WHERE protected=0",'DELETE FROM rate_limits'].map(sql => db.prepare(sql)));
   await db.prepare('DELETE FROM staff_presence').run();
   await db.prepare('UPDATE storage_quota SET used_bytes=0 WHERE id=1').run();
   const locationDates = [...new Set([date,'2026-10-15',...Array.from({length:10},(_,index)=>addDays(dateKey(),index-3))])];
@@ -180,6 +180,106 @@ test('scan lookup needs staff authorization, preserves campus scope and never st
   const root = await login();
   await api(`/api/appointments/${item.id}/credential`,{method:'POST',token:root,body:{identityVerified:true,reason:'已核验学生证与登记联系方式'}});
   assert.equal((await resolve({code})).id,item.id, 'student credential rotation must not invalidate a repair QR');
+});
+
+test('repair followups are idempotent, capacity-exempt, traceable, and only scannable while scheduled', async () => {
+  const root = await login();
+  const original = await book();
+  await db.prepare("UPDATE appointments SET status='completed',outcome='repaired',completed_at=?,revision=revision+1 WHERE id=?")
+    .bind(testNow, original.id).run();
+
+  const requestId = crypto.randomUUID();
+  const requestBody = { requestId, reason: '原故障再次出现，设备无法正常启动' };
+  const pending = await api(`/api/appointments/${original.id}/repair-followups`, {
+    method: 'POST', accessToken: original.accessToken, body: requestBody
+  }, 201);
+  assert.equal(pending.status, 'pending');
+  assert.equal((await api(`/api/appointments/${original.id}/repair-followups`, {
+    method: 'POST', accessToken: original.accessToken, body: requestBody
+  }, 201)).idempotent, true);
+  await api(`/api/appointments/${original.id}/repair-followups`, {
+    method: 'POST', accessToken: original.accessToken, body: { ...requestBody, requestId: crypto.randomUUID() }
+  }, 409);
+  await api('/api/appointments/' + original.id + '/repair-followups/staff', {
+    method: 'POST', token: await addUser('994001'), body: { requestId: crypto.randomUUID(), reason: '越权创建返修申请' }
+  }, 403);
+
+  const serviceDate = '2026-10-19';
+  const timeSlot = TIME_SLOTS[0];
+  const alreadyBooked = await book({ date: date, timeSlot: TIME_SLOTS[1] });
+  await db.prepare('UPDATE appointments SET date=?,expires_at=?,time_slot=? WHERE id=?')
+    .bind(serviceDate, expirationDeadline(serviceDate), timeSlot, alreadyBooked.id).run();
+  await db.prepare('UPDATE booking_day_slots SET capacity=1 WHERE campus=? AND date=? AND time_slot=?')
+    .bind(original.campus, serviceDate, timeSlot).run();
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM appointments WHERE source='booking' AND date=? AND campus=? AND time_slot=? AND status<>'cancelled'")
+    .bind(serviceDate, original.campus, timeSlot).first()).n, 1);
+
+  const decisionRequestId = crypto.randomUUID();
+  const decisionBody = { action: 'schedule', requestId: decisionRequestId, revision: pending.revision, date: serviceDate, timeSlot };
+  const result = await api(`/api/repair-followups/${pending.id}/decision`, {
+    method: 'POST', token: root,
+    body: decisionBody
+  });
+  assert.equal(result.status, 'scheduled');
+  assert.equal((await api(`/api/repair-followups/${pending.id}/decision`, { method: 'POST', token: root, body: decisionBody })).idempotent, true);
+  const childRow = await db.prepare('SELECT source,registration_flow FROM appointments WHERE id=?').bind(result.appointment.id).first();
+  assert.equal(childRow.registration_flow, 'repair_followup');
+  assert.equal(childRow.source, 'onsite');
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM appointments WHERE source='onsite' AND registration_flow='repair_followup' AND date=? AND campus=? AND time_slot=?")
+    .bind(serviceDate, original.campus, timeSlot).first()).n, 1);
+
+  const qr = await api(`/api/appointments/${original.id}/repair-followups/${pending.id}/scan-code`, {
+    accessToken: original.accessToken
+  });
+  const technician = await addUser('994002');
+  const resolved = await api('/api/scan/resolve', { method: 'POST', token: technician, body: { code: qr.code } });
+  assert.equal(resolved.id, result.appointment.id);
+  assert.equal(resolved.status, 'booked');
+  const history = await api(`/api/appointments/${original.id}`, { accessToken: original.accessToken });
+  assert.equal(history.repairHistory.followups[0].scheduledAppointmentId, result.appointment.id);
+  assert.equal(history.repairHistory.items.some((item) => item.id === result.appointment.id), true);
+
+  const staffRequest = await api(`/api/appointments/${original.id}/repair-followups/staff`, {
+    method: 'POST', token: root, body: { requestId: crypto.randomUUID(), reason: '工作人员核对后追加返修' }
+  }, 201);
+  assert.equal(staffRequest.requestSource, 'staff');
+  const rejectionBody = { action: 'reject', requestId: crypto.randomUUID(), revision: staffRequest.revision, reason: '经核对不属于维修故障' };
+  const rejected = await api(`/api/repair-followups/${staffRequest.id}/decision`, { method: 'POST', token: root, body: rejectionBody });
+  assert.equal(rejected.status, 'rejected');
+  assert.equal(rejected.resolutionNote, rejectionBody.reason);
+
+  await db.prepare('UPDATE appointments SET expires_at=? WHERE id=?').bind('2026-10-15T01:59:00.000Z', result.appointment.id).run();
+  await api(`/api/appointments/${original.id}/repair-followups/${pending.id}/scan-code`, {
+    accessToken: original.accessToken
+  }, 404);
+  assert.equal((await db.prepare('SELECT status FROM appointments WHERE id=?').bind(result.appointment.id).first()).status, 'expired');
+});
+
+test('repair followup scheduling rejects paused dates and invalid service windows without creating a child', async () => {
+  const root = await login();
+  const original = await book();
+  await db.prepare("UPDATE appointments SET status='completed',outcome='repaired',completed_at=? WHERE id=?")
+    .bind(testNow, original.id).run();
+  const pending = await api(`/api/appointments/${original.id}/repair-followups`, {
+    method: 'POST', accessToken: original.accessToken,
+    body: { requestId: crypto.randomUUID(), reason: '维修后相同故障再次出现' }
+  }, 201);
+  const campusId = (await db.prepare('SELECT id FROM campuses WHERE name=?').bind(original.campus).first()).id;
+  const pausedDate = '2026-10-19';
+  await db.prepare("INSERT INTO service_day_overrides(business_date,campus_id,paused,reason,updated_at) VALUES(?,?,1,'暂停测试',?)")
+    .bind(pausedDate, campusId, testNow).run();
+  const decision = (body, status = 409) => api(`/api/repair-followups/${pending.id}/decision`, {
+    method: 'POST', token: root, body: { action: 'schedule', requestId: crypto.randomUUID(), revision: pending.revision, ...body }
+  }, status);
+  await decision({ date: pausedDate, timeSlot: TIME_SLOTS[0] });
+  await decision({ date: '2026-10-18', timeSlot: TIME_SLOTS[0] }, 400);
+  await decision({ date: '2026-10-19', timeSlot: '18:00–18:30' }, 400);
+  assert.equal((await db.prepare('SELECT status FROM repair_followups WHERE id=?').bind(pending.id).first()).status, 'pending');
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM appointments WHERE registration_flow='repair_followup'").first()).n, 0);
+  await api(`/api/appointments/${original.id}/repair-followups`, {
+    method: 'POST', accessToken: original.accessToken,
+    body: { requestId: crypto.randomUUID(), reason: '未完成工单不应允许申报' }
+  }, 409);
 });
 
 test('one staff member cannot start two jobs, retrying intake and completion is idempotent, and corrections obey the claim', async () => {

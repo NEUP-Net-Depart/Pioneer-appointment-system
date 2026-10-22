@@ -8,10 +8,11 @@ import { savedAppointments,saveAppointment,privateLink,parsePrivateLink,credenti
 import { renderRepairQr } from './repair-qr.js';
 import { timeSummary,informationGroups,statusText,statusExplanation,repairRecord } from './presentation.js';
 import { createPhotoCollection,previewPhoto } from './photos.js';
+import { createFollowupPanel } from './followups.js';
 
 export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false,hasPending=()=>false}={}) {
   const root=$('#lookup-results'),detail=$('#appointment-detail');
-  const records=new Map();let active=false,detailId=null,generation=0,refreshing=false,importing=false,cancelling=false,detailPhotos=null,deadlineTimer,viewVersion=0;
+  const records=new Map(),followupCommands=new Map(),followupMessages=new Map(),followupBusy=new Set();let active=false,detailId=null,generation=0,refreshing=false,importing=false,cancelling=false,detailPhotos=null,deadlineTimer,viewVersion=0;
   const urls=new Set();
   const request=entry=>apiJson(`/api/appointments/${encodeURIComponent(entry.id)}`,{headers:credentialHeaders(entry),timeoutMs:15000}).then(item=>({...item,accessToken:entry.accessToken}));
   function readEntries(){for(const entry of savedAppointments()){const previous=records.get(entry.id);if(!previous || previous.entry.accessToken!==entry.accessToken)records.set(entry.id,{entry,item:previous?.item,message:'',receivedAt:Date.now()});}}
@@ -80,6 +81,17 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
       }
       qrDetails.dataset.status=item.status;
     }
+    const followupSignature=JSON.stringify({status:item.status,history:item.repairHistory,message:followupMessages.get(item.id)||''});
+    let followupPanel=detail.querySelector('[data-followup-panel]');
+    if(followupPanel?.dataset.signature!==followupSignature){
+      const previousReason=followupPanel?.querySelector('[name=reason]')?.value || '';
+      const nextPanel=createFollowupPanel(item,followupMessages.get(item.id)||'');
+      nextPanel.dataset.followupPanel='true';nextPanel.dataset.signature=followupSignature;
+      const nextReason=nextPanel.querySelector('[name=reason]');
+      if(nextReason && previousReason)nextReason.value=previousReason;
+      if(followupPanel)followupPanel.replaceWith(nextPanel);
+      else detail.insertBefore(nextPanel,detail.querySelector('#detail-operations'));
+    }
     detailPhotos.refresh();
     const operations=$('#detail-operations');
     if(item.status==='booked') {
@@ -116,6 +128,33 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
       catch{if(id===detailId)$('#cancel-message').textContent='暂时无法确认取消结果。已保留最近状态，请重试查询后再操作。';}}
     finally{cancelling=false;if(id===detailId){updateDetail();if(records.get(id)?.item?.status==='cancelled')showToast('预约已取消');const control=detail.querySelector('[data-cancel-confirm]');if(control)control.disabled=false;}renderList();}
   }
+  detail.addEventListener('submit',async event=>{
+    const form=event.target.closest('[data-followup-form]');
+    if(!form)return;
+    event.preventDefault();
+    const id=detailId,item=records.get(id)?.item,reason=form.querySelector('[name=reason]')?.value.trim() || '';
+    if(!item || reason.length<2){followupMessages.set(id,'请填写至少 2 个字的返修情况。');updateDetail();return;}
+    if(followupBusy.has(id))return;
+    let command=followupCommands.get(id);
+    if(!command || command.reason!==reason){command={reason,requestId:crypto.randomUUID()};followupCommands.set(id,command);}
+    followupBusy.add(id);
+    const button=form.querySelector('[type=submit]');if(button)button.disabled=true;
+    followupMessages.set(id,'正在提交返修申请…');
+    try{
+      await apiJson('/api/appointments/'+encodeURIComponent(id)+'/repair-followups',{
+        method:'POST',headers:credentialHeaders(item),json:{reason,requestId:command.requestId},timeoutMs:15000
+      });
+      followupCommands.delete(id);
+      followupMessages.set(id,'返修申请已提交，办公人员安排后会在此显示。');
+      await refresh();
+    }catch(failure){
+      followupMessages.set(id,failure.message || '网络异常，请重试。相同内容会使用原请求编号核实结果。');
+      updateDetail();
+    }finally{
+      followupBusy.delete(id);
+      const submit=detail.querySelector('[data-followup-form] [type=submit]');if(submit)submit.disabled=false;
+    }
+  });
   detail.addEventListener('click',async event=>{
     const target=event.target.closest('button');if(!target)return;
     if(target.hasAttribute('data-detail-retry')){void showDetail(detailId);return;}
@@ -125,6 +164,7 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
     if(target.hasAttribute('data-rebook')){if(hasPending()){setNotice($('#detail-notice'),'另一次提交结果尚未核实，请先返回预约维修核实原请求。');return;}if(hasDraft())$('#rebook-confirm').hidden=false;else onRebook();}
     if(target.hasAttribute('data-rebook-keep'))$('#rebook-confirm').hidden=true;
     if(target.hasAttribute('data-rebook-confirm'))onRebook();
+    if(target.hasAttribute('data-followup-qr')){const parentId=detailId,item=records.get(parentId)?.item;if(item)void renderRepairQr(target.nextElementSibling,{...item,id:target.dataset.followupAppointment,scanParentId:parentId,followupId:target.dataset.followupQr});}
     if(target.dataset.attachmentId){const id=detailId,item=records.get(id)?.item,file=item?.attachments?.find(file=>file.id===target.dataset.attachmentId);if(!file)return;target.disabled=true;
       try{const blob=await apiBlob(attachmentUrl(id,file.id),{headers:credentialHeaders(item),timeoutMs:30000});const url=URL.createObjectURL(blob);urls.add(url);if(id!==detailId){URL.revokeObjectURL(url);urls.delete(url);return;}
         if(file.mimeType.startsWith('image/'))previewPhoto(url);else{const link=document.createElement('a');link.href=url;link.download=file.filename;link.click();setTimeout(()=>{URL.revokeObjectURL(url);urls.delete(url);},60000);}}

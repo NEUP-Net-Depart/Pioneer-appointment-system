@@ -130,6 +130,234 @@
   background: white;
   overflow: hidden;
 }
+.followup-queue {
+  margin: 0 0 28px;
+  padding: 22px 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: white;
+}
+.followup-queue-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+.followup-queue-heading h2 {
+  margin: 2px 0 4px;
+  font-size: 20px;
+}
+.followup-queue-heading p:last-child {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+.followup-queue-heading .section-kicker {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.followup-count {
+  display: grid;
+  place-items: center;
+  min-width: 40px;
+  height: 40px;
+  padding-inline: 8px;
+  border-radius: 8px;
+  background: #eef3f1;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.followup-empty {
+  margin: 0;
+  padding: 18px 0 2px;
+  color: var(--muted);
+}
+.followup-queue-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 390px), 1fr));
+  gap: 12px;
+  padding-top: 16px;
+}
+.followup-card {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+.followup-card-main {
+  padding: 16px;
+}
+.followup-card-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.followup-card-title > div {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+.followup-card-title strong {
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+.followup-card-title > div > span {
+  color: var(--muted);
+  font-size: 13px;
+}
+.followup-state {
+  flex: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: #fff4df;
+  color: #805515;
+  font-size: 12px;
+}
+.followup-reason {
+  margin: 14px 0;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.field-app .followup-card-actions,
+.followup-submit-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.field-app .followup-card-actions button,
+.followup-submit-row button,
+.followup-decision form > button {
+  min-height: 44px;
+}
+.field-app .followup-card-actions .followup-primary,
+.followup-submit-row .followup-primary {
+  background: var(--ink, #222831);
+  color: white;
+}
+.field-app .followup-reject-link {
+  color: var(--muted);
+}
+.followup-decision {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.followup-choice-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.field-app .followup-choice-tabs button {
+  min-height: 44px;
+}
+.field-app .followup-choice-tabs [aria-pressed='true'] {
+  border-color: var(--ink, #222831);
+  background: #eef1f3;
+  color: var(--ink, #222831);
+  font-weight: 600;
+}
+.followup-schedule-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+.followup-field {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.field-app .followup-field :is(input, select, textarea) {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+}
+.followup-field textarea {
+  resize: vertical;
+}
+.followup-hint,
+.followup-error,
+.followup-submit-row {
+  grid-column: 1 / -1;
+}
+.followup-hint,
+.followup-error {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.followup-error {
+  color: #a43c30;
+}
+.followup-submit-row {
+  justify-content: flex-start;
+}
+.field-app .followup-danger {
+  color: #9d332b;
+}
+.record-followup-create {
+  margin-block: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.record-followup-create h4 {
+  margin: 0 0 6px;
+}
+.record-followup-create > p {
+  line-height: 1.55;
+}
+.record-followup-create label {
+  display: grid;
+  gap: 8px;
+  margin-block: 12px;
+}
+.field-app .record-followup-create textarea {
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
+}
+.field-app .record-followup-create > button {
+  min-height: 44px;
+}
+.record-followup-history {
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.record-followup-history p {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 10px;
+  margin: 0;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.record-followup-history span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .followup-queue {
+    padding: 18px 14px;
+  }
+  .followup-queue-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .followup-schedule-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .records-toolbar {
   padding: 20px;
   display: flex;

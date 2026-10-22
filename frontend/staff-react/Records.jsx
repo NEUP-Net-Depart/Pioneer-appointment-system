@@ -7,6 +7,7 @@ import { ActivityContext, Modal, Notice, Status } from './field/ui';
 import { Repair } from './field/Repair';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { staffPermission } from '../../shared/staff-access.js';
+import { RepairFollowups } from './RepairFollowups.jsx';
 
 import { useWorkspaceQuery } from './useWorkspaceQuery.js';
 
@@ -137,6 +138,7 @@ export function Records({ user }) {
         )}
       </WorkspaceHeader>
       <Notice>{message}</Notice>
+      <RepairFollowups active={active && staffPermission(user, 'repair.followup.manage')} onChanged={refresh} />
       <RecordOverview
         result={overview}
         onOpen={setOverviewOpen}

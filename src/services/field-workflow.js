@@ -257,6 +257,8 @@ export function fieldWorkflow({
       assigneeIdentitySnapshot: await repository.repairIdentitySnapshot(id),
       canCorrect: allowed(context, 'repair.correct', target),
       canRecoverCredential: allowed(context, 'repair.correct', target),
+      canManageFollowup: allowed(context, 'repair.followup.manage', target),
+      repairHistory: visible.canReadDetails ? await appointments.repairHistory(id) : null,
       original:
         visible.canReadDetails &&
         (item.assignedMemberId === context.actor.memberId ||
