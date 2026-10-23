@@ -12,7 +12,7 @@ import {
 import { issueAccessToken, bookingDigest, hashAccessToken, onsiteRequestKey } from '../lib/access-tokens.js';
 import { requestId as validRequestId } from '../platform/contracts.js';
 import { guestAppointment } from './access.js';
-import { repairOutcomes } from '../../shared/constants.js';
+import { repairOutcomes, TIME_SLOTS } from '../../shared/constants.js';
 import { bookingWindow } from '../../shared/booking-settings.js';
 import {
   appointmentScope,
@@ -47,13 +47,15 @@ export function appointmentService(
   bookingSettings = null
 ) {
   const present = async (item, staff = false) => {
-    const [visible, location] = await Promise.all([
+    const [visible, location, repairHistory] = await Promise.all([
       presentAppointment(item, encryptionKey, { staff }),
-      appointments.location(item.date, item.campus)
+      appointments.location(item.date, item.campus),
+      appointments.repairHistory(item.id, { staff })
     ]);
     return {
       ...visible,
       queuePosition: item.status==='booked' && ['queued','assigned'].includes(item.reception?.state) ? await appointments.receptionPosition(item) : null,
+      repairHistory,
       serverNow: clock().toISOString(),
       location: location?.location || item.locationSnapshot || '',
       currentLocationRevision: location?.revision ?? null,
@@ -92,6 +94,23 @@ export function appointmentService(
           input.outcome === item.outcome &&
           input.repairNote === item.repairNote))
     );
+  }
+  async function exitQueue(item, input, accessToken, credentialScope = {}) {
+    if (!input || !validRequestId(input.requestId) || !Number.isInteger(input.revision)) fail(400,'请提供有效操作编号和工单版本');
+    const replay=await appointments.guestQueueExitReceipt(item.id,input.requestId);
+    if (replay) {
+      if (JSON.parse(replay.before_json).revision!==input.revision) fail(409,'请勿重复使用不同操作的请求编号');
+      return;
+    }
+    if (item.revision!==input.revision) fail(409,'工单已更新，请刷新并核对后重试');
+    if (item.status!=='booked' || !['queued','assigned'].includes(item.reception?.state)) fail(409,'当前不在现场排队，无法退出');
+    const at=clock().toISOString();
+    const updated=await appointments.update(item,{status:'booked'},undefined,{
+      actor:{memberId:null,account:null},action:'receptions.guest_leave',auditId:'guest-leave-'+item.id+'-'+input.requestId,
+      requestId:input.requestId,...credentialScope,guestCredentialHash:hashAccessToken(accessToken),at,reason:'客户主动退出现场排队',
+      reception:{state:'closed',leftAt:at}
+    });
+    if (!updated && !await appointments.guestQueueExitReceipt(item.id,input.requestId)) fail(409,'工单已更新，请重新查询后操作');
   }
   return {
     async resolveAttempt(key, digest) {
@@ -286,27 +305,21 @@ export function appointmentService(
     },
     async lookup(id, accessToken) {
       const item = await guestAppointment(appointments, id, accessToken);
-      await expire(clock(), { id: item.id });
+      await expire(clock(), { repairChainId: item.id });
       return present(await guestAppointment(appointments, item.id, accessToken));
     },
     async leaveQueue(id,input,accessToken) {
       const item=await guestAppointment(appointments,id,accessToken);
-      if (!input || !validRequestId(input.requestId) || !Number.isInteger(input.revision)) fail(400,'请提供有效操作编号和工单版本');
-      const replay=await appointments.guestQueueExitReceipt(item.id,input.requestId);
-      if (replay) {
-        if (JSON.parse(replay.before_json).revision!==input.revision) fail(409,'请勿重复使用不同操作的请求编号');
-        return present(item);
-      }
-      if (item.revision!==input.revision) fail(409,'工单已更新，请刷新并核对后重试');
-      if (item.status!=='booked' || !['queued','assigned'].includes(item.reception?.state)) fail(409,'当前不在现场排队，无法退出');
-      const at=clock().toISOString();
-      const updated=await appointments.update(item,{status:'booked'},undefined,{
-        actor:{memberId:null,account:null},action:'receptions.guest_leave',auditId:'guest-leave-'+item.id+'-'+input.requestId,
-        requestId:input.requestId,guestCredentialHash:hashAccessToken(accessToken),at,reason:'客户主动退出现场排队',
-        reception:{state:'closed',leftAt:at}
-      });
-      if (!updated && !await appointments.guestQueueExitReceipt(item.id,input.requestId)) fail(409,'工单已更新，请重新查询后操作');
+      await exitQueue(item,input,accessToken);
       return present(await guestAppointment(appointments,item.id,accessToken));
+    },
+    async leaveFollowupQueue(parentId,followupId,input,accessToken) {
+      const parent=await guestAppointment(appointments,parentId,accessToken);
+      const relation=await appointments.followupForScan(parent.id,followupId);
+      if (!relation) fail(404,'返修预约不存在或访问凭证无效');
+      const item=await appointments.find(relation.id);
+      await exitQueue(item,input,accessToken,{guestParentId:parent.id,guestFollowupId:followupId});
+      return this.lookup(parent.id,accessToken);
     },
     async reception(id, input, actor) {
       if (!input || typeof input!=='object' || Array.isArray(input)) fail(400,'接待参数不正确');
@@ -360,7 +373,8 @@ export function appointmentService(
           if (!validDate(input.date) || !options.items.some(option=>option.date===input.date && option.timeSlot===input.timeSlot)) fail(409,'请选择当前开放的有效预约时段');
           if (input.date===item.date && input.timeSlot===item.timeSlot) fail(400,'请选择不同的日期或时段；原安排继续处理无需改约');
           if ((await appointments.serviceDay(input.date,item.campus))?.paused) fail(409,'该日期暂停维修');
-          patch={status:'booked',date:input.date,timeSlot:input.timeSlot,source:'booking',expiresAt:expirationDeadline(input.date)};
+          await appointments.ensureDefaultLocation(input.date,item.campus,at);
+          patch={status:'booked',date:input.date,timeSlot:input.timeSlot,source:item.registrationFlow==='repair_followup' ? 'onsite' : 'booking',expiresAt:expirationDeadline(input.date)};
         }
       } else {
         if (item.reception?.state!=='assigned') fail(409,'当前没有待接手的分派');
@@ -374,7 +388,7 @@ export function appointmentService(
         if (replay.replay) return replay.replay;
         fail(409,'人员或工单已更新，请核对后重试');
       }
-      return field.detail(actor,id);
+      return field.receptionResult(actor,id);
     },
     async receptionOptions(id,actor) {
       const item=await staffPlatform.field.detail(actor,id);
@@ -382,11 +396,17 @@ export function appointmentService(
       const instant=clock(),today=dateKey(instant);
       const settings=bookingSettings ? await bookingSettings.public(item.campus) : null;
       const window=bookingWindow(instant,settings?.releaseTime);
+      const {totals}=await appointments.overview(today,window.end,[item.campus]);
       const items=[];
       for(let day=today;day<=window.end;day=addDays(day,1)) {
         if (!serviceDay(day) || (await appointments.serviceDay(day,item.campus))?.paused) continue;
-        for(const slot of await appointments.schedule(day,item.campus))
-          if (slot.capacity>0 && Date.parse(slotDeadline(day,slot.time_slot))>instant.getTime()) items.push({date:day,timeSlot:slot.time_slot});
+        for(const slot of await appointments.schedule(day,item.campus)) {
+          const occupied=totals.find(row=>row.date===day && row.time_slot===slot.time_slot)?.occupied || 0;
+          if (day===item.date && slot.time_slot===item.timeSlot) continue;
+          if (TIME_SLOTS.includes(slot.time_slot) && slot.capacity>0 &&
+              (item.registrationFlow==='repair_followup' || occupied<slot.capacity) &&
+              Date.parse(slotDeadline(day,slot.time_slot))>instant.getTime()) items.push({date:day,timeSlot:slot.time_slot});
+        }
       }
       return {items};
     },

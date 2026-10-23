@@ -12,7 +12,7 @@ Production/Preview 共用 [migrations/](../migrations/) 中的 schema 迁移。�
 | `staff_whitelist` / `whitelist_campus_grants` / `activation_member_bindings` | 激活邀请及成员授权关联 |
 | `activation_requests` | 每学号最多一条待审；批准时原子创建账号与授权，审核后清除密码哈希 |
 | `appointments` / `active_repairs` / `repair_intake_records` | 预约、签名、状态、维修占用及设备照片核验；同一成员最多一张进行中工单 |
-| `weekday_slot_capacities` / `booking_day_slots` | 每周容量模板及服务日冻结快照，包含并发版本 |
+| `weekday_slot_capacities` / `booking_day_slots` | 每周容量模板及服务日容量；模板带并发版本，修改时原子同步今天及未来的对应日期，保留历史日期及旧小时段 |
 | `booking_settings` / `booking_notices` | 校区放号时间和定时公告，按版本更新并记录审计与请求回执；预约中的 `booking_notices` 保存重要公告确认快照 |
 | `booking_requests` | 幂等键、输入摘要、工单引用和加密凭证，与预约原子写入 |
 | `service_locations` / `service_location_changes` | 校区日期地点、版本和变更记录；已有线上工单时不可清空或删除地点 |

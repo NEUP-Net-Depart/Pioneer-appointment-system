@@ -281,3 +281,101 @@ test('repair history, identity snapshots and workload retain both start event na
   assert.deepEqual(workloads['member-'+tech],{started:2,completed:0});
   assert.deepEqual(workloads['member-'+other],{started:1,completed:0});
 });
+
+
+test('historical reception records do not grant today’s office access to customer details',async()=>{
+  phase=8;
+  for(const status of ['completed','cancelled','expired']) {
+    let item=expect(await receive(await create(80+['completed','cancelled','expired'].indexOf(status))));
+    await db.prepare("UPDATE appointments SET date='2026-10-14',status=?,outcome=CASE WHEN ?='completed' THEN 'repaired' ELSE NULL END WHERE id=?").bind(status,status,item.id).run();
+    await db.prepare('UPDATE appointments SET name=? WHERE id=?').bind('历史专属客户'+status,item.id).run();
+    const search=expect(await request('/api/appointments?status=all&q='+encodeURIComponent('历史专属客户'+status),office));
+    assert.equal(search.filteredCounts.all,0);
+    expect(await request(`/api/field/appointments/${item.id}`,office),403);
+    expect(await request(`/api/appointments/${item.id}/attachments`,office),403);
+    assert.ok(!expect(await request('/api/scan/search',office,{q:item.id})).items.some(row=>row.id===item.id));
+    assert.ok(!expect(await request('/api/appointments?status=all',office)).items.some(row=>row.id===item.id));
+    assert.equal((await detail(item.id,'root001')).name,'历史专属客户'+status);
+  }
+  const queued=expect(await receive(await create(84)));
+  await db.prepare("UPDATE appointments SET date='2026-10-14' WHERE id=?").bind(queued.id).run();
+  const carryover=await detail(queued.id);
+  assert.equal(carryover.canDispatch,true);
+  for(const key of ['name','studentId','social','frontPhotoId','backPhotoId'])assert.equal(carryover[key],undefined,key);
+  const body={action:'cancel',revision:carryover.revision,requestId:crypto.randomUUID(),reason:'已联系客户取消历史在场工单'};
+  for(let attempt=0;attempt<2;attempt++) {
+    const result=expect(await request(`/api/appointments/${queued.id}/reception`,office,body));
+    assert.equal(result.resolutionOnly,true);assert.equal(result.status,'cancelled');assert.equal(result.name,undefined);
+  }
+  expect(await request(`/api/field/appointments/${queued.id}`,office),403);
+});
+
+test('followup arrivals retain their capacity exemption and parent credentials can query and leave the child queue',async()=>{
+  phase=9;
+  const parent=await create(90);
+  await db.prepare("UPDATE appointments SET status='completed',outcome='repaired' WHERE id=?").bind(parent.id).run();
+  const pending=expect(await request(`/api/appointments/${parent.id}/repair-followups`,null,{reason:'原故障复现，需要返修',requestId:crypto.randomUUID()},'POST',parent.accessToken),201);
+  const slots=expect(await request(`/api/repair-followups/slots?campus=${encodeURIComponent('南湖')}&date=${day}`,office)).items;
+  assert.ok(slots.length>=3);
+  const scheduled=expect(await request(`/api/repair-followups/${pending.id}/decision`,office,{action:'schedule',date:day,timeSlot:slots[0],revision:pending.revision,requestId:crypto.randomUUID()}));
+  let child=expect(await receive(await detail(scheduled.appointmentId)));
+  const filler=await create(91);
+  const occupied=(await db.prepare("SELECT COUNT(*) n FROM appointments WHERE source='booking' AND date=? AND time_slot=? AND status<>'cancelled'").bind(day,slots[1]).first()).n;
+  await db.prepare('UPDATE booking_day_slots SET capacity=? WHERE campus=? AND date=? AND time_slot=?').bind(occupied+1,'南湖',day,slots[1]).run();
+  await db.prepare("UPDATE appointments SET source='booking',time_slot=? WHERE id=?").bind(slots[1],filler.id).run();
+  const regular=expect(await receive(await create(92)));
+  await db.prepare("INSERT OR IGNORE INTO booking_day_slots VALUES('南湖',?,'19:00–20:00',10)").bind(day).run();
+  const regularOptions=expect(await request(`/api/appointments/${regular.id}/reception-options`,office)).items;
+  assert.ok(!regularOptions.some(option=>option.timeSlot===slots[1]));
+  assert.ok(!regularOptions.some(option=>option.timeSlot==='19:00–20:00'));
+  assert.ok(!regularOptions.some(option=>option.timeSlot===regular.timeSlot && option.date===regular.date));
+  expect(await command(regular,office,'reschedule',{date:day,timeSlot:slots[1],reason:'测试已满时段'}),409);
+  const options=expect(await request(`/api/appointments/${child.id}/reception-options`,office)).items;
+  assert.ok(options.some(option=>option.timeSlot===slots[1]));
+  await db.prepare("UPDATE service_locations SET location='新维修地点',revision=revision+1 WHERE campus='南湖' AND date=?").bind(day).run();
+  child=expect(await command(child,office,'reschedule',{date:day,timeSlot:slots[1],reason:'客户确认改到稍后时段'}));
+  assert.equal(child.source,'onsite');assert.equal(child.registrationFlow,'repair_followup');
+  const stored=await appointmentRepository(db).find(child.id);
+  assert.equal(stored.locationSnapshot,'新维修地点');
+  assert.equal(stored.locationRevision,(await appointmentRepository(db).location(day,'南湖')).revision);
+  assert.equal((await db.prepare("SELECT COUNT(*) n FROM appointments WHERE source='booking' AND date=? AND time_slot=? AND status<>'cancelled'").bind(day,slots[1]).first()).n,occupied+1);
+  const moved=expect(await command(regular,office,'reschedule',{date:day,timeSlot:slots[2],reason:'普通改约到开放时段'}));
+  assert.equal(moved.source,'booking');
+  const normal=await appointmentRepository(db).find(moved.id);
+  assert.equal(normal.locationSnapshot,'新维修地点');
+  assert.equal(normal.locationRevision,stored.locationRevision);
+  child=expect(await receive(child));
+  const publicParent=expect(await request(`/api/appointments/${parent.id}`,null,undefined,'GET',parent.accessToken));
+  const publicChild=publicParent.repairHistory.items.find(item=>item.id===child.id);
+  assert.equal(publicChild.queuePosition.position,child.queuePosition.position);
+  assert.equal(publicChild.reception.ticket.number,child.reception.ticket.number);
+  for(const key of ['receivedBy','assignedTo','assignedMemberId','ticketId'])assert.equal(publicChild.reception[key],undefined,key);
+  const path=`/api/appointments/${parent.id}/repair-followups/${pending.id}/queue-exit`;
+  const body={revision:child.revision,requestId:crypto.randomUUID()};
+  expect(await request(path,null,body,'POST',filler.accessToken),404);
+  expect(await request(`/api/appointments/${filler.id}/repair-followups/${pending.id}/queue-exit`,null,body,'POST',filler.accessToken),404);
+  expect(await request(`/api/appointments/${child.id}/queue-exit`,null,body,'POST',parent.accessToken),404);
+  for(let attempt=0;attempt<2;attempt++)expect(await request(path,null,body,'POST',parent.accessToken));
+  child=await detail(child.id);assert.equal(child.reception.state,'closed');assert.ok(child.reception.leftAt);
+  child=expect(await receive(child));
+  expect(await request(path,null,body,'POST',parent.accessToken));
+  assert.equal((await detail(child.id)).reception.state,'queued','old receipt must not leave a new arrival');
+  const originalHash=(await db.prepare('SELECT access_token_hash FROM appointments WHERE id=?').bind(parent.id).first()).access_token_hash;
+  await db.prepare("UPDATE appointments SET access_token_hash=? WHERE id=?").bind('a'.repeat(64),parent.id).run();
+  expect(await request(path,null,{revision:child.revision,requestId:crypto.randomUUID()},'POST',parent.accessToken),404);
+  const repository=appointmentRepository(db),before=await repository.find(child.id);
+  const raced=await repository.update(before,{status:'booked'},undefined,{actor:{memberId:null,account:null},action:'receptions.guest_leave',auditId:crypto.randomUUID(),requestId:crypto.randomUUID(),guestCredentialHash:originalHash,guestParentId:parent.id,guestFollowupId:pending.id,at:new Date(now).toISOString(),reason:'轮换竞争测试',reception:{state:'closed',leftAt:new Date(now).toISOString()}});
+  assert.equal(raced,null);assert.equal((await repository.find(child.id)).reception.state,'queued');
+  await db.prepare('UPDATE appointments SET access_token_hash=? WHERE id=?').bind(originalHash,parent.id).run();
+  await db.prepare("UPDATE appointments SET status='completed',outcome='repaired' WHERE id=?").bind(child.id).run();
+  const next=expect(await request(`/api/appointments/${child.id}/repair-followups/staff`,'root001',{reason:'再次返修验证多轮私人链接',requestId:crypto.randomUUID()}),201);
+  const grandchild=expect(await request(`/api/repair-followups/${next.id}/decision`,office,{action:'schedule',date:day,timeSlot:slots[2],revision:next.revision,requestId:crypto.randomUUID()}));
+  const arrived=expect(await receive(await detail(grandchild.appointmentId)));
+  assert.equal(expect(await request(`/api/appointments/${parent.id}/repair-followups/${next.id}/scan-code`,null,undefined,'GET',parent.accessToken)).id,arrived.id);
+  const grandchildPath=`/api/appointments/${parent.id}/repair-followups/${next.id}/queue-exit`;
+  expect(await request(grandchildPath,null,{revision:arrived.revision,requestId:crypto.randomUUID()},'POST',parent.accessToken));
+  await db.prepare("UPDATE appointments SET expires_at='2026-10-15T01:59:00.000Z' WHERE id=?").bind(arrived.id).run();
+  const expired=expect(await request(`/api/appointments/${parent.id}`,null,undefined,'GET',parent.accessToken));
+  assert.equal(expired.repairHistory.items.find(row=>row.id===arrived.id).status,'expired');
+  await db.prepare('UPDATE booking_day_slots SET capacity=10 WHERE campus=? AND date=? AND time_slot=?').bind('南湖',day,slots[1]).run();
+});

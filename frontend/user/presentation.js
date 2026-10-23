@@ -2,8 +2,12 @@ import { escapeHtml } from '/shared/utils.js';
 import { formatDate,formatInstant,slotDeadline } from '/shared/time.js';
 import { outcomeLabels,statusLabels,expirationMessage } from '/shared/constants.js';
 import { receptionLabels,receptionStatus } from '/shared/reception.js';
+export function timeLabel(item) {
+  if(item.registrationFlow==='repair_followup')return '返修预约 · '+item.timeSlot;
+  return item.source==='onsite' ? '现场临时登记' : item.timeSlot;
+}
 export function timeSummary(item) {
-  return `<strong><span>${escapeHtml(formatDate(item.date))}</span><span class="summary-slot">${escapeHtml(item.source==='onsite' ? '现场临时登记' : item.timeSlot)}</span></strong><p>${escapeHtml(item.campus)}校区</p><p class="location">${escapeHtml(item.location || item.locationSnapshot || '维修地点未记录，请联系工作人员')}</p>${item.servicePaused ? '<p class="is-error">该预约日期暂停维修，请联系工作人员确认后续安排。</p>' : ''}${item.locationChanged ? `<p class="is-error">维修地点已调整，请以最新地点为准。</p><p>原地点：${escapeHtml(item.locationSnapshot)}</p>` : ''}`;
+  return `<strong><span>${escapeHtml(formatDate(item.date))}</span><span class="summary-slot">${escapeHtml(timeLabel(item))}</span></strong><p>${escapeHtml(item.campus)}校区</p><p class="location">${escapeHtml(item.location || item.locationSnapshot || '维修地点未记录，请联系工作人员')}</p>${item.servicePaused ? '<p class="is-error">该预约日期暂停维修，请联系工作人员确认后续安排。</p>' : ''}${item.locationChanged ? `<p class="is-error">维修地点已调整，请以最新地点为准。</p><p>原地点：${escapeHtml(item.locationSnapshot)}</p>` : ''}`;
 }
 export function rows(values){return values.filter(([,value])=>value!==undefined && value!==null && value!=='').map(([name,value])=>`<div><dt>${escapeHtml(name)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('');}
 export function longText(label,value){if(!value)return '';const escaped=escapeHtml(value);return value.length>280 ? `<p class="record-note"><b>${escapeHtml(label)}：</b>${escapeHtml(value.slice(0,180))}…</p><details><summary>${escapeHtml(label)} · 展开全文</summary><p class="record-note">${escaped}</p></details>` : `<p class="record-note"><b>${escapeHtml(label)}：</b>${escaped}</p>`;}
@@ -15,7 +19,7 @@ export function statusExplanation(item) {
   if(item.status==='booked' && item.reception?.state==='queued')return '已完成到场登记，正在等待现场工作人员分派。请留意现场叫号；临时离开可退出排队，预约仍保留。';
   if(item.status==='booked' && item.reception?.state==='assigned')return '已安排维修人员，正在等待确认接手。请按接待人员指引完成交接。';
   if(item.status==='expired')return expirationMessage;
-  if(item.status==='booked' && item.source==='onsite')return '本次为现场临时登记，请与现场工作人员保持联系。';
+  if(item.status==='booked' && item.source==='onsite' && item.registrationFlow!=='repair_followup')return '本次为现场临时登记，请与现场工作人员保持联系。';
   if(item.status==='booked')return Date.parse(slotDeadline(item.date,item.timeSlot))<=(item.serverNow ? Date.parse(item.serverNow) : Date.now()) ? '预约到场时段已结束，如已到现场或需要协助，请联系工作人员。' : '请在所选时段内到场，实际维修时间视现场情况而定。';
   return item.status==='in_progress' ? '工作人员已记录维修开始。' : item.status==='cancelled' ? '本次预约已取消。如仍需维修，请重新预约。' : '本次维修已结束。';
 }

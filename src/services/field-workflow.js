@@ -138,7 +138,7 @@ export function fieldWorkflow({
     campusId: campusId(item.campus),
     assignedMemberId: item.assignedMemberId || item.reception?.assignedMemberId,
     id: item.id,
-    businessDate: item.reception ? dateKey() : item.date
+    businessDate: item.date
   });
   const canReadSummary = (actor, item, context) =>
     (allowed(context, 'repair.summary.read', appointmentTarget(item)) ||
@@ -168,6 +168,7 @@ export function fieldWorkflow({
       'reception',
       'servicePaused',
       'source',
+      'registrationFlow',
       'deviceType',
       'brand',
       'deviceModel',
@@ -255,7 +256,7 @@ export function fieldWorkflow({
         campusId: campusId(item.campus),
         assignedMemberId: item.assignedMemberId || item.reception?.assignedMemberId,
         id: item.id,
-        businessDate: item.reception ? context.businessDate : item.date
+        businessDate: item.date
       };
     const visible = await project(actor, item, context);
     if (!visible) fail(403, '没有该预约的访问权限');
@@ -288,6 +289,9 @@ export function fieldWorkflow({
       assigneeIdentitySnapshot: await repository.repairIdentitySnapshot(id),
       canCorrect: allowed(context, 'repair.correct', target),
       canRecoverCredential: allowed(context, 'repair.correct', target),
+      canManageFollowup: allowed(context, 'repair.followup.manage', target),
+      serverNow: new Date().toISOString(),
+      repairHistory: visible.canReadDetails ? await appointments.repairHistory(id, { staff: true }) : null,
       original:
         visible.canReadDetails &&
         (item.assignedMemberId === context.actor.memberId ||
@@ -491,6 +495,20 @@ export function fieldWorkflow({
     if (target.memberId === item.assignedMemberId) fail(409, '请选择其他接手人员');
     return requireEligible(target, item.campus);
   }
+  async function receptionResult(actor, id) {
+    try { return await detail(actor, id); }
+    catch (error) {
+      if (error.status !== 403) throw error;
+      const item = await appointments.find(id);
+      const context = await staff.contextFor(actor);
+      if (!item || !(actor.authorizedCampuses || []).includes(item.campus) ||
+          !allowed(context, 'repair.dispatch', {...appointmentTarget(item), businessDate: context.businessDate})) throw error;
+      // A successful resolution can move the order outside today's detail scope.
+      // Return scheduling facts only, including when its receipt is replayed.
+      return {...Object.fromEntries(['id','revision','campus','date','timeSlot','status','source','registrationFlow']
+        .map(key => [key,item[key]])), reception: item.reception ? {state:item.reception.state,leftAt:item.reception.leftAt} : null, canReadDetails: false, resolutionOnly: true};
+    }
+  }
   async function receipt(actor, action, payload, id) {
     const key = requestId(payload.requestId);
     if (!key) fail(400, '缺少有效操作编号，请重新打开工单');
@@ -505,7 +523,7 @@ export function fieldWorkflow({
       if (prior.payloadHash !== hash || prior.resourceRef.id !== id)
         fail(409, '操作编号已用于其他内容');
       // A receipt never bypasses the caller's present-day resource authorization.
-      return { replay: await detail(actor, id), payloadHash: hash };
+      return { replay: await (['receptions.reschedule','receptions.cancel','receptions.leave'].includes(action) ? receptionResult(actor, id) : detail(actor, id)), payloadHash: hash };
     }
     return { payloadHash: hash };
   }
@@ -523,6 +541,7 @@ export function fieldWorkflow({
     requireEligible,
     requireIntake,
     assertTransfer,
-    receipt
+    receipt,
+    receptionResult
   };
 }

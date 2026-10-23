@@ -7,12 +7,13 @@ import { statusClass,outcomeLabels,terminalStatuses } from '/shared/constants.js
 import { savedAppointments,saveAppointment,privateLink,parsePrivateLink,credentialHeaders,credentialStorageError,copyPrivateLink } from './credentials.js';
 import { queueTicketLabel } from '/shared/reception.js';
 import { renderRepairQr } from './repair-qr.js';
-import { timeSummary,informationGroups,statusText,statusExplanation,repairRecord } from './presentation.js';
+import { timeSummary,timeLabel,informationGroups,statusText,statusExplanation,repairRecord } from './presentation.js';
 import { createPhotoCollection,previewPhoto } from './photos.js';
+import { createFollowupPanel } from './followups.js';
 
 export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false,hasPending=()=>false}={}) {
   const root=$('#lookup-results'),detail=$('#appointment-detail');
-  const records=new Map();let active=false,detailId=null,generation=0,refreshing=false,importing=false,cancelling=false,detailPhotos=null,deadlineTimer,viewVersion=0;
+  const records=new Map(),followupCommands=new Map(),followupMessages=new Map(),followupBusy=new Set();let active=false,detailId=null,generation=0,refreshing=false,importing=false,cancelling=false,detailPhotos=null,deadlineTimer,viewVersion=0;
   const urls=new Set();
   const request=entry=>apiJson(`/api/appointments/${encodeURIComponent(entry.id)}`,{headers:credentialHeaders(entry),timeoutMs:15000}).then(item=>({...item,accessToken:entry.accessToken}));
   function readEntries(){for(const entry of savedAppointments()){const previous=records.get(entry.id);if(!previous || previous.entry.accessToken!==entry.accessToken)records.set(entry.id,{entry,item:previous?.item,message:'',receivedAt:Date.now()});}}
@@ -20,7 +21,7 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
     records.set(item.id,{entry:{id:item.id,accessToken:item.accessToken},item,message:'',receivedAt:Date.now()});}
   function setNotice(target,message){target.hidden=!message;target.textContent=message;}
   function openImport(){const form=$('#import-form');form.hidden=false;$('#import-appointment').setAttribute('aria-expanded','true');$('#private-link-input').focus();}
-  function card(item){return `<button type="button" class="student-record" data-detail-id="${escapeHtml(item.id)}"><span class="record-top"><strong>${escapeHtml(item.deviceType)} · ${escapeHtml(item.brand)}</strong><span class="status-pill ${statusClass[item.status]}">${statusText(item)}</span></span><p>${escapeHtml(item.campus)}校区 · ${formatDate(item.date)} · ${escapeHtml(item.source==='onsite' ? '现场临时登记' : item.timeSlot)}</p><p>${escapeHtml(item.faultType)}${item.status==='completed' ? ' · '+escapeHtml(outcomeLabels[item.outcome] || '历史未分类') : ''}</p>${item.status==='completed' && item.repairNote ? `<p>${escapeHtml(item.repairNote.slice(0,90))}${item.repairNote.length>90 ? '…' : ''}</p>` : ''}</button>`;}
+  function card(item){return `<button type="button" class="student-record" data-detail-id="${escapeHtml(item.id)}"><span class="record-top"><strong>${escapeHtml(item.deviceType)} · ${escapeHtml(item.brand)}</strong><span class="status-pill ${statusClass[item.status]}">${statusText(item)}</span></span><p>${escapeHtml(item.campus)}校区 · ${formatDate(item.date)} · ${escapeHtml(timeLabel(item))}</p><p>${escapeHtml(item.faultType)}${item.status==='completed' ? ' · '+escapeHtml(outcomeLabels[item.outcome] || '历史未分类') : ''}</p>${item.status==='completed' && item.repairNote ? `<p>${escapeHtml(item.repairNote.slice(0,90))}${item.repairNote.length>90 ? '…' : ''}</p>` : ''}</button>`;}
   function renderList(){
     const entries=[...records.values()],items=entries.filter(row=>row.item).map(row=>row.item),failed=entries.filter(row=>row.message),unknown=entries.filter(row=>!row.item && !row.message);
     $('#import-appointment').hidden=!entries.length && !credentialStorageError();
@@ -61,6 +62,11 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
     updateDetail();
   }
   function setMarkup(element,html){if(element.dataset.renderMarkup===html)return;const expanded=new Set([...element.querySelectorAll('details[open]')].map(details=>details.querySelector('summary')?.textContent));element.innerHTML=html;for(const details of element.querySelectorAll('details'))if(expanded.has(details.querySelector('summary')?.textContent))details.open=true;element.dataset.renderMarkup=html;}
+  function queuedAppointment(item) {
+    if(item.status==='booked')return item;
+    return item.repairHistory?.items.find(child=>child.status==='booked' && child.registrationFlow==='repair_followup' &&
+      (['queued','assigned'].includes(child.reception?.state) || child.reception?.leftAt)) || item;
+  }
   function updateDetail(){const record=records.get(detailId),item=record?.item;if(!item)return;
     clearTimeout(deadlineTimer);
     const serverOffset=item.serverNow && record.receivedAt ? Date.parse(item.serverNow)-record.receivedAt : 0;
@@ -68,13 +74,14 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
     if(item.status==='booked' && deadline>0 && deadline<2147480000)deadlineTimer=setTimeout(()=>{if(active && !document.hidden)void refresh();},deadline+1000);
     setNotice($('#detail-notice'),record.message ? '暂时无法更新。'+record.message : '');
     setMarkup($('#detail-summary'),`<span class="status-pill ${statusClass[item.status]}">${statusText(item)}</span><div class="selection-summary">${timeSummary(item)}</div><p>${escapeHtml(statusExplanation(item))}</p>${record.message ? '<button type="button" class="secondary-btn" data-detail-retry>重试</button>' : ''}`);
-    const queue=$('#detail-queue'),waiting=item.status==='booked' && ['queued','assigned'].includes(item.reception?.state);
-    queue.hidden=!waiting && !(item.status==='booked' && item.reception?.leftAt);
+    const queued=queuedAppointment(item),queue=$('#detail-queue'),waiting=queued.status==='booked' && ['queued','assigned'].includes(queued.reception?.state);
+    if(queue.dataset.appointmentId!==queued.id){queue.replaceChildren();delete queue.dataset.renderMarkup;queue.dataset.appointmentId=queued.id;}
+    queue.hidden=!waiting && !(queued.status==='booked' && queued.reception?.leftAt);
     if(waiting){
-      const position=item.queuePosition;
-      if(!queue.querySelector('[data-queue-stats]'))queue.innerHTML='<div data-queue-stats aria-live="polite" aria-atomic="true"></div><p class="field-hint">页面可见时每 30 秒更新，返回页面时立即更新。<button type="button" class="text-btn" data-queue-refresh>刷新排位</button></p><button type="button" class="secondary-btn" data-queue-leave>临时离开，退出排队</button><div data-queue-confirm hidden><p>退出后保留预约，并释放已安排的维修人员。再到场需重新核验，排在队尾；不会保留原排号。</p><div class="actions"><button type="button" class="secondary-btn" data-queue-keep>继续排队</button><button type="button" class="secondary-btn danger-btn" data-queue-exit>确认退出排队</button></div></div><p data-queue-message role="status"></p>';
-      setMarkup(queue.querySelector('[data-queue-stats]'),`<div class="customer-queue"><div><span>你的现场排号</span><strong>${escapeHtml(queueTicketLabel(item.reception.ticket) || '排号读取中')}</strong><small>${escapeHtml(item.campus)}校区 · ${escapeHtml(item.reception.ticket?.date || item.date)}</small></div><div><span>当前排第</span><strong>${position?.position ?? '—'}<small> 位</small></strong><small>前面 ${position ? position.position-1 : '—'} 位 · 共 ${position?.total ?? '—'} 位等待</small></div></div><p>${item.reception.state==='assigned' ? '已为你安排维修人员，核对设备并确认后开始维修。请按现场指引交接。' : '按完成到场核验的先后顺序排队，本页会自动更新。请留意现场叫号。'}</p>`);
-    } else if(item.status==='booked' && item.reception?.leftAt) setMarkup(queue,'<h2>已退出现场排队</h2><p>预约已保留，再次到场请出示维修码重新核验，排在队尾。预约有效期限仍以原预约为准。</p>');
+      const position=queued.queuePosition;
+      if(!queue.querySelector('[data-queue-stats]')){delete queue.dataset.renderMarkup;queue.innerHTML='<div data-queue-stats aria-live="polite" aria-atomic="true"></div><p class="field-hint">页面可见时每 30 秒更新，返回页面时立即更新。<button type="button" class="text-btn" data-queue-refresh>刷新排位</button></p><button type="button" class="secondary-btn" data-queue-leave>临时离开，退出排队</button><div data-queue-confirm hidden><p>退出后保留预约，并释放已安排的维修人员。再到场需重新核验，排在队尾；不会保留原排号。</p><div class="actions"><button type="button" class="secondary-btn" data-queue-keep>继续排队</button><button type="button" class="secondary-btn danger-btn" data-queue-exit>确认退出排队</button></div></div><p data-queue-message role="status"></p>';}
+      setMarkup(queue.querySelector('[data-queue-stats]'),`<h2>${queued.id===item.id ? '现场排队' : '返修现场排队'}</h2>${queued.id!==item.id ? `<p>返修单 ${escapeHtml(queued.id)}</p>` : ''}<div class="customer-queue"><div><span>你的现场排号</span><strong>${escapeHtml(queueTicketLabel(queued.reception.ticket) || '排号读取中')}</strong><small>${escapeHtml(queued.campus)}校区 · ${escapeHtml(queued.reception.ticket?.date || queued.date)}</small></div><div><span>当前排第</span><strong>${position?.position ?? '—'}<small> 位</small></strong><small>前面 ${position ? position.position-1 : '—'} 位 · 共 ${position?.total ?? '—'} 位等待</small></div></div><p>${queued.reception.state==='assigned' ? '已为你安排维修人员，核对设备并确认后开始维修。请按现场指引交接。' : '按完成到场核验的先后顺序排队，本页会自动更新。请留意现场叫号。'}</p>`);
+    } else if(queued.status==='booked' && queued.reception?.leftAt) setMarkup(queue,'<h2>已退出现场排队</h2><p>预约已保留，再次到场请出示维修码重新核验，排在队尾。预约有效期限仍以原预约为准。</p>');
     setMarkup($('#detail-repair-record'),repairRecord(item));setMarkup($('#detail-information'),informationGroups(item,{photos:false,contacts:false}));setMarkup($('#detail-contacts'),informationGroups(item,{device:false}));
     const files=item.attachments || [];
     setMarkup($('#detail-attachments'),files.length ? files.map(file=>`<button class="text-btn" type="button" data-attachment-id="${escapeHtml(file.id)}">${escapeHtml(file.filename)} · ${attachmentSize(file.size)}${file.purpose==='intake_front' ? ' · 签到正面照片' : file.purpose==='intake_back' ? ' · 签到反面照片' : ''}</button>`).join('') : '<p class="field-hint">暂无照片或附件。</p>');
@@ -88,10 +95,21 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
       }
       qrDetails.dataset.status=item.status;
     }
+    const followupSignature=JSON.stringify({status:item.status,history:item.repairHistory,message:followupMessages.get(item.id)||''});
+    let followupPanel=detail.querySelector('[data-followup-panel]');
+    if(followupPanel?.dataset.signature!==followupSignature){
+      const previousReason=followupPanel?.querySelector('[name=reason]')?.value || '';
+      const nextPanel=createFollowupPanel(item,followupMessages.get(item.id)||'');
+      nextPanel.dataset.followupPanel='true';nextPanel.dataset.signature=followupSignature;
+      const nextReason=nextPanel.querySelector('[name=reason]');
+      if(nextReason && previousReason)nextReason.value=previousReason;
+      if(followupPanel)followupPanel.replaceWith(nextPanel);
+      else detail.insertBefore(nextPanel,detail.querySelector('#detail-operations'));
+    }
     detailPhotos.refresh();
     const operations=$('#detail-operations');
     if(item.status==='booked') {
-      if(!operations.querySelector('[data-cancel-open]'))operations.innerHTML=`<button type="button" class="secondary-btn danger-btn" data-cancel-open aria-expanded="false" aria-controls="cancel-confirmation">取消预约</button><div class="notice cancel-confirm" id="cancel-confirmation" role="region" aria-label="取消预约二次确认" hidden><p>${escapeHtml(item.campus)} · ${formatDate(item.date)} · ${escapeHtml(item.source==='onsite' ? '现场临时登记' : item.timeSlot)}</p><p id="cancel-explanation">取消后本次预约将失效。如仍需维修，请重新预约。</p><div class="actions"><button class="secondary-btn" type="button" data-cancel-keep>保留预约</button><button class="secondary-btn danger-btn" type="button" data-cancel-confirm aria-describedby="cancel-explanation">确认取消</button></div><p class="field-error" id="cancel-message" role="alert"></p></div>`;
+      if(!operations.querySelector('[data-cancel-open]'))operations.innerHTML=`<button type="button" class="secondary-btn danger-btn" data-cancel-open aria-expanded="false" aria-controls="cancel-confirmation">取消预约</button><div class="notice cancel-confirm" id="cancel-confirmation" role="region" aria-label="取消预约二次确认" hidden><p>${escapeHtml(item.campus)} · ${formatDate(item.date)} · ${escapeHtml(timeLabel(item))}</p><p id="cancel-explanation">取消后本次预约将失效。如仍需维修，请重新预约。</p><div class="actions"><button class="secondary-btn" type="button" data-cancel-keep>保留预约</button><button class="secondary-btn danger-btn" type="button" data-cancel-confirm aria-describedby="cancel-explanation">确认取消</button></div><p class="field-error" id="cancel-message" role="alert"></p></div>`;
     } else if(terminalStatuses.includes(item.status)) {
       if(!operations.querySelector('[data-rebook]'))operations.innerHTML='<button class="primary-btn" type="button" data-rebook>重新预约</button><div class="notice" id="rebook-confirm" hidden><p>重新预约将舍弃当前未提交草稿，开始空白预约。是否继续？</p><div class="actions"><button class="secondary-btn" type="button" data-rebook-keep>保留草稿</button><button class="primary-btn" type="button" data-rebook-confirm>舍弃草稿并重新预约</button></div></div>';
     } else operations.innerHTML='<p class="field-hint">维修进行中，不能取消预约。</p>';
@@ -122,8 +140,12 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
     if(cancelling)return;
     const id=detailId,item=records.get(id)?.item;if(!item)return;
     cancelling=true;generation++;refreshing=false;
-    const body={revision:item.revision,requestId:crypto.randomUUID()};
-    const send=()=>apiJson(`/api/appointments/${encodeURIComponent(id)}/queue-exit`,{method:'POST',headers:credentialHeaders(item),json:body,timeoutMs:15000});
+    const queued=queuedAppointment(item);
+    const followup=item.repairHistory?.followups.find(row=>row.scheduledAppointmentId===queued.id);
+    const endpoint=queued.id===item.id ? `/api/appointments/${encodeURIComponent(id)}/queue-exit` :
+      `/api/appointments/${encodeURIComponent(id)}/repair-followups/${encodeURIComponent(followup?.id || '')}/queue-exit`;
+    const body={revision:queued.revision,requestId:crypto.randomUUID()};
+    const send=()=>apiJson(endpoint,{method:'POST',headers:credentialHeaders(item),json:body,timeoutMs:15000});
     detail.querySelector('[data-queue-exit]').disabled=true;
     try{
       try{await send();}catch(failure){if(failure.status && failure.status<500)throw failure;await send();}
@@ -141,6 +163,33 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
       catch{if(id===detailId)$('#cancel-message').textContent='暂时无法确认取消结果。已保留最近状态，请重试查询后再操作。';}}
     finally{cancelling=false;if(id===detailId){updateDetail();if(records.get(id)?.item?.status==='cancelled')showToast('预约已取消');const control=detail.querySelector('[data-cancel-confirm]');if(control)control.disabled=false;}renderList();}
   }
+  detail.addEventListener('submit',async event=>{
+    const form=event.target.closest('[data-followup-form]');
+    if(!form)return;
+    event.preventDefault();
+    const id=detailId,item=records.get(id)?.item,reason=form.querySelector('[name=reason]')?.value.trim() || '';
+    if(!item || reason.length<2){followupMessages.set(id,'请填写至少 2 个字的返修情况。');updateDetail();return;}
+    if(followupBusy.has(id))return;
+    let command=followupCommands.get(id);
+    if(!command || command.reason!==reason){command={reason,requestId:crypto.randomUUID()};followupCommands.set(id,command);}
+    followupBusy.add(id);
+    const button=form.querySelector('[type=submit]');if(button)button.disabled=true;
+    followupMessages.set(id,'正在提交返修申请…');
+    try{
+      await apiJson('/api/appointments/'+encodeURIComponent(id)+'/repair-followups',{
+        method:'POST',headers:credentialHeaders(item),json:{reason,requestId:command.requestId},timeoutMs:15000
+      });
+      followupCommands.delete(id);
+      followupMessages.set(id,'返修申请已提交，办公人员安排后会在此显示。');
+      await refresh();
+    }catch(failure){
+      followupMessages.set(id,failure.message || '网络异常，请重试。相同内容会使用原请求编号核实结果。');
+      updateDetail();
+    }finally{
+      followupBusy.delete(id);
+      const submit=detail.querySelector('[data-followup-form] [type=submit]');if(submit)submit.disabled=false;
+    }
+  });
   detail.addEventListener('click',async event=>{
     const target=event.target.closest('button');if(!target)return;
     if(target.hasAttribute('data-queue-refresh')){void refresh();return;}
@@ -154,6 +203,7 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
     if(target.hasAttribute('data-rebook')){if(hasPending()){setNotice($('#detail-notice'),'另一次提交结果尚未核实，请先返回预约维修核实原请求。');return;}if(hasDraft())$('#rebook-confirm').hidden=false;else onRebook();}
     if(target.hasAttribute('data-rebook-keep'))$('#rebook-confirm').hidden=true;
     if(target.hasAttribute('data-rebook-confirm'))onRebook();
+    if(target.hasAttribute('data-followup-qr')){const parentId=detailId,item=records.get(parentId)?.item;if(item)void renderRepairQr(target.nextElementSibling,{...item,id:target.dataset.followupAppointment,scanParentId:parentId,followupId:target.dataset.followupQr});}
     if(target.dataset.attachmentId){const id=detailId,item=records.get(id)?.item,file=item?.attachments?.find(file=>file.id===target.dataset.attachmentId);if(!file)return;target.disabled=true;
       try{const blob=await apiBlob(attachmentUrl(id,file.id),{headers:credentialHeaders(item),timeoutMs:30000});const url=URL.createObjectURL(blob);urls.add(url);if(id!==detailId){URL.revokeObjectURL(url);urls.delete(url);return;}
         if(file.mimeType.startsWith('image/'))previewPhoto(url);else{const link=document.createElement('a');link.href=url;link.download=file.filename;link.click();setTimeout(()=>{URL.revokeObjectURL(url);urls.delete(url);},60000);}}

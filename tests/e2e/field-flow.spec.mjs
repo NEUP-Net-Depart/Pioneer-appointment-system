@@ -1010,7 +1010,10 @@ test('capacity workspace preserves drafts, reconciles conflicts and supports mob
     await page.screenshot({ path: 'output/field-workflow/capacity-actual-1440.png', fullPage: true });
     await editor.getByRole('button', { name: '每周模板', exact: true }).click();
     // Incomplete drafts can leave the editor without validation or writes.
+    // The earlier drag-fill selection stays active: typing fills both selected cells.
+    await expect(editor.getByRole('gridcell', { selected: true })).toHaveCount(2);
     await input.fill('');
+    await expect(editor.locator('[data-row="1"][data-col="0"] input')).toHaveValue('');
     const beforeSwitch = writes;
     await sidebar.getByRole('button', { name: '账号安全', exact: true }).click();
     await navigation.getByRole('button', { name: '保留草稿并切换', exact: true }).click();
@@ -1039,11 +1042,17 @@ test('capacity workspace preserves drafts, reconciles conflicts and supports mob
     await page.getByRole('button', { name: '确认保存全部修改', exact: true }).click();
     await expect(editor.locator('.field-notice')).toContainText('模拟保存失败');
     await expect(input).toHaveValue('12');
+    await expect(editor.locator('[data-row="1"][data-col="0"] input')).toHaveValue('12');
+    expect((await api(request, '/api/slot-capacities', token)).items).toEqual(retained);
     await editor.getByRole('button', { name: '预览并保存', exact: true }).click();
     await page.getByRole('button', { name: '确认保存全部修改', exact: true }).click();
-    await expect(editor.getByText(/已保存 1 项/)).toBeVisible();
+    await expect(editor.getByText(/已保存 2 项/)).toBeVisible();
     const saved = (await api(request, '/api/slot-capacities', token)).items;
-    expect(saved.find(item => item.campus === first.campus && item.weekday === first.weekday && item.timeSlot === first.timeSlot).capacity).toBe(12);
+    for (const item of saved) {
+      const selected = item.campus === first.campus && item.weekday === first.weekday && ['19:00–19:30', '19:30–20:00'].includes(item.timeSlot);
+      const previous = retained.find(old => old.campus === item.campus && old.weekday === item.weekday && old.timeSlot === item.timeSlot);
+      expect(item.capacity).toBe(selected ? 12 : previous.capacity);
+    }
     await expect(input).toHaveValue('12');
     await expect(navigation).toHaveCount(0);
     await sidebar.getByRole('button', { name: '账号安全', exact: true }).click();

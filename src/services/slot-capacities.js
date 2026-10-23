@@ -67,13 +67,13 @@ export function slotCapacityService(repository, staff, days=null) {
     },
     async update(input, actor) {
       await authorize(actor, [input.campus]);
-      const item = await repository.update(input);
+      const item = await repository.update(input, dateKey());
       if (!item) fail(409, '预约人数配置已更新，请重新读取后重试');
       return item;
     },
     async updateMany(items, actor) {
       await authorize(actor, [...new Set(items.map(item => item.campus))]);
-      const updated = await repository.updateMany(items);
+      const updated = await repository.updateMany(items, dateKey());
       if (!updated || updated.length !== items.length) fail(409, '预约人数配置已更新，请重新读取后重试');
       return { items: updated };
     }

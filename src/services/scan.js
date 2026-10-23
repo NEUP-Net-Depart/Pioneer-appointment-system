@@ -24,6 +24,15 @@ export function scanService(appointments, service, secret, clock = () => new Dat
       const item = await service.lookup(id, token);
       return { id: item.id, code: scanCode(item.id, secret) };
     },
+    async followupCode(parentId, followupId, token) {
+      const item = await service.lookup(parentId, token);
+      const relation = await appointments.followupForScan(item.id, followupId);
+      if (!relation) fail(404, '返修预约不存在或已完成');
+      await expire(clock(), { id: relation.id });
+      if ((await appointments.find(relation.id))?.status !== 'booked')
+        fail(404, '返修预约不存在或已完成');
+      return { id: relation.id, code: scanCode(relation.id, secret) };
+    },
     async resolve(input, actor) {
       const id = input.code !== undefined ? verifyScanCode(input.code, [secret, ...previousSecrets]) : stringField(input.id, '预约编号', 80, true);
       if (!/^(?:reserve|reverse)?[01]\d{8}-\d{2,}$/.test(id)) fail(400, '请输入完整预约编号');
