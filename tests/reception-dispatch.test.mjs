@@ -12,8 +12,8 @@ const tokens={},office='20261001',tech='20261002',other='20261003',lead='2026100
 let phase=1;
 const checked={brand:'联想',model:'ThinkPad 已现场核对',warranty:'expired',liquidMetal:'no',note:'外观及设备信息已核实'};
 const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/Hf8AAAAASUVORK5CYII=';
-async function request(path,account,body,method=body?'POST':'GET') {
-  const response=await mf.dispatchFetch(`https://dispatch.test${path}`,{method,headers:{'CF-Connecting-IP':`198.18.69.${phase}`,...(account?{Authorization:`Bearer ${tokens[account]}`} : {}),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
+async function request(path,account,body,method=body?'POST':'GET',accessToken) {
+  const response=await mf.dispatchFetch(`https://dispatch.test${path}`,{method,headers:{'CF-Connecting-IP':`198.18.69.${phase}`,...(accessToken?{'X-Appointment-Token':accessToken}:{}),...(account?{Authorization:`Bearer ${tokens[account]}`} : {}),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
   return {status:response.status,body:await response.json()};
 }
 function expect(result,status=200){assert.equal(result.status,status,JSON.stringify(result.body));return result.body;}
@@ -157,4 +157,102 @@ test('reception dispatch reserves capacity, supports returns, verifies shared ph
   await db.prepare("DELETE FROM member_roles WHERE id='field-office-role'").run();
   expect(await command(pendingExchange,office,'assign',{assignedTo:tech}),403);
   expect(await request(`/api/field/appointments/${pendingExchange.id}/dispatch-candidates`,office),403);
+});
+
+
+test('arrival tickets, queue ranks, departure/rejoin and self-service FIFO stay consistent across real roles',async()=>{
+  phase=3;
+  await db.prepare(`INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from) VALUES('field-office-role','member-20261001','role-office','{"campuses":"bound"}','2026-01-01')`).run();
+  for(const item of expect(await request('/api/field/board',lead)).appointments.filter(item=>item.status==='booked' && ['queued','assigned'].includes(item.reception?.state)))
+    expect(await command(item,lead,'leave',{reason:'客户已离开，清理上一轮验收队列'}));
+  const first=await create(21),second=await create(22),third=await create(23);
+  const arrivals=await Promise.all([first,second].map(receive));arrivals.forEach(value=>expect(value));
+  const rows=arrivals.map(value=>value.body).sort((a,b)=>a.reception.ticket.number-b.reception.ticket.number);
+  let head=rows[0],tail=rows[1];
+  assert.equal(tail.reception.ticket.number,head.reception.ticket.number+1);
+  assert.equal(head.reception.ticket.date,day);assert.equal(head.reception.ticket.campus,'南湖');
+  assert.equal((await detail(head.id)).queuePosition.position,1);
+  assert.equal((await detail(tail.id)).queuePosition.position,2);
+  assert.equal(expect(await request('/api/field/home',tech)).nextInQueue.id,head.id);
+  assert.equal((await detail(tail.id,tech)).canStart,false);
+  expect(await request(`/api/appointments/${tail.id}/status`,tech,{status:'in_progress',revision:tail.revision,verification:checked,frontPhotoId:tail.frontPhotoId,backPhotoId:tail.backPhotoId,requestId:crypto.randomUUID()},'PATCH'),409);
+  // A new booking is not an onsite arrival and has no pretend queue rank.
+  const thirdToken=third.accessToken;assert.ok(thirdToken);
+  const noQueue=expect(await request(`/api/live/summary?appointmentId=${third.id}`,null,undefined,'GET',thirdToken));
+  assert.equal(noQueue.position,null);assert.equal(noQueue.queueTotal,0);
+  const board=expect(await request('/api/field/board',office));
+  const actual=(await db.prepare("SELECT COUNT(*) total FROM appointments WHERE date=? AND campus='南湖' AND status<>'cancelled'").bind(day).first()).total;
+  assert.equal(board.overview.total,actual);assert.equal(board.overview.queued,2);
+  assert.equal(board.overview.notArrived,board.appointments.filter(item=>item.date===day && item.status==='booked' && !['queued','assigned'].includes(item.reception?.state) && !item.reception?.leftAt).length);
+  // Skipping a missing customer requires a reason; their original position remains unchanged.
+  expect(await command(tail,office,'assign',{assignedTo:tech}),400);
+  tail=expect(await command(tail,office,'assign',{assignedTo:tech,reason:'队首客户暂时未到，先处理后续客户'}));
+  assert.equal((await detail(head.id)).queuePosition.position,1);
+  assert.equal(expect(await request('/api/field/board',office)).overview.queued,2);
+  const original=[first,second].find(item=>item.id===tail.id),token=original.accessToken;
+  const guest=expect(await request(`/api/appointments/${tail.id}`,null,undefined,'GET',token));
+  assert.equal(guest.reception.ticket.number,tail.reception.ticket.number);
+  for(const key of ['assignedTo','assignedMemberId','assignedToName','receivedBy','ticketId'])assert.equal(guest.reception[key],undefined);
+  const position=expect(await request(`/api/live/summary?appointmentId=${tail.id}`,null,undefined,'GET',token));
+  assert.equal(position.position,2);assert.equal(position.queueTotal,2);
+  const exit={revision:tail.revision,requestId:crypto.randomUUID()};
+  expect(await request(`/api/appointments/${tail.id}/queue-exit`,null,exit,'POST',thirdToken),404);
+  const count=(await db.prepare('SELECT COUNT(*) total FROM repair_queue_tickets').first()).total;
+  // Audit failure rolls back both departure and reserved worker capacity.
+  await db.prepare("CREATE TRIGGER reject_queue_leave BEFORE INSERT ON audit_events WHEN NEW.action='receptions.guest_leave' BEGIN SELECT RAISE(ABORT,'TEST_LEAVE_FAILURE'); END").run();
+  expect(await request(`/api/appointments/${tail.id}/queue-exit`,null,exit,'POST',token),500);
+  await db.prepare('DROP TRIGGER reject_queue_leave').run();
+  assert.equal((await detail(tail.id)).reception.state,'assigned');
+  const departed=await Promise.all([1,2].map(()=>request(`/api/appointments/${tail.id}/queue-exit`,null,exit,'POST',token)));
+  departed.forEach(value=>expect(value));
+  assert.ok(departed[0].body.reception.leftAt);assert.equal(departed[0].body.status,'booked');
+  assert.equal(expect(await request('/api/field/home',tech)).state,'available');
+  expect(await request(`/api/appointments/${tail.id}/queue-exit`,null,{...exit,revision:exit.revision+1},'POST',token),409);
+  tail=expect(await receive(await detail(tail.id)));
+  assert.ok(tail.reception.ticket.number>guest.reception.ticket.number);
+  assert.equal(tail.queuePosition.position,2);assert.equal(tail.reception.leftAt,null);
+  assert.equal((await db.prepare('SELECT COUNT(*) total FROM repair_queue_tickets').first()).total,count+1);
+  // Replay of the old leave must never remove a freshly rejoined ticket.
+  expect(await request(`/api/appointments/${tail.id}/queue-exit`,null,exit,'POST',token));
+  assert.equal((await detail(tail.id)).reception.state,'queued');
+  // Without reception, a signed-in repair lead can do the same work; technicians take the head.
+  head=await detail(head.id,tech);
+  head=expect(await request(`/api/appointments/${head.id}/status`,tech,{status:'in_progress',revision:head.revision,verification:checked,frontPhotoId:head.frontPhotoId,backPhotoId:head.backPhotoId,requestId:crypto.randomUUID()},'PATCH'));
+  assert.equal((await detail(tail.id)).queuePosition.position,1);
+  assert.equal(expect(await request('/api/field/board',lead)).overview.queued,1);
+  expect(await request(`/api/appointments/${head.id}/status`,tech,{status:'completed',revision:head.revision,outcome:'repaired',repairNote:'队列验收完成',requestId:crypto.randomUUID()},'PATCH'));
+  tail=expect(await command(await detail(tail.id),lead,'leave',{reason:'客户暂时离队，预约保留'}));
+  assert.equal(tail.status,'booked');assert.ok(tail.reception.leftAt);
+  const queueBefore=(await db.prepare("SELECT last_number FROM repair_queue_counters WHERE campus='南湖' AND queue_date=?").bind(day).first()).last_number;
+  await db.prepare("CREATE TRIGGER reject_queue_intake BEFORE INSERT ON repair_intake_records WHEN NEW.appointment_id='"+third.id+"' BEGIN SELECT RAISE(ABORT,'TEST_INTAKE_FAILURE'); END").run();
+  expect(await receive(third),500);
+  await db.prepare('DROP TRIGGER reject_queue_intake').run();
+  assert.equal((await db.prepare("SELECT last_number FROM repair_queue_counters WHERE campus='南湖' AND queue_date=?").bind(day).first()).last_number,queueBefore);
+  let receivedThird=expect(await receive(third));assert.equal(receivedThird.reception.ticket.number,queueBefore+1);
+  receivedThird=expect(await command(receivedThird,lead,'assign',{assignedTo:tech}));
+  const startBody={status:'in_progress',revision:receivedThird.revision,verification:checked,frontPhotoId:receivedThird.frontPhotoId,backPhotoId:receivedThird.backPhotoId,requestId:crypto.randomUUID()};
+  const exitBody={revision:receivedThird.revision,requestId:crypto.randomUUID()};
+  const race=await Promise.all([
+    request(`/api/appointments/${third.id}/status`,tech,startBody,'PATCH'),
+    request(`/api/appointments/${third.id}/queue-exit`,null,exitBody,'POST',thirdToken)
+  ]);
+  assert.equal(race.filter(value=>value.status===200).length,1,JSON.stringify(race));
+  assert.equal(race.filter(value=>value.status===409).length,1,JSON.stringify(race));
+  const actualThird=await detail(third.id);
+  if(actualThird.status==='in_progress')assert.equal(actualThird.reception.state,'started');
+  else {assert.ok(actualThird.reception.leftAt);assert.equal(expect(await request('/api/field/home',tech)).state,'available');}
+  // Removing a finished/departed customer cannot reuse their daily arrival number.
+  await db.prepare('DELETE FROM booking_requests WHERE appointment_id=?').bind(third.id).run();
+  await db.prepare('DELETE FROM attachment_storage WHERE id IN (SELECT id FROM appointment_attachments WHERE appointment_id=?)').bind(third.id).run();
+  await db.prepare('DELETE FROM appointment_attachments WHERE appointment_id=?').bind(third.id).run();
+  await db.prepare('DELETE FROM appointments WHERE id=?').bind(third.id).run();
+  const afterDeletion=expect(await receive(await create(24)));
+  assert.equal(afterDeletion.reception.ticket.number,queueBefore+2);
+  // Reprinting the creator's receipt is stable, and revoked private credentials stay revoked.
+  const form={requestId:crypto.randomUUID(),registrationFlow:'frontdesk',campus:'南湖',name:'凭证验收客户',studentId:'20306925',social:'receipt-check',deviceType:'笔记本电脑',brand:'联想',deviceModel:'凭证验收',warranty:'否',faultType:'系统问题',signature:[Array.from({length:10},(_,i)=>[.1+i*.05,.2+i*.03])]};
+  const created=expect(await request('/api/scan/onsite',office,form),201);
+  assert.equal(expect(await request('/api/scan/onsite',office,form),201).accessToken,created.accessToken);
+  await db.prepare('UPDATE appointments SET access_token_hash=? WHERE id=?').bind('f'.repeat(64),created.id).run();
+  assert.equal(expect(await request('/api/scan/onsite',office,form),201).accessToken,null);
+  assert.ok((await detail(tail.id)).receptionHistory.some(event=>event.action==='receptions.guest_leave' && event.actorName==='客户本人'));
 });

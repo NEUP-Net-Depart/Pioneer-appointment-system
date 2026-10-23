@@ -5,9 +5,10 @@ import { RecordMaintenance } from '../RecordMaintenance';
 import { RepairAttachments } from '../RepairAttachments';
 import { RepairOriginal } from '../RepairOriginal';
 import { useRepair } from './useRepair';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { CustomerQueueLink } from './CustomerQueueLink';
 import { Reception } from './Reception';
-import { receptionStatus } from '../../../shared/reception.js';
+import { receptionStatus, queueTicketLabel } from '../../../shared/reception.js';
 import { formatInstant } from '../../../shared/time.js';
 
 export function Repair({
@@ -17,6 +18,7 @@ export function Repair({
   onClose,
   onChanged,
   sidePanel = false,
+  customerCredential,
   returnLabel = '返回工作台'
 }: {
   id: string;
@@ -25,9 +27,11 @@ export function Repair({
   onClose: () => void;
   onChanged: () => void;
   sidePanel?: boolean;
+  customerCredential?: { id: string; accessToken: string } | null;
   returnLabel?: string;
 }) {
   const [direct, setDirect] = useState(false);
+  const [identityConfirmed, setIdentityConfirmed] = useState(false);
   const {
     item,
     error,
@@ -60,6 +64,7 @@ export function Repair({
     saveNote,
     handoff
   } = useRepair({ id, memberId, people, onClose, onChanged, sidePanel, returnLabel });
+  useEffect(() => setIdentityConfirmed(false), [id, item?.revision]);
   return (
     <Modal
       sidePanel={sidePanel}
@@ -89,6 +94,11 @@ export function Repair({
           <div className="field-ticket">
             <div>
               <Status value={receptionStatus(item)} />
+              {item.reception?.ticket && (
+                <strong className="field-queue-number">
+                  {queueTicketLabel(item.reception.ticket)} · {item.reception.ticket.date}
+                </strong>
+              )}
               <span className="field-muted">{item.id}</span>
             </div>
             <h3>
@@ -138,6 +148,7 @@ export function Repair({
               </p>
             )}
           </div>
+          {!item.canReceive && <Notice>{item.startBlockedReason}</Notice>}
           <Reception
             item={item}
             businessDate={item.businessDate || item.date}
@@ -161,7 +172,13 @@ export function Repair({
             (item.canStart &&
               ((!item.canReceive && item.reception?.state !== 'queued') || direct))) && (
             <form
-              onSubmit={(event) => void start(event, !!item.canReceive && !direct)}
+              onSubmit={(event) => {
+                if (item.reception?.state === 'assigned' && !identityConfirmed) {
+                  event.preventDefault();
+                  return;
+                }
+                void start(event, !!item.canReceive && !direct);
+              }}
               className="field-form"
             >
               {item.reception && (
@@ -271,7 +288,24 @@ export function Repair({
                   ))}
                 </div>
               </details>
-              <button className="field-primary field-wide" disabled={busy}>
+              {item.reception?.state === 'assigned' && (
+                <label className="field-accept-check">
+                  <input
+                    type="checkbox"
+                    required
+                    checked={identityConfirmed}
+                    onChange={(event) => setIdentityConfirmed(event.target.checked)}
+                  />
+                  <span>
+                    我已当面核对 {queueTicketLabel(item.reception.ticket) || item.id}、机主
+                    {item.name ? ' ' + item.name : ''}和 {item.deviceModel}，确认是交给本人的设备
+                  </span>
+                </label>
+              )}
+              <button
+                className="field-primary field-wide"
+                disabled={busy || (item.reception?.state === 'assigned' && !identityConfirmed)}
+              >
                 {busy
                   ? '正在保存核验信息…'
                   : item.canReceive && !direct
@@ -398,6 +432,7 @@ export function Repair({
               detail={`${item.brand} ${item.deviceModel}`}
             />
           )}
+          {customerCredential?.id === item.id && <CustomerQueueLink {...customerCredential} />}
           {item.intake && !item.canStart && (
             <details className="field-details">
               <summary>现场核验信息</summary>
@@ -431,6 +466,8 @@ export function Repair({
                         'receptions.return': '退回现场队列',
                         'receptions.withdraw': '撤回分派',
                         'receptions.cancel': '取消预约',
+                        'receptions.leave': '客户离队',
+                        'receptions.guest_leave': '客户主动退出排队',
                         'receptions.reschedule': '改约',
                         'repairs.claimed': '确认开始维修',
                         'repairs.transferred': '转派维修',
@@ -439,6 +476,7 @@ export function Repair({
                     </strong>
                     <span>
                       {event.actorName}
+                      {event.ticketNumber ? ` · ${event.ticketNumber}号` : ''}
                       {event.assigneeName ? ` → ${event.assigneeName}` : ''} ·{' '}
                       {formatInstant(event.occurredAt)}
                     </span>

@@ -20,7 +20,7 @@ export function useField(
   initial?: Home,
   active = true
 ) {
-  const resource = ['desk', 'operations'].includes(scene) ? 'board' : 'home';
+  const resource = scene === 'desk' ? 'board' : 'home';
   const key = `field:${sessionKey}:${campus}:${resource}`;
   const cached = () => readWorkspaceState(key) as Snapshot | undefined;
   const fallback = initial?.campusId === campus ? initial : null;

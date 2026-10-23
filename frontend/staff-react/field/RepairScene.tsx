@@ -1,3 +1,4 @@
+import { queueTicketLabel } from '../../../shared/reception.js';
 import { Status } from './ui';
 import { AppointmentLookup } from './AppointmentLookup';
 import { StaffIdentity } from '../StaffIdentity';
@@ -54,15 +55,19 @@ export function RepairScene({
                   : data.state === 'away'
                     ? '你当前处于离岗状态'
                     : data.state === 'available'
-                      ? '准备好接待下一位机主'
+                      ? data.nextInQueue
+                        ? '请按排号接待下一位机主'
+                        : '准备好接待下一位机主'
                       : '当前暂无可接单任务'}
           </h2>
           <p>
             {data.currentRepair
               ? `${data.currentRepair.brand} ${data.currentRepair.deviceModel} · ${data.currentRepair.faultType}`
               : data.pendingRepair
-                ? `${data.pendingRepair.deviceModel} · ${data.pendingRepair.faultType}；接待已核验，请核对后确认接手。`
-                : data.reason || '扫描机主维修码，确认设备信息后开始维修。'}
+                ? `${queueTicketLabel(data.pendingRepair.reception?.ticket)} · ${data.pendingRepair.id} · ${data.pendingRepair.name || '请当面核对机主'} · ${data.pendingRepair.deviceModel} · ${data.pendingRepair.faultType}`
+                : data.nextInQueue
+                  ? `${queueTicketLabel(data.nextInQueue.reception?.ticket)} · ${data.nextInQueue.deviceModel} · ${data.nextInQueue.faultType}`
+                  : data.reason || '扫描机主维修码，确认设备信息后开始维修。'}
           </p>
         </div>
         <div className="field-hero-action">
@@ -72,7 +77,7 @@ export function RepairScene({
             </button>
           ) : data.pendingRepair ? (
             <button className="field-primary" onClick={() => setSelected(data.pendingRepair!.id)}>
-              查看待接手工单
+              核对设备并接手
             </button>
           ) : data.state === 'unsigned' && data.capability['attendance.self'] ? (
             <button className="field-primary" onClick={openAttendance} disabled={busy}>
@@ -87,10 +92,11 @@ export function RepairScene({
               className="field-primary"
               onClick={() => {
                 setMessage('');
-                setScanOpen(true);
+                if (data.nextInQueue) setSelected(data.nextInQueue.id);
+                else setScanOpen(true);
               }}
             >
-              扫描维修码
+              {data.nextInQueue ? '处理队首工单' : '扫描维修码'}
             </button>
           ) : (
             <button onClick={refresh}>刷新工作状态</button>

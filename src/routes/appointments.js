@@ -2,6 +2,10 @@ import { json, readBody } from '../lib/http.js';
 import { appointmentQuery, appointmentPatch, bookingInput, bookingRequestKey, liveQuery } from '../lib/validation.js';
 
 export const appointmentRoutes = [
+  ['POST', /^\/api\/appointments\/([^/]+)\/queue-exit$/, async (context,match) => {
+    await context.limit('write');
+    return json(await context.services.appointments.leaveQueue(decodeURIComponent(match[1]),await readBody(context.request),context.accessToken));
+  }],
   ['GET', /^\/api\/appointments\/([^/]+)\/reception-options$/, async (context,match) =>
     json(await context.services.appointments.receptionOptions(decodeURIComponent(match[1]),await context.role('technician')))],
   ['POST', /^\/api\/appointments\/([^/]+)\/reception$/, async (context,match) => {

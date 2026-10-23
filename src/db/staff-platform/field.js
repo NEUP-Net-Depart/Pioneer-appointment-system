@@ -111,7 +111,8 @@ export function fieldDomain({ db, event }) {
       await db
         .prepare(
           `SELECT e.id,e.action,e.reason,e.occurred_at AS occurredAt,
-      COALESCE(m.name,'原工作人员') AS actorName,
+      CASE WHEN e.action='receptions.guest_leave' THEN '客户本人' ELSE COALESCE(m.name,'原工作人员') END AS actorName,
+      (SELECT number FROM repair_queue_tickets t WHERE t.id=e.id) AS ticketNumber,
       json_extract(e.after_json,'$.reception.assignedMemberId') AS assignedMemberId,
       json_extract(e.after_json,'$.assigneeIdentity.name') AS assigneeName,
       json_extract(e.after_json,'$.date') AS date,json_extract(e.after_json,'$.timeSlot') AS timeSlot

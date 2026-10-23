@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Empty, Modal, Notice, CredentialCard, Scanner, time } from './ui';
 import { Repair } from './Repair';
 import { Registration } from './Registration';
@@ -28,6 +29,10 @@ export function FieldApp({
   onLogout: () => void;
   onNavigate: (view: string) => void;
 }) {
+  const [customerCredential, setCustomerCredential] = useState<{
+    id: string;
+    accessToken: string;
+  } | null>(null);
   const {
     key,
     scene,
@@ -158,10 +163,9 @@ export function FieldApp({
                 campusName={campusName}
               />
             )}
-            {['desk', 'operations'].includes(scene) && (
+            {scene === 'desk' && (
               <DeskScene
                 key={key}
-                scene={scene}
                 setSelected={setSelected}
                 setRegistration={setRegistration}
                 setScanOpen={setScanOpen}
@@ -274,6 +278,7 @@ export function FieldApp({
           key={selected}
           memberId={initial.actor.memberId}
           people={people}
+          customerCredential={customerCredential?.id === selected ? customerCredential : null}
           onClose={() => {
             setSelected('');
             refresh();
@@ -286,7 +291,8 @@ export function FieldApp({
           campus={campusName}
           frontdesk={scene !== 'repair'}
           onClose={() => setRegistration(false)}
-          onDone={(id) => {
+          onDone={(id, accessToken) => {
+            setCustomerCredential(accessToken ? { id, accessToken } : null);
             setRegistration(false);
             setSelected(id);
             refresh();

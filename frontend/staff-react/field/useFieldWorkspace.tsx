@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from './ui';
+import { normalizeStaffScene } from '../../../shared/staff-access.js';
+import { receptionGroup } from '../../../shared/reception.js';
 import { useField } from './useField';
 import type { Home } from './types';
 import { compareFieldPeople } from '../../../shared/staff-identities.js';
@@ -23,13 +25,15 @@ export function useFieldWorkspace({
   onLogout: () => void;
   onNavigate: (view: string) => void;
 }) {
+  requestedScene = normalizeStaffScene(requestedScene);
   const key = `field-scene:${initial.actor.memberId}`;
   const [scene, setScene] = useState(
     () =>
       requestedScene ||
       (initial.currentRepair
         ? 'repair'
-        : initial.contexts.find((c) => c.id === sessionStorage.getItem(key))?.id ||
+        : initial.contexts.find((c) => c.id === normalizeStaffScene(sessionStorage.getItem(key)))
+            ?.id ||
           initial.contexts.find((c) => c.id === 'desk')?.id ||
           initial.contexts[0]?.id ||
           'mine')
@@ -211,10 +215,7 @@ export function useFieldWorkspace({
   }
   const items = (data?.appointments || []).filter(
     (item) =>
-      (filter === 'all' ||
-        (item.status === 'booked' && ['queued', 'assigned'].includes(item.reception?.state || '')
-          ? item.reception?.state
-          : item.status) === filter) &&
+      (filter === 'all' || receptionGroup(item) === filter) &&
       `${item.id} ${item.deviceModel} ${item.faultType}`
         .toLowerCase()
         .includes(search.toLowerCase())

@@ -9,7 +9,8 @@ import {
   validDate,
   weekRange
 } from '../../shared/time.js';
-import { issueAccessToken, bookingDigest, hashAccessToken } from '../lib/access-tokens.js';
+import { issueAccessToken, bookingDigest, hashAccessToken, onsiteRequestKey } from '../lib/access-tokens.js';
+import { requestId as validRequestId } from '../platform/contracts.js';
 import { guestAppointment } from './access.js';
 import { repairOutcomes } from '../../shared/constants.js';
 import { bookingWindow } from '../../shared/booking-settings.js';
@@ -33,7 +34,7 @@ export async function presentAppointment(item, encryptionKey, { staff = false } 
     delete visible.assignedToName;
     delete visible.assignedMemberId;
     delete visible.registeredMemberId;
-    if (visible.reception) visible.reception = { state: visible.reception.state, receivedAt: visible.reception.receivedAt };
+    if (visible.reception) visible.reception = { state: visible.reception.state, receivedAt: visible.reception.receivedAt, leftAt:visible.reception.leftAt, ticket:visible.reception.ticket };
   }
   return visible;
 }
@@ -52,6 +53,7 @@ export function appointmentService(
     ]);
     return {
       ...visible,
+      queuePosition: item.status==='booked' && ['queued','assigned'].includes(item.reception?.state) ? await appointments.receptionPosition(item) : null,
       serverNow: clock().toISOString(),
       location: location?.location || item.locationSnapshot || '',
       currentLocationRevision: location?.revision ?? null,
@@ -177,7 +179,18 @@ export function appointmentService(
         registrationFlow === 'frontdesk' ? 'onsite.frontdesk.create' : 'onsite.create',
         { campusId: data.campus }
       );
-      return this.create(data, { actor: actor.account, requestId, registrationFlow });
+      return this.create(data, { actor: actor.account, requestId, registrationFlow },onsiteRequestKey(actor.memberId,requestId));
+    },
+    async registrationCredential(item,actor) {
+      if (!ownsRegistration(actor,item)) return null;
+      await staffPlatform.requirePermission(actor,item.registrationFlow==='frontdesk'?'onsite.frontdesk.create':'onsite.create',{campusId:item.campus,id:item.id});
+      const visible=await staffPlatform.field.detail(actor,item.id);
+      if (visible.name===undefined || visible.social===undefined) return null;
+      const saved=await appointments.findRequest(onsiteRequestKey(actor.memberId,item.registrationKey));
+      if (!saved || saved.appointmentId!==item.id) return null;
+      const token=await decryptText(saved.encryptedToken,encryptionKey);
+      // A reprint must never resurrect a credential revoked by an administrator.
+      return await appointments.findByCredential(item.id,hashAccessToken(token)) ? token : null;
     },
     async create(data, onsite, requestKey) {
       const digest = requestKey ? bookingDigest(data) : null;
@@ -276,13 +289,32 @@ export function appointmentService(
       await expire(clock(), { id: item.id });
       return present(await guestAppointment(appointments, item.id, accessToken));
     },
+    async leaveQueue(id,input,accessToken) {
+      const item=await guestAppointment(appointments,id,accessToken);
+      if (!input || !validRequestId(input.requestId) || !Number.isInteger(input.revision)) fail(400,'请提供有效操作编号和工单版本');
+      const replay=await appointments.guestQueueExitReceipt(item.id,input.requestId);
+      if (replay) {
+        if (JSON.parse(replay.before_json).revision!==input.revision) fail(409,'请勿重复使用不同操作的请求编号');
+        return present(item);
+      }
+      if (item.revision!==input.revision) fail(409,'工单已更新，请刷新并核对后重试');
+      if (item.status!=='booked' || !['queued','assigned'].includes(item.reception?.state)) fail(409,'当前不在现场排队，无法退出');
+      const at=clock().toISOString();
+      const updated=await appointments.update(item,{status:'booked'},undefined,{
+        actor:{memberId:null,account:null},action:'receptions.guest_leave',auditId:'guest-leave-'+item.id+'-'+input.requestId,
+        requestId:input.requestId,guestCredentialHash:hashAccessToken(accessToken),at,reason:'客户主动退出现场排队',
+        reception:{state:'closed',leftAt:at}
+      });
+      if (!updated && !await appointments.guestQueueExitReceipt(item.id,input.requestId)) fail(409,'工单已更新，请重新查询后操作');
+      return present(await guestAppointment(appointments,item.id,accessToken));
+    },
     async reception(id, input, actor) {
       if (!input || typeof input!=='object' || Array.isArray(input)) fail(400,'接待参数不正确');
       let item = await appointments.find(id);
       if (!item) fail(404, '预约不存在');
       requireCampus(actor,item.campus);
       const action = input.action;
-      if (!['receive','assign','return','withdraw','cancel','reschedule'].includes(action)) fail(400,'接待操作不正确');
+      if (!['receive','assign','return','withdraw','cancel','reschedule','leave'].includes(action)) fail(400,'接待操作不正确');
       const field = staffPlatform.field;
       const permission = action==='receive' ? 'repair.receive' : action==='return' ? 'repair.start' : 'repair.dispatch';
       await staffPlatform.requirePermission(actor,permission,{campusId:item.campus,id:item.id,assignedMemberId:item.reception?.assignedMemberId,businessDate:dateKey()});
@@ -314,6 +346,10 @@ export function appointmentService(
         const account=await assignee(input.assignedTo,item.campus),target=await users.find(account);
         eligibility=await field.requireEligible(target,item.campus);
         reception={state:'assigned',assignedTo:account,assignedMemberId:eligibility.context.actor.memberId};
+      } else if (action==='leave') {
+        if (!['queued','assigned'].includes(item.reception?.state)) fail(409,'该工单当前不在现场队列');
+        if (reason.length<2) fail(400,'请填写客户离队原因');
+        reception={state:'closed',leftAt:at};
       } else if (action==='cancel' || action==='reschedule') {
         if (!['queued','assigned'].includes(item.reception?.state)) fail(409,'只能处理已到场、尚未开始维修的工单');
         if (reason.length<2) fail(400,'请填写联系客户后的处理原因');
@@ -581,6 +617,11 @@ export function appointmentService(
           {
             eligibility = await staffPlatform.field.requireEligible(user, item.campus,item.id);
             if (item.reception?.state==='assigned' && item.reception.assignedMemberId!==user.memberId) fail(409,'该工单已分派给其他维修人员');
+            if (item.reception?.leftAt) fail(409,'客户已离队，请先重新接待并排号');
+            if (item.reception?.state!=='assigned') {
+              const head=(await appointments.openReceptions(item.campus)).find(row=>row.reception.state==='queued');
+              if (head && head.id!==item.id) fail(409,'请先处理现场队首工单；客户暂未到场时请由接待或负责人说明原因后分派后续工单');
+            }
             if (!verification) fail(400, '请完成现场设备核验');
           }
           if (input.outcome !== undefined) fail(400, '开始维修不能填写结束结果');
@@ -664,6 +705,7 @@ export function appointmentService(
             actor: workflowActor,
             action: correction ? 'repairs.corrected' : workflowAction,
             verification,
+            enforceQueueHead: !correction && workflowAction==='repairs.started' && item.reception?.state!=='assigned',
             reason: correction ? correction.reason : reason,
             requestId,
             payloadHash: receipt?.payloadHash,

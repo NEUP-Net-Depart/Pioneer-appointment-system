@@ -181,7 +181,7 @@ export function StaffWorkspace({
               ? '我的'
               : entry.label === '工作台'
                 ? '工作台'
-                : entry.label.replace('工作台', '').replace('现场管理', '现场')}
+                : entry.label.replace('工作台', '')}
           </button>
         ))}
         {overflow.length > 0 && (

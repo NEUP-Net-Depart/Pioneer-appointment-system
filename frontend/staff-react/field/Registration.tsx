@@ -10,7 +10,7 @@ export function Registration({
 }: {
   campus: string;
   frontdesk: boolean;
-  onDone: (id: string) => void;
+  onDone: (id: string, accessToken?: string) => void;
   onClose: () => void;
 }) {
   const [step, setStep] = useState(0),
@@ -43,7 +43,7 @@ export function Registration({
     }
     setBusy(true);
     try {
-      const item = await api<{ id: string }>('/api/scan/onsite', {
+      const item = await api<{ id: string; accessToken?: string }>('/api/scan/onsite', {
         method: 'POST',
         body: {
           ...form,
@@ -53,7 +53,7 @@ export function Registration({
           registrationFlow: frontdesk ? 'frontdesk' : 'technician_intake'
         }
       });
-      onDone(item.id);
+      onDone(item.id, item.accessToken);
     } catch (error) {
       setError((error as Error).message);
     } finally {

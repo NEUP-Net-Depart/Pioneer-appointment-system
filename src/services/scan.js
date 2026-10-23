@@ -55,7 +55,7 @@ export function scanService(appointments, service, secret, clock = () => new Dat
       const now = clock();
       await expire(now, { campuses: actor.authorizedCampuses });
       const previous = await appointments.findRegistration(actor.account, key);
-      if (previous) return locate(previous.id, actor);
+      if (previous) return {...await locate(previous.id,actor),accessToken:await service.registrationCredential(previous,actor)};
       if (input.registrationFlow !== 'frontdesk') {
         if (await appointments.pendingRegistration(actor.account)) fail(409, '请先签到或取消当前临时登记');
         if ((await appointments.inProgress(actor.account)).length) fail(409, '请先完成当前维修，再登记下一台设备');
@@ -63,7 +63,8 @@ export function scanService(appointments, service, secret, clock = () => new Dat
       const data = onsiteBookingInput({ ...input, date: dateKey(now), timeSlot: TIME_SLOTS[0], agreementAt: now.toISOString(), agreementVersion: 'v1.0' });
       requireCampus(actor, data.campus);
       const item = await service.createOnsite(data, actor, key, input.registrationFlow);
-      return locate(item.id, actor);
+      const visible=await locate(item.id,actor);
+      return {...visible,...(visible.name!==undefined && visible.social!==undefined ? {accessToken:item.accessToken} : {})};
     }
   };
 }

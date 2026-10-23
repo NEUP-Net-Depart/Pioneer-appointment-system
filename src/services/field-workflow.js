@@ -94,8 +94,10 @@ export function fieldWorkflow({
       current
     )
       contexts.push({ id: 'repair', label: '维修工作台' });
-    if (capability['onsite.frontdesk.create'] || capability['repair.receive'] || capability['repair.dispatch']) contexts.push({ id: 'desk', label: '接待台' });
-    if (capability['repair.transfer']) contexts.push({ id: 'operations', label: '现场管理' });
+    if (['onsite.frontdesk.create', 'repair.receive', 'repair.dispatch', 'repair.transfer'].some(code => capability[code]))
+      contexts.push({ id: 'desk', label: '现场工作台' });
+    const head=ready.allowed ? await appointments.receptionHead(names[selected]) : null;
+    const nextInQueue=head ? await project(actor,await appointments.find(head.appointment_id),context) : null;
     const state = current
       ? 'repairing'
       : ready.pending ? 'pending'
@@ -120,6 +122,7 @@ export function fieldWorkflow({
       state,
       reason: ready.reason,
       currentRepair: current,
+      nextInQueue,
       pendingRepair: ready.pending ? await detail(actor,ready.pending.id) : null,
       todayDuties: context.todayDuties,
       identities: staffIdentities(context, authorizer, { campusId: selected }),
@@ -139,7 +142,7 @@ export function fieldWorkflow({
   });
   const canReadSummary = (actor, item, context) =>
     (allowed(context, 'repair.summary.read', appointmentTarget(item)) ||
-      (['queued','assigned'].includes(item.reception?.state) && allowed(context,'repair.summary.read',{...appointmentTarget(item),businessDate:context.businessDate})) ||
+      ((item.status==='in_progress' || ['queued','assigned'].includes(item.reception?.state)) && allowed(context,'repair.summary.read',{...appointmentTarget(item),businessDate:context.businessDate})) ||
       item.reception?.assignedMemberId === context.actor.memberId ||
       item.assignedMemberId === context.actor.memberId) &&
     (actor.authorizedCampuses || []).includes(item.campus);
@@ -259,12 +262,23 @@ export function fieldWorkflow({
     const assigneeContexts = item.assignedMemberId
       ? await repository.fieldContexts([item.assignedMemberId], context.businessDate)
       : new Map();
+    const head=item.status==='booked' && item.reception?.state!=='assigned' ? await appointments.receptionHead(item.campus) : null;
+    const startBlockedReason=item.reception?.leftAt ? '客户已离队，请由接待或负责人重新扫码核验后排号' : head && head.appointment_id!==id ? '现场有更早到场的客户，请先处理队首；客户暂时不在时由接待或负责人说明原因后分派' : '';
+    const canStart=!startBlockedReason && item.status==='booked' && (item.reception?.state!=='assigned' || item.reception.assignedMemberId===context.actor.memberId) && (await eligibility(actor,item.campus,item.id)).allowed;
+    // The eligible technician taking the queue head needs the verified device photos;
+    // customer identity/contact fields still follow their independent grants.
+    if (canStart && item.reception?.state==='queued') {
+      visible.canReadDetails=true;
+      visible.frontPhotoId=item.frontPhotoId;
+      visible.backPhotoId=item.backPhotoId;
+    }
     const receptionPaused=!!(await repository.serviceDay(context.businessDate,target.campusId))?.paused;
     return {
       ...visible,
       businessDate:context.businessDate,
       receptionPaused,
-      queuePosition:item.status==='booked' && item.reception?.state==='queued' ? await appointments.receptionPosition(item) : null,
+      startBlockedReason,
+      queuePosition:item.status==='booked' && ['queued','assigned'].includes(item.reception?.state) ? await appointments.receptionPosition(item) : null,
       assigneeIdentities:
         item.assignedMemberId && assigneeContexts.has(item.assignedMemberId)
           ? staffIdentities(assigneeContexts.get(item.assignedMemberId), authorizer, {
@@ -298,7 +312,7 @@ export function fieldWorkflow({
         item.status === 'in_progress' &&
         item.assignedMemberId === context.actor.memberId &&
         allowed(context, 'repair.finish.own', target),
-      canStart: item.status === 'booked' && (item.reception?.state!=='assigned' || item.reception.assignedMemberId===context.actor.memberId) && (await eligibility(actor, item.campus,item.id)).allowed,
+      canStart,
       repairCode: scanCode(item.id, secret)
     };
   }
@@ -321,7 +335,7 @@ export function fieldWorkflow({
   }
   async function board(actor, query = {}) {
     const data = await home(actor, query);
-    if (!data.contexts.some((item) => ['desk', 'operations'].includes(item.id)))
+    if (!data.contexts.some((item) => item.id === 'desk'))
       fail(403, '当前没有该校区的现场岗位权限');
     const context = await staff.contextFor(actor);
     await appointments.expirePending(new Date().toISOString(), {
@@ -340,7 +354,7 @@ export function fieldWorkflow({
       list.items.push(...page.items);
       cursor = page.nextCursor;
     } while (cursor);
-    const carryovers=await appointments.openReceptions(names[data.campusId]);
+    const carryovers=await appointments.openFieldWork(names[data.campusId]);
     const seen=new Set(list.items.map(item=>item.id));
     list.items.push(...carryovers.filter(item=>!seen.has(item.id)));
     const people = await repository.fieldPeople(data.businessDate, data.campusId);
@@ -425,6 +439,7 @@ export function fieldWorkflow({
             'timeSlot',
             'status',
             'reception',
+            'source',
             'deviceType',
             'deviceModel',
             'faultType',
@@ -432,7 +447,16 @@ export function fieldWorkflow({
           ].map((key) => [key, item[key]])
         )
       );
-    return { ...data, appointments: items.sort((a,b)=>String(a.reception?.receivedAt||'9999').localeCompare(String(b.reception?.receivedAt||'9999')) || a.id.localeCompare(b.id)), staffPresence };
+    // Count actual orders (including walk-ins), never configured capacity or carryovers.
+    const todayBookings=items.filter(item=>item.date===data.businessDate && item.status!=='cancelled');
+    const overview={
+      notArrived:todayBookings.filter(item=>item.status==='booked' && !['queued','assigned'].includes(item.reception?.state) && !item.reception?.leftAt).length,
+      total:todayBookings.length,
+      queued:items.filter(item=>item.status==='booked' && ['queued','assigned'].includes(item.reception?.state)).length,
+      repairing:items.filter(item=>item.status==='in_progress').length,
+      available:staffPresence.filter(person=>person.canReceive).length
+    };
+    return { ...data, overview, appointments: items.sort((a,b)=>String(a.reception?.receivedAt||'9999').localeCompare(String(b.reception?.receivedAt||'9999')) || (a.reception?.ticket?.number || 0)-(b.reception?.ticket?.number || 0) || a.id.localeCompare(b.id)), staffPresence };
   }
   async function requireIntake(actor,item) {
     const context=await staff.contextFor(actor);

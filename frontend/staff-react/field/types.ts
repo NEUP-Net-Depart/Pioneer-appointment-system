@@ -8,6 +8,8 @@ export interface Appointment {
   reception?: {
     state: string;
     receivedAt: string;
+    leftAt?: string | null;
+    ticket?: { number: number; date: string; campus: string } | null;
     receivedBy?: string;
     assignedTo?: string;
     assignedMemberId?: string;
@@ -18,7 +20,7 @@ export interface Appointment {
   canDispatch?: boolean;
   canReturn?: boolean;
   businessDate?: string;
-  queuePosition?: { position: number; total: number } | null;
+  queuePosition?: { position: number; total: number; dispatchPosition?: number } | null;
   receptionPaused?: boolean;
   receptionHistory?: {
     id: string;
@@ -26,6 +28,7 @@ export interface Appointment {
     reason: string;
     occurredAt: string;
     actorName: string;
+    ticketNumber?: number;
     assigneeName?: string;
     date?: string;
     timeSlot?: string;
@@ -61,6 +64,7 @@ export interface Appointment {
   dellG15?: string;
   repairCode?: string;
   canStart?: boolean;
+  startBlockedReason?: string;
   canFinish?: boolean;
   canTransfer?: boolean;
   canReadDetails?: boolean;
@@ -117,6 +121,7 @@ export interface Home {
   reason: string;
   currentRepair: Appointment | null;
   pendingRepair?: Appointment | null;
+  nextInQueue?: Appointment | null;
   pendingSwapInvitations?: number;
   presence?: { revision: number; campusId: string; state: string };
   event?: { id: string; revision: number; startsAt: string; endsAt: string };
@@ -128,6 +133,13 @@ export interface Home {
     dutyType: string;
   }[];
   updatedAt: string;
+  overview?: {
+    notArrived: number;
+    total: number;
+    queued: number;
+    repairing: number;
+    available: number;
+  };
   appointments?: Appointment[];
   staffPresence?: Person[];
 }

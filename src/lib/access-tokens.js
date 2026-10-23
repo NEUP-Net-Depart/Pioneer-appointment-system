@@ -9,3 +9,7 @@ export function hashAccessToken(token) {
 export function bookingDigest(data) {
   return createHash('sha256').update(JSON.stringify(Object.fromEntries(Object.entries(data).sort(([a],[b]) => a.localeCompare(b))))).digest('hex');
 }
+
+export function onsiteRequestKey(memberId,requestId) {
+  return createHash('sha256').update('onsite-receipt-v1:'+memberId+':'+requestId).digest('base64url');
+}

@@ -20,7 +20,12 @@ import { ActivityContext } from './field/ui';
 import { Statistics } from './Statistics';
 import { AccountSettings } from './AccountSettings';
 import { Accounts } from './Accounts';
-import { staffPermission, staffViewAllowed, staffSceneAllowed } from '../../shared/staff-access.js';
+import {
+  staffPermission,
+  staffViewAllowed,
+  staffSceneAllowed,
+  normalizeStaffScene
+} from '../../shared/staff-access.js';
 import { OfficeRoster } from './OfficeRoster';
 import { LeaveReview } from './LeaveReview';
 import { WorkspacePage } from './WorkspacePage';
@@ -73,7 +78,10 @@ function Workspace({ user, onLogout }) {
               ? 'repair'
               : data.contexts.find(
                   (context) =>
-                    context.id === sessionStorage.getItem(`field-scene:${data.actor.memberId}`)
+                    context.id ===
+                    normalizeStaffScene(
+                      sessionStorage.getItem(`field-scene:${data.actor.memberId}`)
+                    )
                 )?.id ||
                 data.contexts.find((context) => context.id === 'desk')?.id ||
                 data.contexts[0]?.id ||
@@ -113,6 +121,7 @@ function Workspace({ user, onLogout }) {
   }, [user]);
   useEffect(() => () => clearWorkspaceState(), []);
   const navigate = (view) => {
+    if (view.startsWith('scene:')) view = `scene:${normalizeStaffScene(view.slice(6))}`;
     if (
       field &&
       !(view.startsWith('scene:')

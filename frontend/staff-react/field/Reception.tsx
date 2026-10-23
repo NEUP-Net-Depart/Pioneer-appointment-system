@@ -2,6 +2,7 @@ import { useContext, useEffect, useState } from 'react';
 import { ActivityContext, api, Notice } from './ui';
 import { StaffIdentity } from '../StaffIdentity';
 import type { Appointment, Person } from './types';
+import { queueTicketLabel } from '../../../shared/reception.js';
 import { formatInstant, formatDate } from '../../../shared/time.js';
 
 export function Reception({
@@ -110,10 +111,12 @@ export function Reception({
         </span>
         <span>维修完成</span>
       </div>
+      <h3>{queueTicketLabel(item.reception.ticket) || '现场队列'}</h3>
       <p className="field-muted">到场时间 {formatInstant(item.reception.receivedAt)}</p>
       {item.queuePosition && (
         <p className="field-muted">
-          现场排队第 {item.queuePosition.position} 位 · 共 {item.queuePosition.total} 单
+          当前第 {item.queuePosition.position} 位 · 前面 {item.queuePosition.position - 1} 位 · 共{' '}
+          {item.queuePosition.total} 单
         </p>
       )}
       {item.receptionPaused && (
@@ -171,7 +174,7 @@ export function Reception({
             </button>
           </div>
           <p className="field-muted">
-            按现场到场顺序分派；下方工作量为今日已接单和已完成数，由你决定安排。
+            按到场顺序分派。叫号未到时保留原位置，填写原因后可先安排后续客户。
           </p>
           <fieldset className="reception-candidates" disabled={busy || saving || loading}>
             <legend className="field-sr-only">选择接手人员</legend>
@@ -206,15 +209,18 @@ export function Reception({
           ) : null}
           <details
             className="field-details"
-            open={!!item.queuePosition && item.queuePosition.position > 1}
+            open={
+              !!item.queuePosition &&
+              (item.queuePosition.dispatchPosition ?? item.queuePosition.position) > 1
+            }
           >
             <summary>
               {item.queuePosition && item.queuePosition.position > 1
-                ? '此单尚未排到，请说明调整顺序的原因'
+                ? '前面还有客户，跳过分派需填写原因'
                 : '需要说明现场安排？'}
             </summary>
             <label>
-              调整排队顺序的原因
+              先处理此单的原因（例如队首客户暂未到场）
               <textarea
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
@@ -236,9 +242,9 @@ export function Reception({
       )}
       {item.canDispatch && (
         <details className="field-details">
-          <summary>客户已离开或需要改约</summary>
+          <summary>客户离队、改约或取消</summary>
           <p className="field-muted">
-            先联系客户确认安排。改约沿用开放日期、容量与冲突校验，成功后释放当前分派，客户保留原工单及查询凭证。
+            退出排队会释放分派名额并保留预约，再到场需重新扫码核验，排在队尾。仅临时叫号未到时不用离队，说明原因后先处理后面的客户。
           </p>
           <form
             onSubmit={(event) => {
@@ -258,6 +264,7 @@ export function Reception({
                 }}
               >
                 <option value="">请选择</option>
+                <option value="leave">退出排队，保留预约</option>
                 <option value="reschedule">改约到其他开放时段</option>
                 <option value="cancel">取消本次预约</option>
               </select>
@@ -307,7 +314,13 @@ export function Reception({
                 (resolution === 'reschedule' && (!option || optionsLoading))
               }
             >
-              {saving ? '正在处理…' : resolution === 'cancel' ? '确认取消预约' : '确认改约'}
+              {saving
+                ? '正在处理…'
+                : resolution === 'leave'
+                  ? '确认离队，保留预约'
+                  : resolution === 'cancel'
+                    ? '确认取消预约'
+                    : '确认改约'}
             </button>
           </form>
         </details>

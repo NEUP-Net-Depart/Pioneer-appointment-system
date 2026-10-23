@@ -219,3 +219,11 @@ fieldset.field { padding: 0; border: 0; }
 .user-mode progress { width: 100%; height: 8px; accent-color: var(--green); }
 #appointment-detail-title { font-size: 30px; line-height: 1.3; margin: 12px 0 24px; }
 @media(max-width:480px) { #appointment-detail-title { font-size: 26px; } }
+
+.customer-queue { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; padding:16px 0; }
+.customer-queue > div { display:flex; flex-direction:column; gap:8px; min-width:0; }
+.customer-queue strong { font-size:clamp(28px,7vw,40px); line-height:1.2; font-variant-numeric:tabular-nums; color:var(--primary,#18364a); }
+.customer-queue strong small { font-size:16px; }
+.customer-queue small { overflow-wrap:anywhere; }
+#detail-queue [data-queue-confirm] { margin-top:16px; padding:16px; border:1px solid var(--border,#d8dfe7); border-radius:12px; }
+#detail-queue .actions { flex-wrap:wrap; }
