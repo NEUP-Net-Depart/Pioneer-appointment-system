@@ -35,6 +35,7 @@ test('reception and worker share a real queued, returned, accepted and completed
   await dialog.getByLabel('型号',{exact:true}).fill('ThinkPad 已现场核对');
   await dialog.getByRole('combobox',{name:'保修情况',exact:true}).selectOption('expired');
   await dialog.getByRole('combobox',{name:'液金散热',exact:true}).selectOption('no');
+  await expect(dialog.getByRole('button',{name:'完成接待，进入现场队列',exact:true})).toBeDisabled();
   const image=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/Hf8AAAAASUVORK5CYII=','base64');
   for(const side of ['正面','背面'])await dialog.getByLabel(`设备${side}照片`,{exact:true}).setInputFiles({name:`${side}.png`,mimeType:'image/png',buffer:image});
   await dialog.getByRole('button',{name:'完成接待，进入现场队列',exact:true}).click();
@@ -153,4 +154,24 @@ test('customer sees a live arrival ticket, keeps confirmation during rank update
   await expect(queue).toContainText(String(rejoined.reception.ticket.number).padStart(3,'0')+'号');
   await expect(queue.getByRole('button',{name:'临时离开，退出排队',exact:true})).toBeVisible();
   await api(request,`/api/appointments/${rejoined.id}/reception`,office.token,{action:'leave',revision:rejoined.revision,reason:'浏览器验收结束',requestId:crypto.randomUUID()});
+  // A different receiving staff member must see the fresh-photo requirement
+  // before submitting, rather than silently reusing the previous arrival's IDs.
+  await login(page,'20261004');
+  await page.locator('.field-order').filter({hasText:original.id}).click();
+  const panel=page.getByRole('dialog');
+  await expect(panel).toContainText('本次到场请重新核对设备');
+  await expect(panel.getByRole('button',{name:'完成接待，进入现场队列',exact:true})).toBeDisabled();
+  for(const width of [320,390,768,1440]){
+    await page.setViewportSize({width,height:900});
+    await expect(panel.getByLabel('设备正面照片',{exact:true})).toBeVisible();
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  }
+  const buffer=Buffer.from(image,'base64');
+  await panel.getByLabel('设备正面照片',{exact:true}).setInputFiles({name:'new-front.png',mimeType:'image/png',buffer});
+  await expect(panel.getByRole('button',{name:'完成接待，进入现场队列',exact:true})).toBeDisabled();
+  await panel.getByLabel('设备背面照片',{exact:true}).setInputFiles({name:'new-back.png',mimeType:'image/png',buffer});
+  await panel.getByRole('button',{name:'完成接待，进入现场队列',exact:true}).click();
+  await expect(panel.getByRole('heading',{name:'选择空闲维修人员',exact:true})).toBeVisible();
+  const final=await api(request,`/api/field/appointments/${original.id}`,office.token);
+  expect(final.reception.ticket.number).toBeGreaterThan(rejoined.reception.ticket.number);
 });

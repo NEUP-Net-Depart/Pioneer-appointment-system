@@ -110,10 +110,12 @@ export function useRepair({
             }
         );
         setUploaded(
-          draft.uploaded ||
-            (value.reception
-              ? { front: value.frontPhotoId || '', back: value.backPhotoId || '' }
-              : {})
+          value.canReceive
+            ? {}
+            : draft.uploaded ||
+                (value.reception
+                  ? { front: value.frontPhotoId || '', back: value.backPhotoId || '' }
+                  : {})
         );
         fetchedAt.current = Date.now();
       })
@@ -124,6 +126,15 @@ export function useRepair({
       active = false;
     };
   }, [id, draftKey]);
+  const intakeSession = item?.canReceive ? `${item.id}:${item.reception?.leftAt || 'new'}` : null;
+  useEffect(() => {
+    if (intakeSession) {
+      // A new arrival requires photos uploaded by the person receiving it.
+      // Keep retries in this session, but never reuse a previous arrival's IDs.
+      setUploaded({});
+      setFiles({});
+    }
+  }, [intakeSession]);
   useEffect(() => {
     const urls = Object.fromEntries(
       Object.entries(files).map(([side, file]) => [side, URL.createObjectURL(file)])

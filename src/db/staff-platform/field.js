@@ -118,7 +118,7 @@ export function fieldDomain({ db, event }) {
       json_extract(e.after_json,'$.date') AS date,json_extract(e.after_json,'$.timeSlot') AS timeSlot
       FROM audit_events e LEFT JOIN members m ON m.id=e.actor_member_id
       WHERE json_extract(e.source_ref,'$.module')='repairs' AND json_extract(e.source_ref,'$.id')=?
-      AND (e.action LIKE 'receptions.%' OR e.action IN ('repairs.claimed','repairs.transferred','repairs.completed'))
+      AND (e.action LIKE 'receptions.%' OR e.action IN ('repairs.claimed','repairs.started','repairs.transferred','repairs.completed'))
       ORDER BY e.occurred_at,e.rowid`
         )
         .bind(id)
@@ -131,7 +131,7 @@ export function fieldDomain({ db, event }) {
       .prepare(
         `SELECT json_extract(after_json,'$.assigneeIdentity') AS snapshot FROM audit_events
       WHERE json_extract(source_ref,'$.module')='repairs' AND json_extract(source_ref,'$.id')=?
-      AND action IN ('repairs.claimed','repairs.transferred') ORDER BY occurred_at DESC,rowid DESC LIMIT 1`
+      AND action IN ('repairs.claimed','repairs.started','repairs.transferred') ORDER BY occurred_at DESC,rowid DESC LIMIT 1`
       )
       .bind(id)
       .first();

@@ -97,9 +97,9 @@ export function appointmentRepository(db) {
       const result=await db.prepare(`WITH facts AS (
         SELECT CASE WHEN action='repairs.transferred' THEN json_extract(after_json,'$.assigneeIdentity.memberId') ELSE actor_member_id END AS member_id,
           json_extract(source_ref,'$.id') AS appointment_id,CASE WHEN action='repairs.completed' THEN 'completed' ELSE 'started' END AS kind
-        FROM audit_events WHERE action IN ('repairs.claimed','repairs.transferred','repairs.completed') AND date(occurred_at,'+8 hours')=?
+        FROM audit_events WHERE action IN ('repairs.claimed','repairs.started','repairs.transferred','repairs.completed') AND date(occurred_at,'+8 hours')=?
         UNION ALL SELECT sa.member_id,a.id,'started' FROM appointments a JOIN staff_accounts sa ON sa.account=a.assigned_to
-        WHERE date(a.started_at,'+8 hours')=? AND NOT EXISTS(SELECT 1 FROM audit_events e WHERE json_extract(e.source_ref,'$.id')=a.id AND e.action IN ('repairs.claimed','repairs.transferred'))
+        WHERE date(a.started_at,'+8 hours')=? AND NOT EXISTS(SELECT 1 FROM audit_events e WHERE json_extract(e.source_ref,'$.id')=a.id AND e.action IN ('repairs.claimed','repairs.started','repairs.transferred'))
         UNION ALL SELECT sa.member_id,a.id,'completed' FROM appointments a JOIN staff_accounts sa ON sa.account=a.assigned_to
         WHERE a.status='completed' AND date(a.completed_at,'+8 hours')=? AND NOT EXISTS(SELECT 1 FROM audit_events e WHERE json_extract(e.source_ref,'$.id')=a.id AND e.action='repairs.completed')
       ) SELECT member_id,COUNT(DISTINCT CASE WHEN kind='started' THEN appointment_id END) AS started,COUNT(DISTINCT CASE WHEN kind='completed' THEN appointment_id END) AS completed FROM facts WHERE member_id IS NOT NULL GROUP BY member_id`).bind(day,day,day).all();

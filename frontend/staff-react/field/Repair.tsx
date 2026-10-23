@@ -183,11 +183,15 @@ export function Repair({
             >
               {item.reception && (
                 <p className="field-muted">
-                  接待已完成设备核验并上传照片。请核对以下信息，需要时可更正或替换照片。
+                  {item.canReceive
+                    ? '本次到场请重新核对设备，并由本次接待人员上传正反面照片。此前核验记录仍保留。'
+                    : '接待已完成设备核验并上传照片。请核对以下信息，需要时可更正或替换照片。'}
                 </p>
               )}
-              <details open={!item.reception} className="field-details">
-                <summary>{item.reception ? '查看或更正设备核验' : '填写设备核验信息'}</summary>
+              <details open={!item.reception || item.canReceive} className="field-details">
+                <summary>
+                  {item.reception && !item.canReceive ? '查看或更正设备核验' : '填写设备核验信息'}
+                </summary>
                 <h3>与机主确认设备信息</h3>
                 <div className="field-form-grid">
                   <label>
@@ -271,7 +275,9 @@ export function Repair({
                         <span>{uploaded[side] ? '已上传' : '＋'}</span>
                       )}
                       <strong>设备{side === 'front' ? '正面' : '背面'}</strong>
-                      <small>拍照或选择照片 · 最大 5 MB</small>
+                      <small>
+                        {item.canReceive ? '本次接待必填' : '拍照或选择照片'} · 最大 5 MB
+                      </small>
                       <input
                         type="file"
                         accept="image/jpeg,image/png,image/webp"
@@ -287,6 +293,12 @@ export function Repair({
                     </label>
                   ))}
                 </div>
+                {item.canReceive &&
+                  ['front', 'back'].some((side) => !files[side] && !uploaded[side]) && (
+                    <p className="field-muted" role="status">
+                      请先选择本次设备正面、背面照片，再完成接待。
+                    </p>
+                  )}
               </details>
               {item.reception?.state === 'assigned' && (
                 <label className="field-accept-check">
@@ -304,7 +316,12 @@ export function Repair({
               )}
               <button
                 className="field-primary field-wide"
-                disabled={busy || (item.reception?.state === 'assigned' && !identityConfirmed)}
+                disabled={
+                  busy ||
+                  (item.reception?.state === 'assigned' && !identityConfirmed) ||
+                  (!!item.canReceive &&
+                    ['front', 'back'].some((side) => !files[side] && !uploaded[side]))
+                }
               >
                 {busy
                   ? '正在保存核验信息…'
@@ -470,6 +487,7 @@ export function Repair({
                         'receptions.guest_leave': '客户主动退出排队',
                         'receptions.reschedule': '改约',
                         'repairs.claimed': '确认开始维修',
+                        'repairs.started': '确认开始维修',
                         'repairs.transferred': '转派维修',
                         'repairs.completed': '完成维修'
                       }[event.action] || '工单已更新'}

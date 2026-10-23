@@ -5,6 +5,8 @@ import { Miniflare } from 'miniflare';
 import { config, wrangler } from '../scripts/cli.mjs';
 import { hashPassword } from '../src/lib/passwords.js';
 import { fieldSeed } from './fixtures/field-seed.mjs';
+import { appointmentRepository } from '../src/db/appointments.js';
+import { staffPlatformRepository } from '../src/db/staff-platform.js';
 
 const day='2026-10-15',now=Date.parse(`${day}T10:00:00+08:00`);
 let mf,db;
@@ -99,6 +101,9 @@ test('reception dispatch reserves capacity, supports returns, verifies shared ph
   assigned=expect(await request(`/api/appointments/${assigned.id}/status`,tech,start,'PATCH'));
   assert.equal(assigned.status,'in_progress');assert.equal(assigned.reception.state,'started');
   assert.equal(assigned.intake.note,start.verification.note);
+  const startedDetail=await detail(assigned.id);
+  assert.ok(startedDetail.receptionHistory.some(event=>['repairs.claimed','repairs.started'].includes(event.action)));
+  assert.equal(startedDetail.assigneeIdentitySnapshot.memberId,'member-'+tech);
   expect(await request(`/api/appointments/${assigned.id}/status`,tech,start,'PATCH'));
   const workload=expect(await request('/api/field/board',office)).staffPresence.find(person=>person.account===tech).workload;
   assert.equal(workload.started,1);assert.equal(workload.completed,0);
@@ -255,4 +260,24 @@ test('arrival tickets, queue ranks, departure/rejoin and self-service FIFO stay 
   await db.prepare('UPDATE appointments SET access_token_hash=? WHERE id=?').bind('f'.repeat(64),created.id).run();
   assert.equal(expect(await request('/api/scan/onsite',office,form),201).accessToken,null);
   assert.ok((await detail(tail.id)).receptionHistory.some(event=>event.action==='receptions.guest_leave' && event.actorName==='客户本人'));
+});
+
+test('repair history, identity snapshots and workload retain both start event names after transfers',async()=>{
+  const current='projection-current',legacy='projection-legacy',eventDay='2026-10-16';
+  const identity=account=>({memberId:'member-'+account,name:account,identities:[{code:'repair',label:'维修工作人员'}]});
+  async function event(id,action,account,assignee){
+    await db.prepare('INSERT INTO audit_events(id,actor_member_id,actor_account,action,source_ref,after_json,reason,occurred_at) VALUES(?,?,?,?,?,?,?,?)')
+      .bind(crypto.randomUUID(),'member-'+account,account,action,JSON.stringify({module:'repairs',type:'appointment',id}),JSON.stringify({assigneeIdentity:identity(assignee)}),'',eventDay+'T02:00:00.000Z').run();
+  }
+  const fields=staffPlatformRepository(db),appointments=appointmentRepository(db);
+  await event(current,'repairs.started',tech,tech);
+  await event(legacy,'repairs.claimed',tech,tech);
+  assert.equal((await fields.repairIdentitySnapshot(current)).memberId,'member-'+tech);
+  assert.equal((await fields.repairIdentitySnapshot(legacy)).memberId,'member-'+tech);
+  await event(current,'repairs.transferred',lead,other);
+  assert.deepEqual((await fields.receptionHistory(current)).map(row=>row.action),['repairs.started','repairs.transferred']);
+  assert.equal((await fields.repairIdentitySnapshot(current)).memberId,'member-'+other);
+  const workloads=await appointments.dailyWorkloads(eventDay);
+  assert.deepEqual(workloads['member-'+tech],{started:2,completed:0});
+  assert.deepEqual(workloads['member-'+other],{started:1,completed:0});
 });
