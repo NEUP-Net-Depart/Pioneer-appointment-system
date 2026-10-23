@@ -1,0 +1,78 @@
+# 保存到 NEUP-Net-Depart/Pioneer-appointment-system 默认分支 dev 的根目录。
+enabled: true
+dryRun: false
+
+welcome:
+  issue: |
+    感谢反馈，欢迎！👋
+
+    请尽可能完整的描述问题/建议。
+    Bug 请提供复现步骤、预期表现和实际表现；
+  pr: |
+    欢迎回来！请在上方查看待办事项。
+    修改代码后，继续推送到当前分支即可，会自动更新。
+  merged: |
+    感谢你的贡献！🎉
+    期待我们下次见面！
+  image: /assets/neurobounce.gif
+  guide: https://github.com/NEUP-Net-Depart/Pioneer-appointment-system/issues/39
+
+labels:
+  - name: bug
+    titlePrefixes: ['fix:', 'fix(']
+    branches: ['fix/**', 'fix-*']
+  - name: enhancement
+    titlePrefixes: ['feat:', 'feat(']
+    branches: ['feat/**', 'feat-*']
+  - name: documentation
+    files: ['docs/**', '**/*.md']
+  - name: area/ci
+    files: ['.github/**']
+    highRisk: true
+  - name: area/database
+    files: ['migrations/**', '**/migrations/**', 'database/staff-migrations/**']
+    highRisk: true
+
+reviewers:
+  pool: [PeterPtroc]
+  count: 1
+  remindHours: 24
+  rotateHours: 48
+
+merge:
+  requiredChecks: [test]
+  trustedCheckAppIds: [15368]
+  minApprovals: 1
+  auto: false
+  allowedBases: [dev]
+  protectedBranches: [main]
+  highRiskFiles:
+    - '.github/**'
+    - '.piper.yml'
+    - 'migrations/**'
+    - '**/migrations/**'
+    - 'database/staff-migrations/**'
+    - '**/auth*'
+    - '**/security*'
+  highRiskLabels: [security, high-risk]
+
+backport:
+  enabled: false
+  targets: []
+  maxFiles: 50
+
+release:
+  # temp down
+  enabled: false
+  source: dev
+  target: main
+  timezone: Asia/Shanghai
+  weekday: 4
+  hour: 23
+  version: patch
+  initialVersion: v0.1.0
+  deploymentWorkflow: check.yml
+  deploymentJob: release
+  requiredChecks: [test]
+  minApprovals: 1
+
