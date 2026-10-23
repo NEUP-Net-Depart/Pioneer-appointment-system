@@ -3,6 +3,12 @@ import { json, readBody, fail, securityHeaders } from '../lib/http.js';
 function bodyWithRevision(body) { return body && typeof body === 'object' ? body : {}; }
 
 export const staffPlatformRoutes = [
+  ['GET', /^\/api\/repair-followups$/, async context => json(await context.services.followups.list(await context.role('technician'),context.query))],
+  ['GET', /^\/api\/repair-followups\/slots$/, async context => json(await context.services.followups.slots(await context.role('technician'),context.query))],
+  ['POST', /^\/api\/repair-followups\/([^/]+)\/decision$/, async (context,match) => {
+    await context.limit('write');
+    return json(await context.services.followups.resolve(decodeURIComponent(match[1]),await readBody(context.request),await context.role('technician')));
+  }],
   ['GET', /^\/api\/attendance\/weekly-summary$/, async context=>json(await context.services.staffPlatform.attendanceExport(await context.role('technician'),context.query))],
   ['GET', /^\/api\/attendance\/options$/, async context=>json(await context.services.staffPlatform.attendanceOptions(await context.role('technician'),context.query))],
   ['GET', /^\/api\/field\/home$/, async context => json(await context.services.field.home(await context.role('technician'), context.query))],

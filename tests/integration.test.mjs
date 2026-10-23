@@ -146,7 +146,7 @@ beforeEach(async () => {
   await db.prepare('DELETE FROM service_day_overrides').run();
   await db.prepare('DELETE FROM booking_notices').run();
   await db.prepare("UPDATE booking_settings SET release_time='10:00',revision=0,updated_by=NULL").run();
-  await db.batch(['DELETE FROM appointment_corrections','DELETE FROM repair_intake_records','DELETE FROM credential_recoveries','DELETE FROM booking_requests','DELETE FROM activation_requests','DELETE FROM staff_whitelist','DELETE FROM attachment_storage','DELETE FROM appointment_attachments','DELETE FROM appointments','DELETE FROM service_location_changes','DELETE FROM service_locations','DELETE FROM booking_day_slots',"DELETE FROM staff_accounts WHERE protected=0",'DELETE FROM rate_limits'].map(sql => db.prepare(sql)));
+  await db.batch(['DELETE FROM appointment_corrections','DELETE FROM repair_followups','DELETE FROM repair_intake_records','DELETE FROM credential_recoveries','DELETE FROM booking_requests','DELETE FROM activation_requests','DELETE FROM staff_whitelist','DELETE FROM attachment_storage','DELETE FROM appointment_attachments','DELETE FROM appointments','DELETE FROM service_location_changes','DELETE FROM service_locations','DELETE FROM booking_day_slots',"DELETE FROM staff_accounts WHERE protected=0",'DELETE FROM rate_limits'].map(sql => db.prepare(sql)));
   await db.prepare('DELETE FROM staff_presence').run();
   await db.prepare('UPDATE storage_quota SET used_bytes=0 WHERE id=1').run();
   const locationDates = [...new Set([date,'2026-10-15',...Array.from({length:10},(_,index)=>addDays(dateKey(),index-3))])];
@@ -180,6 +180,261 @@ test('scan lookup needs staff authorization, preserves campus scope and never st
   const root = await login();
   await api(`/api/appointments/${item.id}/credential`,{method:'POST',token:root,body:{identityVerified:true,reason:'已核验学生证与登记联系方式'}});
   assert.equal((await resolve({code})).id,item.id, 'student credential rotation must not invalidate a repair QR');
+});
+
+test('repair history preserves actual insertion order when event timestamps are identical', async () => {
+  const original = await book();
+  const actions = ['repairs.started', 'repairs.transferred', 'repairs.completed'];
+  const ids = ['timeline-z-start', 'timeline-m-transfer', 'timeline-a-complete'];
+  for (const [index, action] of actions.entries()) {
+    await db.prepare("INSERT INTO audit_events(id,action,source_ref,before_json,after_json,reason,occurred_at) VALUES(?,?,?,'{}','{}','',?)")
+      .bind(ids[index],action,JSON.stringify({module:'repairs',type:'appointment',id:original.id}),testNow).run();
+  }
+  const history = await appointmentRepository(db).repairHistory(original.id);
+  assert.deepEqual(history.events.map(event => event.action), actions);
+});
+
+test('office followup decisions return safe repeatable receipts without granting future customer access', async (t) => {
+  t.after(async () => {
+    await db.batch([
+      db.prepare("DELETE FROM duty_assignments WHERE id='followup-receipt-shift'"),
+      db.prepare("DELETE FROM roster_versions WHERE id='followup-receipt-roster'"),
+      db.prepare("DELETE FROM roster_tasks WHERE id='followup-receipt-task'")
+    ]);
+  });
+  await login();
+  const office = await addUser('994009');
+  const { member_id: memberId } = await db.prepare('SELECT member_id FROM staff_accounts WHERE account=?').bind('994009').first();
+  await db.prepare('DELETE FROM member_roles WHERE member_id=?').bind(memberId).run();
+  await db.prepare("INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from) VALUES('followup-receipt-office',?,'role-office','{\"campuses\":\"bound\"}','2026-01-01')").bind(memberId).run();
+  await db.prepare("INSERT INTO roster_tasks(id,week_start,slot_start,slot_end,deadline,created_at,created_by_member_id,duty_type) VALUES('followup-receipt-task',?,'00:00','23:59',?,?,'member-root001','office')").bind(date,testNow,testNow).run();
+  await db.prepare("INSERT INTO roster_versions(id,task_id,status,version,rule_version,algorithm_version,created_at) VALUES('followup-receipt-roster','followup-receipt-task','published',1,'1.0.0','fixture',?)").bind(testNow).run();
+  await db.prepare("INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at) VALUES('followup-receipt-shift','followup-receipt-roster',?,?,'campus-nanhu','office','00:00','23:59')").bind(memberId,date).run();
+  const original = await book();
+  await db.prepare("UPDATE appointments SET status='completed',outcome='repaired',completed_at=? WHERE id=?").bind(testNow,original.id).run();
+  await setAppointmentDate(original.id,'2026-10-12');
+  await api(`/api/field/appointments/${original.id}`,{token:office},403);
+  const pending = await api(`/api/appointments/${original.id}/repair-followups`, {
+    method:'POST',accessToken:original.accessToken,
+    body:{requestId:crypto.randomUUID(),reason:'已完成维修后原故障再次出现'}
+  },201);
+  const foreign = await book({campus:'浑南'});
+  await db.prepare("UPDATE appointments SET status='completed',outcome='repaired',completed_at=? WHERE id=?").bind(testNow,foreign.id).run();
+  await api(`/api/appointments/${foreign.id}/repair-followups`, {
+    method:'POST',accessToken:foreign.accessToken,body:{requestId:crypto.randomUUID(),reason:'其他校区的返修申请'}
+  },201);
+  const queue = (await api('/api/repair-followups?status=pending',{token:office})).items;
+  assert.equal(queue.length,1);
+  assert.equal(queue[0].followup.id,pending.id);
+  assert.deepEqual(Object.keys(queue[0].appointment).sort(),['id','campus','date','timeSlot','status','deviceType','brand','deviceModel'].sort());
+  assert.equal(queue[0].appointment.date,'2026-10-12');
+  await api('/api/repair-followups?status=pending',{token:await addUser('994010')},403);
+  const decision = {action:'schedule',requestId:crypto.randomUUID(),revision:pending.revision,date:'2026-10-19',timeSlot:TIME_SLOTS[0]};
+  const result = await api(`/api/repair-followups/${pending.id}/decision`,{method:'POST',token:office,body:decision});
+  assert.equal(result.status,'scheduled');
+  assert.equal(result.appointmentId,result.appointment.id);
+  assert.deepEqual(Object.keys(result.appointment).sort(),['id','campus','date','timeSlot','status'].sort());
+  await api(`/api/field/appointments/${result.appointment.id}`,{token:office},403);
+  const replay = await api(`/api/repair-followups/${pending.id}/decision`,{method:'POST',token:office,body:decision});
+  assert.equal(replay.idempotent,true);
+  assert.deepEqual(replay.appointment,result.appointment);
+  assert.equal((await db.prepare("SELECT COUNT(*) n FROM appointments WHERE registration_flow='repair_followup'").first()).n,1);
+  assert.ok(!(await api('/api/repair-followups?status=pending',{token:office})).items.some(row=>row.followup.id===pending.id));
+  assert.equal((await api('/api/repair-followups?status=scheduled',{token:office})).items[0].followup.id,pending.id);
+  await api(`/api/field/appointments/${original.id}`,{token:office},403);
+  await db.prepare("DELETE FROM duty_assignments WHERE id='followup-receipt-shift'").run();
+  await api('/api/repair-followups?status=pending',{token:office},403);
+  await api(`/api/repair-followups/${pending.id}/decision`,{method:'POST',token:office,body:decision},403);
+  await db.prepare("DELETE FROM member_roles WHERE id='followup-receipt-office'").run();
+  await api('/api/repair-followups?status=pending',{token:office},403);
+  await api(`/api/repair-followups/${pending.id}/decision`,{method:'POST',token:office,body:decision},403);
+});
+
+test('student repair history excludes internal transfer and correction reasons while staff retain the audit', async () => {
+  const root = await login(), tech = await addUser('994011');
+  const original = await book();
+  const started = await api(`/api/appointments/${original.id}/status`, {
+    method:'PATCH',token:root,body:{status:'in_progress',...await intake(original,root)}
+  });
+  const transferReason = '内部调度：维修人员排班和考核信息';
+  const transferred = await api(`/api/appointments/${original.id}/transfer`, {
+    method:'POST',token:root,body:{revision:started.revision,assignedTo:'994011',reason:transferReason}
+  });
+  const completed = await api(`/api/appointments/${original.id}/status`, {
+    method:'PATCH',token:tech,body:{status:'completed',revision:transferred.revision,outcome:'repaired',repairNote:'设备已修复并复测'}
+  });
+  const correctionReason = '内部核查：原记录录入人员的处理情况';
+  const corrected = await api(`/api/appointments/${original.id}/correction`, {
+    method:'PATCH',token:root,body:{revision:completed.revision,repairNote:'补充公开的维修说明',correctionReason}
+  });
+  assert.ok(corrected.repairHistory.events.some(event=>event.reason===correctionReason));
+  const staff = await api(`/api/field/appointments/${original.id}`,{token:root});
+  assert.ok(staff.repairHistory.events.some(event=>event.action==='repairs.transferred' && event.reason===transferReason));
+  assert.ok(staff.repairHistory.events.some(event=>event.action==='repairs.corrected' && event.reason===correctionReason));
+  const student = await api(`/api/appointments/${original.id}`,{accessToken:original.accessToken});
+  assert.equal(student.repairNote,'补充公开的维修说明');
+  assert.deepEqual(student.repairHistory.events.map(event=>event.action),staff.repairHistory.events.map(event=>event.action));
+  for (const event of student.repairHistory.events)
+    assert.deepEqual(Object.keys(event).sort(),['appointmentId','action','occurredAt'].sort());
+  for (const reason of [transferReason,correctionReason]) assert.ok(!JSON.stringify(student).includes(reason));
+});
+
+test('repair followups are idempotent, capacity-exempt, traceable, and only scannable while scheduled', async () => {
+  const root = await login();
+  const original = await book();
+  await db.prepare("UPDATE appointments SET status='completed',outcome='repaired',completed_at=?,revision=revision+1 WHERE id=?")
+    .bind(testNow, original.id).run();
+
+  const requestId = crypto.randomUUID();
+  const requestBody = { requestId, reason: '原故障再次出现，设备无法正常启动' };
+  const pending = await api(`/api/appointments/${original.id}/repair-followups`, {
+    method: 'POST', accessToken: original.accessToken, body: requestBody
+  }, 201);
+  assert.equal(pending.status, 'pending');
+  assert.equal((await api(`/api/appointments/${original.id}/repair-followups`, {
+    method: 'POST', accessToken: original.accessToken, body: requestBody
+  }, 201)).idempotent, true);
+  await api(`/api/appointments/${original.id}/repair-followups`, {
+    method: 'POST', accessToken: original.accessToken, body: { ...requestBody, requestId: crypto.randomUUID() }
+  }, 409);
+  await api('/api/appointments/' + original.id + '/repair-followups/staff', {
+    method: 'POST', token: await addUser('994001'), body: { requestId: crypto.randomUUID(), reason: '越权创建返修申请' }
+  }, 403);
+
+  const serviceDate = '2026-10-19';
+  const timeSlot = TIME_SLOTS[0];
+  const alreadyBooked = await book({ date: date, timeSlot: TIME_SLOTS[1] });
+  await db.prepare('UPDATE appointments SET date=?,expires_at=?,time_slot=? WHERE id=?')
+    .bind(serviceDate, expirationDeadline(serviceDate), timeSlot, alreadyBooked.id).run();
+  await db.prepare('UPDATE booking_day_slots SET capacity=1 WHERE campus=? AND date=? AND time_slot=?')
+    .bind(original.campus, serviceDate, timeSlot).run();
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM appointments WHERE source='booking' AND date=? AND campus=? AND time_slot=? AND status<>'cancelled'")
+    .bind(serviceDate, original.campus, timeSlot).first()).n, 1);
+
+  const decisionRequestId = crypto.randomUUID();
+  const decisionBody = { action: 'schedule', requestId: decisionRequestId, revision: pending.revision, date: serviceDate, timeSlot };
+  const result = await api(`/api/repair-followups/${pending.id}/decision`, {
+    method: 'POST', token: root,
+    body: decisionBody
+  });
+  assert.equal(result.status, 'scheduled');
+  assert.equal((await api(`/api/repair-followups/${pending.id}/decision`, { method: 'POST', token: root, body: decisionBody })).idempotent, true);
+  const childRow = await db.prepare('SELECT source,registration_flow FROM appointments WHERE id=?').bind(result.appointment.id).first();
+  assert.equal(childRow.registration_flow, 'repair_followup');
+  assert.equal(childRow.source, 'onsite');
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM appointments WHERE source='onsite' AND registration_flow='repair_followup' AND date=? AND campus=? AND time_slot=?")
+    .bind(serviceDate, original.campus, timeSlot).first()).n, 1);
+
+  const qr = await api(`/api/appointments/${original.id}/repair-followups/${pending.id}/scan-code`, {
+    accessToken: original.accessToken
+  });
+  const technician = await addUser('994002');
+  const resolved = await api('/api/scan/resolve', { method: 'POST', token: technician, body: { code: qr.code } });
+  assert.equal(resolved.id, result.appointment.id);
+  assert.equal(resolved.status, 'booked');
+  const history = await api(`/api/appointments/${original.id}`, { accessToken: original.accessToken });
+  assert.equal(history.repairHistory.followups[0].scheduledAppointmentId, result.appointment.id);
+  assert.equal(history.repairHistory.items.some((item) => item.id === result.appointment.id), true);
+
+  await api(`/api/appointments/${original.id}/repair-followups/staff`, {
+    method: 'POST', token: root, body: { requestId: crypto.randomUUID(), reason: '未完成返修前不能追加返修' }
+  }, 409);
+
+  await db.prepare('UPDATE appointments SET expires_at=? WHERE id=?').bind('2026-10-15T01:59:00.000Z', result.appointment.id).run();
+  await api(`/api/appointments/${original.id}/repair-followups/${pending.id}/scan-code`, {
+    accessToken: original.accessToken
+  }, 404);
+  assert.equal((await db.prepare('SELECT status FROM appointments WHERE id=?').bind(result.appointment.id).first()).status, 'expired');
+  const staffRequest = await api(`/api/appointments/${original.id}/repair-followups/staff`, {
+    method: 'POST', token: root, body: { requestId: crypto.randomUUID(), reason: '返修逾期后重新核对追加返修' }
+  }, 201);
+  assert.equal(staffRequest.requestSource, 'staff');
+  const rejectionBody = { action: 'reject', requestId: crypto.randomUUID(), revision: staffRequest.revision, reason: '经核对不属于维修故障' };
+  const rejected = await api(`/api/repair-followups/${staffRequest.id}/decision`, { method: 'POST', token: root, body: rejectionBody });
+  assert.equal(rejected.status, 'rejected');
+  assert.equal(rejected.resolutionNote, rejectionBody.reason);
+});
+
+test('repair chains allow only one unfinished followup across ancestors, descendants and concurrent requests', async () => {
+  const root = await login(), original = await book();
+  await db.prepare("UPDATE appointments SET status='completed',outcome='repaired',completed_at=? WHERE id=?").bind(testNow,original.id).run();
+  const requestFollowup = (parentId, staff = false) => request(`/api/appointments/${parentId}/repair-followups${staff ? '/staff' : ''}`, {
+    method:'POST',...(staff ? {token:root} : {accessToken:original.accessToken}),
+    body:{requestId:crypto.randomUUID(),reason:'同一维修链的返修测试'}
+  });
+  const schedule = (followup) => api(`/api/repair-followups/${followup.id}/decision`, {
+    method:'POST',token:root,body:{action:'schedule',requestId:crypto.randomUUID(),revision:followup.revision,date:'2026-10-19',timeSlot:TIME_SLOTS[0]}
+  });
+  const reject = (followup) => api(`/api/repair-followups/${followup.id}/decision`, {
+    method:'POST',token:root,body:{action:'reject',requestId:crypto.randomUUID(),revision:followup.revision,reason:'已核实后退回，允许重新申请'}
+  });
+  const first = await (await requestFollowup(original.id)).json();
+  const child = (await schedule(first)).appointment;
+  for (const staff of [false,true]) {
+    const blocked = await requestFollowup(original.id,staff);
+    assert.equal(blocked.status,409);
+    assert.equal((await blocked.json()).code,'FOLLOWUP_ACTIVE');
+  }
+  assert.equal((await api(`/api/appointments/${original.id}/repair-followups`, {
+    method:'POST',accessToken:original.accessToken,body:{requestId:first.requestId,reason:first.reason}
+  },201)).idempotent,true);
+  // Simulate a pending duplicate accepted by the earlier implementation.
+  const legacyId = crypto.randomUUID();
+  await db.prepare("INSERT INTO repair_followups(id,parent_appointment_id,status,reason,request_id,request_hash,requested_at) VALUES(?,?,'pending',?,?,?,?)")
+    .bind(legacyId,original.id,'旧版本留下的重复待处理申请',crypto.randomUUID(),'a'.repeat(64),testNow).run();
+  const legacy = await appointmentRepository(db).followupById(legacyId);
+  await api(`/api/repair-followups/${legacyId}/decision`, {
+    method:'POST',token:root,body:{action:'schedule',requestId:crypto.randomUUID(),revision:legacy.revision,date:'2026-10-19',timeSlot:TIME_SLOTS[1]}
+  },409);
+  assert.equal((await db.prepare("SELECT COUNT(*) n FROM appointments WHERE registration_flow='repair_followup'").first()).n,1);
+  assert.equal((await appointmentRepository(db).followupById(legacyId)).status,'pending');
+  await reject(legacy);
+  // Started repairs remain active even after their booking deadline.
+  await db.prepare("UPDATE appointments SET status='in_progress',assigned_to='root001',started_at=?,expires_at=? WHERE id=?")
+    .bind(testNow,'2026-10-15T01:00:00.000Z',child.id).run();
+  assert.equal((await requestFollowup(original.id)).status,409);
+  await db.prepare("UPDATE appointments SET status='completed',outcome='repaired',completed_at=? WHERE id=?").bind(testNow,child.id).run();
+  const competing = await Promise.all([requestFollowup(original.id),requestFollowup(child.id,true)]);
+  assert.deepEqual(competing.map(response=>response.status).sort(),[201,409]);
+  assert.equal((await db.prepare("SELECT COUNT(*) n FROM repair_followups WHERE status='pending'").first()).n,1);
+  const winner = await competing.find(response=>response.status===201).json();
+  await reject(winner);
+  const descendantRequest = await (await requestFollowup(child.id,true)).json();
+  assert.equal((await requestFollowup(original.id)).status,409);
+  const grandchild = (await schedule(descendantRequest)).appointment;
+  assert.equal((await requestFollowup(original.id,true)).status,409);
+  const history = (await api(`/api/appointments/${original.id}`,{accessToken:original.accessToken})).repairHistory;
+  assert.equal(history.items.length,3);
+  assert.ok(history.items.some(item=>item.id===grandchild.id && item.registrationFlow==='repair_followup'));
+  await db.prepare("UPDATE appointments SET status='cancelled' WHERE id=?").bind(grandchild.id).run();
+  assert.equal((await requestFollowup(original.id)).status,201);
+});
+
+test('repair followup scheduling rejects paused dates and invalid service windows without creating a child', async () => {
+  const root = await login();
+  const original = await book();
+  await db.prepare("UPDATE appointments SET status='completed',outcome='repaired',completed_at=? WHERE id=?")
+    .bind(testNow, original.id).run();
+  const pending = await api(`/api/appointments/${original.id}/repair-followups`, {
+    method: 'POST', accessToken: original.accessToken,
+    body: { requestId: crypto.randomUUID(), reason: '维修后相同故障再次出现' }
+  }, 201);
+  const campusId = (await db.prepare('SELECT id FROM campuses WHERE name=?').bind(original.campus).first()).id;
+  const pausedDate = '2026-10-19';
+  await db.prepare("INSERT INTO service_day_overrides(business_date,campus_id,paused,reason,updated_at) VALUES(?,?,1,'暂停测试',?)")
+    .bind(pausedDate, campusId, testNow).run();
+  const decision = (body, status = 409) => api(`/api/repair-followups/${pending.id}/decision`, {
+    method: 'POST', token: root, body: { action: 'schedule', requestId: crypto.randomUUID(), revision: pending.revision, ...body }
+  }, status);
+  await decision({ date: pausedDate, timeSlot: TIME_SLOTS[0] });
+  await decision({ date: '2026-10-18', timeSlot: TIME_SLOTS[0] }, 400);
+  await decision({ date: '2026-10-19', timeSlot: '18:00–18:30' }, 400);
+  assert.equal((await db.prepare('SELECT status FROM repair_followups WHERE id=?').bind(pending.id).first()).status, 'pending');
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM appointments WHERE registration_flow='repair_followup'").first()).n, 0);
+  await api(`/api/appointments/${original.id}/repair-followups`, {
+    method: 'POST', accessToken: original.accessToken,
+    body: { requestId: crypto.randomUUID(), reason: '未完成工单不应允许申报' }
+  }, 409);
 });
 
 test('one staff member cannot start two jobs, retrying intake and completion is idempotent, and corrections obey the claim', async () => {
@@ -576,11 +831,16 @@ test('failed and stale corrections never leave audit rows or bypass capacity and
   assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointment_corrections').first()).n,0);
   await service.update(replacement.id,{patch:{status:'cancelled'}},null,replacement.accessToken);
   const restored = await service.update(item.id,input,actor);
+  const guestRestored = await service.lookup(item.id,item.accessToken);
   await assert.rejects(service.update(item.id,input,actor),error => error.status===409);
   assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointment_corrections').first()).n,1);
-  const { assignedToName, assignedMemberId, registeredMemberId, ...guestRestored } = restored;
+  const { assignedToName, assignedMemberId, registeredMemberId, repairHistory: staffHistory, ...publicFields } = restored;
   assert.equal(assignedToName,'');
   assert.equal(assignedMemberId,''); assert.equal(registeredMemberId,'');
+  const { repairHistory: studentHistory, ...guestFields } = guestRestored;
+  assert.deepEqual(guestFields,publicFields);
+  assert.ok(staffHistory.events.some(event=>event.reason===input.correctionReason));
+  assert.ok(studentHistory.events.every(event=>!Object.hasOwn(event,'reason')));
   assert.deepEqual(await service.lookup(item.id,item.accessToken),guestRestored);
 });
 

@@ -2,6 +2,11 @@
 export function conflictMessage(error) {
   const message = `${error.message} ${error.cause?.message || ''}`;
   if (message.includes('BOOKING_NOTICE_CHANGED')) return '预约公告已更新，请阅读并确认重要公告后重新提交';
+  if (message.includes('FOLLOWUP_PARENT_NOT_COMPLETED')) return '仅已完成维修的工单可以申报返修';
+  if (message.includes('FOLLOWUP_APPOINTMENT_INVALID')) return '返修预约与来源工单不匹配，请刷新后重试';
+  if (message.includes('idx_repair_followups_one_pending_parent') || message.includes('UNIQUE constraint failed: repair_followups.parent_appointment_id')) return '该工单已有待处理返修申请，请先处理当前申请';
+  if (message.includes('repair_followups.request_id')) return '返修申请编号已使用，请刷新页面后重试';
+  if (message.includes('repair_followups.decision_request_id')) return '返修处理请求已完成，请刷新记录核实结果';
   if (message.includes('SERVICE_DAY_PAUSED')) return '该日期暂停维修，不能预约、接单或签到；已有记录保留';
   if (message.includes('PRESENCE_BUSY')) return '当前仍有进行中的维修，不能离岗';
   if (message.includes('idx_one_pending_onsite_registration')) return '请先签到或取消当前临时登记';

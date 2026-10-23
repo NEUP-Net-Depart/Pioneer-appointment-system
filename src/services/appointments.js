@@ -44,12 +44,14 @@ export function appointmentService(
   bookingSettings = null
 ) {
   const present = async (item, staff = false) => {
-    const [visible, location] = await Promise.all([
+    const [visible, location, repairHistory] = await Promise.all([
       presentAppointment(item, encryptionKey, { staff }),
-      appointments.location(item.date, item.campus)
+      appointments.location(item.date, item.campus),
+      appointments.repairHistory(item.id, { staff })
     ]);
     return {
       ...visible,
+      repairHistory,
       serverNow: clock().toISOString(),
       location: location?.location || item.locationSnapshot || '',
       currentLocationRevision: location?.revision ?? null,

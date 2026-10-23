@@ -178,6 +178,29 @@ fieldset.field { padding: 0; border: 0; }
 [data-upload-state=uploading] .upload-state-icon { border-right-color: transparent; animation: upload-spin 1s linear infinite; }
 .upload-advice { display: flex; align-items: flex-start; gap: 10px; margin: 18px 0; }
 .photo-upload-actions { justify-content: flex-start; }
+.repair-history-section { grid-column: 1 / -1; min-width: 0; }
+.repair-history-list { display: grid; gap: 0; }
+.repair-round { min-width: 0; padding: 18px 0; border-top: 1px solid var(--line); }
+.repair-round:first-child { border-top: 0; }
+.repair-round-heading, .repair-followup-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.repair-round-heading span { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; text-align: right; }
+.repair-round-time, .repair-round-result, .repair-round-note { margin: 8px 0; }
+.repair-round-note { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
+.repair-round-events { display: grid; gap: 12px; margin: 14px 0; padding: 0 0 0 22px; color: var(--muted); }
+.repair-round-events li { padding-left: 4px; }
+.repair-round-events time, .repair-followup-heading time { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
+.repair-round-events p { margin: 5px 0 0; white-space: pre-wrap; }
+.repair-followup-entry { margin-top: 14px; padding: 14px; border-inline-start: 3px solid var(--green); background: #f4f8f6; }
+.repair-followup-entry > p { margin: 8px 0; overflow-wrap: anywhere; white-space: pre-wrap; line-height: 1.6; }
+.repair-followup-entry .secondary-btn { margin-top: 6px; }
+.followup-qr-container { display: grid; justify-items: start; padding-top: 12px; }
+.followup-qr-container .repair-qr img { display: block; width: min(220px, 100%); height: auto; aspect-ratio: 1; }
+.followup-pending-message { margin: 16px 0 0; padding: 14px; border-radius: 8px; background: #f2f5f7; line-height: 1.6; }
+.customer-followup-form { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
+.customer-followup-form textarea { display: block; width: 100%; min-height: 100px; margin-top: 8px; padding: 12px; border: 1px solid #cdd9df; border-radius: var(--radius); font: inherit; resize: vertical; }
+.customer-followup-form .primary-btn { margin-top: 8px; }
+.followup-submit-message { min-height: 1.5em; margin: 8px 0 0; color: var(--muted); }
+.followup-submit-message:empty { display: none; }
 @keyframes upload-spin { to { transform: rotate(360deg); } }
 @media(max-width:480px) { #success-photos { padding: 16px; } .photo-upload-row { gap: 8px; } }
 .user-mode .modal-backdrop { padding: 20px; z-index: 100; }

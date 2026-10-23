@@ -12,7 +12,10 @@ export async function renderRepairQr(container, item) {
     let encodingTimer;
     button.disabled = true;
     try {
-      const { code } = await apiJson(`/api/appointments/${encodeURIComponent(item.id)}/scan-code`, { headers: credentialHeaders(item), timeoutMs: 15000 });
+      const endpoint = item.scanParentId
+        ? '/api/appointments/' + encodeURIComponent(item.scanParentId) + '/repair-followups/' + encodeURIComponent(item.followupId) + '/scan-code'
+        : '/api/appointments/' + encodeURIComponent(item.id) + '/scan-code';
+      const { code } = await apiJson(endpoint, { headers: credentialHeaders(item), timeoutMs: 15000 });
       const blob = await Promise.race([qrImage(code),new Promise((_,reject)=>{encodingTimer=setTimeout(()=>reject(new Error('二维码生成超时')),15000);})]);
       if (!container.contains(image)) return;
       const url = URL.createObjectURL(blob);

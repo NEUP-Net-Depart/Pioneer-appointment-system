@@ -156,6 +156,10 @@
     {
       "name": "0036_appointment_expiration_time.sql",
       "sha256": "73970c65f1a1d4eee6f97c7a7d5e639132f7171c3cd3d1a2e1ae2c2056687c0d"
+    },
+    {
+      "name": "0037_repair_followups.sql",
+      "sha256": "b4148d27c2ea6d31a95d819457ad27ee9624c4f4d6ae39aff98125210cece792"
     }
   ],
   "modules": [
@@ -391,6 +395,10 @@
     {
       "name": "0036_appointment_expiration_time.sql",
       "sha256": "73970c65f1a1d4eee6f97c7a7d5e639132f7171c3cd3d1a2e1ae2c2056687c0d"
+    },
+    {
+      "name": "0037_repair_followups.sql",
+      "sha256": "b4148d27c2ea6d31a95d819457ad27ee9624c4f4d6ae39aff98125210cece792"
     }
   ]
 }
