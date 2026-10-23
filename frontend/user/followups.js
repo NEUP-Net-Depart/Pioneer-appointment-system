@@ -1,6 +1,7 @@
 import { formatDate } from '/shared/time.js';
-import { statusText } from './presentation.js';
+import { statusText, timeLabel } from './presentation.js';
 import { outcomeLabels } from '/shared/constants.js';
+import { activeRepairFollowup } from '/shared/repair-followups.js';
 
 const requestState = {
   pending: '等待办公人员安排',
@@ -12,7 +13,7 @@ const eventLabel = {
   'repairs.transferred': '工单已转交',
   'repairs.started': '开始维修',
   'repairs.completed': '维修完成',
-  'repairs.corrected': '管理员修正记录'
+  'repairs.corrected': '工单记录已更新'
 };
 
 function element(tag, className = '', text = '') {
@@ -42,7 +43,7 @@ export function createFollowupPanel(item, message = '') {
     heading.append(element('strong', '', '第 ' + (index + 1) + ' 轮维修'), element('span', '', entry.id));
     round.append(heading);
     round.append(element('p', 'repair-round-time',
-      formatDate(entry.date) + ' · ' + entry.timeSlot + ' · ' + statusText(entry)));
+      formatDate(entry.date) + ' · ' + timeLabel(entry) + ' · ' + statusText(entry)));
     if (entry.outcome) round.append(element('p', 'repair-round-result',
       outcomeLabels[entry.outcome] || outcomeLabels.legacy_unknown));
     if (entry.repairNote) round.append(element('p', 'repair-round-note', entry.repairNote));
@@ -52,10 +53,9 @@ export function createFollowupPanel(item, message = '') {
       events.forEach((event) => {
         const line = element('li');
         const label = eventLabel[event.action] || '工单更新';
-        line.append(element('span', '', label + (event.assigneeName ? ' · ' + event.assigneeName : '')));
+        line.append(element('span', '', label));
         const time = element('time', '', new Date(event.occurredAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }));
         line.append(time);
-        if (event.reason) line.append(element('p', '', event.reason));
         list.append(line);
       });
       round.append(list);
@@ -90,12 +90,11 @@ export function createFollowupPanel(item, message = '') {
   });
   section.append(rounds);
 
-  const pending = history.followups.some((request) =>
-    request.parentAppointmentId === item.id && request.status === 'pending'
-  );
-  if (pending) section.append(element('p', 'followup-pending-message',
-    '返修申请已提交，办公人员安排后会在此显示日期与返修单号。'));
-  if (item.status === 'completed' && !pending) {
+  const active = activeRepairFollowup(history, item.serverNow || new Date().toISOString());
+  if (active) section.append(element('p', 'followup-pending-message', active.status === 'pending'
+    ? '返修申请已提交，办公人员安排后会在此显示日期与返修单号。'
+    : '该维修链已有未完成返修，请先查看并处理当前返修。'));
+  if (item.status === 'completed' && !active) {
     const form = element('form', 'customer-followup-form');
     form.dataset.followupForm = '';
     const label = element('label', 'field', '返修情况');

@@ -1,5 +1,6 @@
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { statusLabels, outcomeLabels, repairOutcomes } from '../../shared/constants.js';
+import { activeRepairFollowup } from '../../shared/repair-followups.js';
 import { request } from './request.js';
 import { ActivityContext, Notice } from './field/ui';
 
@@ -121,6 +122,10 @@ export function RecordMaintenance({ item, onChanged, busy: parentBusy }) {
   }
   if (!item.canCorrect && !item.canRecoverCredential && !item.canManageFollowup) return null;
   const disabled = busy || parentBusy;
+  const activeFollowup = activeRepairFollowup(
+    item.repairHistory,
+    item.serverNow || new Date().toISOString()
+  );
   return (
     <section className="record-maintenance">
       <h3>记录管理</h3>
@@ -152,11 +157,13 @@ export function RecordMaintenance({ item, onChanged, busy: parentBusy }) {
         )}
       </div>
       <Notice>{error || message}</Notice>
-      {item.canCorrect && item.status === 'completed' && (
+      {item.canCorrect && item.canManageFollowup && item.status === 'completed' && (
         <section className="record-followup-create">
           <h4>从此工单追加返修</h4>
           <p className="field-muted">
-            建立待处理返修申请，之后由办公人员安排日期与时段；不会修改原工单。
+            {activeFollowup
+              ? '该维修链已有待处理申请或未完成返修，请先处理当前返修。'
+              : '建立待处理返修申请，之后由办公人员安排日期与时段；同一维修链最多一项未完成返修。'}
           </p>
           <label>
             返修情况
@@ -164,11 +171,12 @@ export function RecordMaintenance({ item, onChanged, busy: parentBusy }) {
               value={followupReason}
               maxLength={3000}
               rows={3}
+              disabled={disabled || !!activeFollowup}
               onChange={(event) => setFollowupReason(event.target.value)}
             />
           </label>
           <button
-            disabled={disabled || followupReason.trim().length < 2}
+            disabled={disabled || !!activeFollowup || followupReason.trim().length < 2}
             onClick={() =>
               run(async () => {
                 const text = followupReason.trim();

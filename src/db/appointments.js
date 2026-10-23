@@ -54,6 +54,19 @@ const assigneeName =
 const memberIdentity =
   '(SELECT member_id FROM staff_accounts WHERE account=appointments.assigned_to) AS assigned_member_id,(SELECT member_id FROM staff_accounts WHERE account=appointments.registered_by) AS registered_member_id';
 const select = `SELECT appointments.*,(SELECT paused FROM service_day_overrides s JOIN campuses c ON c.id=s.campus_id WHERE s.business_date=appointments.date AND c.name=appointments.campus) AS service_paused,${assigneeName},${memberIdentity} FROM appointments`;
+// UNION deduplicates ancestors and descendants, including historical branches.
+const repairChain = `WITH RECURSIVE repair_chain(id) AS (
+  SELECT ? UNION
+  SELECT CASE WHEN rf.parent_appointment_id=chain.id THEN rf.scheduled_appointment_id ELSE rf.parent_appointment_id END
+  FROM repair_chain chain JOIN repair_followups rf
+    ON rf.parent_appointment_id=chain.id OR rf.scheduled_appointment_id=chain.id
+  WHERE rf.status='scheduled'
+)`;
+const activeFollowups = `SELECT 1 FROM repair_followups active
+  LEFT JOIN appointments child ON child.id=active.scheduled_appointment_id
+  WHERE active.parent_appointment_id IN (SELECT id FROM repair_chain)
+    AND (active.status='pending' OR (active.status='scheduled' AND
+      (child.status='in_progress' OR (child.status='booked' AND child.expires_at>?))))`;
 const followupRow = (row) => ({
   id: row.followup_id ?? row.id,
   parentAppointmentId: row.parent_appointment_id,
@@ -286,13 +299,13 @@ export function appointmentRepository(db) {
     },
     async createRepairFollowup(input, actor, instant) {
       const id = crypto.randomUUID();
-      const inserted = db.prepare(`INSERT INTO repair_followups
+      const inserted = db.prepare(`${repairChain} INSERT INTO repair_followups
         (id,parent_appointment_id,status,request_source,reason,request_id,request_hash,requested_by,requested_at)
         SELECT ?,a.id,'pending',?,?,?,?,?,? FROM appointments a
-        WHERE a.id=? AND a.status='completed'
+        WHERE a.id=? AND a.status='completed' AND NOT EXISTS(${activeFollowups})
         RETURNING id,parent_appointment_id,status,request_source,reason,request_id,request_hash,requested_by,requested_at,
           scheduled_appointment_id,scheduled_by,scheduled_at,resolved_by,resolved_at,resolution_note,decision_request_id,decision_hash,revision`)
-        .bind(id,actor ? 'staff' : 'customer',input.reason,input.requestId,input.requestHash,actor?.account || null,instant,input.parentAppointmentId);
+        .bind(input.parentAppointmentId,id,actor ? 'staff' : 'customer',input.reason,input.requestId,input.requestHash,actor?.account || null,instant,input.parentAppointmentId,instant);
       const audit = db.prepare(`INSERT INTO audit_events(id,actor_member_id,actor_account,action,source_ref,after_json,reason,request_id,occurred_at)
         SELECT ?,?,?,?,?,?,?,?,? WHERE changes()>0`)
         .bind(crypto.randomUUID(),actor?.memberId || null,actor?.account || null,'repairs.followup.requested',
@@ -327,11 +340,12 @@ export function appointmentRepository(db) {
       const accessHash = child.accessTokenHash;
       const actorGuard = `EXISTS(SELECT 1 FROM staff_accounts sa JOIN members m ON m.id=sa.member_id
         WHERE sa.account=? AND sa.auth_version=? AND sa.status='enabled' AND m.status='active')`;
-      const insertSql = `INSERT INTO appointments(id,${Object.values(writeColumns).join(',')},access_token_hash,credential_rotated_at)
+      const insertSql = `${repairChain} INSERT INTO appointments(id,${Object.values(writeColumns).join(',')},access_token_hash,credential_rotated_at)
         SELECT ? || printf('%02d',1+(SELECT COALESCE(MAX(CAST(substr(id,instr(id,'-')+1) AS INTEGER)),0) FROM appointments WHERE id LIKE ? OR id LIKE ? OR id LIKE ?)),
           ${values.join(',')},?,?
         FROM appointments parent JOIN repair_followups rf ON rf.id=? AND rf.parent_appointment_id=parent.id
         WHERE parent.id=? AND parent.status='completed' AND rf.status='pending' AND rf.revision=? AND rf.decision_request_id IS NULL
+          AND NOT EXISTS(${activeFollowups} AND active.id<>rf.id)
           AND ${actorGuard}
           AND NOT EXISTS(SELECT 1 FROM service_day_overrides s JOIN campuses c ON c.id=s.campus_id
             WHERE s.business_date=? AND c.name=parent.campus AND s.paused=1)
@@ -339,8 +353,8 @@ export function appointmentRepository(db) {
             OR (NOT EXISTS(SELECT 1 FROM booking_day_slots b WHERE b.campus=parent.campus AND b.date=?)
               AND EXISTS(SELECT 1 FROM weekday_slot_capacities w WHERE w.campus=parent.campus
                 AND w.weekday=CAST(strftime('%w',?) AS INTEGER) AND w.time_slot=? AND w.capacity>0))) RETURNING *`;
-      const insertBindings = [prefix,`${prefix}%`,`reverse${prefix.slice(7)}%`,`${prefix.slice(7)}%`,...insertArgs,accessHash,instant,
-        input.followupId,parent.id,input.revision,actor.account,actor.authVersion ?? 0,
+      const insertBindings = [parent.id,prefix,`${prefix}%`,`reverse${prefix.slice(7)}%`,`${prefix.slice(7)}%`,...insertArgs,accessHash,instant,
+        input.followupId,parent.id,input.revision,instant,actor.account,actor.authVersion ?? 0,
         child.date,child.date,child.timeSlot,child.date,child.date,child.timeSlot];
       const insert = db.prepare(insertSql).bind(...insertBindings);
       const update = db.prepare(`UPDATE repair_followups SET status='scheduled',scheduled_appointment_id=(
@@ -389,15 +403,9 @@ export function appointmentRepository(db) {
         ORDER BY rf.requested_at,rf.id LIMIT 300`).bind(...campuses,status).all()).results;
       return rows.map((row) => ({ followup: followupRow(row), appointment: fromRow(row) }));
     },
-    async repairHistory(id) {
-      const related = (await db.prepare(`WITH RECURSIVE chain(id,path) AS (
-          SELECT ?, '|'||?||'|'
-          UNION ALL
-          SELECT CASE WHEN rf.parent_appointment_id=chain.id THEN rf.scheduled_appointment_id ELSE rf.parent_appointment_id END,
-            chain.path || CASE WHEN rf.parent_appointment_id=chain.id THEN rf.scheduled_appointment_id ELSE rf.parent_appointment_id END || '|'
-          FROM chain JOIN repair_followups rf ON rf.parent_appointment_id=chain.id OR rf.scheduled_appointment_id=chain.id
-          WHERE rf.status='scheduled' AND instr(chain.path,'|'||CASE WHEN rf.parent_appointment_id=chain.id THEN rf.scheduled_appointment_id ELSE rf.parent_appointment_id END||'|')=0
-        ) SELECT DISTINCT id FROM chain LIMIT 201`).bind(id,id).all()).results.map((row) => row.id);
+    async repairHistory(id, { staff = false } = {}) {
+      const related = (await db.prepare(`${repairChain} SELECT id FROM repair_chain LIMIT 201`)
+        .bind(id).all()).results.map((row) => row.id);
       if (!related.length || related.length > 200) return { items: [], followups: [], events: [] };
       const marks = related.map(() => '?').join(',');
       const [items,requests,events] = await Promise.all([
@@ -411,8 +419,9 @@ export function appointmentRepository(db) {
       return {
         items: items.results.map((row) => {
           const item = fromRow(row);
-          return Object.fromEntries(['id','date','timeSlot','status','outcome','repairNote','assignedToName',
-            'startedAt','completedAt','source','repairNumber','createdAt'].map((key) => [key,item[key]]));
+          return Object.fromEntries(['id','date','timeSlot','status','outcome','repairNote',
+            'startedAt','completedAt','source','registrationFlow','expiresAt','repairNumber','createdAt',
+            ...(staff ? ['assignedToName'] : [])].map((key) => [key,item[key]]));
         }),
         followups: requests.results.map((row) => ({ id:row.id,parentAppointmentId:row.parent_appointment_id,status:row.status,
           requestSource:row.request_source,reason:row.reason,requestedAt:row.requested_at,scheduledAppointmentId:row.scheduled_appointment_id || '',
@@ -420,8 +429,8 @@ export function appointmentRepository(db) {
         events: events.results.map((row) => {
           const before = parseJson(row.before_json,null), after = parseJson(row.after_json,null);
           return { appointmentId:row.appointment_id,action:row.action,occurredAt:row.occurred_at,
-            reason:row.reason || '',beforeStatus:before?.status || '',afterStatus:after?.status || '',
-            assigneeName:after?.assigneeIdentity?.name || '' };
+            ...(staff ? { reason:row.reason || '',beforeStatus:before?.status || '',afterStatus:after?.status || '',
+              assigneeName:after?.assigneeIdentity?.name || '' } : {}) };
         })
       };
     },

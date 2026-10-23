@@ -120,7 +120,9 @@ export function RepairFollowups({ active, onChanged }) {
                 <div className="followup-card-title">
                   <div>
                     <strong>
-                      {(appointment.name || '客户信息待核验') + ' · ' + appointment.id}
+                      {(appointment.deviceModel || appointment.brand || '原工单') +
+                        ' · ' +
+                        appointment.id}
                     </strong>
                     <span>
                       {appointment.campus}校区 · 原维修 {appointment.date} {appointment.timeSlot}

@@ -11,7 +11,7 @@ async function api(request, path, token, body, method = body ? 'POST' : 'GET') {
   expect(r.ok(), JSON.stringify(v)).toBeTruthy();
   return v;
 }
-test('office schedules a customer followup once after a lost response without receiving future customer details', async ({
+test('followup permissions, public history, duplicate prevention and appointment times survive a lost scheduling response', async ({
   page,
   request,
   browser
@@ -86,7 +86,7 @@ test('office schedules a customer followup once after a lost response without re
     },
     'PATCH'
   );
-  await api(
+  const completed = await api(
     request,
     `/api/appointments/${order.id}/status`,
     tech.token,
@@ -99,6 +99,12 @@ test('office schedules a customer followup once after a lost response without re
     },
     'PATCH'
   );
+  const internalReason = '内部核查：原记录录入人员的处理情况，学生不应看到';
+  await api(request, `/api/appointments/${order.id}/correction`, root.token, {
+    revision: completed.revision,
+    repairNote: '完成初次维修，测试返修反馈',
+    correctionReason: internalReason
+  }, 'PATCH');
   const credentialLink = await api(
     request,
     `/api/appointments/${order.id}/credential`,
@@ -115,6 +121,8 @@ test('office schedules a customer followup once after a lost response without re
     );
     const history = guest.locator('.repair-history-section');
     await expect(history.locator('.repair-round-result')).toHaveText('修复成功');
+    await expect(history).not.toContainText(internalReason);
+    await expect(guest.locator('#detail-summary')).toContainText('现场临时登记');
     await history
       .getByRole('textbox', { name: '返修情况', exact: true })
       .fill('修复后相同故障再次出现，请安排复查');
@@ -178,6 +186,23 @@ test('office schedules a customer followup once after a lost response without re
     await guest.reload();
     await expect(history).toContainText(responses[0].appointment.id);
     await expect(history).toContainText('已安排维修');
+    await expect(history).toContainText('返修预约 · 19:00–19:30');
+    await expect(history.getByRole('button', { name: '提交返修申请', exact: true })).toHaveCount(0);
+    await expect(history).toContainText('该维修链已有未完成返修');
+    const childCredential = await api(request, `/api/appointments/${responses[0].appointment.id}/credential`, root.token, {
+      identityVerified: true, reason: '已核验测试机主身份，检查返修单日期时段展示'
+    });
+    await guest.goto('/#' + new URLSearchParams({ appointment: responses[0].appointment.id, access: childCredential.accessToken }));
+    await expect(guest.locator('#detail-summary')).toContainText('返修预约 · 19:00–19:30');
+    await expect(guest.locator('#detail-summary')).not.toContainText('现场临时登记');
+    await guest.getByRole('button', { name: '取消预约', exact: true }).click();
+    await expect(guest.locator('#cancel-confirmation')).toContainText('返修预约 · 19:00–19:30');
+    await guest.getByRole('button', { name: '确认取消', exact: true }).click();
+    await expect(guest.locator('#detail-summary')).toContainText('已取消');
+    await guest.locator('#back-to-appointments').click();
+    await expect(guest.locator('.student-record').filter({ hasText: '返修预约 · 19:00–19:30' })).toHaveCount(1);
+    await guest.goto('/#' + new URLSearchParams({ appointment: order.id, access: credentialLink.accessToken }));
+    await expect(history.getByRole('button', { name: '提交返修申请', exact: true })).toBeVisible();
     expect(await guest.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true
     );

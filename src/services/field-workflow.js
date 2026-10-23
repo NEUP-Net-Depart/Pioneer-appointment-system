@@ -155,6 +155,7 @@ export function fieldWorkflow({
       'status',
       'servicePaused',
       'source',
+      'registrationFlow',
       'deviceType',
       'brand',
       'deviceModel',
@@ -258,7 +259,8 @@ export function fieldWorkflow({
       canCorrect: allowed(context, 'repair.correct', target),
       canRecoverCredential: allowed(context, 'repair.correct', target),
       canManageFollowup: allowed(context, 'repair.followup.manage', target),
-      repairHistory: visible.canReadDetails ? await appointments.repairHistory(id) : null,
+      serverNow: new Date().toISOString(),
+      repairHistory: visible.canReadDetails ? await appointments.repairHistory(id, { staff: true }) : null,
       original:
         visible.canReadDetails &&
         (item.assignedMemberId === context.actor.memberId ||

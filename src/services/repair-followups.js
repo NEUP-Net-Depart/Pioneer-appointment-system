@@ -31,6 +31,17 @@ export function repairFollowupService(appointments, staffPlatform, clock = () =>
     return { id: existing.id, status: existing.status, idempotent: true };
   }
 
+  async function create(input, actor) {
+    const result = await appointments.createRepairFollowup(input, actor, clock().toISOString());
+    if (!result) {
+      const replay = await existingRequest(input.requestId, input.parentAppointmentId, input.requestHash);
+      if (replay) return replay;
+      await parent(input.parentAppointmentId);
+      fail(409, '该维修链已有待处理申请或未完成返修，请先处理当前返修', 'FOLLOWUP_ACTIVE');
+    }
+    return result;
+  }
+
   function decisionReceipt(followup, appointment, idempotent = false) {
     // Managing this request does not grant access to a future appointment's
     // customer details. A committed decision only returns its scheduling facts.
@@ -61,14 +72,12 @@ export function repairFollowupService(appointments, staffPlatform, clock = () =>
       const fingerprint = bookingDigest({ parentAppointmentId: item.id, reason, requestSource: 'customer' });
       const replay = await existingRequest(operationId, item.id, fingerprint);
       if (replay) return replay;
-      const result = await appointments.createRepairFollowup({
+      return create({
         parentAppointmentId: item.id,
         reason,
         requestId: operationId,
         requestHash: fingerprint
-      }, null, clock().toISOString());
-      if (!result) fail(409, '原工单状态已变化，请刷新后重试');
-      return result;
+      }, null);
     },
 
     async createByStaff(parentId, input, actor) {
@@ -85,10 +94,8 @@ export function repairFollowupService(appointments, staffPlatform, clock = () =>
       const fingerprint = bookingDigest({ parentAppointmentId: item.id, reason, requestSource: 'staff' });
       const replay = await existingRequest(operationId, item.id, fingerprint);
       if (replay) return replay;
-      const result = await appointments.createRepairFollowup({ parentAppointmentId: item.id, reason,
-        requestId: operationId, requestHash: fingerprint }, actor, clock().toISOString());
-      if (!result) fail(409, '原工单状态已变化，请刷新后重试');
-      return result;
+      return create({ parentAppointmentId: item.id, reason,
+        requestId: operationId, requestHash: fingerprint }, actor);
     },
 
     async list(actor, query = {}) {
@@ -96,10 +103,13 @@ export function repairFollowupService(appointments, staffPlatform, clock = () =>
       const campuses = actor.authorizedCampuses || [];
       const status = ['pending', 'scheduled', 'rejected'].includes(query.status) ? query.status : 'pending';
       const rows = await appointments.listRepairFollowups(campuses, status);
-      const projected = await Promise.all(rows.map(async (row) => ({
+      // Follow-up management grants a historical scheduling summary, independently
+      // of today's customer-detail permissions. Never project customer fields here.
+      const projected = rows.map((row) => ({
         followup: row.followup,
-        appointment: await staffPlatform.field.detail(actor, row.appointment.id)
-      })));
+        appointment: Object.fromEntries(['id','campus','date','timeSlot','status','deviceType','brand','deviceModel']
+          .map((key) => [key,row.appointment[key]]))
+      }));
       return { items: projected };
     },
 
@@ -177,7 +187,7 @@ export function repairFollowupService(appointments, staffPlatform, clock = () =>
       if (action === 'schedule') {
         const result = await appointments.scheduleRepairFollowup({ followupId, revision,
           decisionRequestId: operationId, decisionHash, reason: '' }, item, child, actor, timestamp.toISOString());
-        if (!result) fail(409, '排期、权限或维修日期已变化，请刷新后核对');
+        if (!result) fail(409, '该维修链已有其他未完成返修，或排期、权限、维修日期已变化，请刷新后核对');
         return decisionReceipt(result.followup, result.appointment);
       }
       const result = await appointments.rejectRepairFollowup({ followupId, revision,

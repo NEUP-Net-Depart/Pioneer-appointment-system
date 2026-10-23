@@ -47,7 +47,7 @@ export function appointmentService(
     const [visible, location, repairHistory] = await Promise.all([
       presentAppointment(item, encryptionKey, { staff }),
       appointments.location(item.date, item.campus),
-      appointments.repairHistory(item.id)
+      appointments.repairHistory(item.id, { staff })
     ]);
     return {
       ...visible,

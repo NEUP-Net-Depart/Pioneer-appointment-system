@@ -6,7 +6,7 @@ import { formatDate } from '/shared/time.js';
 import { statusClass,outcomeLabels,terminalStatuses } from '/shared/constants.js';
 import { savedAppointments,saveAppointment,privateLink,parsePrivateLink,credentialHeaders,credentialStorageError,copyPrivateLink } from './credentials.js';
 import { renderRepairQr } from './repair-qr.js';
-import { timeSummary,informationGroups,statusText,statusExplanation,repairRecord } from './presentation.js';
+import { timeSummary,timeLabel,informationGroups,statusText,statusExplanation,repairRecord } from './presentation.js';
 import { createPhotoCollection,previewPhoto } from './photos.js';
 import { createFollowupPanel } from './followups.js';
 
@@ -20,7 +20,7 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
     records.set(item.id,{entry:{id:item.id,accessToken:item.accessToken},item,message:'',receivedAt:Date.now()});}
   function setNotice(target,message){target.hidden=!message;target.textContent=message;}
   function openImport(){const form=$('#import-form');form.hidden=false;$('#import-appointment').setAttribute('aria-expanded','true');$('#private-link-input').focus();}
-  function card(item){return `<button type="button" class="student-record" data-detail-id="${escapeHtml(item.id)}"><span class="record-top"><strong>${escapeHtml(item.deviceType)} · ${escapeHtml(item.brand)}</strong><span class="status-pill ${statusClass[item.status]}">${statusText(item)}</span></span><p>${escapeHtml(item.campus)}校区 · ${formatDate(item.date)} · ${escapeHtml(item.source==='onsite' ? '现场临时登记' : item.timeSlot)}</p><p>${escapeHtml(item.faultType)}${item.status==='completed' ? ' · '+escapeHtml(outcomeLabels[item.outcome] || '历史未分类') : ''}</p>${item.status==='completed' && item.repairNote ? `<p>${escapeHtml(item.repairNote.slice(0,90))}${item.repairNote.length>90 ? '…' : ''}</p>` : ''}</button>`;}
+  function card(item){return `<button type="button" class="student-record" data-detail-id="${escapeHtml(item.id)}"><span class="record-top"><strong>${escapeHtml(item.deviceType)} · ${escapeHtml(item.brand)}</strong><span class="status-pill ${statusClass[item.status]}">${statusText(item)}</span></span><p>${escapeHtml(item.campus)}校区 · ${formatDate(item.date)} · ${escapeHtml(timeLabel(item))}</p><p>${escapeHtml(item.faultType)}${item.status==='completed' ? ' · '+escapeHtml(outcomeLabels[item.outcome] || '历史未分类') : ''}</p>${item.status==='completed' && item.repairNote ? `<p>${escapeHtml(item.repairNote.slice(0,90))}${item.repairNote.length>90 ? '…' : ''}</p>` : ''}</button>`;}
   function renderList(){
     const entries=[...records.values()],items=entries.filter(row=>row.item).map(row=>row.item),failed=entries.filter(row=>row.message),unknown=entries.filter(row=>!row.item && !row.message);
     $('#import-appointment').hidden=!entries.length && !credentialStorageError();
@@ -95,7 +95,7 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
     detailPhotos.refresh();
     const operations=$('#detail-operations');
     if(item.status==='booked') {
-      if(!operations.querySelector('[data-cancel-open]'))operations.innerHTML=`<button type="button" class="secondary-btn danger-btn" data-cancel-open aria-expanded="false" aria-controls="cancel-confirmation">取消预约</button><div class="notice cancel-confirm" id="cancel-confirmation" role="region" aria-label="取消预约二次确认" hidden><p>${escapeHtml(item.campus)} · ${formatDate(item.date)} · ${escapeHtml(item.source==='onsite' ? '现场临时登记' : item.timeSlot)}</p><p id="cancel-explanation">取消后本次预约将失效。如仍需维修，请重新预约。</p><div class="actions"><button class="secondary-btn" type="button" data-cancel-keep>保留预约</button><button class="secondary-btn danger-btn" type="button" data-cancel-confirm aria-describedby="cancel-explanation">确认取消</button></div><p class="field-error" id="cancel-message" role="alert"></p></div>`;
+      if(!operations.querySelector('[data-cancel-open]'))operations.innerHTML=`<button type="button" class="secondary-btn danger-btn" data-cancel-open aria-expanded="false" aria-controls="cancel-confirmation">取消预约</button><div class="notice cancel-confirm" id="cancel-confirmation" role="region" aria-label="取消预约二次确认" hidden><p>${escapeHtml(item.campus)} · ${formatDate(item.date)} · ${escapeHtml(timeLabel(item))}</p><p id="cancel-explanation">取消后本次预约将失效。如仍需维修，请重新预约。</p><div class="actions"><button class="secondary-btn" type="button" data-cancel-keep>保留预约</button><button class="secondary-btn danger-btn" type="button" data-cancel-confirm aria-describedby="cancel-explanation">确认取消</button></div><p class="field-error" id="cancel-message" role="alert"></p></div>`;
     } else if(terminalStatuses.includes(item.status)) {
       if(!operations.querySelector('[data-rebook]'))operations.innerHTML='<button class="primary-btn" type="button" data-rebook>重新预约</button><div class="notice" id="rebook-confirm" hidden><p>重新预约将舍弃当前未提交草稿，开始空白预约。是否继续？</p><div class="actions"><button class="secondary-btn" type="button" data-rebook-keep>保留草稿</button><button class="primary-btn" type="button" data-rebook-confirm>舍弃草稿并重新预约</button></div></div>';
     } else operations.innerHTML='<p class="field-hint">维修进行中，不能取消预约。</p>';
