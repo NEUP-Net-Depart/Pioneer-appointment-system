@@ -182,6 +182,44 @@ test('scan lookup needs staff authorization, preserves campus scope and never st
   assert.equal((await resolve({code})).id,item.id, 'student credential rotation must not invalidate a repair QR');
 });
 
+test('office followup decisions return safe repeatable receipts without granting future customer access', async (t) => {
+  t.after(async () => {
+    await db.batch([
+      db.prepare("DELETE FROM duty_assignments WHERE id='followup-receipt-shift'"),
+      db.prepare("DELETE FROM roster_versions WHERE id='followup-receipt-roster'"),
+      db.prepare("DELETE FROM roster_tasks WHERE id='followup-receipt-task'")
+    ]);
+  });
+  await login();
+  const office = await addUser('994009');
+  const { member_id: memberId } = await db.prepare('SELECT member_id FROM staff_accounts WHERE account=?').bind('994009').first();
+  await db.prepare('DELETE FROM member_roles WHERE member_id=?').bind(memberId).run();
+  await db.prepare("INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from) VALUES('followup-receipt-office',?,'role-office','{\"campuses\":\"bound\"}','2026-01-01')").bind(memberId).run();
+  await db.prepare("INSERT INTO roster_tasks(id,week_start,slot_start,slot_end,deadline,created_at,created_by_member_id,duty_type) VALUES('followup-receipt-task',?,'00:00','23:59',?,?,'member-root001','office')").bind(date,testNow,testNow).run();
+  await db.prepare("INSERT INTO roster_versions(id,task_id,status,version,rule_version,algorithm_version,created_at) VALUES('followup-receipt-roster','followup-receipt-task','published',1,'1.0.0','fixture',?)").bind(testNow).run();
+  await db.prepare("INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at) VALUES('followup-receipt-shift','followup-receipt-roster',?,?,'campus-nanhu','office','00:00','23:59')").bind(memberId,date).run();
+  const original = await book();
+  await db.prepare("UPDATE appointments SET status='completed',outcome='repaired',completed_at=? WHERE id=?").bind(testNow,original.id).run();
+  const pending = await api(`/api/appointments/${original.id}/repair-followups`, {
+    method:'POST',accessToken:original.accessToken,
+    body:{requestId:crypto.randomUUID(),reason:'已完成维修后原故障再次出现'}
+  },201);
+  assert.ok((await api('/api/repair-followups?status=pending',{token:office})).items.some(row=>row.followup.id===pending.id));
+  const decision = {action:'schedule',requestId:crypto.randomUUID(),revision:pending.revision,date:'2026-10-19',timeSlot:TIME_SLOTS[0]};
+  const result = await api(`/api/repair-followups/${pending.id}/decision`,{method:'POST',token:office,body:decision});
+  assert.equal(result.status,'scheduled');
+  assert.equal(result.appointmentId,result.appointment.id);
+  assert.deepEqual(Object.keys(result.appointment).sort(),['id','campus','date','timeSlot','status'].sort());
+  await api(`/api/field/appointments/${result.appointment.id}`,{token:office},403);
+  const replay = await api(`/api/repair-followups/${pending.id}/decision`,{method:'POST',token:office,body:decision});
+  assert.equal(replay.idempotent,true);
+  assert.deepEqual(replay.appointment,result.appointment);
+  assert.equal((await db.prepare("SELECT COUNT(*) n FROM appointments WHERE registration_flow='repair_followup'").first()).n,1);
+  assert.ok(!(await api('/api/repair-followups?status=pending',{token:office})).items.some(row=>row.followup.id===pending.id));
+  await db.prepare("DELETE FROM member_roles WHERE id='followup-receipt-office'").run();
+  await api(`/api/repair-followups/${pending.id}/decision`,{method:'POST',token:office,body:decision},403);
+});
+
 test('repair followups are idempotent, capacity-exempt, traceable, and only scannable while scheduled', async () => {
   const root = await login();
   const original = await book();

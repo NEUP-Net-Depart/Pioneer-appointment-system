@@ -1,5 +1,6 @@
 import { formatDate } from '/shared/time.js';
 import { statusText } from './presentation.js';
+import { outcomeLabels } from '/shared/constants.js';
 
 const requestState = {
   pending: '等待办公人员安排',
@@ -42,7 +43,8 @@ export function createFollowupPanel(item, message = '') {
     round.append(heading);
     round.append(element('p', 'repair-round-time',
       formatDate(entry.date) + ' · ' + entry.timeSlot + ' · ' + statusText(entry)));
-    if (entry.outcome) round.append(element('p', 'repair-round-result', entry.outcome));
+    if (entry.outcome) round.append(element('p', 'repair-round-result',
+      outcomeLabels[entry.outcome] || outcomeLabels.legacy_unknown));
     if (entry.repairNote) round.append(element('p', 'repair-round-note', entry.repairNote));
     const events = history.events.filter((event) => event.appointmentId === entry.id);
     if (events.length) {

@@ -66,10 +66,19 @@ export function RepairFollowups({ active, onChanged }) {
     setBusy(id);
     setErrors((current) => ({ ...current, [id]: '' }));
     try {
-      await request('/api/repair-followups/' + encodeURIComponent(id) + '/decision', {
+      const options = {
         method: 'POST',
         body: { ...payload, requestId: commandId(id, payload) }
-      });
+      };
+      const send = () =>
+        request('/api/repair-followups/' + encodeURIComponent(id) + '/decision', options);
+      try {
+        await send();
+      } catch (failure) {
+        if (failure.status && failure.status < 500) throw failure;
+        // A lost response must reuse the original receipt, not create a new decision.
+        await send();
+      }
       commands.current.delete(id);
       setExpanded('');
       setRevision((value) => value + 1);

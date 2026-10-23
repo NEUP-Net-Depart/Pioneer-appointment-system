@@ -31,6 +31,25 @@ export function repairFollowupService(appointments, staffPlatform, clock = () =>
     return { id: existing.id, status: existing.status, idempotent: true };
   }
 
+  function decisionReceipt(followup, appointment, idempotent = false) {
+    // Managing this request does not grant access to a future appointment's
+    // customer details. A committed decision only returns its scheduling facts.
+    return {
+      ...followup,
+      ...(followup.scheduledAppointmentId ? {
+        appointmentId: followup.scheduledAppointmentId,
+        appointment: appointment ? {
+          id: appointment.id,
+          campus: appointment.campus,
+          date: appointment.date,
+          timeSlot: appointment.timeSlot,
+          status: appointment.status
+        } : null
+      } : {}),
+      ...(idempotent ? { idempotent: true } : {})
+    };
+  }
+
   return {
     async request(id, input, accessToken) {
       const item = await guestAppointment(appointments, id, accessToken);
@@ -127,7 +146,9 @@ export function repairFollowupService(appointments, staffPlatform, clock = () =>
       if (prior) {
         if (prior.id !== followupId || prior.decisionHash !== decisionHash)
           fail(409, '请求编号已用于其他返修操作', 'REQUEST_CONFLICT');
-        return { id: prior.id, status: prior.status, appointmentId: prior.scheduledAppointmentId, idempotent: true };
+        const appointment = prior.scheduledAppointmentId
+          ? await appointments.find(prior.scheduledAppointmentId) : null;
+        return decisionReceipt(prior, appointment, true);
       }
       if (snapshot.status !== 'pending' || snapshot.revision !== revision)
         fail(409, '返修申请已被其他人员处理，请刷新后核对');
@@ -157,7 +178,7 @@ export function repairFollowupService(appointments, staffPlatform, clock = () =>
         const result = await appointments.scheduleRepairFollowup({ followupId, revision,
           decisionRequestId: operationId, decisionHash, reason: '' }, item, child, actor, timestamp.toISOString());
         if (!result) fail(409, '排期、权限或维修日期已变化，请刷新后核对');
-        return { ...result.followup, appointment: await staffPlatform.field.detail(actor, result.appointment.id) };
+        return decisionReceipt(result.followup, result.appointment);
       }
       const result = await appointments.rejectRepairFollowup({ followupId, revision,
         decisionRequestId: operationId, decisionHash, reason }, item, actor, timestamp.toISOString());
