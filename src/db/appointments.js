@@ -406,7 +406,7 @@ export function appointmentRepository(db) {
         db.prepare(`SELECT json_extract(source_ref,'$.id') AS appointment_id,action,occurred_at,reason,before_json,after_json
           FROM audit_events WHERE json_extract(source_ref,'$.module')='repairs'
             AND json_extract(source_ref,'$.id') IN (${marks}) AND action IN ('repairs.claimed','repairs.transferred','repairs.started','repairs.completed','repairs.corrected')
-          ORDER BY occurred_at,id LIMIT 1000`).bind(...related).all()
+          ORDER BY occurred_at,rowid LIMIT 1000`).bind(...related).all()
       ]);
       return {
         items: items.results.map((row) => {

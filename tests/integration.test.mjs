@@ -182,6 +182,18 @@ test('scan lookup needs staff authorization, preserves campus scope and never st
   assert.equal((await resolve({code})).id,item.id, 'student credential rotation must not invalidate a repair QR');
 });
 
+test('repair history preserves actual insertion order when event timestamps are identical', async () => {
+  const original = await book();
+  const actions = ['repairs.started', 'repairs.transferred', 'repairs.completed'];
+  const ids = ['timeline-z-start', 'timeline-m-transfer', 'timeline-a-complete'];
+  for (const [index, action] of actions.entries()) {
+    await db.prepare("INSERT INTO audit_events(id,action,source_ref,before_json,after_json,reason,occurred_at) VALUES(?,?,?,'{}','{}','',?)")
+      .bind(ids[index],action,JSON.stringify({module:'repairs',type:'appointment',id:original.id}),testNow).run();
+  }
+  const history = await appointmentRepository(db).repairHistory(original.id);
+  assert.deepEqual(history.events.map(event => event.action), actions);
+});
+
 test('office followup decisions return safe repeatable receipts without granting future customer access', async (t) => {
   t.after(async () => {
     await db.batch([
