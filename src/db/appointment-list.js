@@ -25,8 +25,10 @@ function accessPredicate(rules, args) {
   return `EXISTS (SELECT 1 FROM json_each(?) AS access_rule
     WHERE json_extract(access_rule.value,'$.campus')=appointments.campus
       AND (json_type(access_rule.value,'$.memberId') IS NULL OR appointments.assigned_to IN
-        (SELECT account FROM staff_accounts WHERE member_id=json_extract(access_rule.value,'$.memberId')))
-      AND (json_type(access_rule.value,'$.date') IS NULL OR appointments.date=json_extract(access_rule.value,'$.date'))
+        (SELECT account FROM staff_accounts WHERE member_id=json_extract(access_rule.value,'$.memberId'))
+        OR EXISTS(SELECT 1 FROM repair_receptions r WHERE r.appointment_id=appointments.id AND r.state='assigned' AND r.assigned_member_id=json_extract(access_rule.value,'$.memberId')))
+      AND (json_type(access_rule.value,'$.date') IS NULL OR appointments.date=json_extract(access_rule.value,'$.date')
+        OR EXISTS(SELECT 1 FROM repair_receptions r WHERE r.appointment_id=appointments.id))
       AND (json_type(access_rule.value,'$.objectIds') IS NULL OR appointments.id IN
         (SELECT value FROM json_each(json_extract(access_rule.value,'$.objectIds')))))`;
 }

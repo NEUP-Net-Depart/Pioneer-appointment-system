@@ -47,24 +47,32 @@ export function RepairScene({
           <h2>
             {data.currentRepair
               ? '继续处理当前设备'
-              : data.state === 'unsigned'
-                ? '先签到，再开始今天的工作'
-                : data.state === 'away'
-                  ? '你当前处于离岗状态'
-                  : data.state === 'available'
-                    ? '准备好接待下一位机主'
-                    : '当前暂无可接单任务'}
+              : data.pendingRepair
+                ? '有一台设备等待你接手'
+                : data.state === 'unsigned'
+                  ? '先签到，再开始今天的工作'
+                  : data.state === 'away'
+                    ? '你当前处于离岗状态'
+                    : data.state === 'available'
+                      ? '准备好接待下一位机主'
+                      : '当前暂无可接单任务'}
           </h2>
           <p>
             {data.currentRepair
               ? `${data.currentRepair.brand} ${data.currentRepair.deviceModel} · ${data.currentRepair.faultType}`
-              : data.reason || '扫描机主维修码，确认设备信息后开始维修。'}
+              : data.pendingRepair
+                ? `${data.pendingRepair.deviceModel} · ${data.pendingRepair.faultType}；接待已核验，请核对后确认接手。`
+                : data.reason || '扫描机主维修码，确认设备信息后开始维修。'}
           </p>
         </div>
         <div className="field-hero-action">
           {data.currentRepair ? (
             <button className="field-primary" onClick={() => setSelected(data.currentRepair!.id)}>
               继续维修
+            </button>
+          ) : data.pendingRepair ? (
+            <button className="field-primary" onClick={() => setSelected(data.pendingRepair!.id)}>
+              查看待接手工单
             </button>
           ) : data.state === 'unsigned' && data.capability['attendance.self'] ? (
             <button className="field-primary" onClick={openAttendance} disabled={busy}>

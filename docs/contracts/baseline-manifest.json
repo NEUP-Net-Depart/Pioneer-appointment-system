@@ -156,6 +156,10 @@
     {
       "name": "0036_appointment_expiration_time.sql",
       "sha256": "73970c65f1a1d4eee6f97c7a7d5e639132f7171c3cd3d1a2e1ae2c2056687c0d"
+    },
+    {
+      "name": "0039_reception_dispatch.sql",
+      "sha256": "20b03c04c03cec75d175adc9f645e8dcf414a6654d0e4bc66ec384f42e442e04"
     }
   ],
   "modules": [
@@ -185,8 +189,8 @@
     },
     {
       "code": "repairs",
-      "version": "1.0.0",
-      "manifestHash": "2d03608e",
+      "version": "1.1.0",
+      "manifestHash": "e695b838",
       "contractVersion": "1",
       "requiredSchemaVersion": "0007",
       "releaseState": "ready"
@@ -391,6 +395,10 @@
     {
       "name": "0036_appointment_expiration_time.sql",
       "sha256": "73970c65f1a1d4eee6f97c7a7d5e639132f7171c3cd3d1a2e1ae2c2056687c0d"
+    },
+    {
+      "name": "0039_reception_dispatch.sql",
+      "sha256": "20b03c04c03cec75d175adc9f645e8dcf414a6654d0e4bc66ec384f42e442e04"
     }
   ]
 }

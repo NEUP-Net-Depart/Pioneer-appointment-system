@@ -2,6 +2,12 @@ import { json, readBody } from '../lib/http.js';
 import { appointmentQuery, appointmentPatch, bookingInput, bookingRequestKey, liveQuery } from '../lib/validation.js';
 
 export const appointmentRoutes = [
+  ['GET', /^\/api\/appointments\/([^/]+)\/reception-options$/, async (context,match) =>
+    json(await context.services.appointments.receptionOptions(decodeURIComponent(match[1]),await context.role('technician')))],
+  ['POST', /^\/api\/appointments\/([^/]+)\/reception$/, async (context,match) => {
+    await context.limit('write');
+    return json(await context.services.appointments.reception(decodeURIComponent(match[1]),await readBody(context.request),await context.role('technician')));
+  }],
   ['GET', /^\/api\/appointments\/overview$/, async context => {
     return json(await context.services.appointments.overview(await context.role('technician')));
   }],

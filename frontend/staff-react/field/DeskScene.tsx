@@ -2,6 +2,7 @@ import React from 'react';
 import { Empty, Notice, Status, time } from './ui';
 import { StaffIdentity } from '../StaffIdentity';
 import { fieldPersonGroup } from '../../../shared/staff-identities.js';
+import { receptionStatus } from '../../../shared/reception.js';
 import type { useFieldWorkspace } from './useFieldWorkspace';
 type Props = Pick<
   ReturnType<typeof useFieldWorkspace> & Parameters<typeof useFieldWorkspace>[0],
@@ -9,6 +10,7 @@ type Props = Pick<
   | 'scene'
   | 'setSelected'
   | 'setRegistration'
+  | 'setScanOpen'
   | 'busy'
   | 'filter'
   | 'setFilter'
@@ -32,6 +34,7 @@ export function DeskScene({
   scene,
   setSelected,
   setRegistration,
+  setScanOpen,
   busy,
   filter,
   setFilter,
@@ -57,15 +60,18 @@ export function DeskScene({
           <h2>{scene === 'desk' ? '让每一位机主有序得到接待' : '今天的现场运行'}</h2>
         </div>
         <div className="field-actions">
+          {data.capability['repair.receive'] && (
+            <button className="field-primary" onClick={() => setScanOpen(true)}>
+              扫描客户维修码
+            </button>
+          )}
           {data.capability['attendance.session.manage'] && (
             <button disabled={busy} onClick={showAttendance}>
               展示签到码
             </button>
           )}
           {data.capability['onsite.frontdesk.create'] && (
-            <button className="field-primary" onClick={() => setRegistration(true)}>
-              ＋ 临时登记
-            </button>
+            <button onClick={() => setRegistration(true)}>＋ 临时登记</button>
           )}
         </div>
       </section>
@@ -75,7 +81,20 @@ export function DeskScene({
           [
             'booked',
             '待接待',
-            (data.appointments || []).filter((i) => i.status === 'booked').length
+            (data.appointments || []).filter(
+              (i) =>
+                i.status === 'booked' && !['queued', 'assigned'].includes(i.reception?.state || '')
+            ).length
+          ],
+          [
+            'queued',
+            '现场排队',
+            (data.appointments || []).filter((i) => receptionStatus(i) === 'queued').length
+          ],
+          [
+            'assigned',
+            '待接手',
+            (data.appointments || []).filter((i) => receptionStatus(i) === 'assigned').length
           ],
           [
             'in_progress',
@@ -104,6 +123,20 @@ export function DeskScene({
           </button>
         ))}
       </div>
+      {(data.appointments || []).some((item) => receptionStatus(item) === 'queued') &&
+        people.some((person) => person.canReceive) && (
+          <div className="reception-next" role="status">
+            <span>现场有等待分派的工单，且有空闲维修人员。</span>
+            <button
+              onClick={() => {
+                setFilter('queued');
+                setTab('appointments');
+              }}
+            >
+              处理现场队列
+            </button>
+          </div>
+        )}
       {scene === 'operations' && people.some((p) => p.scheduled && p.state === 'unsigned') && (
         <Notice>
           有 {people.filter((p) => p.scheduled && p.state === 'unsigned').length}{' '}
@@ -124,7 +157,7 @@ export function DeskScene({
       <div className={`field-desk-grid tab-${tab}`}>
         <section className="field-card field-appointments">
           <div className="field-section-heading">
-            <h2>当日预约</h2>
+            <h2>预约与现场队列</h2>
             <span>{items.length} 条</span>
           </div>
           <input
@@ -138,6 +171,8 @@ export function DeskScene({
             {[
               ['all', '全部'],
               ['booked', '待接待'],
+              ['queued', '现场排队'],
+              ['assigned', '待接手'],
               ['in_progress', '维修中'],
               ['completed', '已完成']
             ].map(([value, label]) => (
@@ -169,8 +204,18 @@ export function DeskScene({
                 {item.timeSlot}
                 {item.servicePaused && <small>当日暂停维修</small>}
               </span>
-              <Status value={item.status} />
-              <span>{item.assignedToName || '等待接待'}</span>
+              <Status value={receptionStatus(item)} />
+              <span>
+                {item.reception?.state === 'assigned'
+                  ? item.reception.assignedToName
+                  : item.assignedToName ||
+                    (item.reception?.state === 'queued' ? '等待分派' : '等待接待')}
+                {item.date < data.businessDate &&
+                  item.reception &&
+                  ['queued', 'assigned'].includes(item.reception.state) && (
+                    <small>跨日待处理 · {item.date}</small>
+                  )}
+              </span>
             </button>
           ))}
           {!data.appointments && result.loading && (
@@ -234,6 +279,11 @@ export function DeskScene({
                       {!person.scheduled ? ' · 非排班到岗' : ''}
                     </small>
                     {person.signedInAt && <small>签到 {time(person.signedInAt)}</small>}
+                    {person.workload && (
+                      <small>
+                        今日已接 {person.workload.started} · 已完成 {person.workload.completed}
+                      </small>
+                    )}
                     {person.currentRepair ? (
                       <button
                         className="field-text"

@@ -164,6 +164,7 @@ export function FieldApp({
                 scene={scene}
                 setSelected={setSelected}
                 setRegistration={setRegistration}
+                setScanOpen={setScanOpen}
                 busy={busy}
                 filter={filter}
                 setFilter={setFilter}

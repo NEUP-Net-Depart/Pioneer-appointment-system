@@ -687,7 +687,8 @@ test('field number suggestions preserve suffix/date rules and campus privacy wit
     assert.deepEqual((await request('/api/scan/search','20261002',{q:'8'})).body,{items:[],hasMore:false});
     const suffix=await request('/api/scan/search','20261002',{q:'89'});
     assert.equal(suffix.status,200,JSON.stringify(suffix.body));assert.deepEqual(suffix.body.items.map(item=>item.id),[ids[0]]);
-    assert.deepEqual(Object.keys(suffix.body.items[0]).sort(),['campus','date','id','status','timeSlot']);
+    assert.deepEqual(Object.keys(suffix.body.items[0]).sort(),['campus','date','id','reception','status','timeSlot']);
+    assert.equal(suffix.body.items[0].reception,null);
     const history=await request('/api/scan/search','20261002',{q:'20261014-89'});
     assert.equal(history.status,200,JSON.stringify(history.body));assert.deepEqual(history.body.items.map(item=>item.id),[ids[1]]);
     assert.equal((await request('/api/scan/search','20261002',{q:'20261015-89'})).body.items.some(item=>item.campus==='浑南'),false);

@@ -5,6 +5,33 @@ export interface Appointment {
   date: string;
   timeSlot: string;
   status: string;
+  reception?: {
+    state: string;
+    receivedAt: string;
+    receivedBy?: string;
+    assignedTo?: string;
+    assignedMemberId?: string;
+    assignedToName?: string;
+    updatedAt?: string;
+  } | null;
+  canReceive?: boolean;
+  canDispatch?: boolean;
+  canReturn?: boolean;
+  businessDate?: string;
+  queuePosition?: { position: number; total: number } | null;
+  receptionPaused?: boolean;
+  receptionHistory?: {
+    id: string;
+    action: string;
+    reason: string;
+    occurredAt: string;
+    actorName: string;
+    assigneeName?: string;
+    date?: string;
+    timeSlot?: string;
+  }[];
+  frontPhotoId?: string;
+  backPhotoId?: string;
   servicePaused?: boolean;
   deviceType: string;
   brand: string;
@@ -67,6 +94,7 @@ export interface Person {
   account: string;
   department: string;
   state: string;
+  workload?: { started: number; completed: number };
   canReceive: boolean;
   reason: string;
   scheduled: boolean;
@@ -88,6 +116,7 @@ export interface Home {
   state: string;
   reason: string;
   currentRepair: Appointment | null;
+  pendingRepair?: Appointment | null;
   pendingSwapInvitations?: number;
   presence?: { revision: number; campusId: string; state: string };
   event?: { id: string; revision: number; startsAt: string; endsAt: string };

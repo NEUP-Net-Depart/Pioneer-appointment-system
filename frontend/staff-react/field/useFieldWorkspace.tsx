@@ -211,7 +211,10 @@ export function useFieldWorkspace({
   }
   const items = (data?.appointments || []).filter(
     (item) =>
-      (filter === 'all' || item.status === filter) &&
+      (filter === 'all' ||
+        (item.status === 'booked' && ['queued', 'assigned'].includes(item.reception?.state || '')
+          ? item.reception?.state
+          : item.status) === filter) &&
       `${item.id} ${item.deviceModel} ${item.faultType}`
         .toLowerCase()
         .includes(search.toLowerCase())

@@ -1289,3 +1289,101 @@
     flex-basis: 100%;
   }
 }
+/* Reception uses the shared field components; queue actions remain in the selected order. */
+.field-app .reception-panel {
+  padding-block: 20px;
+  border-block: 1px solid var(--field-border, #e2e8f0);
+  display: grid;
+  gap: 14px;
+}
+.field-app .reception-panel form {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.field-app .reception-panel p {
+  margin: 0;
+}
+.field-app .reception-history {
+  display: grid;
+  gap: 16px;
+  padding-inline-start: 20px;
+}
+.field-app .reception-history li > span {
+  display: block;
+  color: var(--muted);
+}
+.field-app .reception-history p {
+  margin-block: 4px 0;
+  overflow-wrap: anywhere;
+}
+.field-app .reception-stage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  color: var(--field-muted, #64748b);
+  font-size: 13px;
+}
+.field-app .reception-stage .is-current {
+  color: var(--field-ink, #172033);
+  font-weight: 700;
+}
+.field-app .reception-candidates {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  gap: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.field-app .reception-candidates > label {
+  display: flex;
+  align-items: start;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--field-border, #e2e8f0);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.field-app .reception-candidates > label.is-selected {
+  border-color: var(--field-ink, #172033);
+  background: var(--field-surface, #f5f7fa);
+}
+.field-app .reception-candidates input {
+  width: 18px;
+  min-height: 18px;
+  margin-top: 3px;
+  flex: 0 0 auto;
+}
+.field-app .reception-candidates label > span {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+.field-app .reception-candidates small {
+  color: var(--field-muted, #64748b);
+}
+.field-app .reception-next {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 16px;
+  background: var(--field-surface, #f5f7fa);
+  border-radius: 12px;
+  margin-block: 16px;
+}
+.field-app .field-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr));
+}
+@media (max-width: 600px) {
+  .field-app .field-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .field-app .reception-next button {
+    width: 100%;
+  }
+}

@@ -5,6 +5,10 @@ import { RecordMaintenance } from '../RecordMaintenance';
 import { RepairAttachments } from '../RepairAttachments';
 import { RepairOriginal } from '../RepairOriginal';
 import { useRepair } from './useRepair';
+import { useState } from 'react';
+import { Reception } from './Reception';
+import { receptionStatus } from '../../../shared/reception.js';
+import { formatInstant } from '../../../shared/time.js';
 
 export function Repair({
   id,
@@ -23,6 +27,7 @@ export function Repair({
   sidePanel?: boolean;
   returnLabel?: string;
 }) {
+  const [direct, setDirect] = useState(false);
   const {
     item,
     error,
@@ -50,6 +55,7 @@ export function Repair({
     receiversLoading,
     load,
     start,
+    receptionCommand,
     finish,
     saveNote,
     handoff
@@ -57,7 +63,20 @@ export function Repair({
   return (
     <Modal
       sidePanel={sidePanel}
-      title={item?.canStart ? '现场核验' : item?.canFinish ? '当前维修' : '预约详情'}
+      dismissible={!busy}
+      title={
+        item?.canReceive
+          ? '到场接待'
+          : item?.canReturn
+            ? '确认接手'
+            : item?.canDispatch
+              ? '现场分派'
+              : item?.canStart
+                ? '现场核验'
+                : item?.canFinish
+                  ? '当前维修'
+                  : '预约详情'
+      }
       onClose={() => {
         if (!busy) onClose();
       }}
@@ -69,7 +88,7 @@ export function Repair({
         <>
           <div className="field-ticket">
             <div>
-              <Status value={item.status} />
+              <Status value={receptionStatus(item)} />
               <span className="field-muted">{item.id}</span>
             </div>
             <h3>
@@ -119,109 +138,147 @@ export function Repair({
               </p>
             )}
           </div>
-          {item.canStart && (
-            <form onSubmit={start} className="field-form">
-              <h3>与机主确认设备信息</h3>
-              <div className="field-form-grid">
-                <label>
-                  厂商
-                  <input
-                    value={verification.brand}
-                    required
-                    maxLength={80}
-                    onChange={(e) =>
-                      setVerification({
-                        ...verification,
-                        brand: e.target.value
-                      })
-                    }
-                  />
-                </label>
-                <label>
-                  型号
-                  <input
-                    value={verification.model}
-                    required
-                    maxLength={120}
-                    onChange={(e) =>
-                      setVerification({
-                        ...verification,
-                        model: e.target.value
-                      })
-                    }
-                  />
-                </label>
-                <label>
-                  保修情况
-                  <select
-                    value={verification.warranty}
-                    onChange={(e) =>
-                      setVerification({
-                        ...verification,
-                        warranty: e.target.value
-                      })
-                    }
-                  >
-                    <option value="unknown">待确认</option>
-                    <option value="in_warranty">在保</option>
-                    <option value="expired">已过保</option>
-                  </select>
-                </label>
-                <label>
-                  液金散热
-                  <select
-                    value={verification.liquidMetal}
-                    onChange={(e) =>
-                      setVerification({
-                        ...verification,
-                        liquidMetal: e.target.value
-                      })
-                    }
-                  >
-                    <option value="unknown">待确认</option>
-                    <option value="yes">是</option>
-                    <option value="no">否</option>
-                  </select>
-                </label>
-              </div>
-              {verification.warranty === 'in_warranty' && (
-                <Notice>在保设备建议优先联系官方售后，避免影响保修。</Notice>
+          <Reception
+            item={item}
+            businessDate={item.businessDate || item.date}
+            onCommand={async (action, extra) => {
+              try {
+                await receptionCommand(action, extra);
+              } catch (failure) {
+                await load().catch(() => {});
+                onChanged();
+                throw failure;
+              }
+            }}
+            busy={busy}
+          />
+          {item.canStart && (item.canReceive || item.reception?.state === 'queued') && !direct && (
+            <button className="field-secondary field-wide" onClick={() => setDirect(true)}>
+              特殊情况：直接核验接单
+            </button>
+          )}
+          {((item.canReceive && !direct) ||
+            (item.canStart &&
+              ((!item.canReceive && item.reception?.state !== 'queued') || direct))) && (
+            <form
+              onSubmit={(event) => void start(event, !!item.canReceive && !direct)}
+              className="field-form"
+            >
+              {item.reception && (
+                <p className="field-muted">
+                  接待已完成设备核验并上传照片。请核对以下信息，需要时可更正或替换照片。
+                </p>
               )}
-              <label>
-                核验说明（选填）
-                <textarea
-                  maxLength={500}
-                  value={verification.note}
-                  onChange={(e) => setVerification({ ...verification, note: e.target.value })}
-                />
-              </label>
-              <div className="field-photos">
-                {['front', 'back'].map((side) => (
-                  <label key={side}>
-                    {previews[side] ? (
-                      <img src={previews[side]} alt="设备照片预览" />
-                    ) : (
-                      <span>{uploaded[side] ? '已上传' : '＋'}</span>
-                    )}
-                    <strong>设备{side === 'front' ? '正面' : '背面'}</strong>
-                    <small>拍照或选择照片 · 最大 5 MB</small>
+              <details open={!item.reception} className="field-details">
+                <summary>{item.reception ? '查看或更正设备核验' : '填写设备核验信息'}</summary>
+                <h3>与机主确认设备信息</h3>
+                <div className="field-form-grid">
+                  <label>
+                    厂商
                     <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      capture="environment"
-                      aria-label={`设备${side === 'front' ? '正面' : '背面'}照片`}
-                      onChange={(e) => {
-                        if (e.target.files?.[0]) {
-                          setFiles({ ...files, [side]: e.target.files[0] });
-                          setUploaded({ ...uploaded, [side]: '' });
-                        }
-                      }}
+                      value={verification.brand}
+                      required
+                      maxLength={80}
+                      onChange={(e) =>
+                        setVerification({
+                          ...verification,
+                          brand: e.target.value
+                        })
+                      }
                     />
                   </label>
-                ))}
-              </div>
+                  <label>
+                    型号
+                    <input
+                      value={verification.model}
+                      required
+                      maxLength={120}
+                      onChange={(e) =>
+                        setVerification({
+                          ...verification,
+                          model: e.target.value
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    保修情况
+                    <select
+                      value={verification.warranty}
+                      onChange={(e) =>
+                        setVerification({
+                          ...verification,
+                          warranty: e.target.value
+                        })
+                      }
+                    >
+                      <option value="unknown">待确认</option>
+                      <option value="in_warranty">在保</option>
+                      <option value="expired">已过保</option>
+                    </select>
+                  </label>
+                  <label>
+                    液金散热
+                    <select
+                      value={verification.liquidMetal}
+                      onChange={(e) =>
+                        setVerification({
+                          ...verification,
+                          liquidMetal: e.target.value
+                        })
+                      }
+                    >
+                      <option value="unknown">待确认</option>
+                      <option value="yes">是</option>
+                      <option value="no">否</option>
+                    </select>
+                  </label>
+                </div>
+                {verification.warranty === 'in_warranty' && (
+                  <Notice>在保设备建议优先联系官方售后，避免影响保修。</Notice>
+                )}
+                <label>
+                  核验说明（选填）
+                  <textarea
+                    maxLength={500}
+                    value={verification.note}
+                    onChange={(e) => setVerification({ ...verification, note: e.target.value })}
+                  />
+                </label>
+                <div className="field-photos">
+                  {['front', 'back'].map((side) => (
+                    <label key={side}>
+                      {previews[side] ? (
+                        <img src={previews[side]} alt="设备照片预览" />
+                      ) : (
+                        <span>{uploaded[side] ? '已上传' : '＋'}</span>
+                      )}
+                      <strong>设备{side === 'front' ? '正面' : '背面'}</strong>
+                      <small>拍照或选择照片 · 最大 5 MB</small>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        capture="environment"
+                        aria-label={`设备${side === 'front' ? '正面' : '背面'}照片`}
+                        onChange={(e) => {
+                          if (e.target.files?.[0]) {
+                            setFiles({ ...files, [side]: e.target.files[0] });
+                            setUploaded({ ...uploaded, [side]: '' });
+                          }
+                        }}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </details>
               <button className="field-primary field-wide" disabled={busy}>
-                {busy ? '正在保存核验信息…' : '确认开始维修'}
+                {busy
+                  ? '正在保存核验信息…'
+                  : item.canReceive && !direct
+                    ? '完成接待，进入现场队列'
+                    : item.reception?.state === 'assigned'
+                      ? '确认接手，开始维修'
+                      : '确认开始维修'}
               </button>
             </form>
           )}
@@ -361,6 +418,41 @@ export function Repair({
             </details>
           )}
           {item.canReadDetails && <RepairAttachments id={item.id} revision={item.revision} />}
+          {!!item.receptionHistory?.length && (
+            <details className="field-details">
+              <summary>接待与维修流转记录</summary>
+              <ol className="reception-history">
+                {item.receptionHistory.map((event) => (
+                  <li key={event.id}>
+                    <strong>
+                      {{
+                        'receptions.received': '完成接待',
+                        'receptions.assign': '分派待接手',
+                        'receptions.return': '退回现场队列',
+                        'receptions.withdraw': '撤回分派',
+                        'receptions.cancel': '取消预约',
+                        'receptions.reschedule': '改约',
+                        'repairs.claimed': '确认开始维修',
+                        'repairs.transferred': '转派维修',
+                        'repairs.completed': '完成维修'
+                      }[event.action] || '工单已更新'}
+                    </strong>
+                    <span>
+                      {event.actorName}
+                      {event.assigneeName ? ` → ${event.assigneeName}` : ''} ·{' '}
+                      {formatInstant(event.occurredAt)}
+                    </span>
+                    {event.reason && <p>{event.reason}</p>}
+                    {event.action === 'receptions.reschedule' && (
+                      <p>
+                        {formatInstant(event.date).split(' ')[0]} · {event.timeSlot}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            </details>
+          )}
           <RepairOriginal original={item.original} />
           <RecordMaintenance
             item={item}

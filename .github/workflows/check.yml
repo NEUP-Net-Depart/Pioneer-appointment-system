@@ -39,6 +39,7 @@ jobs:
           name: staff-platform-screenshots-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             output/field-workflow/**/*.png
+            output/reception-dispatch/**/*.png
             output/first-layout/
           if-no-files-found: ignore
           retention-days: 14

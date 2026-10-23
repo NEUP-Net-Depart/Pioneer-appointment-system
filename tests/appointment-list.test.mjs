@@ -22,7 +22,8 @@ test('workflow search facets share text, status, date and object/identity visibi
   const queries = [];
   const database = new DatabaseSync(':memory:');
   database.exec(`CREATE TABLE appointments(id TEXT PRIMARY KEY,status TEXT,campus TEXT,date TEXT,time_slot TEXT,name TEXT,student_id TEXT,device_model TEXT,repair_number TEXT,created_at TEXT,assigned_to TEXT);
-    CREATE TABLE staff_accounts(account TEXT PRIMARY KEY,member_id TEXT);`);
+    CREATE TABLE staff_accounts(account TEXT PRIMARY KEY,member_id TEXT);
+    CREATE TABLE repair_receptions(appointment_id TEXT PRIMARY KEY,state TEXT,assigned_member_id TEXT);`);
   for(const row of rows) database.prepare('INSERT INTO appointments VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(row.id,row.status,row.campus,row.date,row.timeSlot,row.name,row.studentId,row.deviceModel,null,'2026-10-20T10:00:00Z','');
   const d1 = {prepare:sql=>({bind:(...args)=>{assert.ok(args.length<=100);return {sql,args};}}),batch:async statements=>statements.map(({sql,args})=>({results:database.prepare(sql).all(...args)}))};
   const repository = {

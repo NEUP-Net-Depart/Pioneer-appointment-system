@@ -29,6 +29,7 @@ export function fieldWorkflow({
     const context = await staff.contextFor(actor),
       id = campusId(campus);
     const current = await appointments.currentRepair(actor.account);
+    const pending = await appointments.pendingDispatch(actor.account);
     const event = await repository.dutyEvent(dateKey(), id);
     const qualified = context.workProfiles.some((item) =>
       ['repair', 'exchange'].includes(item.profileCode)
@@ -40,6 +41,8 @@ export function fieldWorkflow({
         ? '当前没有该校区的维修资格'
         : current && current.id !== ignoreAppointment
           ? '请先完成当前维修'
+          : pending && pending.id !== ignoreAppointment
+            ? '请先处理待接手工单，或填写原因退回'
           : !context.presence || context.presence.campusId !== id
             ? '请先完成该校区到岗签到'
             : context.presence.state !== 'available'
@@ -47,7 +50,7 @@ export function fieldWorkflow({
               : !event || !eventWindow(event.startsAt, event.endsAt, new Date().toISOString())
                 ? '当前不在值班工作窗口'
                 : '';
-    return { allowed: !reason, reason, context, event, current };
+    return { allowed: !reason, reason, context, event, current, pending };
   }
   async function requireEligible(actor, campus, ignoreAppointment = '') {
     const result = await eligibility(actor, campus, ignoreAppointment);
@@ -72,6 +75,8 @@ export function fieldWorkflow({
         'repair.summary.read',
         'repair.start',
         'repair.transfer',
+        'repair.receive',
+        'repair.dispatch',
         'onsite.create',
         'onsite.frontdesk.create',
         'attendance.self',
@@ -89,10 +94,11 @@ export function fieldWorkflow({
       current
     )
       contexts.push({ id: 'repair', label: '维修工作台' });
-    if (capability['onsite.frontdesk.create']) contexts.push({ id: 'desk', label: '接待台' });
+    if (capability['onsite.frontdesk.create'] || capability['repair.receive'] || capability['repair.dispatch']) contexts.push({ id: 'desk', label: '接待台' });
     if (capability['repair.transfer']) contexts.push({ id: 'operations', label: '现场管理' });
     const state = current
       ? 'repairing'
+      : ready.pending ? 'pending'
       : !context.presence
         ? 'unsigned'
         : context.presence.state === 'away'
@@ -114,6 +120,7 @@ export function fieldWorkflow({
       state,
       reason: ready.reason,
       currentRepair: current,
+      pendingRepair: ready.pending ? await detail(actor,ready.pending.id) : null,
       todayDuties: context.todayDuties,
       identities: staffIdentities(context, authorizer, { campusId: selected }),
       pendingSwapInvitations: context.permissions['roster.read']
@@ -126,12 +133,14 @@ export function fieldWorkflow({
   }
   const appointmentTarget = (item) => ({
     campusId: campusId(item.campus),
-    assignedMemberId: item.assignedMemberId,
+    assignedMemberId: item.assignedMemberId || item.reception?.assignedMemberId,
     id: item.id,
-    businessDate: item.date
+    businessDate: item.reception ? dateKey() : item.date
   });
   const canReadSummary = (actor, item, context) =>
     (allowed(context, 'repair.summary.read', appointmentTarget(item)) ||
+      (['queued','assigned'].includes(item.reception?.state) && allowed(context,'repair.summary.read',{...appointmentTarget(item),businessDate:context.businessDate})) ||
+      item.reception?.assignedMemberId === context.actor.memberId ||
       item.assignedMemberId === context.actor.memberId) &&
     (actor.authorizedCampuses || []).includes(item.campus);
   async function project(actor, item, providedContext) {
@@ -153,6 +162,7 @@ export function fieldWorkflow({
       'date',
       'timeSlot',
       'status',
+      'reception',
       'servicePaused',
       'source',
       'deviceType',
@@ -178,7 +188,10 @@ export function fieldWorkflow({
     const visible = Object.fromEntries(keys.map((key) => [key, publicItem[key]]));
     visible.canReadDetails =
       item.assignedMemberId === context.actor.memberId ||
+      item.reception?.assignedMemberId === context.actor.memberId ||
       identity ||
+      allowed(context, 'repair.receive', target) ||
+      allowed(context, 'repair.dispatch', target) ||
       allowed(context, 'repair.transfer', target);
     if (!visible.canReadDetails)
       for (const key of ['repairNote', 'frontPhotoId', 'backPhotoId']) delete visible[key];
@@ -222,7 +235,7 @@ export function fieldWorkflow({
         if (canReadSummary(actor, row, context))
           items.push(
             Object.fromEntries(
-              ['id', 'campus', 'date', 'timeSlot', 'status'].map((key) => [key, row[key]])
+              ['id', 'campus', 'date', 'timeSlot', 'status','reception'].map((key) => [key, key==='reception' ? row.reception ? {state:row.reception.state} : null : row[key]])
             )
           );
         if (items.length > APPOINTMENT_SEARCH_LIMIT)
@@ -237,17 +250,21 @@ export function fieldWorkflow({
     const context = await staff.contextFor(actor),
       target = {
         campusId: campusId(item.campus),
-        assignedMemberId: item.assignedMemberId,
+        assignedMemberId: item.assignedMemberId || item.reception?.assignedMemberId,
         id: item.id,
-        businessDate: item.date
+        businessDate: item.reception ? context.businessDate : item.date
       };
     const visible = await project(actor, item, context);
     if (!visible) fail(403, '没有该预约的访问权限');
     const assigneeContexts = item.assignedMemberId
       ? await repository.fieldContexts([item.assignedMemberId], context.businessDate)
       : new Map();
+    const receptionPaused=!!(await repository.serviceDay(context.businessDate,target.campusId))?.paused;
     return {
       ...visible,
+      businessDate:context.businessDate,
+      receptionPaused,
+      queuePosition:item.status==='booked' && item.reception?.state==='queued' ? await appointments.receptionPosition(item) : null,
       assigneeIdentities:
         item.assignedMemberId && assigneeContexts.has(item.assignedMemberId)
           ? staffIdentities(assigneeContexts.get(item.assignedMemberId), authorizer, {
@@ -272,12 +289,16 @@ export function fieldWorkflow({
             }
           : null,
       intake: visible.canReadDetails ? await repository.latestIntake(id) : null,
+      receptionHistory: visible.canReadDetails && item.reception ? await repository.receptionHistory(id) : [],
       canTransfer: item.status === 'in_progress' && allowed(context, 'repair.transfer', target),
+      canReceive: !receptionPaused && item.status==='booked' && (!item.reception || !['queued','assigned'].includes(item.reception.state)) && item.date<=dateKey() && allowed(context,'repair.receive',{...target,businessDate:context.businessDate}),
+      canDispatch: item.status==='booked' && ['queued','assigned'].includes(item.reception?.state) && allowed(context,'repair.dispatch',{...target,businessDate:context.businessDate}),
+      canReturn: item.status==='booked' && item.reception?.state==='assigned' && item.reception.assignedMemberId===context.actor.memberId && allowed(context,'repair.start',target),
       canFinish:
         item.status === 'in_progress' &&
         item.assignedMemberId === context.actor.memberId &&
         allowed(context, 'repair.finish.own', target),
-      canStart: item.status === 'booked' && (await eligibility(actor, item.campus)).allowed,
+      canStart: item.status === 'booked' && (item.reception?.state!=='assigned' || item.reception.assignedMemberId===context.actor.memberId) && (await eligibility(actor, item.campus,item.id)).allowed,
       repairCode: scanCode(item.id, secret)
     };
   }
@@ -319,11 +340,16 @@ export function fieldWorkflow({
       list.items.push(...page.items);
       cursor = page.nextCursor;
     } while (cursor);
+    const carryovers=await appointments.openReceptions(names[data.campusId]);
+    const seen=new Set(list.items.map(item=>item.id));
+    list.items.push(...carryovers.filter(item=>!seen.has(item.id)));
     const people = await repository.fieldPeople(data.businessDate, data.campusId);
     const contexts = await repository.fieldContexts(
       people.map((person) => person.memberId),
       data.businessDate
     );
+    const workloads=await appointments.dailyWorkloads(data.businessDate);
+    const paused=!!(await repository.serviceDay(data.businessDate,data.campusId))?.paused;
     const staffPresence = people
       .filter((person) =>
         allowed(context, 'repair.summary.read', {
@@ -340,7 +366,7 @@ export function fieldWorkflow({
         const qualified = personContext?.workProfiles.some((item) =>
           ['repair', 'exchange'].includes(item.profileCode)
         );
-        const reason =
+        const reason = paused ? '该校区今天暂停维修' :
           !personContext ||
           personContext.actor.status !== 'enabled' ||
           personContext.actor.memberStatus !== 'active'
@@ -348,7 +374,7 @@ export function fieldWorkflow({
             : !qualified || !allowed(personContext, 'repair.start', { campusId: data.campusId })
               ? '当前没有该校区的维修资格'
               : current
-                ? '请先完成当前维修'
+                ? current.status==='booked'?'请先处理待接手工单':'请先完成当前维修'
                 : !personContext.presence || personContext.presence.campusId !== data.campusId
                   ? '请先完成该校区到岗签到'
                   : personContext.presence.state !== 'available'
@@ -363,6 +389,7 @@ export function fieldWorkflow({
                       : '';
         const result = {
           ...person,
+          workload: workloads[person.memberId] || { started:0,completed:0 },
           scheduled: !!person.scheduled,
           identities: personContext
             ? staffIdentities(personContext, authorizer, { campusId: data.campusId })
@@ -372,7 +399,7 @@ export function fieldWorkflow({
               (duty) => duty.campusId === data.campusId && duty.dutyType === 'repair'
             ) || false,
           state: current
-            ? 'repairing'
+            ? current.status==='booked'?'pending':'repairing'
             : person.state || (person.leaveStatus === 'approved' ? 'on_leave' : 'unsigned'),
           canReceive: !reason,
           reason:
@@ -387,13 +414,7 @@ export function fieldWorkflow({
       })
       .sort(compareFieldPeople);
     const items = list.items
-      .filter((item) =>
-        allowed(context, 'repair.summary.read', {
-          campusId: data.campusId,
-          id: item.id,
-          assignedMemberId: item.assignedMemberId
-        })
-      )
+      .filter((item) => canReadSummary(actor,item,context))
       .map((item) =>
         Object.fromEntries(
           [
@@ -403,6 +424,7 @@ export function fieldWorkflow({
             'date',
             'timeSlot',
             'status',
+            'reception',
             'deviceType',
             'deviceModel',
             'faultType',
@@ -410,7 +432,26 @@ export function fieldWorkflow({
           ].map((key) => [key, item[key]])
         )
       );
-    return { ...data, appointments: items, staffPresence };
+    return { ...data, appointments: items.sort((a,b)=>String(a.reception?.receivedAt||'9999').localeCompare(String(b.reception?.receivedAt||'9999')) || a.id.localeCompare(b.id)), staffPresence };
+  }
+  async function requireIntake(actor,item) {
+    const context=await staff.contextFor(actor);
+    if (!(actor.authorizedCampuses || []).includes(item.campus)) fail(403,'没有该校区的访问权限');
+    if (item.date>dateKey()) fail(409,'请在预约当天进行设备核验');
+    if (item.reception?.state!=='assigned' && allowed(context,'repair.receive',appointmentTarget(item))) {
+      if (item.status!=='booked') fail(409,'只有尚未开始维修的工单可以接待');
+      if ((await repository.serviceDay(dateKey(),campusId(item.campus)))?.paused) fail(409,'该校区今天暂停维修');
+      return context;
+    }
+    if (item.reception?.state==='assigned' && item.reception.assignedMemberId!==context.actor.memberId) fail(403,'该工单已分派给其他人员');
+    await requireEligible(actor,item.campus,item.id);
+    return context;
+  }
+  async function dispatchCandidates(actor,id) {
+    const item=await detail(actor,id);
+    if (!item.canDispatch) fail(403,'没有该工单的分派权限');
+    const data=await board(actor,{campusId:campusId(item.campus)});
+    return {items:data.staffPresence.filter(person=>person.canReceive)};
   }
   async function assertTransfer(actor, item, targetAccount) {
     await staff.requirePermission(actor, 'repair.transfer', {
@@ -453,8 +494,10 @@ export function fieldWorkflow({
     detail,
     correctionAssignees,
     transferCandidates,
+    dispatchCandidates,
     eligibility,
     requireEligible,
+    requireIntake,
     assertTransfer,
     receipt
   };

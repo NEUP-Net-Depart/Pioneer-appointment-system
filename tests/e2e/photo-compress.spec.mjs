@@ -189,7 +189,13 @@ test('React intake rejects HEIC and oversized originals without recording a repa
 test('React confirmation joins its pending upload once and blocks closing while saving',async({page})=>{
  const {select,confirm,uploads,starts}=await repair(page);let release,started;const pending=new Promise(resolve=>release=resolve),ready=new Promise(resolve=>started=resolve);
  await page.route('**/api/appointments/*/attachments',async route=>{if(route.request().method()==='GET')return route.fulfill({json:{items:[]}});const body=route.request().postDataJSON();uploads.push(body);started();await pending;return route.fulfill({status:201,json:{id:body.filename}});});
- await select('front','front.png');await select('back','back.png');await confirm.click();await ready;await expect(page.getByRole('button',{name:'正在保存核验信息…',exact:true})).toBeDisabled();await page.getByRole('button',{name:'关闭',exact:true}).click();await expect(page.getByRole('dialog')).toBeVisible();release();await expect.poll(()=>starts.length).toBe(1);expect(uploads).toHaveLength(2);
+ await select('front','front.png');await select('back','back.png');await confirm.click();await ready;
+ await expect(page.getByRole('button',{name:'正在保存核验信息…',exact:true})).toBeDisabled();
+ const close=page.getByRole('button',{name:'关闭',exact:true});
+ await expect(close).toBeDisabled();
+ await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toBeVisible();
+ release();await expect.poll(()=>starts.length).toBe(1);expect(uploads).toHaveLength(2);
+ await expect(close).toBeEnabled();
 });
 
 test('React intake compresses a camera original above 2 MB before uploading its verified photo', async ({page}) => {

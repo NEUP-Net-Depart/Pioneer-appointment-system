@@ -17,7 +17,14 @@ export function queueRepository(db) {
       const slots = db.prepare(`SELECT time_slot,COUNT(*) AS occupied FROM appointments
         WHERE date=? AND ${campusCondition} AND ${occupied} GROUP BY time_slot`).bind(date,campus,campus);
       const statements = [counts, capacities, slots];
-      if (current) statements.push(db.prepare(`SELECT COUNT(*) AS queueTotal,
+      if (current?.status==='booked' && current.reception?.state==='queued') statements.push(db.prepare(`SELECT COUNT(*) AS queueTotal,
+        COUNT(CASE WHEN r.received_at<? OR (r.received_at=? AND a.id<?) THEN 1 END) AS ahead,
+        COUNT(CASE WHEN a.id=? THEN 1 END) AS present
+        FROM repair_receptions r JOIN appointments a ON a.id=r.appointment_id
+        WHERE a.campus=? AND a.status='booked' AND r.state='queued'`)
+        .bind(current.reception.receivedAt,current.reception.receivedAt,current.id,current.id,current.campus));
+      else if (current?.status==='booked' && current.reception?.state==='assigned') statements.push(db.prepare('SELECT 0 AS queueTotal,0 AS ahead,0 AS present'));
+      else if (current) statements.push(db.prepare(`SELECT COUNT(*) AS queueTotal,
         COUNT(CASE WHEN created_at<? OR (created_at=? AND id<?) THEN 1 END) AS ahead,
         COUNT(CASE WHEN id=? THEN 1 END) AS present
         FROM appointments WHERE date=? AND campus=? AND time_slot=? AND ${active}`)

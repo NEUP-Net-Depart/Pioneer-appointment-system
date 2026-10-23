@@ -109,7 +109,12 @@ export function useRepair({
               note: ''
             }
         );
-        setUploaded(draft.uploaded || {});
+        setUploaded(
+          draft.uploaded ||
+            (value.reception
+              ? { front: value.frontPhotoId || '', back: value.backPhotoId || '' }
+              : {})
+        );
         fetchedAt.current = Date.now();
       })
       .catch((error) => {
@@ -177,7 +182,27 @@ export function useRepair({
     await load();
     onChanged();
   }
-  async function start(event: React.FormEvent) {
+  async function receptionCommand(action: string, extra: Record<string, unknown> = {}) {
+    setBusy(true);
+    const body = operation({ action, ...extra, revision: item!.revision });
+    const send = () =>
+      api(`/api/appointments/${encodeURIComponent(id)}/reception`, { method: 'POST', body });
+    try {
+      try {
+        await send();
+      } catch (failure) {
+        const status = (failure as Error & { status?: number }).status;
+        if (status && status < 500) throw failure;
+        // Reuse the original receipt and revision if the response was lost.
+        await send();
+      }
+      await load();
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function start(event: React.FormEvent, receive = false) {
     event.preventDefault();
     setBusy(true);
     setError('');
@@ -196,12 +221,14 @@ export function useRepair({
           setUploaded({ ...photos });
         }
       }
-      await command({
+      const details = {
         status: 'in_progress',
         frontPhotoId: photos.front,
         backPhotoId: photos.back,
         verification
-      });
+      };
+      if (receive) await receptionCommand('receive', details);
+      else await command(details);
     } catch (error) {
       setError((error as Error).message);
       await load().catch(() => {});
@@ -288,6 +315,7 @@ export function useRepair({
     receiversLoading,
     load,
     start,
+    receptionCommand,
     finish,
     saveNote,
     handoff
