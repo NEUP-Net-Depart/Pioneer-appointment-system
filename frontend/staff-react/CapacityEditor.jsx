@@ -478,7 +478,9 @@ export function CapacityEditor({ active, onNavigate }) {
       setUndo(null);
       setReview(false);
       setRevision((current) => current + 1);
-      setMessage(`已保存 ${result.items.length} 项。已形成快照的日期保持原容量。`);
+      setMessage(
+        `已保存 ${result.items.length} 项，今天及未来对应日期的容量已同步，已有预约保留。`
+      );
       return true;
     } catch (failure) {
       setReview(false);
@@ -890,7 +892,7 @@ export function CapacityEditor({ active, onNavigate }) {
           </details>
         </section>
         <p className="capacity-effect-note">
-          生效规则：每个校区、日期首次产生预约时，会固定当天全部时段的容量。模板修改仅影响尚未形成快照的日期，已有快照不会改变。
+          生效规则：保存后立即更新今天及未来对应校区、星期和时段的容量。已有预约全部保留；已占用达到或超过新容量时停止新增，低于新容量后恢复放号。过去日期保持原容量。
         </p>
       </div>
       <ActivityContext.Provider value={active && mode === 'actual'}>
@@ -1033,7 +1035,10 @@ export function CapacityEditor({ active, onNavigate }) {
             if (!busy) setReview(false);
           }}
         >
-          <p>保存全部校区的 {changes.length} 项修改；已有日期快照保持不变。</p>
+          <p>
+            保存全部校区的 {changes.length}{' '}
+            项修改，立即更新今天及未来对应日期的容量。已有预约保留；若新容量不高于已占用人数，将停止新增预约。
+          </p>
           <div className="capacity-review-list">
             {changes.map((item) => (
               <div key={keyOf(item)}>

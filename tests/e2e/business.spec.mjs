@@ -35,10 +35,11 @@ async function capture(page,name){
 }
 
 
-test('weekday capacity configuration preserves booked days and unsaved edits',async({browser})=>{
+test('weekday capacity configuration updates booked days and preserves unsaved edits',async({browser})=>{
  const contexts=await Promise.all([30,31].map(n=>browser.newContext({baseURL:process.env.E2E_BASE_URL,extraHTTPHeaders:{'CF-Connecting-IP':`198.51.100.${n}`}}))),root=await contexts[0].newPage(),student=await contexts[1].newPage();
  let token,template;
  try{
+  await root.clock.setFixedTime(new Date(date+'T10:00:00+08:00'));
   await login(root,'root001',process.env.E2E_ROOT_PASSWORD);token=await root.evaluate(()=>sessionStorage.getItem('pioneerToken'));const headers={Authorization:`Bearer ${token}`};
   const list=await (await root.request.get('/api/slot-capacities',{headers})).json();template=list.items.find(item=>item.campus==='南湖'&&item.weekday===4&&item.timeSlot==='19:00–19:30');
   await staffPage(root,'预约配置');const cell=root.getByRole('gridcell',{name:'南湖 周四 19:00–19:30',exact:true});
@@ -52,7 +53,11 @@ test('weekday capacity configuration preserves booked days and unsaved edits',as
   const savedTemplate=(await (await root.request.get('/api/slot-capacities',{headers})).json()).items.find(row=>row.campus===template.campus&&row.weekday===template.weekday&&row.timeSlot===template.timeSlot);expect(savedTemplate.capacity).toBe(7);
   const item=await booking(student,'20308101',{file:false});const before=await (await root.request.get('/api/slot-capacities/actual?'+new URLSearchParams({campus:'南湖',date}),{headers})).json();expect(before.source).toBe('snapshot');
   await cell.dblclick();await cell.locator('input').fill('9');await cell.locator('input').press('Enter');await root.getByRole('button',{name:'预览并保存',exact:true}).click();await root.getByRole('button',{name:'确认保存全部修改',exact:true}).click();
-  const after=await (await root.request.get('/api/slot-capacities/actual?'+new URLSearchParams({campus:'南湖',date}),{headers})).json();expect(after.items).toEqual(before.items);expect(item.id).toContain('reserve');
+  await expect(root.getByText('已保存 1 项，今天及未来对应日期的容量已同步，已有预约保留。',{exact:true})).toBeVisible();
+  const after=await (await root.request.get('/api/slot-capacities/actual?'+new URLSearchParams({campus:'南湖',date}),{headers})).json();expect(after.items).toEqual(before.items.map(row=>row.timeSlot===template.timeSlot?{...row,capacity:9}:row));expect(item.id).toContain('reserve');
+  await root.getByRole('button',{name:'日期实际容量',exact:true}).click();await root.getByLabel('查看日期',{exact:true}).fill(date);
+  const slot=root.getByRole('table',{name:'各时段预约名额'}).getByRole('row').filter({hasText:template.timeSlot});await expect(slot.getByRole('cell').nth(0)).toHaveText('9');
+  await expect(root.locator('.capacity-source')).toContainText('已有预约全部保留');
  }finally{
   if(token&&template){const headers={Authorization:`Bearer ${token}`},list=await(await root.request.get('/api/slot-capacities',{headers})).json(),latest=list.items.find(row=>row.campus===template.campus&&row.weekday===template.weekday&&row.timeSlot===template.timeSlot);await root.request.patch('/api/slot-capacities',{headers,data:{...latest,capacity:template.capacity}});}
   await Promise.all(contexts.map(c=>c.close()));
