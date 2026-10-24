@@ -8,7 +8,7 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
   const [date, setDate] = useState(dateKey()),
     [snapshot, setSnapshot] = useState(null),
     [error, setError] = useState(''),
-    [loading, setLoading] = useState(false),
+    [loading, setLoading] = useState(true),
     [retry, setRetry] = useState(0);
   useEffect(() => {
     if (!active || !date) return;

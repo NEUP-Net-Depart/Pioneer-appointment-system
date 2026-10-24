@@ -28,7 +28,7 @@ export function AttendanceManagement({ user }) {
     [cursor, setCursor] = useState(''),
     [refresh, setRefresh] = useState(0),
     [next, setNext] = useState(null);
-  const [loading, setLoading] = useState(false),
+  const [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [notice, setNotice] = useState('');

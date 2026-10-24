@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, type ReactNode } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Modal } from './field/ui';
 import { WorkspaceLauncher } from './WorkspaceLauncher';
 import { pendingEditors } from './useUnsavedChanges.js';
@@ -29,7 +29,7 @@ export function StaffWorkspace({
     ...new Set(entries.map((entry) => entry.group || '其他'))
   ]);
   const knownGroups = useRef(new Set(entries.map((entry) => entry.group || '其他')));
-  useEffect(() => {
+  useLayoutEffect(() => {
     const added = [...new Set(entries.map((entry) => entry.group || '其他'))].filter(
       (group) => !knownGroups.current.has(group)
     );

@@ -13,6 +13,7 @@ export function useRosterWorkflow({ user, office = false }) {
     [taskId, setTaskId] = useState(''),
     [data, setData] = useState(null),
     [rows, setRows] = useState([]);
+  const [tasksLoading, setTasksLoading] = useState(true);
   const [loading, setLoading] = useState(false),
     [busy, setBusy] = useState(false),
     [dirty, setDirty] = useState(false),
@@ -81,7 +82,10 @@ export function useRosterWorkflow({ user, office = false }) {
     }
   }
   useEffect(() => {
-    loadTasks().catch((failure) => setError(failure.message));
+    setTasksLoading(true);
+    loadTasks()
+      .catch((failure) => setError(failure.message))
+      .finally(() => setTasksLoading(false));
   }, [office]);
   useEffect(() => {
     setData(null);
@@ -303,6 +307,7 @@ export function useRosterWorkflow({ user, office = false }) {
     setData,
     rows,
     setRows,
+    tasksLoading,
     loading,
     busy,
     dirty,

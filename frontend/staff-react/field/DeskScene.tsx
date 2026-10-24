@@ -1,4 +1,5 @@
 import React from 'react';
+import { AnimatedValue } from '../AnimatedValue';
 import { Empty, Notice, Status, time } from './ui';
 import { StaffIdentity } from '../StaffIdentity';
 import { fieldPersonGroup } from '../../../shared/staff-identities.js';
@@ -111,7 +112,9 @@ export function DeskScene({
             }}
           >
             <span className="field-metric-label">{label}</span>
-            <strong>{count}</strong>
+            <strong>
+              <AnimatedValue value={count} />
+            </strong>
             <small>{hint}</small>
           </button>
         ))}
@@ -125,7 +128,9 @@ export function DeskScene({
         >
           <span className="field-metric-label">空闲中</span>
           <strong>
-            {data.staffPresence ? people.filter((person) => person.canReceive).length : '—'}
+            <AnimatedValue
+              value={data.staffPresence ? people.filter((person) => person.canReceive).length : '—'}
+            />
           </strong>
           <small>已签到且可接单</small>
         </button>
@@ -194,7 +199,12 @@ export function DeskScene({
             <span>维修人员</span>
           </div>
           {items.map((item) => (
-            <button className="field-order" key={item.id} onClick={() => setSelected(item.id)}>
+            <button
+              data-motion-item={item.id}
+              className="field-order"
+              key={item.id}
+              onClick={() => setSelected(item.id)}
+            >
               <span>
                 <strong>
                   {item.reception?.ticket && (
@@ -277,7 +287,7 @@ export function DeskScene({
                   (index === 0 || fieldPersonGroup(visible[index - 1]) !== 'other') && (
                     <div className="field-person-divider">其他人员</div>
                   )}
-                <div className="field-person">
+                <div data-motion-item={person.memberId} className="field-person">
                   <span className="field-avatar">{person.name.slice(-2)}</span>
                   <div>
                     <strong>{person.name}</strong>

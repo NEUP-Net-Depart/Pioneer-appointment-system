@@ -21,7 +21,7 @@ const sections = [
 
 function useAccountList(endpoint, active) {
   const [items, setItems] = useState([]),
-    [loading, setLoading] = useState(false),
+    [loading, setLoading] = useState(true),
     [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
   useEffect(() => {

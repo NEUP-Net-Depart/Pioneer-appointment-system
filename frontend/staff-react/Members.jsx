@@ -22,7 +22,7 @@ export function Members({ user }) {
   const [selected, setSelected] = useState(null);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(!saved);
   const generation = useRef(0);
   const controller = useRef(null);
 
@@ -69,7 +69,7 @@ export function Members({ user }) {
       return;
     }
     setBusy(true);
-    setNextCursor('');
+    if (resolvedQuery !== query) setNextCursor('');
     const timer = setTimeout(() => load(), 200);
     return () => {
       clearTimeout(timer);
@@ -148,7 +148,7 @@ export function Members({ user }) {
             <span>操作</span>
           </div>
           {items.map((item) => (
-            <div className="react-row" key={item.memberId}>
+            <div data-motion-item={item.memberId} className="react-row" key={item.memberId}>
               <span className="react-member-identity">
                 <strong>{item.name}</strong>
                 <StaffIdentity identities={item.identities} />

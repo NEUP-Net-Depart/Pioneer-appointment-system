@@ -169,7 +169,8 @@ export function Records({ user }) {
         </div>
         <div className="records-result-meta" role="status">
           <span>
-            {list.loading ? '正在更新，保留已有记录…' : `${data?.items?.length || 0} 条记录`}
+            {data ? `${data.items?.length || 0} 条记录` : '正在读取记录…'}
+            {list.loading && data ? ' · 更新中' : ''}
             {!list.current && data ? ' · 当前显示上次结果' : ''}
           </span>
           <span className={sorts.length ? '' : 'records-sort-hint'}>
@@ -228,7 +229,7 @@ export function Records({ user }) {
             </thead>
             <tbody>
               {(data?.items || []).map((item) => (
-                <tr key={item.id}>
+                <tr data-motion-item={item.id} key={item.id}>
                   <td data-label="预约信息">
                     <strong>{item.name || '等待到场核验'}</strong>
                     <span>{[item.studentId, item.id].filter(Boolean).join(' · ')}</span>
@@ -259,7 +260,10 @@ export function Records({ user }) {
         </div>
         {list.nextCursor && (
           <div className="field-actions">
-            <button onClick={list.loadMore} disabled={list.loadingMore}>
+            <button
+              onClick={list.loadMore}
+              disabled={list.loadingMore || list.loading || !list.current}
+            >
               {list.loadingMore ? '正在加载…' : '加载更多预约'}
             </button>
           </div>

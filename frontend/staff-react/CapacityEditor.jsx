@@ -77,7 +77,7 @@ export function CapacityEditor({ active, onNavigate }) {
     [mode, setMode] = useState('template');
   const [error, setError] = useState(''),
     [message, setMessage] = useState(''),
-    [loading, setLoading] = useState(false),
+    [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false);
   const [review, setReview] = useState(false),
     [discard, setDiscard] = useState(false),

@@ -1,6 +1,7 @@
 import React, { useContext, useEffect, useState } from 'react';
 import { ActivityContext, api, Notice } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
+import { AnimatedValue } from './AnimatedValue';
 
 type Summary = {
   total: number;
@@ -44,7 +45,7 @@ export function Statistics() {
     [day, setDay] = useState('');
   const [revision, setRevision] = useState(0);
   const [snapshot, setSnapshot] = useState<{ data: Summary; label: string } | null>(null);
-  const [loading, setLoading] = useState(false),
+  const [loading, setLoading] = useState(true),
     [error, setError] = useState('');
   const label = day || (range === 'all' ? '全部记录' : `最近 ${range} 天`);
   useEffect(() => {
@@ -78,7 +79,7 @@ export function Statistics() {
         ['已取消', data.cancelled],
         ['已逾期', data.expired]
       ]
-    : [];
+    : ['预约总数', '已完成维修', '修复成功率', '已取消', '已逾期'].map((name) => [name, '—']);
   return (
     <section className="report-workspace">
       <WorkspaceHeader group="数据与审计" title="统计分析">
@@ -112,6 +113,17 @@ export function Statistics() {
       </section>
       <Notice>{error}</Notice>
       <div aria-busy={loading}>
+        <div className="report-metrics">
+          {metrics.map(([name, count]) => (
+            <article className="field-card" key={name}>
+              <span>{name}</span>
+              <strong>
+                <AnimatedValue value={count} />
+              </strong>
+            </article>
+          ))}
+        </div>
+
         {!data && loading && (
           <div className="workspace-skeleton" aria-label="正在读取统计">
             <span />
@@ -121,14 +133,6 @@ export function Statistics() {
         )}
         {data && (
           <>
-            <div className="report-metrics">
-              {metrics.map(([name, count]) => (
-                <article className="field-card" key={name}>
-                  <span>{name}</span>
-                  <strong>{count}</strong>
-                </article>
-              ))}
-            </div>
             <div className="report-grid">
               <section className="field-card report-wide">
                 <h2>每日服务</h2>

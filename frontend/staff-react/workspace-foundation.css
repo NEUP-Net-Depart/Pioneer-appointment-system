@@ -1411,3 +1411,26 @@ fieldset.staffing-editor {
     grid-template-columns: repeat(var(--workspace-section-narrow, 2), minmax(0, 1fr));
   }
 }
+
+/* Data changes stay local; metrics reserve their line and QR generation its square. */
+.workspace-page .workspace-data-value,
+.workspace-section-nav .workspace-data-value {
+  display: inline-block;
+  font: inherit;
+  color: inherit;
+  line-height: inherit;
+  font-variant-numeric: tabular-nums;
+  min-width: 1ch;
+}
+.roster-workflow .roster-loading {
+  min-height: 22rem;
+}
+.field-appointments {
+  min-height: 22rem;
+}
+.field-qr {
+  min-height: 240px;
+}
+.records-result-meta {
+  min-height: 1.5em;
+}

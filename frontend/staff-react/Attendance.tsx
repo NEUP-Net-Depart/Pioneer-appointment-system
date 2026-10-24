@@ -87,7 +87,7 @@ export function Attendance({ onNavigate }: { onNavigate: (route: string) => void
         )}
         <ul className="attendance-history-list">
           {items.map((item) => (
-            <li key={item.id}>
+            <li data-motion-item={item.id} key={item.id}>
               <div>
                 <strong>{item.businessDate}</strong>
                 <span>

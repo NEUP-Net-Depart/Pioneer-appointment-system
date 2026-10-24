@@ -14,7 +14,7 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
   const [selected, setSelected] = useState([]),
     [reason, setReason] = useState(''),
     [originalReason, setOriginalReason] = useState('');
-  const [loading, setLoading] = useState(false),
+  const [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false);
   const [error, setError] = useState(''),
     [notice, setNotice] = useState(''),

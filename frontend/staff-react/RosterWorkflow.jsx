@@ -25,6 +25,7 @@ export function RosterWorkflow({ user, office = false }) {
     setData,
     rows,
     setRows,
+    tasksLoading,
     loading,
     busy,
     dirty,
@@ -144,7 +145,7 @@ export function RosterWorkflow({ user, office = false }) {
           {notice}
         </p>
       )}
-      {!taskId && (
+      {!tasksLoading && !taskId && !error && (
         <section className="roster-start">
           <strong>{'从发布可用时间收集开始'}</strong>
           {canCreate ? (
@@ -156,9 +157,15 @@ export function RosterWorkflow({ user, office = false }) {
           )}
         </section>
       )}
-      {loading && !data && (
-        <div className="roster-loading" role="status">
-          正在读取本周安排…
+      {(tasksLoading || (taskId && !data && !error)) && (
+        <div
+          className="roster-loading workspace-skeleton"
+          role="status"
+          aria-label="正在读取本周安排"
+        >
+          <span />
+          <span />
+          <span />
         </div>
       )}
       {data && manage && (

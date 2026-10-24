@@ -16,6 +16,7 @@ import { receptionLabels } from '../../../shared/reception.js';
 import { qrImage } from '../../../shared/zxing.js';
 import { createScanner } from './scanner.js';
 import { request } from '../request.js';
+import { useDataMotion } from '../useDataMotion';
 
 export const api = <T,>(
   url: string,
@@ -83,6 +84,8 @@ export function Modal({
   const titleId = useId();
   const ref = useRef<HTMLDialogElement>(null);
   const active = useContext(ActivityContext);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useDataMotion(bodyRef, active);
   useEffect(() => {
     if (!active) {
       ref.current?.close();
@@ -144,7 +147,9 @@ export function Modal({
           关闭
         </button>
       </header>
-      <div className="workspace-dialog-body">{children}</div>
+      <div ref={bodyRef} className="workspace-dialog-body">
+        {children}
+      </div>
     </dialog>
   );
 }

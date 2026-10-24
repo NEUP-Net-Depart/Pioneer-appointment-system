@@ -37,6 +37,7 @@ export function RosterAssignment({ row, member, editable, protectedRow, onEdit }
   return (
     <li
       className="roster-person"
+      data-motion-item={row.memberId}
       draggable={editable && !protectedRow && row.leaveStatus !== 'approved'}
       onDragStart={(event) => event.dataTransfer.setData('text/plain', row.memberId)}
     >
