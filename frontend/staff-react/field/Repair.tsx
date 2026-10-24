@@ -1,7 +1,7 @@
-import { WorkspaceSkeleton } from '../WorkspaceSkeleton';
-import { outcomeLabels } from '../../../shared/constants.js';
+import { DataFields } from '../DataValue';
+import { outcomeLabels, statusLabels } from '../../../shared/constants.js';
 import { Modal, Notice, CredentialCard, Status } from './ui';
-import type { Person } from './types';
+import type { Appointment, Person } from './types';
 import { RecordMaintenance } from '../RecordMaintenance';
 import { RepairAttachments } from '../RepairAttachments';
 import { RepairOriginal } from '../RepairOriginal';
@@ -20,7 +20,8 @@ export function Repair({
   onChanged,
   sidePanel = false,
   customerCredential,
-  returnLabel = '返回工作台'
+  returnLabel = '返回工作台',
+  summary
 }: {
   id: string;
   memberId: string;
@@ -30,6 +31,7 @@ export function Repair({
   sidePanel?: boolean;
   customerCredential?: { id: string; accessToken: string } | null;
   returnLabel?: string;
+  summary?: Partial<Appointment>;
 }) {
   const [direct, setDirect] = useState(false);
   const [identityConfirmed, setIdentityConfirmed] = useState(false);
@@ -67,6 +69,8 @@ export function Repair({
     handoff
   } = useRepair({ id, memberId, people, onClose, onChanged, sidePanel, returnLabel });
   useEffect(() => setIdentityConfirmed(false), [id, item?.revision]);
+  // A list summary is display-only; all commands still require the detail response.
+  const known = !error && summary?.id === id ? summary : null;
   return (
     <Modal
       sidePanel={sidePanel}
@@ -92,11 +96,39 @@ export function Repair({
       {!item ? (
         <>
           <p className="field-muted">{id}</p>
-          {error ? (
-            <button onClick={retry}>重新读取工单</button>
-          ) : (
-            <WorkspaceSkeleton label="正在读取工单" />
-          )}
+          {error && <button onClick={retry}>重新读取工单</button>}
+          <section className="field-ticket">
+            <h3>客户与设备</h3>
+            <DataFields
+              pending={!error}
+              fields={[
+                ['预约编号', id],
+                ['客户', known?.name],
+                [
+                  '设备',
+                  [known?.brand, known?.deviceModel || known?.deviceType].filter(Boolean).join(' ')
+                ],
+                ['故障描述', known?.faultType],
+                [
+                  '校区与到场时间',
+                  known && [known.campus, known.date, known.timeSlot].filter(Boolean).join(' · ')
+                ],
+                ['当前状态', known?.status ? statusLabels[known.status] || known.status : undefined]
+              ]}
+            />
+          </section>
+          <section className="field-details">
+            <h3>接待与维修记录</h3>
+            <p className="field-muted">核对客户、设备和当前流转状态后，执行此工单可用的操作。</p>
+            <DataFields
+              pending={!error}
+              fields={[
+                ['接待记录'],
+                ['维修人员', known?.assignedToName],
+                ['处理说明', known?.repairNote]
+              ]}
+            />
+          </section>
         </>
       ) : (
         <>

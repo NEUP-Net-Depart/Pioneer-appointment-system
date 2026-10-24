@@ -1,4 +1,4 @@
-import { WorkspaceSkeleton } from './WorkspaceSkeleton';
+import { DataFields } from './DataValue';
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { request } from './request.js';
 import { ActivityContext } from './field/ui';
@@ -152,8 +152,13 @@ export function Permissions() {
         </aside>
         <article className="react-card">
           <h2>{selected?.name || '角色权限'}</h2>
-          {!selected && loading && (
-            <WorkspaceSkeleton variant="form" label="正在读取角色权限" rows={4} />
+          {!selected && (
+            <>
+              <p className="react-muted">
+                按角色配置功能权限、授权范围、条件与有效期。已有权限的范围和条件会保留。
+              </p>
+              <DataFields pending={loading} fields={[['当前角色'], ['可配置功能'], ['授权范围']]} />
+            </>
           )}
           {!selected && error && (
             <button onClick={() => setReadRevision((value) => value + 1)}>重新读取角色权限</button>

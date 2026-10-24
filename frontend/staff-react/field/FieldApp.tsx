@@ -1,4 +1,4 @@
-import { WorkspaceSkeleton } from '../WorkspaceSkeleton';
+import { DataFields } from '../DataValue';
 import { useState } from 'react';
 import { Empty, Modal, Notice, CredentialCard, Scanner, time } from './ui';
 import { Repair } from './Repair';
@@ -137,7 +137,19 @@ export function FieldApp({
               <button onClick={refresh}>重新读取</button>
             </Empty>
           ) : (
-            <WorkspaceSkeleton label="正在读取当日工作" />
+            <section className="field-card">
+              <h2>{scene === 'mine' ? '个人工作' : '当日工作'}</h2>
+              <DataFields
+                fields={[
+                  ['工作日期', initial.businessDate],
+                  ['工作校区', campusName],
+                  ['当前岗位'],
+                  ['到岗状态'],
+                  ['当前工单']
+                ]}
+              />
+              <p className="field-muted">签到、接单与协调操作将在核对当前岗位和任务后显示。</p>
+            </section>
           )
         ) : (
           <>
@@ -280,6 +292,14 @@ export function FieldApp({
         <Repair
           sidePanel={scene !== 'repair'}
           id={selected}
+          summary={
+            items.find((item) => item.id === selected) ||
+            (data?.currentRepair?.id === selected
+              ? data.currentRepair
+              : data?.pendingRepair?.id === selected
+                ? data.pendingRepair
+                : undefined)
+          }
           key={selected}
           memberId={initial.actor.memberId}
           people={people}

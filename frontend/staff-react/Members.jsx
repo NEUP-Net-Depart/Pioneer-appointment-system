@@ -1,3 +1,4 @@
+import { DataValue } from './DataValue';
 import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { request } from './request.js';
 import { ActivityContext } from './field/ui';
@@ -176,14 +177,7 @@ export function Members({ user }) {
               </span>
             </div>
           ))}
-          {busy && !items.length && (
-            <div className="workspace-skeleton" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-              <span />
-            </div>
-          )}
+          {busy && !items.length && <DataValue label="成员列表" />}
           {!busy && !items.length && !error && (
             <div className="members-empty">
               <h2>没有找到成员</h2>

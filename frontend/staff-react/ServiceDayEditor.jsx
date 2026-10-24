@@ -1,3 +1,4 @@
+import { DataValue } from './DataValue';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { ActivityContext, Modal, Notice } from './field/ui';
 import { request } from './request.js';
@@ -221,11 +222,7 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
                         {past ? (
                           '已过去'
                         ) : !item ? (
-                          loading && !error ? (
-                            <span className="workspace-skeleton-inline" aria-label="状态尚未读取" />
-                          ) : (
-                            '未读取'
-                          )
+                          <DataValue label={`${day}维修状态`} pending={loading && !error} />
                         ) : paused ? (
                           '已暂停'
                         ) : (

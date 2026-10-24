@@ -1,3 +1,4 @@
+import { DataFields } from './DataValue';
 import { Modal } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { StaffIdentity } from './StaffIdentity';
@@ -158,15 +159,13 @@ export function RosterWorkflow({ user, office = false }) {
         </section>
       )}
       {(tasksLoading || (taskId && !data && !error)) && (
-        <div
-          className="roster-loading workspace-skeleton"
-          role="status"
-          aria-label="正在读取本周安排"
-        >
-          <span />
-          <span />
-          <span />
-        </div>
+        <section className="roster-loading" aria-label="本周收集与排班" aria-busy="true">
+          <h2>收集与排班</h2>
+          <p className="react-muted">
+            发布可用时间收集 → 查看填报进度 → 结束收集 → 生成并调整班表 → 检查并发布。
+          </p>
+          <DataFields fields={[['收集进度'], ['当前班表'], ['发布检查']]} />
+        </section>
       )}
       {data && manage && (
         <RosterTaskWorkspace

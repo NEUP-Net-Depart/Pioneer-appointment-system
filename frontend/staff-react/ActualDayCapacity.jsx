@@ -1,4 +1,5 @@
-import { WorkspaceSkeleton } from './WorkspaceSkeleton';
+import { DataValue } from './DataValue';
+import { TIME_SLOTS } from '../../shared/constants.js';
 import React, { useContext, useEffect, useState } from 'react';
 import { addDays, dateKey } from '../../shared/time.js';
 import { ActivityContext, Notice } from './field/ui';
@@ -80,24 +81,28 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
       </div>
       <Notice>{error}</Notice>
       {error && <button onClick={() => setRetry((value) => value + 1)}>重试</button>}
-      {date && loading && !data && !error && (
-        <WorkspaceSkeleton variant="rows" label="正在读取实际容量" rows={4} />
-      )}
       {!date && <p className="workspace-update">请选择日期。</p>}
-      {data && (
+      {date && (
         <>
           <div className="capacity-source">
-            <span>{data.source === 'snapshot' ? '已形成当日容量快照' : '使用每周模板'}</span>
+            <span>
+              容量来源：
+              <DataValue label="容量来源" pending={loading}>
+                {data ? (data.source === 'snapshot' ? '已形成当日容量快照' : '使用每周模板') : null}
+              </DataValue>
+            </span>
             <p>
-              {data.source === 'snapshot'
-                ? '当天容量已固定，后续模板调整不影响此日期。'
-                : '尚无固定快照；首次预约前，容量随对应星期的模板更新。'}
+              {!data
+                ? '实际名额由当日容量与预约占用共同决定。'
+                : data.source === 'snapshot'
+                  ? '当天容量已固定，后续模板调整不影响此日期。'
+                  : '尚无固定快照；首次预约前，容量随对应星期的模板更新。'}
             </p>
           </div>
           <div className="capacity-actual-layout">
             <div>
               <h3>预约名额</h3>
-              {data.items.length ? (
+              {!data || data.items.length ? (
                 <table className="capacity-actual-slots" aria-label="各时段预约名额">
                   <thead>
                     <tr>
@@ -108,13 +113,25 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.items.map((item) => (
+                    {(data?.items || TIME_SLOTS.map((timeSlot) => ({ timeSlot }))).map((item) => (
                       <tr key={item.timeSlot}>
                         <th scope="row">{item.timeSlot}</th>
-                        <td>{item.capacity}</td>
-                        <td>{item.occupied}</td>
                         <td>
-                          <strong>{Math.max(0, item.capacity - item.occupied)}</strong>
+                          <DataValue label={`${item.timeSlot}名额`} pending={loading}>
+                            {item.capacity}
+                          </DataValue>
+                        </td>
+                        <td>
+                          <DataValue label={`${item.timeSlot}已占用`} pending={loading}>
+                            {item.occupied}
+                          </DataValue>
+                        </td>
+                        <td>
+                          <strong>
+                            <DataValue label={`${item.timeSlot}剩余`} pending={loading}>
+                              {data ? Math.max(0, item.capacity - item.occupied) : null}
+                            </DataValue>
+                          </strong>
                         </td>
                       </tr>
                     ))}
@@ -129,7 +146,19 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
             </div>
             <div className="capacity-staffing">
               <h3>工作人员</h3>
-              {data.staffing ? (
+              {!data ? (
+                <>
+                  <p className="field-muted">{campus}校区 · 当日预计出勤</p>
+                  <div className="capacity-staffing-list">
+                    {['维修排班', '办公排班'].map((label) => (
+                      <div className="capacity-staffing-row" key={label}>
+                        <span>{label}</span>
+                        <DataValue label={label} pending={loading} />
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : data.staffing ? (
                 <>
                   <p className="field-muted">{campus}校区 · 当日预计出勤</p>
                   <div className="capacity-staffing-list">

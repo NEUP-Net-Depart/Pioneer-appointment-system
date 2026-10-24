@@ -1,4 +1,4 @@
-import { WorkspaceSkeleton } from './WorkspaceSkeleton';
+import { DataFields } from './DataValue';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { request } from './request.js';
 import { ActivityContext } from './field/ui';
@@ -100,8 +100,23 @@ export function RequirementEditor({ taskId, onSaved, onDirty }) {
           {notice}
         </p>
       )}
-      {!data && !error && (
-        <WorkspaceSkeleton variant="form" label="正在读取每日人员需求" rows={4} />
+      {!data && (
+        <section>
+          <h3>快速设置</h3>
+          <p className="react-muted">
+            按本任务的日期、校区配置每日人员需求，保存前核对对应岗位规则。
+          </p>
+          <fieldset disabled>
+            <legend>整周设置</legend>
+            <label>
+              每日人数
+              <input type="number" value="" readOnly />
+            </label>
+            <button type="button">应用到整周工作日</button>
+          </fieldset>
+          <h3>逐日需求</h3>
+          <DataFields pending={!error} fields={[['日期与校区'], ['岗位规则'], ['每日人数']]} />
+        </section>
       )}
       {data && (
         <form ref={navigationForm} onSubmit={save}>

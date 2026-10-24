@@ -1,4 +1,4 @@
-import { WorkspaceSkeleton } from './WorkspaceSkeleton';
+import { DataFields } from './DataValue';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { ActivityContext, Modal } from './field/ui';
 import { useWorkspaceQuery } from './useWorkspaceQuery.js';
@@ -365,7 +365,36 @@ export function SwapInvitations({
               {detail.error}
             </p>
           )}
-          {!value && !detail.error && <WorkspaceSkeleton label="正在读取换班安排" />}
+          {!value && (
+            <>
+              <h3>双方班次</h3>
+              <DataFields
+                pending={!detail.error}
+                fields={[
+                  [
+                    '发起人员',
+                    items.find((item) => item.id === selected)?.fromAssignment?.memberName
+                  ],
+                  [
+                    '原班次',
+                    items.find((item) => item.id === selected)?.fromAssignment &&
+                      shiftText(items.find((item) => item.id === selected)!.fromAssignment)
+                  ],
+                  [
+                    '交换人员',
+                    items.find((item) => item.id === selected)?.toAssignment?.memberName
+                  ],
+                  [
+                    '交换班次',
+                    items.find((item) => item.id === selected)?.toAssignment &&
+                      shiftText(items.find((item) => item.id === selected)!.toAssignment)
+                  ],
+                  ['覆盖与冲突检查']
+                ]}
+              />
+              <p className="field-muted">确认交换后的安排及人员覆盖后，才能同意换班。</p>
+            </>
+          )}
           {value && (
             <div className="swap-confirmation">
               <p>

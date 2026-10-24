@@ -30,7 +30,7 @@ export const time = (value: string) =>
   });
 export function Status({ value }: { value: string }) {
   return (
-    <span className={`field-status ${statusClass[value] || ''}`}>
+    <span data-motion-value="status" className={`field-status ${statusClass[value] || ''}`}>
       {statusLabels[value] ||
         receptionLabels[value] ||
         {

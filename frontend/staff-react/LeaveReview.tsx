@@ -1,4 +1,4 @@
-import { WorkspaceSkeleton } from './WorkspaceSkeleton';
+import { DataFields } from './DataValue';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { ActivityContext, Modal } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
@@ -148,7 +148,22 @@ export function LeaveReview({
               {detail.error}
             </p>
           )}
-          {!current && !detail.error && <WorkspaceSkeleton label="正在读取申请详情" />}
+          {!current && (
+            <>
+              <h2>{all.find((item) => item.id === selected)?.memberName || '成员'}的请假申请</h2>
+              <DataFields
+                pending={!detail.error}
+                fields={[
+                  ['班次', all.find((item) => item.id === selected)?.assignment?.businessDate],
+                  ['岗位与校区', all.find((item) => item.id === selected)?.assignment?.campusName],
+                  ['申请原因', all.find((item) => item.id === selected)?.reason],
+                  ['实际签到'],
+                  ['批准后人员覆盖']
+                ]}
+              />
+              <p className="field-muted">审批前需核对实际签到和人员覆盖，批准后保留到岗记录。</p>
+            </>
+          )}
           {current && (
             <>
               <header className="leave-row-title">
@@ -393,7 +408,7 @@ export function LeaveReview({
               </button>
             ))}
             {!items.length && list.loading && !list.data && (
-              <WorkspaceSkeleton variant="rows" label="正在读取申请列表" />
+              <DataFields fields={[['申请人'], ['班次'], ['申请原因']]} />
             )}
             {!items.length && !list.loading && !list.error && (
               <div className="react-card empty-state">

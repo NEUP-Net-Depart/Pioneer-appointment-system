@@ -1,4 +1,4 @@
-import { WorkspaceSkeleton } from './WorkspaceSkeleton';
+import { DataValue } from './DataValue';
 import React, { useContext, useEffect, useState } from 'react';
 import { apiFetch } from '../../shared/api.js';
 import { attachmentSize, attachmentUrl } from '../../shared/attachments.js';
@@ -70,7 +70,7 @@ export function RepairAttachments({ id, revision }) {
           <p className="field-muted">暂无可用附件。</p>
         )
       ) : (
-        open && !error && <WorkspaceSkeleton variant="rows" label="正在读取附件" rows={2} />
+        open && !error && <DataValue label="附件" />
       )}
     </details>
   );

@@ -1,3 +1,4 @@
+import { DataFields } from './DataValue';
 import { WorkspaceSkeleton } from './WorkspaceSkeleton';
 import { UnsavedPageContext } from './useUnsavedChanges.js';
 import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
@@ -243,7 +244,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
         <UnsavedPageContext.Provider value={visible(view)}>
           <WorkspacePage route={view} active={visible(view)}>
             <WorkspaceModuleBoundary>
-              <Suspense fallback={<WorkspacePending />}>{child}</Suspense>
+              <Suspense fallback={<WorkspacePending code />}>{child}</Suspense>
             </WorkspaceModuleBoundary>
           </WorkspacePage>
         </UnsavedPageContext.Provider>
@@ -381,7 +382,7 @@ class WorkspaceModuleBoundary extends React.Component {
     );
   }
 }
-function WorkspacePending({ error, onRetry }) {
+function WorkspacePending({ error, onRetry, code = false }) {
   return (
     <section className="workspace-pending" aria-busy={!error} aria-label="工作区内容">
       {error && <p role="alert">{error}</p>}
@@ -389,8 +390,14 @@ function WorkspacePending({ error, onRetry }) {
         <button className="field-primary" onClick={onRetry}>
           重新加载工作区
         </button>
+      ) : code ? (
+        <WorkspaceSkeleton label="正在加载页面组件" />
       ) : (
-        <WorkspaceSkeleton label="正在准备工作区内容" />
+        <section className="field-card">
+          <h2>今日工作概况</h2>
+          <p className="field-muted">查看到岗状态和当前任务，从对应岗位继续工作。</p>
+          <DataFields fields={[['当前岗位'], ['到岗状态'], ['当前任务']]} />
+        </section>
       )}
     </section>
   );

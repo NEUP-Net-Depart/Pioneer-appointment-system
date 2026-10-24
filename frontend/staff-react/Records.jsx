@@ -1,4 +1,4 @@
-import { WorkspaceSkeleton } from './WorkspaceSkeleton';
+import { DataFields } from './DataValue';
 import React, { useContext, useEffect, useState } from 'react';
 import { apiFetch } from '../../shared/api.js';
 import { statusLabels, TIME_SLOTS, outcomeLabels } from '../../shared/constants.js';
@@ -297,6 +297,7 @@ export function Records({ user }) {
         <Repair
           key={selected}
           id={selected}
+          summary={data?.items?.find((item) => item.id === selected)}
           memberId={user.memberId || user.account}
           people={[]}
           onClose={() => setSelected('')}
@@ -451,7 +452,7 @@ function RecordOverview({ result, onFilter, onOpen }) {
           </span>
           <Notice>{result.error}</Notice>
           {!data && result.loading && !result.error && (
-            <WorkspaceSkeleton variant="rows" label="正在读取预约概览" />
+            <DataFields fields={[['预约日期'], ['校区'], ['名额与占用']]} />
           )}
           {data && (
             <>

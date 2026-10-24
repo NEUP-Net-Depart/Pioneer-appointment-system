@@ -1,4 +1,4 @@
-import { WorkspaceSkeleton } from './WorkspaceSkeleton';
+import { DataValue } from './DataValue';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { ActivityContext, Modal, Notice } from './field/ui';
 import { request } from './request.js';
@@ -208,7 +208,6 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
         </button>
       </div>
       <Notice>{error || message}</Notice>
-      {!data && loading && !error && <WorkspaceSkeleton variant="form" label="正在读取预约规则" />}
       {error && !editing && (
         <button
           disabled={busy || loading}
@@ -221,123 +220,130 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
           丢弃修改并读取最新配置
         </button>
       )}
-      {data && (
-        <>
-          {mode === 'release' && (
-            <section className="field-card booking-rule-card">
-              <div>
-                <h2>每日放号</h2>
-                <p>仅调整预约窗口的切换时间；签到、排班和统计仍按北京时间自然日计算。</p>
-              </div>
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void perform(saveTime).catch(() => {});
-                }}
-              >
-                <label>
-                  放号时间（北京时间）
-                  <input
-                    type="time"
-                    required
-                    value={releaseTime}
-                    disabled={busy}
-                    onChange={(event) => setReleaseTime(event.target.value)}
-                  />
-                </label>
-                <p className="field-muted">
-                  放号前可约当天至后两天；放号后可约当天至后三天。仅开放周一至周四的未结束时段。
-                </p>
-                <div className="field-actions">
-                  <button className="field-primary" disabled={busy || !timeDirty}>
-                    {busy ? '正在保存…' : '保存放号时间'}
-                  </button>
-                </div>
-              </form>
-            </section>
-          )}
-          {mode === 'notices' && (
-            <section className="field-card booking-rule-card">
-              <div className="capacity-section-heading">
-                <div>
-                  <h2>校区公告</h2>
-                  <p>
-                    公告仅在预约首页展示，可选页面或弹窗形式；必读公告需点击阅读确认后才能进入下一步。时间均为北京时间。
-                  </p>
-                </div>
-                <button className="field-primary" disabled={busy} onClick={() => openNotice()}>
-                  新增公告
+      <>
+        {mode === 'release' && (
+          <section className="field-card booking-rule-card">
+            <div>
+              <h2>每日放号</h2>
+              <p>仅调整预约窗口的切换时间；签到、排班和统计仍按北京时间自然日计算。</p>
+            </div>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void perform(saveTime).catch(() => {});
+              }}
+            >
+              <label>
+                放号时间（北京时间）
+                <input
+                  type="time"
+                  data-motion-value="field"
+                  required
+                  value={data ? releaseTime : ''}
+                  disabled={busy || !data}
+                  onChange={(event) => setReleaseTime(event.target.value)}
+                />
+              </label>
+              <p className="field-muted">
+                放号前可约当天至后两天；放号后可约当天至后三天。仅开放周一至周四的未结束时段。
+              </p>
+              <div className="field-actions">
+                <button className="field-primary" disabled={busy || !timeDirty}>
+                  {busy ? '正在保存…' : '保存放号时间'}
                 </button>
               </div>
-              {!data.notices.length ? (
-                <p className="field-muted">暂无公告。可发布维修安排、到场须知等说明。</p>
-              ) : (
-                <div className="booking-notice-list">
-                  {data.notices.map((item) => (
-                    <article key={item.id}>
-                      <div>
-                        <strong>{item.title}</strong>
-                        <span className="booking-notice-meta">
-                          {item.important ? '必读公告' : '普通公告'} ·{' '}
-                          {item.displayMode === 'modal' ? '弹窗展示' : '页面展示'} ·{' '}
-                          {!item.enabled
-                            ? '已停用'
-                            : Date.now() < Date.parse(item.startsAt)
-                              ? '待生效'
-                              : Date.now() >= Date.parse(item.endsAt)
-                                ? '已结束'
-                                : '展示中'}
-                        </span>
-                        <p>{item.content}</p>
-                        <small>
-                          {formatInstant(item.startsAt)} 至 {formatInstant(item.endsAt)}
-                        </small>
-                      </div>
-                      <button onClick={() => openNotice(item)}>编辑公告</button>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
-          )}
-          {mode === 'notices' && (
-            <section className="field-card booking-rule-card">
-              <div className="capacity-section-heading">
-                <div>
-                  <h2>暂停维修公告</h2>
-                  <p>
-                    与暂停日期同步，无需重复发布；恢复维修或日期结束后自动停止展示。用户选中对应日期时会看到暂停说明。
-                  </p>
-                </div>
-                <button onClick={onManageSuspension}>管理暂停日期</button>
+            </form>
+          </section>
+        )}
+        {mode === 'notices' && (
+          <section className="field-card booking-rule-card">
+            <div className="capacity-section-heading">
+              <div>
+                <h2>校区公告</h2>
+                <p>
+                  公告仅在预约首页展示，可选页面或弹窗形式；必读公告需点击阅读确认后才能进入下一步。时间均为北京时间。
+                </p>
               </div>
-              {!data.suspensions?.length ? (
-                <p className="field-muted">暂无待生效或当日的暂停维修公告。</p>
-              ) : (
-                <div className="booking-notice-list">
-                  {data.suspensions.map((item) => (
-                    <article key={item.id}>
-                      <div>
-                        <strong>
-                          {item.businessDate} · {campus}校区暂停维修
-                        </strong>
-                        <span className="booking-notice-meta">
-                          {item.businessDate >
-                          new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10)
-                            ? '即将暂停'
-                            : '今日暂停'}{' '}
-                          · 来自暂停安排
-                        </span>
-                        <p>{item.content}</p>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
-          )}
-        </>
-      )}
+              <button
+                className="field-primary"
+                disabled={busy || !data}
+                onClick={() => openNotice()}
+              >
+                新增公告
+              </button>
+            </div>
+            {!data ? (
+              <DataValue label="校区公告" pending={loading} />
+            ) : !data.notices.length ? (
+              <p className="field-muted">暂无公告。可发布维修安排、到场须知等说明。</p>
+            ) : (
+              <div className="booking-notice-list">
+                {data.notices.map((item) => (
+                  <article key={item.id}>
+                    <div>
+                      <strong>{item.title}</strong>
+                      <span className="booking-notice-meta">
+                        {item.important ? '必读公告' : '普通公告'} ·{' '}
+                        {item.displayMode === 'modal' ? '弹窗展示' : '页面展示'} ·{' '}
+                        {!item.enabled
+                          ? '已停用'
+                          : Date.now() < Date.parse(item.startsAt)
+                            ? '待生效'
+                            : Date.now() >= Date.parse(item.endsAt)
+                              ? '已结束'
+                              : '展示中'}
+                      </span>
+                      <p>{item.content}</p>
+                      <small>
+                        {formatInstant(item.startsAt)} 至 {formatInstant(item.endsAt)}
+                      </small>
+                    </div>
+                    <button onClick={() => openNotice(item)}>编辑公告</button>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+        {mode === 'notices' && (
+          <section className="field-card booking-rule-card">
+            <div className="capacity-section-heading">
+              <div>
+                <h2>暂停维修公告</h2>
+                <p>
+                  与暂停日期同步，无需重复发布；恢复维修或日期结束后自动停止展示。用户选中对应日期时会看到暂停说明。
+                </p>
+              </div>
+              <button onClick={onManageSuspension}>管理暂停日期</button>
+            </div>
+            {!data ? (
+              <DataValue label="暂停维修公告" pending={loading} />
+            ) : !data.suspensions?.length ? (
+              <p className="field-muted">暂无待生效或当日的暂停维修公告。</p>
+            ) : (
+              <div className="booking-notice-list">
+                {data.suspensions.map((item) => (
+                  <article key={item.id}>
+                    <div>
+                      <strong>
+                        {item.businessDate} · {campus}校区暂停维修
+                      </strong>
+                      <span className="booking-notice-meta">
+                        {item.businessDate >
+                        new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10)
+                          ? '即将暂停'
+                          : '今日暂停'}{' '}
+                        · 来自暂停安排
+                      </span>
+                      <p>{item.content}</p>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+      </>
       {editing && (
         <Modal
           title={editing.revision < 0 ? '新增校区公告' : '编辑校区公告'}
@@ -363,7 +369,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
                 required
                 maxLength={80}
                 value={editing.title}
-                disabled={busy}
+                disabled={busy || !data}
                 onChange={(event) => update('title', event.target.value)}
               />
             </label>
@@ -374,7 +380,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
                 maxLength={2000}
                 rows={5}
                 value={editing.content}
-                disabled={busy}
+                disabled={busy || !data}
                 onChange={(event) => update('content', event.target.value)}
               />
             </label>
@@ -385,7 +391,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
                   required
                   type="datetime-local"
                   value={editing.startsAt}
-                  disabled={busy}
+                  disabled={busy || !data}
                   onChange={(event) => update('startsAt', event.target.value)}
                 />
               </label>
@@ -396,7 +402,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
                   type="datetime-local"
                   min={editing.startsAt}
                   value={editing.endsAt}
-                  disabled={busy}
+                  disabled={busy || !data}
                   onChange={(event) => update('endsAt', event.target.value)}
                 />
               </label>
@@ -405,7 +411,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
               展示方式
               <select
                 value={editing.displayMode}
-                disabled={busy}
+                disabled={busy || !data}
                 onChange={(event) => update('displayMode', event.target.value)}
               >
                 <option value="inline">页面展示</option>
@@ -416,7 +422,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
               <input
                 type="checkbox"
                 checked={editing.important}
-                disabled={busy}
+                disabled={busy || !data}
                 onChange={(event) => update('important', event.target.checked)}
               />
               <span>必读公告，进入下一步前需点击阅读确认</span>
@@ -425,7 +431,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
               <input
                 type="checkbox"
                 checked={editing.enabled}
-                disabled={busy}
+                disabled={busy || !data}
                 onChange={(event) => update('enabled', event.target.checked)}
               />
               <span>启用公告</span>
@@ -434,7 +440,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
             {error && (
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || !data}
                 onClick={() => {
                   discard();
                   loaded.current = false;
@@ -447,7 +453,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
             <div className="field-actions">
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || !data}
                 onClick={() => {
                   setEditing(null);
                   setOriginal(null);
@@ -456,7 +462,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
               >
                 放弃编辑
               </button>
-              <button className="field-primary" disabled={busy}>
+              <button className="field-primary" disabled={busy || !data}>
                 {busy ? '正在保存…' : '保存公告'}
               </button>
             </div>

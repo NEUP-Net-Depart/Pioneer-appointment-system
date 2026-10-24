@@ -1,4 +1,4 @@
-import { WorkspaceSkeleton } from './WorkspaceSkeleton';
+import { DataFields } from './DataValue';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { dateKey } from '../../shared/time.js';
 import { request } from './request.js';
@@ -207,6 +207,50 @@ export function MemberEditor({
             </p>
           )}
           {message && <p role="status">{message}</p>}
+          <form ref={profileForm} hidden={section !== 'profile'} onSubmit={saveProfile}>
+            <fieldset
+              aria-busy={!detail && !error}
+              disabled={busy || !detail || detail.actions?.edit === false}
+            >
+              <legend>成员资料{profileDirty ? ' · 未保存' : ''}</legend>
+              <label>
+                姓名
+                <input
+                  required
+                  data-motion-value="field"
+                  value={profile.name}
+                  onChange={(event) => setProfile({ ...profile, name: event.target.value })}
+                />
+              </label>
+              <label>
+                所属校区
+                <select
+                  data-motion-value="field"
+                  value={profile.homeCampusId}
+                  onChange={(event) => setProfile({ ...profile, homeCampusId: event.target.value })}
+                >
+                  {campuses.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                成员状态
+                <select
+                  data-motion-value="field"
+                  value={profile.status}
+                  onChange={(event) => setProfile({ ...profile, status: event.target.value })}
+                >
+                  <option value="active">正常</option>
+                  <option value="inactive">停用</option>
+                </select>
+              </label>
+              <button className="react-primary">保存资料</button>
+            </fieldset>
+          </form>
+
           {!detail ? (
             error ? (
               <button
@@ -217,8 +261,22 @@ export function MemberEditor({
               >
                 重新读取成员资料
               </button>
-            ) : (
-              <WorkspaceSkeleton variant="form" label="正在读取成员资料" rows={4} />
+            ) : section === 'profile' ? null : (
+              <section>
+                <h3>{section === 'roles' ? '角色授权' : '工作资格'}</h3>
+                <p className="field-muted">
+                  {section === 'roles'
+                    ? '授权校区独立于所属校区；结束日期当天起失效。'
+                    : '工作资格用于确认成员可以参与的岗位，身份与角色授权分别管理。'}
+                </p>
+                <DataFields
+                  fields={
+                    section === 'roles'
+                      ? [['已授角色'], ['授权范围'], ['有效期']]
+                      : [['资格类型'], ['有效期'], ['培训确认']]
+                  }
+                />
+              </section>
             )
           ) : (
             <>
@@ -234,45 +292,6 @@ export function MemberEditor({
                     />
                   </div>
                 )}
-              <form ref={profileForm} hidden={section !== 'profile'} onSubmit={saveProfile}>
-                <fieldset disabled={busy || detail.actions?.edit === false}>
-                  <legend>成员资料{profileDirty ? ' · 未保存' : ''}</legend>
-                  <label>
-                    姓名
-                    <input
-                      required
-                      value={profile.name}
-                      onChange={(event) => setProfile({ ...profile, name: event.target.value })}
-                    />
-                  </label>
-                  <label>
-                    所属校区
-                    <select
-                      value={profile.homeCampusId}
-                      onChange={(event) =>
-                        setProfile({ ...profile, homeCampusId: event.target.value })
-                      }
-                    >
-                      {campuses.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    成员状态
-                    <select
-                      value={profile.status}
-                      onChange={(event) => setProfile({ ...profile, status: event.target.value })}
-                    >
-                      <option value="active">正常</option>
-                      <option value="inactive">停用</option>
-                    </select>
-                  </label>
-                  <button className="react-primary">保存资料</button>
-                </fieldset>
-              </form>
               {detail.account?.protected && (
                 <p className="react-muted">此系统账号受保护，仅本人可验证原密码后修改密码。</p>
               )}

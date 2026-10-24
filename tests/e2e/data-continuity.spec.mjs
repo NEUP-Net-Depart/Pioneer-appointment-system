@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { mockStaff, loginStaff, staffPage } from './support/staff.mjs';
 import { setupStudent } from './support/student.mjs';
 
-const motion = (await readFile(new URL('../../shared/data-motion.js', import.meta.url), 'utf8')).replace('export function observeDataMotion', 'window.observeDataMotion = function');
+const motion = (await readFile(new URL('../../shared/data-motion.js', import.meta.url), 'utf8')).replace('export const dataMotionPresets', 'const dataMotionPresets').replace('export function observeDataMotion', 'window.observeDataMotion = function');
 for (const width of [320, 390, 768, 1440]) test(`data regions extend locally without moving the heading at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 900 });
   await page.setContent(`<style>*{box-sizing:border-box}body{margin:0}.field-appointments{padding:16px;border:1px solid;max-width:700px}.row{height:50px}h1{margin:0;height:60px}</style><main><h1>工作台</h1><section class="field-appointments"><div id="a" class="row" data-motion-item="a">张三</div><div id="b" class="row" data-motion-item="b">李四</div></section></main>`);
@@ -101,7 +101,7 @@ test('roster does not flash an empty task invitation while the task list is pend
   try {
     await loginStaff(page);
     await staffPage(page, '维修排班管理');
-    await expect(page.getByLabel('正在读取本周安排')).toBeVisible();
+    await expect(page.getByLabel('本周收集与排班')).toBeVisible();
     await expect(page.locator('.roster-start')).toHaveCount(0);
     release();
     await expect(page.locator('.roster-start')).toBeVisible();
@@ -166,4 +166,54 @@ test('signature and camera regions retain their geometry instead of animating th
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   });
   expect(await page.evaluate(() => document.getAnimations().length)).toBe(0);
+});
+
+
+test('semantic motion presets distinguish text, numbers, status and arriving rows without replaying unchanged values', async ({ page }) => {
+  await page.setContent('<style>[data-motion-value]{display:inline-block}</style><main><section data-motion-region><span id="text" data-motion-value="text" aria-busy="true">—</span><span id="number" data-motion-value="number">3</span><span id="status" data-motion-value="status">空闲</span><input id="field" data-motion-value="field" value="旧值"></section></main>');
+  await page.addScriptTag({ content: motion });
+  await page.evaluate(() => { window.stopMotion = window.observeDataMotion(document.querySelector('main')); });
+  const result = await page.evaluate(async () => {
+    const text = document.querySelector('#text');
+    text.textContent = '读取完成'; text.setAttribute('aria-busy', 'false');
+    document.querySelector('#number').textContent = '7';
+    document.querySelector('#status').textContent = '维修中';
+    const row = document.createElement('p'); row.id = 'new-row'; row.dataset.motionItem = 'new'; row.textContent = '新增工单';
+    document.querySelector('section').append(row);
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return Object.fromEntries(['text','number','status','new-row'].map(id => {
+      const animation = document.getElementById(id).getAnimations()[0];
+      return [id, { duration: animation?.effect.getTiming().duration, frames: animation?.effect.getKeyframes() }];
+    }));
+  });
+  expect(result.text.duration).toBe(160);
+  expect(result.number.duration).toBe(180);
+  expect(result.status.duration).toBe(150);
+  expect(result['new-row'].duration).toBe(180);
+  expect(result.text.frames[0].opacity).toBe('0.65');
+  expect(result.number.frames[0].transform).toContain('translateY');
+  await expect.poll(() => page.evaluate(() => document.getAnimations().length)).toBe(0);
+  const unchanged = await page.evaluate(async () => {
+    document.querySelector('#text').firstChild.data = '读取完成';
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return document.querySelector('#text').getAnimations().length;
+  });
+  expect(unchanged).toBe(0);
+  await page.locator('#field').focus();
+  const focused = await page.evaluate(async () => {
+    document.querySelector('#field').setAttribute('value', '新值');
+    document.querySelector('#text').textContent = '输入期间新数据';
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return document.getAnimations().length;
+  });
+  expect(focused).toBe(0);
+  await page.locator('#field').blur();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const reduced = await page.evaluate(async () => {
+    document.querySelector('#text').textContent = '减少动态效果';
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return document.getAnimations().length;
+  });
+  expect(reduced).toBe(0);
+  await page.evaluate(() => window.stopMotion());
 });

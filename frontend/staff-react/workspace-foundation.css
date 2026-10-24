@@ -1435,54 +1435,27 @@ fieldset.staffing-editor {
   min-height: 1.5em;
 }
 
-/* Local, static loading geometry. No shimmer, fake values or whole-page replacement. */
-.workspace-content-skeleton {
-  min-width: 0;
-  padding-block: 1rem;
+/* Data loading keeps the real labels and controls; missing values have no fake boxes. */
+.workspace-data-pending {
+  display: inline-block;
+  min-width: 1.5ch;
+  color: var(--muted, #64748b);
+  font-variant-numeric: tabular-nums;
 }
-.workspace-content-skeleton__layout {
+.workspace-data-fields {
   display: grid;
-  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: 1rem 1.5rem;
+  margin-block: 1rem;
 }
-.workspace-content-skeleton__item {
-  display: grid;
-  gap: 0.625rem;
+.workspace-data-fields > div {
   min-width: 0;
 }
-.workspace-content-skeleton__label,
-.workspace-content-skeleton__value,
-.workspace-skeleton-inline {
-  display: block;
-  border-radius: 0.375rem;
-  background: #eef0f3;
+.workspace-data-fields dt {
+  color: var(--muted, #64748b);
+  font-size: 0.875rem;
 }
-.workspace-content-skeleton__label {
-  width: 6rem;
-  max-width: 40%;
-  height: 0.875rem;
-}
-.workspace-content-skeleton__value {
-  width: 100%;
-  height: 2.75rem;
-}
-.workspace-content-skeleton--details .workspace-content-skeleton__value {
-  width: 75%;
-  height: 1.25rem;
-}
-.workspace-content-skeleton--rows .workspace-content-skeleton__item {
-  padding-block: 0.625rem;
-  border-bottom: 1px solid #eef0f3;
-}
-.workspace-content-skeleton--rows .workspace-content-skeleton__value {
-  width: 65%;
-  height: 1rem;
-}
-.workspace-skeleton-inline {
-  width: 2.5rem;
-  height: 1em;
-}
-@media (min-width: 768px) {
-  .workspace-content-skeleton--form .workspace-content-skeleton__layout {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.workspace-data-fields dd {
+  margin: 0.375rem 0 0;
+  overflow-wrap: anywhere;
 }

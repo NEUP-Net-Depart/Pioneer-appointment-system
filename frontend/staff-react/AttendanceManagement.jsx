@@ -1,4 +1,4 @@
-import { WorkspaceSkeleton } from './WorkspaceSkeleton';
+import { DataValue } from './DataValue';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { WeeklyAttendanceExport } from './WeeklyAttendanceExport';
 import { ActivityContext, Modal, time } from './field/ui';
@@ -263,9 +263,7 @@ export function AttendanceManagement({ user }) {
           <h2>到岗记录</h2>
           <span className="react-muted">{loading ? '正在更新…' : `已显示 ${items.length} 条`}</span>
         </div>
-        {!items.length && loading && !error && (
-          <WorkspaceSkeleton variant="rows" label="正在读取考勤记录" />
-        )}
+        {!items.length && loading && !error && <DataValue label="考勤记录" />}
         {!items.length && !loading && !error && (
           <p className="react-muted">当前范围内没有可查看的签到记录。</p>
         )}

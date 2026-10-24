@@ -1,3 +1,4 @@
+import { DataValue } from '../DataValue';
 import React from 'react';
 import { AnimatedValue } from '../AnimatedValue';
 import { Empty, Notice, Status, time } from './ui';
@@ -242,13 +243,7 @@ export function DeskScene({
               </span>
             </button>
           ))}
-          {!data.appointments && result.loading && (
-            <div className="workspace-skeleton" aria-label="正在读取预约">
-              <span />
-              <span />
-              <span />
-            </div>
-          )}
+          {!data.appointments && result.loading && <DataValue label="今日预约" />}
           {data.appointments && !items.length && (
             <Empty title="没有符合条件的预约">可调整筛选条件，或登记现场到访机主。</Empty>
           )}
@@ -258,16 +253,30 @@ export function DeskScene({
             <h2>现场人员</h2>
           </div>
           <p className="field-muted field-person-summary">
-            可接单 {people.filter((person) => person.canReceive).length} 人 · 已到岗{' '}
-            {people.filter((person) => person.signedInAt).length} 人 · 维修排班{' '}
-            {people.filter((person) => person.scheduledRepair).length} 人 · 已到岗负责人{' '}
-            {
-              people.filter(
-                (person) =>
-                  person.signedInAt &&
-                  person.identities?.some((identity) => identity.code === 'repair_lead')
-              ).length
-            }{' '}
+            可接单{' '}
+            <DataValue label="可接单人数" pending={result.loading}>
+              {data.staffPresence ? people.filter((person) => person.canReceive).length : undefined}
+            </DataValue>{' '}
+            人 · 已到岗{' '}
+            <DataValue label="已到岗人数" pending={result.loading}>
+              {data.staffPresence ? people.filter((person) => person.signedInAt).length : undefined}
+            </DataValue>{' '}
+            人 · 维修排班{' '}
+            <DataValue label="维修排班人数" pending={result.loading}>
+              {data.staffPresence
+                ? people.filter((person) => person.scheduledRepair).length
+                : undefined}
+            </DataValue>{' '}
+            人 · 已到岗负责人{' '}
+            <DataValue label="已到岗负责人人数" pending={result.loading}>
+              {data.staffPresence
+                ? people.filter(
+                    (person) =>
+                      person.signedInAt &&
+                      person.identities?.some((identity) => identity.code === 'repair_lead')
+                  ).length
+                : undefined}
+            </DataValue>{' '}
             人
           </p>
           <label className="workspace-search-label">
@@ -321,12 +330,7 @@ export function DeskScene({
           {people.length > 0 && !visiblePeople.length && (
             <Empty title="没有匹配的现场人员">更换搜索词或切换为查看全部人员。</Empty>
           )}
-          {!data.staffPresence && result.loading && (
-            <div className="workspace-skeleton" aria-label="正在读取人员">
-              <span />
-              <span />
-            </div>
-          )}
+          {!data.staffPresence && result.loading && <DataValue label="现场人员" />}
           {data.staffPresence && !people.length && (
             <Empty title="暂无现场人员">展示工作人员签到码，成员扫码并确认后记录到岗。</Empty>
           )}
