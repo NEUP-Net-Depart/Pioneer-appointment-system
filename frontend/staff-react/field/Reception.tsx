@@ -106,15 +106,17 @@ export function Reception({
     <section className="reception-panel" aria-label="现场接待与分派" aria-busy={saving}>
       <div className="reception-stage">
         <span>到场已核验</span>
-        <span className="is-current">
+        <span data-motion-value="text" className="is-current">
           {item.reception.state === 'queued' ? '等待分派' : '等待维修人员接手'}
         </span>
         <span>维修完成</span>
       </div>
-      <h3>{queueTicketLabel(item.reception.ticket) || '现场队列'}</h3>
-      <p className="field-muted">到场时间 {formatInstant(item.reception.receivedAt)}</p>
+      <h3 data-motion-value="text">{queueTicketLabel(item.reception.ticket) || '现场队列'}</h3>
+      <p data-motion-value="text" className="field-muted">
+        到场时间 {formatInstant(item.reception.receivedAt)}
+      </p>
       {item.queuePosition && (
-        <p className="field-muted">
+        <p data-motion-value="number" className="field-muted">
           当前第 {item.queuePosition.position} 位 · 前面 {item.queuePosition.position - 1} 位 · 共{' '}
           {item.queuePosition.total} 单
         </p>
@@ -130,7 +132,7 @@ export function Reception({
       <Notice>{error}</Notice>
       {item.reception.state === 'assigned' ? (
         <>
-          <h3>已分派给 {item.reception.assignedToName || '维修人员'}</h3>
+          <h3 data-motion-value="text">已分派给 {item.reception.assignedToName || '维修人员'}</h3>
           <p>该人员的接单名额已占用；确认接手后才记录维修开始。</p>
           {(item.canReturn || item.canDispatch) && (
             <details className="field-details">
@@ -192,9 +194,9 @@ export function Reception({
                   required
                 />
                 <span>
-                  <strong>{person.name}</strong>
+                  <strong data-motion-value="text">{person.name}</strong>
                   <StaffIdentity identities={person.identities} />
-                  <small>
+                  <small data-motion-value="number">
                     今日已接 {person.workload?.started || 0} · 已完成{' '}
                     {person.workload?.completed || 0}
                   </small>

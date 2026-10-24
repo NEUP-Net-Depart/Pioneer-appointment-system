@@ -202,11 +202,15 @@ export function MemberEditor({
             ]}
           />
           {error && (
-            <p className="react-error" role="alert">
+            <p data-motion-value="text" className="react-error" role="alert">
               {error}
             </p>
           )}
-          {message && <p role="status">{message}</p>}
+          {message && (
+            <p data-motion-value="text" role="status">
+              {message}
+            </p>
+          )}
           <form ref={profileForm} hidden={section !== 'profile'} onSubmit={saveProfile}>
             <fieldset
               aria-busy={!detail && !error}
@@ -263,8 +267,8 @@ export function MemberEditor({
               </button>
             ) : section === 'profile' ? null : (
               <section>
-                <h3>{section === 'roles' ? '角色授权' : '工作资格'}</h3>
-                <p className="field-muted">
+                <h3 data-motion-value="text">{section === 'roles' ? '角色授权' : '工作资格'}</h3>
+                <p data-motion-value="text" className="field-muted">
                   {section === 'roles'
                     ? '授权校区独立于所属校区；结束日期当天起失效。'
                     : '工作资格用于确认成员可以参与的岗位，身份与角色授权分别管理。'}
@@ -303,13 +307,14 @@ export function MemberEditor({
                     {bindings.map((binding, index) => {
                       return (
                         <details
+                          data-motion-item=""
                           className="react-binding workspace-binding"
                           open={index === 0 || !binding.id}
                           key={binding.id || `new-${index}`}
                         >
                           <summary>
                             <span>
-                              <strong>
+                              <strong data-motion-value="text">
                                 {roles.find((role) => role.id === binding.roleId)?.name ||
                                   '待选择角色'}
                               </strong>

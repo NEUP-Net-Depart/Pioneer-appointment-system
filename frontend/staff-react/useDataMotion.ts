@@ -1,8 +1,13 @@
-import { useEffect, type RefObject } from 'react';
+import { useLayoutEffect, type RefObject } from 'react';
 import { observeDataMotion } from '../../shared/data-motion.js';
 
-export function useDataMotion(ref: RefObject<HTMLElement>, active: boolean) {
-  useEffect(() => {
-    if (active && ref.current) return observeDataMotion(ref.current);
-  }, [ref, active]);
+export function useDataMotion(ref: RefObject<HTMLElement>, active: boolean, enterInitial = false) {
+  useLayoutEffect(() => {
+    if (active && ref.current) {
+      const cleanup = observeDataMotion(ref.current, {
+        enterInitial
+      });
+      return cleanup;
+    }
+  }, [ref, active, enterInitial]);
 }

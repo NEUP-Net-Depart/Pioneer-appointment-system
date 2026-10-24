@@ -97,7 +97,7 @@ export function Members({ user }) {
         </button>
       </WorkspaceHeader>
       {error && (
-        <p className="react-error" role="alert">
+        <p data-motion-value="text" className="react-error" role="alert">
           {error}
         </p>
       )}
@@ -136,7 +136,7 @@ export function Members({ user }) {
               <option value="inactive">停用</option>
             </select>
           </label>
-          <span className="members-result-count" role="status">
+          <span data-motion-value="number" className="members-result-count" role="status">
             {busy ? '正在更新筛选结果…' : `已显示 ${items.length} 名成员`}
           </span>
         </div>
@@ -151,11 +151,13 @@ export function Members({ user }) {
           {items.map((item) => (
             <div data-motion-item={item.memberId} className="react-row" key={item.memberId}>
               <span className="react-member-identity">
-                <strong>{item.name}</strong>
+                <strong data-motion-value="text">{item.name}</strong>
                 <StaffIdentity identities={item.identities} />
-                <small>{item.studentId || item.account || '未关联登录账号'}</small>
+                <small data-motion-value="text">
+                  {item.studentId || item.account || '未关联登录账号'}
+                </small>
               </span>
-              <span data-label="所属校区">
+              <span data-motion-value="text" data-label="所属校区">
                 {item.homeCampusId === 'campus-hunnan'
                   ? '浑南'
                   : item.homeCampusId === 'campus-nanhu'
@@ -164,12 +166,15 @@ export function Members({ user }) {
               </span>
               <span data-label="状态">
                 <span
+                  data-motion-value="text"
                   className={`react-member-status ${item.status === 'active' ? 'is-active' : ''}`}
                 >
                   {item.status === 'active' ? '正常' : '停用'}
                 </span>
               </span>
-              <span data-label="主要部门">{item.primaryDepartment || '未设部门'}</span>
+              <span data-motion-value="text" data-label="主要部门">
+                {item.primaryDepartment || '未设部门'}
+              </span>
               <span className="members-row-action">
                 <button disabled={busy} onClick={() => setSelected(item)}>
                   编辑成员与权限

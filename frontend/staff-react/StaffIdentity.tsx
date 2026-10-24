@@ -5,8 +5,13 @@ export function StaffIdentity({ identities = [] }: { identities?: Identity[] }) 
   return identities.length ? (
     <span className="staff-identities">
       {identities.map((identity) => (
-        <span className="staff-identity" data-identity={identity.code} key={identity.code}>
-          {identity.label}
+        <span
+          data-motion-item={identity.code}
+          className="staff-identity"
+          data-identity={identity.code}
+          key={identity.code}
+        >
+          <span data-motion-value="text">{identity.label}</span>
         </span>
       ))}
     </span>

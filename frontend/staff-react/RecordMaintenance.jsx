@@ -270,10 +270,10 @@ export function RecordMaintenance({ item, onChanged, busy: parentBusy }) {
             <button disabled={disabled}>核对修改</button>
           ) : (
             <div className="field-confirm" role="region" aria-label="确认记录修正">
-              <strong>
+              <strong data-motion-value="text">
                 {statusLabels[item.status]} → {statusLabels[draft.status]}
               </strong>
-              <p>{draft.correctionReason}</p>
+              <p data-motion-value="text">{draft.correctionReason}</p>
               <div className="field-actions">
                 <button type="button" disabled={disabled} onClick={() => setPreview(false)}>
                   返回修改

@@ -217,3 +217,53 @@ test('semantic motion presets distinguish text, numbers, status and arriving row
   expect(reduced).toBe(0);
   await page.evaluate(() => window.stopMotion());
 });
+
+for (const width of [320, 390, 768, 1440]) test(`late code containers enter once without nested animations at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await page.setContent('<main><h1>固定页面标题</h1><section id="existing" class="field-card"><input aria-label="原有输入" value="保留内容"></section><div id="mount"></div></main>');
+  await page.addScriptTag({ content: motion });
+  const result = await page.evaluate(async () => {
+    window.stopMotion = window.observeDataMotion(document.querySelector('main'));
+    const title = document.querySelector('h1').getBoundingClientRect().toJSON();
+    document.querySelector('#mount').innerHTML = '<section id="late" class="field-card"><h2>代码就绪后的分区</h2><section id="nested" data-motion-region><span id="nested-value" data-motion-value="text">真实内容</span></section></section>';
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const animation = document.querySelector('#late').getAnimations()[0];
+    return {
+      duration: animation?.effect.getTiming().duration,
+      first: animation?.effect.getKeyframes()[0],
+      nested: document.querySelector('#nested').getAnimations().length,
+      value: document.querySelector('#nested-value').getAnimations().length,
+      old: document.querySelector('#existing').getAnimations().length,
+      titleBefore: title,
+      titleAfter: document.querySelector('h1').getBoundingClientRect().toJSON()
+    };
+  });
+  expect(result.duration).toBe(200);
+  expect(result.first.opacity).toBe('0.8');
+  expect(result.first.transform).toBeUndefined();
+  expect(result.nested).toBe(0); expect(result.value).toBe(0); expect(result.old).toBe(0);
+  expect(result.titleBefore).toEqual(result.titleAfter);
+  await expect(page.getByLabel('原有输入')).toHaveValue('保留内容');
+  await expect.poll(() => page.locator('#late').evaluate(node => node.getAnimations().length)).toBe(0);
+  expect(await page.locator('#late').evaluate(node => node.style.height)).toBe('');
+});
+
+test('first code mount can animate panels before paint and respects reduced motion', async ({ page }) => {
+  await page.setContent('<main><h1>不动的标题</h1><section class="field-card"><h2>新页面分区</h2><section data-motion-region>内部内容</section></section></main>');
+  await page.addScriptTag({ content: motion });
+  const result = await page.evaluate(() => {
+    window.stopMotion = window.observeDataMotion(document.querySelector('main'), { enterInitial: true });
+    return {
+      card: document.querySelector('.field-card').getAnimations().length,
+      nested: document.querySelector('[data-motion-region]').getAnimations().length,
+      title: document.querySelector('h1').getAnimations().length
+    };
+  });
+  expect(result).toEqual({card: 1, nested: 0, title: 0});
+  await page.evaluate(() => window.stopMotion());
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  expect(await page.evaluate(() => {
+    window.stopMotion = window.observeDataMotion(document.querySelector('main'), { enterInitial: true });
+    return document.getAnimations().length;
+  })).toBe(0);
+});

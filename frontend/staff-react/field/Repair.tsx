@@ -95,7 +95,9 @@ export function Repair({
       <Notice>{error}</Notice>
       {!item ? (
         <>
-          <p className="field-muted">{id}</p>
+          <p data-motion-value="text" className="field-muted">
+            {id}
+          </p>
           {error && <button onClick={retry}>重新读取工单</button>}
           <section className="field-ticket">
             <h3>客户与设备</h3>
@@ -136,19 +138,21 @@ export function Repair({
             <div>
               <Status value={receptionStatus(item)} />
               {item.reception?.ticket && (
-                <strong className="field-queue-number">
+                <strong data-motion-value="text" className="field-queue-number">
                   {queueTicketLabel(item.reception.ticket)} · {item.reception.ticket.date}
                 </strong>
               )}
-              <span className="field-muted">{item.id}</span>
+              <span data-motion-value="text" className="field-muted">
+                {item.id}
+              </span>
             </div>
-            <h3>
+            <h3 data-motion-value="text">
               {item.brand} {item.deviceModel || item.deviceType}
             </h3>
-            <p>
+            <p data-motion-value="text">
               {item.faultType} {item.issue ? `· ${item.issue}` : ''}
             </p>
-            <p className="field-muted">
+            <p data-motion-value="text" className="field-muted">
               {item.campus}校区 · {item.date} · {item.timeSlot}
             </p>
             {item.assignedToName && (
@@ -169,21 +173,21 @@ export function Repair({
               </>
             )}
             {item.name && (
-              <p>
+              <p data-motion-value="text">
                 {item.name} · {item.studentId}
               </p>
             )}
             {(item.contactValue || item.social || item.phone) && (
-              <p>
+              <p data-motion-value="text">
                 联系方式：
                 {item.contactValue
                   ? `${item.contactType === 'qq' ? 'QQ' : '微信'}：${item.contactValue}`
                   : [item.social, item.phone].filter(Boolean).join(' · ')}
               </p>
             )}
-            {item.email && <p>邮箱：{item.email}</p>}
+            {item.email && <p data-motion-value="text">邮箱：{item.email}</p>}
             {item.liquidMetal && (
-              <p className="field-muted">
+              <p data-motion-value="text" className="field-muted">
                 客户填写液金情况：{item.liquidMetal}
                 {item.dellG15 ? ` · Dell G15：${item.dellG15}` : ''}；请现场核实。
               </p>
@@ -223,7 +227,7 @@ export function Repair({
               className="field-form"
             >
               {item.reception && (
-                <p className="field-muted">
+                <p data-motion-value="text" className="field-muted">
                   {item.canReceive
                     ? '本次到场请重新核对设备，并由本次接待人员上传正反面照片。此前核验记录仍保留。'
                     : '接待已完成设备核验并上传照片。请核对以下信息，需要时可更正或替换照片。'}
@@ -313,10 +317,12 @@ export function Repair({
                       {previews[side] ? (
                         <img src={previews[side]} alt="设备照片预览" />
                       ) : (
-                        <span>{uploaded[side] ? '已上传' : '＋'}</span>
+                        <span data-motion-value="text">{uploaded[side] ? '已上传' : '＋'}</span>
                       )}
-                      <strong>设备{side === 'front' ? '正面' : '背面'}</strong>
-                      <small>
+                      <strong data-motion-value="text">
+                        设备{side === 'front' ? '正面' : '背面'}
+                      </strong>
+                      <small data-motion-value="text">
                         {item.canReceive ? '本次接待必填' : '拍照或选择照片'} · 最大 5 MB
                       </small>
                       <input
@@ -349,7 +355,7 @@ export function Repair({
                     checked={identityConfirmed}
                     onChange={(event) => setIdentityConfirmed(event.target.checked)}
                   />
-                  <span>
+                  <span data-motion-value="text">
                     我已当面核对 {queueTicketLabel(item.reception.ticket) || item.id}、机主
                     {item.name ? ' ' + item.name : ''}和 {item.deviceModel}，确认是交给本人的设备
                   </span>
@@ -420,7 +426,7 @@ export function Repair({
           {item.status === 'completed' && (
             <div className="field-success">
               <h3>维修记录已提交</h3>
-              <p>
+              <p data-motion-value="text">
                 {outcomeLabels[item.outcome || ''] || '已完成'} · {item.repairNote}
               </p>
               <button className="field-primary" onClick={onClose}>
@@ -463,7 +469,7 @@ export function Repair({
                   onChange={(e) => setReason(e.target.value)}
                 />
               </label>
-              <p>
+              <p data-motion-value="text">
                 {item.assignedToName} →{' '}
                 {receivers.find((p) => p.account === target)?.name || '待选择'}
               </p>
@@ -494,10 +500,10 @@ export function Repair({
           {item.intake && !item.canStart && (
             <details className="field-details">
               <summary>现场核验信息</summary>
-              <p>
+              <p data-motion-value="text">
                 {item.intake.brand} {item.intake.model}
               </p>
-              <p>
+              <p data-motion-value="text">
                 保修：
                 {
                   { in_warranty: '在保', expired: '已过保', unknown: '待确认' }[
@@ -507,7 +513,7 @@ export function Repair({
                 · 液金：
                 {{ yes: '是', no: '否', unknown: '待确认' }[item.intake.liquidMetal]}
               </p>
-              <p>{item.intake.note}</p>
+              <p data-motion-value="text">{item.intake.note}</p>
             </details>
           )}
           {item.canReadDetails && <RepairAttachments id={item.id} revision={item.revision} />}
@@ -516,8 +522,8 @@ export function Repair({
               <summary>接待与维修流转记录</summary>
               <ol className="reception-history">
                 {item.receptionHistory.map((event) => (
-                  <li key={event.id}>
-                    <strong>
+                  <li data-motion-item="" key={event.id}>
+                    <strong data-motion-value="text">
                       {{
                         'receptions.received': '完成接待',
                         'receptions.assign': '分派待接手',
@@ -533,15 +539,15 @@ export function Repair({
                         'repairs.completed': '完成维修'
                       }[event.action] || '工单已更新'}
                     </strong>
-                    <span>
+                    <span data-motion-value="text">
                       {event.actorName}
                       {event.ticketNumber ? ` · ${event.ticketNumber}号` : ''}
                       {event.assigneeName ? ` → ${event.assigneeName}` : ''} ·{' '}
                       {formatInstant(event.occurredAt)}
                     </span>
-                    {event.reason && <p>{event.reason}</p>}
+                    {event.reason && <p data-motion-value="text">{event.reason}</p>}
                     {event.action === 'receptions.reschedule' && (
-                      <p>
+                      <p data-motion-value="text">
                         {formatInstant(event.date).split(' ')[0]} · {event.timeSlot}
                       </p>
                     )}
@@ -564,8 +570,8 @@ export function Repair({
       {confirm && (
         <div className="field-confirm" role="region" aria-label="确认维修结果">
           <h3>确认提交本次维修结果？</h3>
-          <p>{outcomeLabels[outcome]}</p>
-          <p>{note}</p>
+          <p data-motion-value="text">{outcomeLabels[outcome]}</p>
+          <p data-motion-value="text">{note}</p>
           <div className="field-actions">
             <button disabled={busy} onClick={() => setConfirm(false)}>
               返回修改

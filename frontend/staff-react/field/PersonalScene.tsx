@@ -27,17 +27,17 @@ export function PersonalScene({
     <div className="field-work-grid personal-workspace">
       <section className="field-card personal-schedule">
         <div className="personal-identity">
-          <span className="field-avatar" aria-hidden="true">
+          <span data-motion-value="text" className="field-avatar" aria-hidden="true">
             {initial.actor.name.slice(-2)}
           </span>
           <div>
-            <h2>{initial.actor.name}</h2>
+            <h2 data-motion-value="text">{initial.actor.name}</h2>
             <StaffIdentity identities={data.identities} />
           </div>
         </div>
         <h3>今日安排</h3>
         {data.todayDuties.map((d) => (
-          <div className="field-shift" key={d.id}>
+          <div data-motion-item="" className="field-shift" key={d.id}>
             {d.campusName} · {d.startAt}–{d.endAt}
           </div>
         ))}

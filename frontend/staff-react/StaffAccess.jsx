@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import { useDataMotion } from './useDataMotion';
+import React, { useEffect, useState, useRef } from 'react';
 import { request } from './request.js';
 import { showToast } from '../../shared/utils.js';
 
@@ -12,7 +13,9 @@ function Brand({ activation = false }) {
       />
       <div>
         <strong>先锋硬件部</strong>
-        <small>{activation ? '工作人员首次激活' : '免费维修预约系统'}</small>
+        <small data-motion-value="text">
+          {activation ? '工作人员首次激活' : '免费维修预约系统'}
+        </small>
       </div>
     </div>
   );
@@ -39,15 +42,23 @@ function LengthInput({ maxLength, ...props }) {
         onInput={validate}
         onCompositionEnd={validate}
       />
-      <span className="input-length-error" id={errorId} role="alert" hidden={!invalid}>
+      <span
+        data-motion-value="text"
+        className="input-length-error"
+        id={errorId}
+        role="alert"
+        hidden={!invalid}
+      >
         {invalid ? message : ''}
       </span>
     </>
   );
 }
 export function StaffLogin({ pending, error, onLogin, onRetry }) {
+  const motionRef = useRef(null);
+  useDataMotion(motionRef, true);
   return (
-    <section className="login-view" id="login-view">
+    <section ref={motionRef} className="login-view" id="login-view">
       <div className="login-panel">
         <Brand />
         <p className="eyebrow">STAFF ACCESS · ACCOUNT LOGIN</p>
@@ -91,6 +102,7 @@ export function StaffLogin({ pending, error, onLogin, onRetry }) {
           </button>
         </form>
         <p
+          data-motion-value="text"
           className="login-message"
           id="login-message"
           role="status"
@@ -119,6 +131,8 @@ export function StaffLogin({ pending, error, onLogin, onRetry }) {
 
 const receiptKey = 'pioneerActivationReceipt';
 export function StaffActivation() {
+  const motionRef = useRef(null);
+  useDataMotion(motionRef, true);
   const [receipt, setReceipt] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem(receiptKey) || 'null');
@@ -185,7 +199,7 @@ export function StaffActivation() {
     }
   }
   return (
-    <section className="login-view" id="activation-view">
+    <section ref={motionRef} className="login-view" id="activation-view">
       <div className="login-panel">
         <Brand activation />
         <p className="eyebrow">STAFF ACTIVATION</p>
@@ -256,10 +270,10 @@ export function StaffActivation() {
         </form>
         {result && (
           <div id="activation-result">
-            <h2 id="activation-status" role="status">
+            <h2 data-motion-value="text" id="activation-status" role="status">
               {labels[result.status]}
             </h2>
-            <p id="activation-note" hidden={!result.reviewNote}>
+            <p data-motion-value="text" id="activation-note" hidden={!result.reviewNote}>
               {result.reviewNote}
             </p>
             <button

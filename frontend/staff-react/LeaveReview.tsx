@@ -144,13 +144,15 @@ export function LeaveReview({
       ) : (
         <>
           {detail.error && (
-            <p role="alert" className="react-error">
+            <p data-motion-value="text" role="alert" className="react-error">
               {detail.error}
             </p>
           )}
           {!current && (
             <>
-              <h2>{all.find((item) => item.id === selected)?.memberName || '成员'}的请假申请</h2>
+              <h2 data-motion-value="text">
+                {all.find((item) => item.id === selected)?.memberName || '成员'}的请假申请
+              </h2>
               <DataFields
                 pending={!detail.error}
                 fields={[
@@ -167,8 +169,12 @@ export function LeaveReview({
           {current && (
             <>
               <header className="leave-row-title">
-                <h2>{current.memberName}的请假申请</h2>
-                <span className="account-state" data-state={current.status}>
+                <h2 data-motion-value="text">{current.memberName}的请假申请</h2>
+                <span
+                  data-motion-value="text"
+                  className="account-state"
+                  data-state={current.status}
+                >
                   {requestStatusLabel(current.status)}
                 </span>
               </header>
@@ -176,25 +182,25 @@ export function LeaveReview({
               <dl className="leave-facts">
                 <div>
                   <dt>班次</dt>
-                  <dd>
+                  <dd data-motion-value="text">
                     {current.assignment?.businessDate} · {current.assignment?.startAt}–
                     {current.assignment?.endAt}
                   </dd>
                 </div>
                 <div>
                   <dt>岗位与校区</dt>
-                  <dd>
+                  <dd data-motion-value="text">
                     {current.assignment?.dutyType === 'office' ? '办公接待' : '维修值班'} ·{' '}
                     {current.assignment?.campusName}
                   </dd>
                 </div>
                 <div>
                   <dt>所属部门</dt>
-                  <dd>{current.departments.join('、') || '未登记部门'}</dd>
+                  <dd data-motion-value="text">{current.departments.join('、') || '未登记部门'}</dd>
                 </div>
                 <div>
                   <dt>实际签到</dt>
-                  <dd>
+                  <dd data-motion-value="text">
                     {current.impact?.checkedIn
                       ? '已签到，请假不会删除实际到岗记录'
                       : '尚无本日该校区签到记录'}
@@ -203,11 +209,13 @@ export function LeaveReview({
               </dl>
               <section className="leave-detail-section">
                 <h3>申请原因</h3>
-                <p>{current.reason}</p>
+                <p data-motion-value="text">{current.reason}</p>
               </section>
               {current.impact && (
                 <section className="leave-detail-section">
-                  <h3>{current.status === 'pending' ? '批准后人员覆盖' : '当前人员覆盖'}</h3>
+                  <h3 data-motion-value="text">
+                    {current.status === 'pending' ? '批准后人员覆盖' : '当前人员覆盖'}
+                  </h3>
                   <div className="leave-coverage">
                     <div>
                       <span>预计出勤</span>
@@ -217,7 +225,9 @@ export function LeaveReview({
                       </strong>
                     </div>
                     <div>
-                      <span>{current.status === 'pending' ? '批准后' : '实际签到'}</span>
+                      <span data-motion-value="text">
+                        {current.status === 'pending' ? '批准后' : '实际签到'}
+                      </span>
                       <strong>
                         {current.status === 'pending'
                           ? current.impact.afterApproval
@@ -227,7 +237,9 @@ export function LeaveReview({
                     </div>
                     {current.assignment?.dutyType === 'repair' && (
                       <div>
-                        <span>{current.status === 'pending' ? '批准后负责人' : '预计负责人'}</span>
+                        <span data-motion-value="text">
+                          {current.status === 'pending' ? '批准后负责人' : '预计负责人'}
+                        </span>
                         <strong>
                           {current.status === 'pending'
                             ? current.impact.leadersAfterApproval
@@ -237,19 +249,19 @@ export function LeaveReview({
                       </div>
                     )}
                   </div>
-                  <p className="field-muted">
+                  <p data-motion-value="text" className="field-muted">
                     原排班 {current.impact.scheduled} 人 · 实际签到 {current.impact.arrived}{' '}
                     人。签到与请假分别记录。
                   </p>
                   {current.impact.ordinaryMinimum != null && (
-                    <p className="field-muted">
+                    <p data-motion-value="text" className="field-muted">
                       批准后普通人员 {current.impact.ordinaryAfterApproval} 人 / 至少{' '}
                       {current.impact.ordinaryMinimum} 人，负责人单独计算。
                     </p>
                   )}
                   {current.status === 'pending' && current.impact.needsReplacement && (
                     <div className="leave-coverage-warning">
-                      <strong>
+                      <strong data-motion-value="text">
                         {current.impact.afterApproval === 0
                           ? '批准后该班次将无人值班'
                           : current.impact.leadersAfterApproval === 0
@@ -279,11 +291,11 @@ export function LeaveReview({
               {current.reviewNote && (
                 <section className="leave-detail-section">
                   <h3>审批说明</h3>
-                  <p>{current.reviewNote}</p>
+                  <p data-motion-value="text">{current.reviewNote}</p>
                 </section>
               )}
               {error && (
-                <p role="alert" className="react-error">
+                <p data-motion-value="text" role="alert" className="react-error">
                   {error}
                 </p>
               )}
@@ -301,7 +313,9 @@ export function LeaveReview({
                     />
                   </label>
                   {current.actions.reason && (
-                    <p className="field-muted">{current.actions.reason}</p>
+                    <p data-motion-value="text" className="field-muted">
+                      {current.actions.reason}
+                    </p>
                   )}
                   <div className="field-actions">
                     <button disabled={busy || detail.loading} onClick={() => setDecision('reject')}>
@@ -332,7 +346,7 @@ export function LeaveReview({
           </button>
         </WorkspaceHeader>
         {notice && (
-          <p role="status" className="react-message">
+          <p data-motion-value="text" role="status" className="react-message">
             {notice}
           </p>
         )}
@@ -372,12 +386,12 @@ export function LeaveReview({
               ))}
             </select>
           </label>
-          <span aria-live="polite">
+          <span data-motion-value="number" aria-live="polite">
             {items.length} 份申请{list.loading ? ' · 更新中' : ''}
           </span>
         </div>
         {list.error && (
-          <p role="alert" className="react-error">
+          <p data-motion-value="text" role="alert" className="react-error">
             {list.error}
           </p>
         )}
@@ -385,6 +399,7 @@ export function LeaveReview({
           <section className="leave-list" aria-label="请假申请列表">
             {items.map((item) => (
               <button
+                data-motion-item=""
                 className="leave-request-card"
                 disabled={busy}
                 aria-pressed={selected === item.id}
@@ -392,19 +407,21 @@ export function LeaveReview({
                 onClick={() => choose(item.id)}
               >
                 <div className="leave-row-title">
-                  <strong>{item.memberName || '成员'}</strong>
-                  <span className="account-state" data-state={item.status}>
+                  <strong data-motion-value="text">{item.memberName || '成员'}</strong>
+                  <span data-motion-value="text" className="account-state" data-state={item.status}>
                     {requestStatusLabel(item.status)}
                   </span>
                 </div>
-                <p>
+                <p data-motion-value="text">
                   {item.assignment?.businessDate} · {item.assignment?.startAt}–
                   {item.assignment?.endAt}
                 </p>
-                <small>
+                <small data-motion-value="text">
                   {item.assignment?.campusName} · {item.departments.join('、') || '成员所属部门'}
                 </small>
-                <p className="leave-reason">{item.reason}</p>
+                <p data-motion-value="text" className="leave-reason">
+                  {item.reason}
+                </p>
               </button>
             ))}
             {!items.length && list.loading && !list.data && (
@@ -443,16 +460,20 @@ export function LeaveReview({
               if (!busy) setDecision('');
             }}
           >
-            <p>
+            <p data-motion-value="text">
               {current.memberName} · {current.assignment.businessDate} ·{' '}
               {current.assignment.campusName}
             </p>
-            <p>
+            <p data-motion-value="text">
               {decision === 'approve'
                 ? `批准后预计 ${current.impact?.afterApproval ?? 0} 人出勤${current.impact?.needsReplacement ? '，需要安排补位' : ''}。原班次和签到事实会保留。`
                 : '申请人将看到退回结果及审批说明。'}
             </p>
-            {note && <p className="leave-reason">{note}</p>}
+            {note && (
+              <p data-motion-value="text" className="leave-reason">
+                {note}
+              </p>
+            )}
             <div className="field-actions">
               <button disabled={busy} onClick={() => setDecision('')}>
                 返回核对

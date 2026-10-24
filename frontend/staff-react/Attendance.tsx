@@ -85,8 +85,8 @@ export function Attendance({ onNavigate }: { onNavigate: (route: string) => void
           {items.map((item) => (
             <li data-motion-item={item.id} key={item.id}>
               <div>
-                <strong>{item.businessDate}</strong>
-                <span>
+                <strong data-motion-value="text">{item.businessDate}</strong>
+                <span data-motion-value="text">
                   {item.type === 'duty'
                     ? '值班签到'
                     : item.type === 'meeting'
@@ -97,7 +97,9 @@ export function Attendance({ onNavigate }: { onNavigate: (route: string) => void
               </div>
               <div>
                 <time dateTime={item.occurredAt}>{time(item.occurredAt)}</time>
-                <small>{item.nonScheduled ? '非排班到岗' : '已记录'}</small>
+                <small data-motion-value="text">
+                  {item.nonScheduled ? '非排班到岗' : '已记录'}
+                </small>
               </div>
             </li>
           ))}

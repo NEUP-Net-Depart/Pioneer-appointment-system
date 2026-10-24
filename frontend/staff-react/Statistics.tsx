@@ -1,3 +1,4 @@
+import { MotionMeter } from './MotionMeter';
 import { DataValue } from './DataValue';
 import React, { useContext, useEffect, useState } from 'react';
 import { ActivityContext, api, Notice } from './field/ui';
@@ -23,15 +24,18 @@ function Distribution({ values, total }: { values: Record<string, number>; total
   return entries.length ? (
     <ul className="report-distribution">
       {entries.map(([label, count]) => (
-        <li key={label}>
+        <li data-motion-item="" key={label}>
           <div>
-            <span>{label}</span>
+            <span data-motion-value="text">{label}</span>
             <strong>
-              {count}
-              <small> · {total ? Math.round((count / total) * 100) : 0}%</small>
+              <span data-motion-value="number">{count}</span>
+              <small data-motion-value="number">
+                {' '}
+                · {total ? Math.round((count / total) * 100) : 0}%
+              </small>
             </strong>
           </div>
-          <meter min="0" max={maximum} value={count} aria-label={`${label} ${count} 条`} />
+          <MotionMeter max={maximum} value={count} label={`${label} ${count} 条`} />
         </li>
       ))}
     </ul>
@@ -108,7 +112,7 @@ export function Statistics() {
           <input type="date" value={day} onChange={(event) => setDay(event.target.value)} />
         </label>
         {day && <button onClick={() => setDay('')}>清除日期</button>}
-        <span role="status">
+        <span data-motion-value="text" role="status">
           {loading ? `正在读取${label}，保留已有结果…` : `当前显示：${snapshot?.label || label}`}
         </span>
       </section>
@@ -116,8 +120,8 @@ export function Statistics() {
       <div aria-busy={loading}>
         <div className="report-metrics">
           {metrics.map(([name, count]) => (
-            <article className="field-card" key={name}>
-              <span>{name}</span>
+            <article data-motion-item="" className="field-card" key={name}>
+              <span data-motion-value="text">{name}</span>
               <strong>
                 <AnimatedValue value={count} />
               </strong>
@@ -140,7 +144,7 @@ export function Statistics() {
                       {counts.total}
                       <small> 条预约</small>
                     </strong>
-                    <span>完成 {counts.completed} 条</span>
+                    <span data-motion-value="text">完成 {counts.completed} 条</span>
                   </article>
                 ))}
               </div>
@@ -175,8 +179,8 @@ export function Statistics() {
                 .map(([account, counts]) => (
                   <article data-motion-item={account} key={account}>
                     <div>
-                      <strong>{counts.assignedToName || account}</strong>
-                      {counts.assignedToName && <small>{account}</small>}
+                      <strong data-motion-value="text">{counts.assignedToName || account}</strong>
+                      {counts.assignedToName && <small data-motion-value="text">{account}</small>}
                     </div>
                     <span>
                       开始 <b>{counts.started}</b>

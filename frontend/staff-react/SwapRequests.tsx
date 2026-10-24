@@ -58,9 +58,9 @@ function SwapResult({ value }: { value: Preview }) {
       <div className="swap-result-members">
         {value.after.map((shift, index) => (
           <div className="swap-result-member" key={index}>
-            <strong>{shift.memberName}</strong>
-            <span>{shiftText(shift)}</span>
-            <small>
+            <strong data-motion-value="text">{shift.memberName}</strong>
+            <span data-motion-value="text">{shiftText(shift)}</span>
+            <small data-motion-value="text">
               {shift.dutyType === 'office' ? '办公接待' : '维修值班'}
               {shift.roleKind === 'repair_lead'
                 ? ' · 值班负责人'
@@ -72,7 +72,7 @@ function SwapResult({ value }: { value: Preview }) {
         ))}
       </div>
       {value.allowed ? (
-        <p className="swap-check" role="status">
+        <p data-motion-value="text" className="swap-check" role="status">
           时间与资格校验通过
           {value.fromAssignment.dutyType === 'repair' ? '，维修负责人覆盖完整' : ''}
           。确认时会再次校验。
@@ -82,7 +82,9 @@ function SwapResult({ value }: { value: Preview }) {
           <strong>目前无法交换</strong>
           <ul>
             {value.errors.map((error) => (
-              <li key={error}>{error}</li>
+              <li data-motion-item="" key={error}>
+                {error}
+              </li>
             ))}
           </ul>
           <p>可重新选择班次，或联系值班负责人协调。</p>
@@ -92,7 +94,7 @@ function SwapResult({ value }: { value: Preview }) {
         <details className="swap-coverage">
           <summary>查看交换后人员覆盖</summary>
           {value.coverage.map((slot, index) => (
-            <p key={index}>
+            <p data-motion-value="text" key={index}>
               {slot.businessDate} · {campusName(slot)} · {slot.startAt}–{slot.endAt}：
               {slot.expected} 人
               {value.fromAssignment.dutyType === 'repair' ? `，负责人 ${slot.leaders} 人` : ''}
@@ -248,7 +250,7 @@ export function SwapComposer({
           <p className="react-muted">本周暂无可选班次，请联系值班负责人协调。</p>
         )}
         {candidates.error && (
-          <p className="react-error" role="alert">
+          <p data-motion-value="text" className="react-error" role="alert">
             {candidates.error}
           </p>
         )}
@@ -265,7 +267,7 @@ export function SwapComposer({
           />
         </label>
         {error && (
-          <p className="react-error" role="alert">
+          <p data-motion-value="text" className="react-error" role="alert">
             {error}
           </p>
         )}
@@ -330,15 +332,19 @@ export function SwapInvitations({
   return (
     <>
       {items.map((item) => (
-        <div className="request-row swap-invitation" key={item.id}>
+        <div data-motion-item="" className="request-row swap-invitation" key={item.id}>
           <div>
-            <strong>
+            <strong data-motion-value="text">
               {item.fromAssignment?.memberName} 与 {item.toAssignment?.memberName}的换班
             </strong>
-            <span>{item.fromAssignment && shiftText(item.fromAssignment)}</span>
-            <span>{item.toAssignment && shiftText(item.toAssignment)}</span>
+            <span data-motion-value="text">
+              {item.fromAssignment && shiftText(item.fromAssignment)}
+            </span>
+            <span data-motion-value="text">
+              {item.toAssignment && shiftText(item.toAssignment)}
+            </span>
           </div>
-          <span className="account-state" data-state={item.status}>
+          <span data-motion-value="text" className="account-state" data-state={item.status}>
             {requestStatusLabel(item.status)}
           </span>
           <button
@@ -361,7 +367,7 @@ export function SwapInvitations({
           dismissible={!busy}
         >
           {detail.error && (
-            <p className="react-error" role="alert">
+            <p data-motion-value="text" className="react-error" role="alert">
               {detail.error}
             </p>
           )}
@@ -398,31 +404,35 @@ export function SwapInvitations({
           {value && (
             <div className="swap-confirmation">
               <p>
-                <strong>{value.fromAssignment.memberName}</strong> 邀请{' '}
-                <strong>{value.toAssignment.memberName}</strong> 交换班次
+                <strong data-motion-value="text">{value.fromAssignment.memberName}</strong> 邀请{' '}
+                <strong data-motion-value="text">{value.toAssignment.memberName}</strong> 交换班次
               </p>
               {value.note && <blockquote>{value.note}</blockquote>}
               {value.status === 'pending' ? (
                 <SwapResult value={value} />
               ) : (
                 <>
-                  <span className="account-state" data-state={value.status}>
+                  <span
+                    data-motion-value="text"
+                    className="account-state"
+                    data-state={value.status}
+                  >
                     {requestStatusLabel(value.status)}
                   </span>
                   {value.applied?.map((shift, index) => (
                     <div className="swap-result-member" key={shift.id}>
-                      <strong>
+                      <strong data-motion-value="text">
                         {index === 0
                           ? value.toAssignment.memberName
                           : value.fromAssignment.memberName}
                       </strong>
-                      <span>{shiftText(shift)}</span>
+                      <span data-motion-value="text">{shiftText(shift)}</span>
                     </div>
                   ))}
                 </>
               )}
               {error && (
-                <p className="react-error" role="alert">
+                <p data-motion-value="text" className="react-error" role="alert">
                   {error}
                 </p>
               )}

@@ -61,7 +61,9 @@ export function ScopeFields({
                     ))}
                   </div>
                   {!values.length && (
-                    <p className="react-muted">尚未选择{label}，此范围不会匹配任何成员。</p>
+                    <p data-motion-value="text" className="react-muted">
+                      尚未选择{label}，此范围不会匹配任何成员。
+                    </p>
                   )}
                 </>
               )}
@@ -91,9 +93,9 @@ export function ConditionFields({ conditions = [], providers = [], onChange, req
         const provider = providers.find((item) => item.code === condition.code);
         const parameters = condition.parameters || {};
         return (
-          <section className="react-binding" key={`${condition.code}-${index}`}>
+          <section data-motion-item="" className="react-binding" key={`${condition.code}-${index}`}>
             <div className="react-heading">
-              <strong>{provider?.description || condition.code}</strong>
+              <strong data-motion-value="text">{provider?.description || condition.code}</strong>
               <button
                 type="button"
                 disabled={requiredCodes.includes(condition.code)}

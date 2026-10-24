@@ -115,16 +115,16 @@ export function Records({ user }) {
         aria-label={`${columns[key]}${value ? `，第${index + 1}排序，${value.direction === 'asc' ? '升序' : '降序'}` : '，未排序'}；点击${!value ? '升序' : value.direction === 'asc' ? '降序' : '清除排序'}`}
         onClick={() => cycle(key)}
       >
-        <strong>
+        <strong data-motion-value="text">
           {columns[key]}{' '}
           {value && (
-            <small>
+            <small data-motion-value="text">
               {value.direction === 'asc' ? '↑' : '↓'}
               {index + 1}
             </small>
           )}
         </strong>
-        <span>{summaries[key]}</span>
+        <span data-motion-value="text">{summaries[key]}</span>
       </button>
     );
   };
@@ -169,7 +169,7 @@ export function Records({ user }) {
           </div>
         </div>
         <div className="records-result-meta" role="status">
-          <span>
+          <span data-motion-value="number">
             {data ? `${data.items?.length || 0} 条记录` : '正在读取记录…'}
             {list.loading && data ? ' · 更新中' : ''}
             {!list.current && data ? ' · 当前显示上次结果' : ''}
@@ -201,7 +201,7 @@ export function Records({ user }) {
             {sorts.length > 0 && <button onClick={() => setSorts([])}>清除排序</button>}
           </div>
         </details>
-        <div className="records-table-wrap" aria-busy={list.loading}>
+        <div data-motion-list="reveal" className="records-table-wrap" aria-busy={list.loading}>
           <table className="records-table">
             <thead>
               <tr>
@@ -232,24 +232,34 @@ export function Records({ user }) {
               {(data?.items || []).map((item) => (
                 <tr data-motion-item={item.id} key={item.id}>
                   <td data-label="预约信息">
-                    <strong>{item.name || '等待到场核验'}</strong>
-                    <span>{[item.studentId, item.id].filter(Boolean).join(' · ')}</span>
-                    {item.repairNumber && <span>历史维修编号：{item.repairNumber}</span>}
+                    <strong data-motion-value="text">{item.name || '等待到场核验'}</strong>
+                    <span data-motion-value="text">
+                      {[item.studentId, item.id].filter(Boolean).join(' · ')}
+                    </span>
+                    {item.repairNumber && (
+                      <span data-motion-value="text">历史维修编号：{item.repairNumber}</span>
+                    )}
                   </td>
                   <td data-label="预约时间">
-                    <strong>{dayLabel(item.date)}</strong>
-                    <span>{item.timeSlot}</span>
+                    <strong data-motion-value="text">{dayLabel(item.date)}</strong>
+                    <span data-motion-value="text">{item.timeSlot}</span>
                   </td>
                   <td data-label="状态">
                     <Status value={receptionStatus(item)} />
-                    {item.outcome && <span>{outcomeLabels[item.outcome] || '结果已记录'}</span>}
+                    {item.outcome && (
+                      <span data-motion-value="text">
+                        {outcomeLabels[item.outcome] || '结果已记录'}
+                      </span>
+                    )}
                   </td>
                   <td data-label="校区">{item.campus}</td>
                   <td data-label="设备">
-                    <strong>
+                    <strong data-motion-value="text">
                       {[item.brand, item.deviceModel || item.deviceType].filter(Boolean).join(' ')}
                     </strong>
-                    <span>{item.repairNote || item.faultType || '等待现场核验'}</span>
+                    <span data-motion-value="text">
+                      {item.repairNote || item.faultType || '等待现场核验'}
+                    </span>
                   </td>
                   <td>
                     <button onClick={() => setSelected(item.id)}>查看详情</button>
@@ -345,7 +355,7 @@ function RecordFilter({ menu, filters, counts, campuses, slots, onChange, onClos
                   onClick={() => onChange({ status: filters.status === value ? 'all' : value })}
                 >
                   {label}
-                  <small>
+                  <small data-motion-value="text">
                     {value === 'pending'
                       ? (counts.booked || 0) + (counts.in_progress || 0)
                       : counts[value] || 0}
@@ -443,7 +453,7 @@ function RecordOverview({ result, onFilter, onOpen }) {
           </span>
         </summary>
         <div className="records-overview-body">
-          <span className="workspace-update" role="status">
+          <span data-motion-value="text" className="workspace-update" role="status">
             {result.loading
               ? '正在更新…'
               : data
@@ -501,18 +511,18 @@ function RecordOverview({ result, onFilter, onOpen }) {
                       };
                     });
                   return (
-                    <article className="field-card records-campus" key={campus}>
+                    <article data-motion-item="" className="field-card records-campus" key={campus}>
                       <h3>
                         <button onClick={() => select({ campus })}>{campus}校区</button>
                       </h3>
                       {items.map((item) => (
-                        <div className="records-slot" key={item.timeSlot}>
+                        <div data-motion-item="" className="records-slot" key={item.timeSlot}>
                           <button
                             className="records-slot-main"
                             onClick={() => select({ campus, timeSlot: item.timeSlot })}
                           >
-                            <strong>{item.timeSlot}</strong>
-                            <span>
+                            <strong data-motion-value="text">{item.timeSlot}</strong>
+                            <span data-motion-value="text">
                               {item.ended
                                 ? '时段已结束'
                                 : !item.capacity
@@ -525,7 +535,7 @@ function RecordOverview({ result, onFilter, onOpen }) {
                             </span>
                           </button>
                           <div className="records-slot-status">
-                            <span>
+                            <span data-motion-value="text">
                               已占 {item.occupied} / {item.capacity}
                             </span>
                             <button

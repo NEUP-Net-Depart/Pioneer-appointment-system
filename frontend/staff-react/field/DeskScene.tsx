@@ -112,11 +112,13 @@ export function DeskScene({
               setTab('appointments');
             }}
           >
-            <span className="field-metric-label">{label}</span>
+            <span data-motion-value="text" className="field-metric-label">
+              {label}
+            </span>
             <strong>
               <AnimatedValue value={count} />
             </strong>
-            <small>{hint}</small>
+            <small data-motion-value="text">{hint}</small>
           </button>
         ))}
         <button
@@ -172,8 +174,8 @@ export function DeskScene({
       <div className={`field-desk-grid tab-${tab}`}>
         <section className="field-card field-appointments">
           <div className="field-section-heading">
-            <h2>{selectedFilter?.label || '预约与现场队列'}</h2>
-            <span>
+            <h2 data-motion-value="text">{selectedFilter?.label || '预约与现场队列'}</h2>
+            <span data-motion-value="number">
               {items.length} 条{' '}
               {filter !== 'all' && (
                 <button className="field-text" onClick={() => setFilter('all')}>
@@ -182,7 +184,7 @@ export function DeskScene({
               )}
             </span>
           </div>
-          <p className="field-order-guidance">
+          <p data-motion-value="text" className="field-order-guidance">
             {selectedFilter?.description ||
               '到场核验后发号，按顺序分派；已分派的客户仍需等待维修人员核对确认。'}
           </p>
@@ -207,24 +209,24 @@ export function DeskScene({
               onClick={() => setSelected(item.id)}
             >
               <span>
-                <strong>
+                <strong data-motion-value="text">
                   {item.reception?.ticket && (
-                    <span className="field-queue-number">
+                    <span data-motion-value="text" className="field-queue-number">
                       {queueTicketLabel(item.reception.ticket)} ·{' '}
                     </span>
                   )}
                   {item.deviceModel || item.deviceType}
                 </strong>
-                <small>
+                <small data-motion-value="text">
                   {item.id} · {item.faultType}
                 </small>
               </span>
-              <span>
+              <span data-motion-value="text">
                 {item.timeSlot}
                 {item.servicePaused && <small>当日暂停维修</small>}
               </span>
               <Status value={receptionStatus(item)} />
-              <span>
+              <span data-motion-value="text">
                 {item.reception?.state === 'assigned'
                   ? item.reception.assignedToName
                   : item.assignedToName ||
@@ -238,7 +240,7 @@ export function DeskScene({
                 {item.date < data.businessDate &&
                   item.reception &&
                   ['queued', 'assigned'].includes(item.reception.state) && (
-                    <small>跨日待处理 · {item.date}</small>
+                    <small data-motion-value="text">跨日待处理 · {item.date}</small>
                   )}
               </span>
             </button>
@@ -297,17 +299,21 @@ export function DeskScene({
                     <div className="field-person-divider">其他人员</div>
                   )}
                 <div data-motion-item={person.memberId} className="field-person">
-                  <span className="field-avatar">{person.name.slice(-2)}</span>
+                  <span data-motion-value="text" className="field-avatar">
+                    {person.name.slice(-2)}
+                  </span>
                   <div>
-                    <strong>{person.name}</strong>
+                    <strong data-motion-value="text">{person.name}</strong>
                     <StaffIdentity identities={person.identities} />
-                    <small>
+                    <small data-motion-value="text">
                       {person.department || '工作人员'}
                       {!person.scheduled ? ' · 非排班到岗' : ''}
                     </small>
-                    {person.signedInAt && <small>签到 {time(person.signedInAt)}</small>}
+                    {person.signedInAt && (
+                      <small data-motion-value="text">签到 {time(person.signedInAt)}</small>
+                    )}
                     {person.workload && (
-                      <small>
+                      <small data-motion-value="number">
                         今日已接 {person.workload.started} · 已完成 {person.workload.completed}
                       </small>
                     )}
@@ -319,7 +325,7 @@ export function DeskScene({
                         {person.currentRepair.deviceModel || '查看当前工单'}
                       </button>
                     ) : (
-                      <small>{person.reason || '可以接待维修'}</small>
+                      <small data-motion-value="text">{person.reason || '可以接待维修'}</small>
                     )}
                   </div>
                   <Status value={person.state} />

@@ -1,7 +1,8 @@
+import { workspaceModule } from './workspace-module.js';
 import { DataFields } from './DataValue';
 import { WorkspaceSkeleton } from './WorkspaceSkeleton';
 import { UnsavedPageContext } from './useUnsavedChanges.js';
-import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { useStaffIdentity } from './useStaffIdentity.js';
 import { StaffLogin, StaffActivation } from './StaffAccess.jsx';
@@ -9,48 +10,71 @@ import './base.css';
 import { setWorkspaceSession, clearWorkspaceState } from './workspace-state.js';
 import './workspace.css';
 import { request } from './request.js';
-const Attendance = lazy(() =>
-  import('./Attendance').then((module) => ({ default: module.Attendance }))
+const AttendanceModule = workspaceModule(() => import('./Attendance'), 'Attendance');
+const Attendance = AttendanceModule.Page;
+const AttendanceManagementModule = workspaceModule(
+  () => import('./AttendanceManagement.jsx'),
+  'AttendanceManagement'
 );
-const AttendanceManagement = lazy(() =>
-  import('./AttendanceManagement.jsx').then((module) => ({ default: module.AttendanceManagement }))
-);
-const Members = lazy(() => import('./Members.jsx').then((module) => ({ default: module.Members })));
-const Permissions = lazy(() =>
-  import('./Permissions.jsx').then((module) => ({ default: module.Permissions }))
-);
-const RosterArea = lazy(() =>
-  import('./RosterManager.jsx').then((module) => ({ default: module.RosterArea }))
-);
+const AttendanceManagement = AttendanceManagementModule.Page;
+const MembersModule = workspaceModule(() => import('./Members.jsx'), 'Members');
+const Members = MembersModule.Page;
+const PermissionsModule = workspaceModule(() => import('./Permissions.jsx'), 'Permissions');
+const Permissions = PermissionsModule.Page;
+const RosterAreaModule = workspaceModule(() => import('./RosterManager.jsx'), 'RosterArea');
+const RosterArea = RosterAreaModule.Page;
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { StaffWorkspace } from './StaffWorkspace';
-const Records = lazy(() => import('./Records').then((module) => ({ default: module.Records })));
+const RecordsModule = workspaceModule(() => import('./Records'), 'Records');
+const Records = RecordsModule.Page;
 import { FieldApp } from './field/FieldApp';
 import { ActivityContext } from './field/ui';
-const Statistics = lazy(() =>
-  import('./Statistics').then((module) => ({ default: module.Statistics }))
-);
-const AccountSettings = lazy(() =>
-  import('./AccountSettings').then((module) => ({ default: module.AccountSettings }))
-);
-const Accounts = lazy(() => import('./Accounts').then((module) => ({ default: module.Accounts })));
+const StatisticsModule = workspaceModule(() => import('./Statistics'), 'Statistics');
+const Statistics = StatisticsModule.Page;
+const AccountSettingsModule = workspaceModule(() => import('./AccountSettings'), 'AccountSettings');
+const AccountSettings = AccountSettingsModule.Page;
+const AccountsModule = workspaceModule(() => import('./Accounts'), 'Accounts');
+const Accounts = AccountsModule.Page;
 import {
   staffPermission,
   staffViewAllowed,
   staffSceneAllowed,
   normalizeStaffScene
 } from '../../shared/staff-access.js';
-const OfficeRoster = lazy(() =>
-  import('./OfficeRoster').then((module) => ({ default: module.OfficeRoster }))
-);
-const LeaveReview = lazy(() =>
-  import('./LeaveReview').then((module) => ({ default: module.LeaveReview }))
-);
+const OfficeRosterModule = workspaceModule(() => import('./OfficeRoster'), 'OfficeRoster');
+const OfficeRoster = OfficeRosterModule.Page;
+const LeaveReviewModule = workspaceModule(() => import('./LeaveReview'), 'LeaveReview');
+const LeaveReview = LeaveReviewModule.Page;
 import { WorkspacePage } from './WorkspacePage';
 import './workspace-foundation.css';
 
+const pageModules = {
+  attendance: AttendanceModule,
+  'attendance-manage': AttendanceManagementModule,
+  members: MembersModule,
+  permissions: PermissionsModule,
+  roster: RosterAreaModule,
+  'roster-manage': RosterAreaModule,
+  'roster-requests': RosterAreaModule,
+  staff: RecordsModule,
+  stats: StatisticsModule,
+  settings: AccountSettingsModule,
+  capacity: AccountSettingsModule,
+  users: AccountsModule,
+  'office-roster': OfficeRosterModule,
+  'leave-review': LeaveReviewModule
+};
+
 function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
   const user = profile || { permissions: {}, navigation: [] };
+  const [opening, setOpening] = useState(null);
+  const navigationSequence = useRef(0);
+  useEffect(
+    () => () => {
+      navigationSequence.current++;
+    },
+    []
+  );
   const [page, setPage] = useState('workbench');
   const [field, setField] = useState(null);
   const [bootError, setBootError] = useState(''),
@@ -155,6 +179,23 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
         : staffViewAllowed(profileRef.current, view))
     )
       return;
+    const sequence = ++navigationSequence.current;
+    const module = pageModules[view];
+    if (module && !module.ready()) {
+      setOpening(view);
+      // Keep the current page, focus and draft intact while code is in flight.
+      // Re-enter the navigation guard afterwards in case the user kept editing.
+      module
+        .preload()
+        .catch(() => {})
+        .then(() => {
+          if (sequence !== navigationSequence.current) return;
+          setOpening(null);
+          window.dispatchEvent(new CustomEvent('staff-request-navigation', { detail: view }));
+        });
+      return;
+    }
+    setOpening(null);
     if (view === 'roster-requests') {
       setRosterRequestSignal((value) => value + 1);
       view = 'roster';
@@ -350,6 +391,11 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
         entries={workspaceLinks}
         active={active}
         onSelect={navigate}
+        onPrepare={(view) => {
+          if (profile && staffViewAllowed(profileRef.current, view))
+            pageModules[view]?.preload().catch(() => {});
+        }}
+        opening={workspaceLinks.find((entry) => entry.id === opening)?.label}
         onLogout={onLogout}
       >
         {!profile && (
@@ -385,7 +431,11 @@ class WorkspaceModuleBoundary extends React.Component {
 function WorkspacePending({ error, onRetry, code = false }) {
   return (
     <section className="workspace-pending" aria-busy={!error} aria-label="工作区内容">
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p data-motion-value="text" role="alert">
+          {error}
+        </p>
+      )}
       {error ? (
         <button className="field-primary" onClick={onRetry}>
           重新加载工作区

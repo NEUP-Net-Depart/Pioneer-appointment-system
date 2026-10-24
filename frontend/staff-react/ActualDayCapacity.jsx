@@ -91,7 +91,7 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
                 {data ? (data.source === 'snapshot' ? '已形成当日容量快照' : '使用每周模板') : null}
               </DataValue>
             </span>
-            <p>
+            <p data-motion-value="text">
               {!data
                 ? '实际名额由当日容量与预约占用共同决定。'
                 : data.source === 'snapshot'
@@ -114,7 +114,7 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
                   </thead>
                   <tbody>
                     {(data?.items || TIME_SLOTS.map((timeSlot) => ({ timeSlot }))).map((item) => (
-                      <tr key={item.timeSlot}>
+                      <tr data-motion-item="" key={item.timeSlot}>
                         <th scope="row">{item.timeSlot}</th>
                         <td>
                           <DataValue label={`${item.timeSlot}名额`} pending={loading}>
@@ -148,11 +148,13 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
               <h3>工作人员</h3>
               {!data ? (
                 <>
-                  <p className="field-muted">{campus}校区 · 当日预计出勤</p>
+                  <p data-motion-value="text" className="field-muted">
+                    {campus}校区 · 当日预计出勤
+                  </p>
                   <div className="capacity-staffing-list">
                     {['维修排班', '办公排班'].map((label) => (
-                      <div className="capacity-staffing-row" key={label}>
-                        <span>{label}</span>
+                      <div data-motion-item="" className="capacity-staffing-row" key={label}>
+                        <span data-motion-value="text">{label}</span>
                         <DataValue label={label} pending={loading} />
                       </div>
                     ))}
@@ -160,12 +162,16 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
                 </>
               ) : data.staffing ? (
                 <>
-                  <p className="field-muted">{campus}校区 · 当日预计出勤</p>
+                  <p data-motion-value="text" className="field-muted">
+                    {campus}校区 · 当日预计出勤
+                  </p>
                   <div className="capacity-staffing-list">
                     {Object.entries(data.staffing).map(([type, count]) => (
-                      <div className="capacity-staffing-row" key={type}>
-                        <span>{type === 'repair' ? '维修排班' : '办公排班'}</span>
-                        <strong>{count} 人</strong>
+                      <div data-motion-item="" className="capacity-staffing-row" key={type}>
+                        <span data-motion-value="text">
+                          {type === 'repair' ? '维修排班' : '办公排班'}
+                        </span>
+                        <strong data-motion-value="number">{count} 人</strong>
                         {onNavigate && (
                           <button
                             onClick={() =>

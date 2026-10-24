@@ -37,7 +37,7 @@ export function RosterCommandDialog({
       <div className="roster-confirm">
         {panel === 'close' && (
           <>
-            <p>
+            <p data-motion-value="number">
               {data.progress.submitted} / {data.progress.total} 人已提交。结束后成员将不能修改填报。
             </p>
             {data.progress.people.filter((item) => !item.submission).length > 0 && (
@@ -113,10 +113,10 @@ export function RosterCommandDialog({
             </p>
             <ul className="roster-diff">
               {differences.map(({ row, kind }, i) => (
-                <li key={i}>
-                  <span>{kind}</span>
-                  <strong>{names.get(row.memberId) || '成员'}</strong>
-                  <span>{label(row)}</span>
+                <li data-motion-item="" key={i}>
+                  <span data-motion-value="text">{kind}</span>
+                  <strong data-motion-value="text">{names.get(row.memberId) || '成员'}</strong>
+                  <span data-motion-value="text">{label(row)}</span>
                   {row.manualOverride && <small>人工安排，超出原填报</small>}
                 </li>
               ))}
@@ -125,7 +125,7 @@ export function RosterCommandDialog({
           </>
         )}
         {error && (
-          <p role="alert" className="react-error">
+          <p data-motion-value="text" role="alert" className="react-error">
             {error}
           </p>
         )}

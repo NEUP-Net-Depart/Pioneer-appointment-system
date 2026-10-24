@@ -30,12 +30,12 @@ export function RepairOriginal({ original }) {
           .map(([label, value]) => (
             <div key={label}>
               <dt>{label}</dt>
-              <dd>{value}</dd>
+              <dd data-motion-value="text">{value}</dd>
             </div>
           ))}
         <div>
           <dt>协议确认</dt>
-          <dd>
+          <dd data-motion-value="text">
             {original.agreementAt ? formatInstant(original.agreementAt) : '未记录'}{' '}
             {original.agreementVersion}
           </dd>

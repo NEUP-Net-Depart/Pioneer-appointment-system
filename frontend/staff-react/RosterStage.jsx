@@ -11,11 +11,12 @@ export function RosterStage({ stage }) {
     <ol className="roster-steps" aria-label="排班流程">
       {steps.map((text, i) => (
         <li
+          data-motion-item=""
           key={text}
           aria-current={i === current ? 'step' : undefined}
           data-complete={i < current}
         >
-          <span>{i + 1}</span>
+          <span data-motion-value="text">{i + 1}</span>
           {text}
         </li>
       ))}

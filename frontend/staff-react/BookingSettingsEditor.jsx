@@ -279,10 +279,10 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
             ) : (
               <div className="booking-notice-list">
                 {data.notices.map((item) => (
-                  <article key={item.id}>
+                  <article data-motion-item="" key={item.id}>
                     <div>
-                      <strong>{item.title}</strong>
-                      <span className="booking-notice-meta">
+                      <strong data-motion-value="text">{item.title}</strong>
+                      <span data-motion-value="text" className="booking-notice-meta">
                         {item.important ? '必读公告' : '普通公告'} ·{' '}
                         {item.displayMode === 'modal' ? '弹窗展示' : '页面展示'} ·{' '}
                         {!item.enabled
@@ -293,8 +293,8 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
                               ? '已结束'
                               : '展示中'}
                       </span>
-                      <p>{item.content}</p>
-                      <small>
+                      <p data-motion-value="text">{item.content}</p>
+                      <small data-motion-value="text">
                         {formatInstant(item.startsAt)} 至 {formatInstant(item.endsAt)}
                       </small>
                     </div>
@@ -323,19 +323,19 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
             ) : (
               <div className="booking-notice-list">
                 {data.suspensions.map((item) => (
-                  <article key={item.id}>
+                  <article data-motion-item="" key={item.id}>
                     <div>
-                      <strong>
+                      <strong data-motion-value="text">
                         {item.businessDate} · {campus}校区暂停维修
                       </strong>
-                      <span className="booking-notice-meta">
+                      <span data-motion-value="text" className="booking-notice-meta">
                         {item.businessDate >
                         new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10)
                           ? '即将暂停'
                           : '今日暂停'}{' '}
                         · 来自暂停安排
                       </span>
-                      <p>{item.content}</p>
+                      <p data-motion-value="text">{item.content}</p>
                     </div>
                   </article>
                 ))}
@@ -362,7 +362,9 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
               void perform(saveNotice).catch(() => {});
             }}
           >
-            <p className="field-muted">{campus}校区 · 保存后按生效时间自动展示或结束</p>
+            <p data-motion-value="text" className="field-muted">
+              {campus}校区 · 保存后按生效时间自动展示或结束
+            </p>
             <label>
               公告标题
               <input

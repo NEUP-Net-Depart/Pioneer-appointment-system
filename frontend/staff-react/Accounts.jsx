@@ -123,40 +123,49 @@ function AccountList({ user }) {
         <button disabled={list.loading} onClick={list.refresh}>
           刷新账号
         </button>
-        <span role="status">
+        <span data-motion-value="number" role="status">
           {list.loading ? '正在更新，保留已有账号…' : `${items.length} 个账号`}
         </span>
       </div>
       <Notice>{list.error || message}</Notice>
-      <section className="account-list" aria-label="工作人员账号列表" aria-busy={list.loading}>
+      <section
+        data-motion-list="reveal"
+        className="account-list"
+        aria-label="工作人员账号列表"
+        aria-busy={list.loading}
+      >
         {items.map((item) => (
-          <article className="field-card account-row" key={item.account}>
+          <article data-motion-item="" className="field-card account-row" key={item.account}>
             <div className="account-identity">
-              <strong>{item.name}</strong>
-              <span>{item.account}</span>
+              <strong data-motion-value="text">{item.name}</strong>
+              <span data-motion-value="text">{item.account}</span>
             </div>
             <div>
               <span className="account-label">角色</span>
-              {item.roleNames
-                ? item.roleNames.join('、') || '尚未授权角色'
-                : roleLabels[item.role] || '其他角色'}
+              <span data-motion-value="text">
+                {item.roleNames
+                  ? item.roleNames.join('、') || '尚未授权角色'
+                  : roleLabels[item.role] || '其他角色'}
+              </span>
             </div>
             <div>
               <span className="account-label">校区</span>
-              {item.homeCampus}
-              <small>授权 {(item.authorizedCampuses || []).join('、')}</small>
+              <span data-motion-value="text">{item.homeCampus}</span>
+              <small data-motion-value="text">
+                授权 {(item.authorizedCampuses || []).join('、')}
+              </small>
             </div>
             <div>
-              <span className="account-state" data-state={item.status}>
+              <span data-motion-value="text" className="account-state" data-state={item.status}>
                 {item.status === 'enabled' ? '已启用' : '已停用'}
               </span>
-              <small>{item.workload || 0} 条维修记录</small>
+              <small data-motion-value="number">{item.workload || 0} 条维修记录</small>
             </div>
             <div className="account-actions">
               {item.actions?.edit ? (
                 <button onClick={() => setSelected(item)}>管理账号</button>
               ) : (
-                <small>
+                <small data-motion-value="text">
                   {item.protected
                     ? '系统保护账号'
                     : item.account === user.account
@@ -169,8 +178,8 @@ function AccountList({ user }) {
         ))}
         {!items.length && !list.loading && !list.error && (
           <div className="field-empty">
-            <strong>{query ? '没有匹配的账号' : '暂无可见账号'}</strong>
-            <p>
+            <strong data-motion-value="text">{query ? '没有匹配的账号' : '暂无可见账号'}</strong>
+            <p data-motion-value="text">
               {query ? '试试姓名、学号或校区，或清除搜索。' : '成员通过激活审核后会出现在这里。'}
             </p>
             {query && <button onClick={() => setQuery('')}>清除搜索</button>}
@@ -240,7 +249,9 @@ function AccountEditor({ user, item, onClose, onSaved }) {
       }}
       sidePanel
     >
-      <p className="field-muted">{item.account} · 保存后撤销此账号已有会话。</p>
+      <p data-motion-value="text" className="field-muted">
+        {item.account} · 保存后撤销此账号已有会话。
+      </p>
       <form className="workspace-form" onSubmit={save}>
         <fieldset disabled={busy} className="workspace-form-fields">
           <label>
@@ -252,7 +263,7 @@ function AccountEditor({ user, item, onClose, onSaved }) {
               onChange={(event) => setDraft({ ...draft, name: event.target.value })}
             />
           </label>
-          <p className="field-muted">
+          <p data-motion-value="text" className="field-muted">
             工作角色：{item.roleNames?.join('、') || '尚未授权'}
             。角色权限与工作资格在成员管理中分别维护。
           </p>
@@ -415,9 +426,9 @@ function ActivationReview() {
         </button>
       </div>
       <Notice>{list.error || message}</Notice>
-      <div className="account-list" aria-busy={list.loading}>
+      <div data-motion-list="reveal" className="account-list" aria-busy={list.loading}>
         {items.map((item) => (
-          <article className="field-card account-row review-row" key={item.id}>
+          <article data-motion-item="" className="field-card account-row review-row" key={item.id}>
             <div className="account-identity">
               {item.status === 'pending' ? (
                 <label className="workspace-check">
@@ -435,37 +446,37 @@ function ActivationReview() {
                       );
                     }}
                   />
-                  <strong>{item.name}</strong>
+                  <strong data-motion-value="text">{item.name}</strong>
                 </label>
               ) : (
-                <strong>{item.name}</strong>
+                <strong data-motion-value="text">{item.name}</strong>
               )}
-              <span>{item.studentId}</span>
+              <span data-motion-value="text">{item.studentId}</span>
             </div>
             <div>
-              {roleLabels[item.expectedRole] || '其他角色'}
-              <small>
+              <span data-motion-value="text">{roleLabels[item.expectedRole] || '其他角色'}</span>
+              <small data-motion-value="text">
                 所属 {item.homeCampus} · 授权 {item.authorizedCampuses.join('、')}
               </small>
             </div>
             <div>
-              <span className="account-state" data-state={item.status}>
+              <span data-motion-value="text" className="account-state" data-state={item.status}>
                 {enrollmentLabels[item.status] || '状态已更新'}
               </span>
-              {item.reviewNote && <small>{item.reviewNote}</small>}
+              {item.reviewNote && <small data-motion-value="text">{item.reviewNote}</small>}
             </div>
           </article>
         ))}
       </div>
       {!items.length && !list.loading && !list.error && (
         <div className="field-empty">
-          <strong>{history ? '暂无已处理申请' : '暂无待审核申请'}</strong>
+          <strong data-motion-value="text">{history ? '暂无已处理申请' : '暂无待审核申请'}</strong>
           <p>成员提交激活申请后，会在这里显示。</p>
         </div>
       )}
       {!history && pending.length > 0 && (
         <section className="field-card review-decision">
-          <strong>已选 {ids.length} 人</strong>
+          <strong data-motion-value="number">已选 {ids.length} 人</strong>
           <label className="workspace-check">
             <input
               type="checkbox"
@@ -571,18 +582,22 @@ function Invitations({ user }) {
         </button>
       </div>
       <Notice>{list.error || message}</Notice>
-      <div className="account-list" aria-busy={list.loading}>
+      <div data-motion-list="reveal" className="account-list" aria-busy={list.loading}>
         {items.map((item) => (
-          <article className="field-card account-row invite-row" key={item.studentId}>
+          <article
+            data-motion-item=""
+            className="field-card account-row invite-row"
+            key={item.studentId}
+          >
             <div className="account-identity">
-              <strong>{item.expectedName || '待核实姓名'}</strong>
-              <span>{item.studentId}</span>
+              <strong data-motion-value="text">{item.expectedName || '待核实姓名'}</strong>
+              <span data-motion-value="text">{item.studentId}</span>
             </div>
             <div>
-              {roleLabels[item.expectedRole] || '其他角色'}
-              <small>授权 {item.authorizedCampuses.join('、')}</small>
+              <span data-motion-value="text">{roleLabels[item.expectedRole] || '其他角色'}</span>
+              <small data-motion-value="text">授权 {item.authorizedCampuses.join('、')}</small>
             </div>
-            <span className="account-state" data-state={item.status}>
+            <span data-motion-value="text" className="account-state" data-state={item.status}>
               {enrollmentLabels[item.status] || '状态已更新'}
             </span>
             <div>
@@ -608,7 +623,9 @@ function Invitations({ user }) {
       </div>
       {!items.length && !list.loading && !list.error && (
         <div className="field-empty">
-          <strong>{query ? '没有匹配的加入资格' : '还没有加入名单'}</strong>
+          <strong data-motion-value="text">
+            {query ? '没有匹配的加入资格' : '还没有加入名单'}
+          </strong>
           <p>导入名单后，将激活网址发给成员，由本人设置密码并提交申请。</p>
         </div>
       )}

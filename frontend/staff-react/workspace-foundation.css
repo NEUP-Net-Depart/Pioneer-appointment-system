@@ -1459,3 +1459,172 @@ fieldset.staffing-editor {
   margin: 0.375rem 0 0;
   overflow-wrap: anywhere;
 }
+
+.workspace-navigation-status {
+  position: fixed;
+  z-index: 80;
+  right: 20px;
+  bottom: calc(76px + env(safe-area-inset-bottom));
+  max-width: calc(100vw - 40px);
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: var(--surface, #fff);
+  color: var(--text, #17212e);
+  box-shadow: 0 4px 20px #17212e1a;
+  pointer-events: none;
+}
+/* Short task prompts: one bounded animation, complete text for assistive tools. */
+@property --motion-progress {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 22;
+}
+.motion-glyph {
+  opacity: clamp(0.35, calc((var(--motion-progress) - var(--motion-index)) * 0.5), 1);
+}
+.motion-accessible {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  user-select: none;
+}
+/* Native disclosure owns its own content size; no duplicated hidden contents. */
+@supports (interpolate-size: allow-keywords) and selector(details::details-content) {
+  #staff-react-root details {
+    interpolate-size: allow-keywords;
+  }
+  #staff-react-root details:not(.workspace-more-actions)::details-content {
+    block-size: 0;
+    overflow: clip;
+    transition:
+      block-size var(--workspace-motion-normal, 200ms) var(--workspace-motion-ease, ease-out),
+      content-visibility var(--workspace-motion-normal, 200ms) allow-discrete;
+  }
+  #staff-react-root details:not(.workspace-more-actions)[open]::details-content {
+    block-size: auto;
+  }
+}
+.workspace-loaded-media {
+  opacity: 0.7;
+  transition: opacity 160ms ease-out;
+}
+.workspace-loaded-media[data-ready='true'] {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .motion-glyph {
+    opacity: 1;
+  }
+  #staff-react-root details:not(.workspace-more-actions)::details-content,
+  .workspace-loaded-media {
+    transition: none;
+  }
+}
+.motion-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--workspace-motion-normal, 200ms)
+    var(--workspace-motion-ease, ease-out);
+}
+.motion-collapse[data-open='true'] {
+  grid-template-rows: 1fr;
+}
+.motion-collapse > div {
+  min-height: 0;
+  overflow: clip;
+}
+span[data-motion-value='number'],
+span[data-motion-value='status'] {
+  display: inline-block;
+}
+@media (prefers-reduced-motion: reduce) {
+  .motion-collapse {
+    transition: none;
+  }
+}
+.motion-meter {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+.motion-meter > meter,
+.motion-meter > progress {
+  position: absolute;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.motion-meter-track {
+  display: block;
+  height: 10px;
+  overflow: clip;
+  border-radius: 6px;
+  background: #eef0f3;
+}
+.motion-meter-track > span {
+  display: block;
+  height: 100%;
+  background: #566579;
+  transform-origin: left;
+}
+
+/* Shared interaction rhythm; transitions never move a control under the pointer. */
+#staff-react-root {
+  --workspace-motion-fast: 140ms;
+  --workspace-motion-normal: 200ms;
+  --workspace-motion-ease: cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+#staff-react-root :is(button, .workspace-section-nav button, .workspace-nav-group button) {
+  transition:
+    background-color var(--workspace-motion-fast) ease-out,
+    color var(--workspace-motion-fast) ease-out,
+    border-color var(--workspace-motion-fast) ease-out,
+    box-shadow var(--workspace-motion-fast) ease-out;
+}
+#staff-react-root :is(input, select, textarea) {
+  transition:
+    border-color var(--workspace-motion-fast) ease-out,
+    box-shadow var(--workspace-motion-fast) ease-out,
+    background-color var(--workspace-motion-fast) ease-out;
+}
+#staff-react-root .workspace-section-count,
+#staff-react-root .staff-identity,
+#staff-react-root .account-state {
+  transition:
+    color var(--workspace-motion-fast) ease-out,
+    background-color var(--workspace-motion-fast) ease-out;
+}
+.field-modal::backdrop {
+  animation: workspace-backdrop-enter 180ms ease-out;
+}
+@keyframes workspace-backdrop-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #staff-react-root
+    :is(
+      button,
+      input,
+      select,
+      textarea,
+      .workspace-section-count,
+      .staff-identity,
+      .account-state
+    ) {
+    transition: none;
+  }
+  .field-modal::backdrop {
+    animation: none;
+  }
+}

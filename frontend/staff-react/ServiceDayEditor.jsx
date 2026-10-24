@@ -178,7 +178,7 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
               <div className="service-day-week-heading">
                 <h3>
                   {offset ? '下周' : '本周'}{' '}
-                  <span>
+                  <span data-motion-value="text">
                     {shortDate(days[0])} – {shortDate(days[3])}
                   </span>
                 </h3>
@@ -216,8 +216,8 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
                         )
                       }
                     >
-                      <span>周{weekdays[index]}</span>
-                      <strong>{shortDate(day)}</strong>
+                      <span data-motion-value="text">周{weekdays[index]}</span>
+                      <strong data-motion-value="text">{shortDate(day)}</strong>
                       <small>
                         {past ? (
                           '已过去'
@@ -238,7 +238,7 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
         })}
       </div>
       <div className="service-day-selection">
-        <strong>已选 {chosen.length} 天</strong>
+        <strong data-motion-value="number">已选 {chosen.length} 天</strong>
         <span>
           {chosen.length
             ? chosen.map((item) => shortDate(item.businessDate)).join('、')
@@ -261,7 +261,7 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
       </label>
       <div className="service-day-preview" role="region" aria-label="暂停公告预览">
         <h3>当日暂停维修</h3>
-        <p>{reason.trim() || '该校区当日暂停维修，请选择其他日期。'}</p>
+        <p data-motion-value="text">{reason.trim() || '该校区当日暂停维修，请选择其他日期。'}</p>
         <small>
           保存后自动出现在校区公告中，并在学生选择对应日期时显示；恢复或日期结束后停止展示。
         </small>
@@ -270,7 +270,7 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
         暂停当天的新预约、现场登记、开始维修和所有人员签到；办公和维修排班跳过此日。已有预约、班表和考勤保留，进行中的维修仍可完成。
       </p>
       {affectedCount > 0 && (
-        <p className="service-day-impact">
+        <p data-motion-value="text" className="service-day-impact">
           所选日期有 {affectedCount} 个预约需要联系机主，暂停不会自动取消预约。
         </p>
       )}
@@ -297,22 +297,22 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
             if (!busy) setConfirm(null);
           }}
         >
-          <p>
+          <p data-motion-value="text">
             {campus}校区 · {confirm === 'pause' ? '暂停' : '恢复'}以下日期
           </p>
           <ul className="service-day-confirm-dates">
             {chosen
               .filter((item) => confirm === 'pause' || item.item?.paused)
               .map((item) => (
-                <li key={item.businessDate}>
-                  <strong>{item.businessDate}</strong>
-                  <span>
+                <li data-motion-item="" key={item.businessDate}>
+                  <strong data-motion-value="text">{item.businessDate}</strong>
+                  <span data-motion-value="number">
                     {item.affected.length ? `${item.affected.length} 个现有预约` : '无待处理预约'}
                   </span>
                 </li>
               ))}
           </ul>
-          <p>
+          <p data-motion-value="text">
             {confirm === 'pause'
               ? '已有预约不会取消，请联系机主。当天所有岗位停止签到，已有签到不计入本周有效考勤。暂停说明将同步发布。'
               : '恢复原容量并撤下对应暂停公告，已有班表不会自动改写。'}

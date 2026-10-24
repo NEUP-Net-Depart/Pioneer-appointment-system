@@ -41,6 +41,8 @@ jobs:
             output/field-workflow/**/*.png
             output/reception-dispatch/**/*.png
             output/first-layout/
+            output/issue-73/**/*.png
+            output/issue-73/motion-performance.json
           if-no-files-found: ignore
           retention-days: 14
   migrate-preview:

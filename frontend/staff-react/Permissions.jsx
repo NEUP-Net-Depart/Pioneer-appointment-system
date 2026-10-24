@@ -128,13 +128,17 @@ export function Permissions() {
     <section className="react-page permissions-workspace">
       <WorkspaceHeader group="平台管理" title="授权管理" />
       {error && (
-        <p className="react-error" role="alert">
+        <p data-motion-value="text" className="react-error" role="alert">
           {error}
         </p>
       )}
-      {message && <p role="status">{message}</p>}
+      {message && (
+        <p data-motion-value="text" role="status">
+          {message}
+        </p>
+      )}
       <div className="react-permission-layout">
-        <aside className="react-card" aria-label="角色列表">
+        <aside data-motion-list="reveal" className="react-card" aria-label="角色列表">
           <h2>角色</h2>
           {roles.map((role) => (
             <button
@@ -142,16 +146,17 @@ export function Permissions() {
               disabled={busy || !!dirty}
               aria-pressed={selected?.id === role.id}
               className={selected?.id === role.id ? 'is-selected' : ''}
+              data-motion-item={role.id}
               key={role.id}
               onClick={() => select(role)}
             >
               {role.name}
-              <small>{role.description || role.code}</small>
+              <small data-motion-value="text">{role.description || role.code}</small>
             </button>
           ))}
         </aside>
         <article className="react-card">
-          <h2>{selected?.name || '角色权限'}</h2>
+          <h2 data-motion-value="text">{selected?.name || '角色权限'}</h2>
           {!selected && (
             <>
               <p className="react-muted">
@@ -195,7 +200,7 @@ export function Permissions() {
                   />
                   只看已启用
                 </label>
-                <span>
+                <span data-motion-value="number">
                   已启用 {codes.size} 项 · 当前显示 {visiblePermissions.length} 项
                 </span>
               </div>
@@ -210,11 +215,16 @@ export function Permissions() {
               />
               <fieldset
                 disabled={busy || !selected || readOnly}
+                data-motion-list="reveal"
                 className="react-permission-fields"
               >
                 <legend className="sr-only">角色权限</legend>
                 {visiblePermissions.map((permission) => (
-                  <section className="react-permission-item" key={permission.code}>
+                  <section
+                    data-motion-item={permission.code}
+                    className="react-permission-item"
+                    key={permission.code}
+                  >
                     <label className="react-permission">
                       <input
                         type="checkbox"
@@ -231,14 +241,20 @@ export function Permissions() {
                         }
                       />
                       <span>
-                        <strong>{permission.name}</strong>
-                        <small>{permission.description || permission.code}</small>
+                        <strong data-motion-value="text">{permission.name}</strong>
+                        <small data-motion-value="text">
+                          {permission.description || permission.code}
+                        </small>
                       </span>
                     </label>
                     {draft.map(
                       (grant, index) =>
                         grant.permissionCode === permission.code && (
-                          <details key={grant.id || index} className="react-grant-details">
+                          <details
+                            data-motion-item=""
+                            key={grant.id || index}
+                            className="react-grant-details"
+                          >
                             <summary>范围、条件与有效期</summary>
                             <ScopeFields
                               value={grant.scope}
@@ -300,7 +316,7 @@ export function Permissions() {
                 <p className="members-empty">没有匹配的权限，请调整筛选条件。</p>
               )}
               <div className="react-editor-actions">
-                <span aria-live="polite">
+                <span data-motion-value="text" aria-live="polite">
                   {dirty ? '有未保存的修改' : selected ? '已与服务器同步' : ''}
                 </span>
                 <button

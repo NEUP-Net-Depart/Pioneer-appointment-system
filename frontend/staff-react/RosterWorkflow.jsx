@@ -132,23 +132,23 @@ export function RosterWorkflow({ user, office = false }) {
         </div>
       </div>
       {task?.collectionIssue && (
-        <p role="status" className="react-message">
+        <p data-motion-value="text" role="status" className="react-message">
           {task.collectionIssue}
         </p>
       )}
       {error && (
-        <p role="alert" className="react-error">
+        <p data-motion-value="text" role="alert" className="react-error">
           {error}
         </p>
       )}
       {notice && (
-        <p role="status" className="react-message">
+        <p data-motion-value="text" role="status" className="react-message">
           {notice}
         </p>
       )}
       {!tasksLoading && !taskId && !error && (
         <section className="roster-start">
-          <strong>{'从发布可用时间收集开始'}</strong>
+          <strong data-motion-value="text">{'从发布可用时间收集开始'}</strong>
           {canCreate ? (
             <button className="field-primary" onClick={() => setCreating(true)}>
               {'发布收集任务'}
@@ -254,7 +254,7 @@ export function RosterWorkflow({ user, office = false }) {
           </div>
           {!extraPeople.length && <p>当前范围没有其他符合资格的人员。</p>}
           {error && (
-            <p role="alert" className="react-error">
+            <p data-motion-value="text" role="alert" className="react-error">
               {error}
             </p>
           )}
@@ -295,7 +295,7 @@ export function RosterWorkflow({ user, office = false }) {
             if (!requirementsDirty) setPanel('');
           }}
         >
-          <p>
+          <p data-motion-value="text">
             {task.weekStart} · {task.description || '本周可用时间收集'}
           </p>
           <RequirementEditor

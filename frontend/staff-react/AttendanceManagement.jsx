@@ -202,12 +202,12 @@ export function AttendanceManagement({ user }) {
         </button>
       </WorkspaceHeader>
       {error && !form && (
-        <p className="react-error" role="alert">
+        <p data-motion-value="text" className="react-error" role="alert">
           {error}
         </p>
       )}
       {notice && (
-        <p className="react-message" role="status">
+        <p data-motion-value="text" className="react-message" role="status">
           {notice}
         </p>
       )}
@@ -261,7 +261,9 @@ export function AttendanceManagement({ user }) {
       <section className="react-card" aria-busy={loading}>
         <div className="field-section-heading">
           <h2>到岗记录</h2>
-          <span className="react-muted">{loading ? '正在更新…' : `已显示 ${items.length} 条`}</span>
+          <span data-motion-value="number" className="react-muted">
+            {loading ? '正在更新…' : `已显示 ${items.length} 条`}
+          </span>
         </div>
         {!items.length && loading && !error && <DataValue label="考勤记录" />}
         {!items.length && !loading && !error && (
@@ -269,21 +271,23 @@ export function AttendanceManagement({ user }) {
         )}
         <ul className="attendance-history-list">
           {items.map((item) => (
-            <li key={item.id}>
+            <li data-motion-item="" key={item.id}>
               <div>
-                <strong>{item.identitySnapshot?.name || '工作人员'}</strong>
+                <strong data-motion-value="text">
+                  {item.identitySnapshot?.name || '工作人员'}
+                </strong>
                 <StaffIdentity identities={item.identitySnapshot?.identities} />
-                <span>
+                <span data-motion-value="text">
                   {item.primaryDepartmentNameSnapshot || '历史部门未记录'} ·{' '}
                   {item.nonScheduled ? '非排班到岗' : '排班到岗'}
                   {item.servicePaused ? ' · 暂停日记录，不计有效考勤' : ''}
                 </span>
               </div>
               <div>
-                <strong>
+                <strong data-motion-value="text">
                   {item.businessDate} · {time(item.occurredAt)}
                 </strong>
-                <span>{campusNames[item.campusId] || '指定校区'}</span>
+                <span data-motion-value="text">{campusNames[item.campusId] || '指定校区'}</span>
                 <button disabled={busy} onClick={() => edit(item)}>
                   修正时间
                 </button>
@@ -336,7 +340,7 @@ export function AttendanceManagement({ user }) {
               这是历史考勤记录操作。需要加入今天工作时，请使用现场工作人员签到码。
             </p>
             {error && (
-              <p className="react-error" role="alert">
+              <p data-motion-value="text" className="react-error" role="alert">
                 {error}
               </p>
             )}
@@ -432,9 +436,9 @@ export function AttendanceManagement({ user }) {
                           update({ memberId: member.memberId, memberName: member.name })
                         }
                       >
-                        <strong>{member.name}</strong>
+                        <strong data-motion-value="text">{member.name}</strong>
                         <StaffIdentity identities={member.identities} />
-                        <small>
+                        <small data-motion-value="text">
                           {member.departmentName} · {member.studentId}
                         </small>
                       </button>
@@ -446,7 +450,11 @@ export function AttendanceManagement({ user }) {
                 )}
               </>
             )}
-            {form.memberId && <p className="react-message">已选择：{form.memberName}</p>}
+            {form.memberId && (
+              <p data-motion-value="text" className="react-message">
+                已选择：{form.memberName}
+              </p>
+            )}
             <label>
               实际签到时间
               <input
