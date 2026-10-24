@@ -1795,17 +1795,27 @@ test('whitelist application is separate from login and approval atomically insta
   await api('/api/activation',{method:'POST',body:{studentId:'810001',name:'真实部员',homeCampus:'南湖',password}},400);
 });
 
-test('concurrent activation submissions and approvals have exactly one winner',async()=>{
-  const token=await whitelistStaff('820001');
-  const body={studentId:'820001',name:'真实部员',homeCampus:'南湖',password};
-  const submitted=await Promise.all([request('/api/activation',{method:'POST',body}),request('/api/activation',{method:'POST',body})]);
-  assert.deepEqual(submitted.map(response=>response.status).sort(),[201,409]);
-  const application=await submitted.find(response=>response.status===201).json();
+for (const studentId of ['820001','820002','820003','820004','820005']) test(`concurrent activation submissions and approvals have exactly one winner (${studentId})`,async()=>{
+  const token=await whitelistStaff(studentId);
+  const body={studentId,name:'真实部员',homeCampus:'南湖',password};
+  // Consume each response once, as soon as its request resolves. Do not retain
+  // live transport streams while waiting for the other concurrent request.
+  const result=async(path,options)=>{
+    const response=await request(path,options);
+    return {status:response.status,body:await response.json()};
+  };
+  const submitted=await Promise.all([result('/api/activation',{method:'POST',body}),result('/api/activation',{method:'POST',body})]);
+  assert.deepEqual(submitted.map(response=>response.status).sort(),[201,409],JSON.stringify(submitted));
+  const application=submitted.find(response=>response.status===201).body;
+  assert.equal(application.status,'pending');
+  assert.equal((await api(`/api/activation/${application.id}`,{headers:{'X-Activation-Receipt':application.receipt}})).status,'pending');
   const review={ids:[application.id],status:'approved',identityVerified:true,reviewNote:'已核验'};
-  const results=await Promise.all([request('/api/activation-requests/review',{method:'POST',token,body:review}),request('/api/activation-requests/review',{method:'POST',token,body:review})]);
-  assert.deepEqual(results.map(response=>response.status).sort(),[200,409]);
-  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM staff_accounts WHERE account=?').bind('820001').first()).n,1);
-  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM staff_campus_grants WHERE account=?').bind('820001').first()).n,1);
+  const results=await Promise.all([result('/api/activation-requests/review',{method:'POST',token,body:review}),result('/api/activation-requests/review',{method:'POST',token,body:review})]);
+  assert.deepEqual(results.map(response=>response.status).sort(),[200,409],JSON.stringify(results));
+  assert.deepEqual(results.find(response=>response.status===200).body.applied,[application.id]);
+  assert.equal((await api(`/api/activation/${application.id}`,{headers:{'X-Activation-Receipt':application.receipt}})).status,'approved');
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM staff_accounts WHERE account=?').bind(studentId).first()).n,1);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM staff_campus_grants WHERE account=?').bind(studentId).first()).n,1);
 });
 
 test('identity mismatch, duplicate pending attempts, rejection and reapplication do not reserve a staff account',async()=>{
