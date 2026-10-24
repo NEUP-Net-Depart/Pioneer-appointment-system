@@ -2,6 +2,10 @@ import { json, readBody } from '../lib/http.js';
 import { appointmentQuery, appointmentPatch, bookingInput, bookingRequestKey, liveQuery } from '../lib/validation.js';
 
 export const appointmentRoutes = [
+  ['POST', /^\/api\/appointments\/([^/]+)\/repair-followups\/([^/]+)\/queue-exit$/, async (context,match) => {
+    await context.limit('write');
+    return json(await context.services.appointments.leaveFollowupQueue(decodeURIComponent(match[1]),decodeURIComponent(match[2]),await readBody(context.request),context.accessToken));
+  }],
   ['POST', /^\/api\/appointments\/([^/]+)\/queue-exit$/, async (context,match) => {
     await context.limit('write');
     return json(await context.services.appointments.leaveQueue(decodeURIComponent(match[1]),await readBody(context.request),context.accessToken));
@@ -14,6 +18,14 @@ export const appointmentRoutes = [
   }],
   ['GET', /^\/api\/appointments\/overview$/, async context => {
     return json(await context.services.appointments.overview(await context.role('technician')));
+  }],
+  ['POST', /^\/api\/appointments\/([^/]+)\/repair-followups$/, async (context,match) => {
+    await context.limit('write');
+    return json(await context.services.followups.request(decodeURIComponent(match[1]),await readBody(context.request),context.accessToken),201);
+  }],
+  ['POST', /^\/api\/appointments\/([^/]+)\/repair-followups\/staff$/, async (context,match) => {
+    await context.limit('write');
+    return json(await context.services.followups.createByStaff(decodeURIComponent(match[1]),await readBody(context.request),await context.role('technician')),201);
   }],
   ['GET', /^\/api\/appointments$/, async context => {
     const user = await context.role('technician');

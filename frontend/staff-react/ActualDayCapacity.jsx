@@ -88,15 +88,23 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
             <span>
               容量来源：
               <DataValue label="容量来源" pending={loading}>
-                {data ? (data.source === 'snapshot' ? '已形成当日容量快照' : '使用每周模板') : null}
+                {data
+                  ? data.source === 'snapshot'
+                    ? date < dateKey()
+                      ? '历史日期容量'
+                      : '当日实际容量'
+                    : '使用每周容量规则'
+                  : null}
               </DataValue>
             </span>
             <p data-motion-value="text">
               {!data
                 ? '实际名额由当日容量与预约占用共同决定。'
-                : data.source === 'snapshot'
-                  ? '当天容量已固定，后续模板调整不影响此日期。'
-                  : '尚无固定快照；首次预约前，容量随对应星期的模板更新。'}
+                : date < dateKey()
+                  ? data.source === 'snapshot'
+                    ? '保留该日期的历史容量，后续每周容量调整不会改写。'
+                    : '该历史日期没有保存服务日容量，以下按当前每周规则展示，仅供参考。'
+                  : '修改每周容量会立即同步今天及未来的对应时段，已有预约全部保留。'}
             </p>
           </div>
           <div className="capacity-actual-layout">
@@ -142,6 +150,7 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
               )}
               <p className="field-muted">
                 已占用名额包含已完成、已过期预约；取消预约释放名额。现场临时登记不占用预约名额。
+                已占用达到或超过容量时停止新增预约，低于容量后恢复放号。
               </p>
             </div>
             <div className="capacity-staffing">

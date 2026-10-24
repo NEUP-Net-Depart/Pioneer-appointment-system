@@ -17,7 +17,7 @@ const counts = `SELECT COUNT(*) AS allCount, COUNT(CASE WHEN status='booked' THE
   COUNT(CASE WHEN status='in_progress' THEN 1 END) AS in_progress, COUNT(CASE WHEN status='completed' THEN 1 END) AS completed,
   COUNT(CASE WHEN status='cancelled' THEN 1 END) AS cancelled, COUNT(CASE WHEN status='expired' THEN 1 END) AS expired FROM appointments`;
 
-function accessPredicate(rules, args) {
+function accessPredicate(rules, args, carryover = false) {
   if (rules === undefined) return '1';
   if (!rules.length) return '0';
   // One JSON parameter keeps large role sets below D1's binding limit.
@@ -28,7 +28,7 @@ function accessPredicate(rules, args) {
         (SELECT account FROM staff_accounts WHERE member_id=json_extract(access_rule.value,'$.memberId'))
         OR EXISTS(SELECT 1 FROM repair_receptions r WHERE r.appointment_id=appointments.id AND r.state='assigned' AND r.assigned_member_id=json_extract(access_rule.value,'$.memberId')))
       AND (json_type(access_rule.value,'$.date') IS NULL OR appointments.date=json_extract(access_rule.value,'$.date')
-        OR EXISTS(SELECT 1 FROM repair_receptions r WHERE r.appointment_id=appointments.id))
+        ${carryover ? "OR appointments.status='in_progress' OR (appointments.status='booked' AND EXISTS(SELECT 1 FROM repair_receptions r WHERE r.appointment_id=appointments.id AND r.state IN ('queued','assigned')))" : ''})
       AND (json_type(access_rule.value,'$.objectIds') IS NULL OR appointments.id IN
         (SELECT value FROM json_each(json_extract(access_rule.value,'$.objectIds')))))`;
 }
@@ -41,7 +41,7 @@ export async function listAppointments(
   { campuses, summaryRules, identityRules }
 ) {
   const scopeArgs = [...campuses];
-  const scope = `${campuses.length ? `campus IN (${campuses.map(() => '?').join(',')})` : '0'} AND (${accessPredicate(summaryRules, scopeArgs)})`;
+  const scope = `${campuses.length ? `campus IN (${campuses.map(() => '?').join(',')})` : '0'} AND (${accessPredicate(summaryRules, scopeArgs, true)})`;
   const where = [scope],
     args = [...scopeArgs];
   for (const [key, column] of [

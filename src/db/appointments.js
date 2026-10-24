@@ -4,6 +4,7 @@ import { serviceDayRepository } from './service-days.js';
 import { APPOINTMENT_SEARCH_LIMIT } from '../../shared/appointment-search.js';
 import { DEFAULT_SERVICE_LOCATIONS, terminalStatuses } from '../../shared/constants.js';
 import { scheduleStatement } from './slot-capacities.js';
+import { parseJson } from '../platform/contracts.js';
 
 const columns = {
   studentId: 'student_id',
@@ -55,6 +56,47 @@ const memberIdentity =
   '(SELECT member_id FROM staff_accounts WHERE account=appointments.assigned_to) AS assigned_member_id,(SELECT member_id FROM staff_accounts WHERE account=appointments.registered_by) AS registered_member_id';
 const receptionProjection = `(SELECT json_object('state',r.state,'receivedAt',r.received_at,'receivedBy',r.received_by,'assignedTo',r.assigned_to,'assignedMemberId',r.assigned_member_id,'assignedToName',(SELECT name FROM members WHERE id=r.assigned_member_id),'updatedAt',r.updated_at,'leftAt',r.left_at,'ticketId',r.ticket_id,'ticket',(SELECT json_object('number',t.number,'date',t.queue_date,'campus',t.campus) FROM repair_queue_tickets t WHERE t.id=r.ticket_id)) FROM repair_receptions r WHERE r.appointment_id=appointments.id) AS reception_json`;
 const select = `SELECT appointments.*,(SELECT paused FROM service_day_overrides s JOIN campuses c ON c.id=s.campus_id WHERE s.business_date=appointments.date AND c.name=appointments.campus) AS service_paused,${assigneeName},${memberIdentity},${receptionProjection} FROM appointments`;
+// UNION deduplicates ancestors and descendants, including historical branches.
+const repairChain = `WITH RECURSIVE repair_chain(id) AS (
+  SELECT ? UNION
+  SELECT CASE WHEN rf.parent_appointment_id=chain.id THEN rf.scheduled_appointment_id ELSE rf.parent_appointment_id END
+  FROM repair_chain chain JOIN repair_followups rf
+    ON rf.parent_appointment_id=chain.id OR rf.scheduled_appointment_id=chain.id
+  WHERE rf.status='scheduled'
+)`;
+const followupDescendants = `WITH RECURSIVE descendants(id) AS (
+  SELECT ? UNION SELECT rf.scheduled_appointment_id FROM descendants d
+  JOIN repair_followups rf ON rf.parent_appointment_id=d.id WHERE rf.status='scheduled'
+)`;
+const customerFollowup = `${followupDescendants} SELECT child.id FROM repair_followups rf
+  JOIN appointments parent ON parent.id=rf.parent_appointment_id
+  JOIN appointments child ON child.id=rf.scheduled_appointment_id
+  WHERE rf.id=? AND rf.parent_appointment_id IN (SELECT id FROM descendants) AND rf.status='scheduled'
+    AND child.student_id=parent.student_id AND child.campus=parent.campus`;
+const activeFollowups = `SELECT 1 FROM repair_followups active
+  LEFT JOIN appointments child ON child.id=active.scheduled_appointment_id
+  WHERE active.parent_appointment_id IN (SELECT id FROM repair_chain)
+    AND (active.status='pending' OR (active.status='scheduled' AND
+      (child.status='in_progress' OR (child.status='booked' AND child.expires_at>?))))`;
+const followupRow = (row) => ({
+  id: row.followup_id ?? row.id,
+  parentAppointmentId: row.parent_appointment_id,
+  status: row.followup_status ?? row.status,
+  requestSource: row.request_source,
+  reason: row.reason,
+  requestId: row.request_id,
+  requestedBy: row.requested_by || '',
+  requestedAt: row.requested_at,
+  scheduledAppointmentId: row.scheduled_appointment_id || '',
+  scheduledBy: row.scheduled_by || '',
+  scheduledAt: row.scheduled_at || '',
+  resolvedBy: row.resolved_by || '',
+  resolvedAt: row.resolved_at || '',
+  resolutionNote: row.resolution_note || '',
+  decisionRequestId: row.decision_request_id || '',
+  decisionHash: row.decision_hash || '',
+  revision: row.followup_revision ?? row.revision
+});
 const memberAccounts =
   '(SELECT account FROM staff_accounts WHERE member_id=(SELECT member_id FROM staff_accounts WHERE account=?))';
 function fromRow(row) {
@@ -265,13 +307,14 @@ export function appointmentRepository(db) {
           .first()
       ).total;
     },
-    async expirePending(instant, { id, campuses } = {}) {
+    async expirePending(instant, { id, campuses, repairChainId } = {}) {
       const where = ["status='booked'", 'started_at IS NULL', 'expires_at<=?', "NOT EXISTS(SELECT 1 FROM repair_receptions r WHERE r.appointment_id=appointments.id AND r.state IN ('queued','assigned'))"],
         args = [instant, instant];
       if (id) {
         where.push('id=?');
         args.push(id);
       }
+      if (repairChainId) { where.push(`id IN (${repairChain} SELECT id FROM repair_chain)`); args.push(repairChainId); }
       if (campuses) {
         where.push(campuses.length ? `campus IN (${campuses.map(() => '?').join(',')})` : '0');
         args.push(...campuses);
@@ -285,6 +328,167 @@ export function appointmentRepository(db) {
     },
     async find(id) {
       return fromRow(await db.prepare(`${select} WHERE id=?`).bind(id).first());
+    },
+    async followupByRequestId(requestId) {
+      const row = await db.prepare('SELECT id,parent_appointment_id,status,request_hash FROM repair_followups WHERE request_id=?').bind(requestId).first();
+      return row ? { id: row.id, parentAppointmentId: row.parent_appointment_id, status: row.status, requestHash: row.request_hash } : null;
+    },
+    async followupById(id) {
+      const row = await db.prepare(`SELECT id,parent_appointment_id,status,request_source,reason,request_id,request_hash,
+        requested_by,requested_at,scheduled_appointment_id,scheduled_by,scheduled_at,resolved_by,resolved_at,
+        resolution_note,decision_request_id,decision_hash,revision FROM repair_followups WHERE id=?`).bind(id).first();
+      return row ? followupRow({ ...row, followup_id:row.id, followup_status:row.status, followup_revision:row.revision }) : null;
+    },
+    async followupByDecisionRequestId(requestId) {
+      const row = await db.prepare(`SELECT id,parent_appointment_id,status,scheduled_appointment_id,decision_hash
+        FROM repair_followups WHERE decision_request_id=?`).bind(requestId).first();
+      return row ? { id: row.id, parentAppointmentId: row.parent_appointment_id, status: row.status,
+        scheduledAppointmentId: row.scheduled_appointment_id || '', decisionHash: row.decision_hash } : null;
+    },
+    async createRepairFollowup(input, actor, instant) {
+      const id = crypto.randomUUID();
+      const inserted = db.prepare(`${repairChain} INSERT INTO repair_followups
+        (id,parent_appointment_id,status,request_source,reason,request_id,request_hash,requested_by,requested_at)
+        SELECT ?,a.id,'pending',?,?,?,?,?,? FROM appointments a
+        WHERE a.id=? AND a.status='completed' AND NOT EXISTS(${activeFollowups})
+        RETURNING id,parent_appointment_id,status,request_source,reason,request_id,request_hash,requested_by,requested_at,
+          scheduled_appointment_id,scheduled_by,scheduled_at,resolved_by,resolved_at,resolution_note,decision_request_id,decision_hash,revision`)
+        .bind(input.parentAppointmentId,id,actor ? 'staff' : 'customer',input.reason,input.requestId,input.requestHash,actor?.account || null,instant,input.parentAppointmentId,instant);
+      const audit = db.prepare(`INSERT INTO audit_events(id,actor_member_id,actor_account,action,source_ref,after_json,reason,request_id,occurred_at)
+        SELECT ?,?,?,?,?,?,?,?,? WHERE changes()>0`)
+        .bind(crypto.randomUUID(),actor?.memberId || null,actor?.account || null,'repairs.followup.requested',
+          JSON.stringify({module:'repairs',type:'repair-followup',id}),JSON.stringify({parentAppointmentId:input.parentAppointmentId,requestSource:actor?'staff':'customer'}),
+          input.reason,input.requestId,instant);
+      const result = await db.batch([inserted,audit]);
+      return result[0].results[0] ? followupRow(result[0].results[0]) : null;
+    },
+    async scheduleRepairFollowup(input, parent, child, actor, instant) {
+      const campusDigit = child.campus === '浑南' ? '1' : '0';
+      const prefix = `reserve${campusDigit}${child.date.replaceAll('-','')}-`;
+      const values = Object.keys(writeColumns).map((key) => {
+        if (key === 'date' || key === 'timeSlot' || key === 'expiresAt' || key === 'createdAt' || key === 'agreementAt') return '?';
+        if (key === 'status') return "'booked'";
+        if (key === 'assignedTo' || key === 'repairNumber' || key === 'frontPhotoId' || key === 'backPhotoId' || key === 'registeredBy' || key === 'registrationKey' || key === 'outcome' || key === 'startedAt' || key === 'completedAt') return 'NULL';
+        if (key === 'repairNote') return "''";
+        if (key === 'source') return "'onsite'";
+        if (key === 'registrationFlow') return "'repair_followup'";
+        if (key === 'bookingNotices') return "'[]'";
+        if (key === 'locationSnapshot') return "COALESCE((SELECT location FROM service_locations WHERE campus=parent.campus AND date=?),'')";
+        if (key === 'locationRevision') return '(SELECT revision FROM service_locations WHERE campus=parent.campus AND date=?)';
+        return `parent.${writeColumns[key]}`;
+      });
+      const insertArgs = Object.keys(writeColumns).flatMap((key) => {
+        if (key === 'date') return [child.date];
+        if (key === 'timeSlot') return [child.timeSlot];
+        if (key === 'expiresAt') return [child.expiresAt];
+        if (key === 'createdAt' || key === 'agreementAt') return [instant];
+        if (key === 'locationSnapshot' || key === 'locationRevision') return [child.date];
+        return [];
+      });
+      const accessHash = child.accessTokenHash;
+      const actorGuard = `EXISTS(SELECT 1 FROM staff_accounts sa JOIN members m ON m.id=sa.member_id
+        WHERE sa.account=? AND sa.auth_version=? AND sa.status='enabled' AND m.status='active')`;
+      const insertSql = `${repairChain} INSERT INTO appointments(id,${Object.values(writeColumns).join(',')},access_token_hash,credential_rotated_at)
+        SELECT ? || printf('%02d',1+(SELECT COALESCE(MAX(CAST(substr(id,instr(id,'-')+1) AS INTEGER)),0) FROM appointments WHERE id LIKE ? OR id LIKE ? OR id LIKE ?)),
+          ${values.join(',')},?,?
+        FROM appointments parent JOIN repair_followups rf ON rf.id=? AND rf.parent_appointment_id=parent.id
+        WHERE parent.id=? AND parent.status='completed' AND rf.status='pending' AND rf.revision=? AND rf.decision_request_id IS NULL
+          AND NOT EXISTS(${activeFollowups} AND active.id<>rf.id)
+          AND ${actorGuard}
+          AND NOT EXISTS(SELECT 1 FROM service_day_overrides s JOIN campuses c ON c.id=s.campus_id
+            WHERE s.business_date=? AND c.name=parent.campus AND s.paused=1)
+          AND (EXISTS(SELECT 1 FROM booking_day_slots b WHERE b.campus=parent.campus AND b.date=? AND b.time_slot=? AND b.capacity>0)
+            OR (NOT EXISTS(SELECT 1 FROM booking_day_slots b WHERE b.campus=parent.campus AND b.date=?)
+              AND EXISTS(SELECT 1 FROM weekday_slot_capacities w WHERE w.campus=parent.campus
+                AND w.weekday=CAST(strftime('%w',?) AS INTEGER) AND w.time_slot=? AND w.capacity>0))) RETURNING *`;
+      const insertBindings = [parent.id,prefix,`${prefix}%`,`reverse${prefix.slice(7)}%`,`${prefix.slice(7)}%`,...insertArgs,accessHash,instant,
+        input.followupId,parent.id,input.revision,instant,actor.account,actor.authVersion ?? 0,
+        child.date,child.date,child.timeSlot,child.date,child.date,child.timeSlot];
+      const insert = db.prepare(insertSql).bind(...insertBindings);
+      const update = db.prepare(`UPDATE repair_followups SET status='scheduled',scheduled_appointment_id=(
+          SELECT id FROM appointments WHERE access_token_hash=?),scheduled_by=?,scheduled_at=?,resolved_by=?,resolved_at=?,
+          resolution_note='',decision_request_id=?,decision_hash=?,revision=revision+1
+        WHERE id=? AND parent_appointment_id=? AND status='pending' AND revision=? AND decision_request_id IS NULL
+          AND EXISTS(SELECT 1 FROM appointments WHERE access_token_hash=?)
+        RETURNING id,parent_appointment_id,status,request_source,reason,request_id,request_hash,requested_by,requested_at,
+          scheduled_appointment_id,scheduled_by,scheduled_at,resolved_by,resolved_at,resolution_note,decision_request_id,decision_hash,revision`)
+        .bind(accessHash,actor.account,instant,actor.account,instant,input.decisionRequestId,input.decisionHash,input.followupId,parent.id,input.revision,accessHash);
+      const audit = db.prepare(`INSERT INTO audit_events(id,actor_member_id,actor_account,action,source_ref,before_json,after_json,reason,request_id,occurred_at)
+        SELECT ?,?,?, 'repairs.followup.scheduled',?,?,?, ?,?,? WHERE changes()>0`)
+        .bind(crypto.randomUUID(),actor.memberId,actor.account,JSON.stringify({module:'repairs',type:'repair-followup',id:input.followupId}),
+          JSON.stringify({status:'pending',revision:input.revision}),JSON.stringify({status:'scheduled',date:child.date,timeSlot:child.timeSlot}),
+          input.reason,input.decisionRequestId,instant);
+      const result = await db.batch([insert,update,audit]);
+      if (!result[0].results[0] || !result[1].results[0]) return null;
+      return { followup: followupRow(result[1].results[0]), appointment: fromRow(result[0].results[0]) };
+    },
+    async rejectRepairFollowup(input, parent, actor, instant) {
+      const result = await db.batch([
+        db.prepare(`UPDATE repair_followups SET status='rejected',resolved_by=?,resolved_at=?,resolution_note=?,
+          decision_request_id=?,decision_hash=?,revision=revision+1 WHERE id=? AND parent_appointment_id=?
+          AND status='pending' AND revision=? AND decision_request_id IS NULL
+          AND EXISTS(SELECT 1 FROM appointments WHERE id=? AND status='completed')
+          AND EXISTS(SELECT 1 FROM staff_accounts sa JOIN members m ON m.id=sa.member_id
+            WHERE sa.account=? AND sa.auth_version=? AND sa.status='enabled' AND m.status='active')
+          RETURNING id,parent_appointment_id,status,request_source,reason,request_id,request_hash,requested_by,requested_at,
+            scheduled_appointment_id,scheduled_by,scheduled_at,resolved_by,resolved_at,resolution_note,decision_request_id,decision_hash,revision`)
+          .bind(actor.account,instant,input.reason,input.decisionRequestId,input.decisionHash,input.followupId,parent.id,input.revision,parent.id,actor.account,actor.authVersion ?? 0),
+        db.prepare(`INSERT INTO audit_events(id,actor_member_id,actor_account,action,source_ref,before_json,after_json,reason,request_id,occurred_at)
+          SELECT ?,?,?, 'repairs.followup.rejected',?,?,?, ?,?,? WHERE changes()>0`)
+          .bind(crypto.randomUUID(),actor.memberId,actor.account,JSON.stringify({module:'repairs',type:'repair-followup',id:input.followupId}),
+            JSON.stringify({status:'pending',revision:input.revision}),JSON.stringify({status:'rejected'}),input.reason,input.decisionRequestId,instant)
+      ]);
+      return result[0].results[0] ? followupRow(result[0].results[0]) : null;
+    },
+    async listRepairFollowups(campuses, status = 'pending') {
+      if (!campuses.length) return [];
+      const rows = (await db.prepare(`SELECT rf.id AS followup_id,rf.parent_appointment_id,rf.status AS followup_status,
+          rf.request_source,rf.reason,rf.request_id,rf.requested_by,rf.requested_at,rf.scheduled_appointment_id,
+          rf.scheduled_by,rf.scheduled_at,rf.resolved_by,rf.resolved_at,rf.resolution_note,rf.decision_request_id,
+          rf.decision_hash,rf.revision AS followup_revision,a.*
+        FROM repair_followups rf JOIN appointments a ON a.id=rf.parent_appointment_id
+        WHERE a.campus IN (${campuses.map(() => '?').join(',')}) AND rf.status=?
+        ORDER BY rf.requested_at,rf.id LIMIT 300`).bind(...campuses,status).all()).results;
+      return rows.map((row) => ({ followup: followupRow(row), appointment: fromRow(row) }));
+    },
+    async repairHistory(id, { staff = false } = {}) {
+      const related = (await db.prepare(`${repairChain} SELECT id FROM repair_chain LIMIT 201`)
+        .bind(id).all()).results.map((row) => row.id);
+      if (!related.length || related.length > 200) return { items: [], followups: [], events: [] };
+      const marks = related.map(() => '?').join(',');
+      const [items,requests,events] = await Promise.all([
+        db.prepare(`${select} WHERE id IN (${marks}) ORDER BY created_at,id`).bind(...related).all(),
+        db.prepare(`SELECT * FROM repair_followups WHERE parent_appointment_id IN (${marks}) ORDER BY requested_at,id`).bind(...related).all(),
+        db.prepare(`SELECT json_extract(source_ref,'$.id') AS appointment_id,action,occurred_at,reason,before_json,after_json
+          FROM audit_events WHERE json_extract(source_ref,'$.module')='repairs'
+            AND json_extract(source_ref,'$.id') IN (${marks}) AND action IN ('repairs.claimed','repairs.transferred','repairs.started','repairs.completed','repairs.corrected')
+          ORDER BY occurred_at,rowid LIMIT 1000`).bind(...related).all()
+      ]);
+      return {
+        items: await Promise.all(items.results.map(async (row) => {
+          const item = fromRow(row);
+          return {...Object.fromEntries(['id','date','timeSlot','status','outcome','repairNote',
+            'startedAt','completedAt','source','registrationFlow','expiresAt','repairNumber','createdAt',
+            ...(staff ? ['assignedToName'] : [])].map((key) => [key,item[key]])),
+            ...(item.registrationFlow==='repair_followup' ? {
+              campus:item.campus,revision:item.revision,
+              reception:item.reception ? {state:item.reception.state,receivedAt:item.reception.receivedAt,leftAt:item.reception.leftAt,ticket:item.reception.ticket} : null,
+              queuePosition:item.status==='booked' && ['queued','assigned'].includes(item.reception?.state) ? await this.receptionPosition(item) : null
+            } : {})};
+        })),
+        followups: requests.results.map((row) => ({ id:row.id,parentAppointmentId:row.parent_appointment_id,status:row.status,
+          requestSource:row.request_source,reason:row.reason,requestedAt:row.requested_at,scheduledAppointmentId:row.scheduled_appointment_id || '',
+          scheduledAt:row.scheduled_at || '',resolvedAt:row.resolved_at || '',resolutionNote:row.resolution_note || '',revision:row.revision })),
+        events: events.results.map((row) => {
+          const before = parseJson(row.before_json,null), after = parseJson(row.after_json,null);
+          return { appointmentId:row.appointment_id,action:row.action,occurredAt:row.occurred_at,
+            ...(staff ? { reason:row.reason || '',beforeStatus:before?.status || '',afterStatus:after?.status || '',
+              assigneeName:after?.assigneeIdentity?.name || '' } : {}) };
+        })
+      };
+    },
+    async followupForScan(parentId, followupId) {
+      return db.prepare(customerFollowup).bind(parentId,followupId).first();
     },
     async findByCredential(id, hash) {
       // A legacy repair number is only an alias; the credential selects its owner
@@ -416,6 +620,12 @@ export function appointmentRepository(db) {
           args.push(key === 'assignedTo' ? patch[key] || null : patch[key]);
         }
       }
+      if (workflow?.action==='receptions.reschedule') {
+        // Snapshot the destination location in the same statement as the move.
+        fields.push('location_snapshot=COALESCE((SELECT location FROM service_locations WHERE campus=? AND date=?),\'\')',
+          'location_revision=(SELECT revision FROM service_locations WHERE campus=? AND date=?)');
+        args.push(item.campus,patch.date,item.campus,patch.date);
+      }
       let guard = '';
       const guardArgs = [];
       if (workflow?.eligibility) {
@@ -439,8 +649,23 @@ export function appointmentRepository(db) {
         guardArgs.push(workflow.actor.account, workflow.actor.authVersion ?? 0);
       }
       if (workflow?.guestCredentialHash) {
-        guard += ' AND access_token_hash=?';
-        guardArgs.push(workflow.guestCredentialHash);
+        if (workflow.guestParentId) {
+          guard += ` AND EXISTS(SELECT 1 FROM appointments credential WHERE credential.id=? AND credential.access_token_hash=?)
+            AND id IN (${customerFollowup})`;
+          guardArgs.push(workflow.guestParentId,workflow.guestCredentialHash,workflow.guestParentId,workflow.guestFollowupId);
+        } else {
+          guard += ' AND access_token_hash=?';
+          guardArgs.push(workflow.guestCredentialHash);
+        }
+      }
+      if (workflow?.action==='receptions.reschedule') {
+        guard += ` AND NOT EXISTS(SELECT 1 FROM service_day_overrides s JOIN campuses c ON c.id=s.campus_id
+          WHERE s.business_date=? AND c.name=appointments.campus AND s.paused=1)
+          AND (EXISTS(SELECT 1 FROM booking_day_slots b WHERE b.campus=appointments.campus AND b.date=? AND b.time_slot=? AND b.capacity>0)
+            OR (NOT EXISTS(SELECT 1 FROM booking_day_slots b WHERE b.campus=appointments.campus AND b.date=?)
+              AND EXISTS(SELECT 1 FROM weekday_slot_capacities w WHERE w.campus=appointments.campus
+                AND w.weekday=CAST(strftime('%w',?) AS INTEGER) AND w.time_slot=? AND w.capacity>0)))`;
+        guardArgs.push(patch.date,patch.date,patch.timeSlot,patch.date,patch.date,patch.timeSlot);
       }
       if (workflow?.enforceQueueHead) {
         guard += ` AND (NOT EXISTS(${queueHead}) OR id=(${queueHead}))`;

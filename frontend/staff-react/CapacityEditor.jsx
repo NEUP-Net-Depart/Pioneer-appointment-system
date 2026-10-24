@@ -94,6 +94,7 @@ export function CapacityEditor({ active, onNavigate }) {
     [revision, setRevision] = useState(0);
   const root = useRef(null),
     drag = useRef(null),
+    editSession = useRef(null),
     reading = useRef(null),
     lock = useRef(false),
     currentDrafts = useRef(drafts);
@@ -181,6 +182,7 @@ export function CapacityEditor({ active, onNavigate }) {
   useEffect(() => {
     if (!active) {
       drag.current = null;
+      editSession.current = null;
       setPreview(null);
       setEditing('');
     }
@@ -208,6 +210,7 @@ export function CapacityEditor({ active, onNavigate }) {
     setMessage('');
   }
   function choose(anchor, end = anchor, focus = false) {
+    editSession.current = null;
     setSelections((current) => ({
       ...current,
       [campus]: { anchor, end, range: gridRange(anchor, end) }
@@ -259,10 +262,10 @@ export function CapacityEditor({ active, onNavigate }) {
     }
   }
   function selectHeader(axis, index, end = index) {
-    if (axis === 'all') choose({ row: 0, col: 0 }, { row: 3, col: 3 });
+    if (axis === 'all') choose({ row: 0, col: 0 }, { row: 3, col: 3 }, true);
     else if (axis === 'col')
-      choose({ row: 0, col: Math.min(index, end) }, { row: 3, col: Math.max(index, end) });
-    else choose({ row: Math.min(index, end), col: 0 }, { row: Math.max(index, end), col: 3 });
+      choose({ row: 0, col: Math.min(index, end) }, { row: 3, col: Math.max(index, end) }, true);
+    else choose({ row: Math.min(index, end), col: 0 }, { row: Math.max(index, end), col: 3 }, true);
   }
   function pointOf(target) {
     const cell = target.closest('[data-row][data-col]');
@@ -313,8 +316,9 @@ export function CapacityEditor({ active, onNavigate }) {
     const anchor = event.shiftKey || extend ? selection.anchor : target;
     choose(anchor, target, true);
     if (event.pointerType !== 'touch') {
-      drag.current = { type: 'select', anchor };
-      root.current.setPointerCapture(event.pointerId);
+      const capture = event.target.closest('[data-row][data-col]');
+      drag.current = { type: 'select', anchor, capture };
+      capture.setPointerCapture(event.pointerId);
     }
   }
   function pointerMove(event) {
@@ -352,23 +356,46 @@ export function CapacityEditor({ active, onNavigate }) {
     const current = drag.current;
     drag.current = null;
     setPreview(null);
-    if (root.current?.hasPointerCapture(event.pointerId))
-      root.current.releasePointerCapture(event.pointerId);
+    const capture = current?.capture || root.current;
+    if (capture?.hasPointerCapture(event.pointerId)) capture.releasePointerCapture(event.pointerId);
     if (commit && current?.type === 'fill')
       applyGrid(current.grid, current.target, current.source, true);
   }
   function edit(point, digit) {
     const item = at(point.row, point.col);
-    choose(point);
+    const range = rangeContains(selection.range, point.row, point.col)
+      ? selection.range
+      : gridRange(point, point);
+    if (!rangeContains(selection.range, point.row, point.col)) choose(point);
+    editSession.current = { key: keyOf(item), range, changed: false };
     setEditing(keyOf(item));
-    if (digit !== undefined) apply([[item, digit]]);
-    requestAnimationFrame(() => {
+    if (digit !== undefined) changeEditingValue(item, digit);
+    const focus = () => {
+      if (editSession.current?.key !== keyOf(item)) return;
       const input = root.current?.querySelector(
         `[data-row="${point.row}"][data-col="${point.col}"] input`
       );
-      input?.focus();
+      input?.focus({ preventScroll: true });
       if (digit === undefined) input?.select();
-    });
+      else input?.setSelectionRange(digit.length, digit.length);
+    };
+    // Numeric typing must keep fast consecutive keystrokes. Mouse editing
+    // focuses after the click's default handling so it cannot steal focus back.
+    if (digit === undefined) requestAnimationFrame(focus);
+    else focus();
+  }
+  function changeEditingValue(item, nextValue) {
+    const session = editSession.current;
+    if (!session || session.key !== keyOf(item)) {
+      apply([[item, nextValue]]);
+      return;
+    }
+    const updates = [];
+    for (let row = session.range.top; row <= session.range.bottom; row++)
+      for (let col = session.range.left; col <= session.range.right; col++)
+        updates.push([at(row, col), nextValue]);
+    apply(updates, !session.changed);
+    session.changed = true;
   }
   function keyDown(event) {
     if (busy || event.target.closest('[data-axis]')) return;
@@ -478,7 +505,9 @@ export function CapacityEditor({ active, onNavigate }) {
       setUndo(null);
       setReview(false);
       setRevision((current) => current + 1);
-      setMessage(`已保存 ${result.items.length} 项。已形成快照的日期保持原容量。`);
+      setMessage(
+        `已保存 ${result.items.length} 项，今天及未来对应日期的容量已同步，已有预约保留。`
+      );
       return true;
     } catch (failure) {
       setReview(false);
@@ -703,17 +732,26 @@ export function CapacityEditor({ active, onNavigate }) {
                             aria-invalid={!valid(value(item))}
                             onFocus={() => {
                               setEditing(key);
-                              setSelections((current) => ({
-                                ...current,
-                                [campus]: {
-                                  anchor: { row, col },
-                                  end: { row, col },
-                                  range: gridRange({ row, col }, { row, col })
-                                }
-                              }));
+                              if (editSession.current?.key === key) return;
+                              const range = selected
+                                ? selection.range
+                                : gridRange({ row, col }, { row, col });
+                              editSession.current = { key, range, changed: false };
+                              if (!selected)
+                                setSelections((current) => ({
+                                  ...current,
+                                  [campus]: {
+                                    anchor: { row, col },
+                                    end: { row, col },
+                                    range
+                                  }
+                                }));
                             }}
-                            onBlur={() => setEditing('')}
-                            onChange={(event) => apply([[item, event.target.value]])}
+                            onBlur={() => {
+                              editSession.current = null;
+                              setEditing('');
+                            }}
+                            onChange={(event) => changeEditingValue(item, event.target.value)}
                           />
                           {selected &&
                             row === selection.range.bottom &&
@@ -773,7 +811,8 @@ export function CapacityEditor({ active, onNavigate }) {
           <details className="capacity-quick-tools">
             <summary>批量填写与复制</summary>
             <p className="capacity-sheet-hint field-muted">
-              表格支持 Shift 多选、拖动填充和 Ctrl C / V；双击或键入数字编辑选格。
+              拖动或按住 Shift 选择多个单元格后，直接输入人数即可同步填写整个选区；支持拖动填充和
+              Ctrl C / V，修改后预览保存。
             </p>
             <form onSubmit={quickFill}>
               <label>
@@ -892,7 +931,7 @@ export function CapacityEditor({ active, onNavigate }) {
           </details>
         </section>
         <p className="capacity-effect-note">
-          生效规则：每个校区、日期首次产生预约时，会固定当天全部时段的容量。模板修改仅影响尚未形成快照的日期，已有快照不会改变。
+          生效规则：保存后立即更新今天及未来对应校区、星期和时段的容量。已有预约全部保留；已占用达到或超过新容量时停止新增，低于新容量后恢复放号。过去日期保持原容量。
         </p>
       </div>
       <ActivityContext.Provider value={active && mode === 'actual'}>
@@ -1036,7 +1075,8 @@ export function CapacityEditor({ active, onNavigate }) {
           }}
         >
           <p data-motion-value="number">
-            保存全部校区的 {changes.length} 项修改；已有日期快照保持不变。
+            保存全部校区的 {changes.length}{' '}
+            项修改，立即更新今天及未来对应日期的容量。已有预约保留；若新容量不高于已占用人数，将停止新增预约。
           </p>
           <div className="capacity-review-list">
             {changes.map((item) => (

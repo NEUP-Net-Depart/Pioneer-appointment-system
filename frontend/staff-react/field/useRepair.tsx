@@ -202,17 +202,22 @@ export function useRepair({
     setBusy(true);
     const body = operation({ action, ...extra, revision: item!.revision });
     const send = () =>
-      api(`/api/appointments/${encodeURIComponent(id)}/reception`, { method: 'POST', body });
+      api<{ resolutionOnly?: boolean }>(`/api/appointments/${encodeURIComponent(id)}/reception`, {
+        method: 'POST',
+        body
+      });
     try {
+      let result;
       try {
-        await send();
+        result = await send();
       } catch (failure) {
         const status = (failure as Error & { status?: number }).status;
         if (status && status < 500) throw failure;
         // Reuse the original receipt and revision if the response was lost.
-        await send();
+        result = await send();
       }
-      await load();
+      if (result.resolutionOnly) onClose();
+      else await load();
       onChanged();
     } finally {
       setBusy(false);

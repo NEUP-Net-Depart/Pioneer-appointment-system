@@ -12,6 +12,54 @@ test('capacity sheet selects blocks and rows, fills drafts, cancels and undoes w
  await page.getByRole('button',{name:'撤销上一步',exact:true}).click();await expect(cell(0,0).locator('input')).toHaveValue('1');
  await cell(0,0).dblclick();await cell(0,0).locator('input').fill('8');await cell(0,0).locator('input').press('Escape');await expect(cell(0,0).locator('input')).toHaveValue('8');await page.getByRole('button',{name:'撤销上一步',exact:true}).click();await expect(cell(0,0).locator('input')).toHaveValue('1');expect(writes).toHaveLength(0);
 });
+
+test('typing updates the entire selected block and one undo restores all original values',async({page})=>{
+ const {writes,cell}=await fixture(page);
+ await cell(0,0).click();await cell(1,1).click({modifiers:['Shift']});
+ await page.keyboard.type('12');
+ await expect(page.getByRole('gridcell',{selected:true})).toHaveCount(4);
+ for(const [row,col] of [[0,0],[0,1],[1,0],[1,1]])await expect(cell(row,col).locator('input')).toHaveValue('12');
+ await expect(cell(0,2).locator('input')).toHaveValue('3');await expect(cell(2,0).locator('input')).toHaveValue('9');
+ await page.keyboard.press('Enter');await page.keyboard.press('ControlOrMeta+z');
+ for(const [row,col,value] of [[0,0,'1'],[0,1,'2'],[1,0,'5'],[1,1,'6']])await expect(cell(row,col).locator('input')).toHaveValue(value);
+ await dragBetween(page,cell(0,0),cell(1,1));await page.keyboard.press('F2');await cell(1,1).locator('input').fill('8');
+ for(const [row,col] of [[0,0],[0,1],[1,0],[1,1]])await expect(cell(row,col).locator('input')).toHaveValue('8');
+ expect(writes).toHaveLength(0);
+});
+
+test('selected rows, columns and the whole sheet accept direct input with cell-level focus styling',async({page})=>{
+ const {writes,cell}=await fixture(page);
+ await page.getByRole('button',{name:'选择19:00–19:30整行',exact:true}).click();await page.keyboard.type('7');await page.keyboard.press('Enter');
+ for(const col of [0,1,2,3])await expect(cell(0,col).locator('input')).toHaveValue('7');
+ await expect(cell(1,0).locator('input')).toHaveValue('5');
+ await page.getByRole('button',{name:'选择周三整列',exact:true}).click();await page.keyboard.type('24');
+ for(const row of [0,1,2,3])await expect(cell(row,2).locator('input')).toHaveValue('24');
+ const input=cell(3,2).locator('input');await expect(input).toBeFocused();
+ const style=await input.evaluate(node=>{const css=getComputedStyle(node),cell=node.closest('td');return {border:css.borderTopWidth,radius:css.borderTopLeftRadius,background:css.backgroundColor,outline:css.outlineStyle,margin:css.marginLeft,widthDifference:cell.clientWidth-node.getBoundingClientRect().width,cellFocus:getComputedStyle(cell).boxShadow};});
+ expect(style).toMatchObject({border:'0px',radius:'0px',background:'rgba(0, 0, 0, 0)',outline:'none',margin:'0px'});expect(Math.abs(style.widthDifference)).toBeLessThanOrEqual(1);expect(style.cellFocus).not.toBe('none');
+ await page.keyboard.press('Enter');await page.getByRole('button',{name:'全选',exact:true}).click();await page.keyboard.type('0');
+ await expect(page.getByRole('gridcell',{selected:true})).toHaveCount(16);
+ for(const field of await page.locator('[role=gridcell] input').all())await expect(field).toHaveValue('0');
+ expect(writes).toHaveLength(0);
+ await page.keyboard.press('Enter');await page.getByRole('button',{name:'预览并保存',exact:true}).click();await page.getByRole('button',{name:'确认保存全部修改',exact:true}).click();await expect.poll(()=>writes.length).toBe(1);expect(writes[0].items).toHaveLength(16);expect(writes[0].items.every(item=>item.capacity===0&&item.campus==='南湖')).toBe(true);
+});
+
+test('capacity sheet stays flat on desktop and keeps mobile inputs usable without page overflow',async({page})=>{
+ const {cell}=await fixture(page);
+ for(const width of [320,390,768,1440]){
+  await page.setViewportSize({width,height:1000});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  if(width>=768){
+   await cell(0,0).dblclick();await expect(cell(0,0).locator('input')).toBeFocused();
+   const frame=await page.locator('.capacity-sheet-desktop').boundingBox();
+   for(const col of [0,1,2,3]){const box=await cell(0,col).boundingBox();expect(box.x+box.width).toBeLessThanOrEqual(frame.x+frame.width+1);}
+   await page.locator('.capacity-template').screenshot({path:`output/issue70/capacity-sheet-${width}.png`});
+  }else{
+   const input=page.locator('.capacity-mobile-inputs input').first();await expect(input).toBeVisible();await expect(input).not.toHaveCSS('border-top-width','0px');
+   await page.locator('.capacity-template').screenshot({path:`output/issue70/capacity-mobile-${width}.png`});
+  }
+ }
+});
 test('capacity sheet pastes complete blocks, rejects invalid input and confirms one atomic save',async({page})=>{
  const {writes,cell}=await fixture(page);await cell(0,0).click();
  // Use a real ClipboardEvent so the browser supplies the same DataTransfer as native paste.

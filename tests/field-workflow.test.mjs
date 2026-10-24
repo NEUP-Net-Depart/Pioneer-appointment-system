@@ -651,7 +651,7 @@ test('explicit scoped capabilities work for technicians and revocation invalidat
   for (const path of ['/api/me/roster','/api/me/attendance','/api/leaves','/api/swaps']) assert.equal((await request(path, account)).status, 403, path);
 });
 
-test('actual capacity keeps date snapshots and scopes staffing by existing roster grants', async () => {
+test('actual capacity synchronizes booked dates and scopes staffing by existing roster grants', async () => {
   const path = '/api/slot-capacities/actual?campus=%E5%8D%97%E6%B9%96&date=2026-10-15';
   assert.equal((await request(path, null)).status, 401);
   assert.equal((await request(path, '20261002')).status, 403);
@@ -668,14 +668,17 @@ test('actual capacity keeps date snapshots and scopes staffing by existing roste
   const { results } = await db.prepare("SELECT * FROM weekday_slot_capacities WHERE campus='南湖' AND weekday=4").all();
   await db.batch(results.map(row => db.prepare('INSERT INTO booking_day_slots(campus,date,time_slot,capacity) VALUES(?,?,?,?)').bind(row.campus, date, row.time_slot, row.capacity)));
   const cell = results[0];
-  await db.prepare('UPDATE weekday_slot_capacities SET capacity=capacity+2,revision=revision+1 WHERE campus=? AND weekday=4 AND time_slot=?').bind(cell.campus, cell.time_slot).run();
-  const frozen = await request(`/api/slot-capacities/actual?campus=南湖&date=${date}`, 'root001');
-  assert.equal(frozen.body.source, 'snapshot');
-  assert.equal(frozen.body.items.find(item => item.timeSlot === cell.time_slot).capacity, cell.capacity);
+  const input = {campus:cell.campus,weekday:4,timeSlot:cell.time_slot,capacity:cell.capacity+2,revision:cell.revision};
+  const client = {'CF-Connecting-IP':'198.51.100.70'};
+  const saved = await request('/api/slot-capacities','root001',input,'PATCH',client);
+  assert.equal(saved.status,200,JSON.stringify(saved.body));
+  const actual = await request(`/api/slot-capacities/actual?campus=南湖&date=${date}`, 'root001');
+  assert.equal(actual.body.source, 'snapshot');
+  assert.equal(actual.body.items.find(item => item.timeSlot === cell.time_slot).capacity, cell.capacity+2);
   const future = await request('/api/slot-capacities/actual?campus=南湖&date=2026-10-29', 'root001');
   assert.equal(future.body.source, 'template');
   assert.equal(future.body.items.find(item => item.timeSlot === cell.time_slot).capacity, cell.capacity + 2);
-  await db.prepare('UPDATE weekday_slot_capacities SET capacity=?,revision=revision+1 WHERE campus=? AND weekday=4 AND time_slot=?').bind(cell.capacity, cell.campus, cell.time_slot).run();
+  assert.equal((await request('/api/slot-capacities','root001',{...saved.body,capacity:cell.capacity},'PATCH',client)).status,200);
 });
 
 test('field number suggestions preserve suffix/date rules and campus privacy without decrypting customer fields',async()=>{
