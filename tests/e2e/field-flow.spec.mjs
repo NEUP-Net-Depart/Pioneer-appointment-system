@@ -228,7 +228,7 @@ test("reception layout remains usable at desktop, phone and narrow-phone widths"
   await expect(page.locator('.field-metric-label')).toHaveText(['未到场', '排队中', '维修中', '空闲中']);
   await page.getByRole('group', { name: '现场概览' }).getByRole('button', { name: /^排队中/ }).click();
   await expect(page.getByRole('heading', { name: '排队中', exact: true })).toBeVisible();
-  await expect(page.locator('.field-order-guidance')).toContainText('按到场接待顺序排队');
+  await expect(page.locator('.field-appointments h2')).toHaveText('排队中');
   await page.getByRole('group', { name: '现场概览' }).getByRole('button', { name: /^空闲中/ }).click();
   await expect(page.getByRole('group', { name: '现场概览' }).getByRole('button', { name: /^空闲中/ })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.field-desk-grid')).toHaveClass(/tab-people/);
@@ -349,7 +349,7 @@ test("technician completes a real intake and repair; opening scanner starts came
   await page.getByLabel("设备背面照片", { exact: true }).setInputFiles(photo);
   await page.getByRole("button", { name: "确认开始维修", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "当前维修", exact: true }),
+    page.getByRole("dialog").getByRole("heading", { name: "当前维修", exact: true }),
   ).toBeVisible();
   await page
     .getByRole("dialog")

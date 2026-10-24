@@ -62,7 +62,7 @@ test('reception and worker share a real queued, returned, accepted and completed
     return route.continue();
   });
   await dialog.getByRole('button',{name:'确认分派，等待接手',exact:true}).click();
-  await expect(dialog.getByRole('heading',{name:'已分派给 陈宇',exact:true})).toBeVisible();
+  await expect(dialog.getByText('已分派给 陈宇 · 待接手',{exact:true})).toBeVisible();
   expect(dispatchBodies).toHaveLength(2);expect(dispatchBodies[0]).toEqual(dispatchBodies[1]);
   const workerContext=await browser.newContext({baseURL:process.env.E2E_BASE_URL,viewport:{width:390,height:844},extraHTTPHeaders:{'CF-Connecting-IP':'192.0.2.170'}});
   try {
@@ -70,21 +70,21 @@ test('reception and worker share a real queued, returned, accepted and completed
     await worker.getByRole('button',{name:'核对设备并接手',exact:true}).click();
     let panel=worker.getByRole('dialog');
     await expect(panel.getByRole('button',{name:'确认接手，开始维修',exact:true})).toBeVisible();
-    await panel.getByText('无法接手？退回现场队列',{exact:true}).click();
+    await panel.locator('summary').filter({hasText:'退回现场队列'}).click();
     await panel.getByLabel('原因',{exact:true}).fill('请接待重新确认安排');
     await panel.getByRole('button',{name:'退回现场队列',exact:true}).click();
-    await expect(panel.getByText('已进入现场队列，请等待接待人员安排。设备核验和照片已保留。',{exact:true})).toBeVisible();
+    await expect(panel.getByText('排队中 · 待分派',{exact:true})).toBeVisible();
     await page.reload();
     await page.getByRole('group',{name:'现场概览'}).getByRole('button',{name:/^排队中/}).click();
     await expect(page.locator('.field-order').filter({hasText:order.id})).toContainText('排队中');
     await page.locator('.field-order').filter({hasText:order.id}).click();
     await dialog.locator('input[type=radio][value="20261002"]').check();
     await dialog.getByRole('button',{name:'确认分派，等待接手',exact:true}).click();
-    await expect(dialog.getByRole('heading',{name:'已分派给 陈宇',exact:true})).toBeVisible();
+    await expect(dialog.getByText('已分派给 陈宇 · 待接手',{exact:true})).toBeVisible();
     await worker.reload();
     await worker.getByRole('button',{name:'核对设备并接手',exact:true}).click();
     panel=worker.getByRole('dialog');
-    await panel.getByText('查看或更正设备核验',{exact:true}).click();
+    await panel.getByText('更正核验信息',{exact:true}).click();
     await expect(panel.getByLabel('型号',{exact:true})).toHaveValue('ThinkPad 已现场核对');
     await panel.getByLabel('核验说明（选填）',{exact:true}).fill('维修人员复核完成');
     await worker.screenshot({path:'output/reception-dispatch/accept-390.png'});
@@ -159,7 +159,7 @@ test('customer sees a live arrival ticket, keeps confirmation during rank update
   await login(page,'20261004');
   await page.locator('.field-order').filter({hasText:original.id}).click();
   const panel=page.getByRole('dialog');
-  await expect(panel).toContainText('本次到场请重新核对设备');
+  await expect(panel).toContainText('重新到场 · 待核验');
   await expect(panel.getByRole('button',{name:'完成接待，进入现场队列',exact:true})).toBeDisabled();
   for(const width of [320,390,768,1440]){
     await page.setViewportSize({width,height:900});
@@ -174,4 +174,5 @@ test('customer sees a live arrival ticket, keeps confirmation during rank update
   await expect(panel.getByRole('heading',{name:'选择空闲维修人员',exact:true})).toBeVisible();
   const final=await api(request,`/api/field/appointments/${original.id}`,office.token);
   expect(final.reception.ticket.number).toBeGreaterThan(rejoined.reception.ticket.number);
+  await api(request,`/api/appointments/${final.id}/reception`,office.token,{action:'leave',revision:final.revision,reason:'浏览器验收结束',requestId:crypto.randomUUID()});
 });

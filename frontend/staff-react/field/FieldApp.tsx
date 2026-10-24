@@ -296,11 +296,7 @@ export function FieldApp({
             setRegistration(false);
             setSelected(id);
             refresh();
-            setMessage(
-              scene === 'repair'
-                ? '登记成功，请继续核验接单'
-                : '登记成功，请展示维修码交接。关闭详情后可继续登记下一位。'
-            );
+            setMessage('登记成功');
           }}
         />
       )}

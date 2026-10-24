@@ -467,11 +467,15 @@ export function appointmentRepository(db) {
       return {
         items: await Promise.all(items.results.map(async (row) => {
           const item = fromRow(row);
+          const location = item.registrationFlow==='repair_followup' ? await this.location(item.date,item.campus) : null;
           return {...Object.fromEntries(['id','date','timeSlot','status','outcome','repairNote',
             'startedAt','completedAt','source','registrationFlow','expiresAt','repairNumber','createdAt',
             ...(staff ? ['assignedToName'] : [])].map((key) => [key,item[key]])),
             ...(item.registrationFlow==='repair_followup' ? {
               campus:item.campus,revision:item.revision,
+              location:location?.location || item.locationSnapshot || '',locationSnapshot:item.locationSnapshot || '',
+              locationChanged:Boolean(item.locationSnapshot && location?.location && item.locationSnapshot!==location.location),
+              servicePaused:!!item.servicePaused,
               reception:item.reception ? {state:item.reception.state,receivedAt:item.reception.receivedAt,leftAt:item.reception.leftAt,ticket:item.reception.ticket} : null,
               queuePosition:item.status==='booked' && ['queued','assigned'].includes(item.reception?.state) ? await this.receptionPosition(item) : null
             } : {})};

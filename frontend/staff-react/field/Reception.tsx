@@ -2,7 +2,6 @@ import { useContext, useEffect, useState } from 'react';
 import { ActivityContext, api, Notice } from './ui';
 import { StaffIdentity } from '../StaffIdentity';
 import type { Appointment, Person } from './types';
-import { queueTicketLabel } from '../../../shared/reception.js';
 import { formatInstant, formatDate } from '../../../shared/time.js';
 
 export function Reception({
@@ -104,39 +103,23 @@ export function Reception({
     return null;
   return (
     <section className="reception-panel" aria-label="现场接待与分派" aria-busy={saving}>
-      <div className="reception-stage">
-        <span>到场已核验</span>
-        <span className="is-current">
-          {item.reception.state === 'queued' ? '等待分派' : '等待维修人员接手'}
-        </span>
-        <span>维修完成</span>
-      </div>
-      <h3>{queueTicketLabel(item.reception.ticket) || '现场队列'}</h3>
-      <p className="field-muted">到场时间 {formatInstant(item.reception.receivedAt)}</p>
-      {item.queuePosition && (
-        <p className="field-muted">
-          当前第 {item.queuePosition.position} 位 · 前面 {item.queuePosition.position - 1} 位 · 共{' '}
-          {item.queuePosition.total} 单
-        </p>
-      )}
-      {item.receptionPaused && (
-        <Notice>该校区今天暂停维修。可先联系客户，保留排队、改约或取消。</Notice>
-      )}
-      {item.date < businessDate && (
-        <Notice>
-          这是此前到场但尚未开始维修的工单，已保留。请先联系机主确认是否仍在现场，再继续分派或取消。
-        </Notice>
-      )}
+      <small className="field-state-note">
+        已到场核验 · {formatInstant(item.reception.receivedAt)}
+        {item.queuePosition
+          ? ` · 第 ${item.queuePosition.position} 位 / ${item.queuePosition.total} 单`
+          : ''}
+      </small>
+      {item.receptionPaused && <Notice>今日暂停维修</Notice>}
+      {item.date < businessDate && <Notice>跨日待处理</Notice>}
       <Notice>{error}</Notice>
       {item.reception.state === 'assigned' ? (
         <>
-          <h3>已分派给 {item.reception.assignedToName || '维修人员'}</h3>
-          <p>该人员的接单名额已占用；确认接手后才记录维修开始。</p>
+          <small className="field-state-note" role="status">
+            已分派给 {item.reception.assignedToName || '维修人员'} · 待接手
+          </small>
           {(item.canReturn || item.canDispatch) && (
             <details className="field-details">
-              <summary>
-                {item.canReturn ? '无法接手？退回现场队列' : '需要改派？撤回当前分派'}
-              </summary>
+              <summary>{item.canReturn ? '退回现场队列' : '撤回当前分派'}</summary>
               <label>
                 原因
                 <textarea
@@ -144,7 +127,7 @@ export function Reception({
                   onChange={(event) => setReason(event.target.value)}
                   minLength={2}
                   maxLength={300}
-                  placeholder="说明原因，供接待人员安排后续处理"
+                  placeholder="退回原因"
                 />
               </label>
               <button
@@ -173,9 +156,6 @@ export function Reception({
               刷新人员
             </button>
           </div>
-          <p className="field-muted">
-            按到场顺序分派。叫号未到时保留原位置，填写原因后可先安排后续客户。
-          </p>
           <fieldset className="reception-candidates" disabled={busy || saving || loading}>
             <legend className="field-sr-only">选择接手人员</legend>
             {candidates.map((person) => (
@@ -205,7 +185,7 @@ export function Reception({
           {loading ? (
             <p role="status">正在更新可接单人员…</p>
           ) : !candidates.length ? (
-            <Notice>暂无空闲维修人员，工单会保留在现场队列中；有人空闲后可刷新并分派。</Notice>
+            <Notice>暂无空闲维修人员</Notice>
           ) : null}
           <details
             className="field-details"
@@ -215,37 +195,48 @@ export function Reception({
             }
           >
             <summary>
-              {item.queuePosition && item.queuePosition.position > 1
-                ? '前面还有客户，跳过分派需填写原因'
-                : '需要说明现场安排？'}
+              {item.queuePosition &&
+              (item.queuePosition.dispatchPosition ?? item.queuePosition.position) > 1
+                ? '越序分派原因（必填）'
+                : '分派备注（选填）'}
             </summary>
             <label>
-              先处理此单的原因（例如队首客户暂未到场）
+              分派原因
               <textarea
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
                 maxLength={300}
+                required={
+                  !!item.queuePosition &&
+                  (item.queuePosition.dispatchPosition ?? item.queuePosition.position) > 1
+                }
+                minLength={2}
               />
             </label>
           </details>
           <button
             className="field-primary field-wide"
             disabled={
-              busy || saving || loading || !candidates.some((person) => person.account === target)
+              busy ||
+              saving ||
+              loading ||
+              !candidates.some((person) => person.account === target) ||
+              (!!item.queuePosition &&
+                (item.queuePosition.dispatchPosition ?? item.queuePosition.position) > 1 &&
+                reason.trim().length < 2)
             }
           >
             {saving ? '正在分派…' : '确认分派，等待接手'}
           </button>
         </form>
       ) : (
-        <p>已进入现场队列，请等待接待人员安排。设备核验和照片已保留。</p>
+        <small className="field-state-note" role="status">
+          排队中 · 待分派
+        </small>
       )}
       {item.canDispatch && (
         <details className="field-details">
           <summary>客户离队、改约或取消</summary>
-          <p className="field-muted">
-            退出排队会释放分派名额并保留预约，再到场需重新扫码核验，排在队尾。仅临时叫号未到时不用离队，说明原因后先处理后面的客户。
-          </p>
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -293,7 +284,7 @@ export function Reception({
               </label>
             )}
             {resolution === 'reschedule' && !optionsLoading && !options.length && (
-              <Notice>当前没有开放的可改约时段。可保留队列，联系客户后再处理。</Notice>
+              <Notice>暂无可改约时段</Notice>
             )}
             <label>
               联系结果与处理原因

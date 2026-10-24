@@ -9,20 +9,17 @@ export function CustomerQueueLink({ id, accessToken }: { id: string; accessToken
   link.hash = new URLSearchParams({ appointment: id, access: accessToken }).toString();
   return (
     <details className="field-details">
-      <summary>让客户在手机上查看排队</summary>
-      <p>
-        请客户用手机相机扫描，保存自己的查询页面，可查看实时排位或主动退出排队。这是客户私人查询码，请只交给本单机主。
-      </p>
+      <summary>客户查询码</summary>
       <Qr code={link.href} label="客户私人查询码" />
       <button
         type="button"
         onClick={async () => {
           try {
             await navigator.clipboard.writeText(link.href);
-            setMessage('私人查询链接已复制，请仅交给本单机主');
+            setMessage('私人查询链接已复制');
           } catch {
             setFallback(true);
-            setMessage('请复制下方完整链接');
+            setMessage('复制失败');
           }
         }}
       >

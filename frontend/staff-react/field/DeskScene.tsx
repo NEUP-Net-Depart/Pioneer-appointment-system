@@ -56,25 +56,10 @@ export function DeskScene({
     {
       value: 'booked',
       label: '未到场',
-      hint: '今日尚未接待 / 实际预约',
-      count: overview ? overview.notArrived + '/' + overview.total : '—',
-      description: '今日预约中尚未完成到场接待的客户。扫描客户维修码，核验设备并补充照片后发号。'
+      count: overview ? overview.notArrived + '/' + overview.total : '—'
     },
-    {
-      value: 'queued',
-      label: '排队中',
-      hint: '已核验 · 含已分派等待确认',
-      count: overview?.queued ?? '—',
-      description:
-        '按到场接待顺序排队。分派后仍在队列，维修人员核对客户、设备与排号并确认后开始维修。'
-    },
-    {
-      value: 'in_progress',
-      label: '维修中',
-      hint: '已确认接手',
-      count: overview?.repairing ?? '—',
-      description: '维修人员已接手设备，处理完成后填写结果。负责人可协调转派。'
-    }
+    { value: 'queued', label: '排队中', count: overview?.queued ?? '—' },
+    { value: 'in_progress', label: '维修中', count: overview?.repairing ?? '—' }
   ];
   const selectedFilter = orderFilters.find((stage) => stage.value === filter);
   return (
@@ -100,7 +85,7 @@ export function DeskScene({
         </div>
       </section>
       <div className="field-metrics" role="group" aria-label="现场概览">
-        {orderFilters.map(({ value, label, hint, count }) => (
+        {orderFilters.map(({ value, label, count }) => (
           <button
             key={value}
             className={`field-metric-card ${value === 'all' ? 'field-metric-summary' : ''} ${filter === value ? 'selected' : ''}`}
@@ -112,7 +97,6 @@ export function DeskScene({
           >
             <span className="field-metric-label">{label}</span>
             <strong>{count}</strong>
-            <small>{hint}</small>
           </button>
         ))}
         <button
@@ -127,14 +111,13 @@ export function DeskScene({
           <strong>
             {data.staffPresence ? people.filter((person) => person.canReceive).length : '—'}
           </strong>
-          <small>已签到且可接单</small>
         </button>
       </div>
       {data.capability['repair.dispatch'] &&
         (data.appointments || []).some((item) => receptionStatus(item) === 'queued') &&
         people.some((person) => person.canReceive) && (
           <div className="reception-next" role="status">
-            <span>现场有等待分派的工单，且有空闲维修人员。</span>
+            <span>有工单待分派</span>
             <button
               onClick={() => {
                 setFilter('queued');
@@ -176,10 +159,6 @@ export function DeskScene({
               )}
             </span>
           </div>
-          <p className="field-order-guidance">
-            {selectedFilter?.description ||
-              '到场核验后发号，按顺序分派；已分派的客户仍需等待维修人员核对确认。'}
-          </p>
           <input
             className="field-search-input"
             aria-label="搜索当日预约"
@@ -203,6 +182,9 @@ export function DeskScene({
                     </span>
                   )}
                   {item.deviceModel || item.deviceType}
+                  {item.registrationFlow === 'repair_followup' && (
+                    <span className="field-followup-badge">返修</span>
+                  )}
                 </strong>
                 <small>
                   {item.id} · {item.faultType}
@@ -239,9 +221,7 @@ export function DeskScene({
               <span />
             </div>
           )}
-          {data.appointments && !items.length && (
-            <Empty title="没有符合条件的预约">可调整筛选条件，或登记现场到访机主。</Empty>
-          )}
+          {data.appointments && !items.length && <Empty title="没有符合条件的预约" />}
         </section>
         <section className="field-card field-people">
           <div className="field-section-heading">

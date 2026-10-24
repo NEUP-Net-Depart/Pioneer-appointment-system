@@ -47,27 +47,27 @@ export function RepairScene({
           </div>
           <h2>
             {data.currentRepair
-              ? '继续处理当前设备'
+              ? '当前维修'
               : data.pendingRepair
-                ? '有一台设备等待你接手'
+                ? '待接手设备'
                 : data.state === 'unsigned'
-                  ? '先签到，再开始今天的工作'
+                  ? '待签到'
                   : data.state === 'away'
-                    ? '你当前处于离岗状态'
+                    ? '暂时离岗'
                     : data.state === 'available'
                       ? data.nextInQueue
-                        ? '请按排号接待下一位机主'
-                        : '准备好接待下一位机主'
-                      : '当前暂无可接单任务'}
+                        ? '待接单'
+                        : '空闲中'
+                      : '暂无可接单任务'}
           </h2>
-          <p>
+          <p className="field-state-note">
             {data.currentRepair
               ? `${data.currentRepair.brand} ${data.currentRepair.deviceModel} · ${data.currentRepair.faultType}`
               : data.pendingRepair
                 ? `${queueTicketLabel(data.pendingRepair.reception?.ticket)} · ${data.pendingRepair.id} · ${data.pendingRepair.name || '请当面核对机主'} · ${data.pendingRepair.deviceModel} · ${data.pendingRepair.faultType}`
                 : data.nextInQueue
                   ? `${queueTicketLabel(data.nextInQueue.reception?.ticket)} · ${data.nextInQueue.deviceModel} · ${data.nextInQueue.faultType}`
-                  : data.reason || '扫描机主维修码，确认设备信息后开始维修。'}
+                  : data.reason || ''}
           </p>
         </div>
         <div className="field-hero-action">
@@ -107,7 +107,6 @@ export function RepairScene({
         <section className="field-card">
           <div className="field-section-heading">
             <h2>接待设备</h2>
-            <span>核验后才会建立维修记录</span>
           </div>
           <AppointmentLookup
             active={active && scene === 'repair'}
