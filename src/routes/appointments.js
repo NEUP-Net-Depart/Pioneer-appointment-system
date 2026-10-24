@@ -2,6 +2,20 @@ import { json, readBody } from '../lib/http.js';
 import { appointmentQuery, appointmentPatch, bookingInput, bookingRequestKey, liveQuery } from '../lib/validation.js';
 
 export const appointmentRoutes = [
+  ['POST', /^\/api\/appointments\/([^/]+)\/repair-followups\/([^/]+)\/queue-exit$/, async (context,match) => {
+    await context.limit('write');
+    return json(await context.services.appointments.leaveFollowupQueue(decodeURIComponent(match[1]),decodeURIComponent(match[2]),await readBody(context.request),context.accessToken));
+  }],
+  ['POST', /^\/api\/appointments\/([^/]+)\/queue-exit$/, async (context,match) => {
+    await context.limit('write');
+    return json(await context.services.appointments.leaveQueue(decodeURIComponent(match[1]),await readBody(context.request),context.accessToken));
+  }],
+  ['GET', /^\/api\/appointments\/([^/]+)\/reception-options$/, async (context,match) =>
+    json(await context.services.appointments.receptionOptions(decodeURIComponent(match[1]),await context.role('technician')))],
+  ['POST', /^\/api\/appointments\/([^/]+)\/reception$/, async (context,match) => {
+    await context.limit('write');
+    return json(await context.services.appointments.reception(decodeURIComponent(match[1]),await readBody(context.request),await context.role('technician')));
+  }],
   ['GET', /^\/api\/appointments\/overview$/, async context => {
     return json(await context.services.appointments.overview(await context.role('technician')));
   }],

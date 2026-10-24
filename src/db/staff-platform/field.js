@@ -99,11 +99,31 @@ export function fieldDomain({ db, event }) {
   async function latestIntake(id) {
     const row = await db
       .prepare(
-        'SELECT verification_json FROM repair_intake_records WHERE appointment_id=? ORDER BY verified_at DESC LIMIT 1'
+        'SELECT verification_json FROM repair_intake_records WHERE appointment_id=? ORDER BY verified_at DESC,rowid DESC LIMIT 1'
       )
       .bind(id)
       .first();
     return parseJson(row?.verification_json, null);
+  }
+
+  async function receptionHistory(id) {
+    return (
+      await db
+        .prepare(
+          `SELECT e.id,e.action,e.reason,e.occurred_at AS occurredAt,
+      CASE WHEN e.action='receptions.guest_leave' THEN '客户本人' ELSE COALESCE(m.name,'原工作人员') END AS actorName,
+      (SELECT number FROM repair_queue_tickets t WHERE t.id=e.id) AS ticketNumber,
+      json_extract(e.after_json,'$.reception.assignedMemberId') AS assignedMemberId,
+      json_extract(e.after_json,'$.assigneeIdentity.name') AS assigneeName,
+      json_extract(e.after_json,'$.date') AS date,json_extract(e.after_json,'$.timeSlot') AS timeSlot
+      FROM audit_events e LEFT JOIN members m ON m.id=e.actor_member_id
+      WHERE json_extract(e.source_ref,'$.module')='repairs' AND json_extract(e.source_ref,'$.id')=?
+      AND (e.action LIKE 'receptions.%' OR e.action IN ('repairs.claimed','repairs.started','repairs.transferred','repairs.completed'))
+      ORDER BY e.occurred_at,e.rowid`
+        )
+        .bind(id)
+        .all()
+    ).results;
   }
 
   async function repairIdentitySnapshot(id) {
@@ -111,7 +131,7 @@ export function fieldDomain({ db, event }) {
       .prepare(
         `SELECT json_extract(after_json,'$.assigneeIdentity') AS snapshot FROM audit_events
       WHERE json_extract(source_ref,'$.module')='repairs' AND json_extract(source_ref,'$.id')=?
-      AND action IN ('repairs.claimed','repairs.transferred') ORDER BY occurred_at DESC,rowid DESC LIMIT 1`
+      AND action IN ('repairs.claimed','repairs.started','repairs.transferred') ORDER BY occurred_at DESC,rowid DESC LIMIT 1`
       )
       .bind(id)
       .first();
@@ -179,9 +199,11 @@ export function fieldDomain({ db, event }) {
           .bind(...ids, day),
         db
           .prepare(
-            `SELECT ar.member_id,a.id,a.device_model FROM active_repairs ar JOIN appointments a ON a.id=ar.appointment_id WHERE ar.member_id IN (${marks})`
+            `WITH selected_members AS (SELECT value FROM json_each(?))
+             SELECT ar.member_id,a.id,a.device_model,a.status FROM active_repairs ar JOIN appointments a ON a.id=ar.appointment_id WHERE ar.member_id IN (SELECT value FROM selected_members)
+             UNION ALL SELECT r.assigned_member_id AS member_id,a.id,a.device_model,a.status FROM repair_receptions r JOIN appointments a ON a.id=r.appointment_id WHERE r.state='assigned' AND r.assigned_member_id IN (SELECT value FROM selected_members)`
           )
-          .bind(...ids),
+          .bind(JSON.stringify(ids)),
         db
           .prepare(
             `SELECT mm.*,d.name AS department_name FROM member_department_memberships mm JOIN departments d ON d.id=mm.department_id
@@ -234,7 +256,7 @@ export function fieldDomain({ db, event }) {
       }
       for (const row of rows(result[5])) {
         const item = contexts.get(row.member_id);
-        if (item) item.current = { id: row.id, deviceModel: row.device_model };
+        if (item) item.current = { id: row.id, deviceModel: row.device_model, status: row.status };
       }
       for (const row of rows(result[6]))
         contexts.get(row.member_id)?.memberships.push(membership(row));
@@ -258,6 +280,7 @@ export function fieldDomain({ db, event }) {
     listPresence,
     dutyEvent,
     latestIntake,
+    receptionHistory,
     repairIdentitySnapshot,
     fieldPeople,
     fieldContexts,

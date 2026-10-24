@@ -3,6 +3,7 @@ import { json, readBody, fail, securityHeaders } from '../lib/http.js';
 function bodyWithRevision(body) { return body && typeof body === 'object' ? body : {}; }
 
 export const staffPlatformRoutes = [
+  ['GET', /^\/api\/field\/appointments\/([^/]+)\/dispatch-candidates$/, async (context,match) => json(await context.services.field.dispatchCandidates(await context.role('technician'),decodeURIComponent(match[1])))],
   ['GET', /^\/api\/repair-followups$/, async context => json(await context.services.followups.list(await context.role('technician'),context.query))],
   ['GET', /^\/api\/repair-followups\/slots$/, async context => json(await context.services.followups.slots(await context.role('technician'),context.query))],
   ['POST', /^\/api\/repair-followups\/([^/]+)\/decision$/, async (context,match) => {

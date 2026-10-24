@@ -70,7 +70,7 @@ test('backoffice-real-member-activation-role-save-and-error-page', async ({ page
   await audit.capture('role-permission-saved');
   const saved = (await api(request, '/api/roles', root.token)).items.find(item => item.id === role.id);
   expect(saved.grants.some(grant => grant.permissionCode === 'roster.read')).toBe(true);
-  await navigate(page, '接待台');
+  await navigate(page, '现场工作台');
   await page.getByRole('button', { name: '展示签到码', exact: true }).click();
   await expect(page.getByRole('img', { name: '工作人员到岗签到码', exact: true })).toBeVisible();
   await audit.capture('attendance-qr-display');

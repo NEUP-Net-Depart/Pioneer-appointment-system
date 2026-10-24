@@ -222,7 +222,7 @@ test('office-real-registration-and-lead-management', async ({ page, audit, reque
   await expect(page.locator('.workspace-route:not([hidden])')).toHaveAttribute('data-route', 'workbench');
   await page.evaluate(() => sessionStorage.clear());
   await login(page, '20261004');
-  await navigate(page, '现场管理');
+  await navigate(page, '现场工作台');
   await settled(page);
   fit(await audit.capture('repair-lead-operations', { axe: true }));
   await navigate(page, '预约记录');

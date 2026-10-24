@@ -10,7 +10,7 @@ function nextServiceDate() {
   return day;
 }
 
-export function RepairFollowups({ active, onChanged }) {
+export function RepairFollowups({ active, onChanged, onOpen }) {
   const visible = useContext(ActivityContext) && active;
   const [revision, setRevision] = useState(0);
   const [expanded, setExpanded] = useState('');
@@ -20,6 +20,8 @@ export function RepairFollowups({ active, onChanged }) {
   const [modes, setModes] = useState({});
   const [busy, setBusy] = useState('');
   const [errors, setErrors] = useState({});
+  const [receipt, setReceipt] = useState(null);
+  const [slotsLoading, setSlotsLoading] = useState(false);
   const commands = useRef(new Map());
   const result = useWorkspaceQuery('/api/repair-followups?status=pending', visible, revision);
   const items = result.data?.items || [];
@@ -38,12 +40,16 @@ export function RepairFollowups({ active, onChanged }) {
     const date = dates[expanded] || nextServiceDate();
     const query = new URLSearchParams({ date, campus: entry.appointment.campus });
     let stopped = false;
+    setSlotsLoading(true);
     request('/api/repair-followups/slots?' + query)
       .then((data) => {
         if (!stopped) setSlots((current) => ({ ...current, [expanded]: data.items || [] }));
       })
       .catch((failure) => {
         if (!stopped) setErrors((current) => ({ ...current, [expanded]: failure.message }));
+      })
+      .finally(() => {
+        if (!stopped) setSlotsLoading(false);
       });
     return () => {
       stopped = true;
@@ -72,12 +78,23 @@ export function RepairFollowups({ active, onChanged }) {
       };
       const send = () =>
         request('/api/repair-followups/' + encodeURIComponent(id) + '/decision', options);
+      let saved;
       try {
-        await send();
+        saved = await send();
       } catch (failure) {
         if (failure.status && failure.status < 500) throw failure;
         // A lost response must reuse the original receipt, not create a new decision.
-        await send();
+        saved = await send();
+      }
+      setReceipt({ id, appointment: saved.appointment, action, canOpen: false });
+      if (saved.appointment?.date === dateKey() && onOpen) {
+        request('/api/field/appointments/' + encodeURIComponent(saved.appointment.id))
+          .then((detail) => {
+            setReceipt((current) =>
+              current?.id === id ? { ...current, canOpen: !!detail.canReadDetails } : current
+            );
+          })
+          .catch(() => {});
       }
       commands.current.delete(id);
       setExpanded('');
@@ -98,12 +115,34 @@ export function RepairFollowups({ active, onChanged }) {
         <div>
           <p className="section-kicker">办公处理</p>
           <h2 id="followup-queue-title">待安排返修</h2>
-          <p>确认返修情况后，安排至原校区的有效维修时段；返修不占普通预约容量。</p>
         </div>
         <span className="followup-count" aria-label={items.length + ' 条待处理'}>
           {items.length}
         </span>
       </div>
+      {receipt && (
+        <div className="followup-receipt" role="status" aria-label="返修处理结果">
+          <div>
+            <strong>{receipt.action === 'schedule' ? '返修已安排' : '申请已退回'}</strong>
+            {receipt.appointment && (
+              <p>
+                {receipt.appointment.id} · {receipt.appointment.campus}校区 ·{' '}
+                {receipt.appointment.date} · {receipt.appointment.timeSlot}
+              </p>
+            )}
+          </div>
+          <div className="field-actions">
+            {receipt.canOpen && (
+              <button type="button" onClick={() => onOpen(receipt.appointment.id)}>
+                打开返修工单
+              </button>
+            )}
+            <button type="button" onClick={() => setReceipt(null)}>
+              收起
+            </button>
+          </div>
+        </div>
+      )}
       {result.error && <Notice>{result.error}</Notice>}
       {result.loading && !result.data && <p className="field-muted">正在读取返修申请…</p>}
       {!items.length && !result.loading && !result.error && (
@@ -249,7 +288,7 @@ export function RepairFollowups({ active, onChanged }) {
                               }))
                             }
                           >
-                            <option value="">选择有效时段</option>
+                            <option value="">{slotsLoading ? '加载中…' : '选择时段'}</option>
                             {available.map((slot) => (
                               <option key={slot} value={slot}>
                                 {slot}
@@ -259,7 +298,7 @@ export function RepairFollowups({ active, onChanged }) {
                         </label>
                         {!available.length && (
                           <p className="followup-hint">
-                            该日没有可安排时段。请选择其他周一至周四；暂停日期和已结束时段不可安排。
+                            {slotsLoading ? '正在查询时段…' : '暂无可安排时段'}
                           </p>
                         )}
                         <p className="followup-error" role="alert">
@@ -269,7 +308,11 @@ export function RepairFollowups({ active, onChanged }) {
                           <button
                             type="button"
                             className="followup-primary"
-                            disabled={busy === followup.id || !slots[followup.id + ':selected']}
+                            disabled={
+                              busy === followup.id ||
+                              slotsLoading ||
+                              !slots[followup.id + ':selected']
+                            }
                             onClick={() =>
                               void decide({ followup, appointment }, 'schedule', {
                                 date,

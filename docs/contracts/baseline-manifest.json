@@ -160,6 +160,14 @@
     {
       "name": "0037_repair_followups.sql",
       "sha256": "b4148d27c2ea6d31a95d819457ad27ee9624c4f4d6ae39aff98125210cece792"
+    },
+    {
+      "name": "0039_reception_dispatch.sql",
+      "sha256": "20b03c04c03cec75d175adc9f645e8dcf414a6654d0e4bc66ec384f42e442e04"
+    },
+    {
+      "name": "0040_reception_queue.sql",
+      "sha256": "8f7305c5c61a52884c3536a79610bc84a6c41189b551e5c4a12631b2ddd1d6c1"
     }
   ],
   "modules": [
@@ -189,8 +197,8 @@
     },
     {
       "code": "repairs",
-      "version": "1.0.0",
-      "manifestHash": "2d03608e",
+      "version": "1.1.0",
+      "manifestHash": "b4c597db",
       "contractVersion": "1",
       "requiredSchemaVersion": "0007",
       "releaseState": "ready"
@@ -399,6 +407,14 @@
     {
       "name": "0037_repair_followups.sql",
       "sha256": "b4148d27c2ea6d31a95d819457ad27ee9624c4f4d6ae39aff98125210cece792"
+    },
+    {
+      "name": "0039_reception_dispatch.sql",
+      "sha256": "20b03c04c03cec75d175adc9f645e8dcf414a6654d0e4bc66ec384f42e442e04"
+    },
+    {
+      "name": "0040_reception_queue.sql",
+      "sha256": "8f7305c5c61a52884c3536a79610bc84a6c41189b551e5c4a12631b2ddd1d6c1"
     }
   ]
 }

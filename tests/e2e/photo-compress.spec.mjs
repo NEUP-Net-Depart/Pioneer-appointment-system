@@ -162,6 +162,7 @@ async function repair(page){
   if(controls.failBack&&body.purpose==='intake_back'){controls.failBack=false;return route.fulfill({status:500,json:{error:'模拟背面上传失败'}});}
   return route.fulfill({status:201,json:{id:body.filename}});
  });
+ await page.route('**/api/appointments/'+id+'/attachments/*',route=>route.fulfill({contentType:'image/png',body:png}));
  await page.route('**/api/appointments/'+id+'/status',route=>{
   const body=route.request().postDataJSON();starts.push(body);if(controls.failStart){controls.failStart=false;return route.fulfill({status:500,json:{error:'模拟开始维修失败'}});}
   item={...item,...body,canStart:false,canFinish:true,revision:item.revision+1};return route.fulfill({json:item});
@@ -180,7 +181,7 @@ test('a failed start keeps uploaded IDs and reuses the same operation ID on retr
  const {select,confirm,uploads,starts,controls}=await repair(page);controls.failStart=true;await select('front','front.png');await select('back','back.png');await confirm.click();await expect(page.getByRole('dialog')).toContainText('模拟开始维修失败');await confirm.click();await expect.poll(()=>starts.length).toBe(2);expect(starts[0]).toEqual(starts[1]);expect(uploads).toHaveLength(2);
 });
 test('React photo IDs and verification restore after a reload without reuploading the unchanged side',async({page})=>{
- const {select,confirm,uploads,starts,controls,open}=await repair(page);controls.failBack=true;await select('front','front.png');await select('back','bad-back.png');await confirm.click();await expect(page.getByRole('dialog')).toContainText('模拟背面上传失败');await page.reload();await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();await open();await expect(page.locator('.field-photos')).toContainText('已上传');await select('back','back-retry.png');await page.getByRole('button',{name:'确认开始维修',exact:true}).click();await expect.poll(()=>starts.length).toBe(1);expect(starts[0].frontPhotoId).toBe('front.png');expect(uploads.filter(x=>x.purpose==='intake_front')).toHaveLength(1);
+ const {select,confirm,uploads,starts,controls,open}=await repair(page);controls.failBack=true;await select('front','front.png');await select('back','bad-back.png');await confirm.click();await expect(page.getByRole('dialog')).toContainText('模拟背面上传失败');await page.reload();await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();await open();await expect(page.locator('.field-intake-photos').getByRole('img',{name:'设备正面照片',exact:true})).toHaveAttribute('src',/^blob:/);await select('back','back-retry.png');await page.getByRole('button',{name:'确认开始维修',exact:true}).click();await expect.poll(()=>starts.length).toBe(1);expect(starts[0].frontPhotoId).toBe('front.png');expect(uploads.filter(x=>x.purpose==='intake_front')).toHaveLength(1);
 });
 test('React intake rejects HEIC and oversized originals without recording a repair',async({page})=>{
  const {select,confirm,uploads,starts}=await repair(page);await select('front','camera.heic','image/heic',Buffer.from('unsupported'));await select('back','back.png');await confirm.click();await expect(page.getByRole('dialog')).toContainText('JPEG、PNG 或 WebP');expect(starts).toHaveLength(0);expect(uploads).toHaveLength(0);
@@ -189,7 +190,13 @@ test('React intake rejects HEIC and oversized originals without recording a repa
 test('React confirmation joins its pending upload once and blocks closing while saving',async({page})=>{
  const {select,confirm,uploads,starts}=await repair(page);let release,started;const pending=new Promise(resolve=>release=resolve),ready=new Promise(resolve=>started=resolve);
  await page.route('**/api/appointments/*/attachments',async route=>{if(route.request().method()==='GET')return route.fulfill({json:{items:[]}});const body=route.request().postDataJSON();uploads.push(body);started();await pending;return route.fulfill({status:201,json:{id:body.filename}});});
- await select('front','front.png');await select('back','back.png');await confirm.click();await ready;await expect(page.getByRole('button',{name:'正在保存核验信息…',exact:true})).toBeDisabled();await page.getByRole('button',{name:'关闭',exact:true}).click();await expect(page.getByRole('dialog')).toBeVisible();release();await expect.poll(()=>starts.length).toBe(1);expect(uploads).toHaveLength(2);
+ await select('front','front.png');await select('back','back.png');await confirm.click();await ready;
+ await expect(page.getByRole('button',{name:'正在保存核验信息…',exact:true})).toBeDisabled();
+ const close=page.getByRole('button',{name:'关闭',exact:true});
+ await expect(close).toBeDisabled();
+ await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toBeVisible();
+ release();await expect.poll(()=>starts.length).toBe(1);expect(uploads).toHaveLength(2);
+ await expect(close).toBeEnabled();
 });
 
 test('React intake compresses a camera original above 2 MB before uploading its verified photo', async ({page}) => {

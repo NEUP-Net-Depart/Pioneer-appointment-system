@@ -169,8 +169,8 @@ test('permanent off-duty managers coordinate business and prepare schedules with
   expect(profile.permissions['repair.transfer']).toBe(true);
   expect(profile.permissions['repair.start']).not.toBe(true);
   const nav = page.locator('.field-sidebar');
-  await expect(nav.getByRole('button',{name:'现场管理',exact:true})).toBeVisible();
-  await expect(nav.getByRole('button',{name:'接待台',exact:true})).toBeVisible();
+  await expect(nav.getByRole('button',{name:'现场管理',exact:true})).toHaveCount(0);
+  await expect(nav.getByRole('button',{name:'现场工作台',exact:true})).toBeVisible();
   await expandGroup(page,'值班管理');
   for (const name of ['维修排班管理','办公排班管理','请假审批']) await expect(nav.getByRole('button',{name,exact:true})).toBeVisible();
   await nav.getByRole('button',{name:'维修排班管理',exact:true}).click();

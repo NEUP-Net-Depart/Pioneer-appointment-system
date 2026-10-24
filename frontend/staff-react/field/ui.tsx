@@ -12,6 +12,7 @@ import React, {
 // leave the browser top layer until the route is visible again.
 export const ActivityContext = createContext(true);
 import { statusLabels, statusClass } from '../../../shared/constants.js';
+import { receptionLabels } from '../../../shared/reception.js';
 import { qrImage } from '../../../shared/zxing.js';
 import { createScanner } from './scanner.js';
 import { request } from '../request.js';
@@ -30,7 +31,9 @@ export function Status({ value }: { value: string }) {
   return (
     <span className={`field-status ${statusClass[value] || ''}`}>
       {statusLabels[value] ||
+        receptionLabels[value] ||
         {
+          pending: '待接手',
           available: '空闲',
           repairing: '维修中',
           unsigned: '待签到',
@@ -67,7 +70,8 @@ export function Modal({
   sidePanel = false,
   initialFocus,
   dismissible = true,
-  compact = false
+  compact = false,
+  footer
 }: {
   title: string;
   children: ReactNode;
@@ -76,6 +80,7 @@ export function Modal({
   initialFocus?: string;
   dismissible?: boolean;
   compact?: boolean;
+  footer?: ReactNode;
 }) {
   const titleId = useId();
   const ref = useRef<HTMLDialogElement>(null);
@@ -106,6 +111,7 @@ export function Modal({
       aria-labelledby={titleId}
       onKeyDown={(event) => {
         if (event.key !== 'Tab') return;
+        event.stopPropagation();
         const controls = [
           ...ref.current!.querySelectorAll<HTMLElement>(
             'button,input,select,textarea,a[href],summary,[tabindex]'
@@ -132,16 +138,20 @@ export function Modal({
       }}
       onCancel={(event) => {
         event.preventDefault();
+        event.stopPropagation();
         if (dismissible) onClose();
       }}
     >
       <header>
-        <h2 id={titleId}>{title}</h2>
+        <h2 id={titleId} className={title === '现场核验' ? 'field-state-title' : undefined}>
+          {title}
+        </h2>
         <button type="button" disabled={!dismissible} onClick={onClose} aria-label="关闭">
           关闭
         </button>
       </header>
       <div className="workspace-dialog-body">{children}</div>
+      {footer && <footer className="workspace-dialog-footer">{footer}</footer>}
     </dialog>
   );
 }

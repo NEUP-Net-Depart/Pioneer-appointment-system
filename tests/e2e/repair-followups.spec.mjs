@@ -166,6 +166,9 @@ test('followup permissions, public history, duplicate prevention and appointment
     });
     await card.getByRole('button', { name: '确认安排返修', exact: true }).click();
     await expect(card).toHaveCount(0);
+    await expect(page.locator('.followup-receipt')).toContainText('返修已安排');
+    await expect(page.locator('.followup-receipt')).toContainText('2026-10-19');
+    await expect(page.getByRole('button',{name:'打开返修工单',exact:true})).toHaveCount(0);
     expect(requests).toHaveLength(2);
     expect(requests[0]).toEqual(requests[1]);
     expect(responses[1].idempotent).toBe(true);
@@ -188,7 +191,7 @@ test('followup permissions, public history, duplicate prevention and appointment
     await expect(history).toContainText('已安排维修');
     await expect(history).toContainText('返修预约 · 19:00–19:30');
     await expect(history.getByRole('button', { name: '提交返修申请', exact: true })).toHaveCount(0);
-    await expect(history).toContainText('该维修链已有未完成返修');
+    await expect(history).toContainText('返修处理中');
     const childCredential = await api(request, `/api/appointments/${responses[0].appointment.id}/credential`, root.token, {
       identityVerified: true, reason: '已核验测试机主身份，检查返修单日期时段展示'
     });
@@ -203,6 +206,57 @@ test('followup permissions, public history, duplicate prevention and appointment
     await expect(guest.locator('.student-record').filter({ hasText: '返修预约 · 19:00–19:30' })).toHaveCount(1);
     await guest.goto('/#' + new URLSearchParams({ appointment: order.id, access: credentialLink.accessToken }));
     await expect(history.getByRole('button', { name: '提交返修申请', exact: true })).toBeVisible();
+    await history.getByRole('textbox', {name:'返修情况',exact:true}).fill('改为今天到场返修，验证现场排队');
+    await history.getByRole('button', {name:'提交返修申请',exact:true}).click();
+    await expect(history).toContainText('返修申请已提交');
+    await expect(history.getByRole('button',{name:'提交返修申请',exact:true})).toHaveCount(0);
+    const nextPending=(await api(request,'/api/repair-followups?status=pending',office.token)).items.find(row=>row.appointment.id===order.id).followup;
+    const sameDay=await api(request,`/api/repair-followups/${nextPending.id}/decision`,office.token,{
+      action:'schedule',requestId:crypto.randomUUID(),revision:nextPending.revision,date:'2026-10-15',timeSlot:'19:30–20:00'
+    });
+    async function receiveChild() {
+      const child=await api(request,`/api/field/appointments/${sameDay.appointmentId}`,office.token);
+      const ids=[];
+      for(const side of ['front','back'])ids.push((await api(request,`/api/appointments/${child.id}/attachments`,office.token,{
+        filename:side+'.png',mimeType:'image/png',data:photo,purpose:'intake_'+side
+      })).id);
+      return api(request,`/api/appointments/${child.id}/reception`,office.token,{
+        action:'receive',revision:child.revision,requestId:crypto.randomUUID(),frontPhotoId:ids[0],backPhotoId:ids[1],
+        verification:{brand:'联想',model:'返修现场核验',warranty:'expired',liquidMetal:'no',note:'核验完成'}
+      });
+    }
+    const arrived=await receiveChild();
+    await guest.reload();
+    const queue=guest.locator('#detail-queue');
+    await expect(queue.getByRole('heading',{name:'返修现场排队',exact:true})).toBeVisible();
+    await expect(queue).toContainText(sameDay.appointmentId);
+    await expect(queue).toContainText(String(arrived.reception.ticket.number).padStart(3,'0')+'号');
+    await expect(queue.locator('.customer-queue > div').nth(1).locator('strong')).toHaveText('1 位');
+    for(const width of [320,390,768,1440]) {
+      await guest.setViewportSize({width,height:900});
+      expect(await guest.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    }
+    await guest.setViewportSize({width:390,height:900});
+    await queue.getByRole('button',{name:'临时离开，退出排队',exact:true}).click();
+    await guest.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+    await expect(queue.locator('[data-queue-confirm]')).toBeVisible();
+    await expect(queue.getByRole('button',{name:'确认退出排队',exact:true})).toBeFocused();
+    const exits=[];
+    await guest.route('**/repair-followups/*/queue-exit',async route=>{
+      exits.push(route.request().postDataJSON());
+      if(exits.length===1){const result=await route.fetch();expect(result.ok()).toBeTruthy();return route.abort('connectionfailed');}
+      return route.continue();
+    });
+    await queue.getByRole('button',{name:'确认退出排队',exact:true}).click();
+    await expect(queue.getByRole('heading',{name:'已退出现场排队',exact:true})).toBeVisible();
+    expect(exits).toHaveLength(2);expect(exits[0]).toEqual(exits[1]);
+    const rejoined=await receiveChild();
+    expect(rejoined.reception.ticket.number).toBeGreaterThan(arrived.reception.ticket.number);
+    await guest.reload();
+    await expect(queue).toContainText(String(rejoined.reception.ticket.number).padStart(3,'0')+'号');
+    await queue.getByRole('button',{name:'临时离开，退出排队',exact:true}).click();
+    await queue.getByRole('button',{name:'确认退出排队',exact:true}).click();
+    await expect(queue.getByRole('heading',{name:'已退出现场排队',exact:true})).toBeVisible();
     expect(await guest.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true
     );

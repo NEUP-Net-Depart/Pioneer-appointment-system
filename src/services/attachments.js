@@ -27,7 +27,7 @@ export function attachmentService(appointments, attachments, bucket, maxBytes, f
         requireRole(user, 'technician');
         const appointment = await appointments.find(id);
         if (!appointment) fail(404, '预约不存在');
-        await field.requireEligible(user,appointment.campus);
+        await field.requireIntake(user,appointment);
         if (appointment.status !== 'booked') fail(409, '当前预约不能上传签到照片');
         id = appointment.id;
       } else id = (await authorize(id, user, accessToken)).id;

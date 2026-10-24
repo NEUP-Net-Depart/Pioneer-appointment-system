@@ -4,6 +4,14 @@ import { parseAppointmentSearch, APPOINTMENT_SEARCH_LIMIT } from '../shared/appo
 import { fieldWorkflow } from '../src/services/field-workflow.js';
 import { createAuthorizer } from '../src/modules/authorization/public.js';
 import { statusLabels } from '../shared/constants.js';
+import {receptionStatus} from '../shared/reception.js';
+
+test('reception stages preserve the five appointment statuses after rescheduling and completion',()=>{
+  assert.equal(receptionStatus({status:'booked',reception:{state:'queued'}}),'queued');
+  assert.equal(receptionStatus({status:'booked',reception:{state:'assigned'}}),'assigned');
+  assert.equal(receptionStatus({status:'booked',reception:{state:'closed'}}),'booked');
+  assert.equal(receptionStatus({status:'completed',reception:{state:'closed'}}),'completed');
+});
 
 test('shared search parser distinguishes tail fragments from cross-date numbers', () => {
   for (const value of ['', '-01', '10--01', 'test01', '01%', '1'.repeat(81), null]) assert.equal(parseAppointmentSearch(value), null);
@@ -19,8 +27,23 @@ test('candidate projection and detail authorization share campus and ownership d
   const actor={memberId:'member-one',account:'100001',role,status:'enabled',authorizedCampuses:['南湖']};
   const context={actor,businessDate:'2026-10-15',permissions:{'repair.summary.read':true},workProfiles:[],grants:[{permissionCode:'repair.summary.read',scope:{campusIds:['campus-nanhu']}},{permissionCode:'customer.identity.read',scope:{self:true},conditions:[{code:'ownResource',version:1}]},{permissionCode:'customer.contact.read',scope:{self:true},conditions:[{code:'ownResource',version:1}]}]};
   let item={id:'reserve020261015-01',status,campus:'南湖',name:'本人客户',studentId:'20306001',assignedMemberId,assignedTo:assignedMemberId==='member-one'?'100001':'100002'};
-  const field=fieldWorkflow({appointments:{find:async()=>item,currentRepair:async()=>null,repairHistory:async()=>({items:[],followups:[],events:[]})},repository:{fieldContexts:async()=>new Map(),repairIdentitySnapshot:async()=>null,latestIntake:async()=>null,dutyEvent:async()=>null,serviceDay:async()=>null},staff:{contextFor:async()=>context},authorizer:createAuthorizer(),secret:'test-secret',encryptionKey:''});
+  const field=fieldWorkflow({appointments:{find:async()=>item,repairHistory:async()=>({items:[],followups:[],events:[]}),receptionHead:async()=>null,currentRepair:async()=>null,pendingDispatch:async()=>null},repository:{fieldContexts:async()=>new Map(),repairIdentitySnapshot:async()=>null,latestIntake:async()=>null,dutyEvent:async()=>null,serviceDay:async()=>null},staff:{contextFor:async()=>context},authorizer:createAuthorizer(),secret:'test-secret',encryptionKey:''});
   const visible=(await field.projectList(actor,[item]))[0],detail=await field.detail(actor,item.id);assert.equal(detail.name,visible.name);assert.equal(visible.name,assignedMemberId==='member-one'?'本人客户':undefined);
   item={...item,campus:'浑南'};assert.deepEqual(await field.projectList(actor,[item]),[]);await assert.rejects(field.detail(actor,item.id),e=>e.status===403);
  }
+});
+
+
+test('future reschedule receipts expose scheduling facts without today’s customer-detail permission',async()=>{
+  const actor={memberId:'office-one',account:'100001',authorizedCampuses:['南湖']};
+  const context={actor,businessDate:'2026-10-15',todayDuties:[{businessDate:'2026-10-15',campusId:'campus-nanhu',dutyType:'office'}],grants:
+    ['repair.summary.read','customer.identity.read','customer.contact.read','repair.dispatch'].map(permissionCode=>({permissionCode,scope:{campusIds:['campus-nanhu']},conditions:[{code:'activeDutyRole',version:1,parameters:{dutyType:'office'}}]}))};
+  const item={id:'reserve020261015-01',revision:2,status:'booked',date:'2026-10-19',timeSlot:'19:00–19:30',campus:'南湖',reception:{state:'closed'},name:'不能泄露的客户',social:'不能泄露的联系方式'};
+  const field=fieldWorkflow({appointments:{find:async()=>item},staff:{contextFor:async()=>context},authorizer:createAuthorizer(),secret:'test-secret',encryptionKey:''});
+  await assert.rejects(field.detail(actor,item.id),error=>error.status===403);
+  const result=await field.receptionResult(actor,item.id);
+  assert.equal(result.date,item.date);assert.equal(result.resolutionOnly,true);assert.equal(result.canReadDetails,false);
+  for(const key of ['name','studentId','social','intake','original','repairHistory'])assert.equal(result[key],undefined,key);
+  context.todayDuties=[];
+  await assert.rejects(field.receptionResult(actor,item.id),error=>error.status===403);
 });

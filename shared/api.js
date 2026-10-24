@@ -39,10 +39,15 @@ export async function apiJson(input, { timeoutMs, ...options } = {}) {
   return payload;
   } finally { limit.dispose(); }
 }
-export async function apiBlob(input, { timeoutMs = 30000, ...options } = {}) {
-  const limit = deadline(timeoutMs, options.signal);
+/**
+ * @param {string} input
+ * @param {RequestInit & { timeoutMs?: number }} [options]
+ */
+export async function apiBlob(input, options = {}) {
+  const { timeoutMs = 30000, ...requestOptions } = options;
+  const limit = deadline(timeoutMs, requestOptions.signal);
   try {
-    const response = await apiFetch(input, { ...options, signal: limit.signal });
+    const response = await apiFetch(input, { ...requestOptions, signal: limit.signal });
     if (!response.ok) { const error = new Error('附件暂时无法读取，请重试。'); error.status = response.status; throw error; }
     return await response.blob();
   } finally { limit.dispose(); }

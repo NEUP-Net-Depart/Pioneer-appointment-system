@@ -18,11 +18,17 @@ export function staffViewAllowed(user, view) {
   return !!permissions[view] && staffPermission(user, permissions[view]);
 }
 
+// Normalize persisted links before permission checks and workspace restoration.
+export function normalizeStaffScene(scene) {
+  return scene === 'operations' ? 'desk' : scene;
+}
+
 export function staffSceneAllowed(user, home, scene) {
+  scene = normalizeStaffScene(scene);
   if (scene === 'mine') return true;
   if (!home?.contexts?.some(context => context.id === scene)) return false;
   if (scene === 'repair') return !!home.currentRepair || staffPermission(user, 'repair.summary.read');
-  if (scene === 'desk') return staffPermission(user, 'onsite.frontdesk.create');
-  if (scene === 'operations') return staffPermission(user, 'repair.transfer');
+  if (scene === 'desk') return ['onsite.frontdesk.create', 'repair.receive', 'repair.dispatch', 'repair.transfer']
+    .some(code => staffPermission(user, code));
   return false;
 }

@@ -18,7 +18,7 @@ test('lead-real-transfer-correction-history', async ({ page, request, audit }, i
   for (const side of ['front', 'back']) photos.push(await api(request, `/api/appointments/${order.id}/attachments`, tech.token, { filename: `${side}.png`, mimeType: 'image/png', data: PHOTO.toString('base64'), purpose: `intake_${side}` }));
   await api(request, `/api/appointments/${order.id}/status`, tech.token, { status: 'in_progress', revision: order.revision, frontPhotoId: photos[0].id, backPhotoId: photos[1].id, verification: { brand: '联想', model: 'ThinkPad Mobile', warranty: 'expired', liquidMetal: 'no', note: '' }, requestId: randomUUID() }, 'PATCH');
   await login(page, '20261004');
-  await navigate(page, '现场管理');
+  await navigate(page, '现场工作台');
   await page.locator('.field-order').filter({ hasText: order.id }).click();
   await page.getByRole('button', { name: '转交其他维修人员', exact: true }).click();
   await page.getByRole('combobox', { name: '接手人员', exact: true }).selectOption('20261003');

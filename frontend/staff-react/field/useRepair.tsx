@@ -109,7 +109,14 @@ export function useRepair({
               note: ''
             }
         );
-        setUploaded(draft.uploaded || {});
+        setUploaded(
+          value.canReceive
+            ? {}
+            : draft.uploaded ||
+                (value.reception
+                  ? { front: value.frontPhotoId || '', back: value.backPhotoId || '' }
+                  : {})
+        );
         fetchedAt.current = Date.now();
       })
       .catch((error) => {
@@ -119,6 +126,15 @@ export function useRepair({
       active = false;
     };
   }, [id, draftKey]);
+  const intakeSession = item?.canReceive ? `${item.id}:${item.reception?.leftAt || 'new'}` : null;
+  useEffect(() => {
+    if (intakeSession) {
+      // A new arrival requires photos uploaded by the person receiving it.
+      // Keep retries in this session, but never reuse a previous arrival's IDs.
+      setUploaded({});
+      setFiles({});
+    }
+  }, [intakeSession]);
   useEffect(() => {
     const urls = Object.fromEntries(
       Object.entries(files).map(([side, file]) => [side, URL.createObjectURL(file)])
@@ -177,7 +193,32 @@ export function useRepair({
     await load();
     onChanged();
   }
-  async function start(event: React.FormEvent) {
+  async function receptionCommand(action: string, extra: Record<string, unknown> = {}) {
+    setBusy(true);
+    const body = operation({ action, ...extra, revision: item!.revision });
+    const send = () =>
+      api<{ resolutionOnly?: boolean }>(`/api/appointments/${encodeURIComponent(id)}/reception`, {
+        method: 'POST',
+        body
+      });
+    try {
+      let result;
+      try {
+        result = await send();
+      } catch (failure) {
+        const status = (failure as Error & { status?: number }).status;
+        if (status && status < 500) throw failure;
+        // Reuse the original receipt and revision if the response was lost.
+        result = await send();
+      }
+      if (result.resolutionOnly) onClose();
+      else await load();
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function start(event: React.FormEvent, receive = false) {
     event.preventDefault();
     setBusy(true);
     setError('');
@@ -196,12 +237,14 @@ export function useRepair({
           setUploaded({ ...photos });
         }
       }
-      await command({
+      const details = {
         status: 'in_progress',
         frontPhotoId: photos.front,
         backPhotoId: photos.back,
         verification
-      });
+      };
+      if (receive) await receptionCommand('receive', details);
+      else await command(details);
     } catch (error) {
       setError((error as Error).message);
       await load().catch(() => {});
@@ -288,6 +331,7 @@ export function useRepair({
     receiversLoading,
     load,
     start,
+    receptionCommand,
     finish,
     saveNote,
     handoff

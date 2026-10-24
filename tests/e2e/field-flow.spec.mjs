@@ -85,7 +85,12 @@ for (const account of ['20261001', '20261002']) test(`ordinary staff ${account} 
   const managementReads = [];
   page.on('request', req => { if (/^\/api\/(members|roles|users|stats|slot-capacities|staff-whitelist|activation-requests)(?:\/|$)/.test(new URL(req.url()).pathname)) managementReads.push(req.url()); });
   const sidebar = page.locator('.field-sidebar');
-  for (const label of ['成员管理','授权管理','账号管理','预约配置','统计分析','维修排班管理','办公排班管理','请假审批','现场管理']) await expect(sidebar.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+  if (account === '20261002') {
+    await expect(sidebar.getByRole('button', { name: '现场工作台', exact: true })).toHaveCount(0);
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent('staff-request-navigation', { detail: 'scene:operations' })));
+    await expect(page.getByRole('heading', { name: '维修工作台', exact: true })).toBeVisible();
+  }
+  for (const label of ['成员管理','授权管理','账号管理','预约配置','统计分析','维修排班管理','办公排班管理','请假审批']) await expect(sidebar.getByRole('button', { name: label, exact: true })).toHaveCount(0);
   for (const view of ['members','permissions','users','stats','capacity','roster-manage','office-roster','leave-review']) {
     await page.evaluate(view => window.dispatchEvent(new CustomEvent('staff-request-navigation', { detail: view })), view);
     await expect(page.locator('.workspace-route:not([hidden])')).toHaveAttribute('data-route', 'workbench');
@@ -198,7 +203,7 @@ test('platform startup errors never reveal old pages or start legacy record refr
 test('work launcher groups compact entries, searches only granted pages and restores scrolling',async({page})=>{
   await page.setExtraHTTPHeaders({'CF-Connecting-IP':'192.0.2.176'});await page.setViewportSize({width:390,height:900});await login(page,'root001');
   await page.getByRole('button',{name:'更多',exact:true}).click();const dialog=page.getByRole('dialog',{name:'工作入口',exact:true}),nav=dialog.getByRole('navigation',{name:'全部工作入口',exact:true});
-  await expect(nav.getByRole('button',{name:'成员管理',exact:true})).toBeVisible();await expect(nav.locator('[aria-current=page]')).toHaveText('接待台');
+  await expect(nav.getByRole('button',{name:'成员管理',exact:true})).toBeVisible();await expect(nav.locator('[aria-current=page]')).toHaveText('现场工作台');
   expect(await page.evaluate(()=>document.documentElement.style.overflow)).toBe('hidden');
   await dialog.getByLabel('查找功能',{exact:true}).fill('排班');await expect(nav.getByRole('button')).toHaveCount(3);await expect(nav.getByRole('button',{name:'成员管理',exact:true})).toHaveCount(0);
   await dialog.getByLabel('查找功能',{exact:true}).fill('不存在的功能');await expect(dialog.getByText('没有匹配的功能',{exact:true})).toBeVisible();await dialog.getByLabel('查找功能',{exact:true}).fill('');
@@ -213,11 +218,31 @@ test("reception layout remains usable at desktop, phone and narrow-phone widths"
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await login(page, "20261001");
+  await page.evaluate(() => sessionStorage.setItem('field-scene:member-20261001', 'operations'));
+  await page.reload();
+  await expect(page.locator('.field-sidebar').getByRole('button', { name: '现场工作台', exact: true })).toHaveCount(1);
+  await expect(page.locator('.field-sidebar').getByRole('button', { name: '现场管理', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('group', { name: '现场概览', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('group', { name: '现场概览' }).getByRole('button')).toHaveCount(4);
+  await expect(page.locator('.field-appointments .field-filter')).toHaveCount(0);
+  await expect(page.locator('.field-metric-label')).toHaveText(['未到场', '排队中', '维修中', '空闲中']);
+  await page.getByRole('group', { name: '现场概览' }).getByRole('button', { name: /^排队中/ }).click();
+  await expect(page.getByRole('heading', { name: '排队中', exact: true })).toBeVisible();
+  await expect(page.locator('.field-appointments h2')).toHaveText('排队中');
+  await page.getByRole('group', { name: '现场概览' }).getByRole('button', { name: /^空闲中/ }).click();
+  await expect(page.getByRole('group', { name: '现场概览' }).getByRole('button', { name: /^空闲中/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.field-desk-grid')).toHaveClass(/tab-people/);
+  await page.getByRole('group', { name: '现场概览' }).getByRole('button', { name: /^空闲中/ }).click();
+  await page.getByRole('group', { name: '现场概览' }).getByRole('button', { name: /^未到场/ }).click();
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('staff-request-navigation', { detail: 'scene:operations' })));
+  await expect(page.getByRole('group', { name: '现场概览' }).getByRole('button', { name: /^未到场/ })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('group', { name: '现场概览' }).getByRole('button', { name: /^未到场/ }).click();
+  await expect(page.getByRole('heading', {name:'预约与现场队列',exact:true})).toBeVisible();
   await mkdir("output/field-workflow", { recursive: true });
-  for (const width of [1440, 390, 320]) {
+  for (const width of [1440, 768, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(
-      page.getByRole("heading", { name: "接待台", exact: true }),
+      page.getByRole("heading", { name: "现场工作台", exact: true }),
     ).toBeVisible();
     expect(
       await page.evaluate(
@@ -324,7 +349,7 @@ test("technician completes a real intake and repair; opening scanner starts came
   await page.getByLabel("设备背面照片", { exact: true }).setInputFiles(photo);
   await page.getByRole("button", { name: "确认开始维修", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "当前维修", exact: true }),
+    page.getByRole("dialog").getByRole("heading", { name: "当前维修", exact: true }),
   ).toBeVisible();
   await page
     .getByRole("dialog")
@@ -431,7 +456,7 @@ test("duty lead transfers a real repair and recipient completes it", async ({
   await login(page, "20261004");
   await page
     .getByRole("navigation", { name: "岗位工作导航" })
-    .getByRole("button", { name: "现场管理", exact: true })
+    .getByRole("button", { name: "现场工作台", exact: true })
     .click();
   await page.locator(".field-order").filter({ hasText: order.id }).click();
   await page
@@ -603,7 +628,7 @@ test("unified scanner previews attendance and resolves repairs without committin
 
 test('an expired reception permission removes its scene and returns to personal work', async ({ page }) => {
   await login(page, '20261001');
-  await expect(page.getByRole('heading', { name: '接待台', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '现场工作台', exact: true })).toBeVisible();
   await page.route('**/api/field/board*', route => route.fulfill({ status:403, contentType:'application/json', body:JSON.stringify({error:'当前没有该校区的现场岗位权限'}) }));
   await page.route('**/api/field/home*', async route => {
     const response = await route.fetch();
@@ -616,7 +641,7 @@ test('an expired reception permission removes its scene and returns to personal 
   });
   await page.locator('.field-footer').getByRole('button', { name:'刷新', exact:true }).click();
   await expect(page.getByRole('heading', { name:'个人中心', exact:true })).toBeVisible();
-  await expect(page.locator('.field-sidebar').getByRole('button', { name:'接待台', exact:true })).toHaveCount(0);
+  await expect(page.locator('.field-sidebar').getByRole('button', { name:'现场工作台', exact:true })).toHaveCount(0);
   await expect(page.getByRole('button', { name:'展示签到码', exact:true })).toHaveCount(0);
   // The scene change starts a home reconciliation. Let intercepted responses
   // finish before Playwright disposes the request context at test teardown.
@@ -627,7 +652,7 @@ test('all workspaces share title geometry and scrollable navigation across scree
   await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': '192.0.2.177' });
   await login(page, 'root001');
   const entries = [
-    ['维修工作台', '维修工作台'], ['接待台', '接待台'], ['现场管理', '现场管理'],
+    ['维修工作台', '维修工作台'], ['现场工作台', '现场工作台'],
     ['个人中心', '个人中心'], ['预约记录', '预约记录'], ['班次与排班', '我的值班安排'],
     ['本人签到记录', '本人签到记录'], ['账号安全', '账号安全'], ['成员管理', '成员管理'],
     ['授权管理', '授权管理'], ['账号管理', '账号管理'], ['维修排班管理', '维修排班管理'],
@@ -663,7 +688,7 @@ test('all workspaces share title geometry and scrollable navigation across scree
       expect(geometry, `${width}px ${label}`).toEqual(reference);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width}px ${label} overflow`).toBe(true);
       expect(await route.locator('main').count()).toBe(0);
-      if (width === 768 && ['接待台', '现场管理'].includes(label)) {
+      if (width === 768 && label === '现场工作台') {
         const customer = route.locator('.field-order > span:first-child').first();
         if (await customer.count()) expect((await customer.boundingBox()).width, 'customer identity stays readable beside the sidebar').toBeGreaterThan(120);
       }
@@ -780,7 +805,7 @@ test('switching work modules retains local filters and pauses the hidden board',
     if (new URL(request.url()).pathname === '/api/field/board') boardReads += 1;
   });
   await login(page, '20261001');
-  await expect(page.getByRole('heading', { name: '接待台', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '现场工作台', exact: true })).toBeVisible();
   const search = page.getByRole('textbox', { name: '搜索当日预约' });
   await search.fill('ThinkPad');
   const mine = page.locator('.field-sidebar').getByRole('button', { name: '我的', exact: true });
@@ -790,7 +815,7 @@ test('switching work modules retains local filters and pauses the hidden board',
   const pausedAt = boardReads;
   await page.clock.fastForward(60000);
   expect(boardReads).toBe(pausedAt);
-  await page.locator('.field-sidebar').getByRole('button', { name: '接待台', exact: true }).click();
+  await page.locator('.field-sidebar').getByRole('button', { name: '现场工作台', exact: true }).click();
   await expect(search).toHaveValue('ThinkPad');
   await expect.poll(() => boardReads).toBeGreaterThan(pausedAt);
 });

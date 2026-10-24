@@ -1,8 +1,16 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { parseAppointmentSearch } from '../../../shared/appointment-search.js';
 import { api, Status } from './ui';
+import { receptionStatus } from '../../../shared/reception.js';
 
-type Candidate = { id: string; campus: string; date: string; timeSlot: string; status: string };
+type Candidate = {
+  id: string;
+  campus: string;
+  date: string;
+  timeSlot: string;
+  status: string;
+  reception?: { state: string };
+};
 export function AppointmentLookup({
   active,
   disabled,
@@ -162,7 +170,7 @@ export function AppointmentLookup({
                   {item.campus}校区 · {item.date} · {item.timeSlot}
                 </small>
               </span>
-              <Status value={item.status} />
+              <Status value={receptionStatus(item)} />
             </button>
           ))}
         </div>

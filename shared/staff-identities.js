@@ -33,7 +33,7 @@ export function fieldPersonGroup(person) {
 }
 
 export function compareFieldPeople(a, b) {
-  const rank = person => person.canReceive ? 0 : person.state === 'repairing' ? 1 : person.state === 'away' ? 2 : person.state === 'unsigned' ? 3 : 4;
+  const rank = person => person.canReceive ? 0 : ['repairing','pending'].includes(person.state) ? 1 : person.state === 'away' ? 2 : person.state === 'unsigned' ? 3 : 4;
   const lead = person => (person.identities || []).some(item => item.code === 'repair_lead');
   return Number(fieldPersonGroup(b) === 'repair') - Number(fieldPersonGroup(a) === 'repair') || rank(a) - rank(b) || Number(lead(b)) - Number(lead(a)) || a.name.localeCompare(b.name, 'zh-CN') || a.memberId.localeCompare(b.memberId);
 }

@@ -23,6 +23,14 @@ function element(tag, className = '', text = '') {
   return node;
 }
 
+export function currentFollowup(item) {
+  const request = activeRepairFollowup(item.repairHistory, item.serverNow || new Date().toISOString());
+  if (!request) return null;
+  const items = item.repairHistory?.items || [];
+  const appointment = items.find((entry) => entry.id === request.scheduledAppointmentId);
+  return { request, appointment, round: appointment ? items.findIndex((entry) => entry.id === appointment.id) + 1 : null };
+}
+
 export function createFollowupPanel(item, message = '') {
   const history = item.repairHistory || { items: [], followups: [], events: [] };
   const related = [...history.items].sort((a, b) =>
@@ -33,12 +41,13 @@ export function createFollowupPanel(item, message = '') {
   section.setAttribute('aria-labelledby', 'repair-history-title');
   const title = element('h2', '', '返修与维修记录');
   title.id = 'repair-history-title';
-  section.append(title, element('p', 'field-hint', '每轮返修使用独立单号，并与原工单关联。'));
+  section.append(title);
   const rounds = element('div', 'repair-history-list');
   if (!related.length) rounds.append(element('p', 'field-hint', '暂无维修轮次记录。'));
 
   related.forEach((entry, index) => {
     const round = element('article', 'repair-round');
+    round.dataset.roundId = entry.id;
     const heading = element('div', 'repair-round-heading');
     heading.append(element('strong', '', '第 ' + (index + 1) + ' 轮维修'), element('span', '', entry.id));
     round.append(heading);
@@ -73,27 +82,20 @@ export function createFollowupPanel(item, message = '') {
         const child = itemById.get(request.scheduledAppointmentId);
         if (child) {
           followup.append(element('p', '', '返修单 ' + child.id + ' · ' + formatDate(child.date) + ' ' + child.timeSlot));
-          if (child.status === 'booked' && request.status === 'scheduled') {
-            const showQr = element('button', 'secondary-btn', '显示返修维修码');
-            showQr.type = 'button';
-            showQr.dataset.followupQr = request.id;
-            showQr.dataset.followupAppointment = child.id;
-            followup.append(showQr);
-            const qr = element('div', 'followup-qr-container');
-            qr.dataset.followupQrContainer = request.id;
-            followup.append(qr);
-          }
         }
         round.append(followup);
       });
     rounds.append(round);
   });
-  section.append(rounds);
+  const archive = element('details', 'repair-history-details');
+  archive.open = !currentFollowup(item);
+  archive.append(element('summary', '', '维修记录'), rounds);
+  section.append(archive);
 
   const active = activeRepairFollowup(history, item.serverNow || new Date().toISOString());
   if (active) section.append(element('p', 'followup-pending-message', active.status === 'pending'
-    ? '返修申请已提交，办公人员安排后会在此显示日期与返修单号。'
-    : '该维修链已有未完成返修，请先查看并处理当前返修。'));
+    ? '返修申请已提交'
+    : '返修处理中'));
   if (item.status === 'completed' && !active) {
     const form = element('form', 'customer-followup-form');
     form.dataset.followupForm = '';
@@ -103,13 +105,9 @@ export function createFollowupPanel(item, message = '') {
     textarea.rows = 4;
     textarea.maxLength = 3000;
     textarea.required = true;
-    textarea.setAttribute('aria-describedby', 'followup-help');
-    textarea.placeholder = '请说明原故障是否复现、当前表现以及方便核实的信息';
+    textarea.placeholder = '当前故障表现';
     label.append(textarea);
     form.append(label);
-    const help = element('p', 'field-hint', '申请提交后由办公人员安排返修日期；返修单会关联本次维修记录。');
-    help.id = 'followup-help';
-    form.append(help);
     const status = element('p', 'followup-submit-message', message);
     status.setAttribute('role', 'status');
     form.append(status);

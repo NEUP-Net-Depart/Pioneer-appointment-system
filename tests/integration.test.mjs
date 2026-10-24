@@ -964,7 +964,7 @@ test('guest booking, encrypted contacts, lookup, queue and cancellation', async 
   await api(`/api/appointments/${item.id}`,{accessToken:'x'.repeat(43)},404);
   await api('/api/appointments', {}, 401);
   const live = await api(`/api/live/summary?appointmentId=${item.id}`,{accessToken:item.accessToken});
-  assert.equal(live.position, 1); assert.equal(live.capacity, 5); assert.equal(live.slotTotal, 1);
+  assert.equal(live.position, null); assert.equal(live.capacity, 5); assert.equal(live.slotTotal, 1);
   const cancelled = await api(`/api/appointments/${item.id}/status`, { method: 'PATCH', accessToken:item.accessToken, body: { status: 'cancelled', studentId: item.studentId, assignedTo: 'root001', repairNote: 'injection' } });
   assert.equal(cancelled.status, 'cancelled'); assert.equal(cancelled.outcome, null); assert.equal(cancelled.assignedTo, ''); assert.equal(cancelled.repairNote, '');
   assert.ok((await book({ studentId: item.studentId })).id.endsWith('-02'));
@@ -1550,7 +1550,7 @@ test('weekly overview includes earlier records and range filters preserve permis
   }
 });
 
-test('SQL queue counts use campus/slot scopes, deterministic ties and active status rules', async () => {
+test('SQL queue only ranks received arrivals while capacity retains campus and slot scopes', async () => {
   const root = await login();
   const first = await book(), second = await book();
   await book({ campus: '浑南' });
@@ -1560,13 +1560,13 @@ test('SQL queue counts use campus/slot scopes, deterministic ties and active sta
   await db.prepare('UPDATE appointments SET created_at=? WHERE id IN (?,?)').bind('2026-10-04T16:00:00.000Z', first.id, second.id).run();
   const summary = await api(`/api/live/summary?appointmentId=${second.id}`,{accessToken:second.accessToken});
   assert.equal(summary.dayTotal, 5); assert.equal(summary.campusDayTotal, 4); assert.equal(summary.slotTotal, 3);
-  assert.equal(summary.queueTotal, 2); assert.equal(summary.ahead, 1); assert.equal(summary.position, 2);
+  assert.equal(summary.queueTotal, 0); assert.equal(summary.ahead, null); assert.equal(summary.position, null);
   assert.deepEqual(summary.slots, { '19:00–19:30': 3, '19:30–20:00': 0, '20:00–20:30': 1, '20:30–21:00': 0 });
   await api(`/api/appointments/${first.id}/status`, { method: 'PATCH', token: root, body: { status:'in_progress',...await intake(first, root) } });
   await api(`/api/appointments/${first.id}/status`, { method: 'PATCH', token: root, body: { status: 'completed', outcome: 'repaired', repairNote: '已修复' } });
-  assert.equal((await api(`/api/live/summary?appointmentId=${second.id}`,{accessToken:second.accessToken})).ahead, 0);
+  assert.equal((await api(`/api/live/summary?appointmentId=${second.id}`,{accessToken:second.accessToken})).ahead, null);
   await api(`/api/appointments/${first.id}/status`, { method: 'PATCH', token: root, body: { action: 'correct', status: 'cancelled' } });
-  assert.equal((await api(`/api/live/summary?appointmentId=${second.id}`,{accessToken:second.accessToken})).position, 1);
+  assert.equal((await api(`/api/live/summary?appointmentId=${second.id}`,{accessToken:second.accessToken})).position, null);
   assert.equal((await api(`/api/live/summary?appointmentId=${first.id}`,{accessToken:first.accessToken})).position, null);
 });
 
@@ -1921,7 +1921,7 @@ test('automatic expirations honor 20:45 Shanghai, dry-run, missed days, active r
   assert.equal((await expireAppointments(repository,{apply:true,now:at})).ended,0);
   assert.equal((await repository.find(waiting.id)).revision,ended.revision);
   const live=await api(`/api/live/summary?appointmentId=${waiting.id}`,{accessToken:waiting.accessToken});
-  assert.equal(live.position,null);assert.equal(live.slotTotal,2);assert.equal(live.queueTotal,1);
+  assert.equal(live.position,null);assert.equal(live.slotTotal,2);assert.equal(live.queueTotal,0);
 });
 
 test('queries and writes catch up missed automatic endings; unauthorized credentials cannot alter records',async()=>{
@@ -2454,7 +2454,7 @@ test('all four half-hour slots propagate through booking, summary, queue, overvi
     assert.deepEqual(summary.timeSlots, TIME_SLOTS);
     assert.equal(summary.capacity, 5);
     assert.equal(summary.slotTotal, 1);
-    assert.equal(summary.position, 1);
+    assert.equal(summary.position, null);
     const query = new URLSearchParams({ campus: '南湖', date: targetDate, timeSlot });
     const filtered = await api(`/api/appointments?${query}`, { token });
     assert.deepEqual(filtered.items.map(row => row.id), [item.id]);

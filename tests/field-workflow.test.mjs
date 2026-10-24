@@ -419,7 +419,7 @@ test('self-scoped contact access never reveals an unassigned customer to an on-d
   let id;
   t.after(async()=>{
     await db.prepare("UPDATE role_grants SET scope_spec=? WHERE id='grant-office-contact'").bind(grant.scope_spec).run();
-    if(id)await db.prepare('DELETE FROM appointments WHERE id=?').bind(id).run();
+    if(id)await db.batch([db.prepare('DELETE FROM booking_requests WHERE appointment_id=?').bind(id),db.prepare('DELETE FROM appointments WHERE id=?').bind(id)]);
   });
   const created=await ownRequest('/api/scan/onsite','root001',{requestId:crypto.randomUUID(),registrationFlow:'frontdesk',campus:'南湖',name:'本人范围测试客户',studentId:'20309968',social:'self-scope-private-contact',deviceType:'笔记本电脑',brand:'联想',deviceModel:'范围测试电脑',warranty:'否',faultType:'系统问题',signature:[Array.from({length:10},(_,i)=>[.1+i*.05,.2+i*.03])]});
   assert.equal(created.status,201,JSON.stringify(created.body));id=created.body.id;
@@ -438,6 +438,7 @@ test('service pause preserves orders, scopes configuration and atomically stops 
     db.prepare('DELETE FROM staff_presence WHERE member_id=?').bind(memberId),
     db.prepare('DELETE FROM attendance_records WHERE member_id=?').bind(memberId),
     db.prepare("DELETE FROM duty_assignments WHERE id='pause-test-shift'"),
+    db.prepare("DELETE FROM booking_requests WHERE appointment_id IN (SELECT id FROM appointments WHERE student_id IN ('20309972','20309973'))"),
     db.prepare("DELETE FROM appointments WHERE student_id IN ('20309972','20309973')"),
     db.prepare('DELETE FROM service_day_overrides WHERE business_date=? AND campus_id=?').bind(businessDate,campusId)
   ]));
@@ -690,12 +691,13 @@ test('field number suggestions preserve suffix/date rules and campus privacy wit
     assert.deepEqual((await request('/api/scan/search','20261002',{q:'8'})).body,{items:[],hasMore:false});
     const suffix=await request('/api/scan/search','20261002',{q:'89'});
     assert.equal(suffix.status,200,JSON.stringify(suffix.body));assert.deepEqual(suffix.body.items.map(item=>item.id),[ids[0]]);
-    assert.deepEqual(Object.keys(suffix.body.items[0]).sort(),['campus','date','id','status','timeSlot']);
+    assert.deepEqual(Object.keys(suffix.body.items[0]).sort(),['campus','date','id','reception','status','timeSlot']);
+    assert.equal(suffix.body.items[0].reception,null);
     const history=await request('/api/scan/search','20261002',{q:'20261014-89'});
     assert.equal(history.status,200,JSON.stringify(history.body));assert.deepEqual(history.body.items.map(item=>item.id),[ids[1]]);
     assert.equal((await request('/api/scan/search','20261002',{q:'20261015-89'})).body.items.some(item=>item.campus==='浑南'),false);
     assert.equal((await request('/api/scan/search','20261002',{q:'%'})).status,400);
-  }finally{await db.batch(ids.map(id=>db.prepare('DELETE FROM appointments WHERE id=?').bind(id)));}
+  }finally{await db.batch(ids.flatMap(id=>[db.prepare('DELETE FROM booking_requests WHERE appointment_id=?').bind(id),db.prepare('DELETE FROM appointments WHERE id=?').bind(id)]));}
 });
 
 test("field day: reception, attendance, intake, transfer and completion share authoritative facts", async () => {
@@ -706,6 +708,13 @@ test("field day: reception, attendance, intake, transfer and completion share au
   const home = await request("/api/field/home", tech);
   assert.equal(home.status, 200, JSON.stringify(home.body));
   assert.equal(home.body.state, "unsigned");
+  assert.ok(!home.body.contexts.some(item => ['desk', 'operations'].includes(item.id)));
+  for (const account of [office, lead]) {
+    const workspace = await request('/api/field/home', account);
+    assert.equal(workspace.status, 200, JSON.stringify(workspace.body));
+    assert.deepEqual(workspace.body.contexts.filter(item => ['desk', 'operations'].includes(item.id)),
+      [{ id: 'desk', label: '现场工作台' }]);
+  }
   assert.equal(
     (
       await request(
@@ -1169,10 +1178,13 @@ test("concurrent claims and transfers serialize; cross-day repairs survive and r
     officeList.body.items.find((item) => item.id === id)?.social,
     undefined,
   );
-  assert.equal(
-    (await request(`/api/field/appointments/${id}`, office)).status,
-    403,
-  );
+  // Ongoing cross-day work remains visible to today's reception, without granting private historical fields.
+  const carryover = await request(`/api/field/appointments/${id}`, office);
+  assert.equal(carryover.status, 200);
+  for (const key of ["name", "studentId", "phone", "social", "frontPhotoId", "backPhotoId"])
+    assert.equal(carryover.body[key], undefined, key);
+  assert.equal(carryover.body.original, null);
+  assert.equal(carryover.body.intake, null);
   assert.equal(
     (
       await request(
@@ -1189,6 +1201,10 @@ test("concurrent claims and transfers serialize; cross-day repairs survive and r
       )
     ).status,
     200,
+  );
+  assert.equal(
+    (await request(`/api/field/appointments/${id}`, office)).status,
+    403,
   );
   await db
     .prepare(

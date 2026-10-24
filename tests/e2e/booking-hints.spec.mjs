@@ -84,7 +84,8 @@ test('React intake presents customer thermal answers for staff verification', as
   await loginStaff(page);
   for(const item of items){
     await page.getByRole('combobox',{name:'预约编号',exact:true}).fill(item.id);await page.getByRole('button',{name:'查询',exact:true}).click();
-    await expect(page.getByRole('dialog')).toContainText('客户填写液金情况：不清楚');
+    await page.getByRole('dialog').getByText('原始登记与协议',{exact:true}).click();
+    await expect(page.getByRole('dialog').locator('.repair-original')).toContainText('原填液金不清楚');
     await expect(page.getByRole('combobox',{name:'液金散热',exact:true})).toBeVisible();
     await page.getByRole('button',{name:'关闭',exact:true}).click();
   }

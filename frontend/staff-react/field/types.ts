@@ -5,6 +5,55 @@ export interface Appointment {
   date: string;
   timeSlot: string;
   status: string;
+  reception?: {
+    state: string;
+    receivedAt: string;
+    leftAt?: string | null;
+    ticket?: { number: number; date: string; campus: string } | null;
+    receivedBy?: string;
+    assignedTo?: string;
+    assignedMemberId?: string;
+    assignedToName?: string;
+    updatedAt?: string;
+  } | null;
+  registrationFlow?: string;
+  repairHistory?: {
+    items: {
+      id: string;
+      date: string;
+      timeSlot: string;
+      status: string;
+      outcome?: string;
+      repairNote?: string;
+      assignedToName?: string;
+    }[];
+    followups: {
+      id: string;
+      parentAppointmentId: string;
+      scheduledAppointmentId: string;
+      reason: string;
+      status: string;
+    }[];
+  } | null;
+  canReceive?: boolean;
+  canDispatch?: boolean;
+  canReturn?: boolean;
+  businessDate?: string;
+  queuePosition?: { position: number; total: number; dispatchPosition?: number } | null;
+  receptionPaused?: boolean;
+  receptionHistory?: {
+    id: string;
+    action: string;
+    reason: string;
+    occurredAt: string;
+    actorName: string;
+    ticketNumber?: number;
+    assigneeName?: string;
+    date?: string;
+    timeSlot?: string;
+  }[];
+  frontPhotoId?: string;
+  backPhotoId?: string;
   servicePaused?: boolean;
   deviceType: string;
   brand: string;
@@ -34,6 +83,7 @@ export interface Appointment {
   dellG15?: string;
   repairCode?: string;
   canStart?: boolean;
+  startBlockedReason?: string;
   canFinish?: boolean;
   canTransfer?: boolean;
   canReadDetails?: boolean;
@@ -67,6 +117,7 @@ export interface Person {
   account: string;
   department: string;
   state: string;
+  workload?: { started: number; completed: number };
   canReceive: boolean;
   reason: string;
   scheduled: boolean;
@@ -88,6 +139,8 @@ export interface Home {
   state: string;
   reason: string;
   currentRepair: Appointment | null;
+  pendingRepair?: Appointment | null;
+  nextInQueue?: Appointment | null;
   pendingSwapInvitations?: number;
   presence?: { revision: number; campusId: string; state: string };
   event?: { id: string; revision: number; startsAt: string; endsAt: string };
@@ -99,6 +152,13 @@ export interface Home {
     dutyType: string;
   }[];
   updatedAt: string;
+  overview?: {
+    notArrived: number;
+    total: number;
+    queued: number;
+    repairing: number;
+    available: number;
+  };
   appointments?: Appointment[];
   staffPresence?: Person[];
 }
