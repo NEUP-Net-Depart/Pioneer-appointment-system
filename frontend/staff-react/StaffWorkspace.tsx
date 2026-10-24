@@ -28,6 +28,15 @@ export function StaffWorkspace({
   const [expanded, setExpanded] = useState<string[]>(() => [
     ...new Set(entries.map((entry) => entry.group || '其他'))
   ]);
+  const knownGroups = useRef(new Set(entries.map((entry) => entry.group || '其他')));
+  useEffect(() => {
+    const added = [...new Set(entries.map((entry) => entry.group || '其他'))].filter(
+      (group) => !knownGroups.current.has(group)
+    );
+    if (!added.length) return;
+    added.forEach((group) => knownGroups.current.add(group));
+    setExpanded((current) => [...new Set([...current, ...added])]);
+  }, [entries]);
   useEffect(() => {
     setExpanded((current) => (current.includes(activeGroup) ? current : [...current, activeGroup]));
   }, [activeGroup]);

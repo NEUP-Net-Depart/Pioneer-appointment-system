@@ -11,3 +11,7 @@
   Permissions-Policy: camera=(self), microphone=(), geolocation=()
   ! Content-Security-Policy
   Content-Security-Policy: default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; media-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'
+
+/staff/assets/*
+  ! Cache-Control
+  Cache-Control: public, max-age=31536000, immutable

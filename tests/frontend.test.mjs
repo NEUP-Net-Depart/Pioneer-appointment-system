@@ -1,3 +1,4 @@
+import { importSpecifiers } from '../scripts/import-specifiers.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir, access } from 'node:fs/promises';
@@ -33,7 +34,7 @@ test('all frontend module imports resolve; user graph cannot reach staff modules
   const graph = new Map();
   for (const path of (await files('dist')).filter(path => path.endsWith('.js'))) {
     const source = await readFile(path, 'utf8');
-    const imports = [...source.matchAll(/(?:from\s+|import\s+)['"]([^'"]+)['"]/g)].map(([, specifier]) => resolve(specifier.startsWith('/') ? 'dist' + specifier : join(dirname(path), specifier)));
+    const imports = importSpecifiers(source, path).map(specifier => resolve(specifier.startsWith('/') ? 'dist' + specifier : join(dirname(path), specifier)));
     for (const dependency of imports) await access(dependency);
     for (const [, names, specifier] of source.matchAll(/import\s+\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g)) {
       const dependency = resolve(specifier.startsWith('/') ? 'dist' + specifier : join(dirname(path), specifier));
@@ -158,4 +159,13 @@ test('student request deadlines cover a stalled response body, not only receipt 
   globalThis.fetch=async(_input,{signal})=>new Response(new ReadableStream({start(controller){controller.enqueue(new TextEncoder().encode('{"id":'));signal.addEventListener('abort',()=>{bodyAborted=true;controller.error(new DOMException('aborted','AbortError'));});}}),{status:201,headers:{'Content-Type':'application/json'}});
   try{const {apiJson}=await import('../shared/api.js?body-timeout');await assert.rejects(apiJson('/api/appointments',{timeoutMs:20}),error=>error.name==='AbortError');assert.equal(bodyAborted,true);}
   finally{globalThis.fetch=original;}
+});
+
+
+test('module audits follow lazy and minified imports without reading quoted UI text as code', () => {
+  assert.deepEqual(importSpecifiers(`import{a}from"./shared.js";
+    const page=import("./page.js");
+    export {b} from "./export.js";
+    const help='from"missing.js"'; // import("./comment.js")
+    const data="import('./quoted.js')";`), ['./shared.js','./page.js','./export.js']);
 });

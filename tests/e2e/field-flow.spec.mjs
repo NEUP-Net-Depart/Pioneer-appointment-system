@@ -25,7 +25,7 @@ async function login(page, account) {
     .getByLabel("密码", { exact: true })
     .fill(account === 'root001' ? process.env.E2E_ROOT_PASSWORD : "StaffTest!2026");
   await page.getByRole("button", { name: "进入系统" }).click();
-  await expect(page.locator(".field-app:not(.workspace-bootstrap)")).toBeVisible();
+  await expect(page.locator(".field-content")).toBeVisible();
 }
 async function api(request, path, token, body, method = body ? "POST" : "GET") {
   const response = await request.fetch(path, {
@@ -119,7 +119,7 @@ for (const account of ['20261001', '20261002']) test(`ordinary staff ${account} 
   await expect(page.getByRole('heading', { name: '账号安全', exact: true })).toBeVisible();
   await expect(page.locator('.capacity-editor')).toHaveCount(0);
   await page.reload();
-  await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();
+  await expect(page.locator('.field-content')).toBeVisible();
   for (const label of ['成员管理','授权管理','账号管理','预约配置','统计分析']) await expect(page.locator('.field-sidebar').getByRole('button', { name: label, exact: true })).toHaveCount(0);
 });
 
@@ -186,12 +186,12 @@ test('platform startup errors never reveal old pages or start legacy record refr
   await page.locator('#login-id').fill('root001');
   await page.locator('#login-password').fill(process.env.E2E_ROOT_PASSWORD);
   await page.getByRole('button', { name: '进入系统' }).click();
-  await expect(page.locator('.workspace-bootstrap')).toContainText('初始化权限失败');
+  await expect(page.locator('.workspace-pending')).toContainText('初始化权限失败');
   await expect(page.locator('#management-header')).toBeHidden();
   await expect(page.locator('#staff-view')).toBeHidden();
   contextFails = false;
   await page.getByRole('button', { name: '重新加载工作区' }).click();
-  await expect(page.locator('.workspace-bootstrap')).toContainText('初始化工作台失败');
+  await expect(page.locator('.workspace-pending')).toContainText('初始化工作台失败');
   expect(legacyReads).toBe(0);
   homeFails = false;
   await page.getByRole('button', { name: '重新加载工作区' }).click();

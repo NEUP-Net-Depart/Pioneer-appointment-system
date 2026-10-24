@@ -25,16 +25,19 @@ export function fieldWorkflow({
   const names = { 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' };
   const allowed = (context, code, target = {}) =>
     authorizer.evaluate(context.actor, code, target, context, context.grants).allowed;
-  async function eligibility(actor, campus, ignoreAppointment = '') {
-    const context = await staff.contextFor(actor),
+  async function eligibility(actor, campus, ignoreAppointment = '', providedContext) {
+    const context = providedContext || (await staff.contextFor(actor)),
       id = campusId(campus);
-    const current = await appointments.currentRepair(actor.account);
-    const pending = await appointments.pendingDispatch(actor.account);
-    const event = await repository.dutyEvent(dateKey(), id);
+    const [current, pending, event, serviceDay] = await Promise.all([
+      appointments.currentRepair(actor.account),
+      appointments.pendingDispatch(actor.account),
+      repository.dutyEvent(dateKey(), id),
+      repository.serviceDay(dateKey(), id)
+    ]);
     const qualified = context.workProfiles.some((item) =>
       ['repair', 'exchange'].includes(item.profileCode)
     );
-    const paused = !!(await repository.serviceDay(dateKey(), id))?.paused;
+    const paused = !!serviceDay?.paused;
     const reason = paused
       ? '该校区今天暂停维修'
       : !qualified || !allowed(context, 'repair.start', { campusId: id })
@@ -57,8 +60,8 @@ export function fieldWorkflow({
     if (!result.allowed) fail(409, result.reason, 'WORK_NOT_READY');
     return result;
   }
-  async function home(actor, query = {}) {
-    const context = await staff.contextFor(actor);
+  async function home(actor, query = {}, providedContext) {
+    const context = providedContext || (await staff.contextFor(actor));
     const campuses = (actor.authorizedCampuses || []).map((value) => ({
       id: campusId(value),
       name: names[campusId(value)] || value
@@ -85,7 +88,7 @@ export function fieldWorkflow({
         'roles.manage'
       ].map((code) => [code, allowed(context, code, target)])
     );
-    const ready = await eligibility(actor, selected);
+    const ready = await eligibility(actor, selected, '', context);
     const current = ready.current ? await detail(actor, ready.current.id) : null;
     const contexts = [];
     if (
@@ -116,7 +119,7 @@ export function fieldWorkflow({
       campusId: selected,
       contexts,
       capability,
-      directAttendance: await staff.directAttendanceAction(actor, selected),
+      directAttendance: await staff.directAttendanceAction(actor, selected, context),
       permissions: context.permissions,
       navigation: context.navigation,
       state,
@@ -334,10 +337,10 @@ export function fieldWorkflow({
     };
   }
   async function board(actor, query = {}) {
-    const data = await home(actor, query);
+    const context = await staff.contextFor(actor);
+    const data = await home(actor, query, context);
     if (!data.contexts.some((item) => item.id === 'desk'))
       fail(403, '当前没有该校区的现场岗位权限');
-    const context = await staff.contextFor(actor);
     await appointments.expirePending(new Date().toISOString(), {
       campuses: [names[data.campusId]]
     });

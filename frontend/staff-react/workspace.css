@@ -1201,3 +1201,14 @@
     min-width: 120px;
   }
 }
+
+.workspace-pending {
+  min-height: 240px;
+  padding: 24px;
+  color: var(--muted);
+  background: var(--surface, #fff);
+  border-radius: 16px;
+}
+.workspace-pending .workspace-skeleton {
+  max-width: 640px;
+}

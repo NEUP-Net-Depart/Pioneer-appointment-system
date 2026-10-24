@@ -32,7 +32,10 @@ export function useStaffIdentity() {
     const controller = new AbortController();
     request.current = controller;
     try {
-      const profile = await apiJson('/api/auth/me', { signal: controller.signal });
+      const profile = await apiJson('/api/auth/me', {
+        signal: controller.signal,
+        timeoutMs: 15000
+      });
       if (
         controller.signal.aborted ||
         version !== generation.current ||
@@ -47,7 +50,11 @@ export function useStaffIdentity() {
       setError('');
     } catch (failure) {
       if (!controller.signal.aborted && version === generation.current)
-        setError(failure.message || '会话验证失败，请稍后重试');
+        setError(
+          failure.name === 'AbortError'
+            ? '会话验证超时，请检查网络后重试'
+            : failure.message || '会话验证失败，请稍后重试'
+        );
     } finally {
       if (!controller.signal.aborted && version === generation.current) setPending(false);
     }
