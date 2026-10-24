@@ -1,3 +1,4 @@
+import { WorkspaceSkeleton } from './WorkspaceSkeleton';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { ActivityContext, Modal, Notice } from './field/ui';
 import { request } from './request.js';
@@ -207,7 +208,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
         </button>
       </div>
       <Notice>{error || message}</Notice>
-      {!data && <p role="status">{loading ? '正在读取预约规则…' : '暂时无法读取预约规则。'}</p>}
+      {!data && loading && !error && <WorkspaceSkeleton variant="form" label="正在读取预约规则" />}
       {error && !editing && (
         <button
           disabled={busy || loading}

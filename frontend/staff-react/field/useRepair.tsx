@@ -22,6 +22,11 @@ export function useRepair({
   returnLabel?: string;
 }) {
   const routeActive = useContext(ActivityContext);
+  const [readRevision, setReadRevision] = useState(0);
+  const retry = () => {
+    setError('');
+    setReadRevision((value) => value + 1);
+  };
   const [item, setItem] = useState<Appointment | null>(null),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false);
@@ -125,7 +130,7 @@ export function useRepair({
     return () => {
       active = false;
     };
-  }, [id, draftKey]);
+  }, [id, draftKey, readRevision]);
   const intakeSession = item?.canReceive ? `${item.id}:${item.reception?.leftAt || 'new'}` : null;
   useEffect(() => {
     if (intakeSession) {
@@ -325,6 +330,7 @@ export function useRepair({
     receivers,
     receiversLoading,
     load,
+    retry,
     start,
     receptionCommand,
     finish,

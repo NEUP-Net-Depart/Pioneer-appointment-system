@@ -159,9 +159,7 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
         </button>
       </div>
       <Notice>{error || notice}</Notice>
-      {!items.length && (
-        <p role="status">{loading ? '正在读取维修安排…' : '暂时无法读取维修安排，请重试。'}</p>
-      )}
+      {!items.length && !loading && !error && <p>暂时无法读取维修安排，请重试。</p>}
       <div className="service-day-weeks">
         {[0, 7].map((offset) => {
           const days = weekdays.map((_, index) => addDays(start, offset + index));
@@ -205,7 +203,7 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
                   return (
                     <button
                       key={day}
-                      aria-label={`${day} 周${weekdays[index]} ${past ? '已过去' : paused ? '暂停维修' : '正常维修'}`}
+                      aria-label={`${day} 周${weekdays[index]} ${past ? '已过去' : !item ? '状态尚未读取' : paused ? '暂停维修' : '正常维修'}`}
                       aria-pressed={selected.includes(day)}
                       disabled={busy || loading || past || !item}
                       data-paused={paused}
@@ -219,7 +217,21 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
                     >
                       <span>周{weekdays[index]}</span>
                       <strong>{shortDate(day)}</strong>
-                      <small>{past ? '已过去' : paused ? '已暂停' : '正常'}</small>
+                      <small>
+                        {past ? (
+                          '已过去'
+                        ) : !item ? (
+                          loading && !error ? (
+                            <span className="workspace-skeleton-inline" aria-label="状态尚未读取" />
+                          ) : (
+                            '未读取'
+                          )
+                        ) : paused ? (
+                          '已暂停'
+                        ) : (
+                          '正常'
+                        )}
+                      </small>
                     </button>
                   );
                 })}

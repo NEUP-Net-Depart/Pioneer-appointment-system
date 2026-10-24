@@ -1,3 +1,4 @@
+import { WorkspaceSkeleton } from './WorkspaceSkeleton';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { ActivityContext, Modal } from './field/ui';
 import { useWorkspaceQuery } from './useWorkspaceQuery.js';
@@ -364,7 +365,7 @@ export function SwapInvitations({
               {detail.error}
             </p>
           )}
-          {!value && !detail.error && <p role="status">正在读取换班安排…</p>}
+          {!value && !detail.error && <WorkspaceSkeleton label="正在读取换班安排" />}
           {value && (
             <div className="swap-confirmation">
               <p>

@@ -1,3 +1,4 @@
+import { WorkspaceSkeleton } from './WorkspaceSkeleton';
 import { UnsavedPageContext } from './useUnsavedChanges.js';
 import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -383,17 +384,13 @@ class WorkspaceModuleBoundary extends React.Component {
 function WorkspacePending({ error, onRetry }) {
   return (
     <section className="workspace-pending" aria-busy={!error} aria-label="工作区内容">
-      <p role={error ? 'alert' : 'status'}>{error || '正在获取最新数据…'}</p>
+      {error && <p role="alert">{error}</p>}
       {error ? (
         <button className="field-primary" onClick={onRetry}>
           重新加载工作区
         </button>
       ) : (
-        <div className="workspace-skeleton" aria-hidden="true">
-          <span />
-          <span />
-          <span />
-        </div>
+        <WorkspaceSkeleton label="正在准备工作区内容" />
       )}
     </section>
   );

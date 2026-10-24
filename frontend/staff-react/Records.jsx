@@ -1,3 +1,4 @@
+import { WorkspaceSkeleton } from './WorkspaceSkeleton';
 import React, { useContext, useEffect, useState } from 'react';
 import { apiFetch } from '../../shared/api.js';
 import { statusLabels, TIME_SLOTS, outcomeLabels } from '../../shared/constants.js';
@@ -449,6 +450,9 @@ function RecordOverview({ result, onFilter, onOpen }) {
                 : '读取预约概览'}
           </span>
           <Notice>{result.error}</Notice>
+          {!data && result.loading && !result.error && (
+            <WorkspaceSkeleton variant="rows" label="正在读取预约概览" />
+          )}
           {data && (
             <>
               <div className="records-periods">

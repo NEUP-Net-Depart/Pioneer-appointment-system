@@ -1,3 +1,4 @@
+import { WorkspaceSkeleton } from './WorkspaceSkeleton';
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { request } from './request.js';
 import { ActivityContext } from './field/ui';
@@ -33,6 +34,8 @@ export function Permissions() {
   const [campuses, setCampuses] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [roles, setRoles] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [readRevision, setReadRevision] = useState(0);
   const [selected, setSelected] = useState(null);
   const [draft, setDraft] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -44,6 +47,8 @@ export function Permissions() {
   const readOnly = protectedRole || selected?.actions?.edit === false;
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setError('');
     Promise.all([
       request('/api/permissions'),
       request('/api/roles'),
@@ -63,11 +68,14 @@ export function Permissions() {
       })
       .catch((err) => {
         if (active) setError(err.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
       });
     return () => {
       active = false;
     };
-  }, []);
+  }, [readRevision]);
   useUnsavedChanges({
     dirty,
     active: routeActive,
@@ -143,154 +151,174 @@ export function Permissions() {
           ))}
         </aside>
         <article className="react-card">
-          <h2>{selected?.name || '正在读取角色…'}</h2>
-          <p className="react-muted">
-            启用已有权限会保留其范围、条件和有效期；新增权限采用受限的默认范围。
-          </p>
-          {protectedRole && (
-            <p className="react-muted">最高管理员权限包受保护，请选择其他角色配置。</p>
+          <h2>{selected?.name || '角色权限'}</h2>
+          {!selected && loading && (
+            <WorkspaceSkeleton variant="form" label="正在读取角色权限" rows={4} />
           )}
-          {readOnly && !protectedRole && (
-            <p className="react-muted">此角色涉及本人、系统账号或管理范围以外的授权，仅可查看。</p>
+          {!selected && error && (
+            <button onClick={() => setReadRevision((value) => value + 1)}>重新读取角色权限</button>
           )}
-          <div className="permission-tools">
-            <label>
-              查找权限
-              <input
-                type="search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="按功能名称查找"
-              />
-            </label>
-            <label className="permission-filter">
-              <input
-                type="checkbox"
-                checked={enabledOnly}
-                onChange={(event) => setEnabledOnly(event.target.checked)}
-              />
-              只看已启用
-            </label>
-            <span>
-              已启用 {codes.size} 项 · 当前显示 {visiblePermissions.length} 项
-            </span>
-          </div>
-          <WorkspaceSections
-            label="权限功能分类"
-            value={search.trim() ? 'all' : group}
-            onChange={(value) => {
-              setGroup(value);
-              setSearch('');
-            }}
-            items={permissionGroups}
-          />
-          <fieldset disabled={busy || !selected || readOnly} className="react-permission-fields">
-            <legend className="sr-only">角色权限</legend>
-            {visiblePermissions.map((permission) => (
-              <section className="react-permission-item" key={permission.code}>
-                <label className="react-permission">
+          {!selected && !loading && !error && <p>当前没有可查看的角色。</p>}
+          {selected && (
+            <>
+              <p className="react-muted">
+                启用已有权限会保留其范围、条件和有效期；新增权限采用受限的默认范围。
+              </p>
+              {protectedRole && (
+                <p className="react-muted">最高管理员权限包受保护，请选择其他角色配置。</p>
+              )}
+              {readOnly && !protectedRole && (
+                <p className="react-muted">
+                  此角色涉及本人、系统账号或管理范围以外的授权，仅可查看。
+                </p>
+              )}
+              <div className="permission-tools">
+                <label>
+                  查找权限
+                  <input
+                    type="search"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="按功能名称查找"
+                  />
+                </label>
+                <label className="permission-filter">
                   <input
                     type="checkbox"
-                    checked={codes.has(permission.code)}
-                    onChange={(event) =>
-                      setDraft((current) =>
-                        setGrantEnabled(
-                          current,
-                          permission,
-                          event.target.checked,
-                          selected.grants || []
-                        )
-                      )
-                    }
+                    checked={enabledOnly}
+                    onChange={(event) => setEnabledOnly(event.target.checked)}
                   />
-                  <span>
-                    <strong>{permission.name}</strong>
-                    <small>{permission.description || permission.code}</small>
-                  </span>
+                  只看已启用
                 </label>
-                {draft.map(
-                  (grant, index) =>
-                    grant.permissionCode === permission.code && (
-                      <details key={grant.id || index} className="react-grant-details">
-                        <summary>范围、条件与有效期</summary>
-                        <ScopeFields
-                          value={grant.scope}
-                          onChange={(scope) => updateGrant(index, { scope })}
-                          campuses={campuses}
-                          departments={departments}
-                          kinds={permission.scopeKinds}
-                          inherit="沿用账号授权范围"
-                        />
-                        <ConditionFields
-                          conditions={grant.conditions}
-                          providers={providers}
-                          requiredCodes={permission.conditionKinds}
-                          onChange={(conditions) => updateGrant(index, { conditions })}
-                        />
-                        <div className="react-form-grid">
-                          <label>
-                            权限生效日期
-                            <input
-                              type="date"
-                              value={grant.validity?.effectiveFrom || grant.validity?.from || ''}
-                              onChange={(event) =>
-                                updateGrant(index, {
-                                  validity: withGrantValidity(
-                                    grant.validity,
-                                    'effectiveFrom',
-                                    event.target.value
-                                  )
-                                })
-                              }
+                <span>
+                  已启用 {codes.size} 项 · 当前显示 {visiblePermissions.length} 项
+                </span>
+              </div>
+              <WorkspaceSections
+                label="权限功能分类"
+                value={search.trim() ? 'all' : group}
+                onChange={(value) => {
+                  setGroup(value);
+                  setSearch('');
+                }}
+                items={permissionGroups}
+              />
+              <fieldset
+                disabled={busy || !selected || readOnly}
+                className="react-permission-fields"
+              >
+                <legend className="sr-only">角色权限</legend>
+                {visiblePermissions.map((permission) => (
+                  <section className="react-permission-item" key={permission.code}>
+                    <label className="react-permission">
+                      <input
+                        type="checkbox"
+                        checked={codes.has(permission.code)}
+                        onChange={(event) =>
+                          setDraft((current) =>
+                            setGrantEnabled(
+                              current,
+                              permission,
+                              event.target.checked,
+                              selected.grants || []
+                            )
+                          )
+                        }
+                      />
+                      <span>
+                        <strong>{permission.name}</strong>
+                        <small>{permission.description || permission.code}</small>
+                      </span>
+                    </label>
+                    {draft.map(
+                      (grant, index) =>
+                        grant.permissionCode === permission.code && (
+                          <details key={grant.id || index} className="react-grant-details">
+                            <summary>范围、条件与有效期</summary>
+                            <ScopeFields
+                              value={grant.scope}
+                              onChange={(scope) => updateGrant(index, { scope })}
+                              campuses={campuses}
+                              departments={departments}
+                              kinds={permission.scopeKinds}
+                              inherit="沿用账号授权范围"
                             />
-                          </label>
-                          <label>
-                            权限结束日期
-                            <input
-                              type="date"
-                              value={grant.validity?.effectiveTo || grant.validity?.to || ''}
-                              onChange={(event) =>
-                                updateGrant(index, {
-                                  validity: withGrantValidity(
-                                    grant.validity,
-                                    'effectiveTo',
-                                    event.target.value
-                                  )
-                                })
-                              }
+                            <ConditionFields
+                              conditions={grant.conditions}
+                              providers={providers}
+                              requiredCodes={permission.conditionKinds}
+                              onChange={(conditions) => updateGrant(index, { conditions })}
                             />
-                          </label>
-                        </div>
-                      </details>
-                    )
-                )}
-              </section>
-            ))}
-          </fieldset>
-          {selected && !visiblePermissions.length && (
-            <p className="members-empty">没有匹配的权限，请调整筛选条件。</p>
+                            <div className="react-form-grid">
+                              <label>
+                                权限生效日期
+                                <input
+                                  type="date"
+                                  value={
+                                    grant.validity?.effectiveFrom || grant.validity?.from || ''
+                                  }
+                                  onChange={(event) =>
+                                    updateGrant(index, {
+                                      validity: withGrantValidity(
+                                        grant.validity,
+                                        'effectiveFrom',
+                                        event.target.value
+                                      )
+                                    })
+                                  }
+                                />
+                              </label>
+                              <label>
+                                权限结束日期
+                                <input
+                                  type="date"
+                                  value={grant.validity?.effectiveTo || grant.validity?.to || ''}
+                                  onChange={(event) =>
+                                    updateGrant(index, {
+                                      validity: withGrantValidity(
+                                        grant.validity,
+                                        'effectiveTo',
+                                        event.target.value
+                                      )
+                                    })
+                                  }
+                                />
+                              </label>
+                            </div>
+                          </details>
+                        )
+                    )}
+                  </section>
+                ))}
+              </fieldset>
+              {selected && !visiblePermissions.length && (
+                <p className="members-empty">没有匹配的权限，请调整筛选条件。</p>
+              )}
+              <div className="react-editor-actions">
+                <span aria-live="polite">
+                  {dirty ? '有未保存的修改' : selected ? '已与服务器同步' : ''}
+                </span>
+                <button
+                  type="button"
+                  disabled={!dirty || busy}
+                  onClick={() => {
+                    setDraft(structuredClone(selected.grants || []));
+                    setError('');
+                  }}
+                >
+                  放弃修改
+                </button>
+                <button
+                  type="button"
+                  className="react-primary"
+                  disabled={!dirty || busy}
+                  onClick={save}
+                >
+                  {busy ? '正在保存…' : '保存权限'}
+                </button>
+              </div>
+            </>
           )}
-          <div className="react-editor-actions">
-            <span aria-live="polite">{dirty ? '有未保存的修改' : '已与服务器同步'}</span>
-            <button
-              type="button"
-              disabled={!dirty || busy}
-              onClick={() => {
-                setDraft(structuredClone(selected.grants || []));
-                setError('');
-              }}
-            >
-              放弃修改
-            </button>
-            <button
-              type="button"
-              className="react-primary"
-              disabled={!dirty || busy}
-              onClick={save}
-            >
-              {busy ? '正在保存…' : '保存权限'}
-            </button>
-          </div>
         </article>
       </div>
     </section>

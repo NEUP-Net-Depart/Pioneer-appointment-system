@@ -1,3 +1,4 @@
+import { WorkspaceSkeleton } from './WorkspaceSkeleton';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { dateKey } from '../../shared/time.js';
 import { request } from './request.js';
@@ -24,6 +25,7 @@ export function MemberEditor({
   const active = useContext(ActivityContext),
     lock = useRef(false);
   const [detail, setDetail] = useState(null);
+  const [readRevision, setReadRevision] = useState(0);
   const [profile, setProfile] = useState({
     name: member.name,
     homeCampusId: member.homeCampusId,
@@ -102,7 +104,7 @@ export function MemberEditor({
     return () => {
       active = false;
     };
-  }, [member.memberId, canManageRoles]);
+  }, [member.memberId, canManageRoles, readRevision]);
 
   async function saveProfile(event) {
     event.preventDefault();
@@ -206,7 +208,18 @@ export function MemberEditor({
           )}
           {message && <p role="status">{message}</p>}
           {!detail ? (
-            <p role="status">正在读取成员资料…</p>
+            error ? (
+              <button
+                onClick={() => {
+                  setError('');
+                  setReadRevision((value) => value + 1);
+                }}
+              >
+                重新读取成员资料
+              </button>
+            ) : (
+              <WorkspaceSkeleton variant="form" label="正在读取成员资料" rows={4} />
+            )
           ) : (
             <>
               {canManageQualifications &&

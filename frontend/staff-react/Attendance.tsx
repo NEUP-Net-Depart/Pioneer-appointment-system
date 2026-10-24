@@ -1,3 +1,4 @@
+import { WorkspaceSkeleton } from './WorkspaceSkeleton';
 import React, { useContext, useEffect, useState } from 'react';
 import { ActivityContext, api, Notice, time } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
@@ -76,14 +77,11 @@ export function Attendance({ onNavigate }: { onNavigate: (route: string) => void
             {loading ? '正在更新…' : '刷新记录'}
           </button>
         </div>
-        {!items.length && (
-          <p className="field-muted">
-            {loading
-              ? '正在读取签到记录…'
-              : error
-                ? '暂时无法读取，请重试。'
-                : '还没有签到记录。到岗后，请使用扫一扫识别工作人员签到码。'}
-          </p>
+        {!items.length && loading && !error && (
+          <WorkspaceSkeleton variant="rows" label="正在读取签到记录" />
+        )}
+        {!items.length && !loading && !error && (
+          <p className="field-muted">还没有签到记录。到岗后，请使用扫一扫识别工作人员签到码。</p>
         )}
         <ul className="attendance-history-list">
           {items.map((item) => (

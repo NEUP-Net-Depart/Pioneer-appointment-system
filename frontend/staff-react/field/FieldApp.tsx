@@ -1,3 +1,4 @@
+import { WorkspaceSkeleton } from '../WorkspaceSkeleton';
 import { useState } from 'react';
 import { Empty, Modal, Notice, CredentialCard, Scanner, time } from './ui';
 import { Repair } from './Repair';
@@ -131,9 +132,13 @@ export function FieldApp({
           {result.loading ? '正在更新当前区域…' : ''}
         </div>
         {!data ? (
-          <Empty title={result.error ? '暂时无法读取工作台' : '正在读取当日工作'}>
-            <button onClick={refresh}>重新读取</button>
-          </Empty>
+          result.error ? (
+            <Empty title="暂时无法读取工作台">
+              <button onClick={refresh}>重新读取</button>
+            </Empty>
+          ) : (
+            <WorkspaceSkeleton label="正在读取当日工作" />
+          )
         ) : (
           <>
             {!!data.pendingSwapInvitations &&

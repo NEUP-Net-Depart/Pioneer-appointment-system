@@ -1,3 +1,4 @@
+import { WorkspaceSkeleton } from './WorkspaceSkeleton';
 import React, { useContext, useEffect, useState } from 'react';
 import { addDays, dateKey } from '../../shared/time.js';
 import { ActivityContext, Notice } from './field/ui';
@@ -79,11 +80,10 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
       </div>
       <Notice>{error}</Notice>
       {error && <button onClick={() => setRetry((value) => value + 1)}>重试</button>}
-      {((loading && !data) || !date) && (
-        <p className="workspace-update" role="status">
-          {loading ? '正在更新实际数据…' : '请选择日期。'}
-        </p>
+      {date && loading && !data && !error && (
+        <WorkspaceSkeleton variant="rows" label="正在读取实际容量" rows={4} />
       )}
+      {!date && <p className="workspace-update">请选择日期。</p>}
       {data && (
         <>
           <div className="capacity-source">

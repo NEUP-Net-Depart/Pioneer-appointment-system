@@ -1,3 +1,4 @@
+import { WorkspaceSkeleton } from '../WorkspaceSkeleton';
 import { outcomeLabels } from '../../../shared/constants.js';
 import { Modal, Notice, CredentialCard, Status } from './ui';
 import type { Person } from './types';
@@ -58,6 +59,7 @@ export function Repair({
     receivers,
     receiversLoading,
     load,
+    retry,
     start,
     receptionCommand,
     finish,
@@ -88,7 +90,14 @@ export function Repair({
     >
       <Notice>{error}</Notice>
       {!item ? (
-        <p>正在读取工单…</p>
+        <>
+          <p className="field-muted">{id}</p>
+          {error ? (
+            <button onClick={retry}>重新读取工单</button>
+          ) : (
+            <WorkspaceSkeleton label="正在读取工单" />
+          )}
+        </>
       ) : (
         <>
           <div className="field-ticket">

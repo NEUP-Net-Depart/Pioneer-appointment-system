@@ -1,3 +1,4 @@
+import { WorkspaceSkeleton } from './WorkspaceSkeleton';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { request } from './request.js';
 import { ActivityContext } from './field/ui';
@@ -99,7 +100,9 @@ export function RequirementEditor({ taskId, onSaved, onDirty }) {
           {notice}
         </p>
       )}
-      {!data && <p>{busy ? '正在读取需求…' : '暂时无法读取需求，请重试。'}</p>}
+      {!data && !error && (
+        <WorkspaceSkeleton variant="form" label="正在读取每日人员需求" rows={4} />
+      )}
       {data && (
         <form ref={navigationForm} onSubmit={save}>
           <p className="react-muted">

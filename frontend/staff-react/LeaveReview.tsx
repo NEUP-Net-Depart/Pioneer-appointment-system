@@ -1,3 +1,4 @@
+import { WorkspaceSkeleton } from './WorkspaceSkeleton';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { ActivityContext, Modal } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
@@ -147,7 +148,7 @@ export function LeaveReview({
               {detail.error}
             </p>
           )}
-          {!current && !detail.error && <p role="status">正在读取申请详情…</p>}
+          {!current && !detail.error && <WorkspaceSkeleton label="正在读取申请详情" />}
           {current && (
             <>
               <header className="leave-row-title">
@@ -391,11 +392,12 @@ export function LeaveReview({
                 <p className="leave-reason">{item.reason}</p>
               </button>
             ))}
-            {!items.length && (
+            {!items.length && list.loading && !list.data && (
+              <WorkspaceSkeleton variant="rows" label="正在读取申请列表" />
+            )}
+            {!items.length && !list.loading && !list.error && (
               <div className="react-card empty-state">
-                <strong>
-                  {list.loading && !list.data ? '正在读取申请' : '当前没有符合条件的申请'}
-                </strong>
+                <strong>当前没有符合条件的申请</strong>
                 <span>仅显示你有权审批的校区和部门。</span>
               </div>
             )}
