@@ -16,6 +16,7 @@ import { receptionLabels } from '../../../shared/reception.js';
 import { qrImage } from '../../../shared/zxing.js';
 import { createScanner } from './scanner.js';
 import { request } from '../request.js';
+import { useDataMotion } from '../useDataMotion';
 
 export const api = <T,>(
   url: string,
@@ -29,7 +30,7 @@ export const time = (value: string) =>
   });
 export function Status({ value }: { value: string }) {
   return (
-    <span className={`field-status ${statusClass[value] || ''}`}>
+    <span data-motion-value="status" className={`field-status ${statusClass[value] || ''}`}>
       {statusLabels[value] ||
         receptionLabels[value] ||
         {
@@ -48,7 +49,7 @@ export function Status({ value }: { value: string }) {
 }
 export function Notice({ children }: { children: ReactNode }) {
   return children ? (
-    <p className="field-notice" role="status">
+    <p data-motion-value="text" className="field-notice" role="status">
       {children}
     </p>
   ) : null;
@@ -56,8 +57,8 @@ export function Notice({ children }: { children: ReactNode }) {
 export function Empty({ title, children }: { title: string; children?: ReactNode }) {
   return (
     <div className="field-empty">
-      <strong>{title}</strong>
-      <p>{children}</p>
+      <strong data-motion-value="text">{title}</strong>
+      <p data-motion-value="text">{children}</p>
     </div>
   );
 }
@@ -85,6 +86,42 @@ export function Modal({
   const titleId = useId();
   const ref = useRef<HTMLDialogElement>(null);
   const active = useContext(ActivityContext);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const closing = useRef(false);
+  const motion = useRef<Animation | null>(null);
+  function dismiss() {
+    if (!dismissible || closing.current) return;
+    const dialog = ref.current;
+    if (
+      !dialog ||
+      document.hidden ||
+      matchMedia('(prefers-reduced-motion: reduce)').matches ||
+      dialog.querySelector('video,canvas')
+    ) {
+      onClose();
+      return;
+    }
+    closing.current = true;
+    motion.current?.cancel();
+    const animation = dialog.animate(
+      [
+        { opacity: 1, transform: 'none' },
+        { opacity: 0.75, transform: 'none' }
+      ],
+      { duration: 120, easing: 'ease-in', fill: 'forwards' }
+    );
+    motion.current = animation;
+    animation.finished.then(
+      () => {
+        closing.current = false;
+        onClose();
+      },
+      () => {
+        closing.current = false;
+      }
+    );
+  }
+  useDataMotion(bodyRef, active);
   useEffect(() => {
     if (!active) {
       ref.current?.close();
@@ -93,12 +130,26 @@ export function Modal({
     const dialog = ref.current!;
     const previous = document.activeElement as HTMLElement;
     dialog.showModal();
+    closing.current = false;
+    if (
+      !document.hidden &&
+      !matchMedia('(prefers-reduced-motion: reduce)').matches &&
+      !dialog.querySelector('video,canvas')
+    )
+      motion.current = dialog.animate(
+        [
+          { opacity: 0.75, transform: 'none' },
+          { opacity: 1, transform: 'none' }
+        ],
+        { duration: 180, easing: 'cubic-bezier(.2,.75,.25,1)' }
+      );
     if (openModalCount++ === 0) {
       previousRootOverflow = document.documentElement.style.overflow;
       document.documentElement.style.overflow = 'hidden';
     }
     if (initialFocus) dialog.querySelector<HTMLElement>(initialFocus)?.focus();
     return () => {
+      motion.current?.cancel();
       dialog.close();
       if (--openModalCount === 0) document.documentElement.style.overflow = previousRootOverflow;
       if (previous && !previous.closest('[hidden]')) previous.focus?.();
@@ -109,6 +160,18 @@ export function Modal({
       className={`field-modal${sidePanel ? ' field-side-panel' : ''}${compact ? ' workspace-confirm-dialog' : ''}`}
       ref={ref}
       aria-labelledby={titleId}
+      onClickCapture={(event) => {
+        if (closing.current) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }}
+      onSubmitCapture={(event) => {
+        if (closing.current) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }}
       onKeyDown={(event) => {
         if (event.key !== 'Tab') return;
         event.stopPropagation();
@@ -139,18 +202,24 @@ export function Modal({
       onCancel={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        if (dismissible) onClose();
+        dismiss();
       }}
     >
       <header>
-        <h2 id={titleId} className={title === '现场核验' ? 'field-state-title' : undefined}>
+        <h2
+          data-motion-value="text"
+          id={titleId}
+          className={title === '现场核验' ? 'field-state-title' : undefined}
+        >
           {title}
         </h2>
-        <button type="button" disabled={!dismissible} onClick={onClose} aria-label="关闭">
+        <button type="button" disabled={!dismissible} onClick={dismiss} aria-label="关闭">
           关闭
         </button>
       </header>
-      <div className="workspace-dialog-body">{children}</div>
+      <div ref={bodyRef} className="workspace-dialog-body">
+        {children}
+      </div>
       {footer && <footer className="workspace-dialog-footer">{footer}</footer>}
     </dialog>
   );
@@ -178,9 +247,16 @@ export function Qr({ code, label }: { code: string; label: string }) {
   return (
     <div className="field-qr">
       {url ? (
-        <img src={url} alt={label} width="240" height="240" />
+        <img
+          className="workspace-loaded-media"
+          onLoad={(event) => (event.currentTarget.dataset.ready = 'true')}
+          src={url}
+          alt={label}
+          width="240"
+          height="240"
+        />
       ) : (
-        <p>{error || '正在生成二维码…'}</p>
+        <p data-motion-value="text">{error || '正在生成二维码…'}</p>
       )}
     </div>
   );
@@ -201,20 +277,20 @@ export function CredentialCard({
   return (
     <section className={`field-credential field-credential--${kind}`} aria-label={title}>
       <header>
-        <span className="field-credential-kind">
+        <span data-motion-value="text" className="field-credential-kind">
           {repair ? '客户 · 设备交接' : '工作人员 · 到岗考勤'}
         </span>
-        <h3>{title}</h3>
-        <p>{context}</p>
-        {detail && <p>{detail}</p>}
+        <h3 data-motion-value="text">{title}</h3>
+        <p data-motion-value="text">{context}</p>
+        {detail && <p data-motion-value="text">{detail}</p>}
       </header>
       <Qr code={code} label={title} />
-      <p className="field-credential-instruction">
+      <p data-motion-value="text" className="field-credential-instruction">
         {repair
           ? '请维修人员扫描，核对客户与设备后确认接单。'
           : '请工作人员使用本人账号扫描，核对校区与场次后确认签到。'}
       </p>
-      <small>
+      <small data-motion-value="text">
         {repair ? '确认接单后才绑定维修人员。' : '记录本人到岗，不创建或绑定客户工单。'}
       </small>
     </section>

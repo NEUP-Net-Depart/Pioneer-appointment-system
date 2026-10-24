@@ -1,3 +1,4 @@
+import { DataFields } from './DataValue';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { request } from './request.js';
 import { ActivityContext } from './field/ui';
@@ -84,25 +85,44 @@ export function RequirementEditor({ taskId, onSaved, onDirty }) {
   return (
     <section className="react-card staffing-editor" aria-busy={busy}>
       <div className="field-section-heading">
-        <h2>{data?.task.dutyType === 'office' ? '每日办公人员目标' : '每日人员需求'}</h2>
+        <h2 data-motion-value="text">
+          {data?.task.dutyType === 'office' ? '每日办公人员目标' : '每日人员需求'}
+        </h2>
         <button type="button" disabled={busy || dirty} onClick={load}>
           刷新
         </button>
       </div>
       {error && (
-        <p role="alert" className="react-error">
+        <p data-motion-value="text" role="alert" className="react-error">
           {error}
         </p>
       )}
       {notice && (
-        <p role="status" className="react-message">
+        <p data-motion-value="text" role="status" className="react-message">
           {notice}
         </p>
       )}
-      {!data && <p>{busy ? '正在读取需求…' : '暂时无法读取需求，请重试。'}</p>}
+      {!data && (
+        <section>
+          <h3>快速设置</h3>
+          <p className="react-muted">
+            按本任务的日期、校区配置每日人员需求，保存前核对对应岗位规则。
+          </p>
+          <fieldset disabled>
+            <legend>整周设置</legend>
+            <label>
+              每日人数
+              <input type="number" value="" readOnly />
+            </label>
+            <button type="button">应用到整周工作日</button>
+          </fieldset>
+          <h3>逐日需求</h3>
+          <DataFields pending={!error} fields={[['日期与校区'], ['岗位规则'], ['每日人数']]} />
+        </section>
+      )}
       {data && (
         <form ref={navigationForm} onSubmit={save}>
-          <p className="react-muted">
+          <p data-motion-value="text" className="react-muted">
             {data.task.dutyType === 'office'
               ? '自动排班按每日目标人数安排办公人员，优先均衡周内班次数。'
               : '每天固定安排 1 名负责人。下列人数仅计算普通维修人员，允许超过最低人数；交流人员不参与排班。'}
@@ -145,7 +165,7 @@ export function RequirementEditor({ taskId, onSaved, onDirty }) {
             <div className="staffing-days">
               {rows.map((row, index) => (
                 <label key={`${row.businessDate}:${row.campusId}`}>
-                  <strong>
+                  <strong data-motion-value="text">
                     {row.businessDate.slice(5).replace('-', '/')} ·{' '}
                     {
                       ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][
@@ -153,7 +173,7 @@ export function RequirementEditor({ taskId, onSaved, onDirty }) {
                       ]
                     }
                   </strong>
-                  <span>{campusNames[row.campusId] || row.campusId}</span>
+                  <span data-motion-value="text">{campusNames[row.campusId] || row.campusId}</span>
                   <span className="staffing-count">
                     <input
                       aria-label={`${row.businessDate}普通人员最低人数`}
@@ -184,7 +204,9 @@ export function RequirementEditor({ taskId, onSaved, onDirty }) {
             </div>
           </fieldset>
           <div className="field-actions">
-            <span className="react-muted">{dirty ? '有未保存的需求调整' : '已加载服务端需求'}</span>
+            <span data-motion-value="text" className="react-muted">
+              {dirty ? '有未保存的需求调整' : '已加载服务端需求'}
+            </span>
             <button
               type="submit"
               className="field-primary"

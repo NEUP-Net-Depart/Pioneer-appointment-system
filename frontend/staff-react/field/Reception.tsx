@@ -103,7 +103,7 @@ export function Reception({
     return null;
   return (
     <section className="reception-panel" aria-label="现场接待与分派" aria-busy={saving}>
-      <small className="field-state-note">
+      <small data-motion-value="text" className="field-state-note">
         已到场核验 · {formatInstant(item.reception.receivedAt)}
         {item.queuePosition
           ? ` · 第 ${item.queuePosition.position} 位 / ${item.queuePosition.total} 单`
@@ -114,7 +114,7 @@ export function Reception({
       <Notice>{error}</Notice>
       {item.reception.state === 'assigned' ? (
         <>
-          <small className="field-state-note" role="status">
+          <small data-motion-value="text" className="field-state-note" role="status">
             已分派给 {item.reception.assignedToName || '维修人员'} · 待接手
           </small>
           {(item.canReturn || item.canDispatch) && (
@@ -172,9 +172,9 @@ export function Reception({
                   required
                 />
                 <span>
-                  <strong>{person.name}</strong>
+                  <strong data-motion-value="text">{person.name}</strong>
                   <StaffIdentity identities={person.identities} />
-                  <small>
+                  <small data-motion-value="number">
                     今日已接 {person.workload?.started || 0} · 已完成{' '}
                     {person.workload?.completed || 0}
                   </small>

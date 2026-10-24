@@ -1,3 +1,4 @@
+import { DataValue } from './DataValue';
 import React, { useContext, useEffect, useState } from 'react';
 import { apiFetch } from '../../shared/api.js';
 import { attachmentSize, attachmentUrl } from '../../shared/attachments.js';
@@ -57,10 +58,10 @@ export function RepairAttachments({ id, revision }) {
         files.length ? (
           <ul className="record-attachments">
             {files.map((file) => (
-              <li key={file.id}>
+              <li data-motion-item="" key={file.id}>
                 <button disabled={!!busy} onClick={() => download(file)}>
                   {busy === file.id ? '正在读取…' : file.filename}
-                  <small>{attachmentSize(file.size)}</small>
+                  <small data-motion-value="text">{attachmentSize(file.size)}</small>
                 </button>
               </li>
             ))}
@@ -69,7 +70,7 @@ export function RepairAttachments({ id, revision }) {
           <p className="field-muted">暂无可用附件。</p>
         )
       ) : (
-        <p>正在读取附件…</p>
+        open && !error && <DataValue label="附件" />
       )}
     </details>
   );

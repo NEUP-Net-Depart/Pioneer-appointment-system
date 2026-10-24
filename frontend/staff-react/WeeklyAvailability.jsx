@@ -158,7 +158,9 @@ export function WeeklyAvailability({ tasks }) {
         .filter((item) => item.enabled)
         .map((item) => (
           <div className="react-message" key={item.duty_type}>
-            <span>{item.duty_type === 'office' ? '办公' : '维修'}可用时间自动延续已开启</span>
+            <span data-motion-value="text">
+              {item.duty_type === 'office' ? '办公' : '维修'}可用时间自动延续已开启
+            </span>
             <button
               disabled={busy}
               onClick={() =>
@@ -196,18 +198,18 @@ export function WeeklyAvailability({ tasks }) {
           {task && (
             <>
               {task.collectionIssue && (
-                <p className="react-message" role="status">
+                <p data-motion-value="text" className="react-message" role="status">
                   {task.collectionIssue}
                 </p>
               )}
               {!task.actions?.fill && (
-                <p className="react-message" role="status">
+                <p data-motion-value="text" className="react-message" role="status">
                   {task.collectionState === 'scheduled'
                     ? '本周填报尚未开放，请在开放时间后填写。'
                     : '当前周收集已结束，可查看原填报。开放下一周时仍从这个任务填写。'}
                 </p>
               )}
-              <p className="react-muted">
+              <p data-motion-value="text" className="react-muted">
                 截止{' '}
                 {new Date(task.deadline).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}
               </p>
@@ -231,8 +233,8 @@ export function WeeklyAvailability({ tasks }) {
               <fieldset disabled={busy || unavailable || !task.actions?.fill}>
                 {Array.from({ length: 4 }, (_, i) => addDays(task.weekStart, i)).map(
                   (day, index) => (
-                    <section className="weekly-day" key={day}>
-                      <h3>
+                    <section data-motion-item="" className="weekly-day" key={day}>
+                      <h3 data-motion-value="text">
                         {['周一', '周二', '周三', '周四'][index]} · {day.slice(5)}
                       </h3>
                       {task.campusScope.campusIds
@@ -256,7 +258,7 @@ export function WeeklyAvailability({ tasks }) {
                                 {campusNames[campusId]}校区
                               </label>
                               {window && (
-                                <p className="react-muted">
+                                <p data-motion-value="text" className="react-muted">
                                   完整值班 · {task.slotStart}–{task.slotEnd}
                                 </p>
                               )}
@@ -283,7 +285,7 @@ export function WeeklyAvailability({ tasks }) {
                 按星期和校区带入后续任务的完整班次。自动延续仍会检查资格和任务范围，不覆盖已经提交的内容，可随时关闭。
               </p>
               {submission && (
-                <p className="react-muted">
+                <p data-motion-value="text" className="react-muted">
                   {submission.source === 'carried' ? '本周由自动延续提交' : '上次手动提交'}：
                   {new Date(submission.submittedAt).toLocaleString('zh-CN', {
                     timeZone: 'Asia/Shanghai'
@@ -291,12 +293,12 @@ export function WeeklyAvailability({ tasks }) {
                 </p>
               )}
               {error && (
-                <p role="alert" className="react-error">
+                <p data-motion-value="text" role="alert" className="react-error">
                   {error}
                 </p>
               )}
               {notice && (
-                <p role="status" className="react-message">
+                <p data-motion-value="text" role="status" className="react-message">
                   {notice}
                 </p>
               )}
@@ -341,7 +343,7 @@ export function WeeklyAvailability({ tasks }) {
         </p>
       )}
       {!tasks.length && error && (
-        <p role="alert" className="react-error">
+        <p data-motion-value="text" role="alert" className="react-error">
           {error}
         </p>
       )}

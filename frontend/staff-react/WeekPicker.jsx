@@ -7,7 +7,7 @@ export function WeekPicker({ value, onChange, disabled = false, label = '工作�
   const options = Array.from({ length: 105 }, (_, i) => addDays(current, (i - 52) * 7));
   return (
     <div className="week-picker">
-      <span>{label}</span>
+      <span data-motion-value="text">{label}</span>
       <div>
         <button
           type="button"

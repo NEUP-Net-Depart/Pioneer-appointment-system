@@ -144,15 +144,18 @@ test('each campus requires its own reading confirmations, optional announcements
 
 test('administrators configure release and announcements with guarded navigation and responsive controls',async({page})=>{
   await mockStaff(page);
-  const writes=[];let settings={campus:'南湖',releaseTime:'10:00',revision:0},notices=[];
+  const writes=[];let settings={campus:'南湖',releaseTime:'10:00',revision:0},notices=[],reads=0;
   await page.route('**/api/slot-capacities',route=>route.fulfill({json:{items:['南湖','浑南'].flatMap(campus=>[1,2,3,4].flatMap(weekday=>TIME_SLOTS.map(timeSlot=>({campus,weekday,timeSlot,capacity:5,revision:0}))))}}));
-  await page.route('**/api/booking-settings/manage?*',route=>route.fulfill({json:{settings,notices}}));
+  await page.route('**/api/booking-settings/manage?*',route=>{reads++;return route.fulfill({json:{settings,notices}});});
   await page.route('**/api/booking-settings',route=>{const value=route.request().postDataJSON();writes.push(value);settings={...value,revision:value.revision+1};return route.fulfill({json:settings});});
   await page.route('**/api/booking-notices',route=>{const value=route.request().postDataJSON();writes.push(value);const saved={...value,revision:value.revision+1};notices=[saved];return route.fulfill({json:saved});});
   await loginStaff(page);await staffPage(page,'预约配置');
   await page.evaluate(()=>Object.defineProperty(document,'hidden',{configurable:true,value:true}));
   await page.getByRole('button',{name:'放号时间',exact:true}).click();
-  await expect(page.getByLabel('放号时间（北京时间）')).toHaveCount(0);
+  // Static fields render immediately; hidden documents must not fetch or edit unknown data.
+  await expect(page.getByLabel('放号时间（北京时间）')).toBeVisible();
+  await expect(page.getByLabel('放号时间（北京时间）')).toBeDisabled();
+  expect(reads).toBe(0);
   await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));});
   const input=page.getByLabel('放号时间（北京时间）');await expect(input).toHaveValue('10:00');await input.fill('11:30');
   await page.getByRole('button',{name:'每周模板',exact:true}).click();await expect(page.getByRole('dialog',{name:'有尚未保存的修改'})).toBeVisible();

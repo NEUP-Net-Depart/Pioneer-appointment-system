@@ -165,8 +165,8 @@ export function AppointmentLookup({
               onClick={() => choose(item)}
             >
               <span>
-                <strong>{item.id}</strong>
-                <small>
+                <strong data-motion-value="text">{item.id}</strong>
+                <small data-motion-value="text">
                   {item.campus}校区 · {item.date} · {item.timeSlot}
                 </small>
               </span>
@@ -176,7 +176,7 @@ export function AppointmentLookup({
         </div>
       )}
       {message && (
-        <p role="status" className="field-lookup-help">
+        <p data-motion-value="text" role="status" className="field-lookup-help">
           {message}
         </p>
       )}

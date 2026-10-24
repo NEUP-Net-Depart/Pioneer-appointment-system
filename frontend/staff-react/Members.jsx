@@ -1,3 +1,4 @@
+import { DataValue } from './DataValue';
 import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { request } from './request.js';
 import { ActivityContext } from './field/ui';
@@ -22,7 +23,7 @@ export function Members({ user }) {
   const [selected, setSelected] = useState(null);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(!saved);
   const generation = useRef(0);
   const controller = useRef(null);
 
@@ -69,7 +70,7 @@ export function Members({ user }) {
       return;
     }
     setBusy(true);
-    setNextCursor('');
+    if (resolvedQuery !== query) setNextCursor('');
     const timer = setTimeout(() => load(), 200);
     return () => {
       clearTimeout(timer);
@@ -96,7 +97,7 @@ export function Members({ user }) {
         </button>
       </WorkspaceHeader>
       {error && (
-        <p className="react-error" role="alert">
+        <p data-motion-value="text" className="react-error" role="alert">
           {error}
         </p>
       )}
@@ -135,7 +136,7 @@ export function Members({ user }) {
               <option value="inactive">停用</option>
             </select>
           </label>
-          <span className="members-result-count" role="status">
+          <span data-motion-value="number" className="members-result-count" role="status">
             {busy ? '正在更新筛选结果…' : `已显示 ${items.length} 名成员`}
           </span>
         </div>
@@ -148,13 +149,15 @@ export function Members({ user }) {
             <span>操作</span>
           </div>
           {items.map((item) => (
-            <div className="react-row" key={item.memberId}>
+            <div data-motion-item={item.memberId} className="react-row" key={item.memberId}>
               <span className="react-member-identity">
-                <strong>{item.name}</strong>
+                <strong data-motion-value="text">{item.name}</strong>
                 <StaffIdentity identities={item.identities} />
-                <small>{item.studentId || item.account || '未关联登录账号'}</small>
+                <small data-motion-value="text">
+                  {item.studentId || item.account || '未关联登录账号'}
+                </small>
               </span>
-              <span data-label="所属校区">
+              <span data-motion-value="text" data-label="所属校区">
                 {item.homeCampusId === 'campus-hunnan'
                   ? '浑南'
                   : item.homeCampusId === 'campus-nanhu'
@@ -163,12 +166,15 @@ export function Members({ user }) {
               </span>
               <span data-label="状态">
                 <span
+                  data-motion-value="text"
                   className={`react-member-status ${item.status === 'active' ? 'is-active' : ''}`}
                 >
                   {item.status === 'active' ? '正常' : '停用'}
                 </span>
               </span>
-              <span data-label="主要部门">{item.primaryDepartment || '未设部门'}</span>
+              <span data-motion-value="text" data-label="主要部门">
+                {item.primaryDepartment || '未设部门'}
+              </span>
               <span className="members-row-action">
                 <button disabled={busy} onClick={() => setSelected(item)}>
                   编辑成员与权限
@@ -176,14 +182,7 @@ export function Members({ user }) {
               </span>
             </div>
           ))}
-          {busy && !items.length && (
-            <div className="workspace-skeleton" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-              <span />
-            </div>
-          )}
+          {busy && !items.length && <DataValue label="成员列表" />}
           {!busy && !items.length && !error && (
             <div className="members-empty">
               <h2>没有找到成员</h2>

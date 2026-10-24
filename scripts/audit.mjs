@@ -21,7 +21,7 @@ for (const path of runtime) {
   assert.ok(!forbidden.test(source), `Retired architecture in ${path}`);
   if (!/\.[jt]sx?$/.test(path)) continue;
   const imports = [];
-  for (const [, specifier] of source.matchAll(/(?:from\s+|import\s+)['"]([^'"]+)['"]/g)) {
+  for (const [, specifier] of source.matchAll(/(?:from\s+|import\s+|import\s*\(\s*)['"]([^'"]+)['"]/g)) {
     if (specifier.startsWith('node:')) {
       assert.ok(['node:crypto', 'node:buffer'].includes(specifier) && path.startsWith(join('src', 'lib')), `Unsupported runtime dependency in ${path}`);
       continue;
@@ -30,6 +30,13 @@ for (const path of runtime) {
       const packageName = specifier.startsWith('@') ? specifier.split('/').slice(0, 2).join('/') : specifier.split('/')[0];
       assert.ok(path.startsWith(join('frontend', 'staff-react')) && Object.hasOwn(dependencies, packageName), `Unsupported package dependency ${specifier} in ${path}`);
       import.meta.resolve(specifier);
+      continue;
+    }
+    // These two public modules are generated from the declared zxing-wasm
+    // dependency by build.mjs; all other lazy imports follow the source graph.
+    if (['/vendor/zxing-reader.js', '/vendor/zxing-writer.js'].includes(specifier)) {
+      assert.ok(path === join('shared', 'zxing.js') && Object.hasOwn(dependencies, 'zxing-wasm'), `Unsupported vendor import in ${path}`);
+      import.meta.resolve('zxing-wasm');
       continue;
     }
     let dependency = resolve(root, specifier.startsWith('/') ? specifier.slice(1) : join(dirname(path), specifier));

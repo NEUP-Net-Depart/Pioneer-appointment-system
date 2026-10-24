@@ -158,8 +158,8 @@ export function CollectionComposer({ office, onClose, onCreated, onError }) {
       <form className="roster-compose" onSubmit={submit}>
         <ol className="roster-compose-steps" aria-label="收集发布步骤">
           {['范围与时间', '人数与名单', '确认发布'].map((text, index) => (
-            <li key={text} aria-current={step === index ? 'step' : undefined}>
-              <span>{index + 1}</span>
+            <li data-motion-item="" key={text} aria-current={step === index ? 'step' : undefined}>
+              <span data-motion-value="text">{index + 1}</span>
               {text}
             </li>
           ))}
@@ -334,7 +334,7 @@ export function CollectionComposer({ office, onClose, onCreated, onError }) {
             {
               <fieldset className="roster-demand-matrix" disabled={busy}>
                 <legend>{office ? '每日办公人员目标人数' : '每日普通维修人员最低需求'}</legend>
-                <p className="react-muted">
+                <p data-motion-value="text" className="react-muted">
                   {office
                     ? '自动排班按目标人数安排，优先均衡周内次数，每人每天最多一班。'
                     : '每个校区每天另排 1 名负责人，普通人员允许超过最低人数。'}
@@ -369,7 +369,7 @@ export function CollectionComposer({ office, onClose, onCreated, onError }) {
                 {form.campusIds.map((campusId) => (
                   <div className="roster-campus-demand" key={campusId}>
                     <div>
-                      <strong>{campuses[campusId]}</strong>
+                      <strong data-motion-value="text">{campuses[campusId]}</strong>
                       <button
                         type="button"
                         onClick={() =>
@@ -391,7 +391,9 @@ export function CollectionComposer({ office, onClose, onCreated, onError }) {
                       {days.map((day, i) => (
                         <label key={day}>
                           {day}
-                          <small>{addDays(form.weekStart, i).slice(5)}</small>
+                          <small data-motion-value="text">
+                            {addDays(form.weekStart, i).slice(5)}
+                          </small>
                           <input
                             aria-label={`${campuses[campusId]}${day}最低人数`}
                             required
@@ -460,7 +462,7 @@ export function CollectionComposer({ office, onClose, onCreated, onError }) {
             <dl className="roster-review-summary">
               <div>
                 <dt>工作周</dt>
-                <dd>
+                <dd data-motion-value="text">
                   {form.weekStart} — {addDays(form.weekStart, 3)}
                 </dd>
               </div>
@@ -472,17 +474,17 @@ export function CollectionComposer({ office, onClose, onCreated, onError }) {
               </div>
               <div>
                 <dt>班次</dt>
-                <dd>
+                <dd data-motion-value="text">
                   {form.slotStart}–{form.slotEnd}
                 </dd>
               </div>
               <div>
                 <dt>首周截止</dt>
-                <dd>{form.deadline.replace('T', ' ')}</dd>
+                <dd data-motion-value="text">{form.deadline.replace('T', ' ')}</dd>
               </div>
               <div>
                 <dt>后续填写</dt>
-                <dd>
+                <dd data-motion-value="text">
                   {form.recurrence.enabled ? '本次结束后立即收集下一工作周' : '仅收集本次工作周'}
                 </dd>
               </div>
@@ -490,7 +492,7 @@ export function CollectionComposer({ office, onClose, onCreated, onError }) {
             <div className="roster-review-needs">
               {form.campusIds.map((id) => (
                 <div key={id}>
-                  <strong>{campuses[id]}</strong>
+                  <strong data-motion-value="text">{campuses[id]}</strong>
                   <span>
                     {days
                       .map((day, i) => `${day} ${requirements[`${id}:${i}`] ?? 1} 人`)
@@ -513,7 +515,7 @@ export function CollectionComposer({ office, onClose, onCreated, onError }) {
           </section>
         )}
         {error && (
-          <p role="alert" className="react-error">
+          <p data-motion-value="text" role="alert" className="react-error">
             {error}
           </p>
         )}

@@ -24,7 +24,7 @@ export async function loginStaff(page, account = 'root001', password = 'test-pas
   await page.goto('/staff/');
   await page.locator('#login-id').fill(account); await page.locator('#login-password').fill(password);
   await page.getByRole('button', { name: '进入系统' }).click();
-  await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();
+  await expect(page.locator('.field-content')).toBeVisible();
 }
 export async function staffPage(page, label) {
   if ((await page.locator('.field-sidebar').isVisible())) await page.locator('.field-sidebar').getByRole('button', { name: label, exact: true }).click();

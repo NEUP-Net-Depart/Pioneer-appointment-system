@@ -1,4 +1,5 @@
 import React from 'react';
+import { AnimatedValue } from './AnimatedValue';
 
 // Secondary navigation uses ordinary buttons with a pressed state. Every
 // section stays in the current workspace; no incomplete ARIA tab keyboard model.
@@ -34,7 +35,9 @@ export function WorkspaceSections({
         >
           {item.label}
           {item.count !== undefined && (
-            <span className="workspace-section-count">{item.count}</span>
+            <span className="workspace-section-count">
+              <AnimatedValue value={item.count} />
+            </span>
           )}
         </button>
       ))}

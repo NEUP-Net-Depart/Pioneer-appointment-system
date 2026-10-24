@@ -1,4 +1,6 @@
-import React, { useEffect, useRef, useState, type ReactNode } from 'react';
+import { MotionCollapse } from './MotionCollapse';
+import { useDataMotion } from './useDataMotion';
+import React, { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Modal } from './field/ui';
 import { WorkspaceLauncher } from './WorkspaceLauncher';
 import { pendingEditors } from './useUnsavedChanges.js';
@@ -11,6 +13,8 @@ export function StaffWorkspace({
   entries,
   active,
   onSelect,
+  onPrepare,
+  opening,
   onLogout,
   loading = false
 }: {
@@ -19,15 +23,27 @@ export function StaffWorkspace({
   entries: Entry[];
   active: string;
   onSelect: (id: string) => void;
+  onPrepare?: (id: string) => void;
+  opening?: string;
   onLogout: () => void;
   loading?: boolean;
 }) {
   const [more, setMore] = useState(false);
   const sidebar = useRef<HTMLElement>(null);
+  useDataMotion(sidebar, !loading);
   const activeGroup = entries.find((entry) => entry.id === active)?.group || '其他';
   const [expanded, setExpanded] = useState<string[]>(() => [
     ...new Set(entries.map((entry) => entry.group || '其他'))
   ]);
+  const knownGroups = useRef(new Set(entries.map((entry) => entry.group || '其他')));
+  useLayoutEffect(() => {
+    const added = [...new Set(entries.map((entry) => entry.group || '其他'))].filter(
+      (group) => !knownGroups.current.has(group)
+    );
+    if (!added.length) return;
+    added.forEach((group) => knownGroups.current.add(group));
+    setExpanded((current) => [...new Set([...current, ...added])]);
+  }, [entries]);
   useEffect(() => {
     setExpanded((current) => (current.includes(activeGroup) ? current : [...current, activeGroup]));
   }, [activeGroup]);
@@ -137,30 +153,38 @@ export function StaffWorkspace({
                   }
                 >
                   {group.label}
-                  <span aria-hidden="true">{expanded.includes(group.label) ? '−' : '+'}</span>
+                  <span data-motion-value="text" aria-hidden="true">
+                    {expanded.includes(group.label) ? '−' : '+'}
+                  </span>
                 </button>
               </h2>
-              <div hidden={!expanded.includes(group.label)}>
+              <MotionCollapse open={expanded.includes(group.label)}>
                 {group.items.map((entry) => (
                   <button
+                    data-motion-item={entry.id}
                     key={entry.id}
                     type="button"
                     className={active === entry.id ? 'active' : ''}
                     aria-current={active === entry.id ? 'page' : undefined}
+                    onPointerEnter={() => onPrepare?.(entry.id)}
+                    onFocus={() => onPrepare?.(entry.id)}
+                    onTouchStart={() => onPrepare?.(entry.id)}
                     onClick={() => choose(entry.id)}
                   >
                     <span className="field-nav-dot" />
                     {entry.label}
                   </button>
                 ))}
-              </div>
+              </MotionCollapse>
             </section>
           ))}
         </nav>
         <div className="field-sidebar-bottom">
-          <span className="field-avatar">{name.slice(-2)}</span>
+          <span data-motion-value="text" className="field-avatar">
+            {name.slice(-2)}
+          </span>
           <div>
-            <strong>{name}</strong>
+            <strong data-motion-value="text">{name}</strong>
             <button type="button" onClick={() => choose('__logout__')}>
               退出登录
             </button>
@@ -168,6 +192,11 @@ export function StaffWorkspace({
         </div>
       </aside>
       {children}
+      {opening && (
+        <div className="workspace-navigation-status" role="status">
+          正在打开{opening}…
+        </div>
+      )}
       <nav className="field-bottom-nav" aria-label="手机岗位导航">
         {primary.map((entry) => (
           <button
@@ -175,6 +204,9 @@ export function StaffWorkspace({
             type="button"
             className={active === entry.id ? 'active' : ''}
             aria-current={active === entry.id ? 'page' : undefined}
+            onPointerEnter={() => onPrepare?.(entry.id)}
+            onFocus={() => onPrepare?.(entry.id)}
+            onTouchStart={() => onPrepare?.(entry.id)}
             onClick={() => choose(entry.id)}
           >
             {entry.id === 'scene:mine'
@@ -201,13 +233,13 @@ export function StaffWorkspace({
           dismissible={!resolving}
           onClose={() => setPending(null)}
         >
-          <p>
+          <p data-motion-value="text">
             {pending === '__logout__'
               ? '保存成功后退出登录，或丢弃本次未保存的改动。'
               : '你可以先保存；也可以保留当前草稿，稍后返回继续编辑。'}
           </p>
           {navigationError && (
-            <p className="react-error" role="alert">
+            <p data-motion-value="text" className="react-error" role="alert">
               {navigationError}
             </p>
           )}
@@ -250,7 +282,12 @@ export function StaffWorkspace({
       )}
       {more && (
         <Modal title="工作入口" onClose={() => setMore(false)}>
-          <WorkspaceLauncher groups={groups} active={active} onSelect={choose} />
+          <WorkspaceLauncher
+            groups={groups}
+            active={active}
+            onSelect={choose}
+            onPrepare={onPrepare}
+          />
         </Modal>
       )}
     </div>

@@ -1,3 +1,4 @@
+import { DataFields } from '../DataValue';
 import { useState } from 'react';
 import { Empty, Modal, Notice, CredentialCard, Scanner, time } from './ui';
 import { Repair } from './Repair';
@@ -99,7 +100,7 @@ export function FieldApp({
           }
         >
           <div className="field-scope">
-            <span>{data?.businessDate || initial.businessDate}</span>
+            <span data-motion-value="text">{data?.businessDate || initial.businessDate}</span>
             <label>
               <span className="field-sr-only">工作校区</span>
               <select
@@ -131,16 +132,34 @@ export function FieldApp({
           {result.loading ? '正在更新当前区域…' : ''}
         </div>
         {!data ? (
-          <Empty title={result.error ? '暂时无法读取工作台' : '正在读取当日工作'}>
-            <button onClick={refresh}>重新读取</button>
-          </Empty>
+          result.error ? (
+            <Empty title="暂时无法读取工作台">
+              <button onClick={refresh}>重新读取</button>
+            </Empty>
+          ) : (
+            <section className="field-card">
+              <h2 data-motion-value="text">{scene === 'mine' ? '个人工作' : '当日工作'}</h2>
+              <DataFields
+                fields={[
+                  ['工作日期', initial.businessDate],
+                  ['工作校区', campusName],
+                  ['当前岗位'],
+                  ['到岗状态'],
+                  ['当前工单']
+                ]}
+              />
+              <p className="field-muted">签到、接单与协调操作将在核对当前岗位和任务后显示。</p>
+            </section>
+          )
         ) : (
           <>
             {!!data.pendingSwapInvitations &&
               workspaceLinks.some((entry) => entry.id === 'roster') && (
                 <section className="field-roster-todo" aria-label="待响应的换班邀请">
                   <div>
-                    <strong>{data.pendingSwapInvitations} 份换班邀请等待你确认</strong>
+                    <strong data-motion-value="text">
+                      {data.pendingSwapInvitations} 份换班邀请等待你确认
+                    </strong>
                   </div>
                   <button onClick={() => onNavigate('roster-requests')}>查看邀请</button>
                 </section>
@@ -202,7 +221,9 @@ export function FieldApp({
               />
             )}
             <footer className="field-footer">
-              <span>更新于 {time(data.updatedAt)} · 页面可见时每 30 秒更新</span>
+              <span data-motion-value="text">
+                更新于 {time(data.updatedAt)} · 页面可见时每 30 秒更新
+              </span>
               <button onClick={refresh}>刷新</button>
             </footer>
           </>
@@ -216,15 +237,15 @@ export function FieldApp({
         >
           <div className="field-checkin-result">
             <span className="react-eyebrow">工作人员到岗</span>
-            <h2>{initial.actor.name}</h2>
+            <h2 data-motion-value="text">{initial.actor.name}</h2>
             <StaffIdentity
               identities={checkResult.identitySnapshot?.identities || data?.identities}
             />
-            <p>
+            <p data-motion-value="text">
               {campusName}校区 · {data?.businessDate}
             </p>
-            <strong>{time(checkResult.occurredAt)}</strong>
-            <p className="field-muted">
+            <strong data-motion-value="text">{time(checkResult.occurredAt)}</strong>
+            <p data-motion-value="text" className="field-muted">
               {checkResult.nonScheduled ? '非排班到场参与工作' : '当天排班已到岗'}
               {checkResult.isExisting ? ' · 保留首次签到时间' : ''}
             </p>
@@ -262,7 +283,9 @@ export function FieldApp({
             code={token.token}
             context={`${campusName}校区 · ${data?.businessDate || initial.businessDate}`}
           />
-          <p className="field-muted">有效至 {time(token.expiresAt)} · 更新签到码后旧码失效</p>
+          <p data-motion-value="text" className="field-muted">
+            有效至 {time(token.expiresAt)} · 更新签到码后旧码失效
+          </p>
           <Notice>{message}</Notice>
           <div className="field-actions">
             <button disabled={busy} onClick={showAttendance}>
@@ -275,6 +298,14 @@ export function FieldApp({
         <Repair
           sidePanel={scene !== 'repair'}
           id={selected}
+          summary={
+            items.find((item) => item.id === selected) ||
+            (data?.currentRepair?.id === selected
+              ? data.currentRepair
+              : data?.pendingRepair?.id === selected
+                ? data.pendingRepair
+                : undefined)
+          }
           key={selected}
           memberId={initial.actor.memberId}
           people={people}

@@ -6,7 +6,7 @@ export function RosterAssignment({ row, member, editable, protectedRow, onEdit }
   const content = (
     <>
       <span className="roster-person-copy">
-        <strong>{name}</strong>
+        <strong data-motion-value="text">{name}</strong>
         <StaffIdentity identities={member?.identities} />
         {row.servicePaused && <span className="roster-gap">当天暂停 · 原班次保留</span>}
         {(row.locked ||
@@ -14,12 +14,12 @@ export function RosterAssignment({ row, member, editable, protectedRow, onEdit }
           row.leaveStatus ||
           protectedRow ||
           row.roleKind === 'coordinator') && (
-          <span className="roster-person-notes">
+          <span data-motion-value="text" className="roster-person-notes">
             {row.roleKind === 'coordinator' && <span>协调人</span>}
             {row.locked && <span>已锁定</span>}
             {row.manualOverride && <span>人工安排</span>}
             {row.leaveStatus && (
-              <span className="roster-gap">
+              <span data-motion-value="text" className="roster-gap">
                 {row.leaveStatus === 'approved' ? '已请假' : '请假审批中'}
               </span>
             )}
@@ -37,6 +37,7 @@ export function RosterAssignment({ row, member, editable, protectedRow, onEdit }
   return (
     <li
       className="roster-person"
+      data-motion-item={row.memberId}
       draggable={editable && !protectedRow && row.leaveStatus !== 'approved'}
       onDragStart={(event) => event.dataTransfer.setData('text/plain', row.memberId)}
     >
@@ -61,9 +62,9 @@ export function RosterAssignmentControls({ row, member, office, onChange, onRepl
   return (
     <section className="roster-assignment-controls" aria-label="当前人员安排">
       <div>
-        <strong>{member?.name || '成员'}</strong>
+        <strong data-motion-value="text">{member?.name || '成员'}</strong>
         <StaffIdentity identities={member?.identities} />
-        <p>
+        <p data-motion-value="text">
           {row.businessDate} · {row.startAt}–{row.endAt}
         </p>
       </div>
@@ -108,9 +109,11 @@ export function RosterReportedTimes({ windows, title }) {
       </summary>
       <ul>
         {windows.map((slot, index) => (
-          <li key={index}>
-            <strong>{slot.businessDate?.slice(5).replace('-', '/')}</strong>
-            <span>
+          <li data-motion-item="" key={index}>
+            <strong data-motion-value="text">
+              {slot.businessDate?.slice(5).replace('-', '/')}
+            </strong>
+            <span data-motion-value="text">
               {{ 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' }[slot.campusId] ||
                 slot.campusName ||
                 '指定校区'}{' '}

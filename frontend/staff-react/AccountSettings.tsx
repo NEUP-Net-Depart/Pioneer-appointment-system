@@ -92,19 +92,19 @@ export function AccountSettings({
           <dl>
             <div>
               <dt>姓名</dt>
-              <dd>{user.name}</dd>
+              <dd data-motion-value="text">{user.name}</dd>
             </div>
             <div>
               <dt>账号</dt>
-              <dd>{user.account}</dd>
+              <dd data-motion-value="text">{user.account}</dd>
             </div>
             <div>
               <dt>所属校区</dt>
-              <dd>{user.homeCampus}</dd>
+              <dd data-motion-value="text">{user.homeCampus}</dd>
             </div>
             <div>
               <dt>授权校区</dt>
-              <dd>{user.authorizedCampuses?.join('、')}</dd>
+              <dd data-motion-value="text">{user.authorizedCampuses?.join('、')}</dd>
             </div>
           </dl>
         </section>

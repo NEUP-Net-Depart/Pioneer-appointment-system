@@ -18,8 +18,10 @@ export function useWorkspaceQuery(path, active, revision) {
     if (paginationRef.current.path !== path) paginationRef.current = { path, pages: 1 };
     const pagination = paginationRef.current;
     latest.current = 0;
-    nextCursorRef.current = null;
-    setNextCursor(null);
+    if (snapshot?.path !== path) {
+      nextCursorRef.current = null;
+      setNextCursor(null);
+    }
     let controller,
       stopped = false,
       inFlight = false;
@@ -117,9 +119,9 @@ export function useWorkspaceQuery(path, active, revision) {
     data: snapshot?.data,
     current: snapshot?.path === path,
     error,
-    loading,
+    loading: loading || (!!active && !!path && !snapshot && !error),
     loadingMore,
-    nextCursor,
+    nextCursor: snapshot?.path === path ? nextCursor : null,
     loadMore: () => loadMoreRef.current()
   };
 }

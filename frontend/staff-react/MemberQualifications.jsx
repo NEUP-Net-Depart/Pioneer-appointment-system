@@ -70,17 +70,23 @@ export function MemberQualifications({ detail, onSaved, onDirty, onBusy }) {
         资格决定可参与的工作；负责人身份来自有效授权。交流人员通过培训后可以维修，不参与维修排班与换班。
       </p>
       {error && (
-        <p className="react-error" role="alert">
+        <p data-motion-value="text" className="react-error" role="alert">
           {error}
         </p>
       )}
-      {message && <p role="status">{message}</p>}
+      {message && (
+        <p data-motion-value="text" role="status">
+          {message}
+        </p>
+      )}
       <section aria-label="工作资格记录">
         {detail.member.workProfiles?.length ? (
           detail.member.workProfiles.map((item) => (
-            <article className="react-binding" key={item.id}>
-              <strong>{staffIdentityLabels[item.profileCode] || '工作资格'}</strong>
-              <p>
+            <article data-motion-item="" className="react-binding" key={item.id}>
+              <strong data-motion-value="text">
+                {staffIdentityLabels[item.profileCode] || '工作资格'}
+              </strong>
+              <p data-motion-value="text">
                 {item.effectiveFrom} 至 {item.effectiveTo || '长期有效'}
                 {item.effectiveTo && item.effectiveTo <= dateKey()
                   ? ' · 已结束'

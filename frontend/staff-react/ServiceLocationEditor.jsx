@@ -180,7 +180,7 @@ export function ServiceLocationEditor({ campus }) {
         </div>
       </div>
       <Notice>{error}</Notice>
-      <p className="workspace-update" role="status">
+      <p data-motion-value="number" className="workspace-update" role="status">
         {message ||
           (loading
             ? '正在读取，保留未保存输入…'
@@ -213,7 +213,7 @@ export function ServiceLocationEditor({ campus }) {
         {conflict && (
           <div className="capacity-location-conflict">
             <strong>最新地点</strong>
-            <p>{data.location || '未设置'}</p>
+            <p data-motion-value="text">{data.location || '未设置'}</p>
             <p className="field-muted">你的输入保留在上方；确认后可重新保存。</p>
             <div className="field-actions">
               <button
@@ -266,18 +266,20 @@ export function ServiceLocationEditor({ campus }) {
       {data && (
         <details className="capacity-location-details">
           <summary>受影响预约与修改记录</summary>
-          <p>
+          <p data-motion-value="number">
             {data.affectedAppointments?.length || 0} 条进行中的预约会使用此地点；请按需人工通知。
           </p>
           {!!data.affectedAppointments?.length && (
             <ul>
               {data.affectedAppointments.map((item) => (
-                <li key={item.id}>
-                  <strong>{item.id}</strong>
+                <li data-motion-item="" key={item.id}>
+                  <strong data-motion-value="text">{item.id}</strong>
                   {[item.name, item.contactValue || item.social || item.phone, item.email]
                     .filter(Boolean)
                     .map((text, index) => (
-                      <span key={index}>{text}</span>
+                      <span data-motion-value="text" key={index}>
+                        {text}
+                      </span>
                     ))}
                 </li>
               ))}
@@ -285,7 +287,7 @@ export function ServiceLocationEditor({ campus }) {
           )}
           {data.changes?.length ? (
             data.changes.map((item) => (
-              <p key={item.revision}>
+              <p data-motion-value="text" key={item.revision}>
                 {formatInstant(item.createdAt)} · {item.beforeLocation || '未设置'} →{' '}
                 {item.afterLocation || '未设置'}
               </p>
@@ -297,13 +299,14 @@ export function ServiceLocationEditor({ campus }) {
       )}
       {review && (
         <Modal title="确认修改维修地点" dismissible={!busy} onClose={() => setReview(false)}>
-          <p>
+          <p data-motion-value="text">
             {campus}校区 · {date}
           </p>
           <p>
-            {draft?.original || '未设置'} → <strong>{value.trim() || '未设置，暂停新预约'}</strong>
+            {draft?.original || '未设置'} →{' '}
+            <strong data-motion-value="text">{value.trim() || '未设置，暂停新预约'}</strong>
           </p>
-          <p>
+          <p data-motion-value="number">
             已有预约将同步显示新地点，{data?.affectedAppointments?.length || 0}{' '}
             条进行中的预约需要按需通知。
           </p>

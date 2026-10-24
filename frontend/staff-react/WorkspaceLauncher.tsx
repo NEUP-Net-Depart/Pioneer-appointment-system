@@ -5,11 +5,13 @@ type Group = { label: string; items: { id: string; label: string }[] };
 export function WorkspaceLauncher({
   groups,
   active,
-  onSelect
+  onSelect,
+  onPrepare
 }: {
   groups: Group[];
   active: string;
   onSelect: (id: string) => void;
+  onPrepare?: (id: string) => void;
 }) {
   const [query, setQuery] = useState('');
   const id = useId(),
@@ -25,7 +27,7 @@ export function WorkspaceLauncher({
     <div className="workspace-launcher">
       <div className="workspace-launcher-search">
         <p>
-          当前位置 · <strong>{current?.label || '工作台'}</strong>
+          当前位置 · <strong data-motion-value="text">{current?.label || '工作台'}</strong>
         </p>
         <label>
           查找功能
@@ -45,8 +47,10 @@ export function WorkspaceLauncher({
             aria-labelledby={`${id}-${index}`}
           >
             <header>
-              <h3 id={`${id}-${index}`}>{group.label}</h3>
-              <span>{group.items.length} 项</span>
+              <h3 data-motion-value="text" id={`${id}-${index}`}>
+                {group.label}
+              </h3>
+              <span data-motion-value="number">{group.items.length} 项</span>
             </header>
             <div>
               {group.items.map((entry) => (
@@ -54,6 +58,9 @@ export function WorkspaceLauncher({
                   type="button"
                   key={entry.id}
                   aria-current={active === entry.id ? 'page' : undefined}
+                  onPointerEnter={() => onPrepare?.(entry.id)}
+                  onFocus={() => onPrepare?.(entry.id)}
+                  onTouchStart={() => onPrepare?.(entry.id)}
                   onClick={() => onSelect(entry.id)}
                 >
                   {entry.label}

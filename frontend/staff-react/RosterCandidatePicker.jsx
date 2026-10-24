@@ -41,7 +41,7 @@ export function RosterCandidatePicker({
     >
       <div className="roster-picker">
         {choosing.supplementFor && (
-          <p role="status">
+          <p data-motion-value="text" role="status">
             为 {choosing.supplementFor} 安排补位人员。原请假班次与审批记录会保留，不计入在岗人数。
           </p>
         )}
@@ -141,11 +141,11 @@ export function RosterCandidatePicker({
                   protectedPerson(row)
               );
             return (
-              <article className="roster-candidate" key={member.memberId}>
+              <article data-motion-item="" className="roster-candidate" key={member.memberId}>
                 <div>
-                  <strong>{member.name}</strong>
+                  <strong data-motion-value="text">{member.name}</strong>
                   <StaffIdentity identities={member.identities} />
-                  <small>
+                  <small data-motion-value="text">
                     {assignmentCount(member)
                       ? `本周已安排 ${assignmentCount(member)} 班`
                       : '本周尚未安排 · 优先'}
@@ -163,7 +163,7 @@ export function RosterCandidatePicker({
                   )}
                   <RosterReportedTimes windows={member.reportedWindows} title="原填报时间" />
                   <RosterReportedTimes windows={member.existingAssignments} title="已有其他班次" />
-                  <span>
+                  <span data-motion-value="text">
                     {!eligible
                       ? '此班次资格、授权或已有安排冲突'
                       : protectedMember

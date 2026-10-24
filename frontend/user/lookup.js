@@ -5,6 +5,7 @@ import { attachmentUrl,attachmentSize } from '/shared/attachments.js';
 import { formatDate } from '/shared/time.js';
 import { statusClass,outcomeLabels,terminalStatuses } from '/shared/constants.js';
 import { savedAppointments,saveAppointment,privateLink,parsePrivateLink,credentialHeaders,credentialStorageError,copyPrivateLink } from './credentials.js';
+import { observeDataMotion } from '/shared/data-motion.js';
 import { queueTicketLabel } from '/shared/reception.js';
 import { renderRepairQr } from './repair-qr.js';
 import { timeSummary,timeLabel,informationGroups,statusText,statusExplanation,repairRecord } from './presentation.js';
@@ -13,6 +14,7 @@ import { createFollowupPanel,currentFollowup } from './followups.js';
 
 export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false,hasPending=()=>false}={}) {
   const root=$('#lookup-results'),detail=$('#appointment-detail');
+  observeDataMotion(root);observeDataMotion(detail);
   const records=new Map(),followupCommands=new Map(),followupMessages=new Map(),followupBusy=new Set();let active=false,detailId=null,generation=0,refreshing=false,importing=false,cancelling=false,detailPhotos=null,deadlineTimer,viewVersion=0;
   const urls=new Set();
   const request=entry=>apiJson(`/api/appointments/${encodeURIComponent(entry.id)}`,{headers:credentialHeaders(entry),timeoutMs:15000}).then(item=>({...item,accessToken:entry.accessToken}));
@@ -27,7 +29,7 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
   }
   function card(item){
     const {followup,view}=currentView(item),pending=followup?.request.status==='pending';
-    return `<button type="button" class="student-record" data-detail-id="${escapeHtml(item.id)}"><span class="record-top"><strong>${escapeHtml(item.deviceType)} · ${escapeHtml(item.brand)}</strong><span class="status-pill ${statusClass[pending ? 'booked' : view.status]}">${pending ? '待安排返修' : statusText(view)}</span></span><p>${followup ? `返修${followup.round ? ' · 第 '+followup.round+' 轮' : ''} · ` : ''}${escapeHtml(view.campus)}校区${pending ? '' : ` · ${formatDate(view.date)} · ${escapeHtml(timeLabel(view))}`}</p><p>${escapeHtml(followup?.request.reason || item.faultType)}${!followup && item.status==='completed' ? ' · '+escapeHtml(outcomeLabels[item.outcome] || '历史未分类') : ''}</p>${!followup && item.status==='completed' && item.repairNote ? `<p>${escapeHtml(item.repairNote.slice(0,90))}${item.repairNote.length>90 ? '…' : ''}</p>` : ''}</button>`;
+    return `<button type="button" class="student-record" data-motion-item="record" data-detail-id="${escapeHtml(item.id)}"><span class="record-top"><strong>${escapeHtml(item.deviceType)} · ${escapeHtml(item.brand)}</strong><span class="status-pill ${statusClass[pending ? 'booked' : view.status]}">${pending ? '待安排返修' : statusText(view)}</span></span><p>${followup ? `返修${followup.round ? ' · 第 '+followup.round+' 轮' : ''} · ` : ''}${escapeHtml(view.campus)}校区${pending ? '' : ` · ${formatDate(view.date)} · ${escapeHtml(timeLabel(view))}`}</p><p>${escapeHtml(followup?.request.reason || item.faultType)}${!followup && item.status==='completed' ? ' · '+escapeHtml(outcomeLabels[item.outcome] || '历史未分类') : ''}</p>${!followup && item.status==='completed' && item.repairNote ? `<p>${escapeHtml(item.repairNote.slice(0,90))}${item.repairNote.length>90 ? '…' : ''}</p>` : ''}</button>`;
   }
   function renderList(){
     const entries=[...records.values()],items=entries.filter(row=>row.item).map(row=>row.item),failed=entries.filter(row=>row.message),unknown=entries.filter(row=>!row.item && !row.message);
@@ -51,7 +53,21 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
       html+=unknown.map(row=>`<article class="notice" aria-busy="true">${escapeHtml(row.entry.id)} · 正在读取预约…</article>`).join('');
       html+=failed.map(row=>`<article class="notice is-error"><strong>${escapeHtml(row.entry.id)} · 暂时无法${row.item ? '更新' : '读取'}</strong><p>${escapeHtml(row.message)}</p><button class="secondary-btn" type="button" data-retry-id="${escapeHtml(row.entry.id)}">重试此预约</button></article>`).join('');
     }
-    if(root.innerHTML!==html)root.innerHTML=html;
+    if(root.dataset.renderMarkup!==html){
+      // Retain each record button when another appointment changes. Restoring a
+      // focused button is necessary on browsers without state-preserving moves.
+      const focused=root.contains(document.activeElement) ? document.activeElement : null;
+      const existing=new Map([...root.querySelectorAll('[data-detail-id]')].map(node=>[node.dataset.detailId,node]));
+      const template=document.createElement('template');template.innerHTML=html;
+      for(const target of template.content.querySelectorAll('[data-detail-id]')){
+        const retained=existing.get(target.dataset.detailId);
+        if(!retained)continue;
+        if(retained.innerHTML!==target.innerHTML)retained.innerHTML=target.innerHTML;
+        target.replaceWith(retained);
+      }
+      root.replaceChildren(template.content);root.dataset.renderMarkup=html;
+      if(focused?.isConnected)focused.focus({preventScroll:true});
+    }
     setNotice($('#lookup-notice'),credentialStorageError() ? '本机保存的预约记录暂时无法读取。请重试，或通过完整私人查询链接查看。' : failed.length ? '部分预约暂时无法更新，已保留最近确认的信息。' : '');
   }
   function existingPhotos(){return records.get(detailId)?.item?.attachments?.filter(file=>['general','student_photo'].includes(file.purpose) && file.mimeType.startsWith('image/')) || [];}
