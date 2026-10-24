@@ -8,6 +8,6 @@ export function activeRepairFollowup(history, now) {
     const child = items.get(request.scheduledAppointmentId);
     if (!child) return true;
     return child.status === 'in_progress' || (child.status === 'booked' &&
-      (!child.expiresAt || Date.parse(child.expiresAt) > Date.parse(now)));
+      (['queued','assigned'].includes(child.reception?.state) || !child.expiresAt || Date.parse(child.expiresAt) > Date.parse(now)));
   }) || null;
 }

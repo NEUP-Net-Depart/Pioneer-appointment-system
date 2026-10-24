@@ -250,3 +250,13 @@ fieldset.field { padding: 0; border: 0; }
 .customer-queue small { overflow-wrap:anywhere; }
 #detail-queue [data-queue-confirm] { margin-top:16px; padding:16px; border:1px solid var(--border,#d8dfe7); border-radius:12px; }
 #detail-queue .actions { flex-wrap:wrap; }
+
+#detail-summary h2 { margin-bottom: 14px; }
+.repair-history-details > summary, #detail-repair-record summary { cursor: pointer; min-height: 44px; padding-block: 10px; font-weight: 600; }
+.repair-history-details .repair-history-list { margin-top: 16px; }
+#detail-repair-record details > .detail-section { margin-top: 12px; padding: 0; border: 0; }
+#detail-current-qr .followup-qr-container:empty { display: none; }
+#detail-current-qr img { display: block; max-width: 100%; height: auto; margin: 16px auto 0; }
+#detail-source-data { display: grid; gap: 20px; }
+#detail-source-data > summary:not([hidden]) { cursor: pointer; padding: 20px 28px; border: 1px solid var(--line); border-radius: 12px; background: white; font-weight: 600; }
+#detail-operations:empty { display: none; }

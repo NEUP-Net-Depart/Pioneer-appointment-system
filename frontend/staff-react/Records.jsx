@@ -143,6 +143,7 @@ export function Records({ user }) {
       <RepairFollowups
         active={active && staffPermission(user, 'repair.followup.manage')}
         onChanged={refresh}
+        onOpen={setSelected}
       />
       <RecordOverview
         result={overview}

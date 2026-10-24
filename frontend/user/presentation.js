@@ -15,13 +15,13 @@ export function informationGroups(item,{photos=true,device=true,contacts=true}={
   return (device ? `<section class="review-group"><h3>设备与故障</h3><dl>${rows([['设备类型',item.deviceType],['品牌',item.brand],['设备型号',item.deviceModel],['液金散热',item.liquidMetal],['Dell G15',item.dellG15],['是否在保',item.warranty],['故障分类',item.faultType],['历史序列号',item.serial],['历史进液／跌落',item.liquidDrop]])}</dl>${longText('故障描述与补充说明',item.issue)}${longText('历史备注',item.note)}${photos && item.photoCount ? `<p>已准备 ${item.photoCount} 张故障照片，预约成功后上传。</p>` : ''}</section>` : '') + (contacts ? `<section class="review-group"><h3>机主与联系方式</h3><dl>${rows([['姓名',item.name],['学号',item.studentId],['学院',item.college],['联系邮箱',item.email],[item.contactType==='qq' ? 'QQ' : '微信',item.contactValue],['历史手机号',item.phone],['历史 QQ／微信',!item.contactValue ? item.social : '']])}</dl></section>` : '');
 }
 export function statusExplanation(item) {
-  if(item.status==='booked' && item.reception?.leftAt)return '你已退出现场排队，预约仍保留。再次到场请重新出示维修码，核验后在队尾重新排号。预约有效期限仍以原预约为准。';
-  if(item.status==='booked' && item.reception?.state==='queued')return '已完成到场登记，正在等待现场工作人员分派。请留意现场叫号；临时离开可退出排队，预约仍保留。';
-  if(item.status==='booked' && item.reception?.state==='assigned')return '已安排维修人员，正在等待确认接手。请按接待人员指引完成交接。';
+  if(item.status==='booked' && item.reception?.leftAt)return '已离队 · 预约保留';
+  if(item.status==='booked' && item.reception?.state==='queued')return '已到场核验 · 待分派';
+  if(item.status==='booked' && item.reception?.state==='assigned')return '已分派 · 待现场核对';
   if(item.status==='expired')return expirationMessage;
   if(item.status==='booked' && item.source==='onsite' && item.registrationFlow!=='repair_followup')return '本次为现场临时登记，请与现场工作人员保持联系。';
   if(item.status==='booked')return Date.parse(slotDeadline(item.date,item.timeSlot))<=(item.serverNow ? Date.parse(item.serverNow) : Date.now()) ? '预约到场时段已结束，如已到现场或需要协助，请联系工作人员。' : '请在所选时段内到场，实际维修时间视现场情况而定。';
-  return item.status==='in_progress' ? '工作人员已记录维修开始。' : item.status==='cancelled' ? '本次预约已取消。如仍需维修，请重新预约。' : '本次维修已结束。';
+  return item.status==='in_progress' ? '维修进行中' : item.status==='cancelled' ? '本次预约已取消。如仍需维修，请重新预约。' : '本次维修已结束。';
 }
 export function repairRecord(item) {
   if(!['completed','in_progress','cancelled'].includes(item.status))return '';

@@ -6,9 +6,10 @@ import { RecordMaintenance } from '../RecordMaintenance';
 import { RepairAttachments } from '../RepairAttachments';
 import { RepairOriginal } from '../RepairOriginal';
 import { useRepair } from './useRepair';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { CustomerQueueLink } from './CustomerQueueLink';
 import { Reception } from './Reception';
+import { IntakePhotos } from './IntakePhotos';
 import { receptionStatus, queueTicketLabel } from '../../../shared/reception.js';
 import { formatInstant } from '../../../shared/time.js';
 
@@ -35,6 +36,7 @@ export function Repair({
 }) {
   const [direct, setDirect] = useState(false);
   const [identityConfirmed, setIdentityConfirmed] = useState(false);
+  const intakeFormId = useId();
   const {
     item,
     error,
@@ -68,7 +70,43 @@ export function Repair({
     saveNote,
     handoff
   } = useRepair({ id, memberId, people, onClose, onChanged, sidePanel, returnLabel });
-  useEffect(() => setIdentityConfirmed(false), [id, item?.revision]);
+  useEffect(
+    () => setIdentityConfirmed(false),
+    [
+      id,
+      item?.revision,
+      verification.brand,
+      verification.model,
+      verification.warranty,
+      verification.liquidMetal,
+      uploaded.front,
+      uploaded.back,
+      files.front,
+      files.back
+    ]
+  );
+  const checkedDevice = item?.canStart || item?.canReceive ? verification : item?.intake;
+  const followup = item?.repairHistory?.followups.find(
+    (entry) => entry.scheduledAppointmentId === item.id
+  );
+  const previousRepair = item?.repairHistory?.items.find(
+    (entry) => entry.id === followup?.parentAppointmentId
+  );
+  const round = item?.repairHistory?.items.findIndex((entry) => entry.id === item.id) ?? -1;
+  const verifying =
+    item &&
+    ((item.canReceive && !direct) ||
+      (item.canStart && ((!item.canReceive && item.reception?.state !== 'queued') || direct)));
+  const stage =
+    item?.status === 'completed'
+      ? 4
+      : item?.status === 'in_progress'
+        ? 3
+        : item?.reception?.state === 'assigned'
+          ? 2
+          : item?.reception?.state === 'queued'
+            ? 1
+            : -1;
   // A list summary is display-only; all commands still require the detail response.
   const known = !error && summary?.id === id ? summary : null;
   return (
@@ -91,6 +129,46 @@ export function Repair({
       onClose={() => {
         if (!busy) onClose();
       }}
+      footer={
+        verifying && (
+          <div className="field-intake-actions">
+            {item.reception?.state === 'assigned' && (
+              <label className="field-accept-check">
+                <input
+                  type="checkbox"
+                  form={intakeFormId}
+                  required
+                  checked={identityConfirmed}
+                  onChange={(event) => setIdentityConfirmed(event.target.checked)}
+                />
+                <span>
+                  我已当面核对 {queueTicketLabel(item.reception.ticket) || item.id}、机主
+                  {item.name ? ' ' + item.name : ''}和 {verification.brand} {verification.model}
+                </span>
+              </label>
+            )}
+            <button
+              type="submit"
+              form={intakeFormId}
+              className="field-primary field-wide"
+              disabled={
+                busy ||
+                (item.reception?.state === 'assigned' && !identityConfirmed) ||
+                (!!item.canReceive &&
+                  ['front', 'back'].some((side) => !files[side] && !uploaded[side]))
+              }
+            >
+              {busy
+                ? '正在保存核验信息…'
+                : item.canReceive && !direct
+                  ? '完成接待，进入现场队列'
+                  : item.reception?.state === 'assigned'
+                    ? '确认接手，开始维修'
+                    : '确认开始维修'}
+            </button>
+          </div>
+        )
+      }
     >
       <Notice>{error}</Notice>
       {!item ? (
@@ -137,6 +215,11 @@ export function Repair({
           <div className="field-ticket">
             <div>
               <Status value={receptionStatus(item)} />
+              {item.registrationFlow === 'repair_followup' && (
+                <span className="field-followup-badge">
+                  返修{round >= 0 ? ` · 第 ${round + 1} 轮` : ''}
+                </span>
+              )}
               {item.reception?.ticket && (
                 <strong data-motion-value="text" className="field-queue-number">
                   {queueTicketLabel(item.reception.ticket)} · {item.reception.ticket.date}
@@ -147,10 +230,11 @@ export function Repair({
               </span>
             </div>
             <h3 data-motion-value="text">
-              {item.brand} {item.deviceModel || item.deviceType}
+              {checkedDevice?.brand || item.brand}{' '}
+              {checkedDevice?.model || item.deviceModel || item.deviceType}
             </h3>
             <p data-motion-value="text">
-              {item.faultType} {item.issue ? `· ${item.issue}` : ''}
+              {item.faultType} {!followup && item.issue ? `· ${item.issue}` : ''}
             </p>
             <p data-motion-value="text" className="field-muted">
               {item.campus}校区 · {item.date} · {item.timeSlot}
@@ -186,14 +270,39 @@ export function Repair({
               </p>
             )}
             {item.email && <p data-motion-value="text">邮箱：{item.email}</p>}
-            {item.liquidMetal && (
-              <p data-motion-value="text" className="field-muted">
-                客户填写液金情况：{item.liquidMetal}
-                {item.dellG15 ? ` · Dell G15：${item.dellG15}` : ''}；请现场核实。
-              </p>
-            )}
           </div>
-          {!item.canReceive && <Notice>{item.startBlockedReason}</Notice>}
+          {stage >= 0 && (
+            <ol className="repair-stages" aria-label="维修进度">
+              {['已到场', '待分派', '待接手', '维修中', '已完成'].map((label, index) => (
+                <li key={label} aria-current={stage === index ? 'step' : undefined}>
+                  {label}
+                </li>
+              ))}
+            </ol>
+          )}
+          {followup && (
+            <section className="field-followup-context" aria-label="本次返修">
+              <h3>本次返修</h3>
+              <p>{followup.reason}</p>
+              {previousRepair && (
+                <details className="field-details" open>
+                  <summary>
+                    上轮维修 · {outcomeLabels[previousRepair.outcome || ''] || '已完成'}
+                  </summary>
+                  <p>{previousRepair.repairNote || '暂无维修说明'}</p>
+                  <small className="field-state-note">
+                    {previousRepair.id} · {previousRepair.date}
+                    {previousRepair.assignedToName ? ` · ${previousRepair.assignedToName}` : ''}
+                  </small>
+                </details>
+              )}
+            </section>
+          )}
+          {!item.canReceive && item.startBlockedReason && (
+            <small className="field-state-note" role="status">
+              {item.reception?.leftAt ? '客户已离队' : '仅可处理队首'}
+            </small>
+          )}
           <Reception
             item={item}
             businessDate={item.businessDate || item.date}
@@ -210,13 +319,12 @@ export function Repair({
           />
           {item.canStart && (item.canReceive || item.reception?.state === 'queued') && !direct && (
             <button className="field-secondary field-wide" onClick={() => setDirect(true)}>
-              特殊情况：直接核验接单
+              直接核验接单
             </button>
           )}
-          {((item.canReceive && !direct) ||
-            (item.canStart &&
-              ((!item.canReceive && item.reception?.state !== 'queued') || direct))) && (
+          {verifying && (
             <form
+              id={intakeFormId}
               onSubmit={(event) => {
                 if (item.reception?.state === 'assigned' && !identityConfirmed) {
                   event.preventDefault();
@@ -227,17 +335,25 @@ export function Repair({
               className="field-form"
             >
               {item.reception && (
-                <p data-motion-value="text" className="field-muted">
-                  {item.canReceive
-                    ? '本次到场请重新核对设备，并由本次接待人员上传正反面照片。此前核验记录仍保留。'
-                    : '接待已完成设备核验并上传照片。请核对以下信息，需要时可更正或替换照片。'}
-                </p>
+                <small data-motion-value="text" className="field-state-note">
+                  {item.canReceive ? '重新到场 · 待核验' : '待现场核对'}
+                </small>
+              )}
+              {item.reception && !item.canReceive && (
+                <small data-motion-value="text" className="field-state-note">
+                  保修：
+                  {
+                    { in_warranty: '在保', expired: '已过保', unknown: '待确认' }[
+                      verification.warranty
+                    ]
+                  }{' '}
+                  · 液金：{{ yes: '是', no: '否', unknown: '待确认' }[verification.liquidMetal]}
+                </small>
               )}
               <details open={!item.reception || item.canReceive} className="field-details">
                 <summary>
-                  {item.reception && !item.canReceive ? '查看或更正设备核验' : '填写设备核验信息'}
+                  {item.reception && !item.canReceive ? '更正核验信息' : '设备核验'}
                 </summary>
-                <h3>与机主确认设备信息</h3>
                 <div className="field-form-grid">
                   <label>
                     厂商
@@ -311,73 +427,23 @@ export function Repair({
                     onChange={(e) => setVerification({ ...verification, note: e.target.value })}
                   />
                 </label>
-                <div className="field-photos">
-                  {['front', 'back'].map((side) => (
-                    <label key={side}>
-                      {previews[side] ? (
-                        <img src={previews[side]} alt="设备照片预览" />
-                      ) : (
-                        <span data-motion-value="text">{uploaded[side] ? '已上传' : '＋'}</span>
-                      )}
-                      <strong data-motion-value="text">
-                        设备{side === 'front' ? '正面' : '背面'}
-                      </strong>
-                      <small data-motion-value="text">
-                        {item.canReceive ? '本次接待必填' : '拍照或选择照片'} · 最大 5 MB
-                      </small>
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        capture="environment"
-                        aria-label={`设备${side === 'front' ? '正面' : '背面'}照片`}
-                        onChange={(e) => {
-                          if (e.target.files?.[0]) {
-                            setFiles({ ...files, [side]: e.target.files[0] });
-                            setUploaded({ ...uploaded, [side]: '' });
-                          }
-                        }}
-                      />
-                    </label>
-                  ))}
-                </div>
-                {item.canReceive &&
-                  ['front', 'back'].some((side) => !files[side] && !uploaded[side]) && (
-                    <p className="field-muted" role="status">
-                      请先选择本次设备正面、背面照片，再完成接待。
-                    </p>
-                  )}
               </details>
-              {item.reception?.state === 'assigned' && (
-                <label className="field-accept-check">
-                  <input
-                    type="checkbox"
-                    required
-                    checked={identityConfirmed}
-                    onChange={(event) => setIdentityConfirmed(event.target.checked)}
-                  />
-                  <span data-motion-value="text">
-                    我已当面核对 {queueTicketLabel(item.reception.ticket) || item.id}、机主
-                    {item.name ? ' ' + item.name : ''}和 {item.deviceModel}，确认是交给本人的设备
-                  </span>
-                </label>
-              )}
-              <button
-                className="field-primary field-wide"
-                disabled={
-                  busy ||
-                  (item.reception?.state === 'assigned' && !identityConfirmed) ||
-                  (!!item.canReceive &&
-                    ['front', 'back'].some((side) => !files[side] && !uploaded[side]))
-                }
-              >
-                {busy
-                  ? '正在保存核验信息…'
-                  : item.canReceive && !direct
-                    ? '完成接待，进入现场队列'
-                    : item.reception?.state === 'assigned'
-                      ? '确认接手，开始维修'
-                      : '确认开始维修'}
-              </button>
+              <IntakePhotos
+                id={item.id}
+                uploaded={uploaded}
+                previews={previews}
+                busy={busy}
+                onFile={(side, file) => {
+                  setFiles({ ...files, [side]: file });
+                  setUploaded({ ...uploaded, [side]: '' });
+                }}
+              />
+              {item.canReceive &&
+                ['front', 'back'].some((side) => !files[side] && !uploaded[side]) && (
+                  <small data-motion-value="text" className="field-state-note" role="status">
+                    本次照片待补齐
+                  </small>
+                )}
             </form>
           )}
           {item.canFinish && (
@@ -442,7 +508,6 @@ export function Repair({
           {transfer && (
             <form className="field-form workspace-handoff" onSubmit={handoff}>
               <h3>选择接手人员</h3>
-              <p className="field-muted">仅可选择已签到、空闲且具备本校区维修资格的人员。</p>
               <label>
                 接手人员
                 <select required value={target} onChange={(e) => setTarget(e.target.value)}>
@@ -556,7 +621,21 @@ export function Repair({
               </ol>
             </details>
           )}
-          <RepairOriginal original={item.original} />
+          <RepairOriginal
+            original={
+              item.canReadDetails
+                ? {
+                    ...item.original,
+                    brand: item.brand,
+                    deviceModel: item.deviceModel,
+                    warranty: item.warranty,
+                    liquidMetal: item.liquidMetal,
+                    dellG15: item.dellG15,
+                    issue: item.issue
+                  }
+                : item.original
+            }
+          />
           <RecordMaintenance
             item={item}
             busy={busy}

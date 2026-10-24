@@ -91,10 +91,10 @@ test('short task prompt reveals characters with one animation and remains fully 
     Element.prototype.animate=function(frames,options){if(this.classList.contains('motion-phrase'))window.phraseAnimations++;return original.call(this,frames,options);};
   });
   await loginStaff(page);
-  const title=page.getByRole('heading',{name:'准备好接待下一位机主',exact:true});
+  const title=page.getByRole('heading',{name:'空闲中',exact:true});
   await expect(title).toBeVisible();
   const phrase=title.locator('.motion-phrase');
-  await expect(phrase.locator('.motion-accessible')).toHaveText('准备好接待下一位机主');
+  await expect(phrase.locator('.motion-accessible')).toHaveText('空闲中');
   expect(await page.evaluate(()=>window.phraseAnimations)).toBe(1);
   await expect.poll(()=>phrase.locator('.motion-glyph').last().evaluate(n=>getComputedStyle(n).opacity)).toBe('1');
   await page.emulateMedia({reducedMotion:'reduce'});

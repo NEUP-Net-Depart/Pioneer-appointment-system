@@ -166,6 +166,9 @@ test('followup permissions, public history, duplicate prevention and appointment
     });
     await card.getByRole('button', { name: '确认安排返修', exact: true }).click();
     await expect(card).toHaveCount(0);
+    await expect(page.locator('.followup-receipt')).toContainText('返修已安排');
+    await expect(page.locator('.followup-receipt')).toContainText('2026-10-19');
+    await expect(page.getByRole('button',{name:'打开返修工单',exact:true})).toHaveCount(0);
     expect(requests).toHaveLength(2);
     expect(requests[0]).toEqual(requests[1]);
     expect(responses[1].idempotent).toBe(true);
@@ -188,7 +191,7 @@ test('followup permissions, public history, duplicate prevention and appointment
     await expect(history).toContainText('已安排维修');
     await expect(history).toContainText('返修预约 · 19:00–19:30');
     await expect(history.getByRole('button', { name: '提交返修申请', exact: true })).toHaveCount(0);
-    await expect(history).toContainText('该维修链已有未完成返修');
+    await expect(history).toContainText('返修处理中');
     const childCredential = await api(request, `/api/appointments/${responses[0].appointment.id}/credential`, root.token, {
       identityVerified: true, reason: '已核验测试机主身份，检查返修单日期时段展示'
     });

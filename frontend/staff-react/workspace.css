@@ -1440,3 +1440,20 @@
 .workspace-pending .workspace-skeleton {
   max-width: 640px;
 }
+
+.followup-receipt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-block: 16px;
+  padding: 16px;
+  background: #eef5f1;
+  border: 1px solid #d6e5db;
+  border-radius: 10px;
+  overflow-wrap: anywhere;
+}
+.followup-receipt p {
+  margin: 8px 0 0;
+}

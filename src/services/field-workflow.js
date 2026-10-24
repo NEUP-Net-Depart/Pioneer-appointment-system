@@ -447,6 +447,7 @@ export function fieldWorkflow({
             'status',
             'reception',
             'source',
+            'registrationFlow',
             'deviceType',
             'deviceModel',
             'faultType',

@@ -7,6 +7,7 @@ import { hashPassword } from '../src/lib/passwords.js';
 import { fieldSeed } from './fixtures/field-seed.mjs';
 import { appointmentRepository } from '../src/db/appointments.js';
 import { staffPlatformRepository } from '../src/db/staff-platform.js';
+import { activeRepairFollowup } from '../shared/repair-followups.js';
 
 const day='2026-10-15',now=Date.parse(`${day}T10:00:00+08:00`);
 let mf,db;
@@ -348,6 +349,11 @@ test('followup arrivals retain their capacity exemption and parent credentials c
   const publicParent=expect(await request(`/api/appointments/${parent.id}`,null,undefined,'GET',parent.accessToken));
   const publicChild=publicParent.repairHistory.items.find(item=>item.id===child.id);
   assert.equal(publicChild.queuePosition.position,child.queuePosition.position);
+  assert.equal(publicChild.location,'新维修地点');
+  assert.equal(publicChild.locationSnapshot,'新维修地点');
+  assert.equal(activeRepairFollowup(publicParent.repairHistory,'2026-10-16T10:00:00+08:00')?.scheduledAppointmentId,child.id,'arrived followups remain current across the original deadline');
+  const board=expect(await request('/api/field/board',office));
+  assert.equal(board.appointments.find(row=>row.id===child.id).registrationFlow,'repair_followup');
   assert.equal(publicChild.reception.ticket.number,child.reception.ticket.number);
   for(const key of ['receivedBy','assignedTo','assignedMemberId','ticketId'])assert.equal(publicChild.reception[key],undefined,key);
   const path=`/api/appointments/${parent.id}/repair-followups/${pending.id}/queue-exit`;

@@ -16,6 +16,25 @@ export interface Appointment {
     assignedToName?: string;
     updatedAt?: string;
   } | null;
+  registrationFlow?: string;
+  repairHistory?: {
+    items: {
+      id: string;
+      date: string;
+      timeSlot: string;
+      status: string;
+      outcome?: string;
+      repairNote?: string;
+      assignedToName?: string;
+    }[];
+    followups: {
+      id: string;
+      parentAppointmentId: string;
+      scheduledAppointmentId: string;
+      reason: string;
+      status: string;
+    }[];
+  } | null;
   canReceive?: boolean;
   canDispatch?: boolean;
   canReturn?: boolean;
