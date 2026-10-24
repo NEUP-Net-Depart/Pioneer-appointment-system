@@ -629,16 +629,16 @@ test("unified scanner previews attendance and resolves repairs without committin
 test('an expired reception permission removes its scene and returns to personal work', async ({ page }) => {
   await login(page, '20261001');
   await expect(page.getByRole('heading', { name: '现场工作台', exact: true })).toBeVisible();
+  const token = await page.evaluate(() => sessionStorage.getItem('pioneerToken'));
+  const data = await api(page.request, '/api/field/home', token);
   await page.route('**/api/field/board*', route => route.fulfill({ status:403, contentType:'application/json', body:JSON.stringify({error:'当前没有该校区的现场岗位权限'}) }));
-  await page.route('**/api/field/home*', async route => {
-    const response = await route.fetch();
-    const data = await response.json();
-    await route.fulfill({
-      status: response.status(),
+  // Reconcile with a captured server response immediately: navigation can abort
+  // the superseded home read, so forwarding it before fulfilling races cancellation.
+  await page.route('**/api/field/home*', route => route.fulfill({
+      status: 200,
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ ...data, contexts:[], capability:{ ...data.capability, 'onsite.frontdesk.create':false, 'repair.transfer':false } }),
-    });
-  });
+    }));
   await page.locator('.field-footer').getByRole('button', { name:'刷新', exact:true }).click();
   await expect(page.getByRole('heading', { name:'个人中心', exact:true })).toBeVisible();
   await expect(page.locator('.field-sidebar').getByRole('button', { name:'现场工作台', exact:true })).toHaveCount(0);
