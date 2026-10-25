@@ -2,6 +2,10 @@ import { json, readBody } from '../lib/http.js';
 import { appointmentQuery, appointmentPatch, bookingDevicesInput, bookingRequestKey, liveQuery } from '../lib/validation.js';
 
 export const appointmentRoutes = [
+  ['PATCH', /^\/api\/appointments\/([^/]+)\/device$/, async (context,match) => {
+    await context.limit('write');
+    return json(await context.services.appointments.editDevice(decodeURIComponent(match[1]),await readBody(context.request),context.accessToken));
+  }],
   ['POST', /^\/api\/appointments\/([^/]+)\/repair-followups\/([^/]+)\/queue-exit$/, async (context,match) => {
     await context.limit('write');
     return json(await context.services.appointments.leaveFollowupQueue(decodeURIComponent(match[1]),decodeURIComponent(match[2]),await readBody(context.request),context.accessToken));

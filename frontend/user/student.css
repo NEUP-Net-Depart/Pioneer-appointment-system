@@ -29,11 +29,14 @@
 @media(max-width:480px) { .booking-paused { padding: 18px; } }
 .user-mode { --radius: 9px; --muted: #586b79; --green: #117b68; background: #f5f8fa; }
 .user-mode [hidden] { display: none !important; }
-.user-mode .topbar { position: relative; height: 72px; }
-.user-mode .topbar-inner { max-width: none; padding: 0 clamp(24px,7vw,100px); }
+.user-mode .topbar { position: relative; height: auto; min-height: 80px; }
+.user-mode .topbar-inner { width: 100%; max-width: none; min-height: 80px; height: auto; padding: 0 24px; align-items: center; flex-wrap: nowrap; gap: 24px; }
+.user-mode .main-nav { width: auto; height: auto; min-height: 80px; align-self: stretch; overflow: visible; }
+.user-mode .brand > span { min-width: 0; overflow-wrap: anywhere; }
+.user-mode .brand strong { font-size: 18px; line-height: 1.4; }
 .user-mode .brand { min-width: 0; }
 .user-mode .brand:after { content: none; }
-.user-mode .nav-link { padding: 0 16px; min-height: 44px; }
+.user-mode .nav-link { padding: 16px 20px; min-height: 48px; min-width: 0; white-space: normal; overflow-wrap: anywhere; line-height: 1.5; }
 .user-mode .nav-link:after { background: var(--navy); box-shadow: none; }
 .student-shell { max-width: 1320px; margin: auto; padding: 36px 24px 72px; overflow-wrap: anywhere; }
 .student-heading { margin-bottom: 26px; }
@@ -212,12 +215,12 @@ fieldset.field { padding: 0; border: 0; }
 .photo-layer .modal { width: min(850px,100%); }
 #photo-large { display: block; max-width: 100%; max-height: 70dvh; object-fit: contain; margin: 16px auto 0; }
 @media(min-width:760px) { .photo-grid { grid-template-columns: repeat(4,minmax(0,1fr)); } }
-@media(max-width:480px) { .user-mode .topbar { height: 108px; } .user-mode .topbar-inner { flex-wrap: wrap; padding: 14px 20px 0; } .user-mode .brand { width: 100%; } .user-mode .organization-logo { width: 30px; height: 30px; } .user-mode .main-nav { height: 46px; width: 100%; gap: 10px; } .user-mode .nav-link { flex: 1; } .student-shell { padding: 26px 16px 48px; } .student-heading h1 { font-size: 26px; } .student-form,.detail-section,.user-mode .success-panel { padding: 20px 16px; border-radius: 12px; } .step-track { gap: 8px; } .step-track li { font-size: 11px; gap: 5px; } .step-actions { flex-wrap: wrap; } .step-actions .primary-btn { flex: 1; } .detail-section dl>div,.review-group dl>div { grid-template-columns: 94px minmax(0,1fr); gap: 12px; } .title-row h1 { margin: 0; } .user-mode .modal { padding: 20px; } }
+@media(max-width:480px) { .student-shell { padding: 26px 16px 48px; } .student-heading h1 { font-size: 26px; } .student-form,.detail-section,.user-mode .success-panel { padding: 20px 16px; border-radius: 12px; } .step-track { gap: 8px; } .step-track li { font-size: 11px; gap: 5px; } .step-actions { flex-wrap: wrap; } .step-actions .primary-btn { flex: 1; } .detail-section dl>div,.review-group dl>div { grid-template-columns: 94px minmax(0,1fr); gap: 12px; } .title-row h1 { margin: 0; } .user-mode .modal { padding: 20px; } }
 @media(min-width:900px) {
   .student-form:not(:has(#booking-picker:not([hidden]))) { padding: 32px; }
   .student-form [data-step="2"] .form-block { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); column-gap: 32px; row-gap: 24px; align-items: start; }
   .student-form .form-block > h3,
-  .student-form .form-block > .field:has(textarea, #booking-photos, #fault-options) { grid-column: 1 / -1; }
+  .student-form .form-block > .field:has(textarea, .photo-collection, .fault-options) { grid-column: 1 / -1; }
   .student-form [data-step="2"] .form-block > .field { margin: 0; }
   .student-form [data-step="2"] .form-block > h3 { margin: 0; }
   .fault-options { grid-template-columns: repeat(4,minmax(0,1fr)); }
@@ -261,11 +264,66 @@ fieldset.field { padding: 0; border: 0; }
 #detail-source-data > summary:not([hidden]) { cursor: pointer; padding: 20px 28px; border: 1px solid var(--line); border-radius: 12px; background: white; font-weight: 600; }
 #detail-operations:empty { display: none; }
 
-.booking-device-count {margin-block:0 1.5rem;display:grid;gap:.5rem;max-width:42rem;}
-.booking-device-count > label {font-weight:650;}
-.booking-device-count select {min-height:44px;width:100%;}
-#second-device {margin-block-start:1rem;}
 .device-switcher {display:flex;flex-wrap:wrap;justify-content:center;gap:.75rem;margin-block:1rem;}
 .device-switcher button {flex:1;min-height:44px;overflow-wrap:anywhere;}
 .device-switcher [aria-pressed="true"] {background:#102a43;color:white;border-color:#102a43;}
 #success-device-label {overflow-wrap:anywhere;}
+/* Device switching uses the existing form hierarchy, without nested cards. */
+.device-tabs {display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:26px 0 0;color:var(--navy);}
+.device-tabs button {appearance:none;border:0;border-radius:0;background:none;box-shadow:none;padding:8px 0;min-height:44px;color:var(--muted);font:inherit;cursor:pointer;transition:color 160ms ease;}
+.device-tabs button[aria-selected=true] {color:var(--navy);text-decoration:underline;text-decoration-color:var(--green);text-underline-offset:9px;text-decoration-thickness:2px;}
+.device-tabs button:hover {color:var(--green);}
+.device-tabs button:focus-visible {outline:2px solid var(--green);outline-offset:4px;}
+.device-tabs > span {color:var(--muted);font-weight:400;}
+.device-panel {min-width:0;}
+.device-tabs .device-remove {margin-left:auto;min-height:44px;font-size:13px;font-weight:400;text-decoration:none;}
+.student-form .device-panel .form-block {padding:20px 0;}
+.student-form .booking-owner {padding-top:26px;border-top:1px solid var(--line);}
+.owner-hint {grid-column:1/-1;margin:-8px 0 12px;}
+.device-editor-number {display:grid;place-items:center;flex:none;width:38px;height:38px;border-radius:10px;background:#e9f0f3;color:var(--navy);font-size:14px;font-weight:700;}
+#booking-review {display:block;}
+.device-review-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:24px;}
+.device-review-grid:has(> :only-child) {grid-template-columns:minmax(0,1fr);}
+.device-review-card {padding:20px;border:1px solid var(--line);border-radius:12px;min-width:0;}
+.device-review-heading {display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+.device-review-heading > div {flex:1;min-width:0;}
+.device-review-heading h3 {font-size:16px;margin:0 0 5px;}
+.device-review-heading p {margin:0;font-size:13px;color:var(--muted);overflow-wrap:anywhere;}
+.device-place {font-size:12px;color:var(--green);}
+.device-review-card .review-group {border:0;padding-bottom:0;}
+.device-review-card .review-group > h3 {display:none;}
+.booking-shared-review {margin-top:12px;}
+.booking-batch-note {color:var(--green);font-size:14px;padding:14px 0;margin:0;}
+#success-devices {justify-content:stretch;margin:24px 0 16px;gap:14px;}
+#success-devices button {display:grid;gap:10px;min-width:0;text-align:left;padding:18px 20px;border:1px solid var(--line);background:#f8fafb;color:var(--ink);}
+#success-devices button[aria-pressed=true] {border-color:var(--green);box-shadow:inset 0 0 0 1px var(--green);background:#f0f8f4;color:var(--ink);}
+.device-ticket-label {display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);}
+#success-devices strong {font-size:17px;font-weight:650;}
+#success-devices small {font-size:12px;line-height:1.6;color:var(--muted);}
+#success-device-label {font-size:14px;color:var(--muted);margin:0;}
+@media(min-width:1000px){
+  .device-review-card dl>div {grid-template-columns:100px minmax(0,1fr);gap:14px;}
+}
+@media(max-width:759px){
+  .device-review-grid {grid-template-columns:minmax(0,1fr);}
+  .device-review-card {padding:16px;}
+  #success-devices {flex-direction:column;}
+  #success-devices button {padding:16px;}
+}
+
+.appointment-edit > summary {min-height:44px;display:flex;align-items:center;font-weight:650;cursor:pointer;}
+.device-edit-form {padding-block:20px;}
+.device-edit-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;}
+@media(max-width:600px){.device-edit-grid {grid-template-columns:minmax(0,1fr);}}
+
+@media(prefers-reduced-motion:reduce){.device-tabs button {transition:none;}}
+
+@media(max-width:420px) {
+  .user-mode .topbar-inner {display:grid;grid-template-columns:minmax(0,1fr);gap:8px;padding:16px 24px 0;min-height:120px;}
+  .user-mode .brand {width:100%;min-height:44px;}
+  .user-mode .brand strong {font-size:17px;}
+  .user-mode .organization-logo {width:34px;height:34px;flex-shrink:0;}
+  .user-mode .main-nav {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;width:100%;min-height:52px;padding:0;}
+  .user-mode .nav-link {min-width:0;min-height:52px;padding:12px 8px;}
+}
+@media(max-width:480px) {.user-mode .topbar-inner {padding-inline:16px;}}

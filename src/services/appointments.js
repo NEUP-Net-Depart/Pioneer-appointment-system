@@ -1,4 +1,5 @@
-import { MAX_BOOKING_DEVICES } from '../../shared/booking-devices.js';
+import { MAX_BOOKING_DEVICES, DEVICE_FIELDS, deviceFields } from '../../shared/booking-devices.js';
+import { studentFieldErrors } from '../../shared/student-booking.js';
 import { fail } from '../lib/http.js';
 import { encryptText, decryptText } from '../lib/privacy.js';
 import {
@@ -57,6 +58,7 @@ export function appointmentService(
     return {
       ...visible,
       relatedDevices: devices.related,
+      canEditDevice: item.source === 'booking' && item.status === 'booked' && !item.reception?.receivedAt && !item.startedAt && Date.parse(item.expiresAt) > clock().getTime() && Date.parse(slotDeadline(item.date,item.timeSlot)) > clock().getTime(),
       canAddDevice:
         item.source === 'booking' &&
         item.status === 'booked' &&
@@ -542,6 +544,24 @@ export function appointmentService(
       )
         fail(409, '预约已更新，请刷新后重试');
       return { id: item.id, accessToken: credential.token };
+    },
+    async editDevice(id,input,accessToken) {
+      const item=await guestAppointment(appointments,id,accessToken),instant=clock();
+      if(!input || typeof input!=='object' || Array.isArray(input) || !Number.isSafeInteger(input.revision) || Object.keys(input).some(key=>key!=='revision' && !DEVICE_FIELDS.includes(key)))fail(400,'请提交设备信息及预约版本');
+      if(item.source!=='booking' || item.status!=='booked' || item.reception?.receivedAt || item.startedAt || Date.parse(item.expiresAt)<=instant.getTime() || Date.parse(slotDeadline(item.date,item.timeSlot))<=instant.getTime())fail(409,'预约已接待、开始维修或超过到场时段，不能自行修改设备信息');
+      const patch=Object.fromEntries(Object.entries(deviceFields(input)).map(([key,value])=>[key,typeof value==='string'?value.trim():value]));
+      const errors=Object.fromEntries(Object.entries(studentFieldErrors({...item,...patch})).filter(([key])=>DEVICE_FIELDS.includes(key)));
+      if(Object.keys(errors).length)fail(400,'请检查设备信息','FIELD_INVALID',errors);
+      patch.liquidMetal=patch.deviceType==='笔记本'?patch.liquidMetal:null;
+      patch.dellG15=patch.deviceType==='笔记本' && patch.brand==='Dell'?patch.dellG15 || null:null;
+      for(const key of ['deviceModel','issue'])patch[key] ??='';
+      if(input.revision!==item.revision){
+        if(DEVICE_FIELDS.every(key=>(item[key] || '')===(patch[key] || '')))return present(item);
+        fail(409,'预约已更新，请核对最新资料后再保存','REVISION_CONFLICT');
+      }
+      const updated=await appointments.update(item,patch,undefined,{action:'appointments.customer_device_updated',actor:{memberId:null,account:null},guestCredentialHash:hashAccessToken(accessToken),at:instant.toISOString()});
+      if(!updated)fail(409,'预约已更新或进入接待，请核对最新资料后再保存','REVISION_CONFLICT');
+      return present(updated);
     },
     async update(
       id,

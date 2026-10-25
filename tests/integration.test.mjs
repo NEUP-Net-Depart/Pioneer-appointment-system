@@ -2758,6 +2758,42 @@ test('concurrent notice publication respects the campus limit atomically',async(
 });
 
 const multiDraft = patch => {const common=draft(patch);return {...common,devices:[{...common,deviceModel:'第一台'},{...common,deviceModel:'第二台',faultType:'黑屏'}]};};
+const editDeviceBody=item=>Object.fromEntries(['revision','deviceType','brand','deviceModel','warranty','faultType','issue','liquidMetal','dellG15'].map(key=>[key,item[key]]));
+test('customer device editing authenticates, validates and preserves booking capacity and credentials',async()=>{
+  const item=await book(),path=`/api/appointments/${item.id}/device`,body={...editDeviceBody(item),deviceModel:'修改后的型号',faultType:'网络问题'};
+  await api(path,{method:'PATCH',body},404);
+  await api(path,{method:'PATCH',accessToken:item.accessToken,body:{...body,studentId:'999999'}},400);
+  await api(path,{method:'PATCH',accessToken:item.accessToken,body:{...body,brand:''}},400);
+  const updated=await api(path,{method:'PATCH',accessToken:item.accessToken,body});
+  assert.equal(updated.deviceModel,body.deviceModel);assert.equal(updated.revision,item.revision+1);
+  for(const key of ['id','studentId','date','timeSlot','campus','status'])assert.equal(updated[key],item[key]);
+  const replay=await api(path,{method:'PATCH',accessToken:item.accessToken,body});assert.equal(replay.revision,updated.revision);
+  await api(path,{method:'PATCH',accessToken:item.accessToken,body:{...body,deviceModel:'冲突修改'}},409);
+  assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM audit_events WHERE action='appointments.customer_device_updated' AND source_ref LIKE ?").bind('%'+item.id+'%').first()).n,1);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointments').first()).n,1);
+});
+test('customer device editing rejects reception and concurrent credential revocation',async()=>{
+  const item=await book(),repository=appointmentRepository(db),patch={...editDeviceBody(item),deviceModel:'不能写入'};
+  const wrapped={...repository,async update(...args){await db.prepare('UPDATE appointments SET access_token_hash=? WHERE id=?').bind('0'.repeat(64),item.id).run();return repository.update(...args);}};
+  await assert.rejects(appointmentService(wrapped,null,PII_ENCRYPTION_KEY,()=>new Date(testNow)).editDevice(item.id,patch,item.accessToken),error=>error.status===409);
+  assert.equal((await repository.find(item.id)).deviceModel,item.deviceModel);
+  const other=await book();
+  await db.prepare("INSERT INTO repair_receptions(appointment_id,state,received_at,received_by,updated_at) VALUES(?,'queued',?,'root001',?)").bind(other.id,testNow,testNow).run();
+  await api(`/api/appointments/${other.id}/device`,{method:'PATCH',accessToken:other.accessToken,body:editDeviceBody(other)},409);
+  assert.equal((await api(`/api/appointments/${other.id}`,{accessToken:other.accessToken})).canEditDevice,false);
+});
+test('customer device editing atomically refuses a concurrent reception',async()=>{
+  const item=await book(),repository=appointmentRepository(db);
+  const wrapped={...repository,async update(...args){await db.prepare("INSERT INTO repair_receptions(appointment_id,state,received_at,received_by,updated_at) VALUES(?,'queued',?,'root001',?)").bind(item.id,testNow,testNow).run();return repository.update(...args);}};
+  await assert.rejects(appointmentService(wrapped,null,PII_ENCRYPTION_KEY,()=>new Date(testNow)).editDevice(item.id,{...editDeviceBody(item),deviceModel:'不能写入'},item.accessToken),error=>error.status===409);
+  assert.equal((await repository.find(item.id)).deviceModel,item.deviceModel);
+});
+test('customer device editing honors an earlier custom expiration deadline',async()=>{
+  const item=await book();
+  await db.prepare('UPDATE appointments SET expires_at=? WHERE id=?').bind('2026-10-15T01:00:00.000Z',item.id).run();
+  await api(`/api/appointments/${item.id}/device`,{method:'PATCH',accessToken:item.accessToken,body:{...editDeviceBody(item),deviceModel:'不得更改'}},409);
+  assert.equal((await appointmentRepository(db).find(item.id)).deviceModel,item.deviceModel);
+});
 test('two devices commit once with separate credentials, receipts and cancellation',async()=>{
   const body=multiDraft(),key=randomBytes(32).toString('base64url');
   const results=await Promise.all(Array.from({length:3},()=>api('/api/appointments',{method:'POST',body,headers:{'Idempotency-Key':key}},201)));

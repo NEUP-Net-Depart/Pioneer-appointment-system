@@ -626,6 +626,7 @@ export function appointmentRepository(db) {
       const fields = [],
         args = [];
       for (const [key, column] of Object.entries({
+        deviceType: 'device_type',brand: 'brand',deviceModel: 'device_model',warranty: 'warranty',faultType: 'fault_type',issue: 'issue',liquidMetal: 'liquid_metal',dellG15: 'dell_g15',
         date: 'date',
         timeSlot: 'time_slot',
         source: 'source',
@@ -652,6 +653,10 @@ export function appointmentRepository(db) {
       }
       let guard = '';
       const guardArgs = [];
+      if(workflow?.action==='appointments.customer_device_updated') {
+        guard += " AND source='booking' AND status='booked' AND started_at IS NULL AND julianday(expires_at)>julianday(?) AND julianday(date || 'T' || substr(time_slot,-5) || ':00+08:00')>julianday(?) AND NOT EXISTS(SELECT 1 FROM repair_receptions r WHERE r.appointment_id=appointments.id AND r.received_at IS NOT NULL)";
+        guardArgs.push(workflow.at,workflow.at);
+      }
       if (workflow?.eligibility) {
         const { context, event } = workflow.eligibility;
         guard += ` AND EXISTS(SELECT 1 FROM staff_presence WHERE member_id=? AND business_date=? AND campus_id=? AND state='available' AND revision=?)
@@ -784,11 +789,12 @@ export function appointmentRepository(db) {
               workflow.action,
               workflow.actionVersion || '1',
               JSON.stringify({ module: 'repairs', type: 'appointment', id: item.id }),
-              JSON.stringify({ revision:item.revision,status: item.status, assignedTo: item.assignedTo, reception: item.reception, date:item.date,timeSlot:item.timeSlot }),
+              JSON.stringify({ revision:item.revision,status: item.status, assignedTo: item.assignedTo, reception: item.reception, date:item.date,timeSlot:item.timeSlot,...(workflow.action==='appointments.customer_device_updated'?{deviceType:item.deviceType,brand:item.brand,deviceModel:item.deviceModel,faultType:item.faultType}: {}) }),
               JSON.stringify({
                 status: patch.status || item.status,
                 assignedTo: patch.assignedTo || item.assignedTo,
                 revision: item.revision + 1,
+                ...(workflow.action==='appointments.customer_device_updated'?{deviceType:patch.deviceType,brand:patch.brand,deviceModel:patch.deviceModel,faultType:patch.faultType}: {}),
                 ...(workflow.reception ? { reception: workflow.reception, date:patch.date || item.date,timeSlot:patch.timeSlot || item.timeSlot } : {}),
                 ...(workflow.eligibility?.context
                   ? {

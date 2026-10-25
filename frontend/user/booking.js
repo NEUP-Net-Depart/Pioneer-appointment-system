@@ -15,6 +15,7 @@ import { readDraft,writeDraft,clearDraft,requestKey,readAttempt,writeAttempt,cle
 
 export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
   const form=$('#booking-form');
+  form.prepend($('#additional-device-context'));
   let step=1,busy=false,created=null,payload=null,attempt=readAttempt(),savedDraft=readDraft(),restoring=false,active=true,deferredPhotos=false;
   let supplemental=null,createdDevices=[],selectedDevice=0;
   const deviceCount=()=>supplemental ? 1 : Number($('#booking-device-count').value);
@@ -36,8 +37,8 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
   options(field('college'),[...COLLEGES,{value:'other',label:'其他学院（手动填写）'}],'请选择学院');
   for(const root of form.querySelectorAll('[data-answer]'))root.innerHTML=ANSWERS.map(answer=>`<label><input type="radio" name="${root.dataset.answer}" value="${answer}" /><span>${answer}</span></label>`).join('');
   $('#fault-options').innerHTML=FAULT_TYPES.map(value=>`<label><input type="radio" name="faultType" value="${value}" /><span>${value}</span></label>`).join('');
-  const second=initSecondDevice(form,{onChange:()=>{if(step===3)review();},onUploadChange:entries=>{if(selectedDevice===1)renderUploads(entries);}});
-  const photos=createPhotoCollection($('#booking-photos'),{inputId:'appointment-attachments',onChange:()=>{if(step===3)review();},onUploadChange:entries=>{if(selectedDevice===0)renderUploads(entries);}});
+  const second=initSecondDevice(form,{onRemoveFirst:()=>{photos=second.promote(photos);},onCountChange:count=>{$('#booking-device-count').value=String(count);changed();void picker.refresh();},onChange:()=>{if(step===3)review();},onUploadChange:entries=>{if(created && entries===selectedPhotos().entries())renderUploads(entries);}});
+  let photos=createPhotoCollection($('#booking-photos'),{inputId:'appointment-attachments',onChange:()=>{if(step===3)review();},onUploadChange:entries=>{if(created && entries===selectedPhotos().entries())renderUploads(entries);}});
   const picker=initSlotPicker({getDeviceCount:deviceCount,getLockedScope:()=>supplemental,onChange:()=>{saveDraft();if(step>1 && !created){renderTime();if(picker.issue())error(picker.issue()+'其他已填信息已保留。');}}});
   function rawFields(){const values={};for(const control of form.querySelectorAll('input[name],select[name],textarea[name]')){if(control.name==='agreement' || control.type==='checkbox')continue;if(control.type==='radio'){if(control.checked)values[control.name]=control.value;}else values[control.name]=control.value;}if(values.bookingDeviceCount==='1')delete values.bookingDeviceCount;return values;}
   function data(){const values=Object.fromEntries(Object.entries(rawFields()).filter(([key])=>!key.startsWith('second_') && !['bookingDeviceCount','additionalFor'].includes(key))),effectiveBrand=values.brand==='other' ? values.brandOther.trim() : values.brand;return {...values,brand:effectiveBrand,college:values.college==='other' ? values.collegeOther.trim() : values.college,
@@ -46,7 +47,7 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
   function saveDraft(){if(restoring || created || savedDraft || busy)return;const values=rawFields();if(Object.values(values).some(Boolean) && !writeDraft(values,step))notice('此浏览器无法保存草稿，请避免刷新页面。');}
   function notice(message){setMessage($('#draft-notice'),message);}
   function condition(id,show,{clear=false}={}){const root=$(id);root.hidden=!show;for(const control of root.querySelectorAll('input')){control.disabled=!show;if(!show && clear){if(control.type==='radio')control.checked=false;else control.value='';}}}
-  function syncConditions(){second.sync(deviceCount()===2);const values=rawFields(),effectiveBrand=values.brand==='other' ? values.brandOther.trim() : values.brand;
+  function syncConditions(){second.sync(deviceCount()===2,!!supplemental);const values=rawFields(),effectiveBrand=values.brand==='other' ? values.brandOther.trim() : values.brand;
     const conditions=[['#brand-other-field',values.brand==='other',true],['#college-other-field',values.college==='other',true],['#dell-g15-field',values.deviceType==='笔记本' && effectiveBrand==='Dell',true],['#liquid-metal-field',values.deviceType==='笔记本',true],['#contact-qq-field',values.contactType==='qq'],['#contact-wechat-field',values.contactType==='wechat']];
     const hint=FAULT_HINTS[values.faultType] || '',advice=$('#fault-advice'),hintChanged=$('#fault-advice-message').textContent!==hint;
     const update=()=>{
@@ -58,7 +59,11 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
     if(hintChanged && hint)reveal(advice,{distance:4});
   }
   function renderTime(){const summary=timeSummary(picker.value());$('#step-two-time').innerHTML=summary;$('#step-three-time').innerHTML=summary;}
-  function review(){renderTime();$('#booking-review').innerHTML=(deviceCount()===2 ? '<h3>第一台设备</h3>' : '')+informationGroups({...data(),photoCount:photos.entries().length},{contacts:deviceCount()!==2})+(deviceCount()===2 ? '<h3>第二台设备</h3>'+informationGroups({...second.data(),photoCount:second.photos.entries().length},{contacts:false})+informationGroups(data(),{device:false})+'<p class="notice">两台共占 2 个名额，一起提交成功后分别领取维修码。</p>' : '');}
+  function review(){
+    renderTime();const count=deviceCount();
+    const devices=[{...data(),photoCount:photos.entries().length},...(count===2 ? [{...second.data(),photoCount:second.photos.entries().length}] : [])];
+    $('#booking-review').innerHTML=`<div class="device-review-grid">${devices.map((item,index)=>`<article class="device-review-card"><div class="device-review-heading"><span class="device-editor-number">0${index+1}</span><div><h3>${count===2 ? '第 '+(index+1)+' 台设备' : '维修设备'}</h3><p>${escapeHtml(item.brand)} ${escapeHtml(item.deviceModel || item.deviceType)}</p></div><span class="device-place">占 1 个名额</span></div>${informationGroups(item,{contacts:false})}</article>`).join('')}</div><div class="booking-shared-review">${informationGroups(data(),{device:false})}</div>${count===2 ? '<p class="booking-batch-note">共 2 台 · 同一到场时段 · 分别领取维修码</p>' : ''}`;
+  }
   function go(next,{focus=true}={}){step=next;animateLayout(form,()=>{for(const panel of form.querySelectorAll('[data-step]'))panel.hidden=Number(panel.dataset.step)!==next;
     [...$('#booking-steps').children].forEach((item,index)=>{if(index+1===next)item.setAttribute('aria-current','step');else item.removeAttribute('aria-current');});
     if(next===3)review();else if(next===2)renderTime();},{stagger:true});
@@ -68,6 +73,7 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
     for(const [key,message] of Object.entries(errors)){const name=key==='second_brand' && field('second_brand').value==='other' ? 'second_brandOther' : key==='brand' && field('brand').value==='other' ? 'brandOther' : key==='college' && field('college').value==='other' ? 'collegeOther' : key==='contactValue' ? field('contactType').value==='qq' ? 'qqAccount' : 'wechatAccount' : key;
       const target=form.querySelector(`[data-error-for="${name}"]`);if(target){target.textContent=message;target.setAttribute('role','alert');if(!target.id)target.id='error-'+name;const controls=[...form.querySelectorAll(`[name="${name}"]`),...(name==='signature' ? [$('#open-signature')] : [])];controls.forEach(control=>{control.dataset.baseDescription ??=control.getAttribute('aria-describedby') || '';control.setAttribute('aria-invalid','true');control.setAttribute('aria-describedby',[control.dataset.baseDescription,target.id].filter(Boolean).join(' '));});}}
     });for(const [target,message] of previous)if(target.textContent && target.textContent!==message)reveal(target,{distance:4});
+    if(focus){const key=Object.keys(errors).find(key=>!['agreement','signature'].includes(key));if(key)second.select(key.startsWith('second_')?1:0);}
     const first=[...form.querySelectorAll('[data-error-for]')].find(target=>target.textContent && !target.closest('[hidden]'));
     if(first && focus){first.closest('.field,.form-block')?.scrollIntoView({block:'center',behavior:'auto'});const name=first.dataset.errorFor;const control=name==='signature' ? $('#open-signature') : form.querySelector(`[name="${name}"]:not(:disabled)`);control?.focus({preventScroll:true});}
   }
@@ -82,16 +88,45 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
   }
   form.addEventListener('input',changed);form.addEventListener('change',changed);form.addEventListener('compositionend',changed);
   form.querySelectorAll('[data-edit-step]').forEach(button=>button.addEventListener('click',()=>{if(!busy){error('');go(Number(button.dataset.editStep));}}));
-  $('#step-one-next').addEventListener('click',async()=>{if(busy)return;const button=$('#step-one-next');button.disabled=true;try{if(await picker.refresh() && picker.validate() && picker.confirmNotices()){error('');go(2);}}finally{button.disabled=button.dataset.paused==='true';}});
+  let matchingDevices=[];
+  async function existingForDate(){
+    const date=picker.value().date;if(!date || supplemental)return [];
+    const entries=savedAppointments().filter(entry=>entry.id.replace(/^(?:reserve|reverse)/,'').slice(1,9)===date.replaceAll('-','')),items=[];
+    // Credentials authorize these reads; never discover another customer's orders by student ID.
+    for(let start=0;start<entries.length;start+=4){
+      const results=await Promise.all(entries.slice(start,start+4).map(async entry=>{
+        try{return {...await apiJson('/api/appointments/'+encodeURIComponent(entry.id),{headers:{'X-Appointment-Token':entry.accessToken},timeoutMs:10000}),accessToken:entry.accessToken};}
+        catch(failure){if(failure.status===404 || failure.status===403)return null;throw failure;}
+      }));items.push(...results.filter(Boolean));
+    }
+    return items.filter(item=>item.date===date && item.canAddDevice && (!field('studentId').value || item.studentId===field('studentId').value));
+  }
+  async function useExisting(item){
+    setSupplemental(item);fillOwner(item);syncConditions();await picker.restore(item);saveDraft();
+    $('#existing-device-options').hidden=true;
+  }
+  $('#existing-device-options').addEventListener('click',async event=>{
+    const button=event.target.closest('[data-existing-device]');if(!button)return;
+    if(matchingDevices[Number(button.dataset.existingDevice)]?.date!==picker.value().date){$('#existing-device-options').hidden=true;return;}
+    button.disabled=true;
+    try{await useExisting(matchingDevices[Number(button.dataset.existingDevice)]);if(picker.validate() && picker.confirmNotices())go(2);}
+    catch(failure){error(failure.message);}finally{button.disabled=false;}
+  });
+  $('#step-one-next').addEventListener('click',async()=>{if(busy)return;const button=$('#step-one-next');button.disabled=true;try{
+    const selectedDate=picker.value().date;matchingDevices=await existingForDate();if(selectedDate!==picker.value().date)return;
+    if(matchingDevices.length===1)await useExisting(matchingDevices[0]);
+    else if(matchingDevices.length>1){const panel=$('#existing-device-options');panel.hidden=false;panel.innerHTML='<p>这一天已有预约，请选择要添加设备的原单。</p><div class="actions">'+matchingDevices.map((item,index)=>`<button type="button" class="secondary-btn" data-existing-device="${index}">${escapeHtml(item.name)} · ${escapeHtml(item.brand)} · ${escapeHtml(item.campus)} ${escapeHtml(item.timeSlot)}</button>`).join('')+'</div>';panel.querySelector('button').focus();return;}
+    if(await picker.refresh() && picker.validate() && picker.confirmNotices()){error('');go(2);}
+  }catch{error('暂时无法核实已有预约，请重试。已填信息已保留。');}finally{button.disabled=button.dataset.paused==='true';}});
   $('#step-two-next').addEventListener('click',()=>{const errors=fieldErrors();showErrors(errors);if(Object.keys(errors).length || !photos.validity() || (deviceCount()===2 && !second.photos.validity()))return;if(!picker.validate()){go(1);error('原到场时段当前不可预约，请重新选择。其他已填信息已保留。');return;}error('');go(3);void picker.refresh();});
   $('#agreement-link').addEventListener('click',event=>{event.preventDefault();agreement.open();});$('#close-agreement').addEventListener('click',()=>agreement.close());
   $('#draft-prompt').hidden=!savedDraft;
   $('#draft-discard').addEventListener('click',()=>{savedDraft=null;clearDraft();$('#draft-prompt').hidden=true;});
-  $('#draft-restore').addEventListener('click',async()=>{if(!savedDraft)return;restoring=true;const draft=savedDraft;savedDraft=null;form.reset();
+  $('#draft-restore').addEventListener('click',async()=>{if(!savedDraft)return;restoring=true;const draft=savedDraft;savedDraft=null;form.reset();$('#booking-device-count').value='1';
     for(const control of form.querySelectorAll('[name]')){if(control.name==='agreement')continue;const value=draft.fields[control.name];if(control.type==='radio')control.checked=control.value===value;else if(value!==undefined)control.value=value;}
     supplemental=draft.fields.additionalFor ? savedAppointments().find(entry=>entry.id===draft.fields.additionalFor) : null;
     if(draft.fields.additionalFor && !supplemental){restoring=false;savedDraft=draft;error('补约原单凭证不可用，请先通过私人链接导入原预约。');return;}
-    setSupplemental(supplemental);syncConditions();signature.reset();photos.reset();second.photos.reset();await picker.restore(draft.fields);restoring=false;$('#draft-prompt').hidden=true;notice('已恢复文本和选择。请重新选择照片、勾选协议并完成手写签名。');go(picker.validate() && !picker.hasUnacceptedNotices() ? Math.min(Object.keys(fieldErrors()).length ? 2 : 3,Math.max(1,draft.step || 1)) : 1);changed();saveDraft();});
+    setSupplemental(supplemental);syncConditions();second.resetPanels();signature.reset();photos.reset();second.photos.reset();await picker.restore(draft.fields);restoring=false;$('#draft-prompt').hidden=true;notice('已恢复文本和选择。请重新选择照片、勾选协议并完成手写签名。');go(picker.validate() && !picker.hasUnacceptedNotices() ? Math.min(Object.keys(fieldErrors()).length ? 2 : 3,Math.max(1,draft.step || 1)) : 1);changed();saveDraft();});
   async function resolve(){if(!attempt)return null;const result=await apiJson('/api/booking-attempts/resolve',{method:'POST',json:{requestKey:attempt.key},timeoutMs:15000});return result.found ? result.appointment : null;}
   function renderUploads(entries){if(!created)return;$('#success-photos').hidden=!entries.length;
     const uploaded=entries.filter(entry=>entry.attachment).length,failures=entries.some(entry=>entry.state==='upload-error'),pending=uploaded<entries.length,uploading=entries.some(entry=>entry.state==='uploading');
@@ -120,7 +155,7 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
     form.hidden=true;$('#booking-heading').hidden=true;$('#booking-steps').hidden=true;$('#draft-prompt').hidden=true;notice('');error('');setVisible($('#success-panel'),true);
     $('#success-title').textContent=createdDevices.length>1 ? '两台设备预约成功' : '预约成功';
     $('#success-devices').hidden=createdDevices.length<2;
-    $('#success-devices').innerHTML=createdDevices.map((item,index)=>`<button type="button" class="secondary-btn" data-device="${index}">第 ${index+1} 台 · ${escapeHtml(item.brand)}</button>`).join('');
+    $('#success-devices').innerHTML=createdDevices.map((item,index)=>`<button type="button" class="secondary-btn" data-device="${index}"><span class="device-ticket-label">设备 0${index+1} <span>独立维修码</span></span><strong>${escapeHtml(item.brand)} ${escapeHtml(item.deviceModel || item.deviceType)}</strong><small>${escapeHtml(item.faultType)} · ${escapeHtml(item.id)}</small></button>`).join('');
     selectCreated(0);picker.setActive(false);$('#success-title').focus({preventScroll:true});window.scrollTo({top:0,behavior:'auto'});
     if(upload){void photos.uploadAll(createdDevices[0]);if(createdDevices[1])void second.photos.uploadAll(createdDevices[1]);}else notice('已恢复原预约结果。请分别进入设备详情核对信息，需要时重新选择并补充照片。');
   }
@@ -129,6 +164,12 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
     $('#booking-device-count').disabled=!!item;if(item)$('#booking-device-count').value='1';
     $('#additional-device-context').hidden=!item;$('#additional-device-context').textContent=item ? '为原预约 '+item.id+' 补约一台。学号和到场时段沿用原单；请填写新设备的信息。' : '';
     for(const button of form.querySelectorAll('[data-edit-step="1"]'))button.hidden=!!item;
+  }
+  function fillOwner(item){
+    for(const key of ['name','studentId','email'])field(key).value=item[key] || '';
+    const knownCollege=[...field('college').options].some(option=>option.value===item.college);
+    field('college').value=knownCollege ? item.college : 'other';field('collegeOther').value=knownCollege ? '' : item.college || '';
+    if(['qq','wechat'].includes(item.contactType)){form.querySelector(`[name="contactType"][value="${item.contactType}"]`).checked=true;field(item.contactType==='qq' ? 'qqAccount' : 'wechatAccount').value=item.contactValue || '';}
   }
   async function submit(){if(busy)return;busy=true;$('#booking-submit').disabled=true;$('#booking-submit').textContent='正在核实并提交…';form.querySelectorAll('[data-edit-step]').forEach(button=>button.disabled=true);error('');
     try {
@@ -169,16 +210,12 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
   return {
     hasDraft:()=>Boolean(!created && (savedDraft || readDraft() || Object.values(rawFields()).some(Boolean))),
     hasPending:()=>Boolean(attempt?.pending),
-    reset(){if(busy || attempt?.pending)return false;photos.reset();second.photos.reset();signature.reset();setSupplemental(null);picker.reset();form.reset();createdDevices=[];selectedDevice=0;syncConditions();clearDraft();clearAttempt();savedDraft=null;attempt=null;payload=null;created=null;form.hidden=false;$('#booking-heading').hidden=false;$('#booking-steps').hidden=false;$('#success-panel').hidden=true;$('#draft-prompt').hidden=true;notice('');error('');picker.setActive(active);go(1);return true;},
+    reset(){if(busy || attempt?.pending)return false;photos.reset();second.photos.reset();second.resetPanels();signature.reset();setSupplemental(null);picker.reset();form.reset();$('#booking-device-count').value='1';$('#existing-device-options').hidden=true;createdDevices=[];selectedDevice=0;syncConditions();clearDraft();clearAttempt();savedDraft=null;attempt=null;payload=null;created=null;form.hidden=false;$('#booking-heading').hidden=false;$('#booking-steps').hidden=false;$('#success-panel').hidden=true;$('#draft-prompt').hidden=true;notice('');error('');picker.setActive(active);go(1);return true;},
     setActive(value){active=value;picker.setActive(value && !created);if(!value && created){photos.pauseUpload();second.photos.pauseUpload();}},
     async addDevice(item){
       if(busy || attempt?.pending)return false;
       this.reset();setSupplemental(item);
-      for(const key of ['name','studentId','email'])field(key).value=item[key] || '';
-      const knownCollege=[...field('college').options].some(option=>option.value===item.college);
-      field('college').value=knownCollege ? item.college : 'other';field('collegeOther').value=knownCollege ? '' : item.college || '';
-      const contact= form.querySelector(`[name="contactType"][value="${item.contactType==='qq' ? 'qq' : 'wechat'}"]`);contact.checked=true;
-      field(item.contactType==='qq' ? 'qqAccount' : 'wechatAccount').value=item.contactValue || '';
+      fillOwner(item);
       syncConditions();await picker.restore(item);saveDraft();go(1);return true;
     },
     created:()=>created

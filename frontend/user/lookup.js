@@ -1,3 +1,4 @@
+import { openDeviceEditor } from './device-edit.js';
 import { $,showToast,escapeHtml } from '/shared/utils.js';
 import { apiJson,apiBlob } from '/shared/api.js';
 import { startVisiblePolling } from '/shared/polling.js';
@@ -76,6 +77,7 @@ export function initLookup({onNavigate=()=>{},onAddDevice=()=>{},onRebook=()=>{}
       let loaded=false;details.addEventListener('toggle',()=>{if(details.open && !loaded){loaded=true;const target=document.createElement('div');content.prepend(target);void renderRepairQr(target,item);}});
       details.dataset.status=item.status;details.open=!historic;
     }
+    $('#detail-summary').after($('#detail-devices'));
     updateDetail();
   }
   function setMarkup(element,html){if(element.dataset.renderMarkup===html)return;const expanded=new Set([...element.querySelectorAll('details[open]')].map(details=>details.querySelector('summary')?.textContent));element.innerHTML=html;for(const details of element.querySelectorAll('details'))if(expanded.has(details.querySelector('summary')?.textContent))details.open=true;element.dataset.renderMarkup=html;}
@@ -85,8 +87,12 @@ export function initLookup({onNavigate=()=>{},onAddDevice=()=>{},onRebook=()=>{}
       (['queued','assigned'].includes(child.reception?.state) || child.reception?.leftAt)) || item;
   }
   function updateDetail(){const record=records.get(detailId),item=record?.item;if(!item)return;
-    const devices=$('#detail-devices');devices.hidden=!item.canAddDevice && !item.relatedDevices?.length;
-    setMarkup(devices,`<h2>同次到场的设备</h2>${(item.relatedDevices || []).map(device=>`<p>${escapeHtml(device.brand)} ${escapeHtml(device.deviceModel || device.deviceType)} · ${escapeHtml(statusText(device))}<br><small>${escapeHtml(device.id)}</small></p>`).join('')}${item.canAddDevice ? '<p>还有一台需要维修？沿用本单学号和到场时段，独立占用一个名额。</p><button type="button" class="secondary-btn" data-add-device aria-expanded="false">补约第二台设备</button><div data-add-device-prompt hidden><p>补约会替换尚未提交的预约填写内容。是否继续？</p><div class="actions"><button type="button" class="secondary-btn" data-add-device-keep>保留原填写</button><button type="button" class="primary-btn" data-add-device-confirm>放弃原填写，开始补约</button></div></div>' : ''}`);
+    const devices=$('#detail-devices');devices.hidden=!item.canEditDevice && !item.canAddDevice && !item.relatedDevices?.length;
+    if(!devices.querySelector('[data-device-links]'))devices.innerHTML='<div data-device-links></div><details class="appointment-edit"><summary>修改预约</summary><div class="actions"><button type="button" class="secondary-btn" data-edit-device>修改设备信息</button><button type="button" class="secondary-btn" data-add-device aria-expanded="false">添加一台设备</button></div><div data-add-device-prompt hidden><p>添加设备会替换尚未提交的预约填写内容，是否继续？</p><div class="actions"><button type="button" class="secondary-btn" data-add-device-keep>保留原填写</button><button type="button" class="primary-btn" data-add-device-confirm>放弃原填写，开始补约</button></div></div><div data-device-editor hidden></div></details>';
+    setMarkup(devices.querySelector('[data-device-links]'),item.relatedDevices?.length ? `<h2>同次到场的设备</h2>${item.relatedDevices.map(device=>`<p>${escapeHtml(device.brand)} ${escapeHtml(device.deviceModel || device.deviceType)} · ${escapeHtml(statusText(device))}<br><small>${escapeHtml(device.id)}</small></p>`).join('')}` : '');
+    devices.querySelector('[data-edit-device]').hidden=!item.canEditDevice;
+    devices.querySelector('[data-add-device]').hidden=!item.canAddDevice;
+    devices.querySelector('.appointment-edit').hidden=!item.canEditDevice && !item.canAddDevice && !devices.querySelector('[data-device-editor] form');
     clearTimeout(deadlineTimer);
     const serverOffset=item.serverNow && record.receivedAt ? Date.parse(item.serverNow)-record.receivedAt : 0;
     const deadline=Date.parse(item.expiresAt)-(Date.now()+serverOffset);
@@ -238,6 +244,7 @@ export function initLookup({onNavigate=()=>{},onAddDevice=()=>{},onRebook=()=>{}
   });
   detail.addEventListener('click',async event=>{
     const target=event.target.closest('button');if(!target)return;
+    if(target.hasAttribute('data-edit-device')){openDeviceEditor(detail.querySelector('[data-device-editor]'),records.get(detailId).item,item=>{commit(item);updateDetail();renderList();showToast('设备信息已更新');});return;}
     if(target.hasAttribute('data-add-device') || target.hasAttribute('data-add-device-confirm')){
       if(hasPending()){setNotice($('#detail-notice'),'另一次提交结果尚未核实，请先返回预约维修核实原请求。');return;}
       if(hasDraft() && !target.hasAttribute('data-add-device-confirm')){detail.querySelector('[data-add-device-prompt]').hidden=false;target.setAttribute('aria-expanded','true');detail.querySelector('[data-add-device-confirm]').focus();return;}

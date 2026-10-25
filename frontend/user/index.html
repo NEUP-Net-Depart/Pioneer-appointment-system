@@ -20,7 +20,7 @@
   <form id="booking-form" class="student-form" novalidate>
     <input name="additionalFor" type="hidden" /><input name="campus" type="hidden" /><input name="date" type="hidden" /><input name="timeSlot" type="hidden" />
     <section data-step="1" class="booking-picker" id="booking-picker" aria-labelledby="booking-picker-title">
-      <div class="booking-device-count"><label for="booking-device-count">预约设备数量</label><select id="booking-device-count" name="bookingDeviceCount"><option value="1">1 台设备 · 占 1 个名额</option><option value="2">2 台设备 · 占 2 个名额</option></select><p class="field-hint">每学号每天最多预约 2 台（跨校区合计）。两台一起提交，使用同一到场时段，分别领取维修码。</p><p id="additional-device-context" class="notice" hidden></p></div><section id="booking-notices" class="booking-notices" aria-label="校区预约公告" hidden></section>
+      <input type="hidden" id="booking-device-count" name="bookingDeviceCount" value="1" /><p id="additional-device-context" class="notice" hidden></p><section id="existing-device-options" class="notice" hidden aria-label="选择已有预约"></section><section id="booking-notices" class="booking-notices" aria-label="校区预约公告" hidden></section>
       <div class="booking-picker-heading"><div><h2 id="booking-picker-title" tabindex="-1">校区与到场时间</h2></div><div class="booking-campuses" id="booking-campuses" role="group" aria-label="预约校区"></div></div>
       <div id="booking-calendar" hidden><div class="booking-picker-body">
         <div class="booking-date-panel"><div class="booking-panel-heading"><h3 class="booking-panel-label">选择日期</h3></div><div class="booking-days" id="booking-days" role="group" aria-label="可预约日期"></div></div>
@@ -31,7 +31,7 @@
       <div class="step-actions"><button class="primary-btn" type="button" id="step-one-next">下一步 · 填写设备信息</button></div>
     </section>
     <section data-step="2" hidden>
-      <div class="step-heading"><h2 tabindex="-1">设备、故障与联系方式</h2></div>
+      <div class="step-heading"><h2 tabindex="-1">设备、故障与联系方式</h2><p class="field-hint">按设备分别填写，方便现场核验与维修。</p></div>
       <div class="selection-summary" id="step-two-time"></div><button class="text-btn" type="button" data-edit-step="1">修改到场时间</button>
       <section class="form-block"><h3>设备信息</h3>
         <label class="field">设备类型 <i>*</i><select name="deviceType" required></select><span class="field-error" data-error-for="deviceType"></span></label>

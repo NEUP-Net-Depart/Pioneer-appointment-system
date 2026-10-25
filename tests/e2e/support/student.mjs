@@ -27,6 +27,7 @@ export async function chooseTime(page,campus='南湖') {
   await page.locator('[data-slot="19:00–19:30"]').click();await page.locator('#step-one-next').click();await expect(page.locator('[data-step="2"]')).toBeVisible();
 }
 export async function fillDevice(page,{studentId='20269998',name='预约测试同学'}={}) {
+  if(await page.locator('#device-tab-one').count())await page.locator('#device-tab-one').click();
   await page.locator('[name=deviceType]').selectOption('笔记本');await page.locator('[name=brand]').selectOption('联想');
   await page.locator('[name=liquidMetal][value="不清楚"]').check();await page.locator('[name=warranty][value="否"]').check();await page.locator('[name=faultType][value="蓝屏"]').check();
   await page.locator('[name=name]').fill(name);await page.locator('[name=studentId]').fill(studentId);await page.locator('[name=college]').selectOption('计算机科学与工程学院');

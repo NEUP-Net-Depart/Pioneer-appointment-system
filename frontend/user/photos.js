@@ -48,7 +48,7 @@ export function createPhotoCollection(root,{inputId,existingCount=()=>0,onChange
   });
   function validity() {
     const invalid=entries.find(entry=>entry.state==='error' || entry.state==='preparing');
-    if(invalid){error.textContent=invalid.state==='preparing' ? '照片正在准备，请稍候再继续。' : '有照片准备失败，请替换或删除后继续。';add.focus();return false;}
+    if(invalid){root.closest('.device-panel')?.dispatchEvent(new Event('device-reveal'));error.textContent=invalid.state==='preparing' ? '照片正在准备，请稍候再继续。' : '有照片准备失败，请替换或删除后继续。';add.focus();return false;}
     error.textContent='';return true;
   }
   async function uploadAll(appointment) {
