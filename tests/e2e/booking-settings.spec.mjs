@@ -150,6 +150,7 @@ test('administrators configure release and announcements with guarded navigation
   await page.route('**/api/booking-settings',route=>{const value=route.request().postDataJSON();writes.push(value);settings={...value,revision:value.revision+1};return route.fulfill({json:settings});});
   await page.route('**/api/booking-notices',route=>{const value=route.request().postDataJSON();writes.push(value);const saved={...value,revision:value.revision+1};notices=[saved];return route.fulfill({json:saved});});
   await loginStaff(page);await staffPage(page,'预约配置');
+  await expect(page.getByRole('button',{name:'南湖校区',exact:true})).toHaveAttribute('aria-pressed','true');
   await page.evaluate(()=>Object.defineProperty(document,'hidden',{configurable:true,value:true}));
   await page.getByRole('button',{name:'放号时间',exact:true}).click();
   // Static fields render immediately; hidden documents must not fetch or edit unknown data.

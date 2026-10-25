@@ -34,4 +34,5 @@ export async function staffPage(page, label) {
   }
   const keep = page.getByRole('button', { name: '保留草稿并切换', exact: true });
   if (await keep.isVisible()) await keep.click();
+  await expect(page.locator('.field-sidebar').getByRole('button', { name: label, exact: true, includeHidden: true })).toHaveAttribute('aria-current', 'page');
 }
