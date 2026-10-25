@@ -60,6 +60,11 @@ test('dense rosters keep seven people per shift readable and expose one contextu
   await page.locator('.roster-range').getByRole('button',{name:'刷新',exact:true}).click();
   const leaveRow=page.locator('.roster-person').filter({hasText:'欧阳测试长姓名'});
   await expect(leaveRow).toHaveAttribute('draggable','false');
+  // Let nested refresh animations finish before scrolling the row into view.
+  await expect.poll(()=>page.locator('.roster-board-layout').evaluate(async node=>{
+    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+    return node.getAnimations({subtree:true}).length;
+  })).toBe(0);
   await leaveRow.getByRole('button',{name:'为欧阳测试长姓名安排补位人员',exact:true}).click();
   const replacement=page.getByRole('dialog',{name:'安排补位人员',exact:true});
   await expect(replacement).toContainText('原请假班次与审批记录会保留');
