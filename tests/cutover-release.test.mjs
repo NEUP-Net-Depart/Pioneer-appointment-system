@@ -73,12 +73,12 @@ test('later deployments respect deliberately ungranted administrators and revoke
 
 test('already applied 0030 upgrades forward to explicit permanent manager roles',async()=>{
   const report=await rehearseSnapshot(await baselineDump({deployed:true,beforeLoginScope:true,interleaved:true}));
-  assert.equal(report.applied,9);assert.equal(report.accounts['admin → repair_lead+technician'],2);
+  assert.equal(report.applied,10);assert.equal(report.accounts['admin → repair_lead+technician'],2);
 });
 
 test('Preview rehearsal respects expired explicit authorization and custom grant conditions',async()=>{
   const report=await rehearseSnapshot(await baselineDump({deployed:true,beforeLoginScope:true,explicitAuthorization:true}));
-  assert.equal(report.applied,9);
+  assert.equal(report.applied,10);
   assert.equal(report.accounts['admin → repair_lead+technician'],2);
 });
 
@@ -87,7 +87,7 @@ test('migration rehearsal rejects multi-account members before altering authoriz
 });
 test('Preview rehearsal advances pending default deadlines while preserving custom deadlines and completed history',async()=>{
   const report=await rehearseSnapshot(await baselineDump({deployed:true,beforeLoginScope:true,withAppointments:true}));
-  assert.equal(report.applied,9);assert.equal(report.preservedTables,7);
+  assert.equal(report.applied,10);assert.equal(report.preservedTables,7);
 });
 test('current D1 snapshots restore with interleaved table definitions and cyclic account/member references',async()=>{
   const report=await rehearseSnapshot(await baselineDump({deployed:true,interleaved:true}));assert.equal(report.applied,0);assert.equal(report.accounts['admin → repair_lead+technician'],1);

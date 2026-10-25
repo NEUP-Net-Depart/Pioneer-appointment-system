@@ -11,7 +11,7 @@ import { timeSummary,timeLabel,informationGroups,statusText,statusExplanation,re
 import { createPhotoCollection,previewPhoto } from './photos.js';
 import { createFollowupPanel,currentFollowup } from './followups.js';
 
-export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false,hasPending=()=>false}={}) {
+export function initLookup({onNavigate=()=>{},onAddDevice=()=>{},onRebook=()=>{},hasDraft=()=>false,hasPending=()=>false}={}) {
   const root=$('#lookup-results'),detail=$('#appointment-detail');
   const records=new Map(),followupCommands=new Map(),followupMessages=new Map(),followupBusy=new Set();let active=false,detailId=null,generation=0,refreshing=false,importing=false,cancelling=false,detailPhotos=null,deadlineTimer,viewVersion=0;
   const urls=new Set();
@@ -57,7 +57,7 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
   function existingPhotos(){return records.get(detailId)?.item?.attachments?.filter(file=>['general','student_photo'].includes(file.purpose) && file.mimeType.startsWith('image/')) || [];}
   function releaseUrls(){urls.forEach(url=>URL.revokeObjectURL(url));urls.clear();}
   function mountDetail(item){detailPhotos?.dispose();releaseUrls();clearTimeout(deadlineTimer);
-    detail.innerHTML=`<section class="detail-section" id="detail-summary" aria-live="polite" aria-atomic="true"></section><section id="detail-queue" class="detail-section" aria-label="现场排队" hidden></section><section id="detail-current-qr" class="detail-section" hidden></section><div id="detail-repair-record"></div><details id="detail-source-data" open><summary hidden>原工单资料</summary><section class="detail-section"><h2>预约凭证</h2><dl>${item ? `<div><dt>预约编号</dt><dd>${escapeHtml(item.id)}</dd></div>${item.repairNumber ? `<div><dt>历史维修编号</dt><dd>${escapeHtml(item.repairNumber)}</dd></div>` : ''}` : ''}</dl><div id="detail-qr"></div><button class="secondary-btn" id="detail-copy-link" type="button">复制私人查询链接</button><input class="private-link-fallback" id="detail-private-link" type="text" readonly hidden aria-label="私人查询链接" /></section><section class="detail-section"><div id="detail-information"></div><h3>已上传的照片与历史附件</h3><div id="detail-attachments"></div></section><section class="detail-section" id="detail-contacts"></section><section class="detail-section" id="detail-photo-upload"><h2>补充故障照片</h2><div id="detail-photos"></div><button class="primary-btn" id="detail-upload" type="button">上传所选照片</button><p id="detail-upload-message" role="status"></p></section></details><section class="detail-section" id="detail-operations"></section>`;
+    detail.innerHTML=`<section class="detail-section" id="detail-summary" aria-live="polite" aria-atomic="true"></section><section id="detail-queue" class="detail-section" aria-label="现场排队" hidden></section><section id="detail-current-qr" class="detail-section" hidden></section><div id="detail-repair-record"></div><details id="detail-source-data" open><summary hidden>原工单资料</summary><section class="detail-section"><h2>预约凭证</h2><dl>${item ? `<div><dt>预约编号</dt><dd>${escapeHtml(item.id)}</dd></div>${item.repairNumber ? `<div><dt>历史维修编号</dt><dd>${escapeHtml(item.repairNumber)}</dd></div>` : ''}` : ''}</dl><div id="detail-qr"></div><button class="secondary-btn" id="detail-copy-link" type="button">复制私人查询链接</button><input class="private-link-fallback" id="detail-private-link" type="text" readonly hidden aria-label="私人查询链接" /></section><section class="detail-section"><div id="detail-information"></div><h3>已上传的照片与历史附件</h3><div id="detail-attachments"></div></section><section class="detail-section" id="detail-contacts"></section><section class="detail-section" id="detail-photo-upload"><h2>补充故障照片</h2><div id="detail-photos"></div><button class="primary-btn" id="detail-upload" type="button">上传所选照片</button><p id="detail-upload-message" role="status"></p></section></details><section class="detail-section" id="detail-devices" hidden></section><section class="detail-section" id="detail-operations"></section>`;
     detailPhotos=createPhotoCollection($('#detail-photos'),{existingCount:()=>existingPhotos().length,onUploadChange:entries=>{
       const busy=entries.some(entry=>entry.state==='uploading');$('#detail-upload').disabled=busy;$('#detail-upload').textContent=busy ? '正在上传…' : '上传所选照片';
       $('#detail-upload-message').textContent=entries.some(entry=>entry.state==='upload-error') ? '部分照片未上传，可再次点击上传重试。已成功的照片不会重复上传。' : '';
@@ -85,6 +85,8 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
       (['queued','assigned'].includes(child.reception?.state) || child.reception?.leftAt)) || item;
   }
   function updateDetail(){const record=records.get(detailId),item=record?.item;if(!item)return;
+    const devices=$('#detail-devices');devices.hidden=!item.canAddDevice && !item.relatedDevices?.length;
+    setMarkup(devices,`<h2>同次到场的设备</h2>${(item.relatedDevices || []).map(device=>`<p>${escapeHtml(device.brand)} ${escapeHtml(device.deviceModel || device.deviceType)} · ${escapeHtml(statusText(device))}<br><small>${escapeHtml(device.id)}</small></p>`).join('')}${item.canAddDevice ? '<p>还有一台需要维修？沿用本单学号和到场时段，独立占用一个名额。</p><button type="button" class="secondary-btn" data-add-device aria-expanded="false">补约第二台设备</button><div data-add-device-prompt hidden><p>补约会替换尚未提交的预约填写内容。是否继续？</p><div class="actions"><button type="button" class="secondary-btn" data-add-device-keep>保留原填写</button><button type="button" class="primary-btn" data-add-device-confirm>放弃原填写，开始补约</button></div></div>' : ''}`);
     clearTimeout(deadlineTimer);
     const serverOffset=item.serverNow && record.receivedAt ? Date.parse(item.serverNow)-record.receivedAt : 0;
     const deadline=Date.parse(item.expiresAt)-(Date.now()+serverOffset);
@@ -236,6 +238,12 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
   });
   detail.addEventListener('click',async event=>{
     const target=event.target.closest('button');if(!target)return;
+    if(target.hasAttribute('data-add-device') || target.hasAttribute('data-add-device-confirm')){
+      if(hasPending()){setNotice($('#detail-notice'),'另一次提交结果尚未核实，请先返回预约维修核实原请求。');return;}
+      if(hasDraft() && !target.hasAttribute('data-add-device-confirm')){detail.querySelector('[data-add-device-prompt]').hidden=false;target.setAttribute('aria-expanded','true');detail.querySelector('[data-add-device-confirm]').focus();return;}
+      target.disabled=true;try{await onAddDevice(records.get(detailId).item);}finally{target.disabled=false;}return;
+    }
+    if(target.hasAttribute('data-add-device-keep')){detail.querySelector('[data-add-device-prompt]').hidden=true;const control=detail.querySelector('[data-add-device]');control.setAttribute('aria-expanded','false');control.focus();return;}
     if(target.hasAttribute('data-queue-refresh')){void refresh();return;}
     if(target.hasAttribute('data-queue-leave')){detail.querySelector('[data-queue-confirm]').hidden=false;detail.querySelector('[data-queue-exit]').focus();return;}
     if(target.hasAttribute('data-queue-keep')){detail.querySelector('[data-queue-confirm]').hidden=true;detail.querySelector('[data-queue-leave]').focus();return;}

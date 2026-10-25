@@ -11,7 +11,7 @@ import { dateKey, addDays, serviceDay, formatDate, weekRange, expirationDeadline
 import { attachmentRepository } from '../src/db/attachments.js';
 import { appointmentRepository } from '../src/db/appointments.js';
 import { appointmentService as createAppointmentService } from '../src/services/appointments.js';
-import { bookingInput } from '../src/lib/validation.js';
+import { bookingInput,bookingDevicesInput } from '../src/lib/validation.js';
 import { expireAppointments } from '../scripts/expire-appointments.mjs';
 import { attachmentService as createAttachmentService } from '../src/services/attachments.js';
 import { storageLimit } from '../src/lib/env.js';
@@ -358,10 +358,10 @@ test('repair followups are idempotent, capacity-exempt, traceable, and only scan
 test('repair chains allow only one unfinished followup across ancestors, descendants and concurrent requests', async () => {
   const root = await login(), original = await book();
   await db.prepare("UPDATE appointments SET status='completed',outcome='repaired',completed_at=? WHERE id=?").bind(testNow,original.id).run();
-  const requestFollowup = (parentId, staff = false) => request(`/api/appointments/${parentId}/repair-followups${staff ? '/staff' : ''}`, {
+  const requestFollowup = async (parentId, staff = false) => {const response=await request(`/api/appointments/${parentId}/repair-followups${staff ? '/staff' : ''}`, {
     method:'POST',...(staff ? {token:root} : {accessToken:original.accessToken}),
     body:{requestId:crypto.randomUUID(),reason:'同一维修链的返修测试'}
-  });
+  });const body=await response.json();return {status:response.status,json:async()=>body};};
   const schedule = (followup) => api(`/api/repair-followups/${followup.id}/decision`, {
     method:'POST',token:root,body:{action:'schedule',requestId:crypto.randomUUID(),revision:followup.revision,date:'2026-10-19',timeSlot:TIME_SLOTS[0]}
   });
@@ -827,7 +827,8 @@ test('failed and stale corrections never leave audit rows or bypass capacity and
   await assert.rejects(service.update(item.id,input,actor),/SLOT_FULL/);
   await db.prepare('UPDATE booking_day_slots SET capacity=? WHERE campus=? AND date=? AND time_slot=?').bind(10,item.campus,item.date,item.timeSlot).run();
   await db.prepare('UPDATE appointments SET student_id=? WHERE id=?').bind(item.studentId,replacement.id).run();
-  await assert.rejects(service.update(item.id,input,actor),/STUDENT_DAY_EXISTS/);
+  await book({studentId:item.studentId});
+  await assert.rejects(service.update(item.id,input,actor),/STUDENT_DAY_LIMIT/);
   assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointment_corrections').first()).n,0);
   await service.update(replacement.id,{patch:{status:'cancelled'}},null,replacement.accessToken);
   const restored = await service.update(item.id,input,actor);
@@ -1016,13 +1017,14 @@ test('capacity migration preserves existing bookings and enforces ten on new or 
 });
 test('duplicate check spans campuses and is atomic', async () => {
   const input = draft();
-  const responses = await Promise.all(['南湖','浑南'].map(campus => request('/api/appointments', { method: 'POST', body: { ...input, campus } })));
-  assert.deepEqual(responses.map(r => r.status).sort(), [201,409]);
+  const responses = await Promise.all(['南湖','浑南','南湖'].map(async campus => {const response=await request('/api/appointments', { method: 'POST', body: { ...input, campus } });await response.json();return response.status;}));
+  assert.deepEqual(responses.sort(), [201,201,409]);
 });
 test('reactivating cancelled appointments still enforces D1 capacity and duplicate constraints', async () => {
   const root = await login(), old = await book();
   await api(`/api/appointments/${old.id}/status`, { method: 'PATCH', token: root, body: { status: 'cancelled' } });
   const replacement = await book({ studentId: old.studentId });
+  await book({ studentId: old.studentId,campus:'浑南' });
   await api(`/api/appointments/${old.id}/status`, { method: 'PATCH', token: root, body: { action: 'correct', status: 'booked' } }, 409);
   await api(`/api/appointments/${replacement.id}/status`, { method: 'PATCH', token: root, body: { status: 'cancelled' } });
   for (let n = 0; n < 5; n++) await book();
@@ -1973,7 +1975,7 @@ test('staff platform upgrades populated stable booking databases in place withou
   const location=await db.prepare('SELECT * FROM service_locations WHERE campus=? AND date=?').bind(item.campus,item.date).first();
   await legacy.prepare(`INSERT INTO service_locations(${Object.keys(location).join(',')}) VALUES(${Object.keys(location).map(()=>'?').join(',')})`).bind(...Object.values(location)).run();
   await insertHistoricalAppointment(legacy,row);
-  const receipt=await db.prepare('SELECT * FROM booking_requests WHERE appointment_id=?').bind(item.id).first();
+  const receipt=await db.prepare('SELECT request_key,digest,appointment_id,encrypted_token,created_at FROM booking_requests WHERE appointment_id=?').bind(item.id).first();
   await legacy.prepare(`INSERT INTO booking_requests(${Object.keys(receipt).join(',')}) VALUES(${Object.keys(receipt).map(()=>'?').join(',')})`).bind(...Object.values(receipt)).run();
   await legacy.prepare("INSERT INTO attachment_storage(id,object_key,size,state,created_at,expires_at,appointment_id,purpose) VALUES('stable-photo','private/stable-photo',4,'complete',?,?,?,'student_photo')").bind(testNow,'2027-10-15',item.id).run();
   await legacy.prepare("INSERT INTO appointment_attachments(id,appointment_id,filename,mime_type,size,object_key,created_at,expires_at,purpose) VALUES('stable-photo',?,'历史照片.png','image/png',4,'private/stable-photo',?,?,'student_photo')").bind(item.id,testNow,'2027-10-15').run();
@@ -2002,12 +2004,13 @@ test('staff platform upgrades populated stable booking databases in place withou
 });
 
 test('historical date fallback cannot bypass slot, date, capacity, restoration or student-day guards', async () => {
-  const first = await book(), second = await book(), historical = '2026-10-10';
+  const first = await book(), second = await book(), third=await book({studentId:first.studentId,timeSlot:'20:00–20:30'}), historical = '2026-10-10';
   for (const [day,extra] of [['2026-10-16',''],['2026-02-30',''],[historical,",time_slot='20:00–20:30'"],[historical,",campus='浑南'"],[historical,",student_id='99998888'"]]) {
     await assert.rejects(() => db.prepare(`UPDATE appointments SET date=?${extra} WHERE id=?`).bind(day,second.id).run(), /SLOT_CHANGED/);
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM booking_day_slots WHERE date=?').bind(day).first()).n,0);
   }
   await db.prepare('UPDATE appointments SET date=?,expires_at=? WHERE id=?').bind(historical,expirationDeadline(historical),first.id).run();
+  await db.prepare('UPDATE appointments SET date=?,expires_at=? WHERE id=?').bind(historical,expirationDeadline(historical),third.id).run();
   await db.prepare("UPDATE booking_day_slots SET capacity=1 WHERE date=? AND campus='南湖' AND time_slot='19:00–19:30'").bind(historical).run();
   await assert.rejects(() => db.prepare('UPDATE appointments SET date=? WHERE id=?').bind(historical,second.id).run(), /SLOT_FULL/);
   await db.prepare("UPDATE booking_day_slots SET capacity=0 WHERE date=? AND campus='南湖' AND time_slot='19:00–19:30'").bind(historical).run();
@@ -2016,7 +2019,7 @@ test('historical date fallback cannot bypass slot, date, capacity, restoration o
   await assert.rejects(() => db.prepare("UPDATE appointments SET date='2026-10-09',status='booked' WHERE id=?").bind(second.id).run(), /SLOT_CHANGED/);
   await db.prepare("UPDATE booking_day_slots SET capacity=0 WHERE date=? AND campus='南湖' AND time_slot='19:00–19:30'").bind(date).run();
   await assert.rejects(() => db.prepare("UPDATE appointments SET status='booked' WHERE id=?").bind(second.id).run(), /SLOT_PAUSED/);
-  await assert.rejects(() => db.prepare("UPDATE appointments SET date=?,status='booked',student_id=?,time_slot='20:00–20:30' WHERE id=?").bind(historical,first.studentId,second.id).run(), /STUDENT_DAY_EXISTS/);
+  await assert.rejects(() => db.prepare("UPDATE appointments SET date=?,status='booked',student_id=?,time_slot='20:00–20:30' WHERE id=?").bind(historical,first.studentId,second.id).run(), /STUDENT_DAY_LIMIT/);
   await assert.rejects(() => db.prepare("UPDATE appointments SET date=?,time_slot='19:00–20:00' WHERE id=?").bind(historical,second.id).run(), /SLOT_CHANGED/);
   await db.prepare("UPDATE appointments SET date='2026-10-09' WHERE id=?").bind(second.id).run();
   assert.equal((await appointmentRepository(db).find(second.id)).status,'cancelled');
@@ -2584,14 +2587,14 @@ test('schedule migration preserves legacy bookings, cancelled days, onsite work,
 });
 
 
-test('half-hour bookings reject a second same-day reservation across campuses', async () => {
-  await db.prepare("DELETE FROM booking_day_slots WHERE campus='浑南'").run();
-  const legacy=await book();
-  await api('/api/appointments',{method:'POST',body:draft({studentId:legacy.studentId,campus:'浑南',timeSlot:'19:00–19:30'})},409);
-  await api('/api/appointments',{method:'POST',body:draft({studentId:legacy.studentId,campus:'浑南',timeSlot:'20:00–20:30'})},409);
-  await api(`/api/appointments/${legacy.id}/status`,{method:'PATCH',accessToken:legacy.accessToken,body:{status:'cancelled'}});
-  await book({studentId:legacy.studentId,campus:'浑南',timeSlot:'19:00–19:30'});
-  await api(`/api/appointments/${legacy.id}/status`,{method:'PATCH',token:await login(),body:{action:'correct',status:'booked'}},409);
+test('ordinary bookings allow two per student day across campuses; cancellation releases one', async () => {
+  const first=await book();
+  const second=await book({studentId:first.studentId,campus:'浑南'});
+  await api('/api/appointments',{method:'POST',body:draft({studentId:first.studentId,timeSlot:'20:00–20:30'})},409);
+  await api(`/api/appointments/${first.id}/status`,{method:'PATCH',accessToken:first.accessToken,body:{status:'cancelled'}});
+  await book({studentId:first.studentId});
+  await api(`/api/appointments/${first.id}/status`,{method:'PATCH',token:await login(),body:{action:'correct',status:'booked'}},409);
+  assert.equal((await api(`/api/appointments/${second.id}`,{accessToken:second.accessToken})).status,'booked');
 });
 
 
@@ -2752,4 +2755,102 @@ test('concurrent notice publication respects the campus limit atomically',async(
   assert.equal(results.filter(result=>result.status==='fulfilled').length,1);
   assert.equal(results.find(result=>result.status==='rejected').reason.status,409);
   assert.equal((await db.prepare("SELECT COUNT(*) n FROM booking_notices WHERE campus='南湖'").first()).n,100);
+});
+
+const multiDraft = patch => {const common=draft(patch);return {...common,devices:[{...common,deviceModel:'第一台'},{...common,deviceModel:'第二台',faultType:'黑屏'}]};};
+test('two devices commit once with separate credentials, receipts and cancellation',async()=>{
+  const body=multiDraft(),key=randomBytes(32).toString('base64url');
+  const results=await Promise.all(Array.from({length:3},()=>api('/api/appointments',{method:'POST',body,headers:{'Idempotency-Key':key}},201)));
+  const pair=results[0].appointments;
+  assert.equal(pair.length,2);assert.notEqual(pair[0].id,pair[1].id);assert.notEqual(pair[0].accessToken,pair[1].accessToken);
+  for(const result of results)assert.deepEqual(result.appointments.map(item=>[item.id,item.accessToken]),pair.map(item=>[item.id,item.accessToken]));
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointments').first()).n,2);
+  const recovered=await api('/api/booking-attempts/resolve',{method:'POST',body:{requestKey:key}});
+  assert.deepEqual(recovered.appointment.appointments.map(item=>item.id),pair.map(item=>item.id));
+  assert.equal(pair[0].relatedDevices[0].id,pair[1].id);assert.equal(pair[0].canAddDevice,false);
+  await api(`/api/appointments/${pair[0].id}`,{accessToken:pair[1].accessToken},404);
+  await api(`/api/appointments/${pair[0].id}/status`,{method:'PATCH',accessToken:pair[0].accessToken,body:{status:'cancelled'}});
+  const remaining=await api(`/api/appointments/${pair[1].id}`,{accessToken:pair[1].accessToken});
+  assert.equal(remaining.status,'booked');assert.equal(remaining.canAddDevice,true);
+});
+test('two-device requests roll back completely when capacity or student allowance is insufficient',async()=>{
+  await configureCapacity(await login(),1);
+  const failed=await api('/api/appointments',{method:'POST',body:multiDraft()},409);assert.equal(failed.code,'SLOT_FULL');
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointments').first()).n,0);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM booking_requests').first()).n,0);
+  await configureCapacity(await login(),10);
+  const first=await book();
+  await api('/api/appointments',{method:'POST',body:multiDraft({studentId:first.studentId})},409);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointments').first()).n,1);
+});
+test('parallel different requests never exceed the two-device student limit',async()=>{
+  const body=multiDraft();
+  const results=await Promise.all(Array.from({length:3},async()=>{const response=await request('/api/appointments',{method:'POST',body});const result=await response.json();return {status:response.status,result};}));
+  assert.equal(results.filter(result=>result.status===201).length,1);
+  assert.equal(results.filter(result=>result.status===409).length,2);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointments').first()).n,2);
+});
+test('supplemental booking authenticates original credential and locks student and arrival scope',async()=>{
+  const first=await book(),body=draft({...first,signature,additionalFor:first.id,deviceModel:'补约设备'});
+  delete body.accessToken;
+  await api('/api/appointments',{method:'POST',body},404);
+  for(const patch of [{studentId:'20260000'},{campus:'浑南'},{timeSlot:'20:00–20:30'}])
+    await api('/api/appointments',{method:'POST',accessToken:first.accessToken,body:{...body,...patch}},409);
+  const second=await api('/api/appointments',{method:'POST',accessToken:first.accessToken,body},201);
+  assert.equal(second.relatedDevices[0].id,first.id);assert.notEqual(first.id,second.id);
+  await api('/api/appointments',{method:'POST',accessToken:first.accessToken,body},409);
+});
+test('completed bookings count toward the daily allowance while expired bookings release it',async()=>{
+  const first=await book(),second=await book({studentId:first.studentId}),tech=await addUser('876501');
+  await api(`/api/appointments/${first.id}/status`,{method:'PATCH',token:tech,body:{status:'in_progress',...await intake(first,tech)}});
+  await api(`/api/appointments/${first.id}/status`,{method:'PATCH',token:tech,body:{status:'completed',outcome:'repaired',repairNote:'完成'}});
+  await api('/api/appointments',{method:'POST',body:draft({studentId:first.studentId})},409);
+  await db.prepare("UPDATE appointments SET status='expired' WHERE id=?").bind(second.id).run();
+  await book({studentId:first.studentId});
+});
+test('multi-device validation rejects oversized and malformed device arrays',async()=>{
+  const body=multiDraft();
+  for(const devices of [[],[...body.devices,body.devices[0]],[null],{},'two'])await api('/api/appointments',{method:'POST',body:{...body,devices}},400);
+  const invalid=await api('/api/appointments',{method:'POST',body:{...body,devices:[body.devices[0],{...body.devices[1],brand:''}]}},400);
+  assert.ok(invalid.fields.second_brand);
+});
+
+test('supplement creation rolls back when its original changes during submission',async()=>{
+  const first=await book(),repository=appointmentRepository(db);
+  const wrapped={...repository,async create(item,request,extra,parent){
+    await db.prepare("UPDATE appointments SET status='cancelled',revision=revision+1 WHERE id=?").bind(parent.id).run();
+    return repository.create(item,request,extra,parent);
+  }};
+  const service=appointmentService(wrapped,userRepository(db),PII_ENCRYPTION_KEY,()=>new Date(testNow));
+  await assert.rejects(service.createDevices([bookingInput(draft({...first,signature}))],randomBytes(32).toString('base64url'),first.id,first.accessToken),/booking_device_links.parent_revision/);
+  assert.equal((await db.prepare('SELECT COUNT(*) n FROM appointments').first()).n,1);
+  assert.equal((await db.prepare('SELECT COUNT(*) n FROM booking_requests').first()).n,1);
+});
+test('multi-device input cannot override common identity or campus inside a device',async()=>{
+  const body=multiDraft();body.devices[1].studentId='90000999';body.devices[1].campus='浑南';
+  const pair=(await api('/api/appointments',{method:'POST',body},201)).appointments;
+  assert.ok(pair.every(item=>item.studentId===body.studentId && item.campus===body.campus));
+});
+test('lost multi-device response is recovered using the original request without new appointments',async()=>{
+  const repository=appointmentRepository(db),key=randomBytes(32).toString('base64url');
+  const wrapped={...repository,async create(...args){await repository.create(...args);throw new Error('response lost');}};
+  const service=appointmentService(wrapped,userRepository(db),PII_ENCRYPTION_KEY,()=>new Date(testNow));
+  const input=bookingDevicesInput(multiDraft());
+  await assert.rejects(service.createDevices(input,key),/response lost/);
+  const retried=await service.createDevices(input,key);assert.equal(retried.appointments.length,2);
+  assert.equal((await db.prepare('SELECT COUNT(*) n FROM appointments').first()).n,2);
+});
+test('two devices retain independent intake, active repair and followup histories',async()=>{
+  const pair=(await api('/api/appointments',{method:'POST',body:multiDraft()},201)).appointments;
+  const firstTech=await addUser('876601'),secondTech=await addUser('876602');
+  const firstPhotos=await intake(pair[0],firstTech),secondPhotos=await intake(pair[1],secondTech);
+  await api(`/api/appointments/${pair[0].id}/status`,{method:'PATCH',token:firstTech,body:{status:'in_progress',...firstPhotos}});
+  await api(`/api/appointments/${pair[1].id}/status`,{method:'PATCH',token:firstTech,body:{status:'in_progress',...secondPhotos}},409);
+  await api(`/api/appointments/${pair[1].id}/status`,{method:'PATCH',token:secondTech,body:{status:'in_progress',...secondPhotos}});
+  await api(`/api/appointments/${pair[0].id}/status`,{method:'PATCH',token:firstTech,body:{status:'completed',outcome:'repaired',repairNote:'第一台修复'}});
+  await api(`/api/appointments/${pair[0].id}/repair-followups`,{method:'POST',accessToken:pair[0].accessToken,body:{requestId:crypto.randomUUID(),reason:'第一台故障复现'}},201);
+  const second=await api(`/api/appointments/${pair[1].id}`,{accessToken:pair[1].accessToken});
+  assert.equal(second.status,'in_progress');assert.equal(second.repairHistory.followups.length,0);
+  assert.deepEqual(second.repairHistory.items.map(item=>item.id),[pair[1].id]);
+  assert.notEqual(firstPhotos.frontPhotoId,secondPhotos.frontPhotoId);
 });

@@ -14,7 +14,8 @@ Production/Preview 共用 [migrations/](../migrations/) 中的 schema 迁移。�
 | `appointments` / `active_repairs` / `repair_intake_records` | 预约、签名、状态、维修占用及设备照片核验；同一成员最多一张进行中工单 |
 | `weekday_slot_capacities` / `booking_day_slots` | 每周容量模板及服务日容量；模板带并发版本，修改时原子同步今天及未来的对应日期，保留历史日期及旧小时段 |
 | `booking_settings` / `booking_notices` | 校区放号时间和定时公告，按版本更新并记录审计与请求回执；预约中的 `booking_notices` 保存重要公告确认快照 |
-| `booking_requests` | 幂等键、输入摘要、工单引用和加密凭证，与预约原子写入 |
+| `booking_requests` / `booking_request_devices` | 幂等键、输入摘要、批次设备数量、各工单引用和加密凭证，与整批预约原子写入；旧回执默认一台 |
+| `booking_device_links` | 同批设备／凭原单补约的关联；补约记录原单版本，提交时校验原单凭证、状态和到场范围，不合并设备维修历史 |
 | `service_locations` / `service_location_changes` | 校区日期地点、版本和变更记录；已有线上工单时不可清空或删除地点 |
 | `service_day_overrides` / `service_day_receipts` | 校区日期暂停及幂等回执，不删除既有业务事实 |
 | `credential_recoveries` / `appointment_corrections` | 凭证补发及纠错的操作人、原因、前后值和时间 |
@@ -32,7 +33,7 @@ Production/Preview 共用 [migrations/](../migrations/) 中的 schema 迁移。�
 
 业务日期使用 `Asia/Shanghai`，事件时间保存为 UTC ISO。任职、工作资格和授权使用有效区间；签到保存发生时姓名、部门和身份快照，成员转部门不改写历史。账号与稳定成员的映射见 [身份映射](architecture/identity-mapping.md)。
 
-关联写入使用 D1 batch 或触发器，`revision` 防止并发覆盖；同学号同服务日有效线上预约、一人一张进行中维修由数据库约束。业务事实、必要审计及请求回执共同提交或回滚，R2 上传使用元数据状态和补偿清理。事务协作见 [工程约定](architecture/module-map.md#事务与幂等)。
+关联写入使用 D1 batch 或触发器，`revision` 防止并发覆盖；同学号同服务日跨校区最多两台有效线上预约（含已完成）、一人一张进行中维修由数据库约束。业务事实、必要审计及请求回执共同提交或回滚，R2 上传使用元数据状态和补偿清理。事务协作见 [工程约定](architecture/module-map.md#事务与幂等)。
 
 密码使用 scrypt；联系方式和创建收据中的凭证使用 AES-256-GCM。学生凭证为 32 字节随机值，工单仅存 SHA-256；取回收据时再次验证当前凭证哈希，补发后旧收据失效。
 

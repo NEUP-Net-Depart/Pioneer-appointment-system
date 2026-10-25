@@ -18,6 +18,8 @@ export function conflictMessage(error) {
   if (message.includes('SLOT_ENDED')) return '该预约时段已经结束';
   if (message.includes('LOCATION_MISSING')) return '该日期尚未配置维修地点，请重新选择日期';
   if (message.includes('LOCATION_REQUIRED')) return '已有预约的维修地点不能为空';
+  if (message.includes('STUDENT_DAY_LIMIT')) return '同一学号每天最多预约两台设备（跨校区合计），请先查看已有预约';
+  if (message.includes('booking_device_links.parent_revision')) return '原预约已更新或凭证已失效，请重新打开原预约后补约';
   if (message.includes('STUDENT_DAY_EXISTS')) return '当天已有预约，请先查看原预约';
   if (message.includes('APPOINTMENT_OVERLAP')) return '同一时间已经存在预约';
   if (message.includes('SLOT_FULL')) return '该校区该时段已满';
@@ -36,5 +38,5 @@ export function conflictMessage(error) {
 }
 export function conflictCode(error) {
   const message = `${error.message} ${error.cause?.message || ''}`;
-  return ['BOOKING_NOTICE_CHANGED','SERVICE_DAY_PAUSED','STUDENT_DAY_EXISTS','LOCATION_MISSING','LOCATION_REQUIRED','SLOT_ENDED','SLOT_FULL','SLOT_PAUSED','SLOT_CHANGED'].find(code => message.includes(code)) || 'CONFLICT';
+  return ['STUDENT_DAY_LIMIT','BOOKING_NOTICE_CHANGED','SERVICE_DAY_PAUSED','STUDENT_DAY_EXISTS','LOCATION_MISSING','LOCATION_REQUIRED','SLOT_ENDED','SLOT_FULL','SLOT_PAUSED','SLOT_CHANGED'].find(code => message.includes(code)) || 'CONFLICT';
 }

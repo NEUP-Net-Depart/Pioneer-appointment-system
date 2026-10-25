@@ -1,3 +1,4 @@
+import { MAX_BOOKING_DEVICES } from '../../shared/booking-devices.js';
 import { fail } from '../lib/http.js';
 import { encryptText, decryptText } from '../lib/privacy.js';
 import {
@@ -47,14 +48,24 @@ export function appointmentService(
   bookingSettings = null
 ) {
   const present = async (item, staff = false) => {
-    const [visible, location, repairHistory] = await Promise.all([
+    const [visible, location, repairHistory, devices] = await Promise.all([
       presentAppointment(item, encryptionKey, { staff }),
       appointments.location(item.date, item.campus),
-      appointments.repairHistory(item.id, { staff })
+      appointments.repairHistory(item.id, { staff }),
+      appointments.bookingDeviceContext(item)
     ]);
     return {
       ...visible,
-      queuePosition: item.status==='booked' && ['queued','assigned'].includes(item.reception?.state) ? await appointments.receptionPosition(item) : null,
+      relatedDevices: devices.related,
+      canAddDevice:
+        item.source === 'booking' &&
+        item.status === 'booked' &&
+        devices.dailyCount < MAX_BOOKING_DEVICES &&
+        Date.parse(slotDeadline(item.date, item.timeSlot)) > clock().getTime(),
+      queuePosition:
+        item.status === 'booked' && ['queued', 'assigned'].includes(item.reception?.state)
+          ? await appointments.receptionPosition(item)
+          : null,
       repairHistory,
       serverNow: clock().toISOString(),
       location: location?.location || item.locationSnapshot || '',
@@ -129,10 +140,25 @@ export function appointmentService(
           '本次预约已创建，但私人凭证已由工作人员重新签发，请使用新链接',
           'CREDENTIAL_ROTATED'
         );
-      return {
-        found: true,
-        appointment: { ...(await this.lookup(item.id, token)), accessToken: token }
-      };
+      const appointment = { ...(await this.lookup(item.id, token)), accessToken: token };
+      const extra = await appointments.requestDevices(key);
+      if (extra.length + 1 !== receipt.deviceCount) fail(409, '部分预约已被移除，请核对已有预约或联系工作人员', 'CREDENTIAL_ROTATED');
+      if (extra.length) {
+        const items = [appointment];
+        for (const entry of extra) {
+          const accessToken = await decryptText(entry.encryptedToken, encryptionKey);
+          if (
+            !(await appointments.findByCredential(
+              entry.appointmentId,
+              hashAccessToken(accessToken)
+            ))
+          )
+            fail(409, '部分预约凭证已重新签发，请使用工作人员提供的私人链接', 'CREDENTIAL_ROTATED');
+          items.push({ ...(await this.lookup(entry.appointmentId, accessToken)), accessToken });
+        }
+        return { found: true, appointment: { ...appointment, appointments: items } };
+      }
+      return { found: true, appointment };
     },
     async overview(user) {
       user = await staffPlatform.scopedActor(user, 'repair.summary.read');
@@ -211,7 +237,50 @@ export function appointmentService(
       // A reprint must never resurrect a credential revoked by an administrator.
       return await appointments.findByCredential(item.id,hashAccessToken(token)) ? token : null;
     },
-    async create(data, onsite, requestKey) {
+    async createDevices(inputs, requestKey, additionalFor, accessToken) {
+      if (additionalFor !== undefined && (typeof additionalFor !== 'string' || !additionalFor)) fail(400, '补约原单编号不正确');
+      const digest = bookingDigest({ devices: inputs, additionalFor: additionalFor || null });
+      // Single-device clients retain their historical request digest and response.
+      if (inputs.length === 1 && !additionalFor)
+        return this.create(inputs[0], undefined, requestKey);
+      const previous = await this.resolveAttempt(requestKey, digest);
+      if (previous.found) return previous.appointment;
+      let parent = null;
+      if (additionalFor) {
+        if (typeof additionalFor !== 'string' || inputs.length !== 1)
+          fail(400, '补约只能添加一台设备');
+        const original = await guestAppointment(appointments, additionalFor, accessToken);
+        const data = inputs[0];
+        if (
+          original.source !== 'booking' ||
+          original.status !== 'booked' ||
+          ['studentId', 'campus', 'date', 'timeSlot'].some((key) => original[key] !== data[key])
+        )
+          fail(409, '补约须沿用有效原预约的学号、校区、日期和时段');
+        parent = {
+          id: original.id,
+          revision: original.revision,
+          hash: hashAccessToken(accessToken)
+        };
+      }
+      const prepared = [];
+      for (const data of inputs) prepared.push(await this.create(data, undefined, undefined, true));
+      const request = {
+        key: requestKey,
+        digest,
+        encryptedToken: await encryptText(prepared[0].credential.token, encryptionKey)
+      };
+      const additional = [];
+      for (const entry of prepared.slice(1))
+        additional.push({
+          item: entry.item,
+          encryptedToken: await encryptText(entry.credential.token, encryptionKey)
+        });
+      if (prepared.some(({item})=>Date.parse(slotDeadline(item.date,item.timeSlot))<=clock().getTime())) fail(409, '该预约时段已经结束', 'SLOT_ENDED');
+      await appointments.create(prepared[0].item, request, additional, parent);
+      return (await this.resolveAttempt(requestKey, digest)).appointment;
+    },
+    async create(data, onsite, requestKey, prepareOnly = false) {
       const digest = requestKey ? bookingDigest(data) : null;
       if (requestKey) {
         const previous = await this.resolveAttempt(requestKey, digest);
@@ -299,6 +368,7 @@ export function appointmentService(
       if (onsite && Date.parse(expiresAt) <= checkedAt.getTime())
         fail(400, '当天临时登记有效期限已结束');
       item.createdAt = item.agreementAt = item.credentialRotatedAt = checkedAt.toISOString();
+      if (prepareOnly) return { item, credential };
       const created = await appointments.create(item, request);
       if (!created) return (await this.resolveAttempt(requestKey, digest)).appointment;
       return { ...(await present(created, !!onsite)), accessToken: credential.token };

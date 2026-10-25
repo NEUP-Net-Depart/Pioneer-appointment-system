@@ -1,3 +1,4 @@
+import { deviceFields, MAX_BOOKING_DEVICES } from '../../shared/booking-devices.js';
 import { appointmentOrder, readAppointmentCursor } from '../../shared/appointment-pagination.js';
 import { fail } from './http.js';
 import {
@@ -127,6 +128,19 @@ export function bookingInput(input) {
     data.acceptedNotices = input.acceptedNotices.map(({ id, revision }) => ({ id, revision }));
   }
   return data;
+}
+export function bookingDevicesInput(input) {
+  if (input.devices === undefined) return [bookingInput(input)];
+  if (!Array.isArray(input.devices) || !input.devices.length || input.devices.length>MAX_BOOKING_DEVICES)
+    fail(400,'每次最多预约两台设备');
+  return input.devices.map((device,index)=>{
+    if (!device || typeof device!=='object' || Array.isArray(device)) fail(400,'设备信息不正确');
+    try { return bookingInput({...input,...deviceFields(device)}); }
+    catch(error) {
+      if(error.fields && index) error.fields=Object.fromEntries(Object.entries(error.fields).map(([key,value])=>['second_'+key,value]));
+      throw error;
+    }
+  });
 }
 export function bookingRequestKey(value) {
   if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(value))

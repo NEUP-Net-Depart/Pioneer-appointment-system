@@ -18,9 +18,9 @@
   <ol id="booking-steps" class="step-track" aria-label="预约步骤"><li aria-current="step"><span>1</span>到场时间</li><li><span>2</span>设备与联系</li><li><span>3</span>核对与签名</li></ol>
   <p id="booking-error" class="notice is-error" role="alert" hidden></p>
   <form id="booking-form" class="student-form" novalidate>
-    <input name="campus" type="hidden" /><input name="date" type="hidden" /><input name="timeSlot" type="hidden" />
+    <input name="additionalFor" type="hidden" /><input name="campus" type="hidden" /><input name="date" type="hidden" /><input name="timeSlot" type="hidden" />
     <section data-step="1" class="booking-picker" id="booking-picker" aria-labelledby="booking-picker-title">
-      <section id="booking-notices" class="booking-notices" aria-label="校区预约公告" hidden></section>
+      <div class="booking-device-count"><label for="booking-device-count">预约设备数量</label><select id="booking-device-count" name="bookingDeviceCount"><option value="1">1 台设备 · 占 1 个名额</option><option value="2">2 台设备 · 占 2 个名额</option></select><p class="field-hint">每学号每天最多预约 2 台（跨校区合计）。两台一起提交，使用同一到场时段，分别领取维修码。</p><p id="additional-device-context" class="notice" hidden></p></div><section id="booking-notices" class="booking-notices" aria-label="校区预约公告" hidden></section>
       <div class="booking-picker-heading"><div><h2 id="booking-picker-title" tabindex="-1">校区与到场时间</h2></div><div class="booking-campuses" id="booking-campuses" role="group" aria-label="预约校区"></div></div>
       <div id="booking-calendar" hidden><div class="booking-picker-body">
         <div class="booking-date-panel"><div class="booking-panel-heading"><h3 class="booking-panel-label">选择日期</h3></div><div class="booking-days" id="booking-days" role="group" aria-label="可预约日期"></div></div>
@@ -70,7 +70,7 @@
     </section>
   </form>
   <section class="success-panel" id="success-panel" hidden aria-labelledby="success-title"><div class="success-icon" aria-hidden="true">✓</div><h1 id="success-title" tabindex="-1">预约成功</h1>
-    <div class="success-layout"><div class="success-details"><div id="success-summary" class="selection-summary"></div>
+    <div id="success-devices" class="device-switcher" role="group" aria-label="选择设备凭证" hidden></div><p id="success-device-label"></p><div class="success-layout"><div class="success-details"><div id="success-summary" class="selection-summary"></div>
     <div class="booking-code"><span>预约编号</span><strong id="success-code"></strong></div>
     <button class="secondary-btn" id="copy-code" type="button">复制私人查询链接</button><p id="credential-save-message" class="notice" hidden role="status"></p><input id="success-link-fallback" class="private-link-fallback" type="text" readonly hidden aria-label="私人查询链接" />
     </div><div id="success-repair-qr" class="repair-qr success-qr-panel"></div></div>

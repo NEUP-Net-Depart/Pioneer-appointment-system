@@ -1,5 +1,5 @@
 import { json, readBody } from '../lib/http.js';
-import { appointmentQuery, appointmentPatch, bookingInput, bookingRequestKey, liveQuery } from '../lib/validation.js';
+import { appointmentQuery, appointmentPatch, bookingDevicesInput, bookingRequestKey, liveQuery } from '../lib/validation.js';
 
 export const appointmentRoutes = [
   ['POST', /^\/api\/appointments\/([^/]+)\/repair-followups\/([^/]+)\/queue-exit$/, async (context,match) => {
@@ -33,8 +33,9 @@ export const appointmentRoutes = [
   }],
   ['POST', /^\/api\/appointments$/, async context => {
     await context.limit('write');
-    const input = bookingInput(await readBody(context.request));
-    return json(await context.services.appointments.create(input,undefined,bookingRequestKey(context.request.headers.get('Idempotency-Key'))), 201);
+    const raw = await readBody(context.request);
+    const input = bookingDevicesInput(raw);
+    return json(await context.services.appointments.createDevices(input,bookingRequestKey(context.request.headers.get('Idempotency-Key')),raw.additionalFor,context.accessToken), 201);
   }],
   ['POST', /^\/api\/booking-attempts\/resolve$/, async context => {
     await context.limit('lookup');

@@ -260,3 +260,12 @@ fieldset.field { padding: 0; border: 0; }
 #detail-source-data { display: grid; gap: 20px; }
 #detail-source-data > summary:not([hidden]) { cursor: pointer; padding: 20px 28px; border: 1px solid var(--line); border-radius: 12px; background: white; font-weight: 600; }
 #detail-operations:empty { display: none; }
+
+.booking-device-count {margin-block:0 1.5rem;display:grid;gap:.5rem;max-width:42rem;}
+.booking-device-count > label {font-weight:650;}
+.booking-device-count select {min-height:44px;width:100%;}
+#second-device {margin-block-start:1rem;}
+.device-switcher {display:flex;flex-wrap:wrap;justify-content:center;gap:.75rem;margin-block:1rem;}
+.device-switcher button {flex:1;min-height:44px;overflow-wrap:anywhere;}
+.device-switcher [aria-pressed="true"] {background:#102a43;color:white;border-color:#102a43;}
+#success-device-label {overflow-wrap:anywhere;}

@@ -40,7 +40,7 @@ function showRemaining(button,remaining,label) {
     updateCount(count,remaining);
   }
 }
-export function initSlotPicker({onChange = () => {}} = {}) {
+export function initSlotPicker({onChange = () => {},getDeviceCount=()=>1,getLockedScope=()=>null} = {}) {
   const campusInput=$('[name=campus]'),dateInput=$('[name=date]'),slotInput=$('[name=timeSlot]');
   const campuses=$('#booking-campuses'),days=$('#booking-days'),slots=$('#booking-slots');
   let summaries=new Map(),failed=new Set(),generation=0,loading=false,notice='',offset=0,active=true,loadFailed=false,selectionIssue='';
@@ -56,7 +56,7 @@ export function initSlotPicker({onChange = () => {}} = {}) {
   }
   for (const campus of CAMPUSES) campuses.append(button(campus,'campus',campus+'校区'));
   for (const slot of TIME_SLOTS) slots.append(button(slot,'slot',slot));
-  const availability=(date,slot) => summaries.get(date) && slotAvailability(summaries.get(date),date,slot,now());
+  const availability=(date,slot) => {const state=summaries.get(date) && slotAvailability(summaries.get(date),date,slot,now());return state && !state.disabled && state.remaining<getDeviceCount() ? {...state,disabled:true,label:'不足 '+getDeviceCount()+' 个名额'} : state;};
   const selectable=date => !failed.has(date) && TIME_SLOTS.some(slot => availability(date,slot) && !availability(date,slot).disabled);
   function render() {
     const dates=datesNow();
@@ -83,22 +83,22 @@ export function initSlotPicker({onChange = () => {}} = {}) {
       if(showSlots)for(const [index,item] of [...slots.children].entries())reveal(item,{delay:index*30,distance:6});
     }
     $('#booking-picker').setAttribute('aria-busy',String(loading));
-    for (const item of campuses.children) item.setAttribute('aria-pressed',String(item.dataset.campus===campusInput.value));
-    if (dateInput.value && !dates.includes(dateInput.value)) { dateInput.value='';slotInput.value='';selectionIssue=notice='原日期已不在预约范围内，请重新选择。'; }
-    if (slotInput.value && !failed.has(dateInput.value) && availability(dateInput.value,slotInput.value)?.disabled) {
+    for (const item of campuses.children){item.setAttribute('aria-pressed',String(item.dataset.campus===campusInput.value));item.disabled=!!getLockedScope();}
+    if (!getLockedScope() && dateInput.value && !dates.includes(dateInput.value)) { dateInput.value='';slotInput.value='';selectionIssue=notice='原日期已不在预约范围内，请重新选择。'; }
+    if (!getLockedScope() && slotInput.value && !failed.has(dateInput.value) && availability(dateInput.value,slotInput.value)?.disabled) {
       selectionIssue=notice=`${availability(dateInput.value,slotInput.value).label}，请重新选择时段。`;slotInput.value='';onChange();
     }
     for (const item of days.children) {
       const date=item.dataset.date,summary=summaries.get(date);
       const unavailable=!selectable(date);
-      item.disabled=loading || unavailable&&!summary?.paused;item.dataset.loading=String(loading && (!summary || !unavailable));item.setAttribute('aria-pressed',String(date===dateInput.value));
+      item.disabled=!!getLockedScope() || loading || unavailable&&!summary?.paused;item.dataset.loading=String(loading && (!summary || !unavailable));item.setAttribute('aria-pressed',String(date===dateInput.value));
       item.dataset.paused=String(!!summary?.paused);
       const count=TIME_SLOTS.reduce((sum,slot)=>sum+(availability(date,slot)?.disabled ? 0 : availability(date,slot)?.remaining || 0),0);
       showRemaining(item,summary ? count : undefined,failed.has(date) ? '读取失败' : !summary ? '' : summary.paused ? '暂停维修' : !summary.location ? '地点未配置' : count ? '' : '暂无名额');
     }
     for (const item of slots.children) {
       const state=availability(dateInput.value,item.dataset.slot);
-      item.disabled=loading || failed.has(dateInput.value) || !state || state.disabled;
+      item.disabled=!!getLockedScope() || loading || failed.has(dateInput.value) || !state || state.disabled;
       item.dataset.loading=String(loading && (!state || !state.disabled));
       item.setAttribute('aria-pressed',String(item.dataset.slot===slotInput.value));
       showRemaining(item,state?.remaining,failed.has(dateInput.value) ? '暂时无法更新' : state?.disabled ? state.label : '');
@@ -134,14 +134,14 @@ export function initSlotPicker({onChange = () => {}} = {}) {
     if(result.bookingSettings)settingsByCampus.set(campus,result.bookingSettings);
     const dates=datesNow();
     summaries=new Map(result.items.map(summary=>[summary.date,summary]));campusSummaries.set(campus,summaries);
-    if (!dateInput.value || (!summaries.get(dateInput.value)?.paused && !failed.has(dateInput.value) && !selectable(dateInput.value))) {
+    if (!getLockedScope() && (!dateInput.value || (!summaries.get(dateInput.value)?.paused && !failed.has(dateInput.value) && !selectable(dateInput.value)))) {
       if(dateInput.value){const summary=summaries.get(dateInput.value);selectionIssue=notice=(summary && !summary.location ? '原日期的维修地点未配置' : '原日期当前没有可预约时段')+'，请重新选择日期和到场时段。';}
       dateInput.value=dates.find(selectable) || '';slotInput.value='';
     }
     render();onChange();return !failed.size;
   }
   campuses.addEventListener('click',event=>{
-    const item=event.target.closest('[data-campus]');if(!item)return;
+    const item=event.target.closest('[data-campus]');if(!item || item.disabled)return;
     if(campusInput.value!==item.dataset.campus){campusInput.value=item.dataset.campus;slotInput.value='';summaries=campusSummaries.get(campusInput.value) || new Map();failed=new Set();loadFailed=false;selectionIssue=notice='';onChange();}
     void refresh();
   });
@@ -155,6 +155,7 @@ export function initSlotPicker({onChange = () => {}} = {}) {
   });
   $('#booking-retry').addEventListener('click',()=>void refresh());
   $('#booking-change-date').addEventListener('click',()=>{
+    if(getLockedScope())return;
     dateInput.value=datesNow().find(day=>day!==dateInput.value && selectable(day)) || '';slotInput.value='';selectionIssue=notice='';render();onChange();
     (days.querySelector('[aria-pressed=true]') || campuses.querySelector('[aria-pressed=true]'))?.focus();
   });
@@ -167,9 +168,9 @@ export function initSlotPicker({onChange = () => {}} = {}) {
     hasUnacceptedNotices:announcements.hasUnaccepted,
     setHome:announcements.setHome,
     value(){return {campus:campusInput.value,date:dateInput.value,timeSlot:slotInput.value,location:summaries.get(dateInput.value)?.location || ''};},
-    validate(){render();const valid=Boolean(campusInput.value && dateInput.value && slotInput.value && selectable(dateInput.value) && !availability(dateInput.value,slotInput.value)?.disabled);
+    validate(){render();const valid=Boolean(datesNow().includes(dateInput.value) && campusInput.value && dateInput.value && slotInput.value && selectable(dateInput.value) && !availability(dateInput.value,slotInput.value)?.disabled);
       if(!valid){notice=notice || '请选择可预约的校区、日期和到场时段。';render();(campuses.querySelector('button[aria-pressed=true]') || campuses.querySelector('button')).focus();}return valid;},
-    async recover(message){slotInput.value='';notice=message;await refresh();render();},
+    async recover(message){if(!getLockedScope())slotInput.value='';notice=message;await refresh();render();},
     async restore(value){campusInput.value=CAMPUSES.includes(value.campus) ? value.campus : '';dateInput.value=value.date || '';slotInput.value=value.timeSlot || '';summaries=new Map();await refresh();render();},
     reset(){generation++;loading=false;campusInput.value=dateInput.value=slotInput.value='';summaries=new Map();campusSummaries.clear();announcements.reset();failed=new Set();loadFailed=false;selectionIssue=notice='';render();},
     setActive(value){active=value;announcements.setActive(value);if(value)void refresh();},

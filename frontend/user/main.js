@@ -7,7 +7,7 @@ initInputLimits($('#import-form'));
 let booking,lookup,lastHandled;
 function activate(view){closeAllDialogs();$$('.view').forEach(element=>element.classList.toggle('is-active',element.dataset.view===view));$$('[data-view-link]').forEach(element=>{const selected=element.dataset.viewLink===view;element.classList.toggle('is-active',selected);if(selected)element.setAttribute('aria-current','page');else element.removeAttribute('aria-current');});booking?.setActive(view==='booking');lookup?.setActive(view==='lookup');window.scrollTo({top:0,behavior:'auto'});}
 function navigate(kind,id,{record=true}={}){const fragment=kind==='detail' ? '#detail='+encodeURIComponent(id) : '#'+kind;if(record && location.hash!==fragment)history.pushState(null,'',fragment);lastHandled=location.hash;activate(kind==='booking' ? 'booking' : 'lookup');}
-lookup=initLookup({onNavigate:navigate,onRebook:()=>{if(booking.reset())navigate('booking');},hasDraft:()=>booking?.hasDraft(),hasPending:()=>booking?.hasPending()});
+lookup=initLookup({onNavigate:navigate,onAddDevice:async item=>{if(await booking.addDevice(item))navigate('booking');},onRebook:()=>{if(booking.reset())navigate('booking');},hasDraft:()=>booking?.hasDraft(),hasPending:()=>booking?.hasPending()});
 booking=initBooking({onCreated:item=>lookup.add(item),onViewCreated:item=>{navigate('detail',item.id);void lookup.showDetail(item.id);}});
 $$('[data-view-link]').forEach(button=>button.addEventListener('click',()=>{const view=button.dataset.viewLink;navigate(view);if(view==='lookup')void lookup.showList();}));
 async function route(){const fragment=location.hash;if(fragment===lastHandled)return;lastHandled=fragment;

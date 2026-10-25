@@ -237,10 +237,22 @@ export function appointmentRepository(db) {
     async findRequest(key) {
       return db
         .prepare(
-          'SELECT request_key AS requestKey,digest,appointment_id AS appointmentId,encrypted_token AS encryptedToken FROM booking_requests WHERE request_key=?'
+          'SELECT request_key AS requestKey,digest,device_count AS deviceCount,appointment_id AS appointmentId,encrypted_token AS encryptedToken FROM booking_requests WHERE request_key=?'
         )
         .bind(key)
         .first();
+    },
+    async requestDevices(key) {
+      return (await db.prepare('SELECT appointment_id AS appointmentId,encrypted_token AS encryptedToken FROM booking_request_devices WHERE request_key=? ORDER BY appointment_id').bind(key).all()).results;
+    },
+    async bookingDeviceContext(item) {
+      const count=await db.prepare("SELECT COUNT(*) AS n FROM appointments WHERE source='booking' AND student_id=? AND date=? AND status IN ('booked','in_progress','completed')").bind(item.studentId,item.date).first();
+      const related=(await db.prepare(`SELECT a.id,a.device_type AS deviceType,a.brand,a.device_model AS deviceModel,a.status
+        FROM appointments a WHERE a.id<>? AND (a.id IN (SELECT appointment_id FROM booking_device_links WHERE parent_id=?)
+          OR a.id IN (SELECT parent_id FROM booking_device_links WHERE appointment_id=?)
+          OR a.id IN (SELECT sibling.appointment_id FROM booking_device_links sibling JOIN booking_device_links own ON sibling.parent_id=own.parent_id WHERE own.appointment_id=?))
+        ORDER BY a.id`).bind(item.id,item.id,item.id,item.id).all()).results;
+      return {dailyCount:count.n,related};
     },
     async schedule(date, campus) {
       return (await scheduleStatement(db, date, date, [campus]).all()).results;
@@ -539,7 +551,8 @@ export function appointmentRepository(db) {
       ]);
       return { totals: totals.results, capacities: capacities.results };
     },
-    async create(item, request) {
+    async create(item, request, additional = [], parent = null) {
+      const insertFor = (item) => {
       const suffix = `${item.campus === '浑南' ? '1' : '0'}${item.date.replaceAll('-', '')}-`;
       const prefix = `reserve${suffix}`;
       // One D1 statement allocates the ID and runs capacity/uniqueness constraints atomically.
@@ -566,7 +579,7 @@ export function appointmentRepository(db) {
                       : (item[key] ?? null)
             ]
       );
-      const insert = db
+      return db
         .prepare(
           `INSERT INTO appointments(id,${Object.values(writeColumns).join(',')},access_token_hash,credential_rotated_at)
         SELECT ? || printf('%02d',COALESCE(MAX(CAST(substr(id,instr(id,'-')+1) AS INTEGER)),0)+1),${values.join(',')},?,?
@@ -584,22 +597,29 @@ export function appointmentRepository(db) {
           `${suffix}%`,
           ...(request ? [request.key] : [])
         );
-      if (!request) return fromRow(await insert.first());
-      const results = await db.batch([
-        insert,
-        db
-          .prepare(
-            `INSERT INTO booking_requests(request_key,digest,appointment_id,encrypted_token,created_at)
-        SELECT ?,?,id,?,? FROM appointments WHERE access_token_hash=? ON CONFLICT(request_key) DO NOTHING`
-          )
-          .bind(
-            request.key,
-            request.digest,
-            request.encryptedToken,
-            item.createdAt,
-            item.accessTokenHash
-          )
-      ]);
+
+      };
+      if (!request) return fromRow(await insertFor(item).first());
+      const all = [item, ...additional.map(entry => entry.item)];
+      const statements = all.map(insertFor);
+      statements.push(db.prepare(`INSERT INTO booking_requests(request_key,digest,appointment_id,encrypted_token,created_at,device_count)
+        SELECT ?,?,id,?,?,? FROM appointments WHERE access_token_hash=? ON CONFLICT(request_key) DO NOTHING`)
+        .bind(request.key,request.digest,request.encryptedToken,item.createdAt,all.length,item.accessTokenHash));
+      for (const entry of additional) {
+        statements.push(db.prepare(`INSERT INTO booking_request_devices(request_key,appointment_id,encrypted_token)
+          SELECT ?,id,? FROM appointments WHERE access_token_hash=?`)
+          .bind(request.key,entry.encryptedToken,entry.item.accessTokenHash));
+        statements.push(db.prepare(`INSERT INTO booking_device_links(appointment_id,parent_id,parent_revision)
+          SELECT child.id,original.id,original.revision FROM appointments child,appointments original
+          WHERE child.access_token_hash=? AND original.access_token_hash=?`)
+          .bind(entry.item.accessTokenHash,item.accessTokenHash));
+      }
+      if (parent) statements.push(db.prepare(`INSERT INTO booking_device_links(appointment_id,parent_id,parent_revision)
+        SELECT id,?,(SELECT revision FROM appointments WHERE id=? AND access_token_hash=? AND revision=?
+          AND source='booking' AND status='booked' AND student_id=? AND campus=? AND date=? AND time_slot=?)
+        FROM appointments WHERE access_token_hash=?`)
+        .bind(parent.id,parent.id,parent.hash,parent.revision,item.studentId,item.campus,item.date,item.timeSlot,item.accessTokenHash));
+      const results=await db.batch(statements);
       return fromRow(results[0].results[0]);
     },
     async update(item, patch, correction, workflow) {
