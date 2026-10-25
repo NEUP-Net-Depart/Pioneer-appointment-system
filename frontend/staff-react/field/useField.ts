@@ -99,6 +99,10 @@ export function useField(
       setPending(null);
       return;
     }
+    // Only home data can seed home. It must never masquerade as a loaded board.
+    if (resource === 'home' && !readWorkspaceState(key) && initial?.campusId === campus) {
+      writeWorkspaceState(key, { value: initial, fetchedAt: Date.parse(initial.updatedAt) });
+    }
     const entry = readWorkspaceState(key) as Snapshot | undefined;
     if (entry) setSnapshot({ key, value: entry.value });
     if (!document.hidden && !isFresh(entry)) refresh();
@@ -122,7 +126,7 @@ export function useField(
       request.current?.abort();
       document.removeEventListener('visibilitychange', visibility);
     };
-  }, [active, key, refresh]);
+  }, [active, key, refresh, resource, campus, initial]);
   const data = snapshot.key === key ? snapshot.value : cached()?.value || fallback;
   return {
     data,

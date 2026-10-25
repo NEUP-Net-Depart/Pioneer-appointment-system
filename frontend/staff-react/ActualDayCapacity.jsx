@@ -1,3 +1,5 @@
+import { DataValue } from './DataValue';
+import { TIME_SLOTS } from '../../shared/constants.js';
 import React, { useContext, useEffect, useState } from 'react';
 import { addDays, dateKey } from '../../shared/time.js';
 import { ActivityContext, Notice } from './field/ui';
@@ -8,7 +10,7 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
   const [date, setDate] = useState(dateKey()),
     [snapshot, setSnapshot] = useState(null),
     [error, setError] = useState(''),
-    [loading, setLoading] = useState(false),
+    [loading, setLoading] = useState(true),
     [retry, setRetry] = useState(0);
   useEffect(() => {
     if (!active || !date) return;
@@ -79,33 +81,36 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
       </div>
       <Notice>{error}</Notice>
       {error && <button onClick={() => setRetry((value) => value + 1)}>重试</button>}
-      {((loading && !data) || !date) && (
-        <p className="workspace-update" role="status">
-          {loading ? '正在更新实际数据…' : '请选择日期。'}
-        </p>
-      )}
-      {data && (
+      {!date && <p className="workspace-update">请选择日期。</p>}
+      {date && (
         <>
           <div className="capacity-source">
             <span>
-              {data.source === 'snapshot'
-                ? date < dateKey()
-                  ? '历史日期容量'
-                  : '当日实际容量'
-                : '使用每周容量规则'}
+              容量来源：
+              <DataValue label="容量来源" pending={loading}>
+                {data
+                  ? data.source === 'snapshot'
+                    ? date < dateKey()
+                      ? '历史日期容量'
+                      : '当日实际容量'
+                    : '使用每周容量规则'
+                  : null}
+              </DataValue>
             </span>
-            <p>
-              {date < dateKey()
-                ? data.source === 'snapshot'
-                  ? '保留该日期的历史容量，后续每周容量调整不会改写。'
-                  : '该历史日期没有保存服务日容量，以下按当前每周规则展示，仅供参考。'
-                : '修改每周容量会立即同步今天及未来的对应时段，已有预约全部保留。'}
+            <p data-motion-value="text">
+              {!data
+                ? '实际名额由当日容量与预约占用共同决定。'
+                : date < dateKey()
+                  ? data.source === 'snapshot'
+                    ? '保留该日期的历史容量，后续每周容量调整不会改写。'
+                    : '该历史日期没有保存服务日容量，以下按当前每周规则展示，仅供参考。'
+                  : '修改每周容量会立即同步今天及未来的对应时段，已有预约全部保留。'}
             </p>
           </div>
           <div className="capacity-actual-layout">
             <div>
               <h3>预约名额</h3>
-              {data.items.length ? (
+              {!data || data.items.length ? (
                 <table className="capacity-actual-slots" aria-label="各时段预约名额">
                   <thead>
                     <tr>
@@ -116,13 +121,25 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.items.map((item) => (
-                      <tr key={item.timeSlot}>
+                    {(data?.items || TIME_SLOTS.map((timeSlot) => ({ timeSlot }))).map((item) => (
+                      <tr data-motion-item="" key={item.timeSlot}>
                         <th scope="row">{item.timeSlot}</th>
-                        <td>{item.capacity}</td>
-                        <td>{item.occupied}</td>
                         <td>
-                          <strong>{Math.max(0, item.capacity - item.occupied)}</strong>
+                          <DataValue label={`${item.timeSlot}名额`} pending={loading}>
+                            {item.capacity}
+                          </DataValue>
+                        </td>
+                        <td>
+                          <DataValue label={`${item.timeSlot}已占用`} pending={loading}>
+                            {item.occupied}
+                          </DataValue>
+                        </td>
+                        <td>
+                          <strong>
+                            <DataValue label={`${item.timeSlot}剩余`} pending={loading}>
+                              {data ? Math.max(0, item.capacity - item.occupied) : null}
+                            </DataValue>
+                          </strong>
                         </td>
                       </tr>
                     ))}
@@ -138,14 +155,32 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
             </div>
             <div className="capacity-staffing">
               <h3>工作人员</h3>
-              {data.staffing ? (
+              {!data ? (
                 <>
-                  <p className="field-muted">{campus}校区 · 当日预计出勤</p>
+                  <p data-motion-value="text" className="field-muted">
+                    {campus}校区 · 当日预计出勤
+                  </p>
+                  <div className="capacity-staffing-list">
+                    {['维修排班', '办公排班'].map((label) => (
+                      <div data-motion-item="" className="capacity-staffing-row" key={label}>
+                        <span data-motion-value="text">{label}</span>
+                        <DataValue label={label} pending={loading} />
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : data.staffing ? (
+                <>
+                  <p data-motion-value="text" className="field-muted">
+                    {campus}校区 · 当日预计出勤
+                  </p>
                   <div className="capacity-staffing-list">
                     {Object.entries(data.staffing).map(([type, count]) => (
-                      <div className="capacity-staffing-row" key={type}>
-                        <span>{type === 'repair' ? '维修排班' : '办公排班'}</span>
-                        <strong>{count} 人</strong>
+                      <div data-motion-item="" className="capacity-staffing-row" key={type}>
+                        <span data-motion-value="text">
+                          {type === 'repair' ? '维修排班' : '办公排班'}
+                        </span>
+                        <strong data-motion-value="number">{count} 人</strong>
                         {onNavigate && (
                           <button
                             onClick={() =>

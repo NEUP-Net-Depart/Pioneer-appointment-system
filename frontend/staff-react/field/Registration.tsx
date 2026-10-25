@@ -68,8 +68,10 @@ export function Registration({
       }}
     >
       <div className="workspace-flow-context">
-        <span>{campus}校区</span>
-        <strong>{step === 0 ? '填写机主与设备信息' : '机主确认与签名'}</strong>
+        <span data-motion-value="text">{campus}校区</span>
+        <strong data-motion-value="text">
+          {step === 0 ? '填写机主与设备信息' : '机主确认与签名'}
+        </strong>
         <ol aria-label="登记进度">
           <li aria-current={step === 0 ? 'step' : undefined}>填写信息</li>
           <li aria-current={step === 1 ? 'step' : undefined}>确认与签名</li>
@@ -136,10 +138,10 @@ export function Registration({
       ) : (
         <form className="field-form" onSubmit={submit}>
           <div className="field-ticket">
-            <strong>
+            <strong data-motion-value="text">
               {form.name} · {form.studentId}
             </strong>
-            <p>
+            <p data-motion-value="text">
               {form.brand} {form.deviceModel} · {form.faultType}
             </p>
           </div>

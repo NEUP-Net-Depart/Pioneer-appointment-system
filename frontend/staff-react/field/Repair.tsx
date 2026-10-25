@@ -1,6 +1,7 @@
-import { outcomeLabels } from '../../../shared/constants.js';
+import { DataFields } from '../DataValue';
+import { outcomeLabels, statusLabels } from '../../../shared/constants.js';
 import { Modal, Notice, CredentialCard, Status } from './ui';
-import type { Person } from './types';
+import type { Appointment, Person } from './types';
 import { RecordMaintenance } from '../RecordMaintenance';
 import { RepairAttachments } from '../RepairAttachments';
 import { RepairOriginal } from '../RepairOriginal';
@@ -20,7 +21,8 @@ export function Repair({
   onChanged,
   sidePanel = false,
   customerCredential,
-  returnLabel = '返回工作台'
+  returnLabel = '返回工作台',
+  summary
 }: {
   id: string;
   memberId: string;
@@ -30,6 +32,7 @@ export function Repair({
   sidePanel?: boolean;
   customerCredential?: { id: string; accessToken: string } | null;
   returnLabel?: string;
+  summary?: Partial<Appointment>;
 }) {
   const [direct, setDirect] = useState(false);
   const [identityConfirmed, setIdentityConfirmed] = useState(false);
@@ -60,6 +63,7 @@ export function Repair({
     receivers,
     receiversLoading,
     load,
+    retry,
     start,
     receptionCommand,
     finish,
@@ -103,6 +107,8 @@ export function Repair({
           : item?.reception?.state === 'queued'
             ? 1
             : -1;
+  // A list summary is display-only; all commands still require the detail response.
+  const known = !error && summary?.id === id ? summary : null;
   return (
     <Modal
       sidePanel={sidePanel}
@@ -166,7 +172,44 @@ export function Repair({
     >
       <Notice>{error}</Notice>
       {!item ? (
-        <p>正在读取工单…</p>
+        <>
+          <p data-motion-value="text" className="field-muted">
+            {id}
+          </p>
+          {error && <button onClick={retry}>重新读取工单</button>}
+          <section className="field-ticket">
+            <h3>客户与设备</h3>
+            <DataFields
+              pending={!error}
+              fields={[
+                ['预约编号', id],
+                ['客户', known?.name],
+                [
+                  '设备',
+                  [known?.brand, known?.deviceModel || known?.deviceType].filter(Boolean).join(' ')
+                ],
+                ['故障描述', known?.faultType],
+                [
+                  '校区与到场时间',
+                  known && [known.campus, known.date, known.timeSlot].filter(Boolean).join(' · ')
+                ],
+                ['当前状态', known?.status ? statusLabels[known.status] || known.status : undefined]
+              ]}
+            />
+          </section>
+          <section className="field-details">
+            <h3>接待与维修记录</h3>
+            <p className="field-muted">核对客户、设备和当前流转状态后，执行此工单可用的操作。</p>
+            <DataFields
+              pending={!error}
+              fields={[
+                ['接待记录'],
+                ['维修人员', known?.assignedToName],
+                ['处理说明', known?.repairNote]
+              ]}
+            />
+          </section>
+        </>
       ) : (
         <>
           <div className="field-ticket">
@@ -178,20 +221,22 @@ export function Repair({
                 </span>
               )}
               {item.reception?.ticket && (
-                <strong className="field-queue-number">
+                <strong data-motion-value="text" className="field-queue-number">
                   {queueTicketLabel(item.reception.ticket)} · {item.reception.ticket.date}
                 </strong>
               )}
-              <span className="field-muted">{item.id}</span>
+              <span data-motion-value="text" className="field-muted">
+                {item.id}
+              </span>
             </div>
-            <h3>
+            <h3 data-motion-value="text">
               {checkedDevice?.brand || item.brand}{' '}
               {checkedDevice?.model || item.deviceModel || item.deviceType}
             </h3>
-            <p>
+            <p data-motion-value="text">
               {item.faultType} {!followup && item.issue ? `· ${item.issue}` : ''}
             </p>
-            <p className="field-muted">
+            <p data-motion-value="text" className="field-muted">
               {item.campus}校区 · {item.date} · {item.timeSlot}
             </p>
             {item.assignedToName && (
@@ -212,19 +257,19 @@ export function Repair({
               </>
             )}
             {item.name && (
-              <p>
+              <p data-motion-value="text">
                 {item.name} · {item.studentId}
               </p>
             )}
             {(item.contactValue || item.social || item.phone) && (
-              <p>
+              <p data-motion-value="text">
                 联系方式：
                 {item.contactValue
                   ? `${item.contactType === 'qq' ? 'QQ' : '微信'}：${item.contactValue}`
                   : [item.social, item.phone].filter(Boolean).join(' · ')}
               </p>
             )}
-            {item.email && <p>邮箱：{item.email}</p>}
+            {item.email && <p data-motion-value="text">邮箱：{item.email}</p>}
           </div>
           {stage >= 0 && (
             <ol className="repair-stages" aria-label="维修进度">
@@ -290,12 +335,12 @@ export function Repair({
               className="field-form"
             >
               {item.reception && (
-                <small className="field-state-note">
+                <small data-motion-value="text" className="field-state-note">
                   {item.canReceive ? '重新到场 · 待核验' : '待现场核对'}
                 </small>
               )}
               {item.reception && !item.canReceive && (
-                <small className="field-state-note">
+                <small data-motion-value="text" className="field-state-note">
                   保修：
                   {
                     { in_warranty: '在保', expired: '已过保', unknown: '待确认' }[
@@ -395,7 +440,7 @@ export function Repair({
               />
               {item.canReceive &&
                 ['front', 'back'].some((side) => !files[side] && !uploaded[side]) && (
-                  <small className="field-state-note" role="status">
+                  <small data-motion-value="text" className="field-state-note" role="status">
                     本次照片待补齐
                   </small>
                 )}
@@ -447,7 +492,7 @@ export function Repair({
           {item.status === 'completed' && (
             <div className="field-success">
               <h3>维修记录已提交</h3>
-              <p>
+              <p data-motion-value="text">
                 {outcomeLabels[item.outcome || ''] || '已完成'} · {item.repairNote}
               </p>
               <button className="field-primary" onClick={onClose}>
@@ -489,7 +534,7 @@ export function Repair({
                   onChange={(e) => setReason(e.target.value)}
                 />
               </label>
-              <p>
+              <p data-motion-value="text">
                 {item.assignedToName} →{' '}
                 {receivers.find((p) => p.account === target)?.name || '待选择'}
               </p>
@@ -520,10 +565,10 @@ export function Repair({
           {item.intake && !item.canStart && (
             <details className="field-details">
               <summary>现场核验信息</summary>
-              <p>
+              <p data-motion-value="text">
                 {item.intake.brand} {item.intake.model}
               </p>
-              <p>
+              <p data-motion-value="text">
                 保修：
                 {
                   { in_warranty: '在保', expired: '已过保', unknown: '待确认' }[
@@ -533,7 +578,7 @@ export function Repair({
                 · 液金：
                 {{ yes: '是', no: '否', unknown: '待确认' }[item.intake.liquidMetal]}
               </p>
-              <p>{item.intake.note}</p>
+              <p data-motion-value="text">{item.intake.note}</p>
             </details>
           )}
           {item.canReadDetails && <RepairAttachments id={item.id} revision={item.revision} />}
@@ -542,8 +587,8 @@ export function Repair({
               <summary>接待与维修流转记录</summary>
               <ol className="reception-history">
                 {item.receptionHistory.map((event) => (
-                  <li key={event.id}>
-                    <strong>
+                  <li data-motion-item="" key={event.id}>
+                    <strong data-motion-value="text">
                       {{
                         'receptions.received': '完成接待',
                         'receptions.assign': '分派待接手',
@@ -559,15 +604,15 @@ export function Repair({
                         'repairs.completed': '完成维修'
                       }[event.action] || '工单已更新'}
                     </strong>
-                    <span>
+                    <span data-motion-value="text">
                       {event.actorName}
                       {event.ticketNumber ? ` · ${event.ticketNumber}号` : ''}
                       {event.assigneeName ? ` → ${event.assigneeName}` : ''} ·{' '}
                       {formatInstant(event.occurredAt)}
                     </span>
-                    {event.reason && <p>{event.reason}</p>}
+                    {event.reason && <p data-motion-value="text">{event.reason}</p>}
                     {event.action === 'receptions.reschedule' && (
-                      <p>
+                      <p data-motion-value="text">
                         {formatInstant(event.date).split(' ')[0]} · {event.timeSlot}
                       </p>
                     )}
@@ -604,8 +649,8 @@ export function Repair({
       {confirm && (
         <div className="field-confirm" role="region" aria-label="确认维修结果">
           <h3>确认提交本次维修结果？</h3>
-          <p>{outcomeLabels[outcome]}</p>
-          <p>{note}</p>
+          <p data-motion-value="text">{outcomeLabels[outcome]}</p>
+          <p data-motion-value="text">{note}</p>
           <div className="field-actions">
             <button disabled={busy} onClick={() => setConfirm(false)}>
               返回修改

@@ -1,6 +1,9 @@
+import { MotionMeter } from './MotionMeter';
+import { DataValue } from './DataValue';
 import React, { useContext, useEffect, useState } from 'react';
 import { ActivityContext, api, Notice } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
+import { AnimatedValue } from './AnimatedValue';
 
 type Summary = {
   total: number;
@@ -21,15 +24,18 @@ function Distribution({ values, total }: { values: Record<string, number>; total
   return entries.length ? (
     <ul className="report-distribution">
       {entries.map(([label, count]) => (
-        <li key={label}>
+        <li data-motion-item="" key={label}>
           <div>
-            <span>{label}</span>
+            <span data-motion-value="text">{label}</span>
             <strong>
-              {count}
-              <small> · {total ? Math.round((count / total) * 100) : 0}%</small>
+              <span data-motion-value="number">{count}</span>
+              <small data-motion-value="number">
+                {' '}
+                · {total ? Math.round((count / total) * 100) : 0}%
+              </small>
             </strong>
           </div>
-          <meter min="0" max={maximum} value={count} aria-label={`${label} ${count} 条`} />
+          <MotionMeter max={maximum} value={count} label={`${label} ${count} 条`} />
         </li>
       ))}
     </ul>
@@ -44,7 +50,7 @@ export function Statistics() {
     [day, setDay] = useState('');
   const [revision, setRevision] = useState(0);
   const [snapshot, setSnapshot] = useState<{ data: Summary; label: string } | null>(null);
-  const [loading, setLoading] = useState(false),
+  const [loading, setLoading] = useState(true),
     [error, setError] = useState('');
   const label = day || (range === 'all' ? '全部记录' : `最近 ${range} 天`);
   useEffect(() => {
@@ -78,7 +84,7 @@ export function Statistics() {
         ['已取消', data.cancelled],
         ['已逾期', data.expired]
       ]
-    : [];
+    : ['预约总数', '已完成维修', '修复成功率', '已取消', '已逾期'].map((name) => [name, '—']);
   return (
     <section className="report-workspace">
       <WorkspaceHeader group="数据与审计" title="统计分析">
@@ -106,97 +112,98 @@ export function Statistics() {
           <input type="date" value={day} onChange={(event) => setDay(event.target.value)} />
         </label>
         {day && <button onClick={() => setDay('')}>清除日期</button>}
-        <span role="status">
+        <span data-motion-value="text" role="status">
           {loading ? `正在读取${label}，保留已有结果…` : `当前显示：${snapshot?.label || label}`}
         </span>
       </section>
       <Notice>{error}</Notice>
       <div aria-busy={loading}>
-        {!data && loading && (
-          <div className="workspace-skeleton" aria-label="正在读取统计">
-            <span />
-            <span />
-            <span />
-          </div>
-        )}
-        {data && (
-          <>
-            <div className="report-metrics">
-              {metrics.map(([name, count]) => (
-                <article className="field-card" key={name}>
-                  <span>{name}</span>
-                  <strong>{count}</strong>
-                </article>
-              ))}
+        <div className="report-metrics">
+          {metrics.map(([name, count]) => (
+            <article data-motion-item="" className="field-card" key={name}>
+              <span data-motion-value="text">{name}</span>
+              <strong>
+                <AnimatedValue value={count} />
+              </strong>
+            </article>
+          ))}
+        </div>
+
+        <div className="report-grid">
+          <section className="field-card report-wide">
+            <h2>每日服务</h2>
+            <p className="field-muted">按预约日期统计；完成数包含已结束的维修。</p>
+            {!data ? (
+              <DataValue label="每日服务记录" pending={loading} />
+            ) : Object.keys(data.daily).length ? (
+              <div className="report-daily">
+                {Object.entries(data.daily).map(([date, counts]) => (
+                  <article data-motion-item={date} key={date}>
+                    <time dateTime={date}>{date.slice(5).replace('-', '/')}</time>
+                    <strong>
+                      {counts.total}
+                      <small> 条预约</small>
+                    </strong>
+                    <span data-motion-value="text">完成 {counts.completed} 条</span>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="field-muted">当前范围没有预约。</p>
+            )}
+          </section>
+          <section className="field-card">
+            <h2>故障分类</h2>
+            <p className="field-muted">按已完成维修统计</p>
+            {data ? (
+              <Distribution values={data.faults} total={data.completed} />
+            ) : (
+              <DataValue label="故障分类" pending={loading} />
+            )}
+          </section>
+          <section className="field-card">
+            <h2>校区分布</h2>
+            <p className="field-muted">按预约总数统计</p>
+            {data ? (
+              <Distribution values={data.campuses} total={data.total} />
+            ) : (
+              <DataValue label="校区分布" pending={loading} />
+            )}
+          </section>
+          <section className="field-card report-wide">
+            <h2>维修人员工作量</h2>
+            <p className="field-muted">实际开始与完成记录，不代表值班考勤。</p>
+            <div className="report-workload">
+              {Object.entries(data?.technicians || {})
+                .sort((a, b) => b[1].completed - a[1].completed)
+                .map(([account, counts]) => (
+                  <article data-motion-item={account} key={account}>
+                    <div>
+                      <strong data-motion-value="text">{counts.assignedToName || account}</strong>
+                      {counts.assignedToName && <small data-motion-value="text">{account}</small>}
+                    </div>
+                    <span>
+                      开始 <b>{counts.started}</b>
+                    </span>
+                    <span>
+                      完成 <b>{counts.completed}</b>
+                    </span>
+                    <span>
+                      完成率{' '}
+                      <b>
+                        {counts.started ? Math.round((counts.completed / counts.started) * 100) : 0}
+                        %
+                      </b>
+                    </span>
+                  </article>
+                ))}
             </div>
-            <div className="report-grid">
-              <section className="field-card report-wide">
-                <h2>每日服务</h2>
-                <p className="field-muted">按预约日期统计；完成数包含已结束的维修。</p>
-                {Object.keys(data.daily).length ? (
-                  <div className="report-daily">
-                    {Object.entries(data.daily).map(([date, counts]) => (
-                      <article key={date}>
-                        <time dateTime={date}>{date.slice(5).replace('-', '/')}</time>
-                        <strong>
-                          {counts.total}
-                          <small> 条预约</small>
-                        </strong>
-                        <span>完成 {counts.completed} 条</span>
-                      </article>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="field-muted">当前范围没有预约。</p>
-                )}
-              </section>
-              <section className="field-card">
-                <h2>故障分类</h2>
-                <p className="field-muted">按已完成维修统计</p>
-                <Distribution values={data.faults} total={data.completed} />
-              </section>
-              <section className="field-card">
-                <h2>校区分布</h2>
-                <p className="field-muted">按预约总数统计</p>
-                <Distribution values={data.campuses} total={data.total} />
-              </section>
-              <section className="field-card report-wide">
-                <h2>维修人员工作量</h2>
-                <p className="field-muted">实际开始与完成记录，不代表值班考勤。</p>
-                <div className="report-workload">
-                  {Object.entries(data.technicians)
-                    .sort((a, b) => b[1].completed - a[1].completed)
-                    .map(([account, counts]) => (
-                      <article key={account}>
-                        <div>
-                          <strong>{counts.assignedToName || account}</strong>
-                          {counts.assignedToName && <small>{account}</small>}
-                        </div>
-                        <span>
-                          开始 <b>{counts.started}</b>
-                        </span>
-                        <span>
-                          完成 <b>{counts.completed}</b>
-                        </span>
-                        <span>
-                          完成率{' '}
-                          <b>
-                            {counts.started
-                              ? Math.round((counts.completed / counts.started) * 100)
-                              : 0}
-                            %
-                          </b>
-                        </span>
-                      </article>
-                    ))}
-                </div>
-                {!Object.keys(data.technicians).length && (
-                  <p className="field-muted">当前范围没有已分配维修。</p>
-                )}
-              </section>
-            </div>
-          </>
-        )}
+            {!data && <DataValue label="维修人员工作量" pending={loading} />}
+            {data && !Object.keys(data.technicians).length && (
+              <p className="field-muted">当前范围没有已分配维修。</p>
+            )}
+          </section>
+        </div>
         {!data && !loading && error && (
           <button onClick={() => setRevision((value) => value + 1)}>重新读取统计</button>
         )}

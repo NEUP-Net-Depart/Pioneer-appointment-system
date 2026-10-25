@@ -54,7 +54,7 @@ export function CollectionScope({ tasks, taskId, onChange, disabled = false, man
         task && (
           <p className="collection-period">
             本次填报
-            <strong>
+            <strong data-motion-value="text">
               {task.weekStart} — {addDays(task.weekStart, 3)}
             </strong>
           </p>

@@ -1,3 +1,4 @@
+import { MotionText } from '../MotionText';
 import { queueTicketLabel } from '../../../shared/reception.js';
 import { Status } from './ui';
 import { AppointmentLookup } from './AppointmentLookup';
@@ -42,25 +43,29 @@ export function RepairScene({
         <div>
           <div className="field-actions">
             <Status value={data.state} />
-            <span className="field-muted">{campusName}校区</span>
+            <span data-motion-value="text" className="field-muted">
+              {campusName}校区
+            </span>
             <StaffIdentity identities={data.identities} />
           </div>
           <h2>
-            {data.currentRepair
-              ? '当前维修'
-              : data.pendingRepair
-                ? '待接手设备'
-                : data.state === 'unsigned'
-                  ? '待签到'
-                  : data.state === 'away'
-                    ? '暂时离岗'
-                    : data.state === 'available'
-                      ? data.nextInQueue
-                        ? '待接单'
-                        : '空闲中'
-                      : '暂无可接单任务'}
+            <MotionText>
+              {data.currentRepair
+                ? '当前维修'
+                : data.pendingRepair
+                  ? '待接手设备'
+                  : data.state === 'unsigned'
+                    ? '待签到'
+                    : data.state === 'away'
+                      ? '暂时离岗'
+                      : data.state === 'available'
+                        ? data.nextInQueue
+                          ? '待接单'
+                          : '空闲中'
+                        : '暂无可接单任务'}
+            </MotionText>
           </h2>
-          <p className="field-state-note">
+          <p data-motion-value="text" className="field-state-note">
             {data.currentRepair
               ? `${data.currentRepair.brand} ${data.currentRepair.deviceModel} · ${data.currentRepair.faultType}`
               : data.pendingRepair
@@ -131,7 +136,7 @@ export function RepairScene({
           </div>
         </section>
         <section className="field-card">
-          <h2>
+          <h2 data-motion-value="text">
             {data.identities?.some((identity) => identity.code === 'exchange') &&
             !data.permissions['roster.read']
               ? '到岗参与维修'
@@ -139,17 +144,17 @@ export function RepairScene({
           </h2>
           {data.todayDuties.length ? (
             data.todayDuties.map((d) => (
-              <div key={d.id} className="field-shift">
-                <strong>
+              <div data-motion-item="" key={d.id} className="field-shift">
+                <strong data-motion-value="text">
                   {d.campusName} · {d.dutyType === 'office' ? '办公接待' : '维修值班'}
                 </strong>
-                <span>
+                <span data-motion-value="text">
                   {d.startAt}–{d.endAt}
                 </span>
               </div>
             ))
           ) : (
-            <p className="field-muted">
+            <p data-motion-value="text" className="field-muted">
               {data.identities?.some((identity) => identity.code === 'exchange')
                 ? '交流人员不参与维修排班、填报或换班。到场后扫描工作人员签到码，签到后即可参与维修。'
                 : '今天没有排班。具备资格的成员仍可到场签到。'}

@@ -77,7 +77,7 @@ export function CapacityEditor({ active, onNavigate }) {
     [mode, setMode] = useState('template');
   const [error, setError] = useState(''),
     [message, setMessage] = useState(''),
-    [loading, setLoading] = useState(false),
+    [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false);
   const [review, setReview] = useState(false),
     [discard, setDiscard] = useState(false),
@@ -587,7 +587,7 @@ export function CapacityEditor({ active, onNavigate }) {
         )}
       </div>
       <Notice>{error}</Notice>
-      <p className="workspace-update" role="status">
+      <p data-motion-value="text" className="workspace-update" role="status">
         {mode === 'template'
           ? message || (loading ? '正在更新，保留当前草稿与选区…' : '容量为 0 时暂停该时段预约。')
           : ''}
@@ -609,7 +609,7 @@ export function CapacityEditor({ active, onNavigate }) {
             ))}
           </div>
           <div className="capacity-sheet-tools">
-            <span>
+            <span data-motion-value="text">
               已选 {selection.range.bottom - selection.range.top + 1} 行 ×{' '}
               {selection.range.right - selection.range.left + 1} 列
             </span>
@@ -691,7 +691,7 @@ export function CapacityEditor({ active, onNavigate }) {
               </thead>
               <tbody>
                 {TIME_SLOTS.map((slot, row) => (
-                  <tr key={slot}>
+                  <tr data-motion-item="" key={slot}>
                     <th scope="row">
                       <button
                         data-axis="row"
@@ -793,7 +793,9 @@ export function CapacityEditor({ active, onNavigate }) {
                 <label key={keyOf(item)}>
                   <span>
                     {item.timeSlot}
-                    <small>{drafts[keyOf(item)] ? `原名额 ${item.capacity}` : '预约人数'}</small>
+                    <small data-motion-value="text">
+                      {drafts[keyOf(item)] ? `原名额 ${item.capacity}` : '预约人数'}
+                    </small>
                   </span>
                   <input
                     aria-label={`${label(item)} 预约人数`}
@@ -1006,10 +1008,10 @@ export function CapacityEditor({ active, onNavigate }) {
           <h2>核对其他人的修改</h2>
           <p>以下格子在你编辑期间已更新。草稿完整保留，逐项选择后再保存。</p>
           {conflicts.map((item) => (
-            <article key={keyOf(item)}>
-              <strong>{label(item)}</strong>
+            <article data-motion-item="" key={keyOf(item)}>
+              <strong data-motion-value="text">{label(item)}</strong>
               <div>
-                <span>编辑前 {drafts[keyOf(item)].original}</span>
+                <span data-motion-value="text">编辑前 {drafts[keyOf(item)].original}</span>
                 <span>
                   最新值 <b>{item.capacity}</b>
                 </span>
@@ -1032,8 +1034,8 @@ export function CapacityEditor({ active, onNavigate }) {
       {!!changes.length && (
         <footer className="capacity-save-bar">
           <div>
-            <strong>{changes.length} 项待保存</strong>
-            <span>
+            <strong data-motion-value="number">{changes.length} 项待保存</strong>
+            <span data-motion-value="number">
               {conflicts.length
                 ? `${conflicts.length} 项冲突待核对`
                 : invalid.length
@@ -1072,15 +1074,15 @@ export function CapacityEditor({ active, onNavigate }) {
             if (!busy) setReview(false);
           }}
         >
-          <p>
+          <p data-motion-value="number">
             保存全部校区的 {changes.length}{' '}
             项修改，立即更新今天及未来对应日期的容量。已有预约保留；若新容量不高于已占用人数，将停止新增预约。
           </p>
           <div className="capacity-review-list">
             {changes.map((item) => (
               <div key={keyOf(item)}>
-                <span>{label(item)}</span>
-                <strong>
+                <span data-motion-value="text">{label(item)}</span>
+                <strong data-motion-value="text">
                   {item.capacity} → {value(item)} 名
                 </strong>
               </div>

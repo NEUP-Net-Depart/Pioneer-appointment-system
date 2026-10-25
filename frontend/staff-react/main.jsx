@@ -1,5 +1,8 @@
+import { workspaceModule } from './workspace-module.js';
+import { DataFields } from './DataValue';
+import { WorkspaceSkeleton } from './WorkspaceSkeleton';
 import { UnsavedPageContext } from './useUnsavedChanges.js';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { useStaffIdentity } from './useStaffIdentity.js';
 import { StaffLogin, StaffActivation } from './StaffAccess.jsx';
@@ -7,31 +10,71 @@ import './base.css';
 import { setWorkspaceSession, clearWorkspaceState } from './workspace-state.js';
 import './workspace.css';
 import { request } from './request.js';
-import { Attendance } from './Attendance';
-import { AttendanceManagement } from './AttendanceManagement.jsx';
-import { Members } from './Members.jsx';
-import { Permissions } from './Permissions.jsx';
-import { RosterArea } from './RosterManager.jsx';
+const AttendanceModule = workspaceModule(() => import('./Attendance'), 'Attendance');
+const Attendance = AttendanceModule.Page;
+const AttendanceManagementModule = workspaceModule(
+  () => import('./AttendanceManagement.jsx'),
+  'AttendanceManagement'
+);
+const AttendanceManagement = AttendanceManagementModule.Page;
+const MembersModule = workspaceModule(() => import('./Members.jsx'), 'Members');
+const Members = MembersModule.Page;
+const PermissionsModule = workspaceModule(() => import('./Permissions.jsx'), 'Permissions');
+const Permissions = PermissionsModule.Page;
+const RosterAreaModule = workspaceModule(() => import('./RosterManager.jsx'), 'RosterArea');
+const RosterArea = RosterAreaModule.Page;
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { StaffWorkspace } from './StaffWorkspace';
-import { Records } from './Records';
+const RecordsModule = workspaceModule(() => import('./Records'), 'Records');
+const Records = RecordsModule.Page;
 import { FieldApp } from './field/FieldApp';
 import { ActivityContext } from './field/ui';
-import { Statistics } from './Statistics';
-import { AccountSettings } from './AccountSettings';
-import { Accounts } from './Accounts';
+const StatisticsModule = workspaceModule(() => import('./Statistics'), 'Statistics');
+const Statistics = StatisticsModule.Page;
+const AccountSettingsModule = workspaceModule(() => import('./AccountSettings'), 'AccountSettings');
+const AccountSettings = AccountSettingsModule.Page;
+const AccountsModule = workspaceModule(() => import('./Accounts'), 'Accounts');
+const Accounts = AccountsModule.Page;
 import {
   staffPermission,
   staffViewAllowed,
   staffSceneAllowed,
   normalizeStaffScene
 } from '../../shared/staff-access.js';
-import { OfficeRoster } from './OfficeRoster';
-import { LeaveReview } from './LeaveReview';
+const OfficeRosterModule = workspaceModule(() => import('./OfficeRoster'), 'OfficeRoster');
+const OfficeRoster = OfficeRosterModule.Page;
+const LeaveReviewModule = workspaceModule(() => import('./LeaveReview'), 'LeaveReview');
+const LeaveReview = LeaveReviewModule.Page;
 import { WorkspacePage } from './WorkspacePage';
 import './workspace-foundation.css';
 
-function Workspace({ user, onLogout }) {
+const pageModules = {
+  attendance: AttendanceModule,
+  'attendance-manage': AttendanceManagementModule,
+  members: MembersModule,
+  permissions: PermissionsModule,
+  roster: RosterAreaModule,
+  'roster-manage': RosterAreaModule,
+  'roster-requests': RosterAreaModule,
+  staff: RecordsModule,
+  stats: StatisticsModule,
+  settings: AccountSettingsModule,
+  capacity: AccountSettingsModule,
+  users: AccountsModule,
+  'office-roster': OfficeRosterModule,
+  'leave-review': LeaveReviewModule
+};
+
+function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
+  const user = profile || { permissions: {}, navigation: [] };
+  const [opening, setOpening] = useState(null);
+  const navigationSequence = useRef(0);
+  useEffect(
+    () => () => {
+      navigationSequence.current++;
+    },
+    []
+  );
   const [page, setPage] = useState('workbench');
   const [field, setField] = useState(null);
   const [bootError, setBootError] = useState(''),
@@ -64,10 +107,11 @@ function Workspace({ user, onLogout }) {
       setWorkScene('mine');
   }, [field, user, page, rosterSection, settingsSection, workScene]);
   useEffect(() => {
+    if (!profile) return;
     let active = true;
     const controller = new AbortController();
     setBootError('');
-    request('/api/field/home', { signal: controller.signal })
+    request('/api/field/home', { signal: controller.signal, timeoutMs: 15000 })
       .then((data) => {
         if (!active) return;
         setField(data);
@@ -89,7 +133,12 @@ function Workspace({ user, onLogout }) {
         );
       })
       .catch((error) => {
-        if (active && !controller.signal.aborted) setBootError(error.message);
+        if (active && !controller.signal.aborted)
+          setBootError(
+            error.name === 'AbortError'
+              ? '工作台请求超时，请重试；你也可以先进入其他页面。'
+              : error.message
+          );
       });
     return () => {
       active = false;
@@ -97,6 +146,7 @@ function Workspace({ user, onLogout }) {
     };
   }, [user?.memberId, user?.account, user?.authVersion, bootRetry]);
   useEffect(() => {
+    if (!profile) return;
     setWorkspaceSession(
       `${user.memberId || user.account}:${user.authVersion}:${JSON.stringify(user.permissions || {})}`
     );
@@ -118,17 +168,34 @@ function Workspace({ user, onLogout }) {
           }
         : current
     );
-  }, [user]);
+  }, [profile]);
   useEffect(() => () => clearWorkspaceState(), []);
   const navigate = (view) => {
     if (view.startsWith('scene:')) view = `scene:${normalizeStaffScene(view.slice(6))}`;
     if (
-      field &&
+      !profile ||
       !(view.startsWith('scene:')
         ? staffSceneAllowed(profileRef.current, field, view.slice(6))
         : staffViewAllowed(profileRef.current, view))
     )
       return;
+    const sequence = ++navigationSequence.current;
+    const module = pageModules[view];
+    if (module && !module.ready()) {
+      setOpening(view);
+      // Keep the current page, focus and draft intact while code is in flight.
+      // Re-enter the navigation guard afterwards in case the user kept editing.
+      module
+        .preload()
+        .catch(() => {})
+        .then(() => {
+          if (sequence !== navigationSequence.current) return;
+          setOpening(null);
+          window.dispatchEvent(new CustomEvent('staff-request-navigation', { detail: view }));
+        });
+      return;
+    }
+    setOpening(null);
     if (view === 'roster-requests') {
       setRosterRequestSignal((value) => value + 1);
       view = 'roster';
@@ -154,25 +221,14 @@ function Workspace({ user, onLogout }) {
   };
   const requestNavigate = (view) =>
     window.dispatchEvent(new CustomEvent('staff-request-navigation', { detail: view }));
-  if (!field)
-    return (
-      <WorkspaceBootstrap
-        error={bootError}
-        onRetry={() => {
-          setBootError('');
-          setBootRetry((value) => value + 1);
-        }}
-        onLogout={onLogout}
-      />
-    );
   const effectiveUser = { ...user, permissions: field?.permissions || user.permissions };
   const published = new Set((field?.navigation || user.navigation || []).map((entry) => entry.id));
   const publishedView = (id, view) => published.has(id) && staffViewAllowed(effectiveUser, view);
   const workspaceLinks = [
-    ...field.contexts
+    ...(field?.contexts || [])
       .filter((context) => staffSceneAllowed(effectiveUser, field, context.id))
       .map((context) => ({ ...context, id: `scene:${context.id}`, group: '今日工作' })),
-    { id: 'scene:mine', label: '个人中心', group: '我的' },
+    ...(profile && field ? [{ id: 'scene:mine', label: '个人中心', group: '我的' }] : []),
     ...(publishedView('rosters', 'roster')
       ? [{ id: 'roster', label: '班次与排班', group: '我的' }]
       : []),
@@ -207,7 +263,7 @@ function Workspace({ user, onLogout }) {
     ...(staffPermission(effectiveUser, 'accounts.manage')
       ? [{ id: 'users', label: '账号管理', group: '平台管理' }]
       : []),
-    { id: 'settings', label: '账号安全', group: '我的' },
+    ...(profile ? [{ id: 'settings', label: '账号安全', group: '我的' }] : []),
     ...(staffPermission(effectiveUser, 'settings.manage')
       ? [{ id: 'capacity', label: '预约配置', group: '业务管理' }]
       : [])
@@ -224,27 +280,39 @@ function Workspace({ user, onLogout }) {
   // Hidden routes stop polling and device-backed UI.
   const visible = (view) => page === view;
   const route = (view, child, allowed = true) =>
-    allowed && staffViewAllowed(effectiveUser, view) && visited.includes(view) ? (
+    profile && allowed && staffViewAllowed(effectiveUser, view) && visited.includes(view) ? (
       <ActivityContext.Provider key={view} value={visible(view)}>
         <UnsavedPageContext.Provider value={visible(view)}>
           <WorkspacePage route={view} active={visible(view)}>
-            {child}
+            <WorkspaceModuleBoundary>
+              <Suspense fallback={<WorkspacePending code />}>{child}</Suspense>
+            </WorkspaceModuleBoundary>
           </WorkspacePage>
         </UnsavedPageContext.Provider>
       </ActivityContext.Provider>
     ) : null;
   const fieldRoute = route(
     'workbench',
-    <FieldApp
-      initial={field}
-      active={visible('workbench')}
-      onNavigate={requestNavigate}
-      onLogout={() => requestNavigate('__logout__')}
-      requestedScene={workScene}
-      onSceneChange={setWorkScene}
-      onContextChange={setField}
-      workspaceLinks={workspaceLinks}
-    />
+    field ? (
+      <FieldApp
+        initial={field}
+        active={visible('workbench')}
+        onNavigate={requestNavigate}
+        onLogout={() => requestNavigate('__logout__')}
+        requestedScene={workScene}
+        onSceneChange={setWorkScene}
+        onContextChange={setField}
+        workspaceLinks={workspaceLinks}
+      />
+    ) : (
+      <>
+        <WorkspaceHeader group="今日工作" title="今日工作" />
+        <WorkspacePending
+          error={identityError || bootError}
+          onRetry={identityError ? onRetryIdentity : () => setBootRetry((value) => value + 1)}
+        />
+      </>
+    )
   );
   const rosterRoute = route(
     'roster',
@@ -317,14 +385,25 @@ function Workspace({ user, onLogout }) {
     )
   ];
   return (
-    <div data-workspace-host="true" key={`${user.memberId || user.account}:${user.authVersion}`}>
+    <div data-workspace-host="true">
       <StaffWorkspace
         name={user.name || ''}
         entries={workspaceLinks}
         active={active}
         onSelect={navigate}
+        onPrepare={(view) => {
+          if (profile && staffViewAllowed(profileRef.current, view))
+            pageModules[view]?.preload().catch(() => {});
+        }}
+        opening={workspaceLinks.find((entry) => entry.id === opening)?.label}
         onLogout={onLogout}
       >
+        {!profile && (
+          <main className="workspace-page">
+            <WorkspaceHeader group="今日工作" title="今日工作" />
+            <WorkspacePending error={identityError} onRetry={onRetryIdentity} />
+          </main>
+        )}
         {fieldRoute}
         {rosterRoute}
         {moduleRoutes}
@@ -333,58 +412,58 @@ function Workspace({ user, onLogout }) {
   );
 }
 
-function WorkspaceBootstrap({ error, onRetry, onLogout }) {
+class WorkspaceModuleBoundary extends React.Component {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? (
+      <WorkspacePending
+        error="此页面暂时无法加载，请刷新后重试。"
+        onRetry={() => window.location.reload()}
+      />
+    ) : (
+      this.props.children
+    );
+  }
+}
+function WorkspacePending({ error, onRetry, code = false }) {
   return (
-    <div data-workspace-host="true">
-      <StaffWorkspace
-        loading
-        name=""
-        entries={[]}
-        active=""
-        onSelect={() => {}}
-        onLogout={onLogout}
-      >
-        <main className="workspace-page">
-          <WorkspaceHeader
-            group="工作人员平台"
-            title={error ? '工作区暂时不可用' : '正在准备工作区'}
-          />
-          <section className="field-card">
-            <p role="status">{error || '正在读取岗位与当前任务…'}</p>
-            {!error && (
-              <div className="workspace-skeleton" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-              </div>
-            )}
-            <div className="field-actions">
-              {error && (
-                <button className="field-primary" onClick={onRetry}>
-                  重新加载工作区
-                </button>
-              )}
-              <button onClick={onLogout}>退出登录</button>
-            </div>
-          </section>
-        </main>
-      </StaffWorkspace>
-    </div>
+    <section className="workspace-pending" aria-busy={!error} aria-label="工作区内容">
+      {error && (
+        <p data-motion-value="text" role="alert">
+          {error}
+        </p>
+      )}
+      {error ? (
+        <button className="field-primary" onClick={onRetry}>
+          重新加载工作区
+        </button>
+      ) : code ? (
+        <WorkspaceSkeleton label="正在加载页面组件" />
+      ) : (
+        <section className="field-card">
+          <h2>今日工作概况</h2>
+          <p className="field-muted">查看到岗状态和当前任务，从对应岗位继续工作。</p>
+          <DataFields fields={[['当前岗位'], ['到岗状态'], ['当前任务']]} />
+        </section>
+      )}
+    </section>
   );
 }
 function StaffApp() {
   const identity = useStaffIdentity();
   if (new URLSearchParams(location.search).get('activate') === '1') return <StaffActivation />;
-  if (!identity.user && identity.hasSession)
-    return (
-      <WorkspaceBootstrap
-        error={identity.error}
-        onRetry={identity.retry}
-        onLogout={identity.logout}
-      />
-    );
-  if (!identity.user)
+  if (!identity.user && !identity.hasSession)
     return <StaffLogin {...identity} onLogin={identity.login} onRetry={identity.retry} />;
-  return <Workspace key={identity.user.account} user={identity.user} onLogout={identity.logout} />;
+  return (
+    <Workspace
+      profile={identity.user}
+      identityError={identity.error}
+      onRetryIdentity={identity.retry}
+      onLogout={identity.logout}
+    />
+  );
 }
 createRoot(document.getElementById('staff-react-root')).render(<StaffApp />);

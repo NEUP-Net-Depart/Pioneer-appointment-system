@@ -48,13 +48,13 @@ export function MemberImport({ onClose, onSaved }) {
   return (
     <Modal title="导入成员与激活资格" dismissible={!busy} onClose={onClose}>
       {error && (
-        <p className="react-error" role="alert">
+        <p data-motion-value="text" className="react-error" role="alert">
           {error}
         </p>
       )}
       {done ? (
         <>
-          <h3>已导入 {done.count} 名成员</h3>
+          <h3 data-motion-value="number">已导入 {done.count} 名成员</h3>
           <p>
             尚未激活且具备资格、角色和授权校区的成员，可从登录页提交激活申请，核验通过后使用同一成员资料。
           </p>
@@ -141,23 +141,23 @@ export function MemberImport({ onClose, onSaved }) {
             </>
           ) : (
             <>
-              <h3>待导入 {preview.items.length} 名成员</h3>
+              <h3 data-motion-value="number">待导入 {preview.items.length} 名成员</h3>
               <div className="member-import-preview">
                 {preview.items.map((item) => (
-                  <article className="react-binding" key={item.studentId}>
-                    <strong>
+                  <article data-motion-item="" className="react-binding" key={item.studentId}>
+                    <strong data-motion-value="text">
                       {item.name} · {item.studentId}
                     </strong>
-                    <p>
+                    <p data-motion-value="text">
                       {item.homeCampusId === 'campus-hunnan' ? '浑南' : '南湖'} ·{' '}
                       {item.workProfiles.join('、') || '未设置工作资格'}
                     </p>
-                    <p>
+                    <p data-motion-value="text">
                       账号类型：{item.accountRole === 'admin' ? '管理员' : '按工作资格确定'} ·
                       角色：{item.roleCodes.join('、') || '未授权'} · 授权校区：
                       {item.authorizedCampuses.join('、') || '未设置'}
                     </p>
-                    <p>
+                    <p data-motion-value="number">
                       登录账号校区：
                       {!item.updateAccountCampuses
                         ? '保持不变'
@@ -169,7 +169,7 @@ export function MemberImport({ onClose, onSaved }) {
                 ))}
               </div>
               {preview.warnings.map((item, index) => (
-                <p key={index} role="status">
+                <p data-motion-value="text" key={index} role="status">
                   {item.studentId}：{item.message}
                 </p>
               ))}

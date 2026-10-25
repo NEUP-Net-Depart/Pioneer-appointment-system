@@ -1,4 +1,6 @@
+import { DataValue } from '../DataValue';
 import React from 'react';
+import { AnimatedValue } from '../AnimatedValue';
 import { Empty, Notice, Status, time } from './ui';
 import { StaffIdentity } from '../StaffIdentity';
 import { fieldPersonGroup } from '../../../shared/staff-identities.js';
@@ -95,8 +97,12 @@ export function DeskScene({
               setTab('appointments');
             }}
           >
-            <span className="field-metric-label">{label}</span>
-            <strong>{count}</strong>
+            <span data-motion-value="text" className="field-metric-label">
+              {label}
+            </span>
+            <strong>
+              <AnimatedValue value={count} />
+            </strong>
           </button>
         ))}
         <button
@@ -109,7 +115,9 @@ export function DeskScene({
         >
           <span className="field-metric-label">空闲中</span>
           <strong>
-            {data.staffPresence ? people.filter((person) => person.canReceive).length : '—'}
+            <AnimatedValue
+              value={data.staffPresence ? people.filter((person) => person.canReceive).length : '—'}
+            />
           </strong>
         </button>
       </div>
@@ -149,8 +157,8 @@ export function DeskScene({
       <div className={`field-desk-grid tab-${tab}`}>
         <section className="field-card field-appointments">
           <div className="field-section-heading">
-            <h2>{selectedFilter?.label || '预约与现场队列'}</h2>
-            <span>
+            <h2 data-motion-value="text">{selectedFilter?.label || '预约与现场队列'}</h2>
+            <span data-motion-value="number">
               {items.length} 条{' '}
               {filter !== 'all' && (
                 <button className="field-text" onClick={() => setFilter('all')}>
@@ -173,11 +181,16 @@ export function DeskScene({
             <span>维修人员</span>
           </div>
           {items.map((item) => (
-            <button className="field-order" key={item.id} onClick={() => setSelected(item.id)}>
+            <button
+              data-motion-item={item.id}
+              className="field-order"
+              key={item.id}
+              onClick={() => setSelected(item.id)}
+            >
               <span>
-                <strong>
+                <strong data-motion-value="text">
                   {item.reception?.ticket && (
-                    <span className="field-queue-number">
+                    <span data-motion-value="text" className="field-queue-number">
                       {queueTicketLabel(item.reception.ticket)} ·{' '}
                     </span>
                   )}
@@ -186,16 +199,16 @@ export function DeskScene({
                     <span className="field-followup-badge">返修</span>
                   )}
                 </strong>
-                <small>
+                <small data-motion-value="text">
                   {item.id} · {item.faultType}
                 </small>
               </span>
-              <span>
+              <span data-motion-value="text">
                 {item.timeSlot}
                 {item.servicePaused && <small>当日暂停维修</small>}
               </span>
               <Status value={receptionStatus(item)} />
-              <span>
+              <span data-motion-value="text">
                 {item.reception?.state === 'assigned'
                   ? item.reception.assignedToName
                   : item.assignedToName ||
@@ -209,18 +222,12 @@ export function DeskScene({
                 {item.date < data.businessDate &&
                   item.reception &&
                   ['queued', 'assigned'].includes(item.reception.state) && (
-                    <small>跨日待处理 · {item.date}</small>
+                    <small data-motion-value="text">跨日待处理 · {item.date}</small>
                   )}
               </span>
             </button>
           ))}
-          {!data.appointments && result.loading && (
-            <div className="workspace-skeleton" aria-label="正在读取预约">
-              <span />
-              <span />
-              <span />
-            </div>
-          )}
+          {!data.appointments && result.loading && <DataValue label="今日预约" />}
           {data.appointments && !items.length && <Empty title="没有符合条件的预约" />}
         </section>
         <section className="field-card field-people">
@@ -228,16 +235,30 @@ export function DeskScene({
             <h2>现场人员</h2>
           </div>
           <p className="field-muted field-person-summary">
-            可接单 {people.filter((person) => person.canReceive).length} 人 · 已到岗{' '}
-            {people.filter((person) => person.signedInAt).length} 人 · 维修排班{' '}
-            {people.filter((person) => person.scheduledRepair).length} 人 · 已到岗负责人{' '}
-            {
-              people.filter(
-                (person) =>
-                  person.signedInAt &&
-                  person.identities?.some((identity) => identity.code === 'repair_lead')
-              ).length
-            }{' '}
+            可接单{' '}
+            <DataValue label="可接单人数" pending={result.loading}>
+              {data.staffPresence ? people.filter((person) => person.canReceive).length : undefined}
+            </DataValue>{' '}
+            人 · 已到岗{' '}
+            <DataValue label="已到岗人数" pending={result.loading}>
+              {data.staffPresence ? people.filter((person) => person.signedInAt).length : undefined}
+            </DataValue>{' '}
+            人 · 维修排班{' '}
+            <DataValue label="维修排班人数" pending={result.loading}>
+              {data.staffPresence
+                ? people.filter((person) => person.scheduledRepair).length
+                : undefined}
+            </DataValue>{' '}
+            人 · 已到岗负责人{' '}
+            <DataValue label="已到岗负责人人数" pending={result.loading}>
+              {data.staffPresence
+                ? people.filter(
+                    (person) =>
+                      person.signedInAt &&
+                      person.identities?.some((identity) => identity.code === 'repair_lead')
+                  ).length
+                : undefined}
+            </DataValue>{' '}
             人
           </p>
           <label className="workspace-search-label">
@@ -257,18 +278,22 @@ export function DeskScene({
                   (index === 0 || fieldPersonGroup(visible[index - 1]) !== 'other') && (
                     <div className="field-person-divider">其他人员</div>
                   )}
-                <div className="field-person">
-                  <span className="field-avatar">{person.name.slice(-2)}</span>
+                <div data-motion-item={person.memberId} className="field-person">
+                  <span data-motion-value="text" className="field-avatar">
+                    {person.name.slice(-2)}
+                  </span>
                   <div>
-                    <strong>{person.name}</strong>
+                    <strong data-motion-value="text">{person.name}</strong>
                     <StaffIdentity identities={person.identities} />
-                    <small>
+                    <small data-motion-value="text">
                       {person.department || '工作人员'}
                       {!person.scheduled ? ' · 非排班到岗' : ''}
                     </small>
-                    {person.signedInAt && <small>签到 {time(person.signedInAt)}</small>}
+                    {person.signedInAt && (
+                      <small data-motion-value="text">签到 {time(person.signedInAt)}</small>
+                    )}
                     {person.workload && (
-                      <small>
+                      <small data-motion-value="number">
                         今日已接 {person.workload.started} · 已完成 {person.workload.completed}
                       </small>
                     )}
@@ -280,7 +305,7 @@ export function DeskScene({
                         {person.currentRepair.deviceModel || '查看当前工单'}
                       </button>
                     ) : (
-                      <small>{person.reason || '可以接待维修'}</small>
+                      <small data-motion-value="text">{person.reason || '可以接待维修'}</small>
                     )}
                   </div>
                   <Status value={person.state} />
@@ -291,12 +316,7 @@ export function DeskScene({
           {people.length > 0 && !visiblePeople.length && (
             <Empty title="没有匹配的现场人员">更换搜索词或切换为查看全部人员。</Empty>
           )}
-          {!data.staffPresence && result.loading && (
-            <div className="workspace-skeleton" aria-label="正在读取人员">
-              <span />
-              <span />
-            </div>
-          )}
+          {!data.staffPresence && result.loading && <DataValue label="现场人员" />}
           {data.staffPresence && !people.length && (
             <Empty title="暂无现场人员">展示工作人员签到码，成员扫码并确认后记录到岗。</Empty>
           )}

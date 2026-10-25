@@ -97,7 +97,7 @@ export function CollectionSettings({ series, task, busy, error, onSave }) {
         </p>
       </fieldset>
       {error && (
-        <p className="react-error" role="alert">
+        <p data-motion-value="text" className="react-error" role="alert">
           {error}
         </p>
       )}

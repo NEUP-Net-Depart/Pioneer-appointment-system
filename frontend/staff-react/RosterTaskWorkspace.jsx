@@ -1,3 +1,4 @@
+import { MotionMeter } from './MotionMeter';
 import { WorkspaceMoreActions } from './WorkspaceMoreActions';
 import { StaffIdentity } from './StaffIdentity';
 import { RosterAssignment } from './RosterAssignment';
@@ -76,10 +77,10 @@ export function RosterTaskWorkspace({
       <RosterStage office={office} stage={stage} />
       <section className="roster-next">
         <div>
-          <span className="react-eyebrow">
+          <span data-motion-value="text" className="react-eyebrow">
             {task.weekStart} 起 · {task.slotStart}–{task.slotEnd}
           </span>
-          <h2>
+          <h2 data-motion-value="text">
             {
               {
                 scheduled: '本周收集尚未开放',
@@ -91,7 +92,7 @@ export function RosterTaskWorkspace({
               }[stage]
             }
           </h2>
-          <p>
+          <p data-motion-value="number">
             {stage === 'scheduled'
               ? `将于 ${new Date(task.collectionOpensAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })} 开放本周填报。`
               : collecting && collectionView
@@ -148,17 +149,18 @@ export function RosterTaskWorkspace({
             <h2>收集情况</h2>
             <span>填报人数反映已提交，不代表一定可覆盖全部班次</span>
           </div>
-          <progress
+          <MotionMeter
+            progress
             max={Math.max(1, data.progress.total)}
             value={data.progress.submitted}
-            aria-label="填报进度"
+            label="填报进度"
           />
           <div className="roster-coverage">
             {data.progress.coverage.map((slot) => (
-              <article key={key(slot)}>
-                <strong>{label(slot)}</strong>
-                {!office && <span>负责人可用 {slot.leads} / 需 1 名</span>}
-                <span>
+              <article data-motion-item="" key={key(slot)}>
+                <strong data-motion-value="text">{label(slot)}</strong>
+                {!office && <span data-motion-value="text">负责人可用 {slot.leads} / 需 1 名</span>}
+                <span data-motion-value="text">
                   {office ? '办公' : '普通'}人员可用 {slot.ordinary} / {office ? '目标' : '最低'}{' '}
                   {slot.ordinaryMinimum ?? 1} 名
                 </span>
@@ -171,9 +173,9 @@ export function RosterTaskWorkspace({
             </summary>
             <ul className="roster-progress-people">
               {data.progress.people.map((person) => (
-                <li key={person.memberId}>
-                  <strong>{person.name}</strong>
-                  <span>
+                <li data-motion-item="" key={person.memberId}>
+                  <strong data-motion-value="text">{person.name}</strong>
+                  <span data-motion-value="text">
                     {!person.active
                       ? '资格或账号已变化'
                       : !person.submission
@@ -212,7 +214,7 @@ export function RosterTaskWorkspace({
       {showBoard && (
         <>
           <div className="roster-board-heading">
-            <h2>{editable ? '班表草稿' : '当前有效班表'}</h2>
+            <h2 data-motion-value="text">{editable ? '班表草稿' : '当前有效班表'}</h2>
             <span>
               {rows.length} 班 · {new Set(rows.map((row) => row.memberId)).size} 人
             </span>
@@ -235,9 +237,11 @@ export function RosterTaskWorkspace({
                 {rows
                   .filter((row) => row.servicePaused)
                   .map((row) => (
-                    <li key={`${row.memberId}:${key(row)}`}>
-                      <strong>{row.memberName || names.get(row.memberId) || '成员'}</strong>
-                      <span>{label(row)}</span>
+                    <li data-motion-item="" key={`${row.memberId}:${key(row)}`}>
+                      <strong data-motion-value="text">
+                        {row.memberName || names.get(row.memberId) || '成员'}
+                      </strong>
+                      <span data-motion-value="text">{label(row)}</span>
                     </li>
                   ))}
               </ul>
@@ -247,7 +251,7 @@ export function RosterTaskWorkspace({
             {days.map((day, i) => (
               <button key={day} aria-pressed={mobileDay === i} onClick={() => setMobileDay(i)}>
                 {day}
-                <small>{addDays(task.weekStart, i).slice(5)}</small>
+                <small data-motion-value="text">{addDays(task.weekStart, i).slice(5)}</small>
               </button>
             ))}
           </div>
@@ -255,7 +259,7 @@ export function RosterTaskWorkspace({
             <div className="roster-campus-boards">
               {[...new Set(slots.map((slot) => slot.campusId))].map((campusId) => (
                 <section className="roster-campus-board" key={campusId}>
-                  <h3>{campuses[campusId]}</h3>
+                  <h3 data-motion-value="text">{campuses[campusId]}</h3>
                   <div className="roster-week-columns">
                     {slots
                       .filter((slot) => slot.campusId === campusId)
@@ -271,6 +275,7 @@ export function RosterTaskWorkspace({
                           ordinary = effective.length - leads;
                         return (
                           <article
+                            data-motion-item=""
                             className="roster-day-column"
                             data-visible={mobileDay === index}
                             key={key(slot)}
@@ -290,16 +295,16 @@ export function RosterTaskWorkspace({
                             }}
                           >
                             <header>
-                              <strong>{days[index]}</strong>
-                              <span>{slot.businessDate.slice(5)}</span>
+                              <strong data-motion-value="text">{days[index]}</strong>
+                              <span data-motion-value="text">{slot.businessDate.slice(5)}</span>
                             </header>
-                            <p className="roster-coverage-caption">
+                            <p data-motion-value="number" className="roster-coverage-caption">
                               {office
                                 ? `已排 ${effective.length} / 目标 ${slot.ordinaryMinimum ?? 1} 人`
                                 : `负责人 ${leads}/1 · 普通 ${ordinary}/${slot.ordinaryMinimum ?? 1}`}
                             </p>
                             {!office && (leads !== 1 || ordinary < (slot.ordinaryMinimum ?? 1)) && (
-                              <span className="roster-gap">
+                              <span data-motion-value="text" className="roster-gap">
                                 {leads !== 1 ? '负责人需处理' : '普通人员缺额'}
                               </span>
                             )}
@@ -316,10 +321,14 @@ export function RosterTaskWorkspace({
                                   }
                                 ]
                             ).map((group) => (
-                              <section className="roster-role-group" key={group.title}>
+                              <section
+                                data-motion-item=""
+                                className="roster-role-group"
+                                key={group.title}
+                              >
                                 <h4>
                                   {group.title}
-                                  <span>{group.items.length} 人</span>
+                                  <span data-motion-value="number">{group.items.length} 人</span>
                                 </h4>
                                 <ul>
                                   {group.items.map((row) => (
@@ -378,8 +387,8 @@ export function RosterTaskWorkspace({
               ))}
             </div>
             <aside className="roster-unassigned">
-              <h3>{office ? '人员班次数' : '尚未安排'}</h3>
-              <p className="react-muted">
+              <h3 data-motion-value="text">{office ? '人员班次数' : '尚未安排'}</h3>
+              <p data-motion-value="text" className="react-muted">
                 {office
                   ? '同一成员每日最多一班。'
                   : '负责人可以本周不排班。普通人员未安排的问题需在发布前处理。'}
@@ -405,6 +414,7 @@ export function RosterTaskWorkspace({
                   .filter((member) => member.name.includes(poolQuery.trim()))
                   .map((member) => (
                     <div
+                      data-motion-item=""
                       className="roster-unassigned-person"
                       key={member.memberId}
                       draggable={editable}
@@ -412,9 +422,9 @@ export function RosterTaskWorkspace({
                         event.dataTransfer.setData('text/plain', member.memberId)
                       }
                     >
-                      <strong>{member.name}</strong>
+                      <strong data-motion-value="text">{member.name}</strong>
                       <StaffIdentity identities={member.identities} />
-                      <small>
+                      <small data-motion-value="number">
                         {office
                           ? `本周已排 ${rows.filter((row) => row.memberId === member.memberId).length} 班 · `
                           : ''}
@@ -451,8 +461,8 @@ export function RosterTaskWorkspace({
               <h3>发布前需要处理</h3>
               <ul>
                 {draft.validation.errors.map((issue, i) => (
-                  <li key={i}>
-                    <span>
+                  <li data-motion-item="" key={i}>
+                    <span data-motion-value="text">
                       {names.get(issue.memberId) || ''} {issueLabels[issue.code] || '安排需要核对'}{' '}
                       {issue.slot ? label(issue.slot) : ''}
                     </span>
@@ -492,7 +502,7 @@ export function RosterTaskWorkspace({
           {editable && (
             <div className="roster-editbar">
               <div>
-                <strong>
+                <strong data-motion-value="text">
                   {dirty
                     ? '有未保存的调整'
                     : draft.validation.valid

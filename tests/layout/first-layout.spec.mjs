@@ -12,12 +12,12 @@ async function frames(page) {
   await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(done)))));
 }
 
-// Every paint is sampled, including the authenticated bootstrap before APIs finish.
+// Every paint is sampled, including the same workspace shell before APIs finish.
 function observeLayout() {
   window.__firstLayout = [];
   function sample() {
     const app = document.querySelector('.field-app');
-    const main = app?.querySelector(':scope > main');
+    const main = app?.querySelector(':scope > main:not([hidden])');
     if (main && main.getClientRects().length) {
       const sidebar = app.querySelector(':scope > .field-sidebar');
       const rect = node => {
@@ -25,7 +25,7 @@ function observeLayout() {
         return { x: box.x, y: box.y, width: box.width, height: box.height };
       };
       window.__firstLayout.push({
-        time: performance.now(), bootstrap: app.classList.contains('workspace-bootstrap'),
+        time: performance.now(), pending: !!app.querySelector('.workspace-pending[aria-busy="true"]'),
         root: rect(document.documentElement), app: rect(app),
         main: rect(main), sidebar: sidebar && getComputedStyle(sidebar).display !== 'none' ? rect(sidebar) : null,
         grid: getComputedStyle(app).gridTemplateColumns, viewport: innerWidth,
@@ -85,7 +85,7 @@ for (const scenario of scenarios) test(scenario.name, async ({ page, context, re
   try {
     await page.goto('/staff/', { waitUntil: 'commit' });
     if (scenario.reload) {
-      await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();
+      await expect(page.locator('.field-content')).toBeVisible();
       hold = true;
       // Routing disables the HTTP cache in all three engines. Reload therefore fetches CSS again.
       await page.reload({ waitUntil: 'commit' });
@@ -100,7 +100,9 @@ for (const scenario of scenarios) test(scenario.name, async ({ page, context, re
       css.release();
     }
     if (scenario.account || scenario.expired) {
-      await expect(page.locator('.workspace-bootstrap')).toBeVisible();
+      await expect(page.locator('.workspace-pending[aria-busy="true"]')).toBeVisible();
+      await expect(page.locator('.workspace-bootstrap')).toHaveCount(0);
+      await page.evaluate(() => { window.__originalWorkspace = document.querySelector('.field-app'); });
       await frames(page);
       await page.screenshot({ path: resolve(directory, 'session-pending.png') });
       auth.release();
@@ -111,15 +113,18 @@ for (const scenario of scenarios) test(scenario.name, async ({ page, context, re
       }
       home.release();
     }
-    if (scenario.account) await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();
+    if (scenario.account) {
+      await expect(page.locator('.field-content')).toBeVisible();
+      expect(await page.evaluate(() => window.__originalWorkspace === document.querySelector('.field-app')), 'Loading must preserve the original shell').toBe(true);
+    }
     else await expect(page.locator('#login-id')).toBeVisible();
     await frames(page);
     await page.screenshot({ path: resolve(directory, 'ready.png') });
     const result = await page.evaluate(() => ({ frames: window.__firstLayout, resources: performance.getEntriesByType('resource').map(({ name, startTime, responseEnd, transferSize }) => ({ path: new URL(name).pathname, startTime, responseEnd, transferSize })) }));
     await writeFile(resolve(directory, 'measurements.json'), JSON.stringify({ browser: context.browser().version(), scenario, classicScrollbars, cssTiming, ...result }, null, 2));
     if (scenario.account) {
-      expect(result.frames.some(frame => frame.bootstrap), 'Must observe a real pending bootstrap').toBe(true);
-      expect(result.frames.some(frame => !frame.bootstrap), 'Must observe the loaded workspace').toBe(true);
+      expect(result.frames.some(frame => frame.pending), 'Must observe the real workspace while data is pending').toBe(true);
+      expect(result.frames.some(frame => !frame.pending), 'Must observe the loaded workspace').toBe(true);
     }
     for (const frame of result.frames) {
       const mobile = frame.viewport < 768;

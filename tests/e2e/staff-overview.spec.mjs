@@ -9,6 +9,7 @@ async function fixture(page,campuses=['南湖','浑南']){
   await page.route('**/api/appointments?*',route=>route.fulfill({json:{items:[item],counts:{all:1,completed:1},filteredCounts:{all:1,completed:1}}}));
   await page.route('**/api/field/appointments/*',route=>route.fulfill({json:item}));
   await loginStaff(page);await staffPage(page,'预约记录');
+  await expect(page.locator('.workspace-page[data-route="staff"]')).toBeVisible();
 }
 const query=page=>page.waitForRequest(req=>new URL(req.url()).pathname==='/api/appointments');
 
@@ -44,7 +45,7 @@ test('staff search and details retain historical booking and repair identifiers'
     await page.getByRole('searchbox',{name:'查找预约'}).fill(number);await pending;
     await page.getByRole('button',{name:'查看详情'}).click();
     await expect(page.getByRole('dialog')).toContainText(item.id);await expect(page.locator('.records-table')).toContainText(item.repairNumber);
-    await page.getByRole('button',{name:'关闭',exact:true}).click();
+    await page.getByRole('button',{name:'关闭',exact:true}).click();await expect(page.getByRole('dialog')).toBeHidden();
   }
 });
 

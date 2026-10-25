@@ -33,7 +33,9 @@ export function CustomerQueueLink({ id, accessToken }: { id: string; accessToken
           onFocus={(event) => event.currentTarget.select()}
         />
       )}
-      <p role="status">{message}</p>
+      <p data-motion-value="text" role="status">
+        {message}
+      </p>
     </details>
   );
 }

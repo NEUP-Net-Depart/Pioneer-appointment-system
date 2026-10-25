@@ -143,8 +143,8 @@ export function attendanceDomain({
     return commitAttendance(actor, input, await attendanceCredential(actor, input));
   }
 
-  async function directAttendanceAction(actor, campusId) {
-    const context = await contextFor(actor),
+  async function directAttendanceAction(actor, campusId, providedContext) {
+    const context = providedContext || (await contextFor(actor)),
       identities = staffIdentities(context, platform.authorizer, { campusId });
     const scheduled = context.todayDuties.filter(
       (duty) => duty.campusId === campusId && duty.leaveStatus !== 'approved'

@@ -111,7 +111,7 @@ export function WeeklyAttendanceExport({ campuses, onClose }) {
         <Notice>{error}</Notice>
         {rows && (
           <section className="roster-export-preview">
-            <h3>核算预览 · {rows.length} 条人员周记录</h3>
+            <h3 data-motion-value="number">核算预览 · {rows.length} 条人员周记录</h3>
             <div className="workspace-table-scroll">
               <table>
                 <thead>
@@ -125,7 +125,7 @@ export function WeeklyAttendanceExport({ campuses, onClose }) {
                 </thead>
                 <tbody>
                   {rows.map((row) => (
-                    <tr key={`${row.weekStart}:${row.memberId}`}>
+                    <tr data-motion-item="" key={`${row.weekStart}:${row.memberId}`}>
                       <td>{row.weekStart}</td>
                       <td>{row.name}</td>
                       <td>{row.actualCount}</td>

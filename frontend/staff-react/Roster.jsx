@@ -127,7 +127,7 @@ export function Roster({ user, requestSignal = 0 }) {
         <button onClick={refresh}>刷新数据</button>
       </WorkspaceHeader>
       {message && (
-        <p className="react-message" role="status">
+        <p data-motion-value="text" className="react-message" role="status">
           {message}
         </p>
       )}
@@ -160,7 +160,9 @@ export function Roster({ user, requestSignal = 0 }) {
                 <div>
                   <h2>已发布班次</h2>
                 </div>
-                <span className="roster-count">{assignments.length} 个班次</span>
+                <span data-motion-value="number" className="roster-count">
+                  {assignments.length} 个班次
+                </span>
               </div>
               {assignments.map((item) => (
                 <div
@@ -169,18 +171,22 @@ export function Roster({ user, requestSignal = 0 }) {
                   onClick={() => setSelectedAssignment(item)}
                 >
                   <div>
-                    <strong>{item.businessDate}</strong>
-                    <span>
+                    <strong data-motion-value="text">{item.businessDate}</strong>
+                    <span data-motion-value="text">
                       {item.startAt}–{item.endAt} · {item.campusName || item.campusId}
                     </span>
-                    <small>
+                    <small data-motion-value="text">
                       {dutyLabels[item.roleKind] || dutyLabels[item.dutyType] || '值班安排'}
                     </small>
                     {item.servicePaused && (
                       <span className="react-message">当天暂停维修，班次保留</span>
                     )}
                     {item.leaveStatus && (
-                      <span className="account-state" data-state={item.leaveStatus}>
+                      <span
+                        data-motion-value="text"
+                        className="account-state"
+                        data-state={item.leaveStatus}
+                      >
                         请假 · {requestStatusLabel(item.leaveStatus)}
                       </span>
                     )}
@@ -303,13 +309,15 @@ export function Roster({ user, requestSignal = 0 }) {
           <article className="react-card">
             <h2>申请记录</h2>
             {leaves.map((item) => (
-              <div className="request-row" key={`leave-${item.id}`}>
+              <div data-motion-item="" className="request-row" key={`leave-${item.id}`}>
                 <div>
                   <strong>请假申请</strong>
-                  <span>{item.reason}</span>
-                  {item.reviewNote && <small>审批说明：{item.reviewNote}</small>}
+                  <span data-motion-value="text">{item.reason}</span>
+                  {item.reviewNote && (
+                    <small data-motion-value="text">审批说明：{item.reviewNote}</small>
+                  )}
                 </div>
-                <span className={`status-pill status-${item.status}`}>
+                <span data-motion-value="text" className={`status-pill status-${item.status}`}>
                   {requestStatusLabel(item.status)}
                 </span>
                 {item.actions?.withdraw && (

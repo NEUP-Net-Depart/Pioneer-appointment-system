@@ -1,3 +1,4 @@
+import { DataFields } from './DataValue';
 import { Modal } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { StaffIdentity } from './StaffIdentity';
@@ -25,6 +26,7 @@ export function RosterWorkflow({ user, office = false }) {
     setData,
     rows,
     setRows,
+    tasksLoading,
     loading,
     busy,
     dirty,
@@ -130,23 +132,23 @@ export function RosterWorkflow({ user, office = false }) {
         </div>
       </div>
       {task?.collectionIssue && (
-        <p role="status" className="react-message">
+        <p data-motion-value="text" role="status" className="react-message">
           {task.collectionIssue}
         </p>
       )}
       {error && (
-        <p role="alert" className="react-error">
+        <p data-motion-value="text" role="alert" className="react-error">
           {error}
         </p>
       )}
       {notice && (
-        <p role="status" className="react-message">
+        <p data-motion-value="text" role="status" className="react-message">
           {notice}
         </p>
       )}
-      {!taskId && (
+      {!tasksLoading && !taskId && !error && (
         <section className="roster-start">
-          <strong>{'从发布可用时间收集开始'}</strong>
+          <strong data-motion-value="text">{'从发布可用时间收集开始'}</strong>
           {canCreate ? (
             <button className="field-primary" onClick={() => setCreating(true)}>
               {'发布收集任务'}
@@ -156,10 +158,14 @@ export function RosterWorkflow({ user, office = false }) {
           )}
         </section>
       )}
-      {loading && !data && (
-        <div className="roster-loading" role="status">
-          正在读取本周安排…
-        </div>
+      {(tasksLoading || (taskId && !data && !error)) && (
+        <section className="roster-loading" aria-label="本周收集与排班" aria-busy="true">
+          <h2>收集与排班</h2>
+          <p className="react-muted">
+            发布可用时间收集 → 查看填报进度 → 结束收集 → 生成并调整班表 → 检查并发布。
+          </p>
+          <DataFields fields={[['收集进度'], ['当前班表'], ['发布检查']]} />
+        </section>
       )}
       {data && manage && (
         <RosterTaskWorkspace
@@ -248,7 +254,7 @@ export function RosterWorkflow({ user, office = false }) {
           </div>
           {!extraPeople.length && <p>当前范围没有其他符合资格的人员。</p>}
           {error && (
-            <p role="alert" className="react-error">
+            <p data-motion-value="text" role="alert" className="react-error">
               {error}
             </p>
           )}
@@ -289,7 +295,7 @@ export function RosterWorkflow({ user, office = false }) {
             if (!requirementsDirty) setPanel('');
           }}
         >
-          <p>
+          <p data-motion-value="text">
             {task.weekStart} · {task.description || '本周可用时间收集'}
           </p>
           <RequirementEditor
