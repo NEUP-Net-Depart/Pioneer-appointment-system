@@ -113,6 +113,9 @@ export function Modal({
     motion.current = animation;
     animation.finished.then(
       () => {
+        // The close callback may keep the dialog open for unsaved edits.
+        animation.cancel();
+        motion.current = null;
         closing.current = false;
         onClose();
       },
