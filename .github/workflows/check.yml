@@ -12,9 +12,9 @@ concurrency:
   group: ${{ github.ref == 'refs/heads/dev' && 'cloudflare-dev-release' || format('cloudflare-ci-{0}', github.run_id) }}
   cancel-in-progress: false
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - name: Validate manual release branch
         if: github.event_name == 'workflow_dispatch'
@@ -30,14 +30,45 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium webkit firefox
-      - run: npm run verify
+      - run: npm run verify:checks
+  browser:
+    name: browser (${{ matrix.suite }})
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.0-noble
+      options: --init --ipc=host
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: e2e-1
+            command: npm run test:e2e -- --shard=1/2
+          - suite: e2e-2
+            command: npm run test:e2e -- --shard=2/2
+          - suite: field
+            command: npm run test:field
+          - suite: layout
+            command: npm run test:layout
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+        timeout-minutes: 5
+      - name: Run ${{ matrix.suite }}
+        run: ${{ matrix.command }}
+        timeout-minutes: 12
       - name: Preserve isolated UI acceptance evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: staff-platform-screenshots-${{ github.run_id }}-${{ github.run_attempt }}
+          name: staff-platform-${{ matrix.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
+            output/playwright/
             output/field-workflow/**/*.png
             output/reception-dispatch/**/*.png
             output/first-layout/
@@ -45,6 +76,17 @@ jobs:
             output/issue-73/motion-performance.json
           if-no-files-found: ignore
           retention-days: 14
+  test:
+    needs: [checks, browser]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    steps:
+      - name: Require every verification job to succeed
+        env:
+          CHECKS_RESULT: ${{ needs.checks.result }}
+          BROWSER_RESULT: ${{ needs.browser.result }}
+        run: test "$CHECKS_RESULT" = success && test "$BROWSER_RESULT" = success
   migrate-preview:
     needs: test
     if: github.ref == 'refs/heads/dev' && ((github.event_name == 'push' && github.event.deleted != true) || github.event_name == 'workflow_dispatch')

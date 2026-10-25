@@ -29,7 +29,7 @@ Pages 通过 Actions Direct Upload 发布，关闭自动 Git 构建。构建命�
 
 ## CI 与权限
 
-[发布工作流](../.github/workflows/check.yml) 对推送与 PR 执行 `npm run verify`：
+[发布工作流](../.github/workflows/check.yml) 对推送与 PR 分阶段执行与 `npm run verify` 等价的完整检查，浏览器任务并行运行：
 
 | 触发 | 目标与顺序 |
 | --- | --- |

@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
   testDir: '.', testMatch: '*.spec.mjs', timeout: 60000,
+  globalTimeout: process.env.CI ? 600000 : undefined,
   expect: { timeout: 10000 }, workers: 1, retries: 0,
   reporter: [['list'], ['json', { outputFile: fileURLToPath(new URL(`../../output/first-layout/${process.env.LAYOUT_PHASE || 'regression'}/results.json`, import.meta.url)) }]],
   outputDir: process.env.E2E_OUTPUT_DIR || '../../output/playwright/first-layout',
