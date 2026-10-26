@@ -1,6 +1,9 @@
-# 保存到 NEUP-Net-Depart/Pioneer-appointment-system 默认分支 dev 的根目录。
 enabled: true
 dryRun: false
+
+stack:
+  enabled: true
+  dryRun: false
 
 welcome:
   issue: |
