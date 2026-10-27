@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { request } from './request.js';
 import { showToast } from '../../shared/utils.js';
 
-function Brand({ activation = false }) {
+function Brand() {
   return (
     <div className="login-brand">
       <img
@@ -13,9 +13,6 @@ function Brand({ activation = false }) {
       />
       <div>
         <strong>先锋硬件部</strong>
-        <small data-motion-value="text">
-          {activation ? '工作人员首次激活' : '免费维修预约系统'}
-        </small>
       </div>
     </div>
   );
@@ -61,7 +58,6 @@ export function StaffLogin({ pending, error, onLogin, onRetry }) {
     <section ref={motionRef} className="login-view" id="login-view">
       <div className="login-panel">
         <Brand />
-        <p className="eyebrow">STAFF ACCESS · ACCOUNT LOGIN</p>
         <h1>工作人员登录</h1>
         <form
           className="login-form"
@@ -201,8 +197,7 @@ export function StaffActivation() {
   return (
     <section ref={motionRef} className="login-view" id="activation-view">
       <div className="login-panel">
-        <Brand activation />
-        <p className="eyebrow">STAFF ACTIVATION</p>
+        <Brand />
         <form
           id="activation-form"
           className="login-form"
@@ -294,7 +289,7 @@ export function StaffActivation() {
             </a>
           </div>
         )}
-        <a className="text-btn" href="/staff/">
+        <a className="secondary-btn activation-back" href="/staff/">
           返回工作人员登录
         </a>
       </div>
