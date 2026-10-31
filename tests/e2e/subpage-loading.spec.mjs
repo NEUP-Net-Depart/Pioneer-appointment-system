@@ -15,8 +15,8 @@ for (const width of [320, 390, 768, 1440]) test(`member detail renders actual la
   });
   try {
     await loginStaff(page);
-    await staffPage(page, '成员管理');
-    await page.getByRole('button', { name: '编辑成员与权限' }).click();
+    await staffPage(page, '人员管理');
+    await page.getByRole('button', { name: '人员详情' }).click();
     const dialog = page.getByRole('dialog', { name: member.name });
     await expect(dialog.getByRole('heading', { name: member.name, exact: true })).toBeVisible();
     const nameField = dialog.getByLabel('姓名', { exact: true });
@@ -46,8 +46,8 @@ test('failed member detail stops loading and retries in the same panel', async (
     ? route.fulfill({ status: 503, json: { error: { message: '暂时无法读取资料' } } })
     : route.fulfill({ json: { member, bindings: [], actions: { edit: true } } }));
   await loginStaff(page);
-  await staffPage(page, '成员管理');
-  await page.getByRole('button', { name: '编辑成员与权限' }).click();
+  await staffPage(page, '人员管理');
+  await page.getByRole('button', { name: '人员详情' }).click();
   const dialog = page.getByRole('dialog', { name: member.name });
   await expect(dialog.getByRole('alert')).toBeVisible();
   await expect(dialog.locator('.workspace-content-skeleton')).toHaveCount(0);

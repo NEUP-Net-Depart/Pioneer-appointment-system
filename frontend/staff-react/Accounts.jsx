@@ -4,6 +4,7 @@ import { request } from './request.js';
 import { ActivityContext, Modal, Notice } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { WorkspaceSections } from './WorkspaceSections';
+import { useUnsavedChanges } from './useUnsavedChanges.js';
 
 const enrollmentLabels = {
   open: '待激活',
@@ -47,7 +48,7 @@ function useAccountList(endpoint, active) {
   return { items, loading, error, refresh: () => setRevision((value) => value + 1) };
 }
 
-export function Accounts({ user }) {
+export function Accounts({ user, embedded = false }) {
   const active = useContext(ActivityContext);
   const [section, setSection] = useState('accounts'),
     [visited, setVisited] = useState(['accounts']);
@@ -63,9 +64,15 @@ export function Accounts({ user }) {
   }
   return (
     <section className="accounts-workspace">
-      <WorkspaceHeader group="平台管理" title="账号管理">
-        <button onClick={copy}>复制激活网址</button>
-      </WorkspaceHeader>
+      {embedded ? (
+        <div className="workspace-list-tools">
+          <button onClick={copy}>复制激活网址</button>
+        </div>
+      ) : (
+        <WorkspaceHeader group="平台管理" title="人员管理">
+          <button onClick={copy}>复制激活网址</button>
+        </WorkspaceHeader>
+      )}
       <Notice>{copyMessage}</Notice>
       <WorkspaceSections
         label="账号管理功能"
@@ -202,7 +209,7 @@ function AccountList({ user }) {
   );
 }
 
-function AccountEditor({ user, item, onClose, onSaved }) {
+export function AccountEditor({ user, item, onClose, onSaved, embedded = false, onDirty, onBusy }) {
   const active = useContext(ActivityContext);
   const [draft, setDraft] = useState({
     name: item.name,
@@ -216,6 +223,27 @@ function AccountEditor({ user, item, onClose, onSaved }) {
     [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   const lock = useRef(false);
+  const dirty =
+    embedded &&
+    (reset ||
+      ['name', 'role', 'homeCampus', 'status'].some((key) => draft[key] !== item[key]) ||
+      JSON.stringify(draft.authorizedCampuses) !== JSON.stringify(item.authorizedCampuses));
+  function discard() {
+    setDraft({
+      name: item.name,
+      role: item.role,
+      homeCampus: item.homeCampus,
+      authorizedCampuses: [...item.authorizedCampuses],
+      status: item.status
+    });
+    setPassword('');
+    setReset(false);
+  }
+  const form = useUnsavedChanges({ dirty, active, busy, save, discard });
+  useEffect(() => {
+    onDirty?.(dirty);
+  }, [dirty, onDirty]);
+  useEffect(() => () => onDirty?.(false), [onDirty]);
   useEffect(() => {
     if (!active) {
       setPassword('');
@@ -227,32 +255,34 @@ function AccountEditor({ user, item, onClose, onSaved }) {
     if (lock.current) return;
     lock.current = true;
     setBusy(true);
+    onBusy?.(true);
     setError('');
     try {
       await request(`/api/users/${encodeURIComponent(item.account)}`, {
         method: 'PATCH',
         body: { ...draft, ...(reset ? { password } : {}) }
       });
-      onSaved();
+      await onSaved();
+      return true;
     } catch (failure) {
       setError(failure.message);
     } finally {
       lock.current = false;
       setBusy(false);
+      onBusy?.(false);
     }
   }
+  const Container = embedded ? React.Fragment : Modal;
   return (
-    <Modal
-      title={`管理账号 · ${item.name}`}
-      onClose={() => {
-        if (!busy) onClose();
-      }}
-      sidePanel
+    <Container
+      {...(embedded
+        ? {}
+        : { title: `管理账号 · ${item.name}`, dismissible: !busy, onClose, sidePanel: true })}
     >
       <p data-motion-value="text" className="field-muted">
         {item.account} · 保存后撤销此账号已有会话。
       </p>
-      <form className="workspace-form" onSubmit={save}>
+      <form ref={form} className="workspace-form" onSubmit={save}>
         <fieldset disabled={busy} className="workspace-form-fields">
           <label>
             姓名
@@ -265,7 +295,7 @@ function AccountEditor({ user, item, onClose, onSaved }) {
           </label>
           <p data-motion-value="text" className="field-muted">
             工作角色：{item.roleNames?.join('、') || '尚未授权'}
-            。角色权限与工作资格在成员管理中分别维护。
+            。角色权限与工作资格在人员详情中分别维护。
           </p>
           <label>
             基础账号类型
@@ -358,7 +388,7 @@ function AccountEditor({ user, item, onClose, onSaved }) {
         </fieldset>
         <Notice>{error}</Notice>
         <div className="field-actions">
-          <button type="button" disabled={busy} onClick={onClose}>
+          <button type="button" disabled={busy} onClick={embedded ? discard : onClose}>
             取消
           </button>
           <button className="field-primary" disabled={busy || !draft.authorizedCampuses.length}>
@@ -366,7 +396,7 @@ function AccountEditor({ user, item, onClose, onSaved }) {
           </button>
         </div>
       </form>
-    </Modal>
+    </Container>
   );
 }
 
@@ -639,7 +669,7 @@ function Invitations({ user }) {
           <form className="workspace-form" onSubmit={submit}>
             <fieldset className="workspace-form-fields" disabled={busy}>
               <p className="field-muted">
-                同时提供文件和文本时使用文件；已有记录会跳过。管理员邀请请在“成员管理”导入。
+                同时提供文件和文本时使用文件；已有记录会跳过。管理员邀请请在“人员管理”导入。
               </p>
               <label>
                 CSV 文件（不超过 200 KB）

@@ -54,15 +54,15 @@ async function fixture(page, { manageRoles = true, roleName = 'superadmin', prot
   await root.locator('#login-view').getByLabel('学号', { exact: true }).fill('root001');
   await root.locator('#login-view').getByLabel('密码', { exact: true }).fill('test-password');
   await root.getByRole('button', { name: '进入系统' }).click();
-  await expect(root.getByRole('button', { name: '成员管理', exact: true }).first()).toBeVisible();
+  await expect(root.getByRole('button', { name: '人员管理', exact: true }).first()).toBeVisible();
   return { root, writes, bindings };
 }
 
 for (const width of [375, 1280]) test(`member profile saves independently from role bindings at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 900 });
   const { root, writes } = await fixture(page);
-  await root.getByRole('button', { name: '成员管理', exact: true }).first().click();
-  await root.getByRole('button', { name: '编辑成员与权限' }).click();
+  await root.getByRole('button', { name: '人员管理', exact: true }).first().click();
+  await root.getByRole('button', { name: '人员详情' }).click();
   const dialog = root.getByRole('dialog');
   await dialog.getByLabel('姓名', { exact: true }).fill('修改后的名字');
   await dialog.getByRole('combobox', { name: '所属校区', exact: true }).selectOption('campus-hunnan');
@@ -80,8 +80,8 @@ test('member editors without roles.manage can save profiles without fetching the
   const roleRequests = [];
   page.on('request', req => { if (new URL(req.url()).pathname === '/api/roles') roleRequests.push(req.url()); });
   const { root } = await fixture(page, { manageRoles: false });
-  await root.getByRole('button', { name: '成员管理', exact: true }).first().click();
-  await root.getByRole('button', { name: '编辑成员与权限' }).click();
+  await root.getByRole('button', { name: '人员管理', exact: true }).first().click();
+  await root.getByRole('button', { name: '人员详情' }).click();
   const dialog = root.getByRole('dialog');
   await expect(dialog.getByRole('button', { name: '保存资料' })).toBeEnabled();
   await expect(dialog.getByRole('button', { name: '保存角色授权' })).toHaveCount(0);
@@ -90,8 +90,8 @@ test('member editors without roles.manage can save profiles without fetching the
 
 test('saving bindings uses the latest profile revision and preserves independent scopes and dates', async ({ page }) => {
   const { root, writes, bindings } = await fixture(page);
-  await root.getByRole('button', { name: '成员管理', exact: true }).first().click();
-  const edit = root.getByRole('button', { name: '编辑成员与权限' });
+  await root.getByRole('button', { name: '人员管理', exact: true }).first().click();
+  const edit = root.getByRole('button', { name: '人员详情' });
   await edit.click();
   const dialog = root.getByRole('dialog');
   await dialog.getByRole('button', { name: '保存资料', exact: true }).click();
@@ -110,7 +110,7 @@ test('saving bindings uses the latest profile revision and preserves independent
 
 test('permission changes save once and preserve complete unrelated grants', async ({ page }) => {
   const { root, writes } = await fixture(page);
-  await root.getByRole('button', { name: '授权管理', exact: true }).click();
+  await root.locator('.field-sidebar').getByRole('button', { name: '角色与权限', exact: true }).click();
   await root.getByRole('checkbox', { name: '本人签到' }).check();
   expect(writes.filter(write => write.path.startsWith('/api/roles/'))).toEqual([]);
   await root.getByRole('checkbox', { name: '开始维修' }).uncheck();
@@ -125,7 +125,7 @@ test('permission changes save once and preserve complete unrelated grants', asyn
 
 test('scope, registered condition parameters and validity can be edited without dropping grant metadata', async ({ page }) => {
   const { root, writes } = await fixture(page);
-  await root.getByRole('button', { name: '授权管理', exact: true }).click();
+  await root.locator('.field-sidebar').getByRole('button', { name: '角色与权限', exact: true }).click();
   const editor = root.locator('.react-grant-details');
   await editor.locator('summary').click();
   await editor.getByLabel('南湖', { exact: true }).check();
@@ -147,13 +147,13 @@ test('operational and React pages share a session and navigation follows grants 
     if (new URL(request.url()).pathname === '/api/members') memberTokens.push(request.headers().authorization);
   });
   const { root } = await fixture(page, { manageRoles: false, roleName: 'technician' });
-  await expect(root.getByRole('button', { name: '授权管理', exact: true })).toBeHidden();
-  await root.getByRole('button', { name: '成员管理', exact: true }).first().click();
+  await expect(root.getByRole('button', { name: '角色与权限', exact: true })).toBeHidden();
+  await root.getByRole('button', { name: '人员管理', exact: true }).first().click();
   await expect(root.locator('.react-members-page')).toContainText('测试成员');
   await root.getByRole('button', { name: '账号安全', exact: true }).click();
   await expect(root.locator('.workspace-page:visible')).toContainText('root001');
   await expect(root.locator('.react-members-page')).toBeHidden();
-  await root.getByRole('button', { name: '成员管理', exact: true }).first().click();
+  await root.getByRole('button', { name: '人员管理', exact: true }).first().click();
   await expect(root.locator('.react-members-page')).toContainText('测试成员');
   // Cached rows render immediately; revalidation completes independently.
   await expect.poll(() => memberTokens.length).toBeGreaterThanOrEqual(1);
@@ -161,14 +161,14 @@ test('operational and React pages share a session and navigation follows grants 
   await root.locator('.field-sidebar').getByRole('button', { name: '退出登录', exact: true }).click();
   await expect(root.locator('#login-view')).toBeVisible();
   await expect(root.locator('.react-members-page')).toHaveCount(0);
-  await expect(root.getByRole('button', { name: '成员管理', exact: true }).first()).toBeHidden();
+  await expect(root.getByRole('button', { name: '人员管理', exact: true }).first()).toBeHidden();
   expect(errors).toEqual([]);
 });
 
 
 test('a business role manager can configure ordinary grants with a technician base account',async({page})=>{
   const {root,writes}=await fixture(page,{roleName:'technician'});
-  await root.getByRole('button',{name:'授权管理',exact:true}).click();
+  await root.locator('.field-sidebar').getByRole('button',{name:'角色与权限',exact:true}).click();
   await root.getByRole('checkbox',{name:'本人签到'}).check();
   await root.getByRole('button',{name:'保存权限',exact:true}).click();
   await expect(root.locator('.permissions-workspace').getByRole('status')).toContainText('权限已保存');
@@ -177,8 +177,8 @@ test('a business role manager can configure ordinary grants with a technician ba
 
 test('a business manager adds an ordinary role without defaulting to a hidden system role',async({page})=>{
   const {root,writes}=await fixture(page,{roleName:'technician',protectedFirstRole:true});
-  await root.getByRole('button',{name:'成员管理',exact:true}).first().click();
-  await root.getByRole('button',{name:'编辑成员与权限'}).click();
+  await root.getByRole('button',{name:'人员管理',exact:true}).first().click();
+  await root.getByRole('button',{name:'人员详情'}).click();
   const dialog=root.getByRole('dialog');
   await dialog.getByRole('button',{name:'角色授权',exact:true}).click();
   await dialog.getByRole('button',{name:'添加角色',exact:true}).click();

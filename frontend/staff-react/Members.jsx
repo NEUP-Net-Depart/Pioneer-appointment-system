@@ -2,13 +2,13 @@ import { DataValue } from './DataValue';
 import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { request } from './request.js';
 import { ActivityContext } from './field/ui';
-import { WorkspaceHeader } from './WorkspaceHeader';
 import { readWorkspaceState, writeWorkspaceState } from './workspace-state.js';
 import { MemberEditor } from './MemberEditor.jsx';
 import { staffPermission } from '../../shared/staff-access.js';
 import { MemberImport } from './MemberImport.jsx';
 import { EducationImport } from './EducationImport.jsx';
 import { StaffIdentity } from './StaffIdentity';
+import { MemberCreate } from './MemberCreate.jsx';
 
 export function Members({ user }) {
   const routeActive = useContext(ActivityContext);
@@ -23,6 +23,7 @@ export function Members({ user }) {
   const query = JSON.stringify([q, campus, status]);
   const [selected, setSelected] = useState(null);
   const [importing, setImporting] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [educationImporting, setEducationImporting] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(!saved);
@@ -87,20 +88,21 @@ export function Members({ user }) {
   }, [viewKey, q, campus, status, items, nextCursor, query, resolvedQuery]);
 
   return (
-    <section className="react-page react-members-page">
-      <WorkspaceHeader group="平台管理" title="成员管理">
+    <section className="react-members-page">
+      <div className="workspace-list-tools">
         {staffPermission(user, 'members.manage') && (
           <>
-            <button className="react-primary" onClick={() => setImporting(true)}>
-              导入名单
+            <button className="react-primary" onClick={() => setCreating(true)}>
+              新增人员
             </button>
+            <button onClick={() => setImporting(true)}>批量导入</button>
             <button onClick={() => setEducationImporting(true)}>批量补学院</button>
           </>
         )}
         <button onClick={() => load()} disabled={busy}>
           刷新
         </button>
-      </WorkspaceHeader>
+      </div>
       {error && (
         <p data-motion-value="text" className="react-error" role="alert">
           {error}
@@ -114,7 +116,7 @@ export function Members({ user }) {
               aria-label="搜索成员"
               value={q}
               onChange={(event) => setQ(event.target.value)}
-              placeholder="姓名、学号或账号"
+              placeholder="姓名、学号或部门"
             />
           </label>
           <label>
@@ -183,7 +185,7 @@ export function Members({ user }) {
               </span>
               <span className="members-row-action">
                 <button disabled={busy} onClick={() => setSelected(item)}>
-                  编辑成员与权限
+                  人员详情
                 </button>
               </span>
             </div>
@@ -218,6 +220,7 @@ export function Members({ user }) {
       </div>
       {selected && (
         <MemberEditor
+          user={user}
           member={selected}
           canManageRoles={
             staffPermission(user, 'roles.manage') &&
@@ -233,7 +236,17 @@ export function Members({ user }) {
           onSaved={() => load()}
         />
       )}
-      {importing && <MemberImport onClose={() => setImporting(false)} onSaved={() => load()} />}
+      {creating && (
+        <MemberCreate
+          user={user}
+          onClose={() => setCreating(false)}
+          onSaved={() => load()}
+          onExisting={setSelected}
+        />
+      )}
+      {importing && (
+        <MemberImport user={user} onClose={() => setImporting(false)} onSaved={() => load()} />
+      )}
       {educationImporting && (
         <EducationImport onClose={() => setEducationImporting(false)} onSaved={() => load()} />
       )}

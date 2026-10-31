@@ -117,6 +117,11 @@ export async function login(page, account = 'root001') {
   await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();
 }
 export async function navigate(page, label) {
+  if (label === '激活与账号') {
+    await navigate(page, '人员管理');
+    await page.getByRole('navigation', { name: '人员管理功能' }).getByRole('button', { name: label, exact: true }).click();
+    return;
+  }
   const sidebar = page.locator('.field-sidebar');
   if (await sidebar.isVisible()) {
     const target = sidebar.getByRole('button', { name: label, exact: true });
@@ -129,6 +134,10 @@ export async function navigate(page, label) {
     await page.getByRole('dialog', { name: '工作入口', exact: true }).getByRole('button', { name: label, exact: true }).click();
   }
   await expect(page.locator('.workspace-route:not([hidden])')).toBeVisible();
+  if (label === '人员管理') {
+    const tab = page.getByRole('navigation', { name: '人员管理功能' }).getByRole('button', { name: '人员列表', exact: true });
+    if (await tab.isVisible()) await tab.click();
+  }
 }
 export async function draw(page, locator) {
   await locator.scrollIntoViewIfNeeded();

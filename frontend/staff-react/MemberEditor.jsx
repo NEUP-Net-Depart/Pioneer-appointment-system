@@ -10,6 +10,10 @@ import { MemberQualifications } from './MemberQualifications.jsx';
 import { StaffIdentity } from './StaffIdentity';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
 import { NEU_COLLEGES } from '../../shared/neu-colleges.js';
+import { MemberMemberships } from './MemberMemberships.jsx';
+import { MemberAccount } from './MemberAccount.jsx';
+import { MemberHistory } from './MemberHistory.jsx';
+import { staffPermission } from '../../shared/staff-access.js';
 
 const campuses = [
   { id: 'campus-nanhu', name: '南湖' },
@@ -17,6 +21,7 @@ const campuses = [
 ];
 
 export function MemberEditor({
+  user,
   member,
   canManageRoles,
   canManageQualifications = canManageRoles,
@@ -31,8 +36,8 @@ export function MemberEditor({
     name: member.name,
     college: member.college || '',
     major: member.major || '',
-    homeCampusId: member.homeCampusId,
-    status: member.status
+    homeCampusId: member.homeCampusId || '',
+    status: member.status || ''
   });
   const [bindings, setBindings] = useState([]);
   const [roles, setRoles] = useState([]);
@@ -44,6 +49,8 @@ export function MemberEditor({
   const [section, setSection] = useState('profile'),
     [confirmClose, setConfirmClose] = useState(false);
   const [qualificationDirty, setQualificationDirty] = useState(false);
+  const [membershipDirty, setMembershipDirty] = useState(false);
+  const [accountDirty, setAccountDirty] = useState(false);
   const profileDirty =
     detail &&
     ['name', 'college', 'major', 'homeCampusId', 'status'].some(
@@ -51,7 +58,8 @@ export function MemberEditor({
     );
   const bindingsDirty =
     detail && JSON.stringify(bindings) !== JSON.stringify(detail.bindings || []);
-  const dirty = profileDirty || bindingsDirty || qualificationDirty;
+  const dirty =
+    profileDirty || bindingsDirty || qualificationDirty || membershipDirty || accountDirty;
   const profileForm = useUnsavedChanges({
     dirty: profileDirty,
     active,
@@ -128,7 +136,15 @@ export function MemberEditor({
         method: 'PATCH',
         body: { ...profile, revision: detail.member.revision }
       });
-      setDetail((current) => ({ ...current, member: data.member }));
+      setDetail((current) => ({
+        ...current,
+        member: {
+          ...current.member,
+          ...data.member,
+          memberships: current.member.memberships,
+          workProfiles: current.member.workProfiles
+        }
+      }));
       setMessage('成员资料已保存');
       onSaved();
       return true;
@@ -187,7 +203,7 @@ export function MemberEditor({
         {confirmClose && (
           <>
             <h3>放弃未保存的修改？</h3>
-            <p>成员资料和角色授权中的未保存输入都会丢失。</p>
+            <p>人员详情中的未保存修改都会丢失。</p>
             <div className="field-actions">
               <button onClick={() => setConfirmClose(false)}>返回继续编辑</button>
               <button onClick={onClose}>放弃修改并关闭</button>
@@ -195,20 +211,24 @@ export function MemberEditor({
           </>
         )}
         <div hidden={confirmClose}>
-          <p className="field-muted">资料与授权分别保存；所属校区不改变授权范围。</p>
           <StaffIdentity identities={detail?.member.identities} />
           <WorkspaceSections
             label="成员详情"
             value={section}
             onChange={setSection}
             items={[
-              { id: 'profile', label: '成员资料' },
+              { id: 'profile', label: '基本资料' },
+              { id: 'memberships', label: '部门与任职' },
               ...(canManageQualifications && detail?.actions?.edit !== false
                 ? [{ id: 'qualifications', label: '工作资格' }]
                 : []),
               ...(canManageRoles && !detail?.account?.protected && detail?.actions?.edit !== false
                 ? [{ id: 'roles', label: '角色授权' }]
-                : [])
+                : []),
+              ...(staffPermission(user, 'accounts.manage')
+                ? [{ id: 'account', label: '账号与激活' }]
+                : []),
+              { id: 'history', label: '操作记录' }
             ]}
           />
           {error && (
@@ -290,6 +310,14 @@ export function MemberEditor({
                   <span className="workspace-chevron" aria-hidden="true" />
                 </span>
               </label>
+              <label>
+                专业
+                <input
+                  maxLength={100}
+                  value={profile.major}
+                  onChange={(event) => setProfile({ ...profile, major: event.target.value })}
+                />
+              </label>
               <button className="react-primary">保存资料</button>
             </fieldset>
           </form>
@@ -323,6 +351,44 @@ export function MemberEditor({
             )
           ) : (
             <>
+              {(section === 'memberships' || membershipDirty) && (
+                <div hidden={section !== 'memberships'}>
+                  <MemberMemberships
+                    detail={detail}
+                    departments={departments}
+                    onSaved={reload}
+                    onDirty={setMembershipDirty}
+                    onBusy={setBusy}
+                  />
+                </div>
+              )}
+              {(section === 'account' || accountDirty) &&
+                staffPermission(user, 'accounts.manage') && (
+                  <div hidden={section !== 'account'}>
+                    <MemberAccount
+                      user={user}
+                      detail={detail}
+                      onDirty={setAccountDirty}
+                      onBusy={setBusy}
+                      onSaved={async () => {
+                        const data = await request(
+                          `/api/members/${encodeURIComponent(member.memberId)}`
+                        );
+                        setDetail(data);
+                        if (!profileDirty)
+                          setProfile({
+                            name: data.member.name,
+                            college: data.member.college,
+                            major: data.member.major,
+                            homeCampusId: data.member.homeCampusId,
+                            status: data.member.status
+                          });
+                        onSaved();
+                      }}
+                    />
+                  </div>
+                )}
+              {section === 'history' && <MemberHistory memberId={member.memberId} />}
               {canManageQualifications &&
                 detail.actions?.edit !== false &&
                 (section === 'qualifications' || qualificationDirty) && (

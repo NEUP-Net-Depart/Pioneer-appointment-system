@@ -10,6 +10,10 @@ export const userRoutes = [
     const actor=await context.permission('accounts.manage');
     return json(await context.services.users.list(actor));
   }],
+  ['GET', /^\/api\/users\/([^/]+)$/, async (context, match) => {
+    const actor = await context.permission('accounts.manage');
+    return json(await context.services.users.detail(decodeURIComponent(match[1]), actor));
+  }],
   ['PATCH', /^\/api\/users\/([^/]+)$/, async (context, match) => {
     const actor = await context.permission('accounts.manage');
     return json(await context.services.users.update(decodeURIComponent(match[1]), userPatch(await readBody(context.request)), actor));

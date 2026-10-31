@@ -4,10 +4,12 @@ import { publicResourceRef, SCHEMA_VERSION } from '../../platform/contracts.js';
 import { memberPublic } from '../../modules/identity/public.js';
 import { staffIdentities } from '../../../shared/staff-identities.js';
 import { inputString, csvRows, tokenDigest } from './shared.js';
-import { editableMember, delegationScope, delegableRole } from './delegation.js';
+import { editableMember, delegationScope } from './delegation.js';
+import { memberImportDomain } from './member-import.js';
 import { NEU_COLLEGES } from '../../../shared/neu-colleges.js';
 
 export function membersDomain({ repository, platform, contextFor, evaluate }) {
+  const { importMembers, createMember } = memberImportDomain({ repository, contextFor, evaluate });
   function memberTarget(member, memberships, overrides = {}) {
     const memberId = member.memberId || member.id;
     return {
@@ -231,6 +233,12 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
       if (!['active', 'inactive'].includes(input.status)) fail(400, '成员状态不正确');
       patch.status = input.status;
     }
+    const previous = memberPublic(before);
+    for (const key of Object.keys(patch)) if (patch[key] === previous[key]) delete patch[key];
+    if (!Object.keys(patch).length) {
+      if (before.revision !== input.revision) fail(409, '成员已被其他操作修改，请刷新');
+      return { member: previous, revision: before.revision };
+    }
     const after = await repository.updateMember(memberId, patch, input.revision, {
       actorMemberId: context.actor.memberId,
       actorAccount: actor.account,
@@ -308,6 +316,22 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
     await requireMemberPermission(actor, member, { departmentIds: [input.departmentId] });
     if (!(await repository.listDepartments()).some((item) => item.id === input.departmentId))
       fail(400, '请选择有效部门');
+    input = {
+      ...input,
+      assignmentType: input.assignmentType || 'secondary',
+      isPrimary: input.assignmentType === 'primary'
+    };
+    const existing = await repository.listMemberships(memberId);
+    if (
+      input.isPrimary &&
+      existing.some(
+        (item) =>
+          item.isPrimary &&
+          item.effectiveFrom < (input.effectiveTo || '9999-12-31') &&
+          (!item.effectiveTo || input.effectiveFrom < item.effectiveTo)
+      )
+    )
+      fail(409, '主部门任职重叠，请先结束原任职后再调岗');
     const result = await repository.addMembership(memberId, input, input.revision, {
       actorMemberId: context.actor.memberId,
       actorAccount: actor.account,
@@ -319,6 +343,13 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
     });
     if (!result) fail(409, '成员版本或任职范围已变化，请刷新');
     return result;
+  }
+
+  async function memberAudit(actor, memberId) {
+    const member = await repository.memberRow(memberId);
+    if (!member) fail(404, '成员不存在');
+    await requireMemberPermission(actor, member);
+    return { items: await repository.memberAudit(memberId) };
   }
 
   async function endMembership(actor, memberId, membershipId, input) {
@@ -357,208 +388,6 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
     return result;
   }
 
-  async function importMembers(actor, input) {
-    const context = await contextFor(actor);
-    if (!context.permissions['members.manage']) fail(403, '缺少权限：members.manage');
-    const rows = csvRows(String(input.csv || '').replace(/^\uFEFF/, ''));
-    if (rows.length < 2) fail(400, '成员导入至少需要表头和一行数据');
-    const headers = rows.shift().map((value) => value.trim());
-    if (headers.includes('accountTargets'))
-      fail(400, '一个成员只允许一个登录账号，请移除 accountTargets 列');
-    if (rows.length > 200) fail(400, '每次最多导入 200 名成员，请分批导入');
-    const roles = (await repository.listRoles()).filter((role) => role.enabled);
-    const rolesByCode = Object.fromEntries(roles.map((role) => [role.code, role]));
-    const departments = new Set((await repository.listDepartments()).map((item) => item.id));
-    const index = (key) => headers.indexOf(key);
-    for (const key of ['studentId', 'name', 'homeCampusId'])
-      if (index(key) < 0) fail(400, `缺少导入列：${key}`);
-    const items = rows.map((cells, lineIndex) => {
-      if (cells.length !== headers.length) fail(400, `CSV 第 ${lineIndex + 2} 行列数不正确`);
-      cells = cells.map((value) => value.trim());
-      const item = {
-        studentId: cells[index('studentId')],
-        name: cells[index('name')],
-        college: index('college') >= 0 ? cells[index('college')] : undefined,
-        major: index('major') >= 0 ? cells[index('major')] : undefined,
-        homeCampusId: cells[index('homeCampusId')],
-        departmentId: index('departmentId') >= 0 ? cells[index('departmentId')] : '',
-        assignmentType: index('assignmentType') >= 0 ? cells[index('assignmentType')] : 'primary',
-        effectiveFrom: index('effectiveFrom') >= 0 ? cells[index('effectiveFrom')] : dateKey(),
-        trainingConfirmed:
-          index('trainingConfirmed') >= 0 && cells[index('trainingConfirmed')] === 'true',
-        accountRole: index('accountRole') >= 0 ? cells[index('accountRole')] : '',
-        updateAccountCampuses: index('authorizedCampuses') >= 0,
-        workProfiles:
-          index('workProfiles') >= 0
-            ? cells[index('workProfiles')]
-                .split('|')
-                .map((value) => value.trim())
-                .filter(Boolean)
-            : [],
-        roleCodes:
-          index('roleCodes') >= 0
-            ? cells[index('roleCodes')]
-                .split('|')
-                .map((value) => value.trim())
-                .filter(Boolean)
-            : [],
-        authorizedCampuses:
-          index('authorizedCampuses') >= 0
-            ? cells[index('authorizedCampuses')]
-                .split('|')
-                .map((value) => value.trim())
-                .filter(Boolean)
-            : []
-      };
-      if (
-        !/^\d{6,20}$/.test(item.studentId) ||
-        !item.name ||
-        !['campus-nanhu', 'campus-hunnan'].includes(item.homeCampusId)
-      )
-        fail(400, `第 ${lineIndex + 2} 行成员数据不正确`);
-      if ((item.college?.length || 0) > 100 || (item.major?.length || 0) > 100)
-        fail(400, `第 ${lineIndex + 2} 行学院或专业过长`);
-      if (item.workProfiles.some((value) => !['repair', 'exchange', 'office'].includes(value)))
-        fail(400, `第 ${lineIndex + 2} 行工作属性不正确`);
-      if (item.accountRole && !['technician', 'admin'].includes(item.accountRole))
-        fail(400, `第 ${lineIndex + 2} 行账号类型不正确`);
-      if (
-        item.accountRole === 'admin' &&
-        (!item.roleCodes.length || !item.authorizedCampuses.length)
-      )
-        fail(400, `第 ${lineIndex + 2} 行管理员邀请必须明确配置角色和授权校区`);
-      if (
-        item.authorizedCampuses.some(
-          (value) => !['campus-nanhu', 'campus-hunnan', '南湖', '浑南'].includes(value)
-        )
-      )
-        fail(400, `第 ${lineIndex + 2} 行授权校区不正确`);
-      if (
-        !validDate(item.effectiveFrom) ||
-        (item.departmentId && !departments.has(item.departmentId)) ||
-        !['primary', 'secondary', 'exchange', 'temporary'].includes(item.assignmentType)
-      )
-        fail(400, `第 ${lineIndex + 2} 行任职或生效日期不正确`);
-      if (
-        item.workProfiles.includes('exchange') &&
-        (!item.trainingConfirmed || item.workProfiles.includes('repair'))
-      )
-        fail(400, `第 ${lineIndex + 2} 行须确认交流培训通过，且不能同时导入普通维修资格`);
-      // Older exchange CSVs used the technician package. Keep accepting them,
-      // but bind the distinct exchange role without changing actual membership.
-      if (item.workProfiles.includes('exchange'))
-        item.roleCodes = [
-          ...new Set(item.roleCodes.map((code) => (code === 'technician' ? 'exchange' : code)))
-        ];
-      if (item.roleCodes.some((code) => !rolesByCode[code] || code === 'superadmin'))
-        fail(400, `第 ${lineIndex + 2} 行角色不存在、已停用或不能通过名单导入`);
-      return item;
-    });
-    if (new Set(items.map((item) => item.studentId)).size !== items.length)
-      fail(400, '导入文件包含重复学号');
-    const previewItems = [];
-    for (const item of items) {
-      if (
-        !evaluate(context, 'members.manage', {
-          campusId: item.homeCampusId,
-          departmentIds: item.departmentId ? [item.departmentId] : []
-        }).allowed
-      )
-        fail(403, '导入包含管理范围外的成员');
-      const existing = (await repository.listMembers({ studentId: item.studentId }))[0];
-      item.college ||= existing?.college || '';
-      item.major ??= existing?.major || '';
-      let target = { campuses: [item.homeCampusId] };
-      if (existing) {
-        await requireMemberPermission(actor, existing);
-        target = await editableMember(repository, context, existing, evaluate);
-      }
-      const accounts = existing ? await repository.accountsForMember(existing.memberId) : [];
-      if (accounts.length > 1) fail(409, '成员关联多个登录账号，导入已停止');
-      const campusScope = {
-        campusIds: item.authorizedCampuses.length ? item.authorizedCampuses : target.campuses
-      };
-      if (item.updateAccountCampuses) {
-        for (const campusId of [...target.campuses, ...item.authorizedCampuses])
-          if (!evaluate(context, 'accounts.manage', { campusId }).allowed)
-            fail(403, '缺少该校区的账号管理权限');
-      }
-      if (item.workProfiles.length)
-        delegationScope(context, 'members.manage', campusScope, {
-          effectiveFrom: item.effectiveFrom
-        });
-      for (const roleCode of item.roleCodes)
-        delegableRole(
-          context,
-          rolesByCode[roleCode],
-          { scope: campusScope, effectiveFrom: item.effectiveFrom },
-          target
-        );
-      item.expectedMember = existing
-        ? {
-            memberId: existing.memberId,
-            revision: existing.revision,
-            account: target.account
-              ? { account: target.account.account, authVersion: target.account.auth_version }
-              : null
-          }
-        : null;
-      item.roleScope = campusScope;
-      item.accountTargets = item.updateAccountCampuses ? accounts : [];
-      previewItems.push({
-        ...item,
-        memberId: existing?.memberId || `member-${item.studentId}`
-      });
-    }
-    if (!input.confirm)
-      return {
-        mode: 'preview',
-        items: previewItems,
-        warnings: previewItems.flatMap((item) => {
-          const messages = [];
-          if (!item.roleCodes.length && !item.workProfiles.length)
-            messages.push('未设置工作属性或角色，本次导入不会新增工作资格或角色授权');
-          if (item.updateAccountCampuses && item.accountTargets.length)
-            messages.push(
-              item.authorizedCampuses.length
-                ? `将替换登录账号 ${item.accountTargets.join('、')} 的校区授权为：${item.authorizedCampuses.join('、')}`
-                : `将清空登录账号 ${item.accountTargets.join('、')} 的全部校区授权`
-            );
-          return messages.map((message) => ({ studentId: item.studentId, message }));
-        }),
-        requestId: input.requestId || ''
-      };
-    let memberRows;
-    try {
-      memberRows = await repository.importMembers(items, actor.account, {
-        actorMemberId: context.actor.memberId,
-        actorAccount: actor.account,
-        authVersion: context.authVersion,
-        roleVersions: roles.map(({ id, revision, enabled }) => ({ id, revision, enabled })),
-        action: 'identity.members.imported',
-        sourceRef: publicResourceRef('identity', 'import', input.requestId || crypto.randomUUID()),
-        after: { count: items.length },
-        requestId: input.requestId
-      });
-    } catch (error) {
-      if (/integer overflow|IMPORT_ACCOUNT_CHANGED/.test(String(error.message)))
-        fail(409, '成员或授权已变化，请重新预览后导入');
-      throw error;
-    }
-    const byStudentId = Object.fromEntries(memberRows.map((row) => [row.student_id, row]));
-    const result = items.map((item) => ({
-      memberId: byStudentId[item.studentId]?.id || `member-${item.studentId}`,
-      studentId: item.studentId,
-      name: item.name,
-      status: 'updated'
-    }));
-    return {
-      mode: 'confirmed',
-      items: result,
-      count: result.length,
-      requestId: input.requestId || ''
-    };
-  }
   async function importEducation(actor, input) {
     const context = await contextFor(actor);
     if (!context.permissions['members.manage']) fail(403, '缺少权限：members.manage');
@@ -649,12 +478,14 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
     memberTarget,
     memberList,
     memberDetail,
+    memberAudit,
     saveWorkProfile,
     updateMember,
     ownProfile,
     addMembership,
     endMembership,
     importMembers,
+    createMember,
     importEducation
   };
 }
