@@ -1,4 +1,5 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
+import { addDays } from '../../shared/time.js';
 
 const escapeXml = (value) =>
   String(value ?? '').replace(
@@ -103,7 +104,7 @@ export function volunteerWorkbook(month, week, templateBytes) {
   if (!templateBytes) throw new Error('志愿登记表模板未加载');
   const [year, monthNumber] = month.split('-').map(Number);
   const dayText = (date) => `${Number(date.slice(5, 7))}月${Number(date.slice(8))}日`;
-  const duration = `${year}年${dayText(week.weekStart)}-${dayText(week.weekEnd)}`;
+  const duration = `${year}年${dayText(week.weekStart)}-${dayText(addDays(week.weekStart, 4))}`;
   if (week.rows.length > 601) throw new Error('单周人员超过模板可容纳的 601 行');
   const files = unzipSync(templateBytes);
   const sheetPath = 'xl/worksheets/sheet1.xml';

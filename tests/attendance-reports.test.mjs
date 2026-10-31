@@ -257,7 +257,7 @@ test('generated Excel files contain the required headers, week dates and numeric
   const generatedFiles = unzipSync(volunteerWorkbook('2026-05', week, volunteerTemplate));
   const sheet = strFromU8(generatedFiles['xl/worksheets/sheet1.xml']);
   assert.match(sheet, /信息采集表（2026年5月）/);
-  assert.match(sheet, /2026年5月25日-5月28日/);
+  assert.match(sheet, /2026年5月25日-5月29日/);
   assert.match(sheet, /<c r="E4" s="2"><v>4<\/v><\/c>/);
   assert.match(sheet, /<c r="C4" s="9" t="inlineStr">/);
   assert.deepEqual(generatedFiles['xl/styles.xml'], templateFiles['xl/styles.xml']);
