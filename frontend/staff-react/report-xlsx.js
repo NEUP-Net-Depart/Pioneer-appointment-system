@@ -108,21 +108,25 @@ export function volunteerWorkbook(month, week, templateBytes) {
   const files = unzipSync(templateBytes);
   const sheetPath = 'xl/worksheets/sheet1.xml';
   let sheet = strFromU8(files[sheetPath]);
-  const templateRow = sheet.match(/<row r="23"[^>]*>[^]*?<\/row>/)?.[0];
-  if (!templateRow) throw new Error('志愿登记表模板行结构无效');
   sheet = replaceTemplateCell(sheet, 'A1', `信息采集表（${year}年${monthNumber}月）`);
+  const rows = new Map(
+    [...sheet.matchAll(/<row r="(\d+)"[^>]*?(?:\/>|>[^]*?<\/row>)/g)].map(([row, number]) => [
+      Number(number),
+      row
+    ])
+  );
+  const templateRow = rows.get(23);
+  if (!templateRow) throw new Error('志愿登记表模板行结构无效');
 
   for (let index = 0; index < week.rows.length; index += 1) {
     const number = index + 4;
-    const rowPattern = new RegExp(`<row r="${number}"[^>]*>[^]*?<\\/row>`);
-    const original = sheet.match(rowPattern)?.[0];
-    if (!original) throw new Error(`志愿登记表模板缺少第 ${number} 行`);
     let row =
       number <= 23
-        ? original
+        ? rows.get(number)
         : templateRow
             .replace('<row r="23"', `<row r="${number}"`)
             .replace(/r="([A-I])23"/g, (_ref, col) => `r="${col}${number}"`);
+    if (!row) throw new Error(`志愿登记表模板缺少第 ${number} 行`);
     const person = week.rows[index];
     const values = [
       ['A', person.college],
@@ -138,8 +142,15 @@ export function volunteerWorkbook(month, week, templateBytes) {
     for (const [col, value, kind] of values) {
       row = replaceTemplateCell(row, `${col}${number}`, value, kind);
     }
-    sheet = sheet.replace(original, row);
+    rows.set(number, row);
   }
+  sheet = sheet.replace(
+    /<sheetData>[^]*?<\/sheetData>/,
+    `<sheetData>${[...rows]
+      .sort(([a], [b]) => a - b)
+      .map(([, row]) => row)
+      .join('')}</sheetData>`
+  );
   files[sheetPath] = strToU8(sheet);
   if (week.rows.length > 20) {
     const workbookPath = 'xl/workbook.xml';

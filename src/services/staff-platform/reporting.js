@@ -142,6 +142,13 @@ export function attendanceReportingDomain({ repository, platform, contextFor, ev
               const identityContext = rosterFactContext(fact, date);
               const department = identityContext.memberships.find((item) => item.isPrimary);
               if (
+                !canExport(
+                  context,
+                  campusId,
+                  fact.memberId,
+                  department?.departmentId,
+                  query.campusId
+                ) ||
                 !staffIdentities(identityContext, platform.authorizer, {
                   campusId,
                   departmentId: department?.departmentId
@@ -176,16 +183,7 @@ export function attendanceReportingDomain({ repository, platform, contextFor, ev
             eligible.sort((a, b) => a.campusId.localeCompare(b.campusId))[0];
           for (const campusId of Object.keys(campusNames))
             byWeek.get(week).delete(`${campusId}:${fact.memberId}`);
-          if (
-            canExport(
-              context,
-              chosen.campusId,
-              fact.memberId,
-              chosen.department?.departmentId,
-              query.campusId
-            )
-          )
-            ensure(week, chosen.campusId, fact.memberId, null, chosen.department).leader = true;
+          ensure(week, chosen.campusId, fact.memberId, null, chosen.department).leader = true;
         }
       }
     return {

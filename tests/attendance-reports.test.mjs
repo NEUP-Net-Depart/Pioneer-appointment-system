@@ -180,6 +180,48 @@ test('merged leaders receive one campus credit and no credit when the week is su
   );
 });
 
+test('leader qualifications outside the export scope preserve authorized attendance', async () => {
+  const fact = leader('lead');
+  fact.campuses = ['南湖', '浑南'];
+  fact.grants[0].scope.campusIds = ['campus-hunnan'];
+  fact.assignments = [{ businessDate: '2026-05-25', campusId: 'campus-nanhu' }];
+  const report = await setup(
+    { countMode: 'actual', hoursPerCount: 4, mergeLeaders: true },
+    [baseRecords[3]],
+    { facts: [fact] }
+  ).domain.volunteerReport(actor, { month: '2026-05', campusId: 'campus-nanhu' });
+  const rows = report.weeks.find((item) => item.weekStart === '2026-05-25').campuses[0].rows;
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].memberId, 'lead');
+  assert.equal(rows[0].name, baseRecords[3].identitySnapshot.name);
+  assert.deepEqual(rows[0].dates, ['2026-05-25']);
+  assert.equal(rows[0].leader, false);
+  assert.equal(rows[0].hours, 4);
+});
+
+test('leader campus selection respects both export permissions and the requested campus', async () => {
+  const fact = leader('unsigned-lead');
+  fact.campuses = ['南湖', '浑南'];
+  fact.grants[0].scope.campusIds = ['campus-nanhu', 'campus-hunnan'];
+  fact.assignments = [{ businessDate: '2026-05-25', campusId: 'campus-hunnan' }];
+  for (const [allowed, campusId] of [
+    [['campus-nanhu'], undefined],
+    [['campus-nanhu', 'campus-hunnan'], 'campus-nanhu']
+  ]) {
+    const report = await setup({ countMode: 'weekly', hoursPerCount: 4, mergeLeaders: true }, [], {
+      facts: [fact],
+      allowed
+    }).domain.volunteerReport(actor, { month: '2026-05', campusId });
+    const campuses = report.weeks.find((item) => item.weekStart === '2026-05-25').campuses;
+    assert.equal(campuses.length, 1);
+    assert.equal(campuses[0].campusId, 'campus-nanhu');
+    assert.equal(campuses[0].rows.length, 1);
+    assert.equal(campuses[0].rows[0].memberId, 'unsigned-lead');
+    assert.equal(campuses[0].rows[0].leader, true);
+    assert.equal(campuses[0].rows[0].hours, 4);
+  }
+});
+
 test('future weeks do not grant volunteer hours before service begins', async () => {
   const report = await setup(
     { countMode: 'weekly', hoursPerCount: 4, mergeLeaders: true },
