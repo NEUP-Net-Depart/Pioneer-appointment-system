@@ -466,7 +466,7 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
       )
         fail(403, '导入包含管理范围外的成员');
       const existing = (await repository.listMembers({ studentId: item.studentId }))[0];
-      item.college ??= existing?.college || '';
+      item.college ||= existing?.college || '';
       item.major ??= existing?.major || '';
       let target = { campuses: [item.homeCampusId] };
       if (existing) {
