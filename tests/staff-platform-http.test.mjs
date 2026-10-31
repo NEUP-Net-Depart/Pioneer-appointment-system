@@ -42,6 +42,46 @@ before(async () => {
 });
 after(async () => mf?.dispose());
 
+test('member imports preserve existing colleges when the CSV college is missing or blank', async () => {
+  const db = await mf.getD1Database('DB');
+  const identityHeaders = { 'CF-Connecting-IP': '192.0.2.178' };
+  const login = await request('/api/auth/login', {
+    method: 'POST',
+    headers: identityHeaders,
+    body: JSON.stringify({ account: 'root001', password: 'staff-platform-password' })
+  });
+  assert.equal(login.response.status, 200);
+  const headers = { ...identityHeaders, Authorization: `Bearer ${login.body.token}` };
+  const run = (csv, confirm = false) =>
+    request('/api/members/import', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ csv, confirm })
+    });
+  const initial = await run(
+    'studentId,name,homeCampusId,college\n20269851,学院保留测试,campus-nanhu,软件学院\n20269852,新成员空学院,campus-nanhu,',
+    true
+  );
+  assert.equal(initial.response.status, 200, JSON.stringify(initial.body));
+  const college = async (studentId) =>
+    (await db.prepare('SELECT college FROM members WHERE student_id=?').bind(studentId).first()).college;
+  assert.equal(await college('20269852'), '');
+  for (const [suffix, value, expected] of [
+    ['', '', '软件学院'],
+    [',college', ',', '软件学院'],
+    [',college', ', \t ', '软件学院'],
+    [',college', ',理学院', '理学院']
+  ]) {
+    const csv = `studentId,name,homeCampusId${suffix}\n20269851,学院保留测试,campus-nanhu${value}`;
+    const preview = await run(csv);
+    assert.equal(preview.response.status, 200, JSON.stringify(preview.body));
+    assert.equal(preview.body.items[0].college, expected);
+    const result = await run(csv, true);
+    assert.equal(result.response.status, 200, JSON.stringify(result.body));
+    assert.equal(await college('20269851'), expected);
+  }
+});
+
 test('member import previews distinguish preserving, replacing and clearing a single login scope', async () => {
   const db = await mf.getD1Database('DB');
   await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('20269982','单账号成员','technician','南湖',?,'2026-01-01')").bind(hashPassword('single-account-password')).run();

@@ -2,8 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { optimizeRepairMinimum } from '../src/modules/rosters/repair-minimum.ts';
 import {generateRoster,validateRoster} from '../src/modules/rosters/solver.js';
-import {repairRosterPool} from '../src/modules/rosters/qualification.js';
+import {repairRosterPool,rosterFactContext} from '../src/modules/rosters/qualification.js';
 import {createAuthorizer} from '../src/modules/authorization/public.js';
+import {staffIdentities} from '../shared/staff-identities.js';
 
 const slots = Array.from({length:4},(_,i)=>({businessDate:`2026-10-${19+i}`,campusId:'nanhu',startAt:'19:00',endAt:'21:00',ordinaryMinimum:2}));
 const person = (id,pool,available=slots) => ({memberId:id,pool,available,leadSlots:pool==='lead'?available:[]});
@@ -66,4 +67,21 @@ test('scheduling leaders are derived from effective scoped authorization; exchan
   assert.equal(repairRosterPool({...fact,grants:[],profiles:[{profileCode:'repair_lead',effectiveFrom:'2026-01-01'}]},authorizer,'2026-10-19',{campusId:'campus-nanhu'}),'');
   assert.equal(repairRosterPool({...fact,grants:fact.grants.map(grant=>({...grant,roleCode:'custom_coordinator'}))},authorizer,'2026-10-19',{campusId:'campus-nanhu'}),'');
   assert.equal(repairRosterPool({...fact,grants:[],profiles:[{profileCode:'repair'}],assignments:[{roleKind:'repair_lead',businessDate:'2026-10-19'}]},authorizer,'2026-10-19',{campusId:'campus-nanhu'}),'ordinary');
+});
+test('combined office and repair leader identities stay unique and respect each campus scope',()=>{
+  const authorizer=createAuthorizer();
+  const repairGrant={roleCode:'repair_lead',permissionCode:'repair.transfer',scope:{campusIds:['campus-nanhu']},conditions:[{code:'signedDutyPresence',version:1}]};
+  const fact={memberId:'multi',active:true,campuses:['campus-nanhu','campus-hunnan'],profiles:[{profileCode:'repair',effectiveFrom:'2026-01-01'},{profileCode:'office',effectiveFrom:'2026-01-01'}],grants:[repairGrant,{...repairGrant},{roleCode:'office_lead',permissionCode:'roster.office.manage',scope:{campusIds:['campus-hunnan']}}]};
+  assert.deepEqual(staffIdentities(rosterFactContext(fact,'2026-10-19'),authorizer).map(item=>item.code),['repair','office','repair_lead','office_lead']);
+  assert.equal(repairRosterPool(fact,authorizer,'2026-10-19',{campusId:'campus-nanhu'}),'lead');
+  assert.equal(repairRosterPool(fact,authorizer,'2026-10-19',{campusId:'campus-hunnan'}),'ordinary','office leadership does not grant repair leadership');
+  assert.equal(repairRosterPool({...fact,profiles:[...fact.profiles,{profileCode:'exchange',effectiveFrom:'2026-01-01'}]},authorizer,'2026-10-19',{campusId:'campus-nanhu'}),'','exchange qualification excludes scheduled repair shifts');
+});
+test('a dual-role member cannot be assigned overlapping office and repair shifts',()=>{
+  const slot={...slots[0],dutyType:'repair',ordinaryMinimum:1};
+  const members=[{...person('multi','lead',[slot]),existingAssignments:[{businessDate:slot.businessDate,startAt:'20:00',endAt:'21:00',dutyType:'office'}]},person('ordinary','ordinary',[slot])];
+  const input={ruleVersion:'repair-minimum-v2',slots:[slot],members,requireLead:true};
+  const assignments=[{...slot,memberId:'multi',roleKind:'repair_lead'},{...slot,memberId:'ordinary',roleKind:''}];
+  assert.ok(validateRoster({assignments},input).errors.some(error=>error.code==='TIME_CONFLICT'));
+  assert.equal(validateRoster({assignments},{...input,members:[{...members[0],existingAssignments:[{businessDate:slot.businessDate,startAt:'17:00',endAt:'19:00',dutyType:'office'}]},members[1]]}).errors.some(error=>error.code==='TIME_CONFLICT'),false);
 });

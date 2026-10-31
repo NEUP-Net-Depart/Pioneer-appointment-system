@@ -13,6 +13,7 @@ import { repairRosterPool, rosterFactContext } from '../../modules/rosters/quali
 import { rosterStage, sameAssignment } from '../../modules/rosters/workflow.js';
 import { generateOfficeRoster } from '../../modules/rosters/office.ts';
 import { tokenDigest, rosterEligibilitySnapshot, rosterAssignmentSnapshot } from './shared.js';
+import { csvRows } from './shared.js';
 
 export function planningDomain({
   repository,
@@ -164,6 +165,7 @@ export function planningDomain({
       members.push({
         memberId,
         name: fact.name,
+        studentId: fact.studentId || '',
         available:
           !office && pool === 'lead'
             ? available.filter((slot) => leadSlots.includes(slot))
@@ -652,5 +654,99 @@ export function planningDomain({
     if (!result) fail(409, '班表、人员资格、可用时间或需求已变化，请刷新并重新校验');
     return result;
   }
-  return { rosterTaskState, generate, reviseRoster, updateRoster, publish };
+  async function importRoster(actor, taskId, input) {
+    if (typeof input.csv !== 'string' || input.csv.length > 120000) fail(400, '值班表文件过大');
+    if (!Number.isInteger(input.version) || input.version < 1) fail(400, '请先选择有效的班表草稿');
+    const source = await rosterInput(actor, taskId);
+    const version = (await repository.rosterVersionsForTask(taskId)).find(
+      (item) => item.status === 'draft'
+    );
+    if (!version) fail(409, '请先结束收集并生成草稿；已发布班表请先建立修订稿');
+    if (input.version !== version.version) fail(409, '班表草稿已变化，请重新预览导入');
+    const csv = csvRows(input.csv.replace(/^\uFEFF/, ''));
+    if (csv.length < 2 || csv.length > 301) fail(400, '每次请导入 1 至 300 条安排');
+    if (
+      csv
+        .shift()
+        .map((value) => value.trim())
+        .join(',') !== '姓名,学号,日期,校区,岗位'
+    )
+      fail(400, '请使用 姓名,学号,日期,校区,岗位 五列表头');
+    const byStudent = new Map(
+      source.members
+        .filter((member) => member.studentId)
+        .map((member) => [member.studentId, member])
+    );
+    const assignments = [],
+      seen = new Set(),
+      preview = [];
+    for (const [index, cells] of csv.entries()) {
+      if (cells.length !== 5) fail(400, `第 ${index + 2} 行列数不正确`);
+      const [name, studentId, businessDate, campus, role] = cells.map((value) => value.trim());
+      const member = byStudent.get(studentId);
+      if (!member) fail(400, `第 ${index + 2} 行学号不在本任务可安排人员中`);
+      if (name && name !== member.name) fail(400, `第 ${index + 2} 行姓名与学号不匹配`);
+      const campusId = { 南湖: 'campus-nanhu', 浑南: 'campus-hunnan' }[campus] || campus;
+      const slot = source.slots.find(
+        (item) => item.businessDate === businessDate && item.campusId === campusId
+      );
+      if (!slot) fail(400, `第 ${index + 2} 行日期或校区不在本任务班次中`);
+      const roleKind =
+        source.dutyType === 'office'
+          ? { 办公人员: '', 协调人: 'coordinator' }[role]
+          : { 维修工作人员: '', 维修负责人: 'repair_lead' }[role];
+      if (roleKind === undefined) fail(400, `第 ${index + 2} 行岗位与任务类型不符`);
+      if (source.dutyType !== 'office' && (member.pool === 'lead') !== (roleKind === 'repair_lead'))
+        fail(400, `第 ${index + 2} 行负责人和普通人员身份不匹配`);
+      const key = `${member.memberId}:${businessDate}:${campusId}`;
+      if (seen.has(key)) fail(400, `第 ${index + 2} 行重复安排同一成员`);
+      seen.add(key);
+      const manualOverride = !member.available.some(
+        (item) =>
+          item.businessDate === slot.businessDate &&
+          item.campusId === slot.campusId &&
+          item.startAt <= slot.startAt &&
+          item.endAt >= slot.endAt
+      );
+      assignments.push({ ...slot, memberId: member.memberId, roleKind, manualOverride });
+      preview.push({
+        name: member.name,
+        studentId,
+        businessDate,
+        campusId,
+        role: role || (source.dutyType === 'office' ? '办公人员' : '维修工作人员'),
+        manualOverride
+      });
+    }
+    const current = await repository.versionAssignments(version.id);
+    const locked = current.filter((item) => item.locked);
+    if (locked.some((item) => !assignments.some((candidate) => sameAssignment(item, candidate))))
+      fail(409, '导入文件缺少已锁定安排，请先在草稿中解除锁定或保留该安排');
+    for (const assignment of assignments)
+      if (locked.some((item) => sameAssignment(item, assignment))) assignment.locked = true;
+    await checkProtected(taskId, assignments);
+    const validation = validateRoster({ assignments }, source);
+    const previewToken = await tokenDigest(
+      stableJson({ taskId, version: version.version, assignments, validation })
+    );
+    if (input.confirm) {
+      if (input.previewToken !== previewToken) fail(409, '导入内容或班表条件已变化，请重新预览');
+      if (validation.blocking) fail(409, '导入包含资格、时间或人员冲突，请先修改文件');
+      await updateRoster(actor, version.id, {
+        version: version.version,
+        assignments,
+        requestId: input.requestId
+      });
+    }
+    return {
+      taskId,
+      version: version.version,
+      count: assignments.length,
+      assignments: preview,
+      validation,
+      previewToken,
+      saved: !!input.confirm
+    };
+  }
+  return { rosterTaskState, generate, reviseRoster, updateRoster, publish, importRoster };
 }

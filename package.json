@@ -57,6 +57,7 @@
   },
   "dependencies": {
     "blueimp-load-image": "5.16.0",
+    "fflate": "0.8.2",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "zxing-wasm": "3.1.5"

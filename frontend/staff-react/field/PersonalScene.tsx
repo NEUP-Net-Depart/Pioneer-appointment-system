@@ -1,4 +1,4 @@
-import { StaffIdentity } from '../StaffIdentity';
+import { PersonalProfile } from './PersonalProfile';
 import type { useFieldWorkspace } from './useFieldWorkspace';
 type Props = Pick<
   ReturnType<typeof useFieldWorkspace> & Parameters<typeof useFieldWorkspace>[0],
@@ -26,15 +26,7 @@ export function PersonalScene({
   return (
     <div className="field-work-grid personal-workspace">
       <section className="field-card personal-schedule">
-        <div className="personal-identity">
-          <span data-motion-value="text" className="field-avatar" aria-hidden="true">
-            {initial.actor.name.slice(-2)}
-          </span>
-          <div>
-            <h2 data-motion-value="text">{initial.actor.name}</h2>
-            <StaffIdentity identities={data.identities} />
-          </div>
-        </div>
+        <PersonalProfile initialName={initial.actor.name} identities={data.identities} />
         <h3>今日安排</h3>
         {data.todayDuties.map((d) => (
           <div data-motion-item="" className="field-shift" key={d.id}>

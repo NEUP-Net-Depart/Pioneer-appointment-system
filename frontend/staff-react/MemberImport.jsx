@@ -3,7 +3,7 @@ import { request } from './request.js';
 import { Modal } from './field/ui';
 
 const header =
-  'studentId,name,homeCampusId,departmentId,workProfiles,roleCodes,authorizedCampuses,trainingConfirmed,accountRole';
+  'studentId,name,homeCampusId,college,departmentId,workProfiles,roleCodes,authorizedCampuses,trainingConfirmed,accountRole';
 const templates = {
   repair: { label: '普通维修', department: 'dept-hardware', role: 'technician' },
   exchange: { label: '交流人员', department: '', role: 'exchange' },
@@ -71,17 +71,23 @@ export function MemberImport({ onClose, onSaved }) {
             更新已有成员时，省略 authorizedCampuses
             列保留账号校区授权；提供该列会替换授权，空值会清空授权。
           </p>
+          <p className="field-muted">
+            学院列可选；省略时保留已有资料。批量补充可使用成员管理中的学院入口。
+          </p>
           {!preview ? (
             <>
               <label>
                 名单类型
-                <select value={kind} onChange={(e) => setKind(e.target.value)}>
-                  {Object.entries(templates).map(([key, item]) => (
-                    <option key={key} value={key}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
+                <span className="workspace-native-select">
+                  <select value={kind} onChange={(e) => setKind(e.target.value)}>
+                    {Object.entries(templates).map(([key, item]) => (
+                      <option key={key} value={key}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="workspace-chevron" aria-hidden="true" />
+                </span>
               </label>
               <details className="workspace-help">
                 <summary>名单格式与角色配置</summary>

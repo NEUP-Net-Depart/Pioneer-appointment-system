@@ -182,10 +182,27 @@ test('permanent off-duty managers coordinate business and prepare schedules with
   await page.getByRole('button',{name:'新建收集任务',exact:true}).click();
   const dialog = page.getByRole('dialog',{name:'发布收集任务',exact:true});
   await dialog.getByLabel('周一日期',{exact:true}).selectOption('2027-01-11');
+  await expect(dialog.getByLabel('开始时间',{exact:true})).toHaveValue('19:00');
+  await expect(dialog.getByLabel('结束时间',{exact:true})).toHaveValue('21:00');
+  await dialog.getByLabel('开始时间',{exact:true}).fill('21:30');
+  await expect(dialog.getByText('结束时间须晚于开始时间，且班次不能跨日。',{exact:true})).toBeVisible();
+  await dialog.getByRole('button',{name:'下一步：人数与名单',exact:true}).click();
+  await expect(dialog.getByLabel('结束时间',{exact:true})).toBeFocused();
+  await dialog.getByLabel('结束时间',{exact:true}).fill('23:00');
+  await expect(dialog.getByText('本次值班 1 小时 30 分钟',{exact:true})).toBeVisible();
   await dialog.getByLabel('填报截止',{exact:true}).fill('2027-01-10T18:00');
+  await mkdir('output/field-workflow',{recursive:true});
+  for(const width of [320,390,768,1440]){
+    await page.setViewportSize({width,height:900});
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    expect(await dialog.evaluate(node=>node.scrollWidth<=node.clientWidth)).toBe(true);
+    await page.screenshot({path:`output/field-workflow/collection-time-${width}.png`,fullPage:true});
+  }
   await dialog.getByRole('button',{name:'下一步：人数与名单',exact:true}).click();
   await dialog.getByRole('button',{name:'下一步：确认发布',exact:true}).click();
+  const created = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/roster-tasks');
   await dialog.getByRole('button',{name:'发布收集任务',exact:true}).click();
+  expect((await created).request().postDataJSON()).toMatchObject({slotStart:'21:30',slotEnd:'23:00'});
   await expect(dialog).toHaveCount(0);
   await expect(page.getByText('收集任务已发布，成员现在可以填报时间。',{exact:true})).toBeVisible();
   for (const width of [1440,390,320]) {
@@ -473,21 +490,19 @@ test('member submits a whole week, keeps input between tabs and controls automat
   for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:`output/field-workflow/weekly-availability-${width}.png`,fullPage:true});}
   const sidebar=page.locator('.field-sidebar'),navigation=page.getByRole('dialog',{name:'有未保存的调整'});
   await sidebar.getByRole('button',{name:'个人中心',exact:true}).click();
-  await navigation.getByRole('button',{name:'保留草稿并切换',exact:true}).click();
-  await expect(form).toBeHidden();
-  await sidebar.getByRole('button',{name:'班次与排班',exact:true}).click();
-  await expect(navigation).toHaveCount(0);
+  await navigation.getByRole('button',{name:'留在当前页面',exact:true}).click();
+  await expect(form).toBeVisible();
   await expect(form.getByLabel('南湖校区',{exact:true}).first()).toBeChecked();
   await form.getByRole('button',{name:'提交整周可用时间',exact:true}).click();
   await expect(form.getByText('整周可用时间已提交，截止前可以修改。',{exact:true})).toBeVisible();await expect(form.getByText('维修可用时间自动延续已开启',{exact:true})).toBeVisible();
   await form.getByRole('button',{name:'关闭后续自动延续',exact:true}).click();await expect(form.getByText('维修可用时间自动延续已开启',{exact:true})).toHaveCount(0);
   await form.getByLabel('整周无法参加',{exact:true}).check();
   await sidebar.getByRole('button',{name:'个人中心',exact:true}).click();
-  await navigation.getByRole('button',{name:'保留草稿并切换',exact:true}).click();
+  await navigation.getByRole('button',{name:'丢弃并切换',exact:true}).click();
   await expect(form).toBeHidden();
   await sidebar.getByRole('button',{name:'班次与排班',exact:true}).click();
   await expect(navigation).toHaveCount(0);
-  await expect(form.getByLabel('整周无法参加',{exact:true})).toBeChecked();
+  await expect(form.getByLabel('整周无法参加',{exact:true})).not.toBeChecked();
   await expect(form.getByLabel('后续同岗位收集自动延续本周选择',{exact:true})).not.toBeChecked();
   await expect(form.getByLabel('南湖校区',{exact:true}).first()).toBeChecked();
   await form.getByLabel('整周无法参加',{exact:true}).check();await form.getByRole('button',{name:'提交整周可用时间',exact:true}).click();await expect(form.getByText('整周可用时间已提交，截止前可以修改。',{exact:true})).toBeVisible();await page.reload();await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();await expandGroup(page,'我的');await page.locator('.field-sidebar').getByRole('button',{name:'班次与排班',exact:true}).click();await form.getByLabel('收集任务',{exact:true}).selectOption(task.id);await expect(form.getByLabel('整周无法参加',{exact:true})).toBeChecked();

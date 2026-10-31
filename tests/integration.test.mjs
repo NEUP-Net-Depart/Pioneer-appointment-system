@@ -2499,8 +2499,9 @@ test('concurrent configuration updates cannot overwrite a stale revision or affe
   const token = await login(), input = { campus: '南湖', weekday: 1, timeSlot: '19:00–19:30', capacity: 5, revision: 0 };
   const responses = await Promise.all([5, 7].map(capacity => request('/api/slot-capacities', { method: 'PATCH', token, body: { ...input, capacity } })));
   assert.deepEqual(responses.map(response => response.status).sort(), [200, 409]);
-  const winner = await responses.find(response => response.status === 200).json();
+  const winner = (await api('/api/slot-capacities', { token })).items.find(item => item.campus === input.campus && item.weekday === input.weekday && item.timeSlot === input.timeSlot);
   assert.equal(winner.revision, 1);
+  assert.ok([5, 7].includes(winner.capacity));
   await api('/api/slot-capacities', { method: 'PATCH', token, body: input }, 409);
   const other = await api('/api/slot-capacities', { method: 'PATCH', token, body: { ...input, timeSlot: '20:00–20:30' } });
   assert.equal(other.revision, 1);

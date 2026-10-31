@@ -3,8 +3,9 @@ import { dateKey, validDate } from '../../platform/time.js';
 import { publicResourceRef, SCHEMA_VERSION } from '../../platform/contracts.js';
 import { memberPublic } from '../../modules/identity/public.js';
 import { staffIdentities } from '../../../shared/staff-identities.js';
-import { inputString, csvRows } from './shared.js';
+import { inputString, csvRows, tokenDigest } from './shared.js';
 import { editableMember, delegationScope, delegableRole } from './delegation.js';
+import { NEU_COLLEGES } from '../../../shared/neu-colleges.js';
 
 export function membersDomain({ repository, platform, contextFor, evaluate }) {
   function memberTarget(member, memberships, overrides = {}) {
@@ -219,6 +220,8 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
     if (input.name !== undefined) patch.name = inputString(input, 'name', 80, true);
     if (input.studentId !== undefined)
       patch.studentId = input.studentId ? inputString(input, 'studentId', 40, true) : '';
+    if (input.college !== undefined) patch.college = inputString(input, 'college', 100);
+    if (input.major !== undefined) patch.major = inputString(input, 'major', 100);
     if (input.homeCampusId !== undefined) {
       patch.homeCampusId = inputString(input, 'homeCampusId', 80, true);
       if (!['campus-nanhu', 'campus-hunnan'].includes(patch.homeCampusId))
@@ -248,6 +251,41 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
       affectedResources: [{ module: 'identity', type: 'member', id: memberId }],
       accountStatus: account?.status || ''
     };
+  }
+
+  async function ownProfile(actor, input) {
+    const context = await contextFor(actor);
+    const memberId = context.actor.memberId;
+    const before = await repository.memberRow(memberId);
+    if (!before) fail(404, '成员资料不存在');
+    if (input === undefined) return { member: memberPublic(before) };
+    if (
+      !input ||
+      typeof input !== 'object' ||
+      Array.isArray(input) ||
+      Object.keys(input).some((key) => !['name', 'college', 'revision', 'requestId'].includes(key))
+    )
+      fail(400, '仅可修改本人姓名和学院');
+    if (!Number.isInteger(input.revision) || input.revision < 0) fail(400, '成员版本不正确');
+    const patch = {};
+    if (input.name !== undefined) patch.name = inputString(input, 'name', 80, true);
+    if (input.college !== undefined) {
+      if (!NEU_COLLEGES.includes(input.college)) fail(400, '请选择东北大学学院');
+      patch.college = input.college;
+    }
+    if (!Object.keys(patch).length) fail(400, '请选择要修改的资料');
+    const after = await repository.updateMember(memberId, patch, input.revision, {
+      actorMemberId: memberId,
+      actorAccount: actor.account,
+      authVersion: context.authVersion,
+      action: 'identity.member.profile.updated',
+      sourceRef: publicResourceRef('identity', 'member', memberId),
+      before: { name: before.name, college: before.college },
+      after: patch,
+      requestId: input.requestId
+    });
+    if (!after) fail(409, '成员资料已变化，请刷新后重试');
+    return { member: memberPublic(after) };
   }
 
   async function addMembership(actor, memberId, input) {
@@ -340,6 +378,8 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
       const item = {
         studentId: cells[index('studentId')],
         name: cells[index('name')],
+        college: index('college') >= 0 ? cells[index('college')] : undefined,
+        major: index('major') >= 0 ? cells[index('major')] : undefined,
         homeCampusId: cells[index('homeCampusId')],
         departmentId: index('departmentId') >= 0 ? cells[index('departmentId')] : '',
         assignmentType: index('assignmentType') >= 0 ? cells[index('assignmentType')] : 'primary',
@@ -376,6 +416,8 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
         !['campus-nanhu', 'campus-hunnan'].includes(item.homeCampusId)
       )
         fail(400, `第 ${lineIndex + 2} 行成员数据不正确`);
+      if ((item.college?.length || 0) > 100 || (item.major?.length || 0) > 100)
+        fail(400, `第 ${lineIndex + 2} 行学院或专业过长`);
       if (item.workProfiles.some((value) => !['repair', 'exchange', 'office'].includes(value)))
         fail(400, `第 ${lineIndex + 2} 行工作属性不正确`);
       if (item.accountRole && !['technician', 'admin'].includes(item.accountRole))
@@ -424,6 +466,8 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
       )
         fail(403, '导入包含管理范围外的成员');
       const existing = (await repository.listMembers({ studentId: item.studentId }))[0];
+      item.college ||= existing?.college || '';
+      item.major ??= existing?.major || '';
       let target = { campuses: [item.homeCampusId] };
       if (existing) {
         await requireMemberPermission(actor, existing);
@@ -515,14 +559,102 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
       requestId: input.requestId || ''
     };
   }
+  async function importEducation(actor, input) {
+    const context = await contextFor(actor);
+    if (!context.permissions['members.manage']) fail(403, '缺少权限：members.manage');
+    if (typeof input.csv !== 'string' || input.csv.length > 120000) fail(400, '名单文件过大');
+    const rows = csvRows(String(input.csv || '').replace(/^\uFEFF/, ''));
+    if (rows.length < 2 || rows.length > 201) fail(400, '每次请导入 1 至 200 名成员');
+    const headers = rows.shift().map((value) => value.trim());
+    const legacy = headers.join(',') === 'studentId,major,college';
+    if (!legacy && headers.join(',') !== 'studentId,college')
+      fail(400, '请使用 studentId,college 两列表头');
+    const seen = new Set();
+    const items = [];
+    for (const [index, cells] of rows.entries()) {
+      if (cells.length !== headers.length) fail(400, `第 ${index + 2} 行列数不正确`);
+      const [studentId, second, third] = cells.map((value) => value.trim());
+      const major = legacy ? second : undefined;
+      const enteredCollege = legacy ? third : second;
+      if (
+        !/^\d{6,20}$/.test(studentId) ||
+        (legacy && (!major || major.length > 100)) ||
+        enteredCollege.length > 100
+      )
+        fail(400, `第 ${index + 2} 行学号或学院不正确`);
+      if (seen.has(studentId)) fail(400, `学号 ${studentId} 重复`);
+      seen.add(studentId);
+      const mappedCollege = input.collegeByStudentId?.[studentId] ?? input.collegeByMajor?.[major];
+      const college =
+        (typeof mappedCollege === 'string' ? mappedCollege.trim() : '') || enteredCollege;
+      if (input.confirm && (!college || college.length > 100))
+        fail(400, `请补全学号 ${studentId} 的学院`);
+      const member = (await repository.listMembers({ studentId }))[0];
+      if (!member) fail(400, `第 ${index + 2} 行学号未匹配到成员`);
+      await requireMemberPermission(actor, member);
+      await editableMember(repository, context, member, evaluate);
+      items.push({
+        memberId: member.memberId,
+        studentId,
+        name: member.name,
+        major: major ?? member.major,
+        college,
+        revision: member.revision,
+        oldCollege: member.college,
+        oldMajor: member.major
+      });
+    }
+    const previewToken = await tokenDigest(
+      JSON.stringify(
+        items.map(({ memberId, studentId, major, college, revision }) => ({
+          memberId,
+          studentId,
+          major,
+          college,
+          revision
+        }))
+      )
+    );
+    if (!input.confirm) return { mode: 'preview', items, previewToken };
+    if (input.previewToken !== previewToken) fail(409, '导入内容已变化，请重新预览');
+    if (
+      !items.every(
+        (item) =>
+          Number.isInteger(input.expectedRevisions?.[item.studentId]) &&
+          input.expectedRevisions[item.studentId] === item.revision
+      )
+    )
+      fail(409, '成员资料已变化，请重新预览');
+    try {
+      await repository.importEducation(items, {
+        actorMemberId: context.actor.memberId,
+        actorAccount: actor.account,
+        authVersion: context.authVersion,
+        action: 'identity.education.imported',
+        sourceRef: publicResourceRef(
+          'identity',
+          'education-import',
+          input.requestId || crypto.randomUUID()
+        ),
+        after: { count: items.length },
+        requestId: input.requestId
+      });
+    } catch (error) {
+      if (/integer overflow/.test(String(error.message))) fail(409, '成员或权限已变化，请重新预览');
+      throw error;
+    }
+    return { mode: 'confirmed', count: items.length };
+  }
   return {
     memberTarget,
     memberList,
     memberDetail,
     saveWorkProfile,
     updateMember,
+    ownProfile,
     addMembership,
     endMembership,
-    importMembers
+    importMembers,
+    importEducation
   };
 }

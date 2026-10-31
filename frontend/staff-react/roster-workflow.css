@@ -865,8 +865,42 @@
 }
 .roster-time-fields {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+.roster-compose input[type='time'],
+.roster-compose input[type='datetime-local'] {
+  width: 100%;
+  min-height: 48px;
+  color-scheme: light;
+  font-variant-numeric: tabular-nums;
+}
+.roster-compose input[type='time']::-webkit-calendar-picker-indicator,
+.roster-compose input[type='datetime-local']::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.7;
+  padding: 6px;
+}
+.roster-compose input[type='time']:hover::-webkit-calendar-picker-indicator,
+.roster-compose input[type='datetime-local']:hover::-webkit-calendar-picker-indicator {
+  opacity: 1;
+}
+.roster-compose input[type='time'][aria-invalid='true'] {
+  border-color: #bf5a5a;
+}
+.roster-shift-fields {
+  align-items: start;
+}
+.roster-shift-fields > p {
+  grid-column: 1 / -1;
+  margin: -4px 0 0;
+  font-size: 13px;
+}
+.roster-time-note {
+  color: var(--ws-muted, #5d6c80);
+}
+.roster-time-error {
+  color: #a33434;
 }
 .roster-audience > div {
   max-height: 280px;
@@ -1098,16 +1132,14 @@
   min-height: 44px;
   white-space: nowrap;
 }
-.roster-time-fields output {
-  display: flex;
-  min-height: 44px;
-  align-items: center;
-}
 .roster-candidate small {
   display: block;
   color: var(--text-muted, #596579);
 }
 @media (max-width: 480px) {
+  .roster-compose .roster-time-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .week-picker > div {
     flex-wrap: wrap;
   }

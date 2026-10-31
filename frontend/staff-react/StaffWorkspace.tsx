@@ -236,7 +236,7 @@ export function StaffWorkspace({
           <p data-motion-value="text">
             {pending === '__logout__'
               ? '保存成功后退出登录，或丢弃本次未保存的改动。'
-              : '你可以先保存；也可以保留当前草稿，稍后返回继续编辑。'}
+              : '请保存或丢弃修改后切换。'}
           </p>
           {navigationError && (
             <p data-motion-value="text" className="react-error" role="alert">
@@ -266,16 +266,23 @@ export function StaffWorkspace({
                 </button>
               </>
             ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  const id = pending;
-                  setPending(null);
-                  finishNavigation(id);
-                }}
-              >
-                保留草稿并切换
-              </button>
+              <>
+                <button
+                  type="button"
+                  disabled={resolving}
+                  onClick={() => resolveNavigation('discard')}
+                >
+                  丢弃并切换
+                </button>
+                <button
+                  type="button"
+                  className="field-primary"
+                  disabled={resolving}
+                  onClick={() => resolveNavigation('save')}
+                >
+                  {resolving ? '正在处理…' : '保存并切换'}
+                </button>
+              </>
             )}
           </div>
         </Modal>

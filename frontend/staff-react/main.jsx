@@ -17,6 +17,11 @@ const AttendanceManagementModule = workspaceModule(
   'AttendanceManagement'
 );
 const AttendanceManagement = AttendanceManagementModule.Page;
+const AttendanceReportsModule = workspaceModule(
+  () => import('./AttendanceReports.jsx'),
+  'AttendanceReports'
+);
+const AttendanceReports = AttendanceReportsModule.Page;
 const MembersModule = workspaceModule(() => import('./Members.jsx'), 'Members');
 const Members = MembersModule.Page;
 const PermissionsModule = workspaceModule(() => import('./Permissions.jsx'), 'Permissions');
@@ -51,6 +56,7 @@ import './workspace-foundation.css';
 const pageModules = {
   attendance: AttendanceModule,
   'attendance-manage': AttendanceManagementModule,
+  reports: AttendanceReportsModule,
   members: MembersModule,
   permissions: PermissionsModule,
   roster: RosterAreaModule,
@@ -172,6 +178,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
   useEffect(() => () => clearWorkspaceState(), []);
   const navigate = (view) => {
     if (view.startsWith('scene:')) view = `scene:${normalizeStaffScene(view.slice(6))}`;
+    if (view === 'report-settings') view = 'reports';
     if (
       !profile ||
       !(view.startsWith('scene:')
@@ -260,6 +267,16 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
     ...(staffPermission(effectiveUser, 'statistics.read')
       ? [{ id: 'stats', label: '统计分析', group: '数据与审计' }]
       : []),
+    ...(staffPermission(effectiveUser, 'attendance.export') ||
+    staffPermission(effectiveUser, 'settings.manage')
+      ? [
+          {
+            id: 'reports',
+            label: staffPermission(effectiveUser, 'attendance.export') ? '报表导出' : '导出规则',
+            group: '数据与审计'
+          }
+        ]
+      : []),
     ...(staffPermission(effectiveUser, 'accounts.manage')
       ? [{ id: 'users', label: '账号管理', group: '平台管理' }]
       : []),
@@ -338,6 +355,12 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
       'attendance-manage',
       <AttendanceManagement user={effectiveUser} />,
       staffPermission(effectiveUser, 'attendance.correct')
+    ),
+    route(
+      'reports',
+      <AttendanceReports canExport={staffPermission(effectiveUser, 'attendance.export')} />,
+      staffPermission(effectiveUser, 'attendance.export') ||
+        staffPermission(effectiveUser, 'settings.manage')
     ),
     route(
       'staff',

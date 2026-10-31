@@ -218,6 +218,11 @@ export function RosterTaskWorkspace({
             <span>
               {rows.length} 班 · {new Set(rows.map((row) => row.memberId)).size} 人
             </span>
+            {editable && (
+              <button disabled={busy || dirty} onClick={() => setPanel('import')}>
+                导入值班表
+              </button>
+            )}
             {dirty && (
               <button
                 onClick={() => {

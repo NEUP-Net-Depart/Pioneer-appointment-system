@@ -144,7 +144,7 @@ test('deployment migrations support collection, atomic weekly submissions, revis
     assert.equal((await service.rosterTasks(root)).collections[0].name,settings.name);
     // Changed hours must stay pending until the member submits again; unchanged
     // hours retain the member's existing continuation preference.
-    for (const [offset,slotStart,slotEnd,compatible] of [[28,'17:00','19:00',false],[35,'20:00','22:00',false],[49,'19:00','21:00',true]]) {
+    for (const [offset,slotStart,slotEnd,compatible] of [[28,'17:00','19:30',false],[35,'20:00','22:00',false],[49,'19:00','21:00',true]]) {
       const adjusted=await service.createRosterTask(root,{...input,weekStart:addDays(week,offset),slotStart,slotEnd,recurrence:{enabled:false},requestId:crypto.randomUUID()});
       await service.rosterTaskState(root,adjusted.id);
       const carried=await repo.rosterSubmissions(adjusted.id),availability=await repo.availability(adjusted.id);
@@ -189,7 +189,8 @@ test('deployment migrations support collection, atomic weekly submissions, revis
     const actualPeriods=(await repo.listRosterTasks()).filter(item=>item.seriesId===task.seriesId);
     assert.equal(actualPeriods.length,3,'after weeks without visits, resolve only one current period, never a backlog of published tasks');
     assert.ok(actualPeriods.some(item=>item.weekStart===distantWeek));
-    const shortTask=await service.createRosterTask(root,{...input,weekStart:addDays(week,56),memberIds:[two.memberId],recurrence:{enabled:false},requestId:crypto.randomUUID()});
+    const shortTask=await service.createRosterTask(root,{...input,weekStart:addDays(week,56),slotStart:'18:30',slotEnd:'21:00',memberIds:[two.memberId],recurrence:{enabled:false},requestId:crypto.randomUUID()});
+    assert.equal(shortTask.slotEnd,'21:00','a published collection can use a non-two-hour shift');
     await service.submitAvailability(two,shortTask.id,{windows:[],unavailable:true,revision:-1,requestId:crypto.randomUUID()});
     await service.collectionCommand(root,shortTask.id,{action:'close',revision:shortTask.revision,requestId:crypto.randomUUID()});
     const shortage=await service.generate(root,{taskId:shortTask.id,requestId:crypto.randomUUID()});
