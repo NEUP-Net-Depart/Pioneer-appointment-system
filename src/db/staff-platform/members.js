@@ -5,7 +5,6 @@ import {
   memberColumns,
   assignmentLeaveColumn,
   rows,
-  json,
   membership,
   profile,
   assignment
@@ -231,10 +230,12 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
     }
     if (filters.q) {
       conditions.push(
-        '(m.name LIKE ? OR m.student_id LIKE ? OR EXISTS(SELECT 1 FROM staff_accounts searched WHERE searched.member_id=m.id AND searched.account LIKE ?))'
+        `(m.name LIKE ? OR m.student_id LIKE ? OR EXISTS(SELECT 1 FROM staff_accounts searched WHERE searched.member_id=m.id AND searched.account LIKE ?)
+          OR EXISTS(SELECT 1 FROM member_department_memberships mdm JOIN departments d ON d.id=mdm.department_id
+            WHERE mdm.member_id=m.id AND d.name LIKE ? AND mdm.effective_from<=? AND (mdm.effective_to IS NULL OR ?<mdm.effective_to)))`
       );
       const q = `%${filters.q}%`;
-      args.push(q, q, q);
+      args.push(q, q, q, q, filters.businessDate || dateKey(), filters.businessDate || dateKey());
     }
     if (filters.status) {
       conditions.push('m.status=?');
@@ -378,9 +379,9 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
     const statements = [
       db
         .prepare(
-          `UPDATE members SET revision=revision+1,updated_at=? WHERE id=? AND revision=? ${authorization.sql}`
+          `UPDATE members SET revision=revision+1,updated_at=? WHERE id=? AND revision=? AND EXISTS(SELECT 1 FROM departments WHERE id=? AND enabled=1) ${authorization.sql}`
         )
-        .bind(createdAt, memberId, revision, ...authorization.args),
+        .bind(createdAt, memberId, revision, input.departmentId, ...authorization.args),
       db
         .prepare(
           `INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,effective_from,effective_to,created_at) SELECT ?,?,?,?,?,?,?,? WHERE changes()>0`
@@ -451,208 +452,6 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
     ).map((row) => row.account);
   }
 
-  async function importMembers(items, actorAccount, auditRecord) {
-    const at = nowIso();
-    const statements = [];
-    const authorization = commandAuthorization(auditRecord);
-    if (auditRecord?.authVersion !== undefined)
-      statements.push(
-        db
-          .prepare(
-            `SELECT CASE WHEN 1=1 ${authorization.sql}
-      THEN 1 ELSE abs(-9223372036854775808) END AS authorized`
-          )
-          .bind(...authorization.args)
-      );
-    for (const item of items.filter((item) => Object.hasOwn(item, 'expectedMember'))) {
-      const expected = item.expectedMember;
-      let check = expected
-        ? 'EXISTS(SELECT 1 FROM members WHERE id=? AND revision=?)'
-        : 'NOT EXISTS(SELECT 1 FROM members WHERE student_id=?)';
-      const args = expected ? [expected.memberId, expected.revision] : [item.studentId];
-      if (expected && Object.hasOwn(expected, 'account')) {
-        check += expected.account
-          ? ' AND EXISTS(SELECT 1 FROM staff_accounts WHERE member_id=? AND account=? AND auth_version=?)'
-          : ' AND NOT EXISTS(SELECT 1 FROM staff_accounts WHERE member_id=?)';
-        args.push(expected.memberId);
-        if (expected.account) args.push(expected.account.account, expected.account.authVersion);
-      }
-      statements.push(
-        db
-          .prepare(`SELECT CASE WHEN ${check} THEN 1 ELSE abs(-9223372036854775808) END AS current`)
-          .bind(...args)
-      );
-    }
-    const roleRows = rows(await db.prepare('SELECT id,code FROM roles WHERE enabled=1').all());
-    const rolesByCode = Object.fromEntries(roleRows.map((row) => [row.code, row.id]));
-    for (const item of items) {
-      const existing = await db
-        .prepare('SELECT id FROM members WHERE student_id=?')
-        .bind(item.studentId)
-        .first();
-      const id = existing?.id || item.memberId || `member-${item.studentId}`;
-      statements.push(
-        db
-          .prepare(
-            `INSERT INTO members(id,name,student_id,home_campus_id,college,major,status,created_at,updated_at)
-        VALUES(?,?,?,?,?,?,?,?,?)
-        ON CONFLICT(student_id) DO UPDATE SET name=excluded.name,home_campus_id=excluded.home_campus_id,
-          college=excluded.college,major=excluded.major,status=excluded.status,
-          revision=members.revision+1,updated_at=excluded.updated_at`
-          )
-          .bind(
-            id,
-            item.name,
-            item.studentId,
-            item.homeCampusId,
-            item.college || '',
-            item.major || '',
-            item.status || 'active',
-            at,
-            at
-          )
-      );
-      if (item.departmentId)
-        statements.push(
-          db
-            .prepare(
-              `INSERT OR IGNORE INTO member_department_memberships
-        (id,member_id,department_id,assignment_type,is_primary,effective_from,created_at)
-        VALUES(?,?,?,?,?,?,?)`
-            )
-            .bind(
-              `membership-${item.studentId}-${item.departmentId}`,
-              id,
-              item.departmentId,
-              item.assignmentType || 'primary',
-              item.isPrimary === false ? 0 : 1,
-              item.effectiveFrom || dateKey(),
-              at
-            )
-        );
-      for (const profileCode of item.workProfiles || [])
-        statements.push(
-          db
-            .prepare(
-              `INSERT OR IGNORE INTO member_work_profiles(id,member_id,profile_code,effective_from)
-        VALUES(?,?,?,?)`
-            )
-            .bind(
-              `profile-import-${item.studentId}-${profileCode}`,
-              id,
-              profileCode,
-              item.effectiveFrom || dateKey()
-            )
-        );
-      for (const roleCode of item.roleCodes || []) {
-        if (!rolesByCode[roleCode]) continue;
-        const campusIds = (item.authorizedCampuses || []).map(
-          (value) => ({ 南湖: 'campus-nanhu', 浑南: 'campus-hunnan' })[value] || value
-        );
-        statements.push(
-          db
-            .prepare(
-              `INSERT OR IGNORE INTO member_roles(id,member_id,role_id,scope_bindings,effective_from)
-          VALUES(?,?,?,?,?)`
-            )
-            .bind(
-              `member-role-import-${item.studentId}-${roleCode}`,
-              id,
-              rolesByCode[roleCode],
-              json(item.roleScope || (campusIds.length ? { campusIds } : {})),
-              item.effectiveFrom || dateKey()
-            )
-        );
-      }
-      const accounts = await accountsForMember(id);
-      const campusIds = (item.authorizedCampuses || []).map(
-        (value) => ({ 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' })[value] || value
-      );
-      // Profile imports preserve login authorization. The service resolves a
-      // single login, enforced by the unique member index.
-      const targets = item.accountTargets || [];
-      if (targets.some((account) => !accounts.includes(account)))
-        throw new Error('IMPORT_ACCOUNT_CHANGED');
-      for (const account of targets) {
-        // Also clear grants when the import intentionally supplies an empty
-        // list; leaving old rows behind would keep stale access alive.
-        statements.push(
-          db.prepare('DELETE FROM staff_campus_grants WHERE account=?').bind(account)
-        );
-        for (const campus of campusIds)
-          statements.push(
-            db
-              .prepare('INSERT OR IGNORE INTO staff_campus_grants(account,campus) VALUES(?,?)')
-              .bind(account, campus)
-          );
-      }
-      if (accounts.length)
-        statements.push(
-          db
-            .prepare(
-              'UPDATE staff_accounts SET token_version=token_version+1,auth_version=auth_version+1 WHERE member_id=?'
-            )
-            .bind(id)
-        );
-      if (
-        !accounts.length &&
-        (item.workProfiles?.length || item.roleCodes?.length) &&
-        item.roleCodes?.length &&
-        campusIds.length
-      ) {
-        statements.push(
-          db
-            .prepare(
-              `INSERT INTO staff_whitelist(student_id,expected_name,expected_role,created_by,created_at)
-          VALUES(?,?,?,?,?) ON CONFLICT(student_id) DO UPDATE SET expected_name=excluded.expected_name,expected_role=excluded.expected_role,revision=staff_whitelist.revision+1
-          WHERE staff_whitelist.status='open'`
-            )
-            .bind(item.studentId, item.name, item.accountRole || 'technician', actorAccount, at)
-        );
-        statements.push(
-          db
-            .prepare(
-              'INSERT OR IGNORE INTO activation_member_bindings(student_id,member_id) VALUES(?,?)'
-            )
-            .bind(item.studentId, id)
-        );
-        statements.push(
-          db
-            .prepare(
-              "DELETE FROM whitelist_campus_grants WHERE student_id=? AND EXISTS(SELECT 1 FROM staff_whitelist WHERE student_id=? AND status='open')"
-            )
-            .bind(item.studentId, item.studentId)
-        );
-        for (const campus of campusIds)
-          statements.push(
-            db
-              .prepare(
-                "INSERT OR IGNORE INTO whitelist_campus_grants(student_id,campus) SELECT ?,? WHERE EXISTS(SELECT 1 FROM staff_whitelist WHERE student_id=? AND status='open')"
-              )
-              .bind(item.studentId, campus, item.studentId)
-          );
-      }
-    }
-    if (statements.length) {
-      if (auditRecord) statements.push(auditStatement(auditRecord));
-      await db.batch(statements);
-    }
-    const result = [];
-    for (let offset = 0; offset < items.length; offset += 90) {
-      const page = items.slice(offset, offset + 90);
-      result.push(
-        ...rows(
-          await db
-            .prepare(
-              `SELECT ${memberColumns} FROM members m WHERE m.student_id IN (${page.map(() => '?').join(',')})`
-            )
-            .bind(...page.map((item) => item.studentId))
-            .all()
-        )
-      );
-    }
-    return result.sort((a, b) => a.student_id.localeCompare(b.student_id));
-  }
   async function importEducation(items, auditRecord) {
     const authorization = commandAuthorization(auditRecord);
     const at = nowIso();
@@ -703,7 +502,6 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
     listMemberships,
     addMembership,
     endMembership,
-    importMembers,
     importEducation
   };
 }

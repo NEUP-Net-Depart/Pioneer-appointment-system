@@ -147,6 +147,26 @@ export function commandsDomain({ db }) {
     return { sql: sql.join(' '), args };
   }
   return {
+    async memberAudit(memberId) {
+      return rows(
+        await db
+          .prepare(
+            `SELECT actor_account,action,occurred_at,reason FROM audit_events
+        WHERE action IN ('identity.member.created','identity.member.imported','identity.member.updated','identity.qualification.granted','identity.qualification.ended','organization.membership.updated','organization.membership.ended','authorization.member_roles.updated')
+        AND (json_extract(source_ref,'$.id')=?
+          OR json_extract(source_ref,'$.id') IN (SELECT id FROM member_department_memberships WHERE member_id=?)
+          OR json_extract(source_ref,'$.id') IN (SELECT id FROM member_work_profiles WHERE member_id=?))
+        ORDER BY occurred_at DESC,id DESC LIMIT 50`
+          )
+          .bind(memberId, memberId, memberId)
+          .all()
+      ).map((row) => ({
+        actorAccount: row.actor_account,
+        action: row.action,
+        occurredAt: row.occurred_at,
+        reason: row.reason
+      }));
+    },
     createReceipt,
     claimReceipt,
     releaseReceipt,

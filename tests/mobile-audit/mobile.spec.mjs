@@ -109,7 +109,7 @@ test('full-admin-inventory-and-secondary-views', async ({ page, audit }) => {
     fit(await audit.captureFont200(entry.id.replace(':', '-')));
   }
   for (const [parent, labels] of [
-    ['账号管理', ['激活审核', '加入资格', '账号列表']],
+    ['激活与账号', ['激活审核', '加入资格', '账号列表']],
     ['预约配置', ['日期实际容量', '维修地点', '暂停日期', '放号时间', '校区公告', '每周模板']],
     ['班次与排班', ['我的申请', '班次']],
     ['请假审批', ['已批准', '已退回', '全部', '待审批']],
@@ -121,9 +121,9 @@ test('full-admin-inventory-and-secondary-views', async ({ page, audit }) => {
       fit(await audit.capture(`section-${parent}-${label}`));
     }
   }
-  await navigate(page, '成员管理');
+  await navigate(page, '人员管理');
   await settled(page);
-  await page.locator('.members-results .react-row').filter({ hasText: '陈宇' }).getByRole('button', { name: '编辑成员与权限' }).click();
+  await page.locator('.members-results .react-row').filter({ hasText: '陈宇' }).getByRole('button', { name: '人员详情' }).click();
   const dialog = page.getByRole('dialog');
   for (const label of ['成员资料', '工作资格', '角色授权']) {
     await dialog.getByRole('button', { name: label, exact: true }).click();

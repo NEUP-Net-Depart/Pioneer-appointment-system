@@ -132,18 +132,18 @@ test('admin-real-office-roster-availability-publish', async ({ page, request, au
 
 test('admin-members-accounts-attendance-export-dialogs', async ({ page, request, audit }) => {
   await login(page);
-  await navigate(page, '成员管理');
-  await page.getByRole('button', { name: '导入名单', exact: true }).click();
+  await navigate(page, '人员管理');
+  await page.getByRole('button', { name: '批量导入', exact: true }).click();
   fit(await audit.capture('member-import', { axe: true }));
   await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
-  await page.locator('.members-results .react-row').filter({ hasText: '陈宇' }).getByRole('button', { name: '编辑成员与权限' }).click();
+  await page.locator('.members-results .react-row').filter({ hasText: '陈宇' }).getByRole('button', { name: '人员详情' }).click();
   await page.getByRole('dialog').getByRole('button', { name: '角色授权', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: '添加角色', exact: true }).click();
   fit(await audit.capture('member-role-scope-editor'));
   await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
   fit(await audit.capture('member-unsaved-confirm'));
   await page.getByRole('dialog').getByRole('button', { name: '放弃修改并关闭', exact: true }).click();
-  await navigate(page, '账号管理');
+  await navigate(page, '激活与账号');
   await expect(page.locator('.account-row')).not.toHaveCount(0);
   await page.locator('.account-row').filter({ hasText: '陈宇' }).getByRole('button').click();
   fit(await audit.capture('account-editor', { axe: true }));

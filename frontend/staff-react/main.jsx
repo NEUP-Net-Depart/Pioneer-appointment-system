@@ -22,7 +22,7 @@ const AttendanceReportsModule = workspaceModule(
   'AttendanceReports'
 );
 const AttendanceReports = AttendanceReportsModule.Page;
-const MembersModule = workspaceModule(() => import('./Members.jsx'), 'Members');
+const MembersModule = workspaceModule(() => import('./People.jsx'), 'People');
 const Members = MembersModule.Page;
 const PermissionsModule = workspaceModule(() => import('./Permissions.jsx'), 'Permissions');
 const Permissions = PermissionsModule.Page;
@@ -38,8 +38,6 @@ const StatisticsModule = workspaceModule(() => import('./Statistics'), 'Statisti
 const Statistics = StatisticsModule.Page;
 const AccountSettingsModule = workspaceModule(() => import('./AccountSettings'), 'AccountSettings');
 const AccountSettings = AccountSettingsModule.Page;
-const AccountsModule = workspaceModule(() => import('./Accounts'), 'Accounts');
-const Accounts = AccountsModule.Page;
 import {
   staffPermission,
   staffViewAllowed,
@@ -66,7 +64,7 @@ const pageModules = {
   stats: StatisticsModule,
   settings: AccountSettingsModule,
   capacity: AccountSettingsModule,
-  users: AccountsModule,
+  users: MembersModule,
   'office-roster': OfficeRosterModule,
   'leave-review': LeaveReviewModule
 };
@@ -178,6 +176,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
   useEffect(() => () => clearWorkspaceState(), []);
   const navigate = (view) => {
     if (view.startsWith('scene:')) view = `scene:${normalizeStaffScene(view.slice(6))}`;
+    if (view === 'users') view = 'members';
     if (view === 'report-settings') view = 'reports';
     if (
       !profile ||
@@ -255,11 +254,13 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
     ...(staffPermission(effectiveUser, 'repair.summary.read')
       ? [{ id: 'staff', label: '预约记录', group: '今日工作' }]
       : []),
-    ...(publishedView('members', 'members')
-      ? [{ id: 'members', label: '成员管理', group: '平台管理' }]
+    ...(publishedView('members', 'members') ||
+    staffPermission(effectiveUser, 'accounts.manage') ||
+    staffPermission(effectiveUser, 'settings.manage')
+      ? [{ id: 'members', label: '人员管理', group: '平台管理' }]
       : []),
     ...(publishedView('roles', 'permissions')
-      ? [{ id: 'permissions', label: '授权管理', group: '平台管理' }]
+      ? [{ id: 'permissions', label: '角色与权限', group: '平台管理' }]
       : []),
     ...(publishedView('attendance', 'attendance')
       ? [{ id: 'attendance', label: '本人签到记录', group: '我的' }]
@@ -276,9 +277,6 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
             group: '数据与审计'
           }
         ]
-      : []),
-    ...(staffPermission(effectiveUser, 'accounts.manage')
-      ? [{ id: 'users', label: '账号管理', group: '平台管理' }]
       : []),
     ...(profile ? [{ id: 'settings', label: '账号安全', group: '我的' }] : []),
     ...(staffPermission(effectiveUser, 'settings.manage')
@@ -381,11 +379,6 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
       />
     ),
     route(
-      'users',
-      <Accounts user={user} />,
-      workspaceLinks.some((entry) => entry.id === 'users')
-    ),
-    route(
       'attendance',
       <section className="workspace-module">
         <Attendance onNavigate={requestNavigate} />
@@ -397,7 +390,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
       <section className="workspace-module">
         <Members user={effectiveUser} />
       </section>,
-      published.has('members')
+      workspaceLinks.some((entry) => entry.id === 'members')
     ),
     route(
       'permissions',

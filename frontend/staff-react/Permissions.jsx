@@ -126,7 +126,7 @@ export function Permissions() {
   }
   return (
     <section className="react-page permissions-workspace">
-      <WorkspaceHeader group="平台管理" title="授权管理" />
+      <WorkspaceHeader group="平台管理" title="角色与权限" />
       {error && (
         <p data-motion-value="text" className="react-error" role="alert">
           {error}

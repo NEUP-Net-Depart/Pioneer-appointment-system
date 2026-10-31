@@ -1,6 +1,7 @@
 import { fail } from '../lib/http.js';
 import { hashPassword } from '../lib/passwords.js';
 import { roleLevel } from '../../shared/constants.js';
+import { publicUserView } from '../db/users.js';
 import { canManageAccount, requireGrantScope, requireRole, requireCampus } from './permissions.js';
 
 export function userService(users, staff) {
@@ -11,6 +12,11 @@ export function userService(users, staff) {
     return target;
   }
   return {
+    async detail(id, actor) {
+      actor = await staff.scopedActor(actor, 'accounts.manage');
+      const target = await manageable(id, actor);
+      return { ...publicUserView(target), actions: { edit: true, changeStatus: true, resetPassword: true } };
+    },
     async assignees(query, actor) {
       requireRole(actor, 'technician');
       actor = await staff.scopedActor(actor, 'repair.correct');
