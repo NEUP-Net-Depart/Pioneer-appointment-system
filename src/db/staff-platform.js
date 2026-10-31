@@ -39,7 +39,8 @@ export function staffPlatformRepository(db) {
     listMemberships,
     addMembership,
     endMembership,
-    importMembers
+    importMembers,
+    importEducation
   } = membersDomain({ db, auditStatement, commandAuthorization });
   const {
     permissionDefinitions,
@@ -65,6 +66,8 @@ export function staffPlatformRepository(db) {
     attendanceOptions,
     attendanceExport,
     weeklyAttendanceData,
+    attendanceReportSettings,
+    updateAttendanceReportSettings,
     setPresence,
     attendanceCorrectionFingerprint,
     correctAttendance
@@ -149,6 +152,7 @@ export function staffPlatformRepository(db) {
     listPresence,
     activeRepair,
     importMembers,
+    importEducation,
     dutyEvent,
     latestIntake,
     receptionHistory,
@@ -172,6 +176,8 @@ export function staffPlatformRepository(db) {
     listAttendance,
     attendanceExport,
     weeklyAttendanceData,
+    attendanceReportSettings,
+    updateAttendanceReportSettings,
     attendanceCorrectionFingerprint,
     correctAttendance,
     setPresence,

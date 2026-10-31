@@ -448,10 +448,12 @@ export function attendanceDomain({ db, auditStatement, commandAuthorization }) {
         .bind(start, end),
       db
         .prepare(
-          `SELECT m.id AS memberId,m.name,m.student_id AS studentId,(SELECT json_group_array(DISTINCT g.campus) FROM staff_accounts a JOIN staff_campus_grants g ON g.account=a.account WHERE a.member_id=m.id) AS campuses FROM members m
-        WHERE EXISTS(SELECT 1 FROM member_roles mr WHERE mr.member_id=m.id AND mr.effective_from<=? AND (mr.effective_to IS NULL OR mr.effective_to>?))`
+          `SELECT m.id AS memberId,m.name,m.student_id AS studentId,m.home_campus_id AS homeCampusId,m.college,m.major,(SELECT json_group_array(DISTINCT g.campus) FROM staff_accounts a JOIN staff_campus_grants g ON g.account=a.account WHERE a.member_id=m.id) AS campuses FROM members m
+        WHERE EXISTS(SELECT 1 FROM member_roles mr WHERE mr.member_id=m.id AND mr.effective_from<=? AND (mr.effective_to IS NULL OR mr.effective_to>?))
+          OR EXISTS(SELECT 1 FROM attendance_records ar JOIN attendance_events e ON e.id=ar.event_id
+            WHERE ar.member_id=m.id AND e.type='duty' AND e.business_date BETWEEN ? AND ?)`
         )
-        .bind(end, start)
+        .bind(end, start, start, end)
     ]);
     return {
       records: rows(result[0]).map((row) => ({
@@ -461,6 +463,38 @@ export function attendanceDomain({ db, auditStatement, commandAuthorization }) {
       })),
       members: rows(result[1]).map((row) => ({ ...row, campuses: parseJson(row.campuses, []) }))
     };
+  }
+
+  async function attendanceReportSettings() {
+    const row = await db.prepare('SELECT * FROM attendance_report_settings WHERE id=1').first();
+    return {
+      countMode: row.count_mode,
+      hoursPerCount: row.hours_per_count,
+      mergeLeaders: !!row.merge_leaders,
+      revision: row.revision
+    };
+  }
+
+  async function updateAttendanceReportSettings(input, auditRecord) {
+    const authorization = commandAuthorization(auditRecord);
+    const result = await db.batch([
+      db
+        .prepare(
+          `UPDATE attendance_report_settings SET count_mode=?,hours_per_count=?,merge_leaders=?,
+        revision=revision+1,updated_at=?,updated_by=? WHERE id=1 AND revision=? ${authorization.sql}`
+        )
+        .bind(
+          input.countMode,
+          input.hoursPerCount,
+          Number(input.mergeLeaders),
+          nowIso(),
+          auditRecord.actorAccount,
+          input.revision,
+          ...authorization.args
+        ),
+      auditStatement(auditRecord, true)
+    ]);
+    return result[0]?.meta?.changes ? attendanceReportSettings() : null;
   }
 
   async function setPresence(memberId, input, revision, actor, auditRecord) {
@@ -539,6 +573,8 @@ export function attendanceDomain({ db, auditStatement, commandAuthorization }) {
     attendanceOptions,
     attendanceExport,
     weeklyAttendanceData,
+    attendanceReportSettings,
+    updateAttendanceReportSettings,
     setPresence,
     attendanceCorrectionFingerprint,
     correctAttendance

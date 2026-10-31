@@ -1457,3 +1457,18 @@
 .followup-receipt p {
   margin: 8px 0 0;
 }
+.education-major-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 12px;
+}
+.education-major-list label {
+  display: grid;
+  gap: 6px;
+}
+.education-import-preview {
+  max-height: 320px;
+}
+.roster-import-preview {
+  max-height: 360px;
+}

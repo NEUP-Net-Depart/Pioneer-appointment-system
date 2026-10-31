@@ -1,6 +1,6 @@
 import { parseJson } from '../../platform/contracts.js';
 
-const memberColumns = `m.id,m.name,m.student_id,m.home_campus_id,m.status,m.revision,m.created_at,m.updated_at`;
+const memberColumns = `m.id,m.name,m.student_id,m.home_campus_id,m.college,m.major,m.status,m.revision,m.created_at,m.updated_at`;
 
 const assignmentLeaveColumn = `(SELECT lr.status FROM roster_leave_facts lr WHERE lr.origin_assignment_id=COALESCE(da.origin_assignment_id,da.id) AND lr.member_id=da.member_id
   AND lr.status IN ('pending','approved') ORDER BY CASE lr.status WHEN 'approved' THEN 0 ELSE 1 END,lr.created_at DESC,lr.id DESC LIMIT 1) AS leave_status`;

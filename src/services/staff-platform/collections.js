@@ -17,7 +17,6 @@ import {
   recurringPeriodWeek
 } from '../../modules/rosters/recurrence.js';
 import { rosterCollections } from '../../../shared/roster-collections.js';
-import { dutyEnd } from '../../../shared/duty-window.js';
 
 export function collectionsDomain({
   repository,
@@ -736,8 +735,6 @@ export function collectionsDomain({
       !Number.isFinite(Date.parse(input.deadline))
     )
       fail(400, '请选择周一、有效校区、完整班次时间和填报截止时间');
-    if (!period && input.workflowVersion === 1 && dutyEnd(input.slotStart) !== input.slotEnd)
-      fail(400, '每次值班须为完整两小时，请调整开始时间');
     if (
       input.departmentIds !== undefined &&
       (!Array.isArray(input.departmentIds) ||

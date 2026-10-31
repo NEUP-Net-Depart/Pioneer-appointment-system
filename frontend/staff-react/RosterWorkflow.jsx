@@ -12,6 +12,7 @@ import { useRosterWorkflow } from './useRosterWorkflow';
 import { RosterTaskWorkspace } from './RosterTaskWorkspace';
 import { RosterCommandDialog } from './RosterCommandDialog';
 import { RosterCandidatePicker } from './RosterCandidatePicker';
+import { RosterImport } from './RosterImport';
 import './roster.css';
 import './roster-workflow.css';
 export { RosterStage } from './RosterStage';
@@ -274,6 +275,20 @@ export function RosterWorkflow({ user, office = false }) {
             </button>
           </div>
         </Modal>
+      )}
+      {panel === 'import' && draft && (
+        <RosterImport
+          taskId={taskId}
+          draft={draft}
+          members={members}
+          office={office}
+          onClose={() => setPanel('')}
+          onSaved={() => {
+            setPanel('');
+            load(taskId);
+            setNotice('值班表已导入草稿，请检查问题并发布。');
+          }}
+        />
       )}
       {panel === 'automation' && data?.series && (
         <Modal title="收集任务设置" onClose={() => setPanel('')}>

@@ -35,7 +35,7 @@ async function capture(page,name){
 }
 
 
-test('weekday capacity configuration updates booked days and preserves unsaved edits',async({browser})=>{
+test('weekday capacity configuration discards unsaved edits and updates booked days',async({browser})=>{
  const contexts=await Promise.all([30,31].map(n=>browser.newContext({baseURL:process.env.E2E_BASE_URL,extraHTTPHeaders:{'CF-Connecting-IP':`198.51.100.${n}`}}))),root=await contexts[0].newPage(),student=await contexts[1].newPage();
  let token,template;
  try{
@@ -47,8 +47,9 @@ test('weekday capacity configuration updates booked days and preserves unsaved e
   await root.locator('.field-sidebar').getByRole('button',{name:'账号安全',exact:true}).click();
   await root.getByRole('dialog',{name:'有未保存的调整'}).getByRole('button',{name:'留在当前页面',exact:true}).click();await expect(cell.locator('input')).toHaveValue('7');
   await staffPage(root,'账号安全');await expect(root.getByRole('heading',{name:'账号安全',exact:true})).toBeVisible();
-  await staffPage(root,'预约配置');await expect(cell.locator('input')).toHaveValue('7');
+  await staffPage(root,'预约配置');await expect(cell.locator('input')).toHaveValue(String(template.capacity));
   const retainedTemplate=(await (await root.request.get('/api/slot-capacities',{headers})).json()).items.find(row=>row.campus===template.campus&&row.weekday===template.weekday&&row.timeSlot===template.timeSlot);expect(retainedTemplate.capacity).toBe(template.capacity);
+  await cell.dblclick();await cell.locator('input').fill('7');await cell.locator('input').press('Enter');
   await root.getByRole('button',{name:'预览并保存',exact:true}).click();await root.getByRole('button',{name:'确认保存全部修改',exact:true}).click();await expect(root.getByRole('button',{name:'预览并保存',exact:true})).toHaveCount(0);
   const savedTemplate=(await (await root.request.get('/api/slot-capacities',{headers})).json()).items.find(row=>row.campus===template.campus&&row.weekday===template.weekday&&row.timeSlot===template.timeSlot);expect(savedTemplate.capacity).toBe(7);
   const item=await booking(student,'20308101',{file:false});const before=await (await root.request.get('/api/slot-capacities/actual?'+new URLSearchParams({campus:'南湖',date}),{headers})).json();expect(before.source).toBe('snapshot');

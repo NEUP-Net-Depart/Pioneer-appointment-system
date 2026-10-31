@@ -15,6 +15,7 @@ export function staffViewAllowed(user, view) {
   if (view === 'roster-requests') return staffPermission(user, 'roster.read');
   if (view === 'roster-manage') return staffPermission(user,'roster.repair.manage') || staffPermission(user,'roster.repair.configure');
   if (view === 'roster') return staffPermission(user, 'roster.read') || staffPermission(user, 'roster.repair.manage') || staffPermission(user,'roster.repair.configure');
+  if (view === 'reports') return staffPermission(user, 'attendance.export') || staffPermission(user, 'settings.manage');
   return !!permissions[view] && staffPermission(user, permissions[view]);
 }
 

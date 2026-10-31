@@ -13,6 +13,7 @@ export async function mockStaff(page, options = {}) {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/auth/login') return route.fulfill({ json: { ...session.profile, token: 'test-session' } });
     if (path === '/api/auth/me') return route.fulfill({ json: session.profile });
+    if (path === '/api/me/profile') return route.fulfill({ json: { member: { name: session.profile.name, studentId: session.profile.account, college: '理学院', homeCampusId: 'campus-nanhu', revision: 0 } } });
     if (['/api/field/home','/api/field/board'].includes(path)) return route.fulfill({ json: session.home });
     if (path === '/api/appointments/overview') return route.fulfill({ json: { dates: [], campuses: session.profile.authorizedCampuses, items: [] } });
     if (path === '/api/stats/summary') return route.fulfill({ json: { total: 0, completed: 0, cancelled: 0, expired: 0, classified: 0, repaired: 0, daily: {}, faults: {}, campuses: {}, technicians: {} } });
@@ -32,7 +33,7 @@ export async function staffPage(page, label) {
     await page.getByRole('navigation', { name: '手机岗位导航' }).getByRole('button', { name: '更多' }).click();
     await page.getByRole('dialog', { name: '工作入口' }).getByRole('button', { name: new RegExp(label) }).click();
   }
-  const keep = page.getByRole('button', { name: '保留草稿并切换', exact: true });
-  if (await keep.isVisible()) await keep.click();
+  const discard = page.getByRole('button', { name: '丢弃并切换', exact: true });
+  if (await discard.isVisible()) await discard.click();
   await expect(page.locator('.field-sidebar').getByRole('button', { name: label, exact: true, includeHidden: true })).toHaveAttribute('aria-current', 'page');
 }

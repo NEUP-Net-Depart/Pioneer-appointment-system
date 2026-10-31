@@ -9,6 +9,7 @@ import { WorkspaceSections } from './WorkspaceSections';
 import { MemberQualifications } from './MemberQualifications.jsx';
 import { StaffIdentity } from './StaffIdentity';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
+import { NEU_COLLEGES } from '../../shared/neu-colleges.js';
 
 const campuses = [
   { id: 'campus-nanhu', name: '南湖' },
@@ -28,6 +29,8 @@ export function MemberEditor({
   const [readRevision, setReadRevision] = useState(0);
   const [profile, setProfile] = useState({
     name: member.name,
+    college: member.college || '',
+    major: member.major || '',
     homeCampusId: member.homeCampusId,
     status: member.status
   });
@@ -42,7 +45,10 @@ export function MemberEditor({
     [confirmClose, setConfirmClose] = useState(false);
   const [qualificationDirty, setQualificationDirty] = useState(false);
   const profileDirty =
-    detail && ['name', 'homeCampusId', 'status'].some((key) => profile[key] !== detail.member[key]);
+    detail &&
+    ['name', 'college', 'major', 'homeCampusId', 'status'].some(
+      (key) => profile[key] !== detail.member[key]
+    );
   const bindingsDirty =
     detail && JSON.stringify(bindings) !== JSON.stringify(detail.bindings || []);
   const dirty = profileDirty || bindingsDirty || qualificationDirty;
@@ -54,6 +60,8 @@ export function MemberEditor({
     discard: () => {
       setProfile({
         name: detail.member.name,
+        college: detail.member.college,
+        major: detail.member.major,
         homeCampusId: detail.member.homeCampusId,
         status: detail.member.status
       });
@@ -79,6 +87,8 @@ export function MemberEditor({
         setBindings(data.bindings || []);
         setProfile({
           name: data.member.name,
+          college: data.member.college,
+          major: data.member.major,
           homeCampusId: data.member.homeCampusId,
           status: data.member.status
         });
@@ -228,28 +238,57 @@ export function MemberEditor({
               </label>
               <label>
                 所属校区
-                <select
-                  data-motion-value="field"
-                  value={profile.homeCampusId}
-                  onChange={(event) => setProfile({ ...profile, homeCampusId: event.target.value })}
-                >
-                  {campuses.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
+                <span className="workspace-native-select">
+                  <select
+                    data-motion-value="field"
+                    value={profile.homeCampusId}
+                    onChange={(event) =>
+                      setProfile({ ...profile, homeCampusId: event.target.value })
+                    }
+                  >
+                    {campuses.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="workspace-chevron" aria-hidden="true" />
+                </span>
+              </label>
+              <label>
+                学院
+                <span className="workspace-native-select">
+                  <select
+                    data-motion-value="field"
+                    value={profile.college}
+                    onChange={(event) => setProfile({ ...profile, college: event.target.value })}
+                  >
+                    <option value="">待补充</option>
+                    {profile.college && !NEU_COLLEGES.includes(profile.college) && (
+                      <option value={profile.college}>{profile.college}</option>
+                    )}
+                    {NEU_COLLEGES.map((college) => (
+                      <option key={college} value={college}>
+                        {college}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="workspace-chevron" aria-hidden="true" />
+                </span>
               </label>
               <label>
                 成员状态
-                <select
-                  data-motion-value="field"
-                  value={profile.status}
-                  onChange={(event) => setProfile({ ...profile, status: event.target.value })}
-                >
-                  <option value="active">正常</option>
-                  <option value="inactive">停用</option>
-                </select>
+                <span className="workspace-native-select">
+                  <select
+                    data-motion-value="field"
+                    value={profile.status}
+                    onChange={(event) => setProfile({ ...profile, status: event.target.value })}
+                  >
+                    <option value="active">正常</option>
+                    <option value="inactive">停用</option>
+                  </select>
+                  <span className="workspace-chevron" aria-hidden="true" />
+                </span>
               </label>
               <button className="react-primary">保存资料</button>
             </fieldset>

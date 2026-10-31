@@ -7,6 +7,7 @@ import { readWorkspaceState, writeWorkspaceState } from './workspace-state.js';
 import { MemberEditor } from './MemberEditor.jsx';
 import { staffPermission } from '../../shared/staff-access.js';
 import { MemberImport } from './MemberImport.jsx';
+import { EducationImport } from './EducationImport.jsx';
 import { StaffIdentity } from './StaffIdentity';
 
 export function Members({ user }) {
@@ -22,6 +23,7 @@ export function Members({ user }) {
   const query = JSON.stringify([q, campus, status]);
   const [selected, setSelected] = useState(null);
   const [importing, setImporting] = useState(false);
+  const [educationImporting, setEducationImporting] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(!saved);
   const generation = useRef(0);
@@ -88,9 +90,12 @@ export function Members({ user }) {
     <section className="react-page react-members-page">
       <WorkspaceHeader group="平台管理" title="成员管理">
         {staffPermission(user, 'members.manage') && (
-          <button className="react-primary" onClick={() => setImporting(true)}>
-            导入名单
-          </button>
+          <>
+            <button className="react-primary" onClick={() => setImporting(true)}>
+              导入名单
+            </button>
+            <button onClick={() => setEducationImporting(true)}>批量补学院</button>
+          </>
         )}
         <button onClick={() => load()} disabled={busy}>
           刷新
@@ -156,6 +161,7 @@ export function Members({ user }) {
                 <small data-motion-value="text">
                   {item.studentId || item.account || '未关联登录账号'}
                 </small>
+                {item.college && <small>{item.college}</small>}
               </span>
               <span data-motion-value="text" data-label="所属校区">
                 {item.homeCampusId === 'campus-hunnan'
@@ -228,6 +234,9 @@ export function Members({ user }) {
         />
       )}
       {importing && <MemberImport onClose={() => setImporting(false)} onSaved={() => load()} />}
+      {educationImporting && (
+        <EducationImport onClose={() => setEducationImporting(false)} onSaved={() => load()} />
+      )}
     </section>
   );
 }

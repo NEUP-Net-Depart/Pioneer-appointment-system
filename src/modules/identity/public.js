@@ -6,6 +6,8 @@ export function memberPublic(row, options = {}) {
     memberId: row.id,
     name: row.name,
     studentId: row.student_id || '',
+    college: row.college || '',
+    major: row.major || '',
     homeCampusId: row.home_campus_id || '',
     status: row.status,
     revision: row.revision,

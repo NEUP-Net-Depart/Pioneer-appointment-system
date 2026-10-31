@@ -6,6 +6,7 @@ import { attendanceDomain } from './staff-platform/attendance.js';
 import { collectionsDomain } from './staff-platform/collections.js';
 import { planningDomain } from './staff-platform/planning.js';
 import { requestsDomain } from './staff-platform/requests.js';
+import { attendanceReportingDomain } from './staff-platform/reporting.js';
 
 export function staffPlatformService({
   repository,
@@ -28,9 +29,11 @@ export function staffPlatformService({
     memberDetail,
     saveWorkProfile,
     updateMember,
+    ownProfile,
     addMembership,
     endMembership,
-    importMembers
+    importMembers,
+    importEducation
   } = membersDomain({ repository, platform, contextFor, evaluate });
   const { permissions, roles, createRole, updateRole, previewRole, bindMemberRoles } = rolesDomain({
     repository,
@@ -66,6 +69,8 @@ export function staffPlatformService({
     requirePermission,
     withReceipt
   });
+  const { reportSettings, saveReportSettings, volunteerReport, attendanceMatrix } =
+    attendanceReportingDomain({ repository, platform, contextFor, evaluate });
   const {
     rosterOptions,
     rosterCandidates,
@@ -90,16 +95,17 @@ export function staffPlatformService({
     requirePermission,
     rosterWrite
   });
-  const { rosterTaskState, generate, reviseRoster, updateRoster, publish } = planningDomain({
-    repository,
-    platform,
-    calendarClock,
-    collectionStatus,
-    contextFor,
-    commandRecord,
-    applyAvailabilityContinuation,
-    rosterWrite
-  });
+  const { rosterTaskState, generate, reviseRoster, updateRoster, publish, importRoster } =
+    planningDomain({
+      repository,
+      platform,
+      calendarClock,
+      collectionStatus,
+      contextFor,
+      commandRecord,
+      applyAvailabilityContinuation,
+      rosterWrite
+    });
   const {
     rosterMine,
     leave,
@@ -122,6 +128,7 @@ export function staffPlatformService({
     memberList,
     memberDetail,
     updateMember,
+    ownProfile,
     addMembership,
     endMembership,
     permissions,
@@ -132,6 +139,7 @@ export function staffPlatformService({
     bindMemberRoles,
     organization,
     importMembers,
+    importEducation,
     saveWorkProfile,
     deskSummary,
     workbench,
@@ -159,6 +167,7 @@ export function staffPlatformService({
     rosterTaskState,
     generate,
     updateRoster,
+    importRoster,
     publish,
     rosterMine,
     seriesCommand,
@@ -175,6 +184,10 @@ export function staffPlatformService({
     swaps,
     swapDecision,
     attendanceExport,
+    reportSettings,
+    saveReportSettings,
+    volunteerReport,
+    attendanceMatrix,
     audit,
     recordAudit: (input) => repository.audit(input)
   };

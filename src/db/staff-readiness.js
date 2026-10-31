@@ -1,4 +1,4 @@
-export const STAFF_RELEASE = 'reception-queue-0040';
+export const STAFF_RELEASE = 'attendance-reports-0041';
 
 // Prepare real projections, including empty tables. A database with only the
 // old staff schema must fail readiness before CI accepts a deployment.
@@ -6,7 +6,7 @@ export async function verifyStaffSchema(db) {
   const projections = {
     staff_accounts: 'member_id,auth_version,token_version',
     appointments: 'registration_flow,access_token_hash,front_photo_id,back_photo_id,booking_notices',
-    members: 'id,status',
+    members: 'id,status,college,major',
     member_work_profiles: 'member_id,profile_code',
     member_roles: 'member_id,role_id,scope_bindings',
     role_grants: 'permission_code,scope_spec,condition_spec',
@@ -16,6 +16,7 @@ export async function verifyStaffSchema(db) {
     repair_queue_counters: 'campus,queue_date,last_number',
     operation_receipts: 'request_id,payload_hash,result_status',
     attendance_records: 'member_id,event_id',
+    attendance_report_settings: 'id,count_mode,hours_per_count,merge_leaders,revision',
     roster_collection_series: 'id',
     roster_submissions: 'member_id',
     duty_assignments: 'member_id,origin_assignment_id',

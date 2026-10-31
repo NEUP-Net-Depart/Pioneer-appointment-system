@@ -947,18 +947,19 @@ test('capacity workspace preserves drafts, reconciles conflicts and supports mob
       expect(await navigation.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
       await page.screenshot({ path: `output/field-workflow/unsaved-navigation-${width}.png` });
     }
-    await expect(navigation.locator('.field-actions').getByRole('button')).toHaveText(['留在当前页面', '保留草稿并切换']);
+    await expect(navigation.locator('.field-actions').getByRole('button')).toHaveText(['留在当前页面', '丢弃并切换', '保存并切换']);
     await navigation.getByRole('button', { name: '留在当前页面', exact: true }).click();
     await expect(input).toHaveValue('8');
     expect(writes).toBe(0);
     await sidebar.getByRole('button', { name: '账号安全', exact: true }).click();
-    await navigation.getByRole('button', { name: '保留草稿并切换', exact: true }).click();
+    await navigation.getByRole('button', { name: '丢弃并切换', exact: true }).click();
     await expect(page.getByRole('heading', { name: '账号安全', exact: true })).toBeVisible();
     expect(writes).toBe(0);
-    expect(await page.evaluate(() => window.dispatchEvent(new Event('beforeunload', { cancelable: true })))).toBe(false);
+    expect(await page.evaluate(() => window.dispatchEvent(new Event('beforeunload', { cancelable: true })))).toBe(true);
     await sidebar.getByRole('button', { name: '预约配置', exact: true }).click();
     await expect(navigation).toHaveCount(0);
-    await expect(input).toHaveValue('8');
+    await expect(input).toHaveValue(String(first.capacity));
+    await input.fill('8');
     await api(request, '/api/slot-capacities', token, { items: [{ ...first, capacity: 9 }] }, 'PATCH');
     await editor.getByRole('button', { name: '读取最新配置', exact: true }).click();
     await expect(editor.getByRole('region', { name: '配置冲突' })).toContainText('最新值 9');
@@ -1009,27 +1010,31 @@ test('capacity workspace preserves drafts, reconciles conflicts and supports mob
     await expect(editor.locator('.capacity-actual-slots tbody tr')).toHaveCount(4);
     await page.screenshot({ path: 'output/field-workflow/capacity-actual-1440.png', fullPage: true });
     await editor.getByRole('button', { name: '每周模板', exact: true }).click();
-    // Incomplete drafts can leave the editor without validation or writes.
+    // An incomplete draft cannot be saved while switching, but can be discarded.
     // The earlier drag-fill selection stays active: typing fills both selected cells.
     await expect(editor.getByRole('gridcell', { selected: true })).toHaveCount(2);
     await input.fill('');
     await expect(editor.locator('[data-row="1"][data-col="0"] input')).toHaveValue('');
     const beforeSwitch = writes;
     await sidebar.getByRole('button', { name: '账号安全', exact: true }).click();
-    await navigation.getByRole('button', { name: '保留草稿并切换', exact: true }).click();
+    await navigation.getByRole('button', { name: '保存并切换', exact: true }).click();
+    await expect(navigation.getByRole('alert')).toBeVisible();
+    await expect(input).toHaveValue('');
+    await navigation.getByRole('button', { name: '丢弃并切换', exact: true }).click();
     await expect(page.getByRole('heading', { name: '账号安全', exact: true })).toBeVisible();
     expect(writes).toBe(beforeSwitch);
     await sidebar.getByRole('button', { name: '预约配置', exact: true }).click();
-    await expect(input).toHaveValue('');
+    await expect(input).toHaveValue('8');
     await input.fill('12');
     await sidebar.getByRole('button', { name: '账号安全', exact: true }).click();
-    await navigation.getByRole('button', { name: '保留草稿并切换', exact: true }).click();
+    await navigation.getByRole('button', { name: '丢弃并切换', exact: true }).click();
     await expect(page.getByRole('heading', { name: '账号安全', exact: true })).toBeVisible();
     expect(writes).toBe(beforeSwitch);
     const retained = (await api(request, '/api/slot-capacities', token)).items;
     expect(retained.find(item => item.campus === first.campus && item.weekday === first.weekday && item.timeSlot === first.timeSlot).capacity).toBe(8);
     await sidebar.getByRole('button', { name: '预约配置', exact: true }).click();
-    await expect(input).toHaveValue('12');
+    await expect(input).toHaveValue('8');
+    await input.fill('12');
     // A rejected write must keep both the current page and the unsaved input.
     let rejectSave = true;
     await page.route('**/api/slot-capacities', async route => {

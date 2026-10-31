@@ -4,7 +4,6 @@ import { Modal } from './field/ui';
 import { StaffIdentity } from './StaffIdentity';
 import { addDays, dateKey, weekRange } from '../../shared/time.js';
 import { WeekPicker } from './WeekPicker';
-import { dutyEnd } from '../../shared/duty-window.js';
 import { campuses, days, key, label } from './roster-workflow-shared.js';
 export function CollectionComposer({ office, onClose, onCreated, onError }) {
   const next = addDays(weekRange(dateKey()).start, 7);
@@ -35,7 +34,8 @@ export function CollectionComposer({ office, onClose, onCreated, onError }) {
     [error, setError] = useState(''),
     [search, setSearch] = useState(''),
     [step, setStep] = useState(0);
-  const lock = useRef(false),
+  const endTimeInput = useRef(null),
+    lock = useRef(false),
     id = useRef(crypto.randomUUID());
   const change = (patch) => setForm((current) => ({ ...current, ...patch }));
   useEffect(() => {
@@ -91,6 +91,20 @@ export function CollectionComposer({ office, onClose, onCreated, onError }) {
   }, [office, form.weekStart, JSON.stringify(form.campusIds), JSON.stringify(form.departmentIds)]);
   const chosen = options.filter((item) => form.campusIds.includes(item.campusId));
   const allDepartments = chosen.length > 0 && chosen.every((item) => item.allDepartments);
+  const shiftMinutes =
+    form.slotStart && form.slotEnd
+      ? Number(form.slotEnd.slice(0, 2)) * 60 +
+        Number(form.slotEnd.slice(3)) -
+        Number(form.slotStart.slice(0, 2)) * 60 -
+        Number(form.slotStart.slice(3))
+      : 0;
+  const shiftValid = shiftMinutes > 0;
+  const shiftDuration = [
+    Math.floor(shiftMinutes / 60) ? `${Math.floor(shiftMinutes / 60)} 小时` : '',
+    shiftMinutes % 60 ? `${shiftMinutes % 60} 分钟` : ''
+  ]
+    .filter(Boolean)
+    .join(' ');
   const departments = (chosen[0]?.departments || []).filter((dept) =>
     chosen.every((item) => item.departments.some((row) => row.id === dept.id))
   );
@@ -111,7 +125,12 @@ export function CollectionComposer({ office, onClose, onCreated, onError }) {
   }
   async function submit(event) {
     event.preventDefault();
+    if (step === 0 && !shiftValid) {
+      endTimeInput.current?.focus();
+      return;
+    }
     if (step < 2) {
+      setError('');
       setStep(step + 1);
       return;
     }
@@ -222,22 +241,39 @@ export function CollectionComposer({ office, onClose, onCreated, onError }) {
                 <p className="react-error">请至少选择一个可管理的部门。</p>
               )}
             </fieldset>
-            <div className="roster-time-fields">
+            <div className="roster-time-fields roster-shift-fields">
               <label>
                 开始时间
                 <input
                   type="time"
                   required
+                  step="300"
                   value={form.slotStart}
-                  onChange={(event) =>
-                    change({ slotStart: event.target.value, slotEnd: dutyEnd(event.target.value) })
-                  }
+                  onChange={(event) => change({ slotStart: event.target.value })}
                 />
               </label>
               <label>
                 结束时间
-                <output>{form.slotEnd || '请选择 22:00 之前的开始时间'} · 整次两小时</output>
+                <input
+                  ref={endTimeInput}
+                  type="time"
+                  required
+                  step="300"
+                  value={form.slotEnd}
+                  aria-invalid={!shiftValid}
+                  aria-describedby="roster-shift-feedback"
+                  onChange={(event) => change({ slotEnd: event.target.value })}
+                />
               </label>
+              <p
+                id="roster-shift-feedback"
+                aria-live="polite"
+                className={shiftValid ? 'roster-time-note' : 'roster-time-error'}
+              >
+                {shiftValid
+                  ? `本次值班 ${shiftDuration}`
+                  : '结束时间须晚于开始时间，且班次不能跨日。'}
+              </p>
             </div>
             <label>
               填报截止

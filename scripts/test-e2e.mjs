@@ -60,7 +60,7 @@ try{
   await writeFile(sql,`INSERT INTO staff_accounts(account,name,role,home_campus,protected,password_hash,created_at) VALUES ('root001','预览负责人','superadmin','南湖',1,'${hashPassword(rootPassword)}','${fixtureTimestamp}'); INSERT INTO staff_campus_grants VALUES ('root001','南湖'),('root001','浑南');`,{mode:0o600});
   command(['d1','execute','DB','--local','--persist-to',state,'--file',sql]);
   if(process.argv.includes('--field')) {
-    await writeFile(sql,fieldSeed(process.argv.includes('--serve')?dateKey():'2026-10-15'),{mode:0o600});
+    await writeFile(sql,fieldSeed(process.argv.includes('--serve')?dateKey():'2026-10-15',{reportDemo:process.argv.includes('--serve')}),{mode:0o600});
     command(['d1','execute','DB','--local','--persist-to',state,'--file',sql]);
   }
   await rm(sql);

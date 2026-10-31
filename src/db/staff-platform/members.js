@@ -179,7 +179,12 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
 
   async function authorizationContext(user, businessDate = dateKey()) {
     const memberId = await ensureMember(user.account, user);
-    const member = await memberRow(memberId);
+    const member = await db
+      .prepare(
+        'SELECT m.id,m.name,m.student_id,m.home_campus_id,m.status,m.revision,m.created_at,m.updated_at FROM members m WHERE m.id=?'
+      )
+      .bind(memberId)
+      .first();
     const [membershipItems, profileItems, grantItems, duties, presence] = await Promise.all([
       memberships(memberId, businessDate),
       profiles(memberId, businessDate),
@@ -262,6 +267,8 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
       memberId: row.id,
       name: row.name,
       studentId: row.student_id || '',
+      college: row.college || '',
+      major: row.major || '',
       homeCampusId: row.home_campus_id || '',
       status: row.status,
       account: row.account || '',
@@ -284,6 +291,14 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
     if (patch.studentId !== undefined) {
       fields.push('student_id=?');
       args.push(patch.studentId || null);
+    }
+    if (patch.college !== undefined) {
+      fields.push('college=?');
+      args.push(patch.college);
+    }
+    if (patch.major !== undefined) {
+      fields.push('major=?');
+      args.push(patch.major);
     }
     if (patch.homeCampusId !== undefined) {
       fields.push('home_campus_id=?');
@@ -479,12 +494,23 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
       statements.push(
         db
           .prepare(
-            `INSERT INTO members(id,name,student_id,home_campus_id,status,created_at,updated_at)
-        VALUES(?,?,?,?,?,?,?)
-        ON CONFLICT(student_id) DO UPDATE SET name=excluded.name,home_campus_id=excluded.home_campus_id,status=excluded.status,
+            `INSERT INTO members(id,name,student_id,home_campus_id,college,major,status,created_at,updated_at)
+        VALUES(?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(student_id) DO UPDATE SET name=excluded.name,home_campus_id=excluded.home_campus_id,
+          college=excluded.college,major=excluded.major,status=excluded.status,
           revision=members.revision+1,updated_at=excluded.updated_at`
           )
-          .bind(id, item.name, item.studentId, item.homeCampusId, item.status || 'active', at, at)
+          .bind(
+            id,
+            item.name,
+            item.studentId,
+            item.homeCampusId,
+            item.college || '',
+            item.major || '',
+            item.status || 'active',
+            at,
+            at
+          )
       );
       if (item.departmentId)
         statements.push(
@@ -627,6 +653,37 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
     }
     return result.sort((a, b) => a.student_id.localeCompare(b.student_id));
   }
+  async function importEducation(items, auditRecord) {
+    const authorization = commandAuthorization(auditRecord);
+    const at = nowIso();
+    const statements = items.map((item) =>
+      db
+        .prepare(
+          `UPDATE members SET college=?,major=?,revision=revision+1,updated_at=?
+       WHERE id=? AND student_id=? AND revision=? ${authorization.sql}`
+        )
+        .bind(
+          item.college,
+          item.major,
+          at,
+          item.memberId,
+          item.studentId,
+          item.revision,
+          ...authorization.args
+        )
+    );
+    for (const item of items)
+      statements.push(
+        db
+          .prepare(
+            `SELECT CASE WHEN EXISTS(SELECT 1 FROM members WHERE id=? AND revision=?)
+       THEN 1 ELSE abs(-9223372036854775808) END AS current`
+          )
+          .bind(item.memberId, item.revision + 1)
+      );
+    statements.push(auditStatement(auditRecord));
+    await db.batch(statements);
+  }
   return {
     accountRow,
     ensureMember,
@@ -646,6 +703,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
     listMemberships,
     addMembership,
     endMembership,
-    importMembers
+    importMembers,
+    importEducation
   };
 }

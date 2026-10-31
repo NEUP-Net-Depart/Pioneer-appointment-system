@@ -168,6 +168,10 @@
     {
       "name": "0040_reception_queue.sql",
       "sha256": "8f7305c5c61a52884c3536a79610bc84a6c41189b551e5c4a12631b2ddd1d6c1"
+    },
+    {
+      "name": "0041_attendance_reports.sql",
+      "sha256": "0e59f4e55e136989db3423f79401560e32b9cecf92e303b269f04815667c7d12"
     }
   ],
   "modules": [
@@ -415,6 +419,10 @@
     {
       "name": "0040_reception_queue.sql",
       "sha256": "8f7305c5c61a52884c3536a79610bc84a6c41189b551e5c4a12631b2ddd1d6c1"
+    },
+    {
+      "name": "0041_attendance_reports.sql",
+      "sha256": "0e59f4e55e136989db3423f79401560e32b9cecf92e303b269f04815667c7d12"
     }
   ]
 }
