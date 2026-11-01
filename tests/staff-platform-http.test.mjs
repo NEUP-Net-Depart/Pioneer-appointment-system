@@ -1016,9 +1016,7 @@ test('permanent repair managers can manage off duty while optional duty conditio
 
 test('department roster scopes govern creation, task entries, participants, availability and shift-date transfers', async () => {
   const db = await mf.getD1Database('DB'), repository = staffPlatformRepository(db);
-  // Keep the deadline in the future even on Sunday after the usual cutoff.
-  const weekStart = weekRange(addDays(dateKey(), 14)).start;
-  const transferDay = addDays(weekStart, 2);
+  const week = addDays(weekRange(dateKey()).start, 14), transferDay = addDays(week, 2);
   const rootLogin = await request('/api/auth/login',{method:'POST',body:JSON.stringify({account:'root001',password:'staff-platform-password'})});
   const rootHeaders = {Authorization:`Bearer ${rootLogin.body.token}`};
   const command = (path,body,headers = rootHeaders,method = body ? 'POST' : 'GET') => request(path,{method,headers:{...headers,'CF-Connecting-IP':'192.0.2.167'},...(body ? {body:JSON.stringify(body)} : {})});
@@ -1041,7 +1039,7 @@ test('department roster scopes govern creation, task entries, participants, avai
   assert.deepEqual(options.body.items.map(item => [item.campusId,item.allDepartments,item.departments.map(value => value.id)]).sort(),[
     ['campus-hunnan',false,['dept-office']],['campus-nanhu',false,['dept-hardware']]
   ]);
-  const base = {weekStart,slotStart:'19:00',slotEnd:'21:00',deadline:`${addDays(weekStart,-1)}T18:00:00+08:00`,campusId:'campus-nanhu'};
+  const base = {weekStart:week,slotStart:'19:00',slotEnd:'21:00',deadline:`${addDays(week,-1)}T18:00:00+08:00`,campusId:'campus-nanhu'};
   for (const extra of [{departmentIds:['dept-office']},{departmentIds:['dept-hardware','dept-office']},{departmentIds:[]}]) assert.equal((await command('/api/roster-tasks',{...base,...extra},managerHeaders)).response.status,403);
   const south = await command('/api/roster-tasks',{...base,departmentIds:['dept-hardware']},managerHeaders);
   assert.equal(south.response.status,201,JSON.stringify(south.body));
@@ -1060,13 +1058,13 @@ test('department roster scopes govern creation, task entries, participants, avai
   assert.ok(!entries.body.items.some(item => item.id === forbidden.body.id));
   assert.ok(!entries.body.items.some(item => item.id === unrestricted.body.id),'a department manager cannot manage an unrestricted task');
   for (const path of [`/api/roster-tasks/${forbidden.body.id}/roster`,`/api/roster-tasks/${forbidden.body.id}/availability`]) assert.equal((await command(path,undefined,managerHeaders)).response.status,403);
-  for (const [id,memberId,businessDate] of [['scope-good','member-20998902',weekStart],['scope-poison','member-20998903',weekStart],['scope-transfer-before','member-20998904',weekStart],['scope-transfer-after','member-20998904',transferDay]]) await db.prepare('INSERT INTO availability(id,task_id,member_id,business_date,start_at,end_at,campus_id) VALUES(?,?,?,?,?,?,?)').bind(id,south.body.id,memberId,businessDate,'19:00','21:00','campus-nanhu').run();
+  for (const [id,memberId,businessDate] of [['scope-good','member-20998902',week],['scope-poison','member-20998903',week],['scope-transfer-before','member-20998904',week],['scope-transfer-after','member-20998904',transferDay]]) await db.prepare('INSERT INTO availability(id,task_id,member_id,business_date,start_at,end_at,campus_id) VALUES(?,?,?,?,?,?,?)').bind(id,south.body.id,memberId,businessDate,'19:00','21:00','campus-nanhu').run();
   const available = await command(`/api/roster-tasks/${south.body.id}/availability`,undefined,managerHeaders);
   assert.deepEqual(available.body.items.map(item => item.id).sort(),['scope-good','scope-transfer-before']);
   const state = await command(`/api/roster-tasks/${south.body.id}/roster`,undefined,managerHeaders);
   assert.equal(state.response.status,200,JSON.stringify(state.body));
   assert.ok(!state.body.members.some(item => item.memberId === 'member-20998903'));
-  assert.deepEqual(state.body.members.find(item => item.memberId === 'member-20998904').available.map(item => item.businessDate),[weekStart]);
+  assert.deepEqual(state.body.members.find(item => item.memberId === 'member-20998904').available.map(item => item.businessDate),[week]);
   const transferLogin = await command('/api/auth/login',{account:'20998904',password:'roster-scope-test-password'});
   assert.equal(transferLogin.response.status,200,JSON.stringify(transferLogin.body));
   const transferHeaders = {Authorization:`Bearer ${transferLogin.body.token}`};
@@ -1075,10 +1073,10 @@ test('department roster scopes govern creation, task entries, participants, avai
   assert.ok(ownEntries.body.items.some(item => item.id === south.body.id && item.actions.fill && !item.actions.manage));
   assert.ok(ownEntries.body.items.every(item => item.memberIds === undefined && item.createdByMemberId === undefined));
   const save = (id,businessDate) => command(`/api/roster-tasks/${id}/availability`,{businessDate,campusId:'campus-nanhu',startAt:'19:00',endAt:'21:00'},transferHeaders,'PUT');
-  assert.equal((await save(south.body.id,addDays(weekStart,1))).response.status,200);
+  assert.equal((await save(south.body.id,addDays(week,1))).response.status,200);
   assert.equal((await save(south.body.id,transferDay)).response.status,403);
   assert.equal((await save(forbidden.body.id,transferDay)).response.status,200);
-  assert.equal((await save(south.body.id,addDays(weekStart,4))).response.status,400);
+  assert.equal((await save(south.body.id,addDays(week,4))).response.status,400);
   const ordinaryOptions = await command('/api/roster-tasks/options',undefined,transferHeaders);
   assert.equal(ordinaryOptions.response.status,403);
   await repository.updateRole(roles[0].id,{grants:[]},roles[0].revision);
