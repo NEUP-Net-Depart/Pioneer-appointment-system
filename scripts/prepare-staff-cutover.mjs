@@ -180,34 +180,49 @@ export async function verifyCutoverSnapshot(dump, {environment,databaseId,direct
     return {cutover:count ? 'private-input-verified' : 'empty-database',members:count};
   } finally { projected.sqlite.close(); }
 }
-export async function verifyRemoteCutover({preview=false,env=process.env} = {}, run=runWrangler) {
+export async function verifyRemoteCutover({preview=false} = {}, run=runWrangler) {
   const cfg = await config(), bindings = preview ? cfg.env.preview : cfg;
   const databaseId = bindings.d1_databases.find(item => item.binding === 'DB').database_id;
   const target = ['DB','--remote','--config',resolve(root,'wrangler.jsonc'),...(preview ? ['--env','preview'] : [])];
-  const query = sql => {
+  const query = async sql => {
     let result;
-    try { result = JSON.parse(run(['d1','execute',...target,'--json','--command',sql])); }
+    try { result = JSON.parse(await run(['d1','execute',...target,'--json','--command',sql])); }
     catch { throw new CutoverError('CUTOVER_D1_OPERATION_FAILED'); }
     requireValue(Array.isArray(result) && result.every(item => item.success && Array.isArray(item.results)),'CUTOVER_D1_OPERATION_FAILED');
     return result.flatMap(item => item.results);
   };
-  // CI checks only schema names and aggregate counts. Private Production
-  // snapshots and reviewed input stay on the operator's machine.
-  const tables = new Set(query("SELECT name FROM sqlite_schema WHERE type='table' AND name IN ('d1_migrations','staff_accounts','members')").map(row => row.name));
+  // Evaluate private input inside D1; release jobs receive only readiness flags
+  // and counts. They never need the private input file or a Production export.
+  const tables = new Set((await query("SELECT name FROM sqlite_schema WHERE type='table' AND name IN ('d1_migrations','staff_accounts','members','_staff_cutover_batch','_staff_cutover_decisions')")).map(row => row.name));
   const applied = tables.has('d1_migrations') ? `(SELECT count(*) FROM d1_migrations WHERE name='${CUTOVER_MIGRATION}')` : '0';
-  const members = tables.has('members') ? '(SELECT count(*) FROM members m WHERE NOT EXISTS(SELECT 1 FROM staff_accounts a WHERE a.member_id=m.id AND a.protected=1))'
-    : tables.has('staff_accounts') ? '(SELECT count(*) FROM staff_accounts WHERE protected=0)' : '0';
-  const [status] = query(`SELECT ${applied} AS applied,${members} AS members`);
+  const projected = tables.has('d1_migrations') ? "EXISTS(SELECT 1 FROM d1_migrations WHERE name='0041_attendance_reports.sql')" : '0';
+  const people = tables.has('members') ? 'SELECT m.id FROM members m WHERE NOT EXISTS(SELECT 1 FROM staff_accounts a WHERE a.member_id=m.id AND a.protected=1)'
+    : tables.has('staff_accounts') ? "SELECT 'member-'||account AS id FROM staff_accounts WHERE protected=0" : 'SELECT NULL AS id WHERE 0';
+  const [status] = await query(`SELECT ${applied} AS applied,${projected} AS projected,(SELECT count(*) FROM (${people})) AS members`);
   requireValue(status && Number.isInteger(status.applied) && Number.isInteger(status.members),'CUTOVER_D1_OPERATION_FAILED');
   if (status.applied) return {cutover:'already-applied'};
-  if (!status.members) return {cutover:'empty-database',members:0};
-  requireValue(env.GITHUB_ACTIONS !== 'true','CUTOVER_LOCAL_EXECUTION_REQUIRED');
-  const temporary = await mkdtemp(resolve(tmpdir(),'pioneer-cutover-check-'));
-  try {
-    const snapshot = resolve(temporary,'snapshot.sql');
-    run(['d1','export',...target,'--output',snapshot]);
-    return await verifyCutoverSnapshot(await readFile(snapshot,'utf8'),{environment:preview ? 'preview' : 'production',databaseId});
-  } finally { await rm(temporary,{recursive:true,force:true}); }
+  if (!status.members) {
+    if (tables.has('_staff_cutover_decisions')) requireValue((await query('SELECT count(*) AS n FROM _staff_cutover_decisions'))[0]?.n === 0,'CUTOVER_DECISIONS_INCOMPLETE');
+    return {cutover:'empty-database',members:0};
+  }
+  requireValue(tables.has('_staff_cutover_batch') && tables.has('_staff_cutover_decisions'),'CUTOVER_INPUT_NOT_STAGED');
+  const definition = await cutoverDefinition();
+  const state = definition.state.replace(/^CREATE VIEW _staff_cutover_current AS\s*/, '').replace(/;\s*$/, '');
+  const [input] = await query(`SELECT
+    EXISTS(SELECT 1 FROM _staff_cutover_batch WHERE id=1 AND format_version=1
+      AND environment=${quote(preview ? 'preview' : 'production')} AND database_id=${quote(databaseId)} AND migration_sha256=${quote(definition.sha256)}) AS target_matches,
+    EXISTS(SELECT 1 FROM _staff_cutover_batch WHERE id=1 AND business_date=date('now','+8 hours')) AS date_matches,
+    (SELECT count(*) FROM _staff_cutover_decisions)=${status.members}
+      AND NOT EXISTS(SELECT 1 FROM (${people}) m LEFT JOIN _staff_cutover_decisions d ON d.member_id=m.id WHERE d.member_id IS NULL)
+      AND NOT EXISTS(SELECT 1 FROM _staff_cutover_decisions d LEFT JOIN (${people}) m ON m.id=d.member_id WHERE m.id IS NULL) AS complete,
+    ${status.projected ? `EXISTS(SELECT 1 FROM _staff_cutover_batch WHERE id=1 AND source_state=(SELECT state FROM (${state})))` : '1'} AS source_matches`);
+  requireValue(input?.target_matches === 1,'CUTOVER_INPUT_TARGET_OR_VERSION_MISMATCH');
+  requireValue(input.date_matches === 1,'CUTOVER_INPUT_EXPIRED');
+  requireValue(input.complete === 1,'CUTOVER_DECISIONS_INCOMPLETE');
+  requireValue(input.source_matches === 1,'CUTOVER_SOURCE_CHANGED');
+  // Older Production schemas are projected by preceding migrations. 0042
+  // always rechecks that projected source inside the cutover transaction.
+  return {cutover:'private-input-ready',members:status.members};
 }
 export async function prepareStaffCutover(args = process.argv.slice(2)) {
   requireValue(process.env.GITHUB_ACTIONS !== 'true','CUTOVER_LOCAL_EXECUTION_REQUIRED');

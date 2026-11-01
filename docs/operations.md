@@ -109,16 +109,19 @@ node scripts/rehearse-preview.mjs --snapshot C:/Pioneer-private/production.sql -
 node scripts/prepare-staff-cutover.mjs --input C:/Pioneer-private/production-decisions.json
 ```
 
-准备工具逐人校验身份、完整性、职位、日期、校区及授权模板，并在本地验证转换。输出只有汇总；真实输入文件和生成 SQL 均拒绝写入仓库内。核对无误、提交干净且明确授权执行后，在停写维护窗口完成：
+准备工具逐人校验身份、完整性、职位、日期、校区及授权模板，并在本地验证转换。输出只有汇总；真实输入文件和生成 SQL 均拒绝写入仓库内。核对无误、提交干净且明确授权后，从本机暂存目标环境的决定：
 
 ```powershell
 node scripts/prepare-staff-cutover.mjs --input C:/Pioneer-private/production-decisions.json --execute --approve-production
-npm run db:migrate:remote -- --execute --approve-production
 ```
 
-第一步只向目标 D1 暂存必要决定，不改变有效权限；第二步重查状态、应用尚未执行的历史迁移，并在单个 D1 迁移事务内完成 0042。决定绑定环境、数据库、迁移文件哈希及准备时的人员授权状态，当天执行；人员或权限变化须重新准备。失败时 0042 的全部变更回滚，较早已成功的迁移仍保留其账本，重试从未完成处继续。输入表成功后删除，核对依据保留在原数据库审计历史中。
+暂存只写入一次性输入表，不改变有效权限。决定绑定环境、数据库、迁移文件哈希及准备时的人员授权状态，须当天切换；人员或权限变化须重新准备。CI 直接在目标 D1 内核对映射完整性、目标、版本和日期，只接收就绪标志与汇总数量，不导出生产快照。0041 结构已就绪时还会预检源状态；生产旧链由先行历史迁移补齐结构，0042 始终在同一事务内重查源状态及全部授权边界。
 
-Preview 同样先在本机完成演练与迁移：输入的 `environment` 为 `preview`，准备和迁移命令均加 `--preview`，执行确认改为 `--approve-preview`，快照导出加 `--env preview`。合入 dev、再合入 main 时沿用已有发布流程；生产 CI 只查迁移状态和汇总，不导出生产人员快照，未完成本机转换则停止发布。迁移后核验账号及历史数据、离任撤权、特殊留任、重复导入和校区隔离，再恢复服务。
+先单独准备 Preview：输入的 `environment` 为 `preview`，准备命令加 `--preview`，执行确认改为 `--approve-preview`，快照导出加 `--env preview`。经批准合入 dev 后，原 CI 演练并迁移共享 Preview，再发布代码。Preview 验收后独立准备生产映射，在停写维护窗口经批准合入 main，由原生产 CI 迁移并发布；未准备、漏人或校验失败均停止发布。
+
+需要手动迁移时，经单独授权从本机运行 `npm run db:migrate:remote -- --execute --approve-production`；Preview 加 `--preview` 并改为 `--approve-preview`。失败时 0042 的全部变更回滚，较早已成功的迁移保留账本，重试从未完成处继续。成功后删除输入表，核对依据保留在原数据库审计中。核验账号与历史数据、离任撤权、特殊留任、重复导入及校区隔离后恢复服务。
+
+删除临时表不会清除 D1 Time Travel 与离线备份，备份和恢复权限仍须受限。已有真实人员数据的 Preview 也须独立核对 Access 保护、分支别名及自定义域名，避免通过其他部署入口绕开访问控制。
 
 ## 验证范围
 

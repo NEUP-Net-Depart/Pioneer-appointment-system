@@ -6,7 +6,9 @@ import {resolve} from 'node:path';
 import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
 import {Miniflare} from 'miniflare';
-import {cutoverDefinition,prepareCutover,verifyCutoverSnapshot,verifyRemoteCutover} from '../scripts/prepare-staff-cutover.mjs';
+import {cutoverDefinition,prepareCutover,projectCutoverSnapshot,verifyCutoverSnapshot,verifyRemoteCutover} from '../scripts/prepare-staff-cutover.mjs';
+import {config} from '../scripts/cli.mjs';
+import {rehearseSnapshot} from '../scripts/rehearse-preview.mjs';
 import {fixtureInput,stageFixture,stageD1Fixture,migrationStatements} from './fixtures/staff-cutover.mjs';
 
 const directory='migrations';
@@ -125,7 +127,7 @@ test('private staging import refuses source changes after export and public CLI 
   }finally{db.close();await rm(temporary,{recursive:true,force:true});}
 });
 
-test('CI preflight reads only aggregates, refuses a pending private cutover and never exports Production records',async()=>{
+test('CI preflight accepts complete staged input, rejects missing, changed or misdirected input and never exports Production records',async()=>{
   const db=await setup(), calls=[];
   const run=args=>{
     calls.push(args);
@@ -134,13 +136,65 @@ test('CI preflight reads only aggregates, refuses a pending private cutover and 
     return JSON.stringify([{success:true,results:db.prepare(sql).all()}]);
   };
   try{
-    const options={env:{GITHUB_ACTIONS:'true'}};
-    await assert.rejects(verifyRemoteCutover(options,run),error=>error.code==='CUTOVER_LOCAL_EXECUTION_REQUIRED');
+    const options={},databaseId=(await config()).d1_databases.find(item=>item.binding==='DB').database_id;
+    await assert.rejects(verifyRemoteCutover(options,run),error=>error.code==='CUTOVER_INPUT_NOT_STAGED');
+    const input={...fixtureInput(people(db)),environment:'production'};
+    db.exec((await prepareCutover(db,input,{environment:'production',databaseId})).sql);
+    assert.deepEqual(await verifyRemoteCutover(options,run),{cutover:'private-input-ready',members:2});
+    for(const [sql,code] of [
+      ["UPDATE _staff_cutover_batch SET environment='preview'",'CUTOVER_INPUT_TARGET_OR_VERSION_MISMATCH'],
+      ["UPDATE _staff_cutover_batch SET database_id='different-database'",'CUTOVER_INPUT_TARGET_OR_VERSION_MISMATCH'],
+      ["UPDATE _staff_cutover_batch SET migration_sha256='unreviewed-code'",'CUTOVER_INPUT_TARGET_OR_VERSION_MISMATCH'],
+      ["UPDATE _staff_cutover_batch SET business_date='2000-01-01'",'CUTOVER_INPUT_EXPIRED'],
+      ["DELETE FROM _staff_cutover_decisions WHERE member_id='member-99271002'",'CUTOVER_DECISIONS_INCOMPLETE'],
+      ["UPDATE _staff_cutover_decisions SET member_id='not-a-real-member' WHERE member_id='member-99271002'",'CUTOVER_DECISIONS_INCOMPLETE'],
+      ["UPDATE members SET name='变更后的虚构姓名' WHERE id='member-99271001'",'CUTOVER_SOURCE_CHANGED']
+    ]){
+      db.exec('SAVEPOINT invalid_input');
+      try{db.exec(sql);await assert.rejects(verifyRemoteCutover(options,run),error=>error.code===code);}
+      finally{db.exec('ROLLBACK TO invalid_input; RELEASE invalid_input');}
+    }
+    assert.equal((await rehearseSnapshot(dump(db))).unconfirmedMembers,0,'Preview CI can consume already staged decisions without a private file');
     db.prepare('INSERT INTO d1_migrations(name) VALUES(?)').run('0042_organization_permissions.sql');
     assert.deepEqual(await verifyRemoteCutover(options,run),{cutover:'already-applied'});
     db.exec("DELETE FROM d1_migrations WHERE name='0042_organization_permissions.sql'; DELETE FROM staff_accounts; DELETE FROM members;");
+    await assert.rejects(verifyRemoteCutover(options,run),error=>error.code==='CUTOVER_DECISIONS_INCOMPLETE');
+    db.exec('DELETE FROM _staff_cutover_decisions; DELETE FROM _staff_cutover_batch;');
     assert.deepEqual(await verifyRemoteCutover(options,run),{cutover:'empty-database',members:0});
-    assert.equal(calls.length,6);
+    assert.ok(calls.every(args=>args[1]==='execute'));
+  }finally{db.close();}
+});
+
+test('the legacy Production ledger can stage once and upgrade through the existing CI migration path',async()=>{
+  const db=new DatabaseSync(':memory:');
+  try{
+    db.exec('PRAGMA foreign_keys=ON; CREATE TABLE d1_migrations(id INTEGER PRIMARY KEY,name TEXT UNIQUE NOT NULL);');
+    for(const file of (await readdir(directory)).filter(file=>file.endsWith('.sql')&&file<'0010').sort()){
+      db.exec(await readFile(`${directory}/${file}`,'utf8'));db.prepare('INSERT INTO d1_migrations(name) VALUES(?)').run(file);
+    }
+    db.exec("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('99273001','虚构生产旧成员','admin','南湖','preserved-private-hash','2026-01-01'); INSERT INTO staff_campus_grants VALUES('99273001','南湖');");
+    const databaseId=(await config()).d1_databases.find(item=>item.binding==='DB').database_id;
+    const projected=await projectCutoverSnapshot(dump(db));
+    try{
+      const input={...fixtureInput(people(projected.sqlite)),environment:'production'};
+      const prepared=await prepareCutover(projected.sqlite,input,{environment:'production',databaseId,original:projected.original});
+      db.exec(prepared.sql);
+    }finally{projected.sqlite.close();}
+    const run=args=>{
+      assert.equal(args[1],'execute','the CI path must not export any Production records');
+      return JSON.stringify([{success:true,results:db.prepare(args[args.indexOf('--command')+1]).all()}]);
+    };
+    assert.deepEqual(await verifyRemoteCutover({},run),{cutover:'private-input-ready',members:1});
+    const report=await rehearseSnapshot(dump(db));assert.ok(report.applied>1);assert.equal(report.accounts['admin → '],1);
+    for(const file of (await readdir(directory)).filter(file=>file.endsWith('.sql')).sort()){
+      if(db.prepare('SELECT 1 FROM d1_migrations WHERE name=?').get(file))continue;
+      convert(db,await readFile(`${directory}/${file}`,'utf8'));
+      db.prepare('INSERT INTO d1_migrations(name) VALUES(?)').run(file);
+    }
+    assert.deepEqual(await verifyRemoteCutover({},run),{cutover:'already-applied'});
+    assert.equal(db.prepare('SELECT password_hash FROM staff_accounts').get().password_hash,'preserved-private-hash');
+    assert.equal(db.prepare("SELECT count(*) AS n FROM sqlite_schema WHERE name LIKE '_staff_cutover_%'").get().n,0);
+    assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
   }finally{db.close();}
 });
 
@@ -150,6 +204,10 @@ for(const chain of ['migrations','database/staff-migrations'])test(`${chain}: D1
     const db=await mf.getD1Database('DB');
     for(const file of (await readdir(chain)).filter(file=>file.endsWith('.sql')&&file<'0042').sort())await db.batch(migrationStatements(await readFile(`${chain}/${file}`,'utf8')).map(sql=>db.prepare(sql)));
     await db.batch([
+      db.prepare('CREATE TABLE d1_migrations(name TEXT PRIMARY KEY)'),
+      db.prepare("INSERT INTO d1_migrations VALUES('0041_attendance_reports.sql')")
+    ]);
+    await db.batch([
       db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('99272001','虚构 D1 成员','admin','南湖','unchanged-private-hash','2026-01-01')"),
       db.prepare("INSERT INTO staff_campus_grants VALUES('99272001','南湖')")
     ]);
@@ -157,6 +215,14 @@ for(const chain of ['migrations','database/staff-migrations'])test(`${chain}: D1
     const original=await history(), definition=await cutoverDefinition(chain), statements=migrationStatements(definition.sql).map(sql=>db.prepare(sql));
     await assert.rejects(db.batch(statements),/staff_cutover_ready/);assert.deepEqual(await history(),original);
     await stageD1Fixture(db,{'member-99272001':{decision:'migrate',post}},chain);assert.deepEqual(await history(),original,'preparation does not change existing permissions');
+    const databaseId=(await config()).env.preview.d1_databases.find(item=>item.binding==='DB').database_id;
+    await db.prepare('UPDATE _staff_cutover_batch SET database_id=?').bind(databaseId).run();
+    const run=async args=>{
+      assert.equal(args[1],'execute');
+      const result=await db.prepare(args[args.indexOf('--command')+1]).all();
+      return JSON.stringify([result]);
+    };
+    assert.deepEqual(await verifyRemoteCutover({preview:true},run),{cutover:'private-input-ready',members:1});
     await db.prepare("CREATE TRIGGER fail_private_cutover BEFORE INSERT ON audit_events WHEN NEW.action='organization.cutover.confirmed' BEGIN SELECT RAISE(ABORT,'PRIVATE_CUTOVER_LATE_FAILURE'); END").run();
     await assert.rejects(db.batch(statements),/PRIVATE_CUTOVER_LATE_FAILURE/);assert.deepEqual(await history(),original);
     assert.ok(await db.prepare("SELECT name FROM sqlite_schema WHERE name='member_work_profiles'").first());
