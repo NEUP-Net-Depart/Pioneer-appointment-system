@@ -11,7 +11,7 @@ import { userRepository } from '../src/db/users.js';
 import { staffPlatformRepository } from '../src/db/staff-platform.js';
 import { composeStaffPlatform } from '../src/app/compose.js';
 import { staffPlatformService } from '../src/services/staff-platform.js';
-import { prepareCutover, privatePath } from './prepare-staff-cutover.mjs';
+import { prepareCutover, privatePath, verifyRemoteCutover } from './prepare-staff-cutover.mjs';
 
 function adapter(sqlite) {
   return {
@@ -132,7 +132,7 @@ export async function rehearseSnapshot(dump, directory = resolve(root, 'migratio
   } finally { sqlite.close(); }
 }
 
-export async function rehearsePreview(args = process.argv.slice(2)) {
+export async function rehearsePreview(args = process.argv.slice(2), preflight = verifyRemoteCutover) {
   if (args.length) {
     if (process.env.GITHUB_ACTIONS === 'true') throw new Error('CUTOVER_LOCAL_EXECUTION_REQUIRED');
     if (args.length !== 4 || args[0] !== '--snapshot' || args[2] !== '--input') throw new Error('Use --snapshot <private.sql> --input <private.json> for an offline rehearsal');
@@ -142,6 +142,11 @@ export async function rehearsePreview(args = process.argv.slice(2)) {
     catch { throw new Error('CUTOVER_INPUT_INVALID'); }
     const report = await rehearseSnapshot(await readFile(snapshot, 'utf8'), undefined, {privateInput});
     console.log(JSON.stringify({result:'Local migration rehearsal passed; remote database unchanged',...report}));
+    return report;
+  }
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    const report = await preflight({preview:true});
+    console.log(JSON.stringify({result:'Preview cutover preflight passed; remote database unchanged',...report}));
     return report;
   }
   const cfg = await config(), parent = tmpdir();

@@ -8,7 +8,6 @@ CREATE TABLE IF NOT EXISTS _staff_cutover_batch (
  database_id TEXT NOT NULL,
  migration_sha256 TEXT NOT NULL,
  source_state TEXT NOT NULL CHECK(json_valid(source_state)),
- business_date TEXT NOT NULL,
  prepared_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS _staff_cutover_decisions (
@@ -30,9 +29,18 @@ CREATE VIEW _staff_cutover_current AS SELECT json_object(
  'accounts',(SELECT json_group_array(json_array(account,member_id,name,role,status,home_campus,protected,revision,auth_version,token_version)) FROM (SELECT * FROM staff_accounts ORDER BY account)),
  'campuses',(SELECT json_group_array(json_array(account,campus)) FROM (SELECT * FROM staff_campus_grants ORDER BY account,campus)),
  'members',(SELECT json_group_array(json_array(id,name,student_id,home_campus_id,status,revision,college,major)) FROM (SELECT * FROM members ORDER BY id)),
- 'memberships',(SELECT json_group_array(json_array(id,member_id,department_id,assignment_type,is_primary,effective_from,effective_to,revision)) FROM (SELECT * FROM member_department_memberships ORDER BY id)),
- 'qualifications',(SELECT json_group_array(json_array(id,member_id,profile_code,effective_from,effective_to,revision)) FROM (SELECT * FROM member_work_profiles ORDER BY id)),
- 'bindings',(SELECT json_group_array(json_array(id,member_id,role_id,scope_bindings,effective_from,effective_to,revision)) FROM (SELECT * FROM member_roles ORDER BY id)),
+ 'memberships',(SELECT json_group_array(json_array(id,member_id,department_id,assignment_type,is_primary,
+ CASE WHEN effective_from=date('now','+8 hours') AND EXISTS(SELECT 1 FROM _staff_cutover_batch b,json_each(b.source_state,'$.memberships') e
+ WHERE b.id=1 AND json_extract(e.value,'$[0]')=s.id AND json_extract(e.value,'$[5]')='@migration-day') THEN '@migration-day' ELSE effective_from END,
+ effective_to,revision)) FROM (SELECT * FROM member_department_memberships ORDER BY id) s),
+ 'qualifications',(SELECT json_group_array(json_array(id,member_id,profile_code,
+ CASE WHEN effective_from=date('now','+8 hours') AND EXISTS(SELECT 1 FROM _staff_cutover_batch b,json_each(b.source_state,'$.qualifications') e
+ WHERE b.id=1 AND json_extract(e.value,'$[0]')=s.id AND json_extract(e.value,'$[3]')='@migration-day') THEN '@migration-day' ELSE effective_from END,
+ effective_to,revision)) FROM (SELECT * FROM member_work_profiles ORDER BY id) s),
+ 'bindings',(SELECT json_group_array(json_array(id,member_id,role_id,scope_bindings,
+ CASE WHEN effective_from=date('now','+8 hours') AND EXISTS(SELECT 1 FROM _staff_cutover_batch b,json_each(b.source_state,'$.bindings') e
+ WHERE b.id=1 AND json_extract(e.value,'$[0]')=s.id AND json_extract(e.value,'$[4]')='@migration-day') THEN '@migration-day' ELSE effective_from END,
+ effective_to,revision)) FROM (SELECT * FROM member_roles ORDER BY id) s),
  'departments',(SELECT json_group_array(json_array(id,code,enabled,revision)) FROM (SELECT * FROM departments ORDER BY id)),
  'roles',(SELECT json_group_array(json_array(id,code,level,enabled,revision)) FROM (SELECT * FROM roles ORDER BY id)),
  'grants',(SELECT json_group_array(json_array(id,role_id,permission_code,scope_spec,condition_spec,validity_spec,revision)) FROM (SELECT * FROM role_grants ORDER BY id)),
@@ -49,7 +57,7 @@ INSERT INTO _organization_cutover_guard SELECT 0 WHERE EXISTS(
  WHERE m.id IS NULL OR EXISTS(SELECT 1 FROM staff_accounts a WHERE a.member_id=d.member_id AND a.protected=1));
 INSERT INTO _organization_cutover_guard SELECT 0 WHERE EXISTS(SELECT 1 FROM _staff_cutover_decisions) AND NOT EXISTS(
  SELECT 1 FROM _staff_cutover_batch b WHERE b.id=1 AND b.format_version=1
- AND b.business_date=date('now','+8 hours') AND b.source_state=(SELECT state FROM _staff_cutover_current));
+ AND b.source_state=(SELECT state FROM _staff_cutover_current));
 INSERT INTO _organization_cutover_guard SELECT 0 WHERE EXISTS(
  SELECT 1 FROM _staff_cutover_decisions d WHERE
  (d.decision='revoke' AND (d.department_code IS NOT NULL OR d.position_code IS NOT NULL OR d.effective_from IS NOT NULL OR d.effective_to IS NOT NULL OR d.exchange_from IS NOT NULL OR d.exchange_to IS NOT NULL OR json_array_length(d.authorizations)>0)) OR

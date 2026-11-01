@@ -115,9 +115,9 @@ node scripts/prepare-staff-cutover.mjs --input C:/Pioneer-private/production-dec
 node scripts/prepare-staff-cutover.mjs --input C:/Pioneer-private/production-decisions.json --execute --approve-production
 ```
 
-暂存只写入一次性输入表，不改变有效权限。决定绑定环境、数据库、迁移文件哈希及准备时的人员授权状态，须当天切换；人员或权限变化须重新准备。CI 直接在目标 D1 内核对映射完整性、目标、版本和日期，只接收就绪标志与汇总数量，不导出生产快照。0041 结构已就绪时还会预检源状态；生产旧链由先行历史迁移补齐结构，0042 始终在同一事务内重查源状态及全部授权边界。
+暂存只写入一次性输入表，不改变有效权限。决定绑定环境、数据库、迁移文件哈希及准备时的人员授权状态，可以提前准备并跨日上线；人员或权限变化须重新准备。CI 直接在目标 D1 内核对映射完整性、目标和版本，只接收就绪标志与汇总数量，不导出 Production 或 Preview 快照。本机准备时完成完整迁移演练；0041 结构已就绪时 CI 还会预检源状态，生产旧链由先行历史迁移补齐结构，0042 始终在同一事务内重查源状态及全部授权边界。
 
-先单独准备 Preview：输入的 `environment` 为 `preview`，准备命令加 `--preview`，执行确认改为 `--approve-preview`，快照导出加 `--env preview`。经批准合入 dev 后，原 CI 演练并迁移共享 Preview，再发布代码。Preview 验收后独立准备生产映射，在停写维护窗口经批准合入 main，由原生产 CI 迁移并发布；未准备、漏人或校验失败均停止发布。
+先单独准备 Preview：输入的 `environment` 为 `preview`，准备命令加 `--preview`，执行确认改为 `--approve-preview`，快照导出加 `--env preview`。经批准合入 dev 后，原 CI 在库内预检并迁移共享 Preview，再发布代码。生产映射可提前独立暂存；Preview 验收后在停写维护窗口经批准合入 main，由原生产 CI 迁移并发布；未准备、漏人或校验失败均停止发布。
 
 需要手动迁移时，经单独授权从本机运行 `npm run db:migrate:remote -- --execute --approve-production`；Preview 加 `--preview` 并改为 `--approve-preview`。失败时 0042 的全部变更回滚，较早已成功的迁移保留账本，重试从未完成处继续。成功后删除输入表，核对依据保留在原数据库审计中。核验账号与历史数据、离任撤权、特殊留任、重复导入及校区隔离后恢复服务。
 

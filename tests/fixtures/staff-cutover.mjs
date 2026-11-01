@@ -26,11 +26,10 @@ export async function stageD1Fixture(db, overrides = {}, directory) {
   await db.prepare(definition.state).run();
   const {state}=await db.prepare('SELECT state FROM _staff_cutover_current').first();
   await db.prepare('DROP VIEW _staff_cutover_current').run();
-  const {day}=await db.prepare("SELECT date('now','+8 hours') AS day").first();
   const people=(await db.prepare(`SELECT m.*,EXISTS(SELECT 1 FROM staff_accounts a WHERE a.member_id=m.id AND a.protected=1) AS protected FROM members m`).all()).results;
   const input=fixtureInput(people,overrides);
   await db.batch([
-    db.prepare('INSERT INTO _staff_cutover_batch VALUES(1,1,?,?,?,?,?,?)').bind('preview','isolated-test',definition.sha256,state,day,new Date().toISOString()),
+    db.prepare('INSERT INTO _staff_cutover_batch VALUES(1,1,?,?,?,?,?)').bind('preview','isolated-test',definition.sha256,state,new Date().toISOString()),
     ...input.members.map(item=>db.prepare('INSERT INTO _staff_cutover_decisions VALUES(?,?,?,?,?,?,?,?,?,?)').bind(
       item.memberId,item.decision,item.post?.departmentCode||null,item.post?.positionCode||null,item.post?.effectiveFrom||null,item.post?.effectiveTo||null,
       item.exchange?.effectiveFrom||null,item.exchange?.effectiveTo||null,JSON.stringify(item.authorizations||[]),item.reason
