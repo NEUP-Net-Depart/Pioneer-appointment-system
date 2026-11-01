@@ -172,7 +172,7 @@ export function memberImportDomain({ db, auditStatement, commandAuthorization })
           VALUES(?,?,?,?,?) ON CONFLICT(student_id) DO UPDATE SET expected_name=excluded.expected_name,
           expected_role=excluded.expected_role,revision=staff_whitelist.revision+1 WHERE staff_whitelist.status='open'`
             )
-            .bind(item.studentId, member.name, item.accountRole || 'technician', actorAccount, at)
+            .bind(item.studentId, member.name, item.accountRole, actorAccount, at)
         );
         statements.push(
           db

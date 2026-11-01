@@ -31,6 +31,7 @@ function normalizeMember(row, defaults, businessDate) {
     studentId: inputString(row, 'studentId', 20, true),
     name: inputString(row, 'name', 80, true),
     homeCampusId: value('homeCampusId'),
+    homeCampusProvided: !!row.homeCampusId,
     college: inputString(row, 'college', 100) || undefined,
     major: inputString(row, 'major', 100) || undefined,
     departmentId: value('departmentId') || '',
@@ -44,7 +45,7 @@ function normalizeMember(row, defaults, businessDate) {
   };
   if (
     !/^\d{6,20}$/.test(item.studentId) ||
-    !['campus-nanhu', 'campus-hunnan'].includes(item.homeCampusId)
+    (item.homeCampusId && !['campus-nanhu', 'campus-hunnan'].includes(item.homeCampusId))
   )
     fail(400, '学号或所属校区不正确');
   if (
@@ -121,6 +122,8 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
     if (!context.permissions['members.manage']) fail(403, '缺少权限：members.manage');
     if (input.accountCampusAction && !['preserve', 'replace'].includes(input.accountCampusAction))
       fail(400, '账号校区更新方式不正确');
+    if (input.homeCampusAction && !['preserve', 'replace'].includes(input.homeCampusAction))
+      fail(400, '所属校区更新方式不正确');
     const items = single
       ? [normalizeMember(input, {}, context.businessDate)]
       : parseImport(input, context.businessDate);
@@ -135,6 +138,10 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
     const byDepartment = new Map(departments.map((department) => [department.id, department]));
     const plans = items.map((item) => {
       const existing = byStudent.get(item.studentId);
+      if (existing && !item.homeCampusProvided && input.homeCampusAction !== 'replace')
+        item.homeCampusId = existing.home_campus_id;
+      if (!['campus-nanhu', 'campus-hunnan'].includes(item.homeCampusId))
+        fail(400, '请选择有效的所属校区');
       if (item.departmentId && !byDepartment.has(item.departmentId))
         fail(400, '请选择启用的实际部门');
       if (item.roleCodes.some((code) => code === 'superadmin' || !byRole.has(code)))
@@ -347,6 +354,9 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
         (invitation) => invitation.student_id === item.studentId
       );
       if (!account && item.roleCodes.length && campuses.length) {
+        if (invitation?.expected_role === 'superadmin') fail(403, '不能管理系统管理员激活资格');
+        plan.accountRole = item.accountRole || invitation?.expected_role || 'technician';
+        const roleLabel = (role) => (role === 'admin' ? '管理员账号' : '普通账号');
         const binding = data.activationBindings.find(
           (binding) => binding.student_id === item.studentId
         );
@@ -357,7 +367,7 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
         if (
           !invitation ||
           invitation.expected_name !== item.name ||
-          invitation.expected_role !== (item.accountRole || 'technician') ||
+          invitation.expected_role !== plan.accountRole ||
           stableJson(JSON.parse(invitation.campuses).sort()) !== stableJson(campuses) ||
           !binding
         ) {
@@ -374,9 +384,9 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
             'invitation',
             '激活资格',
             invitation
-              ? `${invitation.expected_name} · ${JSON.parse(invitation.campuses).join('、')}`
+              ? `${invitation.expected_name} · ${roleLabel(invitation.expected_role)} · ${JSON.parse(invitation.campuses).join('、')}`
               : '未设置',
-            `${item.name} · ${campuses.join('、')}`
+            `${item.name} · ${roleLabel(plan.accountRole)} · ${campuses.join('、')}`
           );
         }
       } else if (

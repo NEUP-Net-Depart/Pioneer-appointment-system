@@ -15,6 +15,7 @@ export function MemberImport({ user, initialCsv = '', onClose, onSaved }) {
   const [setup, setSetup] = useState(() => newMemberSetup(user));
   const [csv, setCsv] = useState(initialCsv),
     [advanced, setAdvanced] = useState(false),
+    [replaceHomeCampus, setReplaceHomeCampus] = useState(false),
     [accountCampusAction, setAccountCampusAction] = useState('preserve');
   const [departments, setDepartments] = useState([]),
     [preview, setPreview] = useState(null),
@@ -43,6 +44,7 @@ export function MemberImport({ user, initialCsv = '', onClose, onSaved }) {
         body: {
           csv,
           defaults: memberDefaults(setup),
+          homeCampusAction: replaceHomeCampus ? 'replace' : 'preserve',
           accountCampusAction,
           confirm,
           ...(confirm ? { previewToken: preview.previewToken } : {}),
@@ -105,13 +107,22 @@ export function MemberImport({ user, initialCsv = '', onClose, onSaved }) {
               staffPermission(user, 'roles.manage') && staffPermission(user, 'accounts.manage')
             }
           />
+          <label className="workspace-check">
+            <input
+              type="checkbox"
+              checked={replaceHomeCampus}
+              disabled={busy}
+              onChange={(event) => setReplaceHomeCampus(event.target.checked)}
+            />
+            将所选校区同时用于已有人员
+          </label>
           <details
             className="workspace-help"
             onToggle={(event) => setAdvanced(event.currentTarget.open)}
           >
             <summary>高级 CSV 配置</summary>
             <p>
-              可用非空列覆盖默认设置；空白资料和授权均保留。部门任职、工作资格和角色只做补充。清空资料、调岗或撤销授权请进入人员详情。
+              可用非空列覆盖默认设置；空白资料和授权均保留。所选校区默认仅用于新增人员，非空校区列可显式修改已有人员。部门任职、工作资格和角色只做补充。清空资料、调岗或撤销授权请进入人员详情。
             </p>
             <p>
               校区使用 campus-nanhu、campus-hunnan；多项用 | 分隔。工作资格使用

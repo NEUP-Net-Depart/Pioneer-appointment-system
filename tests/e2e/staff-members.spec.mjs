@@ -6,6 +6,7 @@ test('member import previews preserve blank values and show changes, skips and c
   await page.setViewportSize({ width: 375, height: 900 });
   await mockStaff(page);
   let confirmed;
+  const previews = [];
   await page.route('**/api/members/import', route => {
     const input = route.request().postDataJSON();
     const summary = { created: 1, updated: 1, skipped: 1, conflict: 0 };
@@ -15,12 +16,14 @@ test('member import previews preserve blank values and show changes, skips and c
       { studentId: '20269983', name: '不变人员', status: 'skipped', changes: [], conflicts: [] }
     ];
     if (input.confirm) confirmed = input;
+    else previews.push(input);
     return route.fulfill({ json: { items, summary, previewToken: 'reviewed-state' } });
   });
   await loginStaff(page);
   await staffPage(page, '人员管理');
   await page.getByRole('button', { name: '批量导入', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '批量导入人员' });
+  await expect(dialog.getByRole('checkbox', { name: '将所选校区同时用于已有人员', exact: true })).not.toBeChecked();
   const pendingDownload = page.waitForEvent('download');
   await dialog.getByRole('button', { name: '下载 CSV 模板' }).click();
   const download = await pendingDownload;
@@ -33,10 +36,15 @@ test('member import previews preserve blank values and show changes, skips and c
   await expect(dialog).toContainText('新增 1 人 · 更新 1 人 · 跳过 1 人 · 冲突 0 人');
   await expect(dialog.locator('.member-import-preview')).toContainText('原姓名 → 已有人员');
   expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+  await dialog.getByRole('button', { name: '返回修改', exact: true }).click();
+  await dialog.getByRole('checkbox', { name: '将所选校区同时用于已有人员', exact: true }).check();
+  await dialog.getByRole('button', { name: '预览并核对', exact: true }).click();
   await dialog.getByRole('button', { name: '确认差异并导入' }).click();
   await expect(dialog).toContainText('导入完成');
   expect(confirmed.previewToken).toBe('reviewed-state');
   expect(confirmed.accountCampusAction).toBe('preserve');
+  expect(previews[0].homeCampusAction).toBe('preserve');
+  expect(confirmed.homeCampusAction).toBe('replace');
   expect(confirmed.defaults.workProfiles).toEqual([]);
 });
 

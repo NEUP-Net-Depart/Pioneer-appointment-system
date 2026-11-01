@@ -1357,3 +1357,86 @@ test('member history includes only linked account changes and reports safe modif
   assert.ok(changes.every(item => item.actorAccount === 'root001'));
   assert.doesNotMatch(JSON.stringify(audit.body), /audit-reset-password|secret-unrelated-hash|passwordHash|before_json|after_json/);
 });
+
+test('reimports preserve an omitted invitation account type and preview explicit type changes', async () => {
+  const db = await mf.getD1Database('DB'), repository = staffPlatformRepository(db), staff = staffServices(db), actor = await userRepository(db).find('root001');
+  const role = await repository.createRole({ code: 'reimport-admin-type', name: '邀请类型管理', grants: [{ permissionCode: 'statistics.read', scope: { campusIds: ['campus-nanhu'] } }] });
+  const studentId = '20988201', memberId = `member-${studentId}`;
+  await staff.createMember(actor, { studentId, name: '管理员邀请类型', homeCampusId: 'campus-nanhu', roleCodes: [role.code], authorizedCampuses: ['南湖'], accountRole: 'admin' });
+  const snapshot = async () => (await repository.memberImportSnapshot([studentId])).data;
+  const before = await snapshot(), audit = await repository.memberAudit(memberId);
+  const csv = `studentId,name,homeCampusId,roleCodes,authorizedCampuses\n${studentId},管理员邀请类型,campus-nanhu,${role.code},南湖`;
+  const run = async (input) => {
+    const preview = await staff.importMembers(actor, input);
+    await staff.importMembers(actor, { ...input, confirm: true, previewToken: preview.previewToken });
+    return preview;
+  };
+  for (const suffix of ['', ',accountRole']) {
+    const input = { csv: suffix ? csv.replace('\n', `${suffix}\n`) + ',' : csv };
+    const preview = await run(input);
+    assert.equal(preview.items[0].accountRole, 'admin'); assert.equal(preview.items[0].status, 'skipped');
+    assert.deepEqual(await snapshot(), before); assert.deepEqual(await repository.memberAudit(memberId), audit);
+  }
+  await run({ csv: csv.replace('管理员邀请类型', '改名后管理员') });
+  assert.equal((await snapshot()).invitations[0].expected_role, 'admin');
+  const explicit = { csv: csv.replace('\n', ',accountRole\n').replace('管理员邀请类型', '改名后管理员') + ',technician' };
+  const preview = await staff.importMembers(actor, explicit);
+  const change = preview.items[0].changes.find(item => item.field === 'invitation');
+  assert.match(change.before, /管理员账号/); assert.match(change.after, /普通账号/);
+  assert.equal(preview.items[0].accountRole, 'technician');
+  await assert.rejects(staff.importMembers(actor, { ...explicit, confirm: true }), error => error.status === 409);
+  assert.equal((await snapshot()).invitations[0].expected_role, 'admin');
+  await staff.importMembers(actor, { ...explicit, confirm: true, previewToken: preview.previewToken });
+  assert.equal((await snapshot()).invitations[0].expected_role, 'technician');
+  assert.deepEqual((await snapshot()).bindings, before.bindings);
+  await staff.createMember(actor, { studentId: '20988206', name: '新邀请默认类型', homeCampusId: 'campus-nanhu', roleCodes: [role.code], authorizedCampuses: ['南湖'] });
+  assert.equal((await repository.memberImportSnapshot(['20988206'])).data.invitations[0].expected_role, 'technician');
+});
+
+test('default home campus applies to newcomers while existing members require explicit campus changes', async () => {
+  const db = await mf.getD1Database('DB'), repository = staffPlatformRepository(db), staff = staffServices(db), actor = await userRepository(db).find('root001');
+  await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('20988202','原有南湖账号','technician','南湖',?,'2026-01-01')").bind(hashPassword('preserve-campus-password')).run();
+  await db.prepare("INSERT INTO staff_campus_grants VALUES('20988202','南湖')").run();
+  await staff.createMember(actor, { studentId: '20988203', name: '原有南湖档案', homeCampusId: 'campus-nanhu' });
+  const accountBefore = await userRepository(db).find('20988202');
+  const login = await request('/api/auth/login', { method: 'POST', headers: { 'CF-Connecting-IP': '192.0.2.217' }, body: JSON.stringify({ account: 'root001', password: 'staff-platform-password' }) });
+  assert.equal(login.response.status, 200, JSON.stringify(login.body));
+  const headers = { 'CF-Connecting-IP': '192.0.2.217', Authorization: `Bearer ${login.body.token}` };
+  const post = input => request('/api/members/import', { method: 'POST', headers, body: JSON.stringify(input) });
+  const existingCsv = 'studentId,name,college\n20988202,原有南湖账号,\n20988203,原有南湖档案,';
+  const input = { csv: `${existingCsv}\n20988204,新浑南成员,`, defaults: { homeCampusId: 'campus-hunnan' } };
+  const preview = await post(input);
+  assert.equal(preview.response.status, 200, JSON.stringify(preview.body));
+  assert.deepEqual(preview.body.summary, { created: 1, updated: 0, skipped: 2, conflict: 0 });
+  assert.deepEqual(preview.body.items.map(item => item.homeCampusId), ['campus-nanhu', 'campus-nanhu', 'campus-hunnan']);
+  assert.equal((await post({ ...input, homeCampusAction: 'replace', confirm: true, previewToken: preview.body.previewToken })).response.status, 409);
+  assert.equal(await repository.memberRow('member-20988204'), null);
+  assert.equal((await post({ ...input, confirm: true, previewToken: preview.body.previewToken })).response.status, 200);
+  assert.deepEqual(await userRepository(db).find('20988202'), accountBefore);
+  assert.equal((await repository.memberRow('member-20988203')).home_campus_id, 'campus-nanhu');
+  assert.equal((await repository.memberRow('member-20988204')).home_campus_id, 'campus-hunnan');
+  for (const existing of [
+    { csv: existingCsv },
+    { csv: 'studentId,name,homeCampusId\n20988202,原有南湖账号,\n20988203,原有南湖档案, ', defaults: input.defaults }
+  ]) {
+    const unchanged = await post(existing);
+    assert.equal(unchanged.response.status, 200, JSON.stringify(unchanged.body)); assert.equal(unchanged.body.summary.skipped, 2);
+    assert.equal((await post({ ...existing, confirm: true, previewToken: unchanged.body.previewToken })).response.status, 200);
+    assert.deepEqual(await userRepository(db).find('20988202'), accountBefore);
+  }
+  const replace = { csv: existingCsv, defaults: input.defaults, homeCampusAction: 'replace' };
+  const reviewed = await post(replace);
+  assert.equal(reviewed.response.status, 200, JSON.stringify(reviewed.body)); assert.equal(reviewed.body.summary.updated, 2);
+  assert.ok(reviewed.body.items.every(item => item.changes.some(change => change.field === 'homeCampusId' && change.before === 'campus-nanhu' && change.after === 'campus-hunnan')));
+  assert.equal((await post({ ...replace, confirm: true, previewToken: reviewed.body.previewToken })).response.status, 200);
+  const moved = await userRepository(db).find('20988202');
+  assert.equal(moved.homeCampus, '浑南'); assert.equal(moved.authVersion, accountBefore.authVersion + 1);
+  assert.deepEqual(moved.authorizedCampuses, accountBefore.authorizedCampuses);
+  const explicit = { csv: 'studentId,name,homeCampusId\n20988202,原有南湖账号,campus-nanhu', defaults: input.defaults, homeCampusAction: 'preserve' };
+  const explicitPreview = await post(explicit);
+  assert.equal(explicitPreview.body.items[0].homeCampusId, 'campus-nanhu'); assert.equal(explicitPreview.body.summary.updated, 1);
+  assert.equal((await post({ ...explicit, confirm: true, previewToken: explicitPreview.body.previewToken })).response.status, 200);
+  assert.equal((await userRepository(db).find('20988202')).homeCampus, '南湖');
+  assert.equal((await post({ ...input, homeCampusAction: 'overwrite' })).response.status, 400);
+  assert.equal((await post({ csv: 'studentId,name\n20988207,缺少校区新人' })).response.status, 400);
+});
