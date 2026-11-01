@@ -8,7 +8,8 @@ const campusNames = { 'campus-nanhu': '南湖校区', 'campus-hunnan': '浑南�
 export function RequirementEditor({ taskId, onSaved, onDirty }) {
   const active = useContext(ActivityContext),
     serial = useRef(0),
-    lock = useRef(false);
+    lock = useRef(false),
+    uniformInput = useRef(null);
   const [data, setData] = useState(null),
     [rows, setRows] = useState([]),
     [uniform, setUniform] = useState(1);
@@ -138,6 +139,7 @@ export function RequirementEditor({ taskId, onSaved, onDirty }) {
               <label>
                 普通人员最低人数
                 <input
+                  ref={uniformInput}
                   type="number"
                   min="0"
                   max="300"
@@ -152,9 +154,9 @@ export function RequirementEditor({ taskId, onSaved, onDirty }) {
                   !Number.isInteger(Number(uniform)) || Number(uniform) < 0 || Number(uniform) > 300
                 }
                 onClick={() => {
-                  setRows((current) =>
-                    current.map((row) => ({ ...row, ordinaryMinimum: Number(uniform) }))
-                  );
+                  const value = Number(uniformInput.current?.value);
+                  if (!Number.isInteger(value) || value < 0 || value > 300) return;
+                  setRows((current) => current.map((row) => ({ ...row, ordinaryMinimum: value })));
                   setDirty(true);
                   setNotice('');
                 }}
