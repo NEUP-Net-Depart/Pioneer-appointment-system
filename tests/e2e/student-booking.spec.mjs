@@ -30,6 +30,40 @@ test('success layout splits details and QR on desktop, and prioritizes QR on mob
   }
 });
 
+test('appointment detail keeps its surfaces aligned across phone, tablet and desktop widths',async({page},testInfo)=>{
+  const state=await setupStudent(page);
+  const item={id:'reserve020261012-91',accessToken:'a'.repeat(43),revision:0,status:'booked',date:'2026-10-12',timeSlot:'19:00–19:30',campus:'南湖',location:'南湖校区测试维修室',deviceType:'笔记本',brand:'联想',deviceModel:'ThinkPad T14',faultType:'蓝屏',name:'布局测试同学',studentId:'20269998',college:'计算机科学与工程学院',contactType:'qq',contactValue:'123456789',attachments:[],expiresAt:'2026-10-12T21:00:00+08:00'};
+  state.appointments.set(item.id,item);
+  await page.evaluate(entry=>localStorage.setItem('pioneerAppointmentAccess',JSON.stringify([{id:entry.id,accessToken:entry.accessToken}])),item);
+  await page.locator('[data-view-link=lookup]').first().click();
+  await page.locator(`[data-detail-id="${item.id}"]`).click();
+  await expect(page.locator('.detail-source-grid > .detail-section')).toHaveCount(4);
+  for(const width of [320,390,768,900,1440]){
+    await page.setViewportSize({width,height:900});
+    const summary=await page.locator('#detail-summary').boundingBox();
+    const cards=await page.locator('.detail-source-grid > .detail-section').evaluateAll(nodes=>nodes.map(node=>{const {x,y,width,height}=node.getBoundingClientRect();return {x,y,width,height};}));
+    const actions=await page.locator('#detail-operations').boundingBox();
+    const addPhoto=await page.locator('#detail-photos > button').boundingBox(),uploadPhoto=await page.locator('#detail-upload').boundingBox();
+    expect(Math.abs(actions.x-summary.x)).toBeLessThan(1);
+    expect(Math.abs(actions.width-summary.width)).toBeLessThan(1);
+    expect(Math.abs(addPhoto.y-uploadPhoto.y)).toBeLessThan(1);
+    if(width>=900){
+      expect(Math.abs(cards[0].x-summary.x)).toBeLessThan(1);
+      expect(Math.abs(cards[1].width-cards[0].width)).toBeLessThan(1);
+      expect(Math.abs(cards[2].x-cards[0].x)).toBeLessThan(1);
+      expect(Math.abs(cards[3].x-cards[1].x)).toBeLessThan(1);
+      expect(cards[1].x).toBeGreaterThan(cards[0].x+cards[0].width);
+      expect(Math.abs(cards[0].y-cards[1].y)).toBeLessThan(1);
+      expect(Math.abs(cards[2].y-cards[3].y)).toBeLessThan(1);
+    }else for(const card of cards){
+      expect(Math.abs(card.x-summary.x)).toBeLessThan(1);
+      expect(Math.abs(card.width-summary.width)).toBeLessThan(1);
+    }
+    expect(await page.evaluate(()=>Math.max(document.body.scrollWidth,document.documentElement.scrollWidth)<=innerWidth)).toBe(true);
+    if([390,1440].includes(width))await page.screenshot({path:testInfo.outputPath(`appointment-detail-${width}.png`),fullPage:true});
+  }
+});
+
 test('valid detail QR opens by default while each historical status stays collapsed and loads only on demand',async({page})=>{
   const state=await setupStudent(page),statuses=['booked','in_progress','completed','cancelled','expired'];let requests=0;
   const items=statuses.map((status,index)=>({id:`reserve020261012-${80+index}`,accessToken:'a'.repeat(43),revision:0,status,outcome:status==='completed' ? 'legacy_unknown' : null,date:'2026-10-12',timeSlot:'19:00–19:30',campus:'南湖',deviceType:'其他',brand:status,attachments:[]}));

@@ -10,11 +10,18 @@ export async function inventory() {
   const pages = [], sections = [], dialogs = [], routeChecks = [];
   for (const file of await walk(resolve(root, 'frontend/staff-react'))) {
     if (!/\.[jt]sx?$/.test(file)) continue;
+    const sourcePath = relative(root, file).replaceAll('\\', '/');
     const text = await readFile(file, 'utf8');
     for (const match of text.matchAll(/\{\s*id:\s*['"]([^'"]*)['"]\s*,\s*label:\s*['"]([^'"]+)['"]/g)) {
-      const row = { id: match[1], label: match[2], file: relative(root, file), line: text.slice(0, match.index).split('\n').length };
-      if (file.endsWith('/main.jsx')) pages.push({ ...row, url: '/staff/', type: 'workspace' });
+      const row = { id: match[1], label: match[2], file: sourcePath, line: text.slice(0, match.index).split('\n').length };
+      if (sourcePath === 'frontend/staff-react/main.jsx') pages.push({ ...row, url: '/staff/', type: 'workspace' });
       else sections.push(row);
+    }
+    if (sourcePath === 'frontend/staff-react/main.jsx') {
+      for (const match of text.matchAll(/\bid:\s*['"]([^'"]+)['"]\s*,\s*label:\s*staffPermission\([^)]*\)\s*\?\s*['"]([^'"]+)['"]/g)) {
+        pages.push({ id: match[1], label: match[2], file: sourcePath,
+          line: text.slice(0, match.index).split('\n').length, url: '/staff/', type: 'workspace' });
+      }
     }
     for (const match of text.matchAll(/<Modal\b[\s\S]*?title=("[^"]*"|\{[^}]*\})/g)) dialogs.push({ title: match[1], file: relative(root, file), line: text.slice(0, match.index).split('\n').length });
   }
@@ -46,7 +53,7 @@ export async function inventory() {
   const access = await readFile(resolve(root, 'shared/staff-access.js'), 'utf8');
   for (const match of access.matchAll(/(?:'([^']+)'|([\w]+)):\s*'([^']+)'/g)) routeChecks.push({ view: match[1] || match[2], permission: match[3] });
   const moduleNavigation = [];
-  for (const file of fieldFiles.filter(file => file.endsWith('/manifest.js'))) {
+  for (const file of fieldFiles.filter(file => file.replaceAll('\\', '/').endsWith('/manifest.js'))) {
     const source = await readFile(file, 'utf8');
     for (const match of source.matchAll(/\{\s*id:\s*'([^']+)',\s*path:\s*'([^']+)',\s*title:\s*'([^']+)',\s*permission:\s*'([^']+)'/g)) moduleNavigation.push({ id: match[1], path: match[2], title: match[3], permission: match[4], releaseState: source.match(/releaseState:\s*'([^']+)'/)?.[1], file: relative(root, file), line: source.slice(0, match.index).split('\n').length });
   }

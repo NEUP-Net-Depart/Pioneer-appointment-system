@@ -188,31 +188,33 @@ test('administrators configure release and announcements with guarded navigation
   await expect(page.getByRole('dialog',{name:'有尚未保存的修改'})).toBeHidden();
 });
 
-test('selecting a suspended date explains the whole-day pause and hides unavailable slots without duplicating announcements',async({page})=>{
+test('selecting a suspended date explains the pause inside the time panel without duplicating announcements',async({page})=>{
   let paused=true;
   await setupStudent(page,{availability:async(result,route)=>{
     result.items[1].paused=paused;result.items[1].pauseReason='校区维护 <script>不可执行</script>';
-    result.bookingSettings={releaseTime:'10:00',notices:paused?[{id:'suspension-test',type:'suspension',businessDate:result.items[1].date,revision:0,title:'暂停维修',content:result.items[1].pauseReason,important:false}]:[]};
+    result.bookingSettings={releaseTime:'10:00',notices:paused?[{id:'suspension-test',type:'suspension',businessDate:result.items[1].date,revision:0,title:'10/13 暂停维修',content:result.items[1].pauseReason,important:false}]:[]};
     await route.fulfill({json:result});
   }});
   await page.locator('[data-campus=南湖]').click();
   const day=page.locator('[data-date="2026-10-13"]');await expect(day).toBeEnabled();await day.click();
-  await expect(page.locator('#booking-paused')).toContainText('当日暂停维修');
-  await expect(page.locator('#booking-paused')).toContainText('2026-10-13');
-  await expect(page.locator('#booking-paused-reason')).toHaveText('校区维护 <script>不可执行</script>');
-  await expect(page.locator('#booking-paused script')).toHaveCount(0);
+  await expect(day).toContainText('暂停维修');
+  await expect(page.locator('#booking-slot-title')).toHaveText('公告 · 10/13 暂停维修');
+  await expect(page.locator('#booking-slot-context')).toHaveText('校区维护 <script>不可执行</script>');
+  await expect(page.locator('#booking-slot-panel script')).toHaveCount(0);
   await expect(page.locator('#booking-notices')).toBeHidden();
-  await expect(page.locator('#booking-slot-panel')).toBeHidden();await expect(page.locator('#booking-location')).toBeHidden();
+  await expect(page.locator('#booking-slot-panel')).toBeVisible();await expect(page.locator('#booking-slots button')).toHaveCount(4);
+  await expect(page.locator('#booking-slots button').first()).toContainText('暂停维修');await expect(page.locator('#booking-location')).toBeHidden();
   await expect(page.locator('#step-one-next')).toBeDisabled();
   for(const width of [320,390,768,1440]){
     await page.setViewportSize({width,height:1200});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     await page.screenshot({path:`output/issue64/paused-student-${width}.png`,fullPage:true,animations:'disabled'});
-    const bounds=await page.locator('#booking-picker').boundingBox(),action=await page.getByRole('button',{name:'选择其他日期',exact:true}).boundingBox();
-    expect(action.y+action.height).toBeLessThanOrEqual(bounds.y+bounds.height);
+    const bounds=await page.locator('#booking-picker').boundingBox(),lastSlot=await page.locator('#booking-slots button').last().boundingBox();
+    expect(lastSlot.y+lastSlot.height).toBeLessThanOrEqual(bounds.y+bounds.height);
   }
-  await page.getByRole('button',{name:'选择其他日期',exact:true}).click();await expect(page.locator('#booking-paused')).toBeHidden();await expect(page.locator('#booking-slot-panel')).toBeVisible();
-  await day.click();await expect(page.locator('#booking-paused')).toBeVisible();paused=false;
-  await page.locator('[data-campus=南湖]').click();await expect(page.locator('#booking-paused')).toBeHidden();await expect(page.locator('#booking-slot-panel')).toBeVisible();
+  await page.locator('[data-date="2026-10-14"]').click();await expect(page.locator('#booking-slot-context')).toBeHidden();
+  await expect(page.locator('#booking-slot-title')).toHaveText('选择到场时段');
+  await day.click();await expect(page.locator('#booking-slot-context')).toBeVisible();paused=false;
+  await page.locator('[data-campus=南湖]').click();await expect(page.locator('#booking-slot-context')).toBeHidden();await expect(page.locator('#booking-slot-panel')).toBeVisible();
   await expect(page.locator('#step-one-next')).toBeEnabled();
   await expect(day).toHaveAttribute('aria-pressed','true');
 });

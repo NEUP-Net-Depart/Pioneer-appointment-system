@@ -19,6 +19,6 @@ export function slotAvailability(summary, date, slot, instant = new Date()) {
   const ended = !availableSlots(date, instant, summary.timeSlots || Object.keys(summary.slotCapacities)).includes(slot);
   return {
     capacity, remaining, ended, disabled: !!summary.paused || ended || remaining === 0 || summary.location === '',
-    label: summary.paused ? '暂停维修' : summary.location === '' ? '地点未配置' : ended ? '时段已结束' : capacity === 0 ? '暂停预约' : remaining === 0 ? '预约已满' : `剩余 ${remaining} 名`
+    label: summary.paused ? '暂停维修' : summary.location === '' ? '地点未配置' : ended ? '时段已结束' : capacity === 0 ? '未开放名额' : remaining === 0 ? '预约已满' : `剩余 ${remaining} 名`
   };
 }
