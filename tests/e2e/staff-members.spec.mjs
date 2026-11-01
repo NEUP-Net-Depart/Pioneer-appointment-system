@@ -204,3 +204,58 @@ test('settings managers reach department maintenance without reading personnel o
   await expect(page.getByRole('button', { name: '新增部门', exact: true })).toBeVisible();
   expect(privateReads).toEqual([]);
 });
+
+test('existing personnel can configure activation directly and see real account roles and safe history', async ({ page, request }) => {
+  await page.clock.setFixedTime(new Date('2026-10-15T02:00:00Z'));
+  const identityHeaders = { 'CF-Connecting-IP': '192.0.2.220' };
+  const login = await request.post('/api/auth/login', { headers: identityHeaders, data: { account: 'root001', password: process.env.E2E_ROOT_PASSWORD } });
+  expect(login.ok()).toBe(true);
+  const headers = { ...identityHeaders, Authorization: `Bearer ${(await login.json()).token}` };
+  const studentId = '20987710', name = '已有人员激活验收';
+  const create = await request.post('/api/members', { headers, data: { studentId, name, homeCampusId: 'campus-nanhu', workProfiles: ['repair'], roleCodes: ['technician'] } });
+  expect(create.ok(), await create.text()).toBe(true);
+  let imports = 0;
+  page.on('request', request => { if (new URL(request.url()).pathname === '/api/members/import') imports++; });
+  await page.setExtraHTTPHeaders(identityHeaders);
+  await loginStaff(page, 'root001', process.env.E2E_ROOT_PASSWORD);
+  await staffPage(page, '人员管理');
+  await page.getByRole('textbox', { name: '搜索成员', exact: true }).fill(studentId);
+  const row = page.locator('.members-results .react-row').filter({ hasText: studentId });
+  await row.getByRole('button', { name: '人员详情', exact: true }).click();
+  const detail = page.getByRole('dialog', { name, exact: true });
+  await detail.getByRole('button', { name: '账号与激活', exact: true }).click();
+  const activation = detail.getByRole('form', { name: '配置激活资格', exact: true });
+  await expect(activation).toContainText('现有角色：维修人员');
+  await expect(activation.getByRole('checkbox', { name: '南湖', exact: true })).toBeChecked();
+  await expect(activation.getByRole('button', { name: '保存激活资格', exact: true })).toBeEnabled();
+  await expect(detail.getByRole('combobox', { name: '人员类型', exact: true })).toHaveCount(0);
+  for (const width of [320, 390, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    expect(await detail.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await page.screenshot({ path: `output/member-management/member-activation-${width}.png`, animations: 'disabled' });
+  }
+  await activation.getByRole('button', { name: '保存激活资格', exact: true }).click();
+  await expect(activation).toContainText('激活资格已保存');
+  await expect(activation).toContainText('激活资格：待激活');
+  expect(imports).toBe(0);
+  const application = await request.post('/api/activation', { headers: identityHeaders, data: { studentId, name, homeCampus: '南湖', password: 'ActivationTest!2026' } });
+  expect(application.ok(), await application.text()).toBe(true);
+  const approved = await request.post('/api/activation-requests/review', { headers, data: { ids: [(await application.json()).id], status: 'approved', identityVerified: true } });
+  expect(approved.ok(), await approved.text()).toBe(true);
+  await detail.getByRole('button', { name: '关闭', exact: true }).click();
+  await row.getByRole('button', { name: '人员详情', exact: true }).click();
+  await detail.getByRole('button', { name: '账号与激活', exact: true }).click();
+  await expect(detail.locator('.member-account')).toContainText('工作角色：维修人员');
+  await expect(detail.locator('.member-account')).not.toContainText('尚未授权');
+  await detail.getByRole('combobox', { name: '账号状态', exact: true }).selectOption('disabled');
+  const updated = page.waitForResponse(response => new URL(response.url()).pathname === `/api/users/${studentId}` && response.request().method() === 'PATCH');
+  await detail.getByRole('button', { name: '保存账号', exact: true }).click();
+  expect((await updated).ok()).toBe(true);
+  await expect(detail.getByRole('combobox', { name: '账号状态', exact: true })).toHaveValue('disabled');
+  await detail.getByRole('button', { name: '操作记录', exact: true }).click();
+  const history = detail.getByRole('region', { name: '人员操作记录', exact: true });
+  await expect(history).toContainText('配置激活资格');
+  await expect(history).toContainText('修改登录账号');
+  await expect(history).toContainText('账号状态');
+  await expect(history).not.toContainText('ActivationTest!2026');
+});

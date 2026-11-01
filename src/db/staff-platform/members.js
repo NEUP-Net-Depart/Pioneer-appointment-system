@@ -315,16 +315,36 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
     args.push(at, memberId, revision);
     const authorization = commandAuthorization(auditRecord);
     const account = await accountForMember(memberId);
+    const invitationGuard = auditRecord?.invitationGuard;
     // All effects follow the successful CAS in the same transaction, including
     // the audit. A failed audit must not leave a changed member or session behind.
     const statements = [
       db
         .prepare(
-          `UPDATE members SET ${fields.join(',')} WHERE id=? AND revision=? ${authorization.sql}`
+          `UPDATE members SET ${fields.join(',')} WHERE id=? AND revision=? ${authorization.sql}
+          ${invitationGuard ? `AND (${invitationGuard.sql})=?` : ''}`
         )
-        .bind(...args, ...authorization.args)
+        .bind(
+          ...args,
+          ...authorization.args,
+          ...(invitationGuard ? [...invitationGuard.args, invitationGuard.value] : [])
+        )
     ];
     if (auditRecord) statements.push(auditStatement(auditRecord, true));
+    if (auditRecord?.syncInvitationName) {
+      statements.push(
+        db
+          .prepare(
+            "UPDATE staff_whitelist SET expected_name=?,revision=revision+1 WHERE student_id=(SELECT student_id FROM members WHERE id=?) AND status='open' AND changes()>0"
+          )
+          .bind(patch.name, memberId),
+        db
+          .prepare(
+            "UPDATE activation_requests SET status='rejected',password_hash='',review_note='人员姓名已更新，请重新提交激活申请',reviewed_by=?,reviewed_at=? WHERE student_id=(SELECT student_id FROM members WHERE id=?) AND status='pending' AND name<>? AND changes()>0"
+          )
+          .bind(auditRecord.actorAccount, at, memberId, patch.name)
+      );
+    }
     if (
       account &&
       (patch.name !== undefined || patch.status !== undefined || patch.homeCampusId !== undefined)

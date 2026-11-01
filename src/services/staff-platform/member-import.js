@@ -343,10 +343,10 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
           campuses.join('、')
         );
       }
+      const invitation = data.invitations.find(
+        (invitation) => invitation.student_id === item.studentId
+      );
       if (!account && item.roleCodes.length && campuses.length) {
-        const invitation = data.invitations.find(
-          (invitation) => invitation.student_id === item.studentId
-        );
         const binding = data.activationBindings.find(
           (binding) => binding.student_id === item.studentId
         );
@@ -368,6 +368,8 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
             if (!evaluate(context, 'accounts.manage', { campusId: id }).allowed)
               fail(403, '缺少激活资格的账号管理权限');
           plan.invitation = true;
+          plan.syncInvitationName =
+            invitation?.status === 'open' && invitation.expected_name !== item.name;
           change(
             'invitation',
             '激活资格',
@@ -377,6 +379,21 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
             `${item.name} · ${campuses.join('、')}`
           );
         }
+      } else if (
+        !account &&
+        invitation?.status === 'open' &&
+        invitation.expected_name !== item.name
+      ) {
+        const invitationCampuses = JSON.parse(invitation.campuses).map(campusId);
+        if (
+          !invitationCampuses.length ||
+          invitationCampuses.some(
+            (id) => !evaluate(context, 'accounts.manage', { campusId: id }).allowed
+          )
+        )
+          plan.conflicts.push('同步待激活姓名需要激活资格所在校区的账号管理权限');
+        plan.syncInvitationName = true;
+        change('invitationName', '同步待激活姓名', invitation.expected_name, item.name);
       }
       plan.authorizedCampuses = campuses;
       plan.syncAccount =

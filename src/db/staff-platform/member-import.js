@@ -191,6 +191,23 @@ export function memberImportDomain({ db, auditStatement, commandAuthorization })
               .bind(item.studentId, campus)
           );
       }
+      if (item.syncInvitationName) {
+        if (!item.invitation)
+          statements.push(
+            db
+              .prepare(
+                "UPDATE staff_whitelist SET expected_name=?,revision=revision+1 WHERE student_id=? AND status='open'"
+              )
+              .bind(member.name, item.studentId)
+          );
+        statements.push(
+          db
+            .prepare(
+              "UPDATE activation_requests SET status='rejected',password_hash='',review_note='人员姓名已更新，请重新提交激活申请',reviewed_by=?,reviewed_at=? WHERE student_id=? AND status='pending' AND name<>?"
+            )
+            .bind(actorAccount, at, item.studentId, member.name)
+        );
+      }
       statements.push(
         auditStatement({
           ...auditRecord,

@@ -239,12 +239,32 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
       if (before.revision !== input.revision) fail(409, '成员已被其他操作修改，请刷新');
       return { member: previous, revision: before.revision };
     }
+    let invitationGuard,
+      syncInvitationName = false;
+    if (patch.name && !targetState.account && before.student_id) {
+      const snapshot = await repository.memberImportSnapshot([before.student_id]);
+      invitationGuard = snapshot.guard;
+      const invitation = snapshot.data.invitations[0];
+      if (invitation?.status === 'open' && invitation.expected_name !== patch.name) {
+        const campuses = JSON.parse(invitation.campuses);
+        if (
+          !campuses.length ||
+          campuses.some(
+            (campus) => !evaluate(context, 'accounts.manage', { campusId: campus }).allowed
+          )
+        )
+          fail(403, '同步待激活姓名需要激活资格所在校区的账号管理权限');
+        syncInvitationName = true;
+      }
+    }
     const after = await repository.updateMember(memberId, patch, input.revision, {
       actorMemberId: context.actor.memberId,
       actorAccount: actor.account,
       authVersion: context.authVersion,
       action: 'identity.member.updated',
       targetAccountVersion: targetState.account,
+      invitationGuard,
+      syncInvitationName,
       sourceRef: publicResourceRef('identity', 'member', memberId),
       before,
       after: patch,

@@ -10,7 +10,9 @@ const labels = {
   'identity.qualification.ended': '结束工作资格',
   'organization.membership.updated': '新增任职',
   'organization.membership.ended': '结束任职',
-  'authorization.member_roles.updated': '修改角色授权'
+  'authorization.member_roles.updated': '修改角色授权',
+  'authorization.member_activation.updated': '配置激活资格',
+  'authorization.account.updated': '修改登录账号'
 };
 export function MemberHistory({ memberId }) {
   const [items, setItems] = useState([]),
@@ -37,6 +39,7 @@ export function MemberHistory({ memberId }) {
         items.map((item, index) => (
           <article className="react-binding" key={index}>
             <strong>{labels[item.action] || item.action}</strong>
+            {item.changes?.length > 0 && <p>{item.changes.join('、')}</p>}
             <p>
               {new Date(item.occurredAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })} ·{' '}
               {item.actorAccount}

@@ -151,20 +151,40 @@ export function commandsDomain({ db }) {
       return rows(
         await db
           .prepare(
-            `SELECT actor_account,action,occurred_at,reason FROM audit_events
-        WHERE action IN ('identity.member.created','identity.member.imported','identity.member.updated','identity.qualification.granted','identity.qualification.ended','organization.membership.updated','organization.membership.ended','authorization.member_roles.updated')
+            `SELECT actor_account,action,occurred_at,reason,
+          CASE WHEN action='authorization.account.updated' THEN after_json END AS account_changes FROM audit_events
+        WHERE (action IN ('identity.member.created','identity.member.imported','identity.member.updated','identity.qualification.granted','identity.qualification.ended','organization.membership.updated','organization.membership.ended','authorization.member_roles.updated','authorization.member_activation.updated')
         AND (json_extract(source_ref,'$.id')=?
           OR json_extract(source_ref,'$.id') IN (SELECT id FROM member_department_memberships WHERE member_id=?)
-          OR json_extract(source_ref,'$.id') IN (SELECT id FROM member_work_profiles WHERE member_id=?))
+          OR json_extract(source_ref,'$.id') IN (SELECT id FROM member_work_profiles WHERE member_id=?)))
+        OR (action='authorization.account.updated' AND json_extract(source_ref,'$.type')='account'
+          AND json_extract(source_ref,'$.id') IN (SELECT account FROM staff_accounts WHERE member_id=?))
         ORDER BY occurred_at DESC,id DESC LIMIT 50`
           )
-          .bind(memberId, memberId, memberId)
+          .bind(memberId, memberId, memberId, memberId)
           .all()
       ).map((row) => ({
         actorAccount: row.actor_account,
         action: row.action,
         occurredAt: row.occurred_at,
-        reason: row.reason
+        reason: row.reason,
+        ...(row.action === 'authorization.account.updated'
+          ? {
+              changes: Object.entries(parseJson(row.account_changes, {})).flatMap(
+                ([key, value]) => {
+                  const label = {
+                    status: '账号状态',
+                    role: '账号类型',
+                    authorizedCampuses: '登录授权校区',
+                    name: '账号姓名',
+                    homeCampus: '所属校区',
+                    passwordChanged: value === true ? '重置密码' : ''
+                  }[key];
+                  return label ? [label] : [];
+                }
+              )
+            }
+          : {})
       }));
     },
     createReceipt,
