@@ -119,7 +119,7 @@ fieldset.field { padding: 0; border: 0; }
 .user-mode .success-actions { justify-content: flex-start; gap: 12px; flex-wrap: wrap; }
 .user-mode .repair-qr img { display: block; width: 240px; height: 240px; max-width: 100%; object-fit: contain; }
 .user-mode .repair-qr-status { min-height: 1.7em; }
-.user-mode .repair-qr-status:empty { display: none; }
+.user-mode .repair-qr-status:empty { visibility: hidden; }
 .success-layout { display: grid; grid-template-columns: minmax(0,1fr) 264px; align-items: start; gap: 24px; margin-top: 24px; }
 .success-details { min-width: 0; }
 .success-details .selection-summary { margin-top: 0; }
