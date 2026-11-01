@@ -7,9 +7,9 @@ test('supplemental-permission-categories-loading-and-failure', async ({ page, au
   await page.route('**/api/members?*', async route => { await gate; const response = await route.fetch(); await route.fulfill({ response }); });
   await login(page);
   await navigate(page, '人员管理');
-  await expect(page.locator('.workspace-skeleton:visible')).toHaveCount(1);
   await expect(page.getByRole('status').filter({ hasText: '正在更新筛选结果' })).toHaveCount(1);
-  await expect(page.locator('.workspace-skeleton:visible')).toHaveAttribute('aria-hidden', 'true');
+  await expect(page.locator('.workspace-data-pending[aria-label="成员列表正在读取"]')).toHaveAttribute('aria-busy', 'true');
+  await expect(page.locator('.workspace-skeleton:visible')).toHaveCount(0);
   await audit.capture('members-loading-feedback', { axe: true });
   release();
   await expect(page.locator('.members-results .react-row:not(.react-row-head)')).not.toHaveCount(0);
