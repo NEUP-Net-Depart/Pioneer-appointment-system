@@ -90,6 +90,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
   const [answer, setAnswer] = useState('');
   const [ocrBusy, setOcrBusy] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
+  const [officialBlocked, setOfficialBlocked] = useState(false);
   const serialInput = useRef<HTMLInputElement>(null);
   const captchaInput = useRef<HTMLInputElement>(null);
   const request = useRef<AbortController | null>(null);
@@ -135,6 +136,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
     setAnswer('');
     setMessage('');
     setCopyFailed(false);
+    setOfficialBlocked(false);
   }
   function changeSerial(value: string) {
     invalidate();
@@ -188,18 +190,36 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
   }
   async function copyAndGo() {
     if (!destination || !valid || ocrBusy) return;
+    // Reserve the tab during the click, before clipboard permission can consume user activation.
+    const official = window.open('about:blank', '_blank');
+    if (official) {
+      official.opener = null;
+      const referrer = official.document.createElement('meta');
+      referrer.name = 'referrer';
+      referrer.content = 'no-referrer';
+      official.document.head.append(referrer);
+    }
     if (!copyFailed) {
       try {
         await navigator.clipboard.writeText(normalized);
       } catch {
+        official?.close();
         setCopyFailed(true);
+        setOfficialBlocked(false);
         serialInput.current?.focus();
         serialInput.current?.select();
         setMessage('浏览器未允许复制，已选中序列号。请手动复制后点击「已手动复制，前往官网」。');
         return;
       }
     }
-    window.location.assign(destination.url);
+    if (official && !official.closed) {
+      official.location.replace(destination.url);
+      setOfficialBlocked(false);
+      setMessage('已在新标签页打开官网。');
+    } else {
+      setOfficialBlocked(true);
+      setMessage('浏览器拦截了新标签页，请点击下方链接打开官网。');
+    }
   }
   async function copyOnly() {
     if (!valid || ocrBusy) return;
@@ -350,6 +370,16 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
           >
             只复制序列号，按上方步骤操作
           </button>
+        )}
+        {officialBlocked && destination && (
+          <a
+            href={destination.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            referrerPolicy="no-referrer"
+          >
+            在新标签页打开官网 ↗
+          </a>
         )}
         {destination && (
           <small>

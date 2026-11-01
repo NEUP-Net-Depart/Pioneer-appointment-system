@@ -295,7 +295,66 @@ test('Huawei isolates its manual widget and ignores forged messages before query
   await expect(dialog.locator('iframe')).toHaveCount(0);
 });
 
-test('real local OCR reads a device label, copies the serial and redirects an unsupported brand to its fixed official page', async ({ page }) => {
+test('official navigation reserves its tab before an asynchronous copy and preserves unuploaded repair photos', async ({ page, context }) => {
+  const item = { id: 'reserve020261015-48', revision: 1, brand: '惠普', deviceModel: 'Test laptop', campus: '南湖', date: '2026-10-15', timeSlot: '19:00–19:30', status: 'booked', canStart: true };
+  await fixture(page, { item });
+  await page.getByRole('button', { name: '核对设备并接手', exact: true }).click();
+  const repair = page.getByRole('dialog', { name: '现场核验', exact: true, includeHidden: true });
+  await repair.getByLabel('核验说明（选填）').fill('待核对原厂保修，保留照片');
+  await repair.getByLabel('设备正面照片', { exact: true }).setInputFiles({ name: 'unuploaded-front.png', mimeType: 'image/png', buffer: Buffer.from(captchaImage.split(',')[1], 'base64') });
+  const preview = repair.getByRole('img', { name: '设备正面照片', exact: true });
+  await expect(preview).toHaveAttribute('src', /^blob:/);
+  const photoUrl = await preview.getAttribute('src');
+  const originalUrl = page.url(), writes = [];
+  page.on('request', request => { if (request.method() === 'POST') writes.push(request.url()); });
+  await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => new Promise(resolve => { window.finishWarrantyCopy = resolve; }) } }));
+  await repair.getByRole('button', { name: '查询保修', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '查询设备保修', exact: true });
+  await dialog.getByLabel('序列号 / S/N / Service Tag', { exact: true }).fill('TEST12345678');
+  const destination = 'https://support.hp.com/cn-zh/check-warranty';
+  await context.route(destination, route => route.fulfill({ contentType: 'text/html', body: '<h1>Official fixture</h1>' }));
+  const popup = page.waitForEvent('popup');
+  await dialog.getByRole('button', { name: '复制序列号并前往官网', exact: true }).click();
+  const official = await popup;
+  expect(official.url()).toBe('about:blank');
+  expect(await official.evaluate(() => window.opener)).toBeNull();
+  await page.evaluate(() => window.finishWarrantyCopy());
+  await expect(official).toHaveURL(destination);
+  await official.close();
+  await expect(page).toHaveURL(originalUrl);
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(preview).toHaveAttribute('src', photoUrl);
+  await expect(repair.getByLabel('核验说明（选填）')).toHaveValue('待核对原厂保修，保留照片');
+  expect(await repair.getByLabel('设备正面照片', { exact: true }).evaluate(input => input.files[0].name)).toBe('unuploaded-front.png');
+  expect(writes).toEqual([]);
+});
+
+test('a blocked new tab offers a direct safe link without navigating the workbench', async ({ page, context }) => {
+  await fixture(page);
+  await page.evaluate(() => {
+    window.open = () => null;
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => {} } });
+  });
+  const dialog = await openLookup(page);
+  await dialog.getByLabel('设备品牌').selectOption('hp');
+  await dialog.getByLabel('序列号 / S/N / Service Tag', { exact: true }).fill('TEST12345678');
+  await dialog.getByRole('button', { name: '复制序列号并前往官网', exact: true }).click();
+  await expect(dialog).toContainText('浏览器拦截了新标签页');
+  const link = dialog.getByRole('link', { name: '在新标签页打开官网 ↗' });
+  await expect(link).toHaveAttribute('target', '_blank');
+  await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  await expect(link).toHaveAttribute('referrerpolicy', 'no-referrer');
+  await context.route('https://support.hp.com/cn-zh/check-warranty', route => route.fulfill({ contentType: 'text/html', body: '<h1>Official fixture</h1>' }));
+  const popup = page.waitForEvent('popup');
+  await link.click();
+  const official = await popup;
+  await expect(official).toHaveURL('https://support.hp.com/cn-zh/check-warranty');
+  expect(new URL(page.url()).pathname).toBe('/staff/');
+  await expect(dialog).toBeVisible();
+  await official.close();
+});
+
+test('real local OCR reads a device label and opens the fixed official page in a separate tab', async ({ page, context }) => {
   test.setTimeout(90000);
   await fixture(page);
   const copies = [];
@@ -313,25 +372,45 @@ test('real local OCR reads a device label, copies the serial and redirects an un
   await expect(dialog.getByLabel('序列号 / S/N / Service Tag', { exact: true })).toHaveValue('ABC23456789', { timeout: 60000 });
   await expect(dialog).toContainText('已填入候选序列号');
   expect(writes).toEqual([]);
-  await page.route('https://www.asus.com.cn/support/warranty-status-inquiry/?sn=ABC23456789', route => route.fulfill({ contentType: 'text/html; charset=utf-8', body: '<meta charset="utf-8"><h1>模拟 ASUS 官方查询页</h1>' }));
+  const originalUrl = page.url();
+  await context.route('https://www.asus.com.cn/support/warranty-status-inquiry/?sn=ABC23456789', route => route.fulfill({ contentType: 'text/html; charset=utf-8', body: '<meta charset="utf-8"><h1>模拟 ASUS 官方查询页</h1>' }));
+  const popup = page.waitForEvent('popup');
   await dialog.getByRole('button', { name: '复制序列号并前往官网', exact: true }).click();
-  await expect(page).toHaveURL('https://www.asus.com.cn/support/warranty-status-inquiry/?sn=ABC23456789');
+  const official = await popup;
+  await expect(official).toHaveURL('https://www.asus.com.cn/support/warranty-status-inquiry/?sn=ABC23456789');
+  expect(await official.evaluate(() => window.opener)).toBeNull();
+  expect(await official.evaluate(() => document.referrer)).toBe('');
+  await expect(page).toHaveURL(originalUrl);
+  await expect(dialog).toBeVisible();
   expect(copies).toEqual(['ABC23456789']);
+  await official.close();
 });
 
-test('a blocked clipboard selects the serial and requires an explicit manual-copy action before redirecting', async ({ page }) => {
+test('a blocked clipboard closes the reserved tab and keeps manual copy before opening the official page', async ({ page, context }) => {
   await fixture(page);
   await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new DOMException('Denied', 'NotAllowedError'); } } }));
   const dialog = await openLookup(page);
   await dialog.getByLabel('设备品牌').selectOption('asus');
   await dialog.getByLabel('序列号 / S/N / Service Tag', { exact: true }).fill('TEST12345678');
+  const reserved = page.waitForEvent('popup');
   await dialog.getByRole('button', { name: '复制序列号并前往官网', exact: true }).click();
+  await expect.poll(() => context.pages().length).toBe(1);
+  expect((await reserved).isClosed()).toBe(true);
   await expect(dialog).toContainText('浏览器未允许复制');
   expect(new URL(page.url()).pathname).toBe('/staff/');
   await expect(dialog.getByRole('button', { name: '已手动复制，前往官网', exact: true })).toBeEnabled();
+  expect(await dialog.getByLabel('序列号 / S/N / Service Tag', { exact: true }).evaluate(input => input.value.slice(input.selectionStart, input.selectionEnd))).toBe('TEST12345678');
+  const url = 'https://www.asus.com.cn/support/warranty-status-inquiry/?sn=TEST12345678';
+  await context.route(url, route => route.fulfill({ contentType: 'text/html', body: '<h1>Official fixture</h1>' }));
+  const popup = page.waitForEvent('popup');
+  await dialog.getByRole('button', { name: '已手动复制，前往官网', exact: true }).click();
+  const official = await popup;
+  await expect(official).toHaveURL(url);
+  await expect(dialog).toBeVisible();
+  await official.close();
 });
 
-test('remaining consumer channels copy the serial before opening the correct first-party destination', async ({ page }) => {
+test('remaining consumer channels copy the serial and keep the workbench while opening their destination', async ({ page, context }) => {
   await fixture(page);
   const copies = [];
   await page.exposeFunction('recordConsumerCopy', value => copies.push(value));
@@ -353,13 +432,16 @@ test('remaining consumer channels copy the serial before opening the correct fir
       await expect(dialog).toContainText(title);
       await expect(dialog).not.toContainText('API 授权');
       await dialog.getByLabel('序列号 / S/N / Service Tag', { exact: true }).fill('TEST12345678');
-      await page.route(url, route => route.fulfill({ contentType: 'text/html; charset=utf-8', body: '<meta charset="utf-8"><h1>模拟原厂消费者页面</h1>' }));
+      await context.route(url, route => route.fulfill({ contentType: 'text/html; charset=utf-8', body: '<meta charset="utf-8"><h1>模拟原厂消费者页面</h1>' }));
+      const popup = page.waitForEvent('popup');
       await dialog.getByRole('button', { name: brand === 'mechrevo' ? '复制序列号并查看小程序入口' : '复制序列号并前往官网', exact: true }).click();
-      await expect(page).toHaveURL(url);
+      const official = await popup;
+      await expect(official).toHaveURL(url);
       expect(copies.at(-1)).toBe('TEST12345678');
-      expect(new URL(page.url()).searchParams.toString()).not.toContain('TEST12345678');
-      await page.goto(process.env.E2E_BASE_URL + '/staff/');
-      await expect(page.getByRole('button', { name: '查询保修', exact: true })).toBeVisible();
+      expect(new URL(official.url()).searchParams.toString()).not.toContain('TEST12345678');
+      expect(new URL(page.url()).pathname).toBe('/staff/');
+      await official.close();
+      await dialog.getByRole('button', { name: '关闭', exact: true }).click();
     });
   }
   expect(copies).toHaveLength(destinations.length);
