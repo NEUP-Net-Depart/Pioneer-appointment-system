@@ -124,12 +124,24 @@ export async function editableMember(
 ) {
   const memberId = member.memberId || member.id;
   const account = await repository.accountForMember(memberId);
+  const memberships = await repository.memberships(memberId, context.businessDate);
+  return editableMemberState(context, member, account, memberships, evaluate, permission);
+}
+
+export function editableMemberState(
+  context,
+  member,
+  account,
+  memberships,
+  evaluate,
+  permission = 'members.manage'
+) {
+  const memberId = member.memberId || member.id;
   if (memberId === context.actor.memberId || account?.protected || account?.role === 'superadmin')
     fail(403, '不能修改本人或受保护系统账号的成员授权');
   const campuses = account
     ? JSON.parse(account.campuses || '[]').map(campusId)
     : [member.homeCampusId || member.home_campus_id];
-  const memberships = await repository.memberships(memberId, context.businessDate);
   for (const campus of campuses) {
     if (
       !evaluate(context, permission, {

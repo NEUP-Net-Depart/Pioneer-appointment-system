@@ -47,15 +47,20 @@ export function PersonalScene({
           )}
         </div>
       </section>
-      {(data.capability['members.manage'] || data.capability['roles.manage']) && (
+      {(data.capability['members.manage'] ||
+        data.capability['accounts.manage'] ||
+        data.capability['settings.manage'] ||
+        data.capability['roles.manage']) && (
         <section className="field-card">
           <h2>平台管理</h2>
           <div className="field-actions personal-actions">
-            {data.capability['members.manage'] && (
-              <button onClick={() => onNavigate('members')}>成员管理</button>
+            {(data.capability['members.manage'] ||
+              data.capability['accounts.manage'] ||
+              data.capability['settings.manage']) && (
+              <button onClick={() => onNavigate('members')}>人员管理</button>
             )}
             {data.capability['roles.manage'] && (
-              <button onClick={() => onNavigate('permissions')}>角色与授权</button>
+              <button onClick={() => onNavigate('permissions')}>角色与权限</button>
             )}
           </div>
         </section>

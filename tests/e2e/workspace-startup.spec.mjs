@@ -31,7 +31,7 @@ for (const width of [320, 390, 768, 1440]) test(`workspace shell is stable while
     if (width >= 900) await expect(page.locator('.field-brand')).toBeVisible();
     await expect(page.getByRole('heading', { name: '今日工作', exact: true })).toBeVisible();
     await expect(page.locator('.workspace-bootstrap')).toHaveCount(0);
-    await expect(page.locator('.field-sidebar button').filter({ hasText: '成员管理' })).toHaveCount(0);
+    await expect(page.locator('.field-sidebar button').filter({ hasText: '人员管理' })).toHaveCount(0);
     await page.evaluate(() => {
       window.originalWorkspace = document.querySelector('.field-app');
       window.dispatchEvent(new CustomEvent('staff-request-navigation', { detail: 'members' }));
@@ -90,7 +90,7 @@ test('identity timeout has a local retry and never exposes privileged entries', 
     await expect.poll(() => reads).toBe(1);
     await page.clock.fastForward(15001);
     await expect(page.getByRole('alert')).toHaveText('会话验证超时，请检查网络后重试');
-    await expect(page.locator('.field-sidebar').getByRole('button', { name: '成员管理', exact: true })).toHaveCount(0);
+    await expect(page.locator('.field-sidebar').getByRole('button', { name: '人员管理', exact: true })).toHaveCount(0);
     pending = false;
     stalled.release();
     await page.getByRole('button', { name: '重新加载工作区', exact: true }).click();
@@ -105,10 +105,10 @@ test('identity timeout has a local retry and never exposes privileged entries', 
 test('a missing lazy module fails inside its page and leaves other navigation usable', async ({ page }) => {
   await mockStaff(page);
   await page.addInitScript(() => sessionStorage.setItem('pioneerToken', 'test-session'));
-  await page.route('**/staff/assets/Accounts-*.js', route => route.fulfill({ status: 404, body: '' }));
+  await page.route('**/staff/assets/People-*.js', route => route.fulfill({ status: 404, body: '' }));
   await page.goto('/staff/');
   await expect(page.locator('.field-content')).toBeVisible();
-  await page.locator('.field-sidebar').getByRole('button', { name: '账号管理', exact: true }).click();
+  await page.locator('.field-sidebar').getByRole('button', { name: '人员管理', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveText('此页面暂时无法加载，请刷新后重试。');
   await page.locator('.field-sidebar').getByRole('button', { name: '账号安全', exact: true }).click();
   await expect(page.getByRole('heading', { name: '账号安全', exact: true })).toBeVisible();

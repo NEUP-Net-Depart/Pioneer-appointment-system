@@ -1,16 +1,22 @@
 import { fail } from '../lib/http.js';
 import { hashPassword } from '../lib/passwords.js';
 import { roleLevel } from '../../shared/constants.js';
+import { publicUserView } from '../db/users.js';
 import { canManageAccount, requireGrantScope, requireRole, requireCampus } from './permissions.js';
 
 export function userService(users, staff) {
-  async function manageable(id, actor) {
-    const target = await users.find(id);
+  async function manageable(id, actor, options) {
+    const target = await users.find(id, options);
     if (!target) fail(404, '账号不存在');
     if (!canManageAccount(actor, target)) fail(403, '只能管理授权校区内其他成员的普通账号');
     return target;
   }
   return {
+    async detail(id, actor) {
+      actor = await staff.scopedActor(actor, 'accounts.manage');
+      const target = await manageable(id, actor, { withRoles: true });
+      return { ...publicUserView(target), actions: { edit: true, changeStatus: true, resetPassword: true } };
+    },
     async assignees(query, actor) {
       requireRole(actor, 'technician');
       actor = await staff.scopedActor(actor, 'repair.correct');

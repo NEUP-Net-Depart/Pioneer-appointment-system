@@ -1,6 +1,7 @@
 import { fail } from '../../lib/http.js';
 import { dateKey } from '../../platform/time.js';
 import { campusId as normalizeCampusId } from '../../modules/authorization/scopes.js';
+import { canManageDepartments } from './departments.js';
 
 export function workspaceDomain({ repository, platform, manifests, contextFor }) {
   async function workbench(actor) {
@@ -22,11 +23,19 @@ export function workspaceDomain({ repository, platform, manifests, contextFor })
 
   async function organization(actor, kind, query = {}) {
     const context = await contextFor(actor);
-    if (!['members.manage', 'roles.manage'].some((code) => context.permissions[code]))
+    if (
+      !['members.manage', 'roles.manage', 'settings.manage'].some(
+        (code) => context.permissions[code]
+      )
+    )
       fail(403, '缺少组织字典读取权限');
     const includeDisabled = query.includeDisabled === '1' || query.includeDisabled === true;
     if (kind === 'campuses') return { items: await repository.listCampuses(includeDisabled) };
-    if (kind === 'departments') return { items: await repository.listDepartments(includeDisabled) };
+    if (kind === 'departments')
+      return {
+        items: await repository.listDepartments(includeDisabled),
+        actions: { manage: canManageDepartments(context, platform) }
+      };
     if (kind === 'locations')
       return { items: await repository.listLocations(query.campusId || '', includeDisabled) };
     fail(404, '组织字典不存在');

@@ -7,6 +7,7 @@ import { hashPassword } from '../src/lib/passwords.js';
 import { dateKey, addDays, weekRange } from '../shared/time.js';
 import { staffPlatformRepository } from '../src/db/staff-platform.js';
 import { userRepository } from '../src/db/users.js';
+import { staffServices } from './fixtures/staff-services.mjs';
 
 let mf;
 async function officeMembership(db, account, day) {
@@ -52,12 +53,10 @@ test('member imports preserve existing colleges when the CSV college is missing 
   });
   assert.equal(login.response.status, 200);
   const headers = { ...identityHeaders, Authorization: `Bearer ${login.body.token}` };
-  const run = (csv, confirm = false) =>
-    request('/api/members/import', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ csv, confirm })
-    });
+  const run = async (csv, confirm = false) => {
+    const preview = await request('/api/members/import', { method: 'POST', headers, body: JSON.stringify({ csv }) });
+    return confirm && preview.response.ok ? request('/api/members/import', { method: 'POST', headers, body: JSON.stringify({ csv, confirm, previewToken: preview.body.previewToken }) }) : preview;
+  };
   const initial = await run(
     'studentId,name,homeCampusId,college\n20269851,学院保留测试,campus-nanhu,软件学院\n20269852,新成员空学院,campus-nanhu,',
     true
@@ -82,34 +81,33 @@ test('member imports preserve existing colleges when the CSV college is missing 
   }
 });
 
-test('member import previews distinguish preserving, replacing and clearing a single login scope', async () => {
+test('member import previews preserve blank login scopes and require an explicit replacement', async () => {
   const db = await mf.getD1Database('DB');
   await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('20269982','单账号成员','technician','南湖',?,'2026-01-01')").bind(hashPassword('single-account-password')).run();
   await db.prepare("INSERT INTO staff_campus_grants VALUES('20269982','南湖')").run();
   const identityHeaders = { 'Content-Type': 'application/json', 'CF-Connecting-IP': '192.0.2.169' };
   const signedIn = await request('/api/auth/login', { method: 'POST', headers: identityHeaders, body: JSON.stringify({ account: 'root001', password: 'staff-platform-password' }) });
   const headers = { ...identityHeaders, Authorization: `Bearer ${signedIn.body.token}` };
-  const run = (csv, confirm = false) => request('/api/members/import', { method: 'POST', headers, body: JSON.stringify({ csv, confirm }) });
+  const run = (body) => request('/api/members/import', { method: 'POST', headers, body: JSON.stringify(body) });
   const grants = async () => (await db.prepare("SELECT campus FROM staff_campus_grants WHERE account='20269982' ORDER BY campus").all()).results;
-  const profile = await run('studentId,name,homeCampusId\n20269982,保留校区,campus-nanhu');
-  assert.equal(profile.response.status, 200);
-  assert.equal(profile.body.items[0].updateAccountCampuses, false);
-  assert.deepEqual(profile.body.items[0].accountTargets, []);
-  assert.ok(profile.body.warnings.every(item => !item.message.includes('仅建立成员资料')));
-  const replacement = await run('studentId,name,homeCampusId,authorizedCampuses\n20269982,替换校区,campus-nanhu,浑南');
-  assert.equal(replacement.response.status, 200);
-  assert.deepEqual(replacement.body.items[0].accountTargets, ['20269982']);
-  assert.ok(replacement.body.warnings.some(item => /替换.*20269982.*浑南/.test(item.message)));
-  const csv = 'studentId,name,homeCampusId,authorizedCampuses\n20269982,清空校区,campus-nanhu,';
-  const clearing = await run(csv);
-  assert.equal(clearing.response.status, 200);
-  assert.deepEqual(clearing.body.items[0].accountTargets, ['20269982']);
-  assert.deepEqual(clearing.body.items[0].authorizedCampuses, []);
-  assert.ok(clearing.body.warnings.some(item => /清空.*20269982.*全部校区授权/.test(item.message)));
-  assert.ok(clearing.body.warnings.every(item => !item.message.includes('仅建立成员资料')));
+  for (const suffix of ['', ',authorizedCampuses']) {
+    const csv = `studentId,name,homeCampusId${suffix}\n20269982,单账号成员,campus-nanhu${suffix ? ',' : ''}`;
+    const preview = await run({ csv, accountCampusAction: 'replace' });
+    assert.equal(preview.response.status, 200, JSON.stringify(preview.body));
+    assert.equal(preview.body.items[0].status, 'skipped');
+    assert.equal(preview.body.items[0].updateAccountCampuses, false);
+    assert.equal((await run({ csv, accountCampusAction: 'replace', confirm: true, previewToken: preview.body.previewToken })).response.status, 200);
+    assert.deepEqual(await grants(), [{ campus: '南湖' }]);
+  }
+  const csv = 'studentId,name,homeCampusId,authorizedCampuses\n20269982,单账号成员,campus-nanhu,浑南';
+  const preserving = await run({ csv });
+  assert.equal(preserving.body.items[0].updateAccountCampuses, false);
+  const replacement = await run({ csv, accountCampusAction: 'replace' });
+  assert.equal(replacement.body.items[0].changes[0].label, '替换登录授权校区');
   assert.deepEqual(await grants(), [{ campus: '南湖' }]);
-  assert.equal((await run(csv, true)).response.status, 200);
-  assert.deepEqual(await grants(), []);
+  assert.equal((await run({ csv, accountCampusAction: 'replace', confirm: true })).response.status, 409);
+  assert.equal((await run({ csv, accountCampusAction: 'replace', confirm: true, previewToken: replacement.body.previewToken })).response.status, 200);
+  assert.deepEqual(await grants(), [{ campus: '浑南' }]);
 });
 
 test('member imports reject account selectors and a second login cannot be linked to a member', async()=>{
@@ -149,7 +147,7 @@ test('administrator invitations require explicit member roles and campus scope, 
   const csv='studentId,name,homeCampusId,accountRole,roleCodes,authorizedCampuses\n20269975,显式管理授权,campus-nanhu,admin,invited-campus-manager,南湖';
   const preview=await post('/api/members/import',{csv,confirm:false});
   assert.equal(preview.response.status,200);assert.equal(preview.body.items[0].accountRole,'admin');assert.deepEqual(preview.body.items[0].workProfiles,[]);
-  assert.equal((await post('/api/members/import',{csv,confirm:true})).response.status,200);
+  assert.equal((await post('/api/members/import',{csv,confirm:true,previewToken:preview.body.previewToken})).response.status,200);
   const apply=await request('/api/activation',{headers:identityHeaders,method:'POST',body:JSON.stringify({studentId:'20269975',name:'显式管理授权',homeCampus:'南湖',password:'invited-manager-password'})});
   assert.equal(apply.response.status,201,JSON.stringify(apply.body));
   // Removing a role after application must prevent approval atomically.
@@ -180,7 +178,10 @@ test('office member imports default to ordinary accounts and stay manageable by 
   const login = async (account, password) => request('/api/auth/login', { headers: identityHeaders, method: 'POST', body: JSON.stringify({ account, password }) });
   const root = await login('root001', 'staff-platform-password');
   const rootHeaders = { ...identityHeaders, Authorization: `Bearer ${root.body.token}` };
-  const run = (csv, confirm = false) => request('/api/members/import', { headers: rootHeaders, method: 'POST', body: JSON.stringify({ csv, confirm }) });
+  const run = async (csv, confirm = false) => {
+    const preview = await request('/api/members/import', { headers: rootHeaders, method: 'POST', body: JSON.stringify({ csv }) });
+    return confirm && preview.response.ok ? request('/api/members/import', { headers: rootHeaders, method: 'POST', body: JSON.stringify({ csv, confirm, previewToken: preview.body.previewToken }) }) : preview;
+  };
   await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('20269960','办公激活审核员','admin','南湖',?,'2026-01-01')").bind(hashPassword('office-reviewer-password')).run();
   await db.prepare("INSERT INTO staff_campus_grants VALUES('20269960','南湖')").run();
   const reviewer = await repository.memberRow('member-20269960');
@@ -297,8 +298,11 @@ test('two-hundred-member imports respect the D1 per-statement parameter limit',a
   const db=await mf.getD1Database('DB');let largest=0;
   const limited={prepare(sql){const statement=db.prepare(sql);return {all:()=>statement.all(),bind(...args){largest=Math.max(largest,args.length);assert.ok(args.length<=100,'D1 maximum is 100 bound parameters per statement');return statement.bind(...args);}};},batch:statements=>db.batch(statements)};
   const items=Array.from({length:200},(_,i)=>({studentId:String(20268000+i),name:`批量成员${i}`,homeCampusId:'campus-nanhu'}));
-  const result=await staffPlatformRepository(limited).importMembers(items,'root001');
-  assert.equal(result.length,200);assert.ok(largest<=100);
+  const staff=staffServices(limited), actor=await userRepository(db).find('root001');
+  const csv='studentId,name,homeCampusId\n'+items.map(item=>[item.studentId,item.name,item.homeCampusId].join(',')).join('\n');
+  const preview=await staff.importMembers(actor,{csv});
+  const result=await staff.importMembers(actor,{csv,confirm:true,previewToken:preview.previewToken});
+  assert.equal(result.items.length,200);assert.ok(largest<=100);
 });
 
 test('expired attendance management cannot be revived by choosing a historical business date',async()=>{
@@ -389,7 +393,7 @@ test('staff platform auth context, modular permissions and policy attendance are
   const preview = await request('/api/members/import', { method: 'POST', headers, body: JSON.stringify({ csv: 'studentId,name,homeCampusId\n"900001","张三,成员",campus-nanhu' }) });
   assert.equal(preview.response.status, 200);
   assert.equal(preview.body.mode, 'preview');
-  const imported = await request('/api/members/import', { method: 'POST', headers, body: JSON.stringify({ confirm: true, csv: 'studentId,name,homeCampusId\n"900001","张三,成员",campus-nanhu' }) });
+  const imported = await request('/api/members/import', { method: 'POST', headers, body: JSON.stringify({ confirm: true, previewToken: preview.body.previewToken, csv: 'studentId,name,homeCampusId\n"900001","张三,成员",campus-nanhu' }) });
   assert.equal(imported.response.status, 200, JSON.stringify(imported.body));
   assert.equal(imported.body.count, 1);
 
@@ -1076,4 +1080,363 @@ test('department roster scopes govern creation, task entries, participants, avai
   assert.equal(ordinaryOptions.response.status,403);
   await repository.updateRole(roles[0].id,{grants:[]},roles[0].revision);
   assert.equal((await command(`/api/roster-tasks/${south.body.id}/roster`,undefined,managerHeaders)).response.status,401,'revocation invalidates the old manager session immediately');
+});
+
+test('person imports are idempotent across memberships, qualifications, invitations and active login sessions', async () => {
+  const db = await mf.getD1Database('DB'), staff = staffServices(db), actor = await userRepository(db).find('root001');
+  const csv = 'studentId,name,homeCampusId,college,major,departmentId,assignmentType,workProfiles,roleCodes,authorizedCampuses,effectiveFrom\n20988001,幂等成员,campus-nanhu,软件学院,软件工程,dept-hardware,primary,repair,technician,南湖,2026-01-01';
+  const run = async (text) => { const preview = await staff.importMembers(actor, { csv: text }); return staff.importMembers(actor, { csv: text, confirm: true, previewToken: preview.previewToken }); };
+  assert.equal((await run(csv)).summary.created, 1);
+  const snapshot = () => staffPlatformRepository(db).memberImportSnapshot(['20988001']);
+  const initial = await snapshot();
+  assert.equal((await run(csv)).summary.skipped, 1);
+  assert.deepEqual((await snapshot()).data, initial.data, 'Repeat import must preserve every member and invitation revision');
+  await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at,member_id) VALUES('20988001','幂等成员','technician','南湖',?,'2026-01-01','member-20988001')").bind(hashPassword('idempotent-password')).run();
+  await db.prepare("INSERT INTO staff_campus_grants VALUES('20988001','南湖')").run();
+  const accountBefore = await userRepository(db).find('20988001');
+  const auditCount = async () => (await db.prepare("SELECT COUNT(*) AS n FROM audit_events WHERE json_extract(source_ref,'$.id')='member-20988001'").first()).n;
+  const auditBefore = await auditCount();
+  assert.equal((await run(csv)).summary.skipped, 1);
+  assert.deepEqual(await userRepository(db).find('20988001'), accountBefore);
+  assert.equal(await auditCount(), auditBefore, 'Skipped rows do not create misleading audit events');
+  const changed = csv.replace('幂等成员', '更新姓名').replace('dept-hardware,primary,repair,', 'dept-office,secondary,repair|office,');
+  const preview = await staff.importMembers(actor, { csv: changed });
+  assert.equal(preview.items[0].status, 'updated');
+  assert.ok(preview.items[0].changes.some((change) => change.field === 'membership'));
+  await staff.importMembers(actor, { csv: changed, confirm: true, previewToken: preview.previewToken });
+  const accountAfter = await userRepository(db).find('20988001');
+  assert.equal(accountAfter.name, '更新姓名');
+  assert.equal(accountAfter.authVersion, accountBefore.authVersion + 1);
+  const secondary = (await staffPlatformRepository(db).listMemberships('member-20988001')).find((item) => item.departmentId === 'dept-office');
+  assert.equal(secondary.isPrimary, false);
+  assert.equal((await run(changed)).summary.skipped, 1);
+  assert.deepEqual(await userRepository(db).find('20988001'), accountAfter);
+  const blank = 'studentId,name,homeCampusId,college,major,authorizedCampuses\n20988001,更新姓名,campus-nanhu,,,';
+  assert.equal((await run(blank)).summary.skipped, 1);
+  const member = await staffPlatformRepository(db).memberRow('member-20988001');
+  assert.equal(member.college, '软件学院'); assert.equal(member.major, '软件工程');
+});
+
+test('import preview tokens bind all displayed changes and relation revisions before an atomic confirmation', async () => {
+  const db = await mf.getD1Database('DB'), staff = staffServices(db), actor = await userRepository(db).find('root001');
+  const csv = 'studentId,name\n20988002,预览成员';
+  const input = { csv, defaults: { homeCampusId: 'campus-nanhu', departmentId: 'dept-network' } };
+  const preview = await staff.importMembers(actor, input);
+  await assert.rejects(staff.importMembers(actor, { ...input, confirm: true }), (error) => error.status === 409);
+  await assert.rejects(staff.importMembers(actor, { ...input, csv: csv.replace('预览成员', '篡改姓名'), confirm: true, previewToken: preview.previewToken }), (error) => error.status === 409);
+  await staff.importMembers(actor, { ...input, confirm: true, previewToken: preview.previewToken });
+  const update = { ...input, csv: csv.replace('预览成员', '新姓名') };
+  const stale = await staff.importMembers(actor, update);
+  await db.prepare("UPDATE member_department_memberships SET revision=revision+1 WHERE member_id='member-20988002'").run();
+  await assert.rejects(staff.importMembers(actor, { ...update, confirm: true, previewToken: stale.previewToken }), (error) => error.status === 409);
+  assert.equal((await staffPlatformRepository(db).memberRow('member-20988002')).name, '预览成员');
+});
+
+test('primary membership conflicts are shown per person and prevent the whole batch from being written', async () => {
+  const db = await mf.getD1Database('DB'), staff = staffServices(db), actor = await userRepository(db).find('root001');
+  const input = { csv: 'studentId,name\n20988002,预览成员\n20988003,不得留下', defaults: { homeCampusId: 'campus-nanhu', departmentId: 'dept-office' } };
+  const preview = await staff.importMembers(actor, input);
+  assert.deepEqual(preview.summary, { created: 1, updated: 0, skipped: 0, conflict: 1 });
+  assert.match(preview.items[0].conflicts[0], /主部门任职重叠/);
+  await assert.rejects(staff.importMembers(actor, { ...input, confirm: true, previewToken: preview.previewToken }), (error) => error.status === 409);
+  assert.equal(await staffPlatformRepository(db).memberRow('member-20988003'), null);
+});
+
+test('single-person creation shares import rules, preserves profiles without logins, and points duplicates to the existing member', async () => {
+  const login = await request('/api/auth/login', { method: 'POST', headers: { 'CF-Connecting-IP': '192.0.2.201' }, body: JSON.stringify({ account: 'root001', password: 'staff-platform-password' }) });
+  assert.equal(login.response.status, 200, JSON.stringify(login.body));
+  const headers = { 'CF-Connecting-IP': '192.0.2.201', Authorization: `Bearer ${login.body.token}` };
+  const input = { studentId: '20988004', name: '单人新增', homeCampusId: 'campus-hunnan', departmentId: 'dept-office', assignmentType: 'secondary', workProfiles: ['office'] };
+  const created = await request('/api/members', { method: 'POST', headers, body: JSON.stringify(input) });
+  assert.equal(created.response.status, 201, JSON.stringify(created.body));
+  const db = await mf.getD1Database('DB'), repository = staffPlatformRepository(db);
+  assert.equal(await repository.accountForMember(created.body.member.memberId), null);
+  assert.equal((await repository.listMemberships(created.body.member.memberId))[0].isPrimary, false);
+  assert.deepEqual((await repository.profileHistory(created.body.member.memberId)).map((item) => item.profileCode), ['office']);
+  const duplicate = await request('/api/members', { method: 'POST', headers, body: JSON.stringify(input) });
+  assert.equal(duplicate.response.status, 409); assert.equal(duplicate.body.code, 'MEMBER_EXISTS');
+  assert.equal(duplicate.body.fields.memberId, created.body.member.memberId);
+  const detail = await request(`/api/members/${created.body.member.memberId}/audit`, { headers });
+  assert.equal(detail.response.status, 200); assert.equal(detail.body.items[0].action, 'identity.member.created');
+  const search = await request('/api/members?q=' + encodeURIComponent('办公室'), { headers });
+  assert.ok(search.body.items.some((member) => member.memberId === created.body.member.memberId));
+});
+
+test('departments support versioned creation, renaming and disabling without deleting historical memberships', async () => {
+  const db = await mf.getD1Database('DB'), staff = staffServices(db), actor = await userRepository(db).find('root001');
+  const department = await staff.saveDepartment(actor, { name: '美工部', enabled: true });
+  const created = await staff.createMember(actor, { studentId: '20988005', name: '美工成员', homeCampusId: 'campus-nanhu', departmentId: department.id });
+  const renamed = await staff.saveDepartment(actor, { name: '推广部', enabled: true, revision: department.revision }, department.id);
+  await assert.rejects(staff.saveDepartment(actor, { name: '过期覆盖', enabled: true, revision: department.revision }, department.id), (error) => error.status === 409);
+  await staff.saveDepartment(actor, { name: renamed.name, enabled: false, revision: renamed.revision }, department.id);
+  assert.equal((await staff.memberDetail(actor, created.member.memberId)).member.memberships[0].departmentName, '推广部');
+  assert.ok(!(await staff.organization(actor, 'departments')).items.some((item) => item.id === department.id));
+  assert.ok((await staff.organization(actor, 'departments', { includeDisabled: '1' })).items.some((item) => item.id === department.id && !item.enabled));
+  await assert.rejects(staff.createMember(actor, { studentId: '20988006', name: '停用部门', homeCampusId: 'campus-nanhu', departmentId: department.id }), (error) => error.status === 400);
+  await db.prepare("CREATE TRIGGER reject_department_audit BEFORE INSERT ON audit_events WHEN NEW.action='organization.department.created' BEGIN SELECT RAISE(ABORT,'DEPARTMENT_AUDIT_FAILURE'); END").run();
+  try { await assert.rejects(staff.saveDepartment(actor, { name: '回滚部门', enabled: true }), /DEPARTMENT_AUDIT_FAILURE/); }
+  finally { await db.prepare('DROP TRIGGER reject_department_audit').run(); }
+  assert.equal(await db.prepare("SELECT id FROM departments WHERE name='回滚部门'").first(), null);
+});
+
+test('members-only managers cannot write account authorization, reset passwords, or change global departments', async () => {
+  const db = await mf.getD1Database('DB'), repository = staffPlatformRepository(db);
+  await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('20988007','人员管理员','technician','南湖',?,'2026-01-01')").bind(hashPassword('member-manager-password')).run();
+  await db.prepare("INSERT INTO staff_campus_grants VALUES('20988007','南湖')").run();
+  const role = await repository.createRole({ code: 'member-only-new-test', name: '仅人员管理', grants: [{ permissionCode: 'members.manage', scope: { campusIds: ['campus-nanhu'] } }] });
+  await repository.bindRoles('member-20988007', [{ roleId: role.id, scope: { campusIds: ['campus-nanhu'] }, effectiveFrom: '2026-01-01' }], 0);
+  const actor = await userRepository(db).find('20988007'), staff = staffServices(db);
+  assert.ok(await staff.createMember(actor, { studentId: '20988008', name: '普通档案', homeCampusId: 'campus-nanhu' }));
+  const input = { csv: 'studentId,name,homeCampusId,authorizedCampuses\n20988001,更新姓名,campus-nanhu,南湖|浑南', accountCampusAction: 'replace' };
+  await assert.rejects(staff.importMembers(actor, input), (error) => error.status === 403);
+  await assert.rejects(staff.createMember(actor, { studentId: '20988009', name: '越权角色', homeCampusId: 'campus-nanhu', roleCodes: ['technician'], authorizedCampuses: ['南湖'] }), (error) => error.status === 403);
+  await assert.rejects(staff.saveDepartment(actor, { name: '越权部门', enabled: true }), (error) => error.status === 403);
+  const login = await request('/api/auth/login', { method: 'POST', headers: { 'CF-Connecting-IP': '192.0.2.202' }, body: JSON.stringify({ account: actor.account, password: 'member-manager-password' }) });
+  assert.equal(login.response.status, 200, JSON.stringify(login.body));
+  const headers = { 'CF-Connecting-IP': '192.0.2.202', Authorization: `Bearer ${login.body.token}` };
+  for (const method of ['GET', 'PATCH']) {
+    const response = await request('/api/users/20988001', { method, headers, ...(method === 'PATCH' ? { body: JSON.stringify({ password: 'forbidden-password' }) } : {}) });
+    assert.equal(response.response.status, 403);
+  }
+  for (const method of ['GET', 'POST']) {
+    const response = await request('/api/members/member-20988008/activation', { method, headers, ...(method === 'POST' ? { body: '{}' } : {}) });
+    assert.equal(response.response.status, 403);
+  }
+});
+
+test('ninety-person previews use a fixed number of database reads and record a local performance baseline', async (t) => {
+  const db = await mf.getD1Database('DB'); let reads = 0;
+  const measured = { prepare(sql) { const statement = db.prepare(sql); return { all: () => { reads++; return statement.all(); }, bind(...args) {
+    const bound = statement.bind(...args); return { first: () => { reads++; return bound.first(); }, all: () => { reads++; return bound.all(); }, run: () => bound.run() };
+  } }; }, batch: (statements) => { reads++; return db.batch(statements); } };
+  const staff = staffServices(measured), actor = await userRepository(db).find('root001');
+  const input = (count) => ({ csv: 'studentId,name\n' + Array.from({ length: count }, (_, index) => `20989${String(index).padStart(3, '0')},性能成员${index}`).join('\n'), defaults: { homeCampusId: 'campus-nanhu', departmentId: 'dept-hardware', workProfiles: ['repair'] } });
+  await staff.importMembers(actor, input(1)); const oneReadCount = reads;
+  reads = 0; const start = performance.now();
+  const preview = await staff.importMembers(actor, input(90)); const duration = performance.now() - start;
+  assert.equal(preview.items.length, 90); assert.equal(reads, oneReadCount, 'Preview must not issue per-person database calls');
+  assert.ok(duration < 10000, `90-person local preview took ${duration} ms`);
+  t.diagnostic(`90-person local preview: ${duration.toFixed(1)} ms, ${reads} database reads (includes actor context)`);
+});
+
+test('basic CSV renames synchronize pending invitations without changing their roles or campuses', async () => {
+  const db = await mf.getD1Database('DB'), staff = staffServices(db), actor = await userRepository(db).find('root001');
+  const repository = staffPlatformRepository(db);
+  await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('20988107','仅人员管理员','technician','南湖',?,'2026-01-01')").bind(hashPassword('rename-manager-password')).run();
+  await db.prepare("INSERT INTO staff_campus_grants VALUES('20988107','南湖')").run();
+  const memberOnlyRole = await repository.createRole({ code: 'rename-member-only', name: '仅名单维护', grants: [{ permissionCode: 'members.manage', scope: { campusIds: ['campus-nanhu'] } }] });
+  await repository.bindRoles('member-20988107', [{ roleId: memberOnlyRole.id, scope: { campusIds: ['campus-nanhu'] }, effectiveFrom: '2026-01-01' }], 0);
+  const memberOnlyActor = await userRepository(db).find('20988107');
+  const studentId = '20988101', memberId = `member-${studentId}`;
+  await staff.createMember(actor, { studentId, name: '原邀请姓名', homeCampusId: 'campus-nanhu', workProfiles: ['repair'], roleCodes: ['technician'], authorizedCampuses: ['南湖', '浑南'], accountRole: 'admin' });
+  const login = await request('/api/auth/login', { method: 'POST', headers: { 'CF-Connecting-IP': '192.0.2.211' }, body: JSON.stringify({ account: actor.account, password: 'staff-platform-password' }) });
+  assert.equal(login.response.status, 200, JSON.stringify(login.body));
+  const headers = { 'CF-Connecting-IP': '192.0.2.211', Authorization: `Bearer ${login.body.token}` };
+  const post = (path, body) => request(path, { method: 'POST', headers, body: JSON.stringify(body) });
+  const pending = await post('/api/activation', { studentId, name: '原邀请姓名', homeCampus: '南湖', password: 'renamed-member-password' });
+  assert.equal(pending.response.status, 201, JSON.stringify(pending.body));
+  const before = (await staffPlatformRepository(db).memberImportSnapshot([studentId])).data;
+  const input = { csv: `studentId,name,homeCampusId\n${studentId},正确邀请姓名,campus-nanhu` };
+  const limited = await staff.importMembers(memberOnlyActor, input);
+  assert.equal(limited.items[0].status, 'conflict');
+  assert.match(limited.items[0].conflicts.join(''), /账号管理权限/);
+  await assert.rejects(staff.importMembers(memberOnlyActor, { ...input, confirm: true, previewToken: limited.previewToken }), error => error.status === 409);
+  assert.equal((await staffPlatformRepository(db).memberRow(memberId)).name, '原邀请姓名');
+  const preview = await post('/api/members/import', input);
+  assert.equal(preview.response.status, 200, JSON.stringify(preview.body));
+  assert.ok(preview.body.items[0].changes.some(change => change.field === 'invitationName' && change.before === '原邀请姓名' && change.after === '正确邀请姓名'));
+  await db.prepare("CREATE TRIGGER reject_rename_audit BEFORE INSERT ON audit_events WHEN json_extract(NEW.source_ref,'$.id')='member-20988101' BEGIN SELECT RAISE(ABORT,'RENAME_AUDIT_FAILURE'); END").run();
+  try { await assert.rejects(staff.importMembers(actor, { ...input, confirm: true, previewToken: preview.body.previewToken }), /RENAME_AUDIT_FAILURE/); }
+  finally { await db.prepare('DROP TRIGGER reject_rename_audit').run(); }
+  assert.deepEqual((await staffPlatformRepository(db).memberImportSnapshot([studentId])).data, before);
+  assert.equal((await post('/api/members/import', { ...input, confirm: true, previewToken: preview.body.previewToken })).response.status, 200);
+  const after = (await staffPlatformRepository(db).memberImportSnapshot([studentId])).data;
+  assert.equal(after.members[0].name, '正确邀请姓名');
+  assert.equal(after.invitations[0].expected_name, '正确邀请姓名');
+  assert.equal(after.invitations[0].expected_role, 'admin');
+  assert.deepEqual(after.invitations[0].campuses, before.invitations[0].campuses);
+  for (const key of ['profiles', 'bindings', 'activationBindings']) assert.deepEqual(after[key], before[key]);
+  const rejected = await db.prepare('SELECT status,password_hash FROM activation_requests WHERE id=?').bind(pending.body.id).first();
+  assert.deepEqual(rejected, { status: 'rejected', password_hash: '' });
+  assert.equal((await post('/api/activation', { studentId, name: '原邀请姓名', homeCampus: '南湖', password: 'renamed-member-password' })).response.status, 400);
+  const profilePatch = { revision: after.members[0].revision, name: '最终邀请姓名' };
+  await assert.rejects(staff.updateMember(memberOnlyActor, memberId, profilePatch), error => error.status === 403);
+  const profile = await request(`/api/members/${memberId}`, { method: 'PATCH', headers, body: JSON.stringify(profilePatch) });
+  assert.equal(profile.response.status, 200, JSON.stringify(profile.body));
+  const invitation = (await staffPlatformRepository(db).memberImportSnapshot([studentId])).data.invitations[0];
+  assert.equal(invitation.expected_name, '最终邀请姓名'); assert.equal(invitation.expected_role, 'admin');
+  assert.equal(invitation.campuses, before.invitations[0].campuses);
+  const application = await post('/api/activation', { studentId, name: '最终邀请姓名', homeCampus: '南湖', password: 'renamed-member-password' });
+  assert.equal(application.response.status, 201, JSON.stringify(application.body));
+  const approved = await post('/api/activation-requests/review', { ids: [application.body.id], status: 'approved', identityVerified: true });
+  assert.equal(approved.response.status, 200, JSON.stringify(approved.body));
+  assert.equal((await userRepository(db).find(studentId)).memberId, memberId);
+});
+
+test('existing member activation reuses qualifications and roles, rejects stale state, and supports account-only managers', async () => {
+  const db = await mf.getD1Database('DB'), repository = staffPlatformRepository(db), staff = staffServices(db), actor = await userRepository(db).find('root001');
+  const created = await staff.createMember(actor, { studentId: '20988102', name: '已有维修授权', homeCampusId: 'campus-nanhu', workProfiles: ['repair'], roleCodes: ['technician'] });
+  const memberId = created.member.memberId;
+  await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('20988109','仅账号管理员','technician','南湖',?,'2026-01-01')").bind(hashPassword('account-only-password')).run();
+  await db.prepare("INSERT INTO staff_campus_grants VALUES('20988109','南湖')").run();
+  const role = await repository.createRole({ code: 'activation-account-only', name: '仅账号操作', grants: [{ permissionCode: 'accounts.manage', scope: { campusIds: ['campus-nanhu'] } }] });
+  await repository.bindRoles('member-20988109', [{ roleId: role.id, scope: { campusIds: ['campus-nanhu'] }, effectiveFrom: '2026-01-01' }], 0);
+  const login = await request('/api/auth/login', { method: 'POST', headers: { 'CF-Connecting-IP': '192.0.2.212' }, body: JSON.stringify({ account: '20988109', password: 'account-only-password' }) });
+  assert.equal(login.response.status, 200, JSON.stringify(login.body));
+  const headers = { 'CF-Connecting-IP': '192.0.2.212', Authorization: `Bearer ${login.body.token}` }, path = `/api/members/${memberId}/activation`;
+  const post = (body) => request(path, { method: 'POST', headers, body: JSON.stringify(body) });
+  const initial = await request(path, { headers });
+  assert.equal(initial.response.status, 200, JSON.stringify(initial.body));
+  assert.equal(initial.body.status, 'unset'); assert.equal(initial.body.canConfigure, true);
+  assert.ok(initial.body.roleNames.length); assert.deepEqual(initial.body.authorizedCampuses, ['南湖']);
+  await db.prepare('UPDATE member_work_profiles SET revision=revision+1 WHERE member_id=?').bind(memberId).run();
+  assert.equal((await post({ stateToken: initial.body.stateToken, authorizedCampuses: ['南湖'] })).response.status, 409);
+  assert.equal(await db.prepare('SELECT student_id FROM staff_whitelist WHERE student_id=?').bind(created.member.studentId).first(), null);
+  const current = await request(path, { headers });
+  assert.equal((await post({ stateToken: current.body.stateToken, authorizedCampuses: ['浑南'] })).response.status, 403);
+  const before = (await repository.memberImportSnapshot(['20988102'])).data;
+  const saved = await post({ stateToken: current.body.stateToken, authorizedCampuses: current.body.authorizedCampuses });
+  assert.equal(saved.response.status, 200, JSON.stringify(saved.body));
+  const after = (await repository.memberImportSnapshot(['20988102'])).data;
+  for (const key of ['members', 'profiles', 'bindings', 'memberships']) assert.deepEqual(after[key], before[key]);
+  assert.equal(after.invitations[0].status, 'open'); assert.equal(after.invitations[0].expected_name, '已有维修授权');
+  assert.deepEqual(after.activationBindings, [{ student_id: '20988102', member_id: memberId }]);
+  const unchanged = await request(path, { headers });
+  assert.equal((await post({ stateToken: unchanged.body.stateToken, authorizedCampuses: unchanged.body.authorizedCampuses })).response.status, 200);
+  assert.deepEqual((await repository.memberImportSnapshot(['20988102'])).data, after);
+  const manager = await staff.createMember(actor, { studentId: '20988103', name: '无工作资格的管理人员', homeCampusId: 'campus-nanhu', roleCodes: [role.code] });
+  const managementPath = `/api/members/${manager.member.memberId}/activation`;
+  const ready = await request(managementPath, { headers });
+  assert.equal(ready.body.canConfigure, true); assert.equal(ready.body.expectedRole, 'admin');
+  assert.equal((await request(managementPath, { method: 'POST', headers, body: JSON.stringify({ stateToken: ready.body.stateToken, authorizedCampuses: ready.body.authorizedCampuses }) })).response.status, 200);
+  assert.deepEqual(await repository.profileHistory(manager.member.memberId), []);
+  const plain = await staff.createMember(actor, { studentId: '20988104', name: '尚未授权人员', homeCampusId: 'campus-nanhu' });
+  const unready = await request(`/api/members/${plain.member.memberId}/activation`, { headers });
+  assert.equal(unready.body.canConfigure, false);
+  assert.equal((await request(`/api/members/${plain.member.memberId}/activation`, { method: 'POST', headers, body: JSON.stringify({ stateToken: unready.body.stateToken, authorizedCampuses: ['南湖'] }) })).response.status, 409);
+  const outsider = await staff.createMember(actor, { studentId: '20988105', name: '范围外人员', homeCampusId: 'campus-hunnan' });
+  assert.equal((await request(`/api/members/${outsider.member.memberId}/activation`, { headers })).response.status, 403);
+});
+
+test('account detail and list return the same active role names without private credentials', async () => {
+  const db = await mf.getD1Database('DB'), repository = staffPlatformRepository(db);
+  await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('20988106','账号详情角色','technician','南湖',?,'2026-01-01')").bind(hashPassword('role-detail-password')).run();
+  await db.prepare("INSERT INTO staff_campus_grants VALUES('20988106','南湖')").run();
+  for (const [suffix, from, to, enabled] of [['active', '2026-01-01', null, true], ['expired', '2025-01-01', '2026-01-01', true], ['future', '2099-01-01', null, true], ['disabled', '2026-01-01', null, false]]) {
+    const role = await repository.createRole({ code: `account-detail-${suffix}`, name: `详情角色-${suffix}`, enabled });
+    await db.prepare("INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from,effective_to) VALUES(?,'member-20988106',?,'{}',?,?)").bind(`detail-${suffix}`, role.id, from, to).run();
+  }
+  const login = await request('/api/auth/login', { method: 'POST', headers: { 'CF-Connecting-IP': '192.0.2.213' }, body: JSON.stringify({ account: 'root001', password: 'staff-platform-password' }) });
+  assert.equal(login.response.status, 200, JSON.stringify(login.body));
+  const headers = { Authorization: `Bearer ${login.body.token}` };
+  const detail = await request('/api/users/20988106', { headers }), list = await request('/api/users', { headers });
+  assert.equal(detail.response.status, 200, JSON.stringify(detail.body));
+  assert.deepEqual(detail.body.roleNames, list.body.items.find(item => item.account === '20988106').roleNames);
+  assert.ok(detail.body.roleNames.includes('详情角色-active'));
+  for (const suffix of ['expired', 'future', 'disabled']) assert.ok(!detail.body.roleNames.includes(`详情角色-${suffix}`));
+  for (const key of ['passwordHash', 'password_hash', 'tokenVersion', 'revision']) assert.ok(!(key in detail.body));
+});
+
+test('member history includes only linked account changes and reports safe modification types', async () => {
+  const db = await mf.getD1Database('DB'), repository = staffPlatformRepository(db);
+  await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('20988108','账号历史测试','technician','南湖',?,'2026-01-01')").bind(hashPassword('audit-history-password')).run();
+  await db.prepare("INSERT INTO staff_campus_grants VALUES('20988108','南湖')").run();
+  const login = await request('/api/auth/login', { method: 'POST', headers: { 'CF-Connecting-IP': '192.0.2.214' }, body: JSON.stringify({ account: 'root001', password: 'staff-platform-password' }) });
+  assert.equal(login.response.status, 200, JSON.stringify(login.body));
+  const headers = { Authorization: `Bearer ${login.body.token}` };
+  for (const patch of [{ status: 'disabled' }, { password: 'audit-reset-password' }, { authorizedCampuses: ['南湖', '浑南'] }]) {
+    const result = await request('/api/users/20988108', { method: 'PATCH', headers, body: JSON.stringify(patch) });
+    assert.equal(result.response.status, 200, JSON.stringify(result.body));
+  }
+  await repository.audit({ action: 'authorization.account.updated', sourceRef: { module: 'identity', type: 'account', id: 'root001' }, after: { passwordChanged: true, passwordHash: 'secret-unrelated-hash' } });
+  const audit = await request('/api/members/member-20988108/audit', { headers });
+  assert.equal(audit.response.status, 200, JSON.stringify(audit.body));
+  const changes = audit.body.items.filter(item => item.action === 'authorization.account.updated');
+  assert.equal(changes.length, 3);
+  assert.deepEqual(changes.flatMap(item => item.changes).sort(), ['账号状态', '重置密码', '登录授权校区'].sort());
+  assert.ok(changes.every(item => item.actorAccount === 'root001'));
+  assert.doesNotMatch(JSON.stringify(audit.body), /audit-reset-password|secret-unrelated-hash|passwordHash|before_json|after_json/);
+});
+
+test('reimports preserve an omitted invitation account type and preview explicit type changes', async () => {
+  const db = await mf.getD1Database('DB'), repository = staffPlatformRepository(db), staff = staffServices(db), actor = await userRepository(db).find('root001');
+  const role = await repository.createRole({ code: 'reimport-admin-type', name: '邀请类型管理', grants: [{ permissionCode: 'statistics.read', scope: { campusIds: ['campus-nanhu'] } }] });
+  const studentId = '20988201', memberId = `member-${studentId}`;
+  await staff.createMember(actor, { studentId, name: '管理员邀请类型', homeCampusId: 'campus-nanhu', roleCodes: [role.code], authorizedCampuses: ['南湖'], accountRole: 'admin' });
+  const snapshot = async () => (await repository.memberImportSnapshot([studentId])).data;
+  const before = await snapshot(), audit = await repository.memberAudit(memberId);
+  const csv = `studentId,name,homeCampusId,roleCodes,authorizedCampuses\n${studentId},管理员邀请类型,campus-nanhu,${role.code},南湖`;
+  const run = async (input) => {
+    const preview = await staff.importMembers(actor, input);
+    await staff.importMembers(actor, { ...input, confirm: true, previewToken: preview.previewToken });
+    return preview;
+  };
+  for (const suffix of ['', ',accountRole']) {
+    const input = { csv: suffix ? csv.replace('\n', `${suffix}\n`) + ',' : csv };
+    const preview = await run(input);
+    assert.equal(preview.items[0].accountRole, 'admin'); assert.equal(preview.items[0].status, 'skipped');
+    assert.deepEqual(await snapshot(), before); assert.deepEqual(await repository.memberAudit(memberId), audit);
+  }
+  await run({ csv: csv.replace('管理员邀请类型', '改名后管理员') });
+  assert.equal((await snapshot()).invitations[0].expected_role, 'admin');
+  const explicit = { csv: csv.replace('\n', ',accountRole\n').replace('管理员邀请类型', '改名后管理员') + ',technician' };
+  const preview = await staff.importMembers(actor, explicit);
+  const change = preview.items[0].changes.find(item => item.field === 'invitation');
+  assert.match(change.before, /管理员账号/); assert.match(change.after, /普通账号/);
+  assert.equal(preview.items[0].accountRole, 'technician');
+  await assert.rejects(staff.importMembers(actor, { ...explicit, confirm: true }), error => error.status === 409);
+  assert.equal((await snapshot()).invitations[0].expected_role, 'admin');
+  await staff.importMembers(actor, { ...explicit, confirm: true, previewToken: preview.previewToken });
+  assert.equal((await snapshot()).invitations[0].expected_role, 'technician');
+  assert.deepEqual((await snapshot()).bindings, before.bindings);
+  await staff.createMember(actor, { studentId: '20988206', name: '新邀请默认类型', homeCampusId: 'campus-nanhu', roleCodes: [role.code], authorizedCampuses: ['南湖'] });
+  assert.equal((await repository.memberImportSnapshot(['20988206'])).data.invitations[0].expected_role, 'technician');
+});
+
+test('default home campus applies to newcomers while existing members require explicit campus changes', async () => {
+  const db = await mf.getD1Database('DB'), repository = staffPlatformRepository(db), staff = staffServices(db), actor = await userRepository(db).find('root001');
+  await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('20988202','原有南湖账号','technician','南湖',?,'2026-01-01')").bind(hashPassword('preserve-campus-password')).run();
+  await db.prepare("INSERT INTO staff_campus_grants VALUES('20988202','南湖')").run();
+  await staff.createMember(actor, { studentId: '20988203', name: '原有南湖档案', homeCampusId: 'campus-nanhu' });
+  const accountBefore = await userRepository(db).find('20988202');
+  const login = await request('/api/auth/login', { method: 'POST', headers: { 'CF-Connecting-IP': '192.0.2.217' }, body: JSON.stringify({ account: 'root001', password: 'staff-platform-password' }) });
+  assert.equal(login.response.status, 200, JSON.stringify(login.body));
+  const headers = { 'CF-Connecting-IP': '192.0.2.217', Authorization: `Bearer ${login.body.token}` };
+  const post = input => request('/api/members/import', { method: 'POST', headers, body: JSON.stringify(input) });
+  const existingCsv = 'studentId,name,college\n20988202,原有南湖账号,\n20988203,原有南湖档案,';
+  const input = { csv: `${existingCsv}\n20988204,新浑南成员,`, defaults: { homeCampusId: 'campus-hunnan' } };
+  const preview = await post(input);
+  assert.equal(preview.response.status, 200, JSON.stringify(preview.body));
+  assert.deepEqual(preview.body.summary, { created: 1, updated: 0, skipped: 2, conflict: 0 });
+  assert.deepEqual(preview.body.items.map(item => item.homeCampusId), ['campus-nanhu', 'campus-nanhu', 'campus-hunnan']);
+  assert.equal((await post({ ...input, homeCampusAction: 'replace', confirm: true, previewToken: preview.body.previewToken })).response.status, 409);
+  assert.equal(await repository.memberRow('member-20988204'), null);
+  assert.equal((await post({ ...input, confirm: true, previewToken: preview.body.previewToken })).response.status, 200);
+  assert.deepEqual(await userRepository(db).find('20988202'), accountBefore);
+  assert.equal((await repository.memberRow('member-20988203')).home_campus_id, 'campus-nanhu');
+  assert.equal((await repository.memberRow('member-20988204')).home_campus_id, 'campus-hunnan');
+  for (const existing of [
+    { csv: existingCsv },
+    { csv: 'studentId,name,homeCampusId\n20988202,原有南湖账号,\n20988203,原有南湖档案, ', defaults: input.defaults }
+  ]) {
+    const unchanged = await post(existing);
+    assert.equal(unchanged.response.status, 200, JSON.stringify(unchanged.body)); assert.equal(unchanged.body.summary.skipped, 2);
+    assert.equal((await post({ ...existing, confirm: true, previewToken: unchanged.body.previewToken })).response.status, 200);
+    assert.deepEqual(await userRepository(db).find('20988202'), accountBefore);
+  }
+  const replace = { csv: existingCsv, defaults: input.defaults, homeCampusAction: 'replace' };
+  const reviewed = await post(replace);
+  assert.equal(reviewed.response.status, 200, JSON.stringify(reviewed.body)); assert.equal(reviewed.body.summary.updated, 2);
+  assert.ok(reviewed.body.items.every(item => item.changes.some(change => change.field === 'homeCampusId' && change.before === 'campus-nanhu' && change.after === 'campus-hunnan')));
+  assert.equal((await post({ ...replace, confirm: true, previewToken: reviewed.body.previewToken })).response.status, 200);
+  const moved = await userRepository(db).find('20988202');
+  assert.equal(moved.homeCampus, '浑南'); assert.equal(moved.authVersion, accountBefore.authVersion + 1);
+  assert.deepEqual(moved.authorizedCampuses, accountBefore.authorizedCampuses);
+  const explicit = { csv: 'studentId,name,homeCampusId\n20988202,原有南湖账号,campus-nanhu', defaults: input.defaults, homeCampusAction: 'preserve' };
+  const explicitPreview = await post(explicit);
+  assert.equal(explicitPreview.body.items[0].homeCampusId, 'campus-nanhu'); assert.equal(explicitPreview.body.summary.updated, 1);
+  assert.equal((await post({ ...explicit, confirm: true, previewToken: explicitPreview.body.previewToken })).response.status, 200);
+  assert.equal((await userRepository(db).find('20988202')).homeCampus, '南湖');
+  assert.equal((await post({ ...input, homeCampusAction: 'overwrite' })).response.status, 400);
+  assert.equal((await post({ csv: 'studentId,name\n20988207,缺少校区新人' })).response.status, 400);
 });

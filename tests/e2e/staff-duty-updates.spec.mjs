@@ -37,7 +37,9 @@ test('unscheduled leader signs in directly and sees an accessible result without
   const root=await command(request,'/api/auth/login','',{account:'root001',password:process.env.E2E_ROOT_PASSWORD});
   // A separate member keeps this scenario independent of earlier completed repairs and check-ins.
   const account='20309988',name='自行签到负责人';
-  await command(request,'/api/members/import',root.token,{csv:`studentId,name,homeCampusId,departmentId,workProfiles,roleCodes,authorizedCampuses,effectiveFrom\n${account},${name},campus-nanhu,dept-hardware,repair,repair_lead,campus-nanhu,2026-01-01`,confirm:true});
+  const importInput={csv:`studentId,name,homeCampusId,departmentId,workProfiles,roleCodes,authorizedCampuses,effectiveFrom\n${account},${name},campus-nanhu,dept-hardware,repair,repair_lead,campus-nanhu,2026-01-01`};
+  const preview=await command(request,'/api/members/import',root.token,importInput);
+  await command(request,'/api/members/import',root.token,{...importInput,confirm:true,previewToken:preview.previewToken});
   const activation=await command(request,'/api/activation','',{studentId:account,name,homeCampus:'南湖',password:'StaffTest!2026'});
   await command(request,'/api/activation-requests/review',root.token,{ids:[activation.id],status:'approved',identityVerified:true});
   await page.addInitScript(()=>{window.cameraRequests=0;navigator.mediaDevices.getUserMedia=async()=>{window.cameraRequests++;throw new Error('Camera must not be used for self check-in');};});

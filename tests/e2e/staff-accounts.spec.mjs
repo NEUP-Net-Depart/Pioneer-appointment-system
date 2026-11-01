@@ -15,7 +15,7 @@ for (const role of ['technician', 'admin', 'superadmin']) test(`account and invi
     return route.fulfill({ json: { imported: ['20269991'], skipped: [] } });
   });
   await loginStaff(page, 'manager001');
-  await staffPage(page, '账号管理');
+  await staffPage(page, '激活与账号');
   await page.getByRole('button', { name: '管理账号', exact: true }).click();
   const editor = page.getByRole('dialog', { name: '管理账号 · 普通成员' });
   const types = editor.getByLabel('基础账号类型');

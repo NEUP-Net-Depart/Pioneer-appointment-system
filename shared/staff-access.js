@@ -11,6 +11,7 @@ export function staffViewAllowed(user, view) {
     roster: 'roster.read', 'roster-manage': 'roster.repair.manage', attendance: 'attendance.self','attendance-manage':'attendance.correct',
     users: 'accounts.manage', stats: 'statistics.read', capacity: 'settings.manage', 'office-roster': 'roster.office.manage', 'leave-review': 'leave.review',
   };
+  if (view === 'members') return ['members.manage', 'accounts.manage', 'settings.manage'].some(code => staffPermission(user, code));
   if (['workbench', 'settings'].includes(view)) return true;
   if (view === 'roster-requests') return staffPermission(user, 'roster.read');
   if (view === 'roster-manage') return staffPermission(user,'roster.repair.manage') || staffPermission(user,'roster.repair.configure');

@@ -319,7 +319,7 @@ export function AttendanceReports({ canExport = true }) {
             </div>
             {missing.length > 0 && (
               <p className="react-error" role="alert">
-                {missing.length} 条记录缺少学院或学号，请在成员管理补全后刷新。
+                {missing.length} 条记录缺少学院或学号，请在人员管理补全后刷新。
               </p>
             )}
             {tab === 'volunteer' && report && (

@@ -48,7 +48,7 @@ export function createContext(request, env) {
   const followups = repairFollowupService(appointments, staffPlatformServiceInstance, clock);
   const services = {
     auth: authService(users, env.JWT_SECRET), users: userService(users, staffPlatformServiceInstance),
-    activation: activationService(activationRepository(db),users,staffPlatformServiceInstance),
+    activation: activationService(activationRepository(db),users,staffPlatformServiceInstance,staffPlatform),
     appointments: appointmentService(appointments, users, env.PII_ENCRYPTION_KEY, clock, staffPlatformServiceInstance, bookingSettings),
     followups,
     bookingSettings,

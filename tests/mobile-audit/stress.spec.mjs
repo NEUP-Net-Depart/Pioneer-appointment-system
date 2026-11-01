@@ -71,7 +71,7 @@ test('presentation-many-records-members-and-empty-errors', async ({ page, reques
     data.items = Array.from({ length: 100 }, (_, i) => ({ ...template, memberId: `mobile-long-${i}`, name: '欧阳司徒长姓名同学'.repeat(8), studentId: String(20800000 + i) }));
     await route.fulfill({ response, json: data });
   });
-  await navigate(page, '成员管理');
+  await navigate(page, '人员管理');
   await expect(page.locator('.members-results .react-row:not(.react-row-head)')).toHaveCount(100);
   fit(await audit.capture('members-100-long-names', { axe: true }));
   await page.evaluate(() => {

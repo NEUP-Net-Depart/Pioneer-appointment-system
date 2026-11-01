@@ -163,8 +163,9 @@ for (const directory of ['migrations','database/staff-migrations']) test(`${dire
     }};
     const importPlatform=composeStaffPlatform({repository:raceImportRepository});
     const importService=staffPlatformService({repository:raceImportRepository,platform:importPlatform,manifests:importPlatform.manifests});
+    const importPreview=await importService.importMembers(await userRepository(db).find('20268001'),{csv:'studentId,name,homeCampusId,workProfiles,effectiveFrom\n20268003,不得覆盖并发账号变化,campus-nanhu,office,2026-10-15'});
     await assert.rejects(importService.importMembers(await userRepository(db).find('20268001'),{
-      csv:'studentId,name,homeCampusId,workProfiles,effectiveFrom\n20268003,不得覆盖并发账号变化,campus-nanhu,office,2026-10-15',confirm:true
+      csv:'studentId,name,homeCampusId,workProfiles,effectiveFrom\n20268003,不得覆盖并发账号变化,campus-nanhu,office,2026-10-15',confirm:true,previewToken:importPreview.previewToken
     }),error=>error.status===409);
     assert.deepEqual(await repository.memberRow('member-20268003'),beforeImport);
     await db.prepare("DELETE FROM staff_campus_grants WHERE account='20268003' AND campus='浑南'").run();

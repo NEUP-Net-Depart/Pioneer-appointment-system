@@ -6,7 +6,7 @@ test('supplemental-permission-categories-loading-and-failure', async ({ page, au
   const gate = new Promise(resolve => { release = resolve; });
   await page.route('**/api/members?*', async route => { await gate; const response = await route.fetch(); await route.fulfill({ response }); });
   await login(page);
-  await navigate(page, '成员管理');
+  await navigate(page, '人员管理');
   await expect(page.locator('.workspace-skeleton:visible')).toHaveCount(1);
   await expect(page.getByRole('status').filter({ hasText: '正在更新筛选结果' })).toHaveCount(1);
   await expect(page.locator('.workspace-skeleton:visible')).toHaveAttribute('aria-hidden', 'true');
@@ -17,7 +17,7 @@ test('supplemental-permission-categories-loading-and-failure', async ({ page, au
   await page.getByRole('textbox', { name: '搜索成员', exact: true }).fill('network-audit');
   await expect(page.getByRole('alert')).toContainText('本地审查模拟成员列表读取失败');
   await audit.capture('members-network-error-feedback');
-  await navigate(page, '授权管理');
+  await navigate(page, '角色与权限');
   const categories = page.getByRole('navigation', { name: '权限功能分类', exact: true });
   await expect(categories).toBeVisible();
   for (const label of ['接待与维修', '排班与申请', '签到与在岗', '管理与数据', '全部功能']) {

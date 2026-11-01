@@ -1,5 +1,7 @@
 import { serviceDayRepository } from './service-days.js';
 import { rosterCollectionRepository } from './roster-collection.js';
+import { memberImportDomain } from './staff-platform/member-import.js';
+import { departmentsDomain } from './staff-platform/departments.js';
 import { membersDomain } from './staff-platform/members.js';
 import { fieldDomain } from './staff-platform/field.js';
 import { rolesDomain } from './staff-platform/roles.js';
@@ -18,6 +20,7 @@ export function staffPlatformRepository(db) {
     auditStatement,
     audit,
     listAudit,
+    memberAudit,
     commandAuthorization
   } = commandsDomain({ db });
   const {
@@ -39,9 +42,13 @@ export function staffPlatformRepository(db) {
     listMemberships,
     addMembership,
     endMembership,
-    importMembers,
     importEducation
   } = membersDomain({ db, auditStatement, commandAuthorization });
+  const { memberImportSnapshot, importMembers } = memberImportDomain({
+    db,
+    auditStatement,
+    commandAuthorization
+  });
   const {
     permissionDefinitions,
     listRoles,
@@ -122,6 +129,7 @@ export function staffPlatformRepository(db) {
     swapCoverage
   } = requestsDomain({ db, auditStatement, commandAuthorization });
   return {
+    ...departmentsDomain({ db, auditStatement, commandAuthorization }),
     ...serviceDayRepository(db),
     effectiveAssignment,
     effectiveLeaveAssignment: effectiveAssignment,
@@ -152,6 +160,7 @@ export function staffPlatformRepository(db) {
     listPresence,
     activeRepair,
     importMembers,
+    memberImportSnapshot,
     importEducation,
     dutyEvent,
     latestIntake,
@@ -192,6 +201,7 @@ export function staffPlatformRepository(db) {
     receipt,
     audit,
     listAudit,
+    memberAudit,
     leaveImpact,
     officeRosterMemberIds,
     rosterMemberFacts,

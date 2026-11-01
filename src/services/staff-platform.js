@@ -1,5 +1,6 @@
 import { contextDomain } from './staff-platform/context.js';
 import { membersDomain } from './staff-platform/members.js';
+import { departmentsDomain } from './staff-platform/departments.js';
 import { rolesDomain } from './staff-platform/roles.js';
 import { workspaceDomain } from './staff-platform/workspace.js';
 import { attendanceDomain } from './staff-platform/attendance.js';
@@ -27,12 +28,14 @@ export function staffPlatformService({
     memberTarget,
     memberList,
     memberDetail,
+    memberAudit,
     saveWorkProfile,
     updateMember,
     ownProfile,
     addMembership,
     endMembership,
     importMembers,
+    createMember,
     importEducation
   } = membersDomain({ repository, platform, contextFor, evaluate });
   const { permissions, roles, createRole, updateRole, previewRole, bindMemberRoles } = rolesDomain({
@@ -121,12 +124,14 @@ export function staffPlatformService({
     swapDecision
   } = requestsDomain({ repository, platform, contextFor, evaluate, requirePermission });
   return {
+    ...departmentsDomain({ repository, platform, contextFor }),
     contextFor,
     requirePermission,
     scopedActor,
     evaluate,
     memberList,
     memberDetail,
+    memberAudit,
     updateMember,
     ownProfile,
     addMembership,
@@ -139,6 +144,7 @@ export function staffPlatformService({
     bindMemberRoles,
     organization,
     importMembers,
+    createMember,
     importEducation,
     saveWorkProfile,
     deskSummary,

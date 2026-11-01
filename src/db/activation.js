@@ -14,6 +14,27 @@ function application(row){
 }
 export function activationRepository(db){
   return {
+    async configureMemberWhitelist(item,actor,guard,roleVersions,instant){
+      await db.batch([
+        db.prepare(`SELECT CASE WHEN EXISTS(SELECT 1 FROM staff_accounts a JOIN members m ON m.id=a.member_id
+          WHERE a.account=? AND a.member_id=? AND a.auth_version=? AND a.status='enabled' AND m.status='active')
+          AND (${guard.sql})=? AND NOT EXISTS(SELECT 1 FROM json_each(?) v LEFT JOIN roles r ON r.id=json_extract(v.value,'$.id')
+            WHERE r.id IS NULL OR r.revision<>json_extract(v.value,'$.revision') OR r.enabled<>json_extract(v.value,'$.enabled'))
+          THEN 1 ELSE abs(-9223372036854775808) END`)
+          .bind(actor.actorAccount,actor.actorMemberId,actor.authVersion,...guard.args,guard.value,JSON.stringify(roleVersions)),
+        db.prepare(`INSERT INTO staff_whitelist(student_id,expected_name,expected_role,created_by,created_at) VALUES(?,?,?,?,?)
+          ON CONFLICT(student_id) DO UPDATE SET expected_name=excluded.expected_name,expected_role=excluded.expected_role,status='open',revision=staff_whitelist.revision+1`)
+          .bind(item.studentId,item.expectedName,item.expectedRole,actor.actorAccount,instant),
+        db.prepare('INSERT OR IGNORE INTO activation_member_bindings(student_id,member_id) VALUES(?,?)').bind(item.studentId,item.memberId),
+        db.prepare('DELETE FROM whitelist_campus_grants WHERE student_id=?').bind(item.studentId),
+        ...item.authorizedCampuses.map(campus=>db.prepare('INSERT INTO whitelist_campus_grants(student_id,campus) VALUES(?,?)').bind(item.studentId,campus)),
+        db.prepare("UPDATE activation_requests SET status='rejected',password_hash='',review_note='人员姓名已更新，请重新提交激活申请',reviewed_by=?,reviewed_at=? WHERE student_id=? AND status='pending' AND name<>?")
+          .bind(actor.actorAccount,instant,item.studentId,item.expectedName),
+        db.prepare(`INSERT INTO audit_events(id,actor_member_id,actor_account,action,source_ref,after_json,occurred_at)
+          VALUES(?,?,?,'authorization.member_activation.updated',?,?,?)`)
+          .bind(crypto.randomUUID(),actor.actorMemberId,actor.actorAccount,JSON.stringify({module:'identity',type:'member',id:item.memberId}),JSON.stringify(item),instant)
+      ]);
+    },
     async findWhitelist(id){return whitelist(await db.prepare(`${whitelistSelect} WHERE w.student_id=?`).bind(id).first());},
     async listWhitelist(){return (await db.prepare(`${whitelistSelect} ORDER BY w.created_at DESC,w.student_id`).all()).results.map(whitelist);},
     async importWhitelist(items,actor,instant){

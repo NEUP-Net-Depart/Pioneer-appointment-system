@@ -8,7 +8,7 @@ for (const width of [320,390,768,1440]) test(`account cards batch and update in 
   await mockStaff(page);
   let items=Array.from({length:30},(_,i)=>({account:`202600${String(i).padStart(2,'0')}`,name:`测试人员${i}`,role:'staff',homeCampus:'南湖',authorizedCampuses:['南湖'],status:'enabled',workload:i,actions:{edit:true}}));
   await page.route('**/api/users',route=>route.fulfill({json:{items}}));
-  await loginStaff(page);await staffPage(page,'账号管理');
+  await loginStaff(page);await staffPage(page,'激活与账号');
   await expect(page.locator('.account-row')).toHaveCount(30);
   const first=page.locator('.account-row').first();
   await first.evaluate(n=>{window.firstAccount=n;});
@@ -71,7 +71,7 @@ test('dense list has a fixed animation budget, bounded staggering and no unchang
 test('modal closes with local feedback and restores focus; sidebar collapse makes entries inert',async({page})=>{
   await mockStaff(page);
   await page.route('**/api/users',r=>r.fulfill({json:{items:[{account:'20260001',name:'测试人员',homeCampus:'南湖',authorizedCampuses:['南湖'],status:'enabled',role:'staff',actions:{edit:true}}]}}));
-  await loginStaff(page);await staffPage(page,'账号管理');
+  await loginStaff(page);await staffPage(page,'激活与账号');
   const trigger=page.getByRole('button',{name:'管理账号',exact:true});await trigger.click();
   const dialog=page.getByRole('dialog');await expect(dialog).toBeVisible();
   await dialog.getByRole('button',{name:'关闭',exact:true}).click();
@@ -80,7 +80,7 @@ test('modal closes with local feedback and restores focus; sidebar collapse make
   await group.getByRole('button',{name:'平台管理',exact:true}).click();
   await expect(group.locator('.motion-collapse')).toHaveAttribute('inert','');
   await group.getByRole('button',{name:'平台管理',exact:true}).click();
-  await expect(group.getByRole('button',{name:'账号管理',exact:true})).toBeVisible();
+  await expect(group.getByRole('button',{name:'人员管理',exact:true})).toBeVisible();
 });
 
 test('short task prompt reveals characters with one animation and remains fully accessible', async ({page})=>{
@@ -158,7 +158,7 @@ for (const width of [390,1440]) test(`roles and appointment rows reveal downward
   await page.route('**/api/roles',r=>r.fulfill({json:{items:roles}}));
   await page.route('**/api/permissions',r=>r.fulfill({json:{items:permissions}}));
   await page.route('**/api/appointments?*',r=>r.fulfill({json:{items:Array.from({length:10},(_,i)=>({id:`reserve020261024-${String(i).padStart(2,'0')}`,name:`测试客户${i}`,date:'2026-10-24',timeSlot:'14:00-14:30',status:'booked',campus:'南湖',deviceModel:'ThinkPad'}))}}));
-  await loginStaff(page);await staffPage(page,'授权管理');
+  await loginStaff(page);await staffPage(page,'角色与权限');
   await expect(page.locator('[aria-label="角色列表"] > button')).toHaveCount(10);
   await expect(page.locator('.react-permission-item')).toHaveCount(11);
   const roleMotion=await page.evaluate(()=>window.listMotions.filter(v=>v.tag==='BUTTON'&&v.item));
@@ -183,7 +183,7 @@ for (const width of [390,1440]) test(`roles and appointment rows reveal downward
   expect(recordsMotion.every(v=>v.frames[0].clipPath==='inset(0 0 100% 0)'&&!v.frames.some(f=>f.transform))).toBe(true);
   expect(recordsMotion.map(v=>v.delay)).toEqual(recordsMotion.map(v=>v.delay).sort((a,b)=>a-b));
   await page.evaluate(()=>{window.listMotions=[];});
-  await staffPage(page,'账号管理');
+  await staffPage(page,'激活与账号');
   await expect(page.locator('.account-row')).toHaveCount(10);
   await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
   const accountsMotion=await page.evaluate(()=>window.listMotions.filter(v=>v.classes.includes('account-row')));
@@ -234,18 +234,18 @@ test('returning to a cached page reveals its content and retains filters and nod
     Element.prototype.animate=function(frames,options){if(this.classList.contains('account-row')&&frames[0].clipPath)window.accountEntries++;return original.call(this,frames,options);};
   });
   await page.route('**/api/users',r=>r.fulfill({json:{items:[{account:'20261001',name:'测试人员',role:'staff',homeCampus:'南湖',authorizedCampuses:['南湖'],status:'enabled',actions:{edit:true}}]}}));
-  await loginStaff(page);await staffPage(page,'账号管理');
+  await loginStaff(page);await staffPage(page,'激活与账号');
   const card=page.locator('.account-row');await expect(card).toHaveCount(1);
   await card.evaluate(n=>{window.cachedAccount=n;});
   await page.getByPlaceholder('姓名、学号或校区').fill('测试');
   await expect.poll(()=>card.evaluate(n=>n.getAnimations().length)).toBe(0);
-  const initial=await page.evaluate(()=>window.accountEntries),title=await page.getByRole('heading',{name:'账号管理',exact:true}).boundingBox();
+  const initial=await page.evaluate(()=>window.accountEntries),title=await page.getByRole('heading',{name:'人员管理',exact:true}).boundingBox();
   await staffPage(page,'统计分析');await expect(page.getByRole('heading',{name:'统计分析',exact:true})).toBeVisible();
-  await staffPage(page,'账号管理');await expect(card).toBeVisible();
+  await staffPage(page,'激活与账号');await expect(card).toBeVisible();
   expect(await card.evaluate(n=>n===window.cachedAccount)).toBe(true);
   await expect(page.getByPlaceholder('姓名、学号或校区')).toHaveValue('测试');
   expect(await page.evaluate(()=>window.accountEntries)).toBeGreaterThan(initial);
-  expect(await page.getByRole('heading',{name:'账号管理',exact:true}).boundingBox()).toEqual(title);
+  expect(await page.getByRole('heading',{name:'人员管理',exact:true}).boundingBox()).toEqual(title);
   const duration=await page.locator('.workspace-section-nav button').first().evaluate(n=>getComputedStyle(n).transitionDuration);
   expect(duration.split(',').some(v=>parseFloat(v)>0)).toBe(true);
   await page.emulateMedia({reducedMotion:'reduce'});

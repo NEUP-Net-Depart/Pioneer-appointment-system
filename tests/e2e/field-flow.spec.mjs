@@ -46,8 +46,8 @@ test('member qualification and roster import panels preserve drafts and fit staf
   const sidebar=page.locator('.field-sidebar');
   const group=sidebar.getByRole('button',{name:'平台管理',exact:true});
   if(await group.getAttribute('aria-expanded')==='false') await group.click();
-  await sidebar.getByRole('button',{name:'成员管理',exact:true}).click();
-  await page.getByRole('button',{name:'编辑成员与权限',exact:true}).first().click();
+  await sidebar.getByRole('button',{name:'人员管理',exact:true}).click();
+  await page.getByRole('button',{name:'人员详情',exact:true}).first().click();
   const dialog=page.getByRole('dialog');
   await dialog.getByRole('button',{name:'工作资格',exact:true}).click();
   await dialog.getByRole('combobox',{name:'工作资格',exact:true}).selectOption('exchange');
@@ -64,11 +64,11 @@ test('member qualification and roster import panels preserve drafts and fit staf
   await expect(dialog.getByRole('combobox',{name:'工作资格',exact:true})).toHaveValue('exchange');
   await dialog.getByRole('button',{name:'关闭',exact:true}).click();
   await dialog.getByRole('button',{name:'放弃修改并关闭',exact:true}).click();
-  await page.getByRole('button',{name:'导入名单',exact:true}).click();
-  await dialog.getByRole('combobox',{name:'名单类型',exact:true}).selectOption('exchange');
-  await expect(dialog.getByText('导入交流人员即确认培训通过，并保留交流资格。',{exact:true})).toBeVisible();
-  await dialog.getByText('名单格式与角色配置',{exact:true}).click();
-  await expect(dialog.getByText('核验培训通过后',{exact:false})).toBeVisible();
+  await page.getByRole('button',{name:'批量导入',exact:true}).click();
+  await dialog.getByRole('combobox',{name:'人员类型',exact:true}).selectOption('exchange');
+  await expect(dialog.getByLabel('已确认交流人员通过维修培训')).toBeVisible();
+  await dialog.getByText('高级 CSV 配置',{exact:true}).click();
+  await expect(dialog.getByText('空白资料和授权均保留',{exact:false})).toBeVisible();
   await dialog.getByRole('button',{name:'关闭',exact:true}).click();
 });
 
@@ -79,7 +79,7 @@ for (const account of ['20261001', '20261002']) test(`ordinary staff ${account} 
     const response = await route.fetch();
     const home = await response.json();
     await route.fulfill({ response, json: { ...home, navigation: [...(home.navigation || []),
-      { id: 'members', label: '成员管理' }, { id: 'roles', label: '授权管理' }] } });
+      { id: 'members', label: '人员管理' }, { id: 'roles', label: '角色与权限' }] } });
   });
   await login(page, account);
   const managementReads = [];
@@ -90,7 +90,7 @@ for (const account of ['20261001', '20261002']) test(`ordinary staff ${account} 
     await page.evaluate(() => window.dispatchEvent(new CustomEvent('staff-request-navigation', { detail: 'scene:operations' })));
     await expect(page.getByRole('heading', { name: '维修工作台', exact: true })).toBeVisible();
   }
-  for (const label of ['成员管理','授权管理','账号管理','预约配置','统计分析','维修排班管理','办公排班管理','请假审批']) await expect(sidebar.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+  for (const label of ['人员管理','角色与权限','激活与账号','预约配置','统计分析','维修排班管理','办公排班管理','请假审批']) await expect(sidebar.getByRole('button', { name: label, exact: true })).toHaveCount(0);
   for (const view of ['members','permissions','users','stats','capacity','roster-manage','office-roster','leave-review']) {
     await page.evaluate(view => window.dispatchEvent(new CustomEvent('staff-request-navigation', { detail: view })), view);
     await expect(page.locator('.workspace-route:not([hidden])')).toHaveAttribute('data-route', 'workbench');
@@ -111,7 +111,7 @@ for (const account of ['20261001', '20261002']) test(`ordinary staff ${account} 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: '更多', exact: true }).click();
   const entries = page.getByRole('dialog', { name: '工作入口', exact: true });
-  for (const label of ['成员管理','授权管理','账号管理','预约配置','统计分析','维修排班管理','办公排班管理']) await expect(entries.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+  for (const label of ['人员管理','角色与权限','激活与账号','预约配置','统计分析','维修排班管理','办公排班管理']) await expect(entries.getByRole('button', { name: label, exact: true })).toHaveCount(0);
   await page.screenshot({ path: `output/field-workflow/access-${account}-mobile.png`, fullPage: true });
   await entries.getByRole('button', { name: '关闭', exact: true }).click();
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -120,12 +120,12 @@ for (const account of ['20261001', '20261002']) test(`ordinary staff ${account} 
   await expect(page.locator('.capacity-editor')).toHaveCount(0);
   await page.reload();
   await expect(page.locator('.field-content')).toBeVisible();
-  for (const label of ['成员管理','授权管理','账号管理','预约配置','统计分析']) await expect(page.locator('.field-sidebar').getByRole('button', { name: label, exact: true })).toHaveCount(0);
+  for (const label of ['人员管理','角色与权限','激活与账号','预约配置','统计分析']) await expect(page.locator('.field-sidebar').getByRole('button', { name: label, exact: true })).toHaveCount(0);
 });
 
 for (const capability of [
   { code: 'settings.manage', group: '业务管理', label: '预约配置', view: 'capacity', selector: '.capacity-editor', endpoint: '/api/slot-capacities' },
-  { code: 'members.manage', group: '平台管理', label: '成员管理', view: 'members', selector: '.members-workspace', endpoint: '/api/members' },
+  { code: 'members.manage', group: '平台管理', label: '人员管理', view: 'members', selector: '.members-workspace', endpoint: '/api/members' },
 ]) test(`revoking ${capability.code} closes its open workspace and blocks stale credentials`, async ({ page, request }) => {
   // Install before app startup so the shell's existing interval is controlled.
   await page.clock.install();
@@ -203,9 +203,9 @@ test('platform startup errors never reveal old pages or start legacy record refr
 test('work launcher groups compact entries, searches only granted pages and restores scrolling',async({page})=>{
   await page.setExtraHTTPHeaders({'CF-Connecting-IP':'192.0.2.176'});await page.setViewportSize({width:390,height:900});await login(page,'root001');
   await page.getByRole('button',{name:'更多',exact:true}).click();const dialog=page.getByRole('dialog',{name:'工作入口',exact:true}),nav=dialog.getByRole('navigation',{name:'全部工作入口',exact:true});
-  await expect(nav.getByRole('button',{name:'成员管理',exact:true})).toBeVisible();await expect(nav.locator('[aria-current=page]')).toHaveText('现场工作台');
+  await expect(nav.getByRole('button',{name:'人员管理',exact:true})).toBeVisible();await expect(nav.locator('[aria-current=page]')).toHaveText('现场工作台');
   expect(await page.evaluate(()=>document.documentElement.style.overflow)).toBe('hidden');
-  await dialog.getByLabel('查找功能',{exact:true}).fill('排班');await expect(nav.getByRole('button')).toHaveCount(3);await expect(nav.getByRole('button',{name:'成员管理',exact:true})).toHaveCount(0);
+  await dialog.getByLabel('查找功能',{exact:true}).fill('排班');await expect(nav.getByRole('button')).toHaveCount(3);await expect(nav.getByRole('button',{name:'人员管理',exact:true})).toHaveCount(0);
   await dialog.getByLabel('查找功能',{exact:true}).fill('不存在的功能');await expect(dialog.getByText('没有匹配的功能',{exact:true})).toBeVisible();await dialog.getByLabel('查找功能',{exact:true}).fill('');
   for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await dialog.evaluate(node=>node.scrollWidth<=node.clientWidth)).toBe(true);const boxes=await nav.getByRole('button').evaluateAll(nodes=>nodes.map(node=>({width:node.getBoundingClientRect().width,height:node.getBoundingClientRect().height})));expect(Math.min(...boxes.map(box=>box.width))).toBeGreaterThanOrEqual(100);expect(Math.min(...boxes.map(box=>box.height))).toBeGreaterThanOrEqual(44);expect(Math.max(...boxes.map(box=>box.height))).toBeLessThan(90);await page.screenshot({path:`output/field-workflow/work-launcher-${width}.png`});}
   await page.setViewportSize({width:390,height:900});await page.keyboard.press('Escape');await expect(dialog).toBeHidden();expect(await page.evaluate(()=>document.documentElement.style.overflow)).not.toBe('hidden');await expect(page.getByRole('button',{name:'更多',exact:true})).toBeFocused();
@@ -654,8 +654,8 @@ test('all workspaces share title geometry and scrollable navigation across scree
   const entries = [
     ['维修工作台', '维修工作台'], ['现场工作台', '现场工作台'],
     ['个人中心', '个人中心'], ['预约记录', '预约记录'], ['班次与排班', '我的值班安排'],
-    ['本人签到记录', '本人签到记录'], ['账号安全', '账号安全'], ['成员管理', '成员管理'],
-    ['授权管理', '授权管理'], ['账号管理', '账号管理'], ['维修排班管理', '维修排班管理'],
+    ['本人签到记录', '本人签到记录'], ['账号安全', '账号安全'], ['人员管理', '人员管理'],
+    ['角色与权限', '角色与权限'], ['维修排班管理', '维修排班管理'],
     ['办公排班管理', '办公排班管理'], ['请假审批', '请假审批'], ['预约配置', '预约配置'], ['统计分析', '统计分析'],
   ];
   await mkdir('output/field-workflow/ui-consistency', { recursive: true });
@@ -712,8 +712,8 @@ test('all workspaces share title geometry and scrollable navigation across scree
 test('member detail keeps its header fixed while long forms scroll and restores focus', async ({ page }) => {
   await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': '192.0.2.178' });
   await login(page, 'root001');
-  await page.locator('.field-sidebar').getByRole('button', { name: '成员管理', exact: true }).click();
-  const opener = page.locator('.members-results .react-row').filter({ hasText: '陈宇' }).getByRole('button', { name: '编辑成员与权限' });
+  await page.locator('.field-sidebar').getByRole('button', { name: '人员管理', exact: true }).click();
+  const opener = page.locator('.members-results .react-row').filter({ hasText: '陈宇' }).getByRole('button', { name: '人员详情' });
   await opener.click();
   const dialog = page.getByRole('dialog', { name: '陈宇', exact: true });
   await dialog.getByRole('button', { name: '角色授权', exact: true }).click();
@@ -743,7 +743,7 @@ test('management keeps its shell and readable results during refresh at all widt
   await sidebar.evaluate(node => { node.dataset.identity = 'persistent'; });
   const managementGroup = sidebar.getByRole('button', { name: '平台管理', exact: true });
   if (await managementGroup.getAttribute('aria-expanded') === 'false') await managementGroup.click();
-  await sidebar.getByRole('button', { name: '成员管理', exact: true }).click();
+  await sidebar.getByRole('button', { name: '人员管理', exact: true }).click();
   await expect(page.locator('.react-member-identity').first()).toBeVisible();
   let release;
   const held = new Promise(resolve => { release = resolve; });
@@ -761,7 +761,7 @@ test('management keeps its shell and readable results during refresh at all widt
   }
   await page.setViewportSize({ width: 1440, height: 900 });
   const memberRow = page.locator('.members-results .react-row').filter({ hasText: '陈宇' });
-  await memberRow.getByRole('button', { name: '编辑成员与权限' }).click();
+  await memberRow.getByRole('button', { name: '人员详情' }).click();
   const memberDialog = page.getByRole('dialog', { name: '陈宇', exact: true });
   const memberName = memberDialog.getByLabel('姓名', { exact: true });
   await memberName.fill('陈宇测试草稿');
@@ -781,8 +781,8 @@ test('management keeps its shell and readable results during refresh at all widt
   await memberDialog.getByRole('button', { name: '关闭', exact: true }).click();
   await memberDialog.getByRole('button', { name: '放弃修改并关闭' }).click();
   await page.setViewportSize({ width: 1440, height: 900 });
-  await sidebar.getByRole('button', { name: '授权管理', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '授权管理', exact: true })).toBeVisible();
+  await sidebar.getByRole('button', { name: '角色与权限', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '角色与权限', exact: true })).toBeVisible();
   await expect(sidebar).toHaveAttribute('data-identity', 'persistent');
   await expect(sidebar.getByRole('button', { name: '平台管理', exact: true })).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByLabel('查找权限')).toBeVisible();
@@ -1114,9 +1114,10 @@ test('account workspace imports, reviews and updates an account with server acti
   // local-IP login quota used by unrelated repair and scheduling scenarios.
   await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': '192.0.2.46' });
   await login(page, 'root001');
-  await page.locator('.field-sidebar').getByRole('button', { name: '账号管理', exact: true }).click();
+  await page.locator('.field-sidebar').getByRole('button', { name: '人员管理', exact: true }).click();
+  await page.getByRole('navigation', { name: '人员管理功能' }).getByRole('button', { name: '激活与账号', exact: true }).click();
   const workspace = page.locator('.accounts-workspace');
-  await expect(workspace.getByRole('heading', { name: '账号管理' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '人员管理', exact: true })).toBeVisible();
   await expect(page.locator('#users-view')).toBeHidden();
   const protectedRow = workspace.locator('.account-row').filter({ hasText: 'root001' });
   await expect(protectedRow.getByText('系统保护账号')).toBeVisible();
@@ -1249,10 +1250,13 @@ test('records keep rows and focus during delayed updates and pause while inactiv
   await expect(first).toHaveText(content);
   await page.clock.install();
   await sidebar.getByRole('button', { name: '账号安全', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '账号安全', exact: true })).toBeVisible();
   const paused = reads;
   await page.clock.fastForward(61000);
   expect(reads).toBe(paused);
+  await page.clock.resume();
   await sidebar.getByRole('button', { name: '预约记录', exact: true }).click();
+  await expect(workspace).toBeVisible();
   await expect(search).toHaveValue('temporary-query');
   await expect.poll(() => reads).toBeGreaterThan(paused);
 });

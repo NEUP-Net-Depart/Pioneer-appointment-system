@@ -72,7 +72,7 @@ test('a late code response cannot override the most recent navigation', async ({
   await mockStaff(page);
   const code = gate();
   let requested = false;
-  await page.route('**/staff/assets/Accounts-*.js', async route => {
+  await page.route('**/staff/assets/People-*.js', async route => {
     requested = true;
     await code.promise;
     await route.continue();
@@ -85,7 +85,7 @@ test('a late code response cannot override the most recent navigation', async ({
     await expect(page.getByRole('heading', { name: '账号安全', exact: true })).toBeVisible();
     code.release();
     await expect(page.locator('.workspace-navigation-status')).toHaveCount(0);
-    await expect(page.locator('[data-route="users"]')).toHaveCount(0);
+    await expect(page.locator('[data-route="members"]')).toHaveCount(0);
     await expect(page.getByRole('heading', { name: '账号安全', exact: true })).toBeVisible();
   } finally {
     code.release();

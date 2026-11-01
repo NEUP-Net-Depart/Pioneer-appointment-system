@@ -1,7 +1,10 @@
 import { dateKey } from '../../shared/time.js';
 
-const select = `SELECT staff_accounts.*,(SELECT status FROM members WHERE id=staff_accounts.member_id) AS member_status,
+const roleNames = `(SELECT json_group_array(name) FROM (SELECT DISTINCT r.name FROM member_roles mr JOIN roles r ON r.id=mr.role_id
+  WHERE mr.member_id=staff_accounts.member_id AND r.enabled=1 AND mr.effective_from<=? AND (mr.effective_to IS NULL OR mr.effective_to>?) ORDER BY r.level DESC,r.name)) AS role_names`;
+const select = (extra = '') => `SELECT staff_accounts.*,(SELECT status FROM members WHERE id=staff_accounts.member_id) AS member_status,
   (SELECT json_group_array(campus) FROM staff_campus_grants WHERE account=staff_accounts.account) AS campuses
+  ${extra}
   FROM staff_accounts`;
 export function publicUser(row) {
   return row ? { account: row.account, memberId: row.member_id || '', memberStatus: row.member_status || 'active', name: row.name, role: row.role, status: row.status,
@@ -15,15 +18,17 @@ export function publicUserView(user) {
   return Object.fromEntries(Object.entries(user).filter(([key]) => !['passwordHash','tokenVersion','revision'].includes(key)));
 }
 export function userRepository(db) {
-  async function find(id) {
-    const row = await db.prepare(`${select} WHERE account=?`).bind(id).first();
+  async function find(id, { withRoles = false } = {}) {
+    const day = dateKey();
+    const row = await db.prepare(`${select(withRoles ? `,${roleNames}` : '')} WHERE account=?`)
+      .bind(...(withRoles ? [day, day, id] : [id])).first();
     return row ? { ...publicUser(row), passwordHash: row.password_hash, tokenVersion: row.token_version, authVersion: row.auth_version ?? row.token_version ?? 0, revision: row.revision } : null;
   }
   return {
     find,
     async health() { await db.prepare('SELECT account FROM staff_accounts LIMIT 1').first(); },
     async findByName(name) {
-      return (await db.prepare(`${select} WHERE name=? LIMIT 2`).bind(name).all()).results.map(publicUser);
+      return (await db.prepare(`${select()} WHERE name=? LIMIT 2`).bind(name).all()).results.map(publicUser);
     },
     async assignees({ campus, q }) {
       const search = q.toLowerCase();
@@ -36,13 +41,10 @@ export function userRepository(db) {
     },
     async list() {
       const day = dateKey();
-      return (await db.prepare(`SELECT staff_accounts.*,(SELECT status FROM members WHERE id=staff_accounts.member_id) AS member_status,
-        (SELECT json_group_array(campus) FROM staff_campus_grants WHERE account=staff_accounts.account) AS campuses,
-        (SELECT json_group_array(name) FROM (SELECT DISTINCT r.name FROM member_roles mr JOIN roles r ON r.id=mr.role_id
-          WHERE mr.member_id=staff_accounts.member_id AND r.enabled=1 AND mr.effective_from<=? AND (mr.effective_to IS NULL OR mr.effective_to>?) ORDER BY r.level DESC,r.name)) AS role_names,
+      return (await db.prepare(`${select(`,${roleNames},
         (SELECT COUNT(*) FROM appointments WHERE assigned_to=staff_accounts.account AND
-          (status='in_progress' OR (status='completed' AND outcome IN ('repaired','unrepaired','not_needed','legacy_unknown')))) AS workload
-        FROM staff_accounts ORDER BY role DESC,name`).bind(day,day).all()).results.map(publicUser);
+          (status='in_progress' OR (status='completed' AND outcome IN ('repaired','unrepaired','not_needed','legacy_unknown')))) AS workload`)}
+        ORDER BY role DESC,name`).bind(day,day).all()).results.map(publicUser);
     },
     async update(target, patch, { selfPassword = false, auditRecord } = {}) {
       const fields = [], args = [];

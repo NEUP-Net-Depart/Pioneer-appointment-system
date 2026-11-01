@@ -82,7 +82,9 @@ test('attendance managers correct historical time without altering identity and 
   const ip={'CF-Connecting-IP':'192.0.2.197'};await page.setExtraHTTPHeaders(ip);
   const login=await request.post('/api/auth/login',{headers:ip,data:{account:'root001',password:process.env.E2E_ROOT_PASSWORD}});
   const headers={...ip,Authorization:`Bearer ${(await login.json()).token}`},day='2026-10-15';
-  const imported=await request.post('/api/members/import',{headers,data:{csv:'studentId,name,homeCampusId,departmentId\n20261990,考勤核查样例,campus-nanhu,dept-hardware',confirm:true}});expect(imported.ok(),await imported.text()).toBe(true);
+  const importCsv='studentId,name,homeCampusId,departmentId\n20261990,考勤核查样例,campus-nanhu,dept-hardware';
+  const preview=await request.post('/api/members/import',{headers,data:{csv:importCsv}});expect(preview.ok(),await preview.text()).toBe(true);
+  const imported=await request.post('/api/members/import',{headers,data:{csv:importCsv,confirm:true,previewToken:(await preview.json()).previewToken}});expect(imported.ok(),await imported.text()).toBe(true);
   const memberId=(await imported.json()).items[0].memberId;
   const event=await request.post('/api/attendance/events',{headers,data:{type:'duty',businessDate:day,campusId:'campus-nanhu',startsAt:`${day}T08:00:00+08:00`,endsAt:`${day}T22:00:00+08:00`,requestId:crypto.randomUUID()}});
   expect(event.ok(),await event.text()).toBe(true);
@@ -443,8 +445,8 @@ test('member reaches roster from My, chooses named shifts and can use narrow scr
   await page.locator('#login-form').getByLabel('密码', { exact: true }).fill('StaffTest!2026');
   await page.getByRole('button', { name: '进入系统' }).click();
   await expect(page.locator('.field-app')).toBeVisible();
-  await expect(page.locator('.field-sidebar').getByRole('button', { name: '成员管理', exact: true })).toHaveCount(0);
-  await expect(page.locator('.field-sidebar').getByRole('button', { name: '授权管理', exact: true })).toHaveCount(0);
+  await expect(page.locator('.field-sidebar').getByRole('button', { name: '人员管理', exact: true })).toHaveCount(0);
+  await expect(page.locator('.field-sidebar').getByRole('button', { name: '角色与权限', exact: true })).toHaveCount(0);
   await expandGroup(page, '我的');
   await page.locator('.field-sidebar').getByRole('button', { name: '个人中心', exact: true }).click();
   await page.getByRole('button', { name: '我的班次与申请' }).click();

@@ -551,7 +551,7 @@ test('exchange import, activation, check-in and qualification revocation preserv
   assert.deepEqual(preview.body.items[0].roleCodes,['exchange'],'legacy technician CSV uses the separate exchange role');
   assert.equal((await request('/api/members/import','root001',{csv:csv.replace('exchange,technician','exchange,exchange')})).status,200);
   assert.equal(await repository.memberRow(memberId),null);
-  assert.equal((await request('/api/members/import','root001',{csv,confirm:true})).status,200);
+  assert.equal((await request('/api/members/import','root001',{csv,confirm:true,previewToken:preview.body.previewToken})).status,200);
   const activation=await request('/api/activation',null,{studentId:account,name:'交流测试人员',homeCampus:'南湖',password:'StaffTest!2026'});
   assert.equal(activation.status,201,JSON.stringify(activation.body));
   assert.equal((await request('/api/activation-requests/review','root001',{ids:[activation.body.id],status:'approved',identityVerified:true})).status,200);
