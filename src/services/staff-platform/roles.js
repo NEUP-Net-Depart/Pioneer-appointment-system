@@ -1,6 +1,6 @@
 import { fail } from '../../lib/http.js';
 import { dateKey, nowIso, validDate } from '../../platform/time.js';
-import { publicResourceRef } from '../../platform/contracts.js';
+import { publicResourceRef, stableJson } from '../../platform/contracts.js';
 import { inputString, validateScope, validateGrant } from './shared.js';
 import {
   businessPermissions,
@@ -58,7 +58,15 @@ export function rolesDomain({
 
   async function assertEditableRole(context, role) {
     if (role.code === 'superadmin') fail(403, '最高管理员权限包受保护');
-    if (context.actor.role === 'superadmin') return;
+    if (context.actor.role === 'superadmin') {
+      for (const member of await repository.roleMembers(role.id, context.businessDate)) {
+        const account = await repository.accountForMember(member.id);
+        for (const campusId of JSON.parse(account?.campuses || '[]'))
+          if (!evaluate(context, 'roles.manage', { campusId, memberId: member.id }).allowed)
+            fail(403, '角色影响了其他校区的成员授权');
+      }
+      return;
+    }
     if (systemRole(role)) fail(403, '不能管理系统级角色');
     for (const member of await repository.roleMembers(role.id, context.businessDate))
       await editableMember(repository, context, member, evaluate, 'roles.manage');
@@ -111,10 +119,7 @@ export function rolesDomain({
     const { context } = await requirePermission(actor, 'roles.manage');
     const role = (await repository.listRoles()).find((item) => item.id === id);
     if (!role) fail(404, '角色不存在');
-    const roleGuard =
-      actor.role === 'superadmin'
-        ? undefined
-        : await repository.roleGuard(role.id, context.businessDate);
+    const roleGuard = await repository.roleGuard(role.id, context.businessDate);
     await assertEditableRole(context, role);
     if (actor.role !== 'superadmin' && input.level >= 3) fail(403, '不能配置系统级角色');
     if (!Number.isInteger(input.revision)) fail(400, '角色版本不正确');
@@ -192,12 +197,15 @@ export function rolesDomain({
   async function bindMemberRoles(actor, memberId, input) {
     const member = await repository.memberRow(memberId);
     if (!member) fail(404, '成员不存在');
-    const { context } = await requirePermission(
-      actor,
+    const { context } = await requirePermission(actor, 'roles.manage');
+    const target = await editableMember(
+      repository,
+      context,
+      member,
+      evaluate,
       'roles.manage',
-      memberTarget(member, await repository.memberships(memberId))
+      true
     );
-    const target = await editableMember(repository, context, member, evaluate, 'roles.manage');
     if (!Number.isInteger(input.revision)) fail(400, '成员版本不正确');
     if (!Array.isArray(input.bindings)) fail(400, '角色绑定必须是数组');
     const roles = Object.fromEntries((await repository.listRoles()).map((role) => [role.id, role]));
@@ -224,15 +232,67 @@ export function rolesDomain({
       )
         fail(400, '角色有效期不正确');
     }
-    // Replacing a binding collection must also authorize removal of the old
-    // bindings; otherwise a campus manager could revoke another campus's roles.
-    for (const binding of await repository.roleBindings(memberId)) {
-      const role = roles[binding.roleId];
-      if (role) delegableRole(context, role, binding, target);
-    }
-    const bindings = input.bindings.map((binding) =>
-      delegableRole(context, roles[binding.roleId], binding, target)
+    const existing = await repository.roleBindings(memberId);
+    const automatic = (await repository.grants(memberId)).filter(
+      (grant) => grant.source === 'organization'
     );
+    const editable = (binding) => {
+      try {
+        delegableRole(context, roles[binding.roleId], binding, target);
+        return true;
+      } catch (error) {
+        if (error.status !== 403) throw error;
+        return false;
+      }
+    };
+    const hidden = existing.filter((binding) => !editable(binding));
+    if (input.bindings.some((binding) => hidden.some((old) => old.id === binding.id)))
+      fail(403, '不能修改其他校区的授权');
+    const bindings = [
+      ...hidden,
+      ...input.bindings.map((binding) => {
+        const before = existing.find((old) => old.id === binding.id);
+        const unchanged =
+          before &&
+          ['roleId', 'scope', 'effectiveFrom', 'effectiveTo', 'reason'].every(
+            (key) => stableJson(before[key] ?? null) === stableJson(binding[key] ?? null)
+          );
+        if (unchanged) return before;
+        if (
+          automatic.some(
+            (grant) =>
+              grant.roleId === binding.roleId &&
+              grant.binding.effectiveFrom <= binding.effectiveFrom &&
+              (!grant.binding.effectiveTo ||
+                (binding.effectiveTo && binding.effectiveTo <= grant.binding.effectiveTo))
+          )
+        )
+          fail(400, '该权限已由组织任职自动获得，无需重复授权');
+        const reason = inputString(binding, 'reason', 300, true);
+        if (
+          !binding.effectiveFrom ||
+          !binding.scope ||
+          !(binding.scope.campusIds || binding.scope.campuses)
+        )
+          fail(400, '特殊授权必须设置校区及生效日期');
+        const delegated = delegableRole(context, roles[binding.roleId], binding, target);
+        return {
+          id: before?.id,
+          revision: before ? before.revision + 1 : 0,
+          roleId: delegated.roleId,
+          scope: delegated.scope,
+          effectiveFrom: delegated.effectiveFrom,
+          effectiveTo: delegated.effectiveTo || null,
+          reason,
+          ...(before &&
+          before.roleId === binding.roleId &&
+          before.effectiveFrom === binding.effectiveFrom &&
+          (!binding.effectiveTo || !before.effectiveTo || binding.effectiveTo <= before.effectiveTo)
+            ? { participation: before.participation }
+            : {})
+        };
+      })
+    ];
     const ok = await repository.bindRoles(memberId, bindings, input.revision, {
       actorMemberId: context.actor.memberId,
       actorAccount: actor.account,
@@ -249,7 +309,7 @@ export function rolesDomain({
       requestId: input.requestId
     });
     if (!ok) fail(409, '成员授权已被其他操作修改，请刷新');
-    return { memberId, bindings, authVersionInvalidated: true };
+    return { memberId, bindings: bindings.filter(editable), authVersionInvalidated: true };
   }
   return { permissions, roles, createRole, updateRole, previewRole, bindMemberRoles };
 }

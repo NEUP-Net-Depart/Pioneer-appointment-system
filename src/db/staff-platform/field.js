@@ -1,6 +1,7 @@
+import { dateKey } from '../../platform/time.js';
 import { parseJson } from '../../platform/contracts.js';
 import { intersectScopes } from '../../modules/authorization/scopes.js';
-import { rows, membership, profile, assignment } from './shared.js';
+import { rows, membership, assignment } from './shared.js';
 
 export function fieldDomain({ db, event }) {
   async function listCampuses(includeDisabled = false) {
@@ -28,6 +29,7 @@ export function fieldDomain({ db, event }) {
       id: row.id,
       code: row.code,
       name: row.name,
+      ...(row.kind ? { kind: row.kind, stationCode: row.station_code } : {}),
       enabled: !!row.enabled,
       revision: row.revision
     }));
@@ -164,6 +166,7 @@ export function fieldDomain({ db, event }) {
   }
 
   async function fieldContexts(memberIds, day) {
+    const authorizationDate = dateKey();
     const contexts = new Map();
     for (let offset = 0; offset < memberIds.length; offset += 80) {
       const ids = memberIds.slice(offset, offset + 80),
@@ -179,15 +182,10 @@ export function fieldDomain({ db, event }) {
           .bind(...ids),
         db
           .prepare(
-            `SELECT * FROM member_work_profiles WHERE member_id IN (${marks}) AND effective_from<=? AND (effective_to IS NULL OR effective_to>?)`
-          )
-          .bind(...ids, day, day),
-        db
-          .prepare(
-            `SELECT mr.member_id,rg.*,mr.scope_bindings,r.code AS role_code FROM member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1
+            `SELECT mr.member_id,rg.*,mr.scope_bindings,mr.effective_from,mr.effective_to,mr.participation_spec,mr.source,r.code AS role_code FROM effective_member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1
           JOIN role_grants rg ON rg.role_id=r.id WHERE mr.member_id IN (${marks}) AND mr.effective_from<=? AND (mr.effective_to IS NULL OR mr.effective_to>?)`
           )
-          .bind(...ids, day, day),
+          .bind(...ids, authorizationDate, authorizationDate),
         db
           .prepare(
             `SELECT da.*,dr.role_kind FROM duty_assignments da JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published'
@@ -206,10 +204,10 @@ export function fieldDomain({ db, event }) {
           .bind(JSON.stringify(ids)),
         db
           .prepare(
-            `SELECT mm.*,d.name AS department_name FROM member_department_memberships mm JOIN departments d ON d.id=mm.department_id
+            `SELECT mm.*,d.name AS department_name,d.code AS department_code,d.kind AS organization_kind FROM member_department_memberships mm JOIN departments d ON d.id=mm.department_id
           WHERE mm.member_id IN (${marks}) AND mm.effective_from<=? AND (mm.effective_to IS NULL OR mm.effective_to>?)`
           )
-          .bind(...ids, day, day)
+          .bind(...ids, authorizationDate, authorizationDate)
       ]);
       for (const row of rows(result[0]))
         contexts.set(row.id, {
@@ -223,7 +221,7 @@ export function fieldDomain({ db, event }) {
             authorizedCampuses: parseJson(row.campuses, [])
           },
           businessDate: day,
-          workProfiles: [],
+          authorizationDate,
           grants: [],
           todayDuties: [],
           memberships: [],
@@ -231,8 +229,6 @@ export function fieldDomain({ db, event }) {
           current: null
         });
       for (const row of rows(result[1]))
-        contexts.get(row.member_id)?.workProfiles.push(profile(row));
-      for (const row of rows(result[2]))
         contexts.get(row.member_id)?.grants.push({
           id: row.id,
           roleId: row.role_id,
@@ -240,11 +236,15 @@ export function fieldDomain({ db, event }) {
           permissionCode: row.permission_code,
           scope: intersectScopes(parseJson(row.scope_spec, {}), parseJson(row.scope_bindings, {})),
           conditions: parseJson(row.condition_spec, []),
-          validity: parseJson(row.validity_spec, {})
+          validity: parseJson(row.validity_spec, {}),
+          source: row.source,
+          participation:
+            row.participation_spec === null ? undefined : parseJson(row.participation_spec, []),
+          binding: { effectiveFrom: row.effective_from, effectiveTo: row.effective_to }
         });
-      for (const row of rows(result[3]))
+      for (const row of rows(result[2]))
         contexts.get(row.member_id)?.todayDuties.push(assignment(row));
-      for (const row of rows(result[4])) {
+      for (const row of rows(result[3])) {
         const item = contexts.get(row.member_id);
         if (item)
           item.presence = {
@@ -254,11 +254,11 @@ export function fieldDomain({ db, event }) {
             revision: row.revision
           };
       }
-      for (const row of rows(result[5])) {
+      for (const row of rows(result[4])) {
         const item = contexts.get(row.member_id);
         if (item) item.current = { id: row.id, deviceModel: row.device_model, status: row.status };
       }
-      for (const row of rows(result[6]))
+      for (const row of rows(result[5]))
         contexts.get(row.member_id)?.memberships.push(membership(row));
     }
     return contexts;

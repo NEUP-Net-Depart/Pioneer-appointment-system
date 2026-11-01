@@ -11,7 +11,17 @@ export function workspaceDomain({ repository, platform, manifests, contextFor })
       actor: context.actor,
       todayDuties: context.todayDuties,
       presence: context.presence,
-      currentRepair: current || null,
+      currentRepair:
+        current &&
+        platform.authorizer.evaluate(
+          context.actor,
+          'repair.summary.read',
+          { campusId: current.campus, id: current.id, assignedMemberId: context.actor.memberId },
+          context,
+          context.grants
+        ).allowed
+          ? current
+          : null,
       resumeTasks: context.resumeTasks || [],
       navigation: context.navigation || [],
       actions: context.todayDuties?.length
@@ -36,8 +46,16 @@ export function workspaceDomain({ repository, platform, manifests, contextFor })
         items: await repository.listDepartments(includeDisabled),
         actions: { manage: canManageDepartments(context, platform) }
       };
-    if (kind === 'locations')
-      return { items: await repository.listLocations(query.campusId || '', includeDisabled) };
+    if (kind === 'locations') {
+      const campuses = (context.actor.authorizedCampuses || []).map(normalizeCampusId);
+      if (query.campusId && !campuses.includes(normalizeCampusId(query.campusId)))
+        fail(403, '没有该校区的访问权限');
+      return {
+        items: (await repository.listLocations(query.campusId || '', includeDisabled)).filter(
+          (item) => campuses.includes(item.campusId)
+        )
+      };
+    }
     fail(404, '组织字典不存在');
   }
 
@@ -63,6 +81,12 @@ export function workspaceDomain({ repository, platform, manifests, contextFor })
     const context = await contextFor(actor);
     // Historical records do not yet carry a consistent campus/department scope.
     // Never turn one scoped grant into access to the complete audit journal.
+    if (
+      !(await repository.listCampuses()).every((item) =>
+        (context.actor.authorizedCampuses || []).map(normalizeCampusId).includes(item.id)
+      )
+    )
+      fail(403, '全局审计需要全部校区授权');
     const globalGrants = context.grants.filter(
       (grant) => !Object.keys(grant.scope || {}).some((key) => key !== 'all')
     );

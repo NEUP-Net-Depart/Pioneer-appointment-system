@@ -1,13 +1,15 @@
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { ActivityContext, Notice } from './field/ui';
+import { positionsFor, positionLabels } from '../../shared/staff-organization.js';
 import { request } from './request.js';
 import { dateKey, addDays } from '../../shared/time.js';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
 
-const labels = { primary: '主要任职', secondary: '兼任', exchange: '交流', temporary: '临时' };
 const empty = () => ({
   departmentId: '',
   assignmentType: 'primary',
+  positionCode: 'member',
+  replacesMembershipId: '',
   effectiveFrom: dateKey(),
   effectiveTo: ''
 });
@@ -19,6 +21,7 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
     [endDate, setEndDate] = useState(dateKey());
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
+  const unit = departments.find((item) => item.id === draft.departmentId);
   const editable = detail.actions?.edit !== false;
   const dirty = !!ending || JSON.stringify(draft) !== JSON.stringify(empty());
   useEffect(() => {
@@ -77,7 +80,15 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
           detail.member.memberships.map((item) => (
             <article className="react-binding" key={item.id}>
               <strong>
-                {item.departmentName} · {labels[item.assignmentType]}
+                {item.departmentName} ·{' '}
+                {item.assignmentType === 'exchange'
+                  ? '交流维修'
+                  : { secondary: '历史兼任', temporary: '历史临时' }[item.assignmentType] ||
+                    positionLabels[item.positionCode]}
+                {item.needsReview &&
+                (item.assignmentType !== 'primary' || item.positionCode !== 'unknown')
+                  ? ' · 待核对'
+                  : ''}
               </strong>
               <p>
                 {item.effectiveFrom} 至 {item.effectiveTo || '长期有效'}
@@ -119,11 +130,19 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
             ) : (
               <>
                 <label>
-                  实际部门
+                  正式部门 / 组织
                   <select
                     required
                     value={draft.departmentId}
-                    onChange={(event) => setDraft({ ...draft, departmentId: event.target.value })}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        departmentId: event.target.value,
+                        positionCode: positionsFor(
+                          departments.find((item) => item.id === event.target.value)
+                        )[0]
+                      })
+                    }
                   >
                     <option value="">请选择部门</option>
                     {departments.map((department) => (
@@ -137,15 +156,70 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
                   任职类型
                   <select
                     value={draft.assignmentType}
-                    onChange={(event) => setDraft({ ...draft, assignmentType: event.target.value })}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        assignmentType: event.target.value,
+                        ...(event.target.value === 'exchange'
+                          ? {
+                              departmentId:
+                                departments.find((item) => item.code === 'hardware')?.id || '',
+                              positionCode: 'member',
+                              replacesMembershipId: ''
+                            }
+                          : {})
+                      })
+                    }
                   >
-                    {Object.entries(labels).map(([code, label]) => (
-                      <option key={code} value={code}>
-                        {label}
-                      </option>
-                    ))}
+                    {Object.entries({ primary: '正式任职', exchange: '交流维修' }).map(
+                      ([code, label]) => (
+                        <option key={code} value={code}>
+                          {label}
+                        </option>
+                      )
+                    )}
                   </select>
                 </label>
+                {draft.assignmentType === 'primary' && (
+                  <>
+                    <label>
+                      职位
+                      <select
+                        value={draft.positionCode}
+                        onChange={(event) =>
+                          setDraft({ ...draft, positionCode: event.target.value })
+                        }
+                      >
+                        {positionsFor(unit).map((code) => (
+                          <option key={code} value={code}>
+                            {positionLabels[code]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      接替任职
+                      <select
+                        value={draft.replacesMembershipId}
+                        onChange={(event) =>
+                          setDraft({ ...draft, replacesMembershipId: event.target.value })
+                        }
+                      >
+                        <option value="">新增</option>
+                        {(detail.member.memberships || [])
+                          .filter(
+                            (item) =>
+                              item.isPrimary && (!item.effectiveTo || item.effectiveTo > dateKey())
+                          )
+                          .map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.departmentName} · {positionLabels[item.positionCode]}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                  </>
+                )}
                 <div className="react-form-grid">
                   <label>
                     生效日期

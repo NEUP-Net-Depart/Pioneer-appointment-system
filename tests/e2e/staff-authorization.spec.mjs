@@ -12,8 +12,8 @@ async function fixture(page, { manageRoles = true, roleName = 'superadmin', prot
   const session = staffSession({ role: roleName, permissions: { 'members.manage': true, 'roles.manage': manageRoles } });
   const writes = [];
   let revision = 4;
-  let bindings = [{ id: 'binding-custom', roleId: 'custom-role', scope: { campusIds: ['campus-hunnan'], departmentIds: ['hardware'] }, effectiveFrom: '2026-01-01', effectiveTo: '2026-12-31' }];
-  let member = { memberId: 'member-example', name: '测试成员', homeCampusId: 'campus-nanhu', status: 'active', revision };
+  let bindings = [{ id: 'binding-custom', roleId: 'custom-role', scope: { campusIds: ['campus-hunnan'], departmentIds: ['hardware'] }, effectiveFrom: '2026-01-01', effectiveTo: '2026-12-31', reason: '历史授权核对' }];
+  let member = { memberId: 'member-example', name: '测试成员', homeCampusId: 'campus-nanhu', status: 'active', college: '', major: '', memberships: [], revision };
   const role = { id: 'custom-role', name: '范围测试角色', code: 'custom', enabled: true, revision: 2, grants };
   await page.route('**/api/**', async route => {
     const req = route.request(); const path = new URL(req.url()).pathname;
@@ -21,7 +21,7 @@ async function fixture(page, { manageRoles = true, roleName = 'superadmin', prot
     if (req.method() !== 'GET') writes.push({ path, method: req.method(), body: req.postDataJSON() });
     if (path === '/api/auth/login') body = { token: 'test-token', account: 'root001', role: roleName, authorizedCampuses: ['南湖', '浑南'] };
     if (path.startsWith('/api/field/')) body = session.home;
-    if (path === '/api/auth/me') body = { name: '平台测试管理员', account: 'root001', role: roleName, authorizedCampuses: ['南湖'], homeCampus: '南湖', actor: { memberId: 'root' },
+    if (path === '/api/auth/me') body = { name: '平台测试管理员', account: 'root001', role: roleName, authorizedCampuses: ['南湖', '浑南'], homeCampus: '南湖', actor: { memberId: 'root' },
       grants: [{ permissionCode: 'members.manage' }, ...(manageRoles ? [{ permissionCode: 'roles.manage' }] : [])] };
     if (path === '/api/auth/me') body = { ...body, permissions: session.profile.permissions, navigation: session.profile.navigation };
     if (path === '/api/appointments') body = { items: [], counts: {}, filteredCounts: {} };
@@ -69,8 +69,9 @@ for (const width of [375, 1280]) test(`member profile saves independently from r
   await dialog.getByRole('button', { name: '保存资料', exact: true }).click();
   await expect(dialog.getByRole('status')).toHaveText('成员资料已保存');
   expect(writes.filter(write => write.path.includes('/members/'))).toEqual([{ path: '/api/members/member-example', method: 'PATCH',
-    body: { name: '修改后的名字', homeCampusId: 'campus-hunnan', status: 'active', revision: 4 } }]);
-  await dialog.getByRole('button', { name: '角色授权', exact: true }).click();
+    body: { name: '修改后的名字', homeCampusId: 'campus-hunnan', status: 'active', college: '', major: '', revision: 4 } }]);
+  await dialog.getByRole('button', { name: '维修参与及账号授权', exact: true }).click();
+  await dialog.getByText('编辑特殊授权', { exact: true }).click();
   await expect(dialog.getByLabel('浑南', { exact: true })).toBeChecked();
   await expect(dialog.getByLabel('生效日期', { exact: true })).toHaveValue('2026-01-01');
   expect(await dialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
@@ -84,7 +85,7 @@ test('member editors without roles.manage can save profiles without fetching the
   await root.getByRole('button', { name: '人员详情' }).click();
   const dialog = root.getByRole('dialog');
   await expect(dialog.getByRole('button', { name: '保存资料' })).toBeEnabled();
-  await expect(dialog.getByRole('button', { name: '保存角色授权' })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: '保存特殊授权' })).toHaveCount(0);
   expect(roleRequests).toEqual([]);
 });
 
@@ -96,13 +97,14 @@ test('saving bindings uses the latest profile revision and preserves independent
   const dialog = root.getByRole('dialog');
   await dialog.getByRole('button', { name: '保存资料', exact: true }).click();
   await expect(dialog.getByRole('status')).toHaveText('成员资料已保存');
-  await dialog.getByRole('button', { name: '角色授权', exact: true }).click();
-  await dialog.getByRole('button', { name: '保存角色授权', exact: true }).click();
-  await expect(dialog.getByRole('status')).toContainText('角色授权已保存');
+  await dialog.getByRole('button', { name: '维修参与及账号授权', exact: true }).click();
+  await dialog.getByText('编辑特殊授权', { exact: true }).click();
+  await dialog.getByRole('button', { name: '保存特殊授权', exact: true }).click();
+  await expect(dialog.getByRole('status')).toContainText('特殊授权已保存');
   expect(writes.filter(write => write.method === 'PUT')).toEqual([{ path: '/api/members/member-example/roles', method: 'PUT', body: { revision: 5, bindings } }]);
   await dialog.getByRole('button', { name: '关闭', exact: true }).focus();
   await page.keyboard.press('Shift+Tab');
-  await expect(dialog.getByRole('button', { name: '保存角色授权', exact: true })).toBeFocused();
+  await expect(dialog.getByRole('button', { name: '保存特殊授权', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
   await expect(edit).toBeFocused();
@@ -180,11 +182,14 @@ test('a business manager adds an ordinary role without defaulting to a hidden sy
   await root.getByRole('button',{name:'人员管理',exact:true}).first().click();
   await root.getByRole('button',{name:'人员详情'}).click();
   const dialog=root.getByRole('dialog');
-  await dialog.getByRole('button',{name:'角色授权',exact:true}).click();
-  await dialog.getByRole('button',{name:'添加角色',exact:true}).click();
+  await dialog.getByRole('button',{name:'维修参与及账号授权',exact:true}).click();
+  await dialog.getByText('编辑特殊授权',{exact:true}).click();
+  await dialog.getByRole('button',{name:'添加特殊授权',exact:true}).click();
   await expect(dialog.getByRole('combobox',{name:'角色',exact:true}).last()).toHaveValue('custom-role');
   await expect(dialog.getByRole('option',{name:'最高管理员',exact:true})).toHaveCount(0);
-  await dialog.getByRole('button',{name:'保存角色授权',exact:true}).click();
-  await expect(dialog.getByRole('status')).toContainText('角色授权已保存');
+  await dialog.getByRole('textbox',{name:'原因',exact:true}).last().fill('临时业务授权');
+  await dialog.getByRole('group',{name:'授权校区',exact:true}).last().getByLabel('南湖',{exact:true}).check();
+  await dialog.getByRole('button',{name:'保存特殊授权',exact:true}).click();
+  await expect(dialog.getByRole('status')).toContainText('特殊授权已保存');
   expect(writes.find(write=>write.method==='PUT').body.bindings.every(binding=>binding.roleId==='custom-role')).toBe(true);
 });

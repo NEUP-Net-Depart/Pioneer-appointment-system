@@ -11,7 +11,7 @@ export function validGrantValidity(validity) {
   if (validity === undefined) return true;
   if (!validity || typeof validity !== 'object' || Array.isArray(validity)) return false;
   for (const key of ['effectiveFrom', 'from', 'startDate', 'start', 'effectiveTo', 'to', 'endDate', 'end']) {
-    if (validity[key] !== undefined && (typeof validity[key] !== 'string' || !validDate(validity[key].slice(0, 10)))) return false;
+    if (validity[key] !== undefined && validity[key] !== null && (typeof validity[key] !== 'string' || !validDate(validity[key].slice(0, 10)))) return false;
   }
   const from = validity.effectiveFrom || validity.from || validity.startDate || validity.start;
   const to = validity.effectiveTo || validity.to || validity.endDate || validity.end;
@@ -21,7 +21,7 @@ export function validGrantValidity(validity) {
 function validityMatches(validity, context = {}) {
   if (!validGrantValidity(validity)) return false;
   if (validity === undefined) return true;
-  const businessDate = context.businessDate || context.date || dateKey();
+  const businessDate = context.authorizationDate || context.businessDate || context.date || dateKey();
   const from = validity.effectiveFrom || validity.from || validity.startDate || validity.start;
   const to = validity.effectiveTo || validity.to || validity.endDate || validity.end;
   if ((from && !validDate(String(from).slice(0, 10))) || (to && !validDate(String(to).slice(0, 10)))) return false;
@@ -32,14 +32,15 @@ function validityMatches(validity, context = {}) {
 
 function scopeMatches(scope, target = {}, actor = {}) {
   if (!validScope(scope)) return false;
-  if (scope.all !== true && target.campusId && Array.isArray(actor.authorizedCampuses) &&
-      !actor.authorizedCampuses.some(value => campusId(value) === campusId(target.campusId))) return false;
+  const requestedCampuses = values(target.campusId || target.campusIds);
+  if (requestedCampuses.some(id => !(actor.authorizedCampuses || []).some(value => campusId(value) === campusId(id)))) return false;
   const rawCampuses = scope.campusIds ?? scope.campuses;
   const campusValues = rawCampuses === 'bound' ? actor.authorizedCampuses || [] : values(rawCampuses);
   if (rawCampuses !== undefined) {
     const targets = values(target.campusId || target.campusIds || actor.authorizedCampuses);
-    if (!campusValues.length || !targets.some(value => campusValues.some(candidate => campusId(candidate) === campusId(value)) &&
-      (!Array.isArray(actor.authorizedCampuses) || actor.authorizedCampuses.some(candidate => campusId(candidate) === campusId(value))))) return false;
+    const includes = value => campusValues.some(candidate => campusId(candidate) === campusId(value)) &&
+      (!Array.isArray(actor.authorizedCampuses) || actor.authorizedCampuses.some(candidate => campusId(candidate) === campusId(value)));
+    if (!campusValues.length || (requestedCampuses.length ? !targets.every(includes) : !targets.some(includes))) return false;
   }
   const departments = scope.departmentIds ?? scope.departments;
   if (departments !== undefined && !values(target.departmentId || target.departmentIds).some(value => values(departments).includes(value))) return false;
@@ -56,16 +57,18 @@ export function createAuthorizer({ providers = conditionProviders() } = {}) {
     validCondition: condition => validCondition(condition, providers),
     conditionDefinitions: () => Object.values(providers).map(({ code, version, description, parameterSchema }) => ({ code, version, description, parameterSchema })),
     evaluate(actor, permissionCode, target = {}, context = {}, grants = []) {
+      if (actor?.status && !['enabled', 'active'].includes(actor.status) || actor?.memberStatus === 'inactive')
+        return { allowed: false, matchedGrantIds: [], reasonCode: 'INACTIVE', scope: [], explanations: [] };
       const matchedGrantIds = [];
       const explanations = [];
       for (const grant of grants.filter(item => item.permissionCode === permissionCode)) {
         const scope = grant.scope === undefined ? {} : grant.scope;
-        if (!validityMatches(grant.validity, context) || !scopeMatches(scope, target, actor)) continue;
+        if (!validityMatches(grant.binding, context) || !validityMatches(grant.validity, context) || !scopeMatches(scope, target, actor)) continue;
         const conditions = grant.conditions === undefined ? [] : grant.conditions;
         if (!Array.isArray(conditions)) continue;
         const failed = conditions.some(condition => {
           const provider = providers[condition?.code];
-          return !validCondition(condition, providers) || !provider.check({ actor, resource: target, context, parameters: condition.parameters || {} });
+          return !validCondition(condition, providers) || !provider.check({ actor, resource: target, context, grant, parameters: condition.parameters || {} });
         });
         if (failed) continue;
         matchedGrantIds.push(grant.id || grant.grantId || permissionCode);

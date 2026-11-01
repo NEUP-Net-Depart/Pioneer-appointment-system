@@ -63,19 +63,19 @@ test('scheduling leaders are derived from effective scoped authorization; exchan
   assert.equal(repairRosterPool(fact,authorizer,'2026-10-19',{campusId:'campus-nanhu'}),'lead');
   assert.equal(repairRosterPool(fact,authorizer,'2026-10-19',{campusId:'campus-hunnan'}),'');
   assert.equal(repairRosterPool(fact,authorizer,'2026-10-21',{campusId:'campus-nanhu'}),'');
-  assert.equal(repairRosterPool({...fact,profiles:[{profileCode:'exchange',effectiveFrom:'2026-01-01'}]},authorizer,'2026-10-19',{campusId:'campus-nanhu'}),'');
+  assert.equal(repairRosterPool({...fact,grants:[...fact.grants,{roleCode:'exchange',scope:{campuses:'bound'}}]},authorizer,'2026-10-19',{campusId:'campus-nanhu'}),'');
   assert.equal(repairRosterPool({...fact,grants:[],profiles:[{profileCode:'repair_lead',effectiveFrom:'2026-01-01'}]},authorizer,'2026-10-19',{campusId:'campus-nanhu'}),'');
   assert.equal(repairRosterPool({...fact,grants:fact.grants.map(grant=>({...grant,roleCode:'custom_coordinator'}))},authorizer,'2026-10-19',{campusId:'campus-nanhu'}),'');
-  assert.equal(repairRosterPool({...fact,grants:[],profiles:[{profileCode:'repair'}],assignments:[{roleKind:'repair_lead',businessDate:'2026-10-19'}]},authorizer,'2026-10-19',{campusId:'campus-nanhu'}),'ordinary');
+  assert.equal(repairRosterPool({...fact,grants:[{roleCode:'technician',scope:{campuses:'bound'}}],assignments:[{roleKind:'repair_lead',businessDate:'2026-10-19'}]},authorizer,'2026-10-19',{campusId:'campus-nanhu'}),'ordinary');
 });
 test('combined office and repair leader identities stay unique and respect each campus scope',()=>{
   const authorizer=createAuthorizer();
   const repairGrant={roleCode:'repair_lead',permissionCode:'repair.transfer',scope:{campusIds:['campus-nanhu']},conditions:[{code:'signedDutyPresence',version:1}]};
-  const fact={memberId:'multi',active:true,campuses:['campus-nanhu','campus-hunnan'],profiles:[{profileCode:'repair',effectiveFrom:'2026-01-01'},{profileCode:'office',effectiveFrom:'2026-01-01'}],grants:[repairGrant,{...repairGrant},{roleCode:'office_lead',permissionCode:'roster.office.manage',scope:{campusIds:['campus-hunnan']}}]};
+  const fact={memberId:'multi',active:true,campuses:['campus-nanhu','campus-hunnan'],profiles:[{profileCode:'repair',effectiveFrom:'2026-01-01'},{profileCode:'office',effectiveFrom:'2026-01-01'}],grants:[{roleCode:'technician',scope:{campuses:'bound'}},{roleCode:'office',scope:{campuses:'bound'}},repairGrant,{...repairGrant},{roleCode:'office_lead',permissionCode:'roster.office.manage',scope:{campusIds:['campus-hunnan']}}]};
   assert.deepEqual(staffIdentities(rosterFactContext(fact,'2026-10-19'),authorizer).map(item=>item.code),['repair','office','repair_lead','office_lead']);
   assert.equal(repairRosterPool(fact,authorizer,'2026-10-19',{campusId:'campus-nanhu'}),'lead');
   assert.equal(repairRosterPool(fact,authorizer,'2026-10-19',{campusId:'campus-hunnan'}),'ordinary','office leadership does not grant repair leadership');
-  assert.equal(repairRosterPool({...fact,profiles:[...fact.profiles,{profileCode:'exchange',effectiveFrom:'2026-01-01'}]},authorizer,'2026-10-19',{campusId:'campus-nanhu'}),'','exchange qualification excludes scheduled repair shifts');
+  assert.equal(repairRosterPool({...fact,grants:[...fact.grants,{roleCode:'exchange',scope:{campuses:'bound'}}]},authorizer,'2026-10-19',{campusId:'campus-nanhu'}),'','exchange qualification excludes scheduled repair shifts');
 });
 test('a dual-role member cannot be assigned overlapping office and repair shifts',()=>{
   const slot={...slots[0],dutyType:'repair',ordinaryMinimum:1};

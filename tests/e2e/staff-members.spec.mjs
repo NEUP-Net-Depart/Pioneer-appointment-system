@@ -29,7 +29,6 @@ test('member import previews preserve blank values and show changes, skips and c
   const download = await pendingDownload;
   expect((await readFile(await download.path(), 'utf8')).trim()).toBe('studentId,name,college');
   await dialog.locator('summary').filter({ hasText: '高级 CSV 配置' }).click();
-  await expect(dialog).toContainText('空白资料和授权均保留');
   const csv = 'studentId,name,college\n20269981,新人,软件学院\n20269982,已有人员,\n20269983,不变人员,';
   await dialog.getByLabel('名单内容').fill(csv);
   await dialog.getByRole('button', { name: '预览并核对' }).click();
@@ -45,7 +44,7 @@ test('member import previews preserve blank values and show changes, skips and c
   expect(confirmed.accountCampusAction).toBe('preserve');
   expect(previews[0].homeCampusAction).toBe('preserve');
   expect(confirmed.homeCampusAction).toBe('replace');
-  expect(confirmed.defaults.workProfiles).toEqual([]);
+  expect(confirmed.defaults.positionCode).toBe('member');expect(confirmed.defaults.workProfiles).toBeUndefined();
 });
 
 test('member pages append without duplicates and an obsolete page cannot replace a new search', async ({ page }) => {
@@ -110,28 +109,31 @@ test('personnel management creates a single member, edits memberships, and maint
   const create = page.getByRole('dialog', { name: '新增人员', exact: true });
   await create.getByLabel('学号', { exact: true }).fill('20987701');
   await create.getByLabel('姓名', { exact: true }).fill('人员功能验收');
-  await create.getByRole('combobox', { name: '实际部门', exact: true }).selectOption('dept-hardware');
-  await create.getByRole('combobox', { name: '人员类型', exact: true }).selectOption('repair');
+  await create.getByRole('combobox', { name: '正式部门 / 组织', exact: true }).selectOption('dept-hardware');
+  await create.getByRole('combobox', { name: '职位', exact: true }).selectOption('member');
   await create.getByRole('button', { name: '新增人员', exact: true }).click();
   await expect(create).toHaveCount(0);
   await page.getByRole('textbox', { name: '搜索成员', exact: true }).fill('20987701');
   await page.locator('.members-results .react-row').filter({ hasText: '20987701' }).getByRole('button', { name: '人员详情', exact: true }).click();
   const detail = page.getByRole('dialog', { name: '人员功能验收', exact: true });
-  await detail.getByRole('button', { name: '部门与任职', exact: true }).click();
+  await detail.getByRole('button', { name: '基本资料与组织任职', exact: true }).click();
   await expect(detail.getByRole('region', { name: '部门任职记录' })).toContainText('硬件部');
-  await detail.getByRole('combobox', { name: '实际部门', exact: true }).selectOption('dept-office');
-  await detail.getByRole('combobox', { name: '任职类型', exact: true }).selectOption('secondary');
+  await detail.getByRole('combobox', { name: '正式部门 / 组织', exact: true }).selectOption('dept-hardware');
+  await detail.getByRole('combobox', { name: '职位', exact: true }).selectOption('deputy_head');
+  const old=(await page.request.get('/api/members?q=20987701',{headers:{Authorization:'Bearer '+await page.evaluate(()=>sessionStorage.getItem('pioneerToken'))}})).json();
+  const member=(await old).items[0];
+  await detail.getByRole('combobox',{name:'接替任职',exact:true}).selectOption(member.memberships[0].id);
+  await detail.getByLabel('生效日期',{exact:true}).fill('2026-10-16');
   await detail.getByRole('button', { name: '新增任职', exact: true }).click();
-  await expect(detail.getByRole('region', { name: '部门任职记录' })).toContainText('办公室 · 兼任');
-  await detail.getByRole('button', { name: '账号与激活', exact: true }).click();
+  await expect(detail.getByRole('region', { name: '部门任职记录' })).toContainText('硬件部 · 副部长');
+  await detail.getByRole('button', { name: '维修参与及账号授权', exact: true }).click();
   await expect(detail).toContainText('尚未创建登录账号');
-  await detail.getByRole('button', { name: '工作资格', exact: true }).click();
-  await expect(detail.getByRole('region', { name: '工作资格记录' })).toContainText('维修工作人员');
+  await expect(detail.getByRole('button', { name: '工作资格', exact: true })).toHaveCount(0);
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(await detail.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
-    await page.screenshot({ path: `output/member-management/member-detail-${width}.png`, animations: 'disabled' });
+    await page.screenshot({ path: `output/field-workflow/member-management/member-detail-${width}.png`, animations: 'disabled' });
   }
   await detail.getByRole('button', { name: '操作记录', exact: true }).click();
   await expect(detail.getByRole('region', { name: '人员操作记录' })).toContainText('新增人员');
@@ -166,13 +168,13 @@ test('personnel navigation preserves separate member and account permissions', a
   await expect(page.getByRole('button', { name: '新增人员', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '新增人员', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '新增人员', exact: true });
-  await dialog.getByRole('combobox', { name: '人员类型', exact: true }).selectOption('repair');
+  await expect(dialog.getByRole('combobox', { name: '人员类型', exact: true })).toHaveCount(0);
   await expect(dialog.getByLabel('同时配置工作角色与激活资格')).toHaveCount(0);
 });
 
 test('a person detail edits its login through the account API and retains unsaved account changes across tabs', async ({ page }) => {
   await mockStaff(page);
-  const member = { memberId: 'member-login-test', studentId: '20987702', name: '账号整合验收', homeCampusId: 'campus-nanhu', college: '', major: '', status: 'active', revision: 0, memberships: [], workProfiles: [] };
+  const member = { memberId: 'member-login-test', studentId: '20987702', name: '账号整合验收', homeCampusId: 'campus-nanhu', college: '', major: '', status: 'active', revision: 0, memberships: [] };
   let account = { account: member.studentId, name: member.name, role: 'technician', homeCampus: '南湖', authorizedCampuses: ['南湖'], status: 'enabled', authVersion: 0, actions: { edit: true, changeStatus: true, resetPassword: true } };
   let written;
   await page.route('**/api/members?*', (route) => route.fulfill({ json: { items: [member] } }));
@@ -185,10 +187,10 @@ test('a person detail edits its login through the account API and retains unsave
   await staffPage(page, '人员管理');
   await page.getByRole('button', { name: '人员详情', exact: true }).click();
   const detail = page.getByRole('dialog', { name: member.name, exact: true });
-  await detail.getByRole('button', { name: '账号与激活', exact: true }).click();
+  await detail.getByRole('button', { name: '维修参与及账号授权', exact: true }).click();
   await detail.getByLabel('账号状态').selectOption('disabled');
-  await detail.getByRole('button', { name: '部门与任职', exact: true }).click();
-  await detail.getByRole('button', { name: '账号与激活', exact: true }).click();
+  await detail.getByRole('button', { name: '基本资料与组织任职', exact: true }).click();
+  await detail.getByRole('button', { name: '维修参与及账号授权', exact: true }).click();
   await expect(detail.getByLabel('账号状态')).toHaveValue('disabled');
   await detail.getByRole('button', { name: '保存账号', exact: true }).click();
   await expect(detail.getByLabel('账号状态')).toHaveValue('disabled');
@@ -220,7 +222,7 @@ test('existing personnel can configure activation directly and see real account 
   expect(login.ok()).toBe(true);
   const headers = { ...identityHeaders, Authorization: `Bearer ${(await login.json()).token}` };
   const studentId = '20987710', name = '已有人员激活验收';
-  const create = await request.post('/api/members', { headers, data: { studentId, name, homeCampusId: 'campus-nanhu', workProfiles: ['repair'], roleCodes: ['technician'] } });
+  const create = await request.post('/api/members', { headers, data: { studentId, name, homeCampusId: 'campus-nanhu', departmentId:'dept-hardware',positionCode:'member' } });
   expect(create.ok(), await create.text()).toBe(true);
   let imports = 0;
   page.on('request', request => { if (new URL(request.url()).pathname === '/api/members/import') imports++; });
@@ -231,16 +233,17 @@ test('existing personnel can configure activation directly and see real account 
   const row = page.locator('.members-results .react-row').filter({ hasText: studentId });
   await row.getByRole('button', { name: '人员详情', exact: true }).click();
   const detail = page.getByRole('dialog', { name, exact: true });
-  await detail.getByRole('button', { name: '账号与激活', exact: true }).click();
+  await detail.getByRole('button', { name: '维修参与及账号授权', exact: true }).click();
   const activation = detail.getByRole('form', { name: '配置激活资格', exact: true });
-  await expect(activation).toContainText('现有角色：维修人员');
-  await expect(activation.getByRole('checkbox', { name: '南湖', exact: true })).toBeChecked();
+  await expect(activation).toContainText('有效权限：维修人员');
+  await expect(activation.getByRole('checkbox', { name: '南湖', exact: true })).not.toBeChecked();
+  await activation.getByRole('checkbox', { name: '南湖', exact: true }).check();
   await expect(activation.getByRole('button', { name: '保存激活资格', exact: true })).toBeEnabled();
   await expect(detail.getByRole('combobox', { name: '人员类型', exact: true })).toHaveCount(0);
   for (const width of [320, 390, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
     expect(await detail.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
-    await page.screenshot({ path: `output/member-management/member-activation-${width}.png`, animations: 'disabled' });
+    await page.screenshot({ path: `output/field-workflow/member-management/member-activation-${width}.png`, animations: 'disabled' });
   }
   await activation.getByRole('button', { name: '保存激活资格', exact: true }).click();
   await expect(activation).toContainText('激活资格已保存');
@@ -252,8 +255,9 @@ test('existing personnel can configure activation directly and see real account 
   expect(approved.ok(), await approved.text()).toBe(true);
   await detail.getByRole('button', { name: '关闭', exact: true }).click();
   await row.getByRole('button', { name: '人员详情', exact: true }).click();
-  await detail.getByRole('button', { name: '账号与激活', exact: true }).click();
-  await expect(detail.locator('.member-account')).toContainText('工作角色：维修人员');
+  await detail.getByRole('button', { name: '维修参与及账号授权', exact: true }).click();
+  await expect(detail.locator('.member-account')).toContainText('有效权限：维修人员');
+  await expect(detail).not.toContainText('工作资格在人员详情中分别维护');
   await expect(detail.locator('.member-account')).not.toContainText('尚未授权');
   await detail.getByRole('combobox', { name: '账号状态', exact: true }).selectOption('disabled');
   const updated = page.waitForResponse(response => new URL(response.url()).pathname === `/api/users/${studentId}` && response.request().method() === 'PATCH');

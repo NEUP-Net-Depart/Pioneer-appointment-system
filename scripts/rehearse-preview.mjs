@@ -99,7 +99,7 @@ export async function rehearseSnapshot(dump, directory = resolve(root, 'migratio
         if (row.role === 'admin' && upgradingBusinessRoles) {
           assert.ok(roleCodes.includes('repair_lead'), 'Migrated administrator is missing repair_lead');
           assert.ok(roleCodes.includes('technician'), 'Migrated administrator is missing technician');
-          assert.ok((await repository.profileHistory(user.memberId)).some(profile => profile.profileCode === 'repair'), 'Migrated administrator is missing repair qualification configuration');
+          assert.ok(sqlite.prepare("SELECT id FROM audit_events WHERE action='identity.qualification.archived' AND json_extract(source_ref,'$.id')=? AND json_extract(before_json,'$.profileCode')='repair'").get(user.memberId), 'Migrated participation history is missing');
           for (const code of ['repair.summary.read','repair.correct','repair.transfer','statistics.read','accounts.manage','settings.manage','members.manage','roles.manage','roster.read','roster.repair.manage','roster.office.manage','attendance.correct','attendance.export','customer.identity.read','customer.contact.read']) {
             // Explicit role scopes, conditions and validity may intentionally
             // restrict access. The rehearsal must not require reopening them.

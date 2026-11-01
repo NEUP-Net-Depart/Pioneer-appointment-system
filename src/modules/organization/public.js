@@ -1,5 +1,3 @@
-export const ASSIGNMENT_TYPES = ['primary', 'secondary', 'exchange', 'temporary'];
-
 export function membershipIsActive(membership, businessDate) {
   return membership.effectiveFrom <= businessDate && (!membership.effectiveTo || businessDate < membership.effectiveTo);
 }

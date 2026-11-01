@@ -7,8 +7,8 @@ Production/Preview 共用 [migrations/](../migrations/) 中的 schema 迁移。�
 | 表 | 职责与约束 |
 | --- | --- |
 | `staff_accounts` / `staff_campus_grants` | 登录、会话版本和适用校区；保护账号保持启用且为 superadmin |
-| `members` / `member_department_memberships` / `member_work_profiles` | 稳定成员、带有效期的多部门任职、维修／交流／办公资格 |
-| `roles` / `role_grants` / `member_roles` / `permission_definitions` | 完整授权项、范围、条件与有效期 |
+| `members` / `member_department_memberships` | 稳定成员、带职位及有效期的唯一正式任职和交流关系 |
+| `roles` / `role_grants` / `member_roles` / `permission_definitions` | 角色模板及特殊授权、范围、条件与有效期；effective_member_roles 视图统一自动身份 |
 | `staff_whitelist` / `whitelist_campus_grants` / `activation_member_bindings` | 激活邀请及成员授权关联 |
 | `activation_requests` | 每学号最多一条待审；批准时原子创建账号与授权，审核后清除密码哈希 |
 | `appointments` / `active_repairs` / `repair_intake_records` | 预约、签名、状态、维修占用及设备照片核验；同一成员最多一张进行中工单 |
@@ -30,7 +30,7 @@ Production/Preview 共用 [migrations/](../migrations/) 中的 schema 迁移。�
 
 ## 持久化约束
 
-业务日期使用 `Asia/Shanghai`，事件时间保存为 UTC ISO。任职、工作资格和授权使用有效区间；签到保存发生时姓名、部门和身份快照，成员转部门不改写历史。账号与稳定成员的映射见 [身份映射](architecture/identity-mapping.md)。
+业务日期使用 `Asia/Shanghai`，事件时间保存为 UTC ISO。任职、交流和特殊授权使用有效区间；签到保存发生时姓名、部门和身份快照，成员转部门不改写历史。账号与稳定成员的映射见 [身份映射](architecture/identity-mapping.md)。
 
 关联写入使用 D1 batch 或触发器，`revision` 防止并发覆盖；同学号同服务日有效线上预约、一人一张进行中维修由数据库约束。业务事实、必要审计及请求回执共同提交或回滚，R2 上传使用元数据状态和补偿清理。事务协作见 [工程约定](architecture/module-map.md#事务与幂等)。
 
@@ -49,7 +49,7 @@ Production/Preview 共用 [migrations/](../migrations/) 中的 schema 迁移。�
 | 升级来源 | 正式迁移 | 回归脚本 |
 | --- | --- | --- |
 | dev 0009 | `migrations/0010_staff_platform.sql` 起 | [dev 升级 SQL](../database/upgrades/dev-0009-to-staff-platform.sql) |
-| 已迁移 Preview／历史 Staff Staging | 对应链追加 `0033_staff_business_roles.sql` | 账号冲突检查、历史快照及权限回归 |
+| 已迁移 Preview／历史 Staff Staging | 对应链追加至 `0042_organization_permissions.sql` | 账号冲突检查、历史快照及权限回归 |
 
 `database/staff-migrations/` 保留历史 Staff Staging 的独立迁移账本及追加升级，仅用于历史数据库兼容与隔离验证，不恢复已移除的远程部署环境。两条链均受文件指纹和 `db:verify` 检查。
 
@@ -57,6 +57,6 @@ Production/Preview 共用 [migrations/](../migrations/) 中的 schema 迁移。�
 
 保留历史编号、`repair_number` 查询别名、凭证、附件、签名和时间；旧联系及设备字段继续读取，缺失结果保留 `legacy_unknown`。历史重复和多张在修不删除，处理完成前禁止新增冲突；旧小时段仅供历史读取。
 
-0033 删除旧管理员兼容角色、登录快照和触发器，撤销旧会话，按原校区补齐既有管理员缺少的 `repair_lead`、`technician` 角色和 `repair` 资格；已有显式范围、条件及有效期优先，过期和未来授权不被重开或提前。成员登录唯一约束在检查无重复后建立，冲突阻断升级；原账号、密码、预约和历史事实保持不变。
+0033 的历史账号推断仍保留在原迁移中，0042 对其结果采取保守升级：所有旧任职职位标为待核对；原角色绑定及参与区间保持，默认生成与来源不明的绑定单独标记。不会按旧账号类型补造新职位。工作资格归档后删除旧表，账号自动建档和激活触发器同步切换，Preview 随迁移自动就绪。两条迁移链均校验全新初始化、已有数据升级及二次部署无操作。
 
 迁移、备份及回退步骤见 [部署与运维](operations.md)。

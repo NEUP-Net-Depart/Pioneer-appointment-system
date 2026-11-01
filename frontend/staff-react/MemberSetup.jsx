@@ -1,35 +1,17 @@
 import React from 'react';
 import { dateKey } from '../../shared/time.js';
+import { positionsFor, positionLabels } from '../../shared/staff-organization.js';
 
-export const memberKinds = {
-  member: '普通成员',
-  repair: '普通维修',
-  exchange: '交流人员',
-  office: '办公人员'
-};
-const roleCodes = { repair: 'technician', exchange: 'exchange', office: 'office' };
 export const newMemberSetup = (user) => ({
-  kind: 'member',
   homeCampusId: user.homeCampus === '浑南' ? 'campus-hunnan' : 'campus-nanhu',
   departmentId: '',
-  assignmentType: 'primary',
+  positionCode: 'member',
   effectiveFrom: dateKey(),
-  activate: false,
-  trainingConfirmed: false
+  authorizedCampuses: [],
+  exchangeParticipation: false,
+  configureActivation: false
 });
-export function memberDefaults(setup) {
-  return {
-    homeCampusId: setup.homeCampusId,
-    departmentId: setup.departmentId,
-    assignmentType: setup.assignmentType,
-    effectiveFrom: setup.effectiveFrom,
-    workProfiles: setup.kind === 'member' ? [] : [setup.kind],
-    trainingConfirmed: setup.trainingConfirmed,
-    ...(setup.activate && roleCodes[setup.kind]
-      ? { roleCodes: [roleCodes[setup.kind]], authorizedCampuses: [setup.homeCampusId] }
-      : {})
-  };
-}
+export const memberDefaults = (setup) => ({ ...setup });
 export function MemberSetup({
   value,
   onChange,
@@ -38,32 +20,40 @@ export function MemberSetup({
   disabled = false
 }) {
   const change = (patch) => onChange({ ...value, ...patch });
+  const unit = departments.find((item) => item.id === value.departmentId);
   return (
     <fieldset className="workspace-form-fields" disabled={disabled}>
       <div className="react-form-grid">
         <label>
-          实际部门
+          正式部门 / 组织
           <select
             value={value.departmentId}
-            onChange={(event) => change({ departmentId: event.target.value })}
+            onChange={(event) => {
+              const next = departments.find((item) => item.id === event.target.value);
+              change({
+                departmentId: event.target.value,
+                positionCode: positionsFor(next)[0],
+                exchangeParticipation: false
+              });
+            }}
           >
             <option value="">暂不设置</option>
-            {departments.map((department) => (
-              <option key={department.id} value={department.id}>
-                {department.name}
+            {departments.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
               </option>
             ))}
           </select>
         </label>
         <label>
-          人员类型
+          职位
           <select
-            value={value.kind}
-            onChange={(event) => change({ kind: event.target.value, trainingConfirmed: false })}
+            value={value.positionCode}
+            onChange={(event) => change({ positionCode: event.target.value })}
           >
-            {Object.entries(memberKinds).map(([code, label]) => (
+            {positionsFor(unit).map((code) => (
               <option key={code} value={code}>
-                {label}
+                {positionLabels[code]}
               </option>
             ))}
           </select>
@@ -79,18 +69,6 @@ export function MemberSetup({
           </select>
         </label>
         <label>
-          任职类型
-          <select
-            value={value.assignmentType}
-            onChange={(event) => change({ assignmentType: event.target.value })}
-          >
-            <option value="primary">主要任职</option>
-            <option value="secondary">兼任</option>
-            <option value="exchange">交流</option>
-            <option value="temporary">临时</option>
-          </select>
-        </label>
-        <label>
           生效日期
           <input
             type="date"
@@ -100,24 +78,48 @@ export function MemberSetup({
           />
         </label>
       </div>
-      {value.kind === 'exchange' && (
+      {canAuthorize && (
+        <fieldset>
+          <legend>授权校区</legend>
+          {[
+            ['campus-nanhu', '南湖'],
+            ['campus-hunnan', '浑南']
+          ].map(([id, name]) => (
+            <label className="workspace-check" key={id}>
+              <input
+                type="checkbox"
+                checked={value.authorizedCampuses.includes(id)}
+                onChange={(event) =>
+                  change({
+                    authorizedCampuses: event.target.checked
+                      ? [...value.authorizedCampuses, id].sort()
+                      : value.authorizedCampuses.filter((item) => item !== id)
+                  })
+                }
+              />
+              {name}
+            </label>
+          ))}
+        </fieldset>
+      )}
+      {unit?.kind === 'department' && unit.code !== 'hardware' && (
         <label className="workspace-check">
           <input
             type="checkbox"
-            checked={value.trainingConfirmed}
-            onChange={(event) => change({ trainingConfirmed: event.target.checked })}
+            checked={value.exchangeParticipation}
+            onChange={(event) => change({ exchangeParticipation: event.target.checked })}
           />
-          已确认交流人员通过维修培训
+          参与交流维修
         </label>
       )}
-      {canAuthorize && value.kind !== 'member' && (
+      {canAuthorize && (
         <label className="workspace-check">
           <input
             type="checkbox"
-            checked={value.activate}
-            onChange={(event) => change({ activate: event.target.checked })}
+            checked={value.configureActivation}
+            onChange={(event) => change({ configureActivation: event.target.checked })}
           />
-          同时配置工作角色与激活资格
+          配置账号激活资格
         </label>
       )}
     </fieldset>

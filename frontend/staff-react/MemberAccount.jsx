@@ -50,8 +50,8 @@ function MemberActivation({ memberId, value: initial, onSaved, onDirty, onBusy }
       <Notice>{error}</Notice>
       <p>尚未创建登录账号</p>
       <p>激活资格：{saved ? '待激活' : activationStatus[value.status]}</p>
-      <p>现有角色：{value.roleNames.join('、') || '尚未授权'}</p>
-      {!value.canConfigure && <p role="alert">请先配置有效角色及所需工作资格。</p>}
+      <p>有效权限：{value.roleNames.join('、') || '尚未授权'}</p>
+      {!value.canConfigure && <p role="alert">请先配置有效任职、交流参与或特殊授权。</p>}
       {saved && <p role="status">激活资格已保存</p>}
       <fieldset disabled={busy || !value.canConfigure}>
         <legend>激活授权校区</legend>

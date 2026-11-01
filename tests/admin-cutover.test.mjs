@@ -2,6 +2,7 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { Miniflare } from 'miniflare';
+import { dateKey } from '../shared/time.js';
 import { config, wrangler } from '../scripts/cli.mjs';
 import { hashPassword } from '../src/lib/passwords.js';
 import { staffPlatformRepository } from '../src/db/staff-platform.js';
@@ -85,7 +86,7 @@ for (const directory of ['migrations','database/staff-migrations']) test(`${dire
     assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM sqlite_schema WHERE name IN ('legacy_admin_logins','legacy_admin_login_changed')").first()).n,0);
     assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM roles WHERE code='legacy_admin'").first()).n,0);
     await call('/api/auth/me',{token:previousToken,status:401});
-    const token=await login('20268001'), me=await call('/api/auth/me',{token});
+    let token=await login('20268001');const me=await call('/api/auth/me',{token});
     const management=['repair.summary.read','repair.correct','repair.transfer','statistics.read','accounts.manage','settings.manage','members.manage','roles.manage','roster.read','roster.repair.manage','roster.repair.configure','roster.office.manage','attendance.session.manage','attendance.correct','attendance.export','leave.review','customer.identity.read','customer.contact.read'];
     for(const code of management)assert.equal(me.permissions[code],true,code);
     assert.deepEqual(me.todayDuties,[]);
@@ -95,7 +96,7 @@ for (const directory of ['migrations','database/staff-migrations']) test(`${dire
     assert.equal(leadHome.state,'unsigned','receiving work still requires check-in');
     await call('/api/presence/me',{token,method:'PATCH',body:{state:'available',revision:0},status:409});
     assert.ok(await db.prepare("SELECT id FROM member_roles WHERE member_id='member-20268001' AND role_id='role-technician'").first());
-    assert.ok(await db.prepare("SELECT id FROM member_work_profiles WHERE member_id='member-20268001' AND profile_code='repair'").first());
+    assert.ok(await db.prepare("SELECT id FROM audit_events WHERE action='identity.qualification.archived' AND json_extract(source_ref,'$.id')='member-20268001'").first());
     assert.ok(await db.prepare("SELECT id FROM member_department_memberships WHERE member_id='member-20268001' AND department_id='dept-hardware'").first());
     for(const path of ['/api/roles','/api/permissions','/api/users','/api/members','/api/slot-capacities','/api/stats/summary?range=all','/api/attendance','/api/roster-tasks'])await call(path,{token});
     const both=await call('/api/auth/me',{token:await login('20268002')});
@@ -109,12 +110,12 @@ for (const directory of ['migrations','database/staff-migrations']) test(`${dire
     await call('/api/users/root002',{token,method:'PATCH',body:{name:'不能修改保护账号'},status:403});
     for(const role of ['superadmin'])await call('/api/users/20268003',{token,method:'PATCH',body:{role},status:403});
     const repository=staffPlatformRepository(db);
-    const bind=async(account,bindings,status=200)=>call(`/api/members/member-${account}/roles`,{token,method:'PUT',body:{revision:(await repository.memberRow(`member-${account}`)).revision,bindings},status});
+    const bind=async(account,bindings,status=200)=>call(`/api/members/member-${account}/roles`,{token,method:'PUT',body:{revision:(await repository.memberRow(`member-${account}`)).revision,bindings:bindings.map(binding=>({effectiveFrom:dateKey(),scope:{campusIds:['campus-nanhu']},reason:'特殊业务授权',...binding}))},status});
     await bind('20268001',[{roleId:'role-technician'}],403);
     await bind('root002',[{roleId:'role-technician'}],403);
     await bind('20268004',[{roleId:'role-technician'}],403);
     await bind('20268003',[{roleId:'role-superadmin'}],403);
-    await bind('20268003',[{roleId:'role-technician',scope:{all:true}}],403);
+    await bind('20268003',[{roleId:'role-technician',scope:{all:true,campusIds:['campus-nanhu']}}],403);
     await bind('20268003',[{roleId:'role-technician',scope:{campusIds:['campus-hunnan']}}],403);
     const role=await call('/api/roles',{token,method:'POST',status:201,body:{code:'business_reader',name:'业务统计人员',grants:[{permissionCode:'statistics.read',scope:{campusIds:['campus-nanhu']}}]}});
     await call(`/api/roles/${role.id}`,{token,method:'PATCH',body:{revision:role.revision,name:'业务统计角色'}});
@@ -147,14 +148,15 @@ for (const directory of ['migrations','database/staff-migrations']) test(`${dire
     const leadRole=(await call('/api/roles',{token})).items.find(item=>item.code==='repair_lead');
     assert.equal(leadRole.actions.edit,false);
     await call('/api/roles/role-repair-lead',{token,method:'PATCH',body:{revision:leadRole.revision,grants:[]},status:403});
-    for(const account of ['20268001','root002','20268004'])await call(`/api/members/member-${account}/work-profiles`,{token,method:'POST',body:{revision:0,profileCode:'repair',effectiveFrom:'2026-10-15'},status:403});
-    await call('/api/members/member-20268005/work-profiles',{token:await login('20268005'),method:'POST',body:{revision:0,profileCode:'repair',effectiveFrom:'2026-10-15'},status:403});
-    // Scoped managers can authorize another ordinary member's independent work qualification.
+    for(const account of ['20268001','root002','20268004'])await call(`/api/members/member-${account}/work-profiles`,{token,method:'POST',body:{revision:0,profileCode:'repair',effectiveFrom:'2026-10-15'},status:404});
+    await call('/api/members/member-20268005/work-profiles',{token:await login('20268005'),method:'POST',body:{revision:0,profileCode:'repair',effectiveFrom:'2026-10-15'},status:404});
+    // Removed qualification routes stay absent. Special participation uses the same scoped binding service.
     // A login may cover both campuses while its management role covers only one.
+    await db.prepare("UPDATE member_roles SET scope_bindings='{\"campusIds\":[\"campus-nanhu\"]}' WHERE member_id='member-20268001' AND role_id='role-repair-lead'").run();
     await db.prepare("INSERT INTO staff_campus_grants VALUES('20268001','浑南')").run();
-    const member=await repository.memberRow('member-20268003');
-    await call('/api/members/member-20268003/work-profiles',{token,method:'POST',body:{revision:member.revision,profileCode:'office',effectiveFrom:'2026-10-15'}});
-    await call('/api/members/member-20268004/work-profiles',{token,method:'POST',body:{revision:0,profileCode:'office',effectiveFrom:'2026-10-15'},status:403});
+    token=await login('20268001');
+    await bind('20268003',[...await repository.roleBindings('member-20268003'),{roleId:'role-office'}]);
+    await bind('20268004',[{roleId:'role-office'}],403);
     const beforeImport=await repository.memberRow('member-20268003');
     const raceImportRepository={...repository,importMembers:async(...args)=>{
       await db.prepare("INSERT INTO staff_campus_grants VALUES('20268003','浑南')").run();
@@ -163,16 +165,16 @@ for (const directory of ['migrations','database/staff-migrations']) test(`${dire
     }};
     const importPlatform=composeStaffPlatform({repository:raceImportRepository});
     const importService=staffPlatformService({repository:raceImportRepository,platform:importPlatform,manifests:importPlatform.manifests});
-    const importPreview=await importService.importMembers(await userRepository(db).find('20268001'),{csv:'studentId,name,homeCampusId,workProfiles,effectiveFrom\n20268003,不得覆盖并发账号变化,campus-nanhu,office,2026-10-15'});
+    const importPreview=await importService.importMembers(await userRepository(db).find('20268001'),{csv:'studentId,name,homeCampusId,effectiveFrom\n20268003,不得覆盖并发账号变化,campus-nanhu,2026-10-15'});
     await assert.rejects(importService.importMembers(await userRepository(db).find('20268001'),{
-      csv:'studentId,name,homeCampusId,workProfiles,effectiveFrom\n20268003,不得覆盖并发账号变化,campus-nanhu,office,2026-10-15',confirm:true,previewToken:importPreview.previewToken
+      csv:'studentId,name,homeCampusId,effectiveFrom\n20268003,不得覆盖并发账号变化,campus-nanhu,2026-10-15',confirm:true,previewToken:importPreview.previewToken
     }),error=>error.status===409);
     assert.deepEqual(await repository.memberRow('member-20268003'),beforeImport);
     await db.prepare("DELETE FROM staff_campus_grants WHERE account='20268003' AND campus='浑南'").run();
     // Later base admin logins receive neither business grants nor an office post.
     await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES('20268009','新基础账号','admin','南湖',?,'2026-01-01')").bind(originalHash).run();
     await db.prepare("INSERT INTO staff_campus_grants VALUES('20268009','南湖')").run();
-    for(const table of ['member_work_profiles','member_department_memberships','member_roles'])assert.equal((await db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE member_id='member-20268009'`).first()).n,0);
+    for(const table of ['member_department_memberships','member_roles'])assert.equal((await db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE member_id='member-20268009'`).first()).n,0);
     const newToken=await login('20268009'),ungranted=await call('/api/auth/me',{token:newToken});
     assert.ok(Object.values(ungranted.permissions).every(value=>value!==true));
     assert.equal((await call('/api/field/home',{token:newToken})).capability['repair.start'],false);

@@ -1,3 +1,5 @@
+import { participationCodes } from './staff-organization.js';
+
 export const staffIdentityLabels = {
   repair: '维修工作人员', exchange: '交流人员', office: '办公工作人员',
   repair_lead: '维修负责人', office_lead: '办公值班负责人', superadmin: '最高管理员',
@@ -5,9 +7,7 @@ export const staffIdentityLabels = {
 
 // Identity is a description of effective qualifications/authorization, not an action grant.
 export function staffIdentities(context, authorizer, target = {}) {
-  const codes = new Set((context.workProfiles || []).filter(item => item.active !== false &&
-    (!item.effectiveFrom || item.effectiveFrom <= context.businessDate) && (!item.effectiveTo || context.businessDate < item.effectiveTo))
-    .map(item => item.profileCode).filter(code => ['repair', 'exchange', 'office'].includes(code)));
+  const codes = new Set(participationCodes(context, target));
   // Describe whether an authorization exists in its own range; this never grants
   // an action on an omitted department/object or removes a binding restriction.
   const has = (permission, roleCode) => (context.grants || []).some(grant => {

@@ -81,24 +81,6 @@ fieldset.staffing-editor {
   max-height: 40vh;
   overflow: auto;
 }
-.member-qualifications > form {
-  margin-top: 24px;
-}
-.member-qualifications .react-form-grid {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
-}
-.field-modal .member-qualification-confirm {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  min-height: 44px;
-}
-.field-modal .member-qualification-confirm input {
-  flex-shrink: 0;
-  width: 18px;
-  height: 18px;
-  margin: 2px 0 0;
-}
 .staff-identity[data-identity='repair_lead'],
 .staff-identity[data-identity='office_lead'] {
   color: #805b22;

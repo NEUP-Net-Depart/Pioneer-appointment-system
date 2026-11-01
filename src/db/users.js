@@ -1,6 +1,6 @@
 import { dateKey } from '../../shared/time.js';
 
-const roleNames = `(SELECT json_group_array(name) FROM (SELECT DISTINCT r.name FROM member_roles mr JOIN roles r ON r.id=mr.role_id
+const roleNames = `(SELECT json_group_array(name) FROM (SELECT DISTINCT r.name FROM effective_member_roles mr JOIN roles r ON r.id=mr.role_id
   WHERE mr.member_id=staff_accounts.member_id AND r.enabled=1 AND mr.effective_from<=? AND (mr.effective_to IS NULL OR mr.effective_to>?) ORDER BY r.level DESC,r.name)) AS role_names`;
 const select = (extra = '') => `SELECT staff_accounts.*,(SELECT status FROM members WHERE id=staff_accounts.member_id) AS member_status,
   (SELECT json_group_array(campus) FROM staff_campus_grants WHERE account=staff_accounts.account) AS campuses
@@ -33,18 +33,18 @@ export function userRepository(db) {
     async assignees({ campus, q }) {
       const search = q.toLowerCase();
       return (await db.prepare(`SELECT account,trim(name) AS name FROM staff_accounts
-        WHERE status='enabled' AND role IN ('technician','admin','superadmin')
+        WHERE status='enabled'
           AND EXISTS(SELECT 1 FROM members WHERE id=staff_accounts.member_id AND status='active')
           AND EXISTS(SELECT 1 FROM staff_campus_grants WHERE account=staff_accounts.account AND campus=?)
           AND (instr(lower(name),?)>0 OR instr(lower(account),?)>0)
         ORDER BY name,account`).bind(campus,search,search).all()).results;
     },
-    async list() {
+    async list(campuses = []) {
       const day = dateKey();
       return (await db.prepare(`${select(`,${roleNames},
-        (SELECT COUNT(*) FROM appointments WHERE assigned_to=staff_accounts.account AND
+        (SELECT COUNT(*) FROM appointments WHERE campus IN (SELECT value FROM json_each(?)) AND assigned_to=staff_accounts.account AND
           (status='in_progress' OR (status='completed' AND outcome IN ('repaired','unrepaired','not_needed','legacy_unknown')))) AS workload`)}
-        ORDER BY role DESC,name`).bind(day,day).all()).results.map(publicUser);
+        ORDER BY role DESC,name`).bind(day,day,JSON.stringify(campuses)).all()).results.map(publicUser);
     },
     async update(target, patch, { selfPassword = false, auditRecord } = {}) {
       const fields = [], args = [];
@@ -53,13 +53,20 @@ export function userRepository(db) {
       }
       if (['role','status','passwordHash','authorizedCampuses'].some(key => patch[key] !== undefined)) fields.push('token_version=token_version+1','auth_version=auth_version+1');
       const protection = selfPassword ? '' : ' AND protected=0';
-      const authorization=auditRecord ? " AND EXISTS(SELECT 1 FROM staff_accounts writer JOIN members m ON m.id=writer.member_id WHERE writer.account=? AND writer.member_id=? AND writer.auth_version=? AND writer.status='enabled' AND m.status='active')" : '';
-      const authorizationArgs=auditRecord ? [auditRecord.actorAccount,auditRecord.actorMemberId,auditRecord.authVersion] : [];
-      const eligible = `EXISTS(SELECT 1 FROM staff_accounts WHERE account=? AND revision=?${protection})${authorization}`;
-      const eligibleArgs=[target.account,target.revision,...authorizationArgs];
+      const authorization=auditRecord?.authVersion !== undefined ? " AND EXISTS(SELECT 1 FROM staff_accounts writer JOIN members m ON m.id=writer.member_id WHERE writer.account=? AND writer.member_id=? AND writer.auth_version=? AND writer.status='enabled' AND m.status='active')" : '';
+      const authorizationArgs=auditRecord?.authVersion !== undefined ? [auditRecord.actorAccount,auditRecord.actorMemberId,auditRecord.authVersion] : [];
+      const initialEligible = `EXISTS(SELECT 1 FROM staff_accounts WHERE account=? AND revision=?${protection})${authorization}`;
+      const initialArgs=[target.account,target.revision,...authorizationArgs];
+      const marker=crypto.randomUUID();
+      const eligible='EXISTS(SELECT 1 FROM audit_events WHERE id=?)';
+      const eligibleArgs=[marker];
       const statements = [];
-      // Grants change before the final revision increment, in the same D1 transaction.
-      // A stale revision therefore changes neither account nor grants.
+      statements.push(db.prepare(`INSERT INTO audit_events(id,actor_member_id,actor_account,action,source_ref,before_json,after_json,occurred_at)
+        SELECT ?,?,?,'authorization.account.updated',?,?,?,? WHERE ${initialEligible}`).bind(marker,auditRecord?.actorMemberId || null,auditRecord?.actorAccount || null,
+        JSON.stringify({module:'identity',type:'account',id:target.account}),JSON.stringify(publicUserView(target)),
+        JSON.stringify({...Object.fromEntries(Object.entries(patch).filter(([key])=>key!=='passwordHash')),passwordChanged:patch.passwordHash!==undefined}),new Date().toISOString(),...initialArgs));
+      // Claim the expected revision once. Campus triggers can then invalidate
+      // sessions without invalidating this transaction's remaining statements.
       if (patch.authorizedCampuses !== undefined) {
         statements.push(db.prepare(`DELETE FROM staff_campus_grants WHERE account=? AND ${eligible}`).bind(target.account,...eligibleArgs));
         statements.push(...patch.authorizedCampuses.map(campus => db.prepare(`INSERT INTO staff_campus_grants(account,campus) SELECT ?,? WHERE ${eligible}`)
@@ -73,12 +80,8 @@ export function userRepository(db) {
           .bind(...memberArgs,new Date().toISOString(),target.account,...eligibleArgs));
       }
       const accountStatementIndex = statements.length;
-      statements.push(db.prepare(`UPDATE staff_accounts SET ${fields.length ? fields.join(',')+',' : ''}revision=revision+1 WHERE account=? AND revision=?${protection}${authorization} RETURNING account`)
-        .bind(...args,target.account,target.revision,...authorizationArgs));
-      if(auditRecord)statements.push(db.prepare(`INSERT INTO audit_events(id,actor_member_id,actor_account,action,source_ref,before_json,after_json,occurred_at)
-        SELECT ?,?,?,'authorization.account.updated',?,?,?,? WHERE changes()>0`).bind(crypto.randomUUID(),auditRecord.actorMemberId,auditRecord.actorAccount,
-        JSON.stringify({module:'identity',type:'account',id:target.account}),JSON.stringify(publicUserView(target)),
-        JSON.stringify({...Object.fromEntries(Object.entries(patch).filter(([key])=>key!=='passwordHash')),passwordChanged:patch.passwordHash!==undefined}),new Date().toISOString()));
+      statements.push(db.prepare(`UPDATE staff_accounts SET ${fields.length ? fields.join(',')+',' : ''}revision=revision+1 WHERE account=? AND ${eligible} RETURNING account`)
+        .bind(...args,target.account,...eligibleArgs));
       const results = await db.batch(statements);
       return results[accountStatementIndex]?.results?.length ? publicUserView(await find(target.account)) : null;
     },

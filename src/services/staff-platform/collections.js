@@ -10,7 +10,11 @@ import {
   rosterMemberReadable
 } from '../../modules/rosters/scope.js';
 import { staffIdentities } from '../../../shared/staff-identities.js';
-import { repairRosterPool, rosterFactContext } from '../../modules/rosters/qualification.js';
+import {
+  repairRosterPool,
+  rosterFactContext,
+  rosterParticipation
+} from '../../modules/rosters/qualification.js';
 import {
   collectionInstant,
   validateRecurrence,
@@ -44,11 +48,8 @@ export function collectionsDomain({
     return Array.from({ length: 4 }, (_, offset) => addDays(task.weekStart, offset)).some(
       (day) =>
         (task.dutyType === 'office'
-          ? fact.profiles.some(
-              (item) =>
-                item.profileCode === 'office' &&
-                item.effectiveFrom <= day &&
-                (!item.effectiveTo || day < item.effectiveTo)
+          ? rosterParticipation(fact, day, { campusIds: rosterScope(task).campusIds }).includes(
+              'office'
             )
           : !!repairRosterPool(fact, platform.authorizer, day, {
               id: task.id,
@@ -120,12 +121,7 @@ export function collectionsDomain({
             (campusId) =>
               rosterMemberInScope(fact, task, day, campusId) &&
               (task.dutyType === 'office'
-                ? fact.profiles.some(
-                    (item) =>
-                      item.profileCode === 'office' &&
-                      item.effectiveFrom <= day &&
-                      (!item.effectiveTo || day < item.effectiveTo)
-                  )
+                ? rosterParticipation(fact, day, { campusId }).includes('office')
                 : (rosterDepartments(fact, day, task).length
                     ? rosterDepartments(fact, day, task)
                     : [{}]
@@ -299,11 +295,8 @@ export function collectionsDomain({
           window.campusId
         ) ||
         !(task.dutyType === 'office'
-          ? fact.profiles.some(
-              (item) =>
-                item.profileCode === 'office' &&
-                item.effectiveFrom <= window.businessDate &&
-                (!item.effectiveTo || window.businessDate < item.effectiveTo)
+          ? rosterParticipation(fact, window.businessDate, { campusId: window.campusId }).includes(
+              'office'
             )
           : (rosterDepartments(fact, window.businessDate, task).length
               ? rosterDepartments(fact, window.businessDate, task)
@@ -679,12 +672,7 @@ export function collectionsDomain({
                 campusId
               ) &&
               (task.dutyType === 'office'
-                ? own.profiles.some(
-                    (profile) =>
-                      profile.profileCode === 'office' &&
-                      profile.effectiveFrom <= businessDate &&
-                      (!profile.effectiveTo || businessDate < profile.effectiveTo)
-                  )
+                ? rosterParticipation(own, businessDate, { campusId }).includes('office')
                 : !!repairRosterPool(own, platform.authorizer, businessDate, {
                     id: task.id,
                     campusId

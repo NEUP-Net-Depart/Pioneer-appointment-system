@@ -72,7 +72,7 @@ test('duty conditions require the same campus, business date, role kind and duty
 test('department and work qualification conditions use left-closed right-open validity', () => {
   const auth = createAuthorizer(), actor = { memberId: 'member-1' };
   const target = { departmentId: 'dept-hardware' };
-  const grant = { permissionCode: 'repair.start', scope: {}, conditions: [
+  const grant = { roleCode: 'technician', participation: [{code:'repair',effectiveFrom:'2026-10-15',effectiveTo:'2026-10-16'}], permissionCode: 'repair.start', scope: {}, conditions: [
     { code: 'activeDepartmentMembership', parameters: { departmentId: 'dept-hardware', isPrimary: true } },
     { code: 'repairWorkEligible' }
   ] };
@@ -81,7 +81,7 @@ test('department and work qualification conditions use left-closed right-open va
   assert.equal(auth.evaluate(actor, 'repair.start', target, context, [grant]).allowed, true);
   assert.equal(auth.evaluate(actor, 'repair.start', target, { ...context, businessDate: '2026-10-16' }, [grant]).allowed, false);
   assert.equal(auth.evaluate(actor, 'repair.start', target, { ...context, memberships: [{ ...context.memberships[0], effectiveFrom: '2026-10-16' }] }, [grant]).allowed, false);
-  assert.equal(auth.evaluate(actor, 'repair.start', target, { ...context, workProfiles: [{ ...context.workProfiles[0], effectiveTo: '2026-10-15' }] }, [grant]).allowed, false);
+  assert.equal(auth.evaluate(actor, 'repair.start', target, context, [{...grant,participation:[{code:'repair',effectiveTo:'2026-10-15'}]}]).allowed, false);
 });
 
 test('unknown condition versions, providers and parameter shapes fail closed', () => {

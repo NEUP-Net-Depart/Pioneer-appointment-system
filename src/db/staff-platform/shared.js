@@ -22,19 +22,12 @@ function membership(row) {
     memberId: row.member_id,
     departmentId: row.department_id,
     departmentName: row.department_name || '',
+    departmentCode: row.department_code || '',
+    organizationKind: row.organization_kind || 'department',
+    positionCode: row.position_code || 'unknown',
+    needsReview: !!row.needs_review,
     assignmentType: row.assignment_type,
     isPrimary: !!row.is_primary,
-    effectiveFrom: row.effective_from,
-    effectiveTo: row.effective_to || null,
-    revision: row.revision
-  };
-}
-
-function profile(row) {
-  return {
-    id: row.id,
-    memberId: row.member_id,
-    profileCode: row.profile_code,
     effectiveFrom: row.effective_from,
     effectiveTo: row.effective_to || null,
     revision: row.revision
@@ -81,6 +74,5 @@ export {
   rows,
   json,
   membership,
-  profile,
   assignment
 };

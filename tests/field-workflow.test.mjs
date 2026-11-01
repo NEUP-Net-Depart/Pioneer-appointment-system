@@ -6,6 +6,7 @@ import { config, wrangler } from "../scripts/cli.mjs";
 import { hashPassword } from "../src/lib/passwords.js";
 import { dateKey } from "../shared/time.js";
 import { fieldSeed } from "./fixtures/field-seed.mjs";
+import { seedRepairMember } from './fixtures/staff-services.mjs';
 import { staffPlatformRepository } from '../src/db/staff-platform.js';
 
 // Only the disposable Worker uses this clock; late-night test runs must still exercise a live duty day.
@@ -16,12 +17,18 @@ const workerClock = `const RealDate = Date; globalThis.Date = class extends Real
 };\n`;
 let mf, db;
 const tokens = {};
+async function refreshLogin(account) {
+  await db.prepare('DELETE FROM rate_limits').run();
+  const login=await request('/api/auth/login',null,{account,password:'StaffTest!2026'});
+  assert.equal(login.status,200,JSON.stringify(login.body));tokens[account]=login.body.token;
+}
 
 test('mutual swaps publish immutable linked revisions and roll back failed audits and receipts', async () => {
   const repository = staffPlatformRepository(db), people = ['20261201','20261202','20261203','20261204'];
   for (const [index,account] of people.entries()) {
     await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,?,'technician','南湖',?,'2026-01-01')").bind(account,`换班成员${index + 1}`,hashPassword('StaffTest!2026')).run();
     await db.prepare("INSERT INTO staff_campus_grants VALUES(?,'南湖')").bind(account).run();
+    await seedRepairMember(db,account);
     if (index !== 1) await db.prepare("INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from) VALUES(?,?,'role-repair-lead','{\"campusIds\":[\"campus-nanhu\"]}','2026-01-01')").bind(`swap-lead-${index}`,`member-${account}`).run();
     const login = await request('/api/auth/login',null,{ account,password:'StaffTest!2026' });
     assert.equal(login.status,200,JSON.stringify(login.body)); tokens[account] = login.body.token;
@@ -124,14 +131,18 @@ test('mutual swaps publish immutable linked revisions and roll back failed audit
   const pendingLeave = await request(path,people[1],guardDecision);
   assert.equal(pendingLeave.status,409); assert.match(pendingLeave.body.error,/请假/);
   assert.equal((await request(`/api/leaves/${leave.body.id}/withdraw`,people[0],{ revision:0 })).status,200);
-  await db.prepare("UPDATE member_work_profiles SET effective_to='2026-12-21' WHERE member_id=? AND profile_code='repair'").bind(guarded[2].memberId).run();
+  await db.prepare("UPDATE member_department_memberships SET effective_to='2026-10-15' WHERE member_id=? AND is_primary=1").bind(guarded[2].memberId).run();
+  assert.equal((await request(path,people[1],guardDecision)).status,401);
+  await refreshLogin(people[1]);
   const unqualified = await request(path,people[1],guardDecision);
-  assert.equal(unqualified.status,409); assert.match(unqualified.body.error,/工作资格/);
-  await db.prepare("UPDATE member_work_profiles SET effective_to=NULL WHERE member_id=? AND profile_code='repair'").bind(guarded[2].memberId).run();
+  assert.equal(unqualified.status,403,'ending the invited worker membership removes their roster permission');
+  await db.prepare("UPDATE member_department_memberships SET effective_to=NULL WHERE member_id=? AND is_primary=1").bind(guarded[2].memberId).run();
+  await refreshLogin(people[1]);
   await db.prepare("DELETE FROM staff_campus_grants WHERE account=?").bind(people[0]).run();
   const wrongCampus = await request(path,people[1],guardDecision);
   assert.equal(wrongCampus.status,409); assert.match(wrongCampus.body.error,/校区/);
   await db.prepare("INSERT INTO staff_campus_grants VALUES(?,'南湖')").bind(people[0]).run();
+  await refreshLogin(people[0]);
   await db.prepare("INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at) VALUES('swap-guard-time',?,?,'2026-12-21','campus-nanhu','office','20:00','22:00')").bind(guarded[0].versionId,guarded[2].memberId).run();
   const conflict = await request(path,people[1],guardDecision);
   assert.equal(conflict.status,409); assert.match(conflict.body.error,/冲突/);
@@ -248,7 +259,7 @@ test('office managers publish daily assignments, preserve repair tasks and rejec
   await db.prepare("INSERT INTO staff_campus_grants VALUES('20261111','南湖')").run();
   await db.prepare("DELETE FROM member_roles WHERE member_id='member-20261111'").run();
   const officeRole = await repository.createRole({ code: 'office-manager-only', name: '办公排班管理', level: 1, grants: [{ permissionCode: 'roster.office.manage', scope: { campusIds: ['campus-nanhu'] }, conditions: [] }] });
-  await repository.bindRoles('member-20261111', [{ roleId: officeRole.id, scope: { campusIds: ['campus-nanhu'] }, effectiveFrom: '2026-01-01' }], 0);
+  await repository.bindRoles('member-20261111', [{ roleId: officeRole.id, scope: { campusIds: ['campus-nanhu'] }, effectiveFrom: '2026-01-01', reason: '测试特殊权限' }], 0);
   const managerLogin = await request('/api/auth/login', '', { account: '20261111', password: 'StaffTest!2026' });
   tokens['20261111'] = managerLogin.body.token;
   const managerTasks = await request('/api/roster-tasks', '20261111');
@@ -419,6 +430,8 @@ test('self-scoped contact access never reveals an unassigned customer to an on-d
   let id;
   t.after(async()=>{
     await db.prepare("UPDATE role_grants SET scope_spec=? WHERE id='grant-office-contact'").bind(grant.scope_spec).run();
+    await refreshLogin('20261001');
+    await refreshLogin('root001');
     if(id)await db.batch([db.prepare('DELETE FROM booking_requests WHERE appointment_id=?').bind(id),db.prepare('DELETE FROM appointments WHERE id=?').bind(id)]);
   });
   const created=await ownRequest('/api/scan/onsite','root001',{requestId:crypto.randomUUID(),registrationFlow:'frontdesk',campus:'南湖',name:'本人范围测试客户',studentId:'20309968',social:'self-scope-private-contact',deviceType:'笔记本电脑',brand:'联想',deviceModel:'范围测试电脑',warranty:'否',faultType:'系统问题',signature:[Array.from({length:10},(_,i)=>[.1+i*.05,.2+i*.03])]});
@@ -426,6 +439,9 @@ test('self-scoped contact access never reveals an unassigned customer to an on-d
   const before=await ownRequest(`/api/field/appointments/${id}`,'20261001');
   assert.equal(before.status,200,JSON.stringify(before.body));assert.equal(before.body.social,'self-scope-private-contact');
   await db.prepare("UPDATE role_grants SET scope_spec='{\"self\":true}' WHERE id='grant-office-contact'").run();
+  assert.equal((await ownRequest(`/api/field/appointments/${id}`,'20261001')).status,401);
+  await refreshLogin('20261001');
+  await refreshLogin('root001');
   const restricted=await ownRequest(`/api/field/appointments/${id}`,'20261001');
   assert.equal(restricted.status,200,JSON.stringify(restricted.body));
   assert.equal(restricted.body.social,undefined,'An on-duty condition must not turn missing ownership into self ownership');
@@ -500,6 +516,7 @@ test('unscheduled ordinary technician joins the working day through check-in wit
   const account='20261983',memberId=`member-${account}`;
   await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,'未排班维修人员','technician','南湖',?,'2026-01-01')").bind(account,hashPassword('StaffTest!2026')).run();
   await db.prepare("INSERT INTO staff_campus_grants VALUES(?,'南湖')").bind(account).run();
+  await seedRepairMember(db,account);
   tokens[account]=(await request('/api/auth/login',null,{account,password:'StaffTest!2026'})).body.token;
   assert.equal((await request('/api/field/home',account)).body.todayDuties.length,0);
   assert.equal((await request('/api/field/board','root001')).body.staffPresence.some(item=>item.memberId===memberId),false);
@@ -516,7 +533,6 @@ test('unscheduled lead keeps identity, signs in without repair qualification and
   const account='20261981';
   await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,'未排班负责人','technician','南湖',?,'2026-01-01')").bind(account,hashPassword('StaffTest!2026')).run();
   await db.prepare("INSERT INTO staff_campus_grants VALUES(?,'南湖'),(?,'浑南')").bind(account,account).run();
-  await db.prepare('DELETE FROM member_work_profiles WHERE member_id=?').bind(`member-${account}`).run();
   await db.prepare("INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from) VALUES('unscheduled-lead',?,'role-repair-lead','{\"campusIds\":[\"campus-nanhu\"]}','2026-01-01')").bind(`member-${account}`).run();
   tokens[account]=(await request('/api/auth/login',null,{account,password:'StaffTest!2026'})).body.token;
   let home=(await request('/api/field/home',account)).body;
@@ -535,6 +551,8 @@ test('unscheduled lead keeps identity, signs in without repair qualification and
   const person=board.body.staffPresence.find(item=>item.account===account);
   assert.equal(person.group,'repair');assert.equal(person.canReceive,false);assert.equal(person.scheduled,false);assert.ok(person.signedInAt);
   await db.prepare("UPDATE member_roles SET effective_to='2026-10-15' WHERE id='unscheduled-lead'").run();
+  assert.equal((await request('/api/field/home',account)).status,401);
+  tokens[account]=(await request('/api/auth/login',null,{account,password:'StaffTest!2026'})).body.token;
   home=(await request('/api/field/home',account)).body;
   assert.equal(home.capability['repair.transfer'],false);assert.equal(home.identities.some(item=>item.code==='repair_lead'),false);
   assert.equal(home.directAttendance.allowed,false);
@@ -544,12 +562,10 @@ test('unscheduled lead keeps identity, signs in without repair qualification and
 test('exchange import, activation, check-in and qualification revocation preserve the same member and exclude roster participation',async()=>{
   const repository=staffPlatformRepository(db);
   const account='20261982',memberId=`member-${account}`;
-  const csv=`studentId,name,homeCampusId,departmentId,workProfiles,roleCodes,authorizedCampuses,trainingConfirmed\n${account},交流测试人员,campus-nanhu,dept-office,exchange,technician,campus-nanhu,true`;
-  assert.equal((await request('/api/members/import','root001',{csv:csv.replace(',true',',false')})).status,400);
+  const csv=`studentId,name,homeCampusId,departmentId,positionCode,exchangeParticipation,authorizedCampuses,configureActivation,effectiveFrom\n${account},交流测试人员,campus-nanhu,dept-office,member,true,campus-nanhu,true,2026-01-01`;
   const preview=await request('/api/members/import','root001',{csv});
   assert.equal(preview.body.mode,'preview');
-  assert.deepEqual(preview.body.items[0].roleCodes,['exchange'],'legacy technician CSV uses the separate exchange role');
-  assert.equal((await request('/api/members/import','root001',{csv:csv.replace('exchange,technician','exchange,exchange')})).status,200);
+  assert.equal(preview.body.items[0].exchangeParticipation,true);
   assert.equal(await repository.memberRow(memberId),null);
   assert.equal((await request('/api/members/import','root001',{csv,confirm:true,previewToken:preview.body.previewToken})).status,200);
   const activation=await request('/api/activation',null,{studentId:account,name:'交流测试人员',homeCampus:'南湖',password:'StaffTest!2026'});
@@ -563,11 +579,10 @@ test('exchange import, activation, check-in and qualification revocation preserv
   const navigation=(await request('/api/auth/me',account)).body.navigation;
   for(const id of ['roster','roster-manage','office-roster','members','roles']) assert.equal(navigation.some(item=>item.id===id),false,id);
   assert.equal((await request('/api/field/board',account)).status,403);
-  assert.deepEqual((await repository.profiles(memberId,'2026-10-15')).map(item=>item.profileCode),['exchange']);
-  assert.deepEqual((await repository.roleBindings(memberId)).map(item=>item.roleId),['role-exchange']);
+  assert.deepEqual(await repository.roleBindings(memberId),[]);
   const listed=(await request('/api/users','root001')).body.items.find(item=>item.account===account);
   assert.deepEqual(listed.roleNames,['交流人员'],'account management displays the assigned work role, not the legacy login type');
-  assert.deepEqual((await repository.memberships(memberId,'2026-10-15')).map(item=>item.departmentId),['dept-office'],'exchange keeps the actual non-hardware department');
+  assert.deepEqual((await repository.memberships(memberId,'2026-10-15')).filter(item=>item.isPrimary).map(item=>item.departmentId),['dept-office'],'exchange keeps the actual non-hardware department');
   const credential=await request('/api/attendance/events/field-event/token','root001',{revision:(await repository.attendanceEvent('field-event')).revision});
   const signed=await request('/api/attendance/check-ins',account,{token:credential.body.token,requestId:crypto.randomUUID()});
   assert.equal(signed.status,200,JSON.stringify(signed.body));
@@ -589,11 +604,10 @@ test('exchange import, activation, check-in and qualification revocation preserv
   assert.equal(finished.status,200,JSON.stringify(finished.body));
   assert.equal((await request('/api/field/home',account)).body.state,'available');
   const detail=(await request(`/api/members/${memberId}`,'root001')).body;
-  const profile=detail.member.workProfiles[0];
-  assert.equal((await request(`/api/members/${memberId}/work-profiles`,'20261002',{revision:detail.member.revision,id:profile.id,profileRevision:profile.revision,effectiveTo:'2026-10-15'})).status,403);
-  const end={revision:detail.member.revision,id:profile.id,profileRevision:profile.revision,effectiveTo:'2026-10-15'};
-  assert.equal((await request(`/api/members/${memberId}/work-profiles`,'root001',end)).status,200);
-  assert.equal((await request(`/api/members/${memberId}/work-profiles`,'root001',end)).status,409);
+  const relation=detail.member.memberships.find(item=>item.assignmentType==='exchange');
+  const end={revision:relation.revision,effectiveTo:'2026-10-15'};
+  assert.equal((await request(`/api/members/${memberId}/memberships/${relation.id}`,'20261002',end,'PATCH')).status,403);
+  assert.equal((await request(`/api/members/${memberId}/memberships/${relation.id}`,'root001',end,'PATCH')).status,200);
   assert.equal((await request('/api/field/home',account)).status,401);
   tokens[account]=(await request('/api/auth/login',null,{account,password:'StaffTest!2026'})).body.token;
   home=(await request('/api/field/home',account)).body;assert.notEqual(home.state,'available');
@@ -618,6 +632,7 @@ test('ordinary reception and repair roles cannot enter management or use legacy 
 });
 
 test('explicit scoped capabilities work for technicians and revocation invalidates old sessions and entries', async () => {
+  await db.prepare('DELETE FROM rate_limits').run();
   const account = '20261901';
   await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,'范围测试人员','technician','南湖',?,'2026-01-01')").bind(account, hashPassword('StaffTest!2026')).run();
   await db.prepare("INSERT INTO staff_campus_grants VALUES(?,'南湖'),(?,'浑南')").bind(account, account).run();
@@ -627,7 +642,7 @@ test('explicit scoped capabilities work for technicians and revocation invalidat
   const role = await request('/api/roles', 'root001', { code: 'scoped_test', name: '范围配置员', grants: ['settings.manage','statistics.read'].map(permissionCode => ({ permissionCode, scope: { campusIds: ['campus-nanhu'] }, conditions: [] })) });
   assert.equal(role.status, 201, JSON.stringify(role.body));
   const detail = await request(`/api/members/${initial.actor.memberId}`, 'root001');
-  assert.equal((await request(`/api/members/${initial.actor.memberId}/roles`, 'root001', { revision: detail.body.member.revision, bindings: [{ roleId: role.body.id, scope: { campusIds: ['campus-nanhu'] }, effectiveFrom: '2026-01-01' }] }, 'PUT')).status, 200);
+  assert.equal((await request(`/api/members/${initial.actor.memberId}/roles`, 'root001', { revision: detail.body.member.revision, bindings: [{ roleId: role.body.id, scope: { campusIds: ['campus-nanhu'] }, effectiveFrom: '2026-01-01', reason: '测试特殊权限' }] }, 'PUT')).status, 200);
   assert.equal((await request('/api/auth/me', account)).status, 401);
   await login();
   const granted = (await request('/api/auth/me', account)).body;
@@ -640,8 +655,17 @@ test('explicit scoped capabilities work for technicians and revocation invalidat
   const cell = capacities.body.items[0];
   assert.equal((await request('/api/slot-capacities', account, { items: [{ ...cell, capacity: cell.capacity }] }, 'PATCH')).status, 200);
   assert.equal((await request('/api/stats/summary', account)).status, 200);
-  const updated = await request(`/api/roles/${role.body.id}`, 'root001', { revision: role.body.revision, grants: [] }, 'PATCH');
-  assert.equal(updated.status, 200, JSON.stringify(updated.body));
+  const revoke = { revision: role.body.revision, grants: [] };
+  assert.equal((await request(`/api/roles/${role.body.id}`, 'root001', revoke, 'PATCH')).status, 403);
+  await db.prepare("INSERT INTO staff_campus_grants VALUES('root001','浑南')").run();
+  await refreshLogin('root001');
+  try {
+    const updated = await request(`/api/roles/${role.body.id}`, 'root001', revoke, 'PATCH');
+    assert.equal(updated.status, 200, JSON.stringify(updated.body));
+  } finally {
+    await db.prepare("DELETE FROM staff_campus_grants WHERE account='root001' AND campus='浑南'").run();
+    await refreshLogin('root001');
+  }
   assert.equal((await request('/api/slot-capacities', account)).status, 401);
   await login();
   const revoked = (await request('/api/auth/me', account)).body;
@@ -1224,5 +1248,7 @@ test("concurrent claims and transfers serialize; cross-day repairs survive and r
       "UPDATE staff_accounts SET auth_version=auth_version+1 WHERE account='20261001'",
     )
     .run();
+  assert.equal((await request("/api/field/board", office)).status, 401);
+  await refreshLogin(office);
   assert.equal((await request("/api/field/board", office)).status, 403);
 });

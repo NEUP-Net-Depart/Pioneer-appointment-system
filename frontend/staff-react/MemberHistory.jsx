@@ -8,9 +8,10 @@ const labels = {
   'identity.member.updated': '修改资料',
   'identity.qualification.granted': '新增工作资格',
   'identity.qualification.ended': '结束工作资格',
+  'identity.qualification.archived': '工作资格历史归档',
   'organization.membership.updated': '新增任职',
   'organization.membership.ended': '结束任职',
-  'authorization.member_roles.updated': '修改角色授权',
+  'authorization.member_roles.updated': '修改特殊授权',
   'authorization.member_activation.updated': '配置激活资格',
   'authorization.account.updated': '修改登录账号'
 };

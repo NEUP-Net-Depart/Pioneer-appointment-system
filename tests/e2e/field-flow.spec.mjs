@@ -41,17 +41,16 @@ async function recordFixture(request, token, studentId) {
   return api(request, '/api/scan/onsite', token, { requestId: crypto.randomUUID(), registrationFlow: 'frontdesk', campus: '南湖', name: '记录测试同学', studentId, social: 'record-test', deviceType: '笔记本电脑', brand: '联想', deviceModel: 'ThinkPad Records', warranty: '否', faultType: '系统问题', signature: [Array.from({ length: 10 }, (_,i) => [0.1 + i * 0.05, 0.2 + i * 0.03])] });
 }
 
-test('member qualification and roster import panels preserve drafts and fit staff viewports',async({page})=>{
+test('member participation and roster import panels preserve drafts and fit staff viewports',async({page})=>{
   await login(page,'root001');
   const sidebar=page.locator('.field-sidebar');
   const group=sidebar.getByRole('button',{name:'平台管理',exact:true});
   if(await group.getAttribute('aria-expanded')==='false') await group.click();
   await sidebar.getByRole('button',{name:'人员管理',exact:true}).click();
-  await page.getByRole('button',{name:'人员详情',exact:true}).first().click();
+  await page.locator('.members-results .react-row').filter({hasText:'林悦'}).getByRole('button',{name:'人员详情',exact:true}).click();
   const dialog=page.getByRole('dialog');
-  await dialog.getByRole('button',{name:'工作资格',exact:true}).click();
-  await dialog.getByRole('combobox',{name:'工作资格',exact:true}).selectOption('exchange');
-  await expect(dialog.getByLabel('已核验该成员通过维修培训')).toBeVisible();
+  await dialog.getByRole('combobox',{name:'任职类型',exact:true}).selectOption('exchange');
+  await expect(dialog.getByRole('combobox',{name:'正式部门 / 组织',exact:true})).toHaveValue('dept-hardware');
   for(const width of [320,390,768,1440]) {
     await page.setViewportSize({width,height:900});
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -61,14 +60,14 @@ test('member qualification and roster import panels preserve drafts and fit staf
   await dialog.getByRole('button',{name:'关闭',exact:true}).click();
   await expect(dialog.getByText('放弃未保存的修改？',{exact:true})).toBeVisible();
   await dialog.getByRole('button',{name:'返回继续编辑',exact:true}).click();
-  await expect(dialog.getByRole('combobox',{name:'工作资格',exact:true})).toHaveValue('exchange');
+  await expect(dialog.getByRole('combobox',{name:'任职类型',exact:true})).toHaveValue('exchange');
   await dialog.getByRole('button',{name:'关闭',exact:true}).click();
   await dialog.getByRole('button',{name:'放弃修改并关闭',exact:true}).click();
   await page.getByRole('button',{name:'批量导入',exact:true}).click();
-  await dialog.getByRole('combobox',{name:'人员类型',exact:true}).selectOption('exchange');
-  await expect(dialog.getByLabel('已确认交流人员通过维修培训')).toBeVisible();
+  await dialog.getByRole('combobox',{name:'正式部门 / 组织',exact:true}).selectOption('dept-network');
+  await dialog.getByLabel('参与交流维修',{exact:true}).check();
   await dialog.getByText('高级 CSV 配置',{exact:true}).click();
-  await expect(dialog.getByText('空白资料和授权均保留',{exact:false})).toBeVisible();
+  await expect(dialog.getByRole('combobox',{name:'已有账号校区',exact:true})).toHaveValue('preserve');
   await dialog.getByRole('button',{name:'关闭',exact:true}).click();
 });
 
@@ -134,7 +133,7 @@ for (const capability of [
   const member = await api(request, '/api/members/member-20261003', admin.token);
   const role = await api(request, '/api/roles', admin.token, { code: 'browser_scope_' + Date.now(), name: '浏览器范围测试', grants: [{ permissionCode: capability.code, scope: { campusIds: ['campus-nanhu'] }, conditions: [] }] });
   try {
-    await api(request, '/api/members/member-20261003/roles', admin.token, { revision: member.member.revision, bindings: [...member.bindings, { roleId: role.id, scope: { campusIds: ['campus-nanhu'] }, effectiveFrom: '2026-01-01' }] }, 'PUT');
+    await api(request, '/api/members/member-20261003/roles', admin.token, { revision: member.member.revision, bindings: [...member.bindings, { roleId: role.id, scope: { campusIds: ['campus-nanhu'] }, effectiveFrom: '2026-01-01', reason: '浏览器撤权验证' }] }, 'PUT');
     await login(page, '20261003');
     const sidebar = page.locator('.field-sidebar');
     const business = sidebar.getByRole('button', { name: capability.group, exact: true });
@@ -716,8 +715,9 @@ test('member detail keeps its header fixed while long forms scroll and restores 
   const opener = page.locator('.members-results .react-row').filter({ hasText: '陈宇' }).getByRole('button', { name: '人员详情' });
   await opener.click();
   const dialog = page.getByRole('dialog', { name: '陈宇', exact: true });
-  await dialog.getByRole('button', { name: '角色授权', exact: true }).click();
-  await dialog.getByRole('button', { name: '添加角色', exact: true }).click();
+  await dialog.getByRole('button', { name: '维修参与及账号授权', exact: true }).click();
+  await dialog.getByText('编辑特殊授权',{exact:true}).click();
+  await dialog.getByRole('button', { name: '添加特殊授权', exact: true }).click();
   for (const width of [1440, 768, 390, 320]) {
     await page.setViewportSize({ width, height: 650 });
     const header = dialog.locator(':scope > header');
@@ -772,7 +772,7 @@ test('management keeps its shell and readable results during refresh at all widt
   await memberDialog.getByRole('button', { name: '关闭', exact: true }).click();
   await expect(memberDialog.getByRole('heading', { name: '放弃未保存的修改？' })).toBeVisible();
   await memberDialog.getByRole('button', { name: '返回继续编辑' }).click();
-  await memberDialog.getByRole('button', { name: '角色授权', exact: true }).click();
+  await memberDialog.getByRole('button', { name: '维修参与及账号授权', exact: true }).click();
   for (const width of [1440, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await memberDialog.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
@@ -1123,12 +1123,9 @@ test('account workspace imports, reviews and updates an account with server acti
   await expect(protectedRow.getByText('系统保护账号')).toBeVisible();
   await expect(protectedRow.getByRole('button')).toHaveCount(0);
   await workspace.getByRole('button', { name: '加入资格', exact: true }).click();
-  await workspace.getByRole('button', { name: '导入名单', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '导入加入名单' });
-  await dialog.getByLabel('或粘贴 CSV').fill('studentId,expectedName\n20309991,周测试');
-  await dialog.getByRole('button', { name: '导入名单', exact: true }).click();
-  await expect(dialog).toBeHidden();
-  await expect(workspace.getByText('已导入 1 人，已有资格跳过 0 人。')).toBeVisible();
+  await expect(workspace.getByRole('button', { name: '导入名单', exact: true })).toHaveCount(0);
+  const token=await page.evaluate(()=>sessionStorage.getItem('pioneerToken'));
+  await api(request,'/api/members',token,{studentId:'20309991',name:'周测试',homeCampusId:'campus-nanhu',departmentId:'dept-hardware',positionCode:'member',authorizedCampuses:['南湖'],configureActivation:true});
   const application = await request.post('/api/activation', { data: { studentId: '20309991', name: '周测试', homeCampus: '南湖', password: 'AccountTest!2026' } });
   expect(application.ok(), await application.text()).toBe(true);
   await workspace.getByRole('button', { name: '激活审核', exact: true }).click();

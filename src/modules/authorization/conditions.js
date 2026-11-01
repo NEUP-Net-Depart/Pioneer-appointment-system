@@ -1,5 +1,6 @@
 import { campusId } from './scopes.js';
 import { dateKey, validDate } from '../../platform/time.js';
+import { grantParticipation } from '../../../shared/staff-organization.js';
 
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 const string = { type: 'string', minLength: 1 };
@@ -58,7 +59,7 @@ export function conditionProviders() {
       check: ({ context, resource, parameters = {} }) => {
         const departments = parameters.departmentIds || (parameters.departmentId ? [parameters.departmentId] :
           resource?.departmentIds || (resource?.departmentId ? [resource.departmentId] : []));
-        return (context?.memberships || []).some(item => activeOn(item, context) &&
+        return (context?.memberships || []).some(item => activeOn(item, { businessDate: context?.authorizationDate || context?.businessDate }) &&
           (!departments.length || departments.includes(item.departmentId)) &&
           (!parameters.departmentId || parameters.departmentId === item.departmentId) &&
           (!parameters.assignmentType || parameters.assignmentType === item.assignmentType) &&
@@ -67,13 +68,14 @@ export function conditionProviders() {
     },
     repairWorkEligible: {
       code: 'repairWorkEligible', version: 1, description: '成员具备维修工作资格', parameterSchema: schema({}),
-      check: ({ context }) => (context?.workProfiles || []).some(item => activeOn(item, context) && ['repair', 'exchange'].includes(item.profileCode))
+      check: ({ context, grant }) => grantParticipation(grant, context).some(code => ['repair', 'exchange'].includes(code))
     },
     rosterParticipantEligible: {
       code:'rosterParticipantEligible',version:1,description:'普通维修或办公排班资格',parameterSchema:schema({}),
-      check:({context}) => (context?.workProfiles || []).some(item=>activeOn(item,context) && item.profileCode==='office') ||
-        (context?.workProfiles || []).some(item=>activeOn(item,context) && item.profileCode==='repair') &&
-        !(context?.workProfiles || []).some(item=>activeOn(item,context) && item.profileCode==='exchange')
+      check:({context, grant}) => {
+        const codes = grantParticipation(grant, context);
+        return !codes.includes('exchange') && codes.some(code => ['repair', 'office'].includes(code));
+      }
     },
     attendanceEligible: {
       code: 'attendanceEligible', version: 1, description: '成员可参加该签到场次', parameterSchema: schema({}),

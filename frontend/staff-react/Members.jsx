@@ -227,11 +227,6 @@ export function Members({ user }) {
             selected.memberId !== user.memberId &&
             selected.role !== 'superadmin'
           }
-          canManageQualifications={
-            staffPermission(user, 'members.manage') &&
-            selected.memberId !== user.memberId &&
-            selected.role !== 'superadmin'
-          }
           onClose={() => setSelected(null)}
           onSaved={() => load()}
         />

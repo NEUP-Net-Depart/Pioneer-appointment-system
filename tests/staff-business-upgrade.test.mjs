@@ -80,6 +80,7 @@ for(const directory of ['migrations','database/staff-migrations']) {
           {scope_bindings:JSON.stringify({campusIds:scope}),effective_from:today,effective_to:null});
         assert.ok(db.prepare("SELECT id FROM member_work_profiles WHERE member_id=? AND profile_code='repair' AND effective_from=?").get(`member-${account}`,today));
       }
+      for(const file of (await readdir(directory)).filter(name=>name.endsWith('.sql') && name>'0033_staff_business_roles.sql').sort())db.exec(await readFile(directory+'/'+file,'utf8'));
       const repository=staffPlatformRepository(adapter(db)),platform=composeStaffPlatform({repository});
       const staff=staffPlatformService({repository,platform,manifests:platform.manifests});
       for(const account of ['20268801','20268804','20268805','20268806','20268807']){

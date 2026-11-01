@@ -27,7 +27,7 @@ export function userService(users, staff) {
       requireRole(actor, 'technician');
       actor = await staff.scopedActor(actor, 'accounts.manage');
       return {
-        items: (await users.list())
+        items: (await users.list(actor.authorizedCampuses))
           .filter(
             (user) =>
               (actor.role === 'superadmin' &&

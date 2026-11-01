@@ -19,7 +19,7 @@ async function prepareUnsignedSwapWeek(request,offset) {
   const weekStart=addDays(weekRange(dateKey()).start,offset*7),memberIds=['member-20261002','member-20261003'];
   for(const memberId of memberIds){
     const detail=await command(`/api/members/${memberId}`);
-    if(!detail.member.workProfiles.some(row=>row.profileCode==='office'))await command(`/api/members/${memberId}/work-profiles`,{profileCode:'office',effectiveFrom:'2026-01-01',revision:detail.member.revision,requestId:crypto.randomUUID()});
+    if(!detail.bindings.some(row=>row.roleId==='role-office'))await command(`/api/members/${memberId}/roles`,{bindings:[...detail.bindings,{roleId:'role-office',scope:{campusIds:['campus-nanhu']},effectiveFrom:'2026-01-01',reason:'换班验收办公参与'}],revision:detail.member.revision},'PUT');
   }
   const task=await command('/api/roster-tasks',{workflowVersion:1,dutyType:'office',weekStart,campusIds:['campus-nanhu'],slotStart:'19:00',slotEnd:'21:00',deadline:`${weekStart}T18:00:00+08:00`,memberIds,requestId:crypto.randomUUID()});
   for(const account of ['20261002','20261003']){
@@ -161,11 +161,9 @@ test('permanent off-duty managers coordinate business and prepare schedules with
     const response = await request.fetch(path, { method, headers: { Authorization: `Bearer ${token}` }, ...(data ? { data } : {}) });
     const result = await response.json(); expect(response.ok(), JSON.stringify(result)).toBe(true); return result;
   }
-  await command('/api/staff-whitelist/import', { csv: 'studentId,expectedName\n20998721,提前排班负责人', expectedRole: 'technician', authorizedCampuses: ['南湖'] });
+  await command('/api/members',{studentId:'20998721',name:'提前排班负责人',homeCampusId:'campus-nanhu',departmentId:'unit-device',positionCode:'director',authorizedCampuses:['南湖'],configureActivation:true});
   const application = await command('/api/activation', { studentId: '20998721',name:'提前排班负责人',homeCampus:'南湖',password:'ScheduleTest!2026' });
   await command('/api/activation-requests/review', { ids:[application.id],status:'approved',identityVerified:true });
-  const member = await command('/api/members/member-20998721');
-  await command('/api/members/member-20998721/roles', { revision:member.member.revision,bindings:[{roleId:'role-repair-lead',scope:{campusIds:['campus-nanhu']},effectiveFrom:'2026-01-01'}] },'PUT');
   await page.goto('/staff/'); await page.locator('#login-id').fill('20998721'); await page.locator('#login-password').fill('ScheduleTest!2026');
   await page.getByRole('button', {name:'进入系统'}).click();
   await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();
@@ -228,7 +226,7 @@ test('department manager creates only authorized roster scopes across screen siz
     { permissionCode: 'roster.repair.manage', scope: { campusIds: ['campus-nanhu'], departmentIds: ['dept-hardware'] }, conditions: [{ code: 'activeDutyRole', version: 1, parameters: { kind: 'repair_lead' } }] },
   ] });
   try {
-    await command('/api/members/member-20261004/roles', { revision: original.member.revision, bindings: [{ roleId: role.id, scope: { campusIds: ['campus-nanhu','campus-hunnan'] }, effectiveFrom: '2026-01-01' }] }, 'PUT');
+    await command('/api/members/member-20261004/roles', { revision: original.member.revision, bindings: [{ roleId: role.id, scope: { campusIds: ['campus-nanhu','campus-hunnan'] }, effectiveFrom: '2026-01-01', reason: '部门排班管理验证' }] }, 'PUT');
     await page.goto('/staff/');
     await page.locator('#login-id').fill('20261004'); await page.locator('#login-password').fill('StaffTest!2026');
     await page.getByRole('button', { name: '进入系统' }).click();
@@ -472,9 +470,9 @@ test('partial roster managers configure their campuses without seeing whole-task
   const login=await request.post('/api/auth/login',{headers:ip,data:{account:'root001',password:process.env.E2E_ROOT_PASSWORD}}).then(r=>r.json());
   const headers={...ip,Authorization:'Bearer '+login.token};
   async function command(path,data,method=data?'POST':'GET'){const response=await request.fetch(path,{headers,method,...(data?{data}:{})});const value=await response.json();expect(response.ok(),JSON.stringify(value)).toBe(true);return value;}
-  await command('/api/staff-whitelist/import',{csv:'studentId,expectedName\n20998722,部分范围排班负责人',expectedRole:'technician',authorizedCampuses:['南湖','浑南']});
+  await command('/api/members',{studentId:'20998722',name:'部分范围排班负责人',homeCampusId:'campus-nanhu',departmentId:'dept-hardware',positionCode:'member',authorizedCampuses:['南湖','浑南'],configureActivation:true});
   const application=await command('/api/activation',{studentId:'20998722',name:'部分范围排班负责人',homeCampus:'南湖',password:'ScheduleTest!2026'});await command('/api/activation-requests/review',{ids:[application.id],status:'approved',identityVerified:true});
-  const role=await command('/api/roles',{code:'partial_schedule_manager',name:'分校区排班管理',grants:[{permissionCode:'roster.repair.manage',scope:{campusIds:['campus-nanhu']}},{permissionCode:'roster.repair.configure',scope:{campusIds:['campus-nanhu','campus-hunnan']}}]});const member=await command('/api/members/member-20998722');await command('/api/members/member-20998722/roles',{revision:member.member.revision,bindings:[{roleId:role.id,scope:{campusIds:['campus-nanhu','campus-hunnan']},effectiveFrom:'2026-01-01'}]},'PUT');
+  const role=await command('/api/roles',{code:'partial_schedule_manager',name:'分校区排班管理',grants:[{permissionCode:'roster.repair.manage',scope:{campusIds:['campus-nanhu']}},{permissionCode:'roster.repair.configure',scope:{campusIds:['campus-nanhu','campus-hunnan']}}]});const member=await command('/api/members/member-20998722');await command('/api/members/member-20998722/roles',{revision:member.member.revision,bindings:[{roleId:role.id,scope:{campusIds:['campus-nanhu','campus-hunnan']},effectiveFrom:'2026-01-01',reason:'分校区排班管理'}]},'PUT');
   const task=await command('/api/roster-tasks',{workflowVersion:1,weekStart:'2027-07-05',campusIds:['campus-nanhu','campus-hunnan'],slotStart:'19:00',slotEnd:'21:00',deadline:'2027-07-04T10:00:00Z',memberIds:['member-20261002'],requestId:crypto.randomUUID()});
   await page.goto('/staff/');await page.locator('#login-id').fill('20998722');await page.locator('#login-password').fill('ScheduleTest!2026');await page.getByRole('button',{name:'进入系统'}).click();await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();await expandGroup(page,'值班管理');await page.locator('.field-sidebar').getByRole('button',{name:'维修排班管理',exact:true}).click();await page.getByLabel('收集任务',{exact:true}).selectOption(task.seriesId||task.id);await page.getByLabel('排班周与校区',{exact:true}).selectOption(task.id);
   await expect(page.getByRole('heading',{name:'收集任务设置',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'结束收集',exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'生成自动排班',exact:true})).toHaveCount(0);

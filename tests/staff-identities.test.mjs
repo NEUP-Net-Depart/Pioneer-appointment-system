@@ -21,7 +21,7 @@ test('identity exists without a scheduled duty while commands retain campus, dep
   assert.deepEqual(staffIdentities(signed,authorizer,{campusId:'campus-hunnan'}),[]);
 });
 test('qualifications, identities and field groups remain separate, deduplicated and stably ordered',()=>{
-  const identities=staffIdentities({...context,workProfiles:[{profileCode:'exchange'},{profileCode:'exchange'},{profileCode:'repair',effectiveTo:'2026-10-17'}]},authorizer);
+  const identities=staffIdentities({...context,grants:[...context.grants,{roleCode:'exchange',scope:{campuses:'bound'}},{roleCode:'exchange',scope:{campuses:'bound'}},{roleCode:'technician',scope:{campuses:'bound'},binding:{effectiveTo:'2026-10-17'}}]},authorizer);
   assert.deepEqual(identities.map(item=>item.code),['exchange','repair_lead']);
   const people=[{memberId:'office',name:'甲',identities:[{code:'office'}],state:'available',signedInAt:'now'},
     {memberId:'repair',name:'乙',identities:[{code:'repair'}],scheduledRepair:true,state:'unsigned'},
@@ -30,4 +30,10 @@ test('qualifications, identities and field groups remain separate, deduplicated 
   assert.equal(fieldPersonGroup(people[0]),'other');
   assert.equal(fieldPersonGroup(people[1]),'repair');
   assert.deepEqual(people.sort(compareFieldPeople).map(item=>item.memberId),['lead','exchange','repair','office']);
+});
+
+test('participation descriptions respect a requested campus list within a dual-campus account',()=>{
+  const scoped={...context,actor:{...context.actor,authorizedCampuses:['南湖','浑南']},grants:[{roleCode:'office',scope:{campusIds:['campus-hunnan']}}]};
+  assert.deepEqual(staffIdentities(scoped,authorizer,{campusIds:['campus-nanhu']}),[]);
+  assert.deepEqual(staffIdentities(scoped,authorizer,{campusIds:['campus-hunnan']}).map(item=>item.code),['office']);
 });
