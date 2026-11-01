@@ -20,7 +20,7 @@ async function fixture(page, { item, camera = 'denied', captcha = false, huawei 
     session.home.pendingRepair = item;
     await page.route('**/api/field/appointments/' + item.id, route => route.fulfill({ json: item }));
   }
-  await page.route('**/api/warranty/providers', route => route.fulfill({ json: { providers: ['asus','acer','lenovo','hp','dell','msi','apple','xiaomi','huawei','mechrevo'].map(id => ({ id, available: id === 'lenovo' || (captcha && id === 'acer') || (huawei && id === 'huawei'), mode: ['acer','huawei'].includes(id) ? 'captcha' : 'automatic', message: id === 'lenovo' ? '已接通联想中国官方服务接口' : '尚未接通自动查询接口' })) } }));
+  await page.route('**/api/warranty/providers', route => route.fulfill({ json: { providers: ['asus','acer','lenovo','hp','dell','msi','apple','xiaomi','huawei','mechrevo'].map(id => ({ id, available: id === 'lenovo' || (captcha && id === 'acer') || (huawei && id === 'huawei'), mode: ['acer','huawei'].includes(id) ? 'captcha' : 'automatic', message: id === 'lenovo' ? '已接通联想中国官方服务接口' : '尚未接通自动查询接口', ...(id === 'huawei' ? { captchaOrigin: process.env.WARRANTY_CAPTCHA_ORIGIN } : {}) })) } }));
   await page.route('**/api/warranty/query', route => route.fulfill({ json: { brand: 'lenovo', serial: route.request().postDataJSON().serial, outcome: 'found', status: 'in_warranty', checkedAt: '2026-10-26T08:00:00Z', source: { name: '联想中国官方服务', url: 'https://consumerservice.lenovo.com.cn/deviceGuarantee.html' }, note: '项目状态按原厂服务日期计算。', services: [{ name: '整机有限保修（测试模拟）', category: '基础服务', start: '2025-10-26', end: '2027-10-26', status: 'in_warranty' }] } }));
   await loginStaff(page);
 }
@@ -293,6 +293,47 @@ test('Huawei isolates its manual widget and ignores forged messages before query
   await expect(dialog.getByRole('region', { name: '原厂查询结果' })).toContainText('华为中国官方服务');
   expect(requests).toEqual([{ brand: 'huawei', serial: 'TEST12345678', captchaToken: 'mock-private-encrypted-session', captchaProof: 'mock-human-proof' }]);
   await expect(dialog.locator('iframe')).toHaveCount(0);
+});
+
+test('the real isolated verifier loads its SDK and bridge under both CSP policies', async ({ page, request }) => {
+  await fixture(page, { huawei: true });
+  const origin = process.env.WARRANTY_CAPTCHA_ORIGIN;
+  const violations = [];
+  page.on('console', message => { if (/Content Security Policy|frame-ancestors/i.test(message.text())) violations.push(message.text()); });
+  const response = await request.get(origin + '/index.html');
+  expect(response.headers()['content-security-policy']).toContain('frame-ancestors ' + new URL(page.url()).origin);
+  expect(response.headers()['x-frame-options']).toBeUndefined();
+  await page.route('https://contentcenter-drcn.dbankcdn.cn/**/captcha.js', route => route.fulfill({ contentType: 'application/javascript', body: `
+    window.initHuaweiCaptcha = (options, ready, success) => {
+      setTimeout(ready, 0);
+      return { popupShow() {
+        const button = document.createElement('button'); button.textContent = '模拟人工完成';
+        button.onclick = () => success({ resultCode: 0, validate: 'mock-human-proof' });
+        document.body.append(button);
+      }, destroy() {} };
+    };` }));
+  await page.route('**/api/warranty/challenge', route => route.fulfill({ json: { brand: 'huawei', serial: 'TEST12345678', token: 'mock-session', expiresAt: new Date(Date.now() + 180000).toISOString(), widget: { origin, type: 2, lang: 'zh-CN', challenge: 'mock-challenge', hcg: 'mock-hcg', hct: 'mock-hct', nonce: 'mock-nonce' } } }));
+  const dialog = await openLookup(page);
+  await dialog.getByLabel('设备品牌').selectOption('huawei');
+  await dialog.getByLabel('序列号 / S/N / Service Tag', { exact: true }).fill('TEST12345678');
+  await dialog.getByRole('button', { name: '获取原厂验证码', exact: true }).click();
+  const widget = page.frameLocator('iframe[title="华为原厂人工滑块验证"]');
+  await widget.getByRole('button', { name: '模拟人工完成' }).click();
+  await expect(dialog.getByRole('region', { name: '原厂查询结果' })).toBeVisible();
+  expect(violations).toEqual([]);
+});
+
+test('missing or mismatched runtime origins explicitly disable Huawei instead of creating a blocked iframe', async ({ page }) => {
+  await fixture(page);
+  for (const captchaOrigin of ['', 'https://wrong-verifier.example.org', new URL(page.url()).origin]) {
+    await page.route('**/api/warranty/providers', route => route.fulfill({ json: { providers: [{ id: 'huawei', available: true, mode: 'captcha', captchaOrigin, message: '模拟运行期配置' }] } }));
+    const dialog = await openLookup(page);
+    await dialog.getByLabel('设备品牌').selectOption('huawei');
+    await expect(dialog).toContainText('华为验证配置错误，请联系维护人员。');
+    await expect(dialog.getByRole('button', { name: '获取原厂验证码', exact: true })).toHaveCount(0);
+    await expect(dialog.locator('iframe')).toHaveCount(0);
+    await dialog.getByRole('button', { name: '关闭', exact: true }).click();
+  }
 });
 
 test('official navigation reserves its tab before an asynchronous copy and preserves unuploaded repair photos', async ({ page, context }) => {

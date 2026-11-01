@@ -15,7 +15,13 @@ import './warranty.css';
 
 type WarrantyStatus = 'unknown' | 'in_warranty' | 'expired';
 type Props = { initialBrand?: string; onUseStatus?: (status: WarrantyStatus) => void };
-type Provider = { id: string; available: boolean; mode?: 'automatic' | 'captcha'; message: string };
+type Provider = {
+  id: string;
+  available: boolean;
+  mode?: 'automatic' | 'captcha';
+  message: string;
+  captchaOrigin?: string;
+};
 type Widget = {
   origin: string;
   type: number;
@@ -106,7 +112,22 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
   useEffect(() => {
     const controller = new AbortController();
     api<{ providers: Provider[] }>('/api/warranty/providers', { signal: controller.signal })
-      .then((data) => setProviders(data.providers))
+      .then((data) =>
+        setProviders(
+          data.providers.map((item) =>
+            item.id === 'huawei' &&
+            (!__WARRANTY_CAPTCHA_ORIGIN__ ||
+              item.captchaOrigin !== __WARRANTY_CAPTCHA_ORIGIN__ ||
+              item.captchaOrigin === window.location.origin)
+              ? {
+                  ...item,
+                  available: false,
+                  message: '华为验证配置错误，请联系维护人员。'
+                }
+              : item
+          )
+        )
+      )
       .catch(() => {
         if (!controller.signal.aborted)
           setProviderError('无法读取自动查询服务状态，请关闭后重试。');
@@ -267,6 +288,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
           ))}
         </select>
         <Notice>{providerError}</Notice>
+        {provider?.id === 'huawei' && !provider.available && <Notice>{provider.message}</Notice>}
         {brand && channel && (
           <section className="warranty-official" aria-label="自动查询服务状态">
             <strong>
@@ -536,6 +558,7 @@ function HumanWarrantyWidget({
     frame.current?.scrollIntoView({ block: 'center' });
   }, [widget.nonce]);
   const isolated =
+    widget.origin === __WARRANTY_CAPTCHA_ORIGIN__ &&
     /^https?:\/\//.test(widget.origin) &&
     new URL(widget.origin).origin === widget.origin &&
     widget.origin !== window.location.origin;

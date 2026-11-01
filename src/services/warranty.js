@@ -61,6 +61,7 @@ export function warrantyService({ fetcher = fetch, clock = () => new Date(), tim
     providers() {
       return { providers: WARRANTY_BRANDS.map(brand => ({ id: brand.id, available: brand.id === 'lenovo' || (['acer', 'huawei'].includes(brand.id) && !!encryptionKey && (brand.id === 'acer' || !!bridgeOrigin)),
         mode: ['acer', 'huawei'].includes(brand.id) ? 'captcha' : 'automatic',
+        ...(brand.id === 'huawei' ? { captchaOrigin: bridgeOrigin } : {}),
         message: brand.id === 'huawei' && encryptionKey && bridgeOrigin ? '已接入原厂人工验证组件；请完成图片或滑块验证，保修明细仍需实机验证。' : brand.id === 'acer' && encryptionKey ? '已接入原厂图片验证码流程，请人工填写后查询；保修明细仍需实机验证。' : brand.id === 'lenovo' ? '已接通联想中国官方服务接口，可直接返回保修明细。' : reasons[brand.id] })) };
     },
     async challenge(input, actor) {

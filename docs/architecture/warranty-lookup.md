@@ -35,7 +35,7 @@ Acer 保留 ASP.NET Cookie、VIEWSTATE 与 EVENTVALIDATION，显示同一会话�
 
 华为官方元件需要 Cookie，使用跨来源 iframe（allow-scripts、allow-same-origin），让元件运行在独立站点。预约页面校验消息 origin、iframe Window、随机 nonce，拒绝其他窗口或旧会话的 proof。iframe 不接收序号、后台令牌或加密的原厂会话。
 
-独立站点位于 warranty-verifier/；部署及配置见该目录 README。构建／后端都需 WARRANTY_CAPTCHA_ORIGIN。预约系统与验证站点不能同源。本地 preview:field 自动启动独立端口并配置对应 CSP。未进行远程部署或权限调整。
+独立站点位于 warranty-verifier/；部署及配置见该目录 README。现有发布流程自动部署同一个独立 Pages 项目的 Production／分支 Preview，生成 CSP，并为构建与 Functions 运行期设置相同的 WARRANTY_CAPTCHA_ORIGIN。预约系统与验证站点不能同源；配置缺失或不一致时明确停用。本地 preview:field 自动启动独立端口并配置对应 CSP。
 
 ## 原厂来源与解释
 
@@ -49,7 +49,7 @@ Acer 保留 ASP.NET Cookie、VIEWSTATE 与 EVENTVALIDATION，显示同一会话�
 
 ## 验证边界
 
-单元测试覆盖 Cookie 与会话保留、篡改／过期／跨账号／跨序号拒绝、华为验证类型不可降级、结果白名单与未知状态、OCR 候选解析。真正 Worker 测试覆盖 fetch 选项、Acer Cookie 和人工答案。浏览器测试使用明确标注的模拟验证码／proof 验证交互与消息隔离，同时使用真正本地 OCR 引擎识别合成的设备标签，并验证新标签页打开官网、人工复制及维修草稿照片保留。模拟 proof 不等于实际原厂验证通过。
+单元测试覆盖 Cookie 与会话保留、篡改／过期／跨账号／跨序号拒绝、华为验证类型不可降级、结果白名单与未知状态、OCR 候选解析，以及各环境发布配置与 CSP。真正 Worker 测试覆盖 fetch 选项、Acer Cookie 和人工答案。浏览器测试使用明确标注的模拟验证码／proof 验证交互与消息隔离，并在真实验证页的 CSP 下加载模拟 SDK；同时使用真正本地 OCR 引擎识别合成的设备标签，验证新标签页打开官网、人工复制及维修草稿照片保留。模拟 proof 不等于实际原厂验证通过。
 
 Android 真机的相机权限、反光标签、OCR 精度及原厂人工验证的完整正向查询仍需现场测试。照片拍摄需要 HTTPS 或可信本地来源。
 

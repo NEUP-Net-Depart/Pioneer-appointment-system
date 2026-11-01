@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { verifierHeaders } from './warranty-deploy.mjs';
 
 export async function startWarrantyVerifier() {
   const root = fileURLToPath(new URL('../warranty-verifier/', import.meta.url));
@@ -12,7 +13,7 @@ export async function startWarrantyVerifier() {
     const file = paths[request.url];
     if (request.method !== 'GET' || !file) { response.writeHead(404).end(); return; }
     try {
-      response.writeHead(200, { 'Content-Type': file[1], 'Cache-Control': 'no-store', 'Content-Security-Policy': csp + `; frame-ancestors ${parentOrigin || "'none'"}`, 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff' });
+      response.writeHead(200, { 'Content-Type': file[1], 'Cache-Control': 'no-store', 'Content-Security-Policy': verifierHeaders(csp, parentOrigin ? [parentOrigin] : []), 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff' });
       response.end(await readFile(root + file[0]));
     } catch { response.end(); }
   });
