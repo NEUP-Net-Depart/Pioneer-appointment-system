@@ -3,6 +3,7 @@ import { queueTicketLabel } from '../../../shared/reception.js';
 import { Status } from './ui';
 import { AppointmentLookup } from './AppointmentLookup';
 import { StaffIdentity } from '../StaffIdentity';
+import { WarrantyLookupButton } from './WarrantyLookup';
 import type { useFieldWorkspace } from './useFieldWorkspace';
 type Props = Pick<
   ReturnType<typeof useFieldWorkspace> & Parameters<typeof useFieldWorkspace>[0],
@@ -75,7 +76,7 @@ export function RepairScene({
                   : data.reason || ''}
           </p>
         </div>
-        <div className="field-hero-action">
+        <div className="field-hero-action warranty-actions">
           {data.currentRepair ? (
             <button className="field-primary" onClick={() => setSelected(data.currentRepair!.id)}>
               继续维修
@@ -106,6 +107,9 @@ export function RepairScene({
           ) : (
             <button onClick={refresh}>刷新工作状态</button>
           )}
+          <WarrantyLookupButton
+            initialBrand={data.currentRepair?.brand || data.pendingRepair?.brand}
+          />
         </div>
       </section>
       <div className="field-work-grid">

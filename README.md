@@ -55,6 +55,7 @@ npm run dev
 - [数据模型](docs/data-model.md)：持久化约束、迁移与兼容。
 - [部署与运维](docs/operations.md)：环境、Secrets、发布、维护与备份。
 - [模块与工程约定](docs/architecture/module-map.md)：模块边界、事务和前端协作。
+- [设备序列号与保修查询](docs/architecture/warranty-lookup.md)：联想自动查询、Acer／华为人工验证、手机 OCR 与各品牌消费者自查渠道（issue #47）。
 - [身份与组织映射](docs/architecture/identity-mapping.md)、[授权与字段范围](docs/architecture/authorization.md)、[签到策略](docs/architecture/attendance-policies.md)。
 
 API 以 [路由](src/routes/)、[平台契约](docs/contracts/staff-platform.json) 和 [模块清单](src/modules/registry.js) 为准；迁移和模块指纹由 [基线清单](docs/contracts/baseline-manifest.json) 校验。
