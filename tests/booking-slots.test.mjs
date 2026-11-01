@@ -23,7 +23,7 @@ test('availability distinguishes open, paused, full, overbooked and expired slot
   const date = '2026-10-12', slot = '19:30–20:00', now = new Date(`${date}T12:00:00+08:00`);
   const summary = (capacity, occupied) => ({ slotCapacities: { [slot]: capacity }, slots: { [slot]: occupied } });
   assert.deepEqual(slotAvailability(summary(10, 3), date, slot, now), { capacity: 10, remaining: 7, ended: false, disabled: false, label: '剩余 7 名' });
-  assert.equal(slotAvailability(summary(0, 0), date, slot, now).label, '暂停预约');
+  assert.equal(slotAvailability(summary(0, 0), date, slot, now).label, '未开放名额');
   assert.equal(slotAvailability(summary(3, 3), date, slot, now).label, '预约已满');
   assert.equal(slotAvailability(summary(3, 5), date, slot, now).remaining, 0);
   assert.equal(slotAvailability(summary(10, 0), date, slot, new Date(`${date}T20:00:00+08:00`)).disabled, true);

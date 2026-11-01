@@ -13,6 +13,7 @@
   <p>实时调整当前预览，保留已填内容和有效选择。名额均为模拟数据，预约提交已禁用。</p>
   <div class="panel controls">
     <label>模拟今天<select id="days"><option value="4" selected>周一 · 可选周一至周四</option><option value="3">周二 · 可选周二至周四</option><option value="2">周三 · 可选周三、周四</option><option value="1">周四 · 仅可选周四</option><option value="friday">周五 · 仅可选下周一</option><option value="saturday">周六 · 可选下周一、周二</option><option value="sunday">周日 · 可选下周一至周三</option></select></label>
+    <label>状态场景<select id="preset"><option value="mixed" selected>可约／约满／零容量对照</option><option value="normal">正常可约</option><option value="full">全部约满</option><option value="zero">全部未开放名额</option><option value="paused">当日暂停维修</option></select></label>
     <label>时段数量<select id="slots"><option value="4" selected>4 个 · 到场窗口</option></select></label>
     <button id="choose" type="button" disabled>展开第一个日期</button><span id="update-status" role="status">正在读取预览…</span>
   </div>
@@ -23,20 +24,30 @@
   </div>
   <div class="panel">
     <div class="controls"><label>配置校区<select id="capacity-campus"><option>南湖</option><option>浑南</option></select></label><label>作用日期<select id="capacity-date"><option value="*">所有可选日期</option></select></label><button id="reset-capacity" type="button">恢复此范围默认名额</button></div>
-    <table><caption>总名额为 0 表示暂停预约；剩余人数为 0 表示已满。具体日期配置优先于“所有可选日期”。</caption><thead><tr><th>时段</th><th>总名额</th><th>剩余人数</th></tr></thead><tbody id="capacity-rows"></tbody></table>
+    <table><caption>总名额为 0 表示未开放名额；容量大于 0 且剩余人数为 0 表示已约满。具体日期配置优先于“所有可选日期”。</caption><thead><tr><th>时段</th><th>总名额</th><th>剩余人数</th></tr></thead><tbody id="capacity-rows"></tbody></table>
   </div>
   <div id="metrics" role="status"></div><div class="stage"><iframe id="preview" title="预约页面设备预览"></iframe></div>
 </main>
 <script type="module">
 import { bookingDates } from '/scenario/4/4/shared/booking-slots.js';
 const $=selector=>document.querySelector(selector);
-const frame=$('#preview'),days=$('#days'),slots=$('#slots'),device=$('#device'),width=$('#width'),height=$('#height'),metrics=$('#metrics'),campus=$('#capacity-campus'),date=$('#capacity-date'),rows=$('#capacity-rows');
+const frame=$('#preview'),days=$('#days'),slots=$('#slots'),preset=$('#preset'),device=$('#device'),width=$('#width'),height=$('#height'),metrics=$('#metrics'),campus=$('#capacity-campus'),date=$('#capacity-date'),rows=$('#capacity-rows');
+const requestedPreset=new URLSearchParams(location.search).get('preset');
+if([...preset.options].some(option=>option.value===requestedPreset))preset.value=requestedPreset;
 const scenarioInstant=value=>'2026-10-'+({friday:16,saturday:17,sunday:18}[value]||16-Number(value))+'T12:00:00+08:00';
-const config={days:4,instant:scenarioInstant('4'),slotCount:4,overrides:{}};
+const config={days:4,instant:scenarioInstant('4'),slotCount:4,overrides:{},pausedAll:false};
 let observer,ready=false,revision=0;
 const timeSlots=()=>['19:00–19:30','19:30–20:00','20:00–20:30','20:30–21:00'];
 const key=(day,slot)=>JSON.stringify([campus.value,day,slot]);
 function counts(slot,index){return config.overrides[key(date.value,slot)]||config.overrides[key('*',slot)]||{capacity:10,remaining:10-index-(campus.value==='浑南'?3:1)};}
+function applyPreset(){
+  config.overrides={};config.pausedAll=preset.value==='paused';
+  const values=preset.value==='mixed' ? [{capacity:5,remaining:3},{capacity:5,remaining:0},{capacity:0,remaining:0},{capacity:5,remaining:2}] :
+    preset.value==='full' ? timeSlots().map(()=>({capacity:5,remaining:0})) :
+    preset.value==='zero' ? timeSlots().map(()=>({capacity:0,remaining:0})) : [];
+  for(const name of ['南湖','浑南'])timeSlots().forEach((slot,index)=>{if(values[index])config.overrides[JSON.stringify([name,'*',slot])]=values[index];});
+  renderCounts();void update();
+}
 function measure(){const picker=frame.contentDocument?.querySelector('#booking-picker');if(!picker)return;const rect=picker.getBoundingClientRect();metrics.textContent='容器高度 '+Math.round(rect.height)+' px / 屏幕高度 '+frame.height+' px · 容器顶部 '+Math.round(rect.top)+' px · '+(rect.top>=-1&&rect.bottom<=Number(frame.height)?'整个容器在一屏内':'可手动滚动查看');}
 function resize(){const w=Math.min(2560,Math.max(280,Number(width.value)||390)),h=Math.min(1600,Math.max(360,Number(height.value)||844));frame.width=w;frame.height=h;$('#ratio').textContent='宽高比 '+(w/h).toFixed(2);requestAnimationFrame(measure);}
 async function update(){if(!ready)return;const current=++revision;$('#update-status').textContent='正在应用配置…';await frame.contentWindow.__bookingPreviewApply(structuredClone(config));if(current===revision){$('#update-status').textContent='配置已实时应用';measure();}}
@@ -45,10 +56,11 @@ function renderCounts(){rows.replaceChildren();timeSlots().forEach((slot,index)=
 device.addEventListener('change',()=>{if(device.value==='custom')return;[width.value,height.value]=device.value.split(',');resize();});
 for(const control of [width,height])control.addEventListener('input',()=>{device.value='custom';resize();});
 days.addEventListener('change',()=>{config.instant=scenarioInstant(days.value);config.days=bookingDates(new Date(config.instant)).length;renderDates();renderCounts();void update();});
+preset.addEventListener('change',applyPreset);
 slots.addEventListener('change',()=>{config.slotCount=Number(slots.value);renderCounts();void update();});
 for(const control of [campus,date])control.addEventListener('change',renderCounts);
 $('#reset-capacity').addEventListener('click',()=>{for(const slot of timeSlots())delete config.overrides[key(date.value,slot)];renderCounts();void update();});
 $('#choose').addEventListener('click',()=>frame.contentDocument?.querySelector('#booking-days button:not(:disabled)')?.click());
 frame.addEventListener('load',async()=>{await frame.contentWindow.__bookingPreviewReady;ready=true;$('#choose').disabled=false;observer=new MutationObserver(measure);observer.observe(frame.contentDocument.querySelector('#booking-picker'),{subtree:true,childList:true,attributes:true,characterData:true});frame.contentWindow.addEventListener('scroll',measure);frame.contentWindow.addEventListener('resize',measure);await update();});
-renderDates();renderCounts();resize();frame.src='/scenario/4/4/';
+renderDates();applyPreset();resize();frame.src='/scenario/4/4/';
 </script></body></html>

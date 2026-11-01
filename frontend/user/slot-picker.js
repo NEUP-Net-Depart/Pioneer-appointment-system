@@ -58,6 +58,18 @@ export function initSlotPicker({onChange = () => {}} = {}) {
   for (const slot of TIME_SLOTS) slots.append(button(slot,'slot',slot));
   const availability=(date,slot) => summaries.get(date) && slotAvailability(summaries.get(date),date,slot,now());
   const selectable=date => !failed.has(date) && TIME_SLOTS.some(slot => availability(date,slot) && !availability(date,slot).disabled);
+  function dateStatus(date) {
+    const summary=summaries.get(date);
+    if(failed.has(date))return {kind:'error',label:'读取失败'};
+    if(!summary)return {kind:'loading',label:'读取中'};
+    if(summary.paused)return {kind:'paused',label:'暂停维修'};
+    if(!summary.location)return {kind:'missing',label:'地点未配置'};
+    const active=TIME_SLOTS.map(slot=>availability(date,slot)).filter(state=>state && !state.ended);
+    if(!active.length)return {kind:'ended',label:'时段已结束'};
+    if(active.every(state=>state.capacity===0))return {kind:'unopened',label:'未开放名额'};
+    const remaining=active.reduce((sum,state)=>sum+state.remaining,0);
+    return remaining ? {kind:'open',remaining} : {kind:'full',label:'预约已满'};
+  }
   function render() {
     const dates=datesNow();
     announcements.render(settings()?.notices || [],campusInput.value);
@@ -75,11 +87,11 @@ export function initSlotPicker({onChange = () => {}} = {}) {
     }
     days.dataset.count=String(dates.length);
     days.style.setProperty('--booking-day-count',String(Math.max(1,dates.length)));
-    const paused=!!summaries.get(dateInput.value)?.paused;
-    const calendar=$('#booking-calendar'),slotPanel=$('#booking-slot-panel'),location=$('#booking-location'),pausePanel=$('#booking-paused');
-    const showSlots=!!dateInput.value && !paused;
-    if(calendar.hidden===Boolean(campusInput.value) || slotPanel.hidden===showSlots || pausePanel.hidden===paused){
-      animateLayout($('#booking-picker'),()=>{calendar.hidden=!campusInput.value;slotPanel.hidden=!showSlots;pausePanel.hidden=!paused;location.hidden=!dateInput.value || paused;},{resize:true});
+    const selected=summaries.get(dateInput.value),paused=!!selected?.paused;
+    const calendar=$('#booking-calendar'),slotPanel=$('#booking-slot-panel'),location=$('#booking-location');
+    const showSlots=!!dateInput.value && !!selected;
+    if(calendar.hidden===Boolean(campusInput.value) || slotPanel.hidden===showSlots){
+      animateLayout($('#booking-picker'),()=>{calendar.hidden=!campusInput.value;slotPanel.hidden=!showSlots;location.hidden=!dateInput.value || paused;},{resize:true});
       if(showSlots)for(const [index,item] of [...slots.children].entries())reveal(item,{delay:index*30,distance:6});
     }
     $('#booking-picker').setAttribute('aria-busy',String(loading));
@@ -89,34 +101,34 @@ export function initSlotPicker({onChange = () => {}} = {}) {
       selectionIssue=notice=`${availability(dateInput.value,slotInput.value).label}，请重新选择时段。`;slotInput.value='';onChange();
     }
     for (const item of days.children) {
-      const date=item.dataset.date,summary=summaries.get(date);
-      const unavailable=!selectable(date);
-      item.disabled=loading || unavailable&&!summary?.paused;item.dataset.loading=String(loading && (!summary || !unavailable));item.setAttribute('aria-pressed',String(date===dateInput.value));
-      item.dataset.paused=String(!!summary?.paused);
-      const count=TIME_SLOTS.reduce((sum,slot)=>sum+(availability(date,slot)?.disabled ? 0 : availability(date,slot)?.remaining || 0),0);
-      showRemaining(item,summary ? count : undefined,failed.has(date) ? '读取失败' : !summary ? '' : summary.paused ? '暂停维修' : !summary.location ? '地点未配置' : count ? '' : '暂无名额');
+      const date=item.dataset.date,status=dateStatus(date);
+      item.disabled=status.kind==='error' || status.kind==='loading';
+      item.dataset.state=status.kind;item.dataset.loading=String(status.kind==='loading');
+      item.setAttribute('aria-pressed',String(date===dateInput.value));
+      showRemaining(item,status.remaining,status.label);
     }
     for (const item of slots.children) {
       const state=availability(dateInput.value,item.dataset.slot);
-      item.disabled=loading || failed.has(dateInput.value) || !state || state.disabled;
-      item.dataset.loading=String(loading && (!state || !state.disabled));
+      item.disabled=failed.has(dateInput.value) || !state || state.disabled;
+      item.dataset.loading=String(!state && loading);
+      item.dataset.state=!state ? 'loading' : paused ? 'paused' : !selected.location ? 'missing' : state.ended ? 'ended' : state.capacity===0 ? 'unopened' : state.remaining===0 ? 'full' : 'open';
       item.setAttribute('aria-pressed',String(item.dataset.slot===slotInput.value));
       showRemaining(item,state?.remaining,failed.has(dateInput.value) ? '暂时无法更新' : state?.disabled ? state.label : '');
     }
-    $('#booking-slot-panel').hidden=!dateInput.value || paused;
-    pausePanel.hidden=!paused;
+    slotPanel.hidden=!showSlots;
+    const context=$('#booking-slot-context');
+    const announcement=settings()?.notices?.find(item=>item.type==='suspension' && item.businessDate===dateInput.value);
+    $('#booking-slot-title').textContent=paused ? `公告 · ${announcement?.title || '当日暂停维修'}` : '选择到场时段';
+    context.textContent=paused ? announcement?.content || selected.pauseReason || '该校区当日暂停维修。' : '';
+    context.hidden=!paused;
+    $('#booking-slot-placeholder-text').textContent=loadFailed || failed.size ? '暂时无法读取到场时段，请重试。' : dates.length ? '选择日期后查看各时段状态' : '当前预约范围内暂无开放日期';
+    $('.booking-time-panel').dataset.state=dateStatus(dateInput.value).kind;
     const nextButton=$('#step-one-next');
-    if(paused)nextButton.disabled=true;else if(nextButton.dataset.paused==='true')nextButton.disabled=false;
-    nextButton.dataset.paused=String(paused);
-    nextButton.textContent=paused ? '当日暂停，请选择其他日期' : '下一步 · 填写设备信息';
-    if(paused){
-      $('#booking-paused-date').textContent=`${campusInput.value}校区 · ${dateInput.value}（${weekday.format(new Date(dateInput.value+'T12:00:00+08:00'))}）`;
-      const announcement=settings()?.notices?.find(item=>item.type==='suspension' && item.businessDate===dateInput.value);
-      $('#booking-paused-reason').textContent=announcement?.content || summaries.get(dateInput.value)?.pauseReason || '该校区当日暂停维修，请选择其他日期。';
-    }
-    const noDates=!loading && !loadFailed && !failed.size && !dates.some(selectable);
+    nextButton.disabled=!!dateInput.value && !selectable(dateInput.value);
+    nextButton.textContent=nextButton.disabled ? '请选择其他日期' : '下一步 · 填写设备信息';
+    const noDates=!loading && !loadFailed && !failed.size && !dates.length;
     $('#booking-empty').hidden=!noDates;
-    $('#booking-retry').hidden=!campusInput.value || loading || (!loadFailed && !failed.size && !noDates);
+    $('#booking-retry').hidden=!campusInput.value || loading || (!loadFailed && !failed.size);
     const feedback=$('#booking-selection');
     feedback.textContent=notice || (loadFailed || failed.size ? '暂时无法更新名额，请重试。' : loading && !summaries.size && !dateInput.value ? '正在读取可预约日期…' : '');
     feedback.parentElement.hidden=!feedback.textContent && $('#booking-retry').hidden;
@@ -134,9 +146,9 @@ export function initSlotPicker({onChange = () => {}} = {}) {
     if(result.bookingSettings)settingsByCampus.set(campus,result.bookingSettings);
     const dates=datesNow();
     summaries=new Map(result.items.map(summary=>[summary.date,summary]));campusSummaries.set(campus,summaries);
-    if (!dateInput.value || (!summaries.get(dateInput.value)?.paused && !failed.has(dateInput.value) && !selectable(dateInput.value))) {
-      if(dateInput.value){const summary=summaries.get(dateInput.value);selectionIssue=notice=(summary && !summary.location ? '原日期的维修地点未配置' : '原日期当前没有可预约时段')+'，请重新选择日期和到场时段。';}
-      dateInput.value=dates.find(selectable) || '';slotInput.value='';
+    if (!dateInput.value || !dates.includes(dateInput.value)) {
+      if(dateInput.value)selectionIssue=notice='原日期已不在预约范围内，请重新选择。';
+      dateInput.value=dates.find(selectable) || dates[0] || '';slotInput.value='';
     }
     render();onChange();return !failed.size;
   }
@@ -154,10 +166,6 @@ export function initSlotPicker({onChange = () => {}} = {}) {
     slotInput.value=item.dataset.slot;selectionIssue=notice='';render();onChange();
   });
   $('#booking-retry').addEventListener('click',()=>void refresh());
-  $('#booking-change-date').addEventListener('click',()=>{
-    dateInput.value=datesNow().find(day=>day!==dateInput.value && selectable(day)) || '';slotInput.value='';selectionIssue=notice='';render();onChange();
-    (days.querySelector('[aria-pressed=true]') || campuses.querySelector('[aria-pressed=true]'))?.focus();
-  });
   const stop=startVisiblePolling(()=>active && !loading ? refresh() : undefined);
   render();
   return {
