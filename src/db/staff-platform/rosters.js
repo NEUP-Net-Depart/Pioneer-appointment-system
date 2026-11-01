@@ -63,7 +63,7 @@ export function rostersDomain({ db, collection, auditStatement, commandAuthoriza
           .bind(...ids, weekStart, weekStart),
         db
           .prepare(
-            `SELECT mr.member_id,mr.effective_from AS binding_from,mr.effective_to AS binding_to,mr.scope_bindings,mr.participation_spec,mr.source,r.code AS role_code,rg.*
+            `SELECT mr.member_id,mr.effective_from AS binding_from,mr.effective_to AS binding_to,mr.scope_bindings,mr.source,r.code AS role_code,rg.*
           FROM effective_member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1 JOIN role_grants rg ON rg.role_id=r.id
           WHERE mr.member_id IN (${placeholders}) AND mr.effective_from<=date(?,'+6 day') AND (mr.effective_to IS NULL OR mr.effective_to>?)`
           )
@@ -102,8 +102,6 @@ export function rostersDomain({ db, collection, auditStatement, commandAuthoriza
           scope: intersectScopes(parseJson(row.scope_spec, {}), parseJson(row.scope_bindings, {})),
           conditions: parseJson(row.condition_spec, []),
           validity: parseJson(row.validity_spec, {}),
-          participation:
-            row.participation_spec === null ? undefined : parseJson(row.participation_spec, []),
           source: row.source,
           binding: { effectiveFrom: row.binding_from, effectiveTo: row.binding_to }
         });

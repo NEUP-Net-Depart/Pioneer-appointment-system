@@ -73,7 +73,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
   async function grants(memberId, businessDate = dateKey()) {
     const result = await db
       .prepare(
-        `SELECT rg.*,mr.scope_bindings,mr.effective_from,mr.effective_to,mr.participation_spec,mr.source,r.code AS role_code
+        `SELECT rg.*,mr.scope_bindings,mr.effective_from,mr.effective_to,mr.source,r.code AS role_code
       FROM effective_member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1
       JOIN role_grants rg ON rg.role_id=r.id
       WHERE mr.member_id=? AND mr.effective_from<=? AND (mr.effective_to IS NULL OR ?<mr.effective_to)
@@ -90,8 +90,6 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
       conditions: parseJson(row.condition_spec, []),
       validity: parseJson(row.validity_spec, {}),
       source: row.source,
-      participation:
-        row.participation_spec === null ? undefined : parseJson(row.participation_spec, []),
       binding: { effectiveFrom: row.effective_from, effectiveTo: row.effective_to }
     }));
   }
@@ -369,14 +367,14 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
         : []),
       db
         .prepare(
-          `INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,effective_from,effective_to,created_at,position_code,needs_review) SELECT ?,?,?,?,?,?,?,?,?,0 WHERE changes()>0`
+          `INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,effective_from,effective_to,created_at,position_code) SELECT ?,?,?,?,?,?,?,?,? WHERE changes()>0`
         )
         .bind(
           id,
           memberId,
           input.departmentId,
           input.assignmentType || 'primary',
-          input.isPrimary ? 1 : 0,
+          (input.assignmentType || 'primary') === 'primary' ? 1 : 0,
           input.effectiveFrom,
           input.effectiveTo || null,
           createdAt,

@@ -7,9 +7,9 @@ export async function verifyStaffSchema(db) {
     staff_accounts: 'member_id,auth_version,token_version',
     appointments: 'registration_flow,access_token_hash,front_photo_id,back_photo_id,booking_notices',
     members: 'id,status,college,major',
-    member_department_memberships: 'member_id,position_code,needs_review',
-    effective_member_roles: 'member_id,role_id,participation_spec',
-    member_roles: 'member_id,role_id,scope_bindings',
+    member_department_memberships: 'member_id,position_code',
+    effective_member_roles: 'member_id,role_id,source',
+    member_roles: 'member_id,role_id,scope_bindings,reason',
     role_grants: 'permission_code,scope_spec,condition_spec',
     repair_intake_records: 'appointment_id,verification_json',
     repair_receptions: 'appointment_id,state,assigned_member_id,received_at,ticket_id,left_at',
@@ -40,6 +40,8 @@ export async function verifyStaffSchema(db) {
     throw new Error('Staff member login uniqueness targets the wrong column');
   const retired = await db.prepare("SELECT name FROM sqlite_schema WHERE name IN ('legacy_admin_logins','legacy_admin_login_changed','member_work_profiles') UNION ALL SELECT code AS name FROM roles WHERE code='legacy_admin'").all();
   if (retired.results.length) throw new Error('Retired administrator authorization is still present');
+  const transitional = await db.prepare("SELECT name FROM pragma_table_info('member_roles') WHERE name IN ('needs_review','participation_spec','source') UNION ALL SELECT name FROM pragma_table_info('member_department_memberships') WHERE name='needs_review'").all();
+  if (transitional.results.length) throw new Error('Organization authorization cutover is incomplete');
   const marker = await db.prepare('SELECT id FROM staff_release_markers WHERE id=?').bind(STAFF_RELEASE).first();
   if (!marker) throw new Error('Staff cutover migration is incomplete');
   return STAFF_RELEASE;

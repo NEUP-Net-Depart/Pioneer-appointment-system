@@ -283,13 +283,7 @@ export function rolesDomain({
           scope: delegated.scope,
           effectiveFrom: delegated.effectiveFrom,
           effectiveTo: delegated.effectiveTo || null,
-          reason,
-          ...(before &&
-          before.roleId === binding.roleId &&
-          before.effectiveFrom === binding.effectiveFrom &&
-          (!binding.effectiveTo || !before.effectiveTo || binding.effectiveTo <= before.effectiveTo)
-            ? { participation: before.participation }
-            : {})
+          reason
         };
       })
     ];

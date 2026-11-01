@@ -242,9 +242,8 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
           (old) =>
             old.department_id === post.departmentId &&
             old.position_code === post.positionCode &&
-            !old.needs_review &&
             old.effective_from <= item.effectiveFrom &&
-            !old.effective_to
+            (!old.effective_to || item.effectiveFrom < old.effective_to)
         );
         if (exact) continue;
         if (matches.some((old) => !old.effective_to || item.effectiveFrom < old.effective_to)) {
@@ -374,7 +373,6 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
             positionCode: post.position_code,
             assignmentType: post.assignment_type,
             isPrimary: !!post.is_primary,
-            needsReview: !!post.needs_review,
             effectiveFrom: post.effective_from,
             effectiveTo: post.effective_to
           })),
@@ -391,11 +389,7 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
             roleId: binding.role_id,
             scope: JSON.parse(binding.scope_bindings),
             effectiveFrom: binding.effective_from,
-            effectiveTo: binding.effective_to,
-            participation:
-              binding.participation_spec === null
-                ? undefined
-                : JSON.parse(binding.participation_spec)
+            effectiveTo: binding.effective_to
           })),
         ...memberships.flatMap((post) =>
           organizationRoles(post, byDepartment.get(post.departmentId)).map((code) => ({
@@ -412,7 +406,6 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
           ...grant,
           roleCode: role.code,
           binding,
-          participation: binding.participation,
           scope: intersectScopes(grant.scope, binding.scope)
         }));
       });

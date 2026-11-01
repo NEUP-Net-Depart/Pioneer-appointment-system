@@ -175,7 +175,7 @@
     },
     {
       "name": "0042_organization_permissions.sql",
-      "sha256": "828ead44838de4b84441c0890f6b06841c8a944fa13f2186537e715229ef9b53"
+      "sha256": "1970c050b30b7dc3243da18128afab48dcc4cea2833dd5c2cf583417a6f4fe6a"
     }
   ],
   "modules": [
@@ -430,7 +430,7 @@
     },
     {
       "name": "0042_organization_permissions.sql",
-      "sha256": "828ead44838de4b84441c0890f6b06841c8a944fa13f2186537e715229ef9b53"
+      "sha256": "1970c050b30b7dc3243da18128afab48dcc4cea2833dd5c2cf583417a6f4fe6a"
     }
   ]
 }

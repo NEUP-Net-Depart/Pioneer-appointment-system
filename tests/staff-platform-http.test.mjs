@@ -241,7 +241,7 @@ test('member, membership and authorization commands roll back on audit failure a
   const initial=await snapshot();
   const writes=[
     ()=>repo.updateMember(memberId,{name:'不能留下',status:'inactive'},initial.member.revision,record),
-    ()=>repo.addMembership(memberId,{departmentId:'dept-office',effectiveFrom:'2026-01-01'},initial.member.revision,record),
+    ()=>repo.addMembership(memberId,{departmentId:'dept-hardware',assignmentType:'exchange',effectiveFrom:'2026-01-01'},initial.member.revision,record),
     ()=>repo.endMembership(memberId,membership.id,'2026-10-17',membership.revision,record),
     ()=>repo.createRole({code:'audit-rejected-role',name:'不能留下',level:1},record),
     ()=>repo.updateRole(role.id,{name:'不能留下',grants:[]},role.revision,record),
@@ -615,8 +615,8 @@ test('member reads, searches and writes share complete grants without mixing cam
   }
   assert.equal((await request(`/api/members/${nanhuHardware}`, { headers, method: 'PATCH', body: JSON.stringify({ homeCampusId: 'campus-hunnan', revision: 0 }) })).response.status, 403);
   assert.equal((await request(`/api/members/${nanhuHardware}/memberships`, { headers, method: 'POST', body: JSON.stringify({ departmentId: 'dept-office', effectiveFrom: today, revision: 0 }) })).response.status, 403);
-  await db.prepare(`INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,effective_from,created_at)
-    VALUES('cross-office-membership',?,'dept-office','secondary',0,?,?)`).bind(nanhuHardware, today, today).run();
+  await db.prepare(`INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,effective_from,effective_to,created_at)
+    VALUES('cross-office-membership',?,'dept-office','primary',1,'2025-01-01','2025-02-01','2025-01-01')`).bind(nanhuHardware).run();
   assert.equal((await request(`/api/members/${nanhuHardware}/memberships/cross-office-membership`, { headers, method: 'PATCH', body: JSON.stringify({ effectiveTo: addDays(today, 1), revision: 0 }) })).response.status, 403);
 
   // The database rejects aliases without creating an orphan person.

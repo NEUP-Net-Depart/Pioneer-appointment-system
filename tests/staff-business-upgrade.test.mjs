@@ -1,3 +1,4 @@
+import { stageFixture } from './fixtures/staff-cutover.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile,readdir} from 'node:fs/promises';
@@ -80,15 +81,18 @@ for(const directory of ['migrations','database/staff-migrations']) {
           {scope_bindings:JSON.stringify({campusIds:scope}),effective_from:today,effective_to:null});
         assert.ok(db.prepare("SELECT id FROM member_work_profiles WHERE member_id=? AND profile_code='repair' AND effective_from=?").get(`member-${account}`,today));
       }
-      for(const file of (await readdir(directory)).filter(name=>name.endsWith('.sql') && name>'0033_staff_business_roles.sql').sort())db.exec(await readFile(directory+'/'+file,'utf8'));
+      for(const file of (await readdir(directory)).filter(name=>name.endsWith('.sql') && name>'0033_staff_business_roles.sql').sort()){
+        if(file==='0042_organization_permissions.sql')await stageFixture(db,{'member-20268804':{decision:'migrate',authorizations:[{roleCode:'technician',scope:{campusIds:['campus-nanhu'],departmentIds:['dept-hardware']},effectiveFrom:'2026-01-01',effectiveTo:'2098-01-01',reason:'虚构成员：确认原限定工作授权'}]}},directory);
+        db.exec(await readFile(directory+'/'+file,'utf8'));
+      }
       const repository=staffPlatformRepository(adapter(db)),platform=composeStaffPlatform({repository});
       const staff=staffPlatformService({repository,platform,manifests:platform.manifests});
       for(const account of ['20268801','20268804','20268805','20268806','20268807']){
         const context=await staff.contextFor(await userRepository(adapter(db)).find(account),today);
-        const allowed=account==='20268801' || account==='20268804';
+        const workAllowed=account==='20268804';
         const target={campusId:'campus-nanhu',departmentIds:['dept-hardware']};
         for(const code of ['roles.manage','repair.start']){
-          assert.equal(platform.authorizer.evaluate(context.actor,code,target,context,context.grants).allowed,allowed,account+': '+code);
+          assert.equal(platform.authorizer.evaluate(context.actor,code,target,context,context.grants).allowed,code==='repair.start' && workAllowed,account+': '+code);
           assert.equal(platform.authorizer.evaluate(context.actor,code,{...target,campusId:'campus-hunnan'},context,context.grants).allowed,false,account+' must not gain a second campus');
         }
         assert.notEqual(context.permissions['settings.manage'],true,'an expired explicit grant stays expired');
@@ -129,12 +133,13 @@ for(const directory of ['migrations','database/staff-migrations']) {
       db.exec('BEGIN;'+sql+'COMMIT;');
       for(const file of (await readdir(directory)).filter(name=>name.endsWith('.sql') && name>'0033_staff_business_roles.sql').sort()){
         if(file==='0041_attendance_reports.sql')await assert.rejects(verifyStaffSchema(adapter(db)),'a pre-report database must not be marked ready for this release');
+        if(file==='0042_organization_permissions.sql')await stageFixture(db,{'member-20268803':{decision:'migrate',authorizations:[{roleCode:'technician',scope:{campusIds:['campus-nanhu']},effectiveFrom:'2026-01-01',effectiveTo:null,reason:'虚构成员已确认维修授权'}]}},directory);
         db.exec(await readFile(directory+'/'+file,'utf8'));
       }
       assert.equal(await verifyStaffSchema(adapter(db)),STAFF_RELEASE);
       for(const [table,column] of [['member_roles','scope_bindings'],['role_grants','scope_spec']])
         assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE json_extract(${column},'$.campuses')='legacy' OR json_extract(${column},'$.campusIds')='legacy'`).get().n,0);
-      assert.equal(JSON.parse(db.prepare("SELECT scope_bindings FROM member_roles WHERE member_id='member-20268803'").get().scope_bindings).campuses,'bound');
+      assert.deepEqual(JSON.parse(db.prepare("SELECT scope_bindings FROM member_roles WHERE member_id='member-20268803'").get().scope_bindings).campusIds,['campus-nanhu']);
       const row=db.prepare("SELECT password_hash FROM staff_accounts WHERE account='20268801'").get();
       assert.equal(row.password_hash,'unchanged-hash');
       db.exec('DROP INDEX idx_staff_accounts_member_id; CREATE INDEX idx_staff_accounts_member_id ON staff_accounts(member_id)');

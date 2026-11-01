@@ -402,7 +402,6 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                                   <strong data-motion-value="text">
                                     {roles.find((role) => role.id === binding.roleId)?.name ||
                                       '待选择角色'}
-                                    {binding.needsReview ? ' · 待核对' : ''}
                                   </strong>
                                 </span>
                               </summary>

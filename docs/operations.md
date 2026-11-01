@@ -87,6 +87,39 @@ npm run attachments:cleanup -- --preview --dry-run
 
 D1 备份使用 `npx wrangler d1 export DB --remote --output <受限备份路径>`；Preview 加 `--env preview`。R2 和密钥另行备份，均不入 Git；重建或删除远程资源须单独授权。
 
+## 0042 私有人员迁移
+
+Git 仅保存通用 SQL、工具及虚构测试数据。真实姓名、学号、核对决定、数据库快照及生成的 SQL 存放在本机仓库外的受限目录，不放入 GitHub Secret、CI 工件或日志。完整快照包含密码哈希等私密数据，须单独备份；不得用生产快照填充共享 Preview。
+
+先只读查询目标 `d1_migrations`。未执行 0042 时可修订该文件；已执行则新增后续迁移。Production 旧链与 Preview 0041 的待执行迁移不同，两者分别准备输入、演练和执行。
+
+私有 JSON 格式为 `{"version":1,"environment":"production","members":[...]}`。每项填写 `memberId` 或 `studentId`、准确 `name`、`decision`（`migrate` 或明确确认的 `revoke`）及 `reason`。`migrate` 项须有以下至少一项：
+
+- `post`：`departmentCode`、`positionCode`、`effectiveFrom`、`effectiveTo`。
+- `exchange`：`effectiveFrom`、`effectiveTo`。
+- `authorizations`：特殊授权数组，各项含 `roleCode`、`scope.campusIds`、`effectiveFrom`、`effectiveTo`、`reason`。
+
+日期为 `YYYY-MM-DD`，结束日不含当天，可用 `null` 表示长期。部门代码为 `hardware/network/office/art/publicity`，职位为 `member/head/deputy_head`；站代码为 `device_station/network_station/affairs_station`，职位为 `director/deputy_director`；`center` 使用 `president/vice_president`。特殊授权只填写经核对的角色、原账号校区及有效期。受保护系统账号不列入输入；未核对人员不能默认填 `revoke`。
+
+以下 Production 命令仅在本机执行，所有私有路径必须位于任何 Git 仓库之外。先导出快照并演练，不改远程数据：
+
+```powershell
+npx wrangler d1 export DB --remote --config wrangler.jsonc --output C:/Pioneer-private/production.sql
+node scripts/rehearse-preview.mjs --snapshot C:/Pioneer-private/production.sql --input C:/Pioneer-private/production-decisions.json
+node scripts/prepare-staff-cutover.mjs --input C:/Pioneer-private/production-decisions.json
+```
+
+准备工具逐人校验身份、完整性、职位、日期、校区及授权模板，并在本地验证转换。输出只有汇总；真实输入文件和生成 SQL 均拒绝写入仓库内。核对无误、提交干净且明确授权执行后，在停写维护窗口完成：
+
+```powershell
+node scripts/prepare-staff-cutover.mjs --input C:/Pioneer-private/production-decisions.json --execute --approve-production
+npm run db:migrate:remote -- --execute --approve-production
+```
+
+第一步只向目标 D1 暂存必要决定，不改变有效权限；第二步重查状态、应用尚未执行的历史迁移，并在单个 D1 迁移事务内完成 0042。决定绑定环境、数据库、迁移文件哈希及准备时的人员授权状态，当天执行；人员或权限变化须重新准备。失败时 0042 的全部变更回滚，较早已成功的迁移仍保留其账本，重试从未完成处继续。输入表成功后删除，核对依据保留在原数据库审计历史中。
+
+Preview 同样先在本机完成演练与迁移：输入的 `environment` 为 `preview`，准备和迁移命令均加 `--preview`，执行确认改为 `--approve-preview`，快照导出加 `--env preview`。合入 dev、再合入 main 时沿用已有发布流程；生产 CI 只查迁移状态和汇总，不导出生产人员快照，未完成本机转换则停止发布。迁移后核验账号及历史数据、离任撤权、特殊留任、重复导入和校区隔离，再恢复服务。
+
 ## 验证范围
 
 预约配置中的“放号时间”“校区公告”和“暂停日期”分别维护，复用 `settings.manage` 及校区授权。暂停日期支持选择本周及下周的周一至周四，一次操作原子保存全部所选日期；暂停说明直接投影为系统公告，恢复或日期结束后停止展示，不另存一份公告。原单日暂停接口及已有暂停记录继续生效。`0034_booking_settings.sql` 仅追加校区规则、公告和重要公告确认快照，保留历史预约、私人凭证、附件与容量快照。升级后默认北京时间 10:00 放号，公告默认空白。修改放号时间只影响新预约窗口，不取消已创建的预约。

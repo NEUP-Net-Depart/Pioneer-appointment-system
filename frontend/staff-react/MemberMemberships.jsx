@@ -83,12 +83,7 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
                 {item.departmentName} ·{' '}
                 {item.assignmentType === 'exchange'
                   ? '交流维修'
-                  : { secondary: '历史兼任', temporary: '历史临时' }[item.assignmentType] ||
-                    positionLabels[item.positionCode]}
-                {item.needsReview &&
-                (item.assignmentType !== 'primary' || item.positionCode !== 'unknown')
-                  ? ' · 待核对'
-                  : ''}
+                  : positionLabels[item.positionCode]}
               </strong>
               <p>
                 {item.effectiveFrom} 至 {item.effectiveTo || '长期有效'}
@@ -114,7 +109,7 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
       </section>
       {editable && (
         <form ref={form} className="workspace-form" onSubmit={save}>
-          <fieldset className="workspace-form-fields" disabled={busy}>
+          <fieldset className="workspace-form-fields" disabled={busy || !departments.length}>
             <legend>{ending ? `结束 ${ending.departmentName} 任职` : '新增任职'}</legend>
             {ending ? (
               <label>

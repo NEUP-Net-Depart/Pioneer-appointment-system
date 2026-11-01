@@ -182,7 +182,7 @@ export function fieldDomain({ db, event }) {
           .bind(...ids),
         db
           .prepare(
-            `SELECT mr.member_id,rg.*,mr.scope_bindings,mr.effective_from,mr.effective_to,mr.participation_spec,mr.source,r.code AS role_code FROM effective_member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1
+            `SELECT mr.member_id,rg.*,mr.scope_bindings,mr.effective_from,mr.effective_to,mr.source,r.code AS role_code FROM effective_member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1
           JOIN role_grants rg ON rg.role_id=r.id WHERE mr.member_id IN (${marks}) AND mr.effective_from<=? AND (mr.effective_to IS NULL OR mr.effective_to>?)`
           )
           .bind(...ids, authorizationDate, authorizationDate),
@@ -238,8 +238,6 @@ export function fieldDomain({ db, event }) {
           conditions: parseJson(row.condition_spec, []),
           validity: parseJson(row.validity_spec, {}),
           source: row.source,
-          participation:
-            row.participation_spec === null ? undefined : parseJson(row.participation_spec, []),
           binding: { effectiveFrom: row.effective_from, effectiveTo: row.effective_to }
         });
       for (const row of rows(result[2]))

@@ -27,9 +27,9 @@ const snapshotSql = `SELECT json_object(
     ],
     `member_id IN (${memberIds})`
   )},
-  'memberships',${records('member_department_memberships', ['id', 'member_id', 'department_id', 'assignment_type', 'is_primary', 'position_code', 'needs_review', 'effective_from', 'effective_to', 'revision'], `member_id IN (${memberIds})`)},
+  'memberships',${records('member_department_memberships', ['id', 'member_id', 'department_id', 'assignment_type', 'is_primary', 'position_code', 'effective_from', 'effective_to', 'revision'], `member_id IN (${memberIds})`)},
   'templates',${records('role_grants', ['id', 'role_id', 'permission_code', 'scope_spec', 'condition_spec', 'validity_spec', 'revision'], '1=1')},
-  'bindings',${records('member_roles', ['id', 'member_id', 'role_id', 'scope_bindings', 'effective_from', 'effective_to', 'revision', 'participation_spec', 'reason', 'source', 'needs_review'], `member_id IN (${memberIds})`)},
+  'bindings',${records('member_roles', ['id', 'member_id', 'role_id', 'scope_bindings', 'effective_from', 'effective_to', 'revision', 'reason'], `member_id IN (${memberIds})`)},
   'invitations',${records(
     `(SELECT w.*,CAST((SELECT json_group_array(campus) FROM (SELECT campus FROM whitelist_campus_grants WHERE student_id=w.student_id ORDER BY campus)) AS TEXT) AS campuses FROM staff_whitelist w)`,
     ['student_id', 'expected_name', 'expected_role', 'status', 'revision', 'campuses'],

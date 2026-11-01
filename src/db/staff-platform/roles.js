@@ -201,11 +201,7 @@ export function rolesDomain({ db, auditStatement, commandAuthorization }) {
       effectiveFrom: row.effective_from,
       effectiveTo: row.effective_to,
       revision: row.revision,
-      reason: row.reason,
-      source: row.source,
-      needsReview: !!row.needs_review,
-      participation:
-        row.participation_spec === null ? undefined : parseJson(row.participation_spec, [])
+      reason: row.reason
     }));
   }
 
@@ -234,7 +230,7 @@ export function rolesDomain({ db, auditStatement, commandAuthorization }) {
       statements.push(
         db
           .prepare(
-            `INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from,effective_to,revision,reason,source,needs_review,participation_spec) SELECT ?,?,?,?,?,?,?,?,?,?,? WHERE ${gate}`
+            `INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from,effective_to,revision,reason) SELECT ?,?,?,?,?,?,?,? WHERE ${gate}`
           )
           .bind(
             binding.id || crypto.randomUUID(),
@@ -245,9 +241,6 @@ export function rolesDomain({ db, auditStatement, commandAuthorization }) {
             binding.effectiveTo || null,
             binding.revision || 0,
             binding.reason || '',
-            binding.source || 'explicit',
-            binding.needsReview ? 1 : 0,
-            binding.participation === undefined ? null : json(binding.participation),
             ...gateArgs
           )
       );

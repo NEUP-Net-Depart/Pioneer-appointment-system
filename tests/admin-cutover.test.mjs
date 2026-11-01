@@ -1,3 +1,4 @@
+import { stageD1Fixture } from './fixtures/staff-cutover.mjs';
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
@@ -28,7 +29,7 @@ async function migrate(db, directory, file) {
   await db.batch(statements.map(sql => db.prepare(sql)));
 }
 
-for (const directory of ['migrations','database/staff-migrations']) test(`${directory}: one-time business role upgrade preserves accounts and permits scoped off-duty management`, async () => {
+for (const directory of ['migrations','database/staff-migrations']) test(`${directory}: cutover preserves accounts and history; confirmed special authorization permits scoped off-duty management`, async () => {
   const mf = new Miniflare({ telemetry:{enabled:false}, workers:[{config:{
     name:'business-role-cutover-tests',compatibilityDate:cfg.compatibility_date,compatibilityFlags:cfg.compatibility_flags,
     manifest:{mainModule:'index.js',modules:{'index.js':{type:'esm',contents:worker}}},
@@ -78,14 +79,31 @@ for (const directory of ['migrations','database/staff-migrations']) test(`${dire
     assert.deepEqual((await db.prepare('SELECT account,name,role,home_campus,protected,password_hash,created_at,member_id FROM staff_accounts ORDER BY account').all()).results,before);
     assert.deepEqual((await db.prepare('SELECT * FROM staff_campus_grants ORDER BY account,campus').all()).results,grantsBefore);
     assert.deepEqual(await history(),historyBefore,'all historical record fields and links survive the upgrade');
-    for(const file of files.filter(name=>name>'0033_staff_business_roles.sql'))await migrate(db,directory,file);
-    assert.deepEqual((await db.prepare("SELECT scope_bindings,effective_from,effective_to FROM member_roles WHERE id='preview-explicit-lead'").all()).results,[{scope_bindings:'{"campusIds":["campus-nanhu"]}',effective_from:'2026-01-01',effective_to:null}]);
-    assert.deepEqual((await db.prepare("SELECT scope_bindings,effective_from,effective_to FROM member_roles WHERE id='expired-lead'").all()).results,[{scope_bindings:'{"campusIds":["campus-hunnan"]}',effective_from:'2026-01-01',effective_to:'2026-09-01'}]);
+    for(const file of files.filter(name=>name>'0033_staff_business_roles.sql')){
+      if(file==='0042_organization_permissions.sql')await stageD1Fixture(db,{
+        'member-20268002':{decision:'migrate',authorizations:[{roleCode:'technician',scope:{campusIds:['campus-nanhu']},effectiveFrom:'2026-01-01',effectiveTo:null,reason:'虚构成员已确认继续维修'}]},
+        'member-20268003':{decision:'migrate',authorizations:[{roleCode:'technician',scope:{campusIds:['campus-nanhu']},effectiveFrom:'2026-01-01',effectiveTo:null,reason:'虚构成员已确认继续维修'}]}
+      },directory);
+      await migrate(db,directory,file);
+    }
+    for(const id of ['preview-explicit-lead','expired-lead','explicit-reader-binding']) {
+      assert.equal(await db.prepare('SELECT id FROM member_roles WHERE id=?').bind(id).first(),null);
+      const archived=await db.prepare("SELECT before_json FROM audit_events WHERE action='authorization.binding.archived' AND json_extract(before_json,'$.id')=?").bind(id).first();
+      assert.equal(JSON.parse(archived.before_json).id,id,'uncertain authorization remains available for one-time confirmation');
+    }
     assert.deepEqual((await db.prepare("SELECT scope_bindings FROM member_roles WHERE member_id='member-20268005' AND role_id='role-repair-lead' AND effective_to IS NULL").all()).results,[]);
-    assert.deepEqual((await db.prepare("SELECT scope_bindings,effective_from,effective_to FROM member_roles WHERE id='explicit-reader-binding'").all()).results,[{scope_bindings:'{"campusIds":["campus-nanhu"]}',effective_from:'2026-01-01',effective_to:'2027-01-01'}]);
     assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM sqlite_schema WHERE name IN ('legacy_admin_logins','legacy_admin_login_changed')").first()).n,0);
     assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM roles WHERE code='legacy_admin'").first()).n,0);
     await call('/api/auth/me',{token:previousToken,status:401});
+    assert.notEqual((await call('/api/auth/me',{token:await login('20268001')})).permissions['roles.manage'],true,'an old admin label cannot authorize management');
+    const rootToken=await login('root001');
+    for(const account of ['20268001','20268002']) {
+      const member=await db.prepare('SELECT revision FROM members WHERE id=?').bind('member-'+account).first();
+      await call(`/api/members/member-${account}/roles`,{token:rootToken,method:'PUT',body:{revision:member.revision,bindings:[...await staffPlatformRepository(db).roleBindings('member-'+account),
+        {roleId:'role-repair-lead',scope:{campusIds:['campus-nanhu']},effectiveFrom:'2026-01-01',reason:'经确认继续承担南湖维修管理'}
+      ]}});
+    }
+    await call('/api/members/member-20268001/memberships',{token:rootToken,method:'POST',body:{departmentId:'dept-hardware',positionCode:'member',effectiveFrom:'2026-01-01',revision:(await db.prepare("SELECT revision FROM members WHERE id='member-20268001'").first()).revision}});
     let token=await login('20268001');const me=await call('/api/auth/me',{token});
     const management=['repair.summary.read','repair.correct','repair.transfer','statistics.read','accounts.manage','settings.manage','members.manage','roles.manage','roster.read','roster.repair.manage','roster.repair.configure','roster.office.manage','attendance.session.manage','attendance.correct','attendance.export','leave.review','customer.identity.read','customer.contact.read'];
     for(const code of management)assert.equal(me.permissions[code],true,code);
@@ -95,7 +113,7 @@ for (const directory of ['migrations','database/staff-migrations']) test(`${dire
     assert.equal(leadHome.capability['repair.start'],true);
     assert.equal(leadHome.state,'unsigned','receiving work still requires check-in');
     await call('/api/presence/me',{token,method:'PATCH',body:{state:'available',revision:0},status:409});
-    assert.ok(await db.prepare("SELECT id FROM member_roles WHERE member_id='member-20268001' AND role_id='role-technician'").first());
+    assert.ok(await db.prepare("SELECT id FROM effective_member_roles WHERE member_id='member-20268001' AND role_id='role-technician'").first());
     assert.ok(await db.prepare("SELECT id FROM audit_events WHERE action='identity.qualification.archived' AND json_extract(source_ref,'$.id')='member-20268001'").first());
     assert.ok(await db.prepare("SELECT id FROM member_department_memberships WHERE member_id='member-20268001' AND department_id='dept-hardware'").first());
     for(const path of ['/api/roles','/api/permissions','/api/users','/api/members','/api/slot-capacities','/api/stats/summary?range=all','/api/attendance','/api/roster-tasks'])await call(path,{token});

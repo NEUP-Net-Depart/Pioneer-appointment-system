@@ -4,6 +4,8 @@ import { readFile, readdir } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { smoke } from '../scripts/smoke.mjs';
 import { rehearseSnapshot } from '../scripts/rehearse-preview.mjs';
+import { projectCutoverSnapshot } from '../scripts/prepare-staff-cutover.mjs';
+import { stageFixture,fixtureInput } from './fixtures/staff-cutover.mjs';
 import { STAFF_RELEASE } from '../src/db/staff-readiness.js';
 
 async function baselineDump({ deployed = false, interleaved = false, beforeLoginScope = false, withAliases = false, explicitAuthorization = false, withAppointments = false } = {}) {
@@ -20,6 +22,7 @@ async function baselineDump({ deployed = false, interleaved = false, beforeLogin
     }
     if (deployed) {
       for (const name of (await readdir('migrations')).filter(name => name.endsWith('.sql') && name >= '0010' && (!beforeLoginScope || name < '0031')).sort()) {
+        if(name==='0042_organization_permissions.sql')await stageFixture(db,{'member-20260002':{decision:'migrate',post:{departmentCode:'hardware',positionCode:'member',effectiveFrom:'2026-01-01',effectiveTo:null}}});
         db.exec(await readFile('migrations/'+name,'utf8'));db.prepare('INSERT INTO d1_migrations(name) VALUES(?)').run(name);
       }
       for (const [account,role] of [['20260003','admin'],['20260004','technician']]) {
@@ -57,40 +60,51 @@ async function baselineDump({ deployed = false, interleaved = false, beforeLogin
   } finally { db.close(); }
 }
 
+async function rehearseFixtureSnapshot(dump) {
+  const projected=await projectCutoverSnapshot(dump,undefined,{allowApplied:true});
+  if(projected.applied){projected.sqlite.close();return rehearseSnapshot(dump);}
+  const db=projected.sqlite;
+  const overrides={'member-20260002':{decision:'migrate',post:{departmentCode:'hardware',positionCode:'member',effectiveFrom:'2026-01-01',effectiveTo:null}}};
+  if(db.prepare("SELECT id FROM member_roles WHERE id='explicit-technician'").get())overrides['member-20260001']={decision:'migrate',authorizations:[{roleCode:'technician',scope:{campusIds:['campus-nanhu']},effectiveFrom:'2025-01-01',effectiveTo:'2026-01-01',reason:'虚构成员已核对的历史维修授权'}]};
+  const people=db.prepare('SELECT m.*,EXISTS(SELECT 1 FROM staff_accounts a WHERE a.member_id=m.id AND a.protected=1) AS protected FROM members m').all();
+  const privateInput=fixtureInput(people,overrides);db.close();
+  return rehearseSnapshot(dump,undefined,{privateInput});
+}
+
 test('the existing Preview migration ledger and populated accounts rehearse through the full cutover', async () => {
-  const result = await rehearseSnapshot(await baselineDump());
+  const result = await rehearseFixtureSnapshot(await baselineDump());
   assert.ok(result.applied > 0);
   assert.equal(result.preservedTables, 7);
   assert.equal(result.accounts['technician → technician'], 1);
-  assert.equal(result.accounts['admin → repair_lead+technician'], 1);
+  assert.equal(result.accounts['admin → '], 1);
   assert.equal(result.accounts['superadmin → superadmin'], 1);
 });
 
 test('later deployments respect deliberately ungranted administrators and revoked technician roles',async()=>{
-  const report=await rehearseSnapshot(await baselineDump({deployed:true}));
-  assert.equal(report.applied,0);assert.equal(report.accounts['admin → '],1);assert.equal(report.accounts['technician → '],1);
+  const report=await rehearseFixtureSnapshot(await baselineDump({deployed:true}));
+  assert.equal(report.applied,0);assert.equal(report.accounts['admin → '],2);assert.equal(report.accounts['technician → '],1);
 });
 
-test('already applied 0030 upgrades forward to explicit permanent manager roles',async()=>{
-  const report=await rehearseSnapshot(await baselineDump({deployed:true,beforeLoginScope:true,interleaved:true}));
-  assert.equal(report.applied,(await readdir('migrations')).filter(name => name.endsWith('.sql') && name >= '0031').length);assert.equal(report.accounts['admin → repair_lead+technician'],2);
+test('already applied 0030 upgrades forward without inferring a management position',async()=>{
+  const report=await rehearseFixtureSnapshot(await baselineDump({deployed:true,beforeLoginScope:true,interleaved:true}));
+  assert.equal(report.applied,(await readdir('migrations')).filter(name => name.endsWith('.sql') && name >= '0031').length);assert.equal(report.accounts['admin → '],2);
 });
 
 test('Preview rehearsal respects expired explicit authorization and custom grant conditions',async()=>{
-  const report=await rehearseSnapshot(await baselineDump({deployed:true,beforeLoginScope:true,explicitAuthorization:true}));
+  const report=await rehearseFixtureSnapshot(await baselineDump({deployed:true,beforeLoginScope:true,explicitAuthorization:true}));
   assert.equal(report.applied,(await readdir('migrations')).filter(name => name.endsWith('.sql') && name >= '0031').length);
-  assert.equal(report.accounts['admin → repair_lead+technician'],2);
+  assert.equal(report.accounts['admin → technician'],1);assert.equal(report.accounts['admin → '],1);
 });
 
 test('migration rehearsal rejects multi-account members before altering authorization',async()=>{
   await assert.rejects(rehearseSnapshot(await baselineDump({deployed:true,beforeLoginScope:true,withAliases:true})),/multiple login accounts/);
 });
 test('Preview rehearsal advances pending default deadlines while preserving custom deadlines and completed history',async()=>{
-  const report=await rehearseSnapshot(await baselineDump({deployed:true,beforeLoginScope:true,withAppointments:true}));
+  const report=await rehearseFixtureSnapshot(await baselineDump({deployed:true,beforeLoginScope:true,withAppointments:true}));
   assert.equal(report.applied,(await readdir('migrations')).filter(name => name.endsWith('.sql') && name >= '0031').length);assert.equal(report.preservedTables,7);
 });
 test('current D1 snapshots restore with interleaved table definitions and cyclic account/member references',async()=>{
-  const report=await rehearseSnapshot(await baselineDump({deployed:true,interleaved:true}));assert.equal(report.applied,0);assert.equal(report.accounts['admin → repair_lead+technician'],1);
+  const report=await rehearseFixtureSnapshot(await baselineDump({deployed:true,interleaved:true}));assert.equal(report.applied,0);assert.equal(report.accounts['admin → '],2);
 });
 test('snapshot restore rejects broken references before attempting migrations',async()=>{
   const dump=(await baselineDump({deployed:true,interleaved:true})).replace(/^INSERT INTO "members" VALUES\('member-20260002'.*;\n/m,'');
