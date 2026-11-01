@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import { mockStaff, loginStaff } from './support/staff.mjs';
 
 async function fixture(page, { item, camera = 'denied', captcha = false, huawei = false } = {}) {
@@ -404,12 +405,9 @@ test('real local OCR reads a device label and opens the fixed official page in a
   const writes = []; page.on('request', req => { if (req.method() === 'POST') writes.push(req.url()); });
   const dialog = await openLookup(page);
   await dialog.getByLabel('设备品牌').selectOption('asus');
-  const bytes = await page.evaluate(async () => {
-    const canvas = document.createElement('canvas'); canvas.width = 1600; canvas.height = 400;
-    const context = canvas.getContext('2d'); context.fillStyle = 'white'; context.fillRect(0,0,1600,400); context.fillStyle = 'black'; context.font = 'bold 70px monospace'; context.fillText('S/N: ABC23456789', 70, 220);
-    return Array.from(new Uint8Array(await (await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))).arrayBuffer()));
-  });
-  await dialog.getByLabel('选择序列号文字照片', { exact: true }).setInputFiles({ name: 'synthetic-device-label.png', mimeType: 'image/png', buffer: Buffer.from(bytes) });
+  // Fixed pixels keep this real OCR regression independent of OS font rendering.
+  const bytes = await readFile(new URL('../fixtures/warranty-serial-label.png', import.meta.url));
+  await dialog.getByLabel('选择序列号文字照片', { exact: true }).setInputFiles({ name: 'synthetic-device-label.png', mimeType: 'image/png', buffer: bytes });
   await expect(dialog.getByLabel('序列号 / S/N / Service Tag', { exact: true })).toHaveValue('ABC23456789', { timeout: 60000 });
   await expect(dialog).toContainText('已填入候选序列号');
   expect(writes).toEqual([]);

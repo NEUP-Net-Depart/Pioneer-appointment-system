@@ -1,7 +1,7 @@
 import {spawn,spawnSync} from 'node:child_process';
 import {mkdir,writeFile,readFile,rm,cp} from 'node:fs/promises';
 import {resolve,relative,isAbsolute} from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 import {randomUUID,randomBytes} from 'node:crypto';
 import {createServer} from 'node:net';
 import {root,config} from './cli.mjs';
@@ -83,7 +83,7 @@ try{
     await new Promise(resolve=>setTimeout(resolve,250));
   }
   if(!ready)throw new Error('Local Preview did not become ready:\n'+startup+'\n'+diagnostics);
-  await smoke(base);
+  await smoke(base,fetch,pathToFileURL(resolve(dir,'dist')+'/'));
   console.log(`Isolated local Preview ready: ${base} (Preview quota; fresh D1/R2; no remote resources)`);
   if(process.argv.includes('--serve')){
     if(process.argv.includes('--field') && Date.now() < Date.parse(expirationDeadline(dateKey()))) {
