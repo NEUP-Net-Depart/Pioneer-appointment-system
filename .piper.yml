@@ -29,6 +29,25 @@ labels:
     branches: ['feat/**', 'feat-*']
   - name: documentation
     files: ['docs/**', '**/*.md']
+  - name: area/frontend
+    files:
+      - 'frontend/**'
+      - 'public/**'
+      - 'warranty-verifier/**'
+  - name: area/backend
+    files:
+      - 'src/**'
+      - 'functions/**'
+  - name: area/shared
+    files: ['shared/**']
+  - name: area/tests
+    files: ['tests/**']
+  - name: area/tooling
+    files:
+      - 'scripts/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'eslint.config.js'
   - name: area/ci
     files: ['.github/**']
     highRisk: true
