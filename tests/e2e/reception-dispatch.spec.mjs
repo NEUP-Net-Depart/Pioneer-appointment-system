@@ -14,6 +14,17 @@ async function login(page,account){
   await page.getByRole('button',{name:'进入系统'}).click();
   await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();
 }
+async function openOrder(page,id){
+  const order=page.locator('.field-order').filter({hasText:id});
+  await expect(order).toBeVisible();
+  // A clip-path reveal keeps its box stable while still masking the click target.
+  await expect.poll(()=>order.evaluate(node=>{
+    for(let current=node;current;current=current.parentElement)
+      if(current.getAnimations().some(animation=>animation.playState==='running'))return false;
+    return true;
+  })).toBe(true);
+  await order.click();
+}
 test('reception and worker share a real queued, returned, accepted and completed order across screen sizes',async({page,request,browser})=>{
   test.setTimeout(120000);
   const office=await api(request,'/api/auth/login',null,{account:'20261001',password:'StaffTest!2026'});
@@ -28,7 +39,7 @@ test('reception and worker share a real queued, returned, accepted and completed
   await page.getByRole('group',{name:'现场概览'}).getByRole('button',{name:/^排队中/}).click();
   await expect(page.locator('.field-order').filter({hasText:order.id})).toHaveCount(0);
   await page.getByRole('group',{name:'现场概览'}).getByRole('button',{name:/^未到场/}).click();
-  await page.locator('.field-order').filter({hasText:order.id}).click();
+  await openOrder(page,order.id);
   const dialog=page.getByRole('dialog');
   await expect(dialog.getByRole('heading',{name:'到场接待',exact:true})).toBeVisible();
   await dialog.getByLabel('厂商',{exact:true}).fill('联想');
@@ -77,7 +88,7 @@ test('reception and worker share a real queued, returned, accepted and completed
     await page.reload();
     await page.getByRole('group',{name:'现场概览'}).getByRole('button',{name:/^排队中/}).click();
     await expect(page.locator('.field-order').filter({hasText:order.id})).toContainText('排队中');
-    await page.locator('.field-order').filter({hasText:order.id}).click();
+    await openOrder(page,order.id);
     await dialog.locator('input[type=radio][value="20261002"]').check();
     await dialog.getByRole('button',{name:'确认分派，等待接手',exact:true}).click();
     await expect(dialog.getByText('已分派给 陈宇 · 待接手',{exact:true})).toBeVisible();
@@ -157,7 +168,7 @@ test('customer sees a live arrival ticket, keeps confirmation during rank update
   // A different receiving staff member must see the fresh-photo requirement
   // before submitting, rather than silently reusing the previous arrival's IDs.
   await login(page,'20261004');
-  await page.locator('.field-order').filter({hasText:original.id}).click();
+  await openOrder(page,original.id);
   const panel=page.getByRole('dialog');
   await expect(panel).toContainText('重新到场 · 待核验');
   await expect(panel.getByRole('button',{name:'完成接待，进入现场队列',exact:true})).toBeDisabled();
