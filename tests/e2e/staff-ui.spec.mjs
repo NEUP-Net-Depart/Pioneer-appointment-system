@@ -12,6 +12,16 @@ for (const width of [320, 768, 1440]) {
     await expect(order).toBeVisible();
     await expect(order.getByText('核验到场', { exact: false })).toBeVisible();
     expect(await order.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    const controls = await page.locator('.field-app button, .field-app summary').evaluateAll(nodes => nodes
+      .filter(node => node.checkVisibility() && !node.closest('[inert]'))
+      .map(node => ({ text: node.textContent.trim(), height: node.getBoundingClientRect().height, font: parseFloat(getComputedStyle(node).fontSize) })));
+    expect(controls.filter(control => control.height < 44 || control.font < 14)).toEqual([]);
+    if (width < 768) {
+      const metrics = await page.locator('.field-metric-card').evaluateAll(nodes => nodes.map(node => ({ top: node.getBoundingClientRect().top, fits: node.scrollWidth <= node.clientWidth })));
+      expect(new Set(metrics.map(metric => metric.top)).size).toBe(1);
+      expect(metrics.every(metric => metric.fits)).toBe(true);
+      await expect(order.locator('.field-order-assignee')).toBeHidden();
+    }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 
@@ -76,7 +86,7 @@ test('returning from people to the same queue keeps the requested filter selecte
   await loginStaff(page);
   const metrics = page.getByRole('group', { name: '现场概览' });
   const queue = metrics.getByRole('button', { name: /^排队中/ });
-  const available = metrics.getByRole('button', { name: /^空闲中/ });
+  const available = metrics.getByRole('button', { name: /^可接单/ });
   await queue.click();
   await available.click();
   await expect(queue).toHaveAttribute('aria-pressed', 'false');

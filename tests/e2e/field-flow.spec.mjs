@@ -225,14 +225,14 @@ test("reception layout remains usable at desktop, phone and narrow-phone widths"
   await expect(page.getByRole('group', { name: '现场概览', exact: true })).toHaveCount(1);
   await expect(page.getByRole('group', { name: '现场概览' }).getByRole('button')).toHaveCount(4);
   await expect(page.locator('.field-appointments .field-filter')).toHaveCount(0);
-  await expect(page.locator('.field-metric-label')).toHaveText(['未到场', '排队中', '维修中', '空闲中']);
+  await expect(page.locator('.field-metric-label')).toHaveText(['未到场', '排队中', '维修中', '可接单']);
   await page.getByRole('group', { name: '现场概览' }).getByRole('button', { name: /^排队中/ }).click();
   await expect(page.getByRole('heading', { name: '排队中', exact: true })).toBeVisible();
   await expect(page.locator('.field-appointments h2')).toHaveText('排队中');
-  await page.getByRole('group', { name: '现场概览' }).getByRole('button', { name: /^空闲中/ }).click();
-  await expect(page.getByRole('group', { name: '现场概览' }).getByRole('button', { name: /^空闲中/ })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('group', { name: '现场概览' }).getByRole('button', { name: /^可接单/ }).click();
+  await expect(page.getByRole('group', { name: '现场概览' }).getByRole('button', { name: /^可接单/ })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.field-desk-grid')).toHaveClass(/tab-people/);
-  await page.getByRole('group', { name: '现场概览' }).getByRole('button', { name: /^空闲中/ }).click();
+  await page.getByRole('group', { name: '现场概览' }).getByRole('button', { name: /^可接单/ }).click();
   await page.getByRole('group', { name: '现场概览' }).getByRole('button', { name: /^未到场/ }).click();
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('staff-request-navigation', { detail: 'scene:operations' })));
   await expect(page.getByRole('group', { name: '现场概览' }).getByRole('button', { name: /^未到场/ })).toHaveAttribute('aria-pressed', 'true');
@@ -684,6 +684,12 @@ test('all workspaces share title geometry and scrollable navigation across scree
       expect(geometry, `${width}px ${label}`).toEqual(reference);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width}px ${label} overflow`).toBe(true);
       expect(await route.locator('main').count()).toBe(0);
+      // The spreadsheet fill handle is a pointer drag affordance; its equivalent toolbar actions are full-size buttons.
+      const undersized = await route.locator('button:not(.capacity-editor-handle), summary').evaluateAll(nodes => nodes
+        .filter(node => node.checkVisibility() && !node.closest('[inert]'))
+        .map(node => ({ text: node.textContent.trim(), height: node.getBoundingClientRect().height, font: parseFloat(getComputedStyle(node).fontSize) }))
+        .filter(control => control.height < 44 || control.font < 14));
+      expect(undersized, `${width}px ${label} readable controls`).toEqual([]);
       if (width === 768 && label === '现场工作台') {
         const customer = route.locator('.field-order > span:first-child').first();
         if (await customer.count()) expect((await customer.boundingBox()).width, 'customer identity stays readable beside the sidebar').toBeGreaterThan(120);

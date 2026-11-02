@@ -82,7 +82,7 @@ test('an order preselects its brand and adopts only the explicitly confirmed war
   await dialog.getByRole('button', { name: '查询原厂保修', exact: true }).click();
   await expect(dialog.getByRole('region', { name: '原厂查询结果' })).toContainText('整机有限保修（测试模拟）');
   expect(await page.evaluate(key => JSON.parse(sessionStorage.getItem(key) || '{}').verification?.warranty, 'field:member-root001:' + item.id)).toBe('unknown');
-  await dialog.getByRole('button', { name: '采用此保修情况' }).click();
+  await dialog.getByRole('button', { name: '填入此保修情况' }).click();
   await expect(dialog).toHaveCount(0);
   await expect(repair.getByRole('combobox', { name: '保修情况', exact: true })).toHaveValue('in_warranty');
   await expect(repair.getByRole('checkbox', { name: /^我已当面核对/ })).not.toBeChecked();
@@ -175,7 +175,7 @@ test('not-found, timeout and unsupported brands cannot be adopted as expired', a
   await page.route('**/api/warranty/query', route => route.fulfill({ json: { brand: 'lenovo', serial: 'TEST1234', outcome: 'not_found', status: 'unknown', checkedAt: '2026-10-26T08:00:00Z', source: { name: '联想中国官方服务' }, services: [] } }));
   await dialog.getByRole('button', { name: '查询原厂保修', exact: true }).click();
   await expect(dialog).toContainText('查无资料不代表已过保');
-  await expect(dialog.getByRole('button', { name: '采用此保修情况' })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: '填入此保修情况' })).toHaveCount(0);
   await page.route('**/api/warranty/query', route => route.fulfill({ status: 502, json: { error: '原厂查询超时，请重试。', code: 'WARRANTY_TIMEOUT' } }));
   await dialog.getByRole('button', { name: '查询原厂保修', exact: true }).click();
   await expect(dialog).toContainText('原厂查询超时');
