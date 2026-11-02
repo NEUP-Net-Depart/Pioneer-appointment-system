@@ -328,6 +328,7 @@ export function Scanner({
 }) {
   const active = useContext(ActivityContext);
   const video = useRef<HTMLVideoElement>(null),
+    guide = useRef<HTMLSpanElement>(null),
     status = useRef<HTMLParagraphElement>(null),
     torch = useRef<HTMLButtonElement>(null),
     switcher = useRef<HTMLButtonElement>(null),
@@ -349,6 +350,7 @@ export function Scanner({
   useEffect(() => {
     const instance = createScanner({
       video: video.current!,
+      guide: guide.current,
       status: status.current!,
       torch: torch.current!,
       switchCamera: switcher.current!,
@@ -404,8 +406,10 @@ export function Scanner({
     <div className="field-scanner" data-mode={mode} data-layout={cameraLayout}>
       <div className="field-camera">
         <video ref={video} playsInline muted />
-        <span aria-hidden="true">
-          ┌<span>{mode === 'qr' ? '将二维码放入框内' : '对准机身 S/N 标签'}</span>┘
+        <span ref={guide} className="field-camera-guide" aria-hidden="true">
+          <span className="field-camera-hint">
+            {mode === 'qr' ? '将二维码放入框内' : '对准机身 S/N 标签'}
+          </span>
         </span>
         {cameraLayout === 'warranty' && (
           <div className="warranty-camera-bar">
