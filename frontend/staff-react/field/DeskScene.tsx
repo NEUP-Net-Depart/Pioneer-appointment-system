@@ -121,38 +121,40 @@ export function DeskScene({
           </strong>
         </button>
       </div>
-      {data.capability['repair.dispatch'] &&
-        (data.appointments || []).some((item) => receptionStatus(item) === 'queued') &&
-        people.some((person) => person.canReceive) && (
-          <div className="reception-next" role="status">
-            <span>有工单待分派</span>
-            <button
-              onClick={() => {
-                setFilter('queued');
-                setTab('appointments');
-              }}
-            >
-              处理现场队列
-            </button>
-          </div>
-        )}
-      {data.capability['repair.transfer'] &&
-        people.some((p) => p.scheduled && p.state === 'unsigned') && (
-          <div className="reception-next">
-            <span>
-              {people.filter((p) => p.scheduled && p.state === 'unsigned').length} 人待签到
-            </span>
-            <button
-              onClick={() => {
-                setTab('people');
-                setShowAvailable(false);
-                setPeopleQuery('');
-              }}
-            >
-              查看到岗
-            </button>
-          </div>
-        )}
+      <div className="field-desk-alerts">
+        {data.capability['repair.dispatch'] &&
+          (data.appointments || []).some((item) => receptionStatus(item) === 'queued') &&
+          people.some((person) => person.canReceive) && (
+            <div className="reception-next" role="status">
+              <span>有工单待分派</span>
+              <button
+                onClick={() => {
+                  setFilter('queued');
+                  setTab('appointments');
+                }}
+              >
+                处理现场队列
+              </button>
+            </div>
+          )}
+        {data.capability['repair.transfer'] &&
+          people.some((p) => p.scheduled && p.state === 'unsigned') && (
+            <div className="reception-next">
+              <span>
+                {people.filter((p) => p.scheduled && p.state === 'unsigned').length} 人待签到
+              </span>
+              <button
+                onClick={() => {
+                  setTab('people');
+                  setShowAvailable(false);
+                  setPeopleQuery('');
+                }}
+              >
+                查看到岗
+              </button>
+            </div>
+          )}
+      </div>
       <div className="field-mobile-tabs">
         <button
           className={tab === 'appointments' ? 'active' : ''}
@@ -171,24 +173,26 @@ export function DeskScene({
       </div>
       <div className={`field-desk-grid tab-${tab}`}>
         <section className="field-card field-appointments">
-          <div className="field-section-heading">
-            <h2 data-motion-value="text">{selectedFilter?.label || '预约与现场队列'}</h2>
-            <span data-motion-value="number">
-              {items.length} 条{' '}
-              {filter !== 'all' && (
-                <button className="field-text" onClick={() => setFilter('all')}>
-                  显示全部
-                </button>
-              )}
-            </span>
+          <div className="field-queue-tools">
+            <div className="field-section-heading">
+              <h2 data-motion-value="text">{selectedFilter?.label || '预约与现场队列'}</h2>
+              <span data-motion-value="number">
+                {items.length} 条{' '}
+                {filter !== 'all' && (
+                  <button className="field-text" onClick={() => setFilter('all')}>
+                    显示全部
+                  </button>
+                )}
+              </span>
+            </div>
+            <input
+              className="field-search-input"
+              aria-label="搜索当日预约"
+              placeholder="搜索编号、设备或故障"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
-          <input
-            className="field-search-input"
-            aria-label="搜索当日预约"
-            placeholder="搜索编号、设备或故障"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
           <div className="field-table-head">
             <span>预约与设备</span>
             <span>时段</span>

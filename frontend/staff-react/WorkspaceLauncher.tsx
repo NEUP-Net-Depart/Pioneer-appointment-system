@@ -36,6 +36,12 @@ export function WorkspaceLauncher({
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.nativeEvent.isComposing && filtered.length) {
+                event.preventDefault();
+                onSelect(filtered[0].items[0].id);
+              }
+            }}
             placeholder="搜索功能或操作"
           />
         </label>

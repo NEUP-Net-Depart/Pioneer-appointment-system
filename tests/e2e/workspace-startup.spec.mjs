@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { mockStaff } from './support/staff.mjs';
+import { mockStaff, navigationEntry } from './support/staff.mjs';
 import { dateKey } from '../../shared/time.js';
 
 function gate() {
@@ -65,7 +65,7 @@ test('field failure stays local and a retry recovers without replacing the shell
   await page.goto('/staff/');
   await expect(page.getByRole('alert')).toHaveText('工作台暂时不可用');
   await page.evaluate(() => { window.originalWorkspace = document.querySelector('.field-app'); });
-  await page.locator('.field-sidebar').getByRole('button', { name: '账号安全', exact: true }).click();
+  await (await navigationEntry(page.locator('.field-sidebar'), '账号安全')).click();
   await expect(page.getByRole('heading', { name: '账号安全', exact: true })).toBeVisible();
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('staff-request-navigation', { detail: 'workbench' })));
   failed = false;
@@ -90,7 +90,7 @@ test('identity timeout has a local retry and never exposes privileged entries', 
     await expect.poll(() => reads).toBe(1);
     await page.clock.fastForward(15001);
     await expect(page.getByRole('alert')).toHaveText('会话验证超时，请检查网络后重试');
-    await expect(page.locator('.field-sidebar').getByRole('button', { name: '人员管理', exact: true })).toHaveCount(0);
+    await expect(page.locator('.field-sidebar').getByRole('button', { name: '人员管理', exact: true, includeHidden: true })).toHaveCount(0);
     pending = false;
     stalled.release();
     await page.getByRole('button', { name: '重新加载工作区', exact: true }).click();
@@ -108,8 +108,8 @@ test('a missing lazy module fails inside its page and leaves other navigation us
   await page.route('**/staff/assets/People-*.js', route => route.fulfill({ status: 404, body: '' }));
   await page.goto('/staff/');
   await expect(page.locator('.field-content')).toBeVisible();
-  await page.locator('.field-sidebar').getByRole('button', { name: '人员管理', exact: true }).click();
+  await (await navigationEntry(page.locator('.field-sidebar'), '人员管理')).click();
   await expect(page.getByRole('alert')).toHaveText('此页面暂时无法加载，请刷新后重试。');
-  await page.locator('.field-sidebar').getByRole('button', { name: '账号安全', exact: true }).click();
+  await (await navigationEntry(page.locator('.field-sidebar'), '账号安全')).click();
   await expect(page.getByRole('heading', { name: '账号安全', exact: true })).toBeVisible();
 });

@@ -205,39 +205,41 @@ export function Records({ user }) {
             <button onClick={reset}>重置</button>
           </div>
         </div>
-        <div className="records-quick-dates" role="group" aria-label="快捷预约日期">
-          {[
-            ['today', '今日预约'],
-            ['week', '本周预约'],
-            ['all', '不限日期']
-          ].map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              aria-pressed={datePreset === id}
-              onClick={() =>
-                update({
-                  date: id === 'today' ? today : '',
-                  dateFrom: id === 'week' ? week.start : '',
-                  dateTo: id === 'week' ? week.end : ''
-                })
-              }
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="records-result-meta" role="status">
-          <span data-motion-value="number">
-            {data ? `${data.items?.length || 0} 条记录` : '正在读取记录…'}
-            {list.loading && data ? ' · 更新中' : ''}
-            {!list.current && data ? ' · 当前显示上次结果' : ''}
-          </span>
-          {sorts.length > 0 && (
-            <span>
-              {`排序：${sorts.map((item, index) => `${index + 1}. ${columns[item.key]}${item.direction === 'asc' ? '↑' : '↓'}`).join(' → ')}`}
+        <div className="records-result-tools">
+          <div className="records-quick-dates" role="group" aria-label="快捷预约日期">
+            {[
+              ['today', '今日预约'],
+              ['week', '本周预约'],
+              ['all', '不限日期']
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={datePreset === id}
+                onClick={() =>
+                  update({
+                    date: id === 'today' ? today : '',
+                    dateFrom: id === 'week' ? week.start : '',
+                    dateTo: id === 'week' ? week.end : ''
+                  })
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="records-result-meta" role="status">
+            <span data-motion-value="number">
+              {data ? `${data.items?.length || 0} 条记录` : '正在读取记录…'}
+              {list.loading && data ? ' · 更新中' : ''}
+              {!list.current && data ? ' · 当前显示上次结果' : ''}
             </span>
-          )}
+            {sorts.length > 0 && (
+              <span>
+                {`排序：${sorts.map((item, index) => `${index + 1}. ${columns[item.key]}${item.direction === 'asc' ? '↑' : '↓'}`).join(' → ')}`}
+              </span>
+            )}
+          </div>
         </div>
         <Notice>{list.error}</Notice>
         {list.error && <button onClick={refresh}>重试读取</button>}

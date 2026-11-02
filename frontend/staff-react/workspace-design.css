@@ -202,6 +202,202 @@ body.staff-mode.field-mode {
   border-color: var(--line);
   background: var(--workspace-surface);
 }
+.field-app .members-list-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.member-organization {
+  display: grid;
+  gap: 4px;
+}
+.member-organization small {
+  color: var(--muted);
+}
+.field-desk-alerts:empty {
+  display: none;
+}
+@media (min-width: 768px) {
+  .field-app .roster-start {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+  .field-app .field-people .field-section-heading {
+    margin-bottom: 12px;
+  }
+  .field-app .field-person-summary {
+    margin: 0 0 16px;
+  }
+  .field-app .field-sidebar {
+    gap: 12px;
+    padding-top: 24px;
+  }
+  .field-app .field-brand {
+    padding-bottom: 12px;
+  }
+  .field-app .field-sidebar nav .workspace-group-toggle {
+    min-height: 44px;
+    font-size: 14px;
+  }
+  .field-app .field-sidebar .workspace-nav-group {
+    margin-bottom: 4px;
+  }
+  /* Keep keyboard targets stationary when switching navigation groups. */
+  .field-app .field-sidebar .motion-collapse {
+    transition: none;
+  }
+  .field-app .workspace-nav-group .motion-collapse > div {
+    padding-bottom: 8px;
+  }
+  .field-app .field-overview {
+    padding: 12px 20px;
+  }
+  .field-app .field-metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-bottom: 16px;
+  }
+  .field-app .field-metrics .field-metric-card {
+    min-height: 72px;
+    padding: 12px 16px;
+  }
+  .field-desk-alerts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 24px;
+    margin-bottom: 16px;
+  }
+  .field-app .field-desk-alerts .reception-next {
+    justify-content: flex-start;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+  }
+  .field-app .field-desk-grid {
+    gap: 20px;
+  }
+  .field-app .field-appointments,
+  .field-app .field-people {
+    padding: 20px;
+  }
+  .field-app .records-toolbar {
+    border-bottom: 0;
+    padding-bottom: 12px;
+  }
+  .field-app .records-toolbar > label {
+    max-width: none;
+  }
+  .records-result-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px 20px;
+    padding: 0 20px 16px;
+  }
+  .records-result-tools .records-quick-dates,
+  .records-result-tools .records-result-meta {
+    padding: 0;
+  }
+  .records-result-tools .records-result-meta {
+    margin-left: auto;
+    justify-content: flex-end;
+  }
+  .field-app .records-overview {
+    margin-bottom: 16px;
+  }
+  .field-app .records-overview-disclosure > summary {
+    min-height: 52px;
+    padding: 12px 20px;
+  }
+  .field-app .records-overview-disclosure > summary h2 {
+    font-size: 16px;
+  }
+}
+@media (min-width: 1101px) {
+  .field-app .members-results .react-row {
+    grid-template-columns: minmax(240px, 1.6fr) 0.45fr 0.45fr minmax(160px, 1fr) 100px;
+  }
+  .field-app .react-member-identity {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 12px;
+  }
+  .field-app .react-member-identity .staff-identities {
+    flex-basis: 100%;
+    order: 1;
+    margin: 0;
+  }
+}
+@media (min-width: 1200px) {
+  .field-queue-tools {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 12px;
+  }
+  .field-app .field-queue-tools .field-section-heading {
+    flex: 1;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    margin: 0;
+  }
+  .field-app .field-queue-tools .field-search-input {
+    width: 42%;
+    margin: 0;
+  }
+}
+@media (min-width: 1280px) {
+  .field-app .members-tools {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) 140px 140px auto;
+    align-items: end;
+  }
+  .field-app .members-tools > label {
+    width: auto;
+  }
+  .field-app .members-list-actions > button {
+    padding-inline: 12px;
+  }
+  .field-app .members-result-count {
+    grid-column: 1 / -1;
+  }
+}
+@media (min-width: 1101px) and (min-height: 650px) {
+  .field-app .field-people {
+    position: sticky;
+    top: 24px;
+    max-height: calc(100dvh - 48px);
+    display: flex;
+    flex-direction: column;
+  }
+  .field-app .field-people > :not(.field-people-list) {
+    flex-shrink: 0;
+  }
+  .field-people-list {
+    overflow-y: auto;
+    min-height: 0;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+}
+@media (min-width: 1600px) {
+  .field-app > .workspace-page {
+    max-width: 1760px;
+    margin-inline: auto;
+  }
+  .field-app .field-desk-grid {
+    grid-template-columns: minmax(0, 1fr) 360px;
+  }
+}
+@media (min-width: 768px) and (max-width: 1023px) {
+  .field-app .field-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 @media (min-width: 768px) and (max-width: 1100px) {
   .field-app .field-desk-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -213,6 +409,10 @@ body.staff-mode.field-mode {
   }
 }
 @media (max-width: 767px) {
+  .field-app .members-list-actions {
+    order: -1;
+    flex-basis: 100%;
+  }
   .field-app .field-bottom-nav {
     min-height: 72px;
   }

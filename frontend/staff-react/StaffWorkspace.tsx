@@ -1,6 +1,6 @@
 import { MotionCollapse } from './MotionCollapse';
 import { useDataMotion } from './useDataMotion';
-import React, { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import React, { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Modal } from './field/ui';
 import { WorkspaceLauncher } from './WorkspaceLauncher';
 import { WorkspaceIcon } from './WorkspaceIcon';
@@ -34,25 +34,30 @@ export function StaffWorkspace({
   const sidebar = useRef<HTMLElement>(null);
   useDataMotion(sidebar, !loading);
   const activeGroup = entries.find((entry) => entry.id === active)?.group || '其他';
-  const [expanded, setExpanded] = useState<string[]>(() => [
-    ...new Set(entries.map((entry) => entry.group || '其他'))
-  ]);
-  const knownGroups = useRef(new Set(entries.map((entry) => entry.group || '其他')));
-  useLayoutEffect(() => {
-    const added = [...new Set(entries.map((entry) => entry.group || '其他'))].filter(
-      (group) => !knownGroups.current.has(group)
-    );
-    if (!added.length) return;
-    added.forEach((group) => knownGroups.current.add(group));
-    setExpanded((current) => [...new Set([...current, ...added])]);
-  }, [entries]);
+  const [expanded, setExpanded] = useState<string[]>(() => [activeGroup]);
   useEffect(() => {
-    setExpanded((current) => (current.includes(activeGroup) ? current : [...current, activeGroup]));
+    setExpanded([activeGroup]);
   }, [activeGroup]);
+  useEffect(() => {
+    const find = (event: KeyboardEvent) => {
+      if (
+        event.key.toLowerCase() !== 'k' ||
+        !(event.ctrlKey || event.metaKey) ||
+        event.altKey ||
+        event.shiftKey ||
+        document.querySelector('dialog[open]')
+      )
+        return;
+      event.preventDefault();
+      setMore(true);
+    };
+    window.addEventListener('keydown', find);
+    return () => window.removeEventListener('keydown', find);
+  }, []);
   useEffect(() => {
     const nav = sidebar.current?.querySelector('nav');
     const entry = nav?.querySelector<HTMLElement>('[aria-current="page"]');
-    if (!nav || !entry) return;
+    if (!nav || !entry || entry.closest('[inert]')) return;
     const bounds = nav.getBoundingClientRect(),
       item = entry.getBoundingClientRect();
     if (item.top < bounds.top) nav.scrollTop -= bounds.top - item.top + 8;
@@ -121,7 +126,12 @@ export function StaffWorkspace({
             先锋<span>工作人员平台</span>
           </span>
         </a>
-        <button className="workspace-find" type="button" onClick={() => setMore(true)}>
+        <button
+          className="workspace-find"
+          type="button"
+          aria-keyshortcuts="Control+k Meta+k"
+          onClick={() => setMore(true)}
+        >
           <WorkspaceIcon name="search" />
           查找功能
         </button>
@@ -144,7 +154,7 @@ export function StaffWorkspace({
                     setExpanded((current) =>
                       current.includes(group.label)
                         ? current.filter((item) => item !== group.label)
-                        : [...current, group.label]
+                        : [group.label]
                     )
                   }
                 >

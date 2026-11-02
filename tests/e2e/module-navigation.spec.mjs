@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { mockStaff, loginStaff } from './support/staff.mjs';
+import { mockStaff, loginStaff, navigationEntry } from './support/staff.mjs';
 
 function gate() {
   let release;
@@ -58,7 +58,7 @@ test('preparing an authorized page on focus loads code without requesting its da
     if (request.url().includes('/api/stats/summary')) dataReads++;
   });
   await loginStaff(page);
-  await page.locator('.field-sidebar').getByRole('button', { name: '统计分析', exact: true }).focus();
+  await (await navigationEntry(page.locator('.field-sidebar'), '统计分析')).focus();
   await expect.poll(() => codeReads).toBe(1);
   expect(dataReads).toBe(0);
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('staff-request-navigation', { detail: 'stats' })));
