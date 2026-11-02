@@ -366,6 +366,11 @@ body.staff-mode.field-mode {
     grid-column: 1 / -1;
   }
 }
+@media (max-width: 1279px) {
+  .field-app .members-tools > label:first-child {
+    flex-basis: 100%;
+  }
+}
 @media (min-width: 1101px) and (min-height: 650px) {
   .field-app .field-people {
     position: sticky;
