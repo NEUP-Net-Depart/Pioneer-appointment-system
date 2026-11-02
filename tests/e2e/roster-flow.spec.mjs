@@ -66,7 +66,24 @@ test('dense rosters keep seven people per shift readable and expose one contextu
     await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
     return node.getAnimations({subtree:true}).length;
   })).toBe(0);
-  await leaveRow.getByRole('button',{name:'为欧阳测试长姓名安排补位人员',exact:true}).click();
+  const replaceLeave = leaveRow.getByRole('button',{name:'为欧阳测试长姓名安排补位人员',exact:true});
+  for (const width of [320,390,768,1440]) {
+    await page.setViewportSize({width,height:700});
+    await replaceLeave.evaluate(node=>node.scrollIntoView({block:'end',behavior:'instant'}));
+    const target = await replaceLeave.boundingBox(), bar = await page.locator('.roster-editbar').boundingBox();
+    expect(target.y + target.height).toBeLessThanOrEqual(bar.y - 8);
+    expect(await replaceLeave.evaluate(node=>{
+      const box=node.getBoundingClientRect();
+      return node.contains(document.elementFromPoint(box.x+box.width/2,box.y+box.height/2));
+    })).toBe(true);
+    await replaceLeave.click();
+    const dialog=page.getByRole('dialog',{name:'安排补位人员',exact:true});
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button',{name:'关闭',exact:true}).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(replaceLeave).toBeFocused();
+  }
+  await replaceLeave.click();
   const replacement=page.getByRole('dialog',{name:'安排补位人员',exact:true});
   await expect(replacement).toContainText('原请假班次与审批记录会保留');
   await expect(replacement.getByLabel('目标班次',{exact:true})).toBeDisabled();

@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from 'react';
 import { MotionMeter } from './MotionMeter';
 import { WorkspaceMoreActions } from './WorkspaceMoreActions';
 import { StaffIdentity } from './StaffIdentity';
@@ -46,6 +47,26 @@ export function RosterTaskWorkspace({
   showBoard,
   assignmentCount
 }) {
+  const editbar = useRef(null);
+  useLayoutEffect(() => {
+    const bar = editbar.current;
+    if (!active || !bar) return;
+    const workspace = bar.closest('.roster-workflow');
+    const measure = () => {
+      const bottom = parseFloat(getComputedStyle(bar).bottom) || 0;
+      workspace.style.setProperty(
+        '--roster-scroll-clearance',
+        `${bar.getBoundingClientRect().height + bottom + 16}px`
+      );
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(bar);
+    measure();
+    return () => {
+      observer.disconnect();
+      workspace.style.removeProperty('--roster-scroll-clearance');
+    };
+  }, [active, editable, showBoard]);
   return (
     <>
       <div className="roster-view-tabs" role="tablist" aria-label="本周工作内容">
@@ -503,7 +524,7 @@ export function RosterTaskWorkspace({
             </section>
           )}
           {editable && (
-            <div className="roster-editbar">
+            <div className="roster-editbar" ref={editbar}>
               <div>
                 <strong data-motion-value="text">
                   {dirty
