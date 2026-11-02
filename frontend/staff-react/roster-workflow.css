@@ -762,6 +762,11 @@
   flex-wrap: wrap;
   gap: 10px;
 }
+.field-modal .roster-compose .roster-choice-row > button[aria-pressed='true'] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--workspace-surface, #fff);
+}
 .roster-choice-row > label {
   display: flex;
   gap: 8px;
