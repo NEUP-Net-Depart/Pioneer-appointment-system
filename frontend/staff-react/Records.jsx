@@ -219,8 +219,7 @@ export function Records({ user }) {
                 update({
                   date: id === 'today' ? today : '',
                   dateFrom: id === 'week' ? week.start : '',
-                  dateTo: id === 'week' ? week.end : '',
-                  timeSlot: ''
+                  dateTo: id === 'week' ? week.end : ''
                 })
               }
             >

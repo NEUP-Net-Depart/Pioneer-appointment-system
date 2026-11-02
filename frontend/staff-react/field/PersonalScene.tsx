@@ -36,12 +36,12 @@ export function PersonalScene({
         ))}
         {!data.todayDuties.length && <p className="personal-no-shift">暂无排班安排</p>}
         <div className="field-actions personal-actions">
-          {!data.presence &&
-            (data.capability['attendance.self'] || data.directAttendance?.allowed) && (
-              <button className="field-primary" onClick={openAttendance} disabled={busy}>
-                到岗签到
-              </button>
-            )}
+          {(data.capability['attendance.self'] ||
+            (!data.presence && data.directAttendance?.allowed)) && (
+            <button className="field-primary" onClick={openAttendance} disabled={busy}>
+              到岗签到
+            </button>
+          )}
           <button onClick={onLogout}>退出登录</button>
         </div>
       </section>

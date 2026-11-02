@@ -1,7 +1,7 @@
 import { DataValue } from '../DataValue';
 import React from 'react';
 import { AnimatedValue } from '../AnimatedValue';
-import { Empty, Notice, Status, time } from './ui';
+import { Empty, Status, time } from './ui';
 import { StaffIdentity } from '../StaffIdentity';
 import { fieldPersonGroup } from '../../../shared/staff-identities.js';
 import { receptionStatus, queueTicketLabel } from '../../../shared/reception.js';
@@ -138,10 +138,20 @@ export function DeskScene({
         )}
       {data.capability['repair.transfer'] &&
         people.some((p) => p.scheduled && p.state === 'unsigned') && (
-          <Notice>
-            有 {people.filter((p) => p.scheduled && p.state === 'unsigned').length}{' '}
-            位排班成员尚未签到，请核实到岗情况。
-          </Notice>
+          <div className="reception-next">
+            <span>
+              {people.filter((p) => p.scheduled && p.state === 'unsigned').length} 人待签到
+            </span>
+            <button
+              onClick={() => {
+                setTab('people');
+                setShowAvailable(false);
+                setPeopleQuery('');
+              }}
+            >
+              查看到岗
+            </button>
+          </div>
         )}
       <div className="field-mobile-tabs">
         <button

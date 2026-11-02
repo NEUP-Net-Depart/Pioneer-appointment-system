@@ -1,4 +1,9 @@
 /* Task hierarchy uses the existing staff palette and shell geometry. */
+/* Avoid a second scrolling ancestor that makes the sticky sidebar scroll away. */
+body.staff-mode.field-mode {
+  overflow-x: clip;
+  overflow-y: visible;
+}
 .workspace-icon {
   width: 19px;
   height: 19px;
@@ -131,11 +136,15 @@
 .field-app .field-table-head {
   font-size: 13px;
 }
-.field-app .field-order-action {
+.field-app .field-order > .field-order-action {
+  display: block;
   color: var(--ink);
   font-weight: 600;
   white-space: nowrap;
   font-size: 13px;
+}
+.field-app .field-table-head > span:last-child {
+  display: block;
 }
 .field-app .field-order:hover .field-order-action {
   text-decoration: underline;
@@ -147,6 +156,17 @@
 .field-app .field-state-note,
 .field-app .roster-next > div > p {
   font-size: 14px;
+}
+.field-content > .workspace-update {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .field-app .personal-shortcuts {
   display: grid;
@@ -195,6 +215,10 @@
 @media (max-width: 767px) {
   .field-app .field-bottom-nav {
     min-height: 72px;
+  }
+  .field-app .field-content .field-scope {
+    width: auto;
+    flex: 1 1 auto;
   }
   .field-app .workspace-section-nav button {
     padding: 10px 8px;

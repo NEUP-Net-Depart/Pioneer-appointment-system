@@ -27,7 +27,15 @@ export function workspaceEntry(entry) {
 
 export function groupWorkspaceEntries(entries) {
   return workspaceGroups
-    .map((label) => ({ label, items: entries.filter((entry) => entry.group === label) }))
+    .map((label) => ({
+      label,
+      items: entries
+        .filter((entry) => entry.group === label)
+        .sort(
+          (a, b) =>
+            Object.keys(destinations).indexOf(a.id) - Object.keys(destinations).indexOf(b.id)
+        )
+    }))
     .filter((group) => group.items.length);
 }
 
