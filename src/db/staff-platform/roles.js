@@ -49,7 +49,7 @@ export function rolesDomain({ db, auditStatement, commandAuthorization }) {
     return rows(
       await db
         .prepare(
-          `SELECT DISTINCT m.* FROM members m JOIN member_roles mr ON mr.member_id=m.id
+          `SELECT DISTINCT m.* FROM members m JOIN effective_member_roles mr ON mr.member_id=m.id
       WHERE mr.role_id=? AND (mr.effective_to IS NULL OR ?<mr.effective_to)`
         )
         .bind(roleId, businessDate)
@@ -60,7 +60,7 @@ export function rolesDomain({ db, auditStatement, commandAuthorization }) {
   async function roleGuard(roleId, businessDate = dateKey()) {
     const sql = `SELECT json_group_array(json_object('id',id,'scope',scope_bindings,'from',effective_from,'to',effective_to,
       'member',member_id,'revision',member_revision,'account',account,'auth',auth_version)) AS value FROM (
-      SELECT mr.*,m.revision AS member_revision,sa.account,sa.auth_version FROM member_roles mr JOIN members m ON m.id=mr.member_id
+      SELECT mr.*,m.revision AS member_revision,sa.account,sa.auth_version FROM effective_member_roles mr JOIN members m ON m.id=mr.member_id
       LEFT JOIN staff_accounts sa ON sa.member_id=mr.member_id WHERE mr.role_id=?
         AND (mr.effective_to IS NULL OR ?<mr.effective_to) ORDER BY mr.id)`;
     const args = [roleId, businessDate];
@@ -181,15 +181,6 @@ export function rolesDomain({ db, auditStatement, commandAuthorization }) {
     }
     statements.push(
       db
-        .prepare(
-          `UPDATE staff_accounts SET token_version=token_version+1,auth_version=auth_version+1
-      WHERE member_id IN (SELECT member_id FROM member_roles WHERE role_id=?
-        AND (effective_to IS NULL OR ?<effective_to)) AND ${gate}`
-        )
-        .bind(id, dateKey(), ...gateArgs)
-    );
-    statements.push(
-      db
         .prepare(`UPDATE roles SET ${fields.join(',')} WHERE id=? AND revision=? AND ${gate}`)
         .bind(...args, ...gateArgs)
     );
@@ -209,7 +200,8 @@ export function rolesDomain({ db, auditStatement, commandAuthorization }) {
       scope: parseJson(row.scope_bindings, {}),
       effectiveFrom: row.effective_from,
       effectiveTo: row.effective_to,
-      revision: row.revision
+      revision: row.revision,
+      reason: row.reason
     }));
   }
 
@@ -232,18 +224,13 @@ export function rolesDomain({ db, auditStatement, commandAuthorization }) {
     statements.push(
       db
         .prepare(`DELETE FROM member_roles WHERE member_id=? AND ${gate}`)
-        .bind(memberId, ...gateArgs),
-      db
-        .prepare(
-          `UPDATE staff_accounts SET token_version=token_version+1,auth_version=auth_version+1 WHERE member_id=? AND ${gate}`
-        )
         .bind(memberId, ...gateArgs)
     );
     for (const binding of bindings)
       statements.push(
         db
           .prepare(
-            `INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from,effective_to) SELECT ?,?,?,?,?,? WHERE ${gate}`
+            `INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from,effective_to,revision,reason) SELECT ?,?,?,?,?,?,?,? WHERE ${gate}`
           )
           .bind(
             binding.id || crypto.randomUUID(),
@@ -252,6 +239,8 @@ export function rolesDomain({ db, auditStatement, commandAuthorization }) {
             json(binding.scope, {}),
             binding.effectiveFrom || dateKey(),
             binding.effectiveTo || null,
+            binding.revision || 0,
+            binding.reason || '',
             ...gateArgs
           )
       );

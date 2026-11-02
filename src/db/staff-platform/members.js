@@ -1,14 +1,7 @@
 import { parseJson, SCHEMA_VERSION } from '../../platform/contracts.js';
 import { dateKey, nowIso } from '../../platform/time.js';
 import { intersectScopes } from '../../modules/authorization/scopes.js';
-import {
-  memberColumns,
-  assignmentLeaveColumn,
-  rows,
-  membership,
-  profile,
-  assignment
-} from './shared.js';
+import { memberColumns, assignmentLeaveColumn, rows, membership, assignment } from './shared.js';
 
 export function membersDomain({ db, auditStatement, commandAuthorization }) {
   async function accountRow(account) {
@@ -47,7 +40,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
   async function memberships(memberId, businessDate = dateKey()) {
     const result = await db
       .prepare(
-        `SELECT mdm.*,d.name AS department_name FROM member_department_memberships mdm
+        `SELECT mdm.*,d.name AS department_name,d.code AS department_code,d.kind AS organization_kind FROM member_department_memberships mdm
       JOIN departments d ON d.id=mdm.department_id WHERE mdm.member_id=?
       AND mdm.effective_from<=? AND (mdm.effective_to IS NULL OR ?<mdm.effective_to)
       ORDER BY mdm.is_primary DESC,mdm.effective_from`
@@ -66,7 +59,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
       statements.push(
         db
           .prepare(
-            `SELECT mdm.*,d.name AS department_name FROM member_department_memberships mdm
+            `SELECT mdm.*,d.name AS department_name,d.code AS department_code,d.kind AS organization_kind FROM member_department_memberships mdm
         JOIN departments d ON d.id=mdm.department_id WHERE mdm.member_id IN (${ids.map(() => '?').join(',')})
         AND mdm.effective_from<=? AND (mdm.effective_to IS NULL OR ?<mdm.effective_to)
         ORDER BY mdm.is_primary DESC,mdm.effective_from`
@@ -77,74 +70,11 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
     return (await db.batch(statements)).flatMap((result) => rows(result).map(membership));
   }
 
-  async function profiles(memberId, businessDate = dateKey()) {
-    const result = await db
-      .prepare(
-        `SELECT * FROM member_work_profiles WHERE member_id=?
-      AND effective_from<=? AND (effective_to IS NULL OR ?<effective_to) ORDER BY profile_code`
-      )
-      .bind(memberId, businessDate, businessDate)
-      .all();
-    return rows(result).map(profile);
-  }
-
-  async function profileHistory(memberId) {
-    return rows(
-      await db
-        .prepare(
-          'SELECT * FROM member_work_profiles WHERE member_id=? ORDER BY effective_from DESC,id'
-        )
-        .bind(memberId)
-        .all()
-    ).map(profile);
-  }
-
-  async function saveWorkProfile(memberId, input, revision, auditRecord) {
-    const at = nowIso(),
-      id = input.id || crypto.randomUUID();
-    const authorization = commandAuthorization(auditRecord);
-    const guard = input.id
-      ? 'AND EXISTS(SELECT 1 FROM member_work_profiles WHERE id=? AND member_id=? AND revision=?)'
-      : "AND NOT EXISTS(SELECT 1 FROM member_work_profiles WHERE member_id=? AND profile_code=? AND effective_from<COALESCE(?,'9999-12-31') AND (effective_to IS NULL OR effective_to>?))";
-    const args = input.id
-      ? [id, memberId, input.profileRevision]
-      : [memberId, input.profileCode, input.effectiveTo || null, input.effectiveFrom];
-    const statements = [
-      db
-        .prepare(
-          `UPDATE members SET revision=revision+1,updated_at=? WHERE id=? AND revision=? ${guard} ${authorization.sql}`
-        )
-        .bind(at, memberId, revision, ...args, ...authorization.args),
-      input.id
-        ? db
-            .prepare(
-              'UPDATE member_work_profiles SET effective_to=?,revision=revision+1 WHERE id=? AND member_id=? AND changes()>0'
-            )
-            .bind(input.effectiveTo, id, memberId)
-        : db
-            .prepare(
-              'INSERT INTO member_work_profiles(id,member_id,profile_code,effective_from,effective_to) SELECT ?,?,?,?,? WHERE changes()>0'
-            )
-            .bind(id, memberId, input.profileCode, input.effectiveFrom, input.effectiveTo || null),
-      auditStatement(
-        { ...auditRecord, sourceRef: { module: 'identity', type: 'work-profile', id } },
-        true
-      ),
-      db
-        .prepare(
-          'UPDATE staff_accounts SET token_version=token_version+1,auth_version=auth_version+1 WHERE member_id=? AND changes()>0'
-        )
-        .bind(memberId)
-    ];
-    const result = await db.batch(statements);
-    return result[0]?.meta?.changes ? profileHistory(memberId) : null;
-  }
-
   async function grants(memberId, businessDate = dateKey()) {
     const result = await db
       .prepare(
-        `SELECT rg.*,mr.scope_bindings,mr.effective_from,mr.effective_to,r.code AS role_code
-      FROM member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1
+        `SELECT rg.*,mr.scope_bindings,mr.effective_from,mr.effective_to,mr.source,r.code AS role_code
+      FROM effective_member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1
       JOIN role_grants rg ON rg.role_id=r.id
       WHERE mr.member_id=? AND mr.effective_from<=? AND (mr.effective_to IS NULL OR ?<mr.effective_to)
       ORDER BY rg.permission_code`
@@ -159,6 +89,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
       scope: intersectScopes(parseJson(row.scope_spec, {}), parseJson(row.scope_bindings, {})),
       conditions: parseJson(row.condition_spec, []),
       validity: parseJson(row.validity_spec, {}),
+      source: row.source,
       binding: { effectiveFrom: row.effective_from, effectiveTo: row.effective_to }
     }));
   }
@@ -184,27 +115,33 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
       )
       .bind(memberId)
       .first();
-    const [membershipItems, profileItems, grantItems, duties, presence] = await Promise.all([
-      memberships(memberId, businessDate),
-      profiles(memberId, businessDate),
-      grants(memberId, businessDate),
+    const authorizationDate = dateKey();
+    const [membershipItems, grantItems, duties, presence] = await Promise.all([
+      memberships(memberId, authorizationDate),
+      grants(memberId, authorizationDate),
       todayDuties(memberId, businessDate),
       db
         .prepare('SELECT * FROM staff_presence WHERE member_id=? AND business_date=?')
         .bind(memberId, businessDate)
         .first()
     ]);
-    const authVersion = user.authVersion ?? user.tokenVersion ?? 0;
+    const account = await accountForMember(memberId);
+    const authVersion = account?.auth_version ?? 0;
     return {
       actor: {
         memberId,
         account: user.account,
         name: member?.name || user.name,
-        status: member?.status || user.status
+        status: account?.status || 'disabled',
+        memberStatus: member?.status || 'inactive',
+        role: account?.role,
+        homeCampus: account?.home_campus,
+        authorizedCampuses: parseJson(account?.campuses, []),
+        authVersion
       },
       member,
       memberships: membershipItems,
-      workProfiles: profileItems,
+      authorizationDate,
       grants: grantItems,
       todayDuties: duties,
       presence: presence
@@ -254,6 +191,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
       args.push(filters.after.name, filters.after.name, filters.after.memberId);
     }
     const query = `SELECT ${memberColumns},sa.account,sa.status AS account_status,sa.role,sa.auth_version,
+      (SELECT json_group_array(CASE g.campus WHEN '南湖' THEN 'campus-nanhu' ELSE 'campus-hunnan' END) FROM staff_campus_grants g WHERE g.account=sa.account) AS access_campuses,
       (SELECT GROUP_CONCAT(d.name,'、') FROM member_department_memberships mdm JOIN departments d ON d.id=mdm.department_id
        WHERE mdm.member_id=m.id AND mdm.is_primary=1 AND mdm.effective_from<=?
          AND (mdm.effective_to IS NULL OR ?<mdm.effective_to)) AS primary_department
@@ -278,6 +216,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
       authVersion: row.auth_version || 0,
       primaryDepartment: row.primary_department || '',
       revision: row.revision,
+      accessCampusIds: parseJson(row.access_campuses, []),
       memberships: []
     }));
   }
@@ -384,7 +323,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
   async function listMemberships(memberId, includeHistory = true) {
     const result = await db
       .prepare(
-        `SELECT mdm.*,d.name AS department_name FROM member_department_memberships mdm JOIN departments d ON d.id=mdm.department_id
+        `SELECT mdm.*,d.name AS department_name,d.code AS department_code,d.kind AS organization_kind FROM member_department_memberships mdm JOIN departments d ON d.id=mdm.department_id
       WHERE mdm.member_id=? ${includeHistory ? '' : 'AND mdm.effective_to IS NULL'} ORDER BY mdm.effective_from DESC`
       )
       .bind(memberId)
@@ -399,22 +338,47 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
     const statements = [
       db
         .prepare(
-          `UPDATE members SET revision=revision+1,updated_at=? WHERE id=? AND revision=? AND EXISTS(SELECT 1 FROM departments WHERE id=? AND enabled=1) ${authorization.sql}`
+          `UPDATE members SET revision=revision+1,updated_at=? WHERE id=? AND revision=? AND EXISTS(SELECT 1 FROM departments WHERE id=? AND enabled=1)
+          ${input.replacesMembershipId ? 'AND EXISTS(SELECT 1 FROM member_department_memberships WHERE id=? AND member_id=members.id AND revision=?)' : ''} ${authorization.sql}`
         )
-        .bind(createdAt, memberId, revision, input.departmentId, ...authorization.args),
+        .bind(
+          createdAt,
+          memberId,
+          revision,
+          input.departmentId,
+          ...(input.replacesMembershipId
+            ? [input.replacesMembershipId, input.replacesRevision]
+            : []),
+          ...authorization.args
+        ),
+      ...(input.replacesMembershipId
+        ? [
+            db
+              .prepare(
+                `UPDATE member_department_memberships SET effective_to=?,revision=revision+1 WHERE id=? AND member_id=? AND revision=? AND changes()>0`
+              )
+              .bind(
+                input.effectiveFrom,
+                input.replacesMembershipId,
+                memberId,
+                input.replacesRevision
+              )
+          ]
+        : []),
       db
         .prepare(
-          `INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,effective_from,effective_to,created_at) SELECT ?,?,?,?,?,?,?,? WHERE changes()>0`
+          `INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,effective_from,effective_to,created_at,position_code) SELECT ?,?,?,?,?,?,?,?,? WHERE changes()>0`
         )
         .bind(
           id,
           memberId,
           input.departmentId,
-          input.assignmentType || 'secondary',
-          input.isPrimary ? 1 : 0,
+          input.assignmentType || 'primary',
+          (input.assignmentType || 'primary') === 'primary' ? 1 : 0,
           input.effectiveFrom,
           input.effectiveTo || null,
-          createdAt
+          createdAt,
+          input.positionCode || 'member'
         )
     ];
     if (auditRecord)
@@ -424,13 +388,6 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
           true
         )
       );
-    statements.push(
-      db
-        .prepare(
-          'UPDATE staff_accounts SET token_version=token_version+1,auth_version=auth_version+1 WHERE member_id=? AND changes()>0'
-        )
-        .bind(memberId)
-    );
     const result = await db.batch(statements);
     if (!result[0]?.meta?.changes && !result[0]?.results?.length) return null;
     return (await listMemberships(memberId)).find((item) => item.id === id) || null;
@@ -450,12 +407,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
     statements.push(
       db
         .prepare('UPDATE members SET revision=revision+1,updated_at=? WHERE id=? AND changes()>0')
-        .bind(nowIso(), memberId),
-      db
-        .prepare(
-          'UPDATE staff_accounts SET token_version=token_version+1,auth_version=auth_version+1 WHERE member_id=? AND changes()>0'
-        )
-        .bind(memberId)
+        .bind(nowIso(), memberId)
     );
     const result = await db.batch(statements);
     return result[0]?.meta?.changes
@@ -511,9 +463,6 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
     accountsForMember,
     memberships,
     membershipsForMembers,
-    profiles,
-    profileHistory,
-    saveWorkProfile,
     grants,
     todayDuties,
     authorizationContext,

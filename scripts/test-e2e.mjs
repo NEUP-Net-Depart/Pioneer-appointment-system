@@ -59,7 +59,7 @@ async function stopServer(){
 try{
   command(['d1','migrations','apply','DB','--local','--persist-to',state]);
   const sql=resolve(dir,'seed.sql');
-  await writeFile(sql,`INSERT INTO staff_accounts(account,name,role,home_campus,protected,password_hash,created_at) VALUES ('root001','预览负责人','superadmin','南湖',1,'${hashPassword(rootPassword)}','${fixtureTimestamp}'); INSERT INTO staff_campus_grants VALUES ('root001','南湖'),('root001','浑南');`,{mode:0o600});
+  await writeFile(sql,`INSERT INTO staff_accounts(account,name,role,home_campus,protected,password_hash,created_at) VALUES ('root001','预览负责人','superadmin','南湖',1,'${hashPassword(rootPassword)}','${fixtureTimestamp}'); INSERT INTO staff_campus_grants VALUES ('root001','南湖'),('root001','浑南'); INSERT INTO member_department_memberships(id,member_id,department_id,position_code,assignment_type,is_primary,effective_from,created_at) VALUES('test-root-hardware','member-root001','dept-hardware','member','primary',1,'2026-01-01','${fixtureTimestamp}');`,{mode:0o600});
   command(['d1','execute','DB','--local','--persist-to',state,'--file',sql]);
   if(process.argv.includes('--field')) {
     await writeFile(sql,fieldSeed(process.argv.includes('--serve')?dateKey():'2026-10-15',{reportDemo:process.argv.includes('--serve')}),{mode:0o600});

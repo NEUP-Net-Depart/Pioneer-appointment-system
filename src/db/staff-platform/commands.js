@@ -153,10 +153,10 @@ export function commandsDomain({ db }) {
           .prepare(
             `SELECT actor_account,action,occurred_at,reason,
           CASE WHEN action='authorization.account.updated' THEN after_json END AS account_changes FROM audit_events
-        WHERE (action IN ('identity.member.created','identity.member.imported','identity.member.updated','identity.qualification.granted','identity.qualification.ended','organization.membership.updated','organization.membership.ended','authorization.member_roles.updated','authorization.member_activation.updated')
+        WHERE (action IN ('identity.member.created','identity.member.imported','identity.member.updated','identity.qualification.granted','identity.qualification.ended','identity.qualification.archived','organization.membership.updated','organization.membership.ended','authorization.member_roles.updated','authorization.member_activation.updated')
         AND (json_extract(source_ref,'$.id')=?
           OR json_extract(source_ref,'$.id') IN (SELECT id FROM member_department_memberships WHERE member_id=?)
-          OR json_extract(source_ref,'$.id') IN (SELECT id FROM member_work_profiles WHERE member_id=?)))
+          OR json_extract(source_ref,'$.id') IN (SELECT json_extract(before_json,'$.id') FROM audit_events WHERE action='identity.qualification.archived' AND json_extract(source_ref,'$.id')=?)))
         OR (action='authorization.account.updated' AND json_extract(source_ref,'$.type')='account'
           AND json_extract(source_ref,'$.id') IN (SELECT account FROM staff_accounts WHERE member_id=?))
         ORDER BY occurred_at DESC,id DESC LIMIT 50`

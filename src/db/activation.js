@@ -37,13 +37,6 @@ export function activationRepository(db){
     },
     async findWhitelist(id){return whitelist(await db.prepare(`${whitelistSelect} WHERE w.student_id=?`).bind(id).first());},
     async listWhitelist(){return (await db.prepare(`${whitelistSelect} ORDER BY w.created_at DESC,w.student_id`).all()).results.map(whitelist);},
-    async importWhitelist(items,actor,instant){
-      await db.batch(items.flatMap(item=>[
-        db.prepare('INSERT INTO staff_whitelist(student_id,expected_name,expected_role,created_by,created_at) VALUES (?,?,?,?,?)')
-          .bind(item.studentId,item.expectedName,item.expectedRole,actor,instant),
-        ...item.authorizedCampuses.map(campus=>db.prepare('INSERT INTO whitelist_campus_grants VALUES (?,?)').bind(item.studentId,campus))
-      ]));
-    },
     async changeWhitelist(target,status,actor,instant){
       const statements=[];
       if(status==='revoked')statements.push(db.prepare(`UPDATE activation_requests SET status='rejected',password_hash='',review_note='白名单资格已撤销',reviewed_by=?,reviewed_at=?
@@ -65,11 +58,14 @@ export function activationRepository(db){
     },
     async findRequest(id){return application(await db.prepare(`${requestSelect} WHERE r.id=?`).bind(id).first());},
     async listRequests(){return (await db.prepare(`${requestSelect} ORDER BY r.created_at DESC,r.id`).all()).results.map(application);},
-    async review(items,status,note,actor,instant){
-      const results=await db.batch(items.map(item=>db.prepare(`UPDATE activation_requests
+    async review(items,status,note,actor,instant,guards=[],authorization){
+      const checks=[];
+      if(authorization)checks.push(db.prepare(`SELECT CASE WHEN EXISTS(SELECT 1 FROM staff_accounts a JOIN members m ON m.id=a.member_id WHERE a.account=? AND a.member_id=? AND a.auth_version=? AND a.status='enabled' AND m.status='active') THEN 1 ELSE abs(-9223372036854775808) END`).bind(actor,authorization.memberId,authorization.authVersion));
+      for(const guard of guards) checks.push(db.prepare(`SELECT CASE WHEN (${guard.snapshot.sql})=? AND NOT EXISTS(SELECT 1 FROM json_each(?) v LEFT JOIN roles r ON r.id=json_extract(v.value,'$.id') WHERE r.id IS NULL OR r.revision<>json_extract(v.value,'$.revision') OR r.enabled<>json_extract(v.value,'$.enabled')) THEN 1 ELSE abs(-9223372036854775808) END`).bind(...guard.snapshot.args,guard.snapshot.value,JSON.stringify(guard.roleVersions)));
+      const results=(await db.batch([...checks,...items.map(item=>db.prepare(`UPDATE activation_requests
         SET status=?,review_note=?,reviewed_by=?,reviewed_at=?,password_hash=CASE WHEN ?='rejected' THEN '' ELSE password_hash END
         WHERE id=? AND status='pending' AND EXISTS(SELECT 1 FROM staff_whitelist WHERE student_id=? AND revision=?)
-        RETURNING id`).bind(status,note,actor,instant,status,item.id,item.studentId,item.whitelistRevision)));
+        RETURNING id`).bind(status,note,actor,instant,status,item.id,item.studentId,item.whitelistRevision))])).slice(checks.length);
       return {applied:results.flatMap(result=>result.results.map(row=>row.id)),conflicts:items.filter((_,n)=>!results[n].results.length).map(item=>item.id)};
     }
   };

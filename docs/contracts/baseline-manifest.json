@@ -172,6 +172,10 @@
     {
       "name": "0041_attendance_reports.sql",
       "sha256": "0e59f4e55e136989db3423f79401560e32b9cecf92e303b269f04815667c7d12"
+    },
+    {
+      "name": "0042_organization_permissions.sql",
+      "sha256": "d603812e21918469de242adfcab4965f6ff2e4f8a93ae5d58c3da21b57b2e94b"
     }
   ],
   "modules": [
@@ -423,6 +427,10 @@
     {
       "name": "0041_attendance_reports.sql",
       "sha256": "0e59f4e55e136989db3423f79401560e32b9cecf92e303b269f04815667c7d12"
+    },
+    {
+      "name": "0042_organization_permissions.sql",
+      "sha256": "d603812e21918469de242adfcab4965f6ff2e4f8a93ae5d58c3da21b57b2e94b"
     }
   ]
 }

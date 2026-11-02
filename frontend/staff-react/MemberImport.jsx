@@ -6,7 +6,7 @@ import { MemberSetup, newMemberSetup, memberDefaults } from './MemberSetup.jsx';
 
 const basicHeader = 'studentId,name,college';
 const advancedHeader =
-  'studentId,name,homeCampusId,college,departmentId,assignmentType,workProfiles,roleCodes,authorizedCampuses,trainingConfirmed,accountRole,effectiveFrom';
+  'studentId,name,homeCampusId,college,major,departmentId,positionCode,exchangeParticipation,authorizedCampuses,configureActivation,effectiveFrom';
 const statusLabels = { created: '新增', updated: '更新', skipped: '跳过', conflict: '冲突' };
 const display = (value) =>
   ({ 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' })[value] || value || '未设置';
@@ -103,9 +103,7 @@ export function MemberImport({ user, initialCsv = '', onClose, onSaved }) {
             onChange={setSetup}
             departments={departments}
             disabled={busy}
-            canAuthorize={
-              staffPermission(user, 'roles.manage') && staffPermission(user, 'accounts.manage')
-            }
+            canAuthorize={staffPermission(user, 'accounts.manage')}
           />
           <label className="workspace-check">
             <input
@@ -121,13 +119,6 @@ export function MemberImport({ user, initialCsv = '', onClose, onSaved }) {
             onToggle={(event) => setAdvanced(event.currentTarget.open)}
           >
             <summary>高级 CSV 配置</summary>
-            <p>
-              可用非空列覆盖默认设置；空白资料和授权均保留。所选校区默认仅用于新增人员，非空校区列可显式修改已有人员。部门任职、工作资格和角色只做补充。清空资料、调岗或撤销授权请进入人员详情。
-            </p>
-            <p>
-              校区使用 campus-nanhu、campus-hunnan；多项用 | 分隔。工作资格使用
-              repair、exchange、office；角色使用角色代码。每个成员只关联一个登录账号。
-            </p>
             {staffPermission(user, 'accounts.manage') && (
               <label>
                 已有账号校区
@@ -179,13 +170,7 @@ export function MemberImport({ user, initialCsv = '', onClose, onSaved }) {
               onChange={(event) => setCsv(event.target.value)}
             />
           </label>
-          <button
-            className="react-primary"
-            disabled={
-              busy || !csv.trim() || (setup.kind === 'exchange' && !setup.trainingConfirmed)
-            }
-            onClick={() => submit()}
-          >
+          <button className="react-primary" disabled={busy || !csv.trim()} onClick={() => submit()}>
             {busy ? '正在校验…' : '预览并核对'}
           </button>
         </>

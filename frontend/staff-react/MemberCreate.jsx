@@ -96,9 +96,7 @@ export function MemberCreate({ user, onClose, onSaved, onExisting }) {
           onChange={setSetup}
           departments={departments}
           disabled={busy}
-          canAuthorize={
-            staffPermission(user, 'roles.manage') && staffPermission(user, 'accounts.manage')
-          }
+          canAuthorize={staffPermission(user, 'accounts.manage')}
         />
         <Notice>{error}</Notice>
         {existing && (
@@ -117,10 +115,7 @@ export function MemberCreate({ user, onClose, onSaved, onExisting }) {
           <button type="button" disabled={busy} onClick={onClose}>
             取消
           </button>
-          <button
-            className="react-primary"
-            disabled={busy || (setup.kind === 'exchange' && !setup.trainingConfirmed)}
-          >
+          <button className="react-primary" disabled={busy}>
             {busy ? '正在新增…' : '新增人员'}
           </button>
         </div>

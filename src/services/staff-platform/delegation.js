@@ -11,6 +11,7 @@ export const businessPermissions = new Set([
   'repair.transfer',
   'repair.receive',
   'repair.dispatch',
+  'repair.followup.manage',
   'customer.identity.read',
   'customer.contact.read',
   'onsite.create',
@@ -85,7 +86,18 @@ export function delegationScope(context, permission, scope = {}, validity = {}, 
 
 export function delegableRole(context, role, binding = {}, target = {}) {
   if (role.code === 'superadmin') fail(403, '不能分配系统管理员角色');
-  if (context.actor.role === 'superadmin') return binding;
+  if (context.actor.role === 'superadmin') {
+    const raw = binding.scope?.campusIds ?? binding.scope?.campuses;
+    const campuses = Array.isArray(raw) ? raw : target.campuses || [];
+    if (
+      !campuses.length ||
+      campuses.some(
+        (id) => !(context.actor.authorizedCampuses || []).map(campusId).includes(campusId(id))
+      )
+    )
+      fail(403, '不能修改其他校区的授权');
+    return binding;
+  }
   if (systemRole(role)) fail(403, '不能管理系统级角色或权限');
   const scope = delegationScope(
     context,
@@ -120,12 +132,13 @@ export async function editableMember(
   context,
   member,
   evaluate,
-  permission = 'members.manage'
+  permission = 'members.manage',
+  scoped = false
 ) {
   const memberId = member.memberId || member.id;
   const account = await repository.accountForMember(memberId);
   const memberships = await repository.memberships(memberId, context.businessDate);
-  return editableMemberState(context, member, account, memberships, evaluate, permission);
+  return editableMemberState(context, member, account, memberships, evaluate, permission, scoped);
 }
 
 export function editableMemberState(
@@ -134,7 +147,8 @@ export function editableMemberState(
   account,
   memberships,
   evaluate,
-  permission = 'members.manage'
+  permission = 'members.manage',
+  scoped = false
 ) {
   const memberId = member.memberId || member.id;
   if (memberId === context.actor.memberId || account?.protected || account?.role === 'superadmin')
@@ -142,8 +156,22 @@ export function editableMemberState(
   const campuses = account
     ? JSON.parse(account.campuses || '[]').map(campusId)
     : [member.homeCampusId || member.home_campus_id];
+  if (
+    scoped &&
+    !campuses.some(
+      (campus) =>
+        evaluate(context, permission, {
+          id: memberId,
+          memberId,
+          campusId: campus,
+          departmentIds: memberships.map((item) => item.departmentId)
+        }).allowed
+    )
+  )
+    fail(403, '成员不在可管理范围内');
   for (const campus of campuses) {
     if (
+      !scoped &&
       !evaluate(context, permission, {
         id: memberId,
         memberId,

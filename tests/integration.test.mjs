@@ -86,10 +86,15 @@ async function addUser(account, role = 'technician') {
   if (role === 'admin') await grantTestManagement(db, account);
   return login(account);
 }
-async function whitelistStaff(studentId,{name='',role='technician',authorizedCampuses=['南湖']}={}){
+async function whitelistStaff(studentId,{name=`人员${studentId}`,role='technician',authorizedCampuses=['南湖']}={}){
   const token=await login();
-  await api('/api/staff-whitelist/import',{method:'POST',token,body:{csv:`studentId,expectedName\n${studentId},${name}`,expectedRole:role,authorizedCampuses}});
+  await api('/api/members',{method:'POST',token,body:{studentId,name,homeCampusId:'campus-nanhu',departmentId:'dept-hardware',positionCode:role==='admin'?'deputy_head':'member',authorizedCampuses,configureActivation:true}},201);
+  if(role==='admin')await db.prepare('UPDATE staff_whitelist SET expected_role=? WHERE student_id=?').bind(role,studentId).run();
   return token;
+}
+async function importPeople(csv,token){
+  const preview=await api('/api/members/import',{method:'POST',token,body:{csv}});
+  return api('/api/members/import',{method:'POST',token,body:{csv,confirm:true,previewToken:preview.previewToken}});
 }
 async function applyStaff(studentId,patch={}){
   return api('/api/activation',{method:'POST',body:{studentId,name:`人员${studentId}`,homeCampus:'南湖',password,...patch}},201);
@@ -146,7 +151,7 @@ beforeEach(async () => {
   await db.prepare('DELETE FROM service_day_overrides').run();
   await db.prepare('DELETE FROM booking_notices').run();
   await db.prepare("UPDATE booking_settings SET release_time='10:00',revision=0,updated_by=NULL").run();
-  await db.batch(['DELETE FROM appointment_corrections','DELETE FROM repair_followups','DELETE FROM repair_intake_records','DELETE FROM credential_recoveries','DELETE FROM booking_requests','DELETE FROM activation_requests','DELETE FROM staff_whitelist','DELETE FROM attachment_storage','DELETE FROM appointment_attachments','DELETE FROM appointments','DELETE FROM service_location_changes','DELETE FROM service_locations','DELETE FROM booking_day_slots',"DELETE FROM staff_accounts WHERE protected=0",'DELETE FROM rate_limits'].map(sql => db.prepare(sql)));
+  await db.batch(['DELETE FROM appointment_corrections','DELETE FROM repair_followups','DELETE FROM repair_intake_records','DELETE FROM credential_recoveries','DELETE FROM booking_requests','DELETE FROM activation_requests','DELETE FROM activation_member_bindings','DELETE FROM staff_whitelist','DELETE FROM attachment_storage','DELETE FROM appointment_attachments','DELETE FROM appointments','DELETE FROM service_location_changes','DELETE FROM service_locations','DELETE FROM booking_day_slots',"DELETE FROM staff_accounts WHERE protected=0",'DELETE FROM rate_limits'].map(sql => db.prepare(sql)));
   await db.prepare('DELETE FROM staff_presence').run();
   await db.prepare('UPDATE storage_quota SET used_bytes=0 WHERE id=1').run();
   const locationDates = [...new Set([date,'2026-10-15',...Array.from({length:10},(_,index)=>addDays(dateKey(),index-3))])];
@@ -203,10 +208,12 @@ test('office followup decisions return safe repeatable receipts without granting
     ]);
   });
   await login();
-  const office = await addUser('994009');
+  await addUser('994009');
   const { member_id: memberId } = await db.prepare('SELECT member_id FROM staff_accounts WHERE account=?').bind('994009').first();
   await db.prepare('DELETE FROM member_roles WHERE member_id=?').bind(memberId).run();
   await db.prepare("INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from) VALUES('followup-receipt-office',?,'role-office','{\"campuses\":\"bound\"}','2026-01-01')").bind(memberId).run();
+  await db.prepare("UPDATE member_department_memberships SET department_id='dept-office' WHERE member_id=?").bind(memberId).run();
+  let office = await login('994009');
   await db.prepare("INSERT INTO roster_tasks(id,week_start,slot_start,slot_end,deadline,created_at,created_by_member_id,duty_type) VALUES('followup-receipt-task',?,'00:00','23:59',?,?,'member-root001','office')").bind(date,testNow,testNow).run();
   await db.prepare("INSERT INTO roster_versions(id,task_id,status,version,rule_version,algorithm_version,created_at) VALUES('followup-receipt-roster','followup-receipt-task','published',1,'1.0.0','fixture',?)").bind(testNow).run();
   await db.prepare("INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at) VALUES('followup-receipt-shift','followup-receipt-roster',?,?,'campus-nanhu','office','00:00','23:59')").bind(memberId,date).run();
@@ -246,6 +253,8 @@ test('office followup decisions return safe repeatable receipts without granting
   await api('/api/repair-followups?status=pending',{token:office},403);
   await api(`/api/repair-followups/${pending.id}/decision`,{method:'POST',token:office,body:decision},403);
   await db.prepare("DELETE FROM member_roles WHERE id='followup-receipt-office'").run();
+  await api('/api/auth/me',{token:office},401);
+  office=await login('994009');
   await api('/api/repair-followups?status=pending',{token:office},403);
   await api(`/api/repair-followups/${pending.id}/decision`,{method:'POST',token:office,body:decision},403);
 });
@@ -358,10 +367,10 @@ test('repair followups are idempotent, capacity-exempt, traceable, and only scan
 test('repair chains allow only one unfinished followup across ancestors, descendants and concurrent requests', async () => {
   const root = await login(), original = await book();
   await db.prepare("UPDATE appointments SET status='completed',outcome='repaired',completed_at=? WHERE id=?").bind(testNow,original.id).run();
-  const requestFollowup = (parentId, staff = false) => request(`/api/appointments/${parentId}/repair-followups${staff ? '/staff' : ''}`, {
+  const requestFollowup = async (parentId, staff = false) => { const response=await request(`/api/appointments/${parentId}/repair-followups${staff ? '/staff' : ''}`, {
     method:'POST',...(staff ? {token:root} : {accessToken:original.accessToken}),
     body:{requestId:crypto.randomUUID(),reason:'同一维修链的返修测试'}
-  });
+  });const body=await response.json();return {status:response.status,json:async()=>body}; };
   const schedule = (followup) => api(`/api/repair-followups/${followup.id}/decision`, {
     method:'POST',token:root,body:{action:'schedule',requestId:crypto.randomUUID(),revision:followup.revision,date:'2026-10-19',timeSlot:TIME_SLOTS[0]}
   });
@@ -490,7 +499,7 @@ test('transfers reject every non-progress status in the unified staff workflow',
 });
 
 test('live reassignment through corrections requires the recipient role, qualification and presence while managers work off duty',async()=>{
-  const manager=await addUser('993023','admin'),technician=await addUser('993024');
+  let manager=await addUser('993023','admin');const technician=await addUser('993024');
   await addUser('993025');
   await db.prepare("DELETE FROM staff_presence WHERE member_id='member-993023'").run();
   const item=await book();
@@ -498,7 +507,7 @@ test('live reassignment through corrections requires the recipient role, qualifi
   const correct=(body,status=200)=>api(`/api/appointments/${item.id}/status`,{method:'PATCH',token:manager,body:{action:'correct',...body}},status);
   // A management identity and work profile do not replace a repair role.
   await correct({assignedTo:'993023'},409);
-  await db.prepare("DELETE FROM member_work_profiles WHERE member_id='member-993025'").run();
+  await db.prepare("DELETE FROM member_department_memberships WHERE member_id='member-993025'").run();
   await correct({assignedTo:'993025'},409);
   await readyStaff(db,'993025',date);
   await db.prepare("DELETE FROM staff_presence WHERE member_id='member-993025'").run();
@@ -508,9 +517,11 @@ test('live reassignment through corrections requires the recipient role, qualifi
   await db.prepare("INSERT INTO roles(id,code,name,level,created_at,updated_at) VALUES('correction-only','correction_only','仅纠错',1,?,?)").bind(testNow,testNow).run();
   await db.prepare("INSERT INTO role_grants(id,role_id,permission_code,scope_spec) VALUES('correction-only-grant','correction-only','repair.correct','{\"campuses\":\"bound\"}')").run();
   await db.prepare("UPDATE member_roles SET role_id='correction-only' WHERE member_id='member-993023' AND role_id='role-repair-lead'").run();
+  manager=await login('993023');
   await correct({assignedTo:'993025'},403);
   await db.prepare("UPDATE member_roles SET role_id='role-repair-lead' WHERE member_id='member-993023' AND role_id='correction-only'").run();
   await db.prepare("DELETE FROM roles WHERE id='correction-only'").run();
+  manager=await login('993023');
   const transferred=await correct({assignedTo:'993025'});
   assert.equal(transferred.assignedTo,'993025');
   await db.prepare("DELETE FROM staff_presence WHERE member_id='member-993025'").run();
@@ -553,10 +564,12 @@ test('staff onsite registration is scoped, retry-safe, outside slot capacity and
 });
 
 test('one login combines identities while concurrent intake remains limited to one active repair', async () => {
-  const primary=await addUser('993020'),outsider=await addUser('993022');
+  let primary=await addUser('993020'); const outsider=await addUser('993022');
   await assert.rejects(db.prepare('INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at,member_id) VALUES(?,?,?,?,?,?,?)')
     .bind('993021','重复登录','technician','南湖',hashPassword(password),date,'member-993020').run(),/UNIQUE/);
   await db.prepare("INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from) VALUES('combined-lead','member-993020','role-repair-lead','{\"campusIds\":[\"campus-nanhu\"]}','2026-01-01')").run();
+  await api('/api/auth/me',{token:primary},401);
+  primary=await login('993020');
   const me=await api('/api/auth/me',{token:primary});
   assert.ok(me.identities.some(item=>item.code==='repair'));assert.ok(me.identities.some(item=>item.code==='repair_lead'));
   const first=await book(),second=await book();
@@ -1500,7 +1513,7 @@ test('explicit account management grants permit technician reviewers without gra
   await api('/api/users/650192',{token,method:'PATCH',body:{name:'已授权管理修改'}});
   await api('/api/users/650192',{token,method:'PATCH',body:{role:'admin'}});
   await api('/api/users/root001',{token,method:'PATCH',body:{status:'disabled'}},403);
-  await api('/api/staff-whitelist/import',{token,method:'POST',body:{csv:'studentId,expectedName\n650193,明确授权审批',expectedRole:'technician',authorizedCampuses:['南湖']}});
+  await api('/api/members',{token,method:'POST',body:{studentId:'650193',name:'明确授权审批',homeCampusId:'campus-nanhu',departmentId:'dept-hardware',authorizedCampuses:['南湖'],configureActivation:true}},201);
   const application=await applyStaff('650193',{name:'明确授权审批'});
   await api('/api/activation-requests/review',{token,method:'POST',body:{ids:[application.id],status:'approved',identityVerified:true}});
   assert.equal((await db.prepare("SELECT status FROM activation_requests WHERE id=?").bind(application.id).first()).status,'approved');
@@ -1770,7 +1783,7 @@ test('stale concurrent account updates cannot replace campus grants or restore r
   assert.equal(results.filter(Boolean).length,1);
   const winner=results.find(Boolean),stored=await repository.find('730001');
   assert.deepEqual(stored.authorizedCampuses,winner.authorizedCampuses);assert.equal(stored.role,winner.role);
-  assert.equal(stored.tokenVersion,original.tokenVersion+1);
+  assert.ok(stored.tokenVersion>original.tokenVersion);
 });
 
 test('whitelist application is separate from login and approval atomically installs only roster grants',async()=>{
@@ -1797,7 +1810,7 @@ test('whitelist application is separate from login and approval atomically insta
 
 for (const studentId of ['820001','820002','820003','820004','820005']) test(`concurrent activation submissions and approvals have exactly one winner (${studentId})`,async()=>{
   const token=await whitelistStaff(studentId);
-  const body={studentId,name:'真实部员',homeCampus:'南湖',password};
+  const body={studentId,name:`人员${studentId}`,homeCampus:'南湖',password};
   // Consume each response once, as soon as its request resolves. Do not retain
   // live transport streams while waiting for the other concurrent request.
   const result=async(path,options)=>{
@@ -1833,15 +1846,14 @@ test('identity mismatch, duplicate pending attempts, rejection and reapplication
   await api('/api/activation-requests/review',{method:'POST',token,body:{ids:[second.id],status:'approved',identityVerified:true,reviewNote:'已当面核验部员身份和学生证'}},409);
 });
 
-test('CSV import validates the entire roster, handles quoted cells and never overwrites existing eligibility',async()=>{
+test('CSV import validates the entire personnel list, quoted cells and duplicate relationships',async()=>{
   const token=await login();
-  const csv='\uFEFFstudentId,expectedName,expectedRole,authorizedCampuses\r\n840001,"张三,成员",technician,南湖|浑南\r\n840002,李四,technician,浑南';
-  const result=await api('/api/staff-whitelist/import',{method:'POST',token,body:{csv}});assert.equal(result.imported.length,2);
+  const csv='\uFEFFstudentId,name,homeCampusId,departmentId,positionCode,authorizedCampuses,configureActivation\r\n840001,"张三,成员",campus-nanhu,dept-hardware,member,南湖|浑南,true\r\n840002,李四,campus-hunnan,dept-hardware,member,浑南,true';
+  assert.equal((await importPeople(csv,token)).summary.created,2);
   assert.equal((await api('/api/staff-whitelist',{token})).items.find(item=>item.studentId==='840001').expectedName,'张三,成员');
-  assert.equal((await api('/api/staff-whitelist/import',{method:'POST',token,body:{csv}})).skipped.length,2);
-  for(const invalid of ['studentId\n840003\nBAD','studentId\n840003\n840003','studentId,expectedRole\n840003,superadmin','studentId,name\n840003,张三','studentId\n"840003']){
-    await api('/api/staff-whitelist/import',{method:'POST',token,body:{csv:invalid,authorizedCampuses:['南湖']}},400);
-  }
+  assert.equal((await importPeople(csv,token)).summary.skipped,2);
+  for(const invalid of ['studentId,name\n840003,测试\nBAD,错误','studentId,name\n840003,重复\n840003,重复','studentId,name,roleCodes\n840003,测试,superadmin','studentId,name\n"840003,测试'])
+    await api('/api/members/import',{method:'POST',token,body:{csv:invalid}},400);
   assert.equal(await db.prepare('SELECT student_id FROM staff_whitelist WHERE student_id=?').bind('840003').first(),null);
 });
 
@@ -1849,9 +1861,10 @@ test('activation management rejects role and campus escalation and supports batc
   const root=await login(),admin=await addUser('850001','admin'),technician=await addUser('850002');
   await api('/api/staff-whitelist',{token:technician},403);
   await api('/api/activation-requests',{token:technician},403);
-  await api('/api/staff-whitelist/import',{method:'POST',token:admin,body:{csv:'studentId\n850003',expectedRole:'admin',authorizedCampuses:['南湖']}},400);
-  await api('/api/staff-whitelist/import',{method:'POST',token:admin,body:{csv:'studentId\n850003',authorizedCampuses:['浑南']}},403);
-  await api('/api/staff-whitelist/import',{method:'POST',token:root,body:{csv:'studentId\n850003\n850004',authorizedCampuses:['浑南']}});
+  await api('/api/members',{method:'POST',token:admin,body:{studentId:'850003',name:'人员850003',homeCampusId:'campus-nanhu',departmentId:'dept-hardware',accountRole:'admin',authorizedCampuses:['南湖'],configureActivation:true}},400);
+  await api('/api/members',{method:'POST',token:admin,body:{studentId:'850003',name:'人员850003',homeCampusId:'campus-nanhu',departmentId:'dept-hardware',authorizedCampuses:['浑南'],configureActivation:true}},403);
+  await whitelistStaff('850003',{authorizedCampuses:['浑南']});
+  await whitelistStaff('850004',{authorizedCampuses:['浑南']});
   const first=await applyStaff('850003'),second=await applyStaff('850004');
   await api('/api/activation-requests/review',{method:'POST',token:admin,body:{ids:[first.id],status:'approved',identityVerified:true,reviewNote:'已当面核验部员身份和学生证'}},403);
   const result=await api('/api/activation-requests/review',{method:'POST',token:root,body:{ids:[first.id,second.id],status:'approved',identityVerified:true,reviewNote:'已分别当面核验两名部员和学生证'}});

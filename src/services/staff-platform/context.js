@@ -11,16 +11,19 @@ export function contextDomain({ repository, platform, calendarClock }) {
 
   async function contextFor(actor, businessDate = dateKey()) {
     const context = await platform.authContext(actor, { businessDate });
-    if (context.member?.status && context.member.status !== 'active')
+    if (
+      (context.member?.status && context.member.status !== 'active') ||
+      context.actor?.status === 'disabled'
+    )
       fail(401, '成员已停用，请联系管理员');
     const effective = {
       ...context,
       businessDate,
       actor: {
         ...context.actor,
-        role: actor.role,
-        authorizedCampuses: actor.authorizedCampuses || [],
-        homeCampus: actor.homeCampus
+        role: context.actor.role ?? actor.role,
+        authorizedCampuses: context.actor.authorizedCampuses ?? actor.authorizedCampuses ?? [],
+        homeCampus: context.actor.homeCampus ?? actor.homeCampus
       },
       grants: context.grants || []
     };
@@ -33,7 +36,7 @@ export function contextDomain({ repository, platform, calendarClock }) {
 
   async function scopedActor(actor, permissionCode) {
     const context = await contextFor(actor);
-    const authorizedCampuses = (actor.authorizedCampuses || []).filter(
+    const authorizedCampuses = (context.actor.authorizedCampuses || []).filter(
       (campusId) => evaluate(context, permissionCode, { campusId }).allowed
     );
     if (!authorizedCampuses.length) fail(403, '没有执行此操作的权限');

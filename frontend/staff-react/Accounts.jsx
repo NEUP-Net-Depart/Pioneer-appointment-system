@@ -93,7 +93,7 @@ export function Accounts({ user, embedded = false }) {
                 ) : item.id === 'review' ? (
                   <ActivationReview />
                 ) : (
-                  <Invitations user={user} />
+                  <Invitations />
                 )}
               </div>
             </ActivityContext.Provider>
@@ -294,8 +294,7 @@ export function AccountEditor({ user, item, onClose, onSaved, embedded = false, 
             />
           </label>
           <p data-motion-value="text" className="field-muted">
-            工作角色：{item.roleNames?.join('、') || '尚未授权'}
-            。角色权限与工作资格在人员详情中分别维护。
+            有效权限：{item.roleNames?.join('、') || '尚未授权'}
           </p>
           <label>
             基础账号类型
@@ -544,16 +543,11 @@ function ActivationReview() {
   );
 }
 
-function Invitations({ user }) {
+function Invitations() {
   const active = useContext(ActivityContext),
     list = useAccountList('/api/staff-whitelist', active);
-  const [csv, setCsv] = useState(''),
-    [file, setFile] = useState(null),
-    [role, setRole] = useState('technician'),
-    [campuses, setCampuses] = useState(user.authorizedCampuses.slice(0, 1));
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState(''),
-    [importing, setImporting] = useState(false),
     [query, setQuery] = useState('');
   const lock = useRef(false);
   async function run(operation) {
@@ -570,24 +564,6 @@ function Invitations({ user }) {
       lock.current = false;
       setBusy(false);
     }
-  }
-  function submit(event) {
-    event.preventDefault();
-    run(async () => {
-      if (file && file.size > 200000) throw new Error('CSV 文件不能超过 200 KB');
-      const result = await request('/api/staff-whitelist/import', {
-        method: 'POST',
-        body: {
-          csv: file ? await file.text() : csv,
-          expectedRole: role,
-          authorizedCampuses: campuses
-        }
-      });
-      setMessage(`已导入 ${result.imported.length} 人，已有资格跳过 ${result.skipped.length} 人。`);
-      setImporting(false);
-      setFile(null);
-      setCsv('');
-    });
   }
   const items = list.items.filter((item) =>
     `${item.studentId} ${item.expectedName || ''}`.includes(query.trim())
@@ -606,9 +582,6 @@ function Invitations({ user }) {
         </label>
         <button disabled={busy || list.loading} onClick={list.refresh}>
           刷新资格
-        </button>
-        <button className="field-primary" onClick={() => setImporting(true)}>
-          导入名单
         </button>
       </div>
       <Notice>{list.error || message}</Notice>
@@ -656,85 +629,7 @@ function Invitations({ user }) {
           <strong data-motion-value="text">
             {query ? '没有匹配的加入资格' : '还没有加入名单'}
           </strong>
-          <p>导入名单后，将激活网址发给成员，由本人设置密码并提交申请。</p>
         </div>
-      )}
-      {importing && (
-        <Modal
-          title="导入加入名单"
-          onClose={() => {
-            if (!busy) setImporting(false);
-          }}
-        >
-          <form className="workspace-form" onSubmit={submit}>
-            <fieldset className="workspace-form-fields" disabled={busy}>
-              <p className="field-muted">
-                同时提供文件和文本时使用文件；已有记录会跳过。管理员邀请请在“人员管理”导入。
-              </p>
-              <label>
-                CSV 文件（不超过 200 KB）
-                <input
-                  type="file"
-                  accept=".csv,text/csv"
-                  onChange={(event) => setFile(event.target.files[0] || null)}
-                />
-              </label>
-              <label>
-                或粘贴 CSV
-                <textarea
-                  value={csv}
-                  rows={5}
-                  onChange={(event) => setCsv(event.target.value)}
-                  placeholder={'studentId,expectedName\n20260001,张三'}
-                />
-              </label>
-              <label>
-                默认角色
-                <select value={role} onChange={(event) => setRole(event.target.value)}>
-                  <option value="technician">{roleLabels.technician}</option>
-                </select>
-              </label>
-              <fieldset className="workspace-checks">
-                <legend>默认授权校区</legend>
-                {user.authorizedCampuses.map((campus) => (
-                  <label key={campus}>
-                    <input
-                      type="checkbox"
-                      checked={campuses.includes(campus)}
-                      onChange={(event) =>
-                        setCampuses(
-                          event.target.checked
-                            ? [...campuses, campus]
-                            : campuses.filter((value) => value !== campus)
-                        )
-                      }
-                    />
-                    {campus}
-                  </label>
-                ))}
-              </fieldset>
-              <details className="workspace-help">
-                <summary>CSV 格式</summary>
-                <p className="field-muted">
-                  必需列 studentId；可选列 expectedName、expectedRole（仅
-                  technician）、authorizedCampuses；多校区用 | 分隔。
-                </p>
-              </details>
-            </fieldset>
-            <Notice>{message}</Notice>
-            <div className="field-actions">
-              <button type="button" disabled={busy} onClick={() => setImporting(false)}>
-                取消
-              </button>
-              <button
-                className="field-primary"
-                disabled={busy || !campuses.length || (!file && !csv.trim())}
-              >
-                {busy ? '正在导入…' : '导入名单'}
-              </button>
-            </div>
-          </form>
-        </Modal>
       )}
     </>
   );

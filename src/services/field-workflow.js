@@ -1,3 +1,4 @@
+import { participationCodes } from '../../shared/staff-organization.js';
 import { fail } from '../lib/http.js';
 import { dateKey, eventWindow } from '../platform/time.js';
 import { campusId } from '../modules/authorization/scopes.js';
@@ -34,9 +35,7 @@ export function fieldWorkflow({
       repository.dutyEvent(dateKey(), id),
       repository.serviceDay(dateKey(), id)
     ]);
-    const qualified = context.workProfiles.some((item) =>
-      ['repair', 'exchange'].includes(item.profileCode)
-    );
+    const qualified = participationCodes(context, { campusId: id }).some(code => ['repair', 'exchange'].includes(code));
     const paused = !!serviceDay?.paused;
     const reason = paused
       ? '该校区今天暂停维修'
@@ -93,7 +92,7 @@ export function fieldWorkflow({
     const contexts = [];
     if (
       (capability['repair.summary.read'] &&
-        context.workProfiles.some((item) => ['repair', 'exchange'].includes(item.profileCode))) ||
+        participationCodes(context, { campusId: selected }).some(code => ['repair', 'exchange'].includes(code))) ||
       current
     )
       contexts.push({ id: 'repair', label: '维修工作台' });
@@ -384,9 +383,7 @@ export function fieldWorkflow({
       .map((person) => {
         const personContext = contexts.get(person.memberId),
           current = personContext?.current;
-        const qualified = personContext?.workProfiles.some((item) =>
-          ['repair', 'exchange'].includes(item.profileCode)
-        );
+        const qualified = participationCodes(personContext, { campusId: data.campusId }).some(code => ['repair', 'exchange'].includes(code));
         const reason = paused ? '该校区今天暂停维修' :
           !personContext ||
           personContext.actor.status !== 'enabled' ||

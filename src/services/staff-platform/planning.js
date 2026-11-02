@@ -9,7 +9,11 @@ import {
   rosterMemberInScope
 } from '../../modules/rosters/scope.js';
 import { staffIdentities } from '../../../shared/staff-identities.js';
-import { repairRosterPool, rosterFactContext } from '../../modules/rosters/qualification.js';
+import {
+  repairRosterPool,
+  rosterFactContext,
+  rosterParticipation
+} from '../../modules/rosters/qualification.js';
 import { rosterStage, sameAssignment } from '../../modules/rosters/workflow.js';
 import { generateOfficeRoster } from '../../modules/rosters/office.ts';
 import { tokenDigest, rosterEligibilitySnapshot, rosterAssignmentSnapshot } from './shared.js';
@@ -99,11 +103,9 @@ export function planningDomain({
           !rosterMemberInScope(fact, task, slot.businessDate, slot.campusId)
         )
           continue;
-        const profiles = fact.profiles.filter(
-          (profile) =>
-            profile.effectiveFrom <= slot.businessDate &&
-            (!profile.effectiveTo || slot.businessDate < profile.effectiveTo)
-        );
+        const participation = rosterParticipation(fact, slot.businessDate, {
+          campusId: slot.campusId
+        });
         const departments = rosterDepartments(fact, slot.businessDate, task);
         const pools = office
           ? []
@@ -115,7 +117,7 @@ export function planningDomain({
               })
             );
         const pool = pools.includes('lead') ? 'lead' : pools.includes('ordinary') ? 'ordinary' : '';
-        if (office ? !profiles.some((item) => item.profileCode === 'office') : !pool) continue;
+        if (office ? !participation.includes('office') : !pool) continue;
         if (pool === 'lead') leadSlots.push(slot);
         if (pool === 'ordinary') ordinaryEligible = true;
         if (

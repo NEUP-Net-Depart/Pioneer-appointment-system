@@ -10,10 +10,6 @@ for (const role of ['technician', 'admin', 'superadmin']) test(`account and invi
     writes.push({ path: '/api/users/20269990', body: route.request().postDataJSON() });
     return route.fulfill({ json: account });
   });
-  await page.route('**/api/staff-whitelist/import', route => {
-    writes.push({ path: '/api/staff-whitelist/import', body: route.request().postDataJSON() });
-    return route.fulfill({ json: { imported: ['20269991'], skipped: [] } });
-  });
   await loginStaff(page, 'manager001');
   await staffPage(page, '激活与账号');
   await page.getByRole('button', { name: '管理账号', exact: true }).click();
@@ -27,13 +23,5 @@ for (const role of ['technician', 'admin', 'superadmin']) test(`account and invi
   expect(writes[0]).toEqual({ path: '/api/users/20269990', body: { name: '更新后的成员', role: 'technician', homeCampus: '南湖', authorizedCampuses: ['南湖'], status: 'enabled' } });
 
   await page.getByRole('button', { name: '加入资格', exact: true }).click();
-  await page.getByRole('button', { name: '导入名单', exact: true }).click();
-  const importer = page.getByRole('dialog', { name: '导入加入名单' });
-  await expect(importer.getByLabel('默认角色')).toHaveValue('technician');
-  await expect(importer.getByLabel('默认角色').locator('option')).toHaveText(['维修人员']);
-  const csv = 'studentId,expectedName\n20269991,受邀成员';
-  await importer.getByLabel('或粘贴 CSV').fill(csv);
-  await importer.getByRole('button', { name: '导入名单', exact: true }).click();
-  await expect(importer).toHaveCount(0);
-  expect(writes[1]).toEqual({ path: '/api/staff-whitelist/import', body: { csv, expectedRole: 'technician', authorizedCampuses: ['南湖'] } });
+  await expect(page.getByRole('button', { name: '导入名单', exact: true })).toHaveCount(0);
 });

@@ -27,9 +27,9 @@ const snapshotSql = `SELECT json_object(
     ],
     `member_id IN (${memberIds})`
   )},
-  'memberships',${records('member_department_memberships', ['id', 'member_id', 'department_id', 'assignment_type', 'is_primary', 'effective_from', 'effective_to', 'revision'], `member_id IN (${memberIds})`)},
-  'profiles',${records('member_work_profiles', ['id', 'member_id', 'profile_code', 'effective_from', 'effective_to', 'revision'], `member_id IN (${memberIds})`)},
-  'bindings',${records('member_roles', ['id', 'member_id', 'role_id', 'scope_bindings', 'effective_from', 'effective_to', 'revision'], `member_id IN (${memberIds})`)},
+  'memberships',${records('member_department_memberships', ['id', 'member_id', 'department_id', 'assignment_type', 'is_primary', 'position_code', 'effective_from', 'effective_to', 'revision'], `member_id IN (${memberIds})`)},
+  'templates',${records('role_grants', ['id', 'role_id', 'permission_code', 'scope_spec', 'condition_spec', 'validity_spec', 'revision'], '1=1')},
+  'bindings',${records('member_roles', ['id', 'member_id', 'role_id', 'scope_bindings', 'effective_from', 'effective_to', 'revision', 'reason'], `member_id IN (${memberIds})`)},
   'invitations',${records(
     `(SELECT w.*,CAST((SELECT json_group_array(campus) FROM (SELECT campus FROM whitelist_campus_grants WHERE student_id=w.student_id ORDER BY campus)) AS TEXT) AS campuses FROM staff_whitelist w)`,
     ['student_id', 'expected_name', 'expected_role', 'status', 'revision', 'campuses'],
@@ -41,7 +41,7 @@ const snapshotSql = `SELECT json_object(
 export function memberImportDomain({ db, auditStatement, commandAuthorization }) {
   async function memberImportSnapshot(studentIds) {
     const ids = json([...studentIds].sort());
-    const args = Array(7).fill(ids);
+    const args = Array(6).fill(ids);
     const { value } = await db
       .prepare(snapshotSql)
       .bind(...args)
@@ -106,38 +106,23 @@ export function memberImportDomain({ db, auditStatement, commandAuthorization })
             .bind(member.name, member.homeCampusId, member.college, member.major, at, id)
         );
       }
-      if (item.membership)
+      for (const post of item.memberships)
         statements.push(
           db
             .prepare(
-              `INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,effective_from,created_at)
-          VALUES(?,?,?,?,?,?,?)`
+              `INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,position_code,effective_from,created_at)
+          VALUES(?,?,?,?,?,?,?,?)`
             )
             .bind(
               crypto.randomUUID(),
               id,
-              item.membership.departmentId,
-              item.membership.assignmentType,
-              item.membership.assignmentType === 'primary' ? 1 : 0,
+              post.departmentId,
+              post.assignmentType,
+              post.assignmentType === 'primary' ? 1 : 0,
+              post.positionCode,
               item.effectiveFrom,
               at
             )
-        );
-      for (const profileCode of item.addProfiles)
-        statements.push(
-          db
-            .prepare(
-              'INSERT INTO member_work_profiles(id,member_id,profile_code,effective_from) VALUES(?,?,?,?)'
-            )
-            .bind(crypto.randomUUID(), id, profileCode, item.effectiveFrom)
-        );
-      for (const role of item.addRoles)
-        statements.push(
-          db
-            .prepare(
-              'INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from) VALUES(?,?,?,?,?)'
-            )
-            .bind(crypto.randomUUID(), id, role.id, json(item.roleScope), item.effectiveFrom)
         );
       if (item.updateAccountCampuses) {
         statements.push(
@@ -168,11 +153,18 @@ export function memberImportDomain({ db, auditStatement, commandAuthorization })
         statements.push(
           db
             .prepare(
-              `INSERT INTO staff_whitelist(student_id,expected_name,expected_role,created_by,created_at)
-          VALUES(?,?,?,?,?) ON CONFLICT(student_id) DO UPDATE SET expected_name=excluded.expected_name,
-          expected_role=excluded.expected_role,revision=staff_whitelist.revision+1 WHERE staff_whitelist.status='open'`
+              `INSERT INTO staff_whitelist(student_id,expected_name,expected_role,created_by,created_at,status)
+          VALUES(?,?,?,?,?,?) ON CONFLICT(student_id) DO UPDATE SET expected_name=excluded.expected_name,
+          expected_role=excluded.expected_role,status=excluded.status,revision=staff_whitelist.revision+1 WHERE staff_whitelist.status<>'activated'`
             )
-            .bind(item.studentId, member.name, item.accountRole, actorAccount, at)
+            .bind(
+              item.studentId,
+              member.name,
+              item.accountRole,
+              actorAccount,
+              at,
+              item.invitationStatus
+            )
         );
         statements.push(
           db

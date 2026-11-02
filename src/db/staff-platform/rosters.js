@@ -8,7 +8,6 @@ import {
   rows,
   json,
   membership,
-  profile,
   assignment
 } from './shared.js';
 
@@ -20,8 +19,8 @@ export function rostersDomain({ db, collection, auditStatement, commandAuthoriza
     return rows(
       await db
         .prepare(
-          `SELECT DISTINCT m.id FROM members m JOIN member_work_profiles p ON p.member_id=m.id
-      WHERE m.status='active' AND p.profile_code='office' AND p.effective_from<=date(?,'+3 day')
+          `SELECT DISTINCT m.id FROM members m JOIN effective_member_roles p ON p.member_id=m.id JOIN roles pr ON pr.id=p.role_id AND pr.enabled=1
+      WHERE m.status='active' AND pr.code='office' AND p.effective_from<=date(?,'+3 day')
       AND (p.effective_to IS NULL OR p.effective_to>?) AND EXISTS(SELECT 1 FROM staff_accounts sa JOIN staff_campus_grants g ON g.account=sa.account
         WHERE sa.member_id=m.id AND sa.status='enabled' AND g.campus IN (${campusNames.map(() => '?').join(',')}))
       ORDER BY m.name,m.id LIMIT 301`
@@ -52,26 +51,20 @@ export function rostersDomain({ db, collection, auditStatement, commandAuthoriza
           .bind(...ids),
         db
           .prepare(
-            `SELECT * FROM member_work_profiles WHERE member_id IN (${placeholders}) AND effective_from<=date(?,'+6 day')
-          AND (effective_to IS NULL OR effective_to>?)`
-          )
-          .bind(...ids, weekStart, weekStart),
-        db
-          .prepare(
             `SELECT da.*,rv.task_id FROM duty_assignments da JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published'
           WHERE da.member_id IN (${placeholders}) AND da.business_date>=? AND da.business_date<=date(?,'+6 day')`
           )
           .bind(...ids, weekStart, weekStart),
         db
           .prepare(
-            `SELECT mm.*,d.name AS department_name FROM member_department_memberships mm JOIN departments d ON d.id=mm.department_id
+            `SELECT mm.*,d.name AS department_name,d.code AS department_code,d.kind AS organization_kind FROM member_department_memberships mm JOIN departments d ON d.id=mm.department_id
           WHERE mm.member_id IN (${placeholders}) AND mm.effective_from<=date(?,'+6 day') AND (mm.effective_to IS NULL OR mm.effective_to>?) ORDER BY mm.is_primary DESC,d.name`
           )
           .bind(...ids, weekStart, weekStart),
         db
           .prepare(
-            `SELECT mr.member_id,mr.effective_from AS binding_from,mr.effective_to AS binding_to,mr.scope_bindings,r.code AS role_code,rg.*
-          FROM member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1 JOIN role_grants rg ON rg.role_id=r.id
+            `SELECT mr.member_id,mr.effective_from AS binding_from,mr.effective_to AS binding_to,mr.scope_bindings,mr.source,r.code AS role_code,rg.*
+          FROM effective_member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1 JOIN role_grants rg ON rg.role_id=r.id
           WHERE mr.member_id IN (${placeholders}) AND mr.effective_from<=date(?,'+6 day') AND (mr.effective_to IS NULL OR mr.effective_to>?)`
           )
           .bind(...ids, weekStart, weekStart)
@@ -84,17 +77,15 @@ export function rostersDomain({ db, collection, auditStatement, commandAuthoriza
           role: row.role,
           active: row.status === 'active' && !!row.enabled,
           campuses: [],
-          profiles: [],
           assignments: [],
           departmentNames: [],
           memberships: [],
           grants: []
         });
       for (const row of rows(results[1])) facts.get(row.member_id)?.campuses.push(row.campus);
-      for (const row of rows(results[2])) facts.get(row.member_id)?.profiles.push(profile(row));
-      for (const row of rows(results[3]))
+      for (const row of rows(results[2]))
         facts.get(row.member_id)?.assignments.push({ ...assignment(row), taskId: row.task_id });
-      for (const row of rows(results[4])) {
+      for (const row of rows(results[3])) {
         const fact = facts.get(row.member_id);
         if (fact) {
           fact.memberships.push(membership(row));
@@ -102,7 +93,7 @@ export function rostersDomain({ db, collection, auditStatement, commandAuthoriza
             fact.departmentNames.push(row.department_name);
         }
       }
-      for (const row of rows(results[5]))
+      for (const row of rows(results[4]))
         facts.get(row.member_id)?.grants.push({
           id: row.id,
           roleId: row.role_id,
@@ -111,6 +102,7 @@ export function rostersDomain({ db, collection, auditStatement, commandAuthoriza
           scope: intersectScopes(parseJson(row.scope_spec, {}), parseJson(row.scope_bindings, {})),
           conditions: parseJson(row.condition_spec, []),
           validity: parseJson(row.validity_spec, {}),
+          source: row.source,
           binding: { effectiveFrom: row.binding_from, effectiveTo: row.binding_to }
         });
     }

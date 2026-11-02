@@ -133,13 +133,16 @@ test('reception dispatch reserves capacity, supports returns, verifies shared ph
   // Losing reception authorization invalidates both entry projection and command.
   phase=2; // A second operational scenario has its own real rate-limit bucket.
   const fresh=expect(await receive(await create(4)));
-  await db.prepare("UPDATE member_work_profiles SET profile_code='exchange' WHERE member_id='member-20261003' AND profile_code='repair'").run();
+  await db.prepare("UPDATE member_department_memberships SET department_id='dept-network' WHERE member_id='member-20261003' AND is_primary=1").run();
+  await db.prepare("INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,position_code,effective_from,created_at) VALUES('dispatch-exchange','member-20261003','dept-hardware','exchange',0,'member','2026-01-01','2026-01-01')").run();
   const exchange=expect(await request(`/api/field/appointments/${fresh.id}/dispatch-candidates`,office)).items.find(person=>person.account===other);
   assert.ok(exchange.identities.some(identity=>identity.code==='exchange'));
   let pendingExchange=expect(await command(fresh,office,'assign',{assignedTo:other}));
-  await db.prepare("UPDATE member_work_profiles SET effective_to='2026-10-15' WHERE member_id='member-20261003' AND profile_code='exchange'").run();
+  await db.prepare("UPDATE member_department_memberships SET effective_to='2026-10-15' WHERE id='dispatch-exchange'").run();
   const revoked=await request(`/api/appointments/${fresh.id}/status`,other,{status:'in_progress',revision:pendingExchange.revision,verification:checked,frontPhotoId:pendingExchange.frontPhotoId,backPhotoId:pendingExchange.backPhotoId,requestId:crypto.randomUUID()},'PATCH');
-  assert.ok([403,409].includes(revoked.status),JSON.stringify(revoked));
+  assert.equal(revoked.status,401);
+  tokens[other]=(await request('/api/auth/login',null,{account:other,password:'StaffTest!2026'})).body.token;
+  assert.ok([403,409].includes((await request(`/api/appointments/${fresh.id}/status`,other,{status:'in_progress',revision:pendingExchange.revision,requestId:crypto.randomUUID()},'PATCH')).status),JSON.stringify(revoked));
   pendingExchange=expect(await command(pendingExchange,office,'withdraw',{reason:'资格已撤销，重新安排'}));
   pendingExchange=expect(await command(pendingExchange,office,'assign',{assignedTo:tech}));
   await db.prepare("INSERT INTO service_day_overrides(business_date,campus_id,paused,reason,updated_at) VALUES('2026-10-15','campus-nanhu',1,'现场暂停','2026-10-15T02:00:00.000Z')").run();
@@ -161,6 +164,8 @@ test('reception dispatch reserves capacity, supports returns, verifies shared ph
   await db.prepare("DELETE FROM service_day_overrides WHERE business_date='2026-10-15'").run();
   pendingExchange=expect(await receive(await create(6)));
   await db.prepare("DELETE FROM member_roles WHERE id='field-office-role'").run();
+  expect(await command(pendingExchange,office,'assign',{assignedTo:tech}),401);
+  tokens[office]=(await request('/api/auth/login',null,{account:office,password:'StaffTest!2026'})).body.token;
   expect(await command(pendingExchange,office,'assign',{assignedTo:tech}),403);
   expect(await request(`/api/field/appointments/${pendingExchange.id}/dispatch-candidates`,office),403);
 });
@@ -169,6 +174,7 @@ test('reception dispatch reserves capacity, supports returns, verifies shared ph
 test('arrival tickets, queue ranks, departure/rejoin and self-service FIFO stay consistent across real roles',async()=>{
   phase=3;
   await db.prepare(`INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from) VALUES('field-office-role','member-20261001','role-office','{"campuses":"bound"}','2026-01-01')`).run();
+  tokens[office]=(await request('/api/auth/login',null,{account:office,password:'StaffTest!2026'})).body.token;
   for(const item of expect(await request('/api/field/board',lead)).appointments.filter(item=>item.status==='booked' && ['queued','assigned'].includes(item.reception?.state)))
     expect(await command(item,lead,'leave',{reason:'客户已离开，清理上一轮验收队列'}));
   const first=await create(21),second=await create(22),third=await create(23);

@@ -15,7 +15,7 @@ test('workflow search facets share text, status, date and object/identity visibi
   ].map(([id,status]) => ({id,status,campus:'南湖',date:id==='other-date'?'2026-10-19':'2026-10-20',
     timeSlot:id==='other-slot'?'20:00–20:30':'19:00–19:30',name:'同名学生',studentId:'20269999',deviceModel:'ThinkPad'}));
   const visibleIds = rows.filter(row => row.id!=='hidden').map(row => row.id);
-  const context = {actor:{memberId:'manager'},grants:[
+  const context = {actor:{...actor,memberId:'manager'},grants:[
     {permissionCode:'repair.summary.read',scope:{campusIds:['campus-nanhu'],objectIds:visibleIds}},
     {permissionCode:'customer.identity.read',scope:{campusIds:['campus-nanhu'],objectIds:visibleIds.filter(id => id!=='redacted')}}
   ]};
@@ -74,9 +74,9 @@ test('workflow search facets share text, status, date and object/identity visibi
 
 test('appointment query projections agree with complete grants for owner, date, campus, object and conditions',()=>{
   const authorizer=createAuthorizer(),actor={memberId:'manager',authorizedCampuses:['南湖','浑南']};
-  const context={actor,businessDate:'2026-10-20',presence:{campusId:'campus-nanhu',businessDate:'2026-10-20'},todayDuties:[{campusId:'campus-nanhu',businessDate:'2026-10-20',roleKind:'repair_lead'}],memberships:[{departmentId:'dept-office'}],workProfiles:[{profileCode:'repair'}]};
+  const context={actor,businessDate:'2026-10-20',presence:{campusId:'campus-nanhu',businessDate:'2026-10-20'},todayDuties:[{campusId:'campus-nanhu',businessDate:'2026-10-20',roleKind:'repair_lead'}],memberships:[{departmentId:'dept-office'}]};
   for(const scope of [{},{self:true},{objectIds:['allowed']},{campusIds:['campus-hunnan']},{departmentIds:['dept-office']},{campusIds:['campus-nanhu'],objectIds:['allowed'],self:true}]) for(const conditions of [[],[{code:'ownResource'}],[{code:'activeDutyRole'}],[{code:'signedDutyPresence'}],[{code:'activeDepartmentMembership',parameters:{departmentId:'dept-office'}}],[{code:'repairWorkEligible'}],[{code:'ownResource'},{code:'activeDutyRole'}]]) {
-    const grant={permissionCode:'repair.summary.read',scope,conditions},current={...context,grants:[grant]};
+    const grant={permissionCode:'repair.summary.read',scope,conditions,roleCode:'technician'},current={...context,grants:[grant]};
     const rules=appointmentAccessRules(authorizer,actor,grant.permissionCode,current);
     for(const campus of ['南湖','浑南'])for(const assignedMemberId of ['manager','other',''])for(const businessDate of ['2026-10-20','2026-10-19'])for(const id of ['allowed','hidden']){
       const target={campusId:campus==='南湖'?'campus-nanhu':'campus-hunnan',assignedMemberId,businessDate,id};

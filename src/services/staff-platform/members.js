@@ -4,8 +4,9 @@ import { publicResourceRef, SCHEMA_VERSION } from '../../platform/contracts.js';
 import { memberPublic } from '../../modules/identity/public.js';
 import { staffIdentities } from '../../../shared/staff-identities.js';
 import { inputString, csvRows, tokenDigest } from './shared.js';
-import { editableMember, delegationScope } from './delegation.js';
+import { editableMember, delegationScope, delegableRole } from './delegation.js';
 import { memberImportDomain } from './member-import.js';
+import { positionsFor } from '../../../shared/staff-organization.js';
 import { NEU_COLLEGES } from '../../../shared/neu-colleges.js';
 
 export function membersDomain({ repository, platform, contextFor, evaluate }) {
@@ -27,13 +28,59 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
       member.memberId || member.id,
       context.businessDate
     );
-    if (!evaluate(context, 'members.manage', memberTarget(member, memberships, overrides)).allowed)
+    const account = await repository.accountForMember(member.memberId || member.id);
+    const campuses = account
+      ? JSON.parse(account.campuses || '[]')
+      : [member.homeCampusId || member.home_campus_id];
+    if (
+      !campuses.some(
+        (campusId) =>
+          evaluate(
+            context,
+            'members.manage',
+            memberTarget(member, memberships, { campusId, ...overrides })
+          ).allowed
+      )
+    )
       fail(403, '缺少权限：members.manage');
     return { context, memberships };
   }
 
   function memberCursor(member) {
     return encodeURIComponent(JSON.stringify([member.name, member.memberId]));
+  }
+
+  function canReadMemberAudit(context, member, memberships) {
+    const globalContext = {
+      ...context,
+      grants: context.grants.filter(
+        (grant) =>
+          !grant.conditions?.length &&
+          Object.keys(grant.scope || {}).every((key) =>
+            ['all', 'campusIds', 'campuses'].includes(key)
+          )
+      )
+    };
+    return ['campus-nanhu', 'campus-hunnan'].every(
+      (campusId) =>
+        evaluate(globalContext, 'members.manage', memberTarget(member, memberships, { campusId }))
+          .allowed
+    );
+  }
+
+  function visibleIdentityContext(identity, viewer, member, memberships) {
+    if (!identity) return identity;
+    return {
+      ...identity,
+      actor: {
+        ...identity.actor,
+        authorizedCampuses: (identity.actor.authorizedCampuses || []).filter(
+          (campusId) =>
+            evaluate(viewer, 'members.manage', memberTarget(member, memberships, { campusId }))
+              .allowed
+        )
+      }
+    };
   }
 
   function parseMemberCursor(value) {
@@ -76,7 +123,15 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
       );
       return items.map((item) => ({
         ...item,
-        identities: staffIdentities(contexts.get(item.memberId), platform.authorizer)
+        identities: staffIdentities(
+          visibleIdentityContext(
+            contexts.get(item.memberId),
+            context,
+            item,
+            item.memberships || []
+          ),
+          platform.authorizer
+        )
       }));
     };
     // Scan in bounded database pages, but fill a page with authorized members.
@@ -94,8 +149,18 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
       }
       for (const item of candidates) {
         const memberships = byMember.get(item.memberId) || [];
-        if (!evaluate(context, 'members.manage', memberTarget(item, memberships)).allowed) continue;
-        items.push({ ...item, memberships });
+        const access = item.account ? item.accessCampusIds : [item.homeCampusId];
+        if (
+          !access.some(
+            (campusId) =>
+              evaluate(context, 'members.manage', memberTarget(item, memberships, { campusId }))
+                .allowed
+          )
+        )
+          continue;
+        const visible = { ...item };
+        delete visible.accessCampusIds;
+        items.push({ ...visible, memberships });
         if (items.length === 101)
           return {
             items: await withIdentities(items.slice(0, 100)),
@@ -117,7 +182,7 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
   async function memberDetail(actor, memberId, businessDate = dateKey()) {
     const target = await repository.memberRow(memberId);
     if (!target) fail(404, '成员不存在');
-    const { context } = await requireMemberPermission(actor, target);
+    const { context, memberships } = await requireMemberPermission(actor, target);
     let editable = true;
     try {
       await editableMember(repository, context, target, evaluate);
@@ -126,18 +191,50 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
       editable = false;
     }
     if (!validDate(businessDate)) fail(400, '业务日期不正确');
-    const [memberMemberships, workProfiles, account, contexts] = await Promise.all([
+    const [memberMemberships, account, contexts, roles] = await Promise.all([
       repository.listMemberships(memberId),
-      repository.profileHistory(memberId),
       repository.accountForMember(memberId),
-      repository.fieldContexts([memberId], businessDate)
+      repository.fieldContexts([memberId], businessDate),
+      repository.listRoles()
     ]);
     return {
-      actions: { edit: editable },
-      bindings: await repository.roleBindings(memberId),
+      actions: {
+        edit: editable,
+        readAudit: canReadMemberAudit(context, target, memberships),
+        editRoles:
+          !account?.protected &&
+          account?.role !== 'superadmin' &&
+          memberId !== context.actor.memberId
+      },
+      automaticRoleIds: [
+        ...new Set(
+          (contexts.get(memberId)?.grants || [])
+            .filter((grant) => grant.source === 'organization')
+            .map((grant) => grant.roleId)
+        )
+      ],
+      bindings: (await repository.roleBindings(memberId)).filter((binding) => {
+        try {
+          delegableRole(
+            context,
+            roles.find((role) => role.id === binding.roleId),
+            binding,
+            {
+              campuses: account ? JSON.parse(account.campuses || '[]') : [target.home_campus_id]
+            }
+          );
+          return true;
+        } catch (error) {
+          if (error.status !== 403) throw error;
+          return false;
+        }
+      }),
       member: {
-        ...memberPublic(target, { memberships: memberMemberships, profiles: workProfiles }),
-        identities: staffIdentities(contexts.get(memberId), platform.authorizer)
+        ...memberPublic(target, { memberships: memberMemberships }),
+        identities: staffIdentities(
+          visibleIdentityContext(contexts.get(memberId), context, target, memberships),
+          platform.authorizer
+        )
       },
       account: account
         ? {
@@ -145,69 +242,11 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
             status: account.status,
             protected: !!account.protected,
             role: account.role,
+            authorizedCampuses: JSON.parse(account.campuses || '[]'),
             authVersion: account.auth_version || 0
           }
         : null
     };
-  }
-
-  async function saveWorkProfile(actor, memberId, input) {
-    const member = await repository.memberRow(memberId);
-    if (!member) fail(404, '成员不存在');
-    const { context } = await requireMemberPermission(actor, member);
-    const targetState = await editableMember(repository, context, member, evaluate);
-    if (!Number.isInteger(input.revision) || input.revision < 0) fail(400, '成员版本不正确');
-    let before = null;
-    const reason = inputString(input, 'reason', 300),
-      receipt = input.requestId;
-    if (input.id) {
-      before = (await repository.profileHistory(memberId)).find((item) => item.id === input.id);
-      if (!before) fail(404, '工作资格不存在');
-      if (
-        !Number.isInteger(input.profileRevision) ||
-        input.profileRevision < 0 ||
-        !validDate(input.effectiveTo) ||
-        input.effectiveTo < before.effectiveFrom
-      )
-        fail(400, '资格结束日期或版本不正确');
-      if (before.effectiveTo && input.effectiveTo > before.effectiveTo)
-        fail(400, '已结束资格不能延长，请新增审核记录');
-      input = {
-        id: before.id,
-        effectiveTo: input.effectiveTo,
-        profileRevision: input.profileRevision,
-        revision: input.revision
-      };
-    } else {
-      if (
-        !['repair', 'exchange', 'office'].includes(input.profileCode) ||
-        !validDate(input.effectiveFrom) ||
-        (input.effectiveTo &&
-          (!validDate(input.effectiveTo) || input.effectiveTo <= input.effectiveFrom))
-      )
-        fail(400, '工作资格或有效期不正确');
-      if (input.profileCode === 'exchange' && input.trainingConfirmed !== true)
-        fail(400, '请先确认交流人员已通过维修培训');
-    }
-    delegationScope(
-      context,
-      'members.manage',
-      { campusIds: targetState.campuses },
-      { effectiveFrom: input.effectiveFrom || context.businessDate, effectiveTo: input.effectiveTo }
-    );
-    const result = await repository.saveWorkProfile(memberId, input, input.revision, {
-      actorMemberId: context.actor.memberId,
-      actorAccount: actor.account,
-      authVersion: context.authVersion,
-      action: before ? 'identity.qualification.ended' : 'identity.qualification.granted',
-      targetAccountVersion: targetState.account,
-      before,
-      after: input,
-      reason,
-      requestId: receipt
-    });
-    if (!result) fail(409, '成员或资格已变化，或有效期与已有资格重叠，请刷新后重试');
-    return { items: result, authVersionChanged: true };
   }
 
   async function updateMember(actor, memberId, input) {
@@ -321,11 +360,7 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
     for (const key of ['departmentId', 'effectiveFrom']) inputString(input, key, 80, true);
     if (!validDate(input.effectiveFrom) || (input.effectiveTo && !validDate(input.effectiveTo)))
       fail(400, '任职有效期不正确');
-    if (
-      !['primary', 'secondary', 'exchange', 'temporary'].includes(
-        input.assignmentType || 'secondary'
-      )
-    )
+    if (!['primary', 'exchange'].includes(input.assignmentType || 'primary'))
       fail(400, '任职类型不正确');
     if (input.effectiveTo && input.effectiveTo <= input.effectiveFrom)
       fail(400, '任职有效期不正确');
@@ -334,18 +369,42 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
     const { context } = await requireMemberPermission(actor, member);
     const targetState = await editableMember(repository, context, member, evaluate);
     await requireMemberPermission(actor, member, { departmentIds: [input.departmentId] });
-    if (!(await repository.listDepartments()).some((item) => item.id === input.departmentId))
-      fail(400, '请选择有效部门');
+    const unit = (await repository.listDepartments()).find(
+      (item) => item.id === input.departmentId
+    );
+    if (!unit) fail(400, '请选择有效组织');
+    if (input.assignmentType === 'exchange' && unit.code !== 'hardware')
+      fail(400, '交流参与必须指向硬件部');
+    if (!positionsFor(unit).includes(input.positionCode || 'member')) fail(400, '职位与组织不匹配');
     input = {
       ...input,
-      assignmentType: input.assignmentType || 'secondary',
-      isPrimary: input.assignmentType === 'primary'
+      assignmentType: input.assignmentType || 'primary',
+      positionCode: input.positionCode || 'member',
+      isPrimary: (input.assignmentType || 'primary') === 'primary'
     };
+    delegationScope(
+      context,
+      'members.manage',
+      { campusIds: targetState.campuses },
+      { effectiveFrom: input.effectiveFrom, effectiveTo: input.effectiveTo }
+    );
     const existing = await repository.listMemberships(memberId);
+    if (input.replacesMembershipId) {
+      const previous = existing.find((item) => item.id === input.replacesMembershipId);
+      if (
+        !input.isPrimary ||
+        !previous?.isPrimary ||
+        previous.effectiveFrom >= input.effectiveFrom ||
+        (previous.effectiveTo && previous.effectiveTo < input.effectiveFrom)
+      )
+        fail(409, '接替任职或生效日期不正确');
+      input.replacesRevision = previous.revision;
+    }
     if (
       input.isPrimary &&
       existing.some(
         (item) =>
+          item.id !== input.replacesMembershipId &&
           item.isPrimary &&
           item.effectiveFrom < (input.effectiveTo || '9999-12-31') &&
           (!item.effectiveTo || input.effectiveFrom < item.effectiveTo)
@@ -368,7 +427,9 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
   async function memberAudit(actor, memberId) {
     const member = await repository.memberRow(memberId);
     if (!member) fail(404, '成员不存在');
-    await requireMemberPermission(actor, member);
+    const { context, memberships } = await requireMemberPermission(actor, member);
+    if (!canReadMemberAudit(context, member, memberships))
+      fail(403, '完整人员审计需要覆盖两个校区的管理权限');
     return { items: await repository.memberAudit(memberId) };
   }
 
@@ -499,7 +560,6 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
     memberList,
     memberDetail,
     memberAudit,
-    saveWorkProfile,
     updateMember,
     ownProfile,
     addMembership,

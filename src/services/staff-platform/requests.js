@@ -4,7 +4,11 @@ import { requestId, stableJson, publicResourceRef } from '../../platform/contrac
 import { campusId as normalizeCampusId } from '../../modules/authorization/scopes.js';
 import { assignmentProtected, validateSwap } from '../../modules/rosters/swap-validation.js';
 import { staffIdentities } from '../../../shared/staff-identities.js';
-import { repairRosterPool, rosterFactContext } from '../../modules/rosters/qualification.js';
+import {
+  repairRosterPool,
+  rosterFactContext,
+  rosterParticipation
+} from '../../modules/rosters/qualification.js';
 import { hashPayload, tokenDigest, inputString, publicLeave, publicSwap } from './shared.js';
 
 export function requestsDomain({ repository, platform, contextFor, evaluate, requirePermission }) {
@@ -361,11 +365,8 @@ export function requestsDomain({ repository, platform, contextFor, evaluate, req
     const eligible = (fact, slot) =>
       slot.dutyType === 'office'
         ? fact?.active &&
-          fact.profiles.some(
-            (item) =>
-              item.profileCode === 'office' &&
-              item.effectiveFrom <= slot.businessDate &&
-              (!item.effectiveTo || slot.businessDate < item.effectiveTo)
+          rosterParticipation(fact, slot.businessDate, { campusId: slot.campusId }).includes(
+            'office'
           )
         : fact &&
           !!repairRosterPool(fact, platform.authorizer, slot.businessDate, {

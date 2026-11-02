@@ -68,7 +68,7 @@ test('deployment migrations support collection, atomic weekly submissions, revis
     for(const [account,role] of [['root001','superadmin'],['20265501','technician'],['20265502','technician'],['20265503','superadmin']]){
       await db.prepare("INSERT INTO staff_accounts(account,name,role,home_campus,protected,password_hash,created_at) VALUES(?,?,?,'南湖',?,'test','2026-01-01')").bind(account,account,role,account==='root001'?1:0).run();
       await db.batch(['南湖','浑南'].map(campus=>db.prepare('INSERT INTO staff_campus_grants VALUES(?,?)').bind(account,campus)));
-      if(role==='technician')await db.prepare("INSERT INTO member_work_profiles(id,member_id,profile_code,effective_from) VALUES(?,?,'office','2026-01-01')").bind(`office-${account}`,`member-${account}`).run();
+      if(role==='technician')await db.prepare("INSERT INTO member_roles(id,member_id,role_id,scope_bindings,effective_from) VALUES(?,?,'role-office','{}','2026-01-01')").bind(`office-${account}`,`member-${account}`).run();
     }
     const repo=staffPlatformRepository(db),users=userRepository(db),platform=composeStaffPlatform({repository:repo}),service=staffPlatformService({repository:repo,platform,manifests:platform.manifests});
     const root=await users.find('root001'),one=await users.find('20265501'),two=await users.find('20265502');
@@ -167,7 +167,7 @@ test('deployment migrations support collection, atomic weekly submissions, revis
     assert.equal((await repo.availability(lateTask.id)).length,8);
     const changedWeek=addDays(week,21);
     const changedTask=await service.createRosterTask(root,{...input,weekStart:changedWeek,recurrence:{enabled:false},requestId:crypto.randomUUID()});
-    await db.prepare("UPDATE member_work_profiles SET effective_to=? WHERE member_id=? AND profile_code='office'").bind(changedWeek,one.memberId).run();
+    await db.prepare("UPDATE member_roles SET effective_to=? WHERE member_id=? AND role_id='role-office'").bind(changedWeek,one.memberId).run();
     await service.rosterTaskState(root,changedTask.id);
     await assert.rejects(service.taskAvailability(one,changedTask.id),error=>error.status===403);
 

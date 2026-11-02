@@ -1,10 +1,16 @@
 import { fail } from '../../lib/http.js';
 import { validDate } from '../../platform/time.js';
 import { publicResourceRef, stableJson } from '../../platform/contracts.js';
-import { memberPublic, activeAt } from '../../modules/identity/public.js';
-import { campusId } from '../../modules/authorization/scopes.js';
+import { memberPublic, activeAt, businessIdentityEligible } from '../../modules/identity/public.js';
+import { campusId, intersectScopes } from '../../modules/authorization/scopes.js';
+import { createAuthorizer } from '../../modules/authorization/public.js';
+import {
+  positionsFor,
+  positionLabels,
+  organizationRoles
+} from '../../../shared/staff-organization.js';
 import { csvRows, inputString, tokenDigest } from './shared.js';
-import { editableMemberState, delegationScope, delegableRole } from './delegation.js';
+import { editableMemberState, delegationScope } from './delegation.js';
 
 const campusName = (id) => (id === 'campus-hunnan' ? '浑南' : '南湖');
 const sorted = (items) => [...new Set(items)].sort();
@@ -15,18 +21,20 @@ const list = (value) => {
   if (items.some((item) => typeof item !== 'string')) fail(400, '名单配置不正确');
   return sorted(items.map((item) => item.trim()).filter(Boolean));
 };
-const scopeKey = (scope) =>
-  stableJson(
-    Object.fromEntries(
-      Object.entries(scope).map(([key, value]) => [
-        key,
-        Array.isArray(value) ? sorted(value) : value
-      ])
-    )
-  );
-
 function normalizeMember(row, defaults, businessDate) {
-  const value = (key) => row[key] || defaults[key];
+  if (
+    ['workProfiles', 'roleCodes', 'trainingConfirmed', 'accountRole', 'assignmentType'].some(
+      (key) => row[key] !== undefined || defaults[key] !== undefined
+    )
+  )
+    fail(400, '请使用正式部门、职位和交流参与字段');
+  const value = (key) => (row[key] !== undefined && row[key] !== '' ? row[key] : defaults[key]);
+  const boolean = (key) => {
+    const raw = value(key);
+    if (![undefined, '', true, false, 'true', 'false'].includes(raw))
+      fail(400, '参与或激活选项不正确');
+    return raw === true || raw === 'true';
+  };
   const item = {
     studentId: inputString(row, 'studentId', 20, true),
     name: inputString(row, 'name', 80, true),
@@ -35,39 +43,21 @@ function normalizeMember(row, defaults, businessDate) {
     college: inputString(row, 'college', 100) || undefined,
     major: inputString(row, 'major', 100) || undefined,
     departmentId: value('departmentId') || '',
-    assignmentType: value('assignmentType') || 'primary',
+    positionCode: value('positionCode') || 'member',
+    exchangeParticipation: boolean('exchangeParticipation'),
+    configureActivation: boolean('configureActivation'),
     effectiveFrom: value('effectiveFrom') || businessDate,
-    workProfiles: list(value('workProfiles')),
-    roleCodes: list(value('roleCodes')),
-    authorizedCampuses: sorted(list(value('authorizedCampuses')).map(campusId)),
-    trainingConfirmed: value('trainingConfirmed') === true || value('trainingConfirmed') === 'true',
-    accountRole: value('accountRole') || ''
+    authorizedCampuses: sorted(list(value('authorizedCampuses')).map(campusId))
   };
   if (
     !/^\d{6,20}$/.test(item.studentId) ||
     (item.homeCampusId && !['campus-nanhu', 'campus-hunnan'].includes(item.homeCampusId))
   )
     fail(400, '学号或所属校区不正确');
-  if (
-    !validDate(item.effectiveFrom) ||
-    !['primary', 'secondary', 'exchange', 'temporary'].includes(item.assignmentType)
-  )
-    fail(400, '任职类型或生效日期不正确');
-  if (item.workProfiles.some((code) => !['repair', 'exchange', 'office'].includes(code)))
-    fail(400, '工作资格不正确');
+  if (!validDate(item.effectiveFrom)) fail(400, '生效日期不正确');
   if (item.authorizedCampuses.some((id) => !['campus-nanhu', 'campus-hunnan'].includes(id)))
     fail(400, '授权校区不正确');
-  if (item.accountRole && !['technician', 'admin'].includes(item.accountRole))
-    fail(400, '账号类型不正确');
-  if (item.workProfiles.includes('exchange')) {
-    if (!item.trainingConfirmed || item.workProfiles.includes('repair'))
-      fail(400, '请确认交流培训通过，且不能同时导入普通维修资格');
-    item.roleCodes = sorted(
-      item.roleCodes.map((code) => (code === 'technician' ? 'exchange' : code))
-    );
-  }
-  if (item.accountRole === 'admin' && (!item.roleCodes.length || !item.authorizedCampuses.length))
-    fail(400, '管理员邀请必须明确配置角色和授权校区');
+  if (item.configureActivation && !item.authorizedCampuses.length) fail(400, '请选择激活授权校区');
   return item;
 }
 
@@ -86,13 +76,11 @@ function parseImport(input, businessDate) {
     'college',
     'major',
     'departmentId',
-    'assignmentType',
+    'positionCode',
+    'exchangeParticipation',
+    'configureActivation',
     'effectiveFrom',
-    'workProfiles',
-    'roleCodes',
-    'authorizedCampuses',
-    'trainingConfirmed',
-    'accountRole'
+    'authorizedCampuses'
   ];
   if (new Set(headers).size !== headers.length || headers.some((header) => !known.includes(header)))
     fail(400, '导入表头包含重复或未知字段');
@@ -134,7 +122,6 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
     ]);
     const data = snapshot.data;
     const byStudent = new Map(data.members.map((member) => [member.student_id, member]));
-    const byRole = new Map(roles.filter((role) => role.enabled).map((role) => [role.code, role]));
     const byDepartment = new Map(departments.map((department) => [department.id, department]));
     const plans = items.map((item) => {
       const existing = byStudent.get(item.studentId);
@@ -144,8 +131,13 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
         fail(400, '请选择有效的所属校区');
       if (item.departmentId && !byDepartment.has(item.departmentId))
         fail(400, '请选择启用的实际部门');
-      if (item.roleCodes.some((code) => code === 'superadmin' || !byRole.has(code)))
-        fail(400, '角色不存在、已停用或不能通过名单导入');
+      const unit = byDepartment.get(item.departmentId);
+      if (unit && !positionsFor(unit).includes(item.positionCode)) fail(400, '职位与组织不匹配');
+      if (
+        item.exchangeParticipation &&
+        (!unit || unit.code === 'hardware' || unit.kind !== 'department')
+      )
+        fail(400, '请选择非硬件部的正式所属部门');
       const memberId = existing?.id || `member-${item.studentId}`;
       const accounts = data.accounts.filter((account) => account.member_id === memberId);
       if (accounts.length > 1) fail(409, '成员关联多个登录账号，导入已停止');
@@ -153,8 +145,6 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
       const memberships = data.memberships.filter(
         (membership) => membership.member_id === memberId
       );
-      const profiles = data.profiles.filter((profile) => profile.member_id === memberId);
-      const bindings = data.bindings.filter((binding) => binding.member_id === memberId);
       const currentMemberships = memberships
         .filter((membership) =>
           activeAt(membership.effective_from, membership.effective_to, context.businessDate)
@@ -205,16 +195,9 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
           college: item.college ?? existing?.college ?? '',
           major: item.major ?? existing?.major ?? ''
         },
-        roleScope: {
-          campusIds: sorted(
-            item.authorizedCampuses.length ? item.authorizedCampuses : targetState.campuses
-          )
-        },
         changes: [],
         conflicts: [],
-        membership: null,
-        addProfiles: [],
-        addRoles: [],
+        memberships: [],
         invitation: false,
         updateAccountCampuses: false,
         accountTargets: [],
@@ -232,53 +215,39 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
         if ((existing?.[oldField] || '') !== plan.member[field])
           change(field, label, existing?.[oldField] || '', plan.member[field]);
       }
-      if (
-        item.departmentId &&
-        !memberships.some(
-          (membership) =>
-            membership.department_id === item.departmentId &&
-            membership.assignment_type === item.assignmentType &&
-            membership.is_primary === (item.assignmentType === 'primary' ? 1 : 0) &&
-            membership.effective_from <= item.effectiveFrom &&
-            !membership.effective_to
-        )
-      ) {
-        if (
-          item.assignmentType === 'primary' &&
-          memberships.some(
-            (membership) =>
-              membership.is_primary &&
-              (!membership.effective_to || item.effectiveFrom < membership.effective_to)
-          )
-        )
-          plan.conflicts.push('主部门任职重叠，请在人员详情中结束原任职后再调岗');
-        else {
-          plan.membership = {
-            departmentId: item.departmentId,
-            assignmentType: item.assignmentType
-          };
-          change(
-            'membership',
-            '新增任职',
-            '',
-            `${byDepartment.get(item.departmentId).name} · ${{ primary: '主要任职', secondary: '兼任', exchange: '交流', temporary: '临时' }[item.assignmentType]} · ${item.effectiveFrom} 起`
-          );
-        }
-      }
-      for (const code of item.workProfiles) {
-        const matches = profiles.filter((profile) => profile.profile_code === code);
-        if (
-          matches.some(
-            (profile) => profile.effective_from <= item.effectiveFrom && !profile.effective_to
-          )
-        )
-          continue;
-        if (
-          matches.some(
-            (profile) => !profile.effective_to || item.effectiveFrom < profile.effective_to
-          )
-        ) {
-          plan.conflicts.push('工作资格有效期重叠，请在人员详情中调整');
+      const requested = item.departmentId
+        ? [
+            {
+              departmentId: item.departmentId,
+              assignmentType: 'primary',
+              positionCode: item.positionCode
+            }
+          ]
+        : [];
+      if (item.exchangeParticipation)
+        requested.push({
+          departmentId: departments.find((unit) => unit.code === 'hardware')?.id,
+          assignmentType: 'exchange',
+          positionCode: 'member'
+        });
+      for (const post of requested) {
+        const matches = memberships.filter(
+          (old) =>
+            old.assignment_type === post.assignmentType &&
+            (post.assignmentType === 'primary'
+              ? old.is_primary === 1
+              : old.department_id === post.departmentId)
+        );
+        const exact = matches.some(
+          (old) =>
+            old.department_id === post.departmentId &&
+            old.position_code === post.positionCode &&
+            old.effective_from <= item.effectiveFrom &&
+            (!old.effective_to || item.effectiveFrom < old.effective_to)
+        );
+        if (exact) continue;
+        if (matches.some((old) => !old.effective_to || item.effectiveFrom < old.effective_to)) {
+          plan.conflicts.push('正式部门、职位或交流关系与现有记录冲突，请在人员详情中核对');
           continue;
         }
         delegationScope(
@@ -287,46 +256,12 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
           { campusIds: targetState.campuses },
           { effectiveFrom: item.effectiveFrom }
         );
-        plan.addProfiles.push(code);
+        plan.memberships.push(post);
         change(
-          'workProfile',
-          '新增工作资格',
+          'membership',
+          post.assignmentType === 'exchange' ? '交流维修' : '组织任职',
           '',
-          { repair: '普通维修', exchange: '交流人员', office: '办公人员' }[code]
-        );
-      }
-      for (const code of item.roleCodes) {
-        const role = byRole.get(code);
-        const matches = bindings.filter(
-          (binding) =>
-            binding.role_id === role.id &&
-            (!binding.effective_to || binding.effective_to > item.effectiveFrom)
-        );
-        if (
-          matches.some(
-            (binding) =>
-              binding.effective_from <= item.effectiveFrom &&
-              !binding.effective_to &&
-              scopeKey(JSON.parse(binding.scope_bindings)) === scopeKey(plan.roleScope)
-          )
-        )
-          continue;
-        if (matches.length) {
-          plan.conflicts.push(`“${role.name}”已有不同范围或有效期的授权，请在人员详情中调整`);
-          continue;
-        }
-        delegableRole(
-          context,
-          role,
-          { scope: plan.roleScope, effectiveFrom: item.effectiveFrom },
-          targetState
-        );
-        plan.addRoles.push({ id: role.id, code: role.code });
-        change(
-          'role',
-          '新增角色授权',
-          '',
-          `${role.name} · ${plan.roleScope.campusIds.map(campusName).join('、')} · ${item.effectiveFrom} 起`
+          `${byDepartment.get(post.departmentId)?.name} · ${positionLabels[post.positionCode]} · ${item.effectiveFrom} 起`
         );
       }
       const campuses = item.authorizedCampuses.map(campusName).sort();
@@ -353,19 +288,21 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
       const invitation = data.invitations.find(
         (invitation) => invitation.student_id === item.studentId
       );
-      if (!account && item.roleCodes.length && campuses.length) {
+      if (!account && campuses.length) {
         if (invitation?.expected_role === 'superadmin') fail(403, '不能管理系统管理员激活资格');
-        plan.accountRole = item.accountRole || invitation?.expected_role || 'technician';
+        plan.accountRole = invitation?.expected_role || 'technician';
+        plan.invitationStatus = item.configureActivation ? 'open' : invitation?.status || 'revoked';
         const roleLabel = (role) => (role === 'admin' ? '管理员账号' : '普通账号');
         const binding = data.activationBindings.find(
           (binding) => binding.student_id === item.studentId
         );
         if (binding && binding.member_id !== memberId)
           plan.conflicts.push('激活资格已关联其他人员，请核对现有资料');
-        if (invitation && invitation.status !== 'open')
+        if (invitation && invitation.status === 'activated')
           plan.conflicts.push('已有激活资格已关闭，请从激活与账号中处理');
         if (
           !invitation ||
+          invitation.status !== plan.invitationStatus ||
           invitation.expected_name !== item.name ||
           invitation.expected_role !== plan.accountRole ||
           stableJson(JSON.parse(invitation.campuses).sort()) !== stableJson(campuses) ||
@@ -412,9 +349,7 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
       if (plan.syncAccount && !plan.changes.length)
         change('accountProfile', '同步账号资料', account.name, item.name);
       plan.authChanged = !!(
-        plan.membership ||
-        plan.addProfiles.length ||
-        plan.addRoles.length ||
+        plan.memberships.length ||
         plan.updateAccountCampuses ||
         (existing && existing.home_campus_id !== item.homeCampusId)
       );
@@ -427,11 +362,74 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
             : 'skipped';
       return plan;
     });
-    const versions = roles
-      .filter((role) => items.some((item) => item.roleCodes.includes(role.code)))
-      .map(({ id, revision, enabled }) => ({ id, revision, enabled }));
+    for (const plan of plans.filter(
+      (plan) => plan.configureActivation && !plan.account && !plan.conflicts.length
+    )) {
+      const memberships = [
+        ...data.memberships
+          .filter((post) => post.member_id === plan.memberId)
+          .map((post) => ({
+            departmentId: post.department_id,
+            positionCode: post.position_code,
+            assignmentType: post.assignment_type,
+            isPrimary: !!post.is_primary,
+            effectiveFrom: post.effective_from,
+            effectiveTo: post.effective_to
+          })),
+        ...plan.memberships.map((post) => ({
+          ...post,
+          isPrimary: post.assignmentType === 'primary',
+          effectiveFrom: plan.effectiveFrom
+        }))
+      ];
+      const bindings = [
+        ...data.bindings
+          .filter((binding) => binding.member_id === plan.memberId)
+          .map((binding) => ({
+            roleId: binding.role_id,
+            scope: JSON.parse(binding.scope_bindings),
+            effectiveFrom: binding.effective_from,
+            effectiveTo: binding.effective_to
+          })),
+        ...memberships.flatMap((post) =>
+          organizationRoles(post, byDepartment.get(post.departmentId)).map((code) => ({
+            roleId: roles.find((role) => role.code === code)?.id,
+            scope: { campuses: 'bound' },
+            effectiveFrom: post.effectiveFrom,
+            effectiveTo: post.effectiveTo
+          }))
+        )
+      ];
+      const grants = bindings.flatMap((binding) => {
+        const role = roles.find((role) => role.id === binding.roleId && role.enabled);
+        return (role?.grants || []).map((grant) => ({
+          ...grant,
+          roleCode: role.code,
+          binding,
+          scope: intersectScopes(grant.scope, binding.scope)
+        }));
+      });
+      if (
+        !businessIdentityEligible(createAuthorizer(), {
+          memberId: plan.memberId,
+          status: plan.before?.status || 'active',
+          campuses: plan.authorizedCampuses,
+          grants,
+          memberships,
+          authorizationDate: context.authorizationDate || context.businessDate
+        })
+      )
+        fail(400, '配置激活资格需要当前有效任职、交流参与或特殊授权');
+    }
+    const versions = roles.map(({ id, revision, enabled }) => ({ id, revision, enabled }));
     const departmentVersions = departments
-      .filter((department) => items.some((item) => item.departmentId === department.id))
+      .filter((department) =>
+        items.some(
+          (item) =>
+            item.departmentId === department.id ||
+            (item.exchangeParticipation && department.code === 'hardware')
+        )
+      )
       .map(({ id, revision }) => ({ id, revision }));
     const previewToken = await tokenDigest(
       stableJson({
@@ -484,8 +482,8 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
       studentId: plan.studentId,
       ...plan.member,
       departmentId: plan.departmentId,
-      workProfiles: plan.workProfiles,
-      roleCodes: plan.roleCodes,
+      positionCode: plan.positionCode,
+      exchangeParticipation: plan.exchangeParticipation,
       authorizedCampuses: plan.authorizedCampuses,
       accountRole: plan.accountRole,
       updateAccountCampuses: plan.updateAccountCampuses,

@@ -70,7 +70,7 @@ test('education import previews college by major and rejects changed content or 
     expectedRevisions: { 20260001: 3 }
   });
   assert.equal(saved[0].college, '计算机学院');
-  repository.accountForMember = async () => ({ protected: true });
+  repository.accountForMember = async () => ({ protected: true, campuses: '["南湖"]' });
   await assert.rejects(domain.importEducation(actor, input), /受保护系统账号/);
 });
 
@@ -198,9 +198,8 @@ test('roster CSV import binds confirmation to the previewed draft and rejects ch
         studentId: '20260001',
         active: true,
         campuses: ['南湖'],
-        profiles: [{ profileCode: 'office', effectiveFrom: '2026-01-01' }],
+        grants: [{roleCode:'office',scope:{campuses:'bound'}}],
         memberships: [],
-        grants: [],
         assignments: []
       }
     ],
