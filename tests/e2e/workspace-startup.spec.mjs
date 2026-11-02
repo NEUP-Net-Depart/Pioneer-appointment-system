@@ -88,6 +88,41 @@ for (const width of [320, 390, 768, 1440]) test(`workspace shell is stable while
   }
 });
 
+test('a previous-day field response waits for the next poll and permits attendance navigation', async ({ page }) => {
+  await page.clock.install();
+  const session = await mockStaff(page, { contexts: [{ id: 'repair', label: '维修工作台' }] });
+  session.home.businessDate = '2020-01-01';
+  session.home.updatedAt = '2020-01-01T02:00:00Z';
+  const nextPoll = gate();
+  let reads = 0;
+  await page.addInitScript(() => sessionStorage.setItem('pioneerToken', 'test-session'));
+  await page.route('**/api/field/home*', async route => {
+    if (++reads > 2) await nextPoll.promise;
+    await route.fulfill({ json: session.home });
+  });
+  await page.route('**/api/me/attendance*', route => route.fulfill({ json: {
+    items: [{ id: 'previous-day', businessDate: '2020-01-01', occurredAt: '2020-01-01T02:00:00Z', type: 'duty', campusId: 'campus-nanhu' }], nextCursor: null
+  } }));
+  try {
+    await page.goto('/staff/');
+    await expect(page.locator('.field-content')).toHaveAttribute('aria-busy', 'false');
+    await expect.poll(() => reads).toBe(2);
+    await page.clock.fastForward(1000);
+    expect(reads).toBe(2);
+    await page.clock.fastForward(30000);
+    await expect.poll(() => reads).toBe(3);
+    nextPoll.release();
+    await expect(page.locator('.field-content')).toHaveAttribute('aria-busy', 'false');
+    await (await navigationEntry(page.locator('.field-sidebar'), '本人签到记录')).click();
+    await expect(page.locator('.attendance-history li')).toHaveCount(1);
+    await page.clock.fastForward(60000);
+    expect(reads).toBe(3);
+  } finally {
+    nextPoll.release();
+    await page.unrouteAll({ behavior: 'wait' });
+  }
+});
+
 test('field failure stays local and a retry recovers without replacing the shell', async ({ page }) => {
   const session = await mockStaff(page, { contexts: [{ id: 'repair', label: '维修工作台' }] });
   let failed = true;
