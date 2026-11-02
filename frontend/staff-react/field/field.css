@@ -718,6 +718,9 @@
   height: 100%;
   object-fit: cover;
 }
+.field-camera video[data-mirrored='true'] {
+  transform: scaleX(-1);
+}
 .field-camera > span {
   position: absolute;
   inset: 15%;
@@ -1597,6 +1600,9 @@
   list-style: none;
   color: var(--muted);
   font-size: 12px;
+}
+.repair-direct-start {
+  margin-top: 16px;
 }
 .repair-stages [aria-current='step'] {
   color: var(--ink, #172033);

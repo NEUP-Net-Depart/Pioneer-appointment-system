@@ -326,7 +326,10 @@ export function Repair({
             busy={busy}
           />
           {item.canStart && (item.canReceive || item.reception?.state === 'queued') && !direct && (
-            <button className="field-secondary field-wide" onClick={() => setDirect(true)}>
+            <button
+              className="field-secondary field-wide repair-direct-start"
+              onClick={() => setDirect(true)}
+            >
               直接核验接单
             </button>
           )}

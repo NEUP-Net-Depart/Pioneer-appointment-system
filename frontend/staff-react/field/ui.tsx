@@ -7,6 +7,7 @@ import React, {
   useId,
   type ReactNode
 } from 'react';
+import { Camera, Images, SwitchCamera } from 'lucide-react';
 
 // A hidden route remains mounted for draft continuity, but its dialogs must
 // leave the browser top layer until the route is visible again.
@@ -68,6 +69,7 @@ export function Modal({
   title,
   children,
   onClose,
+  className = '',
   sidePanel = false,
   initialFocus,
   dismissible = true,
@@ -77,6 +79,7 @@ export function Modal({
   title: string;
   children: ReactNode;
   onClose: () => void;
+  className?: string;
   sidePanel?: boolean;
   initialFocus?: string;
   dismissible?: boolean;
@@ -160,7 +163,7 @@ export function Modal({
   }, [active, initialFocus]);
   return (
     <dialog
-      className={`field-modal${sidePanel ? ' field-side-panel' : ''}${compact ? ' workspace-confirm-dialog' : ''}`}
+      className={`field-modal${sidePanel ? ' field-side-panel' : ''}${compact ? ' workspace-confirm-dialog' : ''}${className ? ` ${className}` : ''}`}
       ref={ref}
       aria-labelledby={titleId}
       onClickCapture={(event) => {
@@ -302,40 +305,70 @@ export function CredentialCard({
 
 export function Scanner({
   onCode,
+  onCandidates,
+  onUnrecognized,
+  onImage,
+  onAutoImage,
+  onAlbumImage,
   autoStart = true,
+  showAlbum = true,
+  cameraLayout = 'standard',
   mode = 'qr'
 }: {
-  onCode: (code: string) => void;
+  onCode?: (code: string) => void;
+  onCandidates?: (codes: string[]) => void;
+  onUnrecognized?: (codes: string[]) => void;
+  onImage?: (file: File) => void | Promise<void>;
+  onAutoImage?: (file: File) => void | Promise<void>;
+  onAlbumImage?: (file: File) => Promise<boolean>;
   autoStart?: boolean;
-  mode?: 'qr' | 'serial';
+  showAlbum?: boolean;
+  cameraLayout?: 'standard' | 'warranty';
+  mode?: 'qr' | 'device' | 'photo';
 }) {
   const active = useContext(ActivityContext);
   const video = useRef<HTMLVideoElement>(null),
     status = useRef<HTMLParagraphElement>(null),
     torch = useRef<HTMLButtonElement>(null),
-    switcher = useRef<HTMLButtonElement>(null);
+    switcher = useRef<HTMLButtonElement>(null),
+    mirror = useRef<HTMLButtonElement>(null);
   const scanner = useRef<ReturnType<typeof createScanner> | null>(null),
-    callback = useRef(onCode);
+    callback = useRef(onCode),
+    candidatesCallback = useRef(onCandidates),
+    unrecognizedCallback = useRef(onUnrecognized),
+    imageCallback = useRef(onImage),
+    autoImageCallback = useRef(onAutoImage),
+    albumImageCallback = useRef(onAlbumImage);
   callback.current = onCode;
-  const [running, setRunning] = useState(false);
+  candidatesCallback.current = onCandidates;
+  unrecognizedCallback.current = onUnrecognized;
+  imageCallback.current = onImage;
+  autoImageCallback.current = onAutoImage;
+  albumImageCallback.current = onAlbumImage;
+  const [cameraState, setCameraState] = useState('idle');
   useEffect(() => {
     const instance = createScanner({
       video: video.current!,
       status: status.current!,
       torch: torch.current!,
       switchCamera: switcher.current!,
+      mirrorCamera: mirror.current,
       mode,
+      onImage: (file) => imageCallback.current?.(file),
       canStart: () => active && !document.hidden,
       onCode: (code) => {
         instance.stop();
-        callback.current(code);
+        callback.current?.(code);
       },
-      onState: (state) => setRunning(state === 'running' || state === 'opening')
+      onCandidates: (codes) => candidatesCallback.current?.(codes),
+      onUnrecognized: (codes) => unrecognizedCallback.current?.(codes),
+      onState: setCameraState
     });
     scanner.current = instance;
     if (autoStart && active && !document.hidden) void instance.start();
     const hide = () => {
         if (document.hidden) instance.stop();
+        else if (mode === 'device' && autoStart && active) void instance.start();
       },
       stop = () => instance.stop();
     document.addEventListener('visibilitychange', hide);
@@ -347,46 +380,170 @@ export function Scanner({
       window.removeEventListener('pagehide', stop);
     };
   }, [autoStart, active, mode]);
+  useEffect(() => {
+    if (mode !== 'photo' || cameraState !== 'running' || !onAutoImage || !active) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const recognize = async () => {
+      if (cancelled || document.hidden) return;
+      try {
+        const file = await scanner.current?.snapshot();
+        if (file && !cancelled) await autoImageCallback.current?.(file);
+      } catch {
+        // A frame can be unavailable while the camera settles or switches lenses.
+      }
+      if (!cancelled) timer = setTimeout(recognize, 7000);
+    };
+    timer = setTimeout(recognize, 2500);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [active, cameraState, mode, !!onAutoImage]);
   return (
-    <div className="field-scanner">
+    <div className="field-scanner" data-mode={mode} data-layout={cameraLayout}>
       <div className="field-camera">
         <video ref={video} playsInline muted />
         <span aria-hidden="true">
-          ┌<span>{mode === 'serial' ? '对准机身 S/N 条码或二维码' : '将二维码放入框内'}</span>┘
+          ┌<span>{mode === 'qr' ? '将二维码放入框内' : '对准机身 S/N 标签'}</span>┘
         </span>
+        {cameraLayout === 'warranty' && (
+          <div className="warranty-camera-bar">
+            <label className="warranty-camera-control" title="从相册选择" aria-label="从相册选择">
+              <Images aria-hidden="true" size={22} />
+              <input
+                type="file"
+                accept="image/*"
+                aria-label={mode === 'photo' ? '选择设备标签照片' : '选择设备标签图片'}
+                onChange={async (event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = '';
+                  if (!file) return;
+                  try {
+                    if (albumImageCallback.current) {
+                      const wasRunning = cameraState === 'running';
+                      scanner.current?.stop();
+                      const found = await albumImageCallback.current(file);
+                      if (!found && wasRunning) await scanner.current?.start();
+                    } else await scanner.current?.image(file, true);
+                  } catch (error) {
+                    if (status.current) status.current.textContent = (error as Error).message;
+                    if (cameraState === 'running') await scanner.current?.start();
+                  }
+                }}
+              />
+            </label>
+            {mode === 'photo' ? (
+              <button
+                type="button"
+                className="warranty-shutter"
+                aria-label="拍摄识别"
+                title="拍摄识别"
+                disabled={cameraState !== 'running'}
+                onClick={async () => {
+                  try {
+                    const file = await scanner.current?.snapshot();
+                    if (file) await imageCallback.current?.(file);
+                  } catch (error) {
+                    if (status.current) status.current.textContent = (error as Error).message;
+                  }
+                }}
+              >
+                <Camera aria-hidden="true" size={24} />
+              </button>
+            ) : (
+              <span className="warranty-camera-spacer" aria-hidden="true" />
+            )}
+            <button type="button" ref={switcher} disabled title="切换摄像头" aria-label="切换镜头">
+              <SwitchCamera aria-hidden="true" size={22} />
+            </button>
+          </div>
+        )}
       </div>
+      {cameraLayout === 'warranty' && (
+        <button type="button" ref={torch} hidden aria-hidden="true" />
+      )}
+      {cameraLayout !== 'warranty' && mode !== 'qr' && (
+        <div className="record-options field-camera-tools">
+          <button type="button" ref={mirror} aria-pressed="false">
+            镜像预览
+          </button>
+          <button type="button" ref={switcher} disabled title="正在检测可用镜头">
+            切换镜头
+          </button>
+          <button type="button" ref={torch} disabled>
+            补光
+          </button>
+        </div>
+      )}
       <p ref={status} role="status">
-        点击开启摄像头，也可以从相册识别
+        {autoStart ? '正在准备摄像头…' : '点击开启摄像头，也可以从相册识别'}
       </p>
-      <div className="field-actions">
-        <button
-          className="field-primary"
-          onClick={() => (running ? scanner.current?.stop() : scanner.current?.start())}
-        >
-          {running ? '关闭摄像头' : '开启摄像头'}
-        </button>
-        <label className="field-file-button">
-          相册识别
-          <input
-            type="file"
-            accept="image/*"
-            onChange={async (event) => {
-              const file = event.target.files?.[0];
-              if (file)
-                try {
-                  await scanner.current?.image(file);
-                } catch (error) {
-                  if (status.current) status.current.textContent = (error as Error).message;
+      {cameraLayout !== 'warranty' && (mode !== 'device' || showAlbum) && (
+        <div className="field-actions">
+          {mode !== 'device' && (
+            <button
+              type="button"
+              className="field-primary"
+              disabled={cameraState === 'opening'}
+              onClick={async () => {
+                if (mode === 'photo' && cameraState === 'running') {
+                  try {
+                    await scanner.current?.capture();
+                  } catch (error) {
+                    if (status.current) status.current.textContent = (error as Error).message;
+                  }
+                } else if (cameraState === 'running') scanner.current?.stop();
+                else void scanner.current?.start();
+              }}
+            >
+              {cameraState === 'opening'
+                ? '正在开启…'
+                : cameraState === 'running'
+                  ? mode === 'photo'
+                    ? '拍摄识别'
+                    : '关闭摄像头'
+                  : '开启摄像头'}
+            </button>
+          )}
+          {showAlbum && (
+            <label className="field-file-button">
+              {mode === 'photo' ? '从相册选照片' : mode === 'device' ? '相册扫码' : '相册识别'}
+              <input
+                type="file"
+                accept="image/*"
+                aria-label={
+                  mode === 'photo'
+                    ? '选择设备标签照片'
+                    : mode === 'device'
+                      ? '选择设备标签图片'
+                      : '相册识别'
                 }
-              event.target.value = '';
-            }}
-          />
-        </label>
-        <button ref={switcher}>切换镜头</button>
-        <button ref={torch} disabled>
-          补光
-        </button>
-      </div>
+                onChange={async (event) => {
+                  const file = event.target.files?.[0];
+                  if (file)
+                    try {
+                      await scanner.current?.image(file);
+                    } catch (error) {
+                      if (status.current) status.current.textContent = (error as Error).message;
+                    }
+                  event.target.value = '';
+                }}
+              />
+            </label>
+          )}
+          {mode === 'qr' && (
+            <button type="button" ref={switcher} disabled title="正在检测可用镜头">
+              切换镜头
+            </button>
+          )}
+          {mode === 'qr' && (
+            <button type="button" ref={torch} disabled>
+              补光
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
