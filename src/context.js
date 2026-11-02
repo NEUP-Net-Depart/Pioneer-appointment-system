@@ -1,3 +1,5 @@
+import { warrantyService } from './services/warranty.js';
+import { captchaBridgeOrigin } from './services/warranty/huawei.js';
 import {serviceDayRepository} from './db/service-days.js';
 import { verifyStaffSchema } from './db/staff-readiness.js';
 import { userRepository } from './db/users.js';
@@ -51,6 +53,7 @@ export function createContext(request, env) {
     activation: activationService(activationRepository(db),users,staffPlatformServiceInstance,staffPlatform),
     appointments: appointmentService(appointments, users, env.PII_ENCRYPTION_KEY, clock, staffPlatformServiceInstance, bookingSettings),
     followups,
+    warranty: warrantyService({ encryptionKey: env.PII_ENCRYPTION_KEY, captchaOrigin: captchaBridgeOrigin(env.WARRANTY_CAPTCHA_ORIGIN) === new URL(request.url).origin ? '' : env.WARRANTY_CAPTCHA_ORIGIN }),
     bookingSettings,
     attachments: attachmentService(appointments, attachmentRepository(db), env.ATTACHMENTS, storageLimit(env), field),
     queue: queueService(appointments, queueRepository(db), clock), stats: statsService(statsRepository(db), appointments, clock, staffPlatformServiceInstance),

@@ -1,12 +1,18 @@
 let reader, writer;
 export async function readQr(input) {
+  return readCodes(input, ['QRCode']);
+}
+export async function readDeviceCode(input) {
+  return readCodes(input, ['QRCode', 'DataMatrix', 'Code128', 'Code39', 'Code93', 'PDF417']);
+}
+async function readCodes(input, formats) {
   if (!reader) {
     reader = import('/vendor/zxing-reader.js').then(module => {
       module.prepareZXingModule({ overrides: { locateFile: () => '/vendor/zxing_reader.wasm' } });
       return module;
     }).catch(error => { reader = undefined; throw error; });
   }
-  return (await reader).readBarcodes(input, { formats: ['QRCode'], tryHarder: true, maxNumberOfSymbols: 1 });
+  return (await reader).readBarcodes(input, { formats, tryHarder: true, maxNumberOfSymbols: 1 });
 }
 export async function qrImage(code) {
   if (!writer) {

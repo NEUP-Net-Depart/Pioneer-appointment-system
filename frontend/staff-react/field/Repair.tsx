@@ -12,6 +12,7 @@ import { Reception } from './Reception';
 import { IntakePhotos } from './IntakePhotos';
 import { receptionStatus, queueTicketLabel } from '../../../shared/reception.js';
 import { formatInstant } from '../../../shared/time.js';
+import { WarrantyLookupButton } from './WarrantyLookup';
 
 export function Repair({
   id,
@@ -270,6 +271,14 @@ export function Repair({
               </p>
             )}
             {item.email && <p data-motion-value="text">邮箱：{item.email}</p>}
+          </div>
+          <div className="field-actions">
+            <WarrantyLookupButton
+              initialBrand={checkedDevice?.brand || item.brand}
+              onUseStatus={
+                verifying ? (warranty) => setVerification({ ...verification, warranty }) : undefined
+              }
+            />
           </div>
           {stage >= 0 && (
             <ol className="repair-stages" aria-label="维修进度">

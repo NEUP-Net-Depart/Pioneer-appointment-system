@@ -1,16 +1,19 @@
-import { readQr } from '/shared/zxing.js';
+import { readQr, readDeviceCode } from '/shared/zxing.js';
 
 export function createScanner({
   video,
   status = null,
   torch,
   switchCamera,
+  mode = 'qr',
   onCode,
   onState = (state) => {
     void state;
   },
   canStart = () => true
 }) {
+  const readCode = mode === 'serial' ? readDeviceCode : readQr;
+  const codeLabel = mode === 'serial' ? '序列号条码或二维码' : '二维码';
   let stream,
     timer,
     generation = 0,
@@ -73,7 +76,7 @@ export function createScanner({
       deviceId = track.getSettings?.().deviceId;
       switchCamera.disabled = false;
       onState('running');
-      if (status) status.textContent = '将二维码对准扫描框';
+      if (status) status.textContent = `将${codeLabel}对准扫描框`;
       async function frame() {
         if (current !== generation) return;
         try {
@@ -82,7 +85,7 @@ export function createScanner({
             canvas.width = Math.round(video.videoWidth * scale);
             canvas.height = Math.round(video.videoHeight * scale);
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const codes = await readQr(context.getImageData(0, 0, canvas.width, canvas.height));
+            const codes = await readCode(context.getImageData(0, 0, canvas.width, canvas.height));
             if (current !== generation) return;
             if (codes[0]?.text) {
               stop();
@@ -104,11 +107,10 @@ export function createScanner({
       stop();
       onState('error');
       if (status)
-        status.textContent =
-          '摄像头未能开启。若已阻止权限，请在浏览器的网站设置中允许摄像头，或使用相册和编号查询。';
+        status.textContent = `摄像头未能开启。若已阻止权限，请在浏览器的网站设置中允许摄像头，或使用相册和${mode === 'serial' ? '手动输入序列号' : '编号查询'}。`;
     }
   }
-  torch.addEventListener('click', async () => {
+  async function toggleTorch() {
     const track = stream?.getVideoTracks()[0];
     if (!track) return;
     try {
@@ -118,8 +120,8 @@ export function createScanner({
     } catch {
       /* Some cameras expose torch controls that cannot be applied. */
     }
-  });
-  switchCamera.addEventListener('click', () => {
+  }
+  function switchLens() {
     if (!stream || !canStart()) return;
     if (cameras.length > 1)
       deviceId =
@@ -130,18 +132,28 @@ export function createScanner({
       facing = facing === 'environment' ? 'user' : 'environment';
     }
     start();
-  });
+  }
+  torch.addEventListener('click', toggleTorch);
+  switchCamera.addEventListener('click', switchLens);
   return {
     start,
     stop,
+    dispose() {
+      stop();
+      torch.removeEventListener('click', toggleTorch);
+      switchCamera.removeEventListener('click', switchLens);
+    },
     async image(file) {
       stop();
       const current = generation;
       if (!file || !file.type.startsWith('image/') || file.size > 10 * 1024 * 1024)
-        throw new Error('请选择不超过 10 MB 的二维码图片');
-      const codes = await readQr(file);
+        throw new Error(`请选择不超过 10 MB 的${codeLabel}图片`);
+      const codes = await readCode(file);
       if (current !== generation) return;
-      if (!codes[0]?.text) throw new Error('图片中未找到二维码，请重试或手动输入编号');
+      if (!codes[0]?.text)
+        throw new Error(
+          `图片中未找到${codeLabel}，请重试或手动输入${mode === 'serial' ? '序列号' : '编号'}`
+        );
       await onCode(codes[0].text);
     }
   };

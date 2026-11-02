@@ -1,3 +1,4 @@
+import { warrantyRoutes } from './warranty.js';
 import { scanRoutes } from './scan.js';
 import { authRoutes } from './auth.js';
 import { appointmentRoutes } from './appointments.js';
@@ -13,7 +14,7 @@ import { bookingSettingsRoutes } from './booking-settings.js';
 
 const routes = [
   ['GET', /^\/api\/health$/, async context => json(await context.services.health())],
-  ...authRoutes,...activationRoutes,...scanRoutes,...appointmentRoutes,...attachmentRoutes,...userRoutes,...statsRoutes,...slotCapacityRoutes,...serviceLocationRoutes,...staffPlatformRoutes,...bookingSettingsRoutes
+  ...warrantyRoutes,...authRoutes,...activationRoutes,...scanRoutes,...appointmentRoutes,...attachmentRoutes,...userRoutes,...statsRoutes,...slotCapacityRoutes,...serviceLocationRoutes,...staffPlatformRoutes,...bookingSettingsRoutes
 ];
 export async function dispatch(context) {
   for (const [method, pattern, handler] of routes) {
