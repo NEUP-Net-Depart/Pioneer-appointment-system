@@ -8,6 +8,37 @@ function gate() {
   return { promise, release };
 }
 
+for (const [group, entry, heading] of [
+  ['排班考勤', '维修排班管理', '维修排班管理'],
+  ['我的', '本人签到记录', '本人签到记录']
+]) test(`late workbench data preserves the open ${group} navigation group`, async ({ page }) => {
+  const session = await mockStaff(page, { contexts: [{ id: 'repair', label: '维修工作台' }] });
+  session.profile.permissions['roster.repair.manage'] = true;
+  session.home.businessDate = dateKey();
+  session.home.updatedAt = new Date().toISOString();
+  const home = gate();
+  await page.addInitScript(() => sessionStorage.setItem('pioneerToken', 'test-session'));
+  await page.route('**/api/field/home*', async route => {
+    await home.promise;
+    await route.fulfill({ json: session.home });
+  });
+  try {
+    await page.goto('/staff/');
+    const sidebar = page.locator('.field-sidebar');
+    const toggle = sidebar.getByRole('button', { name: group, exact: true });
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    home.release();
+    await expect(page.getByRole('heading', { name: '维修工作台', exact: true })).toBeVisible();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await sidebar.getByRole('button', { name: entry, exact: true }).click();
+    await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
+  } finally {
+    home.release();
+    await page.unrouteAll({ behavior: 'wait' });
+  }
+});
+
 for (const width of [320, 390, 768, 1440]) test(`workspace shell is stable while identity and field are delayed at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 900 });
   const session = await mockStaff(page, { contexts: [{ id: 'repair', label: '维修工作台' }] });

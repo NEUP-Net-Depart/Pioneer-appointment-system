@@ -1,5 +1,3 @@
-import { MotionCollapse } from './MotionCollapse';
-import { useDataMotion } from './useDataMotion';
 import React, { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Modal } from './field/ui';
 import { WorkspaceLauncher } from './WorkspaceLauncher';
@@ -32,12 +30,14 @@ export function StaffWorkspace({
 }) {
   const [more, setMore] = useState(false);
   const sidebar = useRef<HTMLElement>(null);
-  useDataMotion(sidebar, !loading);
   const activeGroup = entries.find((entry) => entry.id === active)?.group || '其他';
-  const [expanded, setExpanded] = useState<string[]>(() => [activeGroup]);
+  const [expanded, setExpanded] = useState<string[] | null>(null);
+  const expandedGroups = expanded ?? [activeGroup];
+  // Resolving the initial workbench scene must not close a group being browsed.
+  const activePage = active.startsWith('scene:') ? 'workbench' : active;
   useEffect(() => {
-    setExpanded([activeGroup]);
-  }, [activeGroup]);
+    setExpanded(null);
+  }, [activePage]);
   useEffect(() => {
     const find = (event: KeyboardEvent) => {
       if (
@@ -57,7 +57,7 @@ export function StaffWorkspace({
   useEffect(() => {
     const nav = sidebar.current?.querySelector('nav');
     const entry = nav?.querySelector<HTMLElement>('[aria-current="page"]');
-    if (!nav || !entry || entry.closest('[inert]')) return;
+    if (!nav || !entry || entry.closest('[hidden]')) return;
     const bounds = nav.getBoundingClientRect(),
       item = entry.getBoundingClientRect();
     if (item.top < bounds.top) nav.scrollTop -= bounds.top - item.top + 8;
@@ -79,6 +79,7 @@ export function StaffWorkspace({
     finishNavigation(id);
   }
   function finishNavigation(id: string) {
+    if (id.startsWith('scene:')) setExpanded(null);
     if (id === '__logout__') onLogout();
     else onSelect(id);
   }
@@ -149,25 +150,22 @@ export function StaffWorkspace({
                 <button
                   className="workspace-group-toggle"
                   type="button"
-                  aria-expanded={expanded.includes(group.label)}
+                  aria-expanded={expandedGroups.includes(group.label)}
                   onClick={() =>
                     setExpanded((current) =>
-                      current.includes(group.label)
-                        ? current.filter((item) => item !== group.label)
-                        : [group.label]
+                      (current ?? [activeGroup]).includes(group.label) ? [] : [group.label]
                     )
                   }
                 >
                   {group.label}
                   <span data-motion-value="text" aria-hidden="true">
-                    {expanded.includes(group.label) ? '−' : '+'}
+                    {expandedGroups.includes(group.label) ? '−' : '+'}
                   </span>
                 </button>
               </h2>
-              <MotionCollapse open={expanded.includes(group.label)}>
+              <div className="workspace-nav-items" hidden={!expandedGroups.includes(group.label)}>
                 {group.items.map((entry) => (
                   <button
-                    data-motion-item={entry.id}
                     key={entry.id}
                     type="button"
                     className={active === entry.id ? 'active' : ''}
@@ -181,7 +179,7 @@ export function StaffWorkspace({
                     {entry.label}
                   </button>
                 ))}
-              </MotionCollapse>
+              </div>
             </section>
           ))}
         </nav>

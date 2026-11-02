@@ -30,12 +30,15 @@ for (const width of [320, 390, 768, 1440]) test(`slow page code preserves real c
       new MutationObserver(() => {
         if (document.querySelector('.workspace-route:not([hidden]) .workspace-skeleton')) window.skeletonAppeared = true;
       }).observe(document.body, { childList: true, subtree: true });
-      window.dispatchEvent(new CustomEvent('staff-request-navigation', { detail: 'stats' }));
     });
+    const entry = width >= 768 ? await navigationEntry(page.locator('.field-sidebar'), '统计分析') : null;
+    if (entry) await entry.click();
+    else await page.evaluate(() => window.dispatchEvent(new CustomEvent('staff-request-navigation', { detail: 'stats' })));
     await expect.poll(() => codeRequested).toBe(true);
     await expect(page.getByRole('status').filter({ hasText: '正在打开统计分析' })).toBeVisible();
     expect(await original.isVisible()).toBe(true);
     expect(dataRequested).toBe(false);
+    if (entry) await expect(entry).toBeFocused();
     await page.screenshot({ path: `output/issue-73/code-pending-${width}.png` });
     code.release();
     await expect(page.getByRole('heading', { name: '统计分析', exact: true })).toBeVisible();

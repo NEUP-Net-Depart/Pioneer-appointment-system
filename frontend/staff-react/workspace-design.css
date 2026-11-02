@@ -301,11 +301,7 @@ body.staff-mode.field-mode {
   .field-app .field-sidebar .workspace-nav-group {
     margin-bottom: 4px;
   }
-  /* Keep keyboard targets stationary when switching navigation groups. */
-  .field-app .field-sidebar .motion-collapse {
-    transition: none;
-  }
-  .field-app .workspace-nav-group .motion-collapse > div {
+  .field-app .workspace-nav-items {
     padding-bottom: 8px;
   }
   .field-app .field-metrics {

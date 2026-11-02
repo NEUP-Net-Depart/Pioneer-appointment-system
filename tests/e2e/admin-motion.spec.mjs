@@ -68,7 +68,7 @@ test('dense list has a fixed animation budget, bounded staggering and no unchang
   expect(await page.evaluate(()=>document.getAnimations().length)).toBe(0);
 });
 
-test('modal closes with local feedback and restores focus; sidebar collapse makes entries inert',async({page})=>{
+test('modal closes with local feedback and restores focus; collapsed navigation hides its entries',async({page})=>{
   await mockStaff(page);
   await page.route('**/api/users',r=>r.fulfill({json:{items:[{account:'20260001',name:'测试人员',homeCampus:'南湖',authorizedCampuses:['南湖'],status:'enabled',role:'staff',actions:{edit:true}}]}}));
   await loginStaff(page);await staffPage(page,'激活与账号');
@@ -78,7 +78,8 @@ test('modal closes with local feedback and restores focus; sidebar collapse make
   await expect(dialog).toHaveCount(0);await expect(trigger).toBeFocused();
   const group=page.locator('.workspace-nav-group').filter({has:page.getByRole('button',{name:'人员权限',exact:true})});
   await group.getByRole('button',{name:'人员权限',exact:true}).click();
-  await expect(group.locator('.motion-collapse')).toHaveAttribute('inert','');
+  await expect(group.locator('.workspace-nav-items')).toBeHidden();
+  await expect(group.getByRole('button',{name:'人员管理',exact:true})).toHaveCount(0);
   await group.getByRole('button',{name:'人员权限',exact:true}).click();
   await expect(group.getByRole('button',{name:'人员管理',exact:true})).toBeVisible();
 });

@@ -39,7 +39,7 @@ export async function navigationEntry(sidebar, label) {
   const group = sidebar.locator('.workspace-nav-group').filter({ has: sidebar.page().getByRole('button', { name: label, exact: true, includeHidden: true }) });
   const toggle = group.getByRole('button', { expanded: false });
   if (await toggle.count()) await toggle.click();
-  await expect(group.locator('.motion-collapse')).toHaveAttribute('data-open', 'true');
+  await expect(group.locator('.workspace-nav-items')).toBeVisible();
   return target;
 }
 export async function staffPage(page, label) {
