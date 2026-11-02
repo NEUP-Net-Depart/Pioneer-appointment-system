@@ -62,6 +62,18 @@ export function deviceSerialFromCode(raw) {
       const url = new URL(text);
       // Appointment credentials must not be copied to a manufacturer's form.
       if (url.hash || /(?:token|credential|appointment|repair)/i.test(url.pathname)) return null;
+      if (url.protocol === 'http:' && url.hostname === 'qr.i-tongfang.com'
+        && url.port === '8080' && url.pathname.toLowerCase() === '/default.aspx'
+        && !url.username && !url.password && [...url.searchParams.keys()].every(key => key === 'qr')
+        && url.searchParams.getAll('qr').length === 1) {
+        const serial = normalizeDeviceSerial(url.searchParams.get('qr'));
+        return isDeviceSerial(serial) ? serial : null;
+      }
+      if (url.protocol === 'https:' && url.hostname === 'qs.asus.com' && !url.search && !url.port && !url.username && !url.password) {
+        const match = /^\/([A-Z0-9-]{10,40})\/?$/i.exec(url.pathname);
+        const serial = match && normalizeDeviceSerial(match[1]);
+        return serial && /[A-Z]/.test(serial) && /\d/.test(serial) && isDeviceSerial(serial) ? serial : null;
+      }
       return explicitSerial([...url.searchParams]);
     } catch { return null; }
   }
@@ -76,10 +88,17 @@ export function deviceSerialFromCode(raw) {
   return isDeviceSerial(serial) ? serial : null;
 }
 
+export function labelledDeviceSerialCandidatesFromText(raw) {
+  if (typeof raw !== 'string' || raw.length > 20000) return [];
+  const text = raw.normalize('NFKC').toUpperCase();
+  const labelled = [...text.matchAll(/(?:^|[^A-Z0-9])(?:序[ \t]*(?:列[ \t]*)?号|S[ \t]*\/[ \t]*N|SN|SERIAL(?:[ \t]*(?:NUMBER|NO\.?))?|SERVICE[ \t]*TAG)[ \t]*[:：#]?[ \t]*([A-Z0-9][A-Z0-9/-]{3,39})(?=$|[^A-Z0-9/-])/g)].map(match => match[1]);
+  return [...new Set(labelled.filter(isDeviceSerial))].slice(0, 8);
+}
+
 export function deviceSerialCandidatesFromText(raw) {
   if (typeof raw !== 'string' || raw.length > 20000) return [];
   const text = raw.normalize('NFKC').toUpperCase();
-  const labelled = [...text.matchAll(/(?:^|[\s;|])(?:S\s*\/\s*N|SN|SERIAL(?:\s*(?:NUMBER|NO\.?))?|SERVICE\s*TAG)\s*[:：#]?\s*([A-Z0-9][A-Z0-9/-]{3,39})(?=$|[^A-Z0-9/-])/g)].map(match => match[1]);
+  const labelled = labelledDeviceSerialCandidatesFromText(raw);
   const candidates = labelled.length ? labelled : text.split(/\s+/).map(word => word.replace(/^[^A-Z0-9]+|[^A-Z0-9/-]+$/g, '')).filter(word => word.length >= 8 && /\d/.test(word) && (/[A-Z]/.test(word) || /^\d{11,20}$/.test(word)));
   return [...new Set(candidates.filter(isDeviceSerial))].slice(0, 8);
 }

@@ -24,6 +24,10 @@ test('serial normalization preserves O/0, I/1 and original separators', () => {
 test('camera or album codes require one explicit serial, with no remote navigation', () => {
   assert.equal(deviceSerialFromCode('SN: TEST0O1I2345'), 'TEST0O1I2345');
   assert.equal(deviceSerialFromCode('https://example.invalid/label?SerialNumber=TEST1234'), 'TEST1234');
+  assert.equal(deviceSerialFromCode('https://qs.asus.com/T8NRKD00T364355'), 'T8NRKD00T364355');
+  assert.equal(deviceSerialFromCode('http://qr.i-tongfang.com:8080/default.aspx?qr=424090A32499430244'), '424090A32499430244');
+  for (const code of ['http://not-i-tongfang.com:8080/default.aspx?qr=424090A32499430244', 'http://qr.i-tongfang.com/default.aspx?qr=424090A32499430244', 'http://qr.i-tongfang.com:8080/other.aspx?qr=424090A32499430244', 'http://qr.i-tongfang.com:8080/default.aspx?qr=424090A32499430244&qr=OTHER1234', 'http://qr.i-tongfang.com:8080/default.aspx?qr=424090A32499430244&token=secret', 'http://qr.i-tongfang.com:8080/default.aspx?qr=BAD']) assert.equal(deviceSerialFromCode(code), null);
+  for (const code of ['http://qs.asus.com/T8NRKD00T364355', 'https://qs.asus.com/T8NRKD00T364355?token=secret', 'https://qs.asus.com/repair/T8NRKD00T364355', 'https://not-asus.example/T8NRKD00T364355']) assert.equal(deviceSerialFromCode(code), null);
   assert.equal(deviceSerialFromCode('{"SN":"TEST1234","PN":"OTHER1234"}'), 'TEST1234');
   assert.equal(deviceSerialFromCode('{"SN":"TEST1234","serial":"OTHER1234"}'), null);
   assert.equal(deviceSerialFromCode('https://example.invalid/?sn=TEST1234&sn=OTHER1234'), null);
@@ -31,8 +35,12 @@ test('camera or album codes require one explicit serial, with no remote navigati
 });
 
 test('OCR prefers explicit serial labels, keeps ambiguous characters and offers multiple candidates', async () => {
-  const { deviceSerialCandidatesFromText: candidates } = await import('../shared/warranty.js');
+  const { deviceSerialCandidatesFromText: candidates, labelledDeviceSerialCandidatesFromText: labelled } = await import('../shared/warranty.js');
   assert.deepEqual(candidates('Model: ABC12345678\nS/N: TEST0O1I2345\nP/N: XYZ12345678'), ['TEST0O1I2345']);
+  assert.deepEqual(candidates('型号: FA401UM260-0ECGXHB8X10\n序号: T8NRKD00T364355'), ['T8NRKD00T364355']);
+  assert.deepEqual(candidates('型号: FA401UM260-0ECGXHB8X10\n序 列 号：T8NRKD00T364355'), ['T8NRKD00T364355']);
+  assert.deepEqual(labelled('型号: FA401UM260-0ECGXHB8X10'), []);
+  assert.deepEqual(labelled('序号:\n型号: FA401UM260-0ECGXHB8X10'), []);
   assert.deepEqual(candidates('SN: TEST12345678\nSN: OTHER1234567'), ['TEST12345678', 'OTHER1234567']);
   assert.deepEqual(candidates('ABC23456789'), ['ABC23456789']);
   assert.deepEqual(candidates('reserve020261015-47\nAA:BB:CC:DD:EE:FF\nhttps://evil.invalid/?sn=TEST1234'), []);
