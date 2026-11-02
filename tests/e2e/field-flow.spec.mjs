@@ -44,7 +44,7 @@ async function recordFixture(request, token, studentId) {
 test('member participation and roster import panels preserve drafts and fit staff viewports',async({page})=>{
   await login(page,'root001');
   const sidebar=page.locator('.field-sidebar');
-  const group=sidebar.getByRole('button',{name:'平台管理',exact:true});
+  const group=sidebar.getByRole('button',{name:'人员权限',exact:true});
   if(await group.getAttribute('aria-expanded')==='false') await group.click();
   await sidebar.getByRole('button',{name:'人员管理',exact:true}).click();
   await page.locator('.members-results .react-row').filter({hasText:'林悦'}).getByRole('button',{name:'人员详情',exact:true}).click();
@@ -123,8 +123,8 @@ for (const account of ['20261001', '20261002']) test(`ordinary staff ${account} 
 });
 
 for (const capability of [
-  { code: 'settings.manage', group: '业务管理', label: '预约配置', view: 'capacity', selector: '.capacity-editor', endpoint: '/api/slot-capacities' },
-  { code: 'members.manage', group: '平台管理', label: '人员管理', view: 'members', selector: '.members-workspace', endpoint: '/api/members' },
+  { code: 'settings.manage', group: '业务设置', label: '预约配置', view: 'capacity', selector: '.capacity-editor', endpoint: '/api/slot-capacities' },
+  { code: 'members.manage', group: '人员权限', label: '人员管理', view: 'members', selector: '.members-workspace', endpoint: '/api/members' },
 ]) test(`revoking ${capability.code} closes its open workspace and blocks stale credentials`, async ({ page, request }) => {
   // Install before app startup so the shell's existing interval is controlled.
   await page.clock.install();
@@ -699,7 +699,7 @@ test('all workspaces share title geometry and scrollable navigation across scree
       await page.setViewportSize({ width, height: 500 });
       await nav.evaluate(node => { node.scrollTop = node.scrollHeight; });
       expect(await nav.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
-      const bottomEntry = nav.getByRole('button', { name: '统计分析', exact: true });
+      const bottomEntry = nav.getByRole('button', { name: '账号安全', exact: true });
       await bottomEntry.focus();
       await expect(bottomEntry).toBeInViewport();
       await expect(page.locator('.field-sidebar-bottom')).toBeInViewport();
@@ -741,7 +741,7 @@ test('management keeps its shell and readable results during refresh at all widt
   await login(page, 'root001');
   const sidebar = page.locator('.field-sidebar');
   await sidebar.evaluate(node => { node.dataset.identity = 'persistent'; });
-  const managementGroup = sidebar.getByRole('button', { name: '平台管理', exact: true });
+  const managementGroup = sidebar.getByRole('button', { name: '人员权限', exact: true });
   if (await managementGroup.getAttribute('aria-expanded') === 'false') await managementGroup.click();
   await sidebar.getByRole('button', { name: '人员管理', exact: true }).click();
   await expect(page.locator('.react-member-identity').first()).toBeVisible();
@@ -784,7 +784,7 @@ test('management keeps its shell and readable results during refresh at all widt
   await sidebar.getByRole('button', { name: '角色与权限', exact: true }).click();
   await expect(page.getByRole('heading', { name: '角色与权限', exact: true })).toBeVisible();
   await expect(sidebar).toHaveAttribute('data-identity', 'persistent');
-  await expect(sidebar.getByRole('button', { name: '平台管理', exact: true })).toHaveAttribute('aria-expanded', 'true');
+  await expect(sidebar.getByRole('button', { name: '人员权限', exact: true })).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByLabel('查找权限')).toBeVisible();
   await page.getByLabel('查找权限').fill('不存在的功能');
   await expect(page.getByText('没有匹配的权限，请调整筛选条件。')).toBeVisible();
@@ -872,7 +872,7 @@ test('security and business settings have separate workflows and consistent page
   await page.getByRole('button', { name: '撤销所有登录会话', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '撤销所有登录会话？' })).toBeVisible();
   await page.getByRole('button', { name: '取消', exact: true }).click();
-  await open('业务管理', '预约配置');
+  await open('业务设置', '预约配置');
   await expect(page.locator('.capacity-sheet-desktop input').first()).toBeVisible();
   await expect(currentPassword).toBeHidden();
   await open('我的', '账号安全');
@@ -882,19 +882,20 @@ test('security and business settings have separate workflows and consistent page
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: `output/field-workflow/security-${width}.png`, fullPage: true });
   }
-  await open('今日工作', '预约记录');
+  await open('现场工作', '预约记录');
   const records = page.getByRole('heading', { name: '预约记录', exact: true, level: 1 });
   await expect(records).toBeVisible();
   const recordsPosition = await records.boundingBox();
   expect(Math.abs(position.x - recordsPosition.x)).toBeLessThan(2);
   expect(Math.abs(position.y - recordsPosition.y)).toBeLessThan(2);
-  for (const [group, entry, title] of [['我的', '班次与排班', '我的值班安排'], ['值班管理', '维修排班管理', '维修排班管理']]) {
+  for (const [group, entry, title] of [['我的', '班次与排班', '我的值班安排'], ['排班考勤', '维修排班管理', '维修排班管理']]) {
     await open(group, entry);
     const headingPosition = await page.getByRole('heading', { name: title, exact: true, level: 1 }).boundingBox();
     expect(Math.abs(position.x - headingPosition.x)).toBeLessThan(2);
     expect(Math.abs(position.y - headingPosition.y)).toBeLessThan(2);
   }
-  await open('今日工作', '预约记录');
+  await open('现场工作', '预约记录');
+  await page.locator('.records-workspace .workspace-more-actions > summary').click();
   await expect(page.getByRole('button', { name: '导出全部可见记录' })).toBeVisible();
   await open('我的', '账号安全');
   const settings = page.locator('.settings-workspace');
@@ -1169,7 +1170,7 @@ test('records share filtering, responsive details and guarded record maintenance
   await workspace.getByRole('button', { name: '状态，未排序；点击升序' }).click();
   await workspace.getByRole('button', { name: '校区，未排序；点击升序' }).click();
   await expect(workspace.locator('.records-result-meta')).toContainText('1. 状态↑ → 2. 校区↑');
-  await workspace.getByRole('button', { name: '全部状态', exact: true }).click();
+  await workspace.getByRole('button', { name: '更多预约状态', exact: true }).click();
   const statusDialog = page.getByRole('dialog', { name: '状态筛选' });
   await statusDialog.getByRole('button', { name: '已取消' }).click();
   await statusDialog.getByRole('button', { name: '完成', exact: true }).click();
@@ -1261,7 +1262,7 @@ test('records keep rows and focus during delayed updates and pause while inactiv
 test('statistics uses the workspace region without reviving the legacy page', async ({ page }) => {
   await login(page, 'root001');
   const sidebar = page.locator('.field-sidebar');
-  const reports = sidebar.getByRole('button', { name: '数据与审计', exact: true });
+  const reports = sidebar.getByRole('button', { name: '排班考勤', exact: true });
   if (await reports.getAttribute('aria-expanded') === 'false') await reports.click();
   await sidebar.getByRole('button', { name: '统计分析', exact: true }).click();
   await expect(page.getByRole('heading', { name: '统计分析', exact: true })).toBeVisible();

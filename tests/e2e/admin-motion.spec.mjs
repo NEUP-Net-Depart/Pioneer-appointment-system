@@ -76,10 +76,10 @@ test('modal closes with local feedback and restores focus; sidebar collapse make
   const dialog=page.getByRole('dialog');await expect(dialog).toBeVisible();
   await dialog.getByRole('button',{name:'关闭',exact:true}).click();
   await expect(dialog).toHaveCount(0);await expect(trigger).toBeFocused();
-  const group=page.locator('.workspace-nav-group').filter({has:page.getByRole('button',{name:'平台管理',exact:true})});
-  await group.getByRole('button',{name:'平台管理',exact:true}).click();
+  const group=page.locator('.workspace-nav-group').filter({has:page.getByRole('button',{name:'人员权限',exact:true})});
+  await group.getByRole('button',{name:'人员权限',exact:true}).click();
   await expect(group.locator('.motion-collapse')).toHaveAttribute('inert','');
-  await group.getByRole('button',{name:'平台管理',exact:true}).click();
+  await group.getByRole('button',{name:'人员权限',exact:true}).click();
   await expect(group.getByRole('button',{name:'人员管理',exact:true})).toBeVisible();
 });
 
