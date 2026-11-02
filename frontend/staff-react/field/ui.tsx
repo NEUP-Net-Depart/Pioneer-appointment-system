@@ -302,11 +302,14 @@ export function CredentialCard({
 
 export function Scanner({
   onCode,
-  autoStart = true
+  autoStart = true,
+  mode = 'qr'
 }: {
   onCode: (code: string) => void;
   autoStart?: boolean;
+  mode?: 'qr' | 'serial';
 }) {
+  const active = useContext(ActivityContext);
   const video = useRef<HTMLVideoElement>(null),
     status = useRef<HTMLParagraphElement>(null),
     torch = useRef<HTMLButtonElement>(null),
@@ -321,6 +324,8 @@ export function Scanner({
       status: status.current!,
       torch: torch.current!,
       switchCamera: switcher.current!,
+      mode,
+      canStart: () => active && !document.hidden,
       onCode: (code) => {
         instance.stop();
         callback.current(code);
@@ -328,7 +333,7 @@ export function Scanner({
       onState: (state) => setRunning(state === 'running' || state === 'opening')
     });
     scanner.current = instance;
-    if (autoStart && !document.hidden) void instance.start();
+    if (autoStart && active && !document.hidden) void instance.start();
     const hide = () => {
         if (document.hidden) instance.stop();
       },
@@ -336,17 +341,18 @@ export function Scanner({
     document.addEventListener('visibilitychange', hide);
     window.addEventListener('pagehide', stop);
     return () => {
-      instance.stop();
+      instance.dispose();
+      scanner.current = null;
       document.removeEventListener('visibilitychange', hide);
       window.removeEventListener('pagehide', stop);
     };
-  }, [autoStart]);
+  }, [autoStart, active, mode]);
   return (
     <div className="field-scanner">
       <div className="field-camera">
         <video ref={video} playsInline muted />
         <span aria-hidden="true">
-          ┌<span>将二维码放入框内</span>┘
+          ┌<span>{mode === 'serial' ? '对准机身 S/N 条码或二维码' : '将二维码放入框内'}</span>┘
         </span>
       </div>
       <p ref={status} role="status">
@@ -370,7 +376,7 @@ export function Scanner({
                 try {
                   await scanner.current?.image(file);
                 } catch (error) {
-                  status.current!.textContent = (error as Error).message;
+                  if (status.current) status.current.textContent = (error as Error).message;
                 }
               event.target.value = '';
             }}

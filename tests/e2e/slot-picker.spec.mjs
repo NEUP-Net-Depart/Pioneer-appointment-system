@@ -58,14 +58,41 @@ test('server location, full, paused and ended states disable the actual choices'
     result.items[0].slots[TIME_SLOTS[1]]=5;result.items[0].slotCapacities[TIME_SLOTS[2]]=0;result.items[1].location='';await route.fulfill({json:result});
   }});
   await page.locator('[data-campus=南湖]').click();await expect(page.locator('[data-slot="19:00–19:30"]')).toBeDisabled();await expect(page.locator('[data-slot="19:00–19:30"]')).toContainText('时段已结束');
-  await expect(page.locator('[data-slot="19:30–20:00"]')).toContainText('预约已满');await expect(page.locator('[data-slot="20:00–20:30"]')).toContainText('暂停预约');await expect(page.locator('[data-date="2026-10-13"]')).toBeDisabled();await expect(page.locator('[data-date="2026-10-13"]')).toContainText('地点未配置');
+  await expect(page.locator('[data-slot="19:30–20:00"]')).toContainText('预约已满');await expect(page.locator('[data-slot="20:00–20:30"]')).toContainText('未开放名额');await expect(page.locator('[data-date="2026-10-13"]')).toBeEnabled();await expect(page.locator('[data-date="2026-10-13"]')).toContainText('地点未配置');
 });
 
-test('empty availability and a network error have different feedback and a retry',async({page})=>{
+test('full, zero-capacity and paused dates keep their time rows and distinct labels',async({page})=>{
+  let mode='full';
+  await setupStudent(page,{availability:async(result,route)=>{
+    for(const item of result.items){
+      item.paused=mode==='paused';item.pauseReason='设备维护，暂停维修';
+      for(const slot of TIME_SLOTS){item.slotCapacities[slot]=mode==='zero' ? 0 : 5;item.slots[slot]=mode==='full' ? 5 : 0;}
+    }
+    await route.fulfill({json:result});
+  }});
+  await page.locator('[data-campus=南湖]').click();
+  const first=page.locator('#booking-days button').first(),rows=page.locator('#booking-slots button');
+  await expect(first).toHaveAttribute('data-state','full');await expect(first).toContainText('预约已满');
+  await expect(first).toBeEnabled();await expect(rows).toHaveCount(4);await expect(rows.first()).toContainText('预约已满');
+  await expect(page.locator('#booking-empty')).toBeHidden();await expect(page.locator('#step-one-next')).toBeDisabled();
+  mode='zero';await page.locator('[data-campus=南湖]').click();
+  await expect(first).toHaveAttribute('data-state','unopened');await expect(first).toContainText('未开放名额');
+  await expect(rows.first()).toContainText('未开放名额');
+  mode='paused';await page.locator('[data-campus=南湖]').click();
+  await expect(first).toHaveAttribute('data-state','paused');await expect(first).toContainText('暂停维修');
+  await expect(page.locator('#booking-slot-context')).toHaveText('设备维护，暂停维修');
+  await expect(rows.first()).toContainText('暂停维修');
+  await expect(page.locator('[name=date]')).toHaveValue('2026-10-12');
+});
+
+test('unavailable dates remain inspectable while a network error offers a retry',async({page})=>{
   let unavailable=false;
   await setupStudent(page,{availability:async(result,route)=>{if(unavailable)return route.abort();result.items.forEach(item=>item.location='');await route.fulfill({json:result});}});
-  await page.locator('[data-campus=南湖]').click();await expect(page.locator('#booking-empty')).toContainText('当前预约范围内无可用日期');await expect(page.locator('#booking-retry')).toBeVisible();
-  unavailable=true;await page.locator('#booking-retry').click();await expect(page.locator('#booking-selection')).toContainText('暂时无法更新');await expect(page.locator('#booking-empty')).toBeHidden();
+  await page.locator('[data-campus=南湖]').click();await expect(page.locator('#booking-empty')).toBeHidden();await expect(page.locator('#booking-retry')).toBeHidden();
+  await expect(page.locator('#booking-slot-panel')).toBeVisible();await expect(page.locator('#booking-slots button').first()).toContainText('地点未配置');
+  await expect(page.locator('#step-one-next')).toBeDisabled();
+  unavailable=true;await page.locator('[data-campus=南湖]').click();await expect(page.locator('#booking-retry')).toBeVisible();
+  await page.locator('#booking-retry').click();await expect(page.locator('#booking-selection')).toContainText('暂时无法更新');await expect(page.locator('#booking-empty')).toBeHidden();
 });
 
 test('a submission conflict returns to time selection, retaining inputs, agreement and the valid signature',async({page})=>{

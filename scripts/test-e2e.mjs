@@ -1,7 +1,7 @@
 import {spawn,spawnSync} from 'node:child_process';
 import {mkdir,writeFile,readFile,rm,cp} from 'node:fs/promises';
 import {resolve,relative,isAbsolute} from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 import {randomUUID,randomBytes} from 'node:crypto';
 import {createServer} from 'node:net';
 import {root,config} from './cli.mjs';
@@ -11,6 +11,8 @@ import {dateKey,expirationDeadline} from '../shared/time.js';
 import {smoke} from './smoke.mjs';
 import {fieldSeed} from '../tests/fixtures/field-seed.mjs';
 
+const verifier = await (await import('./warranty-verifier-preview.mjs')).startWarrantyVerifier();
+process.env.WARRANTY_CAPTCHA_ORIGIN = verifier.origin;
 await import('./build.mjs');
 const parent=resolve(root,'.wrangler'),dir=resolve(parent,'e2e-'+randomUUID()),inside=relative(parent,dir);
 if(!inside || inside.startsWith('..') || isAbsolute(inside))throw new Error('Unsafe E2E directory');
@@ -31,7 +33,7 @@ if (!process.argv.includes('--serve')) {
 }
 const cfg=await config(),configPath=resolve(dir,'wrangler.jsonc'),state=resolve(dir,'state');
 const rootPassword=process.argv.includes('--serve') && process.argv.includes('--field') ? 'StaffTest!2026' : randomBytes(24).toString('base64url');
-const vars=`JWT_SECRET=${randomBytes(48).toString('base64url')}\nPII_ENCRYPTION_KEY=${randomBytes(32).toString('hex')}\nROOT001_PASSWORD=${rootPassword}\n`;
+const vars=`JWT_SECRET=${randomBytes(48).toString('base64url')}\nPII_ENCRYPTION_KEY=${randomBytes(32).toString('hex')}\nROOT001_PASSWORD=${rootPassword}\nWARRANTY_CAPTCHA_ORIGIN=${verifier.origin}\n`;
 await writeFile(resolve(dir,'.dev.vars'),vars,{mode:0o600});
 await writeFile(resolve(dir,'.dev.vars.preview'),vars,{mode:0o600});
 const bindings={
@@ -67,6 +69,7 @@ try{
   const probe=createServer();await new Promise(resolve=>probe.listen(0,'127.0.0.1',resolve));
   const port=probe.address().port;await new Promise(resolve=>probe.close(resolve));
   const base=`http://127.0.0.1:${port}`;
+  verifier.setParentOrigin(base);
   server=spawn(process.execPath,[cli,'pages','dev',resolve(dir,'dist'),'--persist-to',state,'--ip','127.0.0.1','--port',String(port)],{cwd:dir,env,stdio:['ignore','pipe','pipe']});
   // Redact generated secrets before reporting startup diagnostics.
   let diagnostics='',startup='';
@@ -80,7 +83,7 @@ try{
     await new Promise(resolve=>setTimeout(resolve,250));
   }
   if(!ready)throw new Error('Local Preview did not become ready:\n'+startup+'\n'+diagnostics);
-  await smoke(base);
+  await smoke(base,fetch,pathToFileURL(resolve(dir,'dist')+'/'));
   console.log(`Isolated local Preview ready: ${base} (Preview quota; fresh D1/R2; no remote resources)`);
   if(process.argv.includes('--serve')){
     if(process.argv.includes('--field') && Date.now() < Date.parse(expirationDeadline(dateKey()))) {
@@ -103,5 +106,5 @@ try{
       child.once('error',reject);child.once('exit',code=>resolve(code ?? 1));
     });
   }
-}finally{await stopServer();await rm(dir,{recursive:true,force:true,maxRetries:10,retryDelay:200});}
+}finally{await verifier.close();await stopServer();await rm(dir,{recursive:true,force:true,maxRetries:10,retryDelay:200});}
 process.exitCode=exitCode;

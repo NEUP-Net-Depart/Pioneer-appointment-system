@@ -3,6 +3,7 @@ import { fail } from '../lib/http.js';
 import { epochSeconds } from '../../shared/time.js';
 
 const policies = {
+  warranty: { limit: 10, seconds: 60 },
   login: { limit: 20, seconds: 900 }, lookup: { limit: 30, seconds: 60 },
   write: { limit: 30, seconds: 60 }, upload: { limit: 15, seconds: 60 },
   scanSearch: { limit: 60, seconds: 60 },

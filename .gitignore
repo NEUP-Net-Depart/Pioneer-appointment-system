@@ -8,8 +8,5 @@ dist/
 .env.*
 *.log
 
-output/playwright/
-output/field-workflow/
-output/first-layout/
-output/mobile-audit/
+output/
 .playwright-cli/

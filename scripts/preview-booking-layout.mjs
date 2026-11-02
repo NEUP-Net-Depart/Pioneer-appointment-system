@@ -43,7 +43,7 @@ globalThis.fetch=(input,options)=>{
   const nativeInstant=new NativeDate(globalThis.__bookingPreviewInstant);
   const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(nativeInstant);
   const items=[0,1,2,3].map(offset=>{const day=new NativeDate(today+'T00:00:00Z');day.setUTCDate(day.getUTCDate()+offset);return day.toISOString().slice(0,10);}).filter(date=>{const weekday=new NativeDate(date+'T00:00:00Z').getUTCDay();return weekday>=1&&weekday<=4;}).map(date=>{
-    const summary={campus,date,location:${JSON.stringify(DEFAULT_SERVICE_LOCATIONS)}[campus],serverNow:nativeInstant.toISOString(),timeSlots:${JSON.stringify(slotsFor())},slotCapacities:{},slots:{}};
+    const summary={campus,date,location:${JSON.stringify(DEFAULT_SERVICE_LOCATIONS)}[campus],serverNow:nativeInstant.toISOString(),timeSlots:${JSON.stringify(slotsFor())},slotCapacities:{},slots:{},paused:!!config.pausedAll,pauseReason:config.pausedAll?'校区设备维护，当日暂停维修。':''};
     summary.timeSlots.forEach((slot,index)=>{
       const counts=config.overrides[JSON.stringify([campus,date,slot])]||config.overrides[JSON.stringify([campus,'*',slot])]||{capacity:10,remaining:10-index-(campus==='浑南'?3:1)};
       summary.slotCapacities[slot]=counts.capacity;summary.slots[slot]=counts.capacity-counts.remaining;

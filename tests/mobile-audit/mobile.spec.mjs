@@ -101,10 +101,25 @@ test('student-real-booking-upload-query-cancel', async ({ page, audit }, info) =
 
 test('full-admin-inventory-and-secondary-views', async ({ page, audit }) => {
   await login(page);
-  for (const entry of catalog.pages.filter(row => row.type === 'workspace')) {
+  const workspacePages = catalog.pages.filter(row => row.type === 'workspace');
+  expect(workspacePages.map(row => row.id)).toEqual(expect.arrayContaining([
+    'roster', 'office-roster', 'staff', 'members', 'permissions', 'reports', 'settings', 'capacity',
+  ]));
+  let headingGeometry;
+  for (const entry of workspacePages) {
     await navigate(page, entry.label);
     await settled(page);
     await expect(page.locator('.workspace-route:not([hidden]) h1:visible')).not.toBeEmpty();
+    const geometry = await page.evaluate(() => {
+      const route = document.querySelector('.workspace-route:not([hidden])');
+      const heading = route.querySelector('.workspace-heading h1');
+      const outer = route.getBoundingClientRect(), title = heading.getBoundingClientRect();
+      const style = getComputedStyle(heading);
+      return { x: Math.round((title.x - outer.x) * 10) / 10, y: Math.round((title.y - outer.y) * 10) / 10,
+        fontSize: style.fontSize, lineHeight: style.lineHeight };
+    });
+    headingGeometry ??= geometry;
+    expect(geometry, `${entry.label} should share the workspace title geometry`).toEqual(headingGeometry);
     fit(await audit.capture(entry.id.replace(':', '-'), { axe: ['staff', 'permissions', 'stats', 'members', 'settings'].includes(entry.id) }));
     fit(await audit.captureFont200(entry.id.replace(':', '-')));
   }
@@ -125,7 +140,7 @@ test('full-admin-inventory-and-secondary-views', async ({ page, audit }) => {
   await settled(page);
   await page.locator('.members-results .react-row').filter({ hasText: '陈宇' }).getByRole('button', { name: '人员详情' }).click();
   const dialog = page.getByRole('dialog');
-  for (const label of ['成员资料', '工作资格', '角色授权']) {
+  for (const label of ['基本资料', '部门与任职', '工作资格', '角色授权', '账号与激活', '操作记录']) {
     await dialog.getByRole('button', { name: label, exact: true }).click();
     fit(await audit.capture(`member-${label}`, { axe: label === '工作资格' }));
   }
@@ -147,6 +162,28 @@ test('full-admin-inventory-and-secondary-views', async ({ page, audit }) => {
     await expect(page.getByRole('dialog', { name: title })).toBeVisible();
     fit(await audit.capture(`record-filter-${title}`));
     await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
+  }
+});
+
+test('narrow-320-workspace-pages-keep-the-shared-layout', async ({ page, audit }, info) => {
+  test.skip(info.project.name !== 'chromium-360', 'The 320px boundary is sampled once in Chromium');
+  await page.setViewportSize({ width: 320, height: 800 });
+  await login(page);
+  let headingGeometry;
+  for (const entry of catalog.pages.filter(row => row.type === 'workspace')) {
+    await navigate(page, entry.label);
+    await settled(page);
+    const geometry = await page.evaluate(() => {
+      const route = document.querySelector('.workspace-route:not([hidden])');
+      const title = route.querySelector('.workspace-heading h1');
+      const outer = route.getBoundingClientRect(), heading = title.getBoundingClientRect();
+      const style = getComputedStyle(title);
+      return { x: Math.round((heading.x - outer.x) * 10) / 10,
+        y: Math.round((heading.y - outer.y) * 10) / 10, fontSize: style.fontSize, lineHeight: style.lineHeight };
+    });
+    headingGeometry ??= geometry;
+    expect(geometry, `${entry.label} should share the 320px title geometry`).toEqual(headingGeometry);
+    fit(await audit.capture(`narrow-320-${entry.id.replace(':', '-')}`));
   }
 });
 
@@ -181,7 +218,7 @@ test('technician-real-signin-search-intake-finish-permission', async ({ page, re
   await page.getByLabel('设备背面照片', { exact: true }).setInputFiles({ name: 'back.png', mimeType: 'image/png', buffer: PHOTO });
   fit(await audit.capture('repair-intake', { axe: true }));
   await page.getByRole('button', { name: '确认开始维修', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '当前维修', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog').getByRole('heading', { name: '当前维修', exact: true })).toBeVisible();
   await page.getByRole('dialog').getByRole('textbox', { name: '维修说明', exact: true }).fill('本地隔离移动审查：完成驱动排查与验证。');
   await page.getByLabel('修复成功', { exact: true }).check();
   fit(await audit.capture('repair-in-progress'));
@@ -301,7 +338,8 @@ test('font200-orientation-focus-camera-and-network', async ({ page, audit }, inf
   await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
   await page.route('**/api/field/home', route => route.fulfill({ status: 503, json: { error: '本地模拟网络不可用' } }));
   await page.reload();
-  await expect(page.getByRole('heading', { name: '工作区暂时不可用' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '今日工作', exact: true })).toBeVisible();
+  await expect(page.getByRole('alert')).toContainText('本地模拟网络不可用');
   await audit.capture('workspace-network-error');
   await expect(page.getByRole('button', { name: '重新加载工作区' })).toBeVisible();
 });

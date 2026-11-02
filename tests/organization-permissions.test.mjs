@@ -12,6 +12,10 @@ import { hashPassword } from '../src/lib/passwords.js';
 import { repairRosterPool } from '../src/modules/rosters/qualification.js';
 import { dateKey, addDays } from '../shared/time.js';
 
+// Detailed cases use the main chain; populated cutover and D1 rollback tests
+// retain coverage of both the main and historical Staff Staging chains.
+const directory = 'migrations';
+
 function adapter(sqlite) {
   return { prepare(sql) {
     const query = sqlite.prepare(sql);
@@ -170,7 +174,7 @@ test('single creation and import share compact facts, skip exact repeats and sur
   } finally { f.sqlite.close(); }
 });
 
-for (const directory of ['migrations','database/staff-migrations']) test(`${directory}: one-time upgrade archives uncertain posts and narrows work grants to real qualification intervals`,async()=>{
+test('one-time upgrade archives revoked posts and qualifications without restoring them on account recreation',async()=>{
   const f=await setup(directory,'0042');
   try {
     f.account('20269061');
@@ -193,7 +197,7 @@ for (const directory of ['migrations','database/staff-migrations']) test(`${dire
   } finally { f.sqlite.close(); }
 });
 
-for (const directory of ['migrations','database/staff-migrations']) test(`${directory}: old defaults never survive as managers, imports are idempotent, and ending a confirmed post revokes management`,async()=>{
+test('old defaults never survive as managers, imports are idempotent, and ending a confirmed post revokes management',async()=>{
   const f=await setup(directory,'0042');
   try {
     f.account('root001',['南湖','浑南'],true);f.account('20269071',['南湖','浑南']);
@@ -233,7 +237,7 @@ for (const directory of ['migrations','database/staff-migrations']) test(`${dire
   }finally{f.sqlite.close();}
 });
 
-for (const directory of ['migrations','database/staff-migrations']) test(`${directory}: disjoint work periods, fixed scopes and exchange relations cannot widen authorization`,async()=>{
+test('disjoint work periods, fixed scopes and exchange relations cannot widen authorization',async()=>{
   const f=await setup(directory,'0042');
   try {
     for(const id of ['20269081','20269082','20269083','20269084','20269085'])f.account(id,['南湖','浑南']);
@@ -273,7 +277,7 @@ for (const directory of ['migrations','database/staff-migrations']) test(`${dire
   }finally{f.sqlite.close();}
 });
 
-for (const directory of ['migrations','database/staff-migrations']) test(`${directory}: customized worker templates with management permissions are archived without granting authority`,async()=>{
+test('customized worker templates with management permissions are archived without granting authority',async()=>{
   const f=await setup(directory,'0042');
   try {
     f.account('20269086');
@@ -352,22 +356,7 @@ for (const directory of ['migrations','database/staff-migrations']) test(`${dire
   }finally{f.sqlite.close();}
 });
 
-for (const directory of ['migrations','database/staff-migrations']) test(`${directory}: roster identity drift aborts and rolls back the entire cutover`,async()=>{
-  const f=await setup(directory,'0042');
-  try {
-    f.account('99100001');
-    const before=f.sqlite.prepare('SELECT * FROM member_department_memberships').all();
-    const sql=await readFile(`${directory}/0042_organization_permissions.sql`,'utf8');
-    f.sqlite.exec('BEGIN');
-    assert.throws(()=>f.sqlite.exec(sql),/CHECK constraint/);
-    f.sqlite.exec('ROLLBACK');
-    assert.deepEqual(f.sqlite.prepare('SELECT * FROM member_department_memberships').all(),before);
-    assert.equal(f.sqlite.prepare("SELECT name FROM pragma_table_info('departments') WHERE name='kind'").get(),undefined);
-    assert.equal(f.sqlite.prepare('SELECT count(*) AS n FROM audit_events').get().n,0);
-  }finally{f.sqlite.close();}
-});
-
-for (const directory of ['migrations','database/staff-migrations']) test(`${directory}: verified exchange members keep real departments and exchange relationships without reopening disabled accounts`,async()=>{
+test('verified exchange members keep real departments and exchange relationships without reopening disabled accounts',async()=>{
   const f=await setup(directory,'0042');
   try {
     for(const [id,name,campus] of [['99100036','虚构样例36','南湖'],['99100095','虚构样例95','浑南']]){

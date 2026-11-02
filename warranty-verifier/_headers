@@ -1,0 +1,6 @@
+/*
+  Cache-Control: no-store
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://c.dun.163.com https://c.dun.163yun.com https://contentcenter-drcn.dbankcdn.cn https://cstaticdun.126.net https://cstaticdun1.126.net; style-src 'self' 'unsafe-inline' https://cstaticdun.126.net https://cstaticdun1.126.net; img-src data: https://necaptcha.nosdn.127.net https://necaptcha1.nosdn.127.net https://cstaticdun.126.net https://cstaticdun1.126.net; connect-src https://csc-adapter-drcn.security.dbankcloud.cn https://c.dun.163.com https://c.dun.163yun.com https://cstaticdun.126.net https://cstaticdun1.126.net; frame-src 'self' about:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
