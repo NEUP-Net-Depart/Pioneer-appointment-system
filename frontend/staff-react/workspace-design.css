@@ -4,6 +4,46 @@ body.staff-mode.field-mode {
   overflow-x: clip;
   overflow-y: visible;
 }
+/* One readable control scale, including controls nested in captions and tables. */
+#staff-react-root
+  :is(.field-app, .field-modal)
+  :is(button:not(.capacity-editor-handle), summary, .field-file-button) {
+  min-height: 44px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+#staff-react-root :is(.field-app, .field-modal) button:not(.capacity-editor-handle) {
+  min-width: 44px;
+}
+#staff-react-root :is(.field-app, .field-modal) :is(input, select, textarea, label) {
+  font-size: 14px;
+}
+#staff-react-root
+  :is(.field-app, .field-modal)
+  :is(
+    small,
+    .field-status,
+    .staff-identity,
+    .field-muted,
+    .react-muted,
+    .field-footer,
+    .field-table-head,
+    .field-order-action,
+    .field-metric-label,
+    .workspace-search-label
+  ) {
+  font-size: 14px;
+  line-height: 1.5;
+}
+#staff-react-root .field-app :is(.field-order, .field-person) strong {
+  font-size: 15px;
+}
+#staff-react-root .field-order > span {
+  font-size: 14px;
+}
+#staff-react-root :is(.field-app, .field-modal) small {
+  font-weight: 400;
+}
 .workspace-icon {
   width: 19px;
   height: 19px;
@@ -112,10 +152,10 @@ body.staff-mode.field-mode {
 }
 .field-app .field-overview {
   align-items: center;
-  padding: 20px 24px;
-  border: 1px solid var(--line);
-  border-radius: var(--workspace-radius);
-  background: var(--workspace-surface);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   margin-bottom: 16px;
 }
 .field-app .field-metrics .field-metric-card {
@@ -151,7 +191,23 @@ body.staff-mode.field-mode {
   text-underline-offset: 4px;
 }
 .field-app .field-person-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
   font-size: 14px;
+  color: var(--muted);
+}
+.field-app .field-person {
+  grid-template-columns: 32px minmax(0, 1fr);
+}
+.field-person-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.field-app .field-people-search {
+  margin: 0 0 16px;
 }
 .field-app .field-state-note,
 .field-app .roster-next > div > p {
@@ -251,9 +307,6 @@ body.staff-mode.field-mode {
   }
   .field-app .workspace-nav-group .motion-collapse > div {
     padding-bottom: 8px;
-  }
-  .field-app .field-overview {
-    padding: 12px 20px;
   }
   .field-app .field-metrics {
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -435,8 +488,10 @@ body.staff-mode.field-mode {
     padding-inline: 16px;
   }
   .field-app .field-overview {
-    padding: 16px;
     align-items: stretch;
+  }
+  #staff-react-root :is(.field-app, .field-modal) :is(input, select, textarea) {
+    font-size: 16px;
   }
   .field-app .field-overview .field-actions {
     display: grid;
@@ -447,8 +502,43 @@ body.staff-mode.field-mode {
     grid-column: 1 / -1;
   }
   .field-app .field-metrics .field-metric-card {
-    padding: 16px;
+    padding: 10px 6px;
     min-height: 84px;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: start;
+    gap: 4px;
+  }
+  .field-app .field-metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .field-app .field-metric-card strong {
+    grid-column: 1;
+    grid-row: 2;
+    font-size: 26px;
+  }
+  .field-app .field-desk-alerts {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .field-app .field-desk-alerts:empty {
+    display: none;
+  }
+  .field-app .field-desk-alerts .reception-next {
+    padding: 0;
+    margin: 0;
+    flex-wrap: nowrap;
+    background: transparent;
+    gap: 12px;
+  }
+  .field-app .field-desk-alerts .reception-next button {
+    width: auto;
+    flex: 0 0 auto;
+  }
+  .field-app .field-mobile-tabs {
+    margin: 0 0 16px;
   }
   .field-app .field-order {
     grid-template-columns: minmax(0, 1fr) auto;
@@ -457,6 +547,9 @@ body.staff-mode.field-mode {
   }
   .field-app .field-order > span:first-child {
     grid-column: 1;
+  }
+  .field-app .field-order > .field-order-assignee[data-empty='true'] {
+    display: none;
   }
   .field-app .field-order > .field-order-action {
     grid-column: 2;

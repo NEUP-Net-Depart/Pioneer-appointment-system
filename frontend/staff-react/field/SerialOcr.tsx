@@ -131,7 +131,6 @@ export function SerialOcr({
           void read(file);
         }}
       />
-      <small>请拍清楚机身 S/N 文字，尽量只包含该标签。照片在本机识别，不上传。</small>
       <Notice>{message}</Notice>
       {candidates.length > 1 && (
         <div className="warranty-ocr-actions">

@@ -260,9 +260,6 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
   return (
     <Modal title="查询设备保修" onClose={onClose} initialFocus="select">
       <div className="warranty-lookup">
-        <p className="field-muted">
-          扫描或拍照识别序列号，核对后复制并前往原厂消费者自查渠道。联想也可直接在本页查询。
-        </p>
         <label htmlFor={id + '-brand'}>设备品牌</label>
         <select
           id={id + '-brand'}
@@ -448,8 +445,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
                   }}
                 />
                 <small>
-                  验证码在 {new Date(captcha.expiresAt).toLocaleTimeString('zh-CN')}{' '}
-                  前有效。看不清时点击「重新获取验证码」。
+                  验证码在 {new Date(captcha.expiresAt).toLocaleTimeString('zh-CN')} 前有效。
                 </small>
                 <button
                   type="button"
@@ -513,10 +509,9 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
                       onClose();
                     }}
                   >
-                    采用此保修情况
+                    填入此保修情况
                   </button>
                 )}
-                {onUseStatus && <small>采用结果只填写当前核验表单，仍需按原流程确认后保存。</small>}
               </>
             )}
           </section>

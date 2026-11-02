@@ -58,7 +58,7 @@ export function Empty({ title, children }: { title: string; children?: ReactNode
   return (
     <div className="field-empty">
       <strong data-motion-value="text">{title}</strong>
-      <p data-motion-value="text">{children}</p>
+      {children && <p data-motion-value="text">{children}</p>}
     </div>
   );
 }

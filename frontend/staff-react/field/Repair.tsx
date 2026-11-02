@@ -200,7 +200,6 @@ export function Repair({
           </section>
           <section className="field-details">
             <h3>接待与维修记录</h3>
-            <p className="field-muted">核对客户、设备和当前流转状态后，执行此工单可用的操作。</p>
             <DataFields
               pending={!error}
               fields={[

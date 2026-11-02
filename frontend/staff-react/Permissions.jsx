@@ -151,19 +151,13 @@ export function Permissions() {
               onClick={() => select(role)}
             >
               {role.name}
-              <small data-motion-value="text">{role.description || role.code}</small>
             </button>
           ))}
         </aside>
         <article className="react-card">
           <h2 data-motion-value="text">{selected?.name || '角色权限'}</h2>
           {!selected && (
-            <>
-              <p className="react-muted">
-                按角色配置功能权限、授权范围、条件与有效期。已有权限的范围和条件会保留。
-              </p>
-              <DataFields pending={loading} fields={[['当前角色'], ['可配置功能'], ['授权范围']]} />
-            </>
+            <DataFields pending={loading} fields={[['当前角色'], ['可配置功能'], ['授权范围']]} />
           )}
           {!selected && error && (
             <button onClick={() => setReadRevision((value) => value + 1)}>重新读取角色权限</button>
@@ -171,9 +165,6 @@ export function Permissions() {
           {!selected && !loading && !error && <p>当前没有可查看的角色。</p>}
           {selected && (
             <>
-              <p className="react-muted">
-                启用已有权限会保留其范围、条件和有效期；新增权限采用受限的默认范围。
-              </p>
               {protectedRole && (
                 <p className="react-muted">最高管理员权限包受保护，请选择其他角色配置。</p>
               )}
