@@ -762,7 +762,8 @@ test('management keeps its shell and readable results during refresh at all widt
   const memberDialog = page.getByRole('dialog', { name: '陈宇', exact: true });
   const memberName = memberDialog.getByLabel('姓名', { exact: true });
   await memberName.fill('陈宇测试草稿');
-  await (await navigationEntry(sidebar, '账号安全')).click();
+  // Exercise programmatic navigation while the member modal owns pointer input.
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('staff-request-navigation', { detail: 'settings' })));
   await page.getByRole('dialog', { name: '有未保存的调整' }).getByRole('button', { name: '留在当前页面', exact: true }).click();
   await expect(memberDialog).toBeVisible();
   await expect(memberName).toHaveValue('陈宇测试草稿');
@@ -1164,6 +1165,10 @@ test('records share filtering, responsive details and guarded record maintenance
   await expect(workspace.getByRole('heading', { name: '预约记录', exact: true })).toBeVisible();
   await expect(page.locator('#staff-view')).toBeHidden();
   await expect(workspace.locator('.records-table tbody tr').first()).toBeVisible();
+  // Other scenarios may leave cancelled appointments in the shared fixture.
+  await workspace.getByRole('searchbox', { name: '查找预约' }).fill(fixture.id);
+  await expect(workspace.locator('.records-table tbody tr')).toHaveCount(1);
+  await expect(workspace.locator('.records-table tbody tr')).toContainText(fixture.id);
   await workspace.getByRole('button', { name: '状态，未排序；点击升序' }).click();
   await workspace.getByRole('button', { name: '校区，未排序；点击升序' }).click();
   await expect(workspace.locator('.records-result-meta')).toContainText('1. 状态↑ → 2. 校区↑');

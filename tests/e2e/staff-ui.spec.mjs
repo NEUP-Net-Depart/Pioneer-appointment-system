@@ -85,3 +85,60 @@ test('returning from people to the same queue keeps the requested filter selecte
   await expect(available).toHaveAttribute('aria-pressed', 'false');
   await expect(page.getByRole('heading', { name: '排队中', exact: true })).toBeVisible();
 });
+
+for (const width of [1366, 1920]) {
+  test(`desktop workspace keeps navigation and three actionable orders in the first screen at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 768 });
+    const session = await mockStaff(page, { contexts: [{ id: 'desk', label: '现场工作台' }, { id: 'repair', label: '维修工作台' }] });
+    Object.assign(session.profile.permissions, { 'repair.receive': true, 'repair.transfer': true, 'roster.repair.manage': true, 'roster.office.manage': true, 'leave.review': true, 'attendance.correct': true, 'attendance.export': true });
+    session.home.appointments = Array.from({ length: 3 }, (_, index) => ({ id: `reserve-${index}`, status: 'booked', date: '2026-11-02', campus: '南湖', timeSlot: '19:00–19:30', deviceModel: `电脑 ${index + 1}`, faultType: '系统问题' }));
+    session.home.staffPresence = [{ memberId: 'unsigned', name: '待岗成员', scheduled: true, state: 'unsigned' }];
+    await loginStaff(page);
+    const sidebar = page.locator('.field-sidebar');
+    await expect(sidebar.locator('.workspace-group-toggle')).toHaveCount(5);
+    for (const toggle of await sidebar.locator('.workspace-group-toggle').all()) await expect(toggle).toBeInViewport();
+    await expect(sidebar.getByRole('button', { expanded: true })).toHaveText('现场工作−');
+    await expect(page.locator('.field-order').nth(2)).toBeInViewport({ ratio: 1 });
+    await expect(page.getByRole('button', { name: '查看到岗', exact: true })).toBeInViewport();
+    expect(await sidebar.locator('nav').evaluate(node => node.scrollHeight <= node.clientHeight)).toBe(true);
+    await sidebar.getByRole('button', { name: '人员权限', exact: true }).click();
+    await expect(sidebar.getByRole('button', { name: '现场工作', exact: true })).toHaveAttribute('aria-expanded', 'false');
+    await sidebar.getByRole('button', { name: '人员管理', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '人员管理', exact: true })).toBeVisible();
+    const tops = await page.locator('.members-tools').locator('input, select, .members-list-actions > button').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().top));
+    expect(Math.max(...tops) - Math.min(...tops)).toBeLessThan(1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.setViewportSize({ width, height: 500 });
+    await sidebar.getByRole('button', { name: '我的', exact: true }).click();
+    await sidebar.getByRole('button', { name: '账号安全', exact: true }).focus();
+    await expect(sidebar.getByRole('button', { name: '账号安全', exact: true })).toBeInViewport();
+    await expect(sidebar.getByRole('button', { name: '退出登录', exact: true })).toBeInViewport();
+  });
+}
+
+test('desktop function shortcut supports Enter and preserves unsaved-change protection', async ({ page }) => {
+  await mockStaff(page);
+  await loginStaff(page);
+  await page.keyboard.press('Control+k');
+  const launcher = page.getByRole('dialog', { name: '工作入口' });
+  const search = launcher.getByRole('searchbox', { name: '查找功能' });
+  await expect(search).toBeFocused();
+  await search.fill('密码');
+  await search.press('Enter');
+  await expect(page.getByRole('heading', { name: '账号安全', exact: true })).toBeVisible();
+  // The existing guard is also used by keyboard-triggered navigation.
+  await page.evaluate(() => window.addEventListener('staff-before-navigation', event => {
+    event.preventDefault();
+    event.detail.editors.push({ save: async () => false, discard() {} });
+  }));
+  await page.keyboard.press('Meta+k');
+  await search.fill('预约 查询');
+  await search.press('Enter');
+  await expect(launcher).toBeHidden();
+  const guard = page.getByRole('dialog', { name: '有未保存的调整' });
+  await expect(guard).toBeVisible();
+  await page.keyboard.press('Control+k');
+  await expect(launcher).toHaveCount(0);
+  await guard.getByRole('button', { name: '留在当前页面', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '账号安全', exact: true })).toBeVisible();
+});
