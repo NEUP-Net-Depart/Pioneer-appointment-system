@@ -1,27 +1,39 @@
 import { useContext, useEffect, useRef, useState } from 'react';
 import { deviceSerialCandidatesFromText } from '../../../shared/warranty.js';
-import { ActivityContext, Notice } from './ui';
+import { ActivityContext, Notice, Scanner } from './ui';
 
 export function SerialOcr({
+  mode,
   onSerial,
-  onBusy
+  onBusy,
+  onAlbumImage
 }: {
+  mode: 'scan' | 'ocr';
   onSerial: (value: string) => void;
   onBusy: (value: boolean) => void;
+  onAlbumImage: (file: File) => Promise<boolean>;
 }) {
   const active = useContext(ActivityContext);
   const job = useRef<AbortController | null>(null);
+  const copyResult = useRef<HTMLButtonElement>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [candidates, setCandidates] = useState<string[]>([]);
   const [raw, setRaw] = useState('');
-  const photo = useRef<HTMLInputElement>(null);
-  const album = useRef<HTMLInputElement>(null);
+  const [copyFailed, setCopyFailed] = useState(false);
+  useEffect(() => {
+    if (mode !== 'scan' || !raw) return;
+    copyResult.current?.scrollIntoView({
+      block: 'nearest',
+      behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+    });
+  }, [mode, raw]);
   useEffect(
     () => () => {
       job.current?.abort();
+      onBusy(false);
     },
-    []
+    [onBusy]
   );
   useEffect(() => {
     if (!active) {
@@ -40,16 +52,19 @@ export function SerialOcr({
     onBusy(false);
     setMessage('文字识别已取消。');
   }
-  async function read(file?: File) {
+  async function read(file?: File, automatic = false) {
     if (!file) return;
+    if (automatic && job.current) return;
     job.current?.abort();
     const controller = new AbortController();
     job.current = controller;
-    setBusy(true);
-    onBusy(true);
-    setCandidates([]);
-    setRaw('');
-    setMessage('正在读取标签照片…');
+    if (!automatic) {
+      setBusy(true);
+      onBusy(true);
+      setCandidates([]);
+      setRaw('');
+      setMessage('正在读取标签照片…');
+    }
     const timer = setTimeout(() => controller.abort(), 60000);
     try {
       const { recognizeSerialPhoto } = await import('./serial-ocr.js');
@@ -57,24 +72,26 @@ export function SerialOcr({
       const result = await recognizeSerialPhoto(file, {
         signal: controller.signal,
         onProgress: (value) => {
-          if (job.current === controller) setMessage(value);
+          if (!automatic && job.current === controller) setMessage(value);
         }
       });
       if (job.current !== controller || controller.signal.aborted) return;
       const values = deviceSerialCandidatesFromText(result.text);
+      if (automatic && !result.text.trim()) return;
       setCandidates(values);
       setRaw(result.text);
-      if (values.length === 1) {
-        onSerial(values[0]);
-        setMessage('已填入候选序列号，请核对 O / 0、I / 1 后再查询或复制。');
-      } else
-        setMessage(
-          values.length
-            ? '识别到多个候选，请选择机身 S/N 对应的一项并核对。'
-            : '未找到明确序列号，请靠近 S/N 文字重新拍摄，或手动输入。'
-        );
+      setCopyFailed(false);
+      setMessage(
+        values.length
+          ? result.labelled
+            ? '识别到序号候选，请核对易混淆字符后采用。'
+            : '识别到可能的编号，请对照机身“序号 / S/N”后采用。'
+          : result.text.trim()
+            ? '识别到文字，但未确定序号。可复制文字后手动填写。'
+            : '未识别到文字，请靠近序号标签重新拍摄。'
+      );
     } catch (error) {
-      if (job.current === controller)
+      if (!automatic && job.current === controller)
         setMessage(
           controller.signal.aborted
             ? '文字识别已取消或超时，请重试。'
@@ -86,54 +103,48 @@ export function SerialOcr({
       clearTimeout(timer);
       if (job.current === controller) {
         job.current = null;
-        setBusy(false);
-        onBusy(false);
+        if (!automatic) {
+          setBusy(false);
+          onBusy(false);
+        }
       }
     }
   }
   return (
-    <section className="warranty-ocr" aria-label="序列号文字识别">
-      <div className="warranty-ocr-actions">
-        <button type="button" disabled={busy} onClick={() => photo.current?.click()}>
-          拍照识别文字（OCR）
-        </button>
-        <button type="button" disabled={busy} onClick={() => album.current?.click()}>
-          相册文字识别
-        </button>
-        {busy && (
-          <button type="button" onClick={cancel}>
-            取消文字识别
-          </button>
-        )}
+    <section
+      className="warranty-ocr"
+      aria-label={mode === 'scan' ? '序列号二维码扫描' : '序列号文字识别'}
+      aria-busy={busy}
+    >
+      <fieldset className="warranty-camera-controls" disabled={busy}>
+        <Scanner
+          mode={mode === 'scan' ? 'device' : 'photo'}
+          cameraLayout="warranty"
+          onAutoImage={mode === 'ocr' ? (file) => read(file, true) : undefined}
+          onAlbumImage={onAlbumImage}
+          onCode={onSerial}
+          onCandidates={(values) => {
+            setCandidates(values);
+            setRaw('');
+            setMessage('识别到多个编号，请核对机身 S/N 后选择。');
+          }}
+          onUnrecognized={(values) => {
+            setRaw(values.join('\n'));
+            setCopyFailed(false);
+            setMessage('');
+          }}
+          onImage={(file) => read(file)}
+        />
+      </fieldset>
+      <div role="status" aria-live="polite">
+        <Notice>{message}</Notice>
       </div>
-      <input
-        ref={photo}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        aria-label="拍摄序列号标签"
-        hidden
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          event.target.value = '';
-          void read(file);
-        }}
-      />
-      <input
-        ref={album}
-        type="file"
-        accept="image/*"
-        aria-label="选择序列号文字照片"
-        hidden
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          event.target.value = '';
-          void read(file);
-        }}
-      />
-      <small>请拍清楚机身 S/N 文字，尽量只包含该标签。照片在本机识别，不上传。</small>
-      <Notice>{message}</Notice>
-      {candidates.length > 1 && (
+      {busy && (
+        <button type="button" onClick={cancel}>
+          取消识别
+        </button>
+      )}
+      {candidates.length > 0 && (
         <div className="warranty-ocr-actions">
           {candidates.map((value) => (
             <button key={value} type="button" onClick={() => onSerial(value)}>
@@ -143,10 +154,31 @@ export function SerialOcr({
         </div>
       )}
       {raw && (
-        <details>
-          <summary>查看识别文字</summary>
+        <div
+          className="warranty-scan-result"
+          aria-label={mode === 'scan' ? '扫码结果' : 'OCR 识别文字'}
+        >
+          <strong>{mode === 'scan' ? '扫码结果' : '识别文字'}</strong>
+          <span>{mode === 'scan' ? '未识别为 S/N' : '请核对机身序号'}</span>
           <pre>{raw}</pre>
-        </details>
+          <button
+            ref={copyResult}
+            type="button"
+            className="field-primary"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(raw);
+                setCopyFailed(false);
+                setMessage(mode === 'scan' ? '扫码内容已复制。' : '识别文字已复制。');
+              } catch {
+                setCopyFailed(true);
+                setMessage('浏览器未允许复制，请长按上方内容手动复制。');
+              }
+            }}
+          >
+            {copyFailed ? '重试复制' : mode === 'scan' ? '复制扫码内容' : '复制识别文字'}
+          </button>
+        </div>
       )}
     </section>
   );
