@@ -108,12 +108,11 @@ export function RepairFollowups({ active, onChanged, onOpen }) {
     }
   }
 
-  if (!active) return null;
+  if (!active || (result.data && !items.length && !receipt && !result.error)) return null;
   return (
     <section className="followup-queue" aria-labelledby="followup-queue-title">
       <div className="followup-queue-heading">
         <div>
-          <p className="section-kicker">办公处理</p>
           <h2 id="followup-queue-title">待安排返修</h2>
         </div>
         <span className="followup-count" aria-label={items.length + ' 条待处理'}>

@@ -7,6 +7,7 @@ import { MemberEditor } from './MemberEditor.jsx';
 import { staffPermission } from '../../shared/staff-access.js';
 import { MemberImport } from './MemberImport.jsx';
 import { EducationImport } from './EducationImport.jsx';
+import { WorkspaceMoreActions } from './WorkspaceMoreActions';
 import { StaffIdentity } from './StaffIdentity';
 import { MemberCreate } from './MemberCreate.jsx';
 
@@ -96,7 +97,9 @@ export function Members({ user }) {
               新增人员
             </button>
             <button onClick={() => setImporting(true)}>批量导入</button>
-            <button onClick={() => setEducationImporting(true)}>批量补学院</button>
+            <WorkspaceMoreActions>
+              <button onClick={() => setEducationImporting(true)}>批量补学院</button>
+            </WorkspaceMoreActions>
           </>
         )}
         <button onClick={() => load()} disabled={busy}>
@@ -194,7 +197,6 @@ export function Members({ user }) {
           {!busy && !items.length && !error && (
             <div className="members-empty">
               <h2>没有找到成员</h2>
-              <p>试试其他姓名、学号，或放宽校区与状态条件。</p>
               {(q || campus || status) && (
                 <button
                   onClick={() => {
@@ -210,7 +212,6 @@ export function Members({ user }) {
           )}
         </div>
         <footer className="members-list-footer">
-          <span>仅展示你有权查看的成员</span>
           {nextCursor && (
             <button onClick={() => load(nextCursor)} disabled={busy}>
               加载更多成员

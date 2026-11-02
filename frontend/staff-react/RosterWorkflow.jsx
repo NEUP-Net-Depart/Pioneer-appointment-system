@@ -95,7 +95,11 @@ export function RosterWorkflow({ user, office = false }) {
     <section className="react-page roster-workflow">
       <WorkspaceHeader group="排班考勤" title={office ? '办公排班管理' : '维修排班管理'}>
         {canCreate && (
-          <button disabled={busy || dirty || requirementsDirty} onClick={() => setCreating(true)}>
+          <button
+            className="field-primary"
+            disabled={busy || dirty || requirementsDirty}
+            onClick={() => setCreating(true)}
+          >
             {office ? '新建办公收集任务' : '新建收集任务'}
           </button>
         )}
@@ -162,9 +166,7 @@ export function RosterWorkflow({ user, office = false }) {
       {(tasksLoading || (taskId && !data && !error)) && (
         <section className="roster-loading" aria-label="本周收集与排班" aria-busy="true">
           <h2>收集与排班</h2>
-          <p className="react-muted">
-            发布可用时间收集 → 查看填报进度 → 结束收集 → 生成并调整班表 → 检查并发布。
-          </p>
+          <RosterStage stage="collecting" />
           <DataFields fields={[['收集进度'], ['当前班表'], ['发布检查']]} />
         </section>
       )}

@@ -12,13 +12,16 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  margin-bottom: 20px;
+  margin-bottom: 0;
   background: var(--workspace-subtle);
   text-align: left;
   flex-shrink: 0;
 }
 .field-app .field-sidebar nav {
-  gap: 18px;
+  gap: 0;
+}
+.field-app .field-sidebar .workspace-nav-group h2 {
+  margin: 0;
 }
 .field-app .field-sidebar nav .workspace-group-toggle {
   min-height: 32px;
@@ -72,11 +75,162 @@
   border-bottom-color: #252d38;
   box-shadow: none;
 }
+.field-app .records-panel > .workspace-section-nav {
+  margin: 0;
+  padding: 0 20px;
+}
+.records-quick-dates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 0 20px 20px;
+}
+.field-app .records-quick-dates button {
+  border-radius: 8px;
+  padding: 8px 14px;
+  background: var(--workspace-subtle);
+  border-color: transparent;
+}
+.field-app .records-quick-dates button[aria-pressed='true'] {
+  color: #fff;
+  background: #252d38;
+  border-color: #252d38;
+}
+.field-app .record-sort > strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.field-app .record-sort > strong > span {
+  color: var(--muted);
+}
+.field-app .field-overview {
+  align-items: center;
+  padding: 20px 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--workspace-radius);
+  background: var(--workspace-surface);
+  margin-bottom: 16px;
+}
+.field-app .field-metrics .field-metric-card {
+  padding: 20px;
+  min-height: 100px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  border-bottom: 3px solid var(--line);
+}
+.field-app .field-metrics .field-metric-card.selected {
+  border-bottom-color: #252d38;
+  background: #eceff3;
+}
+.field-app .field-table-head,
+.field-app .field-order {
+  grid-template-columns: minmax(130px, 1fr) 94px 76px 80px 84px;
+  gap: 12px;
+}
+.field-app .field-table-head {
+  font-size: 13px;
+}
+.field-app .field-order-action {
+  color: var(--ink);
+  font-weight: 600;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.field-app .field-order:hover .field-order-action {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.field-app .field-person-summary {
+  font-size: 14px;
+}
+.field-app .field-state-note,
+.field-app .roster-next > div > p {
+  font-size: 14px;
+}
+.field-app .personal-shortcuts {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+}
+.field-app .personal-shortcuts button {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 18px;
+  text-align: left;
+}
+.personal-shortcuts button > span:last-child {
+  margin-left: auto;
+}
+.field-app .accounts-workspace .workspace-section-nav {
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--workspace-subtle);
+}
+.field-app .accounts-workspace .workspace-section-nav button {
+  padding: 8px 16px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+}
+.field-app .accounts-workspace .workspace-section-nav button[aria-pressed='true'] {
+  border-color: var(--line);
+  background: var(--workspace-surface);
+}
+@media (min-width: 768px) and (max-width: 1100px) {
+  .field-app .field-desk-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .field-app .field-table-head,
+  .field-app .field-order {
+    grid-template-columns: minmax(100px, 1fr) 88px 68px 66px 80px;
+    gap: 8px;
+  }
+}
 @media (max-width: 767px) {
   .field-app .field-bottom-nav {
     min-height: 72px;
   }
   .field-app .workspace-section-nav button {
     padding: 10px 8px;
+  }
+  .field-app .records-panel > .workspace-section-nav {
+    padding-inline: 12px;
+  }
+  .records-quick-dates {
+    padding-inline: 16px;
+  }
+  .field-app .field-overview {
+    padding: 16px;
+    align-items: stretch;
+  }
+  .field-app .field-overview .field-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+  .field-app .field-overview .field-actions .field-primary {
+    grid-column: 1 / -1;
+  }
+  .field-app .field-metrics .field-metric-card {
+    padding: 16px;
+    min-height: 84px;
+  }
+  .field-app .field-order {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    padding-block: 18px;
+  }
+  .field-app .field-order > span:first-child {
+    grid-column: 1;
+  }
+  .field-app .field-order > .field-order-action {
+    grid-column: 2;
+    justify-self: end;
   }
 }

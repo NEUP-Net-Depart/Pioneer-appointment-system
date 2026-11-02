@@ -235,54 +235,49 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
   const workspaceLinks = [
     ...(field?.contexts || [])
       .filter((context) => staffSceneAllowed(effectiveUser, field, context.id))
-      .map((context) => ({ ...context, id: `scene:${context.id}`, group: '今日工作' })),
-    ...(profile && field ? [{ id: 'scene:mine', label: '个人中心', group: '我的' }] : []),
-    ...(publishedView('rosters', 'roster')
-      ? [{ id: 'roster', label: '班次与排班', group: '我的' }]
-      : []),
+      .map((context) => ({ ...context, id: `scene:${context.id}` })),
+    ...(profile && field ? [{ id: 'scene:mine', label: '个人中心' }] : []),
+    ...(publishedView('rosters', 'roster') ? [{ id: 'roster', label: '班次与排班' }] : []),
     ...(staffPermission(effectiveUser, 'roster.repair.manage') ||
     staffPermission(effectiveUser, 'roster.repair.configure')
-      ? [{ id: 'roster-manage', label: '维修排班管理', group: '值班管理' }]
+      ? [{ id: 'roster-manage', label: '维修排班管理' }]
       : []),
     ...(staffPermission(effectiveUser, 'roster.office.manage')
-      ? [{ id: 'office-roster', label: '办公排班管理', group: '值班管理' }]
+      ? [{ id: 'office-roster', label: '办公排班管理' }]
       : []),
     ...(staffPermission(effectiveUser, 'leave.review')
-      ? [{ id: 'leave-review', label: '请假审批', group: '值班管理' }]
+      ? [{ id: 'leave-review', label: '请假审批' }]
       : []),
     ...(staffPermission(effectiveUser, 'attendance.correct')
-      ? [{ id: 'attendance-manage', label: '考勤核查', group: '值班管理' }]
+      ? [{ id: 'attendance-manage', label: '考勤核查' }]
       : []),
     ...(staffPermission(effectiveUser, 'repair.summary.read')
-      ? [{ id: 'staff', label: '预约记录', group: '今日工作' }]
+      ? [{ id: 'staff', label: '预约记录' }]
       : []),
     ...(publishedView('members', 'members') ||
     staffPermission(effectiveUser, 'accounts.manage') ||
     staffPermission(effectiveUser, 'settings.manage')
-      ? [{ id: 'members', label: '人员管理', group: '平台管理' }]
+      ? [{ id: 'members', label: '人员管理' }]
       : []),
-    ...(publishedView('roles', 'permissions')
-      ? [{ id: 'permissions', label: '角色与权限', group: '平台管理' }]
-      : []),
+    ...(publishedView('roles', 'permissions') ? [{ id: 'permissions', label: '角色与权限' }] : []),
     ...(publishedView('attendance', 'attendance')
-      ? [{ id: 'attendance', label: '本人签到记录', group: '我的' }]
+      ? [{ id: 'attendance', label: '本人签到记录' }]
       : []),
     ...(staffPermission(effectiveUser, 'statistics.read')
-      ? [{ id: 'stats', label: '统计分析', group: '数据与审计' }]
+      ? [{ id: 'stats', label: '统计分析' }]
       : []),
     ...(staffPermission(effectiveUser, 'attendance.export') ||
     staffPermission(effectiveUser, 'settings.manage')
       ? [
           {
             id: 'reports',
-            label: staffPermission(effectiveUser, 'attendance.export') ? '报表导出' : '导出规则',
-            group: '数据与审计'
+            label: staffPermission(effectiveUser, 'attendance.export') ? '报表导出' : '导出规则'
           }
         ]
       : []),
-    ...(profile ? [{ id: 'settings', label: '账号安全', group: '我的' }] : []),
+    ...(profile ? [{ id: 'settings', label: '账号安全' }] : []),
     ...(staffPermission(effectiveUser, 'settings.manage')
-      ? [{ id: 'capacity', label: '预约配置', group: '业务管理' }]
+      ? [{ id: 'capacity', label: '预约配置' }]
       : [])
   ].map(workspaceEntry);
   const active =

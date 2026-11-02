@@ -90,10 +90,10 @@ export function DeskScene({
         {orderFilters.map(({ value, label, count }) => (
           <button
             key={value}
-            className={`field-metric-card ${value === 'all' ? 'field-metric-summary' : ''} ${filter === value ? 'selected' : ''}`}
-            aria-pressed={filter === value}
+            className={`field-metric-card ${tab === 'appointments' && filter === value ? 'selected' : ''}`}
+            aria-pressed={tab === 'appointments' && filter === value}
             onClick={() => {
-              setFilter(filter === value ? 'all' : value);
+              setFilter(tab === 'appointments' && filter === value ? 'all' : value);
               setTab('appointments');
             }}
           >
@@ -106,10 +106,10 @@ export function DeskScene({
           </button>
         ))}
         <button
-          className={`field-metric-card field-metric-people ${showAvailable ? 'selected' : ''}`}
-          aria-pressed={showAvailable}
+          className={`field-metric-card field-metric-people ${tab === 'people' && showAvailable ? 'selected' : ''}`}
+          aria-pressed={tab === 'people' && showAvailable}
           onClick={() => {
-            setShowAvailable(!showAvailable);
+            setShowAvailable(tab === 'people' ? !showAvailable : true);
             setTab('people');
           }}
         >
@@ -146,11 +146,16 @@ export function DeskScene({
       <div className="field-mobile-tabs">
         <button
           className={tab === 'appointments' ? 'active' : ''}
+          aria-pressed={tab === 'appointments'}
           onClick={() => setTab('appointments')}
         >
           预约
         </button>
-        <button className={tab === 'people' ? 'active' : ''} onClick={() => setTab('people')}>
+        <button
+          className={tab === 'people' ? 'active' : ''}
+          aria-pressed={tab === 'people'}
+          onClick={() => setTab('people')}
+        >
           在岗人员
         </button>
       </div>
@@ -179,6 +184,7 @@ export function DeskScene({
             <span>时段</span>
             <span>状态</span>
             <span>维修人员</span>
+            <span>操作</span>
           </div>
           {items.map((item) => (
             <button
@@ -225,6 +231,16 @@ export function DeskScene({
                     <small data-motion-value="text">跨日待处理 · {item.date}</small>
                   )}
               </span>
+              <span className="field-order-action">
+                {receptionStatus(item) === 'booked' && data.capability['repair.receive']
+                  ? '核验到场'
+                  : receptionStatus(item) === 'queued' && data.capability['repair.dispatch']
+                    ? '分派维修'
+                    : item.status === 'in_progress'
+                      ? '查看维修'
+                      : '查看详情'}
+                <span aria-hidden="true"> →</span>
+              </span>
             </button>
           ))}
           {!data.appointments && result.loading && <DataValue label="今日预约" />}
@@ -232,7 +248,12 @@ export function DeskScene({
         </section>
         <section className="field-card field-people">
           <div className="field-section-heading">
-            <h2>现场人员</h2>
+            <h2>{showAvailable ? '空闲人员' : '现场人员'}</h2>
+            {showAvailable && (
+              <button className="field-text" onClick={() => setShowAvailable(false)}>
+                显示全部人员
+              </button>
+            )}
           </div>
           <p className="field-muted field-person-summary">
             可接单{' '}

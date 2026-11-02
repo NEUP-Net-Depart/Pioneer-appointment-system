@@ -42,10 +42,8 @@ export function mobileWorkspaceEntries(entries) {
 }
 
 export function matchesWorkspaceEntry(entry, group, query) {
-  const text = `${group} ${entry.label} ${entry.keywords || ''}`.toLocaleLowerCase();
-  return query
-    .trim()
-    .toLocaleLowerCase()
-    .split(/\s+/)
-    .every((word) => text.includes(word));
+  const search = query.trim().toLocaleLowerCase();
+  if (group.toLocaleLowerCase() === search) return true;
+  const text = `${entry.label} ${entry.keywords || ''}`.toLocaleLowerCase();
+  return search.split(/\s+/).every((word) => text.includes(word));
 }

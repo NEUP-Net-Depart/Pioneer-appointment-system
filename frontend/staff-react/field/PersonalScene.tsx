@@ -1,3 +1,4 @@
+import { WorkspaceIcon } from '../WorkspaceIcon';
 import { PersonalProfile } from './PersonalProfile';
 import type { useFieldWorkspace } from './useFieldWorkspace';
 type Props = Pick<
@@ -35,36 +36,33 @@ export function PersonalScene({
         ))}
         {!data.todayDuties.length && <p className="personal-no-shift">暂无排班安排</p>}
         <div className="field-actions personal-actions">
-          {workspaceLinks.some((entry) => entry.id === 'roster') && (
-            <button onClick={() => onNavigate('roster')}>我的班次与申请</button>
-          )}
-          <button onClick={() => onNavigate('settings')}>账号安全</button>
+          {!data.presence &&
+            (data.capability['attendance.self'] || data.directAttendance?.allowed) && (
+              <button className="field-primary" onClick={openAttendance} disabled={busy}>
+                到岗签到
+              </button>
+            )}
           <button onClick={onLogout}>退出登录</button>
-          {data.capability['attendance.self'] && (
-            <button onClick={openAttendance} disabled={busy}>
-              到岗签到
-            </button>
-          )}
         </div>
       </section>
-      {(data.capability['members.manage'] ||
-        data.capability['accounts.manage'] ||
-        data.capability['settings.manage'] ||
-        data.capability['roles.manage']) && (
-        <section className="field-card">
-          <h2>平台管理</h2>
-          <div className="field-actions personal-actions">
-            {(data.capability['members.manage'] ||
-              data.capability['accounts.manage'] ||
-              data.capability['settings.manage']) && (
-              <button onClick={() => onNavigate('members')}>人员管理</button>
-            )}
-            {data.capability['roles.manage'] && (
-              <button onClick={() => onNavigate('permissions')}>角色与权限</button>
-            )}
-          </div>
-        </section>
-      )}
+      <section className="field-card">
+        <h2>我的工作</h2>
+        <div className="personal-shortcuts">
+          {[
+            { id: 'roster', label: '我的班次与申请', icon: 'calendar' },
+            { id: 'attendance', label: '本人签到记录', icon: 'check' },
+            { id: 'settings', label: '账号安全', icon: 'shield' }
+          ]
+            .filter((item) => workspaceLinks.some((entry) => entry.id === item.id))
+            .map((item) => (
+              <button key={item.id} onClick={() => onNavigate(item.id)}>
+                <WorkspaceIcon name={item.icon} />
+                {item.label}
+                <span aria-hidden="true">→</span>
+              </button>
+            ))}
+        </div>
+      </section>
     </div>
   );
 }
