@@ -69,7 +69,7 @@ export function Accounts({ user, embedded = false }) {
           <button onClick={copy}>复制激活网址</button>
         </div>
       ) : (
-        <WorkspaceHeader group="平台管理" title="人员管理">
+        <WorkspaceHeader group="人员权限" title="人员管理">
           <button onClick={copy}>复制激活网址</button>
         </WorkspaceHeader>
       )}

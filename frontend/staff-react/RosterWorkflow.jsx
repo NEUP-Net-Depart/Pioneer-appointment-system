@@ -93,7 +93,7 @@ export function RosterWorkflow({ user, office = false }) {
   } = useRosterWorkflow({ user, office });
   return (
     <section className="react-page roster-workflow">
-      <WorkspaceHeader group="值班管理" title={office ? '办公排班管理' : '维修排班管理'}>
+      <WorkspaceHeader group="排班考勤" title={office ? '办公排班管理' : '维修排班管理'}>
         {canCreate && (
           <button disabled={busy || dirty || requirementsDirty} onClick={() => setCreating(true)}>
             {office ? '新建办公收集任务' : '新建收集任务'}

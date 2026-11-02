@@ -3,10 +3,12 @@ import { useDataMotion } from './useDataMotion';
 import React, { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Modal } from './field/ui';
 import { WorkspaceLauncher } from './WorkspaceLauncher';
+import { WorkspaceIcon } from './WorkspaceIcon';
+import { groupWorkspaceEntries, mobileWorkspaceEntries } from './workspace-navigation.js';
 import { pendingEditors } from './useUnsavedChanges.js';
 import './field/field.css';
 
-type Entry = { id: string; label: string; group?: string };
+type Entry = { id: string; label: string; group?: string; icon?: string; keywords?: string };
 export function StaffWorkspace({
   children,
   name,
@@ -107,18 +109,8 @@ export function StaffWorkspace({
       setResolving(false);
     }
   }
-  const groups = ['今日工作', '我的', '值班管理', '平台管理', '业务管理', '数据与审计', '其他']
-    .map((label) => ({
-      label,
-      items: entries.filter((entry) => (entry.group || '其他') === label)
-    }))
-    .filter((group) => group.items.length);
-  const primary = entries
-    .filter((entry) => entry.id.startsWith('scene:') && entry.id !== 'scene:mine')
-    .slice(0, 2);
-  const mine = entries.find((entry) => entry.id === 'scene:mine');
-  if (mine) primary.push(mine);
-  if (!primary.length) primary.push(...entries.slice(0, 3));
+  const groups = groupWorkspaceEntries(entries);
+  const primary: Entry[] = mobileWorkspaceEntries(entries);
   const overflow = entries.filter((entry) => !primary.some((item) => item.id === entry.id));
   return (
     <div className={`field-app${loading ? ' workspace-bootstrap' : ''}`} aria-busy={loading}>
@@ -129,6 +121,10 @@ export function StaffWorkspace({
             先锋<span>工作人员平台</span>
           </span>
         </a>
+        <button className="workspace-find" type="button" onClick={() => setMore(true)}>
+          <WorkspaceIcon name="search" />
+          查找功能
+        </button>
         <nav aria-label="岗位工作导航">
           {loading && (
             <div className="workspace-skeleton" aria-hidden="true">
@@ -171,7 +167,7 @@ export function StaffWorkspace({
                     onTouchStart={() => onPrepare?.(entry.id)}
                     onClick={() => choose(entry.id)}
                   >
-                    <span className="field-nav-dot" />
+                    <WorkspaceIcon name={entry.icon} />
                     {entry.label}
                   </button>
                 ))}
@@ -209,6 +205,7 @@ export function StaffWorkspace({
             onTouchStart={() => onPrepare?.(entry.id)}
             onClick={() => choose(entry.id)}
           >
+            <WorkspaceIcon name={entry.icon} />
             {entry.id === 'scene:mine'
               ? '我的'
               : entry.label === '工作台'
@@ -222,6 +219,7 @@ export function StaffWorkspace({
             className={overflow.some((entry) => entry.id === active) ? 'active' : ''}
             onClick={() => setMore(true)}
           >
+            <WorkspaceIcon name="more" />
             更多
           </button>
         )}
@@ -288,7 +286,7 @@ export function StaffWorkspace({
         </Modal>
       )}
       {more && (
-        <Modal title="工作入口" onClose={() => setMore(false)}>
+        <Modal title="工作入口" initialFocus="input[type=search]" onClose={() => setMore(false)}>
           <WorkspaceLauncher
             groups={groups}
             active={active}

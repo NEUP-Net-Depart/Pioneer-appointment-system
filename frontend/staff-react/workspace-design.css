@@ -1,0 +1,82 @@
+/* Task hierarchy uses the existing staff palette and shell geometry. */
+.workspace-icon {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 19px;
+}
+.field-app .field-brand {
+  padding-bottom: 24px;
+}
+.field-app .workspace-find {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 20px;
+  background: var(--workspace-subtle);
+  text-align: left;
+  flex-shrink: 0;
+}
+.field-app .field-sidebar nav {
+  gap: 18px;
+}
+.field-app .field-sidebar nav .workspace-group-toggle {
+  min-height: 32px;
+  padding: 2px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.field-app .field-sidebar nav .workspace-nav-group > div button {
+  gap: 10px;
+  padding: 10px 12px;
+}
+.field-app .field-sidebar nav button.active {
+  box-shadow: inset 3px 0 #252d38;
+}
+.field-modal .workspace-launcher-group button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: flex-start;
+  font-size: 14px;
+}
+.field-modal .workspace-launcher-group h3 {
+  font-size: 15px;
+}
+.field-app .field-bottom-nav button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.field-app .workspace-section-nav {
+  padding: 0;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+.field-app .workspace-section-nav button {
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  padding: 12px 18px;
+  color: var(--muted);
+}
+.field-app .workspace-section-nav button[aria-pressed='true'] {
+  color: var(--ink);
+  background: transparent;
+  border-bottom-color: #252d38;
+  box-shadow: none;
+}
+@media (max-width: 767px) {
+  .field-app .field-bottom-nav {
+    min-height: 72px;
+  }
+  .field-app .workspace-section-nav button {
+    padding: 10px 8px;
+  }
+}

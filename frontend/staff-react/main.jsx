@@ -50,6 +50,8 @@ const LeaveReviewModule = workspaceModule(() => import('./LeaveReview'), 'LeaveR
 const LeaveReview = LeaveReviewModule.Page;
 import { WorkspacePage } from './WorkspacePage';
 import './workspace-foundation.css';
+import './workspace-design.css';
+import { workspaceEntry } from './workspace-navigation.js';
 
 const pageModules = {
   attendance: AttendanceModule,
@@ -282,7 +284,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
     ...(staffPermission(effectiveUser, 'settings.manage')
       ? [{ id: 'capacity', label: '预约配置', group: '业务管理' }]
       : [])
-  ];
+  ].map(workspaceEntry);
   const active =
     page === 'workbench'
       ? `scene:${workScene}`

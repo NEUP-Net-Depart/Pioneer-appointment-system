@@ -83,7 +83,7 @@ export function AccountSettings({
   return (
     <section className="settings-workspace">
       <WorkspaceHeader
-        group={security ? '我的' : '业务管理'}
+        group={security ? '我的' : '业务设置'}
         title={security ? '账号安全' : '预约配置'}
       />
       <div hidden={!security} className="security-layout">

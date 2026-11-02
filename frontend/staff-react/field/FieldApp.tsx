@@ -91,7 +91,7 @@ export function FieldApp({
     <>
       <section className="field-content" aria-busy={result.loading}>
         <WorkspaceHeader
-          group={scene === 'mine' ? '我的' : '今日工作'}
+          group={scene === 'mine' ? '我的' : '现场工作'}
           title={
             scene === 'mine'
               ? '个人中心'

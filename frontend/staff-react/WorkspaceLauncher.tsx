@@ -1,7 +1,12 @@
 import React, { useId, useState } from 'react';
 import { Empty } from './field/ui';
+import { WorkspaceIcon } from './WorkspaceIcon';
+import { matchesWorkspaceEntry } from './workspace-navigation.js';
 
-type Group = { label: string; items: { id: string; label: string }[] };
+type Group = {
+  label: string;
+  items: { id: string; label: string; icon?: string; keywords?: string }[];
+};
 export function WorkspaceLauncher({
   groups,
   active,
@@ -19,23 +24,19 @@ export function WorkspaceLauncher({
   const filtered = groups
     .map((group) => ({
       ...group,
-      items: group.items.filter((entry) => `${group.label} ${entry.label}`.includes(search))
+      items: group.items.filter((entry) => matchesWorkspaceEntry(entry, group.label, search))
     }))
     .filter((group) => group.items.length);
-  const current = groups.flatMap((group) => group.items).find((entry) => entry.id === active);
   return (
     <div className="workspace-launcher">
       <div className="workspace-launcher-search">
-        <p>
-          当前位置 · <strong data-motion-value="text">{current?.label || '工作台'}</strong>
-        </p>
         <label>
           查找功能
           <input
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="输入功能名称，如排班、签到"
+            placeholder="搜索功能或操作"
           />
         </label>
       </div>
@@ -63,6 +64,7 @@ export function WorkspaceLauncher({
                   onTouchStart={() => onPrepare?.(entry.id)}
                   onClick={() => onSelect(entry.id)}
                 >
+                  <WorkspaceIcon name={entry.icon} />
                   {entry.label}
                 </button>
               ))}
@@ -71,7 +73,11 @@ export function WorkspaceLauncher({
         ))}
       </nav>
       {!filtered.length && (
-        <Empty title="没有匹配的功能">试试其他名称，或清空搜索查看全部入口。</Empty>
+        <Empty title="没有匹配的功能">
+          <button type="button" onClick={() => setQuery('')}>
+            清空搜索
+          </button>
+        </Empty>
       )}
     </div>
   );

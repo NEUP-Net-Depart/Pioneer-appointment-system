@@ -131,7 +131,7 @@ export function Records({ user }) {
   };
   return (
     <section className="records-workspace">
-      <WorkspaceHeader group="今日工作" title="预约记录">
+      <WorkspaceHeader group="现场工作" title="预约记录">
         <button disabled={list.loading || overview.loading} onClick={refresh}>
           刷新记录
         </button>
