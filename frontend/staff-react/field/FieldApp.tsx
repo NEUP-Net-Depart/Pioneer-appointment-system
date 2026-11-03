@@ -57,7 +57,6 @@ export function FieldApp({
     busy,
     filter,
     setFilter,
-    search,
     setSearch,
     tab,
     setTab,
@@ -184,6 +183,7 @@ export function FieldApp({
             )}
             {scene === 'desk' && (
               <DeskScene
+                active={active}
                 key={key}
                 setSelected={setSelected}
                 setRegistration={setRegistration}
@@ -191,7 +191,6 @@ export function FieldApp({
                 busy={busy}
                 filter={filter}
                 setFilter={setFilter}
-                search={search}
                 setSearch={setSearch}
                 tab={tab}
                 setTab={setTab}

@@ -90,6 +90,15 @@ export function Records({ user }) {
   }
   const data = list.data,
     counts = data?.filteredCounts || data?.counts || {};
+  const searchCapabilities = data?.searchCapabilities;
+  const searchPlaceholder = [
+    '编号',
+    '设备',
+    searchCapabilities?.identity && '姓名、学号',
+    searchCapabilities?.contact && '完整联系方式'
+  ].filter(Boolean).join('、');
+  const ownCustomerSearch = searchCapabilities?.identityScope === 'own' &&
+    searchCapabilities?.contactScope === 'own';
   const statusText =
     filters.status === 'all'
       ? '全部状态'
@@ -102,7 +111,7 @@ export function Records({ user }) {
       ? dayLabel(filters.date)
       : '全部日期';
   const summaries = {
-    createdAt: '姓名、学号与预约编号',
+    createdAt: '预约编号',
     date: [period, filters.timeSlot].filter(Boolean).join(' · '),
     status: statusText,
     campus: filters.campus === 'all' ? '全部校区' : `${filters.campus}校区`
@@ -159,9 +168,10 @@ export function Records({ user }) {
             查找预约
             <input
               type="search"
+              aria-label="查找预约"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="预约编号、历史维修编号、姓名或学号"
+              placeholder={searchPlaceholder}
             />
           </label>
           <div className="records-filter-actions">
@@ -238,10 +248,12 @@ export function Records({ user }) {
               {(data?.items || []).map((item) => (
                 <tr data-motion-item={item.id} key={item.id}>
                   <td data-label="预约信息">
-                    <strong data-motion-value="text">{item.name || '等待到场核验'}</strong>
-                    <span data-motion-value="text">
-                      {[item.studentId, item.id].filter(Boolean).join(' · ')}
-                    </span>
+                    <strong data-motion-value="text">{item.name || item.id}</strong>
+                    {item.name && (
+                      <span data-motion-value="text">
+                        {[item.studentId, item.id].filter(Boolean).join(' · ')}
+                      </span>
+                    )}
                     {item.repairNumber && (
                       <span data-motion-value="text">历史维修编号：{item.repairNumber}</span>
                     )}
@@ -288,7 +300,10 @@ export function Records({ user }) {
         {!data?.items?.length && !list.loading && !list.error && (
           <div className="field-empty">
             <strong>没有符合条件的预约</strong>
-            <p>可以调整校区、时间和状态，或清除筛选重新查找。</p>
+            <p>
+              {filters.q ? '核查输入是否正确，并检查日期、校区和状态筛选。' : '调整日期、校区和状态筛选。'}
+              {filters.q && ownCustomerSearch && '仅由你处理的工单可查姓名、学号和联系方式。'}
+            </p>
             <button onClick={reset}>清除筛选</button>
           </div>
         )}

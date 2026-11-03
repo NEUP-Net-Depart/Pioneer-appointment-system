@@ -4,6 +4,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { Miniflare } from "miniflare";
 import { config, wrangler } from "../scripts/cli.mjs";
 import { hashPassword } from "../src/lib/passwords.js";
+import { encryptText } from "../src/lib/privacy.js";
 import { dateKey } from "../shared/time.js";
 import { fieldSeed } from "./fixtures/field-seed.mjs";
 import { seedRepairMember } from './fixtures/staff-services.mjs';
@@ -593,12 +594,15 @@ test('exchange import, activation, check-in and qualification revocation preserv
   assert.equal(created.status,201,JSON.stringify(created.body));
   const id=created.body.id,before=(await request(`/api/field/appointments/${id}`,account)).body,photos=[];
   assert.equal(before.canStart,true);
+  assert.deepEqual(home.searchCapabilities,{identity:true,identityScope:'own',contact:true,contactScope:'own'});
+  assert.deepEqual((await request('/api/scan/search',account,{q:'exchange-test'})).body.items,[]);
   for(const side of ['front','back']) {
     const upload=await request(`/api/appointments/${id}/attachments`,account,{filename:`${side}.png`,mimeType:'image/png',data:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/Hf8AAAAASUVORK5CYII=',purpose:`intake_${side}`});
     assert.equal(upload.status,201,JSON.stringify(upload.body));photos.push(upload.body.id);
   }
   const started=await request(`/api/appointments/${id}/status`,account,{status:'in_progress',revision:before.revision,frontPhotoId:photos[0],backPhotoId:photos[1],verification:{brand:'联想',model:'ThinkPad',warranty:'expired',liquidMetal:'no'},requestId:crypto.randomUUID()},'PATCH');
   assert.equal(started.status,200,JSON.stringify(started.body));
+  assert.deepEqual((await request('/api/scan/search',account,{q:'exchange-test'})).body.items.map(item=>item.id),[id]);
   assert.equal((await request('/api/field/home',account)).body.state,'repairing');
   const finished=await request(`/api/appointments/${id}/status`,account,{status:'completed',revision:started.body.revision,outcome:'repaired',repairNote:'交流人员完成系统维修',requestId:crypto.randomUUID()},'PATCH');
   assert.equal(finished.status,200,JSON.stringify(finished.body));
@@ -611,6 +615,9 @@ test('exchange import, activation, check-in and qualification revocation preserv
   assert.equal((await request('/api/field/home',account)).status,401);
   tokens[account]=(await request('/api/auth/login',null,{account,password:'StaffTest!2026'})).body.token;
   home=(await request('/api/field/home',account)).body;assert.notEqual(home.state,'available');
+  assert.equal(home.searchCapabilities.contact,false);
+  assert.equal((await request('/api/scan/search',account,{q:'exchange-test'})).status,403);
+  assert.equal((await request(`/api/appointments?q=exchange-test`,account)).status,403);
   person=(await request('/api/field/board','root001')).body.staffPresence.find(item=>item.memberId===memberId);
   assert.equal(person.canReceive,false);assert.equal(person.identities.some(item=>item.code==='exchange'),false);
 });
@@ -722,6 +729,81 @@ test('field number suggestions preserve suffix/date rules and campus privacy wit
     assert.equal((await request('/api/scan/search','20261002',{q:'20261015-89'})).body.items.some(item=>item.campus==='浑南'),false);
     assert.equal((await request('/api/scan/search','20261002',{q:'%'})).status,400);
   }finally{await db.batch(ids.flatMap(id=>[db.prepare('DELETE FROM booking_requests WHERE appointment_id=?').bind(id),db.prepare('DELETE FROM appointments WHERE id=?').bind(id)]));}
+});
+
+test('field lookup matches full contact values only within current campus, date and contact grants', async () => {
+  const key = '0123456789012345678901234567890101234567890123456789012345678901';
+  const rows = [
+    { id: 'reserve020261015-59', date: '2026-10-15', campus: '南湖', phone: '13800138059', email: 'lookup59@example.test', type: 'qq', value: '987654321' },
+    { id: 'reserve020261015-60', date: '2026-10-15', campus: '南湖', phone: '', email: '', type: 'wechat', value: 'Wechat_59' },
+    { id: 'reserve120261015-61', date: '2026-10-15', campus: '浑南', phone: '', email: '', type: 'wechat', value: 'Wechat_59' },
+    { id: 'reserve020261014-62', date: '2026-10-14', campus: '南湖', phone: '13800138059', email: '', type: 'qq', value: '876543219' },
+    { id: 'reserve020261015-63', date: '2026-10-15', campus: '南湖', phone: '13900138063', email: '', type: 'qq', value: '876543216' }
+  ];
+  try {
+    for (const [index, row] of rows.entries()) {
+      const social = `${row.type === 'qq' ? 'QQ' : '微信'}：${row.value}`;
+      const [phone, email, contactValue, encryptedSocial] = index === rows.length - 1
+        ? [row.phone, row.email, '', social]
+        : await Promise.all(
+          [row.phone, row.email, index === 0 ? '' : row.value, social].map((value) => encryptText(value, key))
+        );
+      await db.prepare(`INSERT INTO appointments(id,student_id,name,campus,phone,email,contact_type,contact_value,social,device_type,brand,device_model,warranty,fault_type,date,time_slot,status,access_token_hash,credential_rotated_at,created_at,agreement_at,agreement_version,source,expires_at,outcome)
+        VALUES(?,?, '查单客户',?,?,?,?,? ,?,'笔记本电脑','测试','测试','否','系统问题',?,'19:00–19:30','completed',?,'2026-10-15','2026-10-15','2026-10-15','v1.0','onsite','2026-10-15T13:30:00.000Z','repaired')`)
+        .bind(row.id, `2090590${index}`, row.campus, phone, email, row.type, contactValue, encryptedSocial, row.date, String(index + 1).repeat(64)).run();
+    }
+    const technicianHome = await request('/api/field/home', '20261002');
+    assert.deepEqual(technicianHome.body.searchCapabilities,
+      { identity: true, identityScope: 'own', contact: true, contactScope: 'own' });
+    const officeHome = await request('/api/field/home', '20261001');
+    assert.deepEqual(officeHome.body.searchCapabilities,
+      { identity: true, identityScope: 'today', contact: true, contactScope: 'today' });
+    assert.deepEqual((await request('/api/scan/search', '20261002', { q: 'wechat_59' })).body.items, []);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM appointment_contact_index_pending WHERE appointment_id=?').bind(rows[1].id).first()).n, 1);
+    for (const [term, expected] of [
+      ['13800138059', rows[0].id],
+      ['LOOKUP59@EXAMPLE.TEST', rows[0].id],
+      ['987654321', rows[0].id],
+      ['wechat_59', rows[1].id],
+      ['876543216', rows[4].id]
+    ]) {
+      const result = await request('/api/scan/search', '20261001', { q: term });
+      assert.equal(result.status, 200, JSON.stringify(result.body));
+      assert.deepEqual(result.body.items.map((item) => item.id), [expected]);
+      assert.deepEqual(Object.keys(result.body.items[0]).sort(), ['campus', 'date', 'id', 'reception', 'status', 'timeSlot']);
+    }
+    const indexed = (await db.prepare('SELECT token FROM appointment_contact_index_tokens').all()).results;
+    assert.ok(indexed.length > 0);
+    assert.ok(indexed.every((item) => /^[0-9a-f]{64}$/.test(item.token) && !item.token.includes('wechat')));
+    assert.deepEqual((await request('/api/scan/search', 'root001', { q: 'wechat_59', campusId: 'campus-nanhu' })).body.items.map((item) => item.id), [rows[1].id]);
+    assert.equal((await request('/api/scan/search', 'root001', { q: 'wechat_59', campusId: 'campus-hunnan' })).status, 403);
+    assert.deepEqual((await request('/api/scan/search', '20261001', { q: 'Wechat_5' })).body.items, []);
+    assert.equal((await request('/api/scan/search', null, { q: 'wechat_59' })).status, 401);
+    const records = await request('/api/appointments?date=2026-10-15&q=LOOKUP59%40EXAMPLE.TEST', '20261001');
+    assert.equal(records.status, 200, JSON.stringify(records.body));
+    assert.deepEqual(records.body.items.map((item) => item.id), [rows[0].id]);
+    assert.equal(records.body.filteredCounts.all, 1);
+    const history = await request('/api/appointments?q=13800138059', '20261001');
+    assert.equal(history.status, 200, JSON.stringify(history.body));
+    assert.deepEqual(history.body.items.map((item) => item.id), [rows[0].id]);
+    assert.equal(history.body.filteredCounts.all, 1);
+    const managerHistory = await request('/api/appointments?q=13800138059', 'root001');
+    assert.equal(managerHistory.status, 200, JSON.stringify(managerHistory.body));
+    assert.deepEqual(managerHistory.body.items.map((item) => item.id).sort(), [rows[0].id, rows[3].id].sort());
+    assert.equal(managerHistory.body.filteredCounts.all, 2);
+    const legacy = await request(`/api/field/appointments/${rows[4].id}`, '20261001');
+    assert.equal(legacy.status, 200, JSON.stringify(legacy.body));
+    assert.equal(legacy.body.social, 'QQ：876543216');
+    await db.prepare('UPDATE appointments SET social=?,revision=revision+1 WHERE id=?')
+      .bind('QQ：876543217', rows[4].id).run();
+    assert.deepEqual((await request('/api/scan/search', '20261001', { q: '876543216' })).body.items, []);
+    assert.deepEqual((await request('/api/scan/search', '20261001', { q: '876543217' })).body.items.map((item) => item.id), [rows[4].id]);
+    const hidden = await request('/api/appointments?date=2026-10-15&q=wechat_59', '20261002');
+    assert.equal(hidden.status, 200, JSON.stringify(hidden.body));
+    assert.equal(hidden.body.filteredCounts.all, 0);
+  } finally {
+    await db.batch(rows.map((row) => db.prepare('DELETE FROM appointments WHERE id=?').bind(row.id)));
+  }
 });
 
 test("field day: reception, attendance, intake, transfer and completion share authoritative facts", async () => {

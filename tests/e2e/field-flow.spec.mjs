@@ -820,6 +820,39 @@ test('switching work modules retains local filters and pauses the hidden board',
   await expect.poll(() => boardReads).toBeGreaterThan(pausedAt);
 });
 
+test('reception lookup finds a contact in the same search field', async ({ page }) => {
+  const id = 'reserve020261015-59', searches = [];
+  await page.route('**/api/scan/search', route => {
+    searches.push(route.request().postDataJSON());
+    return route.fulfill({json:{items:[{id,campus:'南湖',date:'2026-10-15',timeSlot:'19:00–19:30',status:'booked'}],hasMore:false}});
+  });
+  await login(page, '20261001');
+  await page.getByRole('textbox', { name: '搜索当日预约' }).fill('wechat_59');
+  await expect(page.getByRole('listbox', { name: '匹配的预约' }).getByRole('option')).toContainText(id);
+  expect(searches.at(-1)).toEqual({q:'wechat_59',campusId:'campus-nanhu'});
+});
+
+for (const [account, ownCustomerSearch] of [['20261002', true], ['20261001', false], ['20261004', false]]) {
+  test(`records search lists allowed fields and explains an empty result for ${account}`, async ({ page }) => {
+    await login(page, account);
+    await page.locator('.field-sidebar').getByRole('button', { name: '预约记录', exact: true }).click();
+    const workspace = page.locator('.records-workspace');
+    const search = workspace.getByRole('searchbox', { name: '查找预约' });
+    await expect(search)
+      .toHaveAttribute('placeholder', '编号、设备、姓名、学号、完整联系方式');
+    await page.setViewportSize({ width: 320, height: 800 });
+    await expect(search).toBeVisible();
+    await search.fill('不存在的设备');
+    const empty = workspace.locator('.field-empty');
+    await expect(empty).toContainText('核查输入是否正确，并检查日期、校区和状态筛选。');
+    if (ownCustomerSearch)
+      await expect(empty).toContainText('仅由你处理的工单可查姓名、学号和联系方式。');
+    else
+      await expect(empty).not.toContainText('仅由你处理的工单可查姓名、学号和联系方式。');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+}
+
 test('personal attendance loads older pages without replacing existing facts and retries in place', async ({ page }) => {
   let failOlder = true;
   const first = {id:'attendance-current',businessDate:'2026-10-15',occurredAt:'2026-10-15T10:00:00.000Z',type:'duty',campusId:'campus-nanhu',nonScheduled:false};

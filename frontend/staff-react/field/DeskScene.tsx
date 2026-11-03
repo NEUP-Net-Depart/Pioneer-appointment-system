@@ -3,19 +3,20 @@ import React from 'react';
 import { AnimatedValue } from '../AnimatedValue';
 import { Empty, Notice, Status, time } from './ui';
 import { StaffIdentity } from '../StaffIdentity';
+import { AppointmentLookup } from './AppointmentLookup';
 import { fieldPersonGroup } from '../../../shared/staff-identities.js';
 import { receptionStatus, queueTicketLabel } from '../../../shared/reception.js';
 import type { useFieldWorkspace } from './useFieldWorkspace';
 type Props = Pick<
   ReturnType<typeof useFieldWorkspace> & Parameters<typeof useFieldWorkspace>[0],
   | 'key'
+  | 'active'
   | 'setSelected'
   | 'setRegistration'
   | 'setScanOpen'
   | 'busy'
   | 'filter'
   | 'setFilter'
-  | 'search'
   | 'setSearch'
   | 'tab'
   | 'setTab'
@@ -32,13 +33,13 @@ type Props = Pick<
 >;
 export function DeskScene({
   key,
+  active,
   setSelected,
   setRegistration,
   setScanOpen,
   busy,
   filter,
   setFilter,
-  search,
   setSearch,
   tab,
   setTab,
@@ -167,12 +168,16 @@ export function DeskScene({
               )}
             </span>
           </div>
-          <input
-            className="field-search-input"
-            aria-label="搜索当日预约"
-            placeholder="搜索编号、设备或故障"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+          <AppointmentLookup
+            active={active}
+            disabled={busy}
+            onSelect={setSelected}
+            onChange={setSearch}
+            label="搜索当日预约"
+            inputRole="textbox"
+            hasLocalMatches={items.length > 0}
+            campusId={data.campusId}
+            searchCapabilities={data.searchCapabilities}
           />
           <div className="field-table-head">
             <span>预约与设备</span>

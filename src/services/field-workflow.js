@@ -3,6 +3,7 @@ import { fail } from '../lib/http.js';
 import { dateKey, eventWindow } from '../platform/time.js';
 import { campusId } from '../modules/authorization/scopes.js';
 import { scanCode } from '../lib/scan-code.js';
+import { readStoredContact, normalizedContact, contactSearchToken, contactSearchTokens } from '../lib/privacy.js';
 import { presentAppointment } from './appointments.js';
 import { appointmentAccessRules } from '../modules/authorization/appointment-access.js';
 import { requestId, stableJson } from '../platform/contracts.js';
@@ -11,7 +12,7 @@ import {
   fieldPersonGroup,
   compareFieldPeople
 } from '../../shared/staff-identities.js';
-import { APPOINTMENT_SEARCH_LIMIT } from '../../shared/appointment-search.js';
+import { APPOINTMENT_SEARCH_LIMIT, appointmentContactTerm } from '../../shared/appointment-search.js';
 
 // The UI consumes these decisions; commands recompute them against current facts.
 export function fieldWorkflow({
@@ -26,6 +27,20 @@ export function fieldWorkflow({
   const names = { 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' };
   const allowed = (context, code, target = {}) =>
     authorizer.evaluate(context.actor, code, target, context, context.grants).allowed;
+  function searchCapabilities(actor, context, campus) {
+    const rules = (permission) => appointmentAccessRules(authorizer, actor, permission, context)
+      .filter((rule) => !campus || rule.campus === campus);
+    const identity = rules('customer.identity.read');
+    const contact = rules('customer.contact.read');
+    const scope = (items) => !items.length ? 'none' : items.every((rule) => rule.memberId)
+      ? 'own' : items.every((rule) => rule.date) ? 'today' : 'authorized';
+    return {
+      identity: identity.length > 0,
+      identityScope: scope(identity),
+      contact: contact.length > 0,
+      contactScope: scope(contact)
+    };
+  }
   async function eligibility(actor, campus, ignoreAppointment = '', providedContext) {
     const context = providedContext || (await staff.contextFor(actor)),
       id = campusId(campus);
@@ -128,6 +143,7 @@ export function fieldWorkflow({
       pendingRepair: ready.pending ? await detail(actor,ready.pending.id) : null,
       todayDuties: context.todayDuties,
       identities: staffIdentities(context, authorizer, { campusId: selected }),
+      searchCapabilities: searchCapabilities(actor, context, names[selected]),
       pendingSwapInvitations: context.permissions['roster.read']
         ? await repository.pendingSwapInvitations(context.actor.memberId)
         : 0,
@@ -214,41 +230,108 @@ export function fieldWorkflow({
     return {
       context,
       summaryRules,
-      identityRules: appointmentAccessRules(authorizer, actor, 'customer.identity.read', context)
+      identityRules: appointmentAccessRules(authorizer, actor, 'customer.identity.read', context),
+      searchCapabilities: searchCapabilities(actor, context)
     };
   }
   async function projectList(actor, items, providedContext) {
     const context = providedContext || (await staff.contextFor(actor));
     return (await Promise.all(items.map((item) => project(actor, item, context)))).filter(Boolean);
   }
+  async function contactMatches(actor, query, providedContext) {
+    const sought = appointmentContactTerm(query.q);
+    if (!sought) return [];
+    const context = providedContext || (await staff.contextFor(actor));
+    const contactRules = appointmentAccessRules(
+      authorizer,
+      actor,
+      'customer.contact.read',
+      context
+    );
+    if (!contactRules.length) return [];
+    const scope = { campuses: actor.authorizedCampuses || [], summaryRules: contactRules };
+    const filters = {
+      campus: query.campus,
+      date: query.date,
+      dateFrom: query.dateFrom,
+      dateTo: query.dateTo,
+      timeSlot: query.timeSlot,
+      liveDate: query.liveDate
+    };
+    const token = await contactSearchToken(sought, encryptionKey);
+    const matches = new Map();
+    for (const indexedToken of [token, null]) {
+      let cursor;
+      do {
+        const page = await appointments.contactCandidates(filters, scope, cursor, indexedToken);
+        const newTokens = [];
+        for (const row of page.items) {
+          if (!canReadSummary(actor, row, context) ||
+            !allowed(context, 'customer.contact.read', appointmentTarget(row))) continue;
+          if (indexedToken) {
+            matches.set(row.id, row);
+            continue;
+          }
+          const values = await Promise.all([row.phone, row.email, row.contactValue, row.social]
+            .map((value) => readStoredContact(value, encryptionKey)));
+          if (values.some((value) => normalizedContact(value) === sought)) matches.set(row.id, row);
+          newTokens.push({ id: row.id, generation: row.contactIndexGeneration,
+            tokens: await contactSearchTokens(values, encryptionKey) });
+        }
+        await appointments.indexContacts(newTokens);
+        cursor = page.nextCursor;
+      } while (cursor);
+    }
+    return [...matches.values()].sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id));
+  }
   async function search(actor, query) {
     const context = await staff.contextFor(actor);
     if (!context.permissions['repair.summary.read']) fail(403, '没有查询维修预约的权限');
-    const scope = { campuses: actor.authorizedCampuses || [] };
+    const campus = query.campusId ? names[campusId(query.campusId)] : null;
+    if (query.campusId && (!campus || !actor.authorizedCampuses?.includes(campus)))
+      fail(403, '没有该校区的访问权限');
+    const scope = { campuses: campus ? [campus] : actor.authorizedCampuses || [] };
     await appointments.expirePending(new Date().toISOString(), scope);
     const items = [];
+    const seen = new Set();
+    const add = (row) => {
+      if (seen.has(row.id) || !canReadSummary(actor, row, context)) return false;
+      seen.add(row.id);
+      items.push(
+        Object.fromEntries(
+          ['id', 'campus', 'date', 'timeSlot', 'status', 'reception'].map((key) => [
+            key,
+            key === 'reception' ? (row.reception ? { state: row.reception.state } : null) : row[key]
+          ])
+        )
+      );
+      return items.length > APPOINTMENT_SEARCH_LIMIT;
+    };
     // Apply the same current authorization and field projection as details,
     // before counting or limiting candidates. Hidden matches cannot fill the list.
-    for (let offset = 0; ; offset += 100) {
-      const batch = await appointments.searchNumbers(
-        query.text,
-        query.acrossDates ? null : dateKey(),
-        scope,
-        [[]],
-        { full: true, limit: 100, offset }
-      );
-      for (const row of batch) {
-        if (canReadSummary(actor, row, context))
-          items.push(
-            Object.fromEntries(
-              ['id', 'campus', 'date', 'timeSlot', 'status','reception'].map((key) => [key, key==='reception' ? row.reception ? {state:row.reception.state} : null : row[key]])
-            )
-          );
-        if (items.length > APPOINTMENT_SEARCH_LIMIT)
+    if (query.contact) {
+      const matches = await contactMatches(actor, { q: query.text, campus, liveDate: dateKey() }, context);
+      for (const row of matches)
+        if (add(row))
           return { items: items.slice(0, APPOINTMENT_SEARCH_LIMIT), hasMore: true };
-      }
-      if (batch.length < 100) return { items, hasMore: false };
     }
+    if (/^\d+(?:-\d*)?$/.test(query.text)) {
+      for (let offset = 0; ; offset += 100) {
+        const batch = await appointments.searchNumbers(
+          query.text,
+          query.acrossDates ? null : dateKey(),
+          scope,
+          [[]],
+          { full: true, limit: 100, offset }
+        );
+        for (const row of batch) {
+          if (add(row))
+            return { items: items.slice(0, APPOINTMENT_SEARCH_LIMIT), hasMore: true };
+        }
+        if (batch.length < 100) break;
+      }
+    }
+    return { items, hasMore: false };
   }
   async function detail(actor, id) {
     const item = await appointments.find(id);
@@ -531,6 +614,7 @@ export function fieldWorkflow({
   return {
     projectList,
     listAccess,
+    contactMatches,
     search,
     home,
     board,

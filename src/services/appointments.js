@@ -1,5 +1,5 @@
 import { fail } from '../lib/http.js';
-import { encryptText, decryptText } from '../lib/privacy.js';
+import { encryptText, decryptText, readStoredContact } from '../lib/privacy.js';
 import {
   addDays,
   dateKey,
@@ -25,7 +25,7 @@ import {
 export async function presentAppointment(item, encryptionKey, { staff = false } = {}) {
   const [phone, social, email, contactValue] = await Promise.all(
     [item.phone, item.social, item.email, item.contactValue].map((value) =>
-      decryptText(value, encryptionKey)
+      readStoredContact(value, encryptionKey)
     )
   );
   const visible = { ...item, phone, social, email, contactValue };
@@ -184,9 +184,13 @@ export function appointmentService(
       const access = await staffPlatform.field.listAccess(user);
       const scope = { campuses: user.authorizedCampuses, ...access };
       await expire(clock(), { campuses: scope.campuses });
-      const result = await appointments.list(query, scope);
+      const contactIds = (await staffPlatform.field.contactMatches(user, query, access.context)).map(
+        (item) => item.id
+      );
+      const result = await appointments.list({ ...query, contactIds }, scope);
       return {
         ...result,
+        searchCapabilities: access.searchCapabilities,
         items: await staffPlatform.field.projectList(user, result.items, access.context)
       };
     },

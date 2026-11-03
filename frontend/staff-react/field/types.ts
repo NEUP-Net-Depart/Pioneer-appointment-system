@@ -125,6 +125,12 @@ export interface Person {
   currentRepair?: { id: string; deviceModel: string };
 }
 export interface Home {
+  searchCapabilities?: {
+    identity: boolean;
+    identityScope: 'none' | 'own' | 'today' | 'authorized';
+    contact: boolean;
+    contactScope: 'none' | 'own' | 'today' | 'authorized';
+  };
   directAttendance?: { allowed: boolean; reason: string };
   identities?: { code: string; label: string }[];
   permissions: Record<string, boolean>;
