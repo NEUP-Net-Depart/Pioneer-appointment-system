@@ -1,5 +1,5 @@
 import { DataValue } from '../DataValue';
-import React from 'react';
+import React, { useState } from 'react';
 import { AnimatedValue } from '../AnimatedValue';
 import { Empty, Notice, Status, time } from './ui';
 import { StaffIdentity } from '../StaffIdentity';
@@ -54,6 +54,7 @@ export function DeskScene({
   people,
   visiblePeople
 }: Props) {
+  const [searchActive, setSearchActive] = useState(false);
   const overview = data.overview;
   const orderFilters = [
     {
@@ -173,6 +174,7 @@ export function DeskScene({
             disabled={busy}
             onSelect={setSelected}
             onChange={setSearch}
+            onSearchActivityChange={setSearchActive}
             label="搜索当日预约"
             inputRole="textbox"
             hasLocalMatches={items.length > 0}
@@ -233,7 +235,9 @@ export function DeskScene({
             </button>
           ))}
           {!data.appointments && result.loading && <DataValue label="今日预约" />}
-          {data.appointments && !items.length && <Empty title="没有符合条件的预约" />}
+          {data.appointments && !items.length && !searchActive && (
+            <Empty title="没有符合条件的预约" />
+          )}
         </section>
         <section className="field-card field-people">
           <div className="field-section-heading">

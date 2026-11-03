@@ -309,13 +309,13 @@ export function fieldWorkflow({
     };
     // Apply the same current authorization and field projection as details,
     // before counting or limiting candidates. Hidden matches cannot fill the list.
-    if (query.contact) {
+    if (query.mode !== 'number' && query.contact) {
       const matches = await contactMatches(actor, { q: query.text, campus, liveDate: dateKey() }, context);
       for (const row of matches)
         if (add(row))
           return { items: items.slice(0, APPOINTMENT_SEARCH_LIMIT), hasMore: true };
     }
-    if (/^\d+(?:-\d*)?$/.test(query.text)) {
+    if (query.mode !== 'contact' && /^\d+(?:-\d*)?$/.test(query.text)) {
       for (let offset = 0; ; offset += 100) {
         const batch = await appointments.searchNumbers(
           query.text,

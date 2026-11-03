@@ -16,6 +16,7 @@ export function AppointmentLookup({
   disabled,
   onSelect,
   onChange,
+  onSearchActivityChange,
   label = '预约编号',
   inputRole = 'combobox',
   hasLocalMatches = false,
@@ -27,6 +28,7 @@ export function AppointmentLookup({
   disabled: boolean;
   onSelect: (value: string) => void;
   onChange?: (value: string) => void;
+  onSearchActivityChange?: (active: boolean) => void;
   label?: string;
   inputRole?: 'combobox' | 'textbox';
   hasLocalMatches?: boolean;
@@ -63,16 +65,20 @@ export function AppointmentLookup({
     setHighlight(-1);
     setMessage('');
     setPending(false);
-    if (!active || disabled || !ready || chosen.current === value) return;
+    if (!active || disabled || !ready || chosen.current === value || document.hidden) return;
     const abort = new AbortController();
     controller.current = abort;
+    setPending(true);
     const timer = setTimeout(async () => {
       if (document.hidden) return;
-      setPending(true);
       try {
         const result = await api<{ items: Candidate[]; hasMore: boolean }>('/api/scan/search', {
           method: 'POST',
-          body: { q: query.text, ...(campusId ? { campusId } : {}) },
+          body: {
+            q: query.text,
+            ...(!contactEnabled ? { mode: 'number' } : {}),
+            ...(campusId ? { campusId } : {})
+          },
           signal: abort.signal
         });
         if (!abort.signal.aborted) {
@@ -108,7 +114,10 @@ export function AppointmentLookup({
       abort.abort();
       document.removeEventListener('visibilitychange', hide);
     };
-  }, [active, disabled, value, hasLocalMatches, campusId, ready]);
+  }, [active, disabled, value, hasLocalMatches, campusId, ready, contactEnabled]);
+  useEffect(() => {
+    onSearchActivityChange?.(pending || items.length > 0);
+  }, [pending, items.length, onSearchActivityChange]);
   function select(value: string) {
     controller.current?.abort();
     chosen.current = value;
