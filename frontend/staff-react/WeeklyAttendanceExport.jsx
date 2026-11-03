@@ -56,9 +56,7 @@ export function WeeklyAttendanceExport({ campuses, onClose }) {
       }}
     >
       <div className="roster-compose">
-        <p className="react-muted">
-          每人每周一行，跨校区合并。暂停日考勤保留，统计时排除；两个特殊核算选项默认关闭。
-        </p>
+        <p className="react-muted">每人每周一行，跨校区合并；暂停日不计入。</p>
         <WeekPicker
           label="开始工作周"
           value={scope.weekStart}
@@ -106,7 +104,9 @@ export function WeeklyAttendanceExport({ campuses, onClose }) {
             />
             <span>所有有效负责人每值班周计一次，不依据排班或签到次数</span>
           </label>
-          <p className="react-muted">兼任维修和办公负责人仍计一次；其授权校区整周暂停时计零。</p>
+          {scope.leadersOnce && (
+            <p className="react-muted">兼任维修和办公负责人仍计一次；其授权校区整周暂停时计零。</p>
+          )}
         </fieldset>
         <Notice>{error}</Notice>
         {rows && (

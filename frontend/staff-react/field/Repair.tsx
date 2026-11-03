@@ -200,7 +200,6 @@ export function Repair({
           </section>
           <section className="field-details">
             <h3>接待与维修记录</h3>
-            <p className="field-muted">核对客户、设备和当前流转状态后，执行此工单可用的操作。</p>
             <DataFields
               pending={!error}
               fields={[
@@ -346,9 +345,9 @@ export function Repair({
               }}
               className="field-form"
             >
-              {item.reception && (
+              {item.reception && item.canReceive && (
                 <small data-motion-value="text" className="field-state-note">
-                  {item.canReceive ? '重新到场 · 待核验' : '待现场核对'}
+                  重新到场 · 待核验
                 </small>
               )}
               {item.reception && !item.canReceive && (

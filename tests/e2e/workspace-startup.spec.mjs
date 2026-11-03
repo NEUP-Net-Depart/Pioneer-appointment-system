@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { mockStaff } from './support/staff.mjs';
+import { mockStaff, navigationEntry } from './support/staff.mjs';
 import { dateKey } from '../../shared/time.js';
 
 function gate() {
@@ -7,6 +7,37 @@ function gate() {
   const promise = new Promise(resolve => { release = resolve; });
   return { promise, release };
 }
+
+for (const [group, entry, heading] of [
+  ['排班考勤', '维修排班管理', '维修排班管理'],
+  ['我的', '本人签到记录', '本人签到记录']
+]) test(`late workbench data preserves the open ${group} navigation group`, async ({ page }) => {
+  const session = await mockStaff(page, { contexts: [{ id: 'repair', label: '维修工作台' }] });
+  session.profile.permissions['roster.repair.manage'] = true;
+  session.home.businessDate = dateKey();
+  session.home.updatedAt = new Date().toISOString();
+  const home = gate();
+  await page.addInitScript(() => sessionStorage.setItem('pioneerToken', 'test-session'));
+  await page.route('**/api/field/home*', async route => {
+    await home.promise;
+    await route.fulfill({ json: session.home });
+  });
+  try {
+    await page.goto('/staff/');
+    const sidebar = page.locator('.field-sidebar');
+    const toggle = sidebar.getByRole('button', { name: group, exact: true });
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    home.release();
+    await expect(page.getByRole('heading', { name: '维修工作台', exact: true })).toBeVisible();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await sidebar.getByRole('button', { name: entry, exact: true }).click();
+    await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
+  } finally {
+    home.release();
+    await page.unrouteAll({ behavior: 'wait' });
+  }
+});
 
 for (const width of [320, 390, 768, 1440]) test(`workspace shell is stable while identity and field are delayed at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 900 });
@@ -57,6 +88,41 @@ for (const width of [320, 390, 768, 1440]) test(`workspace shell is stable while
   }
 });
 
+test('a previous-day field response waits for the next poll and permits attendance navigation', async ({ page }) => {
+  await page.clock.install();
+  const session = await mockStaff(page, { contexts: [{ id: 'repair', label: '维修工作台' }] });
+  session.home.businessDate = '2020-01-01';
+  session.home.updatedAt = '2020-01-01T02:00:00Z';
+  const nextPoll = gate();
+  let reads = 0;
+  await page.addInitScript(() => sessionStorage.setItem('pioneerToken', 'test-session'));
+  await page.route('**/api/field/home*', async route => {
+    if (++reads > 2) await nextPoll.promise;
+    await route.fulfill({ json: session.home });
+  });
+  await page.route('**/api/me/attendance*', route => route.fulfill({ json: {
+    items: [{ id: 'previous-day', businessDate: '2020-01-01', occurredAt: '2020-01-01T02:00:00Z', type: 'duty', campusId: 'campus-nanhu' }], nextCursor: null
+  } }));
+  try {
+    await page.goto('/staff/');
+    await expect(page.locator('.field-content')).toHaveAttribute('aria-busy', 'false');
+    await expect.poll(() => reads).toBe(2);
+    await page.clock.fastForward(1000);
+    expect(reads).toBe(2);
+    await page.clock.fastForward(30000);
+    await expect.poll(() => reads).toBe(3);
+    nextPoll.release();
+    await expect(page.locator('.field-content')).toHaveAttribute('aria-busy', 'false');
+    await (await navigationEntry(page.locator('.field-sidebar'), '本人签到记录')).click();
+    await expect(page.locator('.attendance-history li')).toHaveCount(1);
+    await page.clock.fastForward(60000);
+    expect(reads).toBe(3);
+  } finally {
+    nextPoll.release();
+    await page.unrouteAll({ behavior: 'wait' });
+  }
+});
+
 test('field failure stays local and a retry recovers without replacing the shell', async ({ page }) => {
   const session = await mockStaff(page, { contexts: [{ id: 'repair', label: '维修工作台' }] });
   let failed = true;
@@ -65,7 +131,7 @@ test('field failure stays local and a retry recovers without replacing the shell
   await page.goto('/staff/');
   await expect(page.getByRole('alert')).toHaveText('工作台暂时不可用');
   await page.evaluate(() => { window.originalWorkspace = document.querySelector('.field-app'); });
-  await page.locator('.field-sidebar').getByRole('button', { name: '账号安全', exact: true }).click();
+  await (await navigationEntry(page.locator('.field-sidebar'), '账号安全')).click();
   await expect(page.getByRole('heading', { name: '账号安全', exact: true })).toBeVisible();
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('staff-request-navigation', { detail: 'workbench' })));
   failed = false;
@@ -90,7 +156,7 @@ test('identity timeout has a local retry and never exposes privileged entries', 
     await expect.poll(() => reads).toBe(1);
     await page.clock.fastForward(15001);
     await expect(page.getByRole('alert')).toHaveText('会话验证超时，请检查网络后重试');
-    await expect(page.locator('.field-sidebar').getByRole('button', { name: '人员管理', exact: true })).toHaveCount(0);
+    await expect(page.locator('.field-sidebar').getByRole('button', { name: '人员管理', exact: true, includeHidden: true })).toHaveCount(0);
     pending = false;
     stalled.release();
     await page.getByRole('button', { name: '重新加载工作区', exact: true }).click();
@@ -108,8 +174,8 @@ test('a missing lazy module fails inside its page and leaves other navigation us
   await page.route('**/staff/assets/People-*.js', route => route.fulfill({ status: 404, body: '' }));
   await page.goto('/staff/');
   await expect(page.locator('.field-content')).toBeVisible();
-  await page.locator('.field-sidebar').getByRole('button', { name: '人员管理', exact: true }).click();
+  await (await navigationEntry(page.locator('.field-sidebar'), '人员管理')).click();
   await expect(page.getByRole('alert')).toHaveText('此页面暂时无法加载，请刷新后重试。');
-  await page.locator('.field-sidebar').getByRole('button', { name: '账号安全', exact: true }).click();
+  await (await navigationEntry(page.locator('.field-sidebar'), '账号安全')).click();
   await expect(page.getByRole('heading', { name: '账号安全', exact: true })).toBeVisible();
 });

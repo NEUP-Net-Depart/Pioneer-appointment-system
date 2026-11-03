@@ -83,7 +83,7 @@ export function AccountSettings({
   return (
     <section className="settings-workspace">
       <WorkspaceHeader
-        group={security ? '我的' : '业务管理'}
+        group={security ? '我的' : '业务设置'}
         title={security ? '账号安全' : '预约配置'}
       />
       <div hidden={!security} className="security-layout">
@@ -110,7 +110,6 @@ export function AccountSettings({
         </section>
         <section className="field-card">
           <h2>修改密码</h2>
-          <p className="field-muted">修改成功后，所有设备均需重新登录。</p>
           <form ref={form} className="workspace-form" onSubmit={changePassword}>
             <label>
               当前密码
@@ -132,12 +131,9 @@ export function AccountSettings({
                 maxLength={128}
                 required
                 disabled={busy}
-                aria-describedby="security-password-hint"
+                placeholder="8–128 个字符"
               />
             </label>
-            <p id="security-password-hint" className="field-muted">
-              使用 8–128 个字符。
-            </p>
             <label>
               确认新密码
               <input
@@ -153,7 +149,7 @@ export function AccountSettings({
             <Notice>{error}</Notice>
             <div className="field-actions">
               <button className="field-primary" disabled={busy}>
-                {busy ? '正在处理…' : '修改密码并退出'}
+                {busy ? '正在处理…' : '修改密码并退出所有设备'}
               </button>
             </div>
           </form>
@@ -161,9 +157,6 @@ export function AccountSettings({
         <section className="field-card security-sessions">
           <div>
             <h2>设备会话</h2>
-            <p className="field-muted">
-              无法确认其他设备是否安全时，可让所有设备退出登录，包含当前设备。
-            </p>
           </div>
           <button
             type="button"

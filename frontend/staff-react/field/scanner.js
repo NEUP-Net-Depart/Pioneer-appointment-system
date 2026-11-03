@@ -93,6 +93,7 @@ export async function readDeviceSerialImage(file, isCurrent = () => true) {
 
 export function createScanner({
   video,
+  guide = null,
   status = null,
   torch,
   switchCamera,
@@ -326,10 +327,16 @@ export function createScanner({
       const cover = Math.max(previewWidth / video.videoWidth, previewHeight / video.videoHeight);
       const visibleWidth = previewWidth / cover;
       const visibleHeight = previewHeight / cover;
-      const sourceWidth = visibleWidth * 0.7;
-      const sourceHeight = visibleHeight * 0.7;
-      const sourceX = (video.videoWidth - sourceWidth) / 2;
-      const sourceY = (video.videoHeight - sourceHeight) / 2;
+      const preview = video.getBoundingClientRect();
+      const frame = guide?.getBoundingClientRect();
+      const sourceWidth = (frame?.width ?? previewWidth * 0.7) / cover;
+      const sourceHeight = (frame?.height ?? previewHeight * 0.7) / cover;
+      const sourceX =
+        (video.videoWidth - visibleWidth) / 2 +
+        (frame ? frame.left - preview.left : previewWidth * 0.15) / cover;
+      const sourceY =
+        (video.videoHeight - visibleHeight) / 2 +
+        (frame ? frame.top - preview.top : previewHeight * 0.15) / cover;
       const scale = Math.min(1, 2200 / Math.max(sourceWidth, sourceHeight));
       const photo = document.createElement('canvas');
       photo.width = Math.max(1, Math.round(sourceWidth * scale));

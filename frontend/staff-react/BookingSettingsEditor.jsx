@@ -225,7 +225,6 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
           <section className="field-card booking-rule-card">
             <div>
               <h2>每日放号</h2>
-              <p>仅调整预约窗口的切换时间；签到、排班和统计仍按北京时间自然日计算。</p>
             </div>
             <form
               onSubmit={(event) => {
@@ -244,9 +243,13 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
                   onChange={(event) => setReleaseTime(event.target.value)}
                 />
               </label>
-              <p className="field-muted">
-                放号前可约当天至后两天；放号后可约当天至后三天。仅开放周一至周四的未结束时段。
-              </p>
+              <details className="workspace-help">
+                <summary>放号规则</summary>
+                <p>
+                  放号前可约当天至后两天；放号后可约当天至后三天。仅开放周一至周四的未结束时段。
+                  签到、排班和统计仍按北京时间自然日计算。
+                </p>
+              </details>
               <div className="field-actions">
                 <button className="field-primary" disabled={busy || !timeDirty}>
                   {busy ? '正在保存…' : '保存放号时间'}
@@ -260,9 +263,12 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
             <div className="capacity-section-heading">
               <div>
                 <h2>校区公告</h2>
-                <p>
-                  公告仅在预约首页展示，可选页面或弹窗形式；必读公告需点击阅读确认后才能进入下一步。时间均为北京时间。
-                </p>
+                <details className="workspace-help">
+                  <summary>公告展示规则</summary>
+                  <p>
+                    公告仅在预约首页展示，可选页面或弹窗形式；必读公告需点击阅读确认后才能进入下一步。时间均为北京时间。
+                  </p>
+                </details>
               </div>
               <button
                 className="field-primary"
@@ -275,7 +281,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
             {!data ? (
               <DataValue label="校区公告" pending={loading} />
             ) : !data.notices.length ? (
-              <p className="field-muted">暂无公告。可发布维修安排、到场须知等说明。</p>
+              <p className="field-muted">暂无公告。</p>
             ) : (
               <div className="booking-notice-list">
                 {data.notices.map((item) => (
@@ -310,9 +316,6 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
             <div className="capacity-section-heading">
               <div>
                 <h2>暂停维修公告</h2>
-                <p>
-                  与暂停日期同步，无需重复发布；恢复维修或日期结束后自动停止展示。用户选中对应日期时会看到暂停说明。
-                </p>
               </div>
               <button onClick={onManageSuspension}>管理暂停日期</button>
             </div>
@@ -363,7 +366,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
             }}
           >
             <p data-motion-value="text" className="field-muted">
-              {campus}校区 · 保存后按生效时间自动展示或结束
+              {campus}校区
             </p>
             <label>
               公告标题

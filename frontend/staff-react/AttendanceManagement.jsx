@@ -196,7 +196,7 @@ export function AttendanceManagement({ user }) {
   }
   return (
     <section className="react-page attendance-management">
-      <WorkspaceHeader group="值班管理" title="考勤核查">
+      <WorkspaceHeader group="排班考勤" title="考勤核查">
         <button disabled={busy} onClick={() => edit(null)}>
           补录签到
         </button>

@@ -24,6 +24,8 @@ export function useField(
   const key = `field:${sessionKey}:${campus}:${resource}`;
   const cached = () => readWorkspaceState(key) as Snapshot | undefined;
   const fallback = initial?.campusId === campus ? initial : null;
+  const initialRef = useRef(initial);
+  initialRef.current = initial;
   const [snapshot, setSnapshot] = useState<{ key: string; value: Home | null }>(() => ({
     key,
     value: cached()?.value || fallback
@@ -99,6 +101,9 @@ export function useField(
       setPending(null);
       return;
     }
+    // Responses are also passed back as initial data by the shell. They must
+    // not restart polling, even when the server still reports the previous day.
+    const initial = initialRef.current;
     // Only home data can seed home. It must never masquerade as a loaded board.
     if (resource === 'home' && !readWorkspaceState(key) && initial?.campusId === campus) {
       writeWorkspaceState(key, { value: initial, fetchedAt: Date.parse(initial.updatedAt) });
@@ -126,7 +131,7 @@ export function useField(
       request.current?.abort();
       document.removeEventListener('visibilitychange', visibility);
     };
-  }, [active, key, refresh, resource, campus, initial]);
+  }, [active, key, refresh, resource, campus]);
   const data = snapshot.key === key ? snapshot.value : cached()?.value || fallback;
   return {
     data,

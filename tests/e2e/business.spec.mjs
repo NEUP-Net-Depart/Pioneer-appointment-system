@@ -1,3 +1,4 @@
+import { navigationEntry } from './support/staff.mjs';
 import {staffPage,mockStaff,loginStaff} from './support/staff.mjs';
 import {test,expect} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
@@ -44,7 +45,7 @@ test('weekday capacity configuration discards unsaved edits and updates booked d
   const list=await (await root.request.get('/api/slot-capacities',{headers})).json();template=list.items.find(item=>item.campus==='南湖'&&item.weekday===4&&item.timeSlot==='19:00–19:30');
   await staffPage(root,'预约配置');const cell=root.getByRole('gridcell',{name:'南湖 周四 19:00–19:30',exact:true});
   await cell.dblclick();await cell.locator('input').fill('7');await cell.locator('input').press('Enter');
-  await root.locator('.field-sidebar').getByRole('button',{name:'账号安全',exact:true}).click();
+  await (await navigationEntry(root.locator('.field-sidebar'), '账号安全')).click();
   await root.getByRole('dialog',{name:'有未保存的调整'}).getByRole('button',{name:'留在当前页面',exact:true}).click();await expect(cell.locator('input')).toHaveValue('7');
   await staffPage(root,'账号安全');await expect(root.getByRole('heading',{name:'账号安全',exact:true})).toBeVisible();
   await staffPage(root,'预约配置');await expect(cell.locator('input')).toHaveValue(String(template.capacity));
@@ -58,7 +59,8 @@ test('weekday capacity configuration discards unsaved edits and updates booked d
   const after=await (await root.request.get('/api/slot-capacities/actual?'+new URLSearchParams({campus:'南湖',date}),{headers})).json();expect(after.items).toEqual(before.items.map(row=>row.timeSlot===template.timeSlot?{...row,capacity:9}:row));expect(item.id).toContain('reserve');
   await root.getByRole('button',{name:'日期实际容量',exact:true}).click();await root.getByLabel('查看日期',{exact:true}).fill(date);
   const slot=root.getByRole('table',{name:'各时段预约名额'}).getByRole('row').filter({hasText:template.timeSlot});await expect(slot.getByRole('cell').nth(0)).toHaveText('9');
-  await expect(root.locator('.capacity-source')).toContainText('已有预约全部保留');
+  const retained=await root.request.get('/api/field/appointments/'+item.id,{headers});
+  expect(retained.ok(),await retained.text()).toBe(true);expect(await retained.json()).toMatchObject({id:item.id,status:'booked',campus:'南湖',date,timeSlot:template.timeSlot});
  }finally{
   if(token&&template){const headers={Authorization:`Bearer ${token}`},list=await(await root.request.get('/api/slot-capacities',{headers})).json(),latest=list.items.find(row=>row.campus===template.campus&&row.weekday===template.weekday&&row.timeSlot===template.timeSlot);await root.request.patch('/api/slot-capacities',{headers,data:{...latest,capacity:template.capacity}});}
   await Promise.all(contexts.map(c=>c.close()));
@@ -71,7 +73,7 @@ test('student booking, private links, React activation, staff permissions and cr
   const imported=await root.request.post('/api/members',{headers,data:{studentId:'20308103',name:'激活测试',homeCampusId:'campus-nanhu',departmentId:'dept-hardware',positionCode:'member',authorizedCampuses:['南湖'],configureActivation:true}});expect(imported.ok(),await imported.text()).toBe(true);
   await application(student,'20308103','激活测试');await student.reload();await expect(student.locator('#activation-status')).toContainText('等待管理员');
   await staffPage(root,'激活与账号');await root.getByRole('button',{name:'激活审核',exact:true}).click();await root.getByLabel('选择 20308103',{exact:true}).check();await expect(root.getByRole('button',{name:'批准申请',exact:true})).toBeDisabled();await root.getByLabel('我已逐一核实选中申请的本人身份').check();await root.getByRole('button',{name:'批准申请',exact:true}).click();
-  await student.getByRole('button',{name:'刷新审核结果',exact:true}).click();await expect(student.locator('#activation-status')).toContainText('审核已通过');await student.getByRole('link',{name:'前往登录',exact:true}).click();await student.locator('#login-id').fill('20308103');await student.locator('#login-password').fill(memberPassword);await student.getByRole('button',{name:'进入系统'}).click();await expect(student.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();await expect(student.locator('.field-sidebar').getByRole('button',{name:'激活与账号',exact:true})).toHaveCount(0);
+  await student.getByRole('button',{name:'刷新审核结果',exact:true}).click();await expect(student.locator('#activation-status')).toContainText('审核已通过');await student.getByRole('link',{name:'前往登录',exact:true}).click();await student.locator('#login-id').fill('20308103');await student.locator('#login-password').fill(memberPassword);await student.getByRole('button',{name:'进入系统'}).click();await expect(student.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();await expect(student.locator('.field-sidebar').getByRole('button',{name:'激活与账号',exact:true, includeHidden: true})).toHaveCount(0);
   await staffPage(root,'预约记录');await root.getByRole('searchbox',{name:'查找预约'}).fill(booked.id);await root.locator('.records-table tbody tr').filter({hasText:booked.id}).getByRole('button',{name:'查看详情',exact:true}).click();await root.getByRole('button',{name:'重发客户凭证',exact:true}).click();await root.getByLabel('已人工核验客户本人身份').check();await root.getByLabel('身份核验说明',{exact:true}).fill('已经现场核验学生证与设备归属');await root.getByRole('button',{name:'签发新凭证',exact:true}).click();const link=await root.getByLabel('新私人链接',{exact:true}).inputValue();expect(new URL(link).hash).toContain(booked.id);
   const oldToken=new URL(booked.link).hash.match(/access=([^&]+)/)[1];expect((await root.request.get('/api/appointments/'+booked.id,{headers:{'X-Appointment-Token':oldToken}})).status()).toBe(404);
   await student.locator('.field-sidebar').getByRole('button',{name:'退出登录',exact:true}).click();await expect(student.locator('#login-form')).toBeVisible();

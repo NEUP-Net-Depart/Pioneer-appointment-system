@@ -157,7 +157,7 @@ test('full-admin-inventory-and-secondary-views', async ({ page, audit }) => {
   await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
   await navigate(page, '预约记录');
   await settled(page);
-  for (const [button, title] of [['全部日期', '预约时间筛选'], ['全部校区', '校区筛选'], ['全部状态', '状态筛选']]) {
+  for (const [button, title] of [['全部日期', '预约时间筛选'], ['全部校区', '校区筛选'], ['更多预约状态', '状态筛选']]) {
     await page.locator('.records-filter-actions').getByRole('button', { name: button, exact: true }).click();
     await expect(page.getByRole('dialog', { name: title })).toBeVisible();
     fit(await audit.capture(`record-filter-${title}`));

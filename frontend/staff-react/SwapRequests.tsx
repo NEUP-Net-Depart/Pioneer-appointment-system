@@ -74,8 +74,7 @@ function SwapResult({ value }: { value: Preview }) {
       {value.allowed ? (
         <p data-motion-value="text" className="swap-check" role="status">
           时间与资格校验通过
-          {value.fromAssignment.dutyType === 'repair' ? '，维修负责人覆盖完整' : ''}
-          。确认时会再次校验。
+          {value.fromAssignment.dutyType === 'repair' ? '，维修负责人覆盖完整' : ''}。
         </p>
       ) : (
         <div className="react-error" role="alert">
@@ -398,7 +397,6 @@ export function SwapInvitations({
                   ['覆盖与冲突检查']
                 ]}
               />
-              <p className="field-muted">确认交换后的安排及人员覆盖后，才能同意换班。</p>
             </>
           )}
           {value && (

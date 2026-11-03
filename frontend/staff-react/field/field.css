@@ -721,20 +721,37 @@
 .field-camera video[data-mirrored='true'] {
   transform: scaleX(-1);
 }
-.field-camera > span {
+.field-camera-guide {
   position: absolute;
   inset: 15%;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   color: #ced6df;
-  font-size: 40px;
   pointer-events: none;
 }
-.field-camera > span span {
+.field-camera-guide::before,
+.field-camera-guide::after {
+  content: '';
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border: solid currentColor;
+}
+.field-camera-guide::before {
+  top: 0;
+  left: 0;
+  border-width: 3px 0 0 3px;
+}
+.field-camera-guide::after {
+  right: 0;
+  bottom: 0;
+  border-width: 0 3px 3px 0;
+}
+.field-camera-hint {
+  position: absolute;
+  right: 0;
+  bottom: 10px;
+  left: 0;
   font-size: 12px;
-  align-self: flex-end;
-  margin-bottom: 10px;
+  text-align: center;
 }
 .field-file-button {
   position: relative;

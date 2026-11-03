@@ -22,7 +22,7 @@ export function People({ user }) {
   const section = sections.some((item) => item.id === selected) ? selected : sections[0]?.id;
   return (
     <section className="react-page people-workspace">
-      <WorkspaceHeader group="平台管理" title="人员管理" />
+      <WorkspaceHeader group="人员权限" title="人员管理" />
       <WorkspaceSections
         label="人员管理功能"
         items={sections}

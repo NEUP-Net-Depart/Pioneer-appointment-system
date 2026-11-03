@@ -7,6 +7,7 @@ import { MemberEditor } from './MemberEditor.jsx';
 import { staffPermission } from '../../shared/staff-access.js';
 import { MemberImport } from './MemberImport.jsx';
 import { EducationImport } from './EducationImport.jsx';
+import { WorkspaceMoreActions } from './WorkspaceMoreActions';
 import { StaffIdentity } from './StaffIdentity';
 import { MemberCreate } from './MemberCreate.jsx';
 
@@ -89,20 +90,6 @@ export function Members({ user }) {
 
   return (
     <section className="react-members-page">
-      <div className="workspace-list-tools">
-        {staffPermission(user, 'members.manage') && (
-          <>
-            <button className="react-primary" onClick={() => setCreating(true)}>
-              新增人员
-            </button>
-            <button onClick={() => setImporting(true)}>批量导入</button>
-            <button onClick={() => setEducationImporting(true)}>批量补学院</button>
-          </>
-        )}
-        <button onClick={() => load()} disabled={busy}>
-          刷新
-        </button>
-      </div>
       {error && (
         <p data-motion-value="text" className="react-error" role="alert">
           {error}
@@ -143,6 +130,22 @@ export function Members({ user }) {
               <option value="inactive">停用</option>
             </select>
           </label>
+          <div className="members-list-actions">
+            {staffPermission(user, 'members.manage') && (
+              <>
+                <button className="react-primary" onClick={() => setCreating(true)}>
+                  新增人员
+                </button>
+                <button onClick={() => setImporting(true)}>批量导入</button>
+                <WorkspaceMoreActions>
+                  <button onClick={() => setEducationImporting(true)}>批量补学院</button>
+                </WorkspaceMoreActions>
+              </>
+            )}
+            <button onClick={() => load()} disabled={busy}>
+              刷新
+            </button>
+          </div>
           <span data-motion-value="number" className="members-result-count" role="status">
             {busy ? '正在更新筛选结果…' : `已显示 ${items.length} 名成员`}
           </span>
@@ -152,7 +155,7 @@ export function Members({ user }) {
             <span>成员</span>
             <span>校区</span>
             <span>状态</span>
-            <span>主要部门</span>
+            <span>部门 / 学院</span>
             <span>操作</span>
           </div>
           {items.map((item) => (
@@ -163,7 +166,6 @@ export function Members({ user }) {
                 <small data-motion-value="text">
                   {item.studentId || item.account || '未关联登录账号'}
                 </small>
-                {item.college && <small>{item.college}</small>}
               </span>
               <span data-motion-value="text" data-label="所属校区">
                 {item.homeCampusId === 'campus-hunnan'
@@ -180,8 +182,9 @@ export function Members({ user }) {
                   {item.status === 'active' ? '正常' : '停用'}
                 </span>
               </span>
-              <span data-motion-value="text" data-label="主要部门">
-                {item.primaryDepartment || '未设部门'}
+              <span className="member-organization" data-label="部门 / 学院">
+                <span data-motion-value="text">{item.primaryDepartment || '未设部门'}</span>
+                {item.college && <small data-motion-value="text">{item.college}</small>}
               </span>
               <span className="members-row-action">
                 <button disabled={busy} onClick={() => setSelected(item)}>
@@ -194,7 +197,6 @@ export function Members({ user }) {
           {!busy && !items.length && !error && (
             <div className="members-empty">
               <h2>没有找到成员</h2>
-              <p>试试其他姓名、学号，或放宽校区与状态条件。</p>
               {(q || campus || status) && (
                 <button
                   onClick={() => {
@@ -210,7 +212,6 @@ export function Members({ user }) {
           )}
         </div>
         <footer className="members-list-footer">
-          <span>仅展示你有权查看的成员</span>
           {nextCursor && (
             <button onClick={() => load(nextCursor)} disabled={busy}>
               加载更多成员

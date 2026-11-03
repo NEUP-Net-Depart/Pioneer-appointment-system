@@ -331,7 +331,7 @@ test('an order preselects its brand and adopts only the explicitly confirmed war
       'field:member-root001:' + item.id
     )
   ).toBe('unknown');
-  await dialog.getByRole('button', { name: '采用此保修情况' }).click();
+  await dialog.getByRole('button', { name: '填入此保修情况' }).click();
   await expect(dialog).toHaveCount(0);
   await expect(repair.getByRole('combobox', { name: '保修情况', exact: true })).toHaveValue(
     'in_warranty'
@@ -877,7 +877,7 @@ test('not-found, timeout and unsupported brands cannot be adopted as expired', a
   );
   await dialog.getByRole('button', { name: '查询原厂保修', exact: true }).click();
   await expect(dialog).toContainText('查无资料不代表已过保');
-  await expect(dialog.getByRole('button', { name: '采用此保修情况' })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: '填入此保修情况' })).toHaveCount(0);
   await page.route('**/api/warranty/query', (route) =>
     route.fulfill({
       status: 502,

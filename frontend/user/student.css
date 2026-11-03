@@ -1,5 +1,7 @@
 /* Student theme and responsive layout. */
-.booking-release-hint { margin: 16px 0 0; color: var(--muted); font-size: 14px; line-height: 1.7; }
+.booking-release-rules { margin-top: 16px; color: var(--muted); font-size: 14px; line-height: 1.7; }
+.booking-release-rules > summary { width: fit-content; min-height: 44px; padding-block: 10px; cursor: pointer; }
+.booking-release-hint { margin: 0; }
 .booking-notices { display: grid; gap: 12px; margin-bottom: 24px; }
 .booking-notice { border: 1px solid var(--line); border-radius: 9px; padding: 18px; background: white; min-width: 0; }
 .booking-notice h3 { font-size: 16px; margin: 0 0 8px; }

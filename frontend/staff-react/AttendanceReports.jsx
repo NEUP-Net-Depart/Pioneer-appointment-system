@@ -213,7 +213,7 @@ export function AttendanceReports({ canExport = true }) {
   }
   return (
     <section className="react-page attendance-reports">
-      <WorkspaceHeader group="数据与审计" title={canExport ? '报表导出' : '导出规则'} />
+      <WorkspaceHeader group="排班考勤" title={canExport ? '报表导出' : '导出规则'} />
       {canExport && (
         <>
           <div className="report-type-switch" role="group" aria-label="报表类型">

@@ -28,9 +28,10 @@ export function CollectionSettings({ series, task, busy, error, onSave }) {
         });
       }}
     >
-      <p className="react-muted">
-        发布一次，始终使用这个任务。本次结束后立即收集下一工作周，各周填报和班表独立保留；重新开放历史周不影响下一周。
-      </p>
+      <details className="workspace-help">
+        <summary>每周收集规则</summary>
+        <p>本次结束后立即收集下一工作周，各周填报和班表独立保留；重新开放历史周不影响下一周。</p>
+      </details>
       <label>
         收集名称
         <input
@@ -92,9 +93,11 @@ export function CollectionSettings({ series, task, busy, error, onSave }) {
           />
           将当前周的参与名单、班次时间和每日人数用于后续周次
         </label>
-        <p className="react-muted">
-          只影响尚未开始的周次，已有填报、人工安排和已发布班表保持原样。
-        </p>
+        {useCurrent && (
+          <p className="react-muted">
+            只影响尚未开始的周次，已有填报、人工安排和已发布班表保持原样。
+          </p>
+        )}
       </fieldset>
       {error && (
         <p data-motion-value="text" className="react-error" role="alert">

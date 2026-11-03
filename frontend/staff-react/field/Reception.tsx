@@ -229,11 +229,7 @@ export function Reception({
             {saving ? '正在分派…' : '确认分派，等待接手'}
           </button>
         </form>
-      ) : (
-        <small className="field-state-note" role="status">
-          排队中 · 待分派
-        </small>
-      )}
+      ) : null}
       {item.canDispatch && (
         <details className="field-details">
           <summary>客户离队、改约或取消</summary>

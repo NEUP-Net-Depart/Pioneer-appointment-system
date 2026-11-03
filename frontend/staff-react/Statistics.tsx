@@ -87,7 +87,7 @@ export function Statistics() {
     : ['预约总数', '已完成维修', '修复成功率', '已取消', '已逾期'].map((name) => [name, '—']);
   return (
     <section className="report-workspace">
-      <WorkspaceHeader group="数据与审计" title="统计分析">
+      <WorkspaceHeader group="现场工作" title="统计分析">
         <button disabled={loading} onClick={() => setRevision((value) => value + 1)}>
           刷新统计
         </button>
@@ -129,10 +129,14 @@ export function Statistics() {
           ))}
         </div>
 
+        <details className="workspace-help">
+          <summary>统计口径</summary>
+          <p>每日服务按预约日期统计；故障分类按已完成维修统计；校区分布按预约总数统计。</p>
+          <p>维修人员工作量为实际开始与完成记录，不代表值班考勤。</p>
+        </details>
         <div className="report-grid">
           <section className="field-card report-wide">
             <h2>每日服务</h2>
-            <p className="field-muted">按预约日期统计；完成数包含已结束的维修。</p>
             {!data ? (
               <DataValue label="每日服务记录" pending={loading} />
             ) : Object.keys(data.daily).length ? (
@@ -154,7 +158,6 @@ export function Statistics() {
           </section>
           <section className="field-card">
             <h2>故障分类</h2>
-            <p className="field-muted">按已完成维修统计</p>
             {data ? (
               <Distribution values={data.faults} total={data.completed} />
             ) : (
@@ -163,7 +166,6 @@ export function Statistics() {
           </section>
           <section className="field-card">
             <h2>校区分布</h2>
-            <p className="field-muted">按预约总数统计</p>
             {data ? (
               <Distribution values={data.campuses} total={data.total} />
             ) : (
@@ -172,7 +174,6 @@ export function Statistics() {
           </section>
           <section className="field-card report-wide">
             <h2>维修人员工作量</h2>
-            <p className="field-muted">实际开始与完成记录，不代表值班考勤。</p>
             <div className="report-workload">
               {Object.entries(data?.technicians || {})
                 .sort((a, b) => b[1].completed - a[1].completed)

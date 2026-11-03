@@ -1799,27 +1799,9 @@ fieldset.staffing-editor {
     transition: none;
   }
 }
-.motion-collapse {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows var(--workspace-motion-normal, 200ms)
-    var(--workspace-motion-ease, ease-out);
-}
-.motion-collapse[data-open='true'] {
-  grid-template-rows: 1fr;
-}
-.motion-collapse > div {
-  min-height: 0;
-  overflow: clip;
-}
 span[data-motion-value='number'],
 span[data-motion-value='status'] {
   display: inline-block;
-}
-@media (prefers-reduced-motion: reduce) {
-  .motion-collapse {
-    transition: none;
-  }
 }
 .motion-meter {
   position: relative;

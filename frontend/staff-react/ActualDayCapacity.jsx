@@ -97,15 +97,11 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
                   : null}
               </DataValue>
             </span>
-            <p data-motion-value="text">
-              {!data
-                ? '实际名额由当日容量与预约占用共同决定。'
-                : date < dateKey()
-                  ? data.source === 'snapshot'
-                    ? '保留该日期的历史容量，后续每周容量调整不会改写。'
-                    : '该历史日期没有保存服务日容量，以下按当前每周规则展示，仅供参考。'
-                  : '修改每周容量会立即同步今天及未来的对应时段，已有预约全部保留。'}
-            </p>
+            {data && date < dateKey() && data.source !== 'snapshot' && (
+              <p data-motion-value="text">
+                该历史日期没有保存服务日容量，以下按当前每周规则展示，仅供参考。
+              </p>
+            )}
           </div>
           <div className="capacity-actual-layout">
             <div>
@@ -148,17 +144,20 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
               ) : (
                 <p className="field-muted">此日期没有配置预约时段。</p>
               )}
-              <p className="field-muted">
-                已占用名额包含已完成、已过期预约；取消预约释放名额。现场临时登记不占用预约名额。
-                已占用达到或超过容量时停止新增预约，低于容量后恢复放号。
-              </p>
+              <details className="workspace-help">
+                <summary>名额计算规则</summary>
+                <p>
+                  已占用名额包含已完成、已过期预约；取消预约释放名额。现场临时登记不占用预约名额。
+                  已占用达到或超过容量时停止新增预约，低于容量后恢复放号。
+                </p>
+              </details>
             </div>
             <div className="capacity-staffing">
               <h3>工作人员</h3>
               {!data ? (
                 <>
                   <p data-motion-value="text" className="field-muted">
-                    {campus}校区 · 当日预计出勤
+                    预计出勤
                   </p>
                   <div className="capacity-staffing-list">
                     {['维修排班', '办公排班'].map((label) => (
@@ -172,7 +171,7 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
               ) : data.staffing ? (
                 <>
                   <p data-motion-value="text" className="field-muted">
-                    {campus}校区 · 当日预计出勤
+                    预计出勤
                   </p>
                   <div className="capacity-staffing-list">
                     {Object.entries(data.staffing).map(([type, count]) => (
@@ -193,9 +192,10 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
                       </div>
                     ))}
                   </div>
-                  <p className="field-muted">
-                    预计出勤按已发布班次去重，并扣除已批准请假；实际到岗以签到记录为准。
-                  </p>
+                  <details className="workspace-help">
+                    <summary>出勤计算口径</summary>
+                    <p>按已发布班次去重，并扣除已批准请假；实际到岗以签到记录为准。</p>
+                  </details>
                 </>
               ) : (
                 <p className="field-muted">人员安排请在有权限的排班管理页查看。</p>

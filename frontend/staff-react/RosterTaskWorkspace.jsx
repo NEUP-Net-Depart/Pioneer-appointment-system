@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from 'react';
 import { MotionMeter } from './MotionMeter';
 import { WorkspaceMoreActions } from './WorkspaceMoreActions';
 import { StaffIdentity } from './StaffIdentity';
@@ -46,6 +47,28 @@ export function RosterTaskWorkspace({
   showBoard,
   assignmentCount
 }) {
+  const editbar = useRef(null);
+  useLayoutEffect(() => {
+    const bar = editbar.current;
+    if (!active || !bar) return;
+    const workspace = bar.closest('.roster-workflow');
+    const measure = () => {
+      const bottom = parseFloat(getComputedStyle(bar).bottom) || 0;
+      workspace.style.setProperty(
+        '--roster-scroll-clearance',
+        `${bar.getBoundingClientRect().height + bottom + 16}px`
+      );
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(bar);
+    window.addEventListener('resize', measure);
+    measure();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+      workspace.style.removeProperty('--roster-scroll-clearance');
+    };
+  }, [active, editable, showBoard]);
   return (
     <>
       <div className="roster-view-tabs" role="tablist" aria-label="本周工作内容">
@@ -65,7 +88,6 @@ export function RosterTaskWorkspace({
         >
           班表与调整
         </button>
-        {!draft && <span>结束收集并自动排班后，在这里调整班表</span>}
       </div>
       <>
         {data.allSuspended && (
@@ -98,12 +120,12 @@ export function RosterTaskWorkspace({
               : collecting && collectionView
                 ? `${data.progress.submitted} / ${data.progress.total} 人已提交 · 截止 ${new Date(task.deadline).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`
                 : stage === 'published'
-                  ? '成员正在使用当前班表。修改时先建立修订稿，确认后再发布。'
+                  ? '当前班表生效中'
                   : dirty
-                    ? '有未保存调整，请先保存并校验。'
+                    ? '调整尚未保存'
                     : data.publishedVersion
-                      ? '原班表继续生效，修订发布后才会替换。'
-                      : '完成覆盖和资格检查后，成员才能看到班次。'}
+                      ? '修订中 · 原班表生效中'
+                      : '草稿 · 尚未发布'}
           </p>
         </div>
         <div>
@@ -147,7 +169,6 @@ export function RosterTaskWorkspace({
         <section className="roster-collection">
           <div className="roster-section-title">
             <h2>收集情况</h2>
-            <span>填报人数反映已提交，不代表一定可覆盖全部班次</span>
           </div>
           <MotionMeter
             progress
@@ -188,7 +209,6 @@ export function RosterTaskWorkspace({
               ))}
             </ul>
           </details>
-          {data.publishedVersion && <p className="react-muted">此次重新收集不改变当前有效班表。</p>}
         </section>
       )}
       {!collecting && stage !== 'scheduled' && (
@@ -237,7 +257,6 @@ export function RosterTaskWorkspace({
           {rows.some((row) => row.servicePaused) && (
             <section className="roster-paused-history">
               <h3>暂停日期 · 原安排保留</h3>
-              <p className="react-muted">暂停日不再安排新人员，已有班次与请假记录保留。</p>
               <ul>
                 {rows
                   .filter((row) => row.servicePaused)
@@ -393,11 +412,14 @@ export function RosterTaskWorkspace({
             </div>
             <aside className="roster-unassigned">
               <h3 data-motion-value="text">{office ? '人员班次数' : '尚未安排'}</h3>
-              <p data-motion-value="text" className="react-muted">
-                {office
-                  ? '同一成员每日最多一班。'
-                  : '负责人可以本周不排班。普通人员未安排的问题需在发布前处理。'}
-              </p>
+              <details className="workspace-help">
+                <summary>排班规则</summary>
+                <p>
+                  {office
+                    ? '同一成员每日最多一班。'
+                    : '负责人可以本周不排班。普通人员未安排的问题需在发布前处理。'}
+                </p>
+              </details>
               <label className="workspace-search-label">
                 查找待安排人员
                 <input
@@ -505,7 +527,7 @@ export function RosterTaskWorkspace({
             </section>
           )}
           {editable && (
-            <div className="roster-editbar">
+            <div className="roster-editbar" ref={editbar}>
               <div>
                 <strong data-motion-value="text">
                   {dirty

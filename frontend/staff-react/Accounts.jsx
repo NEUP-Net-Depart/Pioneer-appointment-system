@@ -69,7 +69,7 @@ export function Accounts({ user, embedded = false }) {
           <button onClick={copy}>复制激活网址</button>
         </div>
       ) : (
-        <WorkspaceHeader group="平台管理" title="人员管理">
+        <WorkspaceHeader group="人员权限" title="人员管理">
           <button onClick={copy}>复制激活网址</button>
         </WorkspaceHeader>
       )}
@@ -186,9 +186,6 @@ function AccountList({ user }) {
         {!items.length && !list.loading && !list.error && (
           <div className="field-empty">
             <strong data-motion-value="text">{query ? '没有匹配的账号' : '暂无可见账号'}</strong>
-            <p data-motion-value="text">
-              {query ? '试试姓名、学号或校区，或清除搜索。' : '成员通过激活审核后会出现在这里。'}
-            </p>
             {query && <button onClick={() => setQuery('')}>清除搜索</button>}
           </div>
         )}
@@ -441,7 +438,6 @@ function ActivationReview() {
       <div className="workspace-list-tools">
         <div>
           <h2>激活审核</h2>
-          <p className="field-muted">核实本人身份后批准申请。</p>
         </div>
         <button disabled={busy || list.loading} onClick={list.refresh}>
           刷新申请
@@ -500,7 +496,6 @@ function ActivationReview() {
       {!items.length && !list.loading && !list.error && (
         <div className="field-empty">
           <strong data-motion-value="text">{history ? '暂无已处理申请' : '暂无待审核申请'}</strong>
-          <p>成员提交激活申请后，会在这里显示。</p>
         </div>
       )}
       {!history && pending.length > 0 && (

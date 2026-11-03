@@ -3,11 +3,13 @@ import React, { useContext, useEffect, useState } from 'react';
 import { apiFetch } from '../../shared/api.js';
 import { statusLabels, TIME_SLOTS, outcomeLabels } from '../../shared/constants.js';
 import { receptionStatus } from '../../shared/reception.js';
-import { addDays, dateKey, serviceDay } from '../../shared/time.js';
+import { addDays, dateKey, serviceDay, weekRange } from '../../shared/time.js';
 import { request } from './request.js';
 import { ActivityContext, Modal, Notice, Status } from './field/ui';
 import { Repair } from './field/Repair';
 import { WorkspaceHeader } from './WorkspaceHeader';
+import { WorkspaceSections } from './WorkspaceSections';
+import { WorkspaceMoreActions } from './WorkspaceMoreActions';
 import { staffPermission } from '../../shared/staff-access.js';
 import { RepairFollowups } from './RepairFollowups.jsx';
 
@@ -28,6 +30,8 @@ const dayLabel = (date) =>
 
 export function Records({ user }) {
   const active = useContext(ActivityContext);
+  const today = dateKey(),
+    week = weekRange(today);
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [filters, setFilters] = useState(cleanFilters),
     [search, setSearch] = useState(''),
@@ -112,6 +116,20 @@ export function Records({ user }) {
     : filters.date
       ? dayLabel(filters.date)
       : '全部日期';
+  const datePreset =
+    filters.date === today && !filters.dateFrom
+      ? 'today'
+      : filters.dateFrom === week.start && filters.dateTo === week.end
+        ? 'week'
+        : !filters.date && !filters.dateFrom && !filters.dateTo
+          ? 'all'
+          : '';
+  const statusItems = [
+    { id: 'all', label: '全部预约' },
+    { id: 'pending', label: '待处理' },
+    { id: 'in_progress', label: '维修中' },
+    { id: 'completed', label: '已完成' }
+  ];
   const summaries = {
     createdAt: '预约编号',
     date: [period, filters.timeSlot].filter(Boolean).join(' · '),
@@ -128,7 +146,7 @@ export function Records({ user }) {
         onClick={() => cycle(key)}
       >
         <strong data-motion-value="text">
-          {columns[key]}{' '}
+          {columns[key]} {!value && <span aria-hidden="true"> ↕</span>}
           {value && (
             <small data-motion-value="text">
               {value.direction === 'asc' ? '↑' : '↓'}
@@ -136,18 +154,19 @@ export function Records({ user }) {
             </small>
           )}
         </strong>
-        <span data-motion-value="text">{summaries[key]}</span>
       </button>
     );
   };
   return (
     <section className="records-workspace">
-      <WorkspaceHeader group="今日工作" title="预约记录">
+      <WorkspaceHeader group="现场工作" title="预约记录">
         <button disabled={list.loading || overview.loading} onClick={refresh}>
           刷新记录
         </button>
         {staffPermission(user, 'statistics.read') && (
-          <button onClick={exportRecords}>导出全部可见记录</button>
+          <WorkspaceMoreActions>
+            <button onClick={exportRecords}>导出全部可见记录</button>
+          </WorkspaceMoreActions>
         )}
       </WorkspaceHeader>
       <Notice>{message}</Notice>
@@ -165,6 +184,12 @@ export function Records({ user }) {
         }}
       />
       <section className="records-panel" aria-label="预约查询">
+        <WorkspaceSections
+          label="预约处理状态"
+          items={statusItems}
+          value={filters.status}
+          onChange={(status) => update({ status })}
+        />
         <div className="records-toolbar">
           <label>
             查找预约
@@ -182,21 +207,51 @@ export function Records({ user }) {
               {filters.timeSlot ? ` · ${filters.timeSlot}` : ''}
             </button>
             <button onClick={() => setMenu('campus')}>{summaries.campus}</button>
-            <button onClick={() => setMenu('status')}>{statusText}</button>
+            <button
+              aria-label="更多预约状态"
+              aria-haspopup="dialog"
+              onClick={() => setMenu('status')}
+            >
+              {statusItems.some((item) => item.id === filters.status) ? '更多状态' : statusText}
+            </button>
             <button onClick={reset}>重置</button>
           </div>
         </div>
-        <div className="records-result-meta" role="status">
-          <span data-motion-value="number">
-            {data ? `${data.items?.length || 0} 条记录` : '正在读取记录…'}
-            {list.loading && data ? ' · 更新中' : ''}
-            {!list.current && data ? ' · 当前显示上次结果' : ''}
-          </span>
-          <span className={sorts.length ? '' : 'records-sort-hint'}>
-            {sorts.length
-              ? `排序：${sorts.map((item, index) => `${index + 1}. ${columns[item.key]}${item.direction === 'asc' ? '↑' : '↓'}`).join(' → ')}`
-              : '点击表头：升序 → 降序 → 清除，支持组合排序'}
-          </span>
+        <div className="records-result-tools">
+          <div className="records-quick-dates" role="group" aria-label="快捷预约日期">
+            {[
+              ['today', '今日预约'],
+              ['week', '本周预约'],
+              ['all', '不限日期']
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={datePreset === id}
+                onClick={() =>
+                  update({
+                    date: id === 'today' ? today : '',
+                    dateFrom: id === 'week' ? week.start : '',
+                    dateTo: id === 'week' ? week.end : ''
+                  })
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="records-result-meta" role="status">
+            <span data-motion-value="number">
+              {data ? `${data.items?.length || 0} 条记录` : '正在读取记录…'}
+              {list.loading && data ? ' · 更新中' : ''}
+              {!list.current && data ? ' · 当前显示上次结果' : ''}
+            </span>
+            {sorts.length > 0 && (
+              <span>
+                {`排序：${sorts.map((item, index) => `${index + 1}. ${columns[item.key]}${item.direction === 'asc' ? '↑' : '↓'}`).join(' → ')}`}
+              </span>
+            )}
+          </div>
         </div>
         <Notice>{list.error}</Notice>
         {list.error && <button onClick={refresh}>重试读取</button>}

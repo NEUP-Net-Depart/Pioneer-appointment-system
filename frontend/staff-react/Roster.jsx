@@ -8,7 +8,7 @@ import { SwapComposer, SwapInvitations } from './SwapRequests';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { WorkspaceSections } from './WorkspaceSections';
 import { requestStatusLabel } from '../../shared/staff-request-status.js';
-import { addDays, dateKey, weekRange } from '../../shared/time.js';
+import { dateKey, weekRange } from '../../shared/time.js';
 
 const dutyLabels = {
   repair: '维修值班',
@@ -148,21 +148,26 @@ export function Roster({ user, requestSignal = 0 }) {
       />
       {
         <div hidden={activeTab !== 'schedule'}>
-          <div className="roster-week-nav" aria-label="查看值班周">
-            <WeekPicker label="值班周" value={weekStart} onChange={setWeekStart} />
-            <button type="button" onClick={() => setWeekStart(weekRange(dateKey()).start)}>
-              本周
-            </button>
-          </div>
-          <div className="roster-layout">
+          <div className="roster-schedule">
             <article className="react-card roster-primary">
-              <div className="card-title-row">
-                <div>
+              <div className="roster-published-toolbar">
+                <div className="roster-published-heading">
                   <h2>已发布班次</h2>
+                  <span data-motion-value="number" className="roster-count">
+                    {assignments.length} 个班次
+                  </span>
                 </div>
-                <span data-motion-value="number" className="roster-count">
-                  {assignments.length} 个班次
-                </span>
+                <div className="roster-week-nav" aria-label="查看值班周">
+                  <WeekPicker
+                    label="值班周"
+                    value={weekStart}
+                    onChange={setWeekStart}
+                    showWeekday={false}
+                  />
+                  <button type="button" onClick={() => setWeekStart(weekRange(dateKey()).start)}>
+                    本周
+                  </button>
+                </div>
               </div>
               {assignments.map((item) => (
                 <div
@@ -222,7 +227,7 @@ export function Roster({ user, requestSignal = 0 }) {
               {!assignments.length && (
                 <div className="empty-state">
                   <strong>所选周还没有已发布班次</strong>
-                  <span>班表发布后会在这里显示，开放填报可用时间仍可先提交。</span>
+                  <span>可在下方选择工作周，填报可用时间。</span>
                 </div>
               )}
             </article>
@@ -341,7 +346,7 @@ export function Roster({ user, requestSignal = 0 }) {
             {!leaves.length && !swaps.length && (
               <div className="empty-state">
                 <strong>还没有申请记录</strong>
-                <span>从班次卡发起请假或换班后，进展会显示在这里。</span>
+                <span>可从班次卡发起请假或换班。</span>
               </div>
             )}
           </article>

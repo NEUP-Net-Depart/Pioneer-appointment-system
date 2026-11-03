@@ -17,12 +17,12 @@ export function informationGroups(item,{photos=true,device=true,contacts=true,de
 }
 export function statusExplanation(item) {
   if(item.status==='booked' && item.reception?.leftAt)return '已离队 · 预约保留';
-  if(item.status==='booked' && item.reception?.state==='queued')return '已到场核验 · 待分派';
+  if(item.status==='booked' && item.reception?.state==='queued')return '';
   if(item.status==='booked' && item.reception?.state==='assigned')return '已分派 · 待现场核对';
   if(item.status==='expired')return expirationMessage;
   if(item.status==='booked' && item.source==='onsite' && item.registrationFlow!=='repair_followup')return '本次为现场临时登记，请与现场工作人员保持联系。';
   if(item.status==='booked')return Date.parse(slotDeadline(item.date,item.timeSlot))<=(item.serverNow ? Date.parse(item.serverNow) : Date.now()) ? '预约到场时段已结束，如已到现场或需要协助，请联系工作人员。' : '请在所选时段内到场，实际维修时间视现场情况而定。';
-  return item.status==='in_progress' ? '维修进行中' : item.status==='cancelled' ? '本次预约已取消。如仍需维修，请重新预约。' : '本次维修已结束。';
+  return '';
 }
 export function repairRecord(item) {
   if(!['completed','in_progress','cancelled'].includes(item.status))return '';

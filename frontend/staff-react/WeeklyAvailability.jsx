@@ -153,7 +153,23 @@ export function WeeklyAvailability({ tasks }) {
   }
   return (
     <section className="weekly-availability">
-      <h2>填报整周可用时间</h2>
+      <div className="weekly-heading">
+        <div>
+          <h2>填报整周可用时间</h2>
+          <p className="react-muted">按收集任务选择工作周，勾选可参加的日期与校区。</p>
+        </div>
+        {task && (
+          <span className="weekly-state" data-dirty={dirty}>
+            {dirty
+              ? '有未提交修改'
+              : submission
+                ? '已提交'
+                : task.actions?.fill
+                  ? '待填报'
+                  : '暂不可填报'}
+          </span>
+        )}
+      </div>
       {preferences
         .filter((item) => item.enabled)
         .map((item) => (
@@ -185,16 +201,33 @@ export function WeeklyAvailability({ tasks }) {
       {!tasks.length ? (
         <div className="empty-state">
           <strong>暂无开放任务</strong>
-          <span>负责人发布收集任务后，这里会出现整周填报入口。</span>
         </div>
       ) : (
         <form ref={navigationForm} onSubmit={submit}>
-          <CollectionScope
-            tasks={tasks}
-            taskId={taskId}
-            onChange={setTaskId}
-            disabled={busy || dirty}
-          />
+          <div className="weekly-scope">
+            <CollectionScope
+              tasks={tasks}
+              taskId={taskId}
+              onChange={setTaskId}
+              disabled={busy || dirty}
+            />
+            {task && (
+              <p className="weekly-deadline">
+                <span>填报截止</span>
+                <time data-motion-value="text" dateTime={task.deadline}>
+                  {new Date(task.deadline).toLocaleString('zh-CN', {
+                    timeZone: 'Asia/Shanghai',
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false
+                  })}
+                </time>
+              </p>
+            )}
+          </div>
           {task && (
             <>
               {task.collectionIssue && (
@@ -209,34 +242,46 @@ export function WeeklyAvailability({ tasks }) {
                     : '当前周收集已结束，可查看原填报。开放下一周时仍从这个任务填写。'}
                 </p>
               )}
-              <p data-motion-value="text" className="react-muted">
-                截止{' '}
-                {new Date(task.deadline).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}
-              </p>
-              <label className="roster-choice-row">
-                <input
-                  type="checkbox"
-                  checked={unavailable}
-                  disabled={busy || !task.actions?.fill}
-                  onChange={(event) => {
-                    setUnavailable(event.target.checked);
-                    setDirty(true);
-                  }}
-                />
-                整周无法参加
-              </label>
+              <div className="weekly-selection-heading">
+                <div>
+                  <h3>可参加日期与校区</h3>
+                  <p data-motion-value="text" className="react-muted">
+                    完整值班 · {task.slotStart}–{task.slotEnd}
+                  </p>
+                </div>
+                <label className="roster-choice-row">
+                  <input
+                    type="checkbox"
+                    checked={unavailable}
+                    disabled={busy || !task.actions?.fill}
+                    onChange={(event) => {
+                      setUnavailable(event.target.checked);
+                      setDirty(true);
+                    }}
+                  />
+                  整周无法参加
+                </label>
+              </div>
               {!selectableSlots.length && (
                 <p className="react-message">
                   本周没有可参加的服务日（暂停或范围已变化），可提交整周无法参加。
                 </p>
               )}
-              <fieldset disabled={busy || unavailable || !task.actions?.fill}>
+              <fieldset
+                className="weekly-days"
+                aria-label="可参加日期与校区"
+                disabled={busy || unavailable || !task.actions?.fill}
+              >
                 {Array.from({ length: 4 }, (_, i) => addDays(task.weekStart, i)).map(
                   (day, index) => (
                     <section data-motion-item="" className="weekly-day" key={day}>
                       <h3 data-motion-value="text">
-                        {['周一', '周二', '周三', '周四'][index]} · {day.slice(5)}
+                        <span>{['周一', '周二', '周三', '周四'][index]}</span>
+                        <time dateTime={day}>{day.slice(5)}</time>
                       </h3>
+                      {!selectableSlots.some((slot) => slot.businessDate === day) && (
+                        <p className="react-muted">当天暂无可选班次</p>
+                      )}
                       {task.campusScope.campusIds
                         .filter((campusId) =>
                           selectableSlots.some(
@@ -248,42 +293,45 @@ export function WeeklyAvailability({ tasks }) {
                             (row) => row.businessDate === day && row.campusId === campusId
                           );
                           return (
-                            <div key={campusId}>
-                              <label className="weekly-campus">
-                                <input
-                                  type="checkbox"
-                                  checked={!!window}
-                                  onChange={() => toggle(day, campusId)}
-                                />
-                                {campusNames[campusId]}校区
-                              </label>
-                              {window && (
-                                <p data-motion-value="text" className="react-muted">
-                                  完整值班 · {task.slotStart}–{task.slotEnd}
-                                </p>
-                              )}
-                            </div>
+                            <label
+                              className={`weekly-campus ${window ? 'is-selected' : ''}`}
+                              key={campusId}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={!!window}
+                                onChange={() => toggle(day, campusId)}
+                              />
+                              {campusNames[campusId]}校区
+                            </label>
                           );
                         })}
                     </section>
                   )
                 )}
               </fieldset>
-              <label className="roster-choice-row">
-                <input
-                  type="checkbox"
-                  checked={autoContinue}
-                  disabled={busy || !task.actions?.fill}
-                  onChange={(event) => {
-                    setAutoContinue(event.target.checked);
-                    setDirty(true);
-                  }}
-                />
-                后续同岗位收集自动延续本周选择
-              </label>
-              <p className="react-muted">
-                按星期和校区带入后续任务的完整班次。自动延续仍会检查资格和任务范围，不覆盖已经提交的内容，可随时关闭。
-              </p>
+              <div className="weekly-preferences">
+                <label className="roster-choice-row">
+                  <input
+                    type="checkbox"
+                    checked={autoContinue}
+                    disabled={busy || !task.actions?.fill}
+                    onChange={(event) => {
+                      setAutoContinue(event.target.checked);
+                      setDirty(true);
+                    }}
+                  />
+                  后续同岗位收集自动延续本周选择
+                </label>
+                {autoContinue && (
+                  <details className="workspace-help">
+                    <summary>自动延续规则</summary>
+                    <p>
+                      按星期和校区带入后续完整班次，不覆盖已提交内容；资格和任务范围变化时仍会校验。
+                    </p>
+                  </details>
+                )}
+              </div>
               {submission && (
                 <p data-motion-value="text" className="react-muted">
                   {submission.source === 'carried' ? '本周由自动延续提交' : '上次手动提交'}：
@@ -302,27 +350,39 @@ export function WeeklyAvailability({ tasks }) {
                   {notice}
                 </p>
               )}
-              <div className="field-actions">
-                {dirty && (
+              <div className="weekly-submitbar">
+                <div className="weekly-summary" aria-live="polite">
+                  <strong data-motion-value="text">
+                    {unavailable
+                      ? '整周无法参加'
+                      : windows.length
+                        ? `已选 ${new Set(windows.map((row) => row.businessDate)).size} 天 · ${windows.length} 个班次`
+                        : '尚未选择可参加日期'}
+                  </strong>
+                  <span>截止前可修改，提交后生效。</span>
+                </div>
+                <div className="field-actions">
+                  {dirty && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        setDirty(false);
+                        setReload((value) => value + 1);
+                      }}
+                    >
+                      放弃本次修改
+                    </button>
+                  )}
                   <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      setDirty(false);
-                      setReload((value) => value + 1);
-                    }}
+                    className="field-primary"
+                    disabled={
+                      busy || !task.actions?.fill || !dirty || (!unavailable && !windows.length)
+                    }
                   >
-                    放弃本次修改
+                    提交整周可用时间
                   </button>
-                )}
-                <button
-                  className="field-primary"
-                  disabled={
-                    busy || !task.actions?.fill || !dirty || (!unavailable && !windows.length)
-                  }
-                >
-                  提交整周可用时间
-                </button>
+                </div>
               </div>
             </>
           )}

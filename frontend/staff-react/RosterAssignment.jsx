@@ -72,6 +72,8 @@ export function RosterAssignmentControls({ row, member, office, onChange, onRepl
         <label>
           <input
             type="checkbox"
+            title="自动排班时保留此班次"
+            aria-description="自动排班时保留此班次"
             checked={!!row.locked}
             onChange={(event) => onChange({ ...row, locked: event.target.checked })}
           />
@@ -90,7 +92,6 @@ export function RosterAssignmentControls({ row, member, office, onChange, onRepl
           </label>
         )}
       </div>
-      <p className="react-muted">锁定后重新自动排班会保留此安排。</p>
       <div className="roster-assignment-actions">
         <button onClick={onReplace}>选择替换人员</button>
         <button className="roster-remove-person" onClick={onRemove}>

@@ -59,7 +59,7 @@ export function Empty({ title, children }: { title: string; children?: ReactNode
   return (
     <div className="field-empty">
       <strong data-motion-value="text">{title}</strong>
-      <p data-motion-value="text">{children}</p>
+      {children && <p data-motion-value="text">{children}</p>}
     </div>
   );
 }
@@ -296,9 +296,6 @@ export function CredentialCard({
           ? '请维修人员扫描，核对客户与设备后确认接单。'
           : '请工作人员使用本人账号扫描，核对校区与场次后确认签到。'}
       </p>
-      <small data-motion-value="text">
-        {repair ? '确认接单后才绑定维修人员。' : '记录本人到岗，不创建或绑定客户工单。'}
-      </small>
     </section>
   );
 }
@@ -328,6 +325,7 @@ export function Scanner({
 }) {
   const active = useContext(ActivityContext);
   const video = useRef<HTMLVideoElement>(null),
+    guide = useRef<HTMLSpanElement>(null),
     status = useRef<HTMLParagraphElement>(null),
     torch = useRef<HTMLButtonElement>(null),
     switcher = useRef<HTMLButtonElement>(null),
@@ -349,6 +347,7 @@ export function Scanner({
   useEffect(() => {
     const instance = createScanner({
       video: video.current!,
+      guide: guide.current,
       status: status.current!,
       torch: torch.current!,
       switchCamera: switcher.current!,
@@ -404,8 +403,10 @@ export function Scanner({
     <div className="field-scanner" data-mode={mode} data-layout={cameraLayout}>
       <div className="field-camera">
         <video ref={video} playsInline muted />
-        <span aria-hidden="true">
-          ┌<span>{mode === 'qr' ? '将二维码放入框内' : '对准机身 S/N 标签'}</span>┘
+        <span ref={guide} className="field-camera-guide" aria-hidden="true">
+          <span className="field-camera-hint">
+            {mode === 'qr' ? '将二维码放入框内' : '对准机身 S/N 标签'}
+          </span>
         </span>
         {cameraLayout === 'warranty' && (
           <div className="warranty-camera-bar">

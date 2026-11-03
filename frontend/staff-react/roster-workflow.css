@@ -1,13 +1,143 @@
 .roster-workflow {
   min-width: 0;
 }
+.roster-schedule {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.roster-primary {
+  container-type: inline-size;
+}
+.roster-published-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+.roster-published-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.roster-published-heading h2 {
+  margin: 0;
+}
+.field-app .roster-primary .roster-week-nav {
+  flex: 0 1 570px;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+}
+.roster-primary .week-picker {
+  flex: 1;
+}
+.roster-primary .week-picker > span {
+  font-size: 13px;
+  color: var(--muted);
+}
+.field-app .roster-primary .empty-state {
+  padding: 24px 0 4px;
+}
+@container (max-width: 600px) {
+  .field-app .roster-primary .roster-week-nav {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+  .roster-primary .week-picker,
+  .roster-primary .week-picker > div {
+    display: contents;
+  }
+  .roster-primary .week-picker > span {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+  .roster-primary .week-picker select {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    font-size: 13px;
+  }
+  .roster-primary .roster-week-nav button {
+    grid-column: auto;
+    grid-row: 3;
+    padding-inline: 8px;
+  }
+}
+.weekly-availability {
+  min-width: 0;
+  container-type: inline-size;
+}
+.weekly-heading,
+.weekly-selection-heading,
+.weekly-submitbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+}
+.weekly-heading {
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+.weekly-heading h2,
+.weekly-selection-heading h3 {
+  margin: 0;
+}
+.weekly-heading p,
+.weekly-selection-heading p {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.weekly-state {
+  flex-shrink: 0;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: var(--workspace-subtle);
+  color: var(--muted);
+  font-size: 12px;
+}
+.weekly-state[data-dirty='true'] {
+  color: var(--ink);
+  background: #fff3d6;
+}
 .weekly-availability form {
   display: grid;
-  gap: 16px;
+  gap: 20px;
 }
-.weekly-availability form > label {
+.weekly-scope {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 20px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--workspace-subtle);
+}
+.weekly-deadline {
   display: grid;
   gap: 8px;
+  margin: 0;
+  font-size: 13px;
+}
+.weekly-deadline > span {
+  color: var(--muted);
+}
+.weekly-deadline time {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  font-variant-numeric: tabular-nums;
+}
+.weekly-selection-heading h3 {
+  font-size: 15px;
 }
 .weekly-availability fieldset {
   border: 0;
@@ -15,23 +145,52 @@
   margin: 0;
   min-width: 0;
 }
+.weekly-days {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.weekly-days:disabled .weekly-day {
+  opacity: 0.6;
+}
 .field-app .weekly-availability label.roster-choice-row {
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: flex-start;
+  flex-wrap: nowrap;
   gap: 10px;
   min-height: 44px;
+  margin: 0;
+  line-height: 1.6;
 }
 .weekly-day {
-  border-top: 1px solid var(--ws-border, #e2e8f0);
-  padding: 16px 0;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
 }
 .weekly-day h3 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
   font-size: 15px;
   margin: 0 0 12px;
 }
+.weekly-day time {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.weekly-day > p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
 .field-app .weekly-availability label.weekly-campus {
+  box-sizing: border-box;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -39,6 +198,21 @@
   gap: 10px;
   min-height: 44px;
   margin: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.field-app .weekly-availability label.weekly-campus + label.weekly-campus {
+  margin-top: 8px;
+}
+.field-app .weekly-availability label.weekly-campus.is-selected {
+  border-color: var(--ink);
+  background: var(--workspace-subtle);
+}
+.field-app .weekly-availability label.weekly-campus:has(input:disabled) {
+  cursor: default;
 }
 .field-app .weekly-availability input[type='checkbox'] {
   width: 20px;
@@ -47,6 +221,30 @@
   flex: 0 0 20px;
   margin: 0;
   padding: 0;
+  accent-color: var(--ink);
+}
+.weekly-preferences,
+.weekly-submitbar {
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.weekly-preferences .workspace-help {
+  margin: 8px 0 0 30px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.weekly-summary {
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+}
+.weekly-summary > span {
+  font-size: 13px;
+  color: var(--muted);
+}
+.weekly-submitbar button {
+  min-height: 44px;
 }
 .weekly-availability > .react-message {
   display: flex;
@@ -68,9 +266,6 @@
   flex: 1;
   min-width: 160px;
   margin: 0;
-}
-.weekly-day .roster-time-fields {
-  margin-bottom: 12px;
 }
 .roster-workflow :is(button, input, select) {
   min-height: 44px;
@@ -99,7 +294,7 @@
 }
 .collection-scope {
   display: grid;
-  grid-template-columns: minmax(180px, 1.3fr) minmax(180px, 1fr);
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
   gap: 16px;
   flex: 1;
   min-width: 0;
@@ -127,6 +322,44 @@
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
+@container (max-width: 740px) {
+  .weekly-scope {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  .weekly-deadline {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .weekly-deadline time {
+    min-height: 0;
+  }
+  .weekly-days {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@container (max-width: 380px) {
+  .weekly-scope .collection-scope {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .weekly-scope {
+    padding: 12px;
+  }
+  .weekly-submitbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .weekly-submitbar .field-actions > button {
+    flex: 1 1 140px;
+  }
+}
+@container (max-width: 280px) {
+  .weekly-days {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .roster-range-actions {
   display: flex;
   gap: 8px;
@@ -153,6 +386,12 @@
 .roster-edit-hint {
   font-size: 13px;
   color: var(--muted);
+}
+/* Leave room for the live action bar and the mobile navigation when focusing
+   or scrolling to a person, an empty shift, or a validation issue. */
+.roster-board-layout :is(button, [tabindex]),
+.roster-issues button {
+  scroll-margin-block: 16px var(--roster-scroll-clearance, 160px);
 }
 .roster-editbar {
   position: sticky;
@@ -755,6 +994,11 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+.field-modal .roster-compose .roster-choice-row > button[aria-pressed='true'] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--workspace-surface, #fff);
 }
 .roster-choice-row > label {
   display: flex;

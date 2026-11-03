@@ -68,9 +68,7 @@ export function RosterImport({ taskId, draft, members, office, onClose, onSaved 
   return (
     <Modal title="导入值班表" onClose={onClose} dismissible={!busy}>
       <div className="roster-compose">
-        <p className="react-muted">
-          导入会替换当前未发布草稿。时间取本任务的班次；资格、人员范围、签到保护和发布规则仍按系统校验。
-        </p>
+        <p className="react-muted">导入会替换当前未发布草稿，班次时间沿用本任务设置。</p>
         {error && (
           <p className="react-error" role="alert">
             {error}
