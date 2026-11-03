@@ -176,6 +176,10 @@
     {
       "name": "0042_organization_permissions.sql",
       "sha256": "d603812e21918469de242adfcab4965f6ff2e4f8a93ae5d58c3da21b57b2e94b"
+    },
+    {
+      "name": "0043_contact_search_index.sql",
+      "sha256": null
     }
   ],
   "modules": [
