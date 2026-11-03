@@ -33,8 +33,8 @@ Pages 通过 Actions Direct Upload 发布，关闭自动 Git 构建。构建命�
 
 | 触发 | 目标与顺序 |
 | --- | --- |
-| 推送 `main` | 验证 → Production D1 迁移 → 联系方式索引预构建 → 发布 → HTTP smoke |
-| 推送 `dev` | 验证 → Preview 快照本地演练 → 共享 Preview D1 迁移 → 联系方式索引预构建 → 发布 → smoke |
+| 推送 `main` | 验证 → Production D1 迁移 → 发布 → HTTP smoke |
+| 推送 `dev` | 验证 → Preview 快照本地演练 → 共享 Preview D1 迁移 → 发布 → smoke |
 | 推送其他分支 | 验证 → 检查 dev schema 版本 → 分支 Preview 发布 → smoke；版本不匹配时暂缓发布，不迁移 |
 | 手动 CI | 仅非 `main` 分支，遵循对应分支规则 |
 | PR、标签、分支删除 | PR 仅验证；标签和删除不发布 |
@@ -47,23 +47,12 @@ Preview 演练仅将现有 D1 快照导出至临时本地数据库，应用待�
 
 | Environment | 允许分支 | Secret 与 Cloudflare 权限 |
 | --- | --- | --- |
-| `production` | `main` | `CLOUDFLARE_API_TOKEN`：D1 Edit、Pages Edit、R2 Storage Edit；`PII_ENCRYPTION_KEY` 匹配 Production Pages；变量 `SITE_URL` 为生产域名 |
+| `production` | `main` | `CLOUDFLARE_API_TOKEN`：D1 Edit、Pages Edit、R2 Storage Edit；变量 `SITE_URL` 为生产域名 |
 | `preview` | 普通 Preview 分支 | `CLOUDFLARE_PREVIEW_API_TOKEN`：Pages Edit |
-| `preview-migrations` | `dev` | `CLOUDFLARE_PREVIEW_D1_API_TOKEN`：D1 Edit，用于快照演练和远程迁移；`PII_ENCRYPTION_KEY` 匹配 Preview Pages |
+| `preview-migrations` | `dev` | `CLOUDFLARE_PREVIEW_D1_API_TOKEN`：D1 Edit，用于快照演练和远程迁移 |
 | `preview-maintenance` | `main` | `CLOUDFLARE_PREVIEW_MAINTENANCE_API_TOKEN`：D1 Edit、R2 Storage Edit |
 
 Token 限定目标账号，维护 Token 不提供给功能分支，R2 权限须支持删除。Pages Edit 无法仅限同项目 Preview。
-
-联系方式索引由远程迁移脚本在迁移成功后自动预构建，完成后才发布 Pages。运行在 CI 的 Node 进程中，每批最多处理 500 条 pending，复用现有解密、HMAC 和 generation 并发校验；日志只含数量和耗时。两个迁移环境须分别配置已有的 `PII_ENCRYPTION_KEY`，缺失或格式错误在迁移前停止，解密或索引失败停止后续发布。普通功能分支不执行预构建，也不获得此密钥。业务查询保留 pending 兜底，新写入或并发变更的联系方式仍可查找。
-
-大批量导入后可在授权的运维终端手动重跑，凭证和对应环境的既有密钥通过环境变量提供，默认只统计待处理数量：
-
-```bash
-node scripts/build-contact-index.mjs --preview --dry-run
-node scripts/build-contact-index.mjs --preview --apply
-```
-
-生产移除 `--preview`；失败后可重新执行，已完成的记录不再处理。
 
 ## 手动发布与回退
 
