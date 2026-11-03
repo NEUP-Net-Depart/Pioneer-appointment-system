@@ -2,7 +2,13 @@ import React from 'react';
 import { addDays, dateKey, weekRange } from '../../shared/time.js';
 
 // A week is selected as a Monday, rather than exposing irrelevant calendar days.
-export function WeekPicker({ value, onChange, disabled = false, label = '工作周' }) {
+export function WeekPicker({
+  value,
+  onChange,
+  disabled = false,
+  label = '工作周',
+  showWeekday = true
+}) {
   const current = weekRange(value || dateKey()).start;
   const options = Array.from({ length: 105 }, (_, i) => addDays(current, (i - 52) * 7));
   return (
@@ -25,7 +31,8 @@ export function WeekPicker({ value, onChange, disabled = false, label = '工作�
         >
           {options.map((day) => (
             <option key={day} value={day}>
-              {day} 周一 — {addDays(day, 6)}
+              {day}
+              {showWeekday ? ' 周一' : ''} — {addDays(day, 6)}
             </option>
           ))}
         </select>

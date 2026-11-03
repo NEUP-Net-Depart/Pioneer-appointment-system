@@ -503,9 +503,51 @@ test('member submits a whole week, keeps input between tabs and controls automat
   const created=await request.post('/api/roster-tasks',{headers:{Authorization:'Bearer '+login.token},data:{workflowVersion:1,weekStart:'2027-06-14',campusIds:['campus-nanhu','campus-hunnan'],slotStart:'19:00',slotEnd:'21:00',deadline:'2027-06-13T10:00:00Z',memberIds:['member-20261002'],requestId:crypto.randomUUID()}});expect(created.ok(),await created.text()).toBe(true);const task=await created.json();
   await page.goto('/staff/');await page.locator('#login-id').fill('20261002');await page.locator('#login-password').fill('StaffTest!2026');await page.getByRole('button',{name:'进入系统'}).click();await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();await expandGroup(page,'我的');await (await navigationEntry(page.locator('.field-sidebar'), '班次与排班')).click();
   const form=page.locator('.weekly-availability');await form.getByLabel('收集任务',{exact:true}).selectOption(task.id);await expect(form.getByLabel('南湖校区',{exact:true})).toHaveCount(4);await expect(form.getByLabel('浑南校区',{exact:true})).toHaveCount(0);
+  const published = page.locator('.roster-primary');
+  await expect(published.getByLabel('值班周', { exact: true })).toBeVisible();
+  await expect(form.getByLabel('值班周', { exact: true })).toHaveCount(0);
+  await expect(form.locator('.collection-period')).toContainText('2027-06-14 — 2027-06-17');
+  await expect(form.locator('.weekly-selection-heading')).toContainText('完整值班 · 19:00–21:00');
+  await expect(form.locator('.weekly-state')).toHaveText('待填报');
+  await expect(form.getByRole('button', { name: '提交整周可用时间', exact: true })).toBeDisabled();
   await form.getByLabel('南湖校区',{exact:true}).first().check();await form.getByLabel('后续同岗位收集自动延续本周选择',{exact:true}).check();
+  await expect(form.locator('.weekly-summary')).toContainText('已选 1 天 · 1 个班次');
+  await expect(form.locator('.weekly-state')).toHaveText('有未提交修改');
   await page.getByRole('button',{name:/我的申请/}).click();await page.getByRole('button',{name:/^班次/}).filter({hasNotText:'排班'}).first().click();await expect(form.getByLabel('南湖校区',{exact:true}).first()).toBeChecked();
-  for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:`output/field-workflow/weekly-availability-${width}.png`,fullPage:true});}
+  await expect(page.locator('#toast')).toHaveCSS('opacity', '0');
+  for (const width of [320, 390, 768, 1024, 1280, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const scheduleBox = await published.boundingBox();
+    const availabilityBox = await page.locator('.roster-secondary').boundingBox();
+    expect(availabilityBox.y).toBeGreaterThanOrEqual(scheduleBox.y + scheduleBox.height);
+    expect(availabilityBox.width).toBeCloseTo(scheduleBox.width, 0);
+    const overflow = await page.locator('.roster-schedule').locator('.weekly-scope, .collection-scope, .weekly-day, .weekly-campus, select').evaluateAll(nodes =>
+      nodes.filter(node => {
+        const box = node.getBoundingClientRect();
+        let container = node.parentElement;
+        while (getComputedStyle(container).display === 'contents') container = container.parentElement;
+        const parent = container.getBoundingClientRect();
+        return node.scrollWidth > node.clientWidth + 1 || box.left < parent.left - 1 || box.right > parent.right + 1;
+      }).map(node => node.className || node.tagName)
+    );
+    expect(overflow).toEqual([]);
+    const days = await form.locator('.weekly-day').evaluateAll(nodes => nodes.map(node => {
+      const { x, y, width, height } = node.getBoundingClientRect();
+      return { x, y, width, height };
+    }));
+    expect(days).toHaveLength(4);
+    if (width === 1440) {
+      expect(days[3].y).toBeCloseTo(days[0].y, 0);
+      expect(days[3].x).toBeGreaterThan(days[0].x + days[0].width);
+    } else if (width === 390 || width === 768) {
+      expect(days[1].y).toBeCloseTo(days[0].y, 0);
+      expect(days[2].y).toBeGreaterThan(days[0].y);
+    } else if (width === 320) {
+      expect(days[1].y).toBeGreaterThan(days[0].y);
+    }
+    await page.screenshot({ path: `output/field-workflow/weekly-availability-${width}.png`, fullPage: true });
+  }
   const sidebar=page.locator('.field-sidebar'),navigation=page.getByRole('dialog',{name:'有未保存的调整'});
   await (await navigationEntry(sidebar, '个人中心')).click();
   await navigation.getByRole('button',{name:'留在当前页面',exact:true}).click();
@@ -513,8 +555,13 @@ test('member submits a whole week, keeps input between tabs and controls automat
   await expect(form.getByLabel('南湖校区',{exact:true}).first()).toBeChecked();
   await form.getByRole('button',{name:'提交整周可用时间',exact:true}).click();
   await expect(form.getByText('整周可用时间已提交，截止前可以修改。',{exact:true})).toBeVisible();await expect(form.getByText('维修可用时间自动延续已开启',{exact:true})).toBeVisible();
+  await expect(form.locator('.weekly-state')).toHaveText('已提交');
   await form.getByRole('button',{name:'关闭后续自动延续',exact:true}).click();await expect(form.getByText('维修可用时间自动延续已开启',{exact:true})).toHaveCount(0);
   await form.getByLabel('整周无法参加',{exact:true}).check();
+  await expect(form.locator('.weekly-summary')).toContainText('整周无法参加');
+  for (const checkbox of await form.getByLabel('南湖校区', { exact: true }).all()) {
+    await expect(checkbox).toBeDisabled();
+  }
   await (await navigationEntry(sidebar, '个人中心')).click();
   await navigation.getByRole('button',{name:'丢弃并切换',exact:true}).click();
   await expect(form).toBeHidden();
