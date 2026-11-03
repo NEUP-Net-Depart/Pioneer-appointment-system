@@ -59,7 +59,8 @@ test('weekday capacity configuration discards unsaved edits and updates booked d
   const after=await (await root.request.get('/api/slot-capacities/actual?'+new URLSearchParams({campus:'南湖',date}),{headers})).json();expect(after.items).toEqual(before.items.map(row=>row.timeSlot===template.timeSlot?{...row,capacity:9}:row));expect(item.id).toContain('reserve');
   await root.getByRole('button',{name:'日期实际容量',exact:true}).click();await root.getByLabel('查看日期',{exact:true}).fill(date);
   const slot=root.getByRole('table',{name:'各时段预约名额'}).getByRole('row').filter({hasText:template.timeSlot});await expect(slot.getByRole('cell').nth(0)).toHaveText('9');
-  await expect(root.locator('.capacity-source')).toContainText('已有预约全部保留');
+  const retained=await root.request.get('/api/field/appointments/'+item.id,{headers});
+  expect(retained.ok(),await retained.text()).toBe(true);expect(await retained.json()).toMatchObject({id:item.id,status:'booked',campus:'南湖',date,timeSlot:template.timeSlot});
  }finally{
   if(token&&template){const headers={Authorization:`Bearer ${token}`},list=await(await root.request.get('/api/slot-capacities',{headers})).json(),latest=list.items.find(row=>row.campus===template.campus&&row.weekday===template.weekday&&row.timeSlot===template.timeSlot);await root.request.patch('/api/slot-capacities',{headers,data:{...latest,capacity:template.capacity}});}
   await Promise.all(contexts.map(c=>c.close()));

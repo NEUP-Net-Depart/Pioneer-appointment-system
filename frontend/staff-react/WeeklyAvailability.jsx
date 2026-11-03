@@ -185,7 +185,6 @@ export function WeeklyAvailability({ tasks }) {
       {!tasks.length ? (
         <div className="empty-state">
           <strong>暂无开放任务</strong>
-          <span>负责人发布收集任务后，这里会出现整周填报入口。</span>
         </div>
       ) : (
         <form ref={navigationForm} onSubmit={submit}>
@@ -281,9 +280,14 @@ export function WeeklyAvailability({ tasks }) {
                 />
                 后续同岗位收集自动延续本周选择
               </label>
-              <p className="react-muted">
-                按星期和校区带入后续任务的完整班次。自动延续仍会检查资格和任务范围，不覆盖已经提交的内容，可随时关闭。
-              </p>
+              {autoContinue && (
+                <details className="workspace-help">
+                  <summary>自动延续规则</summary>
+                  <p>
+                    按星期和校区带入后续完整班次，不覆盖已提交内容；资格和任务范围变化时仍会校验。
+                  </p>
+                </details>
+              )}
               {submission && (
                 <p data-motion-value="text" className="react-muted">
                   {submission.source === 'carried' ? '本周由自动延续提交' : '上次手动提交'}：

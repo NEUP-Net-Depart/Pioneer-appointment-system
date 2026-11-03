@@ -307,13 +307,14 @@ export function CollectionComposer({ office, onClose, onCreated, onError }) {
                       placeholder={office ? '办公可用时间收集' : '维修可用时间收集'}
                     />
                   </label>
-                  <p className="react-muted">
-                    发布一次即可。本次到期或提前结束后立即开放下一工作周；历史周可以同时重新开放补填。截止时间为值班前一周，北京时间。
-                  </p>
+                  <details className="workspace-help">
+                    <summary>每周收集规则</summary>
+                    <p>本次结束后立即收集下一工作周；历史周可重新开放补填。</p>
+                  </details>
                   {[['deadline', '填报截止']].map(([prefix, text]) => (
                     <div className="roster-time-fields" key={prefix}>
                       <label>
-                        {text}星期
+                        {text}星期（值班前一周）
                         <select
                           aria-label={`${text}星期`}
                           value={form.recurrence[`${prefix}Weekday`]}
@@ -334,7 +335,7 @@ export function CollectionComposer({ office, onClose, onCreated, onError }) {
                         </select>
                       </label>
                       <label>
-                        {text}时间
+                        {text}时间（北京时间）
                         <input
                           type="time"
                           required

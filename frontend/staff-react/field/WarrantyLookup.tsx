@@ -387,18 +387,6 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
         </select>
         <Notice>{providerError}</Notice>
         {provider?.id === 'huawei' && !provider.available && <Notice>{provider.message}</Notice>}
-        {brand && (
-          <p className="warranty-channel-summary" role="status">
-            <strong>
-              {provider?.available
-                ? '本页可查询'
-                : channel?.kind === 'miniapp'
-                  ? '微信小程序查询'
-                  : '前往原厂查询'}
-            </strong>
-            <span>{channel?.title}</span>
-          </p>
-        )}
         <label htmlFor={id + '-serial'}>序列号 / S/N / Service Tag</label>
         <div className="warranty-serial-control">
           <input
@@ -411,7 +399,6 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
             autoCorrect="off"
             spellCheck={false}
             autoComplete="off"
-            aria-describedby={id + '-hint'}
             onChange={(event) => changeSerial(event.target.value)}
             placeholder="输入机身序列号"
           />
@@ -450,7 +437,6 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
             }}
           />
         </div>
-        <small id={id + '-hint'}>核对易混淆字符：O / 0、I / 1。</small>
         {(albumNotice || albumResult) && (
           <div className="warranty-album-feedback" aria-label="相册识别结果">
             <div role="status" aria-live="polite">
@@ -616,13 +602,15 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
             >
               打开官方保修入口 ↗
             </a>
-            <small>默认中国大陆官方渠道。海外购买的设备，请在原厂页面切换对应地区。</small>
+            <details className="workspace-help">
+              <summary>海外设备查询</summary>
+              <p>默认中国大陆官方渠道。海外购买的设备，请在原厂页面切换对应地区。</p>
+            </details>
           </section>
         )}
         {captcha && (
           <fieldset className="warranty-captcha">
             <legend>原厂人工验证</legend>
-            <p>请完成人工验证，查询结果将显示在本页。</p>
             <button
               type="button"
               className="field-secondary"
@@ -812,7 +800,6 @@ function HumanWarrantyWidget({
         onLoad={start}
         className="warranty-widget"
       />
-      <small>仅将原厂挑战参数发送至独立验证视窗，序列号与预约系统登录凭据不发送至该视窗。</small>
     </>
   );
 }

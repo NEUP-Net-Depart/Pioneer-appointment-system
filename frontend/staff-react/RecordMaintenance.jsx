@@ -129,7 +129,6 @@ export function RecordMaintenance({ item, onChanged, busy: parentBusy }) {
   return (
     <section className="record-maintenance">
       <h3>记录管理</h3>
-      <p className="field-muted">仅在核实信息后使用，系统会记录操作人和原因。</p>
       <div className="field-actions">
         {item.canCorrect && (
           <button
@@ -160,11 +159,9 @@ export function RecordMaintenance({ item, onChanged, busy: parentBusy }) {
       {item.canCorrect && item.canManageFollowup && item.status === 'completed' && (
         <section className="record-followup-create">
           <h4>从此工单追加返修</h4>
-          <p className="field-muted">
-            {activeFollowup
-              ? '该维修链已有待处理申请或未完成返修，请先处理当前返修。'
-              : '建立待处理返修申请，之后由办公人员安排日期与时段；同一维修链最多一项未完成返修。'}
-          </p>
+          {activeFollowup && (
+            <p className="field-muted">该维修链已有待处理申请或未完成返修，请先处理当前返修。</p>
+          )}
           <label>
             返修情况
             <textarea

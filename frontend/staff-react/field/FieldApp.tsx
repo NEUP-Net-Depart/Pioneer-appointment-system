@@ -240,10 +240,16 @@ export function FieldApp({
               {campusName}校区 · {data?.businessDate}
             </p>
             <strong data-motion-value="text">{time(checkResult.occurredAt)}</strong>
-            <p data-motion-value="text" className="field-muted">
-              {checkResult.nonScheduled ? '非排班到场参与工作' : '当天排班已到岗'}
-              {checkResult.isExisting ? ' · 保留首次签到时间' : ''}
-            </p>
+            {(checkResult.nonScheduled || checkResult.isExisting) && (
+              <p data-motion-value="text" className="field-muted">
+                {[
+                  checkResult.nonScheduled ? '非排班到场参与工作' : '',
+                  checkResult.isExisting ? '保留首次签到时间' : ''
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+            )}
             <button className="field-primary" onClick={() => setCheckResult(null)}>
               返回工作台
             </button>

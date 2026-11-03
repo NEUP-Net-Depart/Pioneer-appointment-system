@@ -61,9 +61,11 @@ export function RosterTaskWorkspace({
     };
     const observer = new ResizeObserver(measure);
     observer.observe(bar);
+    window.addEventListener('resize', measure);
     measure();
     return () => {
       observer.disconnect();
+      window.removeEventListener('resize', measure);
       workspace.style.removeProperty('--roster-scroll-clearance');
     };
   }, [active, editable, showBoard]);
@@ -207,7 +209,6 @@ export function RosterTaskWorkspace({
               ))}
             </ul>
           </details>
-          {data.publishedVersion && <p className="react-muted">此次重新收集不改变当前有效班表。</p>}
         </section>
       )}
       {!collecting && stage !== 'scheduled' && (
@@ -256,7 +257,6 @@ export function RosterTaskWorkspace({
           {rows.some((row) => row.servicePaused) && (
             <section className="roster-paused-history">
               <h3>暂停日期 · 原安排保留</h3>
-              <p className="react-muted">暂停日不再安排新人员，已有班次与请假记录保留。</p>
               <ul>
                 {rows
                   .filter((row) => row.servicePaused)
@@ -412,11 +412,14 @@ export function RosterTaskWorkspace({
             </div>
             <aside className="roster-unassigned">
               <h3 data-motion-value="text">{office ? '人员班次数' : '尚未安排'}</h3>
-              <p data-motion-value="text" className="react-muted">
-                {office
-                  ? '同一成员每日最多一班。'
-                  : '负责人可以本周不排班。普通人员未安排的问题需在发布前处理。'}
-              </p>
+              <details className="workspace-help">
+                <summary>排班规则</summary>
+                <p>
+                  {office
+                    ? '同一成员每日最多一班。'
+                    : '负责人可以本周不排班。普通人员未安排的问题需在发布前处理。'}
+                </p>
+              </details>
               <label className="workspace-search-label">
                 查找待安排人员
                 <input

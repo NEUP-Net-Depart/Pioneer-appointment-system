@@ -38,6 +38,20 @@ export function RepairScene({
   presence,
   campusName
 }: Props) {
+  const reason =
+    (data.state === 'unsigned' &&
+      data.capability['attendance.self'] &&
+      data.reason === '请先完成该校区到岗签到') ||
+    (data.state === 'away' && data.reason === '请先返回岗位')
+      ? ''
+      : data.reason;
+  const description = data.currentRepair
+    ? `${data.currentRepair.brand} ${data.currentRepair.deviceModel} · ${data.currentRepair.faultType}`
+    : data.pendingRepair
+      ? `${queueTicketLabel(data.pendingRepair.reception?.ticket)} · ${data.pendingRepair.id} · ${data.pendingRepair.name || '请当面核对机主'} · ${data.pendingRepair.deviceModel} · ${data.pendingRepair.faultType}`
+      : data.nextInQueue
+        ? `${queueTicketLabel(data.nextInQueue.reception?.ticket)} · ${data.nextInQueue.deviceModel} · ${data.nextInQueue.faultType}`
+        : reason;
   return (
     <>
       <section className="field-hero">
@@ -66,15 +80,11 @@ export function RepairScene({
                         : '暂无可接单任务'}
             </MotionText>
           </h2>
-          <p data-motion-value="text" className="field-state-note">
-            {data.currentRepair
-              ? `${data.currentRepair.brand} ${data.currentRepair.deviceModel} · ${data.currentRepair.faultType}`
-              : data.pendingRepair
-                ? `${queueTicketLabel(data.pendingRepair.reception?.ticket)} · ${data.pendingRepair.id} · ${data.pendingRepair.name || '请当面核对机主'} · ${data.pendingRepair.deviceModel} · ${data.pendingRepair.faultType}`
-                : data.nextInQueue
-                  ? `${queueTicketLabel(data.nextInQueue.reception?.ticket)} · ${data.nextInQueue.deviceModel} · ${data.nextInQueue.faultType}`
-                  : data.reason || ''}
-          </p>
+          {description && (
+            <p data-motion-value="text" className="field-state-note">
+              {description}
+            </p>
+          )}
         </div>
         <div className="field-hero-action warranty-actions">
           {data.currentRepair ? (

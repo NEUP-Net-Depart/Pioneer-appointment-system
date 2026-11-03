@@ -151,9 +151,6 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
       <div className="capacity-section-heading">
         <div>
           <h2>暂停日期</h2>
-          <p className="field-muted">
-            选择本周、下周的维修日，可一次暂停或恢复多天。日期均为北京时间。
-          </p>
         </div>
         <button disabled={busy || loading} onClick={() => setRetry((value) => value + 1)}>
           {loading ? '正在读取…' : '读取最新安排'}
@@ -262,13 +259,13 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
       <div className="service-day-preview" role="region" aria-label="暂停公告预览">
         <h3>当日暂停维修</h3>
         <p data-motion-value="text">{reason.trim() || '该校区当日暂停维修，请选择其他日期。'}</p>
-        <small>
-          保存后自动出现在校区公告中，并在学生选择对应日期时显示；恢复或日期结束后停止展示。
-        </small>
       </div>
-      <p className="field-muted">
-        暂停当天的新预约、现场登记、开始维修和所有人员签到；办公和维修排班跳过此日。已有预约、班表和考勤保留，进行中的维修仍可完成。
-      </p>
+      <details className="workspace-help">
+        <summary>暂停影响范围</summary>
+        <p>
+          暂停当天的新预约、现场登记、开始维修和所有人员签到；办公和维修排班跳过此日。已有预约、班表和考勤保留，进行中的维修仍可完成。
+        </p>
+      </details>
       {affectedCount > 0 && (
         <p data-motion-value="text" className="service-day-impact">
           所选日期有 {affectedCount} 个预约需要联系机主，暂停不会自动取消预约。

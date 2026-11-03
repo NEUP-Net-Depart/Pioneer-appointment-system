@@ -345,9 +345,9 @@ export function Repair({
               }}
               className="field-form"
             >
-              {item.reception && (
+              {item.reception && item.canReceive && (
                 <small data-motion-value="text" className="field-state-note">
-                  {item.canReceive ? '重新到场 · 待核验' : '待现场核对'}
+                  重新到场 · 待核验
                 </small>
               )}
               {item.reception && !item.canReceive && (

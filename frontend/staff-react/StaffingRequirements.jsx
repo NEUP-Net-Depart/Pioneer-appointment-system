@@ -106,9 +106,6 @@ export function RequirementEditor({ taskId, onSaved, onDirty }) {
       {!data && (
         <section>
           <h3>快速设置</h3>
-          <p className="react-muted">
-            按本任务的日期、校区配置每日人员需求，保存前核对对应岗位规则。
-          </p>
           <fieldset disabled>
             <legend>整周设置</legend>
             <label>
@@ -200,15 +197,16 @@ export function RequirementEditor({ taskId, onSaved, onDirty }) {
                     />
                     {data.task.dutyType === 'office' ? '名办公人员' : '名普通人员'}
                   </span>
-                  {data.task.dutyType !== 'office' && <small>另含 1 名负责人</small>}
                 </label>
               ))}
             </div>
           </fieldset>
           <div className="field-actions">
-            <span data-motion-value="text" className="react-muted">
-              {dirty ? '有未保存的需求调整' : '已加载服务端需求'}
-            </span>
+            {dirty && (
+              <span data-motion-value="text" className="react-muted">
+                有未保存的需求调整
+              </span>
+            )}
             <button
               type="submit"
               className="field-primary"

@@ -139,7 +139,6 @@ export function LeaveReview({
       {!selected ? (
         <div className="empty-state">
           <strong>选择一份申请</strong>
-          <span>在这里查看签到事实、批准后的覆盖与申请原因。</span>
         </div>
       ) : (
         <>
@@ -163,7 +162,6 @@ export function LeaveReview({
                   ['批准后人员覆盖']
                 ]}
               />
-              <p className="field-muted">审批前需核对实际签到和人员覆盖，批准后保留到岗记录。</p>
             </>
           )}
           {current && (
@@ -430,7 +428,6 @@ export function LeaveReview({
             {!items.length && !list.loading && !list.error && (
               <div className="react-card empty-state">
                 <strong>当前没有符合条件的申请</strong>
-                <span>仅显示你有权审批的校区和部门。</span>
               </div>
             )}
           </section>

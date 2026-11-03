@@ -685,10 +685,11 @@ test('all workspaces share title geometry and scrollable navigation across scree
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width}px ${label} overflow`).toBe(true);
       expect(await route.locator('main').count()).toBe(0);
       // The spreadsheet fill handle is a pointer drag affordance; its equivalent toolbar actions are full-size buttons.
+      // Fractional translations can make a 44px target measure 43.999969px.
       const undersized = await route.locator('button:not(.capacity-editor-handle), summary').evaluateAll(nodes => nodes
         .filter(node => node.checkVisibility() && !node.closest('[inert]'))
         .map(node => ({ text: node.textContent.trim(), height: node.getBoundingClientRect().height, font: parseFloat(getComputedStyle(node).fontSize) }))
-        .filter(control => control.height < 44 || control.font < 14));
+        .filter(control => control.height < 43.99 || control.font < 14));
       expect(undersized, `${width}px ${label} readable controls`).toEqual([]);
       if (width === 768 && label === '现场工作台') {
         const customer = route.locator('.field-order > span:first-child').first();

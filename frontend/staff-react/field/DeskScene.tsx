@@ -301,50 +301,59 @@ export function DeskScene({
             placeholder="查找姓名、部门或身份"
           />
           <div className="field-people-list">
-            {visiblePeople.map((person, index, visible) => (
-              <React.Fragment key={person.memberId}>
-                {!showAvailable &&
-                  fieldPersonGroup(person) === 'other' &&
-                  (index === 0 || fieldPersonGroup(visible[index - 1]) !== 'other') && (
-                    <div className="field-person-divider">其他人员</div>
-                  )}
-                <div data-motion-item={person.memberId} className="field-person">
-                  <span data-motion-value="text" className="field-avatar">
-                    {person.name.slice(-2)}
-                  </span>
-                  <div>
-                    <div className="field-person-heading">
-                      <strong data-motion-value="text">{person.name}</strong>
-                      <Status value={person.state} />
-                    </div>
-                    <StaffIdentity identities={person.identities} />
-                    <small data-motion-value="text">
-                      {person.department || '工作人员'}
-                      {!person.scheduled ? ' · 非排班到岗' : ''}
-                    </small>
-                    {person.workload &&
-                      (person.workload.started > 0 || person.workload.completed > 0) && (
-                        <small data-motion-value="number">
-                          今日已接 {person.workload.started} · 已完成 {person.workload.completed}
+            {visiblePeople.map((person, index, visible) => {
+              const reason = person.reason?.replace(
+                /^(?:请先完成该校区到岗签到|请先返回岗位)(?: · |$)/,
+                ''
+              );
+              return (
+                <React.Fragment key={person.memberId}>
+                  {!showAvailable &&
+                    fieldPersonGroup(person) === 'other' &&
+                    (index === 0 || fieldPersonGroup(visible[index - 1]) !== 'other') && (
+                      <div className="field-person-divider">其他人员</div>
+                    )}
+                  <div data-motion-item={person.memberId} className="field-person">
+                    <span data-motion-value="text" className="field-avatar">
+                      {person.name.slice(-2)}
+                    </span>
+                    <div>
+                      <div className="field-person-heading">
+                        <strong data-motion-value="text">{person.name}</strong>
+                        <Status value={person.state} />
+                      </div>
+                      <StaffIdentity identities={person.identities} />
+                      {(person.department || (!person.scheduled && person.signedInAt)) && (
+                        <small data-motion-value="text">
+                          {[
+                            person.department,
+                            !person.scheduled && person.signedInAt ? '非排班到岗' : ''
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
                         </small>
                       )}
-                    {person.currentRepair ? (
-                      <button
-                        className="field-text"
-                        onClick={() => setSelected(person.currentRepair!.id)}
-                      >
-                        {person.currentRepair.deviceModel || '查看当前工单'}
-                      </button>
-                    ) : (
-                      person.reason &&
-                      !['请先完成该校区到岗签到', '请先返回岗位'].includes(person.reason) && (
-                        <small data-motion-value="text">{person.reason}</small>
-                      )
-                    )}
+                      {person.workload &&
+                        (person.workload.started > 0 || person.workload.completed > 0) && (
+                          <small data-motion-value="number">
+                            今日已接 {person.workload.started} · 已完成 {person.workload.completed}
+                          </small>
+                        )}
+                      {person.currentRepair ? (
+                        <button
+                          className="field-text"
+                          onClick={() => setSelected(person.currentRepair!.id)}
+                        >
+                          {person.currentRepair.deviceModel || '查看当前工单'}
+                        </button>
+                      ) : (
+                        reason && <small data-motion-value="text">{reason}</small>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </React.Fragment>
-            ))}
+                </React.Fragment>
+              );
+            })}
           </div>
           {people.length > 0 && !visiblePeople.length && <Empty title="没有匹配的现场人员" />}
           {!data.staffPresence && result.loading && <DataValue label="现场人员" />}

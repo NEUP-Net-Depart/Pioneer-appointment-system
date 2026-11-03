@@ -458,7 +458,6 @@ function WorkspacePending({ error, onRetry, code = false }) {
       ) : (
         <section className="field-card">
           <h2>今日工作概况</h2>
-          <p className="field-muted">查看到岗状态和当前任务，从对应岗位继续工作。</p>
           <DataFields fields={[['当前岗位'], ['到岗状态'], ['当前任务']]} />
         </section>
       )}

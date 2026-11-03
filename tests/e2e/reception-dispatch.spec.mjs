@@ -84,7 +84,7 @@ test('reception and worker share a real queued, returned, accepted and completed
     await panel.locator('summary').filter({hasText:'退回现场队列'}).click();
     await panel.getByLabel('原因',{exact:true}).fill('请接待重新确认安排');
     await panel.getByRole('button',{name:'退回现场队列',exact:true}).click();
-    await expect(panel.getByText('排队中 · 待分派',{exact:true})).toBeVisible();
+    await expect(panel.getByRole('list',{name:'维修进度'}).locator('[aria-current="step"]')).toHaveText('待分派');
     await page.reload();
     await page.getByRole('group',{name:'现场概览'}).getByRole('button',{name:/^排队中/}).click();
     await expect(page.locator('.field-order').filter({hasText:order.id})).toContainText('排队中');
