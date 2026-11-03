@@ -96,9 +96,11 @@ export function Records({ user }) {
     '设备',
     searchCapabilities?.identity && '姓名、学号',
     searchCapabilities?.contact && '完整联系方式'
-  ].filter(Boolean).join('、');
-  const ownCustomerSearch = searchCapabilities?.identityScope === 'own' &&
-    searchCapabilities?.contactScope === 'own';
+  ]
+    .filter(Boolean)
+    .join('、');
+  const ownCustomerSearch =
+    searchCapabilities?.identityScope === 'own' && searchCapabilities?.contactScope === 'own';
   const statusText =
     filters.status === 'all'
       ? '全部状态'
@@ -301,7 +303,9 @@ export function Records({ user }) {
           <div className="field-empty">
             <strong>没有符合条件的预约</strong>
             <p>
-              {filters.q ? '核查输入是否正确，并检查日期、校区和状态筛选。' : '调整日期、校区和状态筛选。'}
+              {filters.q
+                ? '核查输入是否正确，并检查日期、校区和状态筛选。'
+                : '调整日期、校区和状态筛选。'}
               {filters.q && ownCustomerSearch && '仅由你处理的工单可查姓名、学号和联系方式。'}
             </p>
             <button onClick={reset}>清除筛选</button>

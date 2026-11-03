@@ -47,12 +47,16 @@ export function AppointmentLookup({
     query = parseAppointmentSearch(value),
     numberQuery = !!query && /^\d+(?:-\d*)?$/.test(query.text),
     ready = !!query?.ready && (numberQuery || (contactEnabled && !!query.contact)),
-    contactHint = searchCapabilities?.contactScope === 'own' ? '本人经手工单的完整联系方式'
-      : searchCapabilities?.contactScope === 'today' ? '今日授权工单的完整联系方式'
-      : '授权范围内工单的完整联系方式',
-    placeholder = inputRole === 'textbox'
-      ? `编号、设备或故障${contactEnabled ? `、${contactHint}` : ''}`
-      : `预约编号${contactEnabled ? `或${contactHint}` : ''}`;
+    contactHint =
+      searchCapabilities?.contactScope === 'own'
+        ? '本人经手工单的完整联系方式'
+        : searchCapabilities?.contactScope === 'today'
+          ? '今日授权工单的完整联系方式'
+          : '授权范围内工单的完整联系方式',
+    placeholder =
+      inputRole === 'textbox'
+        ? `编号、设备或故障${contactEnabled ? `、${contactHint}` : ''}`
+        : `预约编号${contactEnabled ? `或${contactHint}` : ''}`;
   useEffect(() => {
     controller.current?.abort();
     setItems([]);
@@ -133,9 +137,11 @@ export function AppointmentLookup({
           else {
             setExpanded(true);
             setMessage(
-              items.length ? '请选择下方对应预约' : !contactEnabled
-                ? '可输入至少两位预约编号尾号查询'
-                : '请输入至少两位编号尾号，或完整的联系方式'
+              items.length
+                ? '请选择下方对应预约'
+                : !contactEnabled
+                  ? '可输入至少两位预约编号尾号查询'
+                  : '请输入至少两位编号尾号，或完整的联系方式'
             );
           }
         }}
@@ -180,7 +186,14 @@ export function AppointmentLookup({
       </form>
       <details className="workspace-help field-lookup-help">
         <summary>查询规则</summary>
-        <p>编号尾号查当天；含“-”的编号片段可跨日期查找。{!contactEnabled ? '' : searchCapabilities?.contactScope === 'own' ? '联系方式仅匹配本人接手的工单。' : '完整联系方式匹配当前校区可查看的现场工单。'}</p>
+        <p>
+          编号尾号查当天；含“-”的编号片段可跨日期查找。
+          {!contactEnabled
+            ? ''
+            : searchCapabilities?.contactScope === 'own'
+              ? '联系方式仅匹配本人接手的工单。'
+              : '完整联系方式匹配当前校区可查看的现场工单。'}
+        </p>
       </details>
       {pending && <p role="status">正在查找…</p>}
       {expanded && items.length > 0 && (
