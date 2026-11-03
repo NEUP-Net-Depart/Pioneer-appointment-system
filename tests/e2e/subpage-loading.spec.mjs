@@ -202,12 +202,12 @@ test('front desk keeps personnel labels without reporting zero while its board i
     await loginStaff(page);
     const summary = page.locator('.field-person-summary');
     await expect(summary).toBeVisible();
-    await expect(summary.getByLabel('可接单人数正在读取')).toHaveText('—');
+    await expect(summary.getByLabel('已到岗人数正在读取')).toHaveText('—');
     await expect(summary).toContainText('已到岗');
     await expect(page.getByRole('heading', { name: '现场人员', exact: true })).toBeVisible();
     await expect(page.locator('.field-people .workspace-skeleton')).toHaveCount(0);
     release();
     await expect(page.locator('.field-people-list')).toContainText('到岗人员');
-    await expect(summary).toContainText('可接单 1 人');
+    await expect(summary).toContainText('已到岗 1');
   } finally { release(); await page.unrouteAll({ behavior: 'wait' }); }
 });

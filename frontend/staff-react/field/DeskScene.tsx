@@ -1,7 +1,7 @@
 import { DataValue } from '../DataValue';
 import React from 'react';
 import { AnimatedValue } from '../AnimatedValue';
-import { Empty, Notice, Status, time } from './ui';
+import { Empty, Status } from './ui';
 import { StaffIdentity } from '../StaffIdentity';
 import { fieldPersonGroup } from '../../../shared/staff-identities.js';
 import { receptionStatus, queueTicketLabel } from '../../../shared/reception.js';
@@ -58,7 +58,7 @@ export function DeskScene({
     {
       value: 'booked',
       label: '未到场',
-      count: overview ? overview.notArrived + '/' + overview.total : '—'
+      count: overview?.notArrived ?? '—'
     },
     { value: 'queued', label: '排队中', count: overview?.queued ?? '—' },
     { value: 'in_progress', label: '维修中', count: overview?.repairing ?? '—' }
@@ -66,10 +66,7 @@ export function DeskScene({
   const selectedFilter = orderFilters.find((stage) => stage.value === filter);
   return (
     <>
-      <section className="field-overview">
-        <div>
-          <h2>客户接待与现场协作</h2>
-        </div>
+      <section className="field-overview" aria-label="现场操作">
         <div className="field-actions">
           {data.capability['repair.receive'] && (
             <button className="field-primary" onClick={() => setScanOpen(true)}>
@@ -90,10 +87,10 @@ export function DeskScene({
         {orderFilters.map(({ value, label, count }) => (
           <button
             key={value}
-            className={`field-metric-card ${value === 'all' ? 'field-metric-summary' : ''} ${filter === value ? 'selected' : ''}`}
-            aria-pressed={filter === value}
+            className={`field-metric-card ${tab === 'appointments' && filter === value ? 'selected' : ''}`}
+            aria-pressed={tab === 'appointments' && filter === value}
             onClick={() => {
-              setFilter(filter === value ? 'all' : value);
+              setFilter(tab === 'appointments' && filter === value ? 'all' : value);
               setTab('appointments');
             }}
           >
@@ -106,14 +103,14 @@ export function DeskScene({
           </button>
         ))}
         <button
-          className={`field-metric-card field-metric-people ${showAvailable ? 'selected' : ''}`}
-          aria-pressed={showAvailable}
+          className={`field-metric-card field-metric-people ${tab === 'people' && showAvailable ? 'selected' : ''}`}
+          aria-pressed={tab === 'people' && showAvailable}
           onClick={() => {
-            setShowAvailable(!showAvailable);
+            setShowAvailable(tab === 'people' ? !showAvailable : true);
             setTab('people');
           }}
         >
-          <span className="field-metric-label">空闲中</span>
+          <span className="field-metric-label">可接单</span>
           <strong>
             <AnimatedValue
               value={data.staffPresence ? people.filter((person) => person.canReceive).length : '—'}
@@ -121,155 +118,188 @@ export function DeskScene({
           </strong>
         </button>
       </div>
-      {data.capability['repair.dispatch'] &&
-        (data.appointments || []).some((item) => receptionStatus(item) === 'queued') &&
-        people.some((person) => person.canReceive) && (
-          <div className="reception-next" role="status">
-            <span>有工单待分派</span>
-            <button
-              onClick={() => {
-                setFilter('queued');
-                setTab('appointments');
-              }}
-            >
-              处理现场队列
-            </button>
-          </div>
-        )}
-      {data.capability['repair.transfer'] &&
-        people.some((p) => p.scheduled && p.state === 'unsigned') && (
-          <Notice>
-            有 {people.filter((p) => p.scheduled && p.state === 'unsigned').length}{' '}
-            位排班成员尚未签到，请核实到岗情况。
-          </Notice>
-        )}
+      <div className="field-desk-alerts">
+        {data.capability['repair.dispatch'] &&
+          (data.appointments || []).some((item) => receptionStatus(item) === 'queued') &&
+          people.some((person) => person.canReceive) && (
+            <div className="reception-next" role="status">
+              <span>有工单待分派</span>
+              <button
+                onClick={() => {
+                  setFilter('queued');
+                  setTab('appointments');
+                }}
+              >
+                处理现场队列
+              </button>
+            </div>
+          )}
+        {data.capability['repair.transfer'] &&
+          people.some((p) => p.scheduled && p.state === 'unsigned') && (
+            <div className="reception-next">
+              <span>
+                {people.filter((p) => p.scheduled && p.state === 'unsigned').length} 人待签到
+              </span>
+              <button
+                onClick={() => {
+                  setTab('people');
+                  setShowAvailable(false);
+                  setPeopleQuery('');
+                }}
+              >
+                查看到岗
+              </button>
+            </div>
+          )}
+      </div>
       <div className="field-mobile-tabs">
         <button
           className={tab === 'appointments' ? 'active' : ''}
+          aria-pressed={tab === 'appointments'}
           onClick={() => setTab('appointments')}
         >
           预约
         </button>
-        <button className={tab === 'people' ? 'active' : ''} onClick={() => setTab('people')}>
+        <button
+          className={tab === 'people' ? 'active' : ''}
+          aria-pressed={tab === 'people'}
+          onClick={() => setTab('people')}
+        >
           在岗人员
         </button>
       </div>
       <div className={`field-desk-grid tab-${tab}`}>
         <section className="field-card field-appointments">
-          <div className="field-section-heading">
-            <h2 data-motion-value="text">{selectedFilter?.label || '预约与现场队列'}</h2>
-            <span data-motion-value="number">
-              {items.length} 条{' '}
-              {filter !== 'all' && (
-                <button className="field-text" onClick={() => setFilter('all')}>
-                  显示全部
-                </button>
-              )}
-            </span>
+          <div className="field-queue-tools">
+            <div className="field-section-heading">
+              <h2 data-motion-value="text">{selectedFilter?.label || '预约与现场队列'}</h2>
+              <span data-motion-value="number">
+                {items.length} 条{' '}
+                {filter !== 'all' && (
+                  <button className="field-text" onClick={() => setFilter('all')}>
+                    显示全部
+                  </button>
+                )}
+              </span>
+            </div>
+            <input
+              className="field-search-input"
+              aria-label="搜索当日预约"
+              placeholder="搜索编号、设备或故障"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
-          <input
-            className="field-search-input"
-            aria-label="搜索当日预约"
-            placeholder="搜索编号、设备或故障"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
           <div className="field-table-head">
             <span>预约与设备</span>
             <span>时段</span>
             <span>状态</span>
             <span>维修人员</span>
+            <span>操作</span>
           </div>
-          {items.map((item) => (
-            <button
-              data-motion-item={item.id}
-              className="field-order"
-              key={item.id}
-              onClick={() => setSelected(item.id)}
-            >
-              <span>
-                <strong data-motion-value="text">
-                  {item.reception?.ticket && (
-                    <span data-motion-value="text" className="field-queue-number">
-                      {queueTicketLabel(item.reception.ticket)} ·{' '}
-                    </span>
-                  )}
-                  {item.deviceModel || item.deviceType}
-                  {item.registrationFlow === 'repair_followup' && (
-                    <span className="field-followup-badge">返修</span>
-                  )}
-                </strong>
-                <small data-motion-value="text">
-                  {item.id} · {item.faultType}
-                </small>
-              </span>
-              <span data-motion-value="text">
-                {item.timeSlot}
-                {item.servicePaused && <small>当日暂停维修</small>}
-              </span>
-              <Status value={receptionStatus(item)} />
-              <span data-motion-value="text">
-                {item.reception?.state === 'assigned'
-                  ? item.reception.assignedToName
-                  : item.assignedToName ||
-                    (item.reception?.leftAt
-                      ? '重新到场后排号'
-                      : item.reception?.state === 'queued'
-                        ? '等待分派'
-                        : item.status === 'in_progress'
-                          ? '维修处理中'
-                          : '—')}
-                {item.date < data.businessDate &&
-                  item.reception &&
-                  ['queued', 'assigned'].includes(item.reception.state) && (
-                    <small data-motion-value="text">跨日待处理 · {item.date}</small>
-                  )}
-              </span>
-            </button>
-          ))}
+          {items.map((item) => {
+            const carriedOver =
+              item.date < data.businessDate &&
+              item.reception &&
+              ['queued', 'assigned'].includes(item.reception.state);
+            const assignee =
+              item.reception?.state === 'assigned'
+                ? item.reception.assignedToName
+                : item.assignedToName ||
+                  (item.reception?.leftAt
+                    ? '重新到场后排号'
+                    : item.reception?.state === 'queued'
+                      ? '等待分派'
+                      : item.status === 'in_progress'
+                        ? '维修处理中'
+                        : '');
+            return (
+              <button
+                data-motion-item={item.id}
+                className="field-order"
+                key={item.id}
+                onClick={() => setSelected(item.id)}
+              >
+                <span>
+                  <strong data-motion-value="text">
+                    {item.reception?.ticket && (
+                      <span data-motion-value="text" className="field-queue-number">
+                        {queueTicketLabel(item.reception.ticket)} ·{' '}
+                      </span>
+                    )}
+                    {item.deviceModel || item.deviceType}
+                    {item.registrationFlow === 'repair_followup' && (
+                      <span className="field-followup-badge">返修</span>
+                    )}
+                  </strong>
+                  <small data-motion-value="text">
+                    {item.id} · {item.faultType}
+                  </small>
+                </span>
+                <span data-motion-value="text">
+                  {item.timeSlot}
+                  {item.servicePaused && <small>当日暂停维修</small>}
+                </span>
+                <Status value={receptionStatus(item)} />
+                <span
+                  data-motion-value="text"
+                  className="field-order-assignee"
+                  data-empty={!assignee && !carriedOver}
+                >
+                  {assignee || '—'}
+                  {carriedOver && <small data-motion-value="text">跨日待处理 · {item.date}</small>}
+                </span>
+                <span className="field-order-action">
+                  {receptionStatus(item) === 'booked' && data.capability['repair.receive']
+                    ? '核验到场'
+                    : receptionStatus(item) === 'queued' && data.capability['repair.dispatch']
+                      ? '分派维修'
+                      : item.status === 'in_progress'
+                        ? '查看维修'
+                        : '查看详情'}
+                  <span aria-hidden="true"> →</span>
+                </span>
+              </button>
+            );
+          })}
           {!data.appointments && result.loading && <DataValue label="今日预约" />}
           {data.appointments && !items.length && <Empty title="没有符合条件的预约" />}
         </section>
         <section className="field-card field-people">
           <div className="field-section-heading">
-            <h2>现场人员</h2>
+            <h2>{showAvailable ? '可接单人员' : '现场人员'}</h2>
+            {showAvailable && (
+              <button className="field-text" onClick={() => setShowAvailable(false)}>
+                显示全部人员
+              </button>
+            )}
           </div>
-          <p className="field-muted field-person-summary">
-            可接单{' '}
-            <DataValue label="可接单人数" pending={result.loading}>
-              {data.staffPresence ? people.filter((person) => person.canReceive).length : undefined}
-            </DataValue>{' '}
-            人 · 已到岗{' '}
-            <DataValue label="已到岗人数" pending={result.loading}>
-              {data.staffPresence ? people.filter((person) => person.signedInAt).length : undefined}
-            </DataValue>{' '}
-            人 · 维修排班{' '}
-            <DataValue label="维修排班人数" pending={result.loading}>
-              {data.staffPresence
-                ? people.filter((person) => person.scheduledRepair).length
-                : undefined}
-            </DataValue>{' '}
-            人 · 已到岗负责人{' '}
-            <DataValue label="已到岗负责人人数" pending={result.loading}>
-              {data.staffPresence
-                ? people.filter(
-                    (person) =>
-                      person.signedInAt &&
-                      person.identities?.some((identity) => identity.code === 'repair_lead')
-                  ).length
-                : undefined}
-            </DataValue>{' '}
-            人
-          </p>
-          <label className="workspace-search-label">
-            查找现场人员
-            <input
-              type="search"
-              value={peopleQuery}
-              onChange={(event) => setPeopleQuery(event.target.value)}
-              placeholder="姓名、部门或身份"
-            />
-          </label>
+          <div className="field-person-summary">
+            <span>
+              已到岗{' '}
+              <DataValue label="已到岗人数" pending={result.loading}>
+                {data.staffPresence
+                  ? people.filter((person) => person.signedInAt).length
+                  : undefined}
+              </DataValue>
+            </span>
+            <span>
+              维修排班{' '}
+              <DataValue label="维修排班人数" pending={result.loading}>
+                {data.staffPresence
+                  ? people.filter((person) => person.scheduledRepair).length
+                  : undefined}
+              </DataValue>
+            </span>
+          </div>
+          <input
+            type="search"
+            className="field-search-input field-people-search"
+            aria-label="查找现场人员"
+            value={peopleQuery}
+            onChange={(event) => setPeopleQuery(event.target.value)}
+            placeholder="查找姓名、部门或身份"
+          />
           <div className="field-people-list">
             {visiblePeople.map((person, index, visible) => (
               <React.Fragment key={person.memberId}>
@@ -283,20 +313,21 @@ export function DeskScene({
                     {person.name.slice(-2)}
                   </span>
                   <div>
-                    <strong data-motion-value="text">{person.name}</strong>
+                    <div className="field-person-heading">
+                      <strong data-motion-value="text">{person.name}</strong>
+                      <Status value={person.state} />
+                    </div>
                     <StaffIdentity identities={person.identities} />
                     <small data-motion-value="text">
                       {person.department || '工作人员'}
                       {!person.scheduled ? ' · 非排班到岗' : ''}
                     </small>
-                    {person.signedInAt && (
-                      <small data-motion-value="text">签到 {time(person.signedInAt)}</small>
-                    )}
-                    {person.workload && (
-                      <small data-motion-value="number">
-                        今日已接 {person.workload.started} · 已完成 {person.workload.completed}
-                      </small>
-                    )}
+                    {person.workload &&
+                      (person.workload.started > 0 || person.workload.completed > 0) && (
+                        <small data-motion-value="number">
+                          今日已接 {person.workload.started} · 已完成 {person.workload.completed}
+                        </small>
+                      )}
                     {person.currentRepair ? (
                       <button
                         className="field-text"
@@ -305,21 +336,19 @@ export function DeskScene({
                         {person.currentRepair.deviceModel || '查看当前工单'}
                       </button>
                     ) : (
-                      <small data-motion-value="text">{person.reason || '可以接待维修'}</small>
+                      person.reason &&
+                      !['请先完成该校区到岗签到', '请先返回岗位'].includes(person.reason) && (
+                        <small data-motion-value="text">{person.reason}</small>
+                      )
                     )}
                   </div>
-                  <Status value={person.state} />
                 </div>
               </React.Fragment>
             ))}
           </div>
-          {people.length > 0 && !visiblePeople.length && (
-            <Empty title="没有匹配的现场人员">更换搜索词或切换为查看全部人员。</Empty>
-          )}
+          {people.length > 0 && !visiblePeople.length && <Empty title="没有匹配的现场人员" />}
           {!data.staffPresence && result.loading && <DataValue label="现场人员" />}
-          {data.staffPresence && !people.length && (
-            <Empty title="暂无现场人员">展示工作人员签到码，成员扫码并确认后记录到岗。</Empty>
-          )}
+          {data.staffPresence && !people.length && <Empty title="暂无现场人员" />}
         </section>
       </div>
     </>

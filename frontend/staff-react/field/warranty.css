@@ -153,13 +153,8 @@
   aspect-ratio: auto;
   height: clamp(220px, min(45vh, 65vw), 380px);
 }
-.warranty-capture .field-camera > span span {
-  position: absolute;
-  left: 50%;
-  bottom: 54px;
-  margin: 0;
-  transform: translateX(-50%);
-  white-space: nowrap;
+.warranty-capture .field-camera-guide {
+  bottom: calc(104px + env(safe-area-inset-bottom));
 }
 .warranty-camera-bar {
   position: absolute;

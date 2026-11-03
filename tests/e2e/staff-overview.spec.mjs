@@ -80,9 +80,9 @@ test('a single authorized campus and failed overview refresh keep the last visib
 });
 test('column filters compose and stay visible after the modal closes',async({page})=>{
   await fixture(page);await page.getByRole('button',{name:'全部校区',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'浑南校区',exact:true}).click();await page.getByRole('button',{name:'完成',exact:true}).click();
-  await page.getByRole('button',{name:'全部状态',exact:true}).click();const pending=query(page);await page.getByRole('dialog').getByRole('button',{name:/^已完成/}).click();
+  await page.getByRole('button',{name:'更多预约状态',exact:true}).click();const pending=query(page);await page.getByRole('dialog').getByRole('button',{name:/^已完成/}).click();
   const p=new URL((await pending).url()).searchParams;expect(p.get('campus')).toBe('浑南');expect(p.get('status')).toBe('completed');await page.getByRole('button',{name:'完成',exact:true}).click();
-  await expect(page.locator('.records-toolbar')).toContainText('浑南校区');await expect(page.locator('.records-toolbar')).toContainText('已完成');
+  await expect(page.locator('.records-toolbar')).toContainText('浑南校区');await expect(page.getByRole('navigation',{name:'预约处理状态'}).getByRole('button',{name:'已完成',exact:true})).toHaveAttribute('aria-pressed','true');
 });
 test('column clicks cycle independently and preserve multi-sort priority',async({page})=>{
   await fixture(page);const campus=page.getByRole('button',{name:/^校区，/}),date=page.getByRole('button',{name:/^预约时间，/});

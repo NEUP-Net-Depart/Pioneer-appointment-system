@@ -87,7 +87,7 @@ export function Statistics() {
     : ['预约总数', '已完成维修', '修复成功率', '已取消', '已逾期'].map((name) => [name, '—']);
   return (
     <section className="report-workspace">
-      <WorkspaceHeader group="数据与审计" title="统计分析">
+      <WorkspaceHeader group="现场工作" title="统计分析">
         <button disabled={loading} onClick={() => setRevision((value) => value + 1)}>
           刷新统计
         </button>

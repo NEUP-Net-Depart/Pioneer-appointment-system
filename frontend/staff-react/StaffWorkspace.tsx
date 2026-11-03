@@ -1,12 +1,12 @@
-import { MotionCollapse } from './MotionCollapse';
-import { useDataMotion } from './useDataMotion';
-import React, { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import React, { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Modal } from './field/ui';
 import { WorkspaceLauncher } from './WorkspaceLauncher';
+import { WorkspaceIcon } from './WorkspaceIcon';
+import { groupWorkspaceEntries, mobileWorkspaceEntries } from './workspace-navigation.js';
 import { pendingEditors } from './useUnsavedChanges.js';
 import './field/field.css';
 
-type Entry = { id: string; label: string; group?: string };
+type Entry = { id: string; label: string; group?: string; icon?: string; keywords?: string };
 export function StaffWorkspace({
   children,
   name,
@@ -30,27 +30,34 @@ export function StaffWorkspace({
 }) {
   const [more, setMore] = useState(false);
   const sidebar = useRef<HTMLElement>(null);
-  useDataMotion(sidebar, !loading);
   const activeGroup = entries.find((entry) => entry.id === active)?.group || '其他';
-  const [expanded, setExpanded] = useState<string[]>(() => [
-    ...new Set(entries.map((entry) => entry.group || '其他'))
-  ]);
-  const knownGroups = useRef(new Set(entries.map((entry) => entry.group || '其他')));
-  useLayoutEffect(() => {
-    const added = [...new Set(entries.map((entry) => entry.group || '其他'))].filter(
-      (group) => !knownGroups.current.has(group)
-    );
-    if (!added.length) return;
-    added.forEach((group) => knownGroups.current.add(group));
-    setExpanded((current) => [...new Set([...current, ...added])]);
-  }, [entries]);
+  const [expanded, setExpanded] = useState<string[] | null>(null);
+  const expandedGroups = expanded ?? [activeGroup];
+  // Resolving the initial workbench scene must not close a group being browsed.
+  const activePage = active.startsWith('scene:') ? 'workbench' : active;
   useEffect(() => {
-    setExpanded((current) => (current.includes(activeGroup) ? current : [...current, activeGroup]));
-  }, [activeGroup]);
+    setExpanded(null);
+  }, [activePage]);
+  useEffect(() => {
+    const find = (event: KeyboardEvent) => {
+      if (
+        event.key.toLowerCase() !== 'k' ||
+        !(event.ctrlKey || event.metaKey) ||
+        event.altKey ||
+        event.shiftKey ||
+        document.querySelector('dialog[open]')
+      )
+        return;
+      event.preventDefault();
+      setMore(true);
+    };
+    window.addEventListener('keydown', find);
+    return () => window.removeEventListener('keydown', find);
+  }, []);
   useEffect(() => {
     const nav = sidebar.current?.querySelector('nav');
     const entry = nav?.querySelector<HTMLElement>('[aria-current="page"]');
-    if (!nav || !entry) return;
+    if (!nav || !entry || entry.closest('[hidden]')) return;
     const bounds = nav.getBoundingClientRect(),
       item = entry.getBoundingClientRect();
     if (item.top < bounds.top) nav.scrollTop -= bounds.top - item.top + 8;
@@ -72,6 +79,7 @@ export function StaffWorkspace({
     finishNavigation(id);
   }
   function finishNavigation(id: string) {
+    if (id.startsWith('scene:')) setExpanded(null);
     if (id === '__logout__') onLogout();
     else onSelect(id);
   }
@@ -107,18 +115,8 @@ export function StaffWorkspace({
       setResolving(false);
     }
   }
-  const groups = ['今日工作', '我的', '值班管理', '平台管理', '业务管理', '数据与审计', '其他']
-    .map((label) => ({
-      label,
-      items: entries.filter((entry) => (entry.group || '其他') === label)
-    }))
-    .filter((group) => group.items.length);
-  const primary = entries
-    .filter((entry) => entry.id.startsWith('scene:') && entry.id !== 'scene:mine')
-    .slice(0, 2);
-  const mine = entries.find((entry) => entry.id === 'scene:mine');
-  if (mine) primary.push(mine);
-  if (!primary.length) primary.push(...entries.slice(0, 3));
+  const groups = groupWorkspaceEntries(entries);
+  const primary: Entry[] = mobileWorkspaceEntries(entries);
   const overflow = entries.filter((entry) => !primary.some((item) => item.id === entry.id));
   return (
     <div className={`field-app${loading ? ' workspace-bootstrap' : ''}`} aria-busy={loading}>
@@ -129,6 +127,15 @@ export function StaffWorkspace({
             先锋<span>工作人员平台</span>
           </span>
         </a>
+        <button
+          className="workspace-find"
+          type="button"
+          aria-keyshortcuts="Control+k Meta+k"
+          onClick={() => setMore(true)}
+        >
+          <WorkspaceIcon name="search" />
+          查找功能
+        </button>
         <nav aria-label="岗位工作导航">
           {loading && (
             <div className="workspace-skeleton" aria-hidden="true">
@@ -143,25 +150,22 @@ export function StaffWorkspace({
                 <button
                   className="workspace-group-toggle"
                   type="button"
-                  aria-expanded={expanded.includes(group.label)}
+                  aria-expanded={expandedGroups.includes(group.label)}
                   onClick={() =>
                     setExpanded((current) =>
-                      current.includes(group.label)
-                        ? current.filter((item) => item !== group.label)
-                        : [...current, group.label]
+                      (current ?? [activeGroup]).includes(group.label) ? [] : [group.label]
                     )
                   }
                 >
                   {group.label}
                   <span data-motion-value="text" aria-hidden="true">
-                    {expanded.includes(group.label) ? '−' : '+'}
+                    {expandedGroups.includes(group.label) ? '−' : '+'}
                   </span>
                 </button>
               </h2>
-              <MotionCollapse open={expanded.includes(group.label)}>
+              <div className="workspace-nav-items" hidden={!expandedGroups.includes(group.label)}>
                 {group.items.map((entry) => (
                   <button
-                    data-motion-item={entry.id}
                     key={entry.id}
                     type="button"
                     className={active === entry.id ? 'active' : ''}
@@ -171,11 +175,11 @@ export function StaffWorkspace({
                     onTouchStart={() => onPrepare?.(entry.id)}
                     onClick={() => choose(entry.id)}
                   >
-                    <span className="field-nav-dot" />
+                    <WorkspaceIcon name={entry.icon} />
                     {entry.label}
                   </button>
                 ))}
-              </MotionCollapse>
+              </div>
             </section>
           ))}
         </nav>
@@ -209,6 +213,7 @@ export function StaffWorkspace({
             onTouchStart={() => onPrepare?.(entry.id)}
             onClick={() => choose(entry.id)}
           >
+            <WorkspaceIcon name={entry.icon} />
             {entry.id === 'scene:mine'
               ? '我的'
               : entry.label === '工作台'
@@ -222,6 +227,7 @@ export function StaffWorkspace({
             className={overflow.some((entry) => entry.id === active) ? 'active' : ''}
             onClick={() => setMore(true)}
           >
+            <WorkspaceIcon name="more" />
             更多
           </button>
         )}
@@ -288,7 +294,7 @@ export function StaffWorkspace({
         </Modal>
       )}
       {more && (
-        <Modal title="工作入口" onClose={() => setMore(false)}>
+        <Modal title="工作入口" initialFocus="input[type=search]" onClose={() => setMore(false)}>
           <WorkspaceLauncher
             groups={groups}
             active={active}

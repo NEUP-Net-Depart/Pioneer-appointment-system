@@ -725,10 +725,9 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
                       onClose();
                     }}
                   >
-                    采用此保修情况
+                    填入此保修情况
                   </button>
                 )}
-                {onUseStatus && <small>采用结果只填写当前核验表单，仍需按原流程确认后保存。</small>}
               </>
             )}
           </section>

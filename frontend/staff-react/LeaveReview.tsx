@@ -340,7 +340,7 @@ export function LeaveReview({
   return (
     <section className="workspace-module">
       <section className="react-page leave-review">
-        <WorkspaceHeader group="值班管理" title="请假审批">
+        <WorkspaceHeader group="排班考勤" title="请假审批">
           <button disabled={list.loading || busy} onClick={() => setRevision((value) => value + 1)}>
             刷新申请
           </button>

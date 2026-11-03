@@ -160,8 +160,8 @@ export function RepairScene({
           ) : (
             <p data-motion-value="text" className="field-muted">
               {data.identities?.some((identity) => identity.code === 'exchange')
-                ? '交流人员不参与维修排班、填报或换班。到场后扫描工作人员签到码，签到后即可参与维修。'
-                : '今天没有排班。具备资格的成员仍可到场签到。'}
+                ? '交流参与 · 无需排班'
+                : '今日无排班'}
             </p>
           )}
           {data.state === 'available' && (

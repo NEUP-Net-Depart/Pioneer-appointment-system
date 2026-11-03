@@ -91,7 +91,7 @@ export function FieldApp({
     <>
       <section className="field-content" aria-busy={result.loading}>
         <WorkspaceHeader
-          group={scene === 'mine' ? '我的' : '今日工作'}
+          group={scene === 'mine' ? '我的' : '现场工作'}
           title={
             scene === 'mine'
               ? '个人中心'
@@ -119,15 +119,13 @@ export function FieldApp({
               </select>
             </label>
           </div>
-        </WorkspaceHeader>
-        <Notice>{message || result.error}</Notice>
-        {data?.directAttendance?.allowed && !data.presence && scene !== 'repair' && (
-          <div className="field-actions">
-            <button className="field-primary" disabled={busy} onClick={openAttendance}>
+          {data?.directAttendance?.allowed && !data.presence && scene === 'desk' && (
+            <button disabled={busy} onClick={openAttendance}>
               本人到岗签到
             </button>
-          </div>
-        )}
+          )}
+        </WorkspaceHeader>
+        <Notice>{message || result.error}</Notice>
         <div className="workspace-update" role="status" aria-live="polite">
           {result.loading ? '正在更新当前区域…' : ''}
         </div>
@@ -148,7 +146,6 @@ export function FieldApp({
                   ['当前工单']
                 ]}
               />
-              <p className="field-muted">签到、接单与协调操作将在核对当前岗位和任务后显示。</p>
             </section>
           )
         ) : (
@@ -221,9 +218,7 @@ export function FieldApp({
               />
             )}
             <footer className="field-footer">
-              <span data-motion-value="text">
-                更新于 {time(data.updatedAt)} · 页面可见时每 30 秒更新
-              </span>
+              <span data-motion-value="text">更新于 {time(data.updatedAt)}</span>
               <button onClick={refresh}>刷新</button>
             </footer>
           </>

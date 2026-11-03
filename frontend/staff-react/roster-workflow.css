@@ -154,6 +154,12 @@
   font-size: 13px;
   color: var(--muted);
 }
+/* Leave room for the live action bar and the mobile navigation when focusing
+   or scrolling to a person, an empty shift, or a validation issue. */
+.roster-board-layout :is(button, [tabindex]),
+.roster-issues button {
+  scroll-margin-block: 16px var(--roster-scroll-clearance, 160px);
+}
 .roster-editbar {
   position: sticky;
   bottom: 16px;
@@ -755,6 +761,11 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+.field-modal .roster-compose .roster-choice-row > button[aria-pressed='true'] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--workspace-surface, #fff);
 }
 .roster-choice-row > label {
   display: flex;

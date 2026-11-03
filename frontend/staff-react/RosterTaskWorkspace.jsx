@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from 'react';
 import { MotionMeter } from './MotionMeter';
 import { WorkspaceMoreActions } from './WorkspaceMoreActions';
 import { StaffIdentity } from './StaffIdentity';
@@ -46,6 +47,26 @@ export function RosterTaskWorkspace({
   showBoard,
   assignmentCount
 }) {
+  const editbar = useRef(null);
+  useLayoutEffect(() => {
+    const bar = editbar.current;
+    if (!active || !bar) return;
+    const workspace = bar.closest('.roster-workflow');
+    const measure = () => {
+      const bottom = parseFloat(getComputedStyle(bar).bottom) || 0;
+      workspace.style.setProperty(
+        '--roster-scroll-clearance',
+        `${bar.getBoundingClientRect().height + bottom + 16}px`
+      );
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(bar);
+    measure();
+    return () => {
+      observer.disconnect();
+      workspace.style.removeProperty('--roster-scroll-clearance');
+    };
+  }, [active, editable, showBoard]);
   return (
     <>
       <div className="roster-view-tabs" role="tablist" aria-label="本周工作内容">
@@ -65,7 +86,6 @@ export function RosterTaskWorkspace({
         >
           班表与调整
         </button>
-        {!draft && <span>结束收集并自动排班后，在这里调整班表</span>}
       </div>
       <>
         {data.allSuspended && (
@@ -98,12 +118,12 @@ export function RosterTaskWorkspace({
               : collecting && collectionView
                 ? `${data.progress.submitted} / ${data.progress.total} 人已提交 · 截止 ${new Date(task.deadline).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`
                 : stage === 'published'
-                  ? '成员正在使用当前班表。修改时先建立修订稿，确认后再发布。'
+                  ? '当前班表生效中'
                   : dirty
-                    ? '有未保存调整，请先保存并校验。'
+                    ? '调整尚未保存'
                     : data.publishedVersion
-                      ? '原班表继续生效，修订发布后才会替换。'
-                      : '完成覆盖和资格检查后，成员才能看到班次。'}
+                      ? '修订中 · 原班表生效中'
+                      : '草稿 · 尚未发布'}
           </p>
         </div>
         <div>
@@ -147,7 +167,6 @@ export function RosterTaskWorkspace({
         <section className="roster-collection">
           <div className="roster-section-title">
             <h2>收集情况</h2>
-            <span>填报人数反映已提交，不代表一定可覆盖全部班次</span>
           </div>
           <MotionMeter
             progress
@@ -505,7 +524,7 @@ export function RosterTaskWorkspace({
             </section>
           )}
           {editable && (
-            <div className="roster-editbar">
+            <div className="roster-editbar" ref={editbar}>
               <div>
                 <strong data-motion-value="text">
                   {dirty

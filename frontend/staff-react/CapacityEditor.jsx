@@ -810,10 +810,6 @@ export function CapacityEditor({ active, onNavigate }) {
           </div>
           <details className="capacity-quick-tools">
             <summary>批量填写与复制</summary>
-            <p className="capacity-sheet-hint field-muted">
-              拖动或按住 Shift 选择多个单元格后，直接输入人数即可同步填写整个选区；支持拖动填充和
-              Ctrl C / V，修改后预览保存。
-            </p>
             <form onSubmit={quickFill}>
               <label>
                 统一人数

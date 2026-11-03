@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { staffSession, mockStaff, loginStaff, staffPage } from './support/staff.mjs';
+import { staffSession, mockStaff, loginStaff, staffPage, navigationEntry } from './support/staff.mjs';
 import { test, expect } from '@playwright/test';
 
 test('member import previews preserve blank values and show changes, skips and conflicts on mobile', async ({ page }) => {
@@ -77,7 +77,7 @@ test('member pages append without duplicates and an obsolete page cannot replace
   await root.locator('#login-view').getByLabel('学号', { exact: true }).fill('root001');
   await root.locator('#login-view').getByLabel('密码', { exact: true }).fill('test-password');
   await root.getByRole('button', { name: '进入系统' }).click();
-  await root.getByRole('button', { name: '人员管理', exact: true }).first().click();
+  await (await navigationEntry(page.locator('.field-sidebar'), '人员管理')).click();
   await expect(root.getByText('第一位成员', { exact: true })).toBeVisible();
   await root.getByRole('button', { name: '加载更多成员' }).click();
   await expect(root.locator('.react-toolbar').getByRole('status')).toHaveText('已显示 3 名成员');
@@ -104,7 +104,7 @@ test('personnel management creates a single member, edits memberships, and maint
   await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': '192.0.2.219' });
   await loginStaff(page, 'root001', process.env.E2E_ROOT_PASSWORD);
   await staffPage(page, '人员管理');
-  await expect(page.locator('.field-sidebar').getByRole('button', { name: '账号管理', exact: true })).toHaveCount(0);
+  await expect(page.locator('.field-sidebar').getByRole('button', { name: '账号管理', exact: true, includeHidden: true })).toHaveCount(0);
   await page.getByRole('button', { name: '新增人员', exact: true }).click();
   const create = page.getByRole('dialog', { name: '新增人员', exact: true });
   await create.getByLabel('学号', { exact: true }).fill('20987701');
