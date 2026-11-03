@@ -40,9 +40,11 @@ export function scanService(appointments, service, secret, clock = () => new Dat
     },
     async search(input, actor) {
       const query = parseAppointmentSearch(input.q);
-      if (!query) fail(400, '请输入预约编号中的数字');
+      if (!query) fail(400, '请输入预约编号或完整联系方式');
+      if (input.mode !== undefined && !['number', 'contact'].includes(input.mode))
+        fail(400, '查询方式不正确');
       if (!query.ready) return { items: [], hasMore: false };
-      return field.search(actor,query);
+      return field.search(actor,{ ...query, mode: input.mode, campusId: input.campusId });
     },
     async current(actor, registrationRequestId) {
       await expire(clock(), { campuses: actor.authorizedCampuses });

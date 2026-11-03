@@ -1,21 +1,22 @@
 import { DataValue } from '../DataValue';
-import React from 'react';
+import React, { useState } from 'react';
 import { AnimatedValue } from '../AnimatedValue';
 import { Empty, Status } from './ui';
 import { StaffIdentity } from '../StaffIdentity';
+import { AppointmentLookup } from './AppointmentLookup';
 import { fieldPersonGroup } from '../../../shared/staff-identities.js';
 import { receptionStatus, queueTicketLabel } from '../../../shared/reception.js';
 import type { useFieldWorkspace } from './useFieldWorkspace';
 type Props = Pick<
   ReturnType<typeof useFieldWorkspace> & Parameters<typeof useFieldWorkspace>[0],
   | 'key'
+  | 'active'
   | 'setSelected'
   | 'setRegistration'
   | 'setScanOpen'
   | 'busy'
   | 'filter'
   | 'setFilter'
-  | 'search'
   | 'setSearch'
   | 'tab'
   | 'setTab'
@@ -32,13 +33,13 @@ type Props = Pick<
 >;
 export function DeskScene({
   key,
+  active,
   setSelected,
   setRegistration,
   setScanOpen,
   busy,
   filter,
   setFilter,
-  search,
   setSearch,
   tab,
   setTab,
@@ -53,6 +54,7 @@ export function DeskScene({
   people,
   visiblePeople
 }: Props) {
+  const [searchActive, setSearchActive] = useState(false);
   const overview = data.overview;
   const orderFilters = [
     {
@@ -182,12 +184,17 @@ export function DeskScene({
                 )}
               </span>
             </div>
-            <input
-              className="field-search-input"
-              aria-label="搜索当日预约"
-              placeholder="搜索编号、设备或故障"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+            <AppointmentLookup
+              active={active}
+              disabled={busy}
+              onSelect={setSelected}
+              onChange={setSearch}
+              onSearchActivityChange={setSearchActive}
+              label="搜索当日预约"
+              inputRole="textbox"
+              hasLocalMatches={items.length > 0}
+              campusId={data.campusId}
+              searchCapabilities={data.searchCapabilities}
             />
           </div>
           <div className="field-table-head">
@@ -263,7 +270,9 @@ export function DeskScene({
             );
           })}
           {!data.appointments && result.loading && <DataValue label="今日预约" />}
-          {data.appointments && !items.length && <Empty title="没有符合条件的预约" />}
+          {data.appointments && !items.length && !searchActive && (
+            <Empty title="没有符合条件的预约" />
+          )}
         </section>
         <section className="field-card field-people">
           <div className="field-section-heading">

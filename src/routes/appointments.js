@@ -1,5 +1,6 @@
 import { json, readBody } from '../lib/http.js';
 import { appointmentQuery, appointmentPatch, bookingInput, bookingRequestKey, liveQuery } from '../lib/validation.js';
+import { appointmentContactTerm } from '../../shared/appointment-search.js';
 
 export const appointmentRoutes = [
   ['POST', /^\/api\/appointments\/([^/]+)\/repair-followups\/([^/]+)\/queue-exit$/, async (context,match) => {
@@ -29,7 +30,9 @@ export const appointmentRoutes = [
   }],
   ['GET', /^\/api\/appointments$/, async context => {
     const user = await context.role('technician');
-    return json(await context.services.appointments.list(appointmentQuery(context.query), user));
+    const query = appointmentQuery(context.query);
+    if (appointmentContactTerm(query.q)) await context.limit('scanSearch');
+    return json(await context.services.appointments.list(query, user));
   }],
   ['POST', /^\/api\/appointments$/, async context => {
     await context.limit('write');

@@ -14,11 +14,16 @@ test('reception stages preserve the five appointment statuses after rescheduling
 });
 
 test('shared search parser distinguishes tail fragments from cross-date numbers', () => {
-  for (const value of ['', '-01', '10--01', 'test01', '01%', '1'.repeat(81), null]) assert.equal(parseAppointmentSearch(value), null);
+  for (const value of ['', '-01', '10--01', '01%', '1'.repeat(81), null]) assert.equal(parseAppointmentSearch(value), null);
   assert.equal(parseAppointmentSearch('0').ready, false);
   assert.deepEqual(parseAppointmentSearch('01'), {text:'01', acrossDates:false, ready:true});
   for (const value of ['1015-01', 'reserve1015-01', ' REVERSE1015-01 ']) assert.deepEqual(parseAppointmentSearch(value), {text:'1015-01', acrossDates:true, ready:true});
   assert.equal(parseAppointmentSearch('1015-').ready, true);
+  assert.deepEqual(parseAppointmentSearch('13800138000'), {text:'13800138000',acrossDates:false,ready:true,contact:true});
+  assert.deepEqual(parseAppointmentSearch('12345'), {text:'12345',acrossDates:false,ready:true,contact:true});
+  assert.deepEqual(parseAppointmentSearch(' Student@Example.test '), {text:'Student@Example.test',acrossDates:false,ready:true,contact:true});
+  assert.deepEqual(parseAppointmentSearch('wechat_59'), {text:'wechat_59',acrossDates:false,ready:true,contact:true});
+  assert.equal(parseAppointmentSearch('a1'), null);
   assert.ok(APPOINTMENT_SEARCH_LIMIT > 0);
 });
 

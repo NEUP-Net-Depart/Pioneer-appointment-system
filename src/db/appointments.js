@@ -1,5 +1,5 @@
 import { queueHead, positionStatement } from './reception-queue.js';
-import { listAppointments } from './appointment-list.js';
+import { listAppointments, listContactCandidates } from './appointment-list.js';
 import { serviceDayRepository } from './service-days.js';
 import { APPOINTMENT_SEARCH_LIMIT } from '../../shared/appointment-search.js';
 import { DEFAULT_SERVICE_LOCATIONS, terminalStatuses } from '../../shared/constants.js';
@@ -56,6 +56,12 @@ const memberIdentity =
   '(SELECT member_id FROM staff_accounts WHERE account=appointments.assigned_to) AS assigned_member_id,(SELECT member_id FROM staff_accounts WHERE account=appointments.registered_by) AS registered_member_id';
 const receptionProjection = `(SELECT json_object('state',r.state,'receivedAt',r.received_at,'receivedBy',r.received_by,'assignedTo',r.assigned_to,'assignedMemberId',r.assigned_member_id,'assignedToName',(SELECT name FROM members WHERE id=r.assigned_member_id),'updatedAt',r.updated_at,'leftAt',r.left_at,'ticketId',r.ticket_id,'ticket',(SELECT json_object('number',t.number,'date',t.queue_date,'campus',t.campus) FROM repair_queue_tickets t WHERE t.id=r.ticket_id)) FROM repair_receptions r WHERE r.appointment_id=appointments.id) AS reception_json`;
 const select = `SELECT appointments.*,(SELECT paused FROM service_day_overrides s JOIN campuses c ON c.id=s.campus_id WHERE s.business_date=appointments.date AND c.name=appointments.campus) AS service_paused,${assigneeName},${memberIdentity},${receptionProjection} FROM appointments`;
+const contactSelect = `SELECT appointments.id,appointments.revision,appointments.campus,appointments.date,
+  appointments.time_slot,appointments.status,appointments.phone,appointments.email,
+  appointments.contact_value,appointments.social,
+  (SELECT generation FROM appointment_contact_index_pending p WHERE p.appointment_id=appointments.id) AS __contact_generation,
+  ${memberIdentity},${receptionProjection}
+  FROM appointments`;
 // UNION deduplicates ancestors and descendants, including historical branches.
 const repairChain = `WITH RECURSIVE repair_chain(id) AS (
   SELECT ? UNION
@@ -109,6 +115,7 @@ function fromRow(row) {
         assignedToName: row.assigned_to_name || '',
         assignedMemberId: row.assigned_member_id || '',
         registeredMemberId: row.registered_member_id || '',
+        ...(row.__contact_generation !== undefined ? { contactIndexGeneration: row.__contact_generation } : {}),
         ...Object.fromEntries(
           Object.entries(columns).map(([key, column]) => [
             key,
@@ -522,6 +529,28 @@ export function appointmentRepository(db) {
     },
     list(query, scope) {
       return listAppointments(db, select, fromRow, query, scope);
+    },
+    contactCandidates(query, scope, cursor, token) {
+      return listContactCandidates(db, contactSelect, fromRow, query, scope, cursor, token);
+    },
+    async indexContacts(rows) {
+      if (!rows.length) return;
+      const input = JSON.stringify(rows);
+      await db.batch([
+        db.prepare(`DELETE FROM appointment_contact_index_tokens WHERE appointment_id IN (
+          SELECT p.appointment_id FROM json_each(?) e JOIN appointment_contact_index_pending p
+            ON p.appointment_id=json_extract(e.value,'$.id')
+            AND p.generation=json_extract(e.value,'$.generation'))`).bind(input),
+        db.prepare(`INSERT INTO appointment_contact_index_tokens(appointment_id,token)
+          SELECT p.appointment_id,t.value FROM json_each(?) e JOIN appointment_contact_index_pending p
+            ON p.appointment_id=json_extract(e.value,'$.id')
+            AND p.generation=json_extract(e.value,'$.generation')
+          JOIN json_each(e.value,'$.tokens') t`).bind(input),
+        db.prepare(`DELETE FROM appointment_contact_index_pending WHERE appointment_id IN (
+          SELECT p.appointment_id FROM json_each(?) e JOIN appointment_contact_index_pending p
+            ON p.appointment_id=json_extract(e.value,'$.id')
+            AND p.generation=json_extract(e.value,'$.generation'))`).bind(input)
+      ]);
     },
     async overview(start, end, campuses) {
       const scope = campuses.length ? `campus IN (${campuses.map(() => '?').join(',')})` : '0';

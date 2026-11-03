@@ -33,6 +33,43 @@ function accessPredicate(rules, args, carryover = false) {
         (SELECT value FROM json_each(json_extract(access_rule.value,'$.objectIds')))))`;
 }
 
+export async function listContactCandidates(db, select, fromRow, query, scope, cursor = '', token = null) {
+  const args = [...scope.campuses];
+  const where = [
+    `${scope.campuses.length ? `appointments.campus IN (${scope.campuses.map(() => '?').join(',')})` : '0'} AND (${accessPredicate(scope.summaryRules, args, true)})`
+  ];
+  for (const [key, column] of [['campus', 'campus'], ['date', 'date'], ['timeSlot', 'time_slot']]) {
+    if (query[key]) {
+      where.push(`appointments.${column}=?`);
+      args.push(query[key]);
+    }
+  }
+  if (query.dateFrom && query.dateTo) {
+    where.push('appointments.date>=? AND appointments.date<=?');
+    args.push(query.dateFrom, query.dateTo);
+  }
+  if (query.liveDate) {
+    where.push(`(appointments.date=? OR appointments.status='in_progress' OR
+      (appointments.status='booked' AND EXISTS (SELECT 1 FROM repair_receptions r
+        WHERE r.appointment_id=appointments.id AND r.state IN ('queued','assigned'))))`);
+    args.push(query.liveDate);
+  }
+  if (token) {
+    where.push(`appointments.id IN (SELECT appointment_id FROM appointment_contact_index_tokens
+      WHERE token=?) AND NOT EXISTS (SELECT 1 FROM appointment_contact_index_pending p
+      WHERE p.appointment_id=appointments.id)`);
+    args.push(token);
+  } else {
+    where.push(`appointments.id IN (SELECT appointment_id FROM appointment_contact_index_pending)`);
+  }
+  if (cursor) {
+    where.push('appointments.id>?');
+    args.push(cursor);
+  }
+  const rows = (await db.prepare(`${select} WHERE ${where.join(' AND ')} ORDER BY appointments.id LIMIT 500`).bind(...args).all()).results;
+  return { items: rows.map(fromRow), nextCursor: rows.length === 500 ? rows.at(-1).id : null };
+}
+
 export async function listAppointments(
   db,
   select,
@@ -62,8 +99,12 @@ export async function listAppointments(
     args.push(text, text, text, text);
     const identity = accessPredicate(identityRules, args);
     args.push(text, text);
+    const contact = query.contactIds?.length
+      ? ' OR appointments.id IN (SELECT value FROM json_each(?))'
+      : '';
+    if (contact) args.push(JSON.stringify(query.contactIds));
     where.push(
-      `(instr(lower(id),?)>0 OR instr(lower(repair_number),?)>0 OR instr(lower(device_model),?)>0 OR instr(campus,?)>0 OR ((${identity}) AND (instr(lower(name),?)>0 OR instr(student_id,?)>0)))`
+      `(instr(lower(id),?)>0 OR instr(lower(repair_number),?)>0 OR instr(lower(device_model),?)>0 OR instr(campus,?)>0 OR ((${identity}) AND (instr(lower(name),?)>0 OR instr(student_id,?)>0))${contact})`
     );
   }
   const filteredWhere = where.join(' AND '),

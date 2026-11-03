@@ -394,9 +394,19 @@ body.staff-mode.field-mode {
     gap: 4px 12px;
     margin: 0;
   }
-  .field-app .field-queue-tools .field-search-input {
+  .field-app .field-queue-tools .field-lookup {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 0 12px;
     width: 42%;
     margin: 0;
+  }
+  .field-app .field-queue-tools .field-lookup :is(.field-search, .field-lookup-help) {
+    margin: 0;
+  }
+  .field-app .field-queue-tools .field-lookup > :is(p, .field-lookup-results, details[open]) {
+    grid-column: 1 / -1;
   }
 }
 @media (min-width: 1280px) {

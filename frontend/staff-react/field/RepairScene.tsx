@@ -131,6 +131,9 @@ export function RepairScene({
             active={active && scene === 'repair'}
             disabled={busy}
             onSelect={resolve}
+            campusId={data.campusId}
+            searchCapabilities={data.searchCapabilities}
+            allowContactSearch={false}
           />
           <div className="field-actions">
             <button

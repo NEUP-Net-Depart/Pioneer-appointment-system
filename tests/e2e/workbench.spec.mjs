@@ -51,6 +51,20 @@ for (const width of [320,1440]) test(`React manual lookup waits for two digits a
   await expect.poll(()=>resolved.length).toBe(1);expect(resolved[0]).toEqual({id});
   await expect(page.getByRole('dialog')).toContainText(id);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
+test('repair lookup stays focused on appointment numbers', async ({page}) => {
+  await fixture(page);
+  const id = 'reserve020261015-59', searches = [];
+  await page.route('**/api/scan/search', route => {
+    searches.push(route.request().postDataJSON());
+    return route.fulfill({json:{items:[{id,campus:'南湖',date:'2026-10-15',timeSlot:'19:00–19:30',status:'booked'}],hasMore:false}});
+  });
+  const input = page.getByRole('combobox', {name:'预约编号',exact:true});
+  await expect(input).toHaveAttribute('placeholder', '预约编号');
+  await input.fill('lookup59@example.test');
+  await page.waitForTimeout(350);
+  await expect(page.getByRole('listbox',{name:'匹配的预约'})).toHaveCount(0);
+  expect(searches).toHaveLength(0);
+});
 test('onsite registration retains signature data after returning to edit',async({page})=>{
  await fixture(page);const writes=[];await page.route('**/api/scan/onsite',route=>{writes.push(route.request().postDataJSON());return route.fulfill({json:{id:'reserve020261015-01'}});});
  await page.getByRole('button',{name:'临时维修登记',exact:true}).click();for(const [label,value]of [['姓名','机主同学'],['学号','20306001'],['QQ / 微信','qq123'],['设备厂商','联想'],['设备型号','ThinkPad']])await page.getByRole('dialog').getByLabel(label,{exact:true}).fill(value);
