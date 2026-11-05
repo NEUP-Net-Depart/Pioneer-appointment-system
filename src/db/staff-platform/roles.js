@@ -49,7 +49,7 @@ export function rolesDomain({ db, auditStatement, commandAuthorization }) {
     return rows(
       await db
         .prepare(
-          `SELECT DISTINCT m.* FROM members m JOIN effective_member_roles mr ON mr.member_id=m.id
+          `SELECT DISTINCT m.* FROM members m JOIN member_roles mr ON mr.member_id=m.id
       WHERE mr.role_id=? AND (mr.effective_to IS NULL OR ?<mr.effective_to)`
         )
         .bind(roleId, businessDate)
@@ -60,7 +60,7 @@ export function rolesDomain({ db, auditStatement, commandAuthorization }) {
   async function roleGuard(roleId, businessDate = dateKey()) {
     const sql = `SELECT json_group_array(json_object('id',id,'scope',scope_bindings,'from',effective_from,'to',effective_to,
       'member',member_id,'revision',member_revision,'account',account,'auth',auth_version)) AS value FROM (
-      SELECT mr.*,m.revision AS member_revision,sa.account,sa.auth_version FROM effective_member_roles mr JOIN members m ON m.id=mr.member_id
+      SELECT mr.*,m.revision AS member_revision,sa.account,sa.auth_version FROM member_roles mr JOIN members m ON m.id=mr.member_id
       LEFT JOIN staff_accounts sa ON sa.member_id=mr.member_id WHERE mr.role_id=?
         AND (mr.effective_to IS NULL OR ?<mr.effective_to) ORDER BY mr.id)`;
     const args = [roleId, businessDate];

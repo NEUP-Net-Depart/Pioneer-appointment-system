@@ -1,3 +1,4 @@
+import { leadershipPositions } from '../../../shared/staff-organization.js';
 import { fail } from '../../lib/http.js';
 import {
   dateKey,
@@ -150,7 +151,7 @@ export function attendanceDomain({
       (duty) => duty.campusId === campusId && duty.leaveStatus !== 'approved'
     );
     const leader = identities.some((item) =>
-      ['repair_lead', 'office_lead', 'superadmin'].includes(item.code)
+      [...leadershipPositions, 'superadmin'].includes(item.code)
     );
     const qualified = scheduled.some((duty) => duty.dutyType === 'office') || leader;
     const permission = evaluate(context, 'attendance.self', {
@@ -252,7 +253,7 @@ export function attendanceDomain({
           directLeader:
             direct &&
             staffIdentities(context, platform.authorizer, { campusId: event.campusId }).some(
-              (item) => ['repair_lead', 'office_lead', 'superadmin'].includes(item.code)
+              (item) => [...leadershipPositions, 'superadmin'].includes(item.code)
             ),
           tokenId: found?.token.id,
           authVersion: context.authVersion,

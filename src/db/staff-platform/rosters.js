@@ -1,6 +1,5 @@
 import { parseJson } from '../../platform/contracts.js';
 import { nowIso } from '../../platform/time.js';
-import { intersectScopes } from '../../modules/authorization/scopes.js';
 import { rosterFingerprintSql } from '.././roster-fingerprint.js';
 import {
   assignmentLeaveColumn,
@@ -19,8 +18,8 @@ export function rostersDomain({ db, collection, auditStatement, commandAuthoriza
     return rows(
       await db
         .prepare(
-          `SELECT DISTINCT m.id FROM members m JOIN effective_member_roles p ON p.member_id=m.id JOIN roles pr ON pr.id=p.role_id AND pr.enabled=1
-      WHERE m.status='active' AND pr.code='office' AND p.effective_from<=date(?,'+3 day')
+          `SELECT DISTINCT m.id FROM members m JOIN member_department_memberships p ON p.member_id=m.id JOIN departments d ON d.id=p.department_id AND d.enabled=1
+      WHERE m.status='active' AND d.code='office' AND p.is_primary=1 AND p.effective_from<=date(?,'+3 day')
       AND (p.effective_to IS NULL OR p.effective_to>?) AND EXISTS(SELECT 1 FROM staff_accounts sa JOIN staff_campus_grants g ON g.account=sa.account
         WHERE sa.member_id=m.id AND sa.status='enabled' AND g.campus IN (${campusNames.map(() => '?').join(',')}))
       ORDER BY m.name,m.id LIMIT 301`
@@ -57,15 +56,8 @@ export function rostersDomain({ db, collection, auditStatement, commandAuthoriza
           .bind(...ids, weekStart, weekStart),
         db
           .prepare(
-            `SELECT mm.*,d.name AS department_name,d.code AS department_code,d.kind AS organization_kind FROM member_department_memberships mm JOIN departments d ON d.id=mm.department_id
+            `SELECT mm.*,d.name AS department_name,d.code AS department_code,d.kind AS organization_kind,d.enabled AS department_enabled FROM member_department_memberships mm JOIN departments d ON d.id=mm.department_id
           WHERE mm.member_id IN (${placeholders}) AND mm.effective_from<=date(?,'+6 day') AND (mm.effective_to IS NULL OR mm.effective_to>?) ORDER BY mm.is_primary DESC,d.name`
-          )
-          .bind(...ids, weekStart, weekStart),
-        db
-          .prepare(
-            `SELECT mr.member_id,mr.effective_from AS binding_from,mr.effective_to AS binding_to,mr.scope_bindings,mr.source,r.code AS role_code,rg.*
-          FROM effective_member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1 JOIN role_grants rg ON rg.role_id=r.id
-          WHERE mr.member_id IN (${placeholders}) AND mr.effective_from<=date(?,'+6 day') AND (mr.effective_to IS NULL OR mr.effective_to>?)`
           )
           .bind(...ids, weekStart, weekStart)
       ]);
@@ -79,8 +71,7 @@ export function rostersDomain({ db, collection, auditStatement, commandAuthoriza
           campuses: [],
           assignments: [],
           departmentNames: [],
-          memberships: [],
-          grants: []
+          memberships: []
         });
       for (const row of rows(results[1])) facts.get(row.member_id)?.campuses.push(row.campus);
       for (const row of rows(results[2]))
@@ -93,18 +84,6 @@ export function rostersDomain({ db, collection, auditStatement, commandAuthoriza
             fact.departmentNames.push(row.department_name);
         }
       }
-      for (const row of rows(results[4]))
-        facts.get(row.member_id)?.grants.push({
-          id: row.id,
-          roleId: row.role_id,
-          roleCode: row.role_code,
-          permissionCode: row.permission_code,
-          scope: intersectScopes(parseJson(row.scope_spec, {}), parseJson(row.scope_bindings, {})),
-          conditions: parseJson(row.condition_spec, []),
-          validity: parseJson(row.validity_spec, {}),
-          source: row.source,
-          binding: { effectiveFrom: row.binding_from, effectiveTo: row.binding_to }
-        });
     }
     return [...facts.values()];
   }

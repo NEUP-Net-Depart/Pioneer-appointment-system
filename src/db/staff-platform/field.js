@@ -155,14 +155,14 @@ export function fieldDomain({ db, event }) {
         db
           .prepare(
             `SELECT m.*,sa.account,sa.role,sa.status AS account_status,sa.auth_version,
-          (SELECT json_group_array(campus) FROM staff_campus_grants WHERE account=sa.account) AS campuses
+          (SELECT json_group_array(campus) FROM staff_access_campuses WHERE account=sa.account) AS campuses
           FROM members m LEFT JOIN staff_accounts sa ON sa.account=(SELECT account FROM staff_accounts WHERE member_id=m.id ORDER BY status='enabled' DESC,account LIMIT 1)
           WHERE m.id IN (${marks})`
           )
           .bind(...ids),
         db
           .prepare(
-            `SELECT mr.member_id,rg.*,mr.scope_bindings,mr.effective_from,mr.effective_to,mr.source,r.code AS role_code FROM effective_member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1
+            `SELECT mr.member_id,rg.*,mr.scope_bindings,mr.effective_from,mr.effective_to,'explicit' AS source,r.code AS role_code FROM member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1
           JOIN role_grants rg ON rg.role_id=r.id WHERE mr.member_id IN (${marks}) AND mr.effective_from<=? AND (mr.effective_to IS NULL OR mr.effective_to>?)`
           )
           .bind(...ids, authorizationDate, authorizationDate),
@@ -182,7 +182,7 @@ export function fieldDomain({ db, event }) {
           .bind(JSON.stringify(ids)),
         db
           .prepare(
-            `SELECT mm.*,d.name AS department_name,d.code AS department_code,d.kind AS organization_kind FROM member_department_memberships mm JOIN departments d ON d.id=mm.department_id
+            `SELECT mm.*,d.name AS department_name,d.code AS department_code,d.kind AS organization_kind,d.enabled AS department_enabled FROM member_department_memberships mm JOIN departments d ON d.id=mm.department_id
           WHERE mm.member_id IN (${marks}) AND mm.effective_from<=? AND (mm.effective_to IS NULL OR mm.effective_to>?)`
           )
           .bind(...ids, authorizationDate, authorizationDate)

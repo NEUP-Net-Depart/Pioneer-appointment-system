@@ -3,7 +3,6 @@ import { api } from './ui';
 import { normalizeStaffScene } from '../../../shared/staff-access.js';
 import { useField } from './useField';
 import type { Home } from './types';
-import { compareFieldPeople } from '../../../shared/staff-identities.js';
 
 export function useFieldWorkspace({
   initial,
@@ -219,7 +218,9 @@ export function useFieldWorkspace({
         .toLowerCase()
         .includes(search.toLowerCase())
   );
-  const people = [...(data?.staffPresence || [])].sort(compareFieldPeople);
+  const people = [...(data?.staffPresence || [])].sort((a, b) =>
+    a.name.localeCompare(b.name, 'zh-CN')
+  );
   const visiblePeople = people.filter(
     (person) =>
       (!showAvailable || person.canReceive) &&

@@ -1,3 +1,4 @@
+import { leadershipPositions } from '../../../shared/staff-organization.js';
 import {addDays,serviceDay} from '../../../shared/time.js';
 import {staffIdentities} from '../../../shared/staff-identities.js';
 import {rosterFactContext} from '../rosters/qualification.js';
@@ -28,7 +29,7 @@ export function weeklyAttendanceRows({week,records,facts,paused,authorizer,canEx
           const target={memberId:fact.memberId,campusId,departmentId:department.departmentId};
           if(!canExport(target))continue;
           const identities=staffIdentities(context,authorizer,target);
-          if(!identities.some(item=>['repair_lead','office_lead'].includes(item.code)))continue;
+          if(!identities.some(item=>leadershipPositions.includes(item.code)))continue;
           const row=ensure(fact.memberId,fact.name,fact.studentId||'');row.leaderSeen=true;
           row.departments.add(department.departmentName||'未记录部门');row.campuses.add(names[campusId]||campusId);
           identities.forEach(item=>row.identities.add(item.label));

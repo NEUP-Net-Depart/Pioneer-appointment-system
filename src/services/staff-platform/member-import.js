@@ -2,15 +2,14 @@ import { fail } from '../../lib/http.js';
 import { validDate } from '../../platform/time.js';
 import { publicResourceRef, stableJson } from '../../platform/contracts.js';
 import { memberPublic, activeAt, businessIdentityEligible } from '../../modules/identity/public.js';
-import { campusId, intersectScopes } from '../../modules/authorization/scopes.js';
-import { createAuthorizer } from '../../modules/authorization/public.js';
+import { campusId } from '../../modules/authorization/scopes.js';
 import {
   positionsFor,
-  positionLabels,
-  organizationRoles
+  globalLeadershipPositions,
+  positionLabels
 } from '../../../shared/staff-organization.js';
 import { csvRows, inputString, tokenDigest } from './shared.js';
-import { editableMemberState, delegationScope } from './delegation.js';
+import { editableMemberState } from './delegation.js';
 
 const campusName = (id) => (id === 'campus-hunnan' ? '浑南' : '南湖');
 const sorted = (items) => [...new Set(items)].sort();
@@ -250,12 +249,13 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
           plan.conflicts.push('正式部门、职位或交流关系与现有记录冲突，请在人员详情中核对');
           continue;
         }
-        delegationScope(
-          context,
-          'members.manage',
-          { campusIds: targetState.campuses },
-          { effectiveFrom: item.effectiveFrom }
-        );
+        if (
+          globalLeadershipPositions.includes(post.positionCode) &&
+          !['campus-nanhu', 'campus-hunnan'].every(
+            (campusId) => evaluate(context, 'members.manage', { campusId }).allowed
+          )
+        )
+          fail(403, '跨校区管理任职须由具有全部校区管理范围的负责人设置');
         plan.memberships.push(post);
         change(
           'membership',
@@ -365,61 +365,13 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
     for (const plan of plans.filter(
       (plan) => plan.configureActivation && !plan.account && !plan.conflicts.length
     )) {
-      const memberships = [
-        ...data.memberships
-          .filter((post) => post.member_id === plan.memberId)
-          .map((post) => ({
-            departmentId: post.department_id,
-            positionCode: post.position_code,
-            assignmentType: post.assignment_type,
-            isPrimary: !!post.is_primary,
-            effectiveFrom: post.effective_from,
-            effectiveTo: post.effective_to
-          })),
-        ...plan.memberships.map((post) => ({
-          ...post,
-          isPrimary: post.assignmentType === 'primary',
-          effectiveFrom: plan.effectiveFrom
-        }))
-      ];
-      const bindings = [
-        ...data.bindings
-          .filter((binding) => binding.member_id === plan.memberId)
-          .map((binding) => ({
-            roleId: binding.role_id,
-            scope: JSON.parse(binding.scope_bindings),
-            effectiveFrom: binding.effective_from,
-            effectiveTo: binding.effective_to
-          })),
-        ...memberships.flatMap((post) =>
-          organizationRoles(post, byDepartment.get(post.departmentId)).map((code) => ({
-            roleId: roles.find((role) => role.code === code)?.id,
-            scope: { campuses: 'bound' },
-            effectiveFrom: post.effectiveFrom,
-            effectiveTo: post.effectiveTo
-          }))
-        )
-      ];
-      const grants = bindings.flatMap((binding) => {
-        const role = roles.find((role) => role.id === binding.roleId && role.enabled);
-        return (role?.grants || []).map((grant) => ({
-          ...grant,
-          roleCode: role.code,
-          binding,
-          scope: intersectScopes(grant.scope, binding.scope)
-        }));
-      });
       if (
-        !businessIdentityEligible(createAuthorizer(), {
-          memberId: plan.memberId,
+        !businessIdentityEligible({
           status: plan.before?.status || 'active',
-          campuses: plan.authorizedCampuses,
-          grants,
-          memberships,
-          authorizationDate: context.authorizationDate || context.businessDate
+          campuses: plan.authorizedCampuses
         })
       )
-        fail(400, '配置激活资格需要当前有效任职、交流参与或特殊授权');
+        fail(400, '激活需要有效成员记录和授权校区');
     }
     const versions = roles.map(({ id, revision, enabled }) => ({ id, revision, enabled }));
     const departmentVersions = departments

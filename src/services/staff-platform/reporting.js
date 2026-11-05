@@ -1,3 +1,4 @@
+import { leadershipPositions } from '../../../shared/staff-organization.js';
 import { fail } from '../../lib/http.js';
 import { addDays, dateKey, weekRange } from '../../platform/time.js';
 import { rosterFactContext } from '../../modules/rosters/qualification.js';
@@ -152,7 +153,7 @@ export function attendanceReportingDomain({ repository, platform, contextFor, ev
                 !staffIdentities(identityContext, platform.authorizer, {
                   campusId,
                   departmentId: department?.departmentId
-                }).some((item) => ['repair_lead', 'office_lead'].includes(item.code))
+                }).some((item) => leadershipPositions.includes(item.code))
               )
                 continue;
               eligible.push({ campusId, department });

@@ -1,6 +1,6 @@
 import { campusId } from './scopes.js';
 import { dateKey, validDate } from '../../platform/time.js';
-import { grantParticipation } from '../../../shared/staff-organization.js';
+import { participationCodes } from '../../../shared/staff-organization.js';
 
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 const string = { type: 'string', minLength: 1 };
@@ -68,8 +68,8 @@ export function conditionProviders() {
     },
     rosterParticipantEligible: {
       code:'rosterParticipantEligible',version:1,description:'普通维修或办公排班资格',parameterSchema:schema({}),
-      check:({context, grant}) => {
-        const codes = grantParticipation(grant, context);
+      check:({context, resource}) => {
+        const codes = participationCodes(context, resource);
         return !codes.includes('exchange') && codes.some(code => ['repair', 'office'].includes(code));
       }
     },

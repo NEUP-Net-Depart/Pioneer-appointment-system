@@ -382,7 +382,7 @@ export function appointmentRepository(db) {
         SELECT ? || printf('%02d',COALESCE(MAX(CAST(substr(id,instr(id,'-')+1) AS INTEGER)),0)+1),${values.join(',')},?,?
         FROM appointments WHERE id LIKE ? OR id LIKE ? OR id LIKE ?
         HAVING 1 ${request ? 'AND NOT EXISTS(SELECT 1 FROM booking_requests WHERE request_key=?)' : ''}
-        ${onsite ? `AND EXISTS(SELECT 1 FROM staff_accounts s JOIN members m ON m.id=s.member_id JOIN staff_campus_grants g ON g.account=s.account
+        ${onsite ? `AND EXISTS(SELECT 1 FROM staff_accounts s JOIN members m ON m.id=s.member_id JOIN staff_access_campuses g ON g.account=s.account
          WHERE s.account=? AND s.auth_version=? AND s.status='enabled' AND m.status='active' AND g.campus=?)` : ''}
         ON CONFLICT(registered_by,registration_key) DO UPDATE SET registration_key=excluded.registration_key RETURNING *`
         )
@@ -421,7 +421,7 @@ export function appointmentRepository(db) {
       if (!keys.length) return null;
       const guard=workflow ? ` AND EXISTS(SELECT 1 FROM staff_accounts sa JOIN members m ON m.id=sa.member_id
         WHERE sa.account=? AND sa.auth_version=? AND sa.status='enabled' AND m.status='active')
-        AND EXISTS(SELECT 1 FROM staff_campus_grants g WHERE g.account=? AND g.campus=appointments.campus)` : '';
+        AND EXISTS(SELECT 1 FROM staff_access_campuses g WHERE g.account=? AND g.campus=appointments.campus)` : '';
       const statement=db.prepare(`UPDATE appointments SET ${keys.map(key=>columns[key]+'=?').join(',')},revision=revision+1
         WHERE id=? AND revision=?${guard} RETURNING *`)
         .bind(...keys.map(key=>patch[key]),item.id,item.revision,...(workflow ? [workflow.actor.account,workflow.actor.authVersion,workflow.actor.account] : []));

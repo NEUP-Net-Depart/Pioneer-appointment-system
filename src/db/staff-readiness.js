@@ -1,4 +1,4 @@
-export const STAFF_RELEASE = 'repair-links-0046';
+export const STAFF_RELEASE = 'membership-identity-0047';
 
 // Prepare real projections, including empty tables. A database with only the
 // old staff schema must fail readiness before CI accepts a deployment.
@@ -8,7 +8,7 @@ export async function verifyStaffSchema(db) {
     appointments: 'registration_flow,access_token_hash,front_photo_id,back_photo_id,booking_notices,received_at,received_by,photo_deferred_by',
     members: 'id,status,college,major',
     member_department_memberships: 'member_id,position_code',
-    effective_member_roles: 'member_id,role_id,source',
+    staff_access_campuses: 'account,campus',
     member_roles: 'member_id,role_id,scope_bindings,reason',
     role_grants: 'permission_code,scope_spec,condition_spec',
     repair_intake_records: 'appointment_id,verification_json',

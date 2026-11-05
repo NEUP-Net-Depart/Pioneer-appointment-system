@@ -111,7 +111,7 @@ export async function rehearseSnapshot(dump, directory = resolve(root, 'migratio
     for (const row of sqlite.prepare('SELECT account,role,status FROM staff_accounts').all()) {
       const user = await users.find(row.account);
       assert.ok(user.memberId, 'Account is missing its stable member identity');
-      const roleCodes = sqlite.prepare('SELECT DISTINCT r.code FROM effective_member_roles mr JOIN roles r ON r.id=mr.role_id WHERE mr.member_id=? ORDER BY r.code').all(user.memberId).map(role => role.code);
+      const roleCodes = sqlite.prepare('SELECT department_id,position_code FROM member_department_memberships WHERE member_id=? ORDER BY department_id,position_code').all(user.memberId).map(post => `${post.department_id}:${post.position_code}`);
       const key = `${row.role} → ${roleCodes.join('+')}`; counts[key] = (counts[key] || 0) + 1;
       if (user.status === 'enabled' && user.memberStatus !== 'inactive' && user.authorizedCampuses.length) {
         const context = await staff.contextFor(user);

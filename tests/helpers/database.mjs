@@ -14,7 +14,7 @@ export function database(directory = 'migrations', before = '\uffff') {
       return {
         bind(...values) { params = values; return this; },
         async first() { return sqlite.prepare(sql).get(...params) || null; },
-        all() { return { results: sqlite.prepare(sql).all(...params) }; },
+        all() { const results=sqlite.prepare(sql).all(...params); return { results, meta:{changes:sqlite.prepare('SELECT changes() AS n').get().n} }; },
         async run() { return { meta: sqlite.prepare(sql).run(...params) }; }
       };
     },

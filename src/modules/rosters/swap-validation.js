@@ -1,3 +1,4 @@
+import { leadershipPositions } from '../../../shared/staff-organization.js';
 import { campusId } from '../authorization/scopes.js';
 import { weekRange } from '../../platform/time.js';
 import { createAuthorizer } from '../authorization/public.js';
@@ -32,7 +33,7 @@ export function validateSwap({ from, to, facts, coverage, protectedAssignments =
     if ((fact?.assignments || []).filter(row => ![from.id, to.id].includes(row.id)).some(row =>
       slot.dutyType === 'repair' && row.dutyType === 'repair' && weekRange(row.businessDate).start === weekRange(slot.businessDate).start ||
       row.businessDate === slot.businessDate && (slot.dutyType === 'office' && row.dutyType === 'office' || row.startAt < slot.endAt && slot.startAt < row.endAt))) errors.push('交换后与接手成员的其他已发布班次冲突');
-    if (slot.dutyType === 'office' && slot.roleKind === 'office_lead' && !staffIdentities(rosterFactContext(fact || {},slot.businessDate),authorizer,{campusId:slot.campusId,id:slot.taskId}).some(item=>item.code==='office_lead')) errors.push('接手成员没有办公值班负责人资格');
+    if (slot.dutyType === 'office' && slot.roleKind === 'office_lead' && !staffIdentities(rosterFactContext(fact || {},slot.businessDate),authorizer,{campusId:slot.campusId,id:slot.taskId}).some(item=>leadershipPositions.includes(item.code))) errors.push('接手成员没有办公值班负责人资格');
     const roleKind = slot.dutyType === 'office' ? slot.roleKind || '' : pool==='lead' ? 'repair_lead' : '';
     return { ...slot, memberId, memberName: fact?.name || '成员', roleKind, leaveStatus: '' };
   });

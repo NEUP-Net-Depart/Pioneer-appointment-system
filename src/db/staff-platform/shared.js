@@ -21,6 +21,7 @@ function membership(row) {
     id: row.id,
     memberId: row.member_id,
     departmentId: row.department_id,
+    enabled: row.department_enabled !== 0,
     departmentName: row.department_name || '',
     departmentCode: row.department_code || '',
     organizationKind: row.organization_kind || 'department',

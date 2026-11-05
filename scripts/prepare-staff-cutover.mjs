@@ -9,7 +9,7 @@ import { root, config } from './cli.mjs';
 import { remoteOptions } from './release-guard.mjs';
 import { releasePlan, assertCleanRelease } from './release-plan.mjs';
 import { validScope } from '../src/modules/authorization/scopes.js';
-import { positionsFor, organizationRoles } from '../shared/staff-organization.js';
+import { positionsFor } from '../shared/staff-organization.js';
 
 export const CUTOVER_MIGRATION = '0042_organization_permissions.sql';
 const quote = value => value === null ? 'NULL' : "'" + String(value).replaceAll("'", "''") + "'";
@@ -117,7 +117,10 @@ export async function prepareCutover(sqlite, input, {environment='preview',datab
       const kind = unitKinds[post.departmentCode];
       requireValue(kind && positionsFor({kind}).includes(post.positionCode),'CUTOVER_INVALID_POSITION');
       postDates = interval(post);
-      for (const code of organizationRoles({assignmentType:'primary',isPrimary:true,positionCode:post.positionCode},{code:post.departmentCode,enabled:true})) template(code);
+      // Validate prerequisites of immutable migration 0042 only. Migration 0047
+      // archives these packages; the running application reads memberships directly.
+      if(post.departmentCode==='hardware')template('technician');
+      if(post.departmentCode==='hardware' && ['head','deputy_head'].includes(post.positionCode) || post.departmentCode==='device_station' || post.departmentCode==='center')template('repair_lead');
     }
     if (exchange) {
       requireValue(keys(exchange,['effectiveFrom','effectiveTo']),'CUTOVER_INPUT_INVALID');

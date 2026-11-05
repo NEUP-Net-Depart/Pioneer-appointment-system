@@ -4,9 +4,9 @@ import { publicResourceRef, SCHEMA_VERSION } from '../../platform/contracts.js';
 import { memberPublic } from '../../modules/identity/public.js';
 import { staffIdentities } from '../../../shared/staff-identities.js';
 import { inputString, csvRows, tokenDigest } from './shared.js';
-import { editableMember, delegationScope, delegableRole } from './delegation.js';
+import { editableMember, delegableRole } from './delegation.js';
 import { memberImportDomain } from './member-import.js';
-import { positionsFor } from '../../../shared/staff-organization.js';
+import { positionsFor, globalLeadershipPositions } from '../../../shared/staff-organization.js';
 import { NEU_COLLEGES } from '../../../shared/neu-colleges.js';
 
 export function membersDomain({ repository, platform, contextFor, evaluate }) {
@@ -28,10 +28,7 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
       member.memberId || member.id,
       context.businessDate
     );
-    const account = await repository.accountForMember(member.memberId || member.id);
-    const campuses = account
-      ? JSON.parse(account.campuses || '[]')
-      : [member.homeCampusId || member.home_campus_id];
+    const campuses = [member.homeCampusId || member.home_campus_id];
     if (
       !campuses.some(
         (campusId) =>
@@ -149,7 +146,7 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
       }
       for (const item of candidates) {
         const memberships = byMember.get(item.memberId) || [];
-        const access = item.account ? item.accessCampusIds : [item.homeCampusId];
+        const access = [item.homeCampusId];
         if (
           !access.some(
             (campusId) =>
@@ -204,31 +201,27 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
         editRoles:
           !account?.protected &&
           account?.role !== 'superadmin' &&
-          memberId !== context.actor.memberId
+          memberId !== context.actor.memberId &&
+          context.permissions['roles.manage']
       },
-      automaticRoleIds: [
-        ...new Set(
-          (contexts.get(memberId)?.grants || [])
-            .filter((grant) => grant.source === 'organization')
-            .map((grant) => grant.roleId)
-        )
-      ],
-      bindings: (await repository.roleBindings(memberId)).filter((binding) => {
-        try {
-          delegableRole(
-            context,
-            roles.find((role) => role.id === binding.roleId),
-            binding,
-            {
-              campuses: account ? JSON.parse(account.campuses || '[]') : [target.home_campus_id]
+      bindings: context.permissions['roles.manage']
+        ? (await repository.roleBindings(memberId)).filter((binding) => {
+            try {
+              delegableRole(
+                context,
+                roles.find((role) => role.id === binding.roleId),
+                binding,
+                {
+                  campuses: account ? JSON.parse(account.campuses || '[]') : [target.home_campus_id]
+                }
+              );
+              return true;
+            } catch (error) {
+              if (error.status !== 403) throw error;
+              return false;
             }
-          );
-          return true;
-        } catch (error) {
-          if (error.status !== 403) throw error;
-          return false;
-        }
-      }),
+          })
+        : [],
       member: {
         ...memberPublic(target, { memberships: memberMemberships }),
         identities: staffIdentities(
@@ -382,12 +375,13 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
       positionCode: input.positionCode || 'member',
       isPrimary: (input.assignmentType || 'primary') === 'primary'
     };
-    delegationScope(
-      context,
-      'members.manage',
-      { campusIds: targetState.campuses },
-      { effectiveFrom: input.effectiveFrom, effectiveTo: input.effectiveTo }
-    );
+    if (
+      globalLeadershipPositions.includes(input.positionCode) &&
+      !['campus-nanhu', 'campus-hunnan'].every(
+        (campusId) => evaluate(context, 'members.manage', { campusId }).allowed
+      )
+    )
+      fail(403, '跨校区管理任职须由具有全部校区管理范围的负责人设置');
     const existing = await repository.listMemberships(memberId);
     if (input.replacesMembershipId) {
       const previous = existing.find((item) => item.id === input.replacesMembershipId);
