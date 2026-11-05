@@ -8,16 +8,16 @@ export const appointmentRoutes = [
     const {patch,...rest}=appointmentPatch(await readBody(context.request));
     return json(await context.services.appointments[operation==='receive'?'receive':'supplement'](decodeURIComponent(match[1]),{...patch,...rest},await context.role('technician')));
   }]),
+  ['PATCH', /^\/api\/appointments\/([^/]+)\/information$/, async(context,match)=>{
+    await context.limit('write');
+    return json(await context.services.appointments.edit(decodeURIComponent(match[1]),await readBody(context.request),await context.role('technician')));
+  }],
   ['GET', /^\/api\/appointments\/overview$/, async context => {
     return json(await context.services.appointments.overview(await context.role('technician')));
   }],
-  ['POST', /^\/api\/appointments\/([^/]+)\/repair-followups$/, async (context,match) => {
+  ['POST', /^\/api\/appointments\/([^/]+)\/link$/, async(context,match)=>{
     await context.limit('write');
-    return json(await context.services.followups.request(decodeURIComponent(match[1]),await readBody(context.request),context.accessToken),201);
-  }],
-  ['POST', /^\/api\/appointments\/([^/]+)\/repair-followups\/staff$/, async (context,match) => {
-    await context.limit('write');
-    return json(await context.services.followups.createByStaff(decodeURIComponent(match[1]),await readBody(context.request),await context.role('technician')),201);
+    return json(await context.services.appointments.link(decodeURIComponent(match[1]),await readBody(context.request),await context.role('technician')));
   }],
   ['GET', /^\/api\/appointments$/, async context => {
     const user = await context.role('technician');

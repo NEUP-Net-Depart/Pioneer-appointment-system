@@ -2,7 +2,6 @@ import { escapeHtml } from '/shared/utils.js';
 import { formatDate,formatInstant } from '/shared/time.js';
 import { outcomeLabels,statusLabels,expirationMessage } from '/shared/constants.js';
 export function timeLabel(item) {
-  if(item.registrationFlow==='repair_followup')return '返修预约 · '+item.timeSlot;
   return item.source==='onsite' ? '现场临时登记' : item.timeSlot;
 }
 export function timeSummary(item) {
@@ -16,7 +15,7 @@ export function informationGroups(item,{photos=true,device=true,contacts=true,de
 }
 export function statusExplanation(item) {
   if(item.status==='expired')return expirationMessage;
-  if(item.status==='booked' && item.source==='onsite' && item.registrationFlow!=='repair_followup')return '本次为现场临时登记，请与现场工作人员保持联系。';
+  if(item.status==='booked' && item.source==='onsite')return '本次为现场临时登记，请与现场工作人员保持联系。';
   if(item.status==='booked')return '请尽量在所选时段到场；预约当天其他时段到场也可沿用本单。';
   return '';
 }

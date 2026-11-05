@@ -3,7 +3,7 @@ import { nowIso } from '../../shared/time.js';
 import { guestAppointment } from './access.js';
 import { requireRole } from './permissions.js';
 
-function metadata(item, staff = true) {
+function metadata(item, staff) {
   return { id: item.id, appointmentId: item.appointmentId, filename: item.filename, mimeType: item.mimeType, size: item.size, createdAt: item.createdAt, expiresAt: item.expiresAt, purpose: item.purpose, ...(staff ? {uploadedBy:item.uploadedBy} : {}) };
 }
 export function attachmentService(appointments, attachments, bucket, maxBytes, field) {
@@ -47,7 +47,7 @@ export function attachmentService(appointments, attachments, bucket, maxBytes, f
       }
       try {
         await bucket.put(objectKey, bytes, { httpMetadata: { contentType: mimeType } });
-        return metadata(await attachments.create(item));
+        return metadata(await attachments.create(item),!!user);
       } catch (error) {
         // This is compensation, not a cross-service transaction. Keep the original failure.
         // D1 may have committed create() before its response was lost. Persist cleanup
@@ -63,7 +63,7 @@ export function attachmentService(appointments, attachments, bucket, maxBytes, f
       if (!attachment || attachment.appointmentId !== item.id) fail(404, '附件不存在');
       const object = await bucket.get(attachment.objectKey);
       if (!object) fail(404, '附件文件不存在');
-      return { body: object.body, size: object.size, metadata: metadata(attachment) };
+      return { body: object.body, size: object.size, metadata: metadata(attachment,!!user) };
     }
   };
 }

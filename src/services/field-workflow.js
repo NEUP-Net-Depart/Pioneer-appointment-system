@@ -151,7 +151,8 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
       canFinish:item.status==='in_progress' && own,canCorrect,
       canRecoverCredential:allowed(context,'repair.correct',appointmentTarget(item)),
       canSupplement:item.photoDeferredBy===actor.account && (!item.frontPhotoId || !item.backPhotoId),
-      repairHistory:await appointments.repairHistory(id,{staff:true}),
+      repairHistory:await appointments.repairHistory(id,{staff:true,campuses:actor.authorizedCampuses}),
+      customerHistory:(await appointments.customerHistory(item.studentId,actor.authorizedCampuses)).filter(row=>row.id!==id).map(row=>({id:row.id,date:row.date,brand:row.brand,deviceModel:row.deviceModel,faultType:row.faultType,outcome:row.outcome,repairNote:row.repairNote})),
       intake:await repository.latestIntake(id),
       original:{note:item.note,signature:item.signature,agreementAt:item.agreementAt,agreementVersion:item.agreementVersion,college:item.college,serial:item.serial,liquidDrop:item.liquidDrop},
       repairCode:scanCode(item.id,secret)};

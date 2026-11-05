@@ -13,7 +13,7 @@ export async function renderRepairQr(container, item) {
     button.disabled = true;
     try {
       const endpoint = item.scanParentId
-        ? '/api/appointments/' + encodeURIComponent(item.scanParentId) + '/repair-followups/' + encodeURIComponent(item.followupId) + '/scan-code'
+        ? '/api/appointments/' + encodeURIComponent(item.scanParentId) + '/related/' + encodeURIComponent(item.id) + '/scan-code'
         : '/api/appointments/' + encodeURIComponent(item.id) + '/scan-code';
       const { code } = await apiJson(endpoint, { headers: credentialHeaders(item), timeoutMs: 15000 });
       const blob = await Promise.race([qrImage(code),new Promise((_,reject)=>{encodingTimer=setTimeout(()=>reject(new Error('二维码生成超时')),15000);})]);

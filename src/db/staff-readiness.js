@@ -1,4 +1,4 @@
-export const STAFF_RELEASE = 'direct-repairs-0045';
+export const STAFF_RELEASE = 'repair-links-0046';
 
 // Prepare real projections, including empty tables. A database with only the
 // old staff schema must fail readiness before CI accepts a deployment.
@@ -21,10 +21,9 @@ export async function verifyStaffSchema(db) {
     service_day_overrides: 'business_date,campus_id,paused',
     booking_settings: 'campus,release_time,revision',
     booking_notices: 'id,campus,revision,display_mode',
-    repair_followups: 'id,parent_appointment_id,status,request_source,request_hash,scheduled_appointment_id,decision_request_id,revision',
   };
   await db.batch(Object.entries(projections).map(([table, columns]) => db.prepare(`SELECT ${columns} FROM ${table} LIMIT 0`)));
-  const required = ['staff_account_member_sync', 'staff_account_member_insert_guard', 'staff_account_member_update_guard', 'activation_admin_submit_guard', 'activation_approve',   'service_day_booking_insert', 'service_day_repair_start', 'appointment_booking_notices', 'repair_followup_completed_parent_insert', 'repair_followup_schedule_guard'];
+  const required = ['staff_account_member_sync', 'staff_account_member_insert_guard', 'staff_account_member_update_guard', 'activation_admin_submit_guard', 'activation_approve',   'service_day_booking_insert', 'service_day_repair_start', 'appointment_booking_notices', 'repair_link_insert','repair_link_update'];
   const result = await db.prepare(`SELECT name FROM sqlite_schema WHERE type='trigger' AND name IN (${required.map(() => '?').join(',')})`).bind(...required).all();
   if (result.results.length !== required.length) throw new Error('Staff workflow database guards are missing');
   const indexes = await db.prepare("PRAGMA index_list('staff_accounts')").all();

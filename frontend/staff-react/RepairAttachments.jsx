@@ -1,7 +1,7 @@
 import { DataValue } from './DataValue';
 import React, { useContext, useEffect, useState } from 'react';
 import { apiFetch } from '../../shared/api.js';
-import { attachmentSize, attachmentUrl } from '../../shared/attachments.js';
+import { attachmentSize, attachmentUrl, uploadAttachments } from '../../shared/attachments.js';
 import { request } from './request.js';
 import { ActivityContext, Notice } from './field/ui';
 
@@ -11,7 +11,8 @@ export function RepairAttachments({ id, revision }) {
     [files, setFiles] = useState(null),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(''),
-    [retry, setRetry] = useState(0);
+    [retry, setRetry] = useState(0),
+    [selected, setSelected] = useState(null);
   useEffect(() => {
     if (!active || !open) return;
     const controller = new AbortController();
@@ -53,6 +54,31 @@ export function RepairAttachments({ id, revision }) {
     <details className="field-details" onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary>附件与设备照片</summary>
       <Notice>{error}</Notice>
+      <p>出现新的外观变化可手动补拍；此处照片不替代首次接收原图。</p>
+      <input
+        type="file"
+        accept="image/*"
+        disabled={!!busy}
+        onChange={(event) => setSelected(event.target.files?.[0] || null)}
+      />
+      <button
+        disabled={!selected || !!busy}
+        onClick={async () => {
+          setBusy('upload');
+          setError('');
+          try {
+            await uploadAttachments({ id }, [selected]);
+            setSelected(null);
+            setRetry((value) => value + 1);
+          } catch (failure) {
+            setError(failure.message);
+          } finally {
+            setBusy('');
+          }
+        }}
+      >
+        上传补充照片
+      </button>
       {error && <button onClick={() => setRetry((value) => value + 1)}>重试读取附件</button>}
       {files ? (
         files.length ? (

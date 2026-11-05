@@ -1,3 +1,4 @@
+import { stringField } from '../lib/validation.js';
 import { fail } from '../lib/http.js';
 import { encryptText, decryptText, readStoredContact } from '../lib/privacy.js';
 import {
@@ -33,7 +34,7 @@ export async function presentAppointment(item, encryptionKey, { staff = false } 
       'email','contactType','contactValue','deviceType','brand','deviceModel','serial',
       'warranty','faultType','issue','liquidDrop','liquidMetal','dellG15','date','timeSlot',
       'status','outcome','receivedAt','startedAt','completedAt','expiresAt','createdAt','source',
-      'registrationFlow','repairNumber','locationSnapshot','locationRevision','servicePaused',
+      'registrationFlow','parentAppointmentId','linkKind','repairNumber','locationSnapshot','locationRevision','servicePaused',
       'agreementAt','agreementVersion','signature'];
     return Object.fromEntries(fields.map(key => [key, visible[key]]));
   }
@@ -47,11 +48,11 @@ export function appointmentService(
   staffPlatform,
   bookingSettings = null
 ) {
-  const present = async (item, staff = false) => {
+  const present = async (item, staff = false, campuses) => {
     const [visible, location, repairHistory] = await Promise.all([
       presentAppointment(item, encryptionKey, { staff }),
       appointments.location(item.date, item.campus),
-      appointments.repairHistory(item.id, { staff })
+      appointments.repairHistory(item.id, { staff, campuses })
     ]);
     return {
       ...visible,
@@ -79,10 +80,13 @@ export function appointmentService(
     if (!Number.isInteger(input.revision) || input.revision!==item.revision) fail(409,'工单已更新，请刷新后重试');
     const at=clock().toISOString();
     const patch=await prepare(item,context,at);
+    const contactBefore={};
+    for (const key of ['phone','social','email','contactValue']) if (Object.hasOwn(patch,key))
+      contactBefore[key]=await encryptText(await readStoredContact(item[key],encryptionKey),encryptionKey);
     const updated=await appointments.update(item,patch,null,{
       actor:{...actor,memberId:context.actor.memberId,authVersion:context.authVersion},
       action,requestId:input.requestId,payloadHash:receipt.payloadHash,at,
-      reason:input.reason || '',verification:input.verification
+      reason:input.reason || '',verification:input.verification,contactBefore
     });
     if (!updated) fail(409,'工单或账号已更新，请刷新后重试');
     return staffPlatform.field.detail(actor,id);
@@ -185,12 +189,19 @@ export function appointmentService(
     async createOnsite(data, actor, requestId, registrationFlow = 'technician_intake') {
       requireRole(actor, 'technician');
       requireCampus(actor, data.campus);
-      await staffPlatform.requirePermission(
+      const { context } = await staffPlatform.requirePermission(
         actor,
         registrationFlow === 'frontdesk' ? 'onsite.frontdesk.create' : 'onsite.create',
         { campusId: data.campus }
       );
-      return this.create(data, { actor: actor.account, requestId, registrationFlow },onsiteRequestKey(actor.memberId,requestId));
+      if (data.parentAppointmentId) {
+        const parent=await appointments.find(data.parentAppointmentId);
+        if (!parent) fail(404,'原工单不存在');
+        requireCampus(actor,parent.campus);
+        if (parent.status!=='completed' || parent.studentId!==data.studentId || !['continuation','recurrence'].includes(data.linkKind) || data.sameDeviceAndFault!==true) fail(409,'请确认同一设备原故障的续修或复发');
+        data={...data,linkedBy:actor.account,linkedAt:clock().toISOString()};
+      }
+      return this.create(data, { actor: actor.account, authVersion: context.authVersion, campuses: actor.authorizedCampuses, requestId, registrationFlow },onsiteRequestKey(actor.memberId,requestId));
     },
     async registrationCredential(item,actor) {
       if (!ownsRegistration(actor,item)) return null;
@@ -291,14 +302,40 @@ export function appointmentService(
       if (onsite && Date.parse(expiresAt) <= checkedAt.getTime())
         fail(400, '当天临时登记有效期限已结束');
       item.createdAt = item.agreementAt = item.credentialRotatedAt = checkedAt.toISOString();
-      const created = await appointments.create(item, request);
-      if (!created) return (await this.resolveAttempt(requestKey, digest)).appointment;
-      return { ...(await present(created, !!onsite)), accessToken: credential.token };
+      const created = await appointments.create(item, request, onsite);
+      if (!created) {
+        const replay=requestKey && await this.resolveAttempt(requestKey,digest);
+        if (replay?.found) return replay.appointment;
+        fail(409,'账号权限已更新，请刷新后重试');
+      }
+      return { ...(await present(created, !!onsite, onsite?.campuses)), accessToken: credential.token };
     },
     async lookup(id, accessToken) {
       const item = await guestAppointment(appointments, id, accessToken);
       await expire(clock(), { repairChainId: item.id });
       return present(await guestAppointment(appointments, item.id, accessToken));
+    },
+    async link(id,input,actor) {
+      if (!['continuation','recurrence'].includes(input.linkKind) || input.sameDeviceAndFault!==true) fail(400,'请确认同一设备的原故障续修或复发');
+      return mutate(id,input,actor,'repairs.linked',async(item,context,at)=>{
+        if (!['booked','in_progress'].includes(item.status) || item.parentAppointmentId) fail(409,'请选择尚未关联的本次服务工单');
+        const parent=await appointments.find(input.parentAppointmentId);
+        if (!parent) fail(404,'原工单不存在');
+        requireCampus(actor,parent.campus);
+        if (parent.id===id || parent.status!=='completed' || parent.studentId!==item.studentId) fail(409,'只能关联同一客户已结束的原维修单');
+        return {parentAppointmentId:parent.id,linkKind:input.linkKind,linkedBy:actor.account,linkedAt:at};
+      });
+    },
+    async edit(id,input,actor) {
+      const contacts=['phone','social','email','contactValue'];
+      const limits={name:80,brand:80,deviceModel:120,faultType:80,issue:10000,phone:120,social:120,email:254,contactType:40,contactValue:120};
+      const patch={};
+      for (const [key,limit] of Object.entries(limits)) if (Object.hasOwn(input,key)) {
+        const value=stringField(input[key],key,limit,['name','brand','faultType'].includes(key));
+        patch[key]=contacts.includes(key) ? await encryptText(value,encryptionKey) : value;
+      }
+      if (!Object.keys(patch).length) fail(400,'没有需要修改的资料');
+      return mutate(id,input,actor,'repairs.information.updated',()=>patch);
     },
     async receive(id,input,actor) {
       return mutate(id,input,actor,'repairs.received',async (item,context,at)=>{

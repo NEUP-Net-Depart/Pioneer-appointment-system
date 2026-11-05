@@ -10,7 +10,6 @@ import { WorkspaceHeader } from './WorkspaceHeader';
 import { WorkspaceSections } from './WorkspaceSections';
 import { WorkspaceMoreActions } from './WorkspaceMoreActions';
 import { staffPermission } from '../../shared/staff-access.js';
-import { RepairFollowups } from './RepairFollowups.jsx';
 
 import { useWorkspaceQuery } from './useWorkspaceQuery.js';
 
@@ -169,11 +168,6 @@ export function Records({ user }) {
         )}
       </WorkspaceHeader>
       <Notice>{message}</Notice>
-      <RepairFollowups
-        active={active && staffPermission(user, 'repair.followup.manage')}
-        onChanged={refresh}
-        onOpen={setSelected}
-      />
       <RecordOverview
         result={overview}
         onOpen={setOverviewOpen}

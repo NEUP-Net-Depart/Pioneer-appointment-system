@@ -10,7 +10,6 @@ export const businessPermissions = new Set([
   'repair.correct',
   'repair.transfer',
   'repair.receive',
-  'repair.followup.manage',
   'customer.identity.read',
   'customer.contact.read',
   'onsite.create',

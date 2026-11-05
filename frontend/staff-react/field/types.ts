@@ -9,10 +9,22 @@ export interface Appointment {
   receivedBy?: string;
   photoDeferredBy?: string;
   canSupplement?: boolean;
+  parentAppointmentId?: string;
+  linkKind?: string;
+  customerHistory?: {
+    id: string;
+    date: string;
+    brand: string;
+    deviceModel: string;
+    faultType: string;
+    outcome: string;
+    repairNote: string;
+  }[];
   registrationFlow?: string;
   repairHistory?: {
     items: {
       id: string;
+      parentAppointmentId?: string;
       date: string;
       timeSlot: string;
       status: string;
@@ -27,13 +39,6 @@ export interface Appointment {
       reason?: string;
       before?: unknown;
       after?: unknown;
-    }[];
-    followups: {
-      id: string;
-      parentAppointmentId: string;
-      scheduledAppointmentId: string;
-      reason: string;
-      status: string;
     }[];
   } | null;
   canReceive?: boolean;

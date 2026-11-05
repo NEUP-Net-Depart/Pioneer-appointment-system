@@ -13,3 +13,9 @@
 接口：PATCH /api/appointments/:id/status；POST /api/appointments/:id/receive；POST /api/appointments/:id/photos；POST /api/appointments/:id/transfer（接手人本人，receivedDevice=true）；PATCH /api/appointments/:id/correction（仅结果与说明）。写入均携带 revision 与 requestId。
 
 GET /api/field/appointments/:id 为单工单详情及必要联系方式访问入口，自动记录访问人、时间和工单，不在访问审计中复制明文联系信息。列表不提供联系方式批量输出。学生私人凭证接口仅输出显式许可字段，维修说明及操作历史只供内部查看。
+
+返修直接使用 appointments.parent_appointment_id / link_kind / linked_by / linked_at。POST /api/appointments/:id/link 将已预约或维修中的本单关联到同一客户已结束的原单，必须明确确认同一设备原故障，原因只接受 continuation / recurrence。原单结果不变；新单占用原有预约名额，不重复创建。未预约到场可从原单登记现场新单，须重新签名、接收并记录照片。
+
+0046 将全部旧申请字段逐项归档至审计：已排期记录关联已有工单（historical，不推断故障类型），待处理及已拒绝申请分别标记 archived_unplanned / archived_rejected，不虚构到场或继续维护任务。随后删除 repair_followups 及审批权限。原 /repair-followups 路由、服务与前端模块已删除。
+
+工作人员详情提供授权校区内客户历史及关联服务历史；学生嵌套历史也只返回状态与结果。关联返修计数独立于维修结果。PATCH /api/appointments/:id/information 可更正姓名、设备、故障及联系方式，保持主修、状态不变，联系方式变更审计的前后值加密保存。详情支持手动补拍外观变化和经授权核验身份后补发私人查询链接。

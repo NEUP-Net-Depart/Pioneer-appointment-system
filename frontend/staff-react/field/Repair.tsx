@@ -2,20 +2,25 @@ import { useState } from 'react';
 import { outcomeLabels, repairOutcomes } from '../../../shared/constants.js';
 import { Modal, Notice, Status } from './ui';
 import type { Appointment, Person } from './types';
+import { RepairInformation, RepairCredential, RepairHistory } from '../RepairDetails';
+import { RepairRelations } from '../RepairRelations';
+import { WarrantyLookupButton } from './WarrantyLookup';
 import { RepairOriginal } from '../RepairOriginal';
 import { RepairAttachments } from '../RepairAttachments';
 import { IntakePhotos } from './IntakePhotos';
 import { useRepair } from './useRepair';
 import { formatInstant } from '../../../shared/time.js';
 
-export function Repair({
+function RepairOrder({
   id,
+  onOpen,
   onClose,
   onChanged,
   sidePanel = false,
   customerCredential
 }: {
   id: string;
+  onOpen: (id: string, token?: string) => void;
   memberId: string;
   people: Person[];
   onClose: () => void;
@@ -182,16 +187,26 @@ export function Repair({
               {outcomeLabels[item.outcome || ''] || '历史未分类'} · {item.repairNote}
             </p>
           )}
+          <WarrantyLookupButton initialBrand={item.brand} />
+          <RepairRelations
+            key={id}
+            item={item}
+            onChanged={() => {
+              void r.load();
+              onChanged();
+            }}
+            onOpen={onOpen}
+          />
           <RepairAttachments id={id} revision={item.revision} />
-          <details className="field-details">
-            <summary>维修与交接历史</summary>
-            {(item.repairHistory?.events || []).map((event, index) => (
-              <p key={index}>
-                {formatInstant(event.occurredAt)} · {event.action} · {event.actorName || ''}{' '}
-                {event.reason}
-              </p>
-            ))}
-          </details>
+          <RepairInformation
+            item={item}
+            onChanged={() => {
+              void r.load();
+              onChanged();
+            }}
+          />
+          <RepairCredential item={item} onIssued={(token) => onOpen(id, token)} />
+          <RepairHistory history={item.repairHistory} />
           <RepairOriginal original={item.original} />
           {customerCredential && (
             <a
@@ -205,5 +220,22 @@ export function Repair({
         </>
       )}
     </Modal>
+  );
+}
+
+export function Repair(props: Omit<Parameters<typeof RepairOrder>[0], 'onOpen'>) {
+  const [id, setId] = useState(props.id);
+  const [credential, setCredential] = useState(props.customerCredential);
+  return (
+    <RepairOrder
+      {...props}
+      key={id}
+      id={id}
+      customerCredential={credential}
+      onOpen={(nextId, token) => {
+        setId(nextId);
+        setCredential(token ? { id: nextId, accessToken: token } : null);
+      }}
+    />
   );
 }
