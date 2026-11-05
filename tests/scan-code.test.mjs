@@ -16,15 +16,6 @@ test('fixed scan codes use a domain-separated HMAC and reject malformed or forge
   assert.throws(() => verifyScanCode(code, 't'.repeat(64)), error => error.status === 400);
 });
 
-test('scan configuration always publishes the single workflow and accepts prior JWT-signed codes', async () => {
-  const id = 'reserve020261013-01', primary = 'p'.repeat(64), previous = 'j'.repeat(64);
-  const service = scanService({find:async()=>({id,campus:'南湖'}),expirePending:async()=>{}}, {lookup:async()=>({id})}, primary, undefined, {detail:async()=>({id})}, [previous]);
-  assert.deepEqual(service.config(), {enabled:true});
-  assert.equal((await service.code(id,'private')).code,scanCode(id,primary));
-  const actor={role:'technician',status:'enabled',authorizedCampuses:['南湖']};
-  assert.equal((await service.resolve({code:scanCode(id,previous)},actor)).id,id);
-  await assert.rejects(service.resolve({code:scanCode(id,'wrong')},actor),error=>error.status===400);
-});
 
 test('scan service accepts signed QR payloads and applies the technician campus boundary', async () => {
   const id = 'reserve020261013-01'; const secret = 's'.repeat(64);

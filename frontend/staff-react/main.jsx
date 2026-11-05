@@ -38,12 +38,7 @@ const StatisticsModule = workspaceModule(() => import('./Statistics'), 'Statisti
 const Statistics = StatisticsModule.Page;
 const AccountSettingsModule = workspaceModule(() => import('./AccountSettings'), 'AccountSettings');
 const AccountSettings = AccountSettingsModule.Page;
-import {
-  staffPermission,
-  staffViewAllowed,
-  staffSceneAllowed,
-  normalizeStaffScene
-} from '../../shared/staff-access.js';
+import { staffPermission, staffViewAllowed, staffSceneAllowed } from '../../shared/staff-access.js';
 import { WorkspacePage } from './WorkspacePage';
 import './workspace-foundation.css';
 import './workspace-design.css';
@@ -112,10 +107,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
               ? 'repair'
               : data.contexts.find(
                   (context) =>
-                    context.id ===
-                    normalizeStaffScene(
-                      sessionStorage.getItem(`field-scene:${data.actor.memberId}`)
-                    )
+                    context.id === sessionStorage.getItem(`field-scene:${data.actor.memberId}`)
                 )?.id ||
                 data.contexts.find((context) => context.id === 'desk')?.id ||
                 data.contexts[0]?.id ||
@@ -161,7 +153,6 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
   }, [profile]);
   useEffect(() => () => clearWorkspaceState(), []);
   const navigate = (view) => {
-    if (view.startsWith('scene:')) view = `scene:${normalizeStaffScene(view.slice(6))}`;
     if (view === 'users') view = 'members';
     if (view === 'report-settings') view = 'reports';
     if (

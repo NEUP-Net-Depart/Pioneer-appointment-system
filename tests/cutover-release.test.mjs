@@ -75,9 +75,9 @@ test('the existing Preview migration ledger and populated accounts rehearse thro
   const result = await rehearseFixtureSnapshot(await baselineDump());
   assert.ok(result.applied > 0);
   assert.equal(result.preservedTables, 7);
-  assert.equal(result.accounts['technician → technician'], 1);
+  assert.equal(result.accounts['technician → dept-hardware:member'], 1);
   assert.equal(result.accounts['admin → '], 1);
-  assert.equal(result.accounts['superadmin → superadmin'], 1);
+  assert.equal(result.accounts['superadmin → '], 1);
 });
 
 test('later deployments respect deliberately ungranted administrators and revoked technician roles',async()=>{
@@ -93,13 +93,13 @@ test('already applied 0030 upgrades forward without inferring a management posit
 test('Preview rehearsal respects expired explicit authorization and custom grant conditions',async()=>{
   const report=await rehearseFixtureSnapshot(await baselineDump({deployed:true,beforeLoginScope:true,explicitAuthorization:true}));
   assert.equal(report.applied,(await readdir('migrations')).filter(name => name.endsWith('.sql') && name >= '0031').length);
-  assert.equal(report.accounts['admin → technician'],1);assert.equal(report.accounts['admin → '],1);
+  assert.equal(report.accounts['admin → '],2);
 });
 
 test('migration rehearsal rejects multi-account members before altering authorization',async()=>{
   await assert.rejects(rehearseSnapshot(await baselineDump({deployed:true,beforeLoginScope:true,withAliases:true})),/multiple login accounts/);
 });
-test('Preview rehearsal advances pending default deadlines while preserving custom deadlines and completed history',async()=>{
+test('Preview rehearsal moves all unreceived bookings to next midnight and preserves terminal history',async()=>{
   const report=await rehearseFixtureSnapshot(await baselineDump({deployed:true,beforeLoginScope:true,withAppointments:true}));
   assert.equal(report.applied,(await readdir('migrations')).filter(name => name.endsWith('.sql') && name >= '0031').length);assert.equal(report.preservedTables,7);
 });
@@ -114,8 +114,7 @@ test('snapshot restore rejects broken references before attempting migrations',a
 async function deploymentFetch(url) {
   const path = url.pathname;
   if (path === '/api/health') return Response.json({ ok: true, staffRelease: STAFF_RELEASE, workflow: 'staff-platform' });
-  if (path === '/api/scan/config') return Response.json({ enabled: true });
-  if (['/api/field/home', '/api/field/board', '/api/roster-tasks', '/api/me/attendance', '/api/members'].includes(path)) return Response.json({ error: '请登录' }, { status: 401 });
+  if (['/api/field/home', '/api/field/board', '/api/rosters/week', '/api/me/attendance', '/api/members'].includes(path)) return Response.json({ error: '请登录' }, { status: 401 });
   if (path === '/api/unknown') return Response.json({ error: '不存在' }, { status: 404 });
   const file = path === '/' ? 'index.html' : path === '/staff/' ? 'staff/index.html' : path.slice(1);
   try {
@@ -134,7 +133,7 @@ test('smoke tolerates cached legacy scripts and still checks health, authenticat
     return deploymentFetch(url);
   });
   assert.ok(result.assets >= 4);
-  for (const path of ['/api/health', '/api/scan/config', '/api/field/home', '/api/field/board', '/api/roster-tasks', '/api/me/attendance', '/api/members', '/api/unknown', '/.dev.vars', '/wrangler.jsonc']) assert.ok(requested.has(path), path + ' must still be checked');
+  for (const path of ['/api/health', '/api/field/home', '/api/field/board', '/api/rosters/week', '/api/me/attendance', '/api/members', '/api/unknown', '/.dev.vars', '/wrangler.jsonc']) assert.ok(requested.has(path), path + ' must still be checked');
 });
 test('smoke rejects staff HTML referencing any legacy script even with a valid React entry', async () => {
   const html = await readFile(new URL('../dist/staff/index.html', import.meta.url), 'utf8');

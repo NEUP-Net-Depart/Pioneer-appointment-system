@@ -44,8 +44,7 @@ export async function smoke(base, fetcher = fetch, output = new URL('../dist/', 
   for (const path of ['/user.html', '/staff.html', '/app.js', '/src/app.js', '/.dev.vars', '/wrangler.jsonc']) await get(path, 404);
   const health = await (await get('/api/health')).json();
   assert.equal(health.ok, true); assert.equal(health.staffRelease, STAFF_RELEASE); assert.equal(health.workflow, 'staff-platform');
-  assert.deepEqual(await (await get('/api/scan/config')).json(), { enabled: true });
-  for (const path of ['/api/field/home', '/api/field/board', '/api/roster-tasks', '/api/me/attendance', '/api/members']) {
+  for (const path of ['/api/field/home', '/api/field/board', '/api/rosters/week', '/api/me/attendance', '/api/members']) {
     const response = await get(path, 401);
     assert.match(response.headers.get('content-type') || '', /application\/json/);
     assert.equal(typeof (await response.json()).error, 'string', path + ' must enforce authentication');

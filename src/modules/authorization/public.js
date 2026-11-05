@@ -4,7 +4,7 @@ import { dateKey, validDate } from '../../platform/time.js';
 import { conditionProviders, validCondition } from './conditions.js';
 import { parseJson } from '../../platform/contracts.js';
 
-export const staffRepairPermissions = ['repair.summary.read','repair.start','repair.receive','repair.finish.own','repair.transfer','customer.identity.read','customer.contact.read','onsite.create','onsite.frontdesk.create'];
+export const staffRepairPermissions = ['repair.summary.read','repair.start','repair.receive','repair.finish.own','repair.transfer','customer.identity.read','customer.contact.read','onsite.create'];
 
 export const managementPermissions=['members.manage','repair.correct','statistics.read','roster.manage','attendance.session.manage','attendance.correct','attendance.export'];
 export const identityPermissions=[...staffRepairPermissions,...managementPermissions,'roster.read','attendance.self'];

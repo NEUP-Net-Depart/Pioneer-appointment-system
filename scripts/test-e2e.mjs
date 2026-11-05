@@ -7,9 +7,9 @@ import {createServer} from 'node:net';
 import {root,config} from './cli.mjs';
 import {hashPassword} from '../src/lib/passwords.js';
 import {nowIso} from '../shared/time.js';
-import {dateKey,expirationDeadline} from '../shared/time.js';
+import {dateKey} from '../shared/time.js';
 import {smoke} from './smoke.mjs';
-import {fieldSeed} from '../tests/fixtures/field-seed.mjs';
+import {workflowSeed} from '../tests/fixtures/workflow-seed.mjs';
 
 const verifier = await (await import('./warranty-verifier-preview.mjs')).startWarrantyVerifier();
 process.env.WARRANTY_CAPTCHA_ORIGIN = verifier.origin;
@@ -32,7 +32,7 @@ if (!process.argv.includes('--serve')) {
   await writeFile(entry, "import '../e2e-clock.js';\n" + await readFile(entry, 'utf8'));
 }
 const cfg=await config(),configPath=resolve(dir,'wrangler.jsonc'),state=resolve(dir,'state');
-const rootPassword=process.argv.includes('--serve') && process.argv.includes('--field') ? 'StaffTest!2026' : randomBytes(24).toString('base64url');
+const rootPassword=process.argv.includes('--serve') ? 'StaffTest!2026' : randomBytes(24).toString('base64url');
 const vars=`JWT_SECRET=${randomBytes(48).toString('base64url')}\nPII_ENCRYPTION_KEY=${randomBytes(32).toString('hex')}\nROOT001_PASSWORD=${rootPassword}\nWARRANTY_CAPTCHA_ORIGIN=${verifier.origin}\n`;
 await writeFile(resolve(dir,'.dev.vars'),vars,{mode:0o600});
 await writeFile(resolve(dir,'.dev.vars.preview'),vars,{mode:0o600});
@@ -61,10 +61,8 @@ try{
   const sql=resolve(dir,'seed.sql');
   await writeFile(sql,`INSERT INTO staff_accounts(account,name,role,home_campus,protected,password_hash,created_at) VALUES ('root001','预览负责人','superadmin','南湖',1,'${hashPassword(rootPassword)}','${fixtureTimestamp}'); INSERT INTO staff_campus_grants VALUES ('root001','南湖'),('root001','浑南'); INSERT INTO member_department_memberships(id,member_id,department_id,position_code,assignment_type,is_primary,effective_from,created_at) VALUES('test-root-hardware','member-root001','dept-hardware','member','primary',1,'2026-01-01','${fixtureTimestamp}');`,{mode:0o600});
   command(['d1','execute','DB','--local','--persist-to',state,'--file',sql]);
-  if(process.argv.includes('--field')) {
-    await writeFile(sql,fieldSeed(process.argv.includes('--serve')?dateKey():'2026-10-15',{reportDemo:process.argv.includes('--serve')}),{mode:0o600});
-    command(['d1','execute','DB','--local','--persist-to',state,'--file',sql]);
-  }
+  await writeFile(sql,workflowSeed(process.argv.includes('--serve')?dateKey():'2026-10-15'),{mode:0o600});
+  command(['d1','execute','DB','--local','--persist-to',state,'--file',sql]);
   await rm(sql);
   const probe=createServer();await new Promise(resolve=>probe.listen(0,'127.0.0.1',resolve));
   const port=probe.address().port;await new Promise(resolve=>probe.close(resolve));
@@ -86,23 +84,13 @@ try{
   await smoke(base,fetch,pathToFileURL(resolve(dir,'dist')+'/'));
   console.log(`Isolated local Preview ready: ${base} (Preview quota; fresh D1/R2; no remote resources)`);
   if(process.argv.includes('--serve')){
-    if(process.argv.includes('--field') && Date.now() < Date.parse(expirationDeadline(dateKey()))) {
-      const session=await fetch(base+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({account:'20261001',password:'StaffTest!2026'})}).then(r=>r.json());
-      const signature=[Array.from({length:10},(_,i)=>[.1+i*.05,.2+i*.03])];
-      for(const [index,deviceModel,faultType] of [[1,'ThinkPad T14','系统问题'],[2,'MacBook Air','网络问题'],[3,'拯救者 Y7000','清灰换硅脂']]) {
-        const response=await fetch(base+'/api/scan/onsite',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${session.token}`},body:JSON.stringify({requestId:randomUUID(),registrationFlow:'frontdesk',campus:'南湖',name:`示例机主${index}`,studentId:`2030600${index}`,social:'local-demo',deviceType:'笔记本电脑',brand:index===2?'苹果':'联想',deviceModel,warranty:'否',faultType,signature})});
-        const value=await response.json();
-        if(!response.ok) throw new Error(`Local fixture creation failed: ${value.error}`);
-        console.log(`Local sample: ${value.id} / ${deviceModel}`);
-      }
-    } else if(process.argv.includes('--field')) console.log('Local service remains available; customer samples are omitted after the daily registration deadline.');
     console.log(`Local root001 password is in ${resolve(dir,'.dev.vars.preview')}. Stop with Ctrl+C; temporary data is removed.`);
     await new Promise(resolve=>{process.once('SIGINT',resolve);process.once('SIGTERM',resolve);});
   }else{
     const runner=fileURLToPath(new URL('../node_modules/@playwright/test/cli.js',import.meta.url));
     const testOutput=resolve(root,'output/playwright',inside);
     exitCode=await new Promise((resolve,reject)=>{
-      const child=spawn(process.execPath,[runner,'test','--config','playwright.config.mjs',...process.argv.slice(2).filter(arg=>arg!=='--field')],{cwd:root,env:{...env,E2E_OUTPUT_DIR:testOutput,E2E_BASE_URL:base,E2E_ROOT_PASSWORD:rootPassword,E2E_FIELD:process.argv.includes('--field')?'true':'false'},stdio:'inherit'});
+      const child=spawn(process.execPath,[runner,'test','--config','playwright.config.mjs',...process.argv.slice(2)],{cwd:root,env:{...env,E2E_OUTPUT_DIR:testOutput,E2E_BASE_URL:base,E2E_ROOT_PASSWORD:rootPassword},stdio:'inherit'});
       child.once('error',reject);child.once('exit',code=>resolve(code ?? 1));
     });
   }

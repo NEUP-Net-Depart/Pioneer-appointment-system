@@ -5,14 +5,12 @@ import { api, Modal, Notice } from './ui';
 
 export function Registration({
   campus,
-  frontdesk,
   parent,
   linkKind,
   onDone,
   onClose
 }: {
   campus: string;
-  frontdesk: boolean;
   parent?: Appointment;
   linkKind?: string;
   onDone: (id: string, accessToken?: string) => void;
@@ -74,8 +72,7 @@ export function Registration({
           ...(parent ? { parentAppointmentId: parent.id, linkKind, sameDeviceAndFault: true } : {}),
           agreement: true,
           signature: strokes.current,
-          requestId: requestId.current,
-          registrationFlow: frontdesk ? 'frontdesk' : 'technician_intake'
+          requestId: requestId.current
         }
       });
       onDone(item.id, item.accessToken);

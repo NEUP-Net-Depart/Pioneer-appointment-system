@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { api } from './ui';
-import { normalizeStaffScene } from '../../../shared/staff-access.js';
 import { useField } from './useField';
 import type { Home } from './types';
 
@@ -23,15 +22,13 @@ export function useFieldWorkspace({
   onLogout: () => void;
   onNavigate: (view: string) => void;
 }) {
-  requestedScene = normalizeStaffScene(requestedScene);
   const key = `field-scene:${initial.actor.memberId}`;
   const [scene, setScene] = useState(
     () =>
       requestedScene ||
       (initial.repairs?.length
         ? 'repair'
-        : initial.contexts.find((c) => c.id === normalizeStaffScene(sessionStorage.getItem(key)))
-            ?.id ||
+        : initial.contexts.find((c) => c.id === sessionStorage.getItem(key))?.id ||
           initial.contexts.find((c) => c.id === 'desk')?.id ||
           initial.contexts[0]?.id ||
           'mine')
@@ -67,10 +64,7 @@ export function useFieldWorkspace({
   } | null>(null);
   const [busy, setBusy] = useState(false),
     [filter, setFilter] = useState('all'),
-    [search, setSearch] = useState(''),
-    [tab, setTab] = useState('appointments'),
-    [showAvailable, setShowAvailable] = useState(false),
-    [peopleQuery, setPeopleQuery] = useState('');
+    [search, setSearch] = useState('');
   const result = useField(
       campus,
       scene,
@@ -218,16 +212,6 @@ export function useFieldWorkspace({
         .toLowerCase()
         .includes(search.toLowerCase())
   );
-  const people = [...(data?.staffPresence || [])].sort((a, b) =>
-    a.name.localeCompare(b.name, 'zh-CN')
-  );
-  const visiblePeople = people.filter(
-    (person) =>
-      (!showAvailable || person.canReceive) &&
-      `${person.name} ${person.department || ''} ${person.identities?.map((identity) => identity.label).join(' ') || ''}`.includes(
-        peopleQuery.trim()
-      )
-  );
   const campusName = data?.campuses.find((c) => c.id === campus)?.name || '';
   return {
     key,
@@ -254,12 +238,6 @@ export function useFieldWorkspace({
     setFilter,
     search,
     setSearch,
-    tab,
-    setTab,
-    showAvailable,
-    setShowAvailable,
-    peopleQuery,
-    setPeopleQuery,
     result,
     data,
     refresh,
@@ -269,8 +247,6 @@ export function useFieldWorkspace({
     checkIn,
     presence,
     items,
-    people,
-    visiblePeople,
     campusName
   };
 }

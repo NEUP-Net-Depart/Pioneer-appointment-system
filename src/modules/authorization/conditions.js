@@ -1,6 +1,4 @@
-import { campusId } from './scopes.js';
 import { dateKey, validDate } from '../../platform/time.js';
-import { participationCodes } from '../../../shared/staff-organization.js';
 
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
 const string = { type: 'string', minLength: 1 };
@@ -36,23 +34,6 @@ export function conditionProviders() {
       code: 'ownResource', version: 1, description: '资源归属于当前成员', parameterSchema: schema({}),
       check: ({ actor, resource }) => !!actor?.memberId && actor.memberId === (resource?.memberId || resource?.assignedMemberId)
     },
-    activeDutyRole: {
-      code: 'activeDutyRole', version: 1, description: '当前成员在业务日期拥有有效岗位',
-      parameterSchema: schema({ kind: string, roleKinds: strings, dutyType: string }),
-      check: ({ context, resource, parameters = {} }) => {
-        if (resource?.businessDate && resource.businessDate !== context?.businessDate) return false;
-        const duties = context?.todayDuties || [];
-        return duties.some(duty => activeOn(duty, context) &&
-          (!resource?.campusId || !!(duty.campusId || duty.campusName) && campusId(duty.campusId || duty.campusName) === campusId(resource.campusId)) &&
-          (!parameters.kind || parameters.kind === duty.roleKind) && (!parameters.roleKinds || parameters.roleKinds.includes(duty.roleKind)) &&
-          (!parameters.dutyType || duty.dutyType === parameters.dutyType));
-      }
-    },
-    signedDutyPresence: {
-      code: 'signedDutyPresence', version: 1, description: '当天已在目标校区签到', parameterSchema: schema({}),
-      check: ({ context, resource }) => !!context?.presence && context.presence.businessDate === context.businessDate &&
-        !!resource?.campusId && campusId(context.presence.campusId) === campusId(resource.campusId)
-    },
     activeDepartmentMembership: {
       code: 'activeDepartmentMembership', version: 1, description: '当前成员在业务日期具有有效任职',
       parameterSchema: schema({ departmentId: string, departmentIds: strings, assignmentType: string, isPrimary: { type: 'boolean' } }),
@@ -64,13 +45,6 @@ export function conditionProviders() {
           (!parameters.departmentId || parameters.departmentId === item.departmentId) &&
           (!parameters.assignmentType || parameters.assignmentType === item.assignmentType) &&
           (parameters.isPrimary === undefined || parameters.isPrimary === item.isPrimary));
-      }
-    },
-    rosterParticipantEligible: {
-      code:'rosterParticipantEligible',version:1,description:'普通维修或办公排班资格',parameterSchema:schema({}),
-      check:({context, resource}) => {
-        const codes = participationCodes(context, resource);
-        return !codes.includes('exchange') && codes.some(code => ['repair', 'office'].includes(code));
       }
     },
     attendanceEligible: {

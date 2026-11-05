@@ -206,11 +206,7 @@ body.staff-mode.field-mode {
   justify-content: space-between;
   gap: 8px;
 }
-.field-app .field-people-search {
-  margin: 0 0 16px;
-}
-.field-app .field-state-note,
-.field-app .roster-next > div > p {
+.field-app .field-state-note {
   font-size: 14px;
 }
 .field-content > .workspace-update {
@@ -274,16 +270,6 @@ body.staff-mode.field-mode {
   display: none;
 }
 @media (min-width: 768px) {
-  .field-app .roster-start {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 20px;
-  }
-  .field-app .field-people .field-section-heading {
-    margin-bottom: 12px;
-  }
   .field-app .field-person-summary {
     margin: 0 0 16px;
   }
@@ -318,17 +304,10 @@ body.staff-mode.field-mode {
     gap: 12px 24px;
     margin-bottom: 16px;
   }
-  .field-app .field-desk-alerts .reception-next {
-    justify-content: flex-start;
-    padding: 0;
-    margin: 0;
-    background: transparent;
-  }
   .field-app .field-desk-grid {
     gap: 20px;
   }
-  .field-app .field-appointments,
-  .field-app .field-people {
+  .field-app .field-appointments {
     padding: 20px;
   }
   .field-app .records-toolbar {
@@ -381,34 +360,6 @@ body.staff-mode.field-mode {
     margin: 0;
   }
 }
-@media (min-width: 1200px) {
-  .field-queue-tools {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    margin-bottom: 12px;
-  }
-  .field-app .field-queue-tools .field-section-heading {
-    flex: 1;
-    flex-wrap: wrap;
-    gap: 4px 12px;
-    margin: 0;
-  }
-  .field-app .field-queue-tools .field-lookup {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: end;
-    gap: 0 12px;
-    width: 42%;
-    margin: 0;
-  }
-  .field-app .field-queue-tools .field-lookup :is(.field-search, .field-lookup-help) {
-    margin: 0;
-  }
-  .field-app .field-queue-tools .field-lookup > :is(p, .field-lookup-results, details[open]) {
-    grid-column: 1 / -1;
-  }
-}
 @media (min-width: 1280px) {
   .field-app .members-tools {
     display: grid;
@@ -428,24 +379,6 @@ body.staff-mode.field-mode {
 @media (max-width: 1279px) {
   .field-app .members-tools > label:first-child {
     flex-basis: 100%;
-  }
-}
-@media (min-width: 1101px) and (min-height: 650px) {
-  .field-app .field-people {
-    position: sticky;
-    top: 24px;
-    max-height: calc(100dvh - 48px);
-    display: flex;
-    flex-direction: column;
-  }
-  .field-app .field-people > :not(.field-people-list) {
-    flex-shrink: 0;
-  }
-  .field-people-list {
-    overflow-y: auto;
-    min-height: 0;
-    overscroll-behavior: contain;
-    scrollbar-gutter: stable;
   }
 }
 @media (min-width: 1600px) {
@@ -531,17 +464,6 @@ body.staff-mode.field-mode {
   }
   .field-app .field-desk-alerts:empty {
     display: none;
-  }
-  .field-app .field-desk-alerts .reception-next {
-    padding: 0;
-    margin: 0;
-    flex-wrap: nowrap;
-    background: transparent;
-    gap: 12px;
-  }
-  .field-app .field-desk-alerts .reception-next button {
-    width: auto;
-    flex: 0 0 auto;
   }
   .field-app .field-mobile-tabs {
     margin: 0 0 16px;

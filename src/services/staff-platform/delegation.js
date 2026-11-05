@@ -13,7 +13,6 @@ export const businessPermissions = new Set([
   'customer.identity.read',
   'customer.contact.read',
   'onsite.create',
-  'onsite.frontdesk.create',
   'statistics.read',
   'settings.manage',
   'accounts.manage',

@@ -162,7 +162,7 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
     const campuses = (actor.authorizedCampuses || []).map(name => ({id:campusId(name),name}));
     const selected = query.campusId || campuses[0]?.id;
     if (!campuses.some(item=>item.id===selected)) fail(403,'没有该校区的访问权限');
-    const capability = Object.fromEntries(['repair.summary.read','repair.start','repair.transfer','repair.receive','onsite.create','onsite.frontdesk.create','attendance.self','attendance.session.manage','members.manage','roles.manage'].map(code=>[code,allowed(context,code,{campusId:selected,memberId:context.actor.memberId})]));
+    const capability = Object.fromEntries(['repair.summary.read','repair.start','repair.transfer','repair.receive','onsite.create','attendance.self','attendance.session.manage','members.manage','roles.manage'].map(code=>[code,allowed(context,code,{campusId:selected,memberId:context.actor.memberId})]));
     const repairs = (await appointments.inProgress(actor.account)).filter(item=>item.campus===names[selected]);
     const pendingPhotos = await appointments.pendingPhotos(actor.account,names[selected]);
     return {businessDate:dateKey(),actor:context.actor,authVersion:context.authVersion,campuses,campusId:selected,

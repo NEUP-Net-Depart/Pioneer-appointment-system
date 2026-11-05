@@ -1,14 +1,14 @@
 // Animate only data regions and keyed rows. The shell and controls stay in place.
 const regions =
-  '[data-motion-region],.booking-settings-editor,.capacity-actual,.capacity-staffing,.field-appointments,.field-people-list,.records-table-wrap,.members-results,.attendance-history-list,.report-grid,.roster-workflow,.account-list,.workspace-dialog-body,#lookup-results,#detail-queue,#detail-information,#detail-repair-record';
+  '[data-motion-region],.booking-settings-editor,.capacity-actual,.capacity-staffing,.field-appointments,.records-table-wrap,.members-results,.attendance-history-list,.report-grid,.account-list,.workspace-dialog-body,#lookup-results,#detail-information,#detail-repair-record';
 const containers =
-  '[data-motion-container],.field-card,.react-card,.records-panel,.roster-start,.roster-board,.field-hero,.field-confirm,.reception-panel,.react-message,.react-error,.field-notice,.field-empty,.empty-state,.roster-issues,.roster-editbar,.service-day-preview,.roster-compose-section,.leave-detail-section';
+  '[data-motion-container],.field-card,.react-card,.records-panel,.field-hero,.field-confirm,.react-message,.react-error,.field-notice,.field-empty,.empty-state,.service-day-preview';
 const items = '[data-motion-item]';
 const values = '[data-motion-value]';
 const maxAnimations = 24;
 // Lists provide geometry; their children enter as one bounded batch.
 const listGroups =
-  '[data-motion-list],.account-list,.members-results,.records-table-wrap,.field-people-list,.field-appointments,.report-grid';
+  '[data-motion-list],.account-list,.members-results,.records-table-wrap,.field-appointments,.report-grid';
 // Product-wide semantic presets: no full-page fade or artificial data delay.
 export const dataMotionPresets = {
   text: { duration: 160, keyframes: [{ opacity: 0.65 }, { opacity: 1 }] },

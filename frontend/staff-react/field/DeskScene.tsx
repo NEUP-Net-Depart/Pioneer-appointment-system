@@ -12,18 +12,10 @@ type Props = Pick<
   | 'filter'
   | 'setFilter'
   | 'setSearch'
-  | 'tab'
-  | 'setTab'
-  | 'showAvailable'
-  | 'setShowAvailable'
-  | 'peopleQuery'
-  | 'setPeopleQuery'
   | 'result'
   | 'data'
   | 'showAttendance'
   | 'items'
-  | 'people'
-  | 'visiblePeople'
 >;
 export function DeskScene({
   active,

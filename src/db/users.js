@@ -43,7 +43,7 @@ export function userRepository(db) {
       const day = dateKey();
       return (await db.prepare(`${select(`,${roleNames},
         (SELECT COUNT(*) FROM appointments WHERE campus IN (SELECT value FROM json_each(?)) AND assigned_to=staff_accounts.account AND
-          (status='in_progress' OR (status='completed' AND outcome IN ('repaired','unrepaired','not_needed','legacy_unknown')))) AS workload`)}
+          status IN ('in_progress','completed')) AS workload`)}
         ORDER BY role DESC,name`).bind(day,day,JSON.stringify(campuses)).all()).results.map(publicUser);
     },
     async update(target, patch, { selfPassword = false, auditRecord } = {}) {

@@ -43,16 +43,19 @@ npm run dev
 | 命令 | 用途 |
 | --- | --- |
 | `npm run verify` | 格式、lint、类型、架构、构建、测试与迁移检查 |
-| `npm run preview:local` | 隔离本地 D1/R2 预览，地址由终端输出 |
-| `npm run preview:field` | 带工作人员流程夹具的隔离预览 |
+| `npm run preview:local` | 带虚构人员的隔离本地 D1/R2 预览，地址由终端输出 |
 | `npm run preview:booking-layout` | 8790 端口预约布局预览，模拟数据、禁用提交 |
 | `npm run test:booking-layout` | 预约布局回归 |
 | `npm run release:plan -- --preview` | 查看当前分支的 Preview 发布计划，不执行远程操作 |
 
+## 业务基线
+
+当前按 [核心业务流程与规则重构方案 v1.2](docs/reviews/core-workflow-redesign-plan.md) 实施：直接接单、跨日多单与交接、四种服务结果、直接关联返修、通常可用时间与按周例外。无旧队列、分派、维修资格、请假审批或排班问卷。升级需追加执行 0044–0049；本地验证不等于已迁移或发布远程环境。
+
 ## 文档
 
 - [业务规则与权限](docs/requirements.md)：预约、维修、激活、排班与考勤。
-- [数据模型](docs/data-model.md)：持久化约束、迁移与兼容。
+- [数据模型](docs/data-model.md)：持久化约束及一次性迁移。
 - [部署与运维](docs/operations.md)：环境、Secrets、发布、维护与备份。
 - [模块与工程约定](docs/architecture/module-map.md)：模块边界、事务和前端协作。
 - [设备序列号与保修查询](docs/architecture/warranty-lookup.md)：联想自动查询、Acer／华为人工验证、手机 OCR 与各品牌消费者自查渠道（issue #47）。

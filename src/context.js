@@ -64,7 +64,7 @@ export function createContext(request, env) {
       return { ok: true, service: 'pioneer-repair-api', database: 'd1', attachments: 'r2', staffRelease, workflow: 'staff-platform' };
     }
   };
-  services.scan = scanService(appointments, services.appointments, scanSecret, clock, field, [env.JWT_SECRET]);
+  services.scan = scanService(appointments, services.appointments, scanSecret, clock, field);
   services.serviceLocations = serviceLocationService(serviceLocationRepository(db),appointments,services.bookingAvailability,env.PII_ENCRYPTION_KEY,clock,staffPlatformServiceInstance,bookingSettings);
   let authentication;
   const authenticate = () => authentication ||= services.auth.authenticate(request.headers.get('authorization'));

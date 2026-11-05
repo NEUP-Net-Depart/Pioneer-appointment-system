@@ -932,7 +932,6 @@
   .field-desk-grid {
     display: block;
   }
-  .field-desk-grid.tab-appointments .field-people,
   .field-desk-grid.tab-people .field-appointments {
     display: none;
   }
@@ -1309,93 +1308,6 @@
     flex-basis: 100%;
   }
 }
-/* Reception uses the shared field components; queue actions remain in the selected order. */
-.field-app .reception-panel {
-  padding-block: 20px;
-  border-block: 1px solid var(--field-border, #e2e8f0);
-  display: grid;
-  gap: 14px;
-}
-.field-app .reception-panel form {
-  display: grid;
-  gap: 16px;
-  min-width: 0;
-}
-.field-app .reception-panel p {
-  margin: 0;
-}
-.field-app .reception-history {
-  display: grid;
-  gap: 16px;
-  padding-inline-start: 20px;
-}
-.field-app .reception-history li > span {
-  display: block;
-  color: var(--muted);
-}
-.field-app .reception-history p {
-  margin-block: 4px 0;
-  overflow-wrap: anywhere;
-}
-.field-app .reception-stage {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 18px;
-  color: var(--field-muted, #64748b);
-  font-size: 13px;
-}
-.field-app .reception-stage .is-current {
-  color: var(--field-ink, #172033);
-  font-weight: 700;
-}
-.field-app .reception-candidates {
-  border: 0;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
-  gap: 10px;
-  max-height: 320px;
-  overflow-y: auto;
-}
-.field-app .reception-candidates > label {
-  display: flex;
-  align-items: start;
-  gap: 12px;
-  padding: 14px;
-  border: 1px solid var(--field-border, #e2e8f0);
-  border-radius: 10px;
-  cursor: pointer;
-}
-.field-app .reception-candidates > label.is-selected {
-  border-color: var(--field-ink, #172033);
-  background: var(--field-surface, #f5f7fa);
-}
-.field-app .reception-candidates input {
-  width: 18px;
-  min-height: 18px;
-  margin-top: 3px;
-  flex: 0 0 auto;
-}
-.field-app .reception-candidates label > span {
-  min-width: 0;
-  display: grid;
-  gap: 7px;
-}
-.field-app .reception-candidates small {
-  color: var(--field-muted, #64748b);
-}
-.field-app .reception-next {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 16px;
-  background: var(--field-surface, #f5f7fa);
-  border-radius: 12px;
-  margin-block: 16px;
-}
 .field-app .field-metrics {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -1420,11 +1332,6 @@
     min-height: 64px;
     padding: 12px;
     gap: 8px;
-  }
-}
-@media (max-width: 600px) {
-  .field-app .reception-next button {
-    width: 100%;
   }
 }
 
@@ -1454,11 +1361,6 @@
   font-size: 13px;
   line-height: 1.6;
   color: var(--muted);
-}
-
-.field-queue-number {
-  color: var(--workspace-accent, #1e3a5f);
-  font-variant-numeric: tabular-nums;
 }
 .field-accept-check {
   display: flex !important;
@@ -1572,10 +1474,6 @@
   .field-modal .field-ticket p {
     margin-block: 6px;
   }
-  .field-app .reception-panel {
-    padding-block: 12px;
-    gap: 10px;
-  }
   .field-photo-preview img,
   .field-photo-placeholder {
     height: 120px;
@@ -1609,4 +1507,22 @@
   .workspace-dialog-footer {
     padding-inline: 16px;
   }
+}
+
+.field-form .field-check input:is([type='radio'], [type='checkbox']) {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  margin: 0;
+}
+.field-roster-todo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
 }

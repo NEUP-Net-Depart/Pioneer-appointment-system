@@ -6,7 +6,7 @@ import { dateKey } from '../../shared/time.js';
 import { TIME_SLOTS } from '../../shared/constants.js';
 import { requireCampus } from './permissions.js';
 
-export function scanService(appointments, service, secret, clock = () => new Date(), field, previousSecrets = []) {
+export function scanService(appointments, service, secret, clock = () => new Date(), field) {
   const expire = (now, scope) => appointments.expirePending(now.toISOString(), scope);
   async function locate(id, actor) {
     const now = clock();
@@ -19,7 +19,6 @@ export function scanService(appointments, service, secret, clock = () => new Dat
     return field.detail(actor, item.id);
   }
   return {
-    config() { return { enabled: true }; },
     async code(id, token) {
       const item = await service.lookup(id, token);
       return { id: item.id, code: scanCode(item.id, secret) };
@@ -34,7 +33,7 @@ export function scanService(appointments, service, secret, clock = () => new Dat
       return { id: relation.id, code: scanCode(relation.id, secret) };
     },
     async resolve(input, actor) {
-      const id = input.code !== undefined ? verifyScanCode(input.code, [secret, ...previousSecrets]) : stringField(input.id, '预约编号', 80, true);
+      const id = input.code !== undefined ? verifyScanCode(input.code, secret) : stringField(input.id, '预约编号', 80, true);
       if (!/^(?:reserve|reverse)?[01]\d{8}-\d{2,}$/.test(id)) fail(400, '请输入完整预约编号');
       return locate(id, actor);
     },
@@ -46,19 +45,6 @@ export function scanService(appointments, service, secret, clock = () => new Dat
       if (!query.ready) return { items: [], hasMore: false };
       return field.search(actor,{ ...query, mode: input.mode, campusId: input.campusId });
     },
-    async current(actor, registrationRequestId) {
-      await expire(clock(), { campuses: actor.authorizedCampuses });
-      let registration = null;
-      if (registrationRequestId !== undefined) {
-        const key = stringField(registrationRequestId, '登记请求编号', 36, true);
-        if (!/^[a-f0-9-]{36}$/.test(key)) fail(400, '登记请求编号不正确');
-        const found = await appointments.findRegistration(actor.account, key);
-        // A receipt contains no student information and only confirms this actor's request.
-        if (found) { requireCampus(actor, found.campus); registration = { id: found.id, status: found.status }; }
-      }
-      const items = await appointments.inProgress(actor.account);
-      return { items: await Promise.all(items.map(item => { requireCampus(actor, item.campus); return field.detail(actor,item.id); })), registration };
-    },
     async onsite(input, actor) {
       const key = stringField(input.requestId, '登记请求编号', 36, true);
       if (!/^[a-f0-9-]{36}$/.test(key)) fail(400, '登记请求编号不正确');
@@ -68,7 +54,7 @@ export function scanService(appointments, service, secret, clock = () => new Dat
       if (previous) return {...await locate(previous.id,actor),accessToken:await service.registrationCredential(previous,actor)};
       const data = onsiteBookingInput({ ...input, date: dateKey(now), timeSlot: TIME_SLOTS[0], agreementAt: now.toISOString(), agreementVersion: 'v1.0' });
       requireCampus(actor, data.campus);
-      const item = await service.createOnsite({...data,parentAppointmentId:input.parentAppointmentId || null,linkKind:input.linkKind || null,sameDeviceAndFault:input.sameDeviceAndFault}, actor, key, input.registrationFlow);
+      const item = await service.createOnsite({...data,parentAppointmentId:input.parentAppointmentId || null,linkKind:input.linkKind || null,sameDeviceAndFault:input.sameDeviceAndFault}, actor, key);
       const visible=await locate(item.id,actor);
       return {...visible,...(visible.name!==undefined && visible.social!==undefined ? {accessToken:item.accessToken} : {})};
     }

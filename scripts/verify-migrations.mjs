@@ -25,7 +25,7 @@ try {
   const [schema, keys, capacities, weekday, release] = JSON.parse(wrangler(['d1','execute','DB','--local','--persist-to',path,'--config',config,'--json','--command',
     "SELECT name FROM sqlite_schema WHERE type IN ('table','trigger','index','view') ORDER BY name; PRAGMA foreign_key_check; SELECT campus,time_slot,capacity,revision FROM slot_capacities ORDER BY campus,time_slot; SELECT campus,weekday,time_slot,capacity,revision FROM weekday_slot_capacities ORDER BY campus,weekday,time_slot; SELECT id FROM staff_release_markers ORDER BY id;"], { capture: true }));
   assert.ok(schema.success && keys.success && capacities.success);
-  assert.ok(release.results.some(row=>row.id==='weekly-schedule-0048'), 'Direct repair migration did not complete');
+  assert.ok(release.results.some(row=>row.id==='business-model-0049'), 'Direct repair migration did not complete');
   assert.deepEqual(keys.results, [], 'D1 foreign key violations');
   const names = new Set(schema.results.map(row => row.name));
   for (const name of ['staff_accounts','members','member_department_memberships','appointments',

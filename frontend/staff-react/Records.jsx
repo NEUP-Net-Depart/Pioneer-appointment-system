@@ -380,12 +380,8 @@ export function Records({ user }) {
         <Repair
           key={selected}
           id={selected}
-          summary={data?.items?.find((item) => item.id === selected)}
-          memberId={user.memberId || user.account}
-          people={[]}
           onClose={() => setSelected('')}
           onChanged={refresh}
-          returnLabel="返回预约记录"
           sidePanel
         />
       )}

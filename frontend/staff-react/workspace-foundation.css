@@ -81,11 +81,6 @@ fieldset.staffing-editor {
   max-height: 40vh;
   overflow: auto;
 }
-.staff-identity[data-identity='repair_lead'],
-.staff-identity[data-identity='office_lead'] {
-  color: #805b22;
-  background: #f8f1e6;
-}
 .staff-identity[data-identity='exchange'] {
   color: #416d68;
   background: #edf5f3;
@@ -816,9 +811,6 @@ fieldset.staffing-editor {
 .field-app .field-metrics button {
   border-radius: 12px;
 }
-.field-app .field-people .field-person {
-  padding-block: 16px;
-}
 .field-app .planner-summary {
   padding-block: 4px;
   margin-top: 24px;
@@ -1090,7 +1082,6 @@ fieldset.staffing-editor {
     --workspace-top: 28px;
   }
   .field-app .field-desk-grid,
-  .field-app .roster-layout,
   .field-app .personal-workspace {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1111,8 +1102,6 @@ fieldset.staffing-editor {
   .field-app .field-details > summary,
   .field-modal .field-details > summary,
   .field-app .capacity-quick-tools > summary,
-  .field-app .roster-collection > details > summary,
-  .staff-mode .roster-audience > summary,
   .staff-mode .swap-coverage > summary,
   .staff-mode .workspace-help > summary {
     min-height: 44px;
@@ -1637,14 +1626,6 @@ fieldset.staffing-editor {
 .field-app .workspace-more-action-list > button:hover:not(:disabled) {
   background: var(--workspace-subtle);
 }
-@media (min-width: 1101px) {
-  .field-people-list {
-    max-height: 720px;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    scrollbar-gutter: stable;
-  }
-}
 @media (max-width: 767px) {
   .field-app
     :is(.workspace-list-tools, .planner-toolbar, .report-filters, .members-tools, .permission-tools)
@@ -1695,9 +1676,6 @@ fieldset.staffing-editor {
   line-height: inherit;
   font-variant-numeric: tabular-nums;
   min-width: 1ch;
-}
-.roster-workflow .roster-loading {
-  min-height: 22rem;
 }
 .field-appointments {
   min-height: 22rem;

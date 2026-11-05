@@ -47,7 +47,6 @@ const columns = {
   source: 'source',
   registeredBy: 'registered_by',
   registrationKey: 'registration_key',
-  registrationFlow: 'registration_flow',
   email: 'email',
   contactType: 'contact_type',
   contactValue: 'contact_value',
@@ -111,18 +110,6 @@ export function appointmentRepository(db) {
   const writeColumns = { ...columns, bookingNotices: 'booking_notices' };
   return {
     ...serviceDayRepository(db),
-    async dailyWorkloads(day) {
-      const result=await db.prepare(`WITH facts AS (
-        SELECT CASE WHEN action='repairs.transferred' THEN json_extract(after_json,'$.assigneeIdentity.memberId') ELSE actor_member_id END AS member_id,
-          json_extract(source_ref,'$.id') AS appointment_id,CASE WHEN action='repairs.completed' THEN 'completed' ELSE 'started' END AS kind
-        FROM audit_events WHERE action IN ('repairs.claimed','repairs.started','repairs.transferred','repairs.completed') AND date(occurred_at,'+8 hours')=?
-        UNION ALL SELECT sa.member_id,a.id,'started' FROM appointments a JOIN staff_accounts sa ON sa.account=a.assigned_to
-        WHERE date(a.started_at,'+8 hours')=? AND NOT EXISTS(SELECT 1 FROM audit_events e WHERE json_extract(e.source_ref,'$.id')=a.id AND e.action IN ('repairs.claimed','repairs.started','repairs.transferred'))
-        UNION ALL SELECT sa.member_id,a.id,'completed' FROM appointments a JOIN staff_accounts sa ON sa.account=a.assigned_to
-        WHERE a.status='completed' AND date(a.completed_at,'+8 hours')=? AND NOT EXISTS(SELECT 1 FROM audit_events e WHERE json_extract(e.source_ref,'$.id')=a.id AND e.action='repairs.completed')
-      ) SELECT member_id,COUNT(DISTINCT CASE WHEN kind='started' THEN appointment_id END) AS started,COUNT(DISTINCT CASE WHEN kind='completed' THEN appointment_id END) AS completed FROM facts WHERE member_id IS NOT NULL GROUP BY member_id`).bind(day,day,day).all();
-      return Object.fromEntries(result.results.map(row=>[row.member_id,{started:row.started,completed:row.completed}]));
-    },
     async openFieldWork(campus,day) {
       return (await db.prepare(`${select} WHERE campus=? AND (date=? OR status='in_progress' OR (status='booked' AND received_at IS NOT NULL)) ORDER BY created_at,id`).bind(campus,day).all()).results.map(fromRow);
     },
@@ -369,8 +356,6 @@ export function appointmentRepository(db) {
                 ? item[key] || null
                 : key === 'source'
                   ? item[key] || 'booking'
-                  : key === 'registrationFlow'
-                    ? item[key] || 'technician_intake'
                     : ['email', 'contactType', 'contactValue'].includes(key)
                       ? item[key] || ''
                       : (item[key] ?? null)

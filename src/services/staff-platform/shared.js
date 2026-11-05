@@ -31,40 +31,6 @@ async function tokenDigest(value) {
   return Array.from(new Uint8Array(bytes), (item) => item.toString(16).padStart(2, '0')).join('');
 }
 
-function rosterEligibilitySnapshot(source) {
-  const ordered = (values) =>
-    [...values].sort((a, b) => stableJson(a).localeCompare(stableJson(b)));
-  return {
-    taskRevision: source.taskRevision,
-    requireLead: !!source.requireLead,
-    ruleVersion: source.ruleVersion || 'legacy',
-    slots: ordered(source.slots),
-    members: source.members
-      .map((member) => ({
-        memberId: member.memberId,
-        pool: member.pool || '',
-        available: ordered(member.available || []),
-        manualSlots: ordered(member.manualSlots || []),
-        leadSlots: ordered(member.leadSlots || [])
-      }))
-      .sort((a, b) => a.memberId.localeCompare(b.memberId))
-  };
-}
-
-function rosterAssignmentSnapshot(assignments) {
-  return assignments
-    .map((item) => ({
-      memberId: item.memberId,
-      businessDate: item.businessDate,
-      campusId: item.campusId,
-      startAt: item.startAt,
-      endAt: item.endAt,
-      roleKind: item.roleKind || '',
-      leaveStatus: item.leaveStatus || ''
-    }))
-    .sort((a, b) => stableJson(a).localeCompare(stableJson(b)));
-}
-
 function inputString(input, key, max, required = false) {
   const value = input?.[key];
   if (value === undefined && !required) return '';
@@ -109,45 +75,6 @@ function validateGrant(definition, grant, actor, authorizer) {
     if (!conditions.some((item) => item?.code === required))
       fail(400, `权限缺少必要条件：${required}`);
   validateGrantValidity(grant.validity);
-}
-
-function publicLeave(row) {
-  return row
-    ? {
-        id: row.id,
-        assignmentId: row.assignment_id,
-        memberId: row.member_id,
-        reason: row.reason,
-        status: row.status,
-        reviewerMemberId: row.reviewer_member_id || '',
-        reviewNote: row.review_note || '',
-        revision: row.revision,
-        createdAt: row.created_at,
-        reviewedAt: row.reviewed_at || null
-      }
-    : null;
-}
-
-function publicSwap(row) {
-  return row
-    ? {
-        id: row.id,
-        fromAssignmentId: row.from_assignment_id,
-        toAssignmentId: row.to_assignment_id,
-        fromMemberId: row.from_member_id,
-        toMemberId: row.to_member_id,
-        fromRevision: row.from_revision,
-        toRevision: row.to_revision,
-        status: row.status,
-        note: row.note,
-        revision: row.revision,
-        createdAt: row.created_at,
-        decidedAt: row.decided_at || null,
-        appliedFromAssignmentId: row.applied_from_assignment_id || '',
-        appliedToAssignmentId: row.applied_to_assignment_id || '',
-        affectedResources: ['rosters.mine', 'rosters.requests', 'workbench.tasks']
-      }
-    : null;
 }
 
 function csvRows(value) {
@@ -197,13 +124,9 @@ export {
   randomToken,
   hashPayload,
   tokenDigest,
-  rosterEligibilitySnapshot,
-  rosterAssignmentSnapshot,
   inputString,
   validateGrantValidity,
   validateScope,
   validateGrant,
-  publicLeave,
-  publicSwap,
   csvRows
 };

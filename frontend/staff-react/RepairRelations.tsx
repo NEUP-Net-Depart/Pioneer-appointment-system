@@ -101,7 +101,7 @@ export function RepairRelations({
               <option value="recurrence">原故障复发</option>
             </select>
           </label>
-          <label>
+          <label className="field-check">
             <input
               type="checkbox"
               checked={confirmed}
@@ -131,7 +131,6 @@ export function RepairRelations({
       {onsite && (
         <Registration
           campus={item.campus}
-          frontdesk
           parent={item}
           linkKind={kind}
           onClose={() => setOnsite(false)}

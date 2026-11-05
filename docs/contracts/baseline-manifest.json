@@ -1,8 +1,8 @@
 {
-  "branch": "dev",
-  "baseCommit": "53b53db110d4d867c2f4277fa0954f1d97d74c7d",
-  "contractVersion": "staff-platform.v1",
-  "schemaVersion": "0022",
+  "branch": "refactor/simplify",
+  "baseCommit": "f73ec74",
+  "contractVersion": "staff-platform.v2",
+  "schemaVersion": "0049",
   "businessTimeZone": "Asia/Shanghai",
   "migrations": [
     {
@@ -44,6 +44,14 @@
     {
       "name": "0010_staff_platform.sql",
       "sha256": "8f771fad64d2ce57e8e16a46a77afef23de83c4761d1b982881bfea7a0c4225e"
+    },
+    {
+      "name": "0010_student_booking.sql",
+      "sha256": "f126b683cce432be3394aac64f1ed094e2ab2fe32f0e2ba9e83db151b32fc64b"
+    },
+    {
+      "name": "0011_historical_booking_dates.sql",
+      "sha256": "72685533850d4dc3d74fa42c1a66b9f6ddb6c04748537e3e048a0d3795c5c6d4"
     },
     {
       "name": "0011_member_account_aliases.sql",
@@ -92,14 +100,6 @@
     {
       "name": "0022_roster_collection_workflow.sql",
       "sha256": "9e5993a896f65d2c2443b3704b5a30e1f4a224bb6313c20fab1a0bc688c0e431"
-    },
-    {
-      "name": "0010_student_booking.sql",
-      "sha256": "f126b683cce432be3394aac64f1ed094e2ab2fe32f0e2ba9e83db151b32fc64b"
-    },
-    {
-      "name": "0011_historical_booking_dates.sql",
-      "sha256": "72685533850d4dc3d74fa42c1a66b9f6ddb6c04748537e3e048a0d3795c5c6d4"
     },
     {
       "name": "0023_office_attendance_export.sql",
@@ -180,6 +180,30 @@
     {
       "name": "0043_contact_search_index.sql",
       "sha256": "5b8c83eae231080f8d5c50d90df5f242af23ddeefc1d6a79632646fd8a5620b3"
+    },
+    {
+      "name": "0044_appointment_day.sql",
+      "sha256": "2533b4e384b3fb385d3bfc0d040d04f2a720082f30bf4502d1a8b7a0f2a4e20f"
+    },
+    {
+      "name": "0045_direct_repairs.sql",
+      "sha256": "415aa2a6249d54e3cfcf488b2703f7592de21d64118b7d1fa2782e0da0d7fe12"
+    },
+    {
+      "name": "0046_repair_links.sql",
+      "sha256": "ab7d14d32cb54998ef388c3a8362a0fe894099d06f4f411a8ddfbc9fcfa9a630"
+    },
+    {
+      "name": "0047_membership_identity.sql",
+      "sha256": "be924d9daf63ba0bdea2f7f7605ba503481299aecdb48c8ba7e38f28319e5197"
+    },
+    {
+      "name": "0048_weekly_schedule.sql",
+      "sha256": "b14c8810cb0ae2a6738af0a198a6c9860bee8b6bc2821c4d68aa8d4250ba88e0"
+    },
+    {
+      "name": "0049_finalize_business_model.sql",
+      "sha256": "9a4e73ef74a14c697e9417170db95e828152fe7b5e7b4f9ac34a532bf5b5bec4"
     }
   ],
   "modules": [
@@ -201,18 +225,18 @@
     },
     {
       "code": "authorization",
-      "version": "1.0.0",
-      "manifestHash": "067c7c3b",
+      "version": "2.0.0",
+      "manifestHash": "0cde0ccc",
       "contractVersion": "1",
-      "requiredSchemaVersion": "0007",
+      "requiredSchemaVersion": "0049",
       "releaseState": "ready"
     },
     {
       "code": "repairs",
-      "version": "1.1.0",
-      "manifestHash": "b4c597db",
+      "version": "2.0.0",
+      "manifestHash": "9f4cee46",
       "contractVersion": "1",
-      "requiredSchemaVersion": "0007",
+      "requiredSchemaVersion": "0049",
       "releaseState": "ready"
     },
     {
@@ -225,18 +249,18 @@
     },
     {
       "code": "attendance",
-      "version": "1.2.0",
-      "manifestHash": "a9b59f7b",
+      "version": "2.0.0",
+      "manifestHash": "e6f9e24c",
       "contractVersion": "1",
-      "requiredSchemaVersion": "0021",
+      "requiredSchemaVersion": "0049",
       "releaseState": "ready"
     },
     {
       "code": "rosters",
-      "version": "1.8.0",
-      "manifestHash": "cef99be7",
-      "contractVersion": "1",
-      "requiredSchemaVersion": "0022",
+      "version": "2.0.0",
+      "manifestHash": "51bd835f",
+      "contractVersion": "2",
+      "requiredSchemaVersion": "0048",
       "releaseState": "ready"
     },
     {
@@ -435,6 +459,30 @@
     {
       "name": "0042_organization_permissions.sql",
       "sha256": "d603812e21918469de242adfcab4965f6ff2e4f8a93ae5d58c3da21b57b2e94b"
+    },
+    {
+      "name": "0044_appointment_day.sql",
+      "sha256": "2533b4e384b3fb385d3bfc0d040d04f2a720082f30bf4502d1a8b7a0f2a4e20f"
+    },
+    {
+      "name": "0045_direct_repairs.sql",
+      "sha256": "337958de817fb4522caae1707e88a4e2ed2c226fdd137641edf27d6b5e958fb3"
+    },
+    {
+      "name": "0046_repair_links.sql",
+      "sha256": "ab7d14d32cb54998ef388c3a8362a0fe894099d06f4f411a8ddfbc9fcfa9a630"
+    },
+    {
+      "name": "0047_membership_identity.sql",
+      "sha256": "be924d9daf63ba0bdea2f7f7605ba503481299aecdb48c8ba7e38f28319e5197"
+    },
+    {
+      "name": "0048_weekly_schedule.sql",
+      "sha256": "b14c8810cb0ae2a6738af0a198a6c9860bee8b6bc2821c4d68aa8d4250ba88e0"
+    },
+    {
+      "name": "0049_finalize_business_model.sql",
+      "sha256": "9a4e73ef74a14c697e9417170db95e828152fe7b5e7b4f9ac34a532bf5b5bec4"
     }
   ]
 }

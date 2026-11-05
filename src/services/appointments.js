@@ -34,7 +34,7 @@ export async function presentAppointment(item, encryptionKey, { staff = false } 
       'email','contactType','contactValue','deviceType','brand','deviceModel','serial',
       'warranty','faultType','issue','liquidDrop','liquidMetal','dellG15','date','timeSlot',
       'status','outcome','receivedAt','startedAt','completedAt','expiresAt','createdAt','source',
-      'registrationFlow','parentAppointmentId','linkKind','repairNumber','locationSnapshot','locationRevision','servicePaused',
+      'parentAppointmentId','linkKind','repairNumber','locationSnapshot','locationRevision','servicePaused',
       'agreementAt','agreementVersion','signature'];
     return Object.fromEntries(fields.map(key => [key, visible[key]]));
   }
@@ -186,12 +186,12 @@ export function appointmentService(
         items: await staffPlatform.field.projectList(user, result.items, access.context)
       };
     },
-    async createOnsite(data, actor, requestId, registrationFlow = 'technician_intake') {
+    async createOnsite(data, actor, requestId) {
       requireRole(actor, 'technician');
       requireCampus(actor, data.campus);
       const { context } = await staffPlatform.requirePermission(
         actor,
-        registrationFlow === 'frontdesk' ? 'onsite.frontdesk.create' : 'onsite.create',
+        'onsite.create',
         { campusId: data.campus }
       );
       if (data.parentAppointmentId) {
@@ -201,11 +201,11 @@ export function appointmentService(
         if (parent.status!=='completed' || parent.studentId!==data.studentId || !['continuation','recurrence'].includes(data.linkKind) || data.sameDeviceAndFault!==true) fail(409,'请确认同一设备原故障的续修或复发');
         data={...data,linkedBy:actor.account,linkedAt:clock().toISOString()};
       }
-      return this.create(data, { actor: actor.account, authVersion: context.authVersion, campuses: actor.authorizedCampuses, requestId, registrationFlow },onsiteRequestKey(actor.memberId,requestId));
+      return this.create(data, { actor: actor.account, authVersion: context.authVersion, campuses: actor.authorizedCampuses, requestId },onsiteRequestKey(actor.memberId,requestId));
     },
     async registrationCredential(item,actor) {
       if (!ownsRegistration(actor,item)) return null;
-      await staffPlatform.requirePermission(actor,item.registrationFlow==='frontdesk'?'onsite.frontdesk.create':'onsite.create',{campusId:item.campus,id:item.id});
+      await staffPlatform.requirePermission(actor,'onsite.create',{campusId:item.campus,id:item.id});
       const visible=await staffPlatform.field.detail(actor,item.id);
       if (visible.name===undefined || visible.social===undefined) return null;
       const saved=await appointments.findRequest(onsiteRequestKey(actor.memberId,item.registrationKey));
@@ -274,7 +274,6 @@ export function appointmentService(
         source: onsite ? 'onsite' : 'booking',
         registeredBy: onsite?.actor || null,
         registrationKey: onsite?.requestId || null,
-        registrationFlow: onsite?.registrationFlow || 'technician_intake',
         createdAt: timestamp,
         agreementAt: timestamp,
         agreementVersion: data.agreementVersion || 'v1.0',

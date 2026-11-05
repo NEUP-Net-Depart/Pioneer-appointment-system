@@ -1,5 +1,4 @@
 import {test,expect} from '@playwright/test';
-import {mockStaff,loginStaff} from './support/staff.mjs';
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=', 'base64');
 
 async function harness(page){
@@ -148,69 +147,4 @@ test('compression failures allow only supported originals below the hard limit; 
   expect(result.errors[0]).toContain('原图超过 2 MB');
   expect(result.errors[1]).toContain('HEIC/HEIF'); expect(result.errors[1]).toContain('转为 JPG');
   expect(result.errors[2]).toContain('照片格式不支持');
-});
-
-
-async function repair(page){
- const id='reserve020261015-01',uploads=[],starts=[],controls={failBack:false,failStart:false};
- let item={id,status:'booked',revision:0,campus:'南湖',date:'2026-10-15',timeSlot:'19:00–19:30',brand:'联想',deviceModel:'ThinkPad',canStart:true,canReadDetails:true};
- await mockStaff(page,{contexts:[{id:'repair',label:'维修工作台'}]});
- await page.route('**/api/scan/resolve',route=>route.fulfill({json:item}));await page.route('**/api/field/appointments/'+id,route=>route.fulfill({json:item}));
- await page.route('**/api/appointments/'+id+'/attachments',route=>{
-  if(route.request().method()==='GET')return route.fulfill({json:{items:[]}});
-  const body=route.request().postDataJSON();uploads.push(body);
-  if(controls.failBack&&body.purpose==='intake_back'){controls.failBack=false;return route.fulfill({status:500,json:{error:'模拟背面上传失败'}});}
-  return route.fulfill({status:201,json:{id:body.filename}});
- });
- await page.route('**/api/appointments/'+id+'/attachments/*',route=>route.fulfill({contentType:'image/png',body:png}));
- await page.route('**/api/appointments/'+id+'/status',route=>{
-  const body=route.request().postDataJSON();starts.push(body);if(controls.failStart){controls.failStart=false;return route.fulfill({status:500,json:{error:'模拟开始维修失败'}});}
-  item={...item,...body,canStart:false,canFinish:true,revision:item.revision+1};return route.fulfill({json:item});
- });
- await loginStaff(page);const open=async()=>{await page.getByRole('combobox',{name:'预约编号',exact:true}).fill(id);await page.getByRole('button',{name:'查询',exact:true}).click();await expect(page.getByRole('button',{name:'确认开始维修',exact:true})).toBeVisible();};await open();
- const select=(side,name,type='image/png',buffer=png)=>page.getByLabel(side==='front'?'设备正面照片':'设备背面照片',{exact:true}).setInputFiles({name,mimeType:type,buffer});
- return {uploads,starts,controls,select,open,confirm:page.getByRole('button',{name:'确认开始维修',exact:true})};
-}
-test('React intake requires both photos and never starts from one attachment',async({page})=>{
- const {select,confirm,uploads,starts}=await repair(page);await select('front','front.png');await confirm.click();await expect(page.getByRole('dialog')).toContainText('请选择两张');expect(uploads).toHaveLength(1);expect(starts).toHaveLength(0);
-});
-test('React intake replaces a failed photo and reuses the unchanged uploaded side',async({page})=>{
- const {select,confirm,uploads,starts,controls}=await repair(page);controls.failBack=true;await select('front','front.png');await select('back','old-back.png');await confirm.click();await expect(page.getByRole('dialog')).toContainText('模拟背面上传失败');await select('back','new-back.png');await confirm.click();await expect.poll(()=>starts.length).toBe(1);expect(starts[0]).toMatchObject({frontPhotoId:'front.png',backPhotoId:'new-back.png'});expect(uploads.map(x=>x.filename)).toEqual(['front.png','old-back.png','new-back.png']);
-});
-test('a failed start keeps uploaded IDs and reuses the same operation ID on retry',async({page})=>{
- const {select,confirm,uploads,starts,controls}=await repair(page);controls.failStart=true;await select('front','front.png');await select('back','back.png');await confirm.click();await expect(page.getByRole('dialog')).toContainText('模拟开始维修失败');await confirm.click();await expect.poll(()=>starts.length).toBe(2);expect(starts[0]).toEqual(starts[1]);expect(uploads).toHaveLength(2);
-});
-test('React photo IDs and verification restore after a reload without reuploading the unchanged side',async({page})=>{
- const {select,confirm,uploads,starts,controls,open}=await repair(page);controls.failBack=true;await select('front','front.png');await select('back','bad-back.png');await confirm.click();await expect(page.getByRole('dialog')).toContainText('模拟背面上传失败');await page.reload();await expect(page.locator('.field-app:not(.workspace-bootstrap)')).toBeVisible();await open();await expect(page.locator('.field-intake-photos').getByRole('img',{name:'设备正面照片',exact:true})).toHaveAttribute('src',/^blob:/);await select('back','back-retry.png');await page.getByRole('button',{name:'确认开始维修',exact:true}).click();await expect.poll(()=>starts.length).toBe(1);expect(starts[0].frontPhotoId).toBe('front.png');expect(uploads.filter(x=>x.purpose==='intake_front')).toHaveLength(1);
-});
-test('React intake rejects HEIC and oversized originals without recording a repair',async({page})=>{
- const {select,confirm,uploads,starts}=await repair(page);await select('front','camera.heic','image/heic',Buffer.from('unsupported'));await select('back','back.png');await confirm.click();await expect(page.getByRole('dialog')).toContainText('JPEG、PNG 或 WebP');expect(starts).toHaveLength(0);expect(uploads).toHaveLength(0);
- await select('front','large.png','image/png',Buffer.alloc(6*1024*1024));await confirm.click();await expect(page.getByRole('dialog')).toContainText('不超过 5 MB');expect(starts).toHaveLength(0);
-});
-test('React confirmation joins its pending upload once and blocks closing while saving',async({page})=>{
- const {select,confirm,uploads,starts}=await repair(page);let release,started;const pending=new Promise(resolve=>release=resolve),ready=new Promise(resolve=>started=resolve);
- await page.route('**/api/appointments/*/attachments',async route=>{if(route.request().method()==='GET')return route.fulfill({json:{items:[]}});const body=route.request().postDataJSON();uploads.push(body);started();await pending;return route.fulfill({status:201,json:{id:body.filename}});});
- await select('front','front.png');await select('back','back.png');await confirm.click();await ready;
- await expect(page.getByRole('button',{name:'正在保存核验信息…',exact:true})).toBeDisabled();
- const close=page.getByRole('button',{name:'关闭',exact:true});
- await expect(close).toBeDisabled();
- await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toBeVisible();
- release();await expect.poll(()=>starts.length).toBe(1);expect(uploads).toHaveLength(2);
- await expect(close).toBeEnabled();
-});
-
-test('React intake compresses a camera original above 2 MB before uploading its verified photo', async ({page}) => {
-  const {select,confirm,uploads,starts}=await repair(page);
-  const bytes=await page.evaluate(()=>{
-    const canvas=document.createElement('canvas');canvas.width=canvas.height=1024;
-    const context=canvas.getContext('2d'),pixels=context.createImageData(1024,1024);
-    let seed=71;
-    for(let i=0;i<pixels.data.length;i+=4){for(let c=0;c<3;c++){seed=(Math.imul(seed,1664525)+1013904223)>>>0;pixels.data[i+c]=seed>>>24;}pixels.data[i+3]=255;}
-    context.putImageData(pixels,0,0);return canvas.toDataURL('image/png').split(',')[1];
-  });
-  const original=Buffer.from(bytes,'base64');expect(original.length).toBeGreaterThan(2*1024*1024);expect(original.length).toBeLessThan(5*1024*1024);
-  await select('front','large-camera.png','image/png',original);await select('back','back.png');await confirm.click();
-  await expect.poll(()=>starts.length).toBe(1);
-  const front=uploads.find(photo=>photo.purpose==='intake_front');expect(front.mimeType).toBe('image/jpeg');
-  expect(Buffer.from(front.data,'base64').length).toBeLessThanOrEqual(2*1024*1024);
 });

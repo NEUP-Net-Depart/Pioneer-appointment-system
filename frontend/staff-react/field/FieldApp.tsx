@@ -58,12 +58,6 @@ export function FieldApp({
     filter,
     setFilter,
     setSearch,
-    tab,
-    setTab,
-    showAvailable,
-    setShowAvailable,
-    peopleQuery,
-    setPeopleQuery,
     result,
     data,
     refresh,
@@ -73,8 +67,6 @@ export function FieldApp({
     checkIn,
     presence,
     items,
-    people,
-    visiblePeople,
     campusName
   } = useFieldWorkspace({
     initial,
@@ -189,18 +181,10 @@ export function FieldApp({
                 filter={filter}
                 setFilter={setFilter}
                 setSearch={setSearch}
-                tab={tab}
-                setTab={setTab}
-                showAvailable={showAvailable}
-                setShowAvailable={setShowAvailable}
-                peopleQuery={peopleQuery}
-                setPeopleQuery={setPeopleQuery}
                 result={result}
                 data={data}
                 showAttendance={showAttendance}
                 items={items}
-                people={people}
-                visiblePeople={visiblePeople}
               />
             )}
             {scene === 'mine' && (
@@ -298,13 +282,7 @@ export function FieldApp({
         <Repair
           sidePanel={scene !== 'repair'}
           id={selected}
-          summary={
-            items.find((item) => item.id === selected) ||
-            data?.repairs?.find((item) => item.id === selected)
-          }
           key={selected}
-          memberId={initial.actor.memberId}
-          people={people}
           customerCredential={customerCredential?.id === selected ? customerCredential : null}
           onClose={() => {
             setSelected('');
@@ -316,7 +294,6 @@ export function FieldApp({
       {registration && (
         <Registration
           campus={campusName}
-          frontdesk={scene !== 'repair'}
           onClose={() => setRegistration(false)}
           onDone={(id, accessToken) => {
             setCustomerCredential(accessToken ? { id, accessToken } : null);

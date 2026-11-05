@@ -53,6 +53,7 @@ export async function rehearseSnapshot(dump, directory = resolve(root, 'migratio
     assert.equal(sqlite.prepare('PRAGMA foreign_key_check').all().length,0,'Preview snapshot has invalid foreign keys');
     const ledger = new Set(sqlite.prepare('SELECT name FROM d1_migrations').all().map(row => row.name));
     const upgradingExpirations = !ledger.has('0036_appointment_expiration_time.sql');
+    const extendingDay = !ledger.has('0044_appointment_day.sql'), replacingRepairs=!ledger.has('0045_direct_repairs.sql'), linkingRepairs=!ledger.has('0046_repair_links.sql');
     if (sqlite.prepare('PRAGMA table_info(staff_accounts)').all().some(row => row.name === 'member_id')) {
       const conflicts = sqlite.prepare('SELECT COUNT(*) AS count FROM (SELECT member_id FROM staff_accounts GROUP BY member_id HAVING COUNT(*)>1)').get().count;
       if(conflicts)throw new Error(`Migration preflight failed: ${conflicts} members have multiple login accounts; no accounts were merged`);
@@ -60,7 +61,16 @@ export async function rehearseSnapshot(dump, directory = resolve(root, 'migratio
     const originals = preserved.map(table => {
       const columns = sqlite.prepare(`PRAGMA table_info(${table})`).all().map(row => row.name);
       assert.ok(columns.length, `Missing baseline table: ${table}`);
-      const rows = () => sqlite.prepare(`SELECT ${columns.map(column => '"' + column + '"').join(',')} FROM ${table}`).all().map(row => JSON.stringify(row)).sort();
+      const rows = () => {
+        const current = new Set(sqlite.prepare(`PRAGMA table_info(${table})`).all().map(row => row.name));
+        const projection = columns.map(column => {
+          if (current.has(column)) return `original."${column}"`;
+          if (table === 'appointments' && column === 'registration_flow')
+            return `(SELECT json_extract(before_json,'$.registration_flow') FROM audit_events WHERE id='v12-registration-flow-'||original.id AND action='repairs.registration.archived') AS registration_flow`;
+          throw new Error(`Unpreserved historical column: ${table}.${column}`);
+        });
+        return sqlite.prepare(`SELECT ${projection.join(',')} FROM ${table} original`).all().map(row => JSON.stringify(row)).sort();
+      };
       return { table, columns, before: rows(), rows };
     });
     const files = (await readdir(directory)).filter(file => file.endsWith('.sql')).sort();
@@ -96,12 +106,17 @@ export async function rehearseSnapshot(dump, directory = resolve(root, 'migratio
       // The expiration migration changes only pending defaults and revisions.
       const normalize = (rows, advanceExpiration = false) => rows.map(value => {
         const row = JSON.parse(value); delete row.token_version; delete row.auth_version;
-        if (advanceExpiration && original.table === 'appointments' && row.status === 'booked' && row.started_at === null && row.expires_at === `${row.date}T13:30:00.000Z`) {
+        if (advanceExpiration && upgradingExpirations && original.table === 'appointments' && row.status === 'booked' && row.started_at === null && row.expires_at === `${row.date}T13:30:00.000Z`) {
           row.expires_at = `${row.date}T12:45:00.000Z`; row.revision++;
+        }
+        if(advanceExpiration && original.table==='appointments') {
+          if(extendingDay && row.status==='booked' && row.started_at===null && row.expires_at!==`${row.date}T16:00:00.000Z`) { row.expires_at=`${row.date}T16:00:00.000Z`;row.revision++; }
+          if(replacingRepairs && row.outcome==='unrepaired')row.outcome='legacy_unrepaired';
+          if(linkingRepairs && row.registration_flow==='repair_followup')row.registration_flow='frontdesk';
         }
         return JSON.stringify(row);
       }).sort();
-      if (JSON.stringify(normalize(original.rows())) !== JSON.stringify(normalize(original.before, upgradingExpirations))) throw new Error(`Historical data changed: ${original.table}`);
+      if (JSON.stringify(normalize(original.rows())) !== JSON.stringify(normalize(original.before, true))) throw new Error(`Historical data changed: ${original.table}`);
     }
     assert.equal(sqlite.prepare('PRAGMA foreign_key_check').all().length, 0, 'Foreign key violations after migration');
     const db = adapter(sqlite); await verifyStaffSchema(db);

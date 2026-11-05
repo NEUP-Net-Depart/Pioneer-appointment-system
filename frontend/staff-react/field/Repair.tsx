@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { outcomeLabels, repairOutcomes } from '../../../shared/constants.js';
 import { Modal, Notice, Status } from './ui';
-import type { Appointment, Person } from './types';
 import { RepairInformation, RepairCredential, RepairHistory } from '../RepairDetails';
 import { RepairRelations } from '../RepairRelations';
 import { WarrantyLookupButton } from './WarrantyLookup';
@@ -21,14 +20,10 @@ function RepairOrder({
 }: {
   id: string;
   onOpen: (id: string, token?: string) => void;
-  memberId: string;
-  people: Person[];
   onClose: () => void;
   onChanged: () => void;
   sidePanel?: boolean;
   customerCredential?: { id: string; accessToken: string } | null;
-  returnLabel?: string;
-  summary?: Partial<Appointment>;
 }) {
   const r = useRepair({ id, onChanged });
   const { item, busy } = r;
@@ -131,7 +126,7 @@ function RepairOrder({
           )}
           {item.canTransfer && (
             <section className="field-form">
-              <label>
+              <label className="field-check">
                 <input
                   type="checkbox"
                   checked={received}
@@ -155,7 +150,7 @@ function RepairOrder({
               <fieldset>
                 <legend>本次处理结果</legend>
                 {repairOutcomes.map((value) => (
-                  <label key={value}>
+                  <label className="field-check" key={value}>
                     <input
                       type="radio"
                       name="outcome"

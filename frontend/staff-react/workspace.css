@@ -675,10 +675,6 @@
 .field-app .field-main {
   margin: 0 auto;
 }
-.roster-section > .react-page {
-  padding: 0;
-  max-width: none;
-}
 .field-app .field-top,
 .field-app .react-heading {
   display: flex;
@@ -1239,7 +1235,4 @@
 }
 .education-import-preview {
   max-height: 320px;
-}
-.roster-import-preview {
-  max-height: 360px;
 }

@@ -5,8 +5,6 @@ export const scanRoutes = [
     await context.limit('lookup');
     return json(await context.services.scan.relatedCode(decodeURIComponent(match[1]),decodeURIComponent(match[2]),context.accessToken));
   }],
-  ['GET', /^\/api\/scan\/config$/, async context => json(context.services.scan.config())],
-  ['GET', /^\/api\/scan\/current$/, async context => json(await context.services.scan.current(await context.role('technician'), context.query.registrationRequestId))],
   ['POST', /^\/api\/scan\/resolve$/, async context => {
     const actor = await context.role('technician');
     await context.limit('lookup');

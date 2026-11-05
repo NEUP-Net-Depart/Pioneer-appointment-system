@@ -1,4 +1,5 @@
 import { Status } from './ui';
+import { WarrantyLookupButton } from './WarrantyLookup';
 import { AppointmentLookup } from './AppointmentLookup';
 import { StaffIdentity } from '../StaffIdentity';
 import type { useFieldWorkspace } from './useFieldWorkspace';
@@ -43,6 +44,7 @@ export function RepairScene({
             扫描维修码
           </button>
           <button onClick={() => setRegistration(true)}>现场登记</button>
+          <WarrantyLookupButton />
         </div>
       </section>
       <section className="field-card">

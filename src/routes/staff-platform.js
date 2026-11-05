@@ -49,7 +49,7 @@ export const staffPlatformRoutes = [
   ['POST', /^\/api\/attendance\/self-check-in$/, async context => json(await context.services.staffPlatform.directCheckIn(await context.role('technician'), await readBody(context.request)))],
   ['POST', /^\/api\/attendance\/preview$/, async context => json(await context.services.staffPlatform.previewAttendance(await context.role('technician'), await readBody(context.request)))],
   ['GET', /^\/api\/attendance$/, async context => json(await context.services.staffPlatform.attendanceList(await context.role('technician'), context.query))],
-  ['GET', /^\/api\/(?:attendance\/export|export\/attendance)\.csv$/, async context => {
+  ['GET', /^\/api\/attendance\/export\.csv$/, async context => {
     const result = await context.services.staffPlatform.attendanceExport(await context.role('technician'), context.query);
     return new Response(result.csv, { headers: { ...securityHeaders, 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="attendance-' + (result.weekStart || result.month) + '.csv"' } });
   }],

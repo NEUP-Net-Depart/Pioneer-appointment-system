@@ -143,41 +143,7 @@ export function serviceLocationInput(input) {
     location: stringField(input.location, '维修地点', 200)
   };
 }
-export function onsiteInput(input) {
-  const value = input || {};
-  const registrationFlow = value.registrationFlow || 'technician_intake';
-  if (!['technician_intake', 'frontdesk'].includes(registrationFlow)) fail(400, '登记入口不正确');
-  const data = {
-    studentId: stringField(value.studentId, 'studentId', 20, true),
-    name: stringField(value.name, 'name', 80, true),
-    college: stringField(value.college, 'college', 120),
-    campus: stringField(value.campus, 'campus', 20, true),
-    phone: stringField(value.phone, 'phone', 30),
-    social: stringField(value.social, 'social', 120),
-    deviceType: stringField(value.deviceType, 'deviceType', 80, true),
-    brand: stringField(value.brand, 'brand', 80, true),
-    deviceModel: stringField(value.deviceModel, 'deviceModel', 120),
-    serial: stringField(value.serial, 'serial', 120),
-    warranty: stringField(value.warranty, 'warranty', 20),
-    faultType: stringField(value.faultType, 'faultType', 80, true),
-    issue: stringField(value.issue, 'issue', 10000),
-    liquidDrop: stringField(value.liquidDrop, 'liquidDrop', 20),
-    date: stringField(value.date, 'date', 10, true),
-    timeSlot: normalizeTimeSlot(stringField(value.timeSlot, 'timeSlot', 40, true)),
-    note: stringField(value.note, 'note', 500),
-    registrationKey: stringField(
-      value.registrationKey || value.requestId,
-      'registrationKey',
-      128,
-      true
-    ),
-    registrationFlow
-  };
-  if (!/^\d{6,20}$/.test(data.studentId) || data.name.length < 2) fail(400, '学号或姓名格式不正确');
-  if (!CAMPUSES.includes(data.campus)) fail(400, '校区不正确');
-  if (!validDate(data.date) || !data.timeSlot) fail(400, '预约日期或时段不正确');
-  return data;
-}
+
 export function appointmentPatch(input) {
   const accepted = ['status','outcome','repairNote','frontPhotoId','backPhotoId','revision','requestId','action','verification','photosCaptured','uploadTimedOut'];
   if (!input || Object.keys(input).some(key=>!accepted.includes(key))) fail(400,'工单操作含不支持的字段');

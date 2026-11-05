@@ -470,25 +470,17 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
     const rows = csvRows(String(input.csv || '').replace(/^\uFEFF/, ''));
     if (rows.length < 2 || rows.length > 201) fail(400, '每次请导入 1 至 200 名成员');
     const headers = rows.shift().map((value) => value.trim());
-    const legacy = headers.join(',') === 'studentId,major,college';
-    if (!legacy && headers.join(',') !== 'studentId,college')
-      fail(400, '请使用 studentId,college 两列表头');
+    if (headers.join(',') !== 'studentId,college') fail(400, '请使用 studentId,college 两列表头');
     const seen = new Set();
     const items = [];
     for (const [index, cells] of rows.entries()) {
       if (cells.length !== headers.length) fail(400, `第 ${index + 2} 行列数不正确`);
-      const [studentId, second, third] = cells.map((value) => value.trim());
-      const major = legacy ? second : undefined;
-      const enteredCollege = legacy ? third : second;
-      if (
-        !/^\d{6,20}$/.test(studentId) ||
-        (legacy && (!major || major.length > 100)) ||
-        enteredCollege.length > 100
-      )
+      const [studentId, enteredCollege] = cells.map((value) => value.trim());
+      if (!/^\d{6,20}$/.test(studentId) || enteredCollege.length > 100)
         fail(400, `第 ${index + 2} 行学号或学院不正确`);
       if (seen.has(studentId)) fail(400, `学号 ${studentId} 重复`);
       seen.add(studentId);
-      const mappedCollege = input.collegeByStudentId?.[studentId] ?? input.collegeByMajor?.[major];
+      const mappedCollege = input.collegeByStudentId?.[studentId];
       const college =
         (typeof mappedCollege === 'string' ? mappedCollege.trim() : '') || enteredCollege;
       if (input.confirm && (!college || college.length > 100))
@@ -501,7 +493,7 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
         memberId: member.memberId,
         studentId,
         name: member.name,
-        major: major ?? member.major,
+        major: member.major,
         college,
         revision: member.revision,
         oldCollege: member.college,

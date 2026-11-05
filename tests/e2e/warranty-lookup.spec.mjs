@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { mockStaff, loginStaff } from './support/staff.mjs';
 
-async function fixture(page, { item, camera = 'denied', captcha = false, huawei = false } = {}) {
+async function fixture(page, { camera = 'denied', captcha = false, huawei = false } = {}) {
   const ocrImage =
     camera === 'ocr-label'
       ? (
@@ -108,17 +108,12 @@ async function fixture(page, { item, camera = 'denied', captcha = false, huawei 
     },
     { camera, ocrImage }
   );
-  const session = await mockStaff(page, {
+  await mockStaff(page, {
     role: 'technician',
     contexts: [{ id: 'repair', label: '维修工作台' }],
     permissions: { 'repair.summary.read': true, 'repair.start': true }
   });
-  if (item) {
-    session.home.pendingRepair = item;
-    await page.route('**/api/field/appointments/' + item.id, (route) =>
-      route.fulfill({ json: item })
-    );
-  }
+
   await page.route('**/api/warranty/providers', (route) =>
     route.fulfill({
       json: {
@@ -288,61 +283,6 @@ test('the camera has one launch, in-place mode switching, and one close control'
   await expect(dialog.getByLabel('摄像头预览')).toHaveCount(0);
 });
 
-test('an order preselects its brand and adopts only the explicitly confirmed warranty field', async ({
-  page
-}) => {
-  const item = {
-    id: 'reserve020261015-47',
-    revision: 1,
-    brand: '联想',
-    deviceModel: 'ThinkPad T14',
-    campus: '南湖',
-    date: '2026-10-15',
-    timeSlot: '19:00–19:30',
-    status: 'booked',
-    canStart: true,
-    canReturn: true,
-    reception: { state: 'assigned', ticket: { number: 47, date: '2026-10-15' } }
-  };
-  await fixture(page, { item });
-  await page.getByRole('button', { name: '核对设备并接手', exact: true }).click();
-  const repair = page.getByRole('dialog', { name: '确认接手', exact: true, includeHidden: true });
-  await repair.getByText('更正核验信息', { exact: true }).click();
-  await expect(repair.getByRole('combobox', { name: '保修情况', exact: true })).toHaveValue(
-    'unknown'
-  );
-  await repair.getByRole('checkbox', { name: /^我已当面核对/ }).check();
-  await repair.getByRole('button', { name: '查询保修', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '查询设备保修', exact: true });
-  await expect(dialog.getByLabel('设备品牌')).toHaveValue('lenovo');
-  const writes = [];
-  page.on('request', (req) => {
-    if (req.method() !== 'GET') writes.push(req.url());
-  });
-  const serial = dialog.getByLabel('序列号 / S/N / Service Tag', { exact: true });
-  await serial.fill('TEST0O1I2345');
-  await dialog.getByRole('button', { name: '查询原厂保修', exact: true }).click();
-  await expect(dialog.getByRole('region', { name: '原厂查询结果' })).toContainText(
-    '整机有限保修（测试模拟）'
-  );
-  expect(
-    await page.evaluate(
-      (key) => JSON.parse(sessionStorage.getItem(key) || '{}').verification?.warranty,
-      'field:member-root001:' + item.id
-    )
-  ).toBe('unknown');
-  await dialog.getByRole('button', { name: '填入此保修情况' }).click();
-  await expect(dialog).toHaveCount(0);
-  await expect(repair.getByRole('combobox', { name: '保修情况', exact: true })).toHaveValue(
-    'in_warranty'
-  );
-  await expect(repair.getByRole('checkbox', { name: /^我已当面核对/ })).not.toBeChecked();
-  expect(writes).toHaveLength(1);
-  expect(new URL(writes[0]).pathname).toBe('/api/warranty/query');
-  expect(await page.evaluate(() => Object.values(sessionStorage).join(' '))).not.toContain(
-    'TEST0O1I2345'
-  );
-});
 
 for (const [format, mirrored] of [
   ['QRCode', false],
@@ -735,39 +675,6 @@ test('denied camera access keeps manual entry usable and closing clears serial i
   await expect(dialog.getByLabel('序列号 / S/N / Service Tag', { exact: true })).toHaveValue('');
 });
 
-test('hidden staff routes release the warranty camera and returning does not duplicate camera listeners', async ({
-  page
-}) => {
-  await fixture(page, { camera: 'multi' });
-  const dialog = await openLookup(page);
-  await dialog.getByLabel('设备品牌').selectOption('asus');
-  await openCapture(dialog);
-  await expect.poll(() => page.evaluate(() => window.warrantyStreams.length)).toBe(1);
-  await page.evaluate(() =>
-    window.dispatchEvent(new CustomEvent('staff-request-navigation', { detail: 'settings' }))
-  );
-  await expect(dialog).toBeHidden();
-  await expect
-    .poll(() => page.evaluate(() => window.warrantyStreams[0].getTracks()[0].readyState))
-    .toBe('ended');
-  await page.evaluate(() =>
-    window.dispatchEvent(new CustomEvent('staff-request-navigation', { detail: 'scene:repair' }))
-  );
-  await expect(dialog).toBeVisible();
-  await expect.poll(() => page.evaluate(() => window.warrantyStreams.length)).toBe(2);
-  await expect(dialog.locator('.field-scanner[data-mode="device"] .field-actions')).toHaveCount(0);
-  await dialog.getByRole('button', { name: '切换镜头', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => window.warrantyStreams.length)).toBe(3);
-  expect(await page.evaluate(() => window.warrantyCameraRequests)).toBe(3);
-  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
-  expect(
-    await page.evaluate(() =>
-      window.warrantyStreams.every((stream) =>
-        stream.getTracks().every((track) => track.readyState === 'ended')
-      )
-    )
-  ).toBe(true);
-});
 
 test('a single camera cannot be switched away from its working preview', async ({ page }) => {
   await fixture(page, { camera: 'single' });
@@ -1231,76 +1138,6 @@ test('missing or mismatched runtime origins explicitly disable Huawei instead of
   }
 });
 
-test('clipboard permission stays on the workbench before official navigation and preserves unuploaded repair photos', async ({
-  page,
-  context
-}) => {
-  const item = {
-    id: 'reserve020261015-48',
-    revision: 1,
-    brand: '惠普',
-    deviceModel: 'Test laptop',
-    campus: '南湖',
-    date: '2026-10-15',
-    timeSlot: '19:00–19:30',
-    status: 'booked',
-    canStart: true
-  };
-  await fixture(page, { item });
-  await page.getByRole('button', { name: '核对设备并接手', exact: true }).click();
-  const repair = page.getByRole('dialog', { name: '现场核验', exact: true, includeHidden: true });
-  await repair.getByLabel('核验说明（选填）').fill('待核对原厂保修，保留照片');
-  await repair.getByLabel('设备正面照片', { exact: true }).setInputFiles({
-    name: 'unuploaded-front.png',
-    mimeType: 'image/png',
-    buffer: Buffer.from(captchaImage.split(',')[1], 'base64')
-  });
-  const preview = repair.getByRole('img', { name: '设备正面照片', exact: true });
-  await expect(preview).toHaveAttribute('src', /^blob:/);
-  const photoUrl = await preview.getAttribute('src');
-  const originalUrl = page.url(),
-    writes = [];
-  page.on('request', (request) => {
-    if (request.method() === 'POST') writes.push(request.url());
-  });
-  await page.evaluate(() =>
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: {
-        writeText: () =>
-          new Promise((resolve) => {
-            window.finishWarrantyCopy = resolve;
-          })
-      }
-    })
-  );
-  await repair.getByRole('button', { name: '查询保修', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '查询设备保修', exact: true });
-  await dialog.getByLabel('序列号 / S/N / Service Tag', { exact: true }).fill('TEST12345678');
-  const destination = 'https://support.hp.com/cn-zh/check-warranty';
-  await context.route(destination, (route) =>
-    route.fulfill({ contentType: 'text/html', body: '<h1>Official fixture</h1>' })
-  );
-  await dialog.getByRole('button', { name: '复制序列号并前往官网', exact: true }).click();
-  await expect(dialog.getByRole('button', { name: '等待复制授权…' })).toBeVisible();
-  expect(context.pages()).toHaveLength(1);
-  const popup = page.waitForEvent('popup');
-  await page.evaluate(() => window.finishWarrantyCopy());
-  const official = await popup;
-  await expect(official).toHaveURL(destination);
-  expect(await official.evaluate(() => window.opener)).toBeNull();
-  await official.close();
-  await expect(page).toHaveURL(originalUrl);
-  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
-  await expect(preview).toHaveAttribute('src', photoUrl);
-  await expect(repair.getByLabel('核验说明（选填）')).toHaveValue('待核对原厂保修，保留照片');
-  expect(
-    await repair
-      .getByLabel('设备正面照片', { exact: true })
-      .evaluate((input) => input.files[0].name)
-  ).toBe('unuploaded-front.png');
-  expect(writes).toEqual([]);
-});
 
 test('a blocked new tab offers a direct safe link without navigating the workbench', async ({
   page,

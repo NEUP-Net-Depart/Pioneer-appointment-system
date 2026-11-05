@@ -32,23 +32,13 @@ jobs:
       - run: npm ci
       - run: npm run verify:checks
   browser:
-    name: browser (${{ matrix.suite }})
+    name: browser
     needs: checks
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     container:
       image: mcr.microsoft.com/playwright:v1.64.0-noble
       options: --init --ipc=host --user 1001
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - suite: e2e-1
-            command: npm run test:e2e -- --shard=1/2
-          - suite: e2e-2
-            command: npm run test:e2e -- --shard=2/2
-          - suite: layout
-            command: npm run test:layout
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -57,21 +47,16 @@ jobs:
           cache: npm
       - run: npm ci
         timeout-minutes: 5
-      - name: Run ${{ matrix.suite }}
-        run: ${{ matrix.command }}
+      - name: Run desktop and mobile workflow checks
+        run: npm run test:e2e
         timeout-minutes: 12
       - name: Preserve isolated UI acceptance evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: staff-platform-${{ matrix.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: staff-platform-browser-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             output/playwright/
-            output/field-workflow/**/*.png
-            output/reception-dispatch/**/*.png
-            output/first-layout/
-            output/issue-73/**/*.png
-            output/issue-73/motion-performance.json
           if-no-files-found: ignore
           retention-days: 14
   test:

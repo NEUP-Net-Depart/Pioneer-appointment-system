@@ -20,7 +20,6 @@ export interface Appointment {
     outcome: string;
     repairNote: string;
   }[];
-  registrationFlow?: string;
   repairHistory?: {
     items: {
       id: string;
@@ -74,10 +73,8 @@ export interface Appointment {
   dellG15?: string;
   repairCode?: string;
   canStart?: boolean;
-  startBlockedReason?: string;
   canFinish?: boolean;
   canTransfer?: boolean;
-  canReadDetails?: boolean;
   canCorrect?: boolean;
   canRecoverCredential?: boolean;
   original?: {
@@ -98,22 +95,7 @@ export interface Verification {
   liquidMetal: string;
   note: string;
 }
-export interface Person {
-  identities?: { code: string; label: string }[];
-  signedInAt?: string;
-  scheduledRepair?: boolean;
-  group?: string;
-  memberId: string;
-  name: string;
-  account: string;
-  department: string;
-  state: string;
-  workload?: { started: number; completed: number };
-  canReceive: boolean;
-  reason: string;
-  scheduled: boolean;
-  leaveStatus?: string;
-}
+
 export interface Home {
   searchCapabilities?: {
     identity: boolean;
@@ -147,13 +129,5 @@ export interface Home {
     dutyType: string;
   }[];
   updatedAt: string;
-  overview?: {
-    notArrived: number;
-    total: number;
-    queued: number;
-    repairing: number;
-    available: number;
-  };
   appointments?: Appointment[];
-  staffPresence?: Person[];
 }

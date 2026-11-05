@@ -1,10 +1,10 @@
 import { expect } from '@playwright/test';
 
 export function staffSession({ account = 'root001', name = '平台测试管理员', role = 'superadmin', campuses = ['南湖', '浑南'], permissions, contexts = [] } = {}) {
-  permissions ||= Object.fromEntries(['repair.summary.read', 'repair.start', 'repair.finish.own', 'repair.correct', 'repair.transfer', 'onsite.create', 'onsite.frontdesk.create', 'customer.identity.read', 'customer.contact.read', 'members.manage', 'roles.manage', 'statistics.read', 'accounts.manage', 'settings.manage', 'attendance.self', 'roster.read'].map(code => [code, true]));
+  permissions ||= Object.fromEntries(['repair.summary.read', 'repair.start', 'repair.finish.own', 'repair.correct', 'repair.transfer', 'onsite.create', 'customer.identity.read', 'customer.contact.read', 'members.manage', 'roles.manage', 'statistics.read', 'accounts.manage', 'settings.manage', 'attendance.self', 'roster.read'].map(code => [code, true]));
   const navigation = [{ id: 'members' }, { id: 'roles' }, { id: 'rosters' }, { id: 'attendance' }];
   const profile = { account, name, role, memberId: `member-${account}`, status: 'enabled', authVersion: 1, authorizedCampuses: campuses, homeCampus: campuses[0], permissions, navigation };
-  const home = { actor: { memberId: profile.memberId, name }, businessDate: '2026-10-15', authVersion: 1, campuses: campuses.map(campus => ({ id: campus === '南湖' ? 'campus-nanhu' : 'campus-hunnan', name: campus })), campusId: 'campus-nanhu', contexts, capability: permissions, permissions, navigation, state: 'available', reason: '', currentRepair: null, todayDuties: [], identities: [], updatedAt: '2026-10-15T02:00:00Z', appointments: [], staffPresence: [] };
+  const home = { actor: { memberId: profile.memberId, name }, businessDate: '2026-10-15', authVersion: 1, campuses: campuses.map(campus => ({ id: campus === '南湖' ? 'campus-nanhu' : 'campus-hunnan', name: campus })), campusId: 'campus-nanhu', contexts, capability: permissions, permissions, navigation, todayDuties: [], identities: [], updatedAt: '2026-10-15T02:00:00Z', repairs: [], appointments: [], pendingPhotos: [], pendingCoverInvitations: [] };
   return { profile, home };
 }
 export async function mockStaff(page, options = {}) {
