@@ -3,29 +3,15 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {database,seedAppointment,seedStaff} from './helpers/database.mjs';
-import {staffServices} from './fixtures/staff-services.mjs';
-import {appointmentRepository} from '../src/db/appointments.js';
-import {appointmentService} from '../src/services/appointments.js';
-import {userRepository} from '../src/db/users.js';
-import {scanService} from '../src/services/scan.js';
-import {dateKey,expirationDeadline} from '../shared/time.js';
-
-const key='00'.repeat(32);
-function setup(){
- const db=database();seedStaff(db,'20260001');seedStaff(db,'20260002','浑南');
- const users=userRepository(db),repo=appointmentRepository(db),staff=staffServices(db,key);
- const service=appointmentService(repo,users,key,()=>new Date(),staff);
- return {db,users,repo,staff,service};
-}
-function order(db,id,values={}){seedAppointment(db,{id,date:dateKey(),expires_at:expirationDeadline(dateKey()),student_id:'20260009',...values});}
+import {repairScenario} from './fixtures/repair-scenario.mjs';
+import {addDays} from '../shared/time.js';
 const request=(values)=>({revision:0,requestId:crypto.randomUUID(),sameDeviceAndFault:true,linkKind:'continuation',...values});
 
-test('linking an existing booking preserves its capacity, original result, and student privacy; campuses remain scoped',async()=>{
- const {db,users,repo,staff,service}=setup();
- try{
+test('linking an existing booking preserves its capacity, original result, and student privacy; campuses remain scoped',async t=>{
+  const {db,users,repo,staff,service,order,calendar}=repairScenario(t,{studentId:'20260009'});
   const actor=await users.find('20260001');
-  order(db,'original',{date:'2026-01-01',status:'completed',repair_note:'internal original',assigned_to:'20260001'});
-  const token='A'.repeat(43);order(db,'return',{access_token_hash:createHash('sha256').update(token).digest('hex')});order(db,'other-campus',{date:'2026-01-05',status:'completed',campus:'浑南',repair_note:'hidden campus note'});
+  order('original',{date:calendar.previousServiceDay,status:'completed',repair_note:'internal original',assigned_to:'20260001'});
+  const token='A'.repeat(43);order('return',{access_token_hash:createHash('sha256').update(token).digest('hex')});order('other-campus',{date:addDays(calendar.previousServiceDay,-7),status:'completed',campus:'浑南',repair_note:'hidden campus note'});
   const before=await repo.find('original'),n=db.sqlite.prepare('SELECT COUNT(*) n FROM appointments').get().n;
   await assert.rejects(service.link('return',request({parentAppointmentId:'original',sameDeviceAndFault:false}),actor),{status:400});
   await assert.rejects(service.link('return',request({parentAppointmentId:'other-campus'}),actor),{status:403});
@@ -41,44 +27,40 @@ test('linking an existing booking preserves its capacity, original result, and s
   const detail=await staff.field.detail(actor,'return');
   assert.ok(detail.repairHistory.events.some(row=>row.action==='repairs.linked'));
   assert.equal(detail.customerHistory.some(row=>row.id==='other-campus'),false);
-  await assert.rejects(service.link('return',request({revision:1,parentAppointmentId:'original'}),await users.find('20260002')),{status:403});
- }finally{db.sqlite.close();}
+  await assert.rejects(service.link('return',request({revision:1,parentAppointmentId:'original'}),await users.find('20260003')),{status:403});
 });
 
-test('onsite linked service is created once, does not consume online slots, and requires new receipt evidence',async()=>{
- const {db,users,repo,staff,service}=setup();
- try{
-  const actor=await users.find('20260001');order(db,'original',{status:'completed'});
+test('onsite linked service is created once, does not consume online slots, and requires new receipt evidence',async t=>{
+  const {db,users,scan,order,calendar}=repairScenario(t,{studentId:'20260009'});
+  const actor=await users.find('20260001');order('original',{status:'completed'});
   db.sqlite.exec('UPDATE slot_capacities SET capacity=0; UPDATE weekday_slot_capacities SET capacity=0;');
-  const scan=scanService(repo,service,'test',()=>new Date(),staff.field);
+  calendar.moveTo(calendar.nextDay,'10:00');
   const input={studentId:'20260009',name:'测试客户',campus:'南湖',social:'customer-contact',deviceType:'笔记本',brand:'Lenovo',deviceModel:'',warranty:'不清楚',faultType:'系统',agreement:true,signature:[Array.from({length:8},(_,i)=>[i/10,i/10])],requestId:crypto.randomUUID(),parentAppointmentId:'original',linkKind:'recurrence',sameDeviceAndFault:true};
   const created=await scan.onsite(input,actor),again=await scan.onsite(input,actor);
   assert.equal(again.id,created.id);assert.equal(again.accessToken,created.accessToken);
   assert.equal(created.source,'onsite');assert.equal(created.parentAppointmentId,'original');
+  assert.equal(created.date,calendar.nextDay);
   assert.equal(created.receivedAt,'');assert.equal(created.frontPhotoId,null);
   assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM appointments').get().n,2);
   const denied={...input,requestId:crypto.randomUUID(),studentId:'20268888'};
   await assert.rejects(scan.onsite(denied,actor),{status:409});
   assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM appointments').get().n,2);
- }finally{db.sqlite.close();}
 });
 
-test('information edits preserve repair responsibility and encrypt contact history',async()=>{
- const {db,users,repo,service}=setup();
- try{
-  const actor=await users.find('20260001');order(db,'edit',{status:'in_progress',assigned_to:'20260001',social:'old-private-contact'});
+test('information edits preserve repair responsibility and encrypt contact history',async t=>{
+  const {db,users,repo,service,order}=repairScenario(t,{studentId:'20260009'});
+  const actor=await users.find('20260001');order('edit',{status:'in_progress',assigned_to:'20260001',social:'old-private-contact'});
   const item=await service.edit('edit',request({social:'new-private-contact',faultType:'屏幕',deviceModel:''}),actor);
   assert.equal(item.social,'new-private-contact');assert.equal(item.assignedMemberId,actor.memberId);
   assert.equal(item.status,'in_progress');assert.equal(item.faultType,'屏幕');
   const audit=db.sqlite.prepare("SELECT before_json,after_json FROM audit_events WHERE action='repairs.information.updated'").get();
   assert.ok(!JSON.stringify(audit).includes('private-contact'));
   assert.ok(!(await repo.find('edit')).social.includes('private-contact'));
- }finally{db.sqlite.close();}
 });
 for(const directory of ['migrations','database/staff-migrations'])test(`${directory}: every retired request is archived and scheduled appointments are linked without inventing service`,()=>{
  const db=database(directory,'0046_');
  try{
-  seedStaff(db,'20260001');order(db,'original',{status:'completed'});order(db,'child',{source:'onsite',registration_flow:'repair_followup',registered_by:'20260001'});
+  seedStaff(db,'20260001');seedAppointment(db,{id:'original',status:'completed'});seedAppointment(db,{id:'child',source:'onsite',registration_flow:'repair_followup',registered_by:'20260001'});
   for(const [id,status] of [['pending','pending'],['scheduled','scheduled'],['rejected','rejected']]){
    db.sqlite.prepare(`INSERT INTO repair_followups(id,parent_appointment_id,status,reason,request_id,request_hash,requested_at,scheduled_appointment_id,scheduled_by,scheduled_at,resolved_by,resolved_at,resolution_note)
     VALUES(?,'original',?,'old reason',?,?,'2026-11-01',?,?,?,?,?,'old decision')`).run(id,status,id,'a'.repeat(64),status==='scheduled'?'child':null,status==='scheduled'?'20260001':null,status==='scheduled'?'2026-11-02':null,status==='pending'?null:'20260001',status==='pending'?null:'2026-11-02');
