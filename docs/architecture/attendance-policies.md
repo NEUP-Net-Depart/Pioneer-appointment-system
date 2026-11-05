@@ -14,7 +14,7 @@
 | `prepareEffects` | 返回同批业务效果计划 |
 | `describeResult` | 描述签到结果 |
 
-凭证摘要、成员身份、唯一事实及审计由 attendance 服务统一处理。值班去重键为 `duty:<memberId>:<businessDate>`，同步 `staff_presence`；会议测试策略使用 `meeting:<memberId>:<eventId>`，只维护会议出勤事实，不注册生产业务入口。
+凭证摘要、成员身份、唯一事实及审计由 attendance 服务统一处理。值班去重键为 `duty:<memberId>:<businessDate>`，同步 `staff_presence`；会议场次使用 `meeting:<memberId>:<eventId>`，按场次参加名单校验，只维护该场次出勤事实。
 
 ## 修正与安全
 

@@ -106,5 +106,5 @@
     "authorization": "current management identity and campus scope applied to historical attendance facts"
   },
   "businessTimeZone": "Asia/Shanghai",
-  "businessBaseline": "core-workflow-redesign-plan v1.2"
+  "businessBaseline": "docs/requirements.md v1.2"
 }

@@ -14,7 +14,6 @@
     "esModuleInterop": true
   },
   "include": [
-    "src/modules/rosters/**/*.ts",
     "frontend/staff-react/**/*.ts",
     "frontend/staff-react/**/*.tsx"
   ]

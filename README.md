@@ -44,13 +44,11 @@ npm run dev
 | --- | --- |
 | `npm run verify` | 格式、lint、类型、架构、构建、测试与迁移检查 |
 | `npm run preview:local` | 带虚构人员的隔离本地 D1/R2 预览，地址由终端输出 |
-| `npm run preview:booking-layout` | 8790 端口预约布局预览，模拟数据、禁用提交 |
-| `npm run test:booking-layout` | 预约布局回归 |
 | `npm run release:plan -- --preview` | 查看当前分支的 Preview 发布计划，不执行远程操作 |
 
 ## 业务基线
 
-当前按 [核心业务流程与规则重构方案 v1.2](docs/reviews/core-workflow-redesign-plan.md) 实施：直接接单、跨日多单与交接、四种服务结果、直接关联返修、通常可用时间与按周例外。无旧队列、分派、维修资格、请假审批或排班问卷。升级需追加执行 0044–0049；本地验证不等于已迁移或发布远程环境。
+系统遵循 [业务规则 v1.2](docs/requirements.md)：直接接单、跨日多单与交接、四种服务结果、直接关联返修、通常可用时间与按周例外。无旧队列、分派、维修资格、请假审批或排班问卷。升级需追加执行 0044–0049；本地验证不等于已迁移或发布远程环境。
 
 ## 文档
 
@@ -58,7 +56,7 @@ npm run dev
 - [数据模型](docs/data-model.md)：持久化约束及一次性迁移。
 - [部署与运维](docs/operations.md)：环境、Secrets、发布、维护与备份。
 - [模块与工程约定](docs/architecture/module-map.md)：模块边界、事务和前端协作。
-- [设备序列号与保修查询](docs/architecture/warranty-lookup.md)：联想自动查询、Acer／华为人工验证、手机 OCR 与各品牌消费者自查渠道（issue #47）。
+- [设备序列号与保修查询](docs/architecture/warranty-lookup.md)：联想自动查询、Acer／华为人工验证、手机 OCR 与各品牌消费者自查渠道。
 - [身份与组织映射](docs/architecture/identity-mapping.md)、[授权与字段范围](docs/architecture/authorization.md)、[签到策略](docs/architecture/attendance-policies.md)。
 
-API 以 [路由](src/routes/)、[平台契约](docs/contracts/staff-platform.json) 和 [模块清单](src/modules/registry.js) 为准；迁移和模块指纹由 [基线清单](docs/contracts/baseline-manifest.json) 校验。
+API 以 [路由](src/routes/)、[平台契约](docs/contracts/staff-platform.json) 和 [模块清单](src/modules/registry.js) 为准；迁移 SQL 的不可变性由 [校验清单](database/migration-checksums.json) 校验；模块依赖由架构检查验证。

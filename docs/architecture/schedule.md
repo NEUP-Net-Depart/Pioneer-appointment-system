@@ -1,6 +1,6 @@
 # 排班与可用时间
 
-业务基线为 `docs/reviews/core-workflow-redesign-plan.md` v1.2。
+业务基线为 `docs/requirements.md` v1.2。
 
 成员通过 `GET/PUT /api/me/availability` 保存通常时间（`weekStart: ""`）或指定周一的例外。`windows` 为 `weekday`（1–7）、`campusId`、`startAt`、`endAt` 数组；空数组表示不可用。`useUsual: true` 删除该周例外。响应明确区分 `usual` 与 `exception`；不生成每周确认记录。
 

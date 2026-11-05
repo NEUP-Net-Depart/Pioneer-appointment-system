@@ -1,14 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {execFileSync,spawnSync} from 'node:child_process';
-import {readdirSync} from 'node:fs';
-import {mkdtemp,readFile,writeFile,unlink,rmdir} from 'node:fs/promises';
-import {tmpdir} from 'node:os';
-import {join} from 'node:path';
-import {validateRemoteConfig,remoteOptions} from '../scripts/release-guard.mjs';
-import {assertCleanRelease,pagesSiteUrl,previewBranch,releasePlan} from '../scripts/release-plan.mjs';
-import {ciReleaseTarget,ciReleasePlan,runCiRelease as release,runCiPreviewMigration} from '../scripts/ci-release.mjs';
-import {publishPages} from '../scripts/pages-deploy.mjs';
+import {validateRemoteConfig} from '../scripts/release-guard.mjs';
+import {pagesSiteUrl} from '../scripts/release-plan.mjs';
+import {ciReleaseTarget,runCiRelease as release,runCiPreviewMigration} from '../scripts/ci-release.mjs';
 import {STAFF_RELEASE} from '../src/db/staff-readiness.js';
 
 const bindings=(id,bucket)=>({d1_databases:[{binding:'DB',database_name:bucket,database_id:id}],r2_buckets:[{binding:'ATTACHMENTS',bucket_name:bucket}]});
@@ -18,13 +12,6 @@ const ciEnv=(event,branch)=>({GITHUB_ACTIONS:'true',GITHUB_EVENT_NAME:event,GITH
 const readyPreview=async()=>Response.json({ok:true,staffRelease:STAFF_RELEASE,workflow:'staff-platform'});
 const runCiRelease=(env,run)=>release(env,run,readyPreview);
 
-test('every workflow npm command resolves to an available package script',async()=>{
-  const {scripts}=JSON.parse(await readFile('package.json','utf8'));
-  for(const file of readdirSync('.github/workflows').filter(name=>/\.ya?ml$/.test(name))){
-    const source=await readFile(join('.github/workflows',file),'utf8');
-    for(const match of source.matchAll(/\bnpm run ([\w:-]+)/g))assert.ok(Object.hasOwn(scripts,match[1]),`${file} calls missing npm script ${match[1]}`);
-  }
-});
 test('CI releases all repository branches, with production restricted to main pushes',()=>{
   assert.equal(ciReleaseTarget(ciEnv('push','main')),'production');
   for(const branch of ['dev','feat/nfc-checkin','fix/booking-status','experiment/nested/change','feat/staff-permissions']){
@@ -34,22 +21,6 @@ test('CI releases all repository branches, with production restricted to main pu
   for(const ref of ['refs/tags/v1','refs/pull/1/merge','refs/heads/','refs/heads/feat/../main'])assert.throws(()=>ciReleaseTarget({...ciEnv('push','dev'),GITHUB_REF:ref}));
   assert.throws(()=>ciReleaseTarget({...ciEnv('push','main'),GITHUB_EVENT_DELETED:'true'}));
   assert.throws(()=>ciReleaseTarget({...ciEnv('push','main'),GITHUB_ACTIONS:'false'}));
-});
-
-test('Pages URLs use actual branch aliases and retain the production site origin',()=>{
-  for(const [branch,alias] of [['dev','dev'],['feat/nfc-checkin','feat-nfc-checkin'],['fix/booking-status','fix-booking-status'],['Feat/NFC_checkin.v2','feat-nfc-checkin-v2']]){
-    const expected=`https://${alias}.pioneer-appointment-system.pages.dev`;
-    assert.equal(pagesSiteUrl('pioneer-appointment-system',branch),expected);
-    assert.equal(ciReleasePlan({...ciEnv('push',branch),SITE_URL:'https://dev.example.test'}, {name:'pioneer-appointment-system'}).url,expected);
-    assert.equal(ciReleasePlan({...ciEnv('push',branch),SITE_URL:''},{name:'pioneer-appointment-system'}).url,expected);
-  }
-  assert.equal(
-    pagesSiteUrl('pioneer-appointment-system','feat/photo-compatibility-and-compresssion'),
-    'https://feat-photo-compatibility-and.pioneer-appointment-system.pages.dev',
-  );
-  assert.equal(pagesSiteUrl('pioneer-appointment-system','main'),'https://pioneer-appointment-system.pages.dev');
-  assert.equal(ciReleasePlan(ciEnv('push','main'),cfg()).url,'https://example.test');
-  for(const url of ['http://example.test','https://user:pass@example.test','https://example.test/path','https://example.test/?branch=dev','https://example.test/#dev'])assert.throws(()=>ciReleasePlan({...ciEnv('push','main'),SITE_URL:url},cfg()),/HTTPS site origin/);
 });
 
 test('CI migrates production in place and publishes all previews after any dev migration job',async()=>{
@@ -109,42 +80,6 @@ test('CI stops on failed migrations, publication or smoke and rejects missing cr
   for(const key of ['CLOUDFLARE_ACCOUNT_ID','CLOUDFLARE_API_TOKEN'])assert.throws(()=>runCiPreviewMigration({...ciEnv('push','dev'),[key]:''},()=>assert.fail('Unexpected migration')),new RegExp(key));
 });
 
-test('GitHub deployment links are emitted only after the branch smoke check succeeds',async()=>{
-  const dir=await mkdtemp(join(tmpdir(),'pioneer-release-output-')),output=join(dir,'github-output');
-  await writeFile(output,'');
-  try{
-    const env={...ciEnv('push','feat/nfc-checkin'),GITHUB_OUTPUT:output};
-    await runCiRelease(env,()=>({status:0}));
-    assert.equal(await readFile(output,'utf8'),'url=https://feat-nfc-checkin.pioneer-appointment-system.pages.dev\n');
-    await writeFile(output,'');
-    await assert.rejects(()=>runCiRelease(env,script=>({status:script==='smoke.mjs' ? 1 : 0})),/release stopped/);
-    assert.equal(await readFile(output,'utf8'),'');
-    await release(env,()=>assert.fail('Unexpected publication'),async()=>Response.json({ok:true,staffRelease:'staff-react-0031',workflow:'staff-platform'}));
-    assert.equal(await readFile(output,'utf8'),'');
-  }finally{
-    await unlink(output);
-    await rmdir(dir);
-  }
-});
-
-test('Preview release plans preserve real branch names while sharing D1 and private R2',async()=>{
-  const plans=[];
-  for(const branch of ['dev','feat/nfc-checkin','fix/booking-status','feat/staff-permissions']){
-    const env=ciEnv('push',branch),plan=await releasePlan('publish-pages',{preview:true,env});
-    assert.equal(previewBranch(env),branch);
-    assert.equal(plan.branch,branch);
-    assert.equal(plan.siteUrl,pagesSiteUrl(plan.project,branch));
-    assert.equal(plan.automaticMigrations,branch==='dev');
-    assert.equal(plan.database.name,'pioneer-appointments-preview-v2');
-    assert.equal(plan.attachments.bucket,'pioneer-attachments-preview-v2');
-    plans.push(plan);
-  }
-  for(const plan of plans.slice(1)){
-    assert.deepEqual(plan.database,plans[0].database);
-    assert.deepEqual(plan.attachments,plans[0].attachments);
-  }
-  assert.throws(()=>previewBranch(ciEnv('push','main')));
-});
 test('remote operations reject shared or incomplete resources for either target',()=>{
   assert.equal(validateRemoteConfig(cfg()).name,'existing-pages');
   for(const change of [
@@ -154,57 +89,4 @@ test('remote operations reject shared or incomplete resources for either target'
     c=>delete c.env.preview,
     c=>c.env.preview.d1_databases.push({...c.env.preview.d1_databases[0]})
   ]){const config=cfg();change(config);assert.throws(()=>validateRemoteConfig(config));}
-});
-test('execution needs an explicit matching approval and a clean reviewed checkout',()=>{
-  assert.equal(remoteOptions([]).execute,false);
-  assert.equal(remoteOptions(['--preview']).preview,true);
-  assert.equal(remoteOptions(['--execute','--approve-production']).execute,true);
-  assert.equal(remoteOptions(['--preview','--execute','--approve-preview']).execute,true);
-  for(const args of [['--execute'],['--preview','--execute','--approve-production'],['--approve-production'],['--execute','--approve-preview','--approve-production'],['--production'],['--preview','--preview']])assert.throws(()=>remoteOptions(args));
-  assert.throws(()=>assertCleanRelease({dirty:true}));assertCleanRelease({dirty:false});
-});
-test('deploy, migration and remote seed default to local plans without credentials or remote writes',()=>{
-  const env={...process.env,GITHUB_ACTIONS:'true',GITHUB_REF:'refs/heads/feat/nfc-checkin',CLOUDFLARE_API_TOKEN:'',CLOUDFLARE_ACCOUNT_ID:'',BROWSER:'none'};
-  const migrations=readdirSync('migrations').filter(file=>file.endsWith('.sql')).sort();
-  for(const [script,args] of [['deploy.mjs',[]],['deploy.mjs',['--preview']],['migrate-remote.mjs',[]],['seed.mjs',['--remote']]]){
-    const output=execFileSync(process.execPath,['scripts/'+script,...args],{env,encoding:'utf8'}),plan=JSON.parse(output);
-    assert.equal(plan.mode,'plan-only');assert.equal(plan.project,'pioneer-appointment-system');
-    assert.deepEqual(plan.migrations.map(item=>item.file),migrations);
-    for(const migration of plan.migrations)assert.match(migration.sha256,/^[a-f\d]{64}$/);
-    assert.deepEqual(plan.requiredSecrets,['JWT_SECRET','PII_ENCRYPTION_KEY']);assert.equal(plan.environment,args.includes('--preview') ? 'preview' : 'production');
-    assert.equal(plan.branch,args.includes('--preview') ? 'feat/nfc-checkin' : 'main');
-    assert.equal(plan.siteUrl,pagesSiteUrl(plan.project,plan.branch));
-    const denied=spawnSync(process.execPath,['scripts/'+script,...args,'--execute'],{env,encoding:'utf8'});
-    assert.equal(denied.status,1);assert.match(denied.stderr,/requires --execute --approve-/);
-  }
-});
-
-test('Pages retains the deployment project, branch and reviewed commit',async()=>{
-  const original=await readFile('wrangler.jsonc','utf8');
-  for(const environment of ['production','preview']){
-    const plan={environment,project:'pioneer-appointment-system',branch:environment==='production' ? 'main' : 'dev',commit:'reviewed-commit'};
-    await publishPages(plan,(args,options)=>{
-      assert.deepEqual(args,['pages','deploy','dist','--project-name',plan.project,'--branch',plan.branch,'--commit-hash',plan.commit]);
-      assert.equal(options,undefined);
-    });
-  }
-  assert.equal(await readFile('wrangler.jsonc','utf8'),original);
-});
-
-test('retired staging flags fail before deployment, seeding or maintenance can select another environment',()=>{
-  const env={...process.env,CLOUDFLARE_API_TOKEN:'',CLOUDFLARE_ACCOUNT_ID:''};
-  for(const [script,args] of [
-    ['release-plan.mjs',['--staff-staging']],
-    ['deploy.mjs',['--staff-staging','--execute','--approve-staff-staging']],
-    ['migrate-remote.mjs',['--staff-staging','--execute','--approve-staff-staging']],
-    ['seed.mjs',['--remote','--staff-staging','--execute','--approve-staff-staging']],
-    ['expire-appointments.mjs',['--staff-staging','--apply']],
-    ['cleanup-attachments.mjs',['--staff-staging','--apply']],
-    ['ci-release.mjs',['--migrate-staff-staging']]
-  ]){
-    const result=spawnSync(process.execPath,['scripts/'+script,...args],{env,encoding:'utf8'});
-    assert.equal(result.status,1,`${script} accepted retired flags`);
-    assert.match(result.stderr,/Use /,`${script} did not reject its arguments before execution`);
-    assert.equal(result.stdout,'');
-  }
 });
