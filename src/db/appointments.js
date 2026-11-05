@@ -475,9 +475,9 @@ export function appointmentRepository(db) {
         items: await Promise.all(items.results.map(async (row) => {
           const item = fromRow(row);
           const location = item.registrationFlow==='repair_followup' ? await this.location(item.date,item.campus) : null;
-          return {...Object.fromEntries(['id','date','timeSlot','status','outcome','repairNote',
+          return {...Object.fromEntries(['id','date','timeSlot','status','outcome',
             'startedAt','completedAt','source','registrationFlow','expiresAt','repairNumber','createdAt',
-            ...(staff ? ['assignedToName'] : [])].map((key) => [key,item[key]])),
+            ...(staff ? ['assignedToName','repairNote'] : [])].map((key) => [key,item[key]])),
             ...(item.registrationFlow==='repair_followup' ? {
               campus:item.campus,revision:item.revision,
               location:location?.location || item.locationSnapshot || '',locationSnapshot:item.locationSnapshot || '',
@@ -488,14 +488,14 @@ export function appointmentRepository(db) {
             } : {})};
         })),
         followups: requests.results.map((row) => ({ id:row.id,parentAppointmentId:row.parent_appointment_id,status:row.status,
-          requestSource:row.request_source,reason:row.reason,requestedAt:row.requested_at,scheduledAppointmentId:row.scheduled_appointment_id || '',
-          scheduledAt:row.scheduled_at || '',resolvedAt:row.resolved_at || '',resolutionNote:row.resolution_note || '',revision:row.revision })),
-        events: events.results.map((row) => {
+          requestSource:row.request_source,...(staff ? {reason:row.reason,resolutionNote:row.resolution_note || ''} : {}),requestedAt:row.requested_at,scheduledAppointmentId:row.scheduled_appointment_id || '',
+          scheduledAt:row.scheduled_at || '',resolvedAt:row.resolved_at || '',revision:row.revision })),
+        ...(staff ? { events: events.results.map((row) => {
           const before = parseJson(row.before_json,null), after = parseJson(row.after_json,null);
           return { appointmentId:row.appointment_id,action:row.action,occurredAt:row.occurred_at,
             ...(staff ? { reason:row.reason || '',beforeStatus:before?.status || '',afterStatus:after?.status || '',
               assigneeName:after?.assigneeIdentity?.name || '' } : {}) };
-        })
+        }) } : {})
       };
     },
     async followupForScan(parentId, followupId) {

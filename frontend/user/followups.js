@@ -8,13 +8,6 @@ const requestState = {
   scheduled: '已安排维修',
   rejected: '申请已退回'
 };
-const eventLabel = {
-  'repairs.claimed': '维修人员接单',
-  'repairs.transferred': '工单已转交',
-  'repairs.started': '开始维修',
-  'repairs.completed': '维修完成',
-  'repairs.corrected': '工单记录已更新'
-};
 
 function element(tag, className = '', text = '') {
   const node = document.createElement(tag);
@@ -55,20 +48,6 @@ export function createFollowupPanel(item, message = '') {
       formatDate(entry.date) + ' · ' + timeLabel(entry) + ' · ' + statusText(entry)));
     if (entry.outcome) round.append(element('p', 'repair-round-result',
       outcomeLabels[entry.outcome] || outcomeLabels.legacy_unknown));
-    if (entry.repairNote) round.append(element('p', 'repair-round-note', entry.repairNote));
-    const events = history.events.filter((event) => event.appointmentId === entry.id);
-    if (events.length) {
-      const list = element('ol', 'repair-round-events');
-      events.forEach((event) => {
-        const line = element('li');
-        const label = eventLabel[event.action] || '工单更新';
-        line.append(element('span', '', label));
-        const time = element('time', '', new Date(event.occurredAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }));
-        line.append(time);
-        list.append(line);
-      });
-      round.append(list);
-    }
 
     history.followups
       .filter((request) => request.parentAppointmentId === entry.id)
@@ -77,8 +56,7 @@ export function createFollowupPanel(item, message = '') {
         const row = element('div', 'repair-followup-heading');
         row.append(element('strong', '', requestState[request.status] || '状态已更新'));
         row.append(element('time', '', new Date(request.requestedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })));
-        followup.append(row, element('p', '', request.reason));
-        if (request.resolutionNote) followup.append(element('p', 'repair-followup-resolution', '处理说明：' + request.resolutionNote));
+        followup.append(row);
         const child = itemById.get(request.scheduledAppointmentId);
         if (child) {
           followup.append(element('p', '', '返修单 ' + child.id + ' · ' + formatDate(child.date) + ' ' + child.timeSlot));

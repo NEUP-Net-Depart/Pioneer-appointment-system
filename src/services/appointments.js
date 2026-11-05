@@ -31,10 +31,14 @@ export async function presentAppointment(item, encryptionKey, { staff = false } 
   const visible = { ...item, phone, social, email, contactValue };
   delete visible.registrationKey;
   if (!staff) {
-    delete visible.assignedToName;
-    delete visible.assignedMemberId;
-    delete visible.registeredMemberId;
-    if (visible.reception) visible.reception = { state: visible.reception.state, receivedAt: visible.reception.receivedAt, leftAt:visible.reception.leftAt, ticket:visible.reception.ticket };
+    // Explicit customer projection: adding an internal field must never publish it.
+    const fields = ['id','revision','studentId','name','college','campus','phone','social',
+      'email','contactType','contactValue','deviceType','brand','deviceModel','serial',
+      'warranty','faultType','issue','liquidDrop','liquidMetal','dellG15','date','timeSlot',
+      'status','outcome','startedAt','completedAt','expiresAt','createdAt','source',
+      'registrationFlow','repairNumber','locationSnapshot','locationRevision','servicePaused',
+      'agreementAt','agreementVersion','signature'];
+    return Object.fromEntries(fields.map(key => [key, visible[key]]));
   }
   return visible;
 }

@@ -14,7 +14,7 @@ export const statusClass = {
   cancelled: 'status-cancelled', expired: 'status-expired'
 };
 export const terminalStatuses = ['completed', 'cancelled', 'expired'];
-export const expirationMessage = '预约时段已结束，本次预约未记录维修开始。如仍需维修，请重新预约或联系工作人员。';
+export const expirationMessage = '预约当天未到场，本次预约已过期。如仍需维修，请重新预约或现场登记。';
 export const endTimeLabels = { completed: '完成时间', cancelled: '取消时间', expired: '逾期处理时间' };
 export const repairOutcomes = ['repaired', 'unrepaired', 'not_needed'];
 export const outcomeLabels = {

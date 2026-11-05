@@ -1,5 +1,5 @@
 import { escapeHtml } from '/shared/utils.js';
-import { formatDate,formatInstant,slotDeadline } from '/shared/time.js';
+import { formatDate,formatInstant } from '/shared/time.js';
 import { outcomeLabels,statusLabels,expirationMessage } from '/shared/constants.js';
 import { receptionLabels,receptionStatus } from '/shared/reception.js';
 export function timeLabel(item) {
@@ -21,11 +21,11 @@ export function statusExplanation(item) {
   if(item.status==='booked' && item.reception?.state==='assigned')return '已分派 · 待现场核对';
   if(item.status==='expired')return expirationMessage;
   if(item.status==='booked' && item.source==='onsite' && item.registrationFlow!=='repair_followup')return '本次为现场临时登记，请与现场工作人员保持联系。';
-  if(item.status==='booked')return Date.parse(slotDeadline(item.date,item.timeSlot))<=(item.serverNow ? Date.parse(item.serverNow) : Date.now()) ? '预约到场时段已结束，如已到现场或需要协助，请联系工作人员。' : '请在所选时段内到场，实际维修时间视现场情况而定。';
+  if(item.status==='booked')return '请尽量在所选时段到场；预约当天其他时段到场也可沿用本单。';
   return '';
 }
 export function repairRecord(item) {
   if(!['completed','in_progress','cancelled'].includes(item.status))return '';
-  return `<section class="detail-section"><h2>${item.status==='completed' ? '维修结果' : '预约记录'}</h2>${item.status==='completed' ? `<p class="repair-result">${escapeHtml(outcomeLabels[item.outcome] || outcomeLabels.legacy_unknown)}</p>${longText('维修说明',item.repairNote)}` : ''}<dl>${rows(item.status==='cancelled' ? [['取消时间',formatInstant(item.completedAt)]] : [['实际开始时间',formatInstant(item.startedAt)],...(item.status==='completed' ? [['完成时间',formatInstant(item.completedAt)]] : [])])}</dl></section>`;
+  return `<section class="detail-section"><h2>${item.status==='completed' ? '维修结果' : '预约记录'}</h2>${item.status==='completed' ? `<p class="repair-result">${escapeHtml(outcomeLabels[item.outcome] || outcomeLabels.legacy_unknown)}</p>` : ''}<dl>${rows(item.status==='cancelled' ? [['取消时间',formatInstant(item.completedAt)]] : [['实际开始时间',formatInstant(item.startedAt)],...(item.status==='completed' ? [['完成时间',formatInstant(item.completedAt)]] : [])])}</dl></section>`;
 }
 export const statusText=item=>receptionLabels[receptionStatus(item)] || statusLabels[item.status] || '状态未记录';
