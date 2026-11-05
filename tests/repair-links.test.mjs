@@ -60,7 +60,7 @@ test('information edits preserve repair responsibility and encrypt contact histo
 for(const directory of ['migrations','database/staff-migrations'])test(`${directory}: every retired request is archived and scheduled appointments are linked without inventing service`,()=>{
  const db=database(directory,'0046_');
  try{
-  seedStaff(db,'20260001');seedAppointment(db,{id:'original',status:'completed'});seedAppointment(db,{id:'child',source:'onsite',registration_flow:'repair_followup',registered_by:'20260001'});
+  seedStaff(db,'20260001');seedAppointment(db,{id:'original',student_id:'20260009',status:'completed'});seedAppointment(db,{id:'child',student_id:'20260009',source:'onsite',registration_flow:'repair_followup',registered_by:'20260001'});
   for(const [id,status] of [['pending','pending'],['scheduled','scheduled'],['rejected','rejected']]){
    db.sqlite.prepare(`INSERT INTO repair_followups(id,parent_appointment_id,status,reason,request_id,request_hash,requested_at,scheduled_appointment_id,scheduled_by,scheduled_at,resolved_by,resolved_at,resolution_note)
     VALUES(?,'original',?,'old reason',?,?,'2026-11-01',?,?,?,?,?,'old decision')`).run(id,status,id,'a'.repeat(64),status==='scheduled'?'child':null,status==='scheduled'?'20260001':null,status==='scheduled'?'2026-11-02':null,status==='pending'?null:'20260001',status==='pending'?null:'2026-11-02');
