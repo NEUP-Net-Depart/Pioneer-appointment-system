@@ -21,7 +21,7 @@ export function conflictMessage(error) {
   if (message.includes('role_grants.role_id') || message.includes('UNIQUE constraint failed: roles.code')) return '角色权限已存在';
   if (message.includes('idx_membership_primary_open') || message.includes('member_department_memberships.member_id')) return '成员在该时点已有主归属或重复任职';
   if (message.includes('PRIMARY_MEMBERSHIP_OVERLAP')) return '成员的主归属任职时间重叠，请先结束原主归属';
-  if (message.includes('duty_assignments') || message.includes('roster_versions')) return '排班版本或分配已存在，请刷新后重试';
+  if (message.includes('duty_assignments') || message.includes('roster_weeks')) return '排班版本或分配已存在，请刷新后重试';
   if (message.includes('REVISION_CONFLICT')) return '对象已被其他操作修改，请刷新后重试';
   return null;
 }

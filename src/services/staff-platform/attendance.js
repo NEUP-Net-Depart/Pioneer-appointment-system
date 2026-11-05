@@ -148,7 +148,7 @@ export function attendanceDomain({
     const context = providedContext || (await contextFor(actor)),
       identities = staffIdentities(context, platform.authorizer, { campusId });
     const scheduled = context.todayDuties.filter(
-      (duty) => duty.campusId === campusId && duty.leaveStatus !== 'approved'
+      (duty) => duty.campusId === campusId && duty.leaveStatus !== 'recorded'
     );
     const leader = identities.some((item) =>
       [...leadershipPositions, 'superadmin'].includes(item.code)

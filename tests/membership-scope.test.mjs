@@ -21,7 +21,7 @@ test('ministers manage every department in their campus; directors and president
   const head=await users.find('20261001'),director=await users.find('20261002'),president=await users.find('20261003');
   assert.deepEqual(director.authorizedCampuses.sort(),['南湖','浑南'].sort());
   const ctx=await staff.contextFor(head);
-  for(const permission of ['members.manage','roster.repair.manage','roster.office.manage','attendance.correct','attendance.session.manage']){
+  for(const permission of ['members.manage','roster.manage','attendance.correct','attendance.session.manage']){
    assert.equal(staff.evaluate(ctx,permission,{campusId:'campus-nanhu',departmentId:'dept-office'}).allowed,true);
    assert.equal(staff.evaluate(ctx,permission,{campusId:'campus-hunnan',departmentId:'dept-network'}).allowed,false);
    assert.equal(staff.evaluate(await staff.contextFor(director),permission,{campusId:'campus-hunnan'}).allowed,true);

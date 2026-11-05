@@ -136,7 +136,7 @@ export interface Home {
   reason: string;
   repairs: Appointment[];
   pendingPhotos: Appointment[];
-  pendingSwapInvitations?: number;
+  pendingCoverInvitations?: number;
   presence?: { revision: number; campusId: string; state: string };
   event?: { id: string; revision: number; startsAt: string; endsAt: string };
   todayDuties: {

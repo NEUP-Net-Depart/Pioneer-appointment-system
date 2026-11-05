@@ -97,10 +97,10 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
   async function todayDuties(memberId, businessDate = dateKey()) {
     const result = await db
       .prepare(
-        `SELECT da.*,(SELECT paused FROM service_day_overrides s WHERE s.business_date=da.business_date AND s.campus_id=da.campus_id) AS service_paused,c.name AS campus_name,dr.role_kind,${assignmentLeaveColumn} FROM duty_assignments da
-      JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published'
-      JOIN campuses c ON c.id=da.campus_id LEFT JOIN duty_roles dr ON dr.assignment_id=da.id
-      WHERE da.member_id=? AND da.business_date=? ORDER BY da.start_at`
+        `SELECT da.*,(SELECT paused FROM service_day_overrides s WHERE s.business_date=da.business_date AND s.campus_id=da.campus_id) AS service_paused,c.name AS campus_name,${assignmentLeaveColumn} FROM duty_assignments da
+      
+      JOIN campuses c ON c.id=da.campus_id
+      WHERE da.active=1 AND da.member_id=? AND da.business_date=? ORDER BY da.start_at`
       )
       .bind(memberId, businessDate)
       .all();

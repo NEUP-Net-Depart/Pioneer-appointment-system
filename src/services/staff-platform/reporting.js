@@ -1,7 +1,7 @@
 import { leadershipPositions } from '../../../shared/staff-organization.js';
 import { fail } from '../../lib/http.js';
 import { addDays, dateKey, weekRange } from '../../platform/time.js';
-import { rosterFactContext } from '../../modules/rosters/qualification.js';
+import { attendanceFactContext } from '../../modules/attendance/fact-context.js';
 import { staffIdentities } from '../../../shared/staff-identities.js';
 
 const campusNames = { 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' };
@@ -140,7 +140,7 @@ export function attendanceReportingDomain({ repository, platform, contextFor, ev
             for (let day = 0; day < 4; day++) {
               const date = addDays(week, day);
               if (date > today || pausedKeys.has(`${date}:${campusId}`)) continue;
-              const identityContext = rosterFactContext(fact, date);
+              const identityContext = attendanceFactContext(fact, date);
               const department = identityContext.memberships.find((item) => item.isPrimary);
               if (
                 !canExport(

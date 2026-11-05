@@ -173,7 +173,7 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
       todayDuties:context.todayDuties,identities:staffIdentities(context,authorizer,{campusId:selected}),
       searchCapabilities:searchCapabilities(),presence:context.presence,
       event:await repository.dutyEvent(dateKey(),selected),
-      pendingSwapInvitations:context.permissions['roster.read'] ? await repository.pendingSwapInvitations(context.actor.memberId) : 0,
+      pendingCoverInvitations:context.permissions['roster.read'] ? await repository.pendingCoverInvitations(context.actor.memberId) : 0,
       updatedAt:new Date().toISOString()};
   }
   async function board(actor,query={}) {

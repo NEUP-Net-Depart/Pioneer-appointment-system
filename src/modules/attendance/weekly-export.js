@@ -1,7 +1,7 @@
 import { leadershipPositions } from '../../../shared/staff-organization.js';
 import {addDays,serviceDay} from '../../../shared/time.js';
 import {staffIdentities} from '../../../shared/staff-identities.js';
-import {rosterFactContext} from '../rosters/qualification.js';
+import {attendanceFactContext} from './fact-context.js';
 
 // Authorization and suspension are applied to each fact before combining campuses.
 // A weekly credit is a report calculation, never an attendance or presence write.
@@ -22,7 +22,7 @@ export function weeklyAttendanceRows({week,records,facts,paused,authorizer,canEx
   if(leadersOnce)for(const fact of facts){
     for(let offset=0;offset<4;offset++){
       const day=addDays(week,offset);if(!serviceDay(day))continue;
-      const context=rosterFactContext(fact,day),departments=context.memberships.filter(item=>item.isPrimary);
+      const context=attendanceFactContext(fact,day),departments=context.memberships.filter(item=>item.isPrimary);
       for(const campus of fact.campuses||[]){
         const campusId={'南湖':'campus-nanhu','浑南':'campus-hunnan'}[campus]||campus;
         for(const department of departments.length?departments:[{}]){

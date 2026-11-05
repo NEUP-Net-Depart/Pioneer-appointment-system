@@ -26,8 +26,8 @@ const MembersModule = workspaceModule(() => import('./People.jsx'), 'People');
 const Members = MembersModule.Page;
 const PermissionsModule = workspaceModule(() => import('./Permissions.jsx'), 'Permissions');
 const Permissions = PermissionsModule.Page;
-const RosterAreaModule = workspaceModule(() => import('./RosterManager.jsx'), 'RosterArea');
-const RosterArea = RosterAreaModule.Page;
+const ScheduleModule = workspaceModule(() => import('./Schedule.jsx'), 'Schedule');
+const Schedule = ScheduleModule.Page;
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { StaffWorkspace } from './StaffWorkspace';
 const RecordsModule = workspaceModule(() => import('./Records'), 'Records');
@@ -44,10 +44,6 @@ import {
   staffSceneAllowed,
   normalizeStaffScene
 } from '../../shared/staff-access.js';
-const OfficeRosterModule = workspaceModule(() => import('./OfficeRoster'), 'OfficeRoster');
-const OfficeRoster = OfficeRosterModule.Page;
-const LeaveReviewModule = workspaceModule(() => import('./LeaveReview'), 'LeaveReview');
-const LeaveReview = LeaveReviewModule.Page;
 import { WorkspacePage } from './WorkspacePage';
 import './workspace-foundation.css';
 import './workspace-design.css';
@@ -59,16 +55,12 @@ const pageModules = {
   reports: AttendanceReportsModule,
   members: MembersModule,
   permissions: PermissionsModule,
-  roster: RosterAreaModule,
-  'roster-manage': RosterAreaModule,
-  'roster-requests': RosterAreaModule,
+  roster: ScheduleModule,
   staff: RecordsModule,
   stats: StatisticsModule,
   settings: AccountSettingsModule,
   capacity: AccountSettingsModule,
-  users: MembersModule,
-  'office-roster': OfficeRosterModule,
-  'leave-review': LeaveReviewModule
+  users: MembersModule
 };
 
 function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
@@ -86,8 +78,6 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
   const [bootError, setBootError] = useState(''),
     [bootRetry, setBootRetry] = useState(0);
   const [workScene, setWorkScene] = useState(null);
-  const [rosterSection, setRosterSection] = useState('mine');
-  const [rosterRequestSignal, setRosterRequestSignal] = useState(0);
   const [visited, setVisited] = useState(['workbench']);
   const [settingsSection, setSettingsSection] = useState('security');
   const profileRef = useRef(null);
@@ -95,15 +85,9 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
   useEffect(() => {
     if (!field || !user) return;
     const profile = { ...user, permissions: field.permissions || user.permissions };
-    const target =
-      page === 'settings' && settingsSection === 'capacity'
-        ? 'capacity'
-        : page === 'roster' && rosterSection === 'manage'
-          ? 'roster-manage'
-          : page;
+    const target = page === 'settings' && settingsSection === 'capacity' ? 'capacity' : page;
     if (!staffViewAllowed(profile, target)) {
       setSettingsSection('security');
-      setRosterSection('mine');
       setPage('workbench');
       setVisited((current) => [
         ...new Set([...current.filter((view) => staffViewAllowed(profile, view)), 'workbench'])
@@ -111,7 +95,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
     }
     if (page === 'workbench' && workScene && !staffSceneAllowed(profile, field, workScene))
       setWorkScene('mine');
-  }, [field, user, page, rosterSection, settingsSection, workScene]);
+  }, [field, user, page, settingsSection, workScene]);
   useEffect(() => {
     if (!profile) return;
     let active = true;
@@ -204,10 +188,6 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
       return;
     }
     setOpening(null);
-    if (view === 'roster-requests') {
-      setRosterRequestSignal((value) => value + 1);
-      view = 'roster';
-    }
     if (view === 'capacity') {
       setSettingsSection('capacity');
       view = 'settings';
@@ -216,10 +196,6 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
       setWorkScene(view.slice(6));
       view = 'workbench';
     }
-    if (view === 'roster-manage') {
-      setRosterSection('manage');
-      view = 'roster';
-    } else if (view === 'roster') setRosterSection('mine');
     if (field && view === 'scan') {
       setWorkScene('repair');
       view = 'workbench';
@@ -237,17 +213,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
       .filter((context) => staffSceneAllowed(effectiveUser, field, context.id))
       .map((context) => ({ ...context, id: `scene:${context.id}` })),
     ...(profile && field ? [{ id: 'scene:mine', label: '个人中心' }] : []),
-    ...(publishedView('rosters', 'roster') ? [{ id: 'roster', label: '班次与排班' }] : []),
-    ...(staffPermission(effectiveUser, 'roster.repair.manage') ||
-    staffPermission(effectiveUser, 'roster.repair.configure')
-      ? [{ id: 'roster-manage', label: '维修排班管理' }]
-      : []),
-    ...(staffPermission(effectiveUser, 'roster.office.manage')
-      ? [{ id: 'office-roster', label: '办公排班管理' }]
-      : []),
-    ...(staffPermission(effectiveUser, 'leave.review')
-      ? [{ id: 'leave-review', label: '请假审批' }]
-      : []),
+    ...(publishedView('rosters', 'roster') ? [{ id: 'roster', label: '排班与可用时间' }] : []),
     ...(staffPermission(effectiveUser, 'attendance.correct')
       ? [{ id: 'attendance-manage', label: '考勤核查' }]
       : []),
@@ -283,11 +249,9 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
   const active =
     page === 'workbench'
       ? `scene:${workScene}`
-      : page === 'roster' && rosterSection === 'manage'
-        ? 'roster-manage'
-        : page === 'settings' && settingsSection === 'capacity'
-          ? 'capacity'
-          : page;
+      : page === 'settings' && settingsSection === 'capacity'
+        ? 'capacity'
+        : page;
   // Keep loaded data, filters, selected records and retained drafts mounted.
   // Hidden routes stop polling and device-backed UI.
   const visible = (view) => page === view;
@@ -326,26 +290,8 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
       </>
     )
   );
-  const rosterRoute = route(
-    'roster',
-    <RosterArea user={effectiveUser} section={rosterSection} requestSignal={rosterRequestSignal} />,
-    published.has('rosters') ||
-      staffPermission(effectiveUser, 'roster.repair.manage') ||
-      staffPermission(effectiveUser, 'roster.repair.configure')
-  );
+  const rosterRoute = route('roster', <Schedule user={effectiveUser} />, published.has('rosters'));
   const moduleRoutes = [
-    route(
-      'leave-review',
-      <LeaveReview user={effectiveUser} onNavigate={requestNavigate} />,
-      staffPermission(effectiveUser, 'leave.review')
-    ),
-    route(
-      'office-roster',
-      <section className="roster-area">
-        <OfficeRoster user={effectiveUser} />
-      </section>,
-      staffPermission(effectiveUser, 'roster.office.manage')
-    ),
     route(
       'attendance-manage',
       <AttendanceManagement user={effectiveUser} />,

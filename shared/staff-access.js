@@ -8,14 +8,11 @@ export function staffViewAllowed(user, view) {
   if (!user) return false;
   const permissions = {
     staff: 'repair.summary.read', members: 'members.manage', permissions: 'roles.manage',
-    roster: 'roster.read', 'roster-manage': 'roster.repair.manage', attendance: 'attendance.self','attendance-manage':'attendance.correct',
-    users: 'accounts.manage', stats: 'statistics.read', capacity: 'settings.manage', 'office-roster': 'roster.office.manage', 'leave-review': 'leave.review',
+    roster: 'roster.read', attendance: 'attendance.self','attendance-manage':'attendance.correct',
+    users: 'accounts.manage', stats: 'statistics.read', capacity: 'settings.manage',
   };
   if (view === 'members') return ['members.manage', 'accounts.manage', 'settings.manage'].some(code => staffPermission(user, code));
   if (['workbench', 'settings'].includes(view)) return true;
-  if (view === 'roster-requests') return staffPermission(user, 'roster.read');
-  if (view === 'roster-manage') return staffPermission(user,'roster.repair.manage') || staffPermission(user,'roster.repair.configure');
-  if (view === 'roster') return staffPermission(user, 'roster.read') || staffPermission(user, 'roster.repair.manage') || staffPermission(user,'roster.repair.configure');
   if (view === 'reports') return staffPermission(user, 'attendance.export') || staffPermission(user, 'settings.manage');
   return !!permissions[view] && staffPermission(user, permissions[view]);
 }

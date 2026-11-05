@@ -6,7 +6,7 @@ import { parseJson } from '../../platform/contracts.js';
 
 export const staffRepairPermissions = ['repair.summary.read','repair.start','repair.receive','repair.finish.own','repair.transfer','customer.identity.read','customer.contact.read','onsite.create','onsite.frontdesk.create'];
 
-export const managementPermissions=['members.manage','repair.correct','statistics.read','roster.repair.manage','roster.repair.configure','roster.office.manage','leave.review','attendance.session.manage','attendance.correct','attendance.export'];
+export const managementPermissions=['members.manage','repair.correct','statistics.read','roster.manage','attendance.session.manage','attendance.correct','attendance.export'];
 export const identityPermissions=[...staffRepairPermissions,...managementPermissions,'roster.read','attendance.self'];
 
 function values(value) {

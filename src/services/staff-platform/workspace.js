@@ -1,5 +1,4 @@
 import { fail } from '../../lib/http.js';
-import { dateKey } from '../../platform/time.js';
 import { campusId as normalizeCampusId } from '../../modules/authorization/scopes.js';
 import { canManageDepartments } from './departments.js';
 
@@ -49,24 +48,6 @@ export function workspaceDomain({ repository, platform, manifests, contextFor })
     fail(404, '组织字典不存在');
   }
 
-  async function deskSummary(actor, query = {}) {
-    if (query.businessDate && query.businessDate !== dateKey())
-      fail(400, '接待现场仅展示今天，请通过记录页面查询历史');
-    // Keep the compatibility URL behind the same role, scope and field projection
-    // as the current desk; a summary-read grant alone does not open the staff board.
-    const board = await this.field.board(actor, {
-      ...query,
-      campusId: query.campusId ? normalizeCampusId(query.campusId) : undefined
-    });
-    const counts = Object.fromEntries(
-      ['booked', 'in_progress', 'completed', 'cancelled', 'expired'].map((status) => [
-        status,
-        board.appointments.filter((item) => item.status === status).length
-      ])
-    );
-    return { ...board, counts };
-  }
-
   async function audit(actor, query) {
     const context = await contextFor(actor);
     // Historical records do not yet carry a consistent campus/department scope.
@@ -86,5 +67,5 @@ export function workspaceDomain({ repository, platform, manifests, contextFor })
       fail(403, '当前授权不能查看全局审计记录');
     return { items: await repository.listAudit(query || {}) };
   }
-  return { workbench, organization, deskSummary, audit };
+  return { workbench, organization, audit };
 }

@@ -172,7 +172,7 @@ export function attendanceDomain({ db, auditStatement, commandAuthorization }) {
     const guard = record.tokenId
       ? ` WHERE EXISTS(SELECT 1 FROM attendance_tokens t JOIN attendance_events e ON e.id=t.event_id WHERE t.id=? AND t.revoked_at IS NULL AND julianday(t.expires_at)>julianday(?) AND julianday(e.starts_at)<=julianday(?) AND julianday(e.ends_at)>=julianday(?)) AND ${authGuard}`
       : record.direct
-        ? ` WHERE ${authGuard} AND EXISTS(SELECT 1 FROM attendance_events e WHERE e.id=? AND julianday(e.starts_at)<=julianday(?) AND julianday(e.ends_at)>=julianday(?)) AND (?=1 OR EXISTS(SELECT 1 FROM duty_assignments da JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published' WHERE da.member_id=? AND da.business_date=? AND da.campus_id=? AND da.duty_type='office' AND NOT EXISTS(SELECT 1 FROM roster_leave_facts lf WHERE lf.origin_assignment_id=COALESCE(da.origin_assignment_id,da.id) AND lf.member_id=da.member_id AND lf.status='approved')))`
+        ? ` WHERE ${authGuard} AND EXISTS(SELECT 1 FROM attendance_events e WHERE e.id=? AND julianday(e.starts_at)<=julianday(?) AND julianday(e.ends_at)>=julianday(?)) AND (?=1 OR EXISTS(SELECT 1 FROM duty_assignments da  WHERE da.active=1 AND da.member_id=? AND da.business_date=? AND da.campus_id=? AND da.duty_type='office' AND NOT EXISTS(SELECT 1 FROM roster_leaves lf WHERE lf.assignment_id=da.id AND lf.member_id=da.member_id AND lf.withdrawn_at IS NULL)))`
         : '';
     const guardArgs = record.tokenId
       ? [

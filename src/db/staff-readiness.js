@@ -1,4 +1,4 @@
-export const STAFF_RELEASE = 'membership-identity-0047';
+export const STAFF_RELEASE = 'weekly-schedule-0048';
 
 // Prepare real projections, including empty tables. A database with only the
 // old staff schema must fail readiness before CI accepts a deployment.
@@ -15,9 +15,9 @@ export async function verifyStaffSchema(db) {
     operation_receipts: 'request_id,payload_hash,result_status',
     attendance_records: 'member_id,event_id',
     attendance_report_settings: 'id,count_mode,hours_per_count,merge_leaders,revision',
-    roster_collection_series: 'id',
-    roster_submissions: 'member_id',
-    duty_assignments: 'member_id,origin_assignment_id',
+    roster_weeks: 'week_start,campus_id,revision',
+    member_availability: 'member_id,week_start,windows',
+    duty_assignments: 'member_id,week_id,active',
     service_day_overrides: 'business_date,campus_id,paused',
     booking_settings: 'campus,release_time,revision',
     booking_notices: 'id,campus,revision,display_mode',

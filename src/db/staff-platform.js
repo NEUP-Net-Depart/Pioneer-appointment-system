@@ -1,5 +1,4 @@
 import { serviceDayRepository } from './service-days.js';
-import { rosterCollectionRepository } from './roster-collection.js';
 import { memberImportDomain } from './staff-platform/member-import.js';
 import { departmentsDomain } from './staff-platform/departments.js';
 import { membersDomain } from './staff-platform/members.js';
@@ -7,218 +6,21 @@ import { fieldDomain } from './staff-platform/field.js';
 import { rolesDomain } from './staff-platform/roles.js';
 import { attendanceDomain } from './staff-platform/attendance.js';
 import { commandsDomain } from './staff-platform/commands.js';
-import { rostersDomain } from './staff-platform/rosters.js';
-import { requestsDomain } from './staff-platform/requests.js';
+import { scheduleRepository } from './staff-platform/schedule.js';
 
 export function staffPlatformRepository(db) {
-  const collection = rosterCollectionRepository(db);
-  const {
-    createReceipt,
-    claimReceipt,
-    releaseReceipt,
-    receipt,
-    auditStatement,
-    audit,
-    listAudit,
-    memberAudit,
-    commandAuthorization
-  } = commandsDomain({ db });
-  const {
-    accountRow,
-    ensureMember,
-    memberRow,
-    accountForMember,
-    accountsForMember,
-    memberships,
-    membershipsForMembers,
-    grants,
-    todayDuties,
-    authorizationContext,
-    listMembers,
-    updateMember,
-    listMemberships,
-    addMembership,
-    endMembership,
-    importEducation
-  } = membersDomain({ db, auditStatement, commandAuthorization });
-  const { memberImportSnapshot, importMembers } = memberImportDomain({
-    db,
-    auditStatement,
-    commandAuthorization
-  });
-  const {
-    permissionDefinitions,
-    listRoles,
-    roleMembers,
-    roleGuard,
-    createRole,
-    updateRole,
-    roleBindings,
-    bindRoles,
-    modules
-  } = rolesDomain({ db, auditStatement, commandAuthorization });
-  const {
-    createEvent,
-    issueToken,
-    event,
-    findEventByToken,
-    attendanceEvent,
-    findAttendanceByDedupe,
-    insertAttendance,
-    listAttendance,
-    attendanceById,
-    attendanceOptions,
-    attendanceExport,
-    weeklyAttendanceData,
-    attendanceReportSettings,
-    updateAttendanceReportSettings,
-    setPresence,
-    attendanceCorrectionFingerprint,
-    correctAttendance
-  } = attendanceDomain({ db, auditStatement, commandAuthorization });
-  const {
-    listCampuses,
-    listDepartments,
-    listLocations,
-    listPresence,
-    dutyEvent,
-    latestIntake,
-    repairIdentitySnapshot,
-    fieldPeople,
-    fieldContexts
-  } = fieldDomain({ db, event });
-  const {
-    officeRosterMemberIds,
-    rosterMemberFacts,
-    rosterTaskById,
-    memberCampuses,
-    createRosterTask,
-    listRosterTasks,
-    saveRosterRequirements,
-    saveAvailability,
-    availability,
-    createRosterVersion,
-    rosterVersionById,
-    rosterVersionsForTask,
-    versionAssignments,
-    updateRosterDraft,
-    rosterFingerprint,
-    publishRoster,
-    listAssignments,
-    assignmentById,
-    effectiveAssignment,
-    swapCandidates
-  } = rostersDomain({ db, collection, auditStatement, commandAuthorization });
-  const {
-    createLeave,
-    leaveById,
-    listLeaves,
-    leaveImpact,
-    updateLeave,
-    swapFingerprint,
-    createSwap,
-    updateSwap,
-    listSwaps,
-    swapById,
-    pendingSwapInvitations,
-    swapCoverage
-  } = requestsDomain({ db, auditStatement, commandAuthorization });
+  const commands = commandsDomain({ db });
+  const deps = { db, ...commands };
+  const attendance = attendanceDomain(deps);
   return {
-    ...departmentsDomain({ db, auditStatement, commandAuthorization }),
-    ...serviceDayRepository(db),
-    effectiveAssignment,
-    effectiveLeaveAssignment: effectiveAssignment,
-    swapFingerprint,
-    swapCoverage,
-    pendingSwapInvitations,
-    accountRow,
-    accountForMember,
-    accountsForMember,
-    ensureMember,
-    memberRow,
-    memberships,
-    membershipsForMembers,
-    grants,
-    todayDuties,
-    authorizationContext,
-    listMembers,
-    updateMember,
-    listMemberships,
-    addMembership,
-    endMembership,
-    listCampuses,
-    listDepartments,
-    listLocations,
-    listPresence,
-    importMembers,
-    memberImportSnapshot,
-    importEducation,
-    dutyEvent,
-    latestIntake,
-    repairIdentitySnapshot,
-    fieldPeople,
-    fieldContexts,
-    roleBindings,
-    permissionDefinitions,
-    listRoles,
-    roleMembers,
-    roleGuard,
-    createRole,
-    updateRole,
-    bindRoles,
-    modules,
-    createEvent,
-    issueToken,
-    findEventByToken,
-    findAttendanceByDedupe,
-    insertAttendance,
-    listAttendance,
-    attendanceExport,
-    weeklyAttendanceData,
-    attendanceReportSettings,
-    updateAttendanceReportSettings,
-    attendanceCorrectionFingerprint,
-    correctAttendance,
-    setPresence,
-    ...collection,
-    attendanceEvent,
-    eventById: attendanceEvent,
-    attendanceById,
-    attendanceOptions,
-    createReceipt,
-    claimReceipt,
-    releaseReceipt,
-    receipt,
-    audit,
-    listAudit,
-    memberAudit,
-    leaveImpact,
-    officeRosterMemberIds,
-    rosterMemberFacts,
-    rosterTaskById,
-    memberCampuses,
-    createRosterTask,
-    listRosterTasks,
-    saveRosterRequirements,
-    saveAvailability,
-    availability,
-    createRosterVersion,
-    rosterVersionById,
-    rosterVersionsForTask,
-    versionAssignments,
-    updateRosterDraft,
-    rosterFingerprint,
-    publishRoster,
-    listAssignments,
-    assignmentById,
-    swapCandidates,
-    createLeave,
-    leaveById,
-    listLeaves,
-    updateLeave,
-    createSwap,
-    swapById,
-    listSwaps,
-    updateSwap
+    ...commands,
+    ...membersDomain(deps),
+    ...memberImportDomain(deps),
+    ...departmentsDomain(deps),
+    ...rolesDomain(deps),
+    ...attendance,
+    ...fieldDomain({ db, event: attendance.event }),
+    ...scheduleRepository(deps),
+    ...serviceDayRepository(db)
   };
 }

@@ -181,11 +181,7 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
                         </span>
                         <strong data-motion-value="number">{count} 人</strong>
                         {onNavigate && (
-                          <button
-                            onClick={() =>
-                              onNavigate(type === 'repair' ? 'roster-manage' : 'office-roster')
-                            }
-                          >
+                          <button onClick={() => onNavigate('roster')}>
                             {type === 'repair' ? '查看维修排班' : '查看办公排班'}
                           </button>
                         )}

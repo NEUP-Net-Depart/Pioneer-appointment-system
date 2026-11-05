@@ -13,29 +13,3 @@ export function staffServices(db, encryptionKey, secret = 'test-qr-secret') {
   return staff;
 }
 
-// Existing appointment regression scenarios assume a member is ready to work.
-// Seed those facts explicitly; the service still enforces every eligibility rule.
-export async function readyStaff(db, account, day) {
-  const row = await db.prepare('SELECT member_id FROM staff_accounts WHERE account=?').bind(account).first();
-  if (!row) return;
-  await seedRepairMember(db, account);
-  await db.prepare(`INSERT OR IGNORE INTO attendance_events(id,type,policy_code,policy_version,campus_id,business_date,starts_at,ends_at,created_by_member_id,created_at)
-    VALUES(?,'duty','duty.v1','1.0.0','campus-nanhu',?,?,?,?,?)`)
-    .bind(`integration-duty-${day}`, day, `${day}T00:00:00+08:00`, `${day}T23:59:59+08:00`, row.member_id, `${day}T00:00:00Z`).run();
-  await db.prepare(`INSERT INTO staff_presence(member_id,business_date,campus_id,state,updated_at)
-    VALUES(?,?,'campus-nanhu','available',?) ON CONFLICT(member_id,business_date) DO NOTHING`)
-    .bind(row.member_id, day, `${day}T00:00:00Z`).run();
-}
-
-export async function grantTestManagement(db, account) {
-  await db.prepare(`INSERT OR IGNORE INTO member_roles(id,member_id,role_id,scope_bindings,effective_from)
-    SELECT 'integration-manager-'||account,member_id,'role-repair-lead','{"campuses":"bound"}','2026-01-01'
-    FROM staff_accounts WHERE account=?`).bind(account).run();
-}
-
-export async function seedRepairMember(db, account, { positionCode = 'member', departmentId = 'dept-hardware' } = {}) {
-  await db.prepare(`INSERT OR IGNORE INTO member_department_memberships(id,member_id,department_id,position_code,assignment_type,is_primary,effective_from,created_at)
-    SELECT ?,member_id,?,?,'primary',1,'2026-01-01','2026-01-01' FROM staff_accounts WHERE account=?
-    AND NOT EXISTS(SELECT 1 FROM member_department_memberships WHERE member_id=staff_accounts.member_id AND is_primary=1)`)
-    .bind('test-organization-'+account,departmentId,positionCode,account).run();
-}

@@ -149,15 +149,15 @@ export function FieldApp({
           )
         ) : (
           <>
-            {!!data.pendingSwapInvitations &&
+            {!!data.pendingCoverInvitations &&
               workspaceLinks.some((entry) => entry.id === 'roster') && (
                 <section className="field-roster-todo" aria-label="待响应的换班邀请">
                   <div>
                     <strong data-motion-value="text">
-                      {data.pendingSwapInvitations} 份换班邀请等待你确认
+                      {data.pendingCoverInvitations} 份换班邀请等待你确认
                     </strong>
                   </div>
-                  <button onClick={() => onNavigate('roster-requests')}>查看邀请</button>
+                  <button onClick={() => onNavigate('roster')}>查看邀请</button>
                 </section>
               )}
             {scene === 'repair' && (

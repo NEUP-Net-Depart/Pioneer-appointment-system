@@ -9,12 +9,11 @@ import { meetingsManifest } from './meetings/manifest.js';
 import { auditManifest } from './audit/manifest.js';
 import { filesManifest } from './files/manifest.js';
 import { meetingFixtureManifest } from './meetings/public.js';
-import { generateRoster as publicRosterGenerator } from './rosters/public.js';
 import { membershipIsActive } from './organization/public.js';
 import { workspacePermissions } from './authorization/workspace.js';
 
 export const manifests = [identityManifest, organizationManifest, authorizationManifest, repairsManifest, dutyManifest, attendanceManifest, rostersManifest, meetingsManifest, auditManifest, filesManifest];
-export const extensionContracts = { meetingFixtureManifest, publicRosterGenerator, membershipIsActive };
+export const extensionContracts = { meetingFixtureManifest, membershipIsActive };
 
 export function manifestHash(manifest) {
   const json = JSON.stringify(manifest);

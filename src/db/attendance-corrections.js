@@ -7,12 +7,12 @@ const fingerprintSql = `SELECT json_object(
     (SELECT mm.*,d.name AS department_name FROM member_department_memberships mm JOIN departments d ON d.id=mm.department_id
       WHERE member_id=? AND effective_from<=date(?,'+8 hours')
       AND (effective_to IS NULL OR effective_to>date(?,'+8 hours')) ORDER BY mm.id)),
-  'duties',(SELECT json_group_array(json_array(id,version_id,revision)) FROM
-    (SELECT da.* FROM duty_assignments da JOIN roster_versions rv ON rv.id=da.version_id
-      WHERE da.member_id=? AND da.business_date=(SELECT business_date FROM attendance_events WHERE id=?) AND rv.status='published' ORDER BY da.id)),
-  'actorDuties',(SELECT json_group_array(json_array(id,version_id,campus_id,duty_type,start_at,end_at,revision,role_kind,effective_range)) FROM
-    (SELECT da.*,dr.role_kind,dr.effective_range FROM duty_assignments da JOIN roster_versions rv ON rv.id=da.version_id
-      LEFT JOIN duty_roles dr ON dr.assignment_id=da.id WHERE da.member_id=? AND da.business_date=? AND rv.status='published' ORDER BY da.id,dr.id))
+  'duties',(SELECT json_group_array(json_array(id,week_id,revision)) FROM
+    (SELECT da.* FROM duty_assignments da
+      WHERE da.member_id=? AND da.business_date=(SELECT business_date FROM attendance_events WHERE id=?) AND da.active=1 ORDER BY da.id)),
+  'actorDuties',(SELECT json_group_array(json_array(id,week_id,campus_id,duty_type,start_at,end_at,revision)) FROM
+    (SELECT da.* FROM duty_assignments da
+      WHERE da.member_id=? AND da.business_date=? AND da.active=1 ORDER BY da.id))
 ) AS fingerprint`;
 
 const snapshotArgs = (memberId,eventId,actorMemberId,businessDate,occurredAt) => [eventId,memberId,memberId,occurredAt,occurredAt,memberId,eventId,actorMemberId,businessDate];
