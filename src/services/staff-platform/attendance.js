@@ -693,8 +693,6 @@ export function attendanceDomain({
     });
     if (input.campusId && input.campusId !== context.presence.campusId)
       fail(409, '在岗校区以签到记录为准');
-    if (input.state !== 'available' && (await repository.activeRepair(context.actor.memberId)))
-      fail(409, '当前仍有进行中的维修，不能离岗', 'PRESENCE_CHANGED');
     const result = await repository.setPresence(
       context.actor.memberId,
       { ...input, businessDate: input.businessDate || dateKey() },

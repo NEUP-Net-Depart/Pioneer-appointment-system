@@ -124,7 +124,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
         setWorkScene(
           (current) =>
             current ||
-            (data.currentRepair
+            (data.repairs?.length
               ? 'repair'
               : data.contexts.find(
                   (context) =>

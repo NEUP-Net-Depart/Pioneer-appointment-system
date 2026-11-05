@@ -83,11 +83,9 @@ export function staffPlatformRepository(db) {
     listPresence,
     dutyEvent,
     latestIntake,
-    receptionHistory,
     repairIdentitySnapshot,
     fieldPeople,
-    fieldContexts,
-    activeRepair
+    fieldContexts
   } = fieldDomain({ db, event });
   const {
     officeRosterMemberIds,
@@ -152,13 +150,11 @@ export function staffPlatformRepository(db) {
     listDepartments,
     listLocations,
     listPresence,
-    activeRepair,
     importMembers,
     memberImportSnapshot,
     importEducation,
     dutyEvent,
     latestIntake,
-    receptionHistory,
     repairIdentitySnapshot,
     fieldPeople,
     fieldContexts,

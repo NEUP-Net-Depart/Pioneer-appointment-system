@@ -3,6 +3,8 @@ import { dateKey, validDate } from '../../platform/time.js';
 import { conditionProviders, validCondition } from './conditions.js';
 import { parseJson } from '../../platform/contracts.js';
 
+export const staffRepairPermissions = ['repair.summary.read','repair.start','repair.receive','repair.finish.own','repair.transfer','customer.identity.read','customer.contact.read','onsite.create','onsite.frontdesk.create'];
+
 function values(value) {
   return Array.isArray(value) ? value : value === undefined || value === null ? [] : [value];
 }
@@ -59,6 +61,12 @@ export function createAuthorizer({ providers = conditionProviders() } = {}) {
     evaluate(actor, permissionCode, target = {}, context = {}, grants = []) {
       if (actor?.status && !['enabled', 'active'].includes(actor.status) || actor?.memberStatus === 'inactive')
         return { allowed: false, matchedGrantIds: [], reasonCode: 'INACTIVE', scope: [], explanations: [] };
+      if (staffRepairPermissions.includes(permissionCode)) {
+        const campuses = actor?.authorizedCampuses || [];
+        const requested = values(target.campusId || target.campusIds);
+        const allowed = !!actor?.memberId && !!campuses.length && requested.every(id => campuses.some(value => campusId(value) === campusId(id)));
+        return { allowed, matchedGrantIds: [], reasonCode: allowed ? 'ACTIVE_STAFF' : 'CAMPUS_DENIED', scope: allowed ? [{campusIds:campuses}] : [], explanations: [] };
+      }
       const matchedGrantIds = [];
       const explanations = [];
       for (const grant of grants.filter(item => item.permissionCode === permissionCode)) {

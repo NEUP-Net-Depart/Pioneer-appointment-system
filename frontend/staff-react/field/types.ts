@@ -5,17 +5,10 @@ export interface Appointment {
   date: string;
   timeSlot: string;
   status: string;
-  reception?: {
-    state: string;
-    receivedAt: string;
-    leftAt?: string | null;
-    ticket?: { number: number; date: string; campus: string } | null;
-    receivedBy?: string;
-    assignedTo?: string;
-    assignedMemberId?: string;
-    assignedToName?: string;
-    updatedAt?: string;
-  } | null;
+  receivedAt?: string;
+  receivedBy?: string;
+  photoDeferredBy?: string;
+  canSupplement?: boolean;
   registrationFlow?: string;
   repairHistory?: {
     items: {
@@ -27,6 +20,14 @@ export interface Appointment {
       repairNote?: string;
       assignedToName?: string;
     }[];
+    events?: {
+      action: string;
+      occurredAt: string;
+      actorName?: string;
+      reason?: string;
+      before?: unknown;
+      after?: unknown;
+    }[];
     followups: {
       id: string;
       parentAppointmentId: string;
@@ -36,22 +37,7 @@ export interface Appointment {
     }[];
   } | null;
   canReceive?: boolean;
-  canDispatch?: boolean;
-  canReturn?: boolean;
   businessDate?: string;
-  queuePosition?: { position: number; total: number; dispatchPosition?: number } | null;
-  receptionPaused?: boolean;
-  receptionHistory?: {
-    id: string;
-    action: string;
-    reason: string;
-    occurredAt: string;
-    actorName: string;
-    ticketNumber?: number;
-    assigneeName?: string;
-    date?: string;
-    timeSlot?: string;
-  }[];
   frontPhotoId?: string;
   backPhotoId?: string;
   servicePaused?: boolean;
@@ -122,7 +108,6 @@ export interface Person {
   reason: string;
   scheduled: boolean;
   leaveStatus?: string;
-  currentRepair?: { id: string; deviceModel: string };
 }
 export interface Home {
   searchCapabilities?: {
@@ -144,9 +129,8 @@ export interface Home {
   capability: Record<string, boolean>;
   state: string;
   reason: string;
-  currentRepair: Appointment | null;
-  pendingRepair?: Appointment | null;
-  nextInQueue?: Appointment | null;
+  repairs: Appointment[];
+  pendingPhotos: Appointment[];
   pendingSwapInvitations?: number;
   presence?: { revision: number; campusId: string; state: string };
   event?: { id: string; revision: number; startsAt: string; endsAt: string };

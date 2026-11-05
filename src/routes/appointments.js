@@ -1,22 +1,13 @@
 import { json, readBody } from '../lib/http.js';
-import { appointmentQuery, appointmentPatch, bookingInput, bookingRequestKey, liveQuery } from '../lib/validation.js';
+import { appointmentQuery, appointmentPatch, bookingInput, bookingRequestKey } from '../lib/validation.js';
 import { appointmentContactTerm } from '../../shared/appointment-search.js';
 
 export const appointmentRoutes = [
-  ['POST', /^\/api\/appointments\/([^/]+)\/repair-followups\/([^/]+)\/queue-exit$/, async (context,match) => {
+  ...['receive','photos'].map(operation => ['POST',new RegExp('^/api/appointments/([^/]+)/'+operation+'$'),async (context,match)=>{
     await context.limit('write');
-    return json(await context.services.appointments.leaveFollowupQueue(decodeURIComponent(match[1]),decodeURIComponent(match[2]),await readBody(context.request),context.accessToken));
-  }],
-  ['POST', /^\/api\/appointments\/([^/]+)\/queue-exit$/, async (context,match) => {
-    await context.limit('write');
-    return json(await context.services.appointments.leaveQueue(decodeURIComponent(match[1]),await readBody(context.request),context.accessToken));
-  }],
-  ['GET', /^\/api\/appointments\/([^/]+)\/reception-options$/, async (context,match) =>
-    json(await context.services.appointments.receptionOptions(decodeURIComponent(match[1]),await context.role('technician')))],
-  ['POST', /^\/api\/appointments\/([^/]+)\/reception$/, async (context,match) => {
-    await context.limit('write');
-    return json(await context.services.appointments.reception(decodeURIComponent(match[1]),await readBody(context.request),await context.role('technician')));
-  }],
+    const {patch,...rest}=appointmentPatch(await readBody(context.request));
+    return json(await context.services.appointments[operation==='receive'?'receive':'supplement'](decodeURIComponent(match[1]),{...patch,...rest},await context.role('technician')));
+  }]),
   ['GET', /^\/api\/appointments\/overview$/, async context => {
     return json(await context.services.appointments.overview(await context.role('technician')));
   }],
@@ -69,14 +60,4 @@ export const appointmentRoutes = [
     const input = appointmentPatch({ ...await readBody(context.request), action: 'correct' });
     return json(await context.services.appointments.update(decodeURIComponent(match[1]), { ...input, action: 'correct' }, await context.role('technician')));
   }],
-  ['GET', /^\/api\/live\/summary$/, async context => {
-    const query = liveQuery(context.query);
-    if (query.appointmentId) await context.limit('lookup', { consume: false });
-    try { return json(await context.services.queue.summary(query,context.accessToken)); }
-    catch (error) {
-      // Valid polling only reads the quota. Failed credentials share lookup's budget.
-      if (query.appointmentId && error.status === 404) await context.limit('lookup');
-      throw error;
-    }
-  }]
 ];

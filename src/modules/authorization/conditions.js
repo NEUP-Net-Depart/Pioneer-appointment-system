@@ -66,10 +66,6 @@ export function conditionProviders() {
           (parameters.isPrimary === undefined || parameters.isPrimary === item.isPrimary));
       }
     },
-    repairWorkEligible: {
-      code: 'repairWorkEligible', version: 1, description: '成员具备维修工作资格', parameterSchema: schema({}),
-      check: ({ context, grant }) => grantParticipation(grant, context).some(code => ['repair', 'exchange'].includes(code))
-    },
     rosterParticipantEligible: {
       code:'rosterParticipantEligible',version:1,description:'普通维修或办公排班资格',parameterSchema:schema({}),
       check:({context, grant}) => {

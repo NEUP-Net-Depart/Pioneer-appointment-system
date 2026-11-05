@@ -6,22 +6,12 @@ import { canManageDepartments } from './departments.js';
 export function workspaceDomain({ repository, platform, manifests, contextFor }) {
   async function workbench(actor) {
     const context = await contextFor(actor);
-    const current = await platform.repairs?.currentRepair?.(actor.account);
+    const repairs = await platform.repairs.inProgress(actor.account);
     return {
       actor: context.actor,
       todayDuties: context.todayDuties,
       presence: context.presence,
-      currentRepair:
-        current &&
-        platform.authorizer.evaluate(
-          context.actor,
-          'repair.summary.read',
-          { campusId: current.campus, id: current.id, assignedMemberId: context.actor.memberId },
-          context,
-          context.grants
-        ).allowed
-          ? current
-          : null,
+      repairs: repairs.filter((item) => context.actor.authorizedCampuses.includes(item.campus)),
       resumeTasks: context.resumeTasks || [],
       navigation: context.navigation || [],
       actions: context.todayDuties?.length

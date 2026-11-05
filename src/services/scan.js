@@ -57,8 +57,7 @@ export function scanService(appointments, service, secret, clock = () => new Dat
         if (found) { requireCampus(actor, found.campus); registration = { id: found.id, status: found.status }; }
       }
       const items = await appointments.inProgress(actor.account);
-      const pending = await appointments.pendingRegistration(actor.account);
-      return { items: await Promise.all(items.map(item => { requireCampus(actor, item.campus); return field.detail(actor,item.id); })), pending: pending ? await locate(pending.id, actor) : null, registration };
+      return { items: await Promise.all(items.map(item => { requireCampus(actor, item.campus); return field.detail(actor,item.id); })), registration };
     },
     async onsite(input, actor) {
       const key = stringField(input.requestId || input.registrationKey, '登记请求编号', 36, true);
@@ -67,10 +66,6 @@ export function scanService(appointments, service, secret, clock = () => new Dat
       await expire(now, { campuses: actor.authorizedCampuses });
       const previous = await appointments.findRegistration(actor.account, key);
       if (previous) return {...await locate(previous.id,actor),accessToken:await service.registrationCredential(previous,actor)};
-      if (input.registrationFlow !== 'frontdesk') {
-        if (await appointments.pendingRegistration(actor.account)) fail(409, '请先签到或取消当前临时登记');
-        if ((await appointments.inProgress(actor.account)).length) fail(409, '请先完成当前维修，再登记下一台设备');
-      }
       const data = onsiteBookingInput({ ...input, date: dateKey(now), timeSlot: TIME_SLOTS[0], agreementAt: now.toISOString(), agreementVersion: 'v1.0' });
       requireCampus(actor, data.campus);
       const item = await service.createOnsite(data, actor, key, input.registrationFlow);

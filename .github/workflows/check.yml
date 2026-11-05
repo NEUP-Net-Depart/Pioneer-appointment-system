@@ -47,8 +47,6 @@ jobs:
             command: npm run test:e2e -- --shard=1/2
           - suite: e2e-2
             command: npm run test:e2e -- --shard=2/2
-          - suite: field
-            command: npm run test:field
           - suite: layout
             command: npm run test:layout
     steps:

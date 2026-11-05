@@ -13,7 +13,6 @@ import { Camera, Images, SwitchCamera } from 'lucide-react';
 // leave the browser top layer until the route is visible again.
 export const ActivityContext = createContext(true);
 import { statusLabels, statusClass } from '../../../shared/constants.js';
-import { receptionLabels } from '../../../shared/reception.js';
 import { qrImage } from '../../../shared/zxing.js';
 import { createScanner } from './scanner.js';
 import { request } from '../request.js';
@@ -33,9 +32,7 @@ export function Status({ value }: { value: string }) {
   return (
     <span data-motion-value="status" className={`field-status ${statusClass[value] || ''}`}>
       {statusLabels[value] ||
-        receptionLabels[value] ||
         {
-          pending: '待接手',
           available: '空闲',
           repairing: '维修中',
           unsigned: '待签到',

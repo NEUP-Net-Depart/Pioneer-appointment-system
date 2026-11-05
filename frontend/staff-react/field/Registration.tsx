@@ -97,7 +97,7 @@ export function Registration({
               <label key={key}>
                 {label}
                 <input
-                  required
+                  required={key !== 'deviceModel'}
                   maxLength={Number(max)}
                   value={form[key] || ''}
                   onChange={(e) => setForm({ ...form, [key]: e.target.value })}

@@ -18,6 +18,7 @@ for (const directory of ['migrations','database/staff-migrations']) {
       assert.deepEqual(after.filter(row => row.status !== 'booked'), before.filter(row => row.status !== 'booked'));
       assert.equal(after.find(row => row.id === 'booked').expires_at, '2026-11-05T16:00:00.000Z');
       assert.equal(expirationDeadline('2026-12-31'), '2026-12-31T16:00:00.000Z');
+      db.sqlite.exec(readFileSync(`${directory}/0045_direct_repairs.sql`, 'utf8'));
       const repository = appointmentRepository(db);
       await repository.expirePending('2026-11-05T15:59:59.999Z');
       assert.equal((await repository.find('booked')).status, 'booked');

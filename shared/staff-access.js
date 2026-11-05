@@ -29,8 +29,8 @@ export function staffSceneAllowed(user, home, scene) {
   scene = normalizeStaffScene(scene);
   if (scene === 'mine') return true;
   if (!home?.contexts?.some(context => context.id === scene)) return false;
-  if (scene === 'repair') return !!home.currentRepair || staffPermission(user, 'repair.summary.read');
-  if (scene === 'desk') return ['onsite.frontdesk.create', 'repair.receive', 'repair.dispatch', 'repair.transfer']
+  if (scene === 'repair') return !!home.repairs?.length || staffPermission(user, 'repair.summary.read');
+  if (scene === 'desk') return ['onsite.frontdesk.create', 'repair.receive', 'repair.transfer']
     .some(code => staffPermission(user, code));
   return false;
 }

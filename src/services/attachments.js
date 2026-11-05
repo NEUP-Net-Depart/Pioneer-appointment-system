@@ -3,8 +3,8 @@ import { nowIso } from '../../shared/time.js';
 import { guestAppointment } from './access.js';
 import { requireRole } from './permissions.js';
 
-function metadata(item) {
-  return { id: item.id, appointmentId: item.appointmentId, filename: item.filename, mimeType: item.mimeType, size: item.size, createdAt: item.createdAt, expiresAt: item.expiresAt, purpose: item.purpose, uploadedBy: item.uploadedBy };
+function metadata(item, staff = true) {
+  return { id: item.id, appointmentId: item.appointmentId, filename: item.filename, mimeType: item.mimeType, size: item.size, createdAt: item.createdAt, expiresAt: item.expiresAt, purpose: item.purpose, ...(staff ? {uploadedBy:item.uploadedBy} : {}) };
 }
 export function attachmentService(appointments, attachments, bucket, maxBytes, field) {
   async function authorize(id, user, accessToken) {
@@ -20,7 +20,7 @@ export function attachmentService(appointments, attachments, bucket, maxBytes, f
   return {
     async list(id, user, accessToken) {
       const item = await authorize(id, user, accessToken);
-      return { items: (await attachments.list(item.id, nowIso())).map(metadata) };
+      return { items: (await attachments.list(item.id, nowIso())).map(file=>metadata(file,!!user)) };
     },
     async upload(id, input, user, accessToken) {
       if (input.purpose === 'intake_front' || input.purpose === 'intake_back') {
@@ -28,7 +28,6 @@ export function attachmentService(appointments, attachments, bucket, maxBytes, f
         const appointment = await appointments.find(id);
         if (!appointment) fail(404, '预约不存在');
         await field.requireIntake(user,appointment);
-        if (appointment.status !== 'booked') fail(409, '当前预约不能上传签到照片');
         id = appointment.id;
       } else id = (await authorize(id, user, accessToken)).id;
       if (!user) {

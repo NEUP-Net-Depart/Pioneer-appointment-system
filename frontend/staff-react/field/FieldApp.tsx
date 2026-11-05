@@ -300,11 +300,7 @@ export function FieldApp({
           id={selected}
           summary={
             items.find((item) => item.id === selected) ||
-            (data?.currentRepair?.id === selected
-              ? data.currentRepair
-              : data?.pendingRepair?.id === selected
-                ? data.pendingRepair
-                : undefined)
+            data?.repairs?.find((item) => item.id === selected)
           }
           key={selected}
           memberId={initial.actor.memberId}

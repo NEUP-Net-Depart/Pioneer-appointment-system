@@ -108,26 +108,6 @@ export function fieldDomain({ db, event }) {
     return parseJson(row?.verification_json, null);
   }
 
-  async function receptionHistory(id) {
-    return (
-      await db
-        .prepare(
-          `SELECT e.id,e.action,e.reason,e.occurred_at AS occurredAt,
-      CASE WHEN e.action='receptions.guest_leave' THEN '客户本人' ELSE COALESCE(m.name,'原工作人员') END AS actorName,
-      (SELECT number FROM repair_queue_tickets t WHERE t.id=e.id) AS ticketNumber,
-      json_extract(e.after_json,'$.reception.assignedMemberId') AS assignedMemberId,
-      json_extract(e.after_json,'$.assigneeIdentity.name') AS assigneeName,
-      json_extract(e.after_json,'$.date') AS date,json_extract(e.after_json,'$.timeSlot') AS timeSlot
-      FROM audit_events e LEFT JOIN members m ON m.id=e.actor_member_id
-      WHERE json_extract(e.source_ref,'$.module')='repairs' AND json_extract(e.source_ref,'$.id')=?
-      AND (e.action LIKE 'receptions.%' OR e.action IN ('repairs.claimed','repairs.started','repairs.transferred','repairs.completed'))
-      ORDER BY e.occurred_at,e.rowid`
-        )
-        .bind(id)
-        .all()
-    ).results;
-  }
-
   async function repairIdentitySnapshot(id) {
     const row = await db
       .prepare(
@@ -197,9 +177,7 @@ export function fieldDomain({ db, event }) {
           .bind(...ids, day),
         db
           .prepare(
-            `WITH selected_members AS (SELECT value FROM json_each(?))
-             SELECT ar.member_id,a.id,a.device_model,a.status FROM active_repairs ar JOIN appointments a ON a.id=ar.appointment_id WHERE ar.member_id IN (SELECT value FROM selected_members)
-             UNION ALL SELECT r.assigned_member_id AS member_id,a.id,a.device_model,a.status FROM repair_receptions r JOIN appointments a ON a.id=r.appointment_id WHERE r.state='assigned' AND r.assigned_member_id IN (SELECT value FROM selected_members)`
+            `SELECT sa.member_id,a.id,a.device_model,a.status FROM appointments a JOIN staff_accounts sa ON sa.account=a.assigned_to WHERE a.status='in_progress' AND sa.member_id IN (SELECT value FROM json_each(?))`
           )
           .bind(JSON.stringify(ids)),
         db
@@ -254,7 +232,12 @@ export function fieldDomain({ db, event }) {
       }
       for (const row of rows(result[4])) {
         const item = contexts.get(row.member_id);
-        if (item) item.current = { id: row.id, deviceModel: row.device_model, status: row.status };
+        if (item)
+          (item.repairs ||= []).push({
+            id: row.id,
+            deviceModel: row.device_model,
+            status: row.status
+          });
       }
       for (const row of rows(result[5]))
         contexts.get(row.member_id)?.memberships.push(membership(row));
@@ -262,15 +245,6 @@ export function fieldDomain({ db, event }) {
     return contexts;
   }
 
-  async function activeRepair(memberId) {
-    return db
-      .prepare(
-        `SELECT ar.member_id,ar.account,ar.appointment_id FROM active_repairs ar
-      WHERE ar.member_id=? LIMIT 1`
-      )
-      .bind(memberId)
-      .first();
-  }
   return {
     listCampuses,
     listDepartments,
@@ -278,10 +252,8 @@ export function fieldDomain({ db, event }) {
     listPresence,
     dutyEvent,
     latestIntake,
-    receptionHistory,
     repairIdentitySnapshot,
     fieldPeople,
-    fieldContexts,
-    activeRepair
+    fieldContexts
   };
 }

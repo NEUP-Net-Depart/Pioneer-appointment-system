@@ -14,13 +14,13 @@ export function database(directory = 'migrations', before = '\uffff') {
       return {
         bind(...values) { params = values; return this; },
         async first() { return sqlite.prepare(sql).get(...params) || null; },
-        async all() { return { results: sqlite.prepare(sql).all(...params) }; },
+        all() { return { results: sqlite.prepare(sql).all(...params) }; },
         async run() { return { meta: sqlite.prepare(sql).run(...params) }; }
       };
     },
     async batch(statements) {
       sqlite.exec('BEGIN');
-      try { const result = []; for (const statement of statements) result.push(await statement.all()); sqlite.exec('COMMIT'); return result; }
+      try { const result = []; for (const statement of statements) result.push(statement.all()); sqlite.exec('COMMIT'); return result; }
       catch (error) { sqlite.exec('ROLLBACK'); throw error; }
     }
   };
@@ -39,4 +39,12 @@ export function seedAppointment(db, { id, status = 'booked', date = '2026-11-05'
   db.sqlite.prepare('INSERT OR IGNORE INTO service_locations(campus,date,location,updated_at) VALUES(?,?,?,?)')
     .run(campus,date,'测试地点',data.created_at);
   db.sqlite.prepare(`INSERT INTO appointments(${Object.keys(data).join(',')}) VALUES(${Object.keys(data).map(() => '?').join(',')})`).run(...Object.values(data));
+}
+
+export function seedStaff(db, account, campus='南湖') {
+  db.sqlite.prepare(`INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at) VALUES(?,?,'technician',?,'test','2026-01-01')`).run(account,account,campus);
+  db.sqlite.prepare('INSERT INTO staff_campus_grants(account,campus) VALUES(?,?)').run(account,campus);
+}
+export function seedPhoto(db,id,appointment,side,account) {
+  db.sqlite.prepare(`INSERT INTO appointment_attachments(id,appointment_id,filename,mime_type,size,object_key,created_at,expires_at,purpose,uploaded_by) VALUES(?,?,'original.png','image/png',16,?,'2026-01-01','2099-01-01',?,?)`).run(id,appointment,'test/'+id,'intake_'+side,account);
 }
