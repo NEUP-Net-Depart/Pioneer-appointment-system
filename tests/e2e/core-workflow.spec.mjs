@@ -19,6 +19,30 @@ test('student books against the real capacity service, signs, and opens the priv
  await expect(page.locator('#appointment-detail')).not.toContainText('操作历史');
 });
 
+test('cold entries wait for route code and business data instead of flashing the wrong content',async({page})=>{
+ let release;
+ const ready=new Promise(resolve=>{release=resolve;});
+ await page.route('**/user/main.js',async route=>{await ready;await route.continue();});
+ try{
+  await page.goto('/#lookup',{waitUntil:'commit'});
+  await expect(page.locator('#student-loading')).toBeVisible();
+  await expect(page.locator('#booking-view')).not.toBeVisible();
+ }finally{release();}
+ await expect(page.locator('#lookup-list')).toBeVisible();
+ await expect(page.locator('#student-loading')).toBeHidden();
+ await expect(page.locator('#booking-view')).toBeHidden();
+ let releaseBoard;
+ const boardReady=new Promise(resolve=>{releaseBoard=resolve;});
+ await page.route('**/api/field/board*',async route=>{await boardReady;await route.continue();});
+ try{
+  await loginStaff(page,'root001',process.env.E2E_ROOT_PASSWORD);
+  await expect(page.getByRole('heading',{name:'现场工作台',exact:true})).toBeVisible();
+  await expect(page.locator('.field-content')).toHaveAttribute('aria-busy','true');
+  await expect(page.getByText('暂无符合条件的工单',{exact:true})).not.toBeVisible();
+ }finally{releaseBoard();}
+ await expect(page.locator('.field-content')).toHaveAttribute('aria-busy','false');
+});
+
 test('ordinary network staff receive photos, finish and correct an onsite repair without attendance, keeping student notes private',async({page},testInfo)=>{
  await loginStaff(page,'20261002','StaffTest!2026');
  const created=await api(page,'/api/scan/onsite',{requestId:crypto.randomUUID(),campus:'南湖',studentId:testInfo.project.name==='chromium'?'20269981':'20269982',name:'现场测试同学',social:'test-contact',deviceType:'笔记本',brand:'联想',deviceModel:'',warranty:'不清楚',faultType:'系统',signature:[Array.from({length:12},(_,i)=>[.1+i*.05,.2+i*.03])]});

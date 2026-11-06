@@ -1,5 +1,4 @@
 import { workspaceModule } from './workspace-module.js';
-import { DataFields } from './DataValue';
 import { WorkspaceSkeleton } from './WorkspaceSkeleton';
 import { UnsavedPageContext } from './useUnsavedChanges.js';
 import React, { Suspense, useEffect, useRef, useState } from 'react';
@@ -28,7 +27,6 @@ const PermissionsModule = workspaceModule(() => import('./Permissions.jsx'), 'Pe
 const Permissions = PermissionsModule.Page;
 const ScheduleModule = workspaceModule(() => import('./Schedule.jsx'), 'Schedule');
 const Schedule = ScheduleModule.Page;
-import { WorkspaceHeader } from './WorkspaceHeader';
 import { StaffWorkspace } from './StaffWorkspace';
 const RecordsModule = workspaceModule(() => import('./Records'), 'Records');
 const Records = RecordsModule.Page;
@@ -272,13 +270,10 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
         workspaceLinks={workspaceLinks}
       />
     ) : (
-      <>
-        <WorkspaceHeader group="今日工作" title="今日工作" />
-        <WorkspacePending
-          error={identityError || bootError}
-          onRetry={identityError ? onRetryIdentity : () => setBootRetry((value) => value + 1)}
-        />
-      </>
+      <WorkspacePending
+        error={identityError || bootError}
+        onRetry={identityError ? onRetryIdentity : () => setBootRetry((value) => value + 1)}
+      />
     )
   );
   const rosterRoute = route('roster', <Schedule user={effectiveUser} />, published.has('rosters'));
@@ -337,6 +332,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
   return (
     <div data-workspace-host="true">
       <StaffWorkspace
+        loading={!profile || (page === 'workbench' && !field && !bootError)}
         name={user.name || ''}
         entries={workspaceLinks}
         active={active}
@@ -350,7 +346,6 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
       >
         {!profile && (
           <main className="workspace-page">
-            <WorkspaceHeader group="今日工作" title="今日工作" />
             <WorkspacePending error={identityError} onRetry={onRetryIdentity} />
           </main>
         )}
@@ -390,13 +385,8 @@ function WorkspacePending({ error, onRetry, code = false }) {
         <button className="field-primary" onClick={onRetry}>
           重新加载工作区
         </button>
-      ) : code ? (
-        <WorkspaceSkeleton label="正在加载页面组件" />
       ) : (
-        <section className="field-card">
-          <h2>今日工作概况</h2>
-          <DataFields fields={[['当前岗位'], ['到岗状态'], ['当前任务']]} />
-        </section>
+        <WorkspaceSkeleton label={code ? '正在加载页面组件' : '正在加载工作区'} />
       )}
     </section>
   );

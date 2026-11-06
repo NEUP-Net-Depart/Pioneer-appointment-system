@@ -23,7 +23,7 @@ export function useField(
   const resource = scene === 'desk' ? 'board' : 'home';
   const key = `field:${sessionKey}:${campus}:${resource}`;
   const cached = () => readWorkspaceState(key) as Snapshot | undefined;
-  const fallback = initial?.campusId === campus ? initial : null;
+  const fallback = resource === 'home' && initial?.campusId === campus ? initial : null;
   const initialRef = useRef(initial);
   initialRef.current = initial;
   const [snapshot, setSnapshot] = useState<{ key: string; value: Home | null }>(() => ({
@@ -133,10 +133,11 @@ export function useField(
     };
   }, [active, key, refresh, resource, campus]);
   const data = snapshot.key === key ? snapshot.value : cached()?.value || fallback;
+  const error = failure.key === key ? failure.message : '';
   return {
     data,
-    error: failure.key === key ? failure.message : '',
-    loading: pending === key,
+    error,
+    loading: pending === key || (!data && !error),
     refresh
   };
 }
