@@ -1,5 +1,5 @@
 import {test,expect} from '@playwright/test';
-import {loginStaff,staffPage} from './support/staff.mjs';
+import {loginStaff,staffPage,navigationEntry} from './support/staff.mjs';
 import {chooseTime,fillDevice,goReview,submitStudent,PHOTO} from './support/student.mjs';
 const now=new Date('2026-10-15T02:00:00Z');
 test.beforeEach(async({page})=>{await page.clock.install({time:now});});
@@ -47,7 +47,13 @@ test('weekly availability, publishing, direct leave and recipient confirmation w
  await page.getByRole('combobox',{name:'成员',exact:true}).selectOption('member-20261002');await page.getByRole('button',{name:'发布班表'}).click();
  await expect(page.getByRole('button',{name:'调整班表'})).toBeVisible();
  const worker=await context.newPage();await worker.clock.install({time:now});await loginStaff(worker,'20261002','StaffTest!2026');await staffPage(worker,'排班与可用时间');await worker.getByLabel('所在周').fill(week);
- await worker.getByRole('button',{name:'修改通常时间'}).click();await worker.getByRole('button',{name:'添加时间'}).click();await worker.getByRole('button',{name:'保存可用时间'}).click();
+ const previousAvailability=await api(worker,'/api/me/availability?dutyType=repair',null,'GET');
+ await worker.getByRole('button',{name:'修改通常时间'}).click();await worker.getByRole('button',{name:'添加时间'}).click();
+ await (await navigationEntry(worker.locator('.field-sidebar'),'预约记录')).click();
+ await worker.getByRole('button',{name:'保存并切换',exact:true}).click();
+ await expect(worker.getByRole('heading',{name:'预约记录',exact:true})).toBeVisible();
+ const availability=await api(worker,'/api/me/availability?dutyType=repair',null,'GET');expect(availability.usual.windows).toHaveLength(previousAvailability.usual.windows.length+1);
+ await staffPage(worker,'排班与可用时间');
  await expect(worker.getByText(/沿用通常时间（未作本周确认）/)).toBeVisible();
  await worker.getByRole('button',{name:'登记请假',exact:true}).click();await worker.getByLabel('请假原因').fill('临时有课');await worker.getByRole('button',{name:'登记请假',exact:true}).click();
  await expect(worker.getByRole('button',{name:'撤销请假'})).toBeVisible();
@@ -57,4 +63,31 @@ test('weekly availability, publishing, direct leave and recipient confirmation w
  await recipient.getByRole('button',{name:'确认接替',exact:true}).click();await expect(recipient.locator('article').filter({hasText:week}).getByText('已接替',{exact:false})).toBeVisible();
  await expect(recipient.getByRole('button',{name:'登记请假',exact:true})).toBeVisible();
  await screenshot(recipient,testInfo,'schedule');await worker.close();await recipient.close();
+});
+
+test('save-and-switch retains a failed draft and navigates only after a successful save',async({page})=>{
+ await loginStaff(page,'root001',process.env.E2E_ROOT_PASSWORD);
+ await staffPage(page,'预约配置');
+ await page.getByRole('button',{name:'放号时间',exact:true}).click();
+ const time=page.getByLabel('放号时间（北京时间）');
+ await expect(time).toBeEnabled();const original=await time.inputValue(),next=original==='08:00'?'09:00':'08:00';
+ await time.fill(next);
+ const rejectSave=route=>route.request().method()==='PATCH'
+   ? route.fulfill({status:503,json:{error:'测试保存失败'}}) : route.continue();
+ await page.route('**/api/booking-settings',rejectSave);
+ await (await navigationEntry(page.locator('.field-sidebar'),'预约记录')).click();
+ await page.getByRole('button',{name:'保存并切换',exact:true}).click();
+ await expect(page.getByRole('dialog')).toContainText('测试保存失败');
+ await expect(time).toHaveValue(next);
+ const before=await api(page,'/api/booking-settings/manage?campus='+encodeURIComponent('南湖'),null,'GET');
+ expect(before.settings.releaseTime).toBe(original);
+ await page.unroute('**/api/booking-settings',rejectSave);
+ await page.getByRole('button',{name:'保存并切换',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'预约记录',exact:true})).toBeVisible();
+ await expect(page.getByRole('dialog')).toHaveCount(0);
+ const after=await api(page,'/api/booking-settings/manage?campus='+encodeURIComponent('南湖'),null,'GET');
+ expect(after.settings.releaseTime).toBe(next);
+ await staffPage(page,'预约配置');
+ await time.fill(original);await page.getByRole('button',{name:'保存放号时间',exact:true}).click();
+ await expect(page.getByRole('button',{name:'保存放号时间',exact:true})).toBeDisabled();
 });

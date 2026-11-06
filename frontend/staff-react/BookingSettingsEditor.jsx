@@ -125,6 +125,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
     setMessage('');
     try {
       await operation();
+      return true;
     } catch (error) {
       if ([401, 403].includes(error.status)) {
         setData(null);
