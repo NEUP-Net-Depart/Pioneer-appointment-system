@@ -2,7 +2,6 @@ import { DataFields } from './DataValue';
 import React, { useContext, useEffect, useState } from 'react';
 import { apiFetch } from '../../shared/api.js';
 import { statusLabels, TIME_SLOTS, outcomeLabels } from '../../shared/constants.js';
-import { receptionStatus } from '../../shared/reception.js';
 import { addDays, dateKey, serviceDay, weekRange } from '../../shared/time.js';
 import { request } from './request.js';
 import { ActivityContext, Modal, Notice, Status } from './field/ui';
@@ -11,7 +10,6 @@ import { WorkspaceHeader } from './WorkspaceHeader';
 import { WorkspaceSections } from './WorkspaceSections';
 import { WorkspaceMoreActions } from './WorkspaceMoreActions';
 import { staffPermission } from '../../shared/staff-access.js';
-import { RepairFollowups } from './RepairFollowups.jsx';
 
 import { useWorkspaceQuery } from './useWorkspaceQuery.js';
 
@@ -170,11 +168,6 @@ export function Records({ user }) {
         )}
       </WorkspaceHeader>
       <Notice>{message}</Notice>
-      <RepairFollowups
-        active={active && staffPermission(user, 'repair.followup.manage')}
-        onChanged={refresh}
-        onOpen={setSelected}
-      />
       <RecordOverview
         result={overview}
         onOpen={setOverviewOpen}
@@ -320,7 +313,7 @@ export function Records({ user }) {
                     <span data-motion-value="text">{item.timeSlot}</span>
                   </td>
                   <td data-label="状态">
-                    <Status value={receptionStatus(item)} />
+                    <Status value={item.status} />
                     {item.outcome && (
                       <span data-motion-value="text">
                         {outcomeLabels[item.outcome] || '结果已记录'}
@@ -387,12 +380,8 @@ export function Records({ user }) {
         <Repair
           key={selected}
           id={selected}
-          summary={data?.items?.find((item) => item.id === selected)}
-          memberId={user.memberId || user.account}
-          people={[]}
           onClose={() => setSelected('')}
           onChanged={refresh}
-          returnLabel="返回预约记录"
           sidePanel
         />
       )}

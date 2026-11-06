@@ -1,3 +1,4 @@
+import { leadershipPositions } from '../../../shared/staff-organization.js';
 import { fail } from '../../lib/http.js';
 import {
   dateKey,
@@ -147,10 +148,10 @@ export function attendanceDomain({
     const context = providedContext || (await contextFor(actor)),
       identities = staffIdentities(context, platform.authorizer, { campusId });
     const scheduled = context.todayDuties.filter(
-      (duty) => duty.campusId === campusId && duty.leaveStatus !== 'approved'
+      (duty) => duty.campusId === campusId && duty.leaveStatus !== 'recorded'
     );
     const leader = identities.some((item) =>
-      ['repair_lead', 'office_lead', 'superadmin'].includes(item.code)
+      [...leadershipPositions, 'superadmin'].includes(item.code)
     );
     const qualified = scheduled.some((duty) => duty.dutyType === 'office') || leader;
     const permission = evaluate(context, 'attendance.self', {
@@ -252,7 +253,7 @@ export function attendanceDomain({
           directLeader:
             direct &&
             staffIdentities(context, platform.authorizer, { campusId: event.campusId }).some(
-              (item) => ['repair_lead', 'office_lead', 'superadmin'].includes(item.code)
+              (item) => [...leadershipPositions, 'superadmin'].includes(item.code)
             ),
           tokenId: found?.token.id,
           authVersion: context.authVersion,
@@ -371,19 +372,12 @@ export function attendanceDomain({
       campusId,
       q: inputString(query, 'q', 80)
     });
-    const events = result.events.filter((item) =>
-      (context.grants || []).some((grant) =>
-        (grant.scope?.departmentIds || grant.scope?.departments || [undefined]).some(
-          (departmentId) =>
-            platform.authorizer.evaluate(
-              context.actor,
-              'attendance.correct',
-              { id: item.id, campusId: item.campusId, departmentId },
-              context,
-              [grant]
-            ).allowed
-        )
-      )
+    const events = result.events.filter(
+      (item) =>
+        evaluate(context, 'attendance.correct', {
+          id: item.id,
+          campusId: item.campusId
+        }).allowed
     );
     const members = result.members.filter((member) =>
       events.some(
@@ -693,8 +687,6 @@ export function attendanceDomain({
     });
     if (input.campusId && input.campusId !== context.presence.campusId)
       fail(409, '在岗校区以签到记录为准');
-    if (input.state !== 'available' && (await repository.activeRepair(context.actor.memberId)))
-      fail(409, '当前仍有进行中的维修，不能离岗', 'PRESENCE_CHANGED');
     const result = await repository.setPresence(
       context.actor.memberId,
       { ...input, businessDate: input.businessDate || dateKey() },

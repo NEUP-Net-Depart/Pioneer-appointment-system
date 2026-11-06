@@ -29,7 +29,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
     return db
       .prepare(
         `SELECT staff_accounts.*,m.id AS mapped_member_id,m.status AS member_status,
-      (SELECT json_group_array(campus) FROM staff_campus_grants WHERE account=staff_accounts.account) AS campuses
+      (SELECT json_group_array(campus) FROM staff_access_campuses WHERE account=staff_accounts.account) AS campuses
       FROM staff_accounts LEFT JOIN members m ON m.id=staff_accounts.member_id
       WHERE staff_accounts.member_id=?`
       )
@@ -40,7 +40,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
   async function memberships(memberId, businessDate = dateKey()) {
     const result = await db
       .prepare(
-        `SELECT mdm.*,d.name AS department_name,d.code AS department_code,d.kind AS organization_kind FROM member_department_memberships mdm
+        `SELECT mdm.*,d.name AS department_name,d.code AS department_code,d.kind AS organization_kind,d.enabled AS department_enabled FROM member_department_memberships mdm
       JOIN departments d ON d.id=mdm.department_id WHERE mdm.member_id=?
       AND mdm.effective_from<=? AND (mdm.effective_to IS NULL OR ?<mdm.effective_to)
       ORDER BY mdm.is_primary DESC,mdm.effective_from`
@@ -59,7 +59,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
       statements.push(
         db
           .prepare(
-            `SELECT mdm.*,d.name AS department_name,d.code AS department_code,d.kind AS organization_kind FROM member_department_memberships mdm
+            `SELECT mdm.*,d.name AS department_name,d.code AS department_code,d.kind AS organization_kind,d.enabled AS department_enabled FROM member_department_memberships mdm
         JOIN departments d ON d.id=mdm.department_id WHERE mdm.member_id IN (${ids.map(() => '?').join(',')})
         AND mdm.effective_from<=? AND (mdm.effective_to IS NULL OR ?<mdm.effective_to)
         ORDER BY mdm.is_primary DESC,mdm.effective_from`
@@ -73,8 +73,8 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
   async function grants(memberId, businessDate = dateKey()) {
     const result = await db
       .prepare(
-        `SELECT rg.*,mr.scope_bindings,mr.effective_from,mr.effective_to,mr.source,r.code AS role_code
-      FROM effective_member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1
+        `SELECT rg.*,mr.scope_bindings,mr.effective_from,mr.effective_to,'explicit' AS source,r.code AS role_code
+      FROM member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1
       JOIN role_grants rg ON rg.role_id=r.id
       WHERE mr.member_id=? AND mr.effective_from<=? AND (mr.effective_to IS NULL OR ?<mr.effective_to)
       ORDER BY rg.permission_code`
@@ -97,10 +97,10 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
   async function todayDuties(memberId, businessDate = dateKey()) {
     const result = await db
       .prepare(
-        `SELECT da.*,(SELECT paused FROM service_day_overrides s WHERE s.business_date=da.business_date AND s.campus_id=da.campus_id) AS service_paused,c.name AS campus_name,dr.role_kind,${assignmentLeaveColumn} FROM duty_assignments da
-      JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published'
-      JOIN campuses c ON c.id=da.campus_id LEFT JOIN duty_roles dr ON dr.assignment_id=da.id
-      WHERE da.member_id=? AND da.business_date=? ORDER BY da.start_at`
+        `SELECT da.*,(SELECT paused FROM service_day_overrides s WHERE s.business_date=da.business_date AND s.campus_id=da.campus_id) AS service_paused,c.name AS campus_name,${assignmentLeaveColumn} FROM duty_assignments da
+      
+      JOIN campuses c ON c.id=da.campus_id
+      WHERE da.active=1 AND da.member_id=? AND da.business_date=? ORDER BY da.start_at`
       )
       .bind(memberId, businessDate)
       .all();
@@ -191,7 +191,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
       args.push(filters.after.name, filters.after.name, filters.after.memberId);
     }
     const query = `SELECT ${memberColumns},sa.account,sa.status AS account_status,sa.role,sa.auth_version,
-      (SELECT json_group_array(CASE g.campus WHEN '南湖' THEN 'campus-nanhu' ELSE 'campus-hunnan' END) FROM staff_campus_grants g WHERE g.account=sa.account) AS access_campuses,
+      (SELECT json_group_array(CASE g.campus WHEN '南湖' THEN 'campus-nanhu' ELSE 'campus-hunnan' END) FROM staff_access_campuses g WHERE g.account=sa.account) AS access_campuses,
       (SELECT GROUP_CONCAT(d.name,'、') FROM member_department_memberships mdm JOIN departments d ON d.id=mdm.department_id
        WHERE mdm.member_id=m.id AND mdm.is_primary=1 AND mdm.effective_from<=?
          AND (mdm.effective_to IS NULL OR ?<mdm.effective_to)) AS primary_department
@@ -323,7 +323,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
   async function listMemberships(memberId, includeHistory = true) {
     const result = await db
       .prepare(
-        `SELECT mdm.*,d.name AS department_name,d.code AS department_code,d.kind AS organization_kind FROM member_department_memberships mdm JOIN departments d ON d.id=mdm.department_id
+        `SELECT mdm.*,d.name AS department_name,d.code AS department_code,d.kind AS organization_kind,d.enabled AS department_enabled FROM member_department_memberships mdm JOIN departments d ON d.id=mdm.department_id
       WHERE mdm.member_id=? ${includeHistory ? '' : 'AND mdm.effective_to IS NULL'} ORDER BY mdm.effective_from DESC`
       )
       .bind(memberId)

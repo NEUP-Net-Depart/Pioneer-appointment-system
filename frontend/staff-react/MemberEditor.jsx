@@ -32,9 +32,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
   const [bindings, setBindings] = useState([]);
   const [roles, setRoles] = useState([]);
   const bindableRoles = roles.filter((role) => role.actions?.bind !== false);
-  const newBindingRoles = bindableRoles.filter(
-    (role) => !(detail?.automaticRoleIds || []).includes(role.id)
-  );
+  const newBindingRoles = bindableRoles;
   const availableCampuses = campuses.filter((campus) =>
     (user.authorizedCampuses || []).some((id) => id === campus.id || id === campus.name)
   );
@@ -174,7 +172,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
       const data = await request(`/api/members/${encodeURIComponent(member.memberId)}`);
       setDetail(data);
       setBindings(data.bindings || []);
-      setMessage('特殊授权已保存，相关账号需要重新登录');
+      setMessage('系统授权已保存，相关账号需要重新登录');
       onSaved();
       return true;
     } catch (err) {
@@ -225,7 +223,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
               (canManageRoles &&
                 !detail?.account?.protected &&
                 detail?.actions?.editRoles !== false)
-                ? [{ id: 'participation', label: '维修参与及账号授权' }]
+                ? [{ id: 'participation', label: '账号与系统授权' }]
                 : []),
               ...(detail?.actions?.readAudit === false
                 ? []
@@ -386,9 +384,9 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                     onSubmit={saveBindings}
                   >
                     <fieldset disabled={busy || !roles.length}>
-                      <legend>特殊授权{bindingsDirty ? ' · 未保存' : ''}</legend>
+                      <legend>系统授权{bindingsDirty ? ' · 未保存' : ''}</legend>
                       <details>
-                        <summary>编辑特殊授权</summary>
+                        <summary>编辑系统授权</summary>
                         {bindings.map((binding, index) => {
                           return (
                             <details
@@ -519,9 +517,9 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                               ])
                             }
                           >
-                            添加特殊授权
+                            添加系统授权
                           </button>
-                          <button className="react-primary">保存特殊授权</button>
+                          <button className="react-primary">保存系统授权</button>
                         </div>
                       </details>
                     </fieldset>

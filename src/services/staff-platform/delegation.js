@@ -10,22 +10,16 @@ export const businessPermissions = new Set([
   'repair.correct',
   'repair.transfer',
   'repair.receive',
-  'repair.dispatch',
-  'repair.followup.manage',
   'customer.identity.read',
   'customer.contact.read',
   'onsite.create',
-  'onsite.frontdesk.create',
   'statistics.read',
   'settings.manage',
   'accounts.manage',
   'members.manage',
   'roles.manage',
   'roster.read',
-  'roster.repair.manage',
-  'roster.repair.configure',
-  'roster.office.manage',
-  'leave.review',
+  'roster.manage',
   'attendance.self',
   'attendance.session.manage',
   'attendance.correct',
@@ -153,9 +147,12 @@ export function editableMemberState(
   const memberId = member.memberId || member.id;
   if (memberId === context.actor.memberId || account?.protected || account?.role === 'superadmin')
     fail(403, '不能修改本人或受保护系统账号的成员授权');
-  const campuses = account
-    ? JSON.parse(account.campuses || '[]').map(campusId)
-    : [member.homeCampusId || member.home_campus_id];
+  const campuses =
+    permission === 'members.manage'
+      ? [member.homeCampusId || member.home_campus_id]
+      : account
+        ? JSON.parse(account.campuses || '[]').map(campusId)
+        : [member.homeCampusId || member.home_campus_id];
   if (
     scoped &&
     !campuses.some(

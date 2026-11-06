@@ -55,7 +55,7 @@ export function slotCapacityService(repository, staff, days=null) {
         // Aggregate staffing follows the same management permissions as rosters.
         // A capacity editor without those grants can still inspect capacity.
         for (const type of ['repair', 'office']) {
-          try { await staff.requirePermission(actor, `roster.${type}.manage`, { campusId: campusId(campus) }, date); dutyTypes.push(type); }
+          try { await staff.requirePermission(actor, 'roster.manage', { campusId: campusId(campus) }, date); dutyTypes.push(type); }
           catch (error) { if (error.status !== 403) throw error; }
         }
       }

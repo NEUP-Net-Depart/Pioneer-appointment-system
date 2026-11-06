@@ -61,10 +61,10 @@ export function slotCapacityRepository(db) {
         db.prepare('SELECT COUNT(*) AS total FROM booking_day_slots WHERE campus=? AND date=?').bind(campus, date).first(),
         db.prepare("SELECT time_slot,COUNT(*) AS total FROM appointments WHERE campus=? AND date=? AND source='booking' AND status<>'cancelled' GROUP BY time_slot").bind(campus, date).all(),
         dutyTypes.length ? db.prepare(`SELECT da.duty_type,COUNT(DISTINCT da.member_id) AS total FROM duty_assignments da
-          JOIN roster_versions rv ON rv.id=da.version_id AND rv.status='published'
+          
           JOIN campuses c ON c.id=da.campus_id
           WHERE c.name=? AND da.business_date=? AND da.duty_type IN (${dutyTypes.map(() => '?').join(',')})
-          AND NOT EXISTS(SELECT 1 FROM roster_leave_facts lr WHERE lr.origin_assignment_id=COALESCE(da.origin_assignment_id,da.id) AND lr.member_id=da.member_id AND lr.status='approved')
+          AND NOT EXISTS(SELECT 1 FROM roster_leaves lr WHERE lr.assignment_id=da.id AND lr.member_id=da.member_id AND lr.withdrawn_at IS NULL)
           GROUP BY da.duty_type`).bind(campus, date, ...dutyTypes).all() : null
       ]);
       return { source: snapshot.total ? 'snapshot' : 'template',

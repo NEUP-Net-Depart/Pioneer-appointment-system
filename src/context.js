@@ -5,7 +5,7 @@ import { verifyStaffSchema } from './db/staff-readiness.js';
 import { userRepository } from './db/users.js';
 import { appointmentRepository } from './db/appointments.js';
 import { attachmentRepository } from './db/attachments.js';
-import { queueRepository } from './db/queue.js';
+import { bookingAvailabilityRepository } from './db/booking-availability.js';
 import { statsRepository } from './db/stats.js';
 import { rateLimitRepository } from './db/rate-limits.js';
 import { slotCapacityRepository } from './db/slot-capacities.js';
@@ -15,7 +15,7 @@ import { activationRepository } from './db/activation.js';
 import { activationService } from './services/activation.js';
 import { appointmentService } from './services/appointments.js';
 import { attachmentService } from './services/attachments.js';
-import { queueService } from './services/queue.js';
+import { bookingAvailabilityService } from './services/booking-availability.js';
 import { statsService } from './services/stats.js';
 import { userService } from './services/users.js';
 import { exportService } from './services/export.js';
@@ -32,7 +32,6 @@ import { serviceLocationRepository } from './db/service-locations.js';
 import { serviceLocationService } from './services/service-locations.js';
 import { bookingSettingsRepository } from './db/booking-settings.js';
 import { bookingSettingsService } from './services/booking-settings.js';
-import { repairFollowupService } from './services/repair-followups.js';
 
 export function createContext(request, env) {
   // Request-scoped D1 session, explicitly injected into D1 repositories. No startup I/O.
@@ -47,16 +46,14 @@ export function createContext(request, env) {
     encryptionKey: env.PII_ENCRYPTION_KEY, secret: scanSecret });
   staffPlatformServiceInstance.field = field;
   const bookingSettings = bookingSettingsService(bookingSettingsRepository(db), staffPlatformServiceInstance, clock);
-  const followups = repairFollowupService(appointments, staffPlatformServiceInstance, clock);
   const services = {
     auth: authService(users, env.JWT_SECRET), users: userService(users, staffPlatformServiceInstance),
     activation: activationService(activationRepository(db),users,staffPlatformServiceInstance,staffPlatform),
     appointments: appointmentService(appointments, users, env.PII_ENCRYPTION_KEY, clock, staffPlatformServiceInstance, bookingSettings),
-    followups,
     warranty: warrantyService({ encryptionKey: env.PII_ENCRYPTION_KEY, captchaOrigin: captchaBridgeOrigin(env.WARRANTY_CAPTCHA_ORIGIN) === new URL(request.url).origin ? '' : env.WARRANTY_CAPTCHA_ORIGIN }),
     bookingSettings,
     attachments: attachmentService(appointments, attachmentRepository(db), env.ATTACHMENTS, storageLimit(env), field),
-    queue: queueService(appointments, queueRepository(db), clock), stats: statsService(statsRepository(db), appointments, clock, staffPlatformServiceInstance),
+    bookingAvailability: bookingAvailabilityService(bookingAvailabilityRepository(db), clock), stats: statsService(statsRepository(db), appointments, clock, staffPlatformServiceInstance),
     export: exportService(appointments, clock, field),
     limits: rateLimitService(rateLimitRepository(db), env.JWT_SECRET),
     slotCapacities: slotCapacityService(slotCapacityRepository(db), staffPlatformServiceInstance,serviceDayRepository(db)),
@@ -67,8 +64,8 @@ export function createContext(request, env) {
       return { ok: true, service: 'pioneer-repair-api', database: 'd1', attachments: 'r2', staffRelease, workflow: 'staff-platform' };
     }
   };
-  services.scan = scanService(appointments, services.appointments, scanSecret, clock, field, [env.JWT_SECRET]);
-  services.serviceLocations = serviceLocationService(serviceLocationRepository(db),appointments,services.queue,env.PII_ENCRYPTION_KEY,clock,staffPlatformServiceInstance,bookingSettings);
+  services.scan = scanService(appointments, services.appointments, scanSecret, clock, field);
+  services.serviceLocations = serviceLocationService(serviceLocationRepository(db),appointments,services.bookingAvailability,env.PII_ENCRYPTION_KEY,clock,staffPlatformServiceInstance,bookingSettings);
   let authentication;
   const authenticate = () => authentication ||= services.auth.authenticate(request.headers.get('authorization'));
   const url = new URL(request.url);

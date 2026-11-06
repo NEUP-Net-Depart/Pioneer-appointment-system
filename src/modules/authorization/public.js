@@ -1,7 +1,13 @@
+import { isLeader, participationCodes } from '../../../shared/staff-organization.js';
 import { campusId, validScope } from './scopes.js';
 import { dateKey, validDate } from '../../platform/time.js';
 import { conditionProviders, validCondition } from './conditions.js';
 import { parseJson } from '../../platform/contracts.js';
+
+export const staffRepairPermissions = ['repair.summary.read','repair.start','repair.receive','repair.finish.own','repair.transfer','customer.identity.read','customer.contact.read','onsite.create'];
+
+export const managementPermissions=['members.manage','repair.correct','statistics.read','roster.manage','attendance.session.manage','attendance.correct','attendance.export'];
+export const identityPermissions=[...staffRepairPermissions,...managementPermissions,'roster.read','attendance.self'];
 
 function values(value) {
   return Array.isArray(value) ? value : value === undefined || value === null ? [] : [value];
@@ -59,6 +65,15 @@ export function createAuthorizer({ providers = conditionProviders() } = {}) {
     evaluate(actor, permissionCode, target = {}, context = {}, grants = []) {
       if (actor?.status && !['enabled', 'active'].includes(actor.status) || actor?.memberStatus === 'inactive')
         return { allowed: false, matchedGrantIds: [], reasonCode: 'INACTIVE', scope: [], explanations: [] };
+      if (identityPermissions.includes(permissionCode)) {
+        const campuses=actor?.authorizedCampuses || [], requested=values(target.campusId || target.campusIds);
+        const scoped=!!actor?.memberId && !!campuses.length && requested.every(id=>campuses.some(value=>campusId(value)===campusId(id)));
+        let eligible=true;
+        if(managementPermissions.includes(permissionCode))eligible=actor?.role==='superadmin' || isLeader(context);
+        if(permissionCode==='attendance.self')eligible=actor?.role==='superadmin' || isLeader(context) || participationCodes(context,target).length>0;
+        const allowed=scoped && eligible;
+        return {allowed,matchedGrantIds:[],reasonCode:allowed?'IDENTITY_SCOPE':'IDENTITY_SCOPE_DENIED',scope:allowed?[{campusIds:campuses}]:[],explanations:[]};
+      }
       const matchedGrantIds = [];
       const explanations = [];
       for (const grant of grants.filter(item => item.permissionCode === permissionCode)) {

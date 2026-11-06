@@ -1,3 +1,4 @@
+import { stringField } from '../lib/validation.js';
 import { fail } from '../lib/http.js';
 import { encryptText, decryptText, readStoredContact } from '../lib/privacy.js';
 import {
@@ -6,19 +7,16 @@ import {
   serviceDay,
   slotDeadline,
   expirationDeadline,
-  validDate,
   weekRange
 } from '../../shared/time.js';
 import { issueAccessToken, bookingDigest, hashAccessToken, onsiteRequestKey } from '../lib/access-tokens.js';
-import { requestId as validRequestId } from '../platform/contracts.js';
 import { guestAppointment } from './access.js';
-import { repairOutcomes, TIME_SLOTS } from '../../shared/constants.js';
+import { repairOutcomes } from '../../shared/constants.js';
 import { bookingWindow } from '../../shared/booking-settings.js';
 import {
   appointmentScope,
   requireRole,
   requireCampus,
-  ownsRepair,
   ownsRegistration
 } from './permissions.js';
 
@@ -31,10 +29,14 @@ export async function presentAppointment(item, encryptionKey, { staff = false } 
   const visible = { ...item, phone, social, email, contactValue };
   delete visible.registrationKey;
   if (!staff) {
-    delete visible.assignedToName;
-    delete visible.assignedMemberId;
-    delete visible.registeredMemberId;
-    if (visible.reception) visible.reception = { state: visible.reception.state, receivedAt: visible.reception.receivedAt, leftAt:visible.reception.leftAt, ticket:visible.reception.ticket };
+    // Explicit customer projection: adding an internal field must never publish it.
+    const fields = ['id','revision','studentId','name','college','campus','phone','social',
+      'email','contactType','contactValue','deviceType','brand','deviceModel','serial',
+      'warranty','faultType','issue','liquidDrop','liquidMetal','dellG15','date','timeSlot',
+      'status','outcome','receivedAt','startedAt','completedAt','expiresAt','createdAt','source',
+      'parentAppointmentId','linkKind','repairNumber','locationSnapshot','locationRevision','servicePaused',
+      'agreementAt','agreementVersion','signature'];
+    return Object.fromEntries(fields.map(key => [key, visible[key]]));
   }
   return visible;
 }
@@ -46,15 +48,14 @@ export function appointmentService(
   staffPlatform,
   bookingSettings = null
 ) {
-  const present = async (item, staff = false) => {
+  const present = async (item, staff = false, campuses) => {
     const [visible, location, repairHistory] = await Promise.all([
       presentAppointment(item, encryptionKey, { staff }),
       appointments.location(item.date, item.campus),
-      appointments.repairHistory(item.id, { staff })
+      appointments.repairHistory(item.id, { staff, campuses })
     ]);
     return {
       ...visible,
-      queuePosition: item.status==='booked' && ['queued','assigned'].includes(item.reception?.state) ? await appointments.receptionPosition(item) : null,
       repairHistory,
       serverNow: clock().toISOString(),
       location: location?.location || item.locationSnapshot || '',
@@ -65,52 +66,43 @@ export function appointmentService(
     };
   };
   const expire = (instant, scope) => appointments.expirePending(instant.toISOString(), scope);
-  async function assignee(value, campus) {
-    let user = await users.find(value.toLowerCase());
-    if (!user) {
-      const matches = await users.findByName(value);
-      if (matches.length > 1) fail(400, '有多个同名工作人员，请输入学号');
-      user = matches[0];
-    }
-    if (user?.status !== 'enabled' || user.memberStatus === 'inactive')
-      fail(400, '维修人员账号不存在或未启用');
-    requireCampus(user, campus);
-    return user.account;
-  }
   function repairResult(outcome, note) {
     if (!repairOutcomes.includes(outcome) || !note?.trim())
       fail(400, '请选择维修结果并填写维修说明');
   }
-  function repeated(item, input, user, action) {
-    return (
-      !action &&
-      ownsRepair(user, item) &&
-      ((input.status === 'in_progress' &&
-        item.status === 'in_progress' &&
-        input.frontPhotoId === item.frontPhotoId &&
-        input.backPhotoId === item.backPhotoId) ||
-        (input.status === 'completed' &&
-          item.status === 'completed' &&
-          input.outcome === item.outcome &&
-          input.repairNote === item.repairNote))
-    );
-  }
-  async function exitQueue(item, input, accessToken, credentialScope = {}) {
-    if (!input || !validRequestId(input.requestId) || !Number.isInteger(input.revision)) fail(400,'请提供有效操作编号和工单版本');
-    const replay=await appointments.guestQueueExitReceipt(item.id,input.requestId);
-    if (replay) {
-      if (JSON.parse(replay.before_json).revision!==input.revision) fail(409,'请勿重复使用不同操作的请求编号');
-      return;
-    }
-    if (item.revision!==input.revision) fail(409,'工单已更新，请刷新并核对后重试');
-    if (item.status!=='booked' || !['queued','assigned'].includes(item.reception?.state)) fail(409,'当前不在现场排队，无法退出');
+  async function mutate(id,input,actor,action,prepare) {
+    const item=await appointments.find(id);
+    if (!item) fail(404,'工单不存在');
+    requireCampus(actor,item.campus);
+    const {context}=await staffPlatform.field.requireEligible(actor,item.campus);
+    const receipt=await staffPlatform.field.receipt(actor,action,{...input,id},id);
+    if (receipt.replay) return receipt.replay;
+    if (!Number.isInteger(input.revision) || input.revision!==item.revision) fail(409,'工单已更新，请刷新后重试');
     const at=clock().toISOString();
-    const updated=await appointments.update(item,{status:'booked'},undefined,{
-      actor:{memberId:null,account:null},action:'receptions.guest_leave',auditId:'guest-leave-'+item.id+'-'+input.requestId,
-      requestId:input.requestId,...credentialScope,guestCredentialHash:hashAccessToken(accessToken),at,reason:'客户主动退出现场排队',
-      reception:{state:'closed',leftAt:at}
+    const patch=await prepare(item,context,at);
+    const contactBefore={};
+    for (const key of ['phone','social','email','contactValue']) if (Object.hasOwn(patch,key))
+      contactBefore[key]=await encryptText(await readStoredContact(item[key],encryptionKey),encryptionKey);
+    const updated=await appointments.update(item,patch,null,{
+      actor:{...actor,memberId:context.actor.memberId,authVersion:context.authVersion},
+      action,requestId:input.requestId,payloadHash:receipt.payloadHash,at,
+      reason:input.reason || '',verification:input.verification,contactBefore
     });
-    if (!updated && !await appointments.guestQueueExitReceipt(item.id,input.requestId)) fail(409,'工单已更新，请重新查询后操作');
+    if (!updated) fail(409,'工单或账号已更新，请刷新后重试');
+    return staffPlatform.field.detail(actor,id);
+  }
+  async function receiving(item,input,actor,at) {
+    if (item.receivedAt) return {};
+    if (item.status!=='booked' || item.date!==dateKey(new Date(at))) fail(409,'请在预约当天接收设备');
+    if ((await appointments.serviceDay(item.date,item.campus))?.paused) fail(409,'该日期暂停服务');
+    const front=await appointments.intakePhoto(item.id,input.frontPhotoId,'intake_front',at);
+    const back=await appointments.intakePhoto(item.id,input.backPhotoId,'intake_back',at);
+    const photos=front && back;
+    if (!photos && !(input.photosCaptured===true && input.uploadTimedOut===true)) fail(400,'请先拍摄正反面照片并尝试上传');
+    return {receivedAt:at,receivedBy:actor.account,
+      frontPhotoId:front ? input.frontPhotoId : null,backPhotoId:back ? input.backPhotoId : null,
+      photoDeferredBy:photos ? null : actor.account,
+      ...(input.verification ? {brand:input.verification.brand,deviceModel:input.verification.model,warranty:input.verification.warranty,liquidMetal:input.verification.liquidMetal} : {})};
   }
   return {
     async resolveAttempt(key, digest) {
@@ -194,19 +186,26 @@ export function appointmentService(
         items: await staffPlatform.field.projectList(user, result.items, access.context)
       };
     },
-    async createOnsite(data, actor, requestId, registrationFlow = 'technician_intake') {
+    async createOnsite(data, actor, requestId) {
       requireRole(actor, 'technician');
       requireCampus(actor, data.campus);
-      await staffPlatform.requirePermission(
+      const { context } = await staffPlatform.requirePermission(
         actor,
-        registrationFlow === 'frontdesk' ? 'onsite.frontdesk.create' : 'onsite.create',
+        'onsite.create',
         { campusId: data.campus }
       );
-      return this.create(data, { actor: actor.account, requestId, registrationFlow },onsiteRequestKey(actor.memberId,requestId));
+      if (data.parentAppointmentId) {
+        const parent=await appointments.find(data.parentAppointmentId);
+        if (!parent) fail(404,'原工单不存在');
+        requireCampus(actor,parent.campus);
+        if (parent.status!=='completed' || parent.studentId!==data.studentId || !['continuation','recurrence'].includes(data.linkKind) || data.sameDeviceAndFault!==true) fail(409,'请确认同一设备原故障的续修或复发');
+        data={...data,linkedBy:actor.account,linkedAt:clock().toISOString()};
+      }
+      return this.create(data, { actor: actor.account, authVersion: context.authVersion, campuses: actor.authorizedCampuses, requestId },onsiteRequestKey(actor.memberId,requestId));
     },
     async registrationCredential(item,actor) {
       if (!ownsRegistration(actor,item)) return null;
-      await staffPlatform.requirePermission(actor,item.registrationFlow==='frontdesk'?'onsite.frontdesk.create':'onsite.create',{campusId:item.campus,id:item.id});
+      await staffPlatform.requirePermission(actor,'onsite.create',{campusId:item.campus,id:item.id});
       const visible=await staffPlatform.field.detail(actor,item.id);
       if (visible.name===undefined || visible.social===undefined) return null;
       const saved=await appointments.findRequest(onsiteRequestKey(actor.memberId,item.registrationKey));
@@ -275,7 +274,6 @@ export function appointmentService(
         source: onsite ? 'onsite' : 'booking',
         registeredBy: onsite?.actor || null,
         registrationKey: onsite?.requestId || null,
-        registrationFlow: onsite?.registrationFlow || 'technician_intake',
         createdAt: timestamp,
         agreementAt: timestamp,
         agreementVersion: data.agreementVersion || 'v1.0',
@@ -303,147 +301,63 @@ export function appointmentService(
       if (onsite && Date.parse(expiresAt) <= checkedAt.getTime())
         fail(400, '当天临时登记有效期限已结束');
       item.createdAt = item.agreementAt = item.credentialRotatedAt = checkedAt.toISOString();
-      const created = await appointments.create(item, request);
-      if (!created) return (await this.resolveAttempt(requestKey, digest)).appointment;
-      return { ...(await present(created, !!onsite)), accessToken: credential.token };
+      const created = await appointments.create(item, request, onsite);
+      if (!created) {
+        const replay=requestKey && await this.resolveAttempt(requestKey,digest);
+        if (replay?.found) return replay.appointment;
+        fail(409,'账号权限已更新，请刷新后重试');
+      }
+      return { ...(await present(created, !!onsite, onsite?.campuses)), accessToken: credential.token };
     },
     async lookup(id, accessToken) {
       const item = await guestAppointment(appointments, id, accessToken);
       await expire(clock(), { repairChainId: item.id });
       return present(await guestAppointment(appointments, item.id, accessToken));
     },
-    async leaveQueue(id,input,accessToken) {
-      const item=await guestAppointment(appointments,id,accessToken);
-      await exitQueue(item,input,accessToken);
-      return present(await guestAppointment(appointments,item.id,accessToken));
+    async link(id,input,actor) {
+      if (!['continuation','recurrence'].includes(input.linkKind) || input.sameDeviceAndFault!==true) fail(400,'请确认同一设备的原故障续修或复发');
+      return mutate(id,input,actor,'repairs.linked',async(item,context,at)=>{
+        if (!['booked','in_progress'].includes(item.status) || item.parentAppointmentId) fail(409,'请选择尚未关联的本次服务工单');
+        const parent=await appointments.find(input.parentAppointmentId);
+        if (!parent) fail(404,'原工单不存在');
+        requireCampus(actor,parent.campus);
+        if (parent.id===id || parent.status!=='completed' || parent.studentId!==item.studentId) fail(409,'只能关联同一客户已结束的原维修单');
+        return {parentAppointmentId:parent.id,linkKind:input.linkKind,linkedBy:actor.account,linkedAt:at};
+      });
     },
-    async leaveFollowupQueue(parentId,followupId,input,accessToken) {
-      const parent=await guestAppointment(appointments,parentId,accessToken);
-      const relation=await appointments.followupForScan(parent.id,followupId);
-      if (!relation) fail(404,'返修预约不存在或访问凭证无效');
-      const item=await appointments.find(relation.id);
-      await exitQueue(item,input,accessToken,{guestParentId:parent.id,guestFollowupId:followupId});
-      return this.lookup(parent.id,accessToken);
-    },
-    async reception(id, input, actor) {
-      if (!input || typeof input!=='object' || Array.isArray(input)) fail(400,'接待参数不正确');
-      let item = await appointments.find(id);
-      if (!item) fail(404, '预约不存在');
-      requireCampus(actor,item.campus);
-      const action = input.action;
-      if (!['receive','assign','return','withdraw','cancel','reschedule','leave'].includes(action)) fail(400,'接待操作不正确');
-      const field = staffPlatform.field;
-      const permission = action==='receive' ? 'repair.receive' : action==='return' ? 'repair.start' : 'repair.dispatch';
-      await staffPlatform.requirePermission(actor,permission,{campusId:item.campus,id:item.id,assignedMemberId:item.reception?.assignedMemberId,businessDate:dateKey()});
-      const receipt = await field.receipt(actor,`receptions.${action==='receive'?'received':action}`,{...input,id},id);
-      if (receipt.replay) return receipt.replay;
-      const instant=clock(),at=instant.toISOString();
-      await expire(instant,{id});
-      item=await appointments.find(id);
-      if (!Number.isInteger(input.revision) || input.revision!==item.revision) fail(409,'工单已更新，请刷新后核对');
-      if (item.status!=='booked') fail(409,'只有尚未开始维修的工单可以接待或分派');
-      let reception,eligibility,verification,patch={status:'booked'};
-      const reason=typeof input.reason==='string'?input.reason.trim():'';
-      if (reason.length>300) fail(400,'原因最多 300 字');
-      if (action==='receive') {
-        if (item.reception && ['queued','assigned'].includes(item.reception.state)) fail(409,'该工单已完成接待，请处理现场队列');
-        if (item.date>dateKey(instant)) fail(409,'请在预约当天到场接待');
-        await field.requireIntake(actor,item);
-        const checked = input.verification;
-        if (!checked || typeof checked.brand!=='string' || typeof checked.model!=='string' || !checked.brand.trim() || !checked.model.trim() || checked.brand.length>80 || checked.model.length>120 || !['in_warranty','expired','unknown'].includes(checked.warranty) || !['yes','no','unknown'].includes(checked.liquidMetal) || typeof checked.note!=='string' || checked.note.length>500) fail(400,'请完整填写设备核验信息');
-        verification={brand:checked.brand.trim(),model:checked.model.trim(),warranty:checked.warranty,liquidMetal:checked.liquidMetal,note:checked.note.trim()};
-        if (!await appointments.intakePhotos(id,actor.account,input.frontPhotoId,input.backPhotoId,at)) fail(400,'请由本次接待人员上传设备正反面照片');
-        patch={...patch,frontPhotoId:input.frontPhotoId,backPhotoId:input.backPhotoId};
-        reception={state:'queued'};
-      } else if (action==='assign') {
-        if (item.reception?.state!=='queued') fail(409,'请先完成到场接待；更换待接手人员请先撤回分派');
-        const queue=await appointments.openReceptions(item.campus),head=queue.find(row=>row.reception.state==='queued');
-        if (head && head.id!==id && reason.length<2) fail(400,'当前不是队首，请说明调整排队顺序的原因');
-        if (typeof input.assignedTo!=='string' || !input.assignedTo.trim()) fail(400,'请选择接手人员');
-        const account=await assignee(input.assignedTo,item.campus),target=await users.find(account);
-        eligibility=await field.requireEligible(target,item.campus);
-        reception={state:'assigned',assignedTo:account,assignedMemberId:eligibility.context.actor.memberId};
-      } else if (action==='leave') {
-        if (!['queued','assigned'].includes(item.reception?.state)) fail(409,'该工单当前不在现场队列');
-        if (reason.length<2) fail(400,'请填写客户离队原因');
-        reception={state:'closed',leftAt:at};
-      } else if (action==='cancel' || action==='reschedule') {
-        if (!['queued','assigned'].includes(item.reception?.state)) fail(409,'只能处理已到场、尚未开始维修的工单');
-        if (reason.length<2) fail(400,'请填写联系客户后的处理原因');
-        reception={state:'closed'};
-        if (action==='cancel') patch={status:'cancelled',completedAt:at};
-        else {
-          const options=await this.receptionOptions(id,actor);
-          if (!validDate(input.date) || !options.items.some(option=>option.date===input.date && option.timeSlot===input.timeSlot)) fail(409,'请选择当前开放的有效预约时段');
-          if (input.date===item.date && input.timeSlot===item.timeSlot) fail(400,'请选择不同的日期或时段；原安排继续处理无需改约');
-          if ((await appointments.serviceDay(input.date,item.campus))?.paused) fail(409,'该日期暂停维修');
-          await appointments.ensureDefaultLocation(input.date,item.campus,at);
-          patch={status:'booked',date:input.date,timeSlot:input.timeSlot,source:item.registrationFlow==='repair_followup' ? 'onsite' : 'booking',expiresAt:expirationDeadline(input.date)};
-        }
-      } else {
-        if (item.reception?.state!=='assigned') fail(409,'当前没有待接手的分派');
-        if (action==='return' && item.reception.assignedMemberId!==actor.memberId) fail(403,'只能退回分派给本人的工单');
-        if (reason.length<2) fail(400,'请填写退回或撤回原因');
-        reception={state:'queued'};
+    async edit(id,input,actor) {
+      const contacts=['phone','social','email','contactValue'];
+      const limits={name:80,brand:80,deviceModel:120,faultType:80,issue:10000,phone:120,social:120,email:254,contactType:40,contactValue:120};
+      const patch={};
+      for (const [key,limit] of Object.entries(limits)) if (Object.hasOwn(input,key)) {
+        const value=stringField(input[key],key,limit,['name','brand','faultType'].includes(key));
+        patch[key]=contacts.includes(key) ? await encryptText(value,encryptionKey) : value;
       }
-      const updated=await appointments.update(item,patch,undefined,{actor,action:`receptions.${action==='receive'?'received':action}`,reception,verification,eligibility,reason,requestId:input.requestId,payloadHash:receipt.payloadHash,at});
-      if (!updated) {
-        const replay=await field.receipt(actor,`receptions.${action==='receive'?'received':action}`,{...input,id},id);
-        if (replay.replay) return replay.replay;
-        fail(409,'人员或工单已更新，请核对后重试');
-      }
-      return field.receptionResult(actor,id);
+      if (!Object.keys(patch).length) fail(400,'没有需要修改的资料');
+      return mutate(id,input,actor,'repairs.information.updated',()=>patch);
     },
-    async receptionOptions(id,actor) {
-      const item=await staffPlatform.field.detail(actor,id);
-      if (!item.canDispatch) fail(403,'没有该工单的接待处理权限');
-      const instant=clock(),today=dateKey(instant);
-      const settings=bookingSettings ? await bookingSettings.public(item.campus) : null;
-      const window=bookingWindow(instant,settings?.releaseTime);
-      const {totals}=await appointments.overview(today,window.end,[item.campus]);
-      const items=[];
-      for(let day=today;day<=window.end;day=addDays(day,1)) {
-        if (!serviceDay(day) || (await appointments.serviceDay(day,item.campus))?.paused) continue;
-        for(const slot of await appointments.schedule(day,item.campus)) {
-          const occupied=totals.find(row=>row.date===day && row.time_slot===slot.time_slot)?.occupied || 0;
-          if (day===item.date && slot.time_slot===item.timeSlot) continue;
-          if (TIME_SLOTS.includes(slot.time_slot) && slot.capacity>0 &&
-              (item.registrationFlow==='repair_followup' || occupied<slot.capacity) &&
-              Date.parse(slotDeadline(day,slot.time_slot))>instant.getTime()) items.push({date:day,timeSlot:slot.time_slot});
-        }
-      }
-      return {items};
+    async receive(id,input,actor) {
+      return mutate(id,input,actor,'repairs.received',async (item,context,at)=>{
+        if (item.status!=='booked' || item.receivedAt) fail(409,'设备已接收或本次服务已结束');
+        return receiving(item,input,actor,at);
+      });
     },
-    async transfer(id, input, actor) {
-      const item = await appointments.find(id);
-      if (!item) fail(404, '预约不存在');
-      const receipt = await staffPlatform.field.receipt(
-        actor,
-        'repairs.transferred',
-        { ...input, id },
-        id
-      );
-      if (receipt?.replay) return receipt.replay;
-      await staffPlatform.requirePermission(actor, 'repair.transfer', { campusId: item.campus });
-      requireCampus(actor, item.campus);
-      if (item.status !== 'in_progress') fail(409, '只有维修中的工单可以转派');
-      const account = await assignee(input.assignedTo, item.campus);
-      if (!input.reason || input.reason.trim().length < 2) fail(400, '请填写转派原因');
-      if (input.revision !== undefined && input.revision !== item.revision)
-        fail(409, '预约已被其他工作人员修改，请刷新后重试');
-      const eligibility = await staffPlatform.field.assertTransfer(actor, item, account);
-      const workflow = {
-        eligibility,
-        actor,
-        action: 'repairs.transferred',
-        reason: input.reason,
-        requestId: input.requestId,
-        payloadHash: receipt.payloadHash,
-        at: clock().toISOString()
-      };
-      const updated = await appointments.update(item, { assignedTo: account }, undefined, workflow);
-      if (!updated) fail(409, '预约已被其他操作修改，请刷新后重试');
-      return staffPlatform.field.detail(actor, updated.id);
+    async supplement(id,input,actor) {
+      return mutate(id,input,actor,'repairs.photos.supplemented',async item=>{
+        if (item.photoDeferredBy!==actor.account) fail(403,'请由首次接收经办人补传原图');
+        const front=input.frontPhotoId || item.frontPhotoId,back=input.backPhotoId || item.backPhotoId;
+        const at=clock().toISOString();
+        if ((!front && !back) || (front && !await appointments.intakePhoto(id,front,'intake_front',at)) || (back && !await appointments.intakePhoto(id,back,'intake_back',at))) fail(400,'请选择本单首次接收的原图');
+        return {frontPhotoId:front || null,backPhotoId:back || null,photoDeferredBy:front && back ? null : actor.account};
+      });
+    },
+    async transfer(id,input,actor) {
+      return mutate(id,input,actor,'repairs.transferred',item=>{
+        if (item.status!=='in_progress') fail(409,'只有维修中的工单可以交接');
+        if (item.assignedMemberId===actor.memberId) fail(409,'你已经是当前主修');
+        if (input.receivedDevice!==true) fail(400,'请确认已经实际接到设备');
+        return {assignedTo:actor.account};
+      });
     },
     async recover(id, input, actor) {
       const item = await appointments.find(id);
@@ -477,275 +391,39 @@ export function appointmentService(
         fail(409, '预约已更新，请刷新后重试');
       return { id: item.id, accessToken: credential.token };
     },
-    async update(
-      id,
-      {
-        patch: input,
-        revision,
-        action,
-        correctionReason = '',
-        requestId = '',
-        reason = '',
-        verification
-      },
-      user,
-      accessToken
-    ) {
-      if (!Object.keys(input).length) fail(400, '没有可更新的字段');
-      let item = user
-        ? await appointments.find(id)
-        : await guestAppointment(appointments, id, accessToken);
-      if (!item) fail(404, '预约不存在');
-      if (user) requireCampus(user, item.campus);
-      const workflowAction =
-        input.status === 'in_progress'
-          ? 'repairs.started'
-          : input.status === 'completed'
-            ? 'repairs.completed'
-            : 'repairs.updated';
-      const receipt =
-        user && !action
-          ? await staffPlatform.field.receipt(
-              user,
-              workflowAction,
-              { input, revision, requestId, reason, verification, id },
-              id
-            )
-          : null;
-      if (receipt?.replay) return receipt.replay;
-      const instant = clock(),
-        timestamp = instant.toISOString();
-      await expire(instant, { id: item.id });
-      item = user
-        ? await appointments.find(item.id)
-        : await guestAppointment(appointments, item.id, accessToken);
-      // A lost response can be retried with the original revision and photo IDs.
-      // Only an exact repeat by the recorded owner is treated as success.
-      if (repeated(item, input, user, action)) return staffPlatform.field.detail(user, item.id);
-      if (revision !== undefined && revision !== item.revision)
-        fail(409, '预约已更新，请刷新后重试');
-      if (
-        (input.frontPhotoId !== undefined || input.backPhotoId !== undefined) &&
-        (action === 'correct' || input.status !== 'in_progress')
-      )
-        fail(400, '签到照片只能在签到时记录');
-      if (input.expiresAt !== undefined && action !== 'correct')
-        fail(400, '有效截止时间只能由管理员纠错设置');
-      let patch, eligibility;
-      if (action === 'correct') {
-        await staffPlatform.requirePermission(user, 'repair.correct', {
-          campusId: item.campus,
-          assignedMemberId: item.assignedMemberId,
-          id: item.id,
-          businessDate: item.date
-        });
-        requireCampus(user, item.campus);
-        const status = input.status || item.status;
-        if (input.expiresAt !== undefined && status !== 'booked')
-          fail(400, '有效截止时间只能在恢复为已预约时设置');
-        if (
-          ['in_progress', 'completed'].includes(status) &&
-          ['booked', 'cancelled', 'expired'].includes(item.status)
-        )
-          fail(409, '请先恢复为已预约，再通过签到上传照片并开始维修');
-        if (input.outcome !== undefined && status !== 'completed')
-          fail(400, '仅已完成工单可以填写维修结果');
-        patch = { ...input, status };
-        if (status === 'booked') {
-          const late = instant.getTime() >= Date.parse(expirationDeadline(item.date));
-          if (late && input.expiresAt === undefined)
-            fail(409, '已过原有效期限，请填写纠错原因并指定新的有效截止时间');
-          if (
-            (late || input.expiresAt !== undefined) &&
-            (correctionReason.trim().length < 8 || correctionReason.length > 300)
-          )
-            fail(400, '请填写 8 至 300 字的纠错原因');
-          const expiresAt = input.expiresAt ?? item.expiresAt;
-          if (!Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= instant.getTime())
-            fail(409, '新的有效截止时间必须晚于当前时间');
-          patch = {
-            status,
-            expiresAt,
-            assignedTo: '',
-            startedAt: null,
-            completedAt: null,
-            outcome: null,
-            repairNote: '',
-            frontPhotoId: null,
-            backPhotoId: null
-          };
-        } else {
-          const account = input.assignedTo ?? item.assignedTo;
-          if (account)
-            patch.assignedTo =
-              status === 'in_progress' || account !== item.assignedTo
-                ? await assignee(account, item.campus)
-                : account;
-          else if (
-            status === 'in_progress' ||
-            repairOutcomes.includes(input.outcome ?? item.outcome)
-          )
-            fail(400, '请指定维修人员');
-          if (status === 'in_progress') {
-            if (item.status === 'in_progress' && patch.assignedTo !== item.assignedTo)
-              eligibility = await staffPlatform.field.assertTransfer(user, item, patch.assignedTo);
-            else if (item.status !== 'in_progress')
-              eligibility = await staffPlatform.field.requireEligible(
-                await users.find(patch.assignedTo),
-                item.campus,
-                item.id
-              );
-            patch.completedAt = null;
-            patch.outcome = null;
-          } else if (status === 'completed') {
-            patch.outcome = input.outcome ?? item.outcome;
-            if (
-              !(
-                item.status === 'completed' &&
-                item.outcome === 'legacy_unknown' &&
-                input.outcome === undefined
-              )
-            )
-              repairResult(patch.outcome, input.repairNote ?? item.repairNote);
-            patch.completedAt = item.status === 'completed' ? item.completedAt : timestamp;
-          } else {
-            if (
-              status === 'expired' &&
-              (item.startedAt || item.status === 'in_progress' || item.status === 'completed')
-            )
-              fail(409, '已记录维修开始的工单不能改为已逾期');
-            if (status === 'expired' && instant.getTime() < Date.parse(item.expiresAt))
-              fail(409, '尚未到有效截止时间');
-            patch.outcome = null;
-            patch.completedAt = item.status === status ? item.completedAt : timestamp;
-          }
+    async update(id,{patch:input,revision,action,requestId,verification,photosCaptured,uploadTimedOut},user,accessToken) {
+      if (!user) {
+        const item=await guestAppointment(appointments,id,accessToken);
+        if (input.status!=='cancelled' || Object.keys(input).some(key=>key!=='status')) fail(403,'学生只能取消尚未接收的预约');
+        if (item.status!=='booked' || item.receivedAt) fail(409,'设备已接收或预约已结束，不能取消');
+        if (revision!==item.revision) fail(409,'预约已更新，请刷新');
+        const updated=await appointments.update(item,{status:'cancelled',completedAt:clock().toISOString()});
+        if (!updated) fail(409,'预约已更新，请刷新');
+        return present(updated);
+      }
+      const command={...input,revision,requestId,verification,photosCaptured,uploadTimedOut};
+      const operation=action==='correct' ? 'repairs.corrected' : input.status==='in_progress' ? 'repairs.started' : input.status==='completed' ? 'repairs.completed' : 'repairs.updated';
+      return mutate(id,command,user,operation,async (item,context,at)=>{
+        const own=item.assignedMemberId===context.actor.memberId;
+        if (action==='correct') {
+          if (item.status!=='completed') fail(409,'只有已结束工单可更正结果和说明');
+          if (!own) await staffPlatform.requirePermission(user,'repair.correct',{campusId:item.campus,id,assignedMemberId:item.assignedMemberId});
+          if (Object.keys(input).some(key=>!['outcome','repairNote'].includes(key))) fail(400,'更正只修改结果和说明');
+          repairResult(input.outcome,input.repairNote);
+          return {outcome:input.outcome,repairNote:input.repairNote};
         }
-      } else if (!user) {
-        if (input.status !== 'cancelled' || input.outcome !== undefined)
-          fail(403, '学生仅可取消尚未开始维修的预约');
-        if (item.status !== 'booked') fail(409, '当前状态不能取消');
-        patch = { status: 'cancelled', outcome: null, completedAt: timestamp };
-      } else if (
-        item.status === 'booked' &&
-        input.status === 'cancelled' &&
-        input.outcome === undefined &&
-        item.source === 'onsite' &&
-        ownsRegistration(user, item)
-      ) {
-        patch = { status: 'cancelled', outcome: null, completedAt: timestamp };
-      } else {
-        const starting = item.status === 'booked' && input.status === 'in_progress';
-        requireCampus(user, item.campus);
-        if (input.assignedTo !== undefined) fail(403, '维修人员由签到记录，转派请使用管理员纠错');
-        if (starting) {
-          {
-            eligibility = await staffPlatform.field.requireEligible(user, item.campus,item.id);
-            if (item.reception?.state==='assigned' && item.reception.assignedMemberId!==user.memberId) fail(409,'该工单已分派给其他维修人员');
-            if (item.reception?.leftAt) fail(409,'客户已离队，请先重新接待并排号');
-            if (item.reception?.state!=='assigned') {
-              const head=(await appointments.openReceptions(item.campus)).find(row=>row.reception.state==='queued');
-              if (head && head.id!==item.id) fail(409,'请先处理现场队首工单；客户暂未到场时请由接待或负责人说明原因后分派后续工单');
-            }
-            if (!verification) fail(400, '请完成现场设备核验');
-          }
-          if (input.outcome !== undefined) fail(400, '开始维修不能填写结束结果');
-          if (
-            !(await appointments.intakePhotos(
-              item.id,
-              user.account,
-              input.frontPhotoId,
-              input.backPhotoId,
-              timestamp
-            )) && !(await appointments.receivedPhotos(item.id,input.frontPhotoId,input.backPhotoId,timestamp,user.account))
-          )
-            fail(400, '请由本次签到人员上传电脑正面和反面照片');
-          patch = {
-            status: 'in_progress',
-            assignedTo: user.account,
-            startedAt: timestamp,
-            completedAt: null,
-            outcome: null,
-            frontPhotoId: input.frontPhotoId,
-            backPhotoId: input.backPhotoId
-          };
-        } else if (
-          item.status === 'booked' &&
-          input.status === 'cancelled' &&
-          input.outcome === undefined
-        ) {
-          await staffPlatform.requirePermission(user, 'repair.correct', {
-            campusId: item.campus,
-            id: item.id,
-            businessDate: item.date
-          });
-          patch = { status: 'cancelled', outcome: null, completedAt: timestamp };
-        } else if (item.status === 'in_progress' && input.status === 'completed') {
-          {
-            if (!ownsRepair(user, item)) fail(403, '只能完成本人当前维修');
-            await staffPlatform.requirePermission(user, 'repair.finish.own', {
-              campusId: item.campus,
-              assignedMemberId: item.assignedMemberId
-            });
-          }
-          repairResult(input.outcome, input.repairNote);
-          patch = {
-            status: 'completed',
-            outcome: input.outcome,
-            repairNote: input.repairNote,
-            completedAt: timestamp
-          };
-        } else if (
-          item.status === 'in_progress' &&
-          input.status === undefined &&
-          input.outcome === undefined &&
-          input.repairNote !== undefined
-        ) {
-          {
-            if (!ownsRepair(user, item)) fail(403, '只能编辑本人当前维修');
-            await staffPlatform.requirePermission(user, 'repair.finish.own', {
-              campusId: item.campus,
-              assignedMemberId: item.assignedMemberId
-            });
-          }
-          patch = { repairNote: input.repairNote };
-        } else fail(409, '当前状态不能执行此操作，修正记录请使用管理员纠错');
-      }
-      const correctionContext = action === 'correct' ? await staffPlatform.contextFor(user) : null;
-      const correction =
-        action === 'correct'
-          ? {
-              id: crypto.randomUUID(),
-              actor: user.account,
-              reason: correctionReason.trim(),
-              instant: timestamp
-            }
-          : undefined;
-      const workflowActor = correctionContext
-        ? { ...user, memberId: correctionContext.actor.memberId }
-        : user;
-      const workflow = user
-        ? {
-            eligibility,
-            actor: workflowActor,
-            action: correction ? 'repairs.corrected' : workflowAction,
-            verification,
-            enforceQueueHead: !correction && workflowAction==='repairs.started' && item.reception?.state!=='assigned',
-            reason: correction ? correction.reason : reason,
-            requestId,
-            payloadHash: receipt?.payloadHash,
-            at: timestamp
-          }
-        : null;
-      const updated = await appointments.update(item, patch, correction, workflow);
-      if (!updated) {
-        const latest = await appointments.find(item.id);
-        if (latest && repeated(latest, input, user, action))
-          return staffPlatform.field.detail(user, latest.id);
-        fail(409, '预约已被其他工作人员修改，请刷新后重试');
-      }
-      return workflow && !correction
-        ? staffPlatform.field.detail(user, updated.id)
-        : present(updated, !!user);
+        if (item.status==='booked' && input.status==='in_progress') {
+          if (item.date!==dateKey(new Date(at)) && !item.receivedAt) fail(409,'预约仅在当天接单；隔天请重新预约或现场登记');
+          return {...await receiving(item,command,user,at),status:'in_progress',assignedTo:user.account,startedAt:at};
+        }
+        if (item.status==='in_progress' && own && input.status==='completed') {
+          repairResult(input.outcome,input.repairNote);
+          return {status:'completed',outcome:input.outcome,repairNote:input.repairNote,completedAt:at};
+        }
+        if (item.status==='in_progress' && own && !input.status && typeof input.repairNote==='string') return {repairNote:input.repairNote};
+        if (item.status==='booked' && !item.receivedAt && input.status==='cancelled') return {status:'cancelled',completedAt:at};
+        fail(409,'当前状态不能执行此操作；维修中工单请由当前主修结束或实际接手后处理');
+      });
     }
   };
 }

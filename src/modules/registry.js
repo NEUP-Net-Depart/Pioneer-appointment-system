@@ -5,16 +5,11 @@ import { repairsManifest } from './repairs/manifest.js';
 import { dutyManifest } from './duty/manifest.js';
 import { attendanceManifest } from './attendance/manifest.js';
 import { rostersManifest } from './rosters/manifest.js';
-import { meetingsManifest } from './meetings/manifest.js';
 import { auditManifest } from './audit/manifest.js';
 import { filesManifest } from './files/manifest.js';
-import { meetingFixtureManifest } from './meetings/public.js';
-import { generateRoster as publicRosterGenerator } from './rosters/public.js';
-import { membershipIsActive } from './organization/public.js';
 import { workspacePermissions } from './authorization/workspace.js';
 
-export const manifests = [identityManifest, organizationManifest, authorizationManifest, repairsManifest, dutyManifest, attendanceManifest, rostersManifest, meetingsManifest, auditManifest, filesManifest];
-export const extensionContracts = { meetingFixtureManifest, publicRosterGenerator, membershipIsActive };
+export const manifests = [identityManifest, organizationManifest, authorizationManifest, repairsManifest, dutyManifest, attendanceManifest, rostersManifest, auditManifest, filesManifest];
 
 export function manifestHash(manifest) {
   const json = JSON.stringify(manifest);

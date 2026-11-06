@@ -5,21 +5,25 @@ export interface Appointment {
   date: string;
   timeSlot: string;
   status: string;
-  reception?: {
-    state: string;
-    receivedAt: string;
-    leftAt?: string | null;
-    ticket?: { number: number; date: string; campus: string } | null;
-    receivedBy?: string;
-    assignedTo?: string;
-    assignedMemberId?: string;
-    assignedToName?: string;
-    updatedAt?: string;
-  } | null;
-  registrationFlow?: string;
+  receivedAt?: string;
+  receivedBy?: string;
+  photoDeferredBy?: string;
+  canSupplement?: boolean;
+  parentAppointmentId?: string;
+  linkKind?: string;
+  customerHistory?: {
+    id: string;
+    date: string;
+    brand: string;
+    deviceModel: string;
+    faultType: string;
+    outcome: string;
+    repairNote: string;
+  }[];
   repairHistory?: {
     items: {
       id: string;
+      parentAppointmentId?: string;
       date: string;
       timeSlot: string;
       status: string;
@@ -27,31 +31,17 @@ export interface Appointment {
       repairNote?: string;
       assignedToName?: string;
     }[];
-    followups: {
-      id: string;
-      parentAppointmentId: string;
-      scheduledAppointmentId: string;
-      reason: string;
-      status: string;
+    events?: {
+      action: string;
+      occurredAt: string;
+      actorName?: string;
+      reason?: string;
+      before?: unknown;
+      after?: unknown;
     }[];
   } | null;
   canReceive?: boolean;
-  canDispatch?: boolean;
-  canReturn?: boolean;
   businessDate?: string;
-  queuePosition?: { position: number; total: number; dispatchPosition?: number } | null;
-  receptionPaused?: boolean;
-  receptionHistory?: {
-    id: string;
-    action: string;
-    reason: string;
-    occurredAt: string;
-    actorName: string;
-    ticketNumber?: number;
-    assigneeName?: string;
-    date?: string;
-    timeSlot?: string;
-  }[];
   frontPhotoId?: string;
   backPhotoId?: string;
   servicePaused?: boolean;
@@ -83,10 +73,8 @@ export interface Appointment {
   dellG15?: string;
   repairCode?: string;
   canStart?: boolean;
-  startBlockedReason?: string;
   canFinish?: boolean;
   canTransfer?: boolean;
-  canReadDetails?: boolean;
   canCorrect?: boolean;
   canRecoverCredential?: boolean;
   original?: {
@@ -107,23 +95,7 @@ export interface Verification {
   liquidMetal: string;
   note: string;
 }
-export interface Person {
-  identities?: { code: string; label: string }[];
-  signedInAt?: string;
-  scheduledRepair?: boolean;
-  group?: string;
-  memberId: string;
-  name: string;
-  account: string;
-  department: string;
-  state: string;
-  workload?: { started: number; completed: number };
-  canReceive: boolean;
-  reason: string;
-  scheduled: boolean;
-  leaveStatus?: string;
-  currentRepair?: { id: string; deviceModel: string };
-}
+
 export interface Home {
   searchCapabilities?: {
     identity: boolean;
@@ -144,10 +116,9 @@ export interface Home {
   capability: Record<string, boolean>;
   state: string;
   reason: string;
-  currentRepair: Appointment | null;
-  pendingRepair?: Appointment | null;
-  nextInQueue?: Appointment | null;
-  pendingSwapInvitations?: number;
+  repairs: Appointment[];
+  pendingPhotos: Appointment[];
+  pendingCoverInvitations?: number;
   presence?: { revision: number; campusId: string; state: string };
   event?: { id: string; revision: number; startsAt: string; endsAt: string };
   todayDuties: {
@@ -158,13 +129,5 @@ export interface Home {
     dutyType: string;
   }[];
   updatedAt: string;
-  overview?: {
-    notArrived: number;
-    total: number;
-    queued: number;
-    repairing: number;
-    available: number;
-  };
   appointments?: Appointment[];
-  staffPresence?: Person[];
 }

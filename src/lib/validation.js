@@ -51,7 +51,6 @@ export function onsiteBookingInput(input) {
     'social',
     'deviceType',
     'brand',
-    'deviceModel',
     'warranty',
     'date',
     'timeSlot',
@@ -144,117 +143,30 @@ export function serviceLocationInput(input) {
     location: stringField(input.location, '维修地点', 200)
   };
 }
-export function onsiteInput(input) {
-  const value = input || {};
-  const registrationFlow = value.registrationFlow || 'technician_intake';
-  if (!['technician_intake', 'frontdesk'].includes(registrationFlow)) fail(400, '登记入口不正确');
-  const data = {
-    studentId: stringField(value.studentId, 'studentId', 20, true),
-    name: stringField(value.name, 'name', 80, true),
-    college: stringField(value.college, 'college', 120),
-    campus: stringField(value.campus, 'campus', 20, true),
-    phone: stringField(value.phone, 'phone', 30),
-    social: stringField(value.social, 'social', 120),
-    deviceType: stringField(value.deviceType, 'deviceType', 80, true),
-    brand: stringField(value.brand, 'brand', 80, true),
-    deviceModel: stringField(value.deviceModel, 'deviceModel', 120, true),
-    serial: stringField(value.serial, 'serial', 120),
-    warranty: stringField(value.warranty, 'warranty', 20),
-    faultType: stringField(value.faultType, 'faultType', 80, true),
-    issue: stringField(value.issue, 'issue', 10000),
-    liquidDrop: stringField(value.liquidDrop, 'liquidDrop', 20),
-    date: stringField(value.date, 'date', 10, true),
-    timeSlot: normalizeTimeSlot(stringField(value.timeSlot, 'timeSlot', 40, true)),
-    note: stringField(value.note, 'note', 500),
-    registrationKey: stringField(
-      value.registrationKey || value.requestId,
-      'registrationKey',
-      128,
-      true
-    ),
-    registrationFlow
-  };
-  if (!/^\d{6,20}$/.test(data.studentId) || data.name.length < 2) fail(400, '学号或姓名格式不正确');
-  if (!CAMPUSES.includes(data.campus)) fail(400, '校区不正确');
-  if (!validDate(data.date) || !data.timeSlot) fail(400, '预约日期或时段不正确');
-  return data;
-}
+
 export function appointmentPatch(input) {
-  const patch = {};
-  if (input.assignedToName !== undefined) fail(400, '维修人员姓名由账号信息提供，不能修改');
-  if (input.action !== undefined && input.action !== 'correct') fail(400, '操作不正确');
-  if (input.startedAt !== undefined || input.completedAt !== undefined)
-    fail(400, '维修时间由系统记录');
-  if (input.id !== undefined || input.repairNumber !== undefined)
-    fail(400, '预约编号和历史维修编号不能修改');
-  for (const key of ['frontPhotoId', 'backPhotoId']) {
-    if (input[key] !== undefined) patch[key] = stringField(input[key], key, 80, true);
+  const accepted = ['status','outcome','repairNote','frontPhotoId','backPhotoId','revision','requestId','action','verification','photosCaptured','uploadTimedOut'];
+  if (!input || Object.keys(input).some(key=>!accepted.includes(key))) fail(400,'工单操作含不支持的字段');
+  if (!Number.isInteger(input.revision) || input.revision<0) fail(400,'缺少工单版本');
+  if (input.action!==undefined && input.action!=='correct') fail(400,'操作不正确');
+  const patch={};
+  if (input.status!==undefined) {
+    if (!['in_progress','completed','cancelled'].includes(input.status)) fail(400,'不支持的状态转换');
+    patch.status=input.status;
   }
-  if (input.outcome !== undefined) {
-    if (!repairOutcomes.includes(input.outcome)) fail(400, '维修结果不正确');
-    patch.outcome = input.outcome;
+  if (input.outcome!==undefined) {
+    if (!repairOutcomes.includes(input.outcome)) fail(400,'维修结果不正确');
+    patch.outcome=input.outcome;
   }
-  if (input.status !== undefined) {
-    if (!Object.hasOwn(statusLabels, input.status)) fail(400, '状态不正确');
-    patch.status = input.status;
-  }
-  if (input.status && input.status !== 'completed' && input.outcome !== undefined)
-    fail(400, '仅已完成工单可以填写维修结果');
-  if (input.expiresAt !== undefined) {
-    if (input.action !== 'correct' || input.status !== 'booked')
-      fail(400, '有效截止时间只能在管理员恢复为已预约时设置');
-    const value = stringField(input.expiresAt, '有效截止时间', 40, true);
-    if (
-      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value) ||
-      !validDate(value.slice(0, 10)) ||
-      !Number.isFinite(Date.parse(value))
-    )
-      fail(400, '有效截止时间格式不正确');
-    patch.expiresAt = new Date(value).toISOString();
-  }
-  const correctionReason =
-    input.correctionReason === undefined
-      ? ''
-      : stringField(input.correctionReason, '纠错原因', 300, true);
-  if (
-    input.correctionReason !== undefined &&
-    (input.action !== 'correct' || correctionReason.length < 8)
-  )
-    fail(400, '管理员纠错原因至少填写 8 字');
-  for (const [key, max] of [
-    ['assignedTo', 80],
-    ['repairNote', 3000]
-  ]) {
-    if (input[key] !== undefined) patch[key] = stringField(input[key], key, max);
-  }
-  if (input.revision !== undefined && (!Number.isInteger(input.revision) || input.revision < 0))
-    fail(400, '预约版本不正确');
+  for (const [key,max] of [['repairNote',1000],['frontPhotoId',80],['backPhotoId',80]])
+    if (input[key]!==undefined) patch[key]=stringField(input[key],key,max);
   let verification;
-  if (input.verification !== undefined) {
-    const value = input.verification;
-    if (!value || typeof value !== 'object') fail(400, '现场核验信息不正确');
-    verification = {
-      brand: stringField(value.brand, '设备厂商', 80, true),
-      model: stringField(value.model, '设备型号', 120, true),
-      warranty: value.warranty,
-      liquidMetal: value.liquidMetal,
-      note: stringField(value.note, '核验说明', 500)
-    };
-    if (
-      !['in_warranty', 'expired', 'unknown'].includes(value.warranty) ||
-      !['yes', 'no', 'unknown'].includes(value.liquidMetal)
-    )
-      fail(400, '请选择保修与液金情况');
+  if (input.verification) {
+    verification={brand:stringField(input.verification.brand,'品牌',80),model:stringField(input.verification.model,'型号',120),
+      warranty:stringField(input.verification.warranty,'保修',30),liquidMetal:stringField(input.verification.liquidMetal,'液金',30)};
   }
-  return {
-    patch,
-    revision: input.revision,
-    action: input.action,
-    correctionReason,
-    requestId: input.requestId || '',
-    reason: input.reason || correctionReason,
-    verification
-  };
+  return {patch,revision:input.revision,action:input.action,requestId:input.requestId,verification,
+    photosCaptured:input.photosCaptured,uploadTimedOut:input.uploadTimedOut};
 }
 export function appointmentQuery(input) {
   const query = {

@@ -25,10 +25,9 @@ function accessPredicate(rules, args, carryover = false) {
   return `EXISTS (SELECT 1 FROM json_each(?) AS access_rule
     WHERE json_extract(access_rule.value,'$.campus')=appointments.campus
       AND (json_type(access_rule.value,'$.memberId') IS NULL OR appointments.assigned_to IN
-        (SELECT account FROM staff_accounts WHERE member_id=json_extract(access_rule.value,'$.memberId'))
-        OR EXISTS(SELECT 1 FROM repair_receptions r WHERE r.appointment_id=appointments.id AND r.state='assigned' AND r.assigned_member_id=json_extract(access_rule.value,'$.memberId')))
+        (SELECT account FROM staff_accounts WHERE member_id=json_extract(access_rule.value,'$.memberId')))
       AND (json_type(access_rule.value,'$.date') IS NULL OR appointments.date=json_extract(access_rule.value,'$.date')
-        ${carryover ? "OR appointments.status='in_progress' OR (appointments.status='booked' AND EXISTS(SELECT 1 FROM repair_receptions r WHERE r.appointment_id=appointments.id AND r.state IN ('queued','assigned')))" : ''})
+        ${carryover ? "OR appointments.status='in_progress' OR (appointments.status='booked' AND appointments.received_at IS NOT NULL)" : ''})
       AND (json_type(access_rule.value,'$.objectIds') IS NULL OR appointments.id IN
         (SELECT value FROM json_each(json_extract(access_rule.value,'$.objectIds')))))`;
 }
@@ -50,8 +49,7 @@ export async function listContactCandidates(db, select, fromRow, query, scope, c
   }
   if (query.liveDate) {
     where.push(`(appointments.date=? OR appointments.status='in_progress' OR
-      (appointments.status='booked' AND EXISTS (SELECT 1 FROM repair_receptions r
-        WHERE r.appointment_id=appointments.id AND r.state IN ('queued','assigned'))))`);
+      (appointments.status='booked' AND appointments.received_at IS NOT NULL))`);
     args.push(query.liveDate);
   }
   if (token) {

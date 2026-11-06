@@ -1,9 +1,9 @@
 import { dateKey } from '../../shared/time.js';
 
-const roleNames = `(SELECT json_group_array(name) FROM (SELECT DISTINCT r.name FROM effective_member_roles mr JOIN roles r ON r.id=mr.role_id
+const roleNames = `(SELECT json_group_array(name) FROM (SELECT DISTINCT r.name FROM member_roles mr JOIN roles r ON r.id=mr.role_id
   WHERE mr.member_id=staff_accounts.member_id AND r.enabled=1 AND mr.effective_from<=? AND (mr.effective_to IS NULL OR mr.effective_to>?) ORDER BY r.level DESC,r.name)) AS role_names`;
 const select = (extra = '') => `SELECT staff_accounts.*,(SELECT status FROM members WHERE id=staff_accounts.member_id) AS member_status,
-  (SELECT json_group_array(campus) FROM staff_campus_grants WHERE account=staff_accounts.account) AS campuses
+  (SELECT json_group_array(campus) FROM staff_access_campuses WHERE account=staff_accounts.account) AS campuses
   ${extra}
   FROM staff_accounts`;
 export function publicUser(row) {
@@ -35,7 +35,7 @@ export function userRepository(db) {
       return (await db.prepare(`SELECT account,trim(name) AS name FROM staff_accounts
         WHERE status='enabled'
           AND EXISTS(SELECT 1 FROM members WHERE id=staff_accounts.member_id AND status='active')
-          AND EXISTS(SELECT 1 FROM staff_campus_grants WHERE account=staff_accounts.account AND campus=?)
+          AND EXISTS(SELECT 1 FROM staff_access_campuses WHERE account=staff_accounts.account AND campus=?)
           AND (instr(lower(name),?)>0 OR instr(lower(account),?)>0)
         ORDER BY name,account`).bind(campus,search,search).all()).results;
     },
@@ -43,7 +43,7 @@ export function userRepository(db) {
       const day = dateKey();
       return (await db.prepare(`${select(`,${roleNames},
         (SELECT COUNT(*) FROM appointments WHERE campus IN (SELECT value FROM json_each(?)) AND assigned_to=staff_accounts.account AND
-          (status='in_progress' OR (status='completed' AND outcome IN ('repaired','unrepaired','not_needed','legacy_unknown')))) AS workload`)}
+          status IN ('in_progress','completed')) AS workload`)}
         ORDER BY role DESC,name`).bind(day,day,JSON.stringify(campuses)).all()).results.map(publicUser);
     },
     async update(target, patch, { selfPassword = false, auditRecord } = {}) {

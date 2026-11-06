@@ -1,3 +1,4 @@
+import { identityPermissions } from '../../modules/authorization/public.js';
 import { fail } from '../../lib/http.js';
 import { dateKey, nowIso, validDate } from '../../platform/time.js';
 import { publicResourceRef, stableJson } from '../../platform/contracts.js';
@@ -21,10 +22,12 @@ export function rolesDomain({
   async function permissions(actor) {
     await requirePermission(actor, 'roles.manage');
     return {
-      items: (await repository.permissionDefinitions()).map((item) => ({
-        ...item,
-        delegable: actor.role === 'superadmin' || businessPermissions.has(item.code)
-      })),
+      items: (await repository.permissionDefinitions())
+        .filter((item) => !identityPermissions.includes(item.code))
+        .map((item) => ({
+          ...item,
+          delegable: actor.role === 'superadmin' || businessPermissions.has(item.code)
+        })),
       conditionProviders: platform.authorizer.conditionDefinitions(),
       contractVersion: 'staff-platform.v1'
     };
@@ -85,7 +88,9 @@ export function rolesDomain({
     if (level < 1 || level >= (actor.role === 'superadmin' ? 4 : 3))
       fail(403, '角色等级超出可管理范围');
     const definitions = Object.fromEntries(
-      (await repository.permissionDefinitions()).map((item) => [item.code, item])
+      (await repository.permissionDefinitions())
+        .filter((item) => !identityPermissions.includes(item.code))
+        .map((item) => [item.code, item])
     );
     if (input.grants !== undefined && !Array.isArray(input.grants)) fail(400, '权限集合必须是数组');
     if (
@@ -95,7 +100,8 @@ export function rolesDomain({
       fail(400, '角色不能重复绑定同一权限');
     for (const grant of input.grants || []) {
       if (!grant || typeof grant !== 'object') fail(400, '权限配置不正确');
-      if (!definitions[grant.permissionCode]) fail(400, `未知权限：${grant.permissionCode || ''}`);
+      if (identityPermissions.includes(grant.permissionCode) || !definitions[grant.permissionCode])
+        fail(400, `未知权限：${grant.permissionCode || ''}`);
       validateGrant(definitions[grant.permissionCode], grant, actor, platform.authorizer);
     }
     if (actor.role !== 'superadmin')
@@ -137,9 +143,12 @@ export function rolesDomain({
       const codes = input.grants.map((grant) => grant?.permissionCode);
       if (new Set(codes).size !== codes.length) fail(400, '角色不能重复绑定同一权限');
       const definitions = Object.fromEntries(
-        (await repository.permissionDefinitions()).map((item) => [item.code, item])
+        (await repository.permissionDefinitions())
+          .filter((item) => !identityPermissions.includes(item.code))
+          .map((item) => [item.code, item])
       );
-      if (codes.some((code) => !definitions[code])) fail(400, '角色包含未知权限');
+      if (codes.some((code) => identityPermissions.includes(code) || !definitions[code]))
+        fail(400, '角色包含未知权限');
       for (const grant of input.grants)
         validateGrant(definitions[grant.permissionCode], grant, actor, platform.authorizer);
     }
@@ -233,9 +242,6 @@ export function rolesDomain({
         fail(400, '角色有效期不正确');
     }
     const existing = await repository.roleBindings(memberId);
-    const automatic = (await repository.grants(memberId)).filter(
-      (grant) => grant.source === 'organization'
-    );
     const editable = (binding) => {
       try {
         delegableRole(context, roles[binding.roleId], binding, target);
@@ -258,16 +264,6 @@ export function rolesDomain({
             (key) => stableJson(before[key] ?? null) === stableJson(binding[key] ?? null)
           );
         if (unchanged) return before;
-        if (
-          automatic.some(
-            (grant) =>
-              grant.roleId === binding.roleId &&
-              grant.binding.effectiveFrom <= binding.effectiveFrom &&
-              (!grant.binding.effectiveTo ||
-                (binding.effectiveTo && binding.effectiveTo <= grant.binding.effectiveTo))
-          )
-        )
-          fail(400, '该权限已由组织任职自动获得，无需重复授权');
         const reason = inputString(binding, 'reason', 300, true);
         if (
           !binding.effectiveFrom ||

@@ -5,7 +5,6 @@ import { nowIso } from '../../shared/time.js';
 import { hashPassword } from '../lib/passwords.js';
 import { issueAccessToken, hashAccessToken } from '../lib/access-tokens.js';
 import { requireGrantScope } from './permissions.js';
-import { createAuthorizer } from '../modules/authorization/public.js';
 import { businessIdentityEligible } from '../modules/identity/public.js';
 import { stableJson } from '../platform/contracts.js';
 import { tokenDigest } from './staff-platform/shared.js';
@@ -58,7 +57,7 @@ export function activationService(repository, users, staff, members) {
     const activeRoles = roles.filter(role => role.enabled && roleIds.has(role.id));
     const campuses = invitation?.authorizedCampuses || [];
     const roleVersions = roles.map(({ id, revision, enabled }) => ({ id, revision, enabled }));
-    const eligible = (selected) => businessIdentityEligible(createAuthorizer(), {
+    const eligible = (selected) => businessIdentityEligible({
       memberId: member.id, status: member.status, campuses: selected, grants,
       authorizationDate: context.authorizationDate || context.businessDate,
       memberships: snapshot.data.memberships.map(row => ({ departmentId: row.department_id, effectiveFrom: row.effective_from, effectiveTo: row.effective_to, assignmentType: row.assignment_type, isPrimary: !!row.is_primary }))
@@ -99,7 +98,7 @@ export function activationService(repository, users, staff, members) {
       actor = await authorized(actor);
       const { context, member, snapshot, roleVersions, view, eligible } = await memberState(id, actor);
       if (input.stateToken !== view.stateToken) fail(409, '成员授权或激活资格已变化，请刷新后重试');
-      if (!view.canConfigure) fail(409, '请先配置有效任职、交流参与或特殊授权');
+      if (!view.canConfigure) fail(409, '请确认成员有效且已设置授权校区');
       if (
         !Array.isArray(input.authorizedCampuses) ||
         !input.authorizedCampuses.length ||

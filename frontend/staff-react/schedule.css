@@ -1,0 +1,72 @@
+.schedule-page {
+  max-width: 1100px;
+  margin: auto;
+}
+.schedule-filters,
+.schedule-window,
+.schedule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+}
+.schedule-page label {
+  display: grid;
+  gap: 6px;
+  min-width: 120px;
+}
+.schedule-card {
+  padding: 20px;
+  margin: 20px 0;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+}
+.schedule-card h2 {
+  margin-top: 0;
+}
+.schedule-card article {
+  padding: 16px 0;
+  border-top: 1px solid var(--border, #ddd);
+}
+.schedule-page fieldset {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+.schedule-window {
+  margin: 12px 0;
+}
+.schedule-page input,
+.schedule-page select {
+  min-height: 40px;
+  max-width: 100%;
+}
+.schedule-page button {
+  min-height: 40px;
+}
+.schedule-page details {
+  margin: 16px 0;
+}
+.schedule-page summary {
+  cursor: pointer;
+}
+.schedule-history pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.schedule-page li {
+  margin: 10px 0;
+}
+@media (max-width: 600px) {
+  .schedule-card {
+    padding: 14px;
+  }
+  .schedule-window label {
+    flex: 1 1 40%;
+  }
+  .schedule-window button {
+    flex: 0 0 auto;
+  }
+}

@@ -7,18 +7,18 @@ export const appointmentTransitions = {
   booked: ['in_progress', 'cancelled', 'expired'], in_progress: ['completed']
 };
 export const statusLabels = {
-  booked: '已预约', in_progress: '维修中', completed: '已完成', cancelled: '已取消', expired: '已逾期'
+  booked: '待接单', in_progress: '维修中', completed: '服务已结束', cancelled: '已取消', expired: '已逾期'
 };
 export const statusClass = {
   booked: 'status-pending', in_progress: 'status-progress', completed: 'status-completed',
   cancelled: 'status-cancelled', expired: 'status-expired'
 };
 export const terminalStatuses = ['completed', 'cancelled', 'expired'];
-export const expirationMessage = '预约时段已结束，本次预约未记录维修开始。如仍需维修，请重新预约或联系工作人员。';
+export const expirationMessage = '预约当天未到场，本次预约已过期。如仍需维修，请重新预约或现场登记。';
 export const endTimeLabels = { completed: '完成时间', cancelled: '取消时间', expired: '逾期处理时间' };
-export const repairOutcomes = ['repaired', 'unrepaired', 'not_needed'];
+export const repairOutcomes = ['repaired', 'partially_repaired', 'unrepaired', 'not_needed'];
 export const outcomeLabels = {
-  repaired: '修复成功', unrepaired: '未修复', not_needed: '无需维修',
+  repaired: '已解决', partially_repaired: '部分解决', unrepaired: '未解决', not_needed: '无需维修', legacy_unrepaired: '历史未修复（未细分）',
   legacy_unknown: '历史未分类'
 };
 export function normalizeTimeSlot(value) {

@@ -3,12 +3,9 @@ import { dateKey } from '../../platform/time.js';
 import { requestId, publicResourceRef } from '../../platform/contracts.js';
 import { workspacePermissions } from '../../modules/authorization/workspace.js';
 import { staffIdentities } from '../../../shared/staff-identities.js';
-import { collectionState } from '../../modules/rosters/workflow.js';
 import { hashPayload } from './shared.js';
 
-export function contextDomain({ repository, platform, calendarClock }) {
-  const collectionStatus = (task) => collectionState(task, calendarClock().getTime());
-
+export function contextDomain({ repository, platform }) {
   async function contextFor(actor, businessDate = dateKey()) {
     const context = await platform.authContext(actor, { businessDate });
     if (
@@ -96,26 +93,11 @@ export function contextDomain({ repository, platform, calendarClock }) {
     }
   }
 
-  async function rosterWrite(write) {
-    try {
-      return await write();
-    } catch (error) {
-      if (
-        /CHECK constraint failed|UNIQUE constraint failed: roster_command_receipts/.test(
-          String(error.message)
-        )
-      )
-        fail(409, '任务、权限或班表已变化，请重新读取并核对；你的修改可以保留后重试');
-      throw error;
-    }
-  }
   return {
-    collectionStatus,
     contextFor,
     scopedActor,
     evaluate,
     requirePermission,
-    withReceipt,
-    rosterWrite
+    withReceipt
   };
 }

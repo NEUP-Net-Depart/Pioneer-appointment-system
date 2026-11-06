@@ -11,6 +11,7 @@ type Summary = {
   cancelled: number;
   expired: number;
   repairSuccessRate: number;
+  linkedRepairs: number;
   completionRate: number;
   daily: Record<string, { total: number; completed: number }>;
   faults: Record<string, number>;
@@ -80,6 +81,7 @@ export function Statistics() {
     ? [
         ['预约总数', data.total],
         ['已完成维修', data.completed],
+        ['关联返修', data.linkedRepairs],
         ['修复成功率', `${data.repairSuccessRate}%`],
         ['已取消', data.cancelled],
         ['已逾期', data.expired]

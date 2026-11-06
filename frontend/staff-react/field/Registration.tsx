@@ -1,15 +1,18 @@
+import type { Appointment } from './types';
 import React, { useRef, useState } from 'react';
 import { drawSignature, validSignature } from '../../../shared/signature.js';
 import { api, Modal, Notice } from './ui';
 
 export function Registration({
   campus,
-  frontdesk,
+  parent,
+  linkKind,
   onDone,
   onClose
 }: {
   campus: string;
-  frontdesk: boolean;
+  parent?: Appointment;
+  linkKind?: string;
   onDone: (id: string, accessToken?: string) => void;
   onClose: () => void;
 }) {
@@ -21,7 +24,26 @@ export function Registration({
     deviceType: '笔记本电脑',
     warranty: '不清楚',
     liquidDrop: '不清楚',
-    faultType: '系统问题'
+    faultType: '系统问题',
+    ...(parent
+      ? Object.fromEntries(
+          [
+            'name',
+            'studentId',
+            'social',
+            'phone',
+            'email',
+            'contactType',
+            'contactValue',
+            'brand',
+            'deviceModel',
+            'deviceType',
+            'faultType',
+            'issue',
+            'warranty'
+          ].map((key) => [key, parent[key] || ''])
+        )
+      : {})
   });
   const strokes = useRef<number[][][]>([]),
     pointer = useRef<number | null>(null),
@@ -47,10 +69,10 @@ export function Registration({
         method: 'POST',
         body: {
           ...form,
+          ...(parent ? { parentAppointmentId: parent.id, linkKind, sameDeviceAndFault: true } : {}),
           agreement: true,
           signature: strokes.current,
-          requestId: requestId.current,
-          registrationFlow: frontdesk ? 'frontdesk' : 'technician_intake'
+          requestId: requestId.current
         }
       });
       onDone(item.id, item.accessToken);
@@ -97,7 +119,7 @@ export function Registration({
               <label key={key}>
                 {label}
                 <input
-                  required
+                  required={key !== 'deviceModel'}
                   maxLength={Number(max)}
                   value={form[key] || ''}
                   onChange={(e) => setForm({ ...form, [key]: e.target.value })}
