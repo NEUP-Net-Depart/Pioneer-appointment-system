@@ -2,7 +2,7 @@
 
 业务基线为 `docs/requirements.md` v1.2。
 
-成员通过 `GET/PUT /api/me/availability` 保存通常时间（`weekStart: ""`）或指定周一的例外。`windows` 为 `weekday`（1–7）、`campusId`、`startAt`、`endAt` 数组；空数组表示不可用。`useUsual: true` 删除该周例外。响应明确区分 `usual` 与 `exception`；不生成每周确认记录。
+成员通过 `GET/PUT /api/me/availability` 保存通常时间（`weekStart: ""`）或指定周一的例外。`windows` 为 `weekday`（1–7）、`campusId`、`startAt`、`endAt` 数组；空数组表示不可用。`useUsual: true` 将该周例外的 `windows` 保存为 JSON `null`，保留记录并递增 `revision`；再次修改该周时继续携带该版本。响应的 `source` 与 `effectiveWindows` 表示实际生效的时间；`exception` 保留已清除例外的版本，不生成每周确认记录。
 
 `GET/PUT /api/rosters/week` 按 `weekStart/campusId/dutyType` 读取及发布班表。普通工作人员只读本人班次；负责人读取授权校区全表与该校区可用时间，校区边界与成员管理一致。编辑携带 `revision`、`requestId` 和 `assignments`；无问卷、人数或维修资格前置。成员必须有效且具有该校区访问范围，同一人的班次不能时间重叠。发布即生效，修改保留被替换的历史班次及审计。
 

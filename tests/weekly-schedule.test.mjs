@@ -23,9 +23,9 @@ test('usual availability carries without weekly confirmation; exceptions apply t
  await Promise.all([staff.saveAvailability(one,input),staff.saveAvailability(one,input)]);
  assert.equal((await staff.availability(one,{dutyType,weekStart})).source,'exception');
  assert.deepEqual((await staff.availability(one,{dutyType,weekStart:'2026-11-09'})).effectiveWindows,windows);
- await staff.saveAvailability(one,{dutyType,weekStart,revision:0,useUsual:true,requestId:request()});
- assert.equal((await staff.availability(one,{dutyType,weekStart})).updatedThisWeek,false);
- assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM member_availability').get().n,1);
+ const restored=await staff.saveAvailability(one,{dutyType,weekStart,revision:0,useUsual:true,requestId:request()});
+ assert.equal(restored.updatedThisWeek,false);
+ assert.equal(restored.exception.revision,1);
  }finally{db.sqlite.close();}
 });
 test('publish without weekly questionnaires, direct leave, recipient takeover, scoped edits and revision conflicts',async()=>{

@@ -7,7 +7,7 @@ export function statsRepository(db) {
       const where=campusScope+(day ? ' AND date=?' : start ? ' AND date>=?' : '');
       const args=[...authorizedCampuses,...(day ? [day] : start ? [start] : [])];
       const sql = [
-        `SELECT COUNT(*) AS total,COUNT(CASE WHEN parent_appointment_id IS NOT NULL THEN 1 END) AS linkedRepairs,COUNT(CASE WHEN ${finished} THEN 1 END) AS completed,
+        `SELECT COUNT(*) AS total,COUNT(CASE WHEN parent_appointment_id IS NOT NULL AND status NOT IN ('cancelled','expired') AND (received_at IS NOT NULL OR started_at IS NOT NULL) THEN 1 END) AS linkedRepairs,COUNT(CASE WHEN ${finished} THEN 1 END) AS completed,
           COUNT(CASE WHEN status='cancelled' THEN 1 END) AS cancelled,
           COUNT(CASE WHEN status='expired' THEN 1 END) AS expired,
           COUNT(CASE WHEN ${classified} THEN 1 END) AS classified,

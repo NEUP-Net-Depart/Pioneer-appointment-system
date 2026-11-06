@@ -471,7 +471,7 @@ export function Schedule({ user }) {
                 <button disabled={busy || !!editing} onClick={() => setEditing('exception')}>
                   只修改本周
                 </button>
-                {data.availability.exception && (
+                {data.availability.source === 'exception' && (
                   <button
                     disabled={busy || !!editing}
                     onClick={() =>

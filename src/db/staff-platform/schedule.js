@@ -203,26 +203,20 @@ export function scheduleRepository({ db, commandAuthorization }) {
       'COALESCE((SELECT revision FROM member_availability WHERE member_id=? AND duty_type=? AND week_start=?),-1)=?',
       [memberId, type, week, input.revision],
       (gate, marker) => [
-        input.useUsual
-          ? db
-              .prepare(
-                `DELETE FROM member_availability WHERE member_id=? AND duty_type=? AND week_start=? AND ${gate}`
-              )
-              .bind(memberId, type, week, marker)
-          : db
-              .prepare(
-                `INSERT INTO member_availability(member_id,duty_type,week_start,windows,revision,updated_at) SELECT ?,?,?,?,?,? WHERE ${gate}
+        db
+          .prepare(
+            `INSERT INTO member_availability(member_id,duty_type,week_start,windows,revision,updated_at) SELECT ?,?,?,?,?,? WHERE ${gate}
         ON CONFLICT(member_id,duty_type,week_start) DO UPDATE SET windows=excluded.windows,revision=excluded.revision,updated_at=excluded.updated_at`
-              )
-              .bind(
-                memberId,
-                type,
-                week,
-                JSON.stringify(input.windows),
-                input.revision + 1,
-                record.at,
-                marker
-              )
+          )
+          .bind(
+            memberId,
+            type,
+            week,
+            JSON.stringify(input.windows),
+            input.revision + 1,
+            record.at,
+            marker
+          )
       ]
     );
   }

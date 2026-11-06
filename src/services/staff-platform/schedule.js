@@ -85,9 +85,9 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
       weekStart,
       usual,
       exception,
-      effectiveWindows: (exception || usual).windows,
-      source: exception ? 'exception' : 'usual',
-      updatedThisWeek: !!exception
+      effectiveWindows: exception?.windows ?? usual.windows,
+      source: exception?.windows ? 'exception' : 'usual',
+      updatedThisWeek: !!exception?.windows
     };
   }
   async function saveAvailability(actor, input) {
@@ -96,7 +96,11 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
       period = input.weekStart ? week(input.weekStart) : '';
     if (!Number.isInteger(input.revision) || input.revision < -1 || (input.useUsual && !period))
       fail(400, '可用时间版本或范围不正确');
-    const normalized = { ...input, windows: input.useUsual ? [] : windows(context, input.windows) };
+    // JSON null restores usual availability while retaining the exception's revision.
+    const normalized = {
+      ...input,
+      windows: input.useUsual ? null : windows(context, input.windows)
+    };
     const before =
       (await repository.availabilityRows([context.actor.memberId], dutyType, period)).find(
         (row) => row.weekStart === period
@@ -146,7 +150,10 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
       canManage,
       people: people.map((person) => {
         const exception = values.find(
-            (row) => row.memberId === person.memberId && row.weekStart === weekStart
+            (row) =>
+              row.memberId === person.memberId &&
+              row.weekStart === weekStart &&
+              row.windows !== null
           ),
           usual = values.find((row) => row.memberId === person.memberId && !row.weekStart);
         return {
