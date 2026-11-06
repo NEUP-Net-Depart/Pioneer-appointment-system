@@ -372,19 +372,12 @@ export function attendanceDomain({
       campusId,
       q: inputString(query, 'q', 80)
     });
-    const events = result.events.filter((item) =>
-      (context.grants || []).some((grant) =>
-        (grant.scope?.departmentIds || grant.scope?.departments || [undefined]).some(
-          (departmentId) =>
-            platform.authorizer.evaluate(
-              context.actor,
-              'attendance.correct',
-              { id: item.id, campusId: item.campusId, departmentId },
-              context,
-              [grant]
-            ).allowed
-        )
-      )
+    const events = result.events.filter(
+      (item) =>
+        evaluate(context, 'attendance.correct', {
+          id: item.id,
+          campusId: item.campusId
+        }).allowed
     );
     const members = result.members.filter((member) =>
       events.some(
