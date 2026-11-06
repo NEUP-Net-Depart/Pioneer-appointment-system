@@ -77,16 +77,14 @@ export function Statistics() {
     return () => controller.abort();
   }, [active, range, day, revision, label]);
   const data = snapshot?.data;
-  const metrics = data
-    ? [
-        ['预约总数', data.total],
-        ['已完成维修', data.completed],
-        ['关联返修', data.linkedRepairs],
-        ['修复成功率', `${data.repairSuccessRate}%`],
-        ['已取消', data.cancelled],
-        ['已逾期', data.expired]
-      ]
-    : ['预约总数', '已完成维修', '修复成功率', '已取消', '已逾期'].map((name) => [name, '—']);
+  const metrics = [
+    ['预约总数', data?.total ?? '—'],
+    ['已完成维修', data?.completed ?? '—'],
+    ['关联返修', data?.linkedRepairs ?? '—'],
+    ['修复成功率', data ? `${data.repairSuccessRate}%` : '—'],
+    ['已取消', data?.cancelled ?? '—'],
+    ['已逾期', data?.expired ?? '—']
+  ];
   return (
     <section className="report-workspace">
       <WorkspaceHeader group="现场工作" title="统计分析">

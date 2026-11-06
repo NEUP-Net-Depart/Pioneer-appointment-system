@@ -729,12 +729,6 @@
   .field-app .capacity-editor .workspace-section-nav button:last-child:nth-child(3) {
     grid-column: 1 / -1;
   }
-  .capacity-editor .workspace-section-nav {
-    display: flex;
-  }
-  .capacity-editor .workspace-section-nav button {
-    flex: 1;
-  }
   .capacity-context {
     align-items: start;
   }

@@ -72,7 +72,7 @@ export function observeDataMotion(root, { enterInitial = false } = {}) {
       );
   const sizeObserver = new ResizeObserver(() => {
     // Native disclosure/grid transitions already interpolate their own layout.
-    // Do not rescan a long list on each frame or start a second height tween.
+    // Do not rescan a long list on each frame or start a second layout effect.
     if (nativeLayoutRunning()) return;
     if (!running.size) schedule();
     else resizePending = true;
@@ -148,14 +148,14 @@ export function observeDataMotion(root, { enterInitial = false } = {}) {
       previousValues = readValues(previous);
       return;
     }
-    // Measure natural layout, never an intermediate animated height/transform.
+    // Measure natural layout, never an intermediate row transform.
     const interrupted = new Map();
     for (const [node, animation] of running) {
       // Unrelated responses must not cut a row reveal or text fade short.
       // Only layout effects need to be removed to read natural geometry.
       const layout =
         !node.matches(values) &&
-        animation.effect.getKeyframes().some((frame) => 'height' in frame || 'transform' in frame);
+        animation.effect.getKeyframes().some((frame) => 'transform' in frame);
       if (!node.isConnected || layout) {
         if (node.isConnected) interrupted.set(node, node.getBoundingClientRect());
         animation.cancel();
@@ -195,39 +195,6 @@ export function observeDataMotion(root, { enterInitial = false } = {}) {
     // Bound the work for dense rosters and long account lists.
     const animations = [];
     const allocated = new Set(running.keys());
-    // Only an ancestor whose height really changes owns the size transition.
-    // A static wrapper (including the page root) must not suppress inner growth.
-    const resizing = new Set(
-      [...next]
-        .filter(([node, target]) => {
-          const before = interrupted.get(node) || previous.get(node);
-          return (
-            before &&
-            contentSurface(node) &&
-            node.matches(`${regions},${containers}`) &&
-            Math.abs(before.width - target.width) <= 1 &&
-            Math.abs(before.height - target.height) > 1 &&
-            before.height > 0 &&
-            target.height > 0 &&
-            target.bottom >= 0 &&
-            target.top <= innerHeight &&
-            !node.contains(document.activeElement) &&
-            !node.querySelector(
-              'canvas,video,input:focus,textarea:focus,select:focus,[contenteditable="true"]:focus'
-            )
-          );
-        })
-        .map(([node]) => node)
-    );
-    const resizingParent = (node) => {
-      for (
-        let parent = node.parentElement;
-        parent && root.contains(parent);
-        parent = parent.parentElement
-      )
-        if (resizing.has(parent)) return true;
-      return false;
-    };
     let arrivals = 0;
     const queue = (node, frames, preset = dataMotionPresets.layout, stagger = false) => {
       if (!allocated.has(node) && allocated.size >= maxAnimations) return;
@@ -297,20 +264,6 @@ export function observeDataMotion(root, { enterInitial = false } = {}) {
         // Never fly cards across columns or replay an old offscreen position.
         if (!node.closest('[data-motion-list="reveal"]') && Math.abs(x) <= 1 && Math.abs(y) > 0.5)
           queue(node, [{ transform: `translateY(${y}px)` }, { transform: 'none' }]);
-      } else if (resizing.has(node)) {
-        if (resizingParent(node)) continue;
-        const style = getComputedStyle(node);
-        const inset =
-          style.boxSizing === 'border-box'
-            ? 0
-            : ['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth'].reduce(
-                (sum, key) => sum + (parseFloat(style[key]) || 0),
-                0
-              );
-        queue(node, [
-          { height: `${Math.max(0, before.height - inset)}px`, overflow: 'clip' },
-          { height: `${Math.max(0, target.height - inset)}px`, overflow: 'clip' }
-        ]);
       }
     }
     for (const args of animations) animate(...args);
