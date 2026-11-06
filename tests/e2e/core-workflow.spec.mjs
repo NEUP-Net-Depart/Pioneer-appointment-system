@@ -36,6 +36,10 @@ test('ordinary network staff receive photos, finish and correct an onsite repair
  const customer=await page.request.get(`/api/appointments/${created.id}`,{headers:{'X-Appointment-Token':created.accessToken}});
  expect(customer.ok()).toBeTruthy();const visible=await customer.json();expect(visible.outcome).toBe('repaired');expect(JSON.stringify(visible)).not.toMatch(/内部|repairNote|actorAccount|before_json/);
  const home=await api(page,'/api/field/home',null,'GET');expect(home.presence).toBeFalsy();expect(home.todayDuties).toHaveLength(0);
+ await page.goto('/#'+new URLSearchParams({appointment:created.id,access:created.accessToken}));
+ const liquidMetal=page.locator('#detail-information dl > div').filter({has:page.getByText('液金散热',{exact:true})});
+ await expect(liquidMetal.locator('dd')).toHaveText('不清楚');
+ await expect(page.locator('#detail-information')).not.toContainText('unknown');
 });
 
 test('weekly availability, publishing, direct leave and recipient confirmation work in the unified page',async({page,context},testInfo)=>{
