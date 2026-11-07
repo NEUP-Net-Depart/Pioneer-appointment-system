@@ -1,8 +1,6 @@
-import { leadershipPositions } from '../../../shared/staff-organization.js';
 import { fail } from '../../lib/http.js';
 import { addDays, dateKey, weekRange } from '../../platform/time.js';
-import { attendanceFactContext } from '../../modules/attendance/fact-context.js';
-import { staffIdentities } from '../../../shared/staff-identities.js';
+import { calculateVolunteerReport } from '../../modules/attendance/volunteer-report.js';
 
 const campusNames = { 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' };
 
@@ -85,141 +83,67 @@ export function attendanceReportingDomain({ repository, platform, contextFor, ev
       repository.weeklyAttendanceData(start, end),
       repository.serviceDays(start, end)
     ]);
-    const members = new Map(data.members.map((member) => [member.memberId, member]));
-    const pausedKeys = new Set(
-      paused.filter((item) => item.paused).map((item) => `${item.businessDate}:${item.campusId}`)
+    const facts = await repository.rosterMemberFacts(
+      data.members.map((row) => row.memberId),
+      start,
+      end
     );
-    const byWeek = new Map(weeks.map((week) => [week, new Map()]));
-    const ensure = (week, campusId, memberId, record = null, department = null) => {
-      const member = members.get(memberId);
-      const key = `${campusId}:${memberId}`;
-      const group = byWeek.get(week);
-      if (!group.has(key))
-        group.set(key, {
-          memberId,
-          campusId,
-          campus: campusNames[campusId],
-          name: record?.identitySnapshot?.name || member?.name || record?.memberName || '',
-          studentId: record?.identitySnapshot?.studentId || member?.studentId || '',
-          college: member?.college || '',
-          major: member?.major || '',
-          department: record?.primaryDepartmentNameSnapshot || department?.departmentName || '',
-          dates: new Set(),
-          leader: false
-        });
-      return group.get(key);
-    };
-    for (const record of data.records) {
-      const week = weekRange(record.businessDate).start;
-      if (
-        !byWeek.has(week) ||
-        record.businessDate > today ||
-        record.businessDate > addDays(week, 3) ||
-        pausedKeys.has(`${record.businessDate}:${record.campusId}`) ||
-        !canExport(
-          context,
-          record.campusId,
-          record.memberId,
-          record.primaryDepartmentIdSnapshot,
-          query.campusId
-        )
-      )
-        continue;
-      const row = ensure(week, record.campusId, record.memberId, record);
-      row.dates.add(record.businessDate);
-    }
-    if (settings.mergeLeaders)
-      for (const week of weeks) {
-        const facts = await repository.rosterMemberFacts([...members.keys()], week);
-        for (const fact of facts) {
-          if (!fact.active) continue;
-          const eligible = [];
-          for (const campus of fact.campuses || []) {
-            const campusId = { 南湖: 'campus-nanhu', 浑南: 'campus-hunnan' }[campus] || campus;
-            if (!campusNames[campusId]) continue;
-            for (let day = 0; day < 4; day++) {
-              const date = addDays(week, day);
-              if (date > today || pausedKeys.has(`${date}:${campusId}`)) continue;
-              const identityContext = attendanceFactContext(fact, date);
-              const department = identityContext.memberships.find((item) => item.isPrimary);
-              if (
-                !canExport(
-                  context,
-                  campusId,
-                  fact.memberId,
-                  department?.departmentId,
-                  query.campusId
-                ) ||
-                !staffIdentities(identityContext, platform.authorizer, {
-                  campusId,
-                  departmentId: department?.departmentId
-                }).some((item) => leadershipPositions.includes(item.code))
-              )
-                continue;
-              eligible.push({ campusId, department });
-              break;
-            }
-          }
-          if (!eligible.length) continue;
-          const assignmentCampus = fact.assignments
-            ?.filter(
-              (item) =>
-                item.businessDate >= week &&
-                item.businessDate <= addDays(week, 3) &&
-                !pausedKeys.has(`${item.businessDate}:${item.campusId}`)
-            )
-            .sort((a, b) => a.businessDate.localeCompare(b.businessDate))[0]?.campusId;
-          const attendanceCampus = data.records.find(
-            (item) =>
-              item.memberId === fact.memberId &&
-              weekRange(item.businessDate).start === week &&
-              item.businessDate <= addDays(week, 3) &&
-              !pausedKeys.has(`${item.businessDate}:${item.campusId}`)
-          )?.campusId;
-          const homeCampus = members.get(fact.memberId)?.homeCampusId;
-          const chosen =
-            eligible.find((item) => item.campusId === assignmentCampus) ||
-            eligible.find((item) => item.campusId === attendanceCampus) ||
-            eligible.find((item) => item.campusId === homeCampus) ||
-            eligible.sort((a, b) => a.campusId.localeCompare(b.campusId))[0];
-          for (const campusId of Object.keys(campusNames))
-            byWeek.get(week).delete(`${campusId}:${fact.memberId}`);
-          ensure(week, chosen.campusId, fact.memberId, null, chosen.department).leader = true;
-        }
-      }
-    return {
+    return calculateVolunteerReport({
       month,
+      weeks,
       settings,
-      weeks: weeks.map((weekStart, index) => ({
-        weekStart,
-        weekEnd: addDays(weekStart, 3),
-        weekNumber: index + 1,
-        campuses: Object.entries(campusNames)
-          .filter(([id]) => !query.campusId || query.campusId === id)
-          .filter(([id]) => evaluate(context, 'attendance.export', { campusId: id }).allowed)
-          .map(([campusId, campus]) => ({
-            campusId,
-            campus,
-            rows: [...byWeek.get(weekStart).values()]
-              .filter((row) => row.campusId === campusId)
-              .map((row) => ({
-                ...row,
-                dates: [...row.dates].sort(),
-                count:
-                  row.leader || settings.countMode === 'weekly'
-                    ? Number(row.leader || row.dates.size > 0)
-                    : row.dates.size,
-                hours:
-                  (row.leader || settings.countMode === 'weekly'
-                    ? Number(row.leader || row.dates.size > 0)
-                    : row.dates.size) * settings.hoursPerCount
-              }))
-              .sort(
-                (a, b) =>
-                  a.name.localeCompare(b.name, 'zh-CN') || a.studentId.localeCompare(b.studentId)
-              )
-          }))
-      }))
+      today,
+      data,
+      facts,
+      paused,
+      query,
+      authorizer: platform.authorizer,
+      canRead: (campusId, memberId, departmentId) =>
+        canExport(context, campusId, memberId, departmentId, query.campusId)
+    });
+  }
+
+  async function volunteerSummary(actor) {
+    const context = await contextFor(actor),
+      memberId = context.actor.memberId,
+      today = dateKey();
+    const settings = await repository.attendanceReportSettings();
+    const first = (await repository.ownVolunteerStart(memberId)) || today;
+    const start = weekRange(first).start,
+      end = weekRange(today).end,
+      weeks = [];
+    for (let week = start; week <= today; week = addDays(week, 7)) weeks.push(week);
+    const [data, facts, paused] = await Promise.all([
+      repository.weeklyAttendanceData(start, end, memberId),
+      repository.rosterMemberFacts([memberId], start, end),
+      repository.serviceDays(start, end)
+    ]);
+    const result = calculateVolunteerReport({
+      month: today.slice(0, 7),
+      weeks,
+      settings,
+      today,
+      data,
+      facts,
+      paused,
+      authorizer: platform.authorizer,
+      canRead: (campusId, id) =>
+        Object.hasOwn(campusNames, campusId) &&
+        (!id || id === memberId) &&
+        evaluate(context, 'roster.read', { campusId, memberId }).allowed
+    });
+    const values = result.weeks.map((week) => ({
+      weekStart: week.weekStart,
+      hours: week.campuses.flatMap((campus) => campus.rows).reduce((sum, row) => sum + row.hours, 0)
+    }));
+    return {
+      month: today.slice(0, 7),
+      asOf: today,
+      settings,
+      monthHours: values
+        .filter((row) => row.weekStart.startsWith(today.slice(0, 7)))
+        .reduce((sum, row) => sum + row.hours, 0),
+      totalHours: values.reduce((sum, row) => sum + row.hours, 0)
     };
   }
 
@@ -276,5 +200,11 @@ export function attendanceReportingDomain({ repository, platform, contextFor, ev
         )
     };
   }
-  return { reportSettings, saveReportSettings, volunteerReport, attendanceMatrix };
+  return {
+    reportSettings,
+    saveReportSettings,
+    volunteerReport,
+    volunteerSummary,
+    attendanceMatrix
+  };
 }

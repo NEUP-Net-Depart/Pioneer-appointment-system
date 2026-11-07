@@ -146,7 +146,60 @@ export function commandsDomain({ db }) {
     }
     return { sql: sql.join(' '), args };
   }
+
+  // Facts, their audit and the retry receipt share one batch and one guard.
+  async function writeCommand(record, guard, args, statements) {
+    const auth = commandAuthorization(record),
+      id = crypto.randomUUID();
+    const gate = 'EXISTS(SELECT 1 FROM audit_events WHERE id=?)';
+    const commands = [
+      db
+        .prepare(
+          `INSERT INTO audit_events(id,actor_member_id,actor_account,action,source_ref,before_json,after_json,reason,request_id,occurred_at)
+      SELECT ?,?,?,?,?,?,?,?,?,? WHERE (${guard}) ${auth.sql}
+      AND NOT EXISTS(SELECT 1 FROM operation_receipts WHERE actor_member_id=? AND action=? AND request_id=?)`
+        )
+        .bind(
+          id,
+          record.actorMemberId,
+          record.actorAccount,
+          record.action,
+          json(record.sourceRef, {}),
+          json(record.before, null),
+          json(record.after, null),
+          record.reason || '',
+          record.requestId,
+          record.at,
+          ...args,
+          ...auth.args,
+          record.actorMemberId,
+          record.action,
+          record.requestId
+        )
+    ];
+    commands.push(...statements(gate, id));
+    commands.push(
+      db
+        .prepare(
+          `INSERT INTO operation_receipts(actor_member_id,action,request_id,payload_hash,resource_ref,result_json,result_status,created_at)
+      SELECT ?,?,?,?,?,?,'success',? WHERE ${gate}`
+        )
+        .bind(
+          record.actorMemberId,
+          record.action,
+          record.requestId,
+          record.payloadHash,
+          json(record.sourceRef, {}),
+          json(record.result, {}),
+          record.at,
+          id
+        )
+    );
+    const result = await db.batch(commands);
+    return !!result[0]?.meta?.changes;
+  }
   return {
+    writeCommand,
     async memberAudit(memberId) {
       return rows(
         await db

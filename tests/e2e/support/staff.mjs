@@ -4,7 +4,7 @@ export async function loginStaff(page, account = 'root001', password = 'test-pas
   await page.goto('/staff/');
   await page.locator('#login-id').fill(account); await page.locator('#login-password').fill(password);
   await page.getByRole('button', { name: '进入系统' }).click();
-  await expect(page.locator('.field-content')).toBeVisible();
+  await expect(page.locator('.duty-workspace:visible, .field-content:visible')).toBeVisible();
 }
 // Closed groups keep their entries mounted; open the parent before using the entry.
 export async function navigationEntry(sidebar, label) {

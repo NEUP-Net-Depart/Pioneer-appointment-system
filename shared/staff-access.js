@@ -8,12 +8,12 @@ export function staffViewAllowed(user, view) {
   if (!user) return false;
   const permissions = {
     staff: 'repair.summary.read', members: 'members.manage', permissions: 'roles.manage',
-    roster: 'roster.read', attendance: 'attendance.self','attendance-manage':'attendance.correct',
+
     users: 'accounts.manage', stats: 'statistics.read', capacity: 'settings.manage',
   };
   if (view === 'members') return ['members.manage', 'accounts.manage', 'settings.manage'].some(code => staffPermission(user, code));
   if (['workbench', 'settings'].includes(view)) return true;
-  if (view === 'reports') return staffPermission(user, 'attendance.export') || staffPermission(user, 'settings.manage');
+  if (view === 'duties') return ['roster.manage','attendance.self','attendance.correct','attendance.export'].some(code => staffPermission(user,code));
   return !!permissions[view] && staffPermission(user, permissions[view]);
 }
 

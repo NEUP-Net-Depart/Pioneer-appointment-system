@@ -1,499 +1,385 @@
-import { DataValue } from './DataValue';
 import React, { useContext, useEffect, useRef, useState } from 'react';
-import { WeeklyAttendanceExport } from './WeeklyAttendanceExport';
-import { ActivityContext, Modal, time } from './field/ui';
-import { WorkspaceHeader } from './WorkspaceHeader';
-import { StaffIdentity } from './StaffIdentity';
+import { ActivityContext, Modal, CredentialCard, time } from './field/ui';
 import { request } from './request.js';
-import { apiFetch } from '../../shared/api.js';
 import { dateKey } from '../../shared/time.js';
+import { dutyTypeLabels, dutyCampusNames } from '../../shared/duty.js';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
 
-const campusNames = { 'campus-nanhu': '南湖校区', 'campus-hunnan': '浑南校区' };
-const campusIds = { 南湖: 'campus-nanhu', 浑南: 'campus-hunnan' };
-const localTime = (value) =>
-  new Date(new Date(value).getTime() + 8 * 3600000).toISOString().slice(0, 16);
-
-export function AttendanceManagement({ user }) {
+const labels = {
+  upcoming: '待签到',
+  pending: '未签到',
+  arrived: '已签到',
+  absent: '已确认未到',
+  leave: '已请假',
+  paused: '暂停服务'
+};
+const order = { pending: 0, upcoming: 1, absent: 2, arrived: 3, leave: 4, paused: 5 };
+const localTime = (value) => new Date(Date.parse(value) + 8 * 3600000).toISOString().slice(0, 16);
+export function AttendanceManagement({ campusId, onDirtyChange }) {
   const active = useContext(ActivityContext),
     lock = useRef(false);
-  const campuses = (user.authorizedCampuses || []).map((value) => ({
-    id: campusIds[value] || value,
-    name: campusNames[campusIds[value] || value] || value
-  }));
-  const [filters, setFilters] = useState({
-    month: dateKey().slice(0, 7),
-    campusId: campuses[0]?.id || ''
-  });
-  const [items, setItems] = useState([]),
-    [cursor, setCursor] = useState(''),
+  const [day, setDay] = useState(dateKey),
+    [data, setData] = useState(null),
     [refresh, setRefresh] = useState(0),
-    [next, setNext] = useState(null);
-  const [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [notice, setNotice] = useState('');
   const [form, setForm] = useState(null),
-    [options, setOptions] = useState({ events: [], members: [] }),
-    [query, setQuery] = useState(''),
-    [finding, setFinding] = useState(false);
-  const [dirty, setDirty] = useState(false);
-  const [discarding, setDiscarding] = useState(false),
-    [exportOpen, setExportOpen] = useState(false);
+    [token, setToken] = useState(null);
   useEffect(() => {
-    if (!active) return;
+    onDirtyChange(!!form || busy);
+    return () => onDirtyChange(false);
+  }, [form, busy, onDirtyChange]);
+  useEffect(() => {
+    if (!active) {
+      setToken(null);
+      return;
+    }
     const controller = new AbortController();
-    setLoading(true);
     setError('');
-    const params = new URLSearchParams({
-      ...filters,
-      all: '1',
-      type: 'duty',
-      ...(cursor ? { cursor } : {})
-    });
-    request(`/api/attendance?${params}`, { signal: controller.signal })
+    setData(null);
+    request(`/api/attendance/day?${new URLSearchParams({ campusId, businessDate: day })}`, {
+      signal: controller.signal
+    })
       .then((result) => {
-        if (controller.signal.aborted) return;
-        setItems((previous) =>
-          cursor
-            ? [...new Map([...previous, ...result.items].map((item) => [item.id, item])).values()]
-            : result.items
-        );
-        setNext(result.nextCursor);
+        if (!controller.signal.aborted) setData(result);
       })
       .catch((failure) => {
         if (!controller.signal.aborted) setError(failure.message);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [active, filters, cursor, refresh]);
+  }, [active, campusId, day, refresh]);
   useEffect(() => {
-    if (!active || !form) return;
-    const controller = new AbortController();
-    setFinding(true);
-    const timer = setTimeout(
-      () =>
-        request(
-          `/api/attendance/options?${new URLSearchParams({ businessDate: form.businessDate, campusId: form.campusId, q: query })}`,
-          { signal: controller.signal }
-        )
-          .then((result) => {
-            if (!controller.signal.aborted) setOptions(result);
-          })
-          .catch((failure) => {
-            if (!controller.signal.aborted) setError(failure.message);
-          })
-          .finally(() => {
-            if (!controller.signal.aborted) setFinding(false);
-          }),
-      250
-    );
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
+    if (!active) return;
+    const update = () => {
+      if (!document.hidden && !lock.current && !form) setRefresh((value) => value + 1);
     };
-  }, [active, form?.businessDate, form?.campusId, query, !!form]);
-  const navigationForm = useUnsavedChanges({
-    dirty,
-    active,
-    busy,
-    save,
-    discard: () => {
-      setForm(null);
-      setDirty(false);
-      setDiscarding(false);
-    }
-  });
-  function changeFilters(value) {
-    setCursor('');
-    setFilters((current) => ({ ...current, ...value }));
-  }
-  function edit(item) {
-    setError('');
-    setQuery('');
-    setOptions({ events: [], members: [] });
-    setDirty(false);
-    setDiscarding(false);
-    setForm(
-      item
-        ? {
-            recordId: item.id,
-            revision: item.revision,
-            memberId: item.memberId,
-            memberName: item.identitySnapshot?.name || '工作人员',
-            eventId: item.eventId,
-            campusId: item.campusId,
-            businessDate: item.businessDate,
-            occurredAt: localTime(item.occurredAt),
-            reason: '',
-            requestId: crypto.randomUUID()
-          }
-        : {
-            memberId: '',
-            memberName: '',
-            eventId: '',
-            campusId: filters.campusId,
-            businessDate: dateKey(),
-            occurredAt: `${dateKey()}T19:00`,
-            reason: '',
-            requestId: crypto.randomUUID()
-          }
-    );
-  }
-  function update(value) {
-    setDirty(true);
-    setForm((current) => ({ ...current, ...value, requestId: crypto.randomUUID() }));
-  }
-  async function save(event) {
-    event.preventDefault();
+    const timer = setInterval(update, 30000);
+    window.addEventListener('focus', update);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', update);
+    };
+  }, [active, form]);
+  async function execute(operation) {
     if (lock.current) return;
     lock.current = true;
     setBusy(true);
     setError('');
     try {
+      return await operation();
+    } catch (failure) {
+      setError(failure.message);
+      throw failure;
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+  const run = (operation) => void execute(operation).catch(() => {});
+  async function update(person, kind) {
+    const decision = person.status === 'absent' ? 'cleared' : 'absent';
+    const assignments =
+      kind === 'arrival'
+        ? [person.assignment]
+        : person.assignments.filter(
+            (item) => item.leaveStatus !== 'recorded' && item.review?.decision !== decision
+          );
+    try {
+      for (const item of assignments) {
+        await request(kind === 'arrival' ? '/api/attendance/arrivals' : '/api/attendance/reviews', {
+          method: kind === 'arrival' ? 'POST' : 'PUT',
+          body: {
+            assignmentId: item.id,
+            assignmentRevision: item.revision,
+            requestId: crypto.randomUUID(),
+            ...(kind === 'review' ? { decision, revision: item.review?.revision ?? -1 } : {})
+          }
+        });
+      }
+    } finally {
+      setRefresh((value) => value + 1);
+    }
+    setNotice(kind === 'arrival' ? `${person.name}已确认到场，今日在岗已更新` : '核查结论已保存');
+  }
+  function edit(person) {
+    const record = person?.record;
+    setError('');
+    setForm({
+      memberId: person?.memberId || '',
+      memberName: person?.name || '',
+      campusId,
+      businessDate: day,
+      recordId: record?.id,
+      eventId: record?.eventId,
+      revision: record?.revision,
+      occurredAt: record ? localTime(record.occurredAt) : `${day}T19:00`,
+      reason: '',
+      requestId: crypto.randomUUID()
+    });
+  }
+  async function save(event) {
+    event.preventDefault();
+    return execute(async () => {
       await request('/api/attendance/corrections', {
         method: 'POST',
         body: { ...form, occurredAt: new Date(`${form.occurredAt}:00+08:00`).toISOString() }
       });
       setForm(null);
-      setDirty(false);
-      setCursor('');
+      setNotice('考勤已保存，实时在岗不受历史补录影响');
       setRefresh((value) => value + 1);
-      setNotice('考勤已保存，历史身份和归属保留；不会改变今天的在岗状态。');
       return true;
-    } catch (failure) {
-      setError(failure.message);
-    } finally {
-      lock.current = false;
-      setBusy(false);
-    }
+    });
   }
-  async function download() {
-    if (lock.current) return;
-    lock.current = true;
-    setBusy(true);
-    setError('');
-    try {
-      const response = await apiFetch(`/api/attendance/export.csv?${new URLSearchParams(filters)}`);
-      if (!response.ok) {
-        const result = await response.json();
-        throw new Error(result.error || '导出失败');
-      }
-      const url = URL.createObjectURL(await response.blob()),
-        link = document.createElement('a');
-      link.href = url;
-      link.download = `考勤-${filters.month}.csv`;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (failure) {
-      setError(failure.message);
-    } finally {
-      lock.current = false;
-      setBusy(false);
-    }
+  const formRef = useUnsavedChanges({
+    dirty: !!form,
+    active,
+    busy,
+    save,
+    discard: () => setForm(null)
+  });
+  async function showCode() {
+    const event = await request('/api/attendance/events', {
+      method: 'POST',
+      body: { campusId, businessDate: dateKey(), type: 'duty', requestId: crypto.randomUUID() }
+    });
+    setToken(
+      await request(`/api/attendance/events/${event.id}/token`, {
+        method: 'POST',
+        body: { revision: event.revision }
+      })
+    );
+  }
+  function rows(items) {
+    return items.map((person) => (
+      <article className={`duty-person duty-${person.status}`} key={person.memberId}>
+        <div>
+          <strong>{person.name}</strong>
+          <p className="field-muted">
+            {person.assignments
+              ?.map((item) => `${dutyTypeLabels[item.dutyType]} ${item.startAt}–${item.endAt}`)
+              .join('、') || '临时到场'}
+            {person.record ? ` · ${time(person.record.occurredAt)}` : ''}
+            {person.unavailable ? ' · 账号或校区授权已失效，请调整班表' : ''}
+          </p>
+        </div>
+        <span className="duty-status">
+          {labels[person.status]}
+          {person.presence === 'away'
+            ? ' · 暂离'
+            : person.presence === 'off_duty'
+              ? ' · 已离岗'
+              : ''}
+        </span>
+        <div className="schedule-actions">
+          {person.canConfirm && (
+            <button
+              className="field-primary"
+              disabled={busy}
+              onClick={() => run(() => update(person, 'arrival'))}
+            >
+              确认到场
+            </button>
+          )}
+          {person.canReview && (
+            <button disabled={busy} onClick={() => run(() => update(person, 'review'))}>
+              {person.status === 'absent' ? '撤销未到' : '确认未到'}
+            </button>
+          )}
+          {person.canCorrect && person.status !== 'leave' && (
+            <button disabled={busy} onClick={() => edit(person)}>
+              {person.record ? '修正时间' : '补记漏签'}
+            </button>
+          )}
+        </div>
+      </article>
+    ));
   }
   return (
-    <section className="react-page attendance-management">
-      <WorkspaceHeader group="排班考勤" title="考勤核查">
-        <button disabled={busy} onClick={() => edit(null)}>
-          补录签到
+    <div className="duty-day">
+      <div className="duty-toolbar">
+        <label>
+          值班日期
+          <input
+            type="date"
+            value={day}
+            disabled={busy || !!form}
+            onChange={(event) => event.target.value && setDay(event.target.value)}
+          />
+        </label>
+        <button disabled={busy || !!form} onClick={() => setDay(dateKey())}>
+          今天
         </button>
-      </WorkspaceHeader>
-      {error && !form && (
-        <p data-motion-value="text" className="react-error" role="alert">
+        <button disabled={busy || !!form} onClick={() => setRefresh((value) => value + 1)}>
+          刷新
+        </button>
+        {day === dateKey() && (
+          <button disabled={busy || data?.paused} onClick={() => run(showCode)}>
+            展示签到码
+          </button>
+        )}
+        <button
+          disabled={busy || !data || data.paused || day > dateKey()}
+          onClick={() => edit(null)}
+        >
+          补录其他人员
+        </button>
+      </div>
+      {error && !form && !token && (
+        <p role="alert" className="react-error">
           {error}
         </p>
       )}
-      {notice && (
-        <p data-motion-value="text" className="react-message" role="status">
-          {notice}
-        </p>
-      )}
-      <div className="planner-toolbar">
-        <label>
-          考勤月份
-          <input
-            aria-label="考勤月份"
-            type="month"
-            required
-            value={filters.month}
-            onChange={(event) => {
-              if (event.target.value) changeFilters({ month: event.target.value });
-            }}
-          />
-        </label>
-        <label>
-          校区
-          <select
-            aria-label="考勤校区"
-            value={filters.campusId}
-            onChange={(event) => changeFilters({ campusId: event.target.value })}
-          >
-            {campuses.map((campus) => (
-              <option key={campus.id} value={campus.id}>
-                {campus.name}
-              </option>
+      {notice && <p role="status">{notice}</p>}
+      {!data ? (
+        <p>{error ? '读取失败，请刷新重试。' : '正在读取值班名单…'}</p>
+      ) : (
+        <>
+          {data.paused && <p role="status">当天暂停服务，保留原班表和考勤。</p>}
+          <div className="duty-metrics">
+            {[
+              ['应到', data.summary.expected],
+              ['已签到', data.summary.arrived],
+              ['待核查', data.summary.pending]
+            ].map(([label, value]) => (
+              <div key={label}>
+                <strong>{value}</strong>
+                <span>{label}</span>
+              </div>
             ))}
-          </select>
-        </label>
-        <button
-          disabled={loading}
-          onClick={() => {
-            setCursor('');
-            setRefresh((value) => value + 1);
-          }}
-        >
-          刷新
-        </button>
-        {user.permissions?.['attendance.export'] && (
-          <>
-            <button disabled={busy} onClick={() => setExportOpen(true)}>
-              按周核算导出
-            </button>
-            <button disabled={busy} onClick={download}>
-              按月导出
-            </button>
-          </>
-        )}
-      </div>
-      <section className="react-card" aria-busy={loading}>
-        <div className="field-section-heading">
-          <h2>到岗记录</h2>
-          <span data-motion-value="number" className="react-muted">
-            {loading ? '正在更新…' : `已显示 ${items.length} 条`}
-          </span>
-        </div>
-        {!items.length && loading && !error && <DataValue label="考勤记录" />}
-        {!items.length && !loading && !error && (
-          <p className="react-muted">当前范围内没有可查看的签到记录。</p>
-        )}
-        <ul className="attendance-history-list">
-          {items.map((item) => (
-            <li data-motion-item="" key={item.id}>
-              <div>
-                <strong data-motion-value="text">
-                  {item.identitySnapshot?.name || '工作人员'}
-                </strong>
-                <StaffIdentity identities={item.identitySnapshot?.identities} />
-                <span data-motion-value="text">
-                  {item.primaryDepartmentNameSnapshot || '历史部门未记录'} ·{' '}
-                  {item.nonScheduled ? '非排班到岗' : '排班到岗'}
-                  {item.servicePaused ? ' · 暂停日记录，不计有效考勤' : ''}
-                </span>
-              </div>
-              <div>
-                <strong data-motion-value="text">
-                  {item.businessDate} · {time(item.occurredAt)}
-                </strong>
-                <span data-motion-value="text">{campusNames[item.campusId] || '指定校区'}</span>
-                <button disabled={busy} onClick={() => edit(item)}>
-                  修正时间
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-        {next && (
-          <div className="field-actions">
-            <button disabled={loading} onClick={() => setCursor(next)}>
-              加载更多
-            </button>
           </div>
-        )}
-      </section>
-      {exportOpen && (
-        <WeeklyAttendanceExport campuses={campuses} onClose={() => setExportOpen(false)} />
+          <section className="schedule-card">
+            <div className="duty-section-heading">
+              <h2>{day === dateKey() ? '今日值班' : '值班人员'}</h2>
+              <span>
+                {new Intl.DateTimeFormat('zh-CN', {
+                  weekday: 'long',
+                  timeZone: 'Asia/Shanghai'
+                }).format(new Date(`${day}T12:00:00Z`))}{' '}
+                · {dutyCampusNames[campusId]}
+              </span>
+            </div>
+            {rows(
+              data.items
+                .filter((person) => person.status !== 'leave')
+                .sort(
+                  (a, b) =>
+                    order[a.status] - order[b.status] || a.name.localeCompare(b.name, 'zh-CN')
+                )
+            )}
+            {!data.items.filter((person) => person.status !== 'leave').length && (
+              <p>当天没有应到人员。</p>
+            )}
+          </section>
+          {!!data.items.filter((person) => person.status === 'leave').length && (
+            <section className="schedule-card">
+              <h2>已请假</h2>
+              {rows(data.items.filter((person) => person.status === 'leave'))}
+            </section>
+          )}
+          {!!data.temporary.length && (
+            <section className="schedule-card">
+              <h2>临时到场 · {data.temporary.length}</h2>
+              {rows(data.temporary)}
+            </section>
+          )}
+        </>
       )}
       {form && (
         <Modal
-          title={form.recordId ? '修正签到时间' : '补录工作人员签到'}
+          title={form.recordId ? '修正签到时间' : '补记漏签'}
           onClose={() => {
-            if (busy) return;
-            if (dirty) setDiscarding(true);
-            else setForm(null);
+            if (!busy) setForm(null);
           }}
         >
-          <form ref={navigationForm} className="roster-create-form" onSubmit={save}>
-            {discarding && (
-              <div className="react-error" role="alert">
-                <p>修改尚未保存，是否放弃？</p>
-                <div className="field-actions">
-                  <button type="button" onClick={() => setDiscarding(false)}>
-                    继续填写
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setForm(null);
-                      setDirty(false);
-                      setDiscarding(false);
-                    }}
-                  >
-                    放弃修改
-                  </button>
-                </div>
-              </div>
-            )}
-            <p className="react-muted">
-              这是历史考勤记录操作。需要加入今天工作时，请使用现场工作人员签到码。
-            </p>
-            {error && (
-              <p data-motion-value="text" className="react-error" role="alert">
-                {error}
+          <form ref={formRef} onSubmit={(event) => void save(event).catch(() => {})}>
+            <fieldset disabled={busy}>
+              <p>
+                {day} · {dutyCampusNames[campusId]}
               </p>
-            )}
-            <div className="react-inline">
+              {form.memberName ? (
+                <strong>{form.memberName}</strong>
+              ) : (
+                <label>
+                  工作人员
+                  <select
+                    required
+                    value={form.memberId}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        memberId: event.target.value,
+                        requestId: crypto.randomUUID()
+                      }))
+                    }
+                  >
+                    <option value="">请选择人员</option>
+                    {data.people.map((person) => (
+                      <option key={person.memberId} value={person.memberId}>
+                        {person.name} · {person.studentId}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <label>
-                签到日期
+                实际到场时间
                 <input
-                  type="date"
+                  type="datetime-local"
                   required
-                  disabled={!!form.recordId || busy}
-                  value={form.businessDate}
+                  value={form.occurredAt}
                   onChange={(event) =>
-                    update({
-                      businessDate: event.target.value,
-                      eventId: '',
-                      memberId: '',
-                      memberName: ''
-                    })
+                    setForm((current) => ({
+                      ...current,
+                      occurredAt: event.target.value,
+                      requestId: crypto.randomUUID()
+                    }))
                   }
                 />
               </label>
               <label>
-                签到校区
-                <select
-                  aria-label="补录校区"
-                  disabled={!!form.recordId || busy}
-                  value={form.campusId}
+                补录或修正原因
+                <input
+                  required
+                  maxLength={500}
+                  value={form.reason}
                   onChange={(event) =>
-                    update({
-                      campusId: event.target.value,
-                      eventId: '',
-                      memberId: '',
-                      memberName: ''
-                    })
+                    setForm((current) => ({
+                      ...current,
+                      reason: event.target.value,
+                      requestId: crypto.randomUUID()
+                    }))
                   }
-                >
-                  {campuses.map((campus) => (
-                    <option key={campus.id} value={campus.id}>
-                      {campus.name}
-                    </option>
-                  ))}
-                </select>
+                />
               </label>
-            </div>
-            {!form.recordId && (
-              <>
-                <label>
-                  签到场次
-                  <select
-                    aria-label="签到场次"
-                    required
-                    value={form.eventId}
-                    disabled={finding || busy}
-                    onChange={(event) => {
-                      const found = options.events.find((item) => item.id === event.target.value);
-                      update({
-                        eventId: event.target.value,
-                        ...(found ? { occurredAt: localTime(found.startsAt) } : {})
-                      });
-                    }}
-                  >
-                    <option value="">{finding ? '正在读取场次…' : '选择当天签到场次'}</option>
-                    {options.events
-                      .filter((item) => item.type === 'duty')
-                      .map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {time(item.startsAt)}–{time(item.endsAt)} · 值班签到
-                        </option>
-                      ))}
-                  </select>
-                </label>
-                <label>
-                  查找工作人员
-                  <input
-                    value={query}
-                    disabled={busy}
-                    placeholder="输入姓名或学号"
-                    onChange={(event) => {
-                      setQuery(event.target.value);
-                      update({ memberId: '', memberName: '' });
-                    }}
-                  />
-                </label>
-                {!!query && (
-                  <div className="attendance-member-options" aria-busy={finding}>
-                    {options.members.map((member) => (
-                      <button
-                        type="button"
-                        key={member.memberId}
-                        aria-pressed={form.memberId === member.memberId}
-                        disabled={busy || finding}
-                        onClick={() =>
-                          update({ memberId: member.memberId, memberName: member.name })
-                        }
-                      >
-                        <strong data-motion-value="text">{member.name}</strong>
-                        <StaffIdentity identities={member.identities} />
-                        <small data-motion-value="text">
-                          {member.departmentName} · {member.studentId}
-                        </small>
-                      </button>
-                    ))}
-                    {!finding && !options.members.length && (
-                      <p>当前范围没有匹配成员，请调整姓名或学号。</p>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-            {form.memberId && (
-              <p data-motion-value="text" className="react-message">
-                已选择：{form.memberName}
-              </p>
-            )}
-            <label>
-              实际签到时间
-              <input
-                type="datetime-local"
-                required
-                disabled={busy}
-                value={form.occurredAt}
-                onChange={(event) => update({ occurredAt: event.target.value })}
-              />
-            </label>
-            <label>
-              修正原因
-              <textarea
-                aria-label="修正原因"
-                required
-                maxLength={500}
-                value={form.reason}
-                disabled={busy}
-                onChange={(event) => update({ reason: event.target.value })}
-              />
-            </label>
-            <div className="field-actions">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => {
-                  setForm(null);
-                  setDirty(false);
-                }}
-              >
-                放弃并关闭
-              </button>
-              <button className="field-primary" disabled={busy || !form.memberId || !form.eventId}>
-                {busy ? '正在保存…' : '确认保存考勤'}
-              </button>
-            </div>
+              <p className="field-muted">补录保存实际发生时间，不改变今日实时在岗。</p>
+              {error && <p role="alert">{error}</p>}
+              <div className="schedule-actions">
+                <button type="submit" className="field-primary">
+                  保存考勤
+                </button>
+                <button type="button" onClick={() => setForm(null)}>
+                  取消
+                </button>
+              </div>
+            </fieldset>
           </form>
         </Modal>
       )}
-    </section>
+      {token && active && (
+        <Modal title="工作人员签到码" onClose={() => setToken(null)}>
+          <CredentialCard
+            kind="attendance"
+            code={token.token}
+            context={`${dutyCampusNames[campusId]} · ${dateKey()}`}
+          />
+          <p>有效至 {time(token.expiresAt)}</p>
+          {error && <p role="alert">{error}</p>}
+          <button disabled={busy} onClick={() => run(showCode)}>
+            更新签到码
+          </button>
+        </Modal>
+      )}
+    </div>
   );
 }

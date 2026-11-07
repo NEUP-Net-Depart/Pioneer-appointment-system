@@ -1,7 +1,9 @@
+import { addDays } from '../../platform/time.js';
+import { dutyWindow } from '../../../shared/duty.js';
 import { rows, assignment, membership, assignmentLeaveColumn } from './shared.js';
 import { parseJson } from '../../platform/contracts.js';
 
-export function scheduleRepository({ db, commandAuthorization }) {
+export function scheduleRepository({ db, writeCommand: write }) {
   const list = async (sql, ...args) =>
     rows(
       await db
@@ -45,6 +47,17 @@ export function scheduleRepository({ db, commandAuthorization }) {
       )
     ).map(assignment);
   }
+  async function upcomingAssignments(memberId, day) {
+    return (
+      await list(
+        `${shifts} WHERE da.active=1 AND da.member_id=? AND da.business_date>=?
+      AND NOT EXISTS(SELECT 1 FROM service_day_overrides s WHERE s.business_date=da.business_date AND s.campus_id=da.campus_id AND s.paused=1)
+      ORDER BY da.business_date,da.start_at,da.id LIMIT 30`,
+        memberId,
+        day
+      )
+    ).map(assignment);
+  }
   async function schedulePeople(campus) {
     return list(
       `SELECT m.id AS memberId,m.name,m.student_id AS studentId,s.account,s.auth_version AS authVersion FROM members m JOIN staff_accounts s ON s.member_id=m.id
@@ -72,7 +85,8 @@ export function scheduleRepository({ db, commandAuthorization }) {
   async function scheduleHistory(id) {
     return (
       await list(
-        "SELECT action,actor_account,occurred_at,before_json,after_json FROM audit_events WHERE json_extract(source_ref,'$.module')='rosters' AND (json_extract(source_ref,'$.id')=? OR (action='rosters.model.migrated' AND json_extract(source_ref,'$.type')='duty_assignments' AND json_extract(before_json,'$.id') IN (SELECT id FROM duty_assignments WHERE week_id=?))) ORDER BY occurred_at DESC,rowid DESC",
+        "SELECT action,actor_account,occurred_at,before_json,after_json FROM audit_events WHERE json_extract(source_ref,'$.module')='rosters' AND (json_extract(source_ref,'$.id')=? OR (action='rosters.model.migrated' AND json_extract(source_ref,'$.type')='duty_assignments' AND json_extract(before_json,'$.id') IN (SELECT id FROM duty_assignments WHERE week_id=?)) OR (action='rosters.campus-week.published' AND EXISTS(SELECT 1 FROM json_each(after_json,'$.rosters') r WHERE json_extract(r.value,'$.id')=?))) ORDER BY occurred_at DESC,rowid DESC",
+        id,
         id,
         id
       )
@@ -84,116 +98,109 @@ export function scheduleRepository({ db, commandAuthorization }) {
       after: parseJson(row.after_json, null)
     }));
   }
-  // The audit row gates the mutations and the operation receipt in the same D1 batch.
-  async function write(record, guard, args, statements) {
-    const auth = commandAuthorization(record),
-      id = crypto.randomUUID(),
-      gate = 'EXISTS(SELECT 1 FROM audit_events WHERE id=?)';
-    const commands = [
+  function scheduleStatements(before, items, record, gate, marker) {
+    const ids = JSON.stringify(items.map((row) => row.id));
+    return [
       db
         .prepare(
-          `INSERT INTO audit_events(id,actor_member_id,actor_account,action,source_ref,before_json,after_json,request_id,occurred_at)
-      SELECT ?,?,?,?,?,?,?,?,? WHERE (${guard}) ${auth.sql} AND NOT EXISTS(SELECT 1 FROM operation_receipts WHERE actor_member_id=? AND action=? AND request_id=?)`
+          `INSERT INTO roster_weeks(id,week_start,campus_id,duty_type,revision,published_at,updated_at,updated_by) SELECT ?,?,?,?,?,?,?,? WHERE ${gate}
+        ON CONFLICT(id) DO UPDATE SET revision=excluded.revision,published_at=excluded.published_at,updated_at=excluded.updated_at,updated_by=excluded.updated_by`
         )
         .bind(
-          id,
-          record.actorMemberId,
+          before.id,
+          before.weekStart,
+          before.campusId,
+          before.dutyType,
+          before.revision + 1,
+          record.at,
+          record.at,
           record.actorAccount,
-          record.action,
-          JSON.stringify(record.sourceRef),
-          JSON.stringify(record.before),
-          JSON.stringify(record.after),
-          record.requestId,
-          record.at,
-          ...args,
-          ...auth.args,
-          record.actorMemberId,
-          record.action,
-          record.requestId
-        )
-    ];
-    commands.push(...statements(gate, id));
-    commands.push(
+          marker
+        ),
       db
         .prepare(
-          `INSERT INTO operation_receipts(actor_member_id,action,request_id,payload_hash,resource_ref,result_json,result_status,created_at)
-      SELECT ?,?,?,?,?,?,'success',? WHERE ${gate}`
+          `UPDATE duty_assignments SET active=0,revision=revision+1,updated_at=? WHERE week_id=? AND active=1 AND id NOT IN (SELECT value FROM json_each(?)) AND ${gate}`
         )
-        .bind(
-          record.actorMemberId,
-          record.action,
-          record.requestId,
-          record.payloadHash,
-          JSON.stringify(record.sourceRef),
-          JSON.stringify(record.result || {}),
-          record.at,
-          id
+        .bind(record.at, before.id, ids, marker),
+      ...items
+        .filter((item) => !before.assignments.some((old) => old.id === item.id))
+        .map((item) =>
+          db
+            .prepare(
+              `INSERT INTO duty_assignments(id,week_id,member_id,business_date,campus_id,duty_type,start_at,end_at,created_at,updated_at)
+        SELECT ?,?,?,?,?,?,?,?,?,? WHERE ${gate}`
+            )
+            .bind(
+              item.id,
+              before.id,
+              item.memberId,
+              item.businessDate,
+              before.campusId,
+              before.dutyType,
+              item.startAt,
+              item.endAt,
+              record.at,
+              record.at,
+              marker
+            )
+        ),
+      db
+        .prepare(
+          `UPDATE roster_covers SET status='cancelled',decided_at=?,revision=revision+1 WHERE status='pending' AND (assignment_id IN (SELECT id FROM duty_assignments WHERE week_id=? AND active=0) OR exchange_assignment_id IN (SELECT id FROM duty_assignments WHERE week_id=? AND active=0)) AND ${gate}`
         )
-    );
-    const result = await db.batch(commands);
-    return !!result[0]?.meta?.changes;
+        .bind(record.at, before.id, before.id, marker)
+    ];
   }
-  async function saveSchedule(before, items, record) {
-    const value = JSON.stringify(items),
-      ids = JSON.stringify(items.map((row) => row.id));
-    const guard = `COALESCE((SELECT revision FROM roster_weeks WHERE id=?),-1)=?
+  async function saveSchedules(weeks, record, snapshotGuard) {
+    const items = weeks.flatMap(({ before, items }) =>
+      items.map((row) => ({ ...row, campusId: before.campusId }))
+    );
+    const values = JSON.stringify(items),
+      weekIds = JSON.stringify(weeks.map((row) => row.before.id));
+    const guard = `NOT EXISTS(SELECT 1 FROM json_each(?) n WHERE COALESCE((SELECT revision FROM roster_weeks WHERE id=json_extract(n.value,'$.id')),-1)<>json_extract(n.value,'$.revision'))
       AND NOT EXISTS(SELECT 1 FROM json_each(?) n WHERE NOT EXISTS(SELECT 1 FROM members m JOIN staff_accounts s ON s.member_id=m.id JOIN staff_access_campuses g ON g.account=s.account
-        WHERE m.id=json_extract(n.value,'$.memberId') AND m.status='active' AND s.status='enabled' AND g.campus=(SELECT name FROM campuses WHERE id=?)))
-      AND NOT EXISTS(SELECT 1 FROM json_each(?) n JOIN duty_assignments a ON a.member_id=json_extract(n.value,'$.memberId') AND a.active=1 AND a.week_id<>?
-        AND a.business_date=json_extract(n.value,'$.businessDate') AND a.start_at<json_extract(n.value,'$.endAt') AND json_extract(n.value,'$.startAt')<a.end_at)`;
+        WHERE m.id=json_extract(n.value,'$.memberId') AND m.status='active' AND s.status='enabled' AND g.campus=(SELECT name FROM campuses WHERE id=json_extract(n.value,'$.campusId'))))
+      AND NOT EXISTS(SELECT 1 FROM json_each(?) n JOIN duty_assignments a ON a.member_id=json_extract(n.value,'$.memberId') AND a.active=1 AND a.week_id NOT IN (SELECT value FROM json_each(?))
+        AND a.business_date=json_extract(n.value,'$.businessDate') AND a.start_at<json_extract(n.value,'$.endAt') AND json_extract(n.value,'$.startAt')<a.end_at)
+      ${snapshotGuard ? `AND (${snapshotGuard.sql})` : ''}`;
     return write(
       record,
       guard,
-      [before.id, before.revision, value, before.campusId, value, before.id],
+      [
+        JSON.stringify(weeks.map((row) => ({ id: row.before.id, revision: row.before.revision }))),
+        values,
+        values,
+        weekIds,
+        ...(snapshotGuard?.args || [])
+      ],
       (gate, marker) => [
-        db
-          .prepare(
-            `INSERT INTO roster_weeks(id,week_start,campus_id,duty_type,revision,published_at,updated_at,updated_by) SELECT ?,?,?,?,?,?,?,? WHERE ${gate}
-        ON CONFLICT(id) DO UPDATE SET revision=excluded.revision,published_at=excluded.published_at,updated_at=excluded.updated_at,updated_by=excluded.updated_by`
-          )
-          .bind(
-            before.id,
-            before.weekStart,
-            before.campusId,
-            before.dutyType,
-            before.revision + 1,
-            record.at,
-            record.at,
-            record.actorAccount,
-            marker
-          ),
-        db
-          .prepare(
-            `UPDATE duty_assignments SET active=0,revision=revision+1,updated_at=? WHERE week_id=? AND active=1 AND id NOT IN (SELECT value FROM json_each(?)) AND ${gate}`
-          )
-          .bind(record.at, before.id, ids, marker),
-        ...items
-          .filter((item) => !before.assignments.some((old) => old.id === item.id))
-          .map((item) =>
-            db
-              .prepare(
-                `INSERT INTO duty_assignments(id,week_id,member_id,business_date,campus_id,duty_type,start_at,end_at,created_at,updated_at)
-        SELECT ?,?,?,?,?,?,?,?,?,? WHERE ${gate}`
-              )
-              .bind(
-                item.id,
-                before.id,
-                item.memberId,
-                item.businessDate,
-                before.campusId,
-                before.dutyType,
-                item.startAt,
-                item.endAt,
-                record.at,
-                record.at,
-                marker
-              )
-          ),
-        db
-          .prepare(
-            `UPDATE roster_covers SET status='cancelled',decided_at=?,revision=revision+1 WHERE status='pending' AND (assignment_id IN (SELECT id FROM duty_assignments WHERE week_id=? AND active=0) OR exchange_assignment_id IN (SELECT id FROM duty_assignments WHERE week_id=? AND active=0)) AND ${gate}`
-          )
-          .bind(record.at, before.id, before.id, marker)
+        ...weeks.flatMap(({ before, items }) =>
+          scheduleStatements(before, items, record, gate, marker)
+        ),
+        ...[...new Set(items.map((row) => row.businessDate))].map((day) =>
+          db
+            .prepare(
+              `INSERT INTO attendance_events(id,type,policy_code,policy_version,rule_snapshot,campus_id,business_date,starts_at,ends_at,source_ref,created_by_member_id,created_at)
+        SELECT ?,'duty','duty.v1','1.0.0','{"timezone":"Asia/Shanghai"}',?,?,?,?,?,?,? WHERE ${gate}
+        AND NOT EXISTS(SELECT 1 FROM attendance_events WHERE type='duty' AND campus_id=? AND business_date=?)`
+            )
+            .bind(
+              crypto.randomUUID(),
+              weeks[0].before.campusId,
+              day,
+              ...Object.values(dutyWindow(day)),
+              JSON.stringify({
+                module: 'rosters',
+                type: 'day',
+                id: `${weeks[0].before.campusId}:${day}`
+              }),
+              record.actorMemberId,
+              record.at,
+              marker,
+              weeks[0].before.campusId,
+              day
+            )
+        )
       ]
     );
   }
@@ -362,7 +369,7 @@ export function scheduleRepository({ db, commandAuthorization }) {
         .first()
     ).n;
   }
-  async function rosterMemberFacts(memberIds, weekStart) {
+  async function rosterMemberFacts(memberIds, weekStart, end = addDays(weekStart, 6)) {
     const facts = new Map();
     for (let offset = 0; offset < memberIds.length; offset += 80) {
       const ids = memberIds.slice(offset, offset + 80),
@@ -384,15 +391,15 @@ export function scheduleRepository({ db, commandAuthorization }) {
         db
           .prepare(
             `SELECT da.* FROM duty_assignments da WHERE da.active=1
-          AND da.member_id IN (${placeholders}) AND da.business_date>=? AND da.business_date<=date(?,'+6 day')`
+          AND da.member_id IN (${placeholders}) AND da.business_date>=? AND da.business_date<=?`
           )
-          .bind(...ids, weekStart, weekStart),
+          .bind(...ids, weekStart, end),
         db
           .prepare(
             `SELECT mm.*,d.name AS department_name,d.code AS department_code,d.kind AS organization_kind,d.enabled AS department_enabled FROM member_department_memberships mm JOIN departments d ON d.id=mm.department_id
-          WHERE mm.member_id IN (${placeholders}) AND mm.effective_from<=date(?,'+6 day') AND (mm.effective_to IS NULL OR mm.effective_to>?) ORDER BY mm.is_primary DESC,d.name`
+          WHERE mm.member_id IN (${placeholders}) AND mm.effective_from<=? AND (mm.effective_to IS NULL OR mm.effective_to>?) ORDER BY mm.is_primary DESC,d.name`
           )
-          .bind(...ids, weekStart, weekStart)
+          .bind(...ids, end, weekStart)
       ]);
       for (const row of rows(results[0]))
         facts.set(row.id, {
@@ -425,10 +432,11 @@ export function scheduleRepository({ db, commandAuthorization }) {
     scheduleWeek,
     assignmentById,
     listAssignments,
+    upcomingAssignments,
     schedulePeople,
     availabilityRows,
     scheduleHistory,
-    saveSchedule,
+    saveSchedules,
     saveAvailability,
     recordLeave,
     withdrawLeave,

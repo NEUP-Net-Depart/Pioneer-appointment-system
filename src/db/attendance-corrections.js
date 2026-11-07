@@ -2,6 +2,7 @@
 // changes presence, and its fact, audit and retry receipt commit together.
 const fingerprintSql = `SELECT json_object(
   'event',(SELECT json_group_array(json_array(id,type,policy_code,policy_version,rule_snapshot,campus_id,business_date,starts_at,ends_at,source_ref,revision)) FROM attendance_events WHERE id=?),
+  'access',(SELECT json_group_array(json_array(s.account,s.auth_version,s.status,g.campus)) FROM staff_accounts s LEFT JOIN staff_access_campuses g ON g.account=s.account WHERE s.member_id=?),
   'member',(SELECT json_group_array(json_array(id,name,student_id,status,revision)) FROM members WHERE id=?),
   'departments',(SELECT json_group_array(json_array(id,department_id,department_name,is_primary,effective_from,effective_to,revision)) FROM
     (SELECT mm.*,d.name AS department_name FROM member_department_memberships mm JOIN departments d ON d.id=mm.department_id
@@ -15,7 +16,7 @@ const fingerprintSql = `SELECT json_object(
       WHERE da.member_id=? AND da.business_date=? AND da.active=1 ORDER BY da.id))
 ) AS fingerprint`;
 
-const snapshotArgs = (memberId,eventId,actorMemberId,businessDate,occurredAt) => [eventId,memberId,memberId,occurredAt,occurredAt,memberId,eventId,actorMemberId,businessDate];
+const snapshotArgs = (memberId,eventId,actorMemberId,businessDate,occurredAt) => [eventId,memberId,memberId,memberId,occurredAt,occurredAt,memberId,eventId,actorMemberId,businessDate];
 const resultSql = `SELECT json_object('id',ar.id,'memberId',ar.member_id,'eventId',ar.event_id,'dedupeKey',ar.dedupe_key,
   'occurredAt',ar.occurred_at,'recordedAt',ar.recorded_at,'method',ar.method,'sourceRef',json(ar.source_ref),
   'businessDate',e.business_date,'type',e.type,'campusId',e.campus_id,
@@ -44,8 +45,8 @@ export function attendanceCorrections(db,{auditStatement,commandAuthorization}) 
           record.departmentName || null,JSON.stringify(record.identitySnapshot),record.nonScheduled ? 1 : 0,...key);
     const statements = [db.prepare(`INSERT OR IGNORE INTO operation_receipts(actor_member_id,action,request_id,payload_hash,resource_ref,result_json,result_status,created_at)
       SELECT ?,?,?,?,?,'{}','pending',? WHERE (${fingerprintSql})=?
-      AND ${recordGuard.sql} AND date(?,'+8 hours')=? ${authorization.sql}`)
-      .bind(...key,record.recordedAt,...snapshotArgs(record.memberId,record.eventId,audit.actorMemberId,audit.businessDate,record.occurredAt),fingerprint,...recordGuard.args,record.recordedAt,audit.businessDate,...authorization.args),
+      AND ${recordGuard.sql} AND date(?,'+8 hours')=? AND NOT EXISTS(SELECT 1 FROM attendance_events e JOIN service_day_overrides s ON s.campus_id=e.campus_id AND s.business_date=e.business_date WHERE e.id=? AND e.type='duty' AND s.paused=1) ${authorization.sql}`)
+      .bind(...key,record.recordedAt,...snapshotArgs(record.memberId,record.eventId,audit.actorMemberId,audit.businessDate,record.occurredAt),fingerprint,...recordGuard.args,record.recordedAt,audit.businessDate,record.eventId,...authorization.args),
     factStatement,
     auditStatement({...audit,sourceRef:{module:'attendance',type:'record',id:record.id},before:record.previous || undefined,after:{memberId:record.memberId,eventId:record.eventId,occurredAt:record.occurredAt}},true),
     db.prepare(`UPDATE operation_receipts SET result_status='success',resource_ref=?,result_json=(${resultSql})

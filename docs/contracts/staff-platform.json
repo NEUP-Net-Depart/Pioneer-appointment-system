@@ -1,6 +1,6 @@
 {
   "contractVersion": "staff-platform.v2",
-  "schemaVersion": "0049",
+  "schemaVersion": "0050",
   "authContext": [
     "actor",
     "identities",
@@ -71,18 +71,30 @@
       "GET /api/field/appointments/:id"
     ],
     "attendance": [
+      "GET /api/attendance/day",
+      "POST /api/attendance/arrivals",
+      "PUT /api/attendance/reviews",
       "POST /api/attendance/preview",
       "POST /api/attendance/events",
       "POST /api/attendance/events/:id/token",
       "POST /api/attendance/check-ins",
+      "POST /api/attendance/self-check-in",
       "GET /api/attendance",
       "GET /api/attendance/options",
       "GET /api/attendance/export.csv",
       "GET /api/me/attendance",
+      "GET /api/me/volunteer-summary",
+      "GET /api/attendance/report-settings",
+      "PUT /api/attendance/report-settings",
+      "GET /api/attendance/volunteer-report",
+      "GET /api/attendance/matrix",
       "POST /api/attendance/corrections",
       "PATCH /api/presence/me"
     ],
     "rosters": [
+      "GET /api/rosters/campus-week",
+      "POST /api/rosters/week/suggestions",
+      "PUT /api/rosters/campus-week",
       "GET /api/rosters/week",
       "PUT /api/rosters/week",
       "GET /api/me/roster",
@@ -100,6 +112,48 @@
     ]
   },
   "idempotency": "actorMemberId + action + requestId",
+  "dutyWorkflow": {
+    "shift": "19:00–21:00 Asia/Shanghai; unchanged legacy special shifts retain their times and IDs",
+    "checkInWindow": "18:30–21:30 Asia/Shanghai",
+    "suggestions": {
+      "input": ["weekStart", "campusId", "sourceVersion? (required by the planner when regenerating a loaded draft)", "assignments? (published and manual items to retain)"],
+      "output": ["assignments", "gaps", "unassigned", "sourceVersion"],
+      "writes": false,
+      "uniqueness": "one suggested shift per member per week across campuses and duty types"
+    },
+    "campusWeek": {
+      "input": ["weekStart", "campusId", "sourceVersion", "requestId", "rosters[2]: dutyType, revision, assignments"],
+      "atomic": ["repair roster", "office roster", "daily shared duty events", "audit", "receipt"],
+      "manualExceptions": "repeat shifts, availability and department mismatches and leader gaps are warned and audited; time overlaps are rejected"
+    },
+    "day": {
+      "input": ["campusId", "businessDate?"],
+      "output": ["items", "temporary", "summary", "people", "paused", "serverNow"],
+      "counts": "scope first, unique members; leave excluded from expected; temporary arrivals separate",
+      "statuses": ["upcoming", "pending", "arrived", "absent", "leave", "paused"]
+    },
+    "arrival": {
+      "input": ["assignmentId", "assignmentRevision", "requestId"],
+      "serverOwned": ["businessDate", "occurredAt", "eventId", "actor"],
+      "atomic": ["attendance fact", "presence", "audit", "receipt"],
+      "dedupe": "duty:memberId:businessDate; repeat does not change first arrival or later presence"
+    },
+    "review": {
+      "input": ["assignmentId", "assignmentRevision", "revision", "decision: absent|cleared", "requestId", "reason?"],
+      "initialRevision": -1,
+      "behavior": "after shift end only; undo increments revision; bound to current assignment member; audit retains history; never creates attendance; real arrival takes precedence"
+    },
+    "correction": {
+      "personInput": ["memberId", "businessDate", "campusId", "occurredAt", "reason", "requestId"],
+      "recordInput": ["recordId", "eventId", "memberId", "revision", "occurredAt", "reason", "requestId"],
+      "presenceEffect": false
+    },
+    "volunteerSummary": {
+      "subject": "current session member only",
+      "output": ["month", "asOf", "settings", "monthHours", "totalHours"],
+      "algorithm": "shared management report calculator, including existing weekly leader credits and week-start month attribution"
+    }
+  },
   "attendancePagination": {
     "pageSize": 100,
     "cursor": "opaque nextCursor; pass as cursor without decoding",

@@ -7,15 +7,15 @@
 | identity / organization | 稳定成员、账号、真实任职、校区和部门 |
 | authorization | 任职确定的固定业务能力、系统配置授权、对象和校区范围 |
 | repairs | 预约容量、设备接收、直接接单、交接、四种结果与返修关系 |
-| duty / attendance | 场次、签到凭证、实际到岗、补记、原有时长算法 |
-| rosters | 通常可用时间、按周例外、直接发布调整、请假与接替确认 |
+| duty / attendance | 今日名单、直接确认到场、核查未到、现场凭证、历史补记、共用的个人与管理时长算法 |
+| rosters | 整班空闲、按周例外、确定性建议、维修与办公原子发布、请假与接替确认 |
 | audit / files | 审计与请求回执、鉴权附件及存储额度 |
 
-`src/services/staff-platform/` 由 context、members、departments、roles、workspace、attendance、reporting、schedule 组成；仓储按同一业务域组合。没有旧排班求解器、问卷收集服务、返修审批服务或现场分派状态机。
+`src/services/staff-platform/` 由 context、members、departments、roles、workspace、attendance、duty、reporting、schedule 组成；仓储按同一业务域组合。`shared/duty.js` 集中固定时段与候选规则，`modules/rosters/suggestions.js` 负责最大匹配和均衡，`modules/attendance/volunteer-report.js` 共用时长算法。没有问卷收集服务、返修审批服务或现场分派状态机。
 
 事务携带操作者授权版本、对象版本和请求编号。排班修改、接替、维修接单交接、结果更正与必要审计/回执在同一 D1 batch 中提交。不同内容不能复用请求键；并发覆盖失败不写半份事实。R2 通过元数据预留及失败补偿维护额度，接收照片超时由本人手动补传。
 
-前端统一维修工单与排班页面。人员、预约、考勤页面复用现有查询及未保存修改提示；照片文件只保留在当前组件内。学生数据由明确字段投影产生，不能通过展开服务端内部工单泄漏说明或审计。
+前端维修工单独立，排班和考勤日常入口合并为「值班」，由今日、安排下周、我的值班、统计与历史组成。人员、预约、值班页面复用现有查询及未保存修改提示；照片文件只保留在当前组件内。学生数据由明确字段投影产生，不能通过展开服务端内部工单泄漏说明或审计。
 
 `audit:architecture` 校验模块可达性、依赖、SQL 层次和请求状态隔离；`db:history` 校验两条迁移链的 SQL 指纹。`verify` 保留格式、lint、类型、Functions/前端构建、有效服务测试、本地 D1 迁移与桌面/移动浏览器验证。契约和实现均以 v1.2 为业务基线，无旧接口别名或运行时兼容轨道。
 

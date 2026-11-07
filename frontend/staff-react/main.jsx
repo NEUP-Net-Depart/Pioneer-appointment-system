@@ -9,24 +9,12 @@ import './base.css';
 import { setWorkspaceSession, clearWorkspaceState } from './workspace-state.js';
 import './workspace.css';
 import { request } from './request.js';
-const AttendanceModule = workspaceModule(() => import('./Attendance'), 'Attendance');
-const Attendance = AttendanceModule.Page;
-const AttendanceManagementModule = workspaceModule(
-  () => import('./AttendanceManagement.jsx'),
-  'AttendanceManagement'
-);
-const AttendanceManagement = AttendanceManagementModule.Page;
-const AttendanceReportsModule = workspaceModule(
-  () => import('./AttendanceReports.jsx'),
-  'AttendanceReports'
-);
-const AttendanceReports = AttendanceReportsModule.Page;
+const DutyModule = workspaceModule(() => import('./DutyWorkspace.jsx'), 'DutyWorkspace');
+const DutyWorkspace = DutyModule.Page;
 const MembersModule = workspaceModule(() => import('./People.jsx'), 'People');
 const Members = MembersModule.Page;
 const PermissionsModule = workspaceModule(() => import('./Permissions.jsx'), 'Permissions');
 const Permissions = PermissionsModule.Page;
-const ScheduleModule = workspaceModule(() => import('./Schedule.jsx'), 'Schedule');
-const Schedule = ScheduleModule.Page;
 import { StaffWorkspace } from './StaffWorkspace';
 const RecordsModule = workspaceModule(() => import('./Records'), 'Records');
 const Records = RecordsModule.Page;
@@ -43,12 +31,9 @@ import './workspace-design.css';
 import { workspaceEntry } from './workspace-navigation.js';
 
 const pageModules = {
-  attendance: AttendanceModule,
-  'attendance-manage': AttendanceManagementModule,
-  reports: AttendanceReportsModule,
+  duties: DutyModule,
   members: MembersModule,
   permissions: PermissionsModule,
-  roster: ScheduleModule,
   staff: RecordsModule,
   stats: StatisticsModule,
   settings: AccountSettingsModule,
@@ -66,29 +51,37 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
     },
     []
   );
-  const [page, setPage] = useState('workbench');
+  const [page, setPage] = useState('duties');
   const [field, setField] = useState(null);
   const [bootError, setBootError] = useState(''),
     [bootRetry, setBootRetry] = useState(0);
   const [workScene, setWorkScene] = useState(null);
-  const [visited, setVisited] = useState(['workbench']);
+  const [visited, setVisited] = useState(['workbench', 'duties']);
   const [settingsSection, setSettingsSection] = useState('security');
   const profileRef = useRef(null);
   profileRef.current = user && { ...user, permissions: field?.permissions || user.permissions };
   useEffect(() => {
-    if (!field || !user) return;
-    const profile = { ...user, permissions: field.permissions || user.permissions };
+    if (!profile) return;
+    const currentProfile = { ...user, permissions: field?.permissions || user.permissions };
     const target = page === 'settings' && settingsSection === 'capacity' ? 'capacity' : page;
-    if (!staffViewAllowed(profile, target)) {
+    if (!staffViewAllowed(currentProfile, target)) {
       setSettingsSection('security');
       setPage('workbench');
       setVisited((current) => [
-        ...new Set([...current.filter((view) => staffViewAllowed(profile, view)), 'workbench'])
+        ...new Set([
+          ...current.filter((view) => staffViewAllowed(currentProfile, view)),
+          'workbench'
+        ])
       ]);
     }
-    if (page === 'workbench' && workScene && !staffSceneAllowed(profile, field, workScene))
+    if (
+      field &&
+      page === 'workbench' &&
+      workScene &&
+      !staffSceneAllowed(currentProfile, field, workScene)
+    )
       setWorkScene('mine');
-  }, [field, user, page, settingsSection, workScene]);
+  }, [field, user, profile, page, settingsSection, workScene]);
   useEffect(() => {
     if (!profile) return;
     let active = true;
@@ -152,7 +145,6 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
   useEffect(() => () => clearWorkspaceState(), []);
   const navigate = (view) => {
     if (view === 'users') view = 'members';
-    if (view === 'report-settings') view = 'reports';
     if (
       !profile ||
       !(view.startsWith('scene:')
@@ -202,9 +194,17 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
       .filter((context) => staffSceneAllowed(effectiveUser, field, context.id))
       .map((context) => ({ ...context, id: `scene:${context.id}` })),
     ...(profile && field ? [{ id: 'scene:mine', label: '个人中心' }] : []),
-    ...(publishedView('rosters', 'roster') ? [{ id: 'roster', label: '排班与可用时间' }] : []),
-    ...(staffPermission(effectiveUser, 'attendance.correct')
-      ? [{ id: 'attendance-manage', label: '考勤核查' }]
+    ...(staffViewAllowed(effectiveUser, 'duties')
+      ? [
+          {
+            id: 'duties',
+            label:
+              staffPermission(effectiveUser, 'attendance.correct') ||
+              staffPermission(effectiveUser, 'roster.manage')
+                ? '值班'
+                : '我的值班'
+          }
+        ]
       : []),
     ...(staffPermission(effectiveUser, 'repair.summary.read')
       ? [{ id: 'staff', label: '预约记录' }]
@@ -215,20 +215,8 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
       ? [{ id: 'members', label: '人员管理' }]
       : []),
     ...(publishedView('roles', 'permissions') ? [{ id: 'permissions', label: '角色与权限' }] : []),
-    ...(publishedView('attendance', 'attendance')
-      ? [{ id: 'attendance', label: '本人签到记录' }]
-      : []),
     ...(staffPermission(effectiveUser, 'statistics.read')
       ? [{ id: 'stats', label: '统计分析' }]
-      : []),
-    ...(staffPermission(effectiveUser, 'attendance.export') ||
-    staffPermission(effectiveUser, 'settings.manage')
-      ? [
-          {
-            id: 'reports',
-            label: staffPermission(effectiveUser, 'attendance.export') ? '报表导出' : '导出规则'
-          }
-        ]
       : []),
     ...(profile ? [{ id: 'settings', label: '账号安全' }] : []),
     ...(staffPermission(effectiveUser, 'settings.manage')
@@ -276,19 +264,11 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
       />
     )
   );
-  const rosterRoute = route('roster', <Schedule user={effectiveUser} />, published.has('rosters'));
+  const dutyRoute = route(
+    'duties',
+    <DutyWorkspace user={effectiveUser} initialCampus={field?.campusId} />
+  );
   const moduleRoutes = [
-    route(
-      'attendance-manage',
-      <AttendanceManagement user={effectiveUser} />,
-      staffPermission(effectiveUser, 'attendance.correct')
-    ),
-    route(
-      'reports',
-      <AttendanceReports canExport={staffPermission(effectiveUser, 'attendance.export')} />,
-      staffPermission(effectiveUser, 'attendance.export') ||
-        staffPermission(effectiveUser, 'settings.manage')
-    ),
     route(
       'staff',
       <Records user={effectiveUser} />,
@@ -306,13 +286,6 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
         section={settingsSection}
         onNavigate={requestNavigate}
       />
-    ),
-    route(
-      'attendance',
-      <section className="workspace-module">
-        <Attendance onNavigate={requestNavigate} />
-      </section>,
-      published.has('attendance')
     ),
     route(
       'members',
@@ -350,7 +323,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
           </main>
         )}
         {fieldRoute}
-        {rosterRoute}
+        {dutyRoute}
         {moduleRoutes}
       </StaffWorkspace>
     </div>

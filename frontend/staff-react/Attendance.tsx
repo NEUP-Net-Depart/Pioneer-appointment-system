@@ -16,7 +16,13 @@ const campusNames: { [key: string]: string } = {
   'campus-hunnan': '浑南校区'
 };
 
-export function Attendance({ onNavigate }: { onNavigate: (route: string) => void }) {
+export function Attendance({
+  onNavigate,
+  embedded = false
+}: {
+  onNavigate?: (route: string) => void;
+  embedded?: boolean;
+}) {
   const routeActive = useContext(ActivityContext);
   const [items, setItems] = useState<Record[]>([]);
   const [error, setError] = useState('');
@@ -53,11 +59,13 @@ export function Attendance({ onNavigate }: { onNavigate: (route: string) => void
   }, [refreshKey, routeActive, pageCursor]);
   return (
     <section className="attendance-history">
-      <WorkspaceHeader group="我的" title="本人签到记录">
-        <button type="button" onClick={() => onNavigate('scene:mine')}>
-          返回个人中心
-        </button>
-      </WorkspaceHeader>
+      {!embedded && (
+        <WorkspaceHeader group="我的" title="本人签到记录">
+          <button type="button" onClick={() => onNavigate?.('scene:mine')}>
+            返回个人中心
+          </button>
+        </WorkspaceHeader>
+      )}
       <Notice>{error}</Notice>
       <section className="field-card" aria-busy={loading}>
         <div className="field-section-heading">
