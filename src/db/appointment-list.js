@@ -3,6 +3,8 @@ import {
   readAppointmentCursor,
   appointmentCursor
 } from '../../shared/appointment-pagination.js';
+import { APPOINTMENT_SEARCH_LIMIT, appointmentStudentId } from '../../shared/appointment-search.js';
+import { terminalStatuses } from '../../shared/constants.js';
 
 const sortColumns = {
   id: 'id',
@@ -30,6 +32,24 @@ function accessPredicate(rules, args, carryover = false) {
         ${carryover ? "OR appointments.status='in_progress' OR (appointments.status='booked' AND appointments.received_at IS NOT NULL)" : ''})
       AND (json_type(access_rule.value,'$.objectIds') IS NULL OR appointments.id IN
         (SELECT value FROM json_each(json_extract(access_rule.value,'$.objectIds')))))`;
+}
+
+export async function listStudentMatches(db, studentId, { campuses, summaryRules, identityRules }) {
+  if (!campuses.length || !summaryRules.length || !identityRules.length) return [];
+  const args = [studentId, ...campuses];
+  const summary = accessPredicate(summaryRules, args, true);
+  const identity = accessPredicate(identityRules, args);
+  const { results } = await db
+    .prepare(
+      `SELECT id,campus,date,time_slot AS timeSlot,status FROM appointments
+      WHERE student_id=? AND campus IN (${campuses.map(() => '?').join(',')})
+        AND (${summary}) AND (${identity})
+      ORDER BY CASE WHEN status IN (${terminalStatuses.map(() => '?').join(',')}) THEN 1 ELSE 0 END,
+        date DESC,time_slot,id LIMIT ?`
+    )
+    .bind(...args, ...terminalStatuses, APPOINTMENT_SEARCH_LIMIT + 1)
+    .all();
+  return results;
 }
 
 export async function listContactCandidates(db, select, fromRow, query, scope, cursor = '', token = null) {
@@ -94,15 +114,17 @@ export async function listAppointments(
   }
   if (query.q) {
     const text = query.q.toLowerCase();
+    const studentId = appointmentStudentId(query.q);
     args.push(text, text, text, text);
     const identity = accessPredicate(identityRules, args);
-    args.push(text, text);
+    args.push(text);
+    if (studentId) args.push(studentId);
     const contact = query.contactIds?.length
       ? ' OR appointments.id IN (SELECT value FROM json_each(?))'
       : '';
     if (contact) args.push(JSON.stringify(query.contactIds));
     where.push(
-      `(instr(lower(id),?)>0 OR instr(lower(repair_number),?)>0 OR instr(lower(device_model),?)>0 OR instr(campus,?)>0 OR ((${identity}) AND (instr(lower(name),?)>0 OR instr(student_id,?)>0))${contact})`
+      `(instr(lower(id),?)>0 OR instr(lower(repair_number),?)>0 OR instr(lower(device_model),?)>0 OR instr(campus,?)>0 OR ((${identity}) AND (instr(lower(name),?)>0${studentId ? ' OR student_id=?' : ''}))${contact})`
     );
   }
   const filteredWhere = where.join(' AND '),
