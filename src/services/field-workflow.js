@@ -14,7 +14,10 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
   const allowed = (context, code, target = {}) => authorizer.evaluate(context.actor,code,target,context,context.grants).allowed;
   const appointmentTarget = item => ({ campusId:campusId(item.campus), id:item.id, assignedMemberId:item.assignedMemberId, businessDate:item.date });
   const canReadSummary = (actor,item,context) => (actor.authorizedCampuses || []).includes(item.campus) && allowed(context,'repair.summary.read',appointmentTarget(item));
-  function searchCapabilities() { return { identity:true, identityScope:'authorized', contact:true, contactScope:'authorized' }; }
+  function searchCapabilities(context) {
+    const identity = !!context.permissions['customer.identity.read'];
+    return { identity, identityScope:identity ? 'authorized' : 'none', contact:true, contactScope:'authorized' };
+  }
   async function requireEligible(actor,campus,permission='repair.start') {
     const context = await staff.contextFor(actor);
     if (!allowed(context,permission,{campusId:campusId(campus)})) fail(403,'没有该校区的操作权限');
@@ -33,7 +36,8 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
     const context = await staff.contextFor(actor);
     const summaryRules = appointmentAccessRules(authorizer,actor,'repair.summary.read',context);
     if (!summaryRules.length) fail(403,'没有工单查询权限');
-    return {context,summaryRules,identityRules:summaryRules,searchCapabilities:searchCapabilities()};
+    const identityRules = appointmentAccessRules(authorizer,actor,'customer.identity.read',context);
+    return {context,summaryRules,identityRules,searchCapabilities:searchCapabilities(context)};
   }
   async function projectList(actor,items,providedContext) {
     const context = providedContext || await staff.contextFor(actor);
@@ -92,7 +96,7 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
       fail(403, '没有该校区的访问权限');
     const scope = { campuses: campus ? [campus] : actor.authorizedCampuses || [] };
     await appointments.expirePending(new Date().toISOString(), scope);
-    if (query.mode !== 'number' && query.mode !== 'contact') {
+    if ((query.mode === undefined || query.mode === 'identity') && !/^\d+(?:-\d*)?$/.test(query.text)) {
       const contactIds=query.contact && query.mode!=='identity' ? (await contactMatches(actor,{q:query.text,campus},context)).map(row=>row.id) : [];
       const result=await appointments.list({q:query.text,campus,contactIds,limit:APPOINTMENT_SEARCH_LIMIT,
         sort:'date',direction:'desc'}, {...scope,summaryRules,identityRules});
@@ -117,13 +121,23 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
     };
     // Apply the same current authorization and field projection as details,
     // before counting or limiting candidates. Hidden matches cannot fill the list.
-    if (query.mode !== 'number' && query.contact) {
+    if ((query.mode === undefined || query.mode === 'identity' || query.mode === 'studentId') && query.studentId) {
+      const matches = await appointments.searchStudentId(query.studentId, {
+        ...scope,
+        summaryRules,
+        identityRules
+      });
+      for (const row of matches)
+        if (add(row))
+          return { items: items.slice(0, APPOINTMENT_SEARCH_LIMIT), hasMore: true };
+    }
+    if ((query.mode === undefined || query.mode === 'contact') && query.contact) {
       const matches = await contactMatches(actor, { q: query.text, campus }, context);
       for (const row of matches)
         if (add(row))
           return { items: items.slice(0, APPOINTMENT_SEARCH_LIMIT), hasMore: true };
     }
-    if (query.mode !== 'contact' && /^\d+(?:-\d*)?$/.test(query.text)) {
+    if ((query.mode === undefined || query.mode === 'identity' || query.mode === 'number') && /^\d+(?:-\d*)?$/.test(query.text)) {
       for (let offset = 0; ; offset += 100) {
         const batch = await appointments.searchNumbers(
           query.text,
@@ -184,7 +198,7 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
       permissions:context.permissions,navigation:context.navigation,state:context.presence?.state || 'unsigned',reason:'',
       repairs:await projectList(actor,repairs,context),pendingPhotos:await projectList(actor,pendingPhotos,context),
       todayDuties:context.todayDuties,identities:staffIdentities(context,authorizer,{campusId:selected}),
-      searchCapabilities:searchCapabilities(),presence:context.presence,
+      searchCapabilities:searchCapabilities(context),presence:context.presence,
       event:await repository.dutyEvent(dateKey(),selected),
       pendingCoverInvitations:context.permissions['roster.read'] ? await repository.pendingCoverInvitations(context.actor.memberId) : 0,
       updatedAt:new Date().toISOString()};

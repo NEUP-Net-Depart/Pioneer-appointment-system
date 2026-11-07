@@ -96,7 +96,7 @@ export function Records({ user }) {
   const searchPlaceholder = [
     '编号',
     '设备',
-    searchCapabilities?.identity && '姓名、学号',
+    searchCapabilities?.identity && '姓名、完整学号',
     searchCapabilities?.contact && '完整联系方式'
   ]
     .filter(Boolean)

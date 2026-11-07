@@ -1,4 +1,4 @@
-import { listAppointments, listContactCandidates } from './appointment-list.js';
+import { listAppointments, listContactCandidates, listStudentMatches } from './appointment-list.js';
 import { serviceDayRepository } from './service-days.js';
 import { APPOINTMENT_SEARCH_LIMIT } from '../../shared/appointment-search.js';
 import { DEFAULT_SERVICE_LOCATIONS, terminalStatuses } from '../../shared/constants.js';
@@ -298,6 +298,9 @@ export function appointmentRepository(db) {
     },
     list(query, scope) {
       return listAppointments(db, select, fromRow, query, scope);
+    },
+    searchStudentId(studentId, scope) {
+      return listStudentMatches(db, studentId, scope);
     },
     contactCandidates(query, scope, cursor, token) {
       return listContactCandidates(db, contactSelect, fromRow, query, scope, cursor, token);

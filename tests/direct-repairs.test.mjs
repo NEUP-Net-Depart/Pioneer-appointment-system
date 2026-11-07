@@ -9,6 +9,26 @@ import { encryptText } from '../src/lib/privacy.js';
 import { staffSceneAllowed } from '../shared/staff-access.js';
 function patch(input) {return appointmentPatch({requestId:crypto.randomUUID(),...input});}
 
+test('full student ID finds authorized current and historical orders through records and scan search',async t=>{
+  const studentId='01234567';
+  const {users,service,scan,order,calendar}=repairScenario(t,{studentId});
+  const actor=await users.find('20260001');
+  const current='reserve020261105-01', history='reserve020261029-01';
+  order(current);
+  order(history,{date:calendar.previousServiceDay,status:'completed'});
+  order('reserve120261029-01',{campus:'浑南',date:calendar.previousServiceDay,status:'expired'});
+  order('reserve020261105-02',{student_id:'101234567'});
+  const records=await service.list({q:studentId},actor);
+  assert.deepEqual(records.items.map(item=>item.id),[current,history]);
+  assert.equal((await service.list({q:studentId.slice(0,-1)},actor)).filteredCounts.all,0);
+  const candidates=await scan.search({q:' '+studentId+' ',campusId:'campus-nanhu'},actor);
+  assert.deepEqual(candidates.items.map(item=>item.id),[current,history]);
+  assert.deepEqual(Object.keys(candidates.items[0]),['id','campus','date','timeSlot','status']);
+  assert.equal((await scan.search({q:studentId,mode:'number'},actor)).items.length,0);
+  assert.equal((await scan.search({q:'reserve'+studentId},actor)).items.length,0);
+  await assert.rejects(scan.search({q:studentId,campusId:'campus-hunnan'},actor),{status:403});
+});
+
 test('hardware staff can receive multiple orders after hours and hand over across days without attendance',async t=>{
   const {db,users,repo,staff,service,order,calendar}=repairScenario(t);
   await verifyStaffSchema(db);
