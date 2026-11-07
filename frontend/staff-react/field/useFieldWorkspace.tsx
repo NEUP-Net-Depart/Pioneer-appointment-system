@@ -23,24 +23,14 @@ export function useFieldWorkspace({
   onNavigate: (view: string) => void;
 }) {
   const key = `field-scene:${initial.actor.memberId}`;
-  const [scene, setScene] = useState(
-    () =>
-      requestedScene ||
-      (initial.repairs?.length
-        ? 'repair'
-        : initial.contexts.find((c) => c.id === sessionStorage.getItem(key))?.id ||
-          initial.contexts.find((c) => c.id === 'desk')?.id ||
-          initial.contexts[0]?.id ||
-          'mine')
-  );
-  useEffect(() => {
-    if (
-      requestedScene &&
-      (requestedScene === 'mine' ||
-        initial.contexts.some((context) => context.id === requestedScene))
-    )
-      setScene(requestedScene);
-  }, [requestedScene, initial.contexts]);
+  const scene =
+    requestedScene ||
+    (initial.repairs?.length
+      ? 'repair'
+      : initial.contexts.find((c) => c.id === sessionStorage.getItem(key))?.id ||
+        initial.contexts.find((c) => c.id === 'desk')?.id ||
+        initial.contexts[0]?.id ||
+        'mine');
   const [campus, setCampus] = useState(initial.campusId),
     [selected, setSelected] = useState(''),
     [scanOpen, setScanOpen] = useState(false),
@@ -89,7 +79,6 @@ export function useFieldWorkspace({
     onContextChange?.(data);
     if (scene !== 'mine' && !data.contexts.some((context) => context.id === scene)) {
       const next = data.contexts[0]?.id || 'mine';
-      setScene(next);
       onSceneChange?.(next);
       setSelected('');
       setScanOpen(false);

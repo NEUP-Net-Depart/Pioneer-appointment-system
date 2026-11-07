@@ -136,6 +136,7 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
           ? `已暂停 ${targets.length} 天，暂停说明已同步至校区公告。已有预约保留，请联系受影响机主。`
           : `已恢复 ${targets.length} 天，相应暂停公告已撤下；原容量继续使用，班表不会自动改写。`
       );
+      return true;
     } catch (failure) {
       setError(failure.message);
       throw failure;

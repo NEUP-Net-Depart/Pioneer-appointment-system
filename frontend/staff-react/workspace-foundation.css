@@ -1043,7 +1043,17 @@ fieldset.staffing-editor {
   position: relative;
   min-width: 0;
 }
-.workspace-native-select select {
+.field-app select:not([multiple]),
+.field-modal select:not([multiple]) {
+  appearance: none;
+  padding-right: 36px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='m1 1 5 5 5-5' fill='none' stroke='%23566579' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px 8px;
+}
+.field-app .workspace-native-select select,
+.field-modal .workspace-native-select select {
   width: 100%;
   min-height: 44px;
   padding-right: 38px;
@@ -1633,6 +1643,9 @@ fieldset.staffing-editor {
     flex-basis: calc(50% - 6px);
   }
   .field-app :is(.workspace-list-tools, .members-tools, .permission-tools) > label:first-child {
+    flex-basis: 100%;
+  }
+  .field-app :is(.planner-toolbar, .report-filters) > label:has(input[type='month']) {
     flex-basis: 100%;
   }
   .field-app :is(.workspace-list-tools, .planner-toolbar, .report-filters) > button {

@@ -103,8 +103,8 @@ export function StaffWorkspace({
         // next operation (e.g. member profile followed by role bindings).
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
-      if (pendingEditors({ includeHidden: pending === '__logout__' }).length)
-        throw new Error('仍有未保存的修改，请取消切换后检查。');
+      // Each editor explicitly acknowledges success. React may not have
+      // committed its clean state or unmounted its guard in this task yet.
       const id = pending;
       setPending(null);
       finishNavigation(id);

@@ -360,6 +360,7 @@ export function Schedule({ user }) {
       setEditing(null);
       setMessage('已保存');
       setRefresh((value) => value + 1);
+      return true;
     } catch (error) {
       setError(error.message);
       throw error;
