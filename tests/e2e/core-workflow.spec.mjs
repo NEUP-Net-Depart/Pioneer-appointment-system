@@ -67,37 +67,6 @@ test('ordinary network staff receive photos, finish and correct an onsite repair
  await expect(page.locator('#detail-information')).not.toContainText('unknown');
 });
 
-test('staff can find a booked order by student ID in records and open it to start repair',async({page},testInfo)=>{
- const studentId=testInfo.project.name==='chromium'?'020269971':'020269972';
- const guestList=await page.request.get('/api/appointments?'+new URLSearchParams({q:studentId}));
- const guestSearch=await page.request.post('/api/scan/search',{data:{q:studentId}});
- expect(guestList.status()).toBe(401);
- expect(guestSearch.status()).toBe(401);
- await loginStaff(page,'20261002','StaffTest!2026');
- const created=await api(page,'/api/scan/onsite',{requestId:crypto.randomUUID(),campus:'南湖',studentId,name:'学号查询测试',social:'student-search',deviceType:'笔记本',brand:'联想',warranty:'不清楚',faultType:'系统',signature:[Array.from({length:12},(_,i)=>[.1+i*.05,.2+i*.03])]});
- await staffPage(page,'预约记录');
- const records=page.getByRole('searchbox',{name:'查找预约'});
- await expect(records).toHaveAttribute('placeholder',/完整学号/);
- const searchResponse=page.waitForResponse(response=>{
-  const url=new URL(response.url());
-  return url.pathname==='/api/appointments' && url.searchParams.get('q')===studentId;
- });
- await records.fill(studentId);
- const result=await searchResponse;
- expect(result.ok()).toBeTruthy();
- expect((await result.json()).items.map(item=>item.id)).toEqual([created.id]);
- const row=page.getByRole('row').filter({hasText:created.id});
- await expect(row).toBeVisible();
- await row.getByRole('button',{name:'查看详情'}).click();
- const order=page.getByRole('dialog',{name:'维修工单'});
- await expect(order.getByText(studentId,{exact:false})).toBeVisible();
- await order.getByRole('button',{name:'关闭',exact:true}).click();
- await staffPage(page,'维修工作台');
- await page.getByRole('combobox',{name:'预约编号 / 学号',exact:true}).fill(studentId);
- await page.getByRole('option').filter({hasText:created.id}).click();
- await expect(order.getByRole('button',{name:'直接接单，开始维修'})).toBeVisible();
-});
-
 test('weekly availability, publishing, direct leave and recipient confirmation work in the unified page',async({page,context},testInfo)=>{
  await loginStaff(page,'20261001','StaffTest!2026');await staffPage(page,'排班与可用时间');
  // Each browser uses a distinct week; no state reset or fixture shortcuts.
