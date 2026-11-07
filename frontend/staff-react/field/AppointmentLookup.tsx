@@ -8,6 +8,8 @@ type Candidate = {
   date: string;
   timeSlot: string;
   status: string;
+  name?: string;
+  studentId?: string;
 };
 export function AppointmentLookup({
   active,
@@ -46,7 +48,7 @@ export function AppointmentLookup({
     contactEnabled = allowContactSearch ?? searchCapabilities?.contact ?? true,
     query = parseAppointmentSearch(value),
     numberQuery = !!query && /^\d+(?:-\d*)?$/.test(query.text),
-    ready = !!query?.ready && (numberQuery || (contactEnabled && !!query.contact)),
+    ready = !!query?.ready && (numberQuery || !query.contact || contactEnabled),
     contactHint =
       searchCapabilities?.contactScope === 'own'
         ? '本人经手工单的完整联系方式'
@@ -56,7 +58,7 @@ export function AppointmentLookup({
     placeholder =
       inputRole === 'textbox'
         ? `编号、设备或故障${contactEnabled ? `、${contactHint}` : ''}`
-        : `预约编号${contactEnabled ? `或${contactHint}` : ''}`;
+        : `预约编号、学号、姓名${contactEnabled ? `或${contactHint}` : ''}`;
   useEffect(() => {
     controller.current?.abort();
     setItems([]);
@@ -74,7 +76,7 @@ export function AppointmentLookup({
           method: 'POST',
           body: {
             q: query.text,
-            ...(!contactEnabled ? { mode: 'number' } : {}),
+            ...(!contactEnabled ? { mode: 'identity' } : {}),
             ...(campusId ? { campusId } : {})
           },
           signal: abort.signal
@@ -84,7 +86,7 @@ export function AppointmentLookup({
           setExpanded(true);
           setMessage(
             result.hasMore
-              ? '匹配较多，请输入更完整的编号或联系方式'
+              ? '匹配较多，请输入更完整的编号、学号、姓名或联系方式'
               : !result.items.length
                 ? hasLocalMatches
                   ? ''
@@ -147,8 +149,8 @@ export function AppointmentLookup({
               items.length
                 ? '请选择下方对应预约'
                 : !contactEnabled
-                  ? '可输入至少两位预约编号尾号查询'
-                  : '请输入至少两位编号尾号，或完整的联系方式'
+                  ? '请输入至少两位预约编号、学号或姓名'
+                  : '请输入至少两位编号、学号、姓名，或完整的联系方式'
             );
           }
         }}
@@ -205,6 +207,11 @@ export function AppointmentLookup({
             >
               <span>
                 <strong data-motion-value="text">{item.id}</strong>
+                {item.name && (
+                  <small>
+                    {item.name} · {item.studentId}
+                  </small>
+                )}
                 <small data-motion-value="text">
                   {item.campus}校区 · {item.date} · {item.timeSlot}
                 </small>

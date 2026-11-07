@@ -7,6 +7,7 @@ export interface Appointment {
   status: string;
   receivedAt?: string;
   receivedBy?: string;
+  receivedByName?: string;
   photoDeferredBy?: string;
   canSupplement?: boolean;
   parentAppointmentId?: string;
@@ -41,6 +42,7 @@ export interface Appointment {
     }[];
   } | null;
   canReceive?: boolean;
+  canEdit?: boolean;
   businessDate?: string;
   frontPhotoId?: string;
   backPhotoId?: string;

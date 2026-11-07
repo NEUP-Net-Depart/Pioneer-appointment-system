@@ -25,6 +25,8 @@ export function repairScenario(test, { time = '22:30', studentId } = {}) {
   seedStaff(db, '20260001');
   seedStaff(db, '20260002');
   seedStaff(db, '20260003', '浑南');
+  for (const account of ['20260001','20260002','20260003'])
+    db.sqlite.prepare("INSERT INTO member_department_memberships(id,member_id,department_id,position_code,assignment_type,is_primary,effective_from,created_at) VALUES(?,?,'dept-hardware','member','primary',1,'2026-01-01','2026-01-01')").run('post-'+account,'member-'+account);
   const users = userRepository(db), repo = appointmentRepository(db);
   const staff = staffServices(db, key);
   const service = appointmentService(repo, users, key, clock, staff);

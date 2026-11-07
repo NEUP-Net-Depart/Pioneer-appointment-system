@@ -2,8 +2,7 @@
 export const workspaceGroups = ['现场工作', '排班考勤', '人员权限', '业务设置', '我的'];
 
 const destinations = {
-  'scene:desk': ['现场工作', 'desk', '接待 扫码 登记 接单 签到码'],
-  'scene:repair': ['现场工作', 'repair', '接单 维修 保修 扫码'],
+  'scene:today': ['现场工作', 'desk', '接待 接收 扫码 登记 接单 维修 保修 签到'],
   staff: ['现场工作', 'records', '预约 查询 返修 工单'],
   stats: ['现场工作', 'chart', '统计 工作量'],
   'attendance-manage': ['排班考勤', 'check', '考勤 补录 修正 签到'],
@@ -37,7 +36,7 @@ export function groupWorkspaceEntries(entries) {
 }
 
 export function mobileWorkspaceEntries(entries) {
-  const ids = ['scene:desk', 'scene:repair', 'roster'];
+  const ids = ['scene:today', 'roster'];
   const work = ids
     .map((id) => entries.find((entry) => entry.id === id))
     .filter(Boolean)

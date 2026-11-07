@@ -5,9 +5,11 @@ import { database,seedStaff,seedAppointment,seedPhoto } from './helpers/database
 import { repairScenario } from './fixtures/repair-scenario.mjs';
 import { appointmentPatch } from '../src/lib/validation.js';
 import { verifyStaffSchema } from '../src/db/staff-readiness.js';
+import { encryptText } from '../src/lib/privacy.js';
+import { staffSceneAllowed } from '../shared/staff-access.js';
 function patch(input) {return appointmentPatch({requestId:crypto.randomUUID(),...input});}
 
-test('any active staff can receive multiple orders after hours and hand over across days without attendance',async t=>{
+test('hardware staff can receive multiple orders after hours and hand over across days without attendance',async t=>{
   const {db,users,repo,staff,service,order,calendar}=repairScenario(t);
   await verifyStaffSchema(db);
   const one=await users.find('20260001'),two=await users.find('20260002'),other=await users.find('20260003');
@@ -45,20 +47,150 @@ test('any active staff can receive multiple orders after hours and hand over acr
   assert.equal(Object.hasOwn(listing[0],'social'),false);
 });
 
-test('deferred originals survive completion and a later-day manual supplement; partial upload retains the pending marker',async t=>{
-  const {db,users,repo,service,order,calendar}=repairScenario(t);
-  order('deferred');const one=await users.find('20260001'),two=await users.find('20260002');
-  await assert.rejects(service.update('deferred',patch({revision:0,status:'in_progress'}),one),{status:400});
-  const started=await service.update('deferred',patch({revision:0,status:'in_progress',photosCaptured:true,uploadTimedOut:true}),one);
-  const finished=await service.update('deferred',patch({revision:started.revision,status:'completed',outcome:'not_needed',repairNote:'设备无需维修'}),one);
+test('office reception leaves the order unassigned; hardware starts it across days without replacing reception evidence',async t=>{
+  const {db,users,staff,service,order,calendar}=repairScenario(t);
+  db.sqlite.exec("UPDATE member_department_memberships SET department_id='dept-office' WHERE id='post-20260001'");
+  const office=await users.find('20260001'),hardware=await users.find('20260002');
+  order('joint');
+  seedPhoto(db,'joint-front','joint','front',office.account);
+  seedPhoto(db,'joint-back','joint','back',office.account);
+  await assert.rejects(service.update('joint',patch({revision:0,status:'in_progress',frontPhotoId:'joint-front',backPhotoId:'joint-back'}),office),{status:403});
+  const input={revision:0,requestId:crypto.randomUUID(),frontPhotoId:'joint-front',backPhotoId:'joint-back'};
+  const received=await service.receive('joint',input,office);
+  assert.equal(received.status,'booked');assert.equal(received.assignedMemberId,'');assert.equal(received.startedAt,null);
+  assert.equal(received.receivedBy,office.account);
+  assert.equal((await service.receive('joint',input,office)).revision,received.revision);
+  await assert.rejects(service.update('joint',patch({revision:received.revision,status:'cancelled'}),office),{status:409});
   calendar.moveTo(calendar.nextDay,'10:00');
-  seedPhoto(db,'df','deferred','front','20260001');seedPhoto(db,'db','deferred','back','20260001');
-  await assert.rejects(service.supplement('deferred',{revision:finished.revision,requestId:crypto.randomUUID(),frontPhotoId:'df'},two),{status:403});
-  const partial=await service.supplement('deferred',{revision:finished.revision,requestId:crypto.randomUUID(),frontPhotoId:'df'},one);
-  assert.equal(partial.photoDeferredBy,'20260001');
-  const complete=await service.supplement('deferred',{revision:partial.revision,requestId:crypto.randomUUID(),backPhotoId:'db'},one);
+  const board=await staff.field.board(hardware);
+  assert.ok(board.appointments.some(row=>row.id==='joint' && row.status==='booked'));
+  const started=await service.update('joint',patch({revision:received.revision,status:'in_progress',verification:{brand:'不应覆盖',model:'',warranty:'unknown',liquidMetal:'unknown'}}),hardware);
+  for(const key of ['receivedAt','receivedBy','frontPhotoId','backPhotoId','brand'])assert.equal(started[key],received[key]);
+  assert.equal(started.assignedMemberId,hardware.memberId);
+  await assert.rejects(service.transfer('joint',{revision:started.revision,requestId:crypto.randomUUID(),receivedDevice:true},office),{status:403});
+  await assert.rejects(service.update('joint',patch({revision:started.revision,status:'completed',outcome:'repaired',repairNote:'越权结束'}),office),{status:403});
+  const finished=await service.update('joint',patch({revision:started.revision,status:'completed',outcome:'repaired',repairNote:'维修完成'}),hardware);
+  assert.equal(finished.receivedBy,office.account);assert.equal(finished.assignedMemberId,hardware.memberId);
+  const actions=db.sqlite.prepare("SELECT action,actor_account,before_json,after_json FROM audit_events WHERE json_extract(source_ref,'$.id')=? AND action IN ('repairs.received','repairs.started','repairs.completed') ORDER BY rowid").all('joint');
+  assert.deepEqual(actions.map(row=>[row.action,row.actor_account]),[['repairs.received',office.account],['repairs.started',hardware.account],['repairs.completed',hardware.account]]);
+  assert.equal(JSON.parse(actions[0].after_json).assignedTo,'');
+  assert.equal(JSON.parse(actions[1].before_json).receivedBy,office.account);
+  assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM repair_intake_records WHERE appointment_id=?').get('joint').n,1);
+});
+
+test('current memberships and campuses enforce reception and repair capabilities, including office members with a hardware exchange post',async t=>{
+  const {db,users,repo,staff,service,order,calendar}=repairScenario(t);
+  const actor=await users.find('20260001');order('permissions');
+  const start=()=>service.update('permissions',patch({revision:0,status:'in_progress',photosCaptured:true,uploadTimedOut:true}),actor);
+  const receive=()=>service.receive('permissions',{revision:0,requestId:crypto.randomUUID(),photosCaptured:true,uploadTimedOut:true},actor);
+  db.sqlite.exec("UPDATE member_department_memberships SET department_id='dept-network' WHERE id='post-20260001'");
+  await assert.rejects(start(),{status:403});await assert.rejects(receive(),{status:403});
+  await assert.rejects(staff.field.requireIntake(actor,await repo.find('permissions')),{status:403});
+  db.sqlite.exec("UPDATE member_department_memberships SET department_id='dept-office' WHERE id='post-20260001'");
+  db.sqlite.exec("INSERT INTO member_department_memberships(id,member_id,department_id,position_code,assignment_type,is_primary,effective_from,created_at) VALUES('secondary-hardware','member-20260001','dept-hardware','member','exchange',0,'2026-01-01','2026-01-01')");
+  order('exchange');
+  const received=await service.receive('exchange',{revision:0,requestId:crypto.randomUUID(),photosCaptured:true,uploadTimedOut:true},actor);
+  const started=await service.update('exchange',patch({revision:received.revision,status:'in_progress'}),actor);
+  assert.equal(started.assignedMemberId,actor.memberId);
+  db.sqlite.prepare("UPDATE member_department_memberships SET effective_to=? WHERE id='secondary-hardware'").run(calendar.serviceDay);
+  await assert.rejects(start(),{status:403});
+  db.sqlite.prepare("UPDATE member_department_memberships SET effective_to=NULL,effective_from=? WHERE id='secondary-hardware'").run(calendar.nextDay);
+  await assert.rejects(start(),{status:403});
+  db.sqlite.exec("UPDATE member_department_memberships SET effective_from='2026-01-01',assignment_type='exchange' WHERE id='secondary-hardware'");
+  order('elsewhere',{campus:'浑南'});
+  await assert.rejects(service.receive('elsewhere',{revision:0,requestId:crypto.randomUUID(),photosCaptured:true,uploadTimedOut:true},actor),{status:403});
+  db.sqlite.exec("UPDATE departments SET enabled=0 WHERE id='dept-hardware'");
+  await assert.rejects(start(),{status:403});
+  db.sqlite.exec("UPDATE departments SET enabled=1 WHERE id='dept-hardware'; UPDATE staff_accounts SET status='disabled' WHERE account='20260001'");
+  await assert.rejects(start(),{status:401});
+});
+
+test('staff with read access, including administrators, can open today work within campus without receiving or starting repairs',async t=>{
+  const {db,users,staff,service,order}=repairScenario(t);
+  db.sqlite.exec("UPDATE member_department_memberships SET department_id='dept-network' WHERE id='post-20260001'");
+  db.sqlite.exec("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at,protected) VALUES('root001','系统管理员','superadmin','南湖','test','2026-01-01',1); INSERT INTO staff_campus_grants VALUES('root001','南湖')");
+  order('visible');order('elsewhere',{campus:'浑南'});
+  for(const account of ['20260001','root001']) {
+    const actor=await users.find(account),board=await staff.field.board(actor);
+    assert.ok(board.contexts.some(context=>context.id==='today'));
+    assert.ok(board.navigation.some(entry=>entry.id==='workbench'));
+    assert.equal(staffSceneAllowed({permissions:board.permissions},board,'today'),true);
+    assert.deepEqual(board.appointments.map(row=>row.id),['visible']);
+    await assert.rejects(staff.field.board(actor,{campusId:'campus-hunnan'}),{status:403});
+    const input={revision:0,requestId:crypto.randomUUID(),photosCaptured:true,uploadTimedOut:true};
+    await assert.rejects(service.receive('visible',input,actor),{status:403});
+    await assert.rejects(service.update('visible',patch({...input,status:'in_progress'}),actor),{status:403});
+  }
+});
+
+test('ordinary members receive current repair facts while original evidence and operation history stay scoped to managers',async t=>{
+  const {db,users,staff,service,order}=repairScenario(t);
+  db.sqlite.exec("UPDATE member_department_memberships SET department_id='dept-office' WHERE id='post-20260002'");
+  const hardware=await users.find('20260001'),office=await users.find('20260002');
+  order('evidence',{signature:'private-signature',note:'private-registration-note'});
+  order('elsewhere',{campus:'浑南'});
+  await service.update('evidence',patch({revision:0,status:'in_progress',photosCaptured:true,uploadTimedOut:true}),hardware);
+  const assertNoEvidence=item=>{
+    assert.ok(item,'the expected repair must be returned before checking its visible fields');
+    for(const key of ['original','repairHistory','signature','note','agreementAt','agreementVersion'])assert.equal(Object.hasOwn(item,key),false,key);
+  };
+  for(const actor of [hardware,office]) {
+    const detail=await staff.field.detail(actor,'evidence');
+    assertNoEvidence(detail);
+    assert.equal(detail.assignedMemberId,hardware.memberId);
+    assertNoEvidence((await staff.field.board(actor)).appointments.find(row=>row.id==='evidence'));
+    assertNoEvidence((await service.list({},actor)).items.find(row=>row.id==='evidence'));
+  }
+  assertNoEvidence((await staff.workbench(hardware)).repairs.find(row=>row.id==='evidence'));
+  db.sqlite.exec("UPDATE member_department_memberships SET position_code='head' WHERE id='post-20260002'");
+  db.sqlite.exec("INSERT INTO staff_accounts(account,name,role,home_campus,password_hash,created_at,protected) VALUES('root001','系统管理员','superadmin','南湖','test','2026-01-01',1); INSERT INTO staff_campus_grants VALUES('root001','南湖')");
+  for(const actor of [await users.find(office.account),await users.find('root001')]) {
+    const detail=await staff.field.detail(actor,'evidence');
+    assert.equal(detail.original.signature,'private-signature');
+    assert.equal(detail.original.note,'private-registration-note');
+    assert.ok(detail.repairHistory.events.some(event=>event.action==='repairs.started'));
+    await assert.rejects(staff.field.detail(actor,'elsewhere'),{status:403});
+  }
+});
+
+test('unified lookup reuses identity and exact contact search without returning contacts or leaking other campuses',async t=>{
+  const {users,scan,order,calendar}=repairScenario(t);
+  const actor=await users.find('20260001');
+  const social=await encryptText('wechat_exact','00'.repeat(32));
+  order('reserve020261105-91',{student_id:'20269918',name:'张三',social});
+  order('reserve020261029-92',{date:calendar.previousServiceDay,student_id:'20269919',name:'张三',social,status:'completed'});
+  for(let i=0;i<12;i++)order('reserve120261105-'+i,{campus:'浑南',student_id:'20269918',name:'张三',social,source:'onsite'});
+  for(const query of ['20261105-91','20269918','张三','wechat_exact']) {
+    const result=await scan.search({q:query,campusId:'campus-nanhu'},actor);
+    assert.ok(result.items.some(row=>row.id==='reserve020261105-91'),query);
+    assert.ok(result.items.every(row=>row.campus==='南湖'));
+    assert.equal(result.hasMore,false);
+    assert.ok(result.items.every(row=>!['phone','social','email','contactValue'].some(key=>Object.hasOwn(row,key))));
+  }
+  assert.equal((await scan.search({q:'wechat_exac'},actor)).items.length,0);
+  assert.ok((await scan.search({q:'张三'},actor)).items.some(row=>row.date===calendar.previousServiceDay));
+  await assert.rejects(scan.search({q:'张三',campusId:'campus-hunnan'},actor),{status:403});
+});
+
+test('deferred originals stay with the receiver across repair ownership, completion and partial supplements',async t=>{
+  const {db,users,repo,staff,service,order,calendar}=repairScenario(t);
+  db.sqlite.exec("UPDATE member_department_memberships SET department_id='dept-office' WHERE id='post-20260001'");
+  order('deferred');const receiver=await users.find('20260001'),repairer=await users.find('20260002');
+  await assert.rejects(service.receive('deferred',{revision:0,requestId:crypto.randomUUID()},receiver),{status:400});
+  const received=await service.receive('deferred',{revision:0,requestId:crypto.randomUUID(),photosCaptured:true,uploadTimedOut:true},receiver);
+  const started=await service.update('deferred',patch({revision:received.revision,status:'in_progress'}),repairer);
+  const finished=await service.update('deferred',patch({revision:started.revision,status:'completed',outcome:'not_needed',repairNote:'设备无需维修'}),repairer);
+  calendar.moveTo(calendar.nextDay,'10:00');
+  assert.ok((await staff.field.board(receiver)).pendingPhotos.some(row=>row.id==='deferred'));
+  await staff.field.requireIntake(receiver,await repo.find('deferred'));
+  seedPhoto(db,'df','deferred','front',receiver.account);seedPhoto(db,'db','deferred','back',receiver.account);
+  await assert.rejects(service.supplement('deferred',{revision:finished.revision,requestId:crypto.randomUUID(),frontPhotoId:'df'},repairer),{status:403});
+  const partial=await service.supplement('deferred',{revision:finished.revision,requestId:crypto.randomUUID(),frontPhotoId:'df'},receiver);
+  assert.equal(partial.photoDeferredBy,receiver.account);
+  const complete=await service.supplement('deferred',{revision:partial.revision,requestId:crypto.randomUUID(),backPhotoId:'db'},receiver);
   assert.equal(complete.photoDeferredBy,'');assert.equal(complete.status,'completed');assert.equal(complete.outcome,finished.outcome);
-  assert.equal((await repo.pendingPhotos('20260001','南湖')).length,0);
+  assert.equal(complete.receivedBy,receiver.account);assert.equal(complete.assignedMemberId,repairer.memberId);
+  assert.equal((await repo.pendingPhotos(receiver.account,'南湖')).length,0);
 });
 
 test('competing starts keep one owner and receipt replay does not create a second start',async t=>{

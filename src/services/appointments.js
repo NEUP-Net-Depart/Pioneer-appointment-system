@@ -70,11 +70,11 @@ export function appointmentService(
     if (!repairOutcomes.includes(outcome) || !note?.trim())
       fail(400, '请选择维修结果并填写维修说明');
   }
-  async function mutate(id,input,actor,action,prepare) {
+  async function mutate(id,input,actor,action,prepare,permission='repair.receive') {
     const item=await appointments.find(id);
     if (!item) fail(404,'工单不存在');
     requireCampus(actor,item.campus);
-    const {context}=await staffPlatform.field.requireEligible(actor,item.campus);
+    const {context}=await staffPlatform.field.requireEligible(actor,item.campus,permission);
     const receipt=await staffPlatform.field.receipt(actor,action,{...input,id},id);
     if (receipt.replay) return receipt.replay;
     if (!Number.isInteger(input.revision) || input.revision!==item.revision) fail(409,'工单已更新，请刷新后重试');
@@ -357,7 +357,7 @@ export function appointmentService(
         if (item.assignedMemberId===actor.memberId) fail(409,'你已经是当前主修');
         if (input.receivedDevice!==true) fail(400,'请确认已经实际接到设备');
         return {assignedTo:actor.account};
-      });
+      },'repair.transfer');
     },
     async recover(id, input, actor) {
       const item = await appointments.find(id);
@@ -403,11 +403,13 @@ export function appointmentService(
       }
       const command={...input,revision,requestId,verification,photosCaptured,uploadTimedOut};
       const operation=action==='correct' ? 'repairs.corrected' : input.status==='in_progress' ? 'repairs.started' : input.status==='completed' ? 'repairs.completed' : 'repairs.updated';
+      const permission=action==='correct' ? 'repair.summary.read' : input.status==='in_progress' ? 'repair.start' : input.status==='completed' || !input.status ? 'repair.finish.own' : 'repair.receive';
       return mutate(id,command,user,operation,async (item,context,at)=>{
         const own=item.assignedMemberId===context.actor.memberId;
         if (action==='correct') {
           if (item.status!=='completed') fail(409,'只有已结束工单可更正结果和说明');
-          if (!own) await staffPlatform.requirePermission(user,'repair.correct',{campusId:item.campus,id,assignedMemberId:item.assignedMemberId});
+          const target={campusId:item.campus,id,assignedMemberId:item.assignedMemberId};
+          if (!own || !staffPlatform.evaluate(context,'repair.finish.own',target).allowed) await staffPlatform.requirePermission(user,'repair.correct',target);
           if (Object.keys(input).some(key=>!['outcome','repairNote'].includes(key))) fail(400,'更正只修改结果和说明');
           repairResult(input.outcome,input.repairNote);
           return {outcome:input.outcome,repairNote:input.repairNote};
@@ -423,7 +425,7 @@ export function appointmentService(
         if (item.status==='in_progress' && own && !input.status && typeof input.repairNote==='string') return {repairNote:input.repairNote};
         if (item.status==='booked' && !item.receivedAt && input.status==='cancelled') return {status:'cancelled',completedAt:at};
         fail(409,'当前状态不能执行此操作；维修中工单请由当前主修结束或实际接手后处理');
-      });
+      },permission);
     }
   };
 }

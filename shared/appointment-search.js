@@ -20,5 +20,7 @@ export function parseAppointmentSearch(value) {
     };
   if (appointmentContactTerm(raw))
     return { text: raw, acrossDates: false, ready: true, contact: true };
+  if (raw && !/\p{Cc}/u.test(raw))
+    return { text: raw, acrossDates: true, ready: raw.length >= 2 };
   return null;
 }

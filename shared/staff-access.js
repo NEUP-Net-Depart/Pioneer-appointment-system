@@ -20,8 +20,6 @@ export function staffViewAllowed(user, view) {
 export function staffSceneAllowed(user, home, scene) {
   if (scene === 'mine') return true;
   if (!home?.contexts?.some(context => context.id === scene)) return false;
-  if (scene === 'repair') return !!home.repairs?.length || staffPermission(user, 'repair.summary.read');
-  if (scene === 'desk') return ['onsite.create', 'repair.receive', 'repair.transfer']
-    .some(code => staffPermission(user, code));
+  if (scene === 'today') return staffPermission(user, 'repair.summary.read');
   return false;
 }
