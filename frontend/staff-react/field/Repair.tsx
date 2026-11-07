@@ -16,6 +16,7 @@ function RepairOrder({
   onClose,
   onChanged,
   sidePanel = false,
+  hideWarrantyLookup = false,
   customerCredential
 }: {
   id: string;
@@ -23,6 +24,7 @@ function RepairOrder({
   onClose: () => void;
   onChanged: () => void;
   sidePanel?: boolean;
+  hideWarrantyLookup?: boolean;
   customerCredential?: { id: string; accessToken: string } | null;
 }) {
   const r = useRepair({ id, onChanged });
@@ -182,7 +184,7 @@ function RepairOrder({
               {outcomeLabels[item.outcome || ''] || '历史未分类'} · {item.repairNote}
             </p>
           )}
-          <WarrantyLookupButton initialBrand={item.brand} />
+          {!hideWarrantyLookup && <WarrantyLookupButton initialBrand={item.brand} />}
           <RepairRelations
             key={id}
             item={item}

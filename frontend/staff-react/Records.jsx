@@ -383,6 +383,7 @@ export function Records({ user }) {
           onClose={() => setSelected('')}
           onChanged={refresh}
           sidePanel
+          hideWarrantyLookup
         />
       )}
     </section>

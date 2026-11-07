@@ -56,6 +56,7 @@ test('ordinary network staff receive photos, finish and correct an onsite repair
  await expect(dialog.getByRole('button',{name:'保存结果更正'})).toBeVisible();
  await dialog.getByLabel('已解决',{exact:true}).check();await dialog.getByLabel('简短处理说明').fill('键盘更换后通过复核（内部）');await dialog.getByRole('button',{name:'保存结果更正'}).click();
  await expect(dialog.getByText('已解决 · 键盘更换后通过复核（内部）')).toBeVisible();
+ await expect(dialog.getByRole('button',{name:'查询保修',exact:true})).toHaveCount(0);
  await screenshot(page,testInfo,'repair');
  const customer=await page.request.get(`/api/appointments/${created.id}`,{headers:{'X-Appointment-Token':created.accessToken}});
  expect(customer.ok()).toBeTruthy();const visible=await customer.json();expect(visible.outcome).toBe('repaired');expect(JSON.stringify(visible)).not.toMatch(/内部|repairNote|actorAccount|before_json/);
