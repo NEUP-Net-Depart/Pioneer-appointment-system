@@ -73,8 +73,6 @@ export function initSlotPicker({onChange = () => {}} = {}) {
   function render() {
     const dates=datesNow();
     announcements.render(settings()?.notices || [],campusInput.value);
-    const hint=$('#booking-release-hint');
-    if(hint){hint.textContent=campusInput.value ? `每日北京时间 ${settings()?.releaseTime || DEFAULT_RELEASE_TIME} 更新预约范围；当天未结束时段仍可预约。` : '';hint.parentElement.hidden=!campusInput.value;}
     for(const cache of campusSummaries.values())for(const date of cache.keys())if(!dates.includes(date))cache.delete(date);
     if ([...days.children].map(item=>item.dataset.date).join()!==dates.join()) {
       days.replaceChildren(...dates.map(date=>{

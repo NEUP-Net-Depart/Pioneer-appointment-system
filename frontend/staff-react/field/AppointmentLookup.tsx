@@ -191,17 +191,6 @@ export function AppointmentLookup({
         </label>
         {inputRole === 'combobox' && <button disabled={disabled || !ready}>查询</button>}
       </form>
-      <details className="workspace-help field-lookup-help">
-        <summary>查询规则</summary>
-        <p>
-          编号尾号查当天；含“-”的编号片段可跨日期查找。
-          {!contactEnabled
-            ? ''
-            : searchCapabilities?.contactScope === 'own'
-              ? '联系方式仅匹配本人接手的工单。'
-              : '完整联系方式匹配当前校区可查看的现场工单。'}
-        </p>
-      </details>
       {pending && <p role="status">正在查找…</p>}
       {expanded && items.length > 0 && (
         <div className="field-lookup-results" role="listbox" id={id} aria-label="匹配的预约">

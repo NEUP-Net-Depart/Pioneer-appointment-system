@@ -26,7 +26,7 @@
       <div id="booking-calendar" hidden><div class="booking-picker-body">
         <div class="booking-date-panel"><div class="booking-panel-heading"><h3 class="booking-panel-label">选择日期</h3></div><div class="booking-days" id="booking-days" role="group" aria-label="可预约日期"></div><div class="booking-empty" id="booking-empty" hidden>当前预约范围内暂无开放日期</div></div>
         <div class="booking-time-panel"><div class="booking-slot-placeholder"><div class="booking-panel-heading"><h3 class="booking-panel-label">选择到场时段</h3></div><p class="booking-placeholder-body" id="booking-slot-placeholder-text" aria-hidden="true"></p></div><div class="booking-slot-panel" id="booking-slot-panel" hidden><div class="booking-panel-heading"><h3 id="booking-slot-title" class="booking-panel-label">选择到场时段</h3><p id="booking-slot-context" class="booking-slot-context" role="status" hidden></p></div><div class="booking-slots" id="booking-slots" role="group" aria-label="到场时段"></div></div></div>
-      </div><details class="booking-release-rules" hidden><summary>放号规则</summary><p id="booking-release-hint" class="booking-release-hint"></p></details>
+      </div>
       <div class="selection-summary" id="booking-location" hidden></div></div>
       <div class="booking-feedback" hidden><p id="booking-selection" role="status"></p><button type="button" class="text-btn" id="booking-retry" hidden>重试</button></div>
       <div class="step-actions"><button class="primary-btn" type="button" id="step-one-next">下一步 · 填写设备信息</button></div>
@@ -74,7 +74,7 @@
     <div class="success-layout"><div class="success-details"><div id="success-summary" class="selection-summary"></div>
     <div class="booking-code"><span>预约编号</span><strong id="success-code"></strong></div>
     <button class="secondary-btn" id="copy-code" type="button">复制私人查询链接</button><p id="credential-save-message" class="notice" hidden role="status"></p><input id="success-link-fallback" class="private-link-fallback" type="text" readonly hidden aria-label="私人查询链接" />
-    </div><div id="success-repair-qr" class="repair-qr success-qr-panel"></div></div>
+    </div><div class="repair-qr success-qr-panel"><div id="success-repair-qr"></div><p class="success-qr-hint">建议截图保存此二维码，并在前来维修时出示给维修人员</p></div></div>
     <section id="success-photos" aria-labelledby="success-photo-title" hidden><h2 id="success-photo-title">故障照片上传</h2><p id="success-photo-status"></p><div class="photo-upload-heading"><span>照片上传进度</span><span id="success-photo-count"></span></div><progress id="success-photo-total" value="0" max="4" aria-label="照片上传总进度"></progress><div id="success-photo-progress"></div><p id="success-photo-message" role="status"></p><p id="success-photo-advice" class="upload-advice"><span class="advice-icon" aria-hidden="true">i</span><span>建议等待照片上传完成后再关闭页面。预约本身已经成功。</span></p><div class="photo-upload-actions"><button id="success-photo-retry" class="secondary-btn" type="button" hidden>重试未上传照片</button><button id="success-photo-later" class="text-btn" type="button" hidden>稍后补传</button></div></section>
     <div class="success-actions"><button class="primary-btn" id="view-created-appointment" type="button">查看本次预约</button><button class="secondary-btn" type="button" data-view-link="lookup">我的预约</button></div>
   </section>
