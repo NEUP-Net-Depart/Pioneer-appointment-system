@@ -80,6 +80,12 @@ export interface Appointment {
   canCorrect?: boolean;
   canRecoverCredential?: boolean;
   original?: {
+    brand?: string;
+    deviceModel?: string;
+    issue?: string;
+    warranty?: string;
+    liquidMetal?: string;
+    dellG15?: string;
     note?: string;
     signature?: string;
     agreementAt?: string;

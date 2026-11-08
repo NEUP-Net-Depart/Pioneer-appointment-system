@@ -71,6 +71,9 @@ export function TodayScene({
     (item) => item.status === 'booked' && !item.receivedAt && item.date === data.businessDate
   );
   const received = items.filter((item) => item.status === 'booked' && item.receivedAt);
+  const otherRepairs = items.filter(
+    (item) => item.status === 'in_progress' && item.assignedMemberId !== data.actor.memberId
+  );
   return (
     <div className="today-scene">
       <section className="field-card today-tools">
@@ -108,6 +111,9 @@ export function TodayScene({
             empty="暂无进行中的维修"
             onSelect={onSelect}
           />
+        )}
+        {!!otherRepairs.length && (
+          <Orders title="其他人员正在维修" items={otherRepairs} empty="" onSelect={onSelect} />
         )}
       </div>
       {!!data.pendingPhotos?.length && (

@@ -178,7 +178,8 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
       canSupplement:allowed(context,'repair.receive',appointmentTarget(item)) && item.photoDeferredBy===actor.account && (!item.frontPhotoId || !item.backPhotoId),
       ...(canInspect ? {
         repairHistory:await appointments.repairHistory(id,{staff:true,campuses:actor.authorizedCampuses}),
-        original:{note:item.note,signature:item.signature,agreementAt:item.agreementAt,agreementVersion:item.agreementVersion,college:item.college,serial:item.serial,liquidDrop:item.liquidDrop}
+        original:{note:item.note,signature:item.signature,agreementAt:item.agreementAt,agreementVersion:item.agreementVersion,college:item.college,serial:item.serial,liquidDrop:item.liquidDrop,
+          brand:item.brand,deviceModel:item.deviceModel,issue:item.issue,warranty:item.warranty,liquidMetal:item.liquidMetal,dellG15:item.dellG15}
       } : {}),
       customerHistory:(await appointments.customerHistory(item.studentId,actor.authorizedCampuses)).filter(row=>row.id!==id).map(row=>({id:row.id,date:row.date,brand:row.brand,deviceModel:row.deviceModel,faultType:row.faultType,outcome:row.outcome,repairNote:row.repairNote})),
       intake:await repository.latestIntake(id),
