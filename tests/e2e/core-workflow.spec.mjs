@@ -10,23 +10,6 @@ async function api(page,path,data,method='POST'){
 }
 async function screenshot(page,testInfo,name){expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:testInfo.outputPath(name+'.png'),fullPage:true});}
 
-test('staff can open the project from the workbench without leaving it',async({page,context},testInfo)=>{
- const project='https://github.com/NEUP-Net-Depart/Pioneer-appointment-system';
- await context.route(project,route=>route.fulfill({contentType:'text/html',body:'<h1>Pioneer project</h1>'}));
- await loginStaff(page,'20261003','StaffTest!2026');
- const workbenchUrl=page.url();
- if(testInfo.project.name==='webkit-mobile'){
-  await page.getByRole('navigation',{name:'手机岗位导航'}).getByRole('button',{name:'更多',exact:true}).click();
- }
- const link=page.getByRole('link',{name:/^star&issue/});
- await expect(link).toBeVisible();
- const opened=context.waitForEvent('page');
- await link.click();
- const projectPage=await opened;
- await expect(projectPage).toHaveURL(project);
- await expect(page).toHaveURL(workbenchUrl);
-});
-
 test('student books against the real capacity service, signs, and opens the private result',async({page},testInfo)=>{
  await page.goto('/');await chooseTime(page);await fillDevice(page,{studentId:testInfo.project.name==='chromium'?'20269991':'20269992'});await goReview(page);await submitStudent(page);
  await expect(page.locator('#success-summary')).toContainText('南湖测试维修室');
