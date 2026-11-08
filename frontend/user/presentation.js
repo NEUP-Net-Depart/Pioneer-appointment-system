@@ -2,7 +2,7 @@ import { escapeHtml } from '/shared/utils.js';
 import { formatDate,formatInstant } from '/shared/time.js';
 import { outcomeLabels,statusLabels,expirationMessage } from '/shared/constants.js';
 export function timeLabel(item) {
-  return item.source==='onsite' ? '现场临时登记' : item.timeSlot;
+  return item.source==='onsite' ? '现场临时登记' : item.timeSlot?.split('–')[0];
 }
 export function timeSummary(item) {
   return `<strong><span>${escapeHtml(formatDate(item.date))}</span><span class="summary-slot">${escapeHtml(timeLabel(item))}</span></strong><p>${escapeHtml(item.campus)}校区</p><p class="location">${escapeHtml(item.location || item.locationSnapshot || '维修地点未记录，请联系工作人员')}</p>${item.servicePaused ? '<p class="is-error">该预约日期暂停维修，请联系工作人员确认后续安排。</p>' : ''}${item.locationChanged ? `<p class="is-error">维修地点已调整，请以最新地点为准。</p><p>原地点：${escapeHtml(item.locationSnapshot)}</p>` : ''}`;
