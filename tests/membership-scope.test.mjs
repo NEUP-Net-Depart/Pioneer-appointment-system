@@ -37,7 +37,6 @@ test('ministers manage every department in their campus; directors and president
   await assert.rejects(staff.updateMember(director,'member-root001',{revision:0,name:'不可改'}),{status:403});
   // A grant cannot manufacture leadership or a repair qualification.
   assert.ok(db.sqlite.prepare("SELECT code FROM roles WHERE code IN ('technician','repair_lead','office_lead','exchange','office')").all().length===0);
-  assert.equal((await staff.contextFor(await users.find('20261004'))).permissions['repair.start'],true);
  }finally{db.sqlite.close();}
 });
 

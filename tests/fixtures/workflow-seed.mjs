@@ -1,5 +1,5 @@
 import { hashPassword } from '../../src/lib/passwords.js';
-// Only for disposable local D1/R2. No repair qualification, attendance or duty prerequisites.
+// Only for disposable local D1/R2. Real memberships supply reception/repair permissions; attendance and duty are independent.
 export function workflowSeed(day) {
  const password=hashPassword('StaffTest!2026');
  return [

@@ -126,7 +126,11 @@ export function Permissions() {
   }
   return (
     <section className="react-page permissions-workspace">
-      <WorkspaceHeader group="人员权限" title="角色与权限" />
+      <WorkspaceHeader
+        group="人员权限"
+        title="系统权限"
+        description="接待、维修、排班和值班考勤按任职部门、职位及授权校区自动确定，无需在此配置。"
+      />
       {error && (
         <p data-motion-value="text" className="react-error" role="alert">
           {error}
@@ -202,7 +206,11 @@ export function Permissions() {
                   setGroup(value);
                   setSearch('');
                 }}
-                items={permissionGroups}
+                items={permissionGroups.filter(
+                  ({ id }) =>
+                    id === 'all' ||
+                    permissions.some((permission) => permissionGroup(permission.code) === id)
+                )}
               />
               <fieldset
                 disabled={busy || !selected || readOnly}

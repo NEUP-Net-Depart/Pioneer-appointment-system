@@ -101,15 +101,12 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
         setWorkScene(
           (current) =>
             current ||
-            (data.repairs?.length
-              ? 'repair'
-              : data.contexts.find(
-                  (context) =>
-                    context.id === sessionStorage.getItem(`field-scene:${data.actor.memberId}`)
-                )?.id ||
-                data.contexts.find((context) => context.id === 'desk')?.id ||
-                data.contexts[0]?.id ||
-                'mine')
+            data.contexts.find(
+              (context) =>
+                context.id === sessionStorage.getItem(`field-scene:${data.actor.memberId}`)
+            )?.id ||
+            data.contexts[0]?.id ||
+            'mine'
         );
       })
       .catch((error) => {
@@ -186,7 +183,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
       view = 'workbench';
     }
     if (field && view === 'scan') {
-      setWorkScene('repair');
+      setWorkScene('today');
       view = 'workbench';
     }
     setPage(view);
@@ -214,7 +211,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
     staffPermission(effectiveUser, 'settings.manage')
       ? [{ id: 'members', label: '人员管理' }]
       : []),
-    ...(publishedView('roles', 'permissions') ? [{ id: 'permissions', label: '角色与权限' }] : []),
+    ...(publishedView('roles', 'permissions') ? [{ id: 'permissions', label: '系统权限' }] : []),
     ...(publishedView('attendance', 'attendance')
       ? [{ id: 'attendance', label: '本人签到记录' }]
       : []),

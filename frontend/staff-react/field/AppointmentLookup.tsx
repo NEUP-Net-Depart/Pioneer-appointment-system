@@ -9,6 +9,8 @@ type Candidate = {
   date: string;
   timeSlot: string;
   status: string;
+  name?: string;
+  studentId?: string;
 };
 export function AppointmentLookup({
   active,
@@ -49,7 +51,7 @@ export function AppointmentLookup({
     inputLabel = label || (studentIdEnabled ? '预约编号 / 学号' : '预约编号'),
     query = parseAppointmentSearch(value),
     numberQuery = !!query && /^\d+(?:-\d*)?$/.test(query.text),
-    ready = !!query?.ready && (numberQuery || (contactEnabled && !!query.contact)),
+    ready = !!query?.ready && (numberQuery || !query.contact || contactEnabled),
     contactHint =
       searchCapabilities?.contactScope === 'own'
         ? '本人经手工单的完整联系方式'
@@ -58,8 +60,8 @@ export function AppointmentLookup({
           : '授权范围内工单的完整联系方式',
     placeholder =
       inputRole === 'textbox'
-        ? `编号、设备或故障${studentIdEnabled ? '、完整学号' : ''}${contactEnabled ? `、${contactHint}` : ''}`
-        : ['预约编号', studentIdEnabled && '完整学号', contactEnabled && contactHint]
+        ? `编号、设备或故障${studentIdEnabled ? '、姓名、完整学号' : ''}${contactEnabled ? `、${contactHint}` : ''}`
+        : ['预约编号', studentIdEnabled && '姓名、完整学号', contactEnabled && contactHint]
             .filter(Boolean)
             .join('、');
   useEffect(() => {
@@ -80,7 +82,14 @@ export function AppointmentLookup({
           body: {
             q: value.trim(),
             ...(!contactEnabled
-              ? { mode: studentIdEnabled && query.studentId ? 'studentId' : 'number' }
+              ? {
+                  mode:
+                    studentIdEnabled && query.studentId
+                      ? 'studentId'
+                      : studentIdEnabled
+                        ? 'identity'
+                        : 'number'
+                }
               : {}),
             ...(campusId ? { campusId } : {})
           },
@@ -93,7 +102,7 @@ export function AppointmentLookup({
             result.hasMore
               ? studentIdEnabled && query.studentId
                 ? '匹配较多，可前往预约记录查看完整列表'
-                : '匹配较多，请输入更完整的编号或联系方式'
+                : '匹配较多，请输入更完整的编号、姓名或联系方式'
               : !result.items.length
                 ? hasLocalMatches
                   ? ''
@@ -155,7 +164,7 @@ export function AppointmentLookup({
             setMessage(
               items.length
                 ? '请选择下方对应预约'
-                : `请输入${['至少两位预约编号尾号', studentIdEnabled && '完整学号', contactEnabled && '完整联系方式'].filter(Boolean).join('、')}`
+                : `请输入${['至少两位预约编号尾号', studentIdEnabled && '姓名或完整学号', contactEnabled && '完整联系方式'].filter(Boolean).join('、')}`
             );
           }
         }}
@@ -212,6 +221,11 @@ export function AppointmentLookup({
             >
               <span>
                 <strong data-motion-value="text">{item.id}</strong>
+                {item.name && (
+                  <small>
+                    {item.name} · {item.studentId}
+                  </small>
+                )}
                 <small data-motion-value="text">
                   {item.campus}校区 · {item.date} · {item.timeSlot}
                 </small>

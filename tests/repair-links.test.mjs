@@ -25,7 +25,7 @@ test('linking an existing booking preserves its capacity, original result, and s
   assert.equal(Object.hasOwn(publicItem.repairHistory,'events'),false);
   assert.ok(publicItem.repairHistory.items.every(row=>!Object.hasOwn(row,'repairNote') && !Object.hasOwn(row,'assignedToName')));
   const detail=await staff.field.detail(actor,'return');
-  assert.ok(detail.repairHistory.events.some(row=>row.action==='repairs.linked'));
+  assert.ok((await repo.repairHistory('return',{staff:true,campuses:actor.authorizedCampuses})).events.some(row=>row.action==='repairs.linked'));
   assert.equal(detail.customerHistory.some(row=>row.id==='other-campus'),false);
   await assert.rejects(service.link('return',request({revision:1,parentAppointmentId:'original'}),await users.find('20260003')),{status:403});
 });

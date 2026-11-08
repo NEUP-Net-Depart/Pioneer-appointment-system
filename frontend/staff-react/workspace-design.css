@@ -1,4 +1,205 @@
 /* Task hierarchy uses the existing staff palette and shell geometry. */
+.field-app .today-scene {
+  display: grid;
+  gap: 24px;
+}
+.today-toolbar,
+.today-attendance,
+.today-attendance-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+}
+.today-toolbar,
+.today-attendance {
+  justify-content: space-between;
+}
+.today-toolbar .staff-identities {
+  gap: 8px;
+}
+.today-tools .field-search {
+  margin: 20px 0 0;
+}
+.today-attendance .field-status {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 4px 12px;
+}
+.today-attendance-copy > p {
+  margin: 8px 0 0;
+}
+.field-app .today-work {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+.today-work > :last-child:nth-child(3) {
+  grid-column: 1 / -1;
+}
+.field-app .today-section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.today-section-title > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: var(--workspace-subtle, #f1f3f6);
+  font-size: 13px;
+  font-weight: 500;
+}
+.field-app .today-order {
+  gap: 8px;
+  padding: 20px 12px;
+  border-radius: 8px;
+  line-height: 1.6;
+}
+.field-app .today-order strong {
+  font-size: 15px;
+}
+.today-order-number {
+  font-variant-numeric: tabular-nums;
+}
+.today-order-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+.field-app .today-order > .today-order-action {
+  align-self: flex-end;
+  color: var(--ink);
+  font-weight: 500;
+}
+.today-order:last-child {
+  border-bottom-color: transparent;
+}
+.repair-order-dialog .workspace-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.repair-order-dialog .field-ticket,
+.repair-order-dialog .field-details {
+  margin: 0;
+}
+.repair-order-dialog .field-form > p {
+  margin: 0;
+}
+.repair-order-dialog .field-results {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+.repair-order-dialog .field-results label {
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  white-space: normal;
+}
+.repair-order-dialog .repair-intake-actions > button {
+  flex: 1 1 180px;
+}
+.repair-order-dialog .field-intake-photos {
+  gap: 16px;
+}
+.repair-order-dialog .field-photo-caption {
+  margin-top: 8px;
+  gap: 12px;
+}
+.repair-order-dialog .field-photo-upload {
+  justify-content: center;
+  min-width: 88px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+}
+.repair-order-dialog .field-details {
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.repair-order-dialog .field-details > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  list-style: none;
+  font-weight: 500;
+}
+.repair-order-dialog .field-details > summary::-webkit-details-marker {
+  display: none;
+}
+.repair-order-dialog .field-details > summary::after {
+  content: '展开';
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.repair-order-dialog .field-details[open] > summary::after {
+  content: '收起';
+}
+.repair-order-dialog .field-details[open] {
+  padding: 0 16px 16px;
+}
+.repair-order-dialog .field-details[open] > summary {
+  margin: 0 -16px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.repair-management {
+  display: grid;
+  gap: 12px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.repair-history-event {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+.repair-history-event:first-child {
+  padding-top: 0;
+}
+.repair-history-event p {
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+@media (min-width: 1550px) {
+  .field-app .today-work {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .today-work > :last-child:nth-child(3) {
+    grid-column: auto;
+  }
+}
+@media (max-width: 1100px) {
+  .field-app .today-work {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 767px) {
+  .field-app .today-scene,
+  .field-app .today-work {
+    gap: 16px;
+  }
+  .today-toolbar {
+    align-items: flex-start;
+  }
+  .today-toolbar > .field-actions,
+  .today-attendance > .field-actions {
+    width: 100%;
+  }
+  .field-app .today-order {
+    padding-inline: 0;
+  }
+}
 /* Avoid a second scrolling ancestor that makes the sticky sidebar scroll away. */
 body.staff-mode.field-mode {
   overflow-x: clip;

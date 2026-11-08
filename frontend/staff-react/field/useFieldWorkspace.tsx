@@ -25,12 +25,9 @@ export function useFieldWorkspace({
   const key = `field-scene:${initial.actor.memberId}`;
   const scene =
     requestedScene ||
-    (initial.repairs?.length
-      ? 'repair'
-      : initial.contexts.find((c) => c.id === sessionStorage.getItem(key))?.id ||
-        initial.contexts.find((c) => c.id === 'desk')?.id ||
-        initial.contexts[0]?.id ||
-        'mine');
+    initial.contexts.find((c) => c.id === sessionStorage.getItem(key))?.id ||
+    initial.contexts[0]?.id ||
+    'mine';
   const [campus, setCampus] = useState(initial.campusId),
     [selected, setSelected] = useState(''),
     [scanOpen, setScanOpen] = useState(false),
@@ -52,9 +49,7 @@ export function useFieldWorkspace({
     startsAt: string;
     endsAt: string;
   } | null>(null);
-  const [busy, setBusy] = useState(false),
-    [filter, setFilter] = useState('all'),
-    [search, setSearch] = useState('');
+  const [busy, setBusy] = useState(false);
   const result = useField(
       campus,
       scene,
@@ -194,13 +189,6 @@ export function useFieldWorkspace({
       await refresh();
     });
   }
-  const items = (data?.appointments || []).filter(
-    (item) =>
-      (filter === 'all' || item.status === filter) &&
-      `${item.id} ${item.deviceModel} ${item.faultType}`
-        .toLowerCase()
-        .includes(search.toLowerCase())
-  );
   const campusName = data?.campuses.find((c) => c.id === campus)?.name || '';
   return {
     key,
@@ -223,10 +211,6 @@ export function useFieldWorkspace({
     setCheckResult,
     checkPreview,
     busy,
-    filter,
-    setFilter,
-    search,
-    setSearch,
     result,
     data,
     refresh,
@@ -235,7 +219,6 @@ export function useFieldWorkspace({
     openAttendance,
     checkIn,
     presence,
-    items,
     campusName
   };
 }

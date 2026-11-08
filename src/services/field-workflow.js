@@ -18,14 +18,16 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
     const identity = !!context.permissions['customer.identity.read'];
     return { identity, identityScope:identity ? 'authorized' : 'none', contact:true, contactScope:'authorized' };
   }
-  async function requireEligible(actor,campus) {
+  async function requireEligible(actor,campus,permission='repair.start') {
     const context = await staff.contextFor(actor);
-    if (!allowed(context,'repair.start',{campusId:campusId(campus)})) fail(403,'没有该校区工单的访问权限');
+    if (!allowed(context,permission,{campusId:campusId(campus)})) fail(403,'没有该校区的操作权限');
     return {context};
   }
   async function project(actor,item,context,contacts=false) {
     if (!canReadSummary(actor,item,context)) return null;
     const visible = await presentAppointment(item,encryptionKey,{staff:true});
+    // Registration evidence is available only through the scoped management detail.
+    for (const key of ['note','signature','agreementAt','agreementVersion']) delete visible[key];
     // List/search never provide a bulk contact export. Only a detail read does.
     if (!contacts) for (const key of ['phone','social','email','contactType','contactValue']) delete visible[key];
     return {...visible,canReadDetails:true};
@@ -88,13 +90,20 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
     return [...matches.values()].sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id));
   }
   async function search(actor, query) {
-    const context = await staff.contextFor(actor);
-    if (!context.permissions['repair.summary.read']) fail(403, '没有查询维修预约的权限');
+    const {context,summaryRules,identityRules} = await listAccess(actor);
     const campus = query.campusId ? names[campusId(query.campusId)] : null;
     if (query.campusId && (!campus || !actor.authorizedCampuses?.includes(campus)))
       fail(403, '没有该校区的访问权限');
     const scope = { campuses: campus ? [campus] : actor.authorizedCampuses || [] };
     await appointments.expirePending(new Date().toISOString(), scope);
+    if ((query.mode === undefined || query.mode === 'identity') && !/^\d+(?:-\d*)?$/.test(query.text)) {
+      const contactIds=query.contact && query.mode!=='identity' ? (await contactMatches(actor,{q:query.text,campus},context)).map(row=>row.id) : [];
+      const result=await appointments.list({q:query.text,campus,contactIds,limit:APPOINTMENT_SEARCH_LIMIT,
+        sort:'date',direction:'desc'}, {...scope,summaryRules,identityRules});
+      return {items:result.items.filter(row=>canReadSummary(actor,row,context)).map(row=>Object.fromEntries(
+        ['id','campus','date','timeSlot','status','name','studentId','brand','deviceModel','receivedAt','assignedToName'].map(key=>[key,row[key]])
+      )),hasMore:!!result.nextCursor};
+    }
     const items = [];
     const seen = new Set();
     const add = (row) => {
@@ -112,11 +121,11 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
     };
     // Apply the same current authorization and field projection as details,
     // before counting or limiting candidates. Hidden matches cannot fill the list.
-    if ((query.mode === undefined || query.mode === 'studentId') && query.studentId) {
+    if ((query.mode === undefined || query.mode === 'identity' || query.mode === 'studentId') && query.studentId) {
       const matches = await appointments.searchStudentId(query.studentId, {
         ...scope,
-        summaryRules: appointmentAccessRules(authorizer,actor,'repair.summary.read',context),
-        identityRules: appointmentAccessRules(authorizer,actor,'customer.identity.read',context)
+        summaryRules,
+        identityRules
       });
       for (const row of matches)
         if (add(row))
@@ -128,7 +137,7 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
         if (add(row))
           return { items: items.slice(0, APPOINTMENT_SEARCH_LIMIT), hasMore: true };
     }
-    if ((query.mode === undefined || query.mode === 'number') && /^\d+(?:-\d*)?$/.test(query.text)) {
+    if ((query.mode === undefined || query.mode === 'identity' || query.mode === 'number') && /^\d+(?:-\d*)?$/.test(query.text)) {
       for (let offset = 0; ; offset += 100) {
         const batch = await appointments.searchNumbers(
           query.text,
@@ -157,18 +166,23 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
       action:'customer.contact.read',sourceRef:{module:'repairs',type:'appointment',id},
       occurredAt:new Date().toISOString()});
     const own = item.assignedMemberId === context.actor.memberId;
-    const canCorrect = item.status==='completed' && (own || allowed(context,'repair.correct',appointmentTarget(item)));
+    const canInspect = allowed(context,'repair.correct',appointmentTarget(item));
+    const canCorrect = item.status==='completed' && ((own && allowed(context,'repair.finish.own',appointmentTarget(item))) || allowed(context,'repair.correct',appointmentTarget(item)));
     return {...visible,businessDate:dateKey(),serverNow:new Date().toISOString(),
-      canStart:item.status==='booked' && (!!item.receivedAt || item.date===dateKey()),
-      canReceive:item.status==='booked' && !item.receivedAt && item.date===dateKey(),
-      canTransfer:item.status==='in_progress' && !own,
-      canFinish:item.status==='in_progress' && own,canCorrect,
+      canStart:allowed(context,'repair.start',appointmentTarget(item)) && item.status==='booked' && (!!item.receivedAt || item.date===dateKey()),
+      canReceive:allowed(context,'repair.receive',appointmentTarget(item)) && item.status==='booked' && !item.receivedAt && item.date===dateKey(),
+      canTransfer:allowed(context,'repair.transfer',appointmentTarget(item)) && item.status==='in_progress' && !own,
+      canFinish:allowed(context,'repair.finish.own',appointmentTarget(item)) && item.status==='in_progress' && own,canCorrect,
       canRecoverCredential:allowed(context,'repair.correct',appointmentTarget(item)),
-      canSupplement:item.photoDeferredBy===actor.account && (!item.frontPhotoId || !item.backPhotoId),
-      repairHistory:await appointments.repairHistory(id,{staff:true,campuses:actor.authorizedCampuses}),
+      canEdit:allowed(context,'repair.receive',appointmentTarget(item)),
+      canSupplement:allowed(context,'repair.receive',appointmentTarget(item)) && item.photoDeferredBy===actor.account && (!item.frontPhotoId || !item.backPhotoId),
+      ...(canInspect ? {
+        repairHistory:await appointments.repairHistory(id,{staff:true,campuses:actor.authorizedCampuses}),
+        original:{note:item.note,signature:item.signature,agreementAt:item.agreementAt,agreementVersion:item.agreementVersion,college:item.college,serial:item.serial,liquidDrop:item.liquidDrop,
+          brand:item.brand,deviceModel:item.deviceModel,issue:item.issue,warranty:item.warranty,liquidMetal:item.liquidMetal,dellG15:item.dellG15}
+      } : {}),
       customerHistory:(await appointments.customerHistory(item.studentId,actor.authorizedCampuses)).filter(row=>row.id!==id).map(row=>({id:row.id,date:row.date,brand:row.brand,deviceModel:row.deviceModel,faultType:row.faultType,outcome:row.outcome,repairNote:row.repairNote})),
       intake:await repository.latestIntake(id),
-      original:{note:item.note,signature:item.signature,agreementAt:item.agreementAt,agreementVersion:item.agreementVersion,college:item.college,serial:item.serial,liquidDrop:item.liquidDrop},
       repairCode:scanCode(item.id,secret)};
   }
   async function home(actor,query={}) {
@@ -180,7 +194,7 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
     const repairs = (await appointments.inProgress(actor.account)).filter(item=>item.campus===names[selected]);
     const pendingPhotos = await appointments.pendingPhotos(actor.account,names[selected]);
     return {businessDate:dateKey(),actor:context.actor,authVersion:context.authVersion,campuses,campusId:selected,
-      contexts:[{id:'repair',label:'维修工作台'},{id:'desk',label:'现场工作台'}],capability,
+      contexts:capability['repair.summary.read'] ? [{id:'today',label:'今日工作'}] : [],capability,
       directAttendance:await staff.directAttendanceAction(actor,selected,context),
       permissions:context.permissions,navigation:context.navigation,state:context.presence?.state || 'unsigned',reason:'',
       repairs:await projectList(actor,repairs,context),pendingPhotos:await projectList(actor,pendingPhotos,context),
@@ -198,7 +212,7 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
     return {...data,appointments:await projectList(actor,items,context)};
   }
   async function requireIntake(actor,item) {
-    const result = await requireEligible(actor,item.campus);
+    const result = await requireEligible(actor,item.campus,'repair.receive');
     if (item.photoDeferredBy===actor.account) return result.context;
     if (item.status!=='booked' || item.receivedAt || item.date!==dateKey()) fail(409,'首次接收照片已记录；待传原图请由经办人补传');
     return result.context;

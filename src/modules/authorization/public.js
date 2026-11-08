@@ -1,10 +1,12 @@
-import { isLeader, participationCodes } from '../../../shared/staff-organization.js';
+import { activeMemberships, isLeader, participationCodes } from '../../../shared/staff-organization.js';
 import { campusId, validScope } from './scopes.js';
 import { dateKey, validDate } from '../../platform/time.js';
 import { conditionProviders, validCondition } from './conditions.js';
 import { parseJson } from '../../platform/contracts.js';
 
 export const staffRepairPermissions = ['repair.summary.read','repair.start','repair.receive','repair.finish.own','repair.transfer','customer.identity.read','customer.contact.read','onsite.create'];
+const repairOperations = ['repair.start','repair.finish.own','repair.transfer'];
+const receptionOperations = ['repair.receive','onsite.create'];
 
 export const managementPermissions=['members.manage','repair.correct','statistics.read','roster.manage','attendance.session.manage','attendance.correct','attendance.export'];
 export const identityPermissions=[...staffRepairPermissions,...managementPermissions,'roster.read','attendance.self'];
@@ -69,6 +71,10 @@ export function createAuthorizer({ providers = conditionProviders() } = {}) {
         const campuses=actor?.authorizedCampuses || [], requested=values(target.campusId || target.campusIds);
         const scoped=!!actor?.memberId && !!campuses.length && requested.every(id=>campuses.some(value=>campusId(value)===campusId(id)));
         let eligible=true;
+        const posts=activeMemberships(context);
+        const repairs=posts.some(post=>post.departmentCode==='hardware');
+        if(repairOperations.includes(permissionCode))eligible=repairs;
+        if(receptionOperations.includes(permissionCode))eligible=repairs || posts.some(post=>post.departmentCode==='office' && post.assignmentType!=='exchange');
         if(managementPermissions.includes(permissionCode))eligible=actor?.role==='superadmin' || isLeader(context);
         if(permissionCode==='attendance.self')eligible=actor?.role==='superadmin' || isLeader(context) || participationCodes(context,target).length>0;
         const allowed=scoped && eligible;
