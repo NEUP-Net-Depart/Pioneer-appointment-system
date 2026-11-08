@@ -9,6 +9,25 @@ import { encryptText } from '../src/lib/privacy.js';
 import { staffSceneAllowed } from '../shared/staff-access.js';
 function patch(input) {return appointmentPatch({requestId:crypto.randomUUID(),...input});}
 
+test('field attendance follows the actual member, day and campus without live presence',async t=>{
+  const {db,users,staff,calendar}=repairScenario(t,{time:'19:10'});
+  db.sqlite.prepare("UPDATE member_department_memberships SET position_code='head' WHERE member_id='member-20260002'").run();
+  db.sqlite.prepare("INSERT INTO staff_campus_grants(account,campus) VALUES('20260001','浑南')").run();
+  const worker=await users.find('20260001'),head=await users.find('20260002');
+  const before=await staff.field.home(worker,{campusId:'campus-nanhu'});
+  assert.equal(before.attendance,null);
+  const event=await staff.createAttendanceEvent(head,{campusId:'campus-nanhu',businessDate:calendar.serviceDay});
+  const token=await staff.issueAttendanceToken(head,event.id,{revision:event.revision});
+  const record=await staff.checkIn(worker,{token:token.token,method:'qr',requestId:crypto.randomUUID()});
+  db.sqlite.prepare('DELETE FROM staff_presence WHERE member_id=?').run(worker.memberId);
+  assert.equal((await staff.field.home(worker,{campusId:'campus-nanhu'})).attendance.id,record.id);
+  assert.equal((await staff.field.board(worker,{campusId:'campus-nanhu'})).attendance.id,record.id);
+  assert.equal((await staff.field.home(worker,{campusId:'campus-hunnan'})).attendance,null);
+  assert.equal((await staff.field.home(head,{campusId:'campus-nanhu'})).attendance,null);
+  calendar.moveTo(calendar.nextDay,'19:10');
+  assert.equal((await staff.field.home(worker,{campusId:'campus-nanhu'})).attendance,null);
+});
+
 test('full student ID finds authorized current and historical orders through records and scan search',async t=>{
   const studentId='01234567';
   const {users,service,scan,order,calendar}=repairScenario(t,{studentId});

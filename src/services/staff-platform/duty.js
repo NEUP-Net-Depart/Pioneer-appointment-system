@@ -69,7 +69,6 @@ export function dutyDomain({ repository, contextFor, evaluate, ensureDutyEvent }
         assignment: item,
         canCorrect: canCorrect(person.memberId),
         unavailable: !people.some((row) => row.memberId === person.memberId),
-        presence: data.presence.find((row) => row.member_id === person.memberId)?.state || null,
         status: service?.paused
           ? 'paused'
           : !expected.length

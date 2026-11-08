@@ -9,6 +9,7 @@ import { StaffIdentity } from '../StaffIdentity';
 import { useFieldWorkspace } from './useFieldWorkspace';
 import { TodayScene } from './TodayScene';
 import { PersonalScene } from './PersonalScene';
+import { AttendanceActions } from './AttendanceActions';
 import './field.css';
 export function FieldApp({
   initial,
@@ -34,7 +35,6 @@ export function FieldApp({
     accessToken: string;
   } | null>(null);
   const {
-    key,
     scene,
     campus,
     setCampus,
@@ -61,7 +61,6 @@ export function FieldApp({
     showAttendance,
     openAttendance,
     checkIn,
-    presence,
     campusName
   } = useFieldWorkspace({
     initial,
@@ -91,6 +90,7 @@ export function FieldApp({
               <span className="field-sr-only">工作校区</span>
               <select
                 value={campus}
+                disabled={busy}
                 onChange={(e) => {
                   setCampus(e.target.value);
                   setSelected('');
@@ -123,7 +123,6 @@ export function FieldApp({
                   ['工作日期', initial.businessDate],
                   ['工作校区', campusName],
                   ['当前岗位'],
-                  ['到岗状态'],
                   ['当前工单']
                 ]}
               />
@@ -131,6 +130,14 @@ export function FieldApp({
           )
         ) : (
           <>
+            {(scene === 'today' || scene === 'mine') && (
+              <AttendanceActions
+                data={data}
+                busy={busy}
+                onCheckIn={openAttendance}
+                onShowCode={scene === 'today' ? showAttendance : undefined}
+              />
+            )}
             {!!data.pendingCoverInvitations &&
               workspaceLinks.some((entry) => entry.id === 'duties') && (
                 <section className="field-roster-todo" aria-label="待响应的换班邀请">
@@ -150,9 +157,6 @@ export function FieldApp({
                 onSelect={setSelected}
                 onScan={() => setScanOpen(true)}
                 onRegister={() => setRegistration(true)}
-                showAttendance={showAttendance}
-                openAttendance={openAttendance}
-                presence={presence}
               />
             )}
             {scene === 'mine' && (
@@ -161,11 +165,7 @@ export function FieldApp({
                 onNavigate={onNavigate}
                 workspaceLinks={workspaceLinks}
                 onLogout={onLogout}
-                key={key}
-                busy={busy}
                 data={data}
-                openAttendance={openAttendance}
-                campusName={campusName}
               />
             )}
             <footer className="field-footer">
@@ -188,7 +188,8 @@ export function FieldApp({
               identities={checkResult.identitySnapshot?.identities || data?.identities}
             />
             <p data-motion-value="text">
-              {campusName}校区 · {data?.businessDate}
+              {data?.campuses.find((item) => item.id === checkResult.campusId)?.name}校区 ·{' '}
+              {checkResult.businessDate}
             </p>
             <strong data-motion-value="text">{time(checkResult.occurredAt)}</strong>
             {(checkResult.nonScheduled || checkResult.isExisting) && (

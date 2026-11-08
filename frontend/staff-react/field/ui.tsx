@@ -31,17 +31,7 @@ export const time = (value: string) =>
 export function Status({ value }: { value: string }) {
   return (
     <span data-motion-value="status" className={`field-status ${statusClass[value] || ''}`}>
-      {statusLabels[value] ||
-        {
-          available: '空闲',
-          repairing: '维修中',
-          unsigned: '待签到',
-          on_leave: '已请假',
-          away: '暂时离岗',
-          off_duty: '已结束',
-          closed: '非工作时间'
-        }[value] ||
-        '状态已更新'}
+      {statusLabels[value] || '状态已更新'}
     </span>
   );
 }
