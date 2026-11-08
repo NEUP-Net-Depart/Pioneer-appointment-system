@@ -60,8 +60,8 @@ async function fixture(page, { captcha = false, huawei = false } = {}) {
       }
     })
   );
-  await loginStaff(page, '20261002', 'StaffTest!2026');
-  await staffPage(page, '维修工作台');
+  await loginStaff(page, '20261003', 'StaffTest!2026');
+  await staffPage(page, '今日工作');
 }
 async function openLookup(page) {
   await page.getByRole('button', { name: '查询保修', exact: true }).click();

@@ -31,7 +31,13 @@ function RepairOrder({
   const { item, busy } = r;
   const [received, setReceived] = useState(false);
   return (
-    <Modal title="维修工单" sidePanel={sidePanel} dismissible={!busy} onClose={onClose}>
+    <Modal
+      title="维修工单"
+      className="repair-order-dialog"
+      sidePanel={sidePanel}
+      dismissible={!busy}
+      onClose={onClose}
+    >
       <Notice>{r.error}</Notice>
       {!item ? (
         <p>正在读取工单…</p>
@@ -54,11 +60,19 @@ function RepairOrder({
             <p>
               联系方式：{item.contactValue || item.social || item.phone || '未记录'} {item.email}
             </p>
-            <p>当前主修：{item.assignedToName || '尚未接单'}</p>
-            {item.receivedAt && <p>首次接收：{formatInstant(item.receivedAt)}</p>}
+            <p>当前主修：{item.assignedToName || '尚未开始维修'}</p>
+            {item.receivedAt && (
+              <p>
+                首次接收：{item.receivedByName || item.receivedBy} ·{' '}
+                {formatInstant(item.receivedAt)}
+              </p>
+            )}
+            {item.receivedAt && item.status === 'booked' && (
+              <p>设备已接收，等待维修人员确认接手。</p>
+            )}
             {item.photoDeferredBy && <Notice>首次接收照片待传，由经办人手动补传原图。</Notice>}
           </section>
-          {item.canStart && (
+          {(item.canStart || item.canReceive) && (
             <section className="field-form">
               {!item.receivedAt && (
                 <>
@@ -95,19 +109,32 @@ function RepairOrder({
                   />
                 </>
               )}
-              <button className="field-primary" disabled={busy} onClick={() => r.start()}>
-                直接接单，开始维修
-              </button>
-              {item.canReceive && (
-                <button disabled={busy} onClick={() => r.start(true)}>
-                  仅记录接收
-                </button>
-              )}
-              {r.timedOut && (
-                <button disabled={busy} onClick={() => r.start(false, true)}>
-                  稍后补传，继续接单
-                </button>
-              )}
+              <div className="field-actions repair-intake-actions">
+                {item.canStart && (
+                  <button className="field-primary" disabled={busy} onClick={() => r.start()}>
+                    {item.receivedAt ? '确认接手并开始维修' : '接收并开始维修'}
+                  </button>
+                )}
+                {item.canReceive && (
+                  <button
+                    className={!item.canStart ? 'field-primary' : undefined}
+                    disabled={busy}
+                    onClick={() => r.start(true)}
+                  >
+                    仅接收设备
+                  </button>
+                )}
+                {r.timedOut && item.canReceive && (
+                  <button disabled={busy} onClick={() => r.start(true, true)}>
+                    稍后补传，仅接收设备
+                  </button>
+                )}
+                {r.timedOut && item.canStart && (
+                  <button disabled={busy} onClick={() => r.start(false, true)}>
+                    稍后补传，接收并开始维修
+                  </button>
+                )}
+              </div>
             </section>
           )}
           {item.canSupplement && (
@@ -149,7 +176,7 @@ function RepairOrder({
                 void (item.canFinish ? r.finish() : r.correct());
               }}
             >
-              <fieldset>
+              <fieldset className="field-results">
                 <legend>本次处理结果</legend>
                 {repairOutcomes.map((value) => (
                   <label className="field-check" key={value}>
@@ -184,7 +211,9 @@ function RepairOrder({
               {outcomeLabels[item.outcome || ''] || '历史未分类'} · {item.repairNote}
             </p>
           )}
-          {!hideWarrantyLookup && <WarrantyLookupButton initialBrand={item.brand} />}
+          {!hideWarrantyLookup && (item.canStart || item.canTransfer || item.canFinish) && (
+            <WarrantyLookupButton initialBrand={item.brand} />
+          )}
           <RepairRelations
             key={id}
             item={item}
@@ -195,16 +224,25 @@ function RepairOrder({
             onOpen={onOpen}
           />
           <RepairAttachments id={id} revision={item.revision} />
-          <RepairInformation
-            item={item}
-            onChanged={() => {
-              void r.load();
-              onChanged();
-            }}
-          />
+          {item.canEdit && (
+            <RepairInformation
+              item={item}
+              onChanged={() => {
+                void r.load();
+                onChanged();
+              }}
+            />
+          )}
           <RepairCredential item={item} onIssued={(token) => onOpen(id, token)} />
-          <RepairHistory history={item.repairHistory} />
-          <RepairOriginal original={item.original} />
+          {(item.repairHistory || item.original) && (
+            <section className="repair-management">
+              <h3>管理记录</h3>
+              <div className="field-actions">
+                <RepairHistory history={item.repairHistory} />
+                <RepairOriginal original={item.original} />
+              </div>
+            </section>
+          )}
           {customerCredential && (
             <a
               href={`/#${new URLSearchParams({ appointment: customerCredential.id, access: customerCredential.accessToken })}`}

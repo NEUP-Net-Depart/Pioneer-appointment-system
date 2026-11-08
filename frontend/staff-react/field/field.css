@@ -262,12 +262,37 @@
   grid-template-columns: 1.4fr 1fr;
   gap: 24px;
 }
+.field-app .today-work {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  align-items: start;
+}
 .field-card {
   border: 1px solid var(--line);
   background: #fff;
   border-radius: 14px;
   padding: 24px;
   min-width: 0;
+}
+.field-app .today-order {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  padding: 16px 0;
+  text-align: left;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  overflow-wrap: anywhere;
+}
+.today-order > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.today-order strong {
+  font-size: 14px;
 }
 .field-section-heading {
   display: flex;

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api, Notice } from './field/ui';
+import { api, Notice, Modal } from './field/ui';
 import type { Appointment } from './field/types';
 import { outcomeLabels, statusLabels } from '../../shared/constants.js';
 import { formatInstant } from '../../shared/time.js';
@@ -150,39 +150,50 @@ const historyFields = {
   photoDeferredBy: '照片待传经办人'
 };
 export function RepairHistory({ history }: { history: Appointment['repairHistory'] }) {
+  const [open, setOpen] = useState(false);
+  if (!history?.events) return null;
   return (
-    <details className="field-details">
-      <summary>维修与交接历史</summary>
-      {history?.events?.map((event, index) => {
-        const before = (event.before || {}) as Record<string, unknown>,
-          after = (event.after || {}) as Record<string, unknown>;
-        const display = (key: string, value: unknown) =>
-          String(
-            (key === 'outcome'
-              ? outcomeLabels[String(value)]
-              : key === 'status'
-                ? statusLabels[String(value)]
-                : value) || '—'
-          );
-        return (
-          <article key={index}>
-            <p>
-              {formatInstant(event.occurredAt)} · {actions[event.action] || event.action} ·{' '}
-              {event.actorName || ''} {event.reason}
-            </p>
-            {Object.entries(historyFields)
-              .filter(([key]) => key in after && before[key] !== after[key])
-              .map(([key, label]) => (
-                <p key={key}>
-                  {label}：{display(key, before[key])} → {display(key, after[key])}
-                </p>
-              ))}
-            {['phone', 'email', 'social', 'contactValue'].some(
-              (key) => key in after && before[key] !== after[key]
-            ) && <p>联系方式已更正（访问详情可查看当前值）</p>}
-          </article>
-        );
-      })}
-    </details>
+    <>
+      <button type="button" onClick={() => setOpen(true)}>
+        查看维修与交接记录
+      </button>
+      {open && (
+        <Modal title="维修与交接历史" onClose={() => setOpen(false)}>
+          {!history.events.length && <p className="field-muted">暂无操作记录。</p>}
+          <div className="repair-history-list">
+            {history?.events?.map((event, index) => {
+              const before = (event.before || {}) as Record<string, unknown>,
+                after = (event.after || {}) as Record<string, unknown>;
+              const display = (key: string, value: unknown) =>
+                String(
+                  (key === 'outcome'
+                    ? outcomeLabels[String(value)]
+                    : key === 'status'
+                      ? statusLabels[String(value)]
+                      : value) || '—'
+                );
+              return (
+                <article key={index} className="repair-history-event">
+                  <p>
+                    {formatInstant(event.occurredAt)} · {actions[event.action] || event.action} ·{' '}
+                    {event.actorName || ''} {event.reason}
+                  </p>
+                  {Object.entries(historyFields)
+                    .filter(([key]) => key in after && before[key] !== after[key])
+                    .map(([key, label]) => (
+                      <p key={key}>
+                        {label}：{display(key, before[key])} → {display(key, after[key])}
+                      </p>
+                    ))}
+                  {['phone', 'email', 'social', 'contactValue'].some(
+                    (key) => key in after && before[key] !== after[key]
+                  ) && <p>联系方式已更正（访问详情可查看当前值）</p>}
+                </article>
+              );
+            })}
+          </div>
+        </Modal>
+      )}
+    </>
   );
 }

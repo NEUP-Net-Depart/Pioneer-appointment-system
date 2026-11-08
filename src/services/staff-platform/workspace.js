@@ -10,12 +10,35 @@ export function workspaceDomain({ repository, platform, manifests, contextFor })
       actor: context.actor,
       todayDuties: context.todayDuties,
       presence: context.presence,
-      repairs: repairs.filter((item) => context.actor.authorizedCampuses.includes(item.campus)),
+      repairs: repairs
+        .filter((item) => context.actor.authorizedCampuses.includes(item.campus))
+        .map((item) =>
+          Object.fromEntries(
+            [
+              'id',
+              'campus',
+              'date',
+              'timeSlot',
+              'status',
+              'name',
+              'studentId',
+              'brand',
+              'deviceType',
+              'deviceModel',
+              'faultType',
+              'receivedAt',
+              'receivedByName',
+              'assignedToName'
+            ].map((key) => [key, item[key]])
+          )
+        ),
       resumeTasks: context.resumeTasks || [],
       navigation: context.navigation || [],
-      actions: context.todayDuties?.length
-        ? ['attendance.checkin', 'repair.start']
-        : ['attendance.checkin'],
+      actions: [
+        ...(context.permissions['attendance.self'] ? ['attendance.checkin'] : []),
+        ...(context.permissions['repair.receive'] ? ['repair.receive'] : []),
+        ...(context.permissions['repair.start'] ? ['repair.start'] : [])
+      ],
       modules: context.modules || manifests
     };
   }

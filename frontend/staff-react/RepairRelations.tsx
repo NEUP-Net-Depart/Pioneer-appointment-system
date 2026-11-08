@@ -48,6 +48,7 @@ export function RepairRelations({
       setBusy(false);
     }
   }
+  if (!historical.length && !item.parentAppointmentId && item.status !== 'completed') return null;
   return (
     <section className="field-form">
       <h3>维修历史与返修关联</h3>
@@ -76,58 +77,61 @@ export function RepairRelations({
           ))}
         </details>
       )}
-      {!item.parentAppointmentId && ['booked', 'in_progress'].includes(item.status) && (
-        <label>
-          选择原工单
-          <select value={parentId} onChange={(e) => setParentId(e.target.value)}>
-            <option value="">普通新故障不关联</option>
-            {historical.map((row) => (
-              <option key={row.id} value={row.id}>
-                {row.id} · {row.faultType}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      {((!item.parentAppointmentId &&
-        ['booked', 'in_progress'].includes(item.status) &&
-        parentId) ||
-        item.status === 'completed') && (
-        <>
+      {item.canEdit &&
+        !item.parentAppointmentId &&
+        ['booked', 'in_progress'].includes(item.status) && (
           <label>
-            关联原因
-            <select value={kind} onChange={(e) => setKind(e.target.value)}>
-              <option value="continuation">原故障继续处理</option>
-              <option value="recurrence">原故障复发</option>
+            选择原工单
+            <select value={parentId} onChange={(e) => setParentId(e.target.value)}>
+              <option value="">普通新故障不关联</option>
+              {historical.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {row.id} · {row.faultType}
+                </option>
+              ))}
             </select>
           </label>
-          <label className="field-check">
-            <input
-              type="checkbox"
-              checked={confirmed}
-              onChange={(e) => setConfirmed(e.target.checked)}
-            />
-            已核对为同一设备的原故障；全新故障不关联
-          </label>
-          {item.status === 'completed' && (
+        )}
+      {item.canEdit &&
+        ((!item.parentAppointmentId &&
+          ['booked', 'in_progress'].includes(item.status) &&
+          parentId) ||
+          item.status === 'completed') && (
+          <>
             <label>
-              本次已预约的工单编号
-              <input value={targetId} onChange={(e) => setTargetId(e.target.value.trim())} />
+              关联原因
+              <select value={kind} onChange={(e) => setKind(e.target.value)}>
+                <option value="continuation">原故障继续处理</option>
+                <option value="recurrence">原故障复发</option>
+              </select>
             </label>
-          )}
-          <button
-            disabled={busy || !confirmed || (item.status === 'completed' && !targetId)}
-            onClick={link}
-          >
-            关联现有工单
-          </button>
-          {item.status === 'completed' && (
-            <button disabled={busy || !confirmed} onClick={() => setOnsite(true)}>
-              未预约，现场登记关联新单
+            <label className="field-check">
+              <input
+                type="checkbox"
+                checked={confirmed}
+                onChange={(e) => setConfirmed(e.target.checked)}
+              />
+              已核对为同一设备的原故障；全新故障不关联
+            </label>
+            {item.status === 'completed' && (
+              <label>
+                本次已预约的工单编号
+                <input value={targetId} onChange={(e) => setTargetId(e.target.value.trim())} />
+              </label>
+            )}
+            <button
+              disabled={busy || !confirmed || (item.status === 'completed' && !targetId)}
+              onClick={link}
+            >
+              关联现有工单
             </button>
-          )}
-        </>
-      )}
+            {item.status === 'completed' && (
+              <button disabled={busy || !confirmed} onClick={() => setOnsite(true)}>
+                未预约，现场登记关联新单
+              </button>
+            )}
+          </>
+        )}
       {onsite && (
         <Registration
           campus={item.campus}

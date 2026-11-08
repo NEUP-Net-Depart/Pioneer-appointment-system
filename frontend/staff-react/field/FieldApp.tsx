@@ -7,8 +7,7 @@ import type { Home } from './types';
 import { WorkspaceHeader } from '../WorkspaceHeader';
 import { StaffIdentity } from '../StaffIdentity';
 import { useFieldWorkspace } from './useFieldWorkspace';
-import { RepairScene } from './RepairScene';
-import { DeskScene } from './DeskScene';
+import { TodayScene } from './TodayScene';
 import { PersonalScene } from './PersonalScene';
 import './field.css';
 export function FieldApp({
@@ -55,9 +54,6 @@ export function FieldApp({
     setCheckResult,
     checkPreview,
     busy,
-    filter,
-    setFilter,
-    setSearch,
     result,
     data,
     refresh,
@@ -66,7 +62,6 @@ export function FieldApp({
     openAttendance,
     checkIn,
     presence,
-    items,
     campusName
   } = useFieldWorkspace({
     initial,
@@ -110,11 +105,6 @@ export function FieldApp({
               </select>
             </label>
           </div>
-          {data?.directAttendance?.allowed && !data.presence && scene === 'desk' && (
-            <button disabled={busy} onClick={openAttendance}>
-              本人到岗签到
-            </button>
-          )}
         </WorkspaceHeader>
         <Notice>{message || result.error}</Notice>
         <div className="workspace-update" role="status" aria-live="polite">
@@ -152,39 +142,17 @@ export function FieldApp({
                   <button onClick={() => onNavigate('duties')}>查看邀请</button>
                 </section>
               )}
-            {scene === 'repair' && (
-              <RepairScene
+            {scene === 'today' && (
+              <TodayScene
                 active={active}
-                key={key}
-                scene={scene}
-                setSelected={setSelected}
-                setScanOpen={setScanOpen}
-                setRegistration={setRegistration}
-                setMessage={setMessage}
                 busy={busy}
                 data={data}
-                refresh={refresh}
-                resolve={resolve}
+                onSelect={setSelected}
+                onScan={() => setScanOpen(true)}
+                onRegister={() => setRegistration(true)}
+                showAttendance={showAttendance}
                 openAttendance={openAttendance}
                 presence={presence}
-                campusName={campusName}
-              />
-            )}
-            {scene === 'desk' && (
-              <DeskScene
-                active={active}
-                key={key}
-                setSelected={setSelected}
-                setRegistration={setRegistration}
-                setScanOpen={setScanOpen}
-                busy={busy}
-                filter={filter}
-                setFilter={setFilter}
-                setSearch={setSearch}
-                result={result}
-                data={data}
-                showAttendance={showAttendance}
-                items={items}
               />
             )}
             {scene === 'mine' && (

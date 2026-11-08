@@ -1,4 +1,4 @@
-import { listAppointments, listContactCandidates } from './appointment-list.js';
+import { listAppointments, listContactCandidates, listStudentMatches } from './appointment-list.js';
 import { serviceDayRepository } from './service-days.js';
 import { APPOINTMENT_SEARCH_LIMIT } from '../../shared/appointment-search.js';
 import { DEFAULT_SERVICE_LOCATIONS, terminalStatuses } from '../../shared/constants.js';
@@ -59,7 +59,7 @@ const assigneeName =
   "(SELECT trim(name) FROM staff_accounts WHERE account=appointments.assigned_to AND status='enabled') AS assigned_to_name";
 const memberIdentity =
   '(SELECT member_id FROM staff_accounts WHERE account=appointments.assigned_to) AS assigned_member_id,(SELECT member_id FROM staff_accounts WHERE account=appointments.registered_by) AS registered_member_id';
-const select = `SELECT appointments.*,(SELECT paused FROM service_day_overrides s JOIN campuses c ON c.id=s.campus_id WHERE s.business_date=appointments.date AND c.name=appointments.campus) AS service_paused,${assigneeName},${memberIdentity} FROM appointments`;
+const select = `SELECT appointments.*,(SELECT trim(name) FROM staff_accounts WHERE account=appointments.received_by) AS received_by_name,(SELECT paused FROM service_day_overrides s JOIN campuses c ON c.id=s.campus_id WHERE s.business_date=appointments.date AND c.name=appointments.campus) AS service_paused,${assigneeName},${memberIdentity} FROM appointments`;
 const contactSelect = `SELECT appointments.id,appointments.revision,appointments.campus,appointments.date,
   appointments.time_slot,appointments.status,appointments.phone,appointments.email,
   appointments.contact_value,appointments.social,
@@ -81,6 +81,7 @@ function fromRow(row) {
         servicePaused: !!row.service_paused,
         revision: row.revision,
         assignedToName: row.assigned_to_name || '',
+        receivedByName: row.received_by_name || '',
         assignedMemberId: row.assigned_member_id || '',
         registeredMemberId: row.registered_member_id || '',
         ...(row.__contact_generation !== undefined ? { contactIndexGeneration: row.__contact_generation } : {}),
@@ -111,7 +112,7 @@ export function appointmentRepository(db) {
   return {
     ...serviceDayRepository(db),
     async openFieldWork(campus,day) {
-      return (await db.prepare(`${select} WHERE campus=? AND (date=? OR status='in_progress' OR (status='booked' AND received_at IS NOT NULL)) ORDER BY created_at,id`).bind(campus,day).all()).results.map(fromRow);
+      return (await db.prepare(`${select} WHERE campus=? AND (status='in_progress' OR (status='booked' AND (date=? OR received_at IS NOT NULL))) ORDER BY created_at,id`).bind(campus,day).all()).results.map(fromRow);
     },
     async pendingPhotos(account,campus) {
       return (await db.prepare(`${select} WHERE photo_deferred_by=? AND campus=? AND (front_photo_id IS NULL OR back_photo_id IS NULL) ORDER BY received_at,id`).bind(account,campus).all()).results.map(fromRow);
@@ -297,6 +298,9 @@ export function appointmentRepository(db) {
     },
     list(query, scope) {
       return listAppointments(db, select, fromRow, query, scope);
+    },
+    searchStudentId(studentId, scope) {
+      return listStudentMatches(db, studentId, scope);
     },
     contactCandidates(query, scope, cursor, token) {
       return listContactCandidates(db, contactSelect, fromRow, query, scope, cursor, token);

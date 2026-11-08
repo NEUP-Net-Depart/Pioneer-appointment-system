@@ -8,7 +8,6 @@ async function api(page,path,data,method='POST'){
  const response=await page.request.fetch(path,{method,headers:{Authorization:`Bearer ${token}`},...(data?{data}:{})});
  const body=await response.json();expect(response.ok(),JSON.stringify(body)).toBeTruthy();return body;
 }
-async function openOrder(page,id){await staffPage(page,'预约记录');await page.locator('tr').filter({hasText:id}).getByRole('button',{name:'查看详情'}).click();await expect(page.getByRole('dialog',{name:'维修工单'})).toBeVisible();}
 async function screenshot(page,testInfo,name){expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:testInfo.outputPath(name+'.png'),fullPage:true});}
 
 test('student books against the real capacity service, signs, and opens the private result',async({page},testInfo)=>{
@@ -36,30 +35,32 @@ test('cold entries wait for route code and business data instead of flashing the
  await page.route('**/api/field/board*',async route=>{await boardReady;await route.continue();});
  try{
   await loginStaff(page,'root001',process.env.E2E_ROOT_PASSWORD);
-  await staffPage(page,'现场工作台');
-  await expect(page.getByRole('heading',{name:'现场工作台',exact:true})).toBeVisible();
+  await staffPage(page,'今日工作');
+  await expect(page.getByRole('heading',{name:'今日工作',exact:true})).toBeVisible();
   await expect(page.locator('.field-content')).toHaveAttribute('aria-busy','true');
-  await expect(page.getByText('暂无符合条件的工单',{exact:true})).not.toBeVisible();
+  await expect(page.getByText('今日没有待接收工单',{exact:true})).not.toBeVisible();
  }finally{releaseBoard();}
  await expect(page.locator('.field-content')).toHaveAttribute('aria-busy','false');
 });
 
-test('ordinary network staff receive photos, finish and correct an onsite repair without attendance, keeping student notes private',async({page},testInfo)=>{
- await loginStaff(page,'20261002','StaffTest!2026');
- await expect(page.getByRole('heading',{name:'现场工作台',exact:true})).toBeVisible();
- await expect(page.locator('.field-sidebar').getByRole('button',{name:/^(值班|我的值班)$/,includeHidden:true})).toHaveCount(0);
+test('hardware staff receive photos, finish and correct an onsite repair from today work without attendance, keeping student notes private',async({page,context},testInfo)=>{
+ const network=await context.newPage();await network.clock.install({time:now});await loginStaff(network,'20261002','StaffTest!2026');
+ await expect(network.locator('.field-sidebar').getByRole('button',{name:/^(值班|我的值班)$/,includeHidden:true})).toHaveCount(0);
+ await network.close();
+ await loginStaff(page,'20261003','StaffTest!2026');
+ await staffPage(page,'今日工作');
  const created=await api(page,'/api/scan/onsite',{requestId:crypto.randomUUID(),campus:'南湖',studentId:testInfo.project.name==='chromium'?'20269981':'20269982',name:'现场测试同学',social:'test-contact',deviceType:'笔记本',brand:'联想',deviceModel:'',warranty:'不清楚',faultType:'系统',signature:[Array.from({length:12},(_,i)=>[.1+i*.05,.2+i*.03])]});
- await openOrder(page,created.id);
+ await page.getByRole('button',{name:'刷新',exact:true}).click();
+ await page.getByRole('button').filter({hasText:created.id}).click();
  const dialog=page.getByRole('dialog',{name:'维修工单'});
- await expect(dialog.getByRole('button',{name:'稍后补传，继续接单'})).toHaveCount(0);
+ await expect(dialog.getByRole('button',{name:'稍后补传，接收并开始维修'})).toHaveCount(0);
  for(const side of ['正面','背面'])await dialog.getByLabel(`设备${side}照片`,{exact:true}).setInputFiles({name:side+'.png',mimeType:'image/png',buffer:PHOTO});
- await dialog.getByRole('button',{name:'直接接单，开始维修'}).click();
- await expect(dialog.getByText('当前主修：陈宇')).toBeVisible();
+ await dialog.getByRole('button',{name:'接收并开始维修',exact:true}).click();
+ await expect(dialog.getByText('当前主修：周宁')).toBeVisible();
  await dialog.getByLabel('部分解决',{exact:true}).check();await dialog.getByLabel('简短处理说明').fill('系统恢复，键盘仍需更换（内部）');await dialog.getByRole('button',{name:'结束本次服务'}).click();
  await expect(dialog.getByRole('button',{name:'保存结果更正'})).toBeVisible();
  await dialog.getByLabel('已解决',{exact:true}).check();await dialog.getByLabel('简短处理说明').fill('键盘更换后通过复核（内部）');await dialog.getByRole('button',{name:'保存结果更正'}).click();
  await expect(dialog.getByText('已解决 · 键盘更换后通过复核（内部）')).toBeVisible();
- await expect(dialog.getByRole('button',{name:'查询保修',exact:true})).toHaveCount(0);
  await screenshot(page,testInfo,'repair');
  const customer=await page.request.get(`/api/appointments/${created.id}`,{headers:{'X-Appointment-Token':created.accessToken}});
  expect(customer.ok()).toBeTruthy();const visible=await customer.json();expect(visible.outcome).toBe('repaired');expect(JSON.stringify(visible)).not.toMatch(/内部|repairNote|actorAccount|before_json/);
@@ -68,6 +69,27 @@ test('ordinary network staff receive photos, finish and correct an onsite repair
  const liquidMetal=page.locator('#detail-information dl > div').filter({has:page.getByText('液金散热',{exact:true})});
  await expect(liquidMetal.locator('dd')).toHaveText('不清楚');
  await expect(page.locator('#detail-information')).not.toContainText('unknown');
+});
+
+test('office reception lets hardware take over without another photo upload',async({page,context},testInfo)=>{
+ await loginStaff(page,'20261001','StaffTest!2026');
+ await staffPage(page,'今日工作');
+ const created=await api(page,'/api/scan/onsite',{requestId:crypto.randomUUID(),campus:'南湖',studentId:String(20270000+testInfo.workerIndex),name:'共同值班同学',social:'joint-contact',deviceType:'笔记本',brand:'联想',deviceModel:'',warranty:'不清楚',faultType:'系统',signature:[Array.from({length:12},(_,i)=>[.1+i*.05,.2+i*.03])]});
+ await page.getByRole('button',{name:'刷新',exact:true}).click();
+ await page.getByRole('button').filter({hasText:created.id}).click();
+ const dialog=page.getByRole('dialog',{name:'维修工单'});
+ await expect(dialog.getByRole('button',{name:'接收并开始维修',exact:true})).toHaveCount(0);
+ for(const side of ['正面','背面'])await dialog.getByLabel(`设备${side}照片`,{exact:true}).setInputFiles({name:side+'.png',mimeType:'image/png',buffer:PHOTO});
+ await dialog.getByRole('button',{name:'仅接收设备',exact:true}).click();
+ await expect(dialog.getByRole('button',{name:'仅接收设备',exact:true})).toHaveCount(0);
+ const worker=await context.newPage();await worker.clock.install({time:now});await loginStaff(worker,'20261003','StaffTest!2026');
+ await staffPage(worker,'今日工作');
+ await worker.getByRole('button').filter({hasText:created.id}).click();
+ const workDialog=worker.getByRole('dialog',{name:'维修工单'});
+ await expect(workDialog.getByLabel('设备正面照片',{exact:true})).toHaveCount(0);
+ await workDialog.getByRole('button',{name:'确认接手并开始维修',exact:true}).click();
+ await expect(workDialog.getByRole('button',{name:'结束本次服务',exact:true})).toBeVisible();
+ await worker.close();
 });
 
 test('weekly availability, publishing, direct leave and recipient confirmation work in the unified page',async({page,context},testInfo)=>{
