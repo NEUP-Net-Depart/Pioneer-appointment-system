@@ -87,23 +87,27 @@ export function FieldApp({
         >
           <div className="field-scope">
             <span data-motion-value="text">{data?.businessDate || initial.businessDate}</span>
-            <label>
-              <span className="field-sr-only">工作校区</span>
-              <select
-                value={campus}
-                onChange={(e) => {
-                  setCampus(e.target.value);
-                  setSelected('');
-                  setMessage('');
-                }}
-              >
-                {(data?.campuses || initial.campuses).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}校区
-                  </option>
-                ))}
-              </select>
-            </label>
+            {(data?.campuses || initial.campuses).length > 1 ? (
+              <label>
+                <span className="field-sr-only">工作校区</span>
+                <select
+                  value={campus}
+                  disabled={busy}
+                  onChange={(e) => {
+                    setCampus(e.target.value);
+                    setCustomerCredential(null);
+                  }}
+                >
+                  {(data?.campuses || initial.campuses).map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}校区
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <span>{campusName}校区</span>
+            )}
           </div>
         </WorkspaceHeader>
         <Notice>{message || result.error}</Notice>
@@ -144,6 +148,7 @@ export function FieldApp({
               )}
             {scene === 'today' && (
               <TodayScene
+                key={campus}
                 active={active}
                 busy={busy}
                 data={data}

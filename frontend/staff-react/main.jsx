@@ -245,6 +245,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
     'workbench',
     field ? (
       <FieldApp
+        key={`${field.actor.memberId}:${field.authVersion}`}
         initial={field}
         active={visible('workbench')}
         onNavigate={requestNavigate}

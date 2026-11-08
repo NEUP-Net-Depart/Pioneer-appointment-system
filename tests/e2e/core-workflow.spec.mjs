@@ -43,6 +43,50 @@ test('cold entries wait for route code and business data instead of flashing the
  await expect(page.locator('.field-content')).toHaveAttribute('aria-busy','false');
 });
 
+test('working campus isolates data, survives navigation and reload, and resets between logins',async({page},testInfo)=>{
+ await loginStaff(page,'root001',process.env.E2E_ROOT_PASSWORD);
+ const orders={};
+ for(const [index,campus] of ['南湖','浑南'].entries())orders[campus]=await api(page,'/api/scan/onsite',{
+  requestId:crypto.randomUUID(),campus,studentId:String(20271000+index+(testInfo.project.name==='chromium'?0:10)),
+  name:'校区选择回归'+campus,social:'campus-regression',deviceType:'笔记本',brand:'联想',deviceModel:'',warranty:'不清楚',faultType:'系统',
+  signature:[Array.from({length:12},(_,i)=>[.1+i*.05,.2+i*.03])]
+ });
+ await staffPage(page,'今日工作');
+ const work=page.locator('.field-content'),campus=work.getByRole('combobox',{name:'工作校区'});
+ await expect(campus).toHaveValue('campus-nanhu');
+ await work.getByRole('button',{name:'刷新',exact:true}).click();
+ await expect(work.getByRole('button').filter({hasText:orders['南湖'].id})).toBeVisible();
+ let releaseBoard;
+ const boardReady=new Promise(resolve=>{releaseBoard=resolve;});
+ await page.route('**/api/field/board*',async route=>{
+  if(new URL(route.request().url()).searchParams.get('campusId')==='campus-hunnan')await boardReady;
+  await route.continue();
+ });
+ try{
+  await campus.selectOption('campus-hunnan');
+  await expect(work.getByRole('button').filter({hasText:orders['南湖'].id})).not.toBeVisible();
+  await expect(work).toHaveAttribute('aria-busy','true');
+ }finally{releaseBoard();}
+ await expect(work.getByRole('button').filter({hasText:orders['浑南'].id})).toBeVisible();
+ await expect(work.getByRole('button').filter({hasText:orders['南湖'].id})).not.toBeVisible();
+ await staffPage(page,'个人中心');await expect(campus).toHaveValue('campus-hunnan');
+ await staffPage(page,'今日工作');
+ await work.getByRole('button',{name:'刷新',exact:true}).click();
+ await expect(campus).toHaveValue('campus-hunnan');
+ await page.reload();await staffPage(page,'今日工作');
+ await expect(campus).toHaveValue('campus-hunnan');
+ await expect(work.getByRole('button').filter({hasText:orders['浑南'].id})).toBeVisible();
+ await staffPage(page,'个人中心');
+ await work.getByRole('button',{name:'退出登录',exact:true}).click();
+ await expect(page.locator('#login-id')).toBeVisible();
+ await loginStaff(page,'20261003','StaffTest!2026');await staffPage(page,'今日工作');
+ await expect(work.locator('.field-scope')).toContainText('南湖校区');
+ await staffPage(page,'个人中心');await work.getByRole('button',{name:'退出登录',exact:true}).click();
+ await expect(page.locator('#login-id')).toBeVisible();
+ await loginStaff(page,'root001',process.env.E2E_ROOT_PASSWORD);await staffPage(page,'今日工作');
+ await expect(campus).toHaveValue('campus-nanhu');
+});
+
 test('hardware staff receive photos, finish and correct an onsite repair from today work without attendance, keeping student notes private',async({page,context},testInfo)=>{
  const network=await context.newPage();await network.clock.install({time:now});await loginStaff(network,'20261002','StaffTest!2026');
  await expect(network.locator('.field-sidebar').getByRole('button',{name:/^(值班|我的值班)$/,includeHidden:true})).toHaveCount(0);
