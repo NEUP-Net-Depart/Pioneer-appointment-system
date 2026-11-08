@@ -55,7 +55,7 @@ export function initSlotPicker({onChange = () => {}} = {}) {
     item.append(strong);if(key!=='campus'){const detail=document.createElement('small'),remaining=document.createElement('span');remaining.className='booking-remaining';detail.append(remaining);item.append(detail);}return item;
   }
   for (const campus of CAMPUSES) campuses.append(button(campus,'campus',campus+'校区'));
-  for (const slot of TIME_SLOTS) slots.append(button(slot,'slot',slot));
+  for (const slot of TIME_SLOTS) slots.append(button(slot,'slot',slot.split('–')[0]));
   const availability=(date,slot) => summaries.get(date) && slotAvailability(summaries.get(date),date,slot,now());
   const selectable=date => !failed.has(date) && TIME_SLOTS.some(slot => availability(date,slot) && !availability(date,slot).disabled);
   function dateStatus(date) {
@@ -116,7 +116,7 @@ export function initSlotPicker({onChange = () => {}} = {}) {
     slotPanel.hidden=!showSlots;
     const context=$('#booking-slot-context');
     const announcement=settings()?.notices?.find(item=>item.type==='suspension' && item.businessDate===dateInput.value);
-    $('#booking-slot-title').textContent=paused ? `公告 · ${announcement?.title || '当日暂停维修'}` : '选择到场时段';
+    $('#booking-slot-title').textContent=paused ? `公告 · ${announcement?.title || '当日暂停维修'}` : '选择到场时间';
     context.textContent=paused ? announcement?.content || selected.pauseReason || '该校区当日暂停维修。' : '';
     context.hidden=!paused;
     $('#booking-slot-placeholder-text').textContent=loadFailed || failed.size ? '暂时无法读取到场时段，请重试。' : dates.length ? '选择日期后查看各时段状态' : '当前预约范围内暂无开放日期';
