@@ -570,6 +570,30 @@ fieldset.staffing-editor {
 .field-sidebar .field-sidebar-bottom button {
   min-height: 44px;
 }
+.workspace-project-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding-inline: 10px;
+  border-radius: 9px;
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: none;
+}
+.workspace-project-link:hover {
+  background: var(--workspace-subtle, #f1f3f6);
+  color: var(--ink);
+}
+.field-sidebar > .workspace-project-link {
+  align-self: flex-start;
+  flex-shrink: 0;
+}
+.workspace-launcher-footer {
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+  padding-top: 6px;
+}
 .field-sidebar .workspace-group-toggle {
   min-height: 44px;
 }
