@@ -35,6 +35,7 @@ test('cold entries wait for route code and business data instead of flashing the
  await page.route('**/api/field/board*',async route=>{await boardReady;await route.continue();});
  try{
   await loginStaff(page,'root001',process.env.E2E_ROOT_PASSWORD);
+  await staffPage(page,'今日工作');
   await expect(page.getByRole('heading',{name:'今日工作',exact:true})).toBeVisible();
   await expect(page.locator('.field-content')).toHaveAttribute('aria-busy','true');
   await expect(page.getByText('今日没有待接收工单',{exact:true})).not.toBeVisible();
@@ -42,8 +43,12 @@ test('cold entries wait for route code and business data instead of flashing the
  await expect(page.locator('.field-content')).toHaveAttribute('aria-busy','false');
 });
 
-test('hardware staff receive photos, finish and correct an onsite repair from today work without attendance, keeping student notes private',async({page},testInfo)=>{
+test('hardware staff receive photos, finish and correct an onsite repair from today work without attendance, keeping student notes private',async({page,context},testInfo)=>{
+ const network=await context.newPage();await network.clock.install({time:now});await loginStaff(network,'20261002','StaffTest!2026');
+ await expect(network.locator('.field-sidebar').getByRole('button',{name:/^(值班|我的值班)$/,includeHidden:true})).toHaveCount(0);
+ await network.close();
  await loginStaff(page,'20261003','StaffTest!2026');
+ await staffPage(page,'今日工作');
  const created=await api(page,'/api/scan/onsite',{requestId:crypto.randomUUID(),campus:'南湖',studentId:testInfo.project.name==='chromium'?'20269981':'20269982',name:'现场测试同学',social:'test-contact',deviceType:'笔记本',brand:'联想',deviceModel:'',warranty:'不清楚',faultType:'系统',signature:[Array.from({length:12},(_,i)=>[.1+i*.05,.2+i*.03])]});
  await page.getByRole('button',{name:'刷新',exact:true}).click();
  await page.getByRole('button').filter({hasText:created.id}).click();
@@ -68,6 +73,7 @@ test('hardware staff receive photos, finish and correct an onsite repair from to
 
 test('office reception lets hardware take over without another photo upload',async({page,context},testInfo)=>{
  await loginStaff(page,'20261001','StaffTest!2026');
+ await staffPage(page,'今日工作');
  const created=await api(page,'/api/scan/onsite',{requestId:crypto.randomUUID(),campus:'南湖',studentId:String(20270000+testInfo.workerIndex),name:'共同值班同学',social:'joint-contact',deviceType:'笔记本',brand:'联想',deviceModel:'',warranty:'不清楚',faultType:'系统',signature:[Array.from({length:12},(_,i)=>[.1+i*.05,.2+i*.03])]});
  await page.getByRole('button',{name:'刷新',exact:true}).click();
  await page.getByRole('button').filter({hasText:created.id}).click();
@@ -77,6 +83,7 @@ test('office reception lets hardware take over without another photo upload',asy
  await dialog.getByRole('button',{name:'仅接收设备',exact:true}).click();
  await expect(dialog.getByRole('button',{name:'仅接收设备',exact:true})).toHaveCount(0);
  const worker=await context.newPage();await worker.clock.install({time:now});await loginStaff(worker,'20261003','StaffTest!2026');
+ await staffPage(worker,'今日工作');
  await worker.getByRole('button').filter({hasText:created.id}).click();
  const workDialog=worker.getByRole('dialog',{name:'维修工单'});
  await expect(workDialog.getByLabel('设备正面照片',{exact:true})).toHaveCount(0);
@@ -86,30 +93,63 @@ test('office reception lets hardware take over without another photo upload',asy
 });
 
 test('weekly availability, publishing, direct leave and recipient confirmation work in the unified page',async({page,context},testInfo)=>{
- await loginStaff(page,'20261001','StaffTest!2026');await staffPage(page,'排班与可用时间');
- // Each browser uses a distinct week; no state reset or fixture shortcuts.
  const week=testInfo.project.name==='chromium'?'2026-10-19':'2026-10-26';
- await page.getByLabel('所在周').fill(week);await expect(page.getByRole('button',{name:'编排并发布'})).toBeVisible();
- await page.getByRole('button',{name:'编排并发布'}).click();await page.getByRole('button',{name:'添加班次'}).click();
- await page.getByRole('combobox',{name:'成员',exact:true}).selectOption('member-20261002');await page.getByRole('button',{name:'发布班表'}).click();
- await expect(page.getByRole('button',{name:'调整班表'})).toBeVisible();
- const worker=await context.newPage();await worker.clock.install({time:now});await loginStaff(worker,'20261002','StaffTest!2026');await staffPage(worker,'排班与可用时间');await worker.getByLabel('所在周').fill(week);
- const previousAvailability=await api(worker,'/api/me/availability?dutyType=repair',null,'GET');
- await worker.getByRole('button',{name:'修改通常时间'}).click();await worker.getByRole('button',{name:'添加时间'}).click();
- await (await navigationEntry(worker.locator('.field-sidebar'),'预约记录')).click();
- await worker.getByRole('button',{name:'保存并切换',exact:true}).click();
- await expect(worker.getByRole('heading',{name:'预约记录',exact:true})).toBeVisible();
- const availability=await api(worker,'/api/me/availability?dutyType=repair',null,'GET');expect(availability.usual.windows).toHaveLength(previousAvailability.usual.windows.length+1);
- await staffPage(worker,'排班与可用时间');
- await expect(worker.getByText(/沿用通常时间（未作本周确认）/)).toBeVisible();
- await worker.getByRole('button',{name:'登记请假',exact:true}).click();await worker.getByLabel('请假原因').fill('临时有课');await worker.getByRole('button',{name:'登记请假',exact:true}).click();
+ const freeDay=testInfo.project.name==='chromium'?'周一':'周二';
+ const worker=await context.newPage();await worker.clock.install({time:now});await loginStaff(worker,'20261003','StaffTest!2026');
+ await worker.getByLabel('所在周').fill(week);
+ await worker.getByRole('button',{name:'修改通常时间'}).click();await worker.getByRole('checkbox',{name:freeDay,exact:true}).check();
+ await worker.getByRole('button',{name:'保存空闲',exact:true}).click();
+ await expect(worker.getByRole('button',{name:'修改通常时间',exact:true})).toBeVisible();
+ await loginStaff(page,'20261001','StaffTest!2026');
+ await page.getByRole('navigation',{name:'值班任务'}).getByRole('button',{name:'安排下周',exact:true}).click();
+ const planner=page.locator('.duty-planner');
+ await planner.getByLabel('所在周').fill(week);
+ await planner.getByRole('button',{name:'生成建议班表'}).click();
+ await expect(planner.getByRole('button',{name:/^移除周宁 /})).toBeVisible();
+ await planner.getByRole('button',{name:'发布班表'}).click();
+ await expect(planner.getByRole('button',{name:'发布班表'})).toBeDisabled();
+ await screenshot(page,testInfo,'duty-planner');
+ // Refresh the member page to pick up the published roster and preserve the selected week.
+ await worker.reload();await worker.getByLabel('所在周').fill(week);
+ const firstDate=(await api(worker,`/api/me/roster?weekStart=${week}`,null,'GET')).items[0].businessDate;
+ const memberShift=worker.getByRole('article').filter({hasText:firstDate});
+ await memberShift.getByRole('button',{name:'登记请假',exact:true}).click();
+ await worker.getByLabel('请假原因').fill('临时有课');await memberShift.getByRole('button',{name:'登记请假',exact:true}).click();
  await expect(worker.getByRole('button',{name:'撤销请假'})).toBeVisible();
- await worker.getByRole('button',{name:'邀请接替'}).click();await worker.getByRole('combobox',{name:'接替成员',exact:true}).selectOption('member-20261003');await worker.getByRole('button',{name:'发送接替邀请'}).click();
+ await memberShift.getByRole('button',{name:'邀请接替'}).click();await worker.getByRole('combobox',{name:'接替成员',exact:true}).selectOption('member-root001');await worker.getByRole('button',{name:'发送接替邀请'}).click();
  await expect(worker.getByText('待对方确认',{exact:false})).toBeVisible();
- const recipient=await context.newPage();await recipient.clock.install({time:now});await loginStaff(recipient,'20261003','StaffTest!2026');await staffPage(recipient,'排班与可用时间');await recipient.getByLabel('所在周').fill(week);
- await recipient.getByRole('button',{name:'确认接替',exact:true}).click();await expect(recipient.locator('article').filter({hasText:week}).getByText('已接替',{exact:false})).toBeVisible();
- await expect(recipient.getByRole('button',{name:'登记请假',exact:true})).toBeVisible();
+ const recipient=await context.newPage();await recipient.clock.install({time:now});await loginStaff(recipient,'root001',process.env.E2E_ROOT_PASSWORD);
+ await recipient.getByRole('navigation',{name:'值班任务'}).getByRole('button',{name:'我的值班',exact:true}).click();
+ await recipient.locator('.duty-personal').getByLabel('所在周').fill(week);
+ await recipient.getByRole('button',{name:'确认接替',exact:true}).click();await expect(recipient.locator('article').filter({hasText:firstDate}).getByText('已接替',{exact:false})).toBeVisible();
  await screenshot(recipient,testInfo,'schedule');await worker.close();await recipient.close();
+});
+
+test('daily duty review resolves an unsigned person and records a historical arrival directly from their row',async({page},testInfo)=>{
+ await loginStaff(page,'20261001','StaffTest!2026');
+ const campusId='campus-nanhu',weekStart='2026-10-12';
+ const businessDate=testInfo.project.name==='chromium'?'2026-10-12':'2026-10-13';
+ const current=await api(page,`/api/rosters/campus-week?${new URLSearchParams({campusId,weekStart})}`,null,'GET');
+ await api(page,'/api/rosters/campus-week',{
+   campusId,weekStart,sourceVersion:current.sourceVersion,requestId:crypto.randomUUID(),
+   rosters:current.rosters.map(row=>({...row,assignments:[...row.assignments,...(row.dutyType==='repair'?[{memberId:'member-20261003',businessDate,startAt:'19:00',endAt:'21:00'}]:[])]}))
+ },'PUT');
+ const daily=page.locator('.duty-day');
+ await daily.getByLabel('值班日期').fill(businessDate);
+ const person=daily.locator('.duty-person').filter({hasText:'周宁'});
+ await expect(person.getByText('未签到',{exact:true})).toBeVisible();
+ await person.getByRole('button',{name:'确认未到',exact:true}).click();
+ await expect(person.getByText('已确认未到',{exact:true})).toBeVisible();
+ await person.getByRole('button',{name:'撤销未到',exact:true}).click();
+ await expect(person.getByText('未签到',{exact:true})).toBeVisible();
+ await person.getByRole('button',{name:'补记漏签',exact:true}).click();
+ const correction=page.getByRole('dialog',{name:'补记漏签'});
+ await expect(correction).toContainText('周宁');
+ await expect(correction.getByLabel('实际到场时间')).toHaveValue(`${businessDate}T19:00`);
+ await correction.getByLabel('补录或修正原因').fill('现场已核实漏签');
+ await correction.getByRole('button',{name:'保存考勤',exact:true}).click();
+ await expect(person.getByText('已签到',{exact:true})).toBeVisible();
+ await screenshot(page,testInfo,'duty-review');
 });
 
 test('save-and-switch retains a failed draft and navigates only after a successful save',async({page})=>{

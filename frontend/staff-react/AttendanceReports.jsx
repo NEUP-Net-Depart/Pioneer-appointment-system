@@ -131,7 +131,7 @@ function download(bytes, filename, type) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function AttendanceReports({ canExport = true }) {
+export function AttendanceReports({ canExport = true, embedded = false }) {
   const active = useContext(ActivityContext);
   const [month, setMonth] = useState(monthNow);
   const [campusId, setCampusId] = useState('');
@@ -213,7 +213,9 @@ export function AttendanceReports({ canExport = true }) {
   }
   return (
     <section className="react-page attendance-reports">
-      <WorkspaceHeader group="排班考勤" title={canExport ? '报表导出' : '导出规则'} />
+      {!embedded && (
+        <WorkspaceHeader group="排班考勤" title={canExport ? '报表导出' : '导出规则'} />
+      )}
       {canExport && (
         <>
           <div className="report-type-switch" role="group" aria-label="报表类型">

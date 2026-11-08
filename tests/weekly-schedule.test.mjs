@@ -50,7 +50,7 @@ test('publish without weekly questionnaires, direct leave, recipient takeover, s
  assert.equal((await staff.rosterWeek(head,query)).assignments.find(row=>row.id===first.id).leaveStatus,'');
  assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM attendance_records').get().n,0);
  const current=await staff.rosterWeek(head,query);
- const changes={...query,revision:current.revision,assignments:current.assignments.map(row=>({...row,startAt:'18:30'})),requestId:request()};
+ const changes={...query,revision:current.revision,assignments:current.assignments.map((row,index)=>({...row,businessDate:index?'2026-11-05':'2026-11-04'})),requestId:request()};
  const results=await Promise.allSettled([staff.saveRosterWeek(head,changes),staff.saveRosterWeek(head,{...changes,requestId:request()})]);
  assert.equal(results.filter(row=>row.status==='fulfilled').length,1);
  assert.equal(db.sqlite.prepare('SELECT active FROM duty_assignments WHERE id=?').get(first.id).active,0,'old shift IDs remain in history');

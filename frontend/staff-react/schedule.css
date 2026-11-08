@@ -1,72 +1,339 @@
-.schedule-page {
-  max-width: 1100px;
+.duty-workspace {
+  max-width: 1240px;
   margin: auto;
 }
-.schedule-filters,
-.schedule-window,
-.schedule-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: 12px;
-}
-.schedule-page label {
+.duty-workspace label {
   display: grid;
   gap: 6px;
-  min-width: 120px;
 }
-.schedule-card {
-  padding: 20px;
-  margin: 20px 0;
-  border: 1px solid var(--border, #ddd);
-  border-radius: 12px;
-  background: var(--surface, #fff);
-}
-.schedule-card h2 {
-  margin-top: 0;
-}
-.schedule-card article {
-  padding: 16px 0;
-  border-top: 1px solid var(--border, #ddd);
-}
-.schedule-page fieldset {
-  border: 0;
-  padding: 0;
-  min-width: 0;
-}
-.schedule-window {
-  margin: 12px 0;
-}
-.schedule-page input,
-.schedule-page select {
+.duty-workspace input,
+.duty-workspace select,
+.duty-workspace button {
   min-height: 40px;
   max-width: 100%;
 }
-.schedule-page button {
-  min-height: 40px;
+.duty-workspace fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
 }
-.schedule-page details {
-  margin: 16px 0;
+.duty-workspace .schedule-card {
+  margin: 20px 0;
+  padding: 22px;
+  border: 1px solid var(--border, #e3e6eb);
+  border-radius: 14px;
+  background: var(--surface, #fff);
 }
-.schedule-page summary {
+.duty-workspace .schedule-card h2 {
+  margin-top: 0;
+}
+.duty-workspace .schedule-card article {
+  padding: 16px 0;
+  border-top: 1px solid var(--border, #e3e6eb);
+}
+.duty-toolbar,
+.schedule-actions,
+.duty-tabs,
+.duty-section-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.duty-toolbar {
+  margin: 22px 0;
+  align-items: end;
+}
+.duty-toolbar label {
+  max-width: 190px;
+}
+.duty-tabs {
+  gap: 4px;
+  padding: 4px;
+  width: fit-content;
+  max-width: 100%;
+  background: #f1f4f7;
+  border-radius: 12px;
+  margin-bottom: 18px;
+}
+.duty-tabs button {
+  border: 0;
+  background: transparent;
+  padding: 9px 16px;
+  border-radius: 9px;
+}
+.duty-tabs button[aria-pressed='true'] {
+  background: #fff;
+  box-shadow: 0 1px 4px #172a4514;
+  color: #185ccb;
+  font-weight: 650;
+}
+.duty-section-heading {
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.duty-section-heading h2,
+.duty-section-heading p {
+  margin: 0 0 6px;
+}
+.duty-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 22px;
+}
+.duty-metrics > div {
+  display: grid;
+  gap: 5px;
+  border: 1px solid #e3e6eb;
+  background: #fff;
+  border-radius: 14px;
+  padding: 20px 24px;
+}
+.duty-metrics strong {
+  font-size: 36px;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+.duty-metrics span {
+  color: #647084;
+  font-size: 14px;
+}
+.duty-person {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.duty-person > div:first-child {
+  flex: 1;
+  min-width: 150px;
+}
+.duty-person p {
+  margin: 6px 0 0;
+}
+.duty-status {
+  white-space: nowrap;
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 20px;
+  background: #f2f5f8;
+}
+.duty-pending .duty-status {
+  color: #9b5710;
+  background: #fff2dd;
+}
+.duty-arrived .duty-status {
+  color: #1b775a;
+  background: #e8f6ef;
+}
+.duty-absent .duty-status {
+  color: #a14747;
+  background: #faeeee;
+}
+.duty-week-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.duty-day-column {
+  min-width: 0;
+  border: 1px solid #e3e6eb;
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.duty-day-column > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f6f8fb;
+  padding: 12px 16px;
+}
+.duty-day-column h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.duty-shift-group {
+  padding: 14px;
+  border-top: 1px solid #edf0f4;
+}
+.duty-shift-group h4 {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 0 12px;
+}
+.duty-shift-group h4 span {
+  color: #697589;
+  font-size: 12px;
+  font-weight: 400;
+}
+.duty-assignee {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  padding: 3px 0;
+}
+.duty-workspace .duty-assignee button {
+  min-height: 32px;
+  padding: 3px 7px;
+  background: transparent;
+  border: 0;
+}
+.duty-add-person {
+  width: 100%;
+  margin-top: 8px;
+  border-style: dashed;
+}
+.duty-warnings {
+  padding: 16px;
+  background: #fffbf1;
+  border-radius: 12px;
+  margin-top: 20px;
+  font-size: 14px;
+}
+.duty-workspace details {
+  margin-top: 18px;
+}
+.duty-workspace summary {
   cursor: pointer;
 }
-.schedule-history pre {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font-size: 12px;
+.duty-workspace li {
+  margin: 8px 0;
 }
-.schedule-page li {
-  margin: 10px 0;
+.duty-people-picker {
+  max-height: 58vh;
+  overflow: auto;
+  margin-bottom: 16px;
+}
+.duty-people-picker > label {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 13px 4px;
+  border-bottom: 1px solid #edf0f4;
+}
+.duty-people-picker input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+}
+.duty-people-picker span {
+  display: grid;
+  gap: 4px;
+}
+.duty-people-picker small {
+  color: #677487;
+}
+.duty-today-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin: 24px 0;
+  padding: 24px;
+  background: #edf4ff;
+  border-radius: 14px;
+}
+.duty-today-card h2 {
+  margin: 8px 0;
+}
+.duty-hours {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+.duty-hours > div {
+  display: grid;
+  gap: 10px;
+  padding: 18px 24px;
+  background: #fff;
+  border: 1px solid #e3e6eb;
+  border-radius: 12px;
+}
+.duty-hours strong {
+  font-size: 28px;
+}
+.duty-hours small {
+  font-size: 13px;
+  font-weight: 400;
+  margin-left: 8px;
+}
+.duty-hours p {
+  grid-column: 1/-1;
+  margin: 0;
+  color: #677487;
+  font-size: 13px;
+}
+.duty-availability {
+  overflow-x: auto;
+  padding: 12px 0;
+}
+.duty-availability > div {
+  display: grid;
+  grid-template-columns: 65px repeat(7, minmax(65px, 1fr));
+  align-items: center;
+  min-width: 570px;
+  margin-bottom: 12px;
+}
+.duty-availability label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+.duty-workspace .duty-availability input {
+  min-height: 18px;
+  width: 18px;
+}
+.duty-campus-select {
+  display: flex !important;
+  align-items: center;
+  font-size: 13px;
+  white-space: nowrap;
+}
+@media (max-width: 1050px) {
+  .duty-week-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .duty-person {
+    flex-wrap: wrap;
+  }
+  .duty-person .schedule-actions {
+    width: 100%;
+  }
 }
 @media (max-width: 600px) {
-  .schedule-card {
-    padding: 14px;
+  .duty-metrics {
+    gap: 8px;
   }
-  .schedule-window label {
-    flex: 1 1 40%;
+  .duty-metrics > div {
+    padding: 16px 12px;
   }
-  .schedule-window button {
-    flex: 0 0 auto;
+  .duty-metrics strong {
+    font-size: 30px;
+  }
+  .duty-tabs {
+    width: 100%;
+  }
+  .duty-tabs button {
+    flex: 1;
+    padding: 8px 9px;
+    font-size: 13px;
+  }
+  .duty-week-grid {
+    grid-template-columns: 1fr;
+  }
+  .duty-workspace .schedule-card {
+    padding: 16px;
+  }
+  .duty-today-card {
+    padding: 18px;
+  }
+  .duty-hours > div {
+    padding: 16px;
   }
 }

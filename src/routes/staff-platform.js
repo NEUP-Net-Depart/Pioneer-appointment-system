@@ -3,6 +3,13 @@ import { json, readBody, fail, securityHeaders } from '../lib/http.js';
 function bodyWithRevision(body) { return body && typeof body === 'object' ? body : {}; }
 
 export const staffPlatformRoutes = [
+  ['GET', /^\/api\/attendance\/day$/, async context=>json(await context.services.staffPlatform.attendanceDay(await context.role('technician'),context.query))],
+  ['POST', /^\/api\/attendance\/arrivals$/, async context=>{ await context.limit('write'); return json(await context.services.staffPlatform.confirmArrival(await context.role('technician'),await readBody(context.request))); }],
+  ['PUT', /^\/api\/attendance\/reviews$/, async context=>{ await context.limit('write'); return json(await context.services.staffPlatform.reviewAttendance(await context.role('technician'),await readBody(context.request))); }],
+  ['GET', /^\/api\/me\/volunteer-summary$/, async context=>json(await context.services.staffPlatform.volunteerSummary(await context.role('technician')))],
+  ['GET', /^\/api\/rosters\/campus-week$/, async context=>json(await context.services.staffPlatform.campusWeek(await context.role('technician'),context.query))],
+  ['PUT', /^\/api\/rosters\/campus-week$/, async context=>{ await context.limit('write'); return json(await context.services.staffPlatform.publishCampusWeek(await context.role('technician'),await readBody(context.request))); }],
+  ['POST', /^\/api\/rosters\/week\/suggestions$/, async context=>json(await context.services.staffPlatform.rosterSuggestions(await context.role('technician'),await readBody(context.request)))],
   ['GET', /^\/api\/attendance\/weekly-summary$/, async context=>json(await context.services.staffPlatform.attendanceExport(await context.role('technician'),context.query))],
   ['GET', /^\/api\/attendance\/report-settings$/, async context=>json(await context.services.staffPlatform.reportSettings(await context.role('technician')))],
   ['PUT', /^\/api\/attendance\/report-settings$/, async context=>json(await context.services.staffPlatform.saveReportSettings(await context.role('technician'),await readBody(context.request)))],

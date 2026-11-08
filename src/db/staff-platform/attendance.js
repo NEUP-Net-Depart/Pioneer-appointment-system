@@ -438,22 +438,23 @@ export function attendanceDomain({ db, auditStatement, commandAuthorization }) {
     }));
   }
 
-  async function weeklyAttendanceData(start, end) {
+  async function weeklyAttendanceData(start, end, memberId = null) {
     const result = await db.batch([
       db
         .prepare(
           `SELECT ar.*,(SELECT paused FROM service_day_overrides s WHERE s.business_date=e.business_date AND s.campus_id=e.campus_id) AS service_paused,e.type,e.business_date,e.campus_id,m.name AS member_name,m.student_id FROM attendance_records ar JOIN attendance_events e ON e.id=ar.event_id JOIN members m ON m.id=ar.member_id
-        WHERE e.type='duty' AND e.business_date BETWEEN ? AND ? ORDER BY ar.occurred_at,ar.id`
+        WHERE e.type='duty' AND e.business_date BETWEEN ? AND ? AND (? IS NULL OR ar.member_id=?) ORDER BY ar.occurred_at,ar.id`
         )
-        .bind(start, end),
+        .bind(start, end, memberId, memberId),
       db
         .prepare(
           `SELECT m.id AS memberId,m.name,m.student_id AS studentId,m.home_campus_id AS homeCampusId,m.college,m.major,(SELECT json_group_array(DISTINCT g.campus) FROM staff_accounts a JOIN staff_campus_grants g ON g.account=a.account WHERE a.member_id=m.id) AS campuses FROM members m
-        WHERE EXISTS(SELECT 1 FROM member_roles mr WHERE mr.member_id=m.id AND mr.effective_from<=? AND (mr.effective_to IS NULL OR mr.effective_to>?))
+        WHERE (? IS NULL OR m.id=?) AND (EXISTS(SELECT 1 FROM member_department_memberships mm WHERE mm.member_id=m.id AND mm.effective_from<=? AND (mm.effective_to IS NULL OR mm.effective_to>?))
+          OR EXISTS(SELECT 1 FROM member_roles mr WHERE mr.member_id=m.id AND mr.effective_from<=? AND (mr.effective_to IS NULL OR mr.effective_to>?))
           OR EXISTS(SELECT 1 FROM attendance_records ar JOIN attendance_events e ON e.id=ar.event_id
-            WHERE ar.member_id=m.id AND e.type='duty' AND e.business_date BETWEEN ? AND ?)`
+            WHERE ar.member_id=m.id AND e.type='duty' AND e.business_date BETWEEN ? AND ?))`
         )
-        .bind(end, start, start, end)
+        .bind(memberId, memberId, end, start, end, start, start, end)
     ]);
     return {
       records: rows(result[0]).map((row) => ({

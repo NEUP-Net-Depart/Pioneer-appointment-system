@@ -14,6 +14,7 @@ import { attendanceMethod, policyFor } from '../../modules/attendance/public.js'
 import { campusId as normalizeCampusId } from '../../modules/authorization/scopes.js';
 import { csvLine } from '../../lib/csv.js';
 import { staffIdentities } from '../../../shared/staff-identities.js';
+import { dutyWindow } from '../../../shared/duty.js';
 import { weeklyAttendanceRows } from '../../modules/attendance/weekly-export.js';
 import {
   assertDutyAttendanceDate,
@@ -35,8 +36,8 @@ export function attendanceDomain({
     await requirePermission(actor, 'attendance.session.manage', { campusId: input.campusId });
     const type = ['duty', 'meeting'].includes(input.type) ? input.type : 'duty';
     const businessDate = input.businessDate || dateKey();
-    const startsAt = instant(input.startsAt || `${businessDate}T18:30:00+08:00`);
-    const endsAt = instant(input.endsAt || `${businessDate}T21:30:00+08:00`);
+    const startsAt = instant(input.startsAt || dutyWindow(businessDate).startsAt);
+    const endsAt = instant(input.endsAt || dutyWindow(businessDate).endsAt);
     if (endsAt <= startsAt) fail(400, '签到窗口不正确');
     if (!validDate(businessDate)) fail(400, '签到日期不正确');
     assertDutyAttendanceDate({ type, businessDate, startsAt, endsAt });
@@ -189,8 +190,7 @@ export function attendanceDomain({
           ruleSnapshot: { timezone: 'Asia/Shanghai' },
           campusId,
           businessDate,
-          startsAt: `${businessDate}T18:30:00+08:00`,
-          endsAt: `${businessDate}T21:30:00+08:00`,
+          ...dutyWindow(businessDate),
           sourceRef: {}
         },
         context.actor.memberId,
@@ -309,8 +309,16 @@ export function attendanceDomain({
       filters.memberId = query?.memberId || undefined;
     } else {
       if (!otherMember)
-        await requirePermission(actor, 'attendance.self', { memberId: context.actor.memberId });
+        await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId });
       filters.memberId = query?.memberId || context.actor.memberId;
+    }
+    if (!managing) {
+      if (
+        filters.campusId &&
+        !evaluate(context, 'roster.read', { campusId: filters.campusId }).allowed
+      )
+        fail(403, '没有该校区的访问权限');
+      filters.campusIds = context.actor.authorizedCampuses.map(normalizeCampusId);
     }
     let after;
     if (query?.cursor) {
@@ -536,6 +544,45 @@ export function attendanceDomain({
       typeof input.memberId !== 'string' ||
       !input.memberId ||
       input.memberId.length > 128 ||
+      typeof input.occurredAt !== 'string' ||
+      !input.occurredAt ||
+      input.occurredAt.length > 80 ||
+      !Number.isFinite(Date.parse(input.occurredAt))
+    )
+      fail(400, '补录人员或时间不正确');
+    const reason = inputString(input, 'reason', 500, true);
+    if (input.requestId !== undefined && !requestId(input.requestId)) fail(400, '请求编号不正确');
+    if (!input.eventId && !input.recordId) {
+      const campusId = normalizeCampusId(input.campusId);
+      if (
+        !validDate(input.businessDate) ||
+        input.businessDate > dateKey() ||
+        !['campus-nanhu', 'campus-hunnan'].includes(campusId)
+      )
+        fail(400, '补录日期或校区不正确');
+      await requirePermission(actor, 'attendance.correct', { campusId, memberId: input.memberId });
+      if ((await repository.serviceDay(input.businessDate, campusId))?.paused)
+        fail(409, '该日期暂停服务，不能补录或修正考勤');
+      if (
+        !(await repository.schedulePeople(campusId)).some(
+          (person) => person.memberId === input.memberId
+        )
+      )
+        fail(409, '成员已停用或无该校区访问权限');
+      const existing = await repository.dutyEvent(input.businessDate, campusId);
+      const window = existing || dutyWindow(input.businessDate);
+      if (
+        !eventWindow(window.startsAt, window.endsAt, instant(input.occurredAt)) ||
+        Date.parse(input.occurredAt) > Date.now()
+      )
+        fail(400, '补录时间必须位于签到窗口内且不能晚于现在');
+      const event = await ensureDutyEvent(actor, input.businessDate, campusId);
+      input = { ...input, eventId: event.id };
+    }
+    if (
+      typeof input.memberId !== 'string' ||
+      !input.memberId ||
+      input.memberId.length > 128 ||
       typeof input.eventId !== 'string' ||
       !input.eventId ||
       input.eventId.length > 128 ||
@@ -545,9 +592,6 @@ export function attendanceDomain({
       !input.reason
     )
       fail(400, '补录签到字段不完整');
-    const reason = inputString(input, 'reason', 500, true);
-    if (input.requestId !== undefined && !requestId(input.requestId)) fail(400, '请求编号不正确');
-    if (!Number.isFinite(Date.parse(input.occurredAt))) fail(400, '补录时间不正确');
     const context = await contextFor(actor);
     const previousRecord = input.recordId ? await repository.attendanceById(input.recordId) : null;
     if (
@@ -558,6 +602,12 @@ export function attendanceDomain({
     )
       fail(404, '签到记录不存在');
     const occurredAt = instant(input.occurredAt);
+    const correctionEvent = await repository.attendanceEvent(input.eventId);
+    if (
+      correctionEvent?.type === 'duty' &&
+      (await repository.serviceDay(correctionEvent.businessDate, correctionEvent.campusId))?.paused
+    )
+      fail(409, '该日期暂停服务，不能补录或修正考勤');
     const fingerprint = await repository.attendanceCorrectionFingerprint(
       input.memberId,
       input.eventId,
@@ -606,6 +656,13 @@ export function attendanceDomain({
     const dedupeKey = policy.getDedupeScope({ memberId: input.memberId, event });
     const target = await repository.memberRow(input.memberId);
     if (!target) fail(404, '成员不存在');
+    if (
+      target.status !== 'active' ||
+      !(await repository.schedulePeople(event.campusId)).some(
+        (person) => person.memberId === input.memberId
+      )
+    )
+      fail(409, '成员已停用或无该校区访问权限');
     const receipt = {
       action: 'attendance.correct',
       id: requestId(input.requestId) || crypto.randomUUID(),
@@ -710,7 +767,34 @@ export function attendanceDomain({
     if (!result) fail(409, '在岗状态已被其他操作修改，请刷新');
     return result;
   }
+  async function ensureDutyEvent(actor, businessDate, campusId) {
+    const existing = await repository.dutyEvent(businessDate, campusId);
+    if (existing) return existing;
+    const context = await contextFor(actor);
+    const event = await repository.createEvent(
+      {
+        type: 'duty',
+        policyCode: 'duty.v1',
+        policyVersion: '1.0.0',
+        ruleSnapshot: { timezone: 'Asia/Shanghai' },
+        businessDate,
+        campusId,
+        ...dutyWindow(businessDate),
+        sourceRef: {}
+      },
+      context.actor.memberId,
+      {
+        actorMemberId: context.actor.memberId,
+        actorAccount: actor.account,
+        authVersion: context.authVersion,
+        action: 'attendance.event.created'
+      }
+    );
+    if (!event) fail(409, '人员权限已变化，请刷新');
+    return event;
+  }
   return {
+    ensureDutyEvent,
     createAttendanceEvent,
     issueAttendanceToken,
     checkIn,

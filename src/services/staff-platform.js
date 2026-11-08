@@ -6,18 +6,21 @@ import { workspaceDomain } from './staff-platform/workspace.js';
 import { attendanceDomain } from './staff-platform/attendance.js';
 import { attendanceReportingDomain } from './staff-platform/reporting.js';
 import { scheduleDomain } from './staff-platform/schedule.js';
+import { dutyDomain } from './staff-platform/duty.js';
 
 export function staffPlatformService({ repository, platform, manifests }) {
   const context = contextDomain({ repository, platform });
   const deps = { repository, platform, ...context };
   const members = membersDomain(deps);
+  const attendance = attendanceDomain(deps);
   return {
     ...context,
     ...members,
     ...departmentsDomain(deps),
     ...rolesDomain({ ...deps, memberTarget: members.memberTarget }),
     ...workspaceDomain({ ...deps, manifests }),
-    ...attendanceDomain(deps),
+    ...attendance,
+    ...dutyDomain({ ...deps, ensureDutyEvent: attendance.ensureDutyEvent }),
     ...attendanceReportingDomain(deps),
     ...scheduleDomain(deps),
     recordAudit: (input) => repository.audit(input)

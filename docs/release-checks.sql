@@ -33,7 +33,8 @@ SELECT member_id,COUNT(*) AS login_count FROM staff_accounts
   GROUP BY member_id HAVING COUNT(*)>1;
 
 -- v1.2: these queries report only counts / structural errors, never contacts.
-SELECT id FROM staff_release_markers WHERE id='business-model-0049';
+SELECT id FROM staff_release_markers WHERE id='duty-workflow-0050';
+SELECT assignment_id,member_id,decision,revision,reviewed_by,reviewed_at FROM attendance_reviews LIMIT 0;
 SELECT name AS retired_schema FROM sqlite_schema WHERE name IN
  ('active_repairs','repair_receptions','repair_queue_tickets','repair_queue_counters',
  'repair_followups','effective_member_roles','roster_tasks','roster_versions','availability',

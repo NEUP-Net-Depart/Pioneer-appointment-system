@@ -291,7 +291,7 @@ export function CredentialCard({
       <p data-motion-value="text" className="field-credential-instruction">
         {repair
           ? '请维修人员扫描，核对客户与设备后确认接单。'
-          : '请工作人员使用本人账号扫描，核对校区与场次后确认签到。'}
+          : '请使用本人账号扫描工作人员签到码，完成到岗签到。'}
       </p>
     </section>
   );

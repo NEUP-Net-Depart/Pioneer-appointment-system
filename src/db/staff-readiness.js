@@ -1,4 +1,4 @@
-export const STAFF_RELEASE = 'business-model-0049';
+export const STAFF_RELEASE = 'duty-workflow-0050';
 
 // Prepare real projections, including empty tables. A database with only the
 // old staff schema must fail readiness before CI accepts a deployment.
@@ -14,6 +14,7 @@ export async function verifyStaffSchema(db) {
     repair_intake_records: 'appointment_id,verification_json',
     operation_receipts: 'request_id,payload_hash,result_status',
     attendance_records: 'member_id,event_id',
+    attendance_reviews: 'assignment_id,member_id,decision,revision,reviewed_by,reviewed_at',
     attendance_report_settings: 'id,count_mode,hours_per_count,merge_leaders,revision',
     roster_weeks: 'week_start,campus_id,revision',
     roster_leaves: 'assignment_id,member_id,withdrawn_at',
