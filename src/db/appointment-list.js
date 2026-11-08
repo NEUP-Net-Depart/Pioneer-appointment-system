@@ -1,0 +1,174 @@
+import {
+  appointmentOrder,
+  readAppointmentCursor,
+  appointmentCursor
+} from '../../shared/appointment-pagination.js';
+import { APPOINTMENT_SEARCH_LIMIT, appointmentStudentId } from '../../shared/appointment-search.js';
+import { terminalStatuses } from '../../shared/constants.js';
+
+const sortColumns = {
+  id: 'id',
+  createdAt: 'created_at',
+  date: 'date',
+  timeSlot: 'time_slot',
+  campus: 'campus',
+  status:
+    "CASE status WHEN 'booked' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'completed' THEN 2 WHEN 'cancelled' THEN 3 ELSE 4 END"
+};
+const counts = `SELECT COUNT(*) AS allCount, COUNT(CASE WHEN status='booked' THEN 1 END) AS booked,
+  COUNT(CASE WHEN status='in_progress' THEN 1 END) AS in_progress, COUNT(CASE WHEN status='completed' THEN 1 END) AS completed,
+  COUNT(CASE WHEN status='cancelled' THEN 1 END) AS cancelled, COUNT(CASE WHEN status='expired' THEN 1 END) AS expired FROM appointments`;
+
+function accessPredicate(rules, args, carryover = false) {
+  if (rules === undefined) return '1';
+  if (!rules.length) return '0';
+  // One JSON parameter keeps large role sets below D1's binding limit.
+  args.push(JSON.stringify(rules));
+  return `EXISTS (SELECT 1 FROM json_each(?) AS access_rule
+    WHERE json_extract(access_rule.value,'$.campus')=appointments.campus
+      AND (json_type(access_rule.value,'$.memberId') IS NULL OR appointments.assigned_to IN
+        (SELECT account FROM staff_accounts WHERE member_id=json_extract(access_rule.value,'$.memberId')))
+      AND (json_type(access_rule.value,'$.date') IS NULL OR appointments.date=json_extract(access_rule.value,'$.date')
+        ${carryover ? "OR appointments.status='in_progress' OR (appointments.status='booked' AND appointments.received_at IS NOT NULL)" : ''})
+      AND (json_type(access_rule.value,'$.objectIds') IS NULL OR appointments.id IN
+        (SELECT value FROM json_each(json_extract(access_rule.value,'$.objectIds')))))`;
+}
+
+export async function listStudentMatches(db, studentId, { campuses, summaryRules, identityRules }) {
+  if (!campuses.length || !summaryRules.length || !identityRules.length) return [];
+  const args = [studentId, ...campuses];
+  const summary = accessPredicate(summaryRules, args, true);
+  const identity = accessPredicate(identityRules, args);
+  const { results } = await db
+    .prepare(
+      `SELECT id,campus,date,time_slot AS timeSlot,status FROM appointments
+      WHERE student_id=? AND campus IN (${campuses.map(() => '?').join(',')})
+        AND (${summary}) AND (${identity})
+      ORDER BY CASE WHEN status IN (${terminalStatuses.map(() => '?').join(',')}) THEN 1 ELSE 0 END,
+        date DESC,time_slot,id LIMIT ?`
+    )
+    .bind(...args, ...terminalStatuses, APPOINTMENT_SEARCH_LIMIT + 1)
+    .all();
+  return results;
+}
+
+export async function listContactCandidates(db, select, fromRow, query, scope, cursor = '', token = null) {
+  const args = [...scope.campuses];
+  const where = [
+    `${scope.campuses.length ? `appointments.campus IN (${scope.campuses.map(() => '?').join(',')})` : '0'} AND (${accessPredicate(scope.summaryRules, args, true)})`
+  ];
+  for (const [key, column] of [['campus', 'campus'], ['date', 'date'], ['timeSlot', 'time_slot']]) {
+    if (query[key]) {
+      where.push(`appointments.${column}=?`);
+      args.push(query[key]);
+    }
+  }
+  if (query.dateFrom && query.dateTo) {
+    where.push('appointments.date>=? AND appointments.date<=?');
+    args.push(query.dateFrom, query.dateTo);
+  }
+  if (query.liveDate) {
+    where.push(`(appointments.date=? OR appointments.status='in_progress' OR
+      (appointments.status='booked' AND appointments.received_at IS NOT NULL))`);
+    args.push(query.liveDate);
+  }
+  if (token) {
+    where.push(`appointments.id IN (SELECT appointment_id FROM appointment_contact_index_tokens
+      WHERE token=?) AND NOT EXISTS (SELECT 1 FROM appointment_contact_index_pending p
+      WHERE p.appointment_id=appointments.id)`);
+    args.push(token);
+  } else {
+    where.push(`appointments.id IN (SELECT appointment_id FROM appointment_contact_index_pending)`);
+  }
+  if (cursor) {
+    where.push('appointments.id>?');
+    args.push(cursor);
+  }
+  const rows = (await db.prepare(`${select} WHERE ${where.join(' AND ')} ORDER BY appointments.id LIMIT 500`).bind(...args).all()).results;
+  return { items: rows.map(fromRow), nextCursor: rows.length === 500 ? rows.at(-1).id : null };
+}
+
+export async function listAppointments(
+  db,
+  select,
+  fromRow,
+  query,
+  { campuses, summaryRules, identityRules }
+) {
+  const scopeArgs = [...campuses];
+  const scope = `${campuses.length ? `campus IN (${campuses.map(() => '?').join(',')})` : '0'} AND (${accessPredicate(summaryRules, scopeArgs, true)})`;
+  const where = [scope],
+    args = [...scopeArgs];
+  for (const [key, column] of [
+    ['campus', 'campus'],
+    ['date', 'date'],
+    ['timeSlot', 'time_slot']
+  ])
+    if (query[key]) {
+      where.push(`${column}=?`);
+      args.push(query[key]);
+    }
+  if (query.dateFrom && query.dateTo) {
+    where.push('date>=? AND date<=?');
+    args.push(query.dateFrom, query.dateTo);
+  }
+  if (query.q) {
+    const text = query.q.toLowerCase();
+    const studentId = appointmentStudentId(query.q);
+    args.push(text, text, text, text);
+    const identity = accessPredicate(identityRules, args);
+    args.push(text);
+    if (studentId) args.push(studentId);
+    const contact = query.contactIds?.length
+      ? ' OR appointments.id IN (SELECT value FROM json_each(?))'
+      : '';
+    if (contact) args.push(JSON.stringify(query.contactIds));
+    where.push(
+      `(instr(lower(id),?)>0 OR instr(lower(repair_number),?)>0 OR instr(lower(device_model),?)>0 OR instr(campus,?)>0 OR ((${identity}) AND (instr(lower(name),?)>0${studentId ? ' OR student_id=?' : ''}))${contact})`
+    );
+  }
+  const filteredWhere = where.join(' AND '),
+    filteredArgs = [...args];
+  if (query.status === 'pending') where.push("status IN ('booked','in_progress')");
+  else if (query.status && query.status !== 'all') {
+    where.push('status=?');
+    args.push(query.status);
+  }
+  const order = appointmentOrder(query),
+    cursor = readAppointmentCursor(query.cursor, order);
+  if (cursor) {
+    const alternatives = order.map((item, index) => {
+      const parts = order.slice(0, index).map((previous, i) => {
+        args.push(cursor[i]);
+        return `${sortColumns[previous.field]}=?`;
+      });
+      args.push(cursor[index]);
+      parts.push(`${sortColumns[item.field]}${item.direction === 'asc' ? '>' : '<'}?`);
+      return `(${parts.join(' AND ')})`;
+    });
+    where.push(`(${alternatives.join(' OR ')})`);
+  }
+  const limit = Number.isInteger(query.limit) ? Math.min(Math.max(query.limit, 1), 200) : 200;
+  const pagedSelect = select.replace(
+    'SELECT appointments.*',
+    `SELECT appointments.*,${order.map((item, index) => `${sortColumns[item.field]} AS __page${index}`).join(',')}`
+  );
+  const [items, total, filtered] = await db.batch([
+    db
+      .prepare(
+        `${pagedSelect} WHERE ${where.join(' AND ')} ORDER BY ${order.map((item) => `${sortColumns[item.field]} ${item.direction === 'asc' ? 'ASC' : 'DESC'}`).join(',')} LIMIT ?`
+      )
+      .bind(...args, limit + 1),
+    db.prepare(`${counts} WHERE ${scope}`).bind(...scopeArgs),
+    db.prepare(`${counts} WHERE ${filteredWhere}`).bind(...filteredArgs)
+  ]);
+  const page = items.results.slice(0, limit),
+    { allCount, ...totals } = total.results[0],
+    { allCount: filteredTotal, ...filteredTotals } = filtered.results[0];
+  return {
+    items: page.map(fromRow),
+    counts: { all: allCount, ...totals },
+    filteredCounts: { all: filteredTotal, ...filteredTotals },
+    nextCursor: items.results.length > limit ? appointmentCursor(page.at(-1), order) : null
+  };
+}

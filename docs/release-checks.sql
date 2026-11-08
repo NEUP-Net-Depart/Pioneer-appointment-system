@@ -27,3 +27,32 @@ SELECT COUNT(*) AS booking_receipts FROM booking_requests;
 SELECT COUNT(*) AS location_changes FROM service_location_changes;
 SELECT COUNT(*) AS invalid_location_snapshots FROM appointments
   WHERE contact_type IN ('qq','wechat') AND source='booking' AND location_snapshot='';
+
+-- Staff schemas only (0010 and later): no identity may have multiple logins.
+SELECT member_id,COUNT(*) AS login_count FROM staff_accounts
+  GROUP BY member_id HAVING COUNT(*)>1;
+
+-- v1.2: these queries report only counts / structural errors, never contacts.
+SELECT id FROM staff_release_markers WHERE id='duty-workflow-0050';
+SELECT assignment_id,member_id,decision,revision,reviewed_by,reviewed_at FROM attendance_reviews LIMIT 0;
+SELECT name AS retired_schema FROM sqlite_schema WHERE name IN
+ ('active_repairs','repair_receptions','repair_queue_tickets','repair_queue_counters',
+ 'repair_followups','effective_member_roles','roster_tasks','roster_versions','availability',
+ 'roster_submissions','roster_collection_series','leave_requests','swap_requests','duty_roles');
+SELECT name AS retired_column FROM pragma_table_info('appointments') WHERE name='registration_flow';
+SELECT action,COUNT(*) AS archived_rows FROM audit_events WHERE action IN
+ ('repairs.workflow.archived','repairs.followup.migrated','identity.authorization.archived',
+ 'rosters.model.migrated','repairs.registration.archived','authorization.condition.archived') GROUP BY action;
+SELECT action,json_extract(after_json,'$.disposition') AS disposition,COUNT(*) AS rows
+ FROM audit_events WHERE action IN ('repairs.followup.migrated','rosters.model.migrated')
+ GROUP BY action,json_extract(after_json,'$.disposition');
+SELECT status,outcome,COUNT(*) AS orders FROM appointments GROUP BY status,outcome;
+SELECT COUNT(*) AS broken_parent_links FROM appointments a LEFT JOIN appointments p ON p.id=a.parent_appointment_id
+ WHERE a.parent_appointment_id IS NOT NULL AND (p.id IS NULL OR p.status<>'completed' OR p.student_id<>a.student_id);
+SELECT COUNT(*) AS broken_intake_photos FROM appointments a
+ WHERE (front_photo_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM appointment_attachments p WHERE p.id=a.front_photo_id AND p.appointment_id=a.id))
+ OR (back_photo_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM appointment_attachments p WHERE p.id=a.back_photo_id AND p.appointment_id=a.id));
+SELECT COUNT(*) AS pending_original_photos FROM appointments WHERE photo_deferred_by IS NOT NULL;
+SELECT active,COUNT(*) AS duty_assignments FROM duty_assignments GROUP BY active;
+SELECT COUNT(*) AS recorded_leaves FROM roster_leaves WHERE withdrawn_at IS NULL;
+SELECT status,COUNT(*) AS cover_invitations FROM roster_covers GROUP BY status;

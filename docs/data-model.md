@@ -1,34 +1,45 @@
 # 数据模型
 
-Schema 以 [migrations/](../migrations/) 为准，迁移只追加，运行时不建表。业务规则见 [业务规则与权限](requirements.md)。
+业务基线见 [v1.2](requirements.md)。运行时不建表，迁移只追加。正式链为 `migrations/`；历史 Staff 数据库独立账本位于 `database/staff-migrations/`，两条链均验证到 0050。
 
-| 表 | 职责与约束 |
-|---|---|
-| `staff_accounts` / `staff_campus_grants` | 账号、角色、启停及校区授权；保护账号保持启用且为 superadmin |
-| `staff_whitelist` / `whitelist_campus_grants` | 激活资格、预期角色和授权范围 |
-| `activation_requests` | 每学号最多一条待审；批准时原子创建账号与授权，审核后清除密码哈希 |
-| `appointments` | 预约、现场登记、签名、状态、维修结果和负责人 |
-| `active_repairs` | 账号主键、工单唯一外键，约束一人一张维修中工单 |
-| `weekday_slot_capacities` / `booking_day_slots` | 每周容量模板及服务日冻结快照，包含并发版本 |
-| `booking_requests` | 幂等键、输入摘要、工单引用和加密凭证，与预约原子写入 |
-| `service_locations` / `service_location_changes` | 校区＋日期的完整地点名称、版本和审计；已有线上工单时不可清空或删除地点 |
-| `credential_recoveries` / `appointment_corrections` | 凭证补发及纠错的操作人、原因、前后值和时间 |
-| `appointment_attachments` / `attachment_storage` / `storage_quota` | 附件元数据、上传预留和存储额度；物理删除成功后释放额度 |
+| 数据 | 用途 |
+| --- | --- |
+| staff_accounts / members / member_department_memberships | 登录、稳定人员、带时间的真实任职 |
+| staff_campus_grants / staff_access_campuses | 配置校区及任职产生的全校范围 |
+| roles / role_grants / member_roles | 剩余系统配置权限，不含独立维修资格包 |
+| staff_whitelist / whitelist_campus_grants / activation_requests | 登录邀请和账号激活核验 |
+| appointments | 预约及工单、接收事实、当前主修、结果、待传经办人、直接返修关系 |
+| repair_intake_records / appointment_corrections / credential_recoveries | 原始核验、修改及凭证补发历史 |
+| weekday_slot_capacities / booking_day_slots / booking_requests | 线上容量模板、实际日期容量、创建幂等回执 |
+| booking_settings / booking_notices / service_locations / service_location_changes | 放号、公告与确认版本、地点快照和变更 |
+| service_day_overrides / service_day_receipts | 暂停服务及幂等操作，不删除原记录 |
+| appointment_attachments / attachment_storage / storage_quota | 原照片引用、R2 对象、上传预留及额度 |
+| roster_weeks / duty_assignments | 周/校区/类型班表版本、保留全部 ID 的有效与历史班次 |
+| member_availability | 通常时间（空周键）和指定周例外 |
+| roster_leaves / roster_covers | 请假事实与接替确认历史 |
+| attendance_events / attendance_tokens / attendance_records | 场次、现场凭证、实际到岗事实 |
+| attendance_reviews | 关联班次及当时成员的未到/撤销结论、版本、原因、操作者与操作时间；完整变更历史保存在审计 |
+| staff_presence / presence_events | 考勤在岗记录，与维修操作解耦 |
+| audit_events / operation_receipts | 操作前后值、访问审计、请求回执 |
 
-## 持久化约束
+预约主状态 booked / in_progress / completed / cancelled / expired。新服务结果 repaired / partially_repaired / unrepaired / not_needed；历史未修复保留 legacy_unrepaired，原未分类保留 legacy_unknown，不补造更具体的结果。parent_appointment_id 和 link_kind 表达原故障续修或复发，与本次结果独立。
 
-业务日期按上海时区计算，事件时间保存为 UTC ISO。关联写入使用 D1 batch 或触发器，`revision` 防止并发覆盖；同学号同服务日的有效线上预约由触发器原子限制。
+数据库触发器继续控制线上容量、同人同日有效线上预约、附件关联与关键状态转换。现场登记不占容量，没有 active_repairs、单人维修占用或待接手约束。received_at/received_by 记录实际接收；photo_deferred_by 追踪人工补传，经手和维修责任分别记录。
 
-密码使用 scrypt；联系方式和创建收据中的凭证使用 AES-256-GCM。学生凭证为 32 字节随机值，工单仅存 SHA-256；取回收据时再次验证当前凭证哈希，补发后旧收据失效。
+联系方式与创建回执中的私人凭证加密保存，学生凭证仅存哈希。访问单张工单联系方式留审计，不在列表或审计中重复明文存储。学生端采用明确的公开字段投影，关联历史沿用同一投影。
 
-`source` 区分 booking/onsite；`registered_by` 和 `registration_key` 保证现场登记幂等。`signature` 保存归一化笔迹 JSON，`front_photo_id`、`back_photo_id` 引用签到照片，恢复预约后须重新上传。
+## 历史迁移
 
-`location_snapshot`、`location_revision` 在创建事务中读取；详情展示该服务日最新地点并比较快照。新预约缺失配置时使用 [校区默认地点](../shared/constants.js)，管理员保存的完整地址优先。
+| 迁移 | 一次性转换与保留 |
+| --- | --- |
+| 0044 | 未接收预约延长至预约日次日零点，保存旧有效期审计；不恢复终态 |
+| 0045 | 完整归档队列、预分派、占用事实；待分派回到待接单，保留已接收事实；在修主修、照片和原 ID 保留；旧未修复结果明确标为历史未细分 |
+| 0046 | 归档全部返修申请；已排期工单关联原单，待处理明确归档为未安排，拒绝记录归档；删除申请表 |
+| 0047 | 归档并删除独立工作权限包与资格推导视图，保留人员、真实任职、签到和系统授权 |
+| 0048 | 完整归档旧排班原始行，保留所有班次 ID；原发布班次有效，其余作为历史；转换通常时间、明确周例外、直接请假和有效待确认互换 |
+| 0049 | 逐单归档旧登记类型并删列；归档撤销废弃条件授权，清理权限元数据及旧队列索引 |
+| 0050 | 追加班次核查结论表和 duty-workflow-0050 就绪标记，不修改既有班次、签到、请假或接替历史 |
 
-附件用途为 general/student_photo/intake_front/intake_back。已提交及上传中的故障照片一起计入四张限额；签到照片不占此限额，校验工单、上传人、用途和有效期。
+旧迁移文件与账本不得修改。旧库若尚未执行 0042，先满足其不可变的人员确认前提，再依次执行后续迁移；这不是运行时业务审批。历史编号和凭证继续定位原记录，已存在照片对象不删除，原签到和审计不重算。迁移文件校验和保存在 `database/migration-checksums.json`，追加迁移时同步登记。
 
-## 兼容与检查
-
-保留历史编号、`repair_number` 查询别名、凭证、附件、签名和时间；旧联系及设备字段继续读取，缺失维修结果保留 `legacy_unknown`。历史重复和多张维修中工单不删除，处理完成前禁止新增冲突工单；旧小时段仅供历史读取。
-
-数据检查使用 [release-checks.sql](release-checks.sql)，备份与回退见 [部署运维](operations.md)。
+验证涵盖两条链的带数据转换、原记录字段比较、外键完整性，以及真实本地 D1 的全新应用和账本重复应用。迁移与备份步骤见 [运维](operations.md)。

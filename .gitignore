@@ -8,5 +8,5 @@ dist/
 .env.*
 *.log
 
-output/playwright/
+output/
 .playwright-cli/

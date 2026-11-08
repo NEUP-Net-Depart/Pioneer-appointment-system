@@ -1,30 +1,33 @@
 import { fail } from '../lib/http.js';
 import { nowIso } from '../../shared/time.js';
 import { guestAppointment } from './access.js';
-import { requireAppointmentAccess } from './permissions.js';
+import { requireRole } from './permissions.js';
 
-function metadata(item) {
-  return { id: item.id, appointmentId: item.appointmentId, filename: item.filename, mimeType: item.mimeType, size: item.size, createdAt: item.createdAt, expiresAt: item.expiresAt, purpose: item.purpose, uploadedBy: item.uploadedBy };
+function metadata(item, staff) {
+  return { id: item.id, appointmentId: item.appointmentId, filename: item.filename, mimeType: item.mimeType, size: item.size, createdAt: item.createdAt, expiresAt: item.expiresAt, purpose: item.purpose, ...(staff ? {uploadedBy:item.uploadedBy} : {}) };
 }
-export function attachmentService(appointments, attachments, bucket, maxBytes) {
+export function attachmentService(appointments, attachments, bucket, maxBytes, field) {
   async function authorize(id, user, accessToken) {
     if (!user) return guestAppointment(appointments,id,accessToken);
     const item = await appointments.find(id);
     if (!item) fail(404, '预约或附件不存在');
-    requireAppointmentAccess(user,item);
+    {
+      const visible=await field.detail(user,id);
+      if(!visible.canReadDetails)fail(403,'没有该预约附件的访问权限');
+    }
     return item;
   }
   return {
     async list(id, user, accessToken) {
       const item = await authorize(id, user, accessToken);
-      return { items: (await attachments.list(item.id, nowIso())).map(metadata) };
+      return { items: (await attachments.list(item.id, nowIso())).map(file=>metadata(file,!!user)) };
     },
     async upload(id, input, user, accessToken) {
       if (input.purpose === 'intake_front' || input.purpose === 'intake_back') {
+        requireRole(user, 'technician');
         const appointment = await appointments.find(id);
         if (!appointment) fail(404, '预约不存在');
-        requireAppointmentAccess(user, appointment, { start: true });
-        if (appointment.status !== 'booked') fail(409, '当前预约不能上传签到照片');
+        await field.requireIntake(user,appointment);
         id = appointment.id;
       } else id = (await authorize(id, user, accessToken)).id;
       if (!user) {
@@ -44,7 +47,7 @@ export function attachmentService(appointments, attachments, bucket, maxBytes) {
       }
       try {
         await bucket.put(objectKey, bytes, { httpMetadata: { contentType: mimeType } });
-        return metadata(await attachments.create(item));
+        return metadata(await attachments.create(item),!!user);
       } catch (error) {
         // This is compensation, not a cross-service transaction. Keep the original failure.
         // D1 may have committed create() before its response was lost. Persist cleanup
@@ -60,7 +63,7 @@ export function attachmentService(appointments, attachments, bucket, maxBytes) {
       if (!attachment || attachment.appointmentId !== item.id) fail(404, '附件不存在');
       const object = await bucket.get(attachment.objectKey);
       if (!object) fail(404, '附件文件不存在');
-      return { body: object.body, size: object.size, metadata: metadata(attachment) };
+      return { body: object.body, size: object.size, metadata: metadata(attachment,!!user) };
     }
   };
 }

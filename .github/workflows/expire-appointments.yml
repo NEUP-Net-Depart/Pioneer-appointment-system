@@ -1,8 +1,8 @@
 name: Expire pending appointments
 on:
   schedule:
-    # 13:35 UTC = 21:35 Asia/Shanghai; catch up missed days too.
-    - cron: '35 13 * * *'
+    # 16:05 UTC = next day 00:05 Asia/Shanghai; catch up missed days too.
+    - cron: '5 16 * * *'
   workflow_dispatch:
     inputs:
       environment:

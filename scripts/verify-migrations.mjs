@@ -1,37 +1,48 @@
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { resolve, relative, isAbsolute } from 'node:path';
-import { randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
 import { root, wrangler } from './cli.mjs';
 
 // Isolated workerd/D1 state; never touches the normal local or remote database.
 const parent = resolve(root, '.wrangler');
-const path = resolve(parent, `migration-check-${randomUUID()}`);
+await mkdir(parent, { recursive: true });
+// Keep workerd's nested SQLite paths within Windows path limits.
+const path = await mkdtemp(resolve(parent, 'db-'));
+
 const inside = relative(parent, path);
 if (!inside || inside.startsWith('..') || isAbsolute(inside)) throw new Error('Unsafe verification directory');
-await mkdir(path, { recursive: true });
 try {
-  const args = ['d1','migrations','apply','DB','--local','--persist-to',path];
+  for (const directory of ['migrations','database/staff-migrations']) {
+  const config = resolve(path,directory==='migrations' ? 'main.json' : 'staff.json');
+  await writeFile(config,JSON.stringify({name:'migration-verification',compatibility_date:'2026-09-01',d1_databases:[{
+    binding:'DB',database_name:directory==='migrations' ? 'main-chain-verification' : 'staff-chain-verification',
+    database_id:directory==='migrations' ? '11111111-1111-1111-1111-111111111111' : '22222222-2222-2222-2222-222222222222',
+    migrations_dir:resolve(root,directory)
+  }]}));
+  const args = ['d1','migrations','apply','DB','--local','--persist-to',path,'--config',config];
   wrangler(args);
   wrangler(args); // The migration ledger must make the second application a no-op.
-  const [schema, keys, capacities, weekdays] = JSON.parse(wrangler(['d1','execute','DB','--local','--persist-to',path,'--json','--command',
-    "SELECT name FROM sqlite_schema WHERE type IN ('table','trigger','index') ORDER BY name; PRAGMA foreign_key_check; SELECT campus,time_slot,capacity,revision FROM slot_capacities ORDER BY campus,time_slot; SELECT * FROM weekday_slot_capacities;"], { capture: true }));
+  const [schema, keys, capacities, weekday, release] = JSON.parse(wrangler(['d1','execute','DB','--local','--persist-to',path,'--config',config,'--json','--command',
+    "SELECT name FROM sqlite_schema WHERE type IN ('table','trigger','index','view') ORDER BY name; PRAGMA foreign_key_check; SELECT campus,time_slot,capacity,revision FROM slot_capacities ORDER BY campus,time_slot; SELECT campus,weekday,time_slot,capacity,revision FROM weekday_slot_capacities ORDER BY campus,weekday,time_slot; SELECT id FROM staff_release_markers ORDER BY id;"], { capture: true }));
   assert.ok(schema.success && keys.success && capacities.success);
+  assert.ok(release.results.some(row=>row.id==='duty-workflow-0050'), 'Duty workflow migration did not complete');
   assert.deepEqual(keys.results, [], 'D1 foreign key violations');
   const names = new Set(schema.results.map(row => row.name));
-  for (const name of ['staff_accounts','staff_campus_grants','staff_whitelist','whitelist_campus_grants','activation_requests','credential_recoveries','appointments','appointment_attachments','rate_limits','storage_quota','attachment_storage','attachment_storage_reserve','attachment_storage_release','idx_attachment_expiry','idx_storage_expiry','idx_storage_pending','appointment_capacity_insert','appointment_capacity_update','idx_online_student_day','appointment_student_day_insert','appointment_student_day_update','service_locations','service_location_changes','booking_requests','appointment_location_insert','appointment_new_slot_deadline','idx_pending_student_photos','idx_active_queue']) assert.ok(names.has(name), `Missing D1 schema object: ${name}`);
-  assert.ok(names.has('activation_approve'),'Missing atomic activation approval trigger');
-  assert.ok(names.has('idx_one_pending_activation') && names.has('idx_one_approved_activation'),'Missing activation uniqueness constraints');
-  assert.ok(names.has('idx_repair_number'), 'Missing repair number uniqueness index');
-  for (const name of ['active_repairs','appointment_active_insert','appointment_active_update','appointment_active_delete','idx_onsite_request','idx_one_pending_onsite_registration']) assert.ok(names.has(name), `Missing scan workbench constraint: ${name}`);
-  for (const name of ['idx_booked_expiry','appointment_corrections','idx_correction_appointment']) assert.ok(names.has(name), `Missing expiration/correction schema: ${name}`);
-
-  assert.ok(names.has('booking_day_slots') && names.has('weekday_slot_capacities'), 'Missing date snapshots or weekday templates');
-  assert.equal(weekdays.results.length,32);
-  assert.ok(weekdays.results.every(row=>row.capacity===5 && row.revision===0));
-  assert.ok(names.has('slot_capacities'), 'Missing campus/slot capacity settings');
+  for (const name of ['staff_accounts','members','member_department_memberships','appointments',
+    'appointment_attachments','attachment_storage','storage_quota','appointment_corrections',
+    'repair_intake_records','audit_events','operation_receipts','attendance_records','attendance_reviews',
+    'appointment_capacity_insert','appointment_capacity_update','idx_online_student_day',
+    'booking_requests','booking_day_slots','weekday_slot_capacities','service_locations',
+    'appointment_contact_index_pending','appointment_contact_index_tokens'])
+    assert.ok(names.has(name), `Missing schema object: ${name}`);
+  for (const name of ['roster_tasks','roster_versions','roster_collection_series','effective_member_roles','repair_followups','active_repairs','repair_receptions','repair_queue_tickets','repair_queue_counters',
+    'idx_one_pending_dispatch','reception_start_guard','field_presence_busy_guard',
+    'idx_one_pending_onsite_registration','legacy_admin_logins','member_work_profiles'])
+    assert.ok(!names.has(name), `Retired workflow remains: ${name}`);
   assert.equal(capacities.results.length, 4);
-  assert.ok(capacities.results.every(row => row.capacity === 10 && row.revision === 0), 'Default capacity settings changed');
-  assert.ok(!names.has('users') && !names.has('idx_appointments_queue') && !names.has('appointments_new') && !names.has('appointment_attachments_new') && !names.has('credential_recoveries_new'),'Retired or temporary schema still exists');
-  console.log('All D1 migrations applied to fresh state; re-application and foreign keys verified.');
+  assert.ok(capacities.results.every(row=>row.capacity===10 && row.revision===0));
+  assert.equal(weekday.results.length, 32);
+  assert.ok(weekday.results.every(row=>row.capacity===5 && row.revision===0));
+  console.log(`D1 migrations verified for ${directory}: fresh state, re-application and foreign keys.`);
+  }
 } finally { await rm(path, { recursive: true, force: true }); }

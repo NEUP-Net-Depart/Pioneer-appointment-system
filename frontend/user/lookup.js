@@ -5,12 +5,15 @@ import { attachmentUrl,attachmentSize } from '/shared/attachments.js';
 import { formatDate } from '/shared/time.js';
 import { statusClass,outcomeLabels,terminalStatuses } from '/shared/constants.js';
 import { savedAppointments,saveAppointment,privateLink,parsePrivateLink,credentialHeaders,credentialStorageError,copyPrivateLink } from './credentials.js';
+import { observeDataMotion } from '/shared/data-motion.js';
 import { renderRepairQr } from './repair-qr.js';
-import { timeSummary,informationGroups,statusText,statusExplanation,repairRecord } from './presentation.js';
+import { timeSummary,timeLabel,informationGroups,statusText,statusExplanation,repairRecord } from './presentation.js';
 import { createPhotoCollection,previewPhoto } from './photos.js';
+import { createRepairHistoryPanel } from './repair-history.js';
 
 export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false,hasPending=()=>false}={}) {
   const root=$('#lookup-results'),detail=$('#appointment-detail');
+  observeDataMotion(root);observeDataMotion(detail);
   const records=new Map();let active=false,detailId=null,generation=0,refreshing=false,importing=false,cancelling=false,detailPhotos=null,deadlineTimer,viewVersion=0;
   const urls=new Set();
   const request=entry=>apiJson(`/api/appointments/${encodeURIComponent(entry.id)}`,{headers:credentialHeaders(entry),timeoutMs:15000}).then(item=>({...item,accessToken:entry.accessToken}));
@@ -19,11 +22,13 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
     records.set(item.id,{entry:{id:item.id,accessToken:item.accessToken},item,message:'',receivedAt:Date.now()});}
   function setNotice(target,message){target.hidden=!message;target.textContent=message;}
   function openImport(){const form=$('#import-form');form.hidden=false;$('#import-appointment').setAttribute('aria-expanded','true');$('#private-link-input').focus();}
-  function card(item){return `<button type="button" class="student-record" data-detail-id="${escapeHtml(item.id)}"><span class="record-top"><strong>${escapeHtml(item.deviceType)} · ${escapeHtml(item.brand)}</strong><span class="status-pill ${statusClass[item.status]}">${statusText(item)}</span></span><p>${escapeHtml(item.campus)}校区 · ${formatDate(item.date)} · ${escapeHtml(item.source==='onsite' ? '现场临时登记' : item.timeSlot)}</p><p>${escapeHtml(item.faultType)}${item.status==='completed' ? ' · '+escapeHtml(outcomeLabels[item.outcome] || '历史未分类') : ''}</p>${item.status==='completed' && item.repairNote ? `<p>${escapeHtml(item.repairNote.slice(0,90))}${item.repairNote.length>90 ? '…' : ''}</p>` : ''}</button>`;}
+  function card(item){
+    return `<button type="button" class="student-record" data-motion-item="record" data-detail-id="${escapeHtml(item.id)}"><span class="record-top"><strong>${escapeHtml(item.deviceType)} · ${escapeHtml(item.brand)}</strong><span class="status-pill ${statusClass[item.status]}">${statusText(item)}</span></span><p>${escapeHtml(item.campus)}校区 · ${formatDate(item.date)} · ${escapeHtml(timeLabel(item))}</p><p>${escapeHtml(item.faultType)}${item.status==='completed' ? ' · '+escapeHtml(outcomeLabels[item.outcome] || '历史未分类') : ''}</p></button>`;
+  }
   function renderList(){
     const entries=[...records.values()],items=entries.filter(row=>row.item).map(row=>row.item),failed=entries.filter(row=>row.message),unknown=entries.filter(row=>!row.item && !row.message);
     $('#import-appointment').hidden=!entries.length && !credentialStorageError();
-    const current=items.filter(item=>!terminalStatuses.includes(item.status)).sort((a,b)=>Number(b.status==='in_progress')-Number(a.status==='in_progress') || (a.date+a.timeSlot).localeCompare(b.date+b.timeSlot));
+    const current=items.filter(item=>!terminalStatuses.includes(item.status)).sort((a,b)=>(a.date+a.timeSlot).localeCompare(b.date+b.timeSlot));
     const history=items.filter(item=>terminalStatuses.includes(item.status)).sort((a,b)=>(b.date+b.timeSlot).localeCompare(a.date+a.timeSlot));
     let html;
     if(!entries.length && !credentialStorageError())html='<div class="empty-state"><h2>这里空空如也哦，快去预约一个吧</h2><button type="button" class="primary-btn" data-book-new>去预约</button><p><button type="button" class="text-btn" data-open-import>已有预约？通过私人查询链接查看</button></p></div>';
@@ -32,13 +37,27 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
       html+=unknown.map(row=>`<article class="notice" aria-busy="true">${escapeHtml(row.entry.id)} · 正在读取预约…</article>`).join('');
       html+=failed.map(row=>`<article class="notice is-error"><strong>${escapeHtml(row.entry.id)} · 暂时无法${row.item ? '更新' : '读取'}</strong><p>${escapeHtml(row.message)}</p><button class="secondary-btn" type="button" data-retry-id="${escapeHtml(row.entry.id)}">重试此预约</button></article>`).join('');
     }
-    if(root.innerHTML!==html)root.innerHTML=html;
+    if(root.dataset.renderMarkup!==html){
+      // Retain each record button when another appointment changes. Restoring a
+      // focused button is necessary on browsers without state-preserving moves.
+      const focused=root.contains(document.activeElement) ? document.activeElement : null;
+      const existing=new Map([...root.querySelectorAll('[data-detail-id]')].map(node=>[node.dataset.detailId,node]));
+      const template=document.createElement('template');template.innerHTML=html;
+      for(const target of template.content.querySelectorAll('[data-detail-id]')){
+        const retained=existing.get(target.dataset.detailId);
+        if(!retained)continue;
+        if(retained.innerHTML!==target.innerHTML)retained.innerHTML=target.innerHTML;
+        target.replaceWith(retained);
+      }
+      root.replaceChildren(template.content);root.dataset.renderMarkup=html;
+      if(focused?.isConnected)focused.focus({preventScroll:true});
+    }
     setNotice($('#lookup-notice'),credentialStorageError() ? '本机保存的预约记录暂时无法读取。请重试，或通过完整私人查询链接查看。' : failed.length ? '部分预约暂时无法更新，已保留最近确认的信息。' : '');
   }
   function existingPhotos(){return records.get(detailId)?.item?.attachments?.filter(file=>['general','student_photo'].includes(file.purpose) && file.mimeType.startsWith('image/')) || [];}
   function releaseUrls(){urls.forEach(url=>URL.revokeObjectURL(url));urls.clear();}
   function mountDetail(item){detailPhotos?.dispose();releaseUrls();clearTimeout(deadlineTimer);
-    detail.innerHTML=`<section class="detail-section" id="detail-summary" aria-live="polite" aria-atomic="true"></section><div id="detail-repair-record"></div><section class="detail-section"><h2>预约凭证</h2><dl>${item ? `<div><dt>预约编号</dt><dd>${escapeHtml(item.id)}</dd></div>${item.repairNumber ? `<div><dt>历史维修编号</dt><dd>${escapeHtml(item.repairNumber)}</dd></div>` : ''}` : ''}</dl><div id="detail-qr"></div><button class="secondary-btn" id="detail-copy-link" type="button">复制私人查询链接</button><input class="private-link-fallback" id="detail-private-link" type="text" readonly hidden aria-label="私人查询链接" /></section><section class="detail-section"><div id="detail-information"></div><h3>已上传的照片与历史附件</h3><div id="detail-attachments"></div></section><section class="detail-section" id="detail-contacts"></section><section class="detail-section"><h2>补充故障照片</h2><div id="detail-photos"></div><button class="primary-btn" id="detail-upload" type="button">上传所选照片</button><p id="detail-upload-message" role="status"></p></section><section class="detail-section" id="detail-operations"></section>`;
+    detail.innerHTML=`<section class="detail-section" id="detail-summary" aria-live="polite" aria-atomic="true"></section><div id="detail-repair-record"></div><details id="detail-source-data" open><summary hidden>原工单资料</summary><div class="detail-source-grid"><section class="detail-section"><h2>预约凭证</h2><dl>${item ? `<div><dt>预约编号</dt><dd>${escapeHtml(item.id)}</dd></div>${item.repairNumber ? `<div><dt>历史维修编号</dt><dd>${escapeHtml(item.repairNumber)}</dd></div>` : ''}` : ''}</dl><div id="detail-qr"></div><button class="secondary-btn" id="detail-copy-link" type="button">复制私人查询链接</button><input class="private-link-fallback" id="detail-private-link" type="text" readonly hidden aria-label="私人查询链接" /></section><section class="detail-section"><div id="detail-information"></div><h3>已上传的照片与历史附件</h3><div id="detail-attachments"></div></section><section class="detail-section" id="detail-contacts"></section><section class="detail-section" id="detail-photo-upload"><h2>补充故障照片</h2><div class="detail-upload-actions"><div id="detail-photos"></div><button class="primary-btn" id="detail-upload" type="button">上传所选照片</button></div><p id="detail-upload-message" role="status"></p></section></div></details><section class="detail-section" id="detail-operations"></section>`;
     detailPhotos=createPhotoCollection($('#detail-photos'),{existingCount:()=>existingPhotos().length,onUploadChange:entries=>{
       const busy=entries.some(entry=>entry.state==='uploading');$('#detail-upload').disabled=busy;$('#detail-upload').textContent=busy ? '正在上传…' : '上传所选照片';
       $('#detail-upload-message').textContent=entries.some(entry=>entry.state==='upload-error') ? '部分照片未上传，可再次点击上传重试。已成功的照片不会重复上传。' : '';
@@ -66,10 +85,12 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
     const deadline=Date.parse(item.expiresAt)-(Date.now()+serverOffset);
     if(item.status==='booked' && deadline>0 && deadline<2147480000)deadlineTimer=setTimeout(()=>{if(active && !document.hidden)void refresh();},deadline+1000);
     setNotice($('#detail-notice'),record.message ? '暂时无法更新。'+record.message : '');
-    setMarkup($('#detail-summary'),`<span class="status-pill ${statusClass[item.status]}">${statusText(item)}</span><div class="selection-summary">${timeSummary(item)}</div><p>${escapeHtml(statusExplanation(item))}</p>${record.message ? '<button type="button" class="secondary-btn" data-detail-retry>重试</button>' : ''}`);
-    setMarkup($('#detail-repair-record'),repairRecord(item));setMarkup($('#detail-information'),informationGroups(item,{photos:false,contacts:false}));setMarkup($('#detail-contacts'),informationGroups(item,{device:false}));
+    const explanation=statusExplanation(item);
+    setMarkup($('#detail-summary'),`<span class="status-pill ${statusClass[item.status]}">${statusText(item)}</span><div class="selection-summary">${timeSummary(item)}</div>${explanation ? `<p class="field-hint">${escapeHtml(explanation)}</p>` : ''}`);
+    setMarkup($('#detail-repair-record'),repairRecord(item));
+    setMarkup($('#detail-information'),informationGroups(item,{photos:false,contacts:false,detail:true}));setMarkup($('#detail-contacts'),informationGroups(item,{device:false,detail:true}));
     const files=item.attachments || [];
-    setMarkup($('#detail-attachments'),files.length ? files.map(file=>`<button class="text-btn" type="button" data-attachment-id="${escapeHtml(file.id)}">${escapeHtml(file.filename)} · ${attachmentSize(file.size)}${file.purpose==='intake_front' ? ' · 签到正面照片' : file.purpose==='intake_back' ? ' · 签到反面照片' : ''}</button>`).join('') : '<p class="field-hint">暂无照片或附件。</p>');
+    setMarkup($('#detail-attachments'),files.length ? files.map(file=>`<button class="text-btn" type="button" data-attachment-id="${escapeHtml(file.id)}">${escapeHtml(file.filename)} · ${attachmentSize(file.size)}${file.purpose==='intake_front' ? ' · 接待正面照片' : file.purpose==='intake_back' ? ' · 接待背面照片' : ''}</button>`).join('') : '<p class="field-hint">暂无照片或附件。</p>');
     const qrDetails=$('#detail-qr details');
     if(qrDetails && qrDetails.dataset.status!==item.status){
       if(terminalStatuses.includes(item.status)){
@@ -80,10 +101,16 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
       }
       qrDetails.dataset.status=item.status;
     }
+    const historySignature=JSON.stringify(item.repairHistory);
+    const historyPanel=detail.querySelector('[data-repair-history]');
+    if(historyPanel?.dataset.signature!==historySignature){
+      const next=createRepairHistoryPanel(item);next.dataset.repairHistory='true';next.dataset.signature=historySignature;
+      if(historyPanel)historyPanel.replaceWith(next);else detail.insertBefore(next,detail.querySelector('#detail-operations'));
+    }
     detailPhotos.refresh();
     const operations=$('#detail-operations');
-    if(item.status==='booked') {
-      if(!operations.querySelector('[data-cancel-open]'))operations.innerHTML=`<button type="button" class="secondary-btn danger-btn" data-cancel-open aria-expanded="false" aria-controls="cancel-confirmation">取消预约</button><div class="notice cancel-confirm" id="cancel-confirmation" role="region" aria-label="取消预约二次确认" hidden><p>${escapeHtml(item.campus)} · ${formatDate(item.date)} · ${escapeHtml(item.source==='onsite' ? '现场临时登记' : item.timeSlot)}</p><p id="cancel-explanation">取消后本次预约将失效。如仍需维修，请重新预约。</p><div class="actions"><button class="secondary-btn" type="button" data-cancel-keep>保留预约</button><button class="secondary-btn danger-btn" type="button" data-cancel-confirm aria-describedby="cancel-explanation">确认取消</button></div><p class="field-error" id="cancel-message" role="alert"></p></div>`;
+    if(item.status==='booked' && !item.receivedAt) {
+      if(!operations.querySelector('[data-cancel-open]'))operations.innerHTML=`<button type="button" class="secondary-btn danger-btn" data-cancel-open aria-expanded="false" aria-controls="cancel-confirmation">取消预约</button><div class="notice cancel-confirm" id="cancel-confirmation" role="region" aria-label="取消预约二次确认" hidden><p>${escapeHtml(item.campus)} · ${formatDate(item.date)} · ${escapeHtml(timeLabel(item))}</p><p id="cancel-explanation">取消后本次预约将失效。如仍需维修，请重新预约。</p><div class="actions"><button class="secondary-btn" type="button" data-cancel-keep>保留预约</button><button class="secondary-btn danger-btn" type="button" data-cancel-confirm aria-describedby="cancel-explanation">确认取消</button></div><p class="field-error" id="cancel-message" role="alert"></p></div>`;
     } else if(terminalStatuses.includes(item.status)) {
       if(!operations.querySelector('[data-rebook]'))operations.innerHTML='<button class="primary-btn" type="button" data-rebook>重新预约</button><div class="notice" id="rebook-confirm" hidden><p>重新预约将舍弃当前未提交草稿，开始空白预约。是否继续？</p><div class="actions"><button class="secondary-btn" type="button" data-rebook-keep>保留草稿</button><button class="primary-btn" type="button" data-rebook-confirm>舍弃草稿并重新预约</button></div></div>';
     } else operations.innerHTML='<p class="field-hint">维修进行中，不能取消预约。</p>';
@@ -125,6 +152,7 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
     if(target.hasAttribute('data-rebook')){if(hasPending()){setNotice($('#detail-notice'),'另一次提交结果尚未核实，请先返回预约维修核实原请求。');return;}if(hasDraft())$('#rebook-confirm').hidden=false;else onRebook();}
     if(target.hasAttribute('data-rebook-keep'))$('#rebook-confirm').hidden=true;
     if(target.hasAttribute('data-rebook-confirm'))onRebook();
+    if(target.dataset.relatedScan){const item=records.get(detailId)?.item;if(item)void renderRepairQr(target.nextElementSibling,{...item,id:target.dataset.relatedScan,scanParentId:item.id});}
     if(target.dataset.attachmentId){const id=detailId,item=records.get(id)?.item,file=item?.attachments?.find(file=>file.id===target.dataset.attachmentId);if(!file)return;target.disabled=true;
       try{const blob=await apiBlob(attachmentUrl(id,file.id),{headers:credentialHeaders(item),timeoutMs:30000});const url=URL.createObjectURL(blob);urls.add(url);if(id!==detailId){URL.revokeObjectURL(url);urls.delete(url);return;}
         if(file.mimeType.startsWith('image/'))previewPhoto(url);else{const link=document.createElement('a');link.href=url;link.download=file.filename;link.click();setTimeout(()=>{URL.revokeObjectURL(url);urls.delete(url);},60000);}}

@@ -49,3 +49,30 @@ export async function decryptText(value, key) {
   const decrypted = await globalThis.crypto.subtle.decrypt({ name: 'AES-GCM', iv, tagLength: 128 }, await importKey(key), encrypted);
   return decoder.decode(decrypted);
 }
+
+export function readStoredContact(value, key) {
+  return value?.startsWith('enc$') ? decryptText(value, key) : Promise.resolve(value || '');
+}
+
+export function normalizedContact(value) {
+  return String(value || '').replace(/^(?:QQ|微信)[：:]\s*/i, '').trim().toLowerCase();
+}
+
+async function contactIndexKey(key) {
+  keyBytes(key);
+  const raw = await globalThis.crypto.subtle.digest(
+    'SHA-256',
+    encoder.encode(`pioneer-contact-search-v1:${key}`)
+  );
+  return globalThis.crypto.subtle.importKey('raw', raw, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+}
+
+export async function contactSearchToken(value, key) {
+  const signed = await globalThis.crypto.subtle.sign('HMAC', await contactIndexKey(key), encoder.encode(normalizedContact(value)));
+  return Array.from(new Uint8Array(signed), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export async function contactSearchTokens(values, key) {
+  return [...new Set(await Promise.all(values.filter((value) => normalizedContact(value))
+    .map((value) => contactSearchToken(value, key))))];
+}

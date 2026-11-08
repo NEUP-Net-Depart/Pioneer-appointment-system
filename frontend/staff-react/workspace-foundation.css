@@ -1,0 +1,2252 @@
+/* Shell geometry and shared controls live here, after module styles. */
+.staffing-editor {
+  margin-block: 20px;
+}
+.staffing-editor fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+fieldset.staffing-editor {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+.staffing-editor legend {
+  padding: 0;
+  font-weight: 600;
+}
+.staffing-quick {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-block: 12px 24px;
+}
+.staffing-quick label {
+  max-width: 230px;
+}
+.staffing-days {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  gap: 12px;
+}
+.staffing-days > label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.staffing-days > label > span,
+.staffing-days small {
+  color: var(--muted);
+}
+.staffing-days .staffing-count {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+  white-space: nowrap;
+}
+.staffing-days .staffing-count input {
+  width: 72px;
+  min-width: 0;
+  min-height: 44px;
+  flex: 0 1 72px;
+}
+.planner-member[data-pool='lead'] {
+  border-left: 3px solid #d3bb8a;
+  padding-left: 12px;
+}
+.staff-identities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-block: 5px;
+}
+.staff-identity {
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: #f0f2f5;
+  color: #536174;
+}
+.member-import-preview {
+  max-height: 40vh;
+  overflow: auto;
+}
+.staff-identity[data-identity='exchange'] {
+  color: #416d68;
+  background: #edf5f3;
+}
+.field-person-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #586575;
+  font-size: 12px;
+  padding-top: 16px;
+}
+.field-person-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e6e9ee;
+}
+.field-person-summary {
+  font-size: 12px;
+}
+.field-app,
+.field-modal {
+  --workspace-gutter: clamp(24px, 3vw, 48px);
+  --workspace-top: 32px;
+  --workspace-gap: 24px;
+  --workspace-radius: 14px;
+  --workspace-surface: #fff;
+  --workspace-subtle: #f7f8fa;
+  --line: #e3e7ed;
+  --ink: #242b35;
+  --muted: #647080;
+  font-family: Inter, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+}
+/* Keep authentication screens in the same visual system as the staff workspace. */
+.staff-mode .login-view {
+  min-height: 100dvh;
+  padding: clamp(24px, 5vw, 56px) 20px;
+  background: #f5f6f8;
+  color: #222831;
+}
+
+.staff-mode .login-panel {
+  --muted: #657080;
+  width: min(560px, 100%);
+  padding: 34px 36px 32px;
+  background: #fff;
+  border: 1px solid #e6e8ec;
+  border-radius: 16px;
+  box-shadow: 0 5px 20px #1b273503;
+}
+
+.staff-mode .login-panel::before,
+.staff-mode .login-panel::after {
+  display: none;
+}
+
+.staff-mode .login-brand {
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.staff-mode .login-brand .organization-logo {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.staff-mode .login-brand strong {
+  color: #232b37;
+  font-size: 18px;
+  font-weight: 750;
+}
+
+.staff-mode .login-brand small {
+  color: #586575;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+.staff-mode .login-panel .eyebrow {
+  margin-bottom: 8px;
+  color: #586575;
+  font-size: 11px;
+  letter-spacing: 0.15em;
+}
+
+.staff-mode .login-panel h1 {
+  margin-bottom: 24px;
+  color: #20242b;
+  font-size: 28px;
+  letter-spacing: -0.025em;
+}
+
+.staff-mode .login-form {
+  grid-template-columns: 1fr;
+  gap: 16px;
+  border-top: 1px solid #e3e7ed;
+  padding-top: 24px;
+}
+
+.staff-mode .login-form label {
+  color: #586575;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.staff-mode .login-form label i {
+  color: #a43c30;
+}
+
+.staff-mode .login-form input,
+.staff-mode .login-form select,
+.staff-mode .login-form textarea {
+  min-height: 44px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid #dce0e6;
+  border-radius: 9px;
+  background: #fff;
+  color: #20242b;
+}
+
+.staff-mode .login-form input:focus,
+.staff-mode .login-form select:focus,
+.staff-mode .login-form textarea:focus {
+  border-color: #9cb3d3;
+  box-shadow: 0 0 0 3px rgb(156 179 211 / 18%);
+}
+
+.staff-mode .login-form .primary-btn,
+.staff-mode .login-panel .primary-btn {
+  display: inline-flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 4px;
+  border: 1px solid #252d38;
+  border-radius: 10px;
+  background: #252d38;
+  color: #fff;
+  box-shadow: 0 2px 3px #18212c12;
+  text-decoration: none;
+}
+
+.staff-mode .login-form .primary-btn:hover,
+.staff-mode .login-panel .primary-btn:hover {
+  background: #3d495a;
+  border-color: #3d495a;
+}
+
+.staff-mode .login-panel .secondary-btn {
+  min-height: 44px;
+  border: 1px solid #dde1e7;
+  border-radius: 10px;
+  background: #fff;
+  color: #323a46;
+  font-weight: 500;
+}
+
+.staff-mode .login-panel .secondary-btn:hover {
+  background: #f1f3f5;
+  border-color: #bbc2cd;
+}
+
+.staff-mode .login-message {
+  border: 1px solid #efd0c7;
+  border-left: 3px solid #b54b3c;
+  border-radius: 8px;
+  background: #fff4f1;
+  color: #a43c30;
+}
+
+.staff-mode .login-links {
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.staff-mode .login-links a,
+.staff-mode .login-panel > .text-btn {
+  min-height: 44px;
+  border-radius: 10px;
+}
+
+.staff-mode .login-links .register-cancel,
+.staff-mode .login-panel > .text-btn {
+  color: #586575;
+}
+
+.staff-mode .login-links .register-cancel:hover,
+.staff-mode .login-panel > .text-btn:hover {
+  color: #323a46;
+}
+
+.staff-mode .activation-back {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  margin-top: 16px;
+  text-decoration: none;
+}
+
+.staff-mode #activation-view .login-panel {
+  width: min(560px, 100%);
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.staff-mode #activation-result {
+  padding: 24px 0 0;
+  border-top: 1px solid #e3e7ed;
+}
+
+.staff-mode #activation-result h2 {
+  margin: 0 0 10px;
+  color: #20242b;
+  font-size: 20px;
+}
+
+.staff-mode #activation-result p {
+  color: #657080;
+  line-height: 1.6;
+}
+
+.staff-mode #activation-result .secondary-btn,
+.staff-mode #activation-result .primary-btn {
+  width: auto;
+  margin: 12px 8px 0 0;
+}
+
+@media (max-width: 600px) {
+  .staff-mode .login-panel {
+    padding: 28px 20px 24px;
+    border-radius: 14px;
+  }
+
+  .staff-mode .login-brand {
+    margin-bottom: 24px;
+  }
+}
+.field-app {
+  align-items: start;
+}
+.field-app > .workspace-page {
+  padding: var(--workspace-top) var(--workspace-gutter) 48px;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  align-self: start;
+  animation: none;
+}
+.workspace-page .react-page,
+.workspace-page .field-content,
+.workspace-page .attendance-history {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.field-app .workspace-page .workspace-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  margin: 0 0 28px;
+  padding: 0;
+  text-align: left;
+}
+.workspace-heading-copy {
+  min-width: 0;
+  flex: 1;
+}
+.field-app .workspace-heading .field-kicker {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 20px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.field-app .workspace-heading h1 {
+  margin: 0;
+  font-family: inherit;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 36px;
+  letter-spacing: -0.025em;
+}
+.field-app .workspace-heading .workspace-heading-description {
+  max-width: 52em;
+  font-size: 14px;
+  line-height: 22px;
+  margin: 10px 0 0;
+}
+.workspace-heading-actions {
+  display: flex;
+  flex: 0 0 auto;
+  width: max-content;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+  max-width: 52%;
+  padding-top: 28px;
+}
+.field-app h2,
+.field-modal h2 {
+  line-height: 1.4;
+  font-weight: 650;
+}
+.field-app h3,
+.field-modal h3 {
+  line-height: 1.5;
+  font-weight: 600;
+}
+.field-app .field-card,
+.field-app .react-card {
+  border: 1px solid var(--line);
+  border-radius: var(--workspace-radius);
+  background: var(--workspace-surface);
+  padding: 24px;
+  box-shadow: none;
+  min-width: 0;
+}
+.field-app .react-card label,
+.field-modal label {
+  font-weight: 500;
+}
+.field-app button,
+.field-modal button {
+  min-height: 44px;
+  font-weight: 500;
+  border-radius: 10px;
+}
+.field-app
+  .react-card
+  button:not(.react-primary):not([aria-pressed='true']):not(.is-selected):not(.field-primary) {
+  background-color: white;
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+.field-app button:hover:not(:disabled),
+.field-modal button:hover:not(:disabled) {
+  border-color: #aeb8c5;
+}
+.field-app .field-primary,
+.field-modal .field-primary,
+.field-modal .react-primary {
+  background: var(--ink) !important;
+  border-color: var(--ink);
+  color: white !important;
+}
+.field-app input:not([type='checkbox']):not([type='radio']):not([type='file']),
+.field-app select,
+.field-app textarea,
+.field-modal input:not([type='checkbox']):not([type='radio']):not([type='file']),
+.field-modal select,
+.field-modal textarea {
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid #d6dce5;
+  border-radius: 9px;
+  min-height: 44px;
+  padding: 10px 12px;
+  background: white;
+  color: var(--ink);
+  font: inherit;
+}
+.field-app textarea,
+.field-modal textarea {
+  width: 100%;
+  resize: vertical;
+}
+.field-app .react-check,
+.field-modal .react-check {
+  min-height: 44px;
+  align-items: center;
+}
+.field-app .workspace-check,
+.field-modal .workspace-check,
+.field-app .permission-filter {
+  min-height: 44px;
+}
+.field-app .react-error,
+.field-modal .react-error {
+  padding: 12px 16px;
+  border: 1px solid #eed2d2;
+  border-radius: 10px;
+  background: #fff7f7;
+  color: #a33434;
+  line-height: 1.6;
+}
+.field-app .react-message,
+.field-modal .react-message {
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid #d9e5dd;
+  background: #f5faf6;
+  color: #386149;
+}
+.field-app .field-notice,
+.field-modal .field-notice {
+  border-radius: 10px;
+  line-height: 1.6;
+}
+.field-app .empty-state,
+.field-app .field-empty {
+  text-align: left;
+  padding: 32px 24px;
+  color: var(--muted);
+}
+.field-app .empty-state strong,
+.field-app .field-empty strong {
+  color: var(--ink);
+  font-size: 16px;
+}
+.field-app .workspace-section-nav {
+  gap: 6px;
+  padding-bottom: 16px;
+  margin-bottom: 24px;
+}
+.field-app .workspace-section-nav button {
+  background: transparent;
+  border-color: transparent;
+}
+.field-app .workspace-section-nav button[aria-pressed='true'] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: white;
+}
+.field-app .workspace-list-tools,
+.field-app .planner-toolbar,
+.field-app .report-filters {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--workspace-radius);
+  background: var(--workspace-surface);
+  margin: 0 0 24px;
+  gap: 16px;
+}
+.field-app .workspace-list-tools > label {
+  margin: 0;
+}
+.field-app .workspace-list-tools > span {
+  font-size: 13px;
+}
+.field-app .workspace-list-tools input,
+.field-app .workspace-list-tools select {
+  width: 100%;
+}
+.field-app .field-sidebar {
+  overflow: hidden;
+  gap: 16px;
+  padding: 28px 14px 20px;
+}
+.field-sidebar .field-brand {
+  flex-shrink: 0;
+  padding-bottom: 12px;
+}
+.field-sidebar > nav {
+  flex: 1;
+  display: block;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  overscroll-behavior: contain;
+  scroll-padding-block: 8px;
+  padding: 4px;
+}
+.field-sidebar > nav::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.field-sidebar .field-sidebar-bottom {
+  flex-shrink: 0;
+  margin: 0;
+  padding-top: 16px;
+}
+.field-sidebar .field-sidebar-bottom button {
+  min-height: 44px;
+}
+.field-sidebar .workspace-group-toggle {
+  min-height: 44px;
+}
+.field-sidebar .workspace-nav-group > div {
+  display: grid;
+  gap: 3px;
+}
+.field-sidebar .workspace-nav-group > div[hidden] {
+  display: none;
+}
+.field-sidebar nav button {
+  width: 100%;
+}
+.field-sidebar nav button.active {
+  background: #edf0f4;
+  box-shadow: inset 3px 0 var(--ink);
+}
+.field-sidebar nav button:focus-visible {
+  outline-offset: -3px;
+}
+
+/* Detail headers stay in place while the content scrolls. */
+.field-modal[open] {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  width: min(720px, calc(100vw - 48px));
+  max-height: calc(100dvh - 64px);
+  border-radius: 16px;
+}
+.field-modal > header {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 20px 24px;
+  gap: 20px;
+  border-bottom: 1px solid var(--line);
+  background: white;
+  position: relative;
+  top: auto;
+}
+.field-modal > header h2 {
+  font-size: 20px;
+  line-height: 28px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.field-modal > header button {
+  flex-shrink: 0;
+}
+.workspace-dialog-body {
+  padding: 24px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.workspace-dialog-body > :first-child {
+  margin-top: 0;
+}
+.workspace-dialog-body > :last-child {
+  margin-bottom: 0;
+}
+.field-modal .react-form-grid,
+.field-modal .field-form-grid {
+  gap: 16px;
+}
+.field-modal .react-inline {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.field-modal .react-inline > * {
+  min-width: 0;
+}
+.field-modal .react-binding {
+  padding: 20px 0;
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+.field-modal .react-binding:last-child {
+  border-bottom: 0;
+}
+.field-modal .react-scope-fields {
+  padding: 16px;
+  background: var(--workspace-subtle);
+  border-radius: 10px;
+}
+.field-modal .react-scope-fields fieldset {
+  margin-bottom: 12px;
+}
+.field-modal .react-scope-fields fieldset:last-child {
+  margin-bottom: 0;
+}
+.field-modal .react-scope-fields legend {
+  font-size: 14px;
+}
+.field-modal .react-campus-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.field-modal .react-campus-options label {
+  margin: 0;
+}
+.field-modal .react-editor-actions,
+.field-modal .field-actions {
+  gap: 12px;
+}
+.field-modal .member-detail-editor .react-editor-actions {
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.field-modal .field-ticket {
+  background: var(--workspace-subtle);
+  border: 0;
+  padding: 20px;
+  border-radius: 12px;
+}
+.field-modal .field-ticket > div {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.field-modal .field-form {
+  gap: 20px;
+}
+.field-modal .field-form > h3 {
+  padding-top: 4px;
+}
+.field-modal .field-credential {
+  border: 0;
+  padding: 8px 0;
+}
+.field-modal .field-photos {
+  gap: 16px;
+}
+.field-modal .field-photos label {
+  background: var(--workspace-subtle);
+  border: 1px dashed #b9c3d0;
+  border-radius: 12px;
+}
+.field-modal .field-results label {
+  min-height: 44px;
+}
+.workspace-flow-context {
+  display: grid;
+  gap: 8px;
+  padding-bottom: 20px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--line);
+}
+.workspace-flow-context > span {
+  color: var(--muted);
+  font-size: 13px;
+}
+.workspace-flow-context > strong {
+  font-size: 17px;
+}
+.workspace-flow-context ol {
+  display: flex;
+  gap: 24px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style-position: inside;
+  color: var(--muted);
+  font-size: 13px;
+}
+.workspace-flow-context [aria-current='step'] {
+  color: var(--ink);
+  font-weight: 650;
+}
+.field-modal .workspace-handoff {
+  padding-top: 24px;
+  margin-top: 24px;
+  border-top: 1px solid var(--line);
+}
+.field-modal .field-confirm {
+  padding: 20px;
+  background: var(--workspace-subtle);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.field-modal.workspace-confirm-dialog[open] {
+  width: min(480px, calc(100vw - 32px));
+  height: fit-content;
+  max-height: calc(100dvh - 48px);
+  margin: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+.field-modal.workspace-confirm-dialog .workspace-dialog-body {
+  scrollbar-gutter: auto;
+}
+@media (min-width: 768px) {
+  .field-modal.field-side-panel[open] {
+    width: min(680px, 60vw);
+    max-height: 100dvh;
+    height: 100dvh;
+    margin: 0 0 0 auto;
+    border-radius: 0;
+  }
+}
+
+/* Business modules share the foundation, while keeping task-specific layouts. */
+.workspace-page .attendance-history > .field-card {
+  max-width: 1100px;
+}
+.workspace-page .security-layout {
+  max-width: 1120px;
+  margin: 0;
+}
+.field-app .field-hero {
+  min-height: 180px;
+  padding: 28px;
+  border-radius: var(--workspace-radius);
+  gap: 24px;
+}
+.field-app .field-hero h2 {
+  font-size: 23px;
+  line-height: 1.4;
+}
+.field-app .field-scope {
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.field-app .field-scope select {
+  min-width: 120px;
+}
+.field-app .field-desk-grid {
+  gap: 24px;
+  align-items: start;
+}
+.field-app .field-metrics {
+  gap: 12px;
+}
+.field-app .field-metrics button {
+  border-radius: 12px;
+}
+.field-app .planner-summary {
+  padding-block: 4px;
+  margin-top: 24px;
+}
+.field-app .planner-summary strong {
+  font-size: 18px;
+}
+.field-app .planner-member {
+  gap: 16px !important;
+  padding-block: 18px;
+}
+.field-app .planner-balance {
+  align-items: start;
+}
+.field-app .planner-actions {
+  padding: 20px 0;
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+}
+.field-app .planner-actions p {
+  margin: 0;
+}
+.field-app .permissions-workspace .react-permission-layout {
+  grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.field-app .permissions-workspace aside {
+  position: sticky;
+  top: 24px;
+  padding: 16px;
+}
+.field-app .permissions-workspace aside button {
+  background: transparent;
+  border-color: transparent;
+  padding: 12px;
+}
+.field-app .permissions-workspace aside button.is-selected {
+  background: #edf0f4;
+  border-color: transparent;
+  color: var(--ink);
+}
+.field-app .permissions-workspace .react-permission {
+  padding: 16px 0;
+  border: 0;
+  margin: 0;
+}
+.field-app .permissions-workspace .react-permission-item {
+  border-bottom: 1px solid var(--line);
+  padding: 0 0 8px;
+}
+.field-app .react-grant-details {
+  padding: 0 0 12px 30px;
+}
+.field-app .permissions-workspace .react-grant-details {
+  margin: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+.field-app .permissions-workspace .react-grant-details > summary {
+  padding: 0;
+  font-size: 13px;
+}
+.field-app .permissions-workspace .react-grant-details > summary::after {
+  content: '+';
+  margin-left: 10px;
+  font-size: 16px;
+}
+.field-app .permissions-workspace .react-grant-details[open] > summary::after {
+  content: '−';
+}
+.field-app .permissions-workspace .workspace-section-nav {
+  margin-top: 20px;
+  gap: 6px;
+}
+.field-app .permissions-workspace .workspace-section-nav button {
+  font-size: 13px;
+  padding-inline: 10px;
+}
+.field-app .react-grant-details > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 500;
+}
+.field-app .react-grant-details[open] > summary {
+  color: var(--ink);
+}
+.field-app .react-grant-details .react-binding {
+  border: 0;
+  border-left: 2px solid var(--line);
+  background: transparent;
+  padding: 12px 16px;
+  border-radius: 0;
+}
+.field-app .react-grant-details .react-heading {
+  align-items: center;
+  margin-bottom: 12px;
+  gap: 12px;
+}
+.field-app .permissions-workspace .react-editor-actions {
+  bottom: 16px;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px #22283108;
+  gap: 12px;
+}
+.field-app .members-tools,
+.field-app .records-toolbar {
+  background: white;
+  gap: 16px;
+  padding: 20px;
+}
+.field-app .members-row-action button {
+  white-space: normal;
+}
+.field-app .report-metrics article {
+  border: 1px solid var(--line);
+}
+.field-app .report-daily article {
+  border: 0;
+  background: var(--workspace-subtle);
+}
+.field-app .security-profile dl {
+  gap: 20px;
+}
+.field-app .personal-workspace {
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  align-items: start;
+}
+.personal-identity {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 28px;
+}
+.personal-identity-details {
+  min-width: 0;
+}
+.field-app .personal-profile-save {
+  min-height: 44px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.personal-identity .field-avatar {
+  width: 48px;
+  height: 48px;
+  font-size: 14px;
+}
+.personal-identity p {
+  margin: 4px 0 0;
+}
+.personal-schedule h3 {
+  font-size: 14px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.personal-no-shift {
+  padding: 20px;
+  background: var(--workspace-subtle);
+  border-radius: 10px;
+  color: var(--muted);
+}
+.field-app .personal-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+  margin-top: 24px;
+}
+.field-app .personal-actions button {
+  text-align: left;
+}
+.personal-profile {
+  padding-bottom: 24px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--line);
+}
+.personal-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 20px;
+}
+.personal-profile-grid label {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  font-weight: 600;
+}
+.field-app .personal-profile-grid input,
+.field-app .personal-profile-grid select {
+  width: 100%;
+  min-height: 44px;
+  font-weight: 400;
+}
+.personal-profile-grid output {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--workspace-subtle);
+  font-weight: 400;
+}
+.personal-college-choice .report-control-label {
+  color: var(--ink);
+}
+.field-app .personal-college-choice .workspace-choice-trigger {
+  min-height: 44px;
+  border-color: #cbd4df;
+  background: #fff;
+  font-weight: 400;
+}
+.field-app .personal-college-choice .workspace-choice-trigger:hover:not(:disabled),
+.field-app .personal-college-choice .workspace-choice-trigger[aria-expanded='true'] {
+  border-color: #8698ad;
+  background: #f8fafc;
+}
+.field-app .personal-college-choice .workspace-choice-trigger:focus-visible {
+  outline: 3px solid #9ba8ba;
+  outline-offset: 3px;
+}
+.workspace-native-select {
+  display: block;
+  position: relative;
+  min-width: 0;
+}
+.field-app select:not([multiple]),
+.field-modal select:not([multiple]) {
+  appearance: none;
+  padding-right: 36px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='m1 1 5 5 5-5' fill='none' stroke='%23566579' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px 8px;
+}
+.field-app .workspace-native-select select,
+.field-modal .workspace-native-select select {
+  width: 100%;
+  min-height: 44px;
+  padding-right: 38px;
+  appearance: none;
+  background: #fff;
+}
+.workspace-native-select .workspace-chevron {
+  position: absolute;
+  right: 16px;
+  top: 18px;
+  pointer-events: none;
+}
+@media (max-width: 600px) {
+  .personal-profile-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 420px) {
+  .personal-identity {
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: start;
+  }
+  .personal-identity .field-avatar {
+    width: 40px;
+    height: 40px;
+  }
+  .field-app .personal-profile-save {
+    padding-inline: 10px;
+  }
+}
+
+@media (max-width: 1100px) {
+  .field-app {
+    --workspace-gutter: 24px;
+    --workspace-top: 28px;
+  }
+  .field-app .field-desk-grid,
+  .field-app .personal-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .field-app .permissions-workspace .react-permission-layout {
+    grid-template-columns: 190px minmax(0, 1fr);
+    gap: 16px;
+  }
+}
+@media (max-width: 767px) {
+  /* This entry-level rule also covers login/activation and nested form overrides. */
+  body.staff-mode
+    #staff-react-root
+    :is(input, select, textarea):not([type='checkbox']):not([type='radio']):not([type='file']):not(
+      [type='hidden']
+    ) {
+    font-size: max(16px, 1em);
+  }
+  .field-app .field-details > summary,
+  .field-modal .field-details > summary,
+  .field-app .capacity-quick-tools > summary,
+  .staff-mode .swap-coverage > summary,
+  .staff-mode .workspace-help > summary {
+    min-height: 44px;
+    padding-block: 10px;
+    cursor: pointer;
+  }
+  .field-app .field-file-button,
+  .field-modal .field-file-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .field-app {
+    --workspace-gutter: 16px;
+    --workspace-top: 24px;
+    --workspace-gap: 16px;
+    --workspace-radius: 12px;
+  }
+  .field-app > .workspace-page {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+    min-height: 100dvh;
+  }
+  .field-app .workspace-page .workspace-heading {
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .field-app .workspace-heading h1 {
+    font-size: 24px;
+    line-height: 32px;
+  }
+  .workspace-heading-actions {
+    padding-top: 0;
+    max-width: none;
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .field-app .workspace-heading .field-kicker {
+    font-size: 12px;
+  }
+  .field-app .field-scope {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+    width: 100%;
+    font-size: 13px;
+  }
+  .field-app .field-card,
+  .field-app .react-card {
+    padding: 18px;
+  }
+  .field-app .field-hero {
+    padding: 22px 18px;
+    min-height: 0;
+  }
+  .field-app .field-hero h2 {
+    font-size: 20px;
+  }
+  .field-app .workspace-list-tools,
+  .field-app .planner-toolbar,
+  .field-app .report-filters {
+    padding: 16px;
+    gap: 12px;
+  }
+  .field-app .workspace-list-tools > label {
+    min-width: 0;
+  }
+  .field-app .permissions-workspace .react-permission-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .field-app .permissions-workspace aside {
+    position: static;
+    display: flex;
+    overflow-x: auto;
+    flex-direction: row;
+    gap: 8px;
+    padding: 8px;
+  }
+  .field-app .permissions-workspace aside h2 {
+    display: none;
+  }
+  .field-app .permissions-workspace aside button {
+    flex: 0 0 170px;
+    margin: 0;
+  }
+  .field-app .permissions-workspace .react-editor-actions {
+    bottom: calc(80px + env(safe-area-inset-bottom));
+    flex-wrap: wrap;
+  }
+  .field-app .permissions-workspace .react-editor-actions > span {
+    width: 100%;
+  }
+  .field-app .react-grant-details {
+    padding-left: 0;
+  }
+  .field-app .permissions-workspace .workspace-section-nav {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .field-app .permissions-workspace .workspace-section-nav button {
+    flex: 0 1 auto;
+    min-height: 44px;
+  }
+  .field-app .react-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .field-app input:not([type='checkbox']):not([type='radio']),
+  .field-app select,
+  .field-app textarea,
+  .field-modal input:not([type='checkbox']):not([type='radio']),
+  .field-modal select,
+  .field-modal textarea {
+    font-size: 16px;
+  }
+  .field-modal[open] {
+    inset: 0;
+    margin: 0;
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+  }
+  .field-modal > header {
+    padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
+  }
+  .workspace-dialog-body {
+    padding: 20px 16px calc(24px + env(safe-area-inset-bottom));
+  }
+  .field-modal .react-form-grid,
+  .field-modal .field-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .field-modal .react-inline > * {
+    flex: 1 1 100%;
+  }
+  .field-modal .field-actions {
+    flex-wrap: wrap;
+  }
+  .field-modal .field-actions button {
+    min-width: 0;
+  }
+  .field-modal .react-editor-actions {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .field-modal.workspace-confirm-dialog[open] {
+    width: calc(100vw - 32px);
+    height: fit-content;
+    max-height: calc(100dvh - 48px);
+    margin: auto;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+  }
+  .field-modal.workspace-confirm-dialog > header {
+    padding-top: 16px;
+  }
+  .field-modal.workspace-confirm-dialog .workspace-dialog-body {
+    padding-bottom: 20px;
+  }
+  .field-app .field-desk-grid {
+    gap: 16px;
+  }
+  .field-app .personal-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .field-app *,
+  .field-modal * {
+    scroll-behavior: auto !important;
+    animation: none !important;
+    transition: none !important;
+  }
+}
+/* Search results share the same personnel selector treatment as work pages. */
+.attendance-member-options {
+  display: grid;
+  gap: 8px;
+  max-height: 240px;
+  overflow: auto;
+}
+.attendance-member-options > button {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  text-align: left;
+  padding: 12px;
+}
+.attendance-member-options > button > small {
+  flex-basis: 100%;
+  color: var(--field-muted, #64748b);
+}
+
+/* Repeated controls share alignment and sizing instead of sizing to each label. */
+.field-app
+  :is(.workspace-list-tools, .planner-toolbar, .report-filters, .members-tools, .permission-tools) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+.field-app
+  :is(.workspace-list-tools, .planner-toolbar, .report-filters, .members-tools, .permission-tools)
+  > label:not(:has(input[type='checkbox'])) {
+  display: grid;
+  gap: 8px;
+  flex: 1 1 180px;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+}
+.field-app :is(.workspace-list-tools, .members-tools, .permission-tools) > label:first-child {
+  flex-grow: 2;
+}
+.field-app
+  :is(.workspace-list-tools, .planner-toolbar, .report-filters, .members-tools, .permission-tools)
+  > label
+  > :is(input, select) {
+  width: 100%;
+}
+.field-app
+  :is(.workspace-list-tools, .planner-toolbar, .report-filters, .members-tools, .permission-tools)
+  > span {
+  flex-basis: 100%;
+  font-size: 13px;
+  padding: 0;
+  color: var(--muted);
+}
+.field-app :is(.field-actions, .react-editor-actions):not(.personal-actions),
+.field-modal :is(.field-actions, .react-editor-actions) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.field-app :is(.field-actions, .react-editor-actions, .workspace-heading-actions) > button,
+.field-modal :is(.field-actions, .react-editor-actions, .roster-modal-actions) > button {
+  min-width: min(100%, 88px);
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+.field-app .workspace-heading-actions > button {
+  min-width: 88px;
+}
+.field-app :is(.workspace-check, .react-check, .permission-filter),
+.field-modal :is(.workspace-check, .react-check, .roster-choice-row > label) {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  min-height: 44px;
+}
+.field-app :is(.workspace-check, .react-check, .permission-filter) > input,
+.field-modal :is(.workspace-check, .react-check, .roster-choice-row > label) > input {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  margin: 0;
+}
+.field-app .staff-identity,
+.field-modal .staff-identity {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.field-app .field-filter {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.field-app .field-filter button {
+  min-width: 0;
+  padding: 10px 4px;
+  font-size: 13px;
+}
+.field-app .field-person {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+}
+.field-app .field-person .field-avatar {
+  width: 32px;
+  height: 32px;
+  font-size: 12px;
+}
+.field-app .field-person .field-status {
+  white-space: nowrap;
+}
+.field-app .field-person small {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.field-app .field-person .field-text {
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.workspace-search-label {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.workspace-search-label input {
+  width: 100%;
+}
+.field-modal .workspace-binding > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 64px;
+  padding: 8px 0;
+  cursor: pointer;
+  list-style: none;
+}
+.workspace-binding > summary::-webkit-details-marker {
+  display: none;
+}
+.workspace-binding > summary > span:first-child {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.workspace-binding > summary strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+.workspace-binding > summary small {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.workspace-binding-hint {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.workspace-binding[open] .workspace-binding-hint {
+  font-size: 0;
+}
+.workspace-binding[open] .workspace-binding-hint::after {
+  content: '收起';
+  font-size: 12px;
+}
+.workspace-binding-fields {
+  display: grid;
+  gap: 16px;
+  padding: 16px 0 4px;
+}
+.workspace-binding-fields > label {
+  display: grid;
+  gap: 8px;
+}
+.workspace-binding-fields > button {
+  justify-self: start;
+  color: #a33434;
+}
+.workspace-launcher {
+  display: grid;
+  gap: 28px;
+}
+.workspace-launcher-search {
+  display: grid;
+  gap: 16px;
+}
+.workspace-launcher-search > p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.workspace-launcher-search > p strong {
+  font-weight: 500;
+  color: var(--ink);
+}
+.workspace-launcher-search > label {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+}
+.workspace-launcher-search input {
+  width: 100%;
+}
+.workspace-launcher-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 28px 24px;
+  align-items: start;
+}
+.workspace-launcher-group {
+  min-width: 0;
+}
+.workspace-launcher-group > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.field-modal .workspace-launcher-group h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.workspace-launcher-group > header > span {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.workspace-launcher-group > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(56px, auto);
+  gap: 8px;
+}
+.field-modal .workspace-launcher-group button {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  padding: 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--workspace-subtle);
+  color: var(--ink);
+  text-align: left;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.field-modal .workspace-launcher-group button:hover {
+  border-color: #bdc6d2;
+  background: #edf0f4;
+}
+.field-modal .workspace-launcher-group button[aria-current='page'] {
+  background: #edf0f4;
+  border-color: #cbd3dd;
+  box-shadow: inset 3px 0 var(--ink);
+  font-weight: 650;
+}
+@media (max-width: 600px) {
+  .workspace-launcher-groups {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+}
+.workspace-more-actions {
+  position: relative;
+  width: max-content;
+  max-width: 100%;
+}
+.workspace-more-actions > summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: white;
+  color: var(--ink);
+  cursor: pointer;
+  list-style: none;
+  font-weight: 500;
+}
+.workspace-more-actions > summary::-webkit-details-marker {
+  display: none;
+}
+.workspace-more-actions > summary::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg) translateY(-2px);
+}
+.workspace-more-actions[open] > summary {
+  background: var(--workspace-subtle);
+}
+.workspace-more-actions > summary:focus-visible,
+.workspace-binding > summary:focus-visible {
+  outline: 2px solid #46668b;
+  outline-offset: 3px;
+}
+.workspace-more-action-list {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 20;
+  display: grid;
+  gap: 4px;
+  width: max-content;
+  min-width: 200px;
+  max-width: calc(100vw - 48px);
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 8px 28px #17202b14;
+}
+.field-app .workspace-more-action-list > button {
+  width: 100%;
+  text-align: left;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  white-space: normal;
+}
+.field-app .workspace-more-action-list > button:hover:not(:disabled) {
+  background: var(--workspace-subtle);
+}
+@media (max-width: 767px) {
+  .field-app
+    :is(.workspace-list-tools, .planner-toolbar, .report-filters, .members-tools, .permission-tools)
+    > label:not(:has(input[type='checkbox'])) {
+    flex-basis: calc(50% - 6px);
+  }
+  .field-app :is(.workspace-list-tools, .members-tools, .permission-tools) > label:first-child {
+    flex-basis: 100%;
+  }
+  .field-app :is(.planner-toolbar, .report-filters) > label:has(input[type='month']) {
+    flex-basis: 100%;
+  }
+  .field-app :is(.workspace-list-tools, .planner-toolbar, .report-filters) > button {
+    flex: 1 1 120px;
+  }
+  .field-app .workspace-section-nav,
+  .field-modal .workspace-section-nav,
+  .field-app .permissions-workspace .workspace-section-nav {
+    display: grid;
+    grid-template-columns: repeat(var(--workspace-section-columns, 2), minmax(0, 1fr));
+    align-items: stretch;
+    gap: 8px;
+  }
+  .field-app .workspace-section-nav button,
+  .field-modal .workspace-section-nav button {
+    height: 100%;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    padding: 10px 8px;
+    line-height: 1.5;
+  }
+  .field-modal :is(.field-actions, .react-editor-actions, .roster-modal-actions) > button {
+    flex: 1 1 120px;
+  }
+}
+@media (max-width: 359px) {
+  .field-app .workspace-section-nav,
+  .field-modal .workspace-section-nav,
+  .field-app .permissions-workspace .workspace-section-nav {
+    grid-template-columns: repeat(var(--workspace-section-narrow, 2), minmax(0, 1fr));
+  }
+}
+
+/* Data changes stay local; metrics reserve their line and QR generation its square. */
+.workspace-page .workspace-data-value,
+.workspace-section-nav .workspace-data-value {
+  display: inline-block;
+  font: inherit;
+  color: inherit;
+  line-height: inherit;
+  font-variant-numeric: tabular-nums;
+  min-width: 1ch;
+}
+.field-appointments {
+  min-height: 22rem;
+}
+.field-qr {
+  min-height: 240px;
+}
+.records-result-meta {
+  min-height: 1.5em;
+}
+
+/* Data loading keeps the real labels and controls; missing values have no fake boxes. */
+.workspace-data-pending {
+  display: inline-block;
+  min-width: 1.5ch;
+  color: var(--muted, #64748b);
+  font-variant-numeric: tabular-nums;
+}
+.workspace-data-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: 1rem 1.5rem;
+  margin-block: 1rem;
+}
+.workspace-data-fields > div {
+  min-width: 0;
+}
+.workspace-data-fields dt {
+  color: var(--muted, #64748b);
+  font-size: 0.875rem;
+}
+.workspace-data-fields dd {
+  margin: 0.375rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.workspace-navigation-status {
+  position: fixed;
+  z-index: 80;
+  right: 20px;
+  bottom: calc(76px + env(safe-area-inset-bottom));
+  max-width: calc(100vw - 40px);
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: var(--surface, #fff);
+  color: var(--text, #17212e);
+  box-shadow: 0 4px 20px #17212e1a;
+  pointer-events: none;
+}
+/* Short task prompts: one bounded animation, complete text for assistive tools. */
+@property --motion-progress {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 22;
+}
+.motion-glyph {
+  opacity: clamp(0.35, calc((var(--motion-progress) - var(--motion-index)) * 0.5), 1);
+}
+.motion-accessible {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  user-select: none;
+}
+/* Native disclosure owns its own content size; no duplicated hidden contents. */
+@supports (interpolate-size: allow-keywords) and selector(details::details-content) {
+  #staff-react-root details {
+    interpolate-size: allow-keywords;
+  }
+  #staff-react-root details:not(.workspace-more-actions)::details-content {
+    block-size: 0;
+    overflow: clip;
+    transition:
+      block-size var(--workspace-motion-normal, 200ms) var(--workspace-motion-ease, ease-out),
+      content-visibility var(--workspace-motion-normal, 200ms) allow-discrete;
+  }
+  #staff-react-root details:not(.workspace-more-actions)[open]::details-content {
+    block-size: auto;
+  }
+}
+.workspace-loaded-media {
+  opacity: 0.7;
+  transition: opacity 160ms ease-out;
+}
+.workspace-loaded-media[data-ready='true'] {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .motion-glyph {
+    opacity: 1;
+  }
+  #staff-react-root details:not(.workspace-more-actions)::details-content,
+  .workspace-loaded-media {
+    transition: none;
+  }
+}
+span[data-motion-value='number'],
+span[data-motion-value='status'] {
+  display: inline-block;
+}
+.motion-meter {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+.motion-meter > meter,
+.motion-meter > progress {
+  position: absolute;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.motion-meter-track {
+  display: block;
+  height: 10px;
+  overflow: clip;
+  border-radius: 6px;
+  background: #eef0f3;
+}
+.motion-meter-track > span {
+  display: block;
+  height: 100%;
+  background: #566579;
+  transform-origin: left;
+}
+
+/* Shared interaction rhythm; transitions never move a control under the pointer. */
+#staff-react-root {
+  --workspace-motion-fast: 140ms;
+  --workspace-motion-normal: 200ms;
+  --workspace-motion-ease: cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+#staff-react-root :is(button, .workspace-section-nav button, .workspace-nav-group button) {
+  transition:
+    background-color var(--workspace-motion-fast) ease-out,
+    color var(--workspace-motion-fast) ease-out,
+    border-color var(--workspace-motion-fast) ease-out,
+    box-shadow var(--workspace-motion-fast) ease-out;
+}
+#staff-react-root :is(input, select, textarea) {
+  transition:
+    border-color var(--workspace-motion-fast) ease-out,
+    box-shadow var(--workspace-motion-fast) ease-out,
+    background-color var(--workspace-motion-fast) ease-out;
+}
+#staff-react-root .workspace-section-count,
+#staff-react-root .staff-identity,
+#staff-react-root .account-state {
+  transition:
+    color var(--workspace-motion-fast) ease-out,
+    background-color var(--workspace-motion-fast) ease-out;
+}
+.field-modal::backdrop {
+  animation: workspace-backdrop-enter 180ms ease-out;
+}
+@keyframes workspace-backdrop-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #staff-react-root
+    :is(
+      button,
+      input,
+      select,
+      textarea,
+      .workspace-section-count,
+      .staff-identity,
+      .account-state
+    ) {
+    transition: none;
+  }
+  .field-modal::backdrop {
+    animation: none;
+  }
+}
+
+/* Attendance exports: one selection bar, one preview, one optional rule editor. */
+.field-app .attendance-reports {
+  max-width: 1100px;
+}
+.field-app .report-type-switch {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 20px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #eef1f4;
+}
+.field-app .report-type-switch button {
+  min-width: 132px;
+  padding: 8px 18px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+.field-app .report-type-switch button[aria-pressed='true'] {
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 1px 4px #1f293712;
+}
+.field-app .report-controls {
+  display: grid;
+  grid-template-columns: minmax(220px, 260px) minmax(190px, 240px) auto;
+  align-items: end;
+  justify-content: start;
+  gap: 16px;
+  padding: 20px 24px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.report-month-picker,
+.workspace-choice {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+.report-month-picker,
+.workspace-choice {
+  position: relative;
+}
+.field-app .workspace-choice-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid #d6dce5;
+  border-radius: 9px;
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+}
+.workspace-chevron {
+  display: inline-block;
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  border-right: 1.7px solid currentColor;
+  border-bottom: 1.7px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  color: #586779;
+}
+.workspace-choice-options {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  box-shadow: 0 16px 36px #17202b1c;
+}
+.field-app .workspace-choice-options button {
+  display: block;
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+}
+.field-app .workspace-choice-options button:hover,
+.field-app .workspace-choice-options button[aria-selected='true'] {
+  background: #eef2f5;
+}
+.report-control-label {
+  color: #536071;
+  font-weight: 600;
+}
+.field-app .report-month-stepper {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  min-height: 44px;
+  border: 1px solid #d6dce5;
+  border-radius: 9px;
+  background: #fff;
+}
+.field-app .report-month-stepper button {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 22px;
+  line-height: 1;
+}
+.field-app .report-month-stepper .report-month-current {
+  font-size: 14px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.report-month-current .workspace-chevron {
+  margin-left: 5px;
+}
+.field-app .report-month-stepper button:hover:not(:disabled) {
+  background: #f3f5f7;
+}
+.field-app .report-refresh {
+  min-width: 112px;
+  padding-inline: 18px;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+.report-month-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  left: 0;
+  width: min(320px, calc(100vw - 48px));
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 16px 36px #17202b1c;
+}
+.report-month-panel-year {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.report-month-panel-year button {
+  width: 44px;
+  font-size: 22px;
+  background: transparent;
+  border: 0;
+}
+.report-month-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.field-app .report-month-grid button {
+  min-width: 0;
+  padding: 4px;
+  border: 1px solid transparent;
+  background: #f6f7f9;
+}
+.field-app .report-month-grid button[aria-pressed='true'] {
+  border-color: #8b9aac;
+  background: #e8edf2;
+  font-weight: 700;
+}
+.field-app .report-results {
+  margin-top: 24px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+.report-results-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 24px;
+}
+.report-results-heading h2,
+.report-settings h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.report-results-heading p,
+.report-settings-heading p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+.field-app .report-download {
+  flex-shrink: 0;
+  min-width: 156px;
+  padding-inline: 20px;
+}
+.report-week-row,
+.report-matrix-preview {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(130px, 1fr) minmax(0, 1.4fr);
+  gap: 14px;
+  align-items: center;
+  min-height: 58px;
+  padding: 12px 24px;
+  border-top: 1px solid var(--line);
+}
+.report-week-row span,
+.report-matrix-preview span {
+  color: #536071;
+}
+.report-week-row span:last-child {
+  text-align: right;
+}
+.report-results > .react-error {
+  margin: 0 24px 20px;
+}
+.field-app .report-settings {
+  margin: 0 0 18px;
+  padding: 18px 22px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #f8fafb;
+}
+.report-settings-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.field-app .report-settings-heading button {
+  flex-shrink: 0;
+  padding-inline: 18px;
+  background: #fff;
+  border: 1px solid var(--line);
+}
+.report-settings-loading {
+  color: var(--muted);
+}
+.report-settings-form {
+  display: grid;
+  gap: 22px;
+  max-width: 760px;
+  padding-top: 24px;
+}
+.report-settings-form fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.report-settings-form legend {
+  margin-bottom: 10px;
+  font-weight: 650;
+}
+.report-count-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.report-count-options label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+.report-count-options label.is-selected {
+  border-color: #899aab;
+  background: #f0f3f6;
+}
+.report-count-options input {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+}
+.report-rule-fields {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 16px 28px;
+}
+.report-rule-fields > label:first-child {
+  display: grid;
+  gap: 8px;
+}
+.report-hours-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.field-app .report-hours-control input {
+  width: 94px;
+}
+.report-leader-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.report-leader-option input {
+  width: 18px;
+  height: 18px;
+}
+.report-settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.field-app .report-settings-actions button {
+  min-width: 112px;
+  padding-inline: 18px;
+}
+@media (max-width: 700px) {
+  .field-app .report-controls {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+    padding: 18px;
+  }
+  .field-app .report-refresh {
+    width: 100%;
+  }
+  .report-results-heading {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 18px;
+  }
+  .field-app .report-download {
+    width: 100%;
+  }
+  .report-week-row,
+  .report-matrix-preview {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 14px 18px;
+  }
+  .report-week-row span:last-child {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+  .report-count-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 360px) {
+  .field-app .report-type-switch {
+    display: grid;
+    width: 100%;
+  }
+  .field-app .report-type-switch button {
+    min-width: 0;
+    padding-inline: 8px;
+  }
+  .report-settings-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

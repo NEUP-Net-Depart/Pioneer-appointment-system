@@ -1,0 +1,165 @@
+{
+  "contractVersion": "staff-platform.v2",
+  "schemaVersion": "0050",
+  "authContext": [
+    "actor",
+    "identities",
+    "memberships",
+    "authorizationDate",
+    "grants",
+    "permissions",
+    "todayDuties",
+    "navigation",
+    "resumeTasks",
+    "modules",
+    "authVersion",
+    "schemaVersion"
+  ],
+  "errors": [
+    "VALIDATION_ERROR",
+    "SESSION_EXPIRED",
+    "PERMISSION_REQUIRED",
+    "REVISION_CONFLICT",
+    "REQUEST_CONFLICT",
+    "MEMBER_EXISTS"
+  ],
+  "routes": {
+    "identity": [
+      "GET /api/auth/me",
+      "GET /api/members",
+      "POST /api/members",
+      "GET /api/members/:memberId",
+      "GET /api/members/:memberId/audit",
+      "GET /api/members/:memberId/activation",
+      "POST /api/members/:memberId/activation",
+      "GET /api/users/:account",
+      "PATCH /api/members/:memberId",
+      "POST /api/members/import",
+      "GET /api/workbench",
+      "POST /api/members/:memberId/memberships",
+      "PATCH /api/members/:memberId/memberships/:id"
+    ],
+    "organization": [
+      "GET /api/organization/campuses",
+      "GET /api/organization/departments",
+      "POST /api/organization/departments",
+      "PATCH /api/organization/departments/:id",
+      "GET /api/organization/locations"
+    ],
+    "authorization": [
+      "GET /api/permissions",
+      "GET /api/roles",
+      "POST /api/roles",
+      "PATCH /api/roles/:id",
+      "POST /api/roles/preview",
+      "PUT /api/members/:memberId/roles"
+    ],
+    "repairs": [
+      "POST /api/scan/resolve",
+      "POST /api/scan/search",
+      "POST /api/scan/onsite",
+      "PATCH /api/appointments/:id/status",
+      "POST /api/appointments/:id/transfer",
+      "PATCH /api/appointments/:id/correction",
+      "POST /api/appointments/:id/receive",
+      "POST /api/appointments/:id/photos",
+      "PATCH /api/appointments/:id/information",
+      "POST /api/appointments/:id/link"
+    ],
+    "field": [
+      "GET /api/field/home",
+      "GET /api/field/board",
+      "GET /api/field/appointments/:id"
+    ],
+    "attendance": [
+      "GET /api/attendance/day",
+      "POST /api/attendance/arrivals",
+      "PUT /api/attendance/reviews",
+      "POST /api/attendance/preview",
+      "POST /api/attendance/events",
+      "POST /api/attendance/events/:id/token",
+      "POST /api/attendance/check-ins",
+      "POST /api/attendance/self-check-in",
+      "GET /api/attendance",
+      "GET /api/attendance/options",
+      "GET /api/attendance/export.csv",
+      "GET /api/me/attendance",
+      "GET /api/me/volunteer-summary",
+      "GET /api/attendance/report-settings",
+      "PUT /api/attendance/report-settings",
+      "GET /api/attendance/volunteer-report",
+      "GET /api/attendance/matrix",
+      "POST /api/attendance/corrections",
+      "PATCH /api/presence/me"
+    ],
+    "rosters": [
+      "GET /api/rosters/campus-week",
+      "POST /api/rosters/week/suggestions",
+      "PUT /api/rosters/campus-week",
+      "GET /api/rosters/week",
+      "PUT /api/rosters/week",
+      "GET /api/me/roster",
+      "GET /api/me/availability",
+      "PUT /api/me/availability",
+      "POST /api/rosters/assignments/:id/leave",
+      "POST /api/rosters/assignments/:id/leave-withdraw",
+      "GET /api/rosters/assignments/:id/cover-candidates",
+      "POST /api/rosters/assignments/:id/cover",
+      "GET /api/rosters/covers",
+      "POST /api/rosters/covers/:id/response"
+    ],
+    "audit": [
+      "GET /api/audit"
+    ]
+  },
+  "idempotency": "actorMemberId + action + requestId",
+  "dutyWorkflow": {
+    "shift": "19:00–21:00 Asia/Shanghai; unchanged legacy special shifts retain their times and IDs",
+    "checkInWindow": "18:30–21:30 Asia/Shanghai",
+    "suggestions": {
+      "input": ["weekStart", "campusId", "sourceVersion? (required by the planner when regenerating a loaded draft)", "assignments? (published and manual items to retain)"],
+      "output": ["assignments", "gaps", "unassigned", "sourceVersion"],
+      "writes": false,
+      "uniqueness": "one suggested shift per member per week across campuses and duty types"
+    },
+    "campusWeek": {
+      "input": ["weekStart", "campusId", "sourceVersion", "requestId", "rosters[2]: dutyType, revision, assignments"],
+      "atomic": ["repair roster", "office roster", "daily shared duty events", "audit", "receipt"],
+      "manualExceptions": "repeat shifts, availability and department mismatches and leader gaps are warned and audited; time overlaps are rejected"
+    },
+    "day": {
+      "input": ["campusId", "businessDate?"],
+      "output": ["items", "temporary", "summary", "people", "paused", "serverNow"],
+      "counts": "scope first, unique members; leave excluded from expected; temporary arrivals separate",
+      "statuses": ["upcoming", "pending", "arrived", "absent", "leave", "paused"]
+    },
+    "arrival": {
+      "input": ["assignmentId", "assignmentRevision", "requestId"],
+      "serverOwned": ["businessDate", "occurredAt", "eventId", "actor"],
+      "atomic": ["attendance fact", "presence", "audit", "receipt"],
+      "dedupe": "duty:memberId:businessDate; repeat does not change first arrival or later presence"
+    },
+    "review": {
+      "input": ["assignmentId", "assignmentRevision", "revision", "decision: absent|cleared", "requestId", "reason?"],
+      "initialRevision": -1,
+      "behavior": "after shift end only; undo increments revision; bound to current assignment member; audit retains history; never creates attendance; real arrival takes precedence"
+    },
+    "correction": {
+      "personInput": ["memberId", "businessDate", "campusId", "occurredAt", "reason", "requestId"],
+      "recordInput": ["recordId", "eventId", "memberId", "revision", "occurredAt", "reason", "requestId"],
+      "presenceEffect": false
+    },
+    "volunteerSummary": {
+      "subject": "current session member only",
+      "output": ["month", "asOf", "settings", "monthHours", "totalHours"],
+      "algorithm": "shared management report calculator, including existing weekly leader credits and week-start month attribution"
+    }
+  },
+  "attendancePagination": {
+    "pageSize": 100,
+    "cursor": "opaque nextCursor; pass as cursor without decoding",
+    "authorization": "current management identity and campus scope applied to historical attendance facts"
+  },
+  "businessTimeZone": "Asia/Shanghai",
+  "businessBaseline": "docs/requirements.md"
+}

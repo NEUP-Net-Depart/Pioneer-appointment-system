@@ -1,13 +1,13 @@
-const finished = "status='completed' AND outcome IN ('repaired','unrepaired','not_needed','legacy_unknown')";
-const classified = "status='completed' AND outcome IN ('repaired','unrepaired','not_needed')";
+const finished = "status='completed'";
+const classified = "status='completed' AND outcome IN ('repaired','partially_repaired','unrepaired','not_needed')";
 export function statsRepository(db) {
   return {
-    async aggregate({start,day,campuses:authorizedCampuses}) {
+    async aggregate({start,end,day,campuses:authorizedCampuses}) {
       const campusScope=authorizedCampuses.length ? `campus IN (${authorizedCampuses.map(()=>'?').join(',')})` : '0';
-      const where=campusScope+(day ? ' AND date=?' : start ? ' AND date>=?' : '');
-      const args=[...authorizedCampuses,...(day ? [day] : start ? [start] : [])];
+      const where=campusScope+(day ? ' AND date=?' : start ? ' AND date>=? AND date<=?' : '');
+      const args=[...authorizedCampuses,...(day ? [day] : start ? [start,end] : [])];
       const sql = [
-        `SELECT COUNT(*) AS total,COUNT(CASE WHEN ${finished} THEN 1 END) AS completed,
+        `SELECT COUNT(*) AS total,COUNT(CASE WHEN parent_appointment_id IS NOT NULL AND status NOT IN ('cancelled','expired') AND (received_at IS NOT NULL OR started_at IS NOT NULL) THEN 1 END) AS linkedRepairs,COUNT(CASE WHEN ${finished} THEN 1 END) AS completed,
           COUNT(CASE WHEN status='cancelled' THEN 1 END) AS cancelled,
           COUNT(CASE WHEN status='expired' THEN 1 END) AS expired,
           COUNT(CASE WHEN ${classified} THEN 1 END) AS classified,

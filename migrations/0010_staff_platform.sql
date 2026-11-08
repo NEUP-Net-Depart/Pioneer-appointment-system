@@ -1,0 +1,524 @@
+-- Forward upgrade from dev 135da288204d20a9c06d9579d7bf61813b2587fc.
+-- Applied as migrations/0010_staff_platform.sql; preserve existing appointment facts.
+-- Staff platform architecture: stable identities, organization, authorization,
+-- attendance, rosters, idempotent receipts and module/rule projections.
+-- This migration is additive so the existing appointment and activation history
+-- remains readable while new workflows use member IDs.
+
+CREATE TABLE members (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  student_id TEXT UNIQUE,
+  home_campus_id TEXT REFERENCES campuses(id),
+  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','inactive')),
+  revision INTEGER NOT NULL DEFAULT 0 CHECK(revision>=0),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE campuses (
+  id TEXT PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL UNIQUE,
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
+  revision INTEGER NOT NULL DEFAULT 0 CHECK(revision>=0)
+);
+
+CREATE TABLE departments (
+  id TEXT PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL UNIQUE,
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
+  revision INTEGER NOT NULL DEFAULT 0 CHECK(revision>=0)
+);
+
+CREATE TABLE locations (
+  id TEXT PRIMARY KEY,
+  campus_id TEXT NOT NULL REFERENCES campuses(id),
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
+  revision INTEGER NOT NULL DEFAULT 0 CHECK(revision>=0)
+);
+
+INSERT OR IGNORE INTO campuses(id,code,name) VALUES
+  ('campus-nanhu','nanhu','南湖'),('campus-hunnan','hunnan','浑南');
+INSERT OR IGNORE INTO departments(id,code,name) VALUES
+  ('dept-hardware','hardware','硬件部'),('dept-network','network','网络部'),('dept-office','office','办公室');
+INSERT OR IGNORE INTO locations(id,campus_id,code,name) VALUES
+  ('location-nanhu-main','campus-nanhu','nanhu-main','南湖维修点'),
+  ('location-hunnan-main','campus-hunnan','hunnan-main','浑南维修点');
+
+ALTER TABLE staff_accounts ADD COLUMN member_id TEXT;
+ALTER TABLE staff_accounts ADD COLUMN auth_version INTEGER NOT NULL DEFAULT 0;
+
+INSERT OR IGNORE INTO members(id,name,student_id,home_campus_id,status,created_at,updated_at)
+SELECT 'member-' || account, name,
+  CASE WHEN account GLOB '[0-9]*' THEN account ELSE NULL END,
+  CASE home_campus WHEN '南湖' THEN 'campus-nanhu' WHEN '浑南' THEN 'campus-hunnan' END,
+  CASE status WHEN 'enabled' THEN 'active' ELSE 'inactive' END,
+  created_at,created_at
+FROM staff_accounts;
+UPDATE staff_accounts SET member_id='member-' || account WHERE member_id IS NULL;
+CREATE UNIQUE INDEX idx_staff_accounts_member_id ON staff_accounts(member_id);
+CREATE INDEX idx_members_name ON members(name);
+CREATE INDEX idx_members_campus ON members(home_campus_id,status);
+
+CREATE TABLE member_department_memberships (
+  id TEXT PRIMARY KEY,
+  member_id TEXT NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+  department_id TEXT NOT NULL REFERENCES departments(id),
+  assignment_type TEXT NOT NULL DEFAULT 'primary' CHECK(assignment_type IN ('primary','secondary','exchange','temporary')),
+  is_primary INTEGER NOT NULL DEFAULT 0 CHECK(is_primary IN (0,1)),
+  effective_from TEXT NOT NULL,
+  effective_to TEXT,
+  revision INTEGER NOT NULL DEFAULT 0 CHECK(revision>=0),
+  created_at TEXT NOT NULL,
+  CHECK(effective_to IS NULL OR effective_to>effective_from)
+);
+CREATE INDEX idx_membership_member_time ON member_department_memberships(member_id,effective_from,effective_to);
+CREATE UNIQUE INDEX idx_membership_primary_open ON member_department_memberships(member_id)
+  WHERE is_primary=1 AND effective_to IS NULL;
+CREATE TRIGGER membership_primary_overlap_guard BEFORE INSERT ON member_department_memberships
+WHEN NEW.is_primary=1
+BEGIN
+  SELECT RAISE(ABORT,'PRIMARY_MEMBERSHIP_OVERLAP') WHERE EXISTS(
+    SELECT 1 FROM member_department_memberships old
+    WHERE old.member_id=NEW.member_id AND old.is_primary=1
+      AND (old.effective_to IS NULL OR NEW.effective_from<old.effective_to)
+      AND (NEW.effective_to IS NULL OR old.effective_from<NEW.effective_to)
+  );
+END;
+CREATE TRIGGER membership_primary_update_guard BEFORE UPDATE OF member_id,is_primary,effective_from,effective_to ON member_department_memberships
+WHEN NEW.is_primary=1
+BEGIN
+  SELECT RAISE(ABORT,'PRIMARY_MEMBERSHIP_OVERLAP') WHERE EXISTS(
+    SELECT 1 FROM member_department_memberships old
+    WHERE old.member_id=NEW.member_id AND old.is_primary=1 AND old.id<>NEW.id
+      AND (old.effective_to IS NULL OR NEW.effective_from<old.effective_to)
+      AND (NEW.effective_to IS NULL OR old.effective_from<NEW.effective_to)
+  );
+END;
+
+CREATE TABLE member_work_profiles (
+  id TEXT PRIMARY KEY,
+  member_id TEXT NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+  profile_code TEXT NOT NULL CHECK(profile_code IN ('repair','exchange','office','repair_lead','office_lead')),
+  effective_from TEXT NOT NULL,
+  effective_to TEXT,
+  revision INTEGER NOT NULL DEFAULT 0 CHECK(revision>=0),
+  UNIQUE(member_id,profile_code,effective_from)
+);
+CREATE INDEX idx_work_profiles_active ON member_work_profiles(member_id,effective_from,effective_to);
+
+INSERT OR IGNORE INTO member_department_memberships
+  (id,member_id,department_id,assignment_type,is_primary,effective_from,created_at)
+SELECT 'membership-'||account,member_id,
+  CASE WHEN role IN ('admin','superadmin') THEN 'dept-office' ELSE 'dept-hardware' END,
+  'primary',1,substr(created_at,1,10),created_at
+FROM staff_accounts WHERE member_id IS NOT NULL;
+INSERT OR IGNORE INTO member_work_profiles(id,member_id,profile_code,effective_from)
+SELECT 'profile-repair-'||account,member_id,'repair',substr(created_at,1,10)
+FROM staff_accounts WHERE role IN ('technician','superadmin');
+INSERT OR IGNORE INTO member_work_profiles(id,member_id,profile_code,effective_from)
+SELECT 'profile-office-'||account,member_id,'office',substr(created_at,1,10)
+FROM staff_accounts WHERE role IN ('admin','superadmin');
+
+CREATE TABLE permission_definitions (
+  code TEXT PRIMARY KEY,
+  module_code TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  scope_kinds TEXT NOT NULL DEFAULT '[]',
+  condition_kinds TEXT NOT NULL DEFAULT '[]',
+  sensitive INTEGER NOT NULL DEFAULT 0 CHECK(sensitive IN (0,1)),
+  version INTEGER NOT NULL DEFAULT 1,
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1))
+);
+
+CREATE TABLE roles (
+  id TEXT PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  level INTEGER NOT NULL DEFAULT 1 CHECK(level>=0),
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
+  revision INTEGER NOT NULL DEFAULT 0 CHECK(revision>=0),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE role_grants (
+  id TEXT PRIMARY KEY,
+  role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+  permission_code TEXT NOT NULL REFERENCES permission_definitions(code),
+  scope_spec TEXT NOT NULL DEFAULT '{}',
+  condition_spec TEXT NOT NULL DEFAULT '[]',
+  validity_spec TEXT NOT NULL DEFAULT '{}',
+  revision INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(role_id,permission_code)
+);
+
+CREATE TABLE member_roles (
+  id TEXT PRIMARY KEY,
+  member_id TEXT NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+  role_id TEXT NOT NULL REFERENCES roles(id),
+  scope_bindings TEXT NOT NULL DEFAULT '{}',
+  effective_from TEXT NOT NULL,
+  effective_to TEXT,
+  revision INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(member_id,role_id,effective_from)
+);
+CREATE INDEX idx_member_roles_active ON member_roles(member_id,effective_from,effective_to);
+
+INSERT OR IGNORE INTO permission_definitions(code,module_code,name,description,scope_kinds,condition_kinds,sensitive) VALUES
+ ('repair.summary.read','repairs','查看维修概览','读取授权范围内的预约设备摘要','["campus","department"]','[]',0),
+ ('repair.start','repairs','确认接单','确认核验并开始维修','["campus"]','["repairWorkEligible"]',0),
+ ('repair.finish.own','repairs','结束本人维修','提交本人维修结果','["self","campus"]','["ownResource"]',0),
+ ('repair.transfer','repairs','转派维修','将工单转派给合资格成员','["campus","department"]','["activeDutyRole"]',0),
+ ('repair.correct','repairs','修正维修记录','修正授权范围内的维修记录','["campus"]','["activeDutyRole"]',1),
+ ('customer.identity.read','repairs','查看客户身份','读取客户姓名和学号','["self","campus"]','["ownResource"]',1),
+ ('customer.contact.read','repairs','查看联系方式','读取客户联系方式','["self","campus"]','["activeDutyRole"]',1),
+ ('onsite.create','repairs','现场登记','创建临时维修登记','["campus"]','["activeDutyRole"]',0),
+ ('onsite.frontdesk.create','repairs','前台登记','由办公前台创建临时登记','["campus"]','["activeDutyRole"]',0),
+ ('attendance.self','attendance','本人签到','参加自己有资格的签到场次','["self","campus"]','["attendanceEligible"]',0),
+ ('attendance.session.manage','attendance','管理签到场次','创建和刷新签到场次凭证','["campus","department"]','["activeDutyRole"]',0),
+ ('attendance.correct','attendance','修正考勤','补录或修正考勤事实','["campus","department"]','["activeDutyRole"]',1),
+ ('attendance.export','attendance','导出考勤','导出授权范围的考勤','["campus","department"]','[]',1),
+ ('roster.read','rosters','查看排班','读取本人或管理范围的排班','["self","campus","department"]','[]',0),
+ ('roster.repair.manage','rosters','维修排班管理','生成和发布维修排班','["campus","department"]','["activeDutyRole"]',0),
+ ('roster.office.manage','rosters','办公排班管理','生成和发布办公排班','["campus","department"]','["activeDutyRole"]',0),
+ ('leave.review','rosters','审批请假','审批授权范围内的请假','["campus","department"]','["activeDutyRole"]',1),
+ ('members.manage','identity','成员管理','管理成员资料和账号映射','["campus","department"]','[]',1),
+ ('roles.manage','authorization','权限身份管理','维护角色和完整授权项','["campus","department"]','[]',1),
+ ('settings.manage','identity','系统设置','管理平台设置','["campus","department"]','[]',1),
+ ('audit.read','audit','查看审计','查询授权范围内的操作审计','["campus","department"]','[]',1),
+ ('data.delete','files','数据管理','执行受控数据清理','["campus","department"]','[]',1),
+ ('meetings.read.own','meetings','查看本人会议','读取本人会议与签到','["self","event"]','["meetingParticipant"]',0),
+ ('meetings.manage','meetings','管理会议','管理授权部门会议','["department","event"]','["meetingOrganizer"]',0),
+ ('meetings.attendance.export','meetings','导出会议考勤','导出会议统计','["department","event"]','["meetingOrganizer"]',1);
+
+INSERT OR IGNORE INTO roles(id,code,name,description,level,created_at,updated_at) VALUES
+ ('role-technician','technician','维修人员','维修工作台与本人维修操作',1,datetime('now'),datetime('now')),
+ ('role-office','office','办公人员','前台接待和办公签到',1,datetime('now'),datetime('now')),
+ ('role-repair-lead','repair_lead','维修值班负责人','当日维修运行与排班管理',2,datetime('now'),datetime('now')),
+ ('role-office-lead','office_lead','办公值班负责人','办公排班与请假审批',2,datetime('now'),datetime('now')),
+ ('role-superadmin','superadmin','最高管理员','全局成员、权限、审计和设置',3,datetime('now'),datetime('now'));
+
+INSERT OR IGNORE INTO role_grants(id,role_id,permission_code,scope_spec,condition_spec) VALUES
+ ('grant-technician-summary','role-technician','repair.summary.read','{"campuses":"bound"}','[]'),
+ ('grant-technician-start','role-technician','repair.start','{"campuses":"bound"}','[{"code":"repairWorkEligible","version":1}]'),
+ ('grant-technician-finish','role-technician','repair.finish.own','{"self":true}','[{"code":"ownResource","version":1}]'),
+ ('grant-technician-onsite','role-technician','onsite.create','{"campuses":"bound"}','[]'),
+ ('grant-technician-attendance','role-technician','attendance.self','{"self":true}','[{"code":"attendanceEligible","version":1}]'),
+ ('grant-office-onsite','role-office','onsite.frontdesk.create','{"campuses":"bound"}','[{"code":"activeDutyRole","version":1}]'),
+ ('grant-office-summary','role-office','repair.summary.read','{"campuses":"bound"}','[{"code":"activeDutyRole","version":1}]'),
+ ('grant-office-attendance','role-office','attendance.session.manage','{"campuses":"bound"}','[{"code":"activeDutyRole","version":1}]'),
+ ('grant-office-members','role-office','members.manage','{"campuses":"bound"}','[]'),
+ ('grant-office-roles','role-office','roles.manage','{"campuses":"bound"}','[]'),
+ ('grant-repair-lead-summary','role-repair-lead','repair.summary.read','{"campuses":"bound"}','[{"code":"activeDutyRole","version":1}]'),
+ ('grant-repair-lead-session','role-repair-lead','attendance.session.manage','{"campuses":"bound"}','[{"code":"activeDutyRole","version":1}]'),
+ ('grant-repair-lead-correct','role-repair-lead','repair.correct','{"campuses":"bound"}','[{"code":"activeDutyRole","version":1}]'),
+ ('grant-repair-lead-transfer','role-repair-lead','repair.transfer','{"campuses":"bound"}','[{"code":"activeDutyRole","version":1}]'),
+ ('grant-repair-lead-roster','role-repair-lead','roster.repair.manage','{"campuses":"bound"}','[{"code":"activeDutyRole","version":1}]'),
+ ('grant-office-lead-summary','role-office-lead','repair.summary.read','{"campuses":"bound"}','[{"code":"activeDutyRole","version":1}]'),
+ ('grant-office-lead-session','role-office-lead','attendance.session.manage','{"campuses":"bound"}','[{"code":"activeDutyRole","version":1}]'),
+ ('grant-office-lead-correct','role-office-lead','attendance.correct','{"campuses":"bound"}','[{"code":"activeDutyRole","version":1}]'),
+ ('grant-office-lead-onsite','role-office-lead','onsite.frontdesk.create','{"campuses":"bound"}','[{"code":"activeDutyRole","version":1}]'),
+ ('grant-office-lead-roster','role-office-lead','roster.office.manage','{"campuses":"bound"}','[{"code":"activeDutyRole","version":1}]'),
+ ('grant-office-lead-leave','role-office-lead','leave.review','{"campuses":"bound"}','[{"code":"activeDutyRole","version":1}]'),
+ ('grant-superadmin-members','role-superadmin','members.manage','{"all":true}','[]'),
+ ('grant-superadmin-roles','role-superadmin','roles.manage','{"all":true}','[]'),
+ ('grant-superadmin-audit','role-superadmin','audit.read','{"all":true}','[]'),
+ ('grant-superadmin-settings','role-superadmin','settings.manage','{"all":true}','[]'),
+ ('grant-superadmin-data','role-superadmin','data.delete','{"all":true}','[]');
+INSERT OR IGNORE INTO role_grants(id,role_id,permission_code,scope_spec,condition_spec)
+SELECT 'grant-superadmin-'||code,'role-superadmin',code,'{"all":true}','[]'
+FROM permission_definitions;
+
+INSERT OR IGNORE INTO member_roles(id,member_id,role_id,scope_bindings,effective_from)
+SELECT 'member-role-'||account,member_id,
+  CASE role WHEN 'technician' THEN 'role-technician' WHEN 'admin' THEN 'role-office' ELSE 'role-superadmin' END,
+  CASE WHEN protected=1 THEN '{"all":true}' ELSE '{"campuses":"legacy"}' END,
+  substr(created_at,1,10)
+FROM staff_accounts WHERE member_id IS NOT NULL;
+
+CREATE TABLE module_catalog (
+  code TEXT PRIMARY KEY,
+  version TEXT NOT NULL,
+  manifest_hash TEXT NOT NULL,
+  contract_version TEXT NOT NULL,
+  required_schema_version TEXT NOT NULL,
+  release_state TEXT NOT NULL CHECK(release_state IN ('test','ready','disabled')),
+  manifest_json TEXT NOT NULL,
+  registered_at TEXT NOT NULL,
+  revision INTEGER NOT NULL DEFAULT 0
+);
+INSERT OR IGNORE INTO module_catalog(code,version,manifest_hash,contract_version,required_schema_version,release_state,manifest_json,registered_at) VALUES
+ ('identity','1.0.0','f4b0b62d','1','0007','ready','{"code":"identity"}',datetime('now')),
+ ('organization','1.0.0','b3f4bad4','1','0007','ready','{"code":"organization"}',datetime('now')),
+ ('authorization','1.0.0','067c7c3b','1','0007','ready','{"code":"authorization"}',datetime('now')),
+ ('repairs','1.0.0','e9cb1406','1','0007','ready','{"code":"repairs"}',datetime('now')),
+ ('duty','1.0.0','cc8019d2','1','0007','ready','{"code":"duty"}',datetime('now')),
+ ('attendance','1.0.0','a06d1395','1','0007','ready','{"code":"attendance"}',datetime('now')),
+ ('rosters','1.0.0','514c6e44','1','0007','ready','{"code":"rosters"}',datetime('now')),
+ ('meetings','1.0.0','068e1705','1','0007','test','{"code":"meetings"}',datetime('now')),
+ ('audit','1.0.0','4c3c7c4b','1','0007','ready','{"code":"audit"}',datetime('now')),
+ ('files','1.0.0','cafe3c07','1','0006','ready','{"code":"files"}',datetime('now'));
+
+CREATE TABLE business_rule_versions (
+  rule_code TEXT NOT NULL,
+  version TEXT NOT NULL,
+  schema_version TEXT NOT NULL,
+  parameters TEXT NOT NULL DEFAULT '{}',
+  effective_at TEXT NOT NULL,
+  retired_at TEXT,
+  PRIMARY KEY(rule_code,version)
+);
+INSERT OR IGNORE INTO business_rule_versions(rule_code,version,schema_version,parameters,effective_at) VALUES
+ ('attendance.duty','1.0.0','0007','{"timezone":"Asia/Shanghai","dedupe":"duty:memberId:businessDate"}',datetime('now')),
+ ('roster.repair','1.0.0','0007','{"maxDaysPerWeek":1,"algorithm":"deterministic-greedy-v1"}',datetime('now')),
+ ('repairs.capacity','1.0.0','0006','{"source":"slot_capacities"}',datetime('now'));
+
+CREATE TABLE attendance_events (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL CHECK(type IN ('duty','meeting')),
+  policy_code TEXT NOT NULL,
+  policy_version TEXT NOT NULL,
+  rule_snapshot TEXT NOT NULL DEFAULT '{}',
+  campus_id TEXT REFERENCES campuses(id),
+  business_date TEXT NOT NULL,
+  starts_at TEXT NOT NULL,
+  ends_at TEXT NOT NULL,
+  source_ref TEXT NOT NULL DEFAULT '{}',
+  created_by_member_id TEXT REFERENCES members(id),
+  revision INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  CHECK(ends_at>starts_at)
+);
+CREATE INDEX idx_attendance_events_date ON attendance_events(business_date,type,campus_id);
+
+CREATE TABLE attendance_tokens (
+  id TEXT PRIMARY KEY,
+  event_id TEXT NOT NULL REFERENCES attendance_events(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  version INTEGER NOT NULL DEFAULT 1,
+  issued_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  revoked_at TEXT
+);
+CREATE INDEX idx_attendance_tokens_event ON attendance_tokens(event_id,version);
+
+CREATE TABLE attendance_records (
+  id TEXT PRIMARY KEY,
+  member_id TEXT NOT NULL REFERENCES members(id),
+  event_id TEXT NOT NULL REFERENCES attendance_events(id),
+  dedupe_key TEXT NOT NULL UNIQUE,
+  occurred_at TEXT NOT NULL,
+  recorded_at TEXT NOT NULL,
+  method TEXT NOT NULL CHECK(method IN ('qr','nfc','manual')),
+  source_ref TEXT NOT NULL DEFAULT '{}',
+  primary_department_id_snapshot TEXT,
+  primary_department_name_snapshot TEXT,
+  identity_snapshot TEXT NOT NULL DEFAULT '{}',
+  non_scheduled INTEGER NOT NULL DEFAULT 0 CHECK(non_scheduled IN (0,1)),
+  correction_id TEXT,
+  revision INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_attendance_records_member_date ON attendance_records(member_id,occurred_at);
+CREATE INDEX idx_attendance_records_event ON attendance_records(event_id,recorded_at);
+
+CREATE TABLE staff_presence (
+  member_id TEXT NOT NULL REFERENCES members(id),
+  business_date TEXT NOT NULL,
+  campus_id TEXT REFERENCES campuses(id),
+  state TEXT NOT NULL CHECK(state IN ('available','away','off_duty')),
+  revision INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY(member_id,business_date)
+);
+CREATE TABLE presence_events (
+  id TEXT PRIMARY KEY,
+  member_id TEXT NOT NULL REFERENCES members(id),
+  business_date TEXT NOT NULL,
+  from_state TEXT,
+  to_state TEXT NOT NULL,
+  occurred_at TEXT NOT NULL,
+  actor_member_id TEXT REFERENCES members(id),
+  actor_account TEXT
+);
+
+CREATE TABLE roster_tasks (
+  id TEXT PRIMARY KEY,
+  week_start TEXT NOT NULL,
+  campus_scope TEXT NOT NULL DEFAULT '{}',
+  slot_start TEXT NOT NULL,
+  slot_end TEXT NOT NULL,
+  member_ids TEXT NOT NULL DEFAULT '[]',
+  deadline TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  revision INTEGER NOT NULL DEFAULT 0,
+  created_by_member_id TEXT REFERENCES members(id),
+  created_at TEXT NOT NULL,
+  UNIQUE(week_start,slot_start,slot_end)
+);
+CREATE TABLE availability (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES roster_tasks(id) ON DELETE CASCADE,
+  member_id TEXT NOT NULL REFERENCES members(id),
+  business_date TEXT NOT NULL,
+  start_at TEXT NOT NULL,
+  end_at TEXT NOT NULL,
+  campus_id TEXT REFERENCES campuses(id),
+  revision INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(task_id,member_id,business_date,start_at,end_at)
+);
+CREATE TABLE roster_versions (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES roster_tasks(id),
+  status TEXT NOT NULL CHECK(status IN ('draft','published','superseded')),
+  version INTEGER NOT NULL,
+  rule_version TEXT NOT NULL,
+  algorithm_version TEXT NOT NULL,
+  input_snapshot_ref TEXT NOT NULL DEFAULT '{}',
+  solver_status TEXT NOT NULL DEFAULT 'feasible',
+  validation_result TEXT NOT NULL DEFAULT '{}',
+  published_at TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE(task_id,version)
+);
+CREATE TABLE duty_assignments (
+  id TEXT PRIMARY KEY,
+  version_id TEXT NOT NULL REFERENCES roster_versions(id),
+  member_id TEXT NOT NULL REFERENCES members(id),
+  business_date TEXT NOT NULL,
+  campus_id TEXT NOT NULL REFERENCES campuses(id),
+  duty_type TEXT NOT NULL CHECK(duty_type IN ('repair','office')),
+  start_at TEXT NOT NULL,
+  end_at TEXT NOT NULL,
+  revision INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(version_id,member_id,business_date,duty_type)
+);
+CREATE INDEX idx_duty_assignments_member_date ON duty_assignments(member_id,business_date,campus_id);
+CREATE TABLE duty_roles (
+  id TEXT PRIMARY KEY,
+  assignment_id TEXT NOT NULL REFERENCES duty_assignments(id) ON DELETE CASCADE,
+  role_kind TEXT NOT NULL CHECK(role_kind IN ('repair_lead','office_lead','coordinator')),
+  effective_range TEXT NOT NULL DEFAULT '{}',
+  UNIQUE(assignment_id,role_kind)
+);
+
+CREATE TABLE leave_requests (
+  id TEXT PRIMARY KEY,
+  assignment_id TEXT NOT NULL REFERENCES duty_assignments(id),
+  member_id TEXT NOT NULL REFERENCES members(id),
+  reason TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected','withdrawn')),
+  reviewer_member_id TEXT REFERENCES members(id),
+  review_note TEXT NOT NULL DEFAULT '',
+  revision INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  reviewed_at TEXT
+);
+CREATE INDEX idx_leave_member_status ON leave_requests(member_id,status,created_at);
+CREATE TABLE swap_requests (
+  id TEXT PRIMARY KEY,
+  from_assignment_id TEXT NOT NULL REFERENCES duty_assignments(id),
+  to_assignment_id TEXT NOT NULL REFERENCES duty_assignments(id),
+  from_member_id TEXT NOT NULL REFERENCES members(id),
+  to_member_id TEXT NOT NULL REFERENCES members(id),
+  from_revision INTEGER NOT NULL,
+  to_revision INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','declined','cancelled')),
+  note TEXT NOT NULL DEFAULT '',
+  revision INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  decided_at TEXT
+);
+
+CREATE TRIGGER swap_accept_guard BEFORE UPDATE OF status ON swap_requests
+WHEN OLD.status='pending' AND NEW.status='accepted'
+BEGIN
+  SELECT RAISE(ABORT,'REVISION_CONFLICT') WHERE
+    NOT EXISTS(SELECT 1 FROM duty_assignments WHERE id=OLD.from_assignment_id AND member_id=OLD.to_member_id AND revision=OLD.from_revision+1)
+    OR NOT EXISTS(SELECT 1 FROM duty_assignments WHERE id=OLD.to_assignment_id AND member_id=OLD.from_member_id AND revision=OLD.to_revision+1);
+END;
+
+CREATE TABLE audit_events (
+  id TEXT PRIMARY KEY,
+  actor_member_id TEXT REFERENCES members(id),
+  actor_account TEXT,
+  action TEXT NOT NULL,
+  action_version TEXT NOT NULL DEFAULT '1',
+  source_ref TEXT NOT NULL DEFAULT '{}',
+  before_json TEXT,
+  after_json TEXT,
+  reason TEXT NOT NULL DEFAULT '',
+  request_id TEXT,
+  request_trace_id TEXT,
+  occurred_at TEXT NOT NULL
+);
+CREATE INDEX idx_audit_events_actor_time ON audit_events(actor_member_id,occurred_at);
+CREATE INDEX idx_audit_events_source_time ON audit_events(action,occurred_at);
+
+CREATE TABLE operation_receipts (
+  actor_member_id TEXT NOT NULL REFERENCES members(id),
+  action TEXT NOT NULL,
+  request_id TEXT NOT NULL,
+  payload_hash TEXT NOT NULL,
+  resource_ref TEXT NOT NULL DEFAULT '{}',
+  result_json TEXT NOT NULL,
+  result_status TEXT NOT NULL DEFAULT 'success',
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(actor_member_id,action,request_id)
+);
+
+-- Accounts may be created after the migration (for example by activation). Keep
+-- the stable member mapping complete for those writes as well.
+CREATE TRIGGER staff_account_member_sync AFTER INSERT ON staff_accounts
+BEGIN
+  INSERT OR IGNORE INTO members(id,name,student_id,home_campus_id,status,created_at,updated_at)
+    VALUES ('member-'||NEW.account,NEW.name,
+      CASE WHEN NEW.account GLOB '[0-9]*' THEN NEW.account ELSE NULL END,
+      CASE NEW.home_campus WHEN '南湖' THEN 'campus-nanhu' WHEN '浑南' THEN 'campus-hunnan' END,
+      CASE NEW.status WHEN 'enabled' THEN 'active' ELSE 'inactive' END,NEW.created_at,NEW.created_at);
+  UPDATE staff_accounts SET member_id='member-'||NEW.account WHERE account=NEW.account AND member_id IS NULL;
+  INSERT OR IGNORE INTO member_department_memberships
+    (id,member_id,department_id,assignment_type,is_primary,effective_from,created_at)
+    SELECT 'membership-'||NEW.account,'member-'||NEW.account,
+      CASE NEW.role WHEN 'admin' THEN 'dept-office' WHEN 'superadmin' THEN 'dept-office' ELSE 'dept-hardware' END,
+      'primary',1,substr(NEW.created_at,1,10),NEW.created_at
+    WHERE NOT EXISTS(SELECT 1 FROM member_department_memberships WHERE id='membership-'||NEW.account);
+  INSERT OR IGNORE INTO member_work_profiles(id,member_id,profile_code,effective_from)
+    VALUES ('profile-default-'||NEW.account,'member-'||NEW.account,
+      CASE NEW.role WHEN 'admin' THEN 'office' WHEN 'superadmin' THEN 'repair' ELSE 'repair' END,
+      substr(NEW.created_at,1,10));
+  INSERT OR IGNORE INTO member_work_profiles(id,member_id,profile_code,effective_from)
+    SELECT 'profile-office-'||NEW.account,'member-'||NEW.account,'office',substr(NEW.created_at,1,10)
+    WHERE NEW.role IN ('admin','superadmin');
+  INSERT OR IGNORE INTO member_roles(id,member_id,role_id,scope_bindings,effective_from)
+    VALUES ('member-role-'||NEW.account,'member-'||NEW.account,
+      CASE NEW.role WHEN 'technician' THEN 'role-technician' WHEN 'admin' THEN 'role-office' ELSE 'role-superadmin' END,
+      CASE WHEN NEW.protected=1 THEN '{"all":true}' ELSE '{"campuses":"legacy"}' END,
+      substr(NEW.created_at,1,10));
+END;
+
+ALTER TABLE active_repairs ADD COLUMN member_id TEXT;
+UPDATE active_repairs SET member_id=(SELECT member_id FROM staff_accounts WHERE account=active_repairs.account);
+CREATE UNIQUE INDEX idx_active_repairs_member ON active_repairs(member_id) WHERE member_id IS NOT NULL;
+CREATE TRIGGER active_repair_member_sync AFTER INSERT ON active_repairs
+BEGIN
+  UPDATE active_repairs SET member_id=(SELECT member_id FROM staff_accounts WHERE account=NEW.account) WHERE account=NEW.account AND member_id IS NULL;
+END;
+
+CREATE TABLE repair_intake_records (
+  id TEXT PRIMARY KEY,
+  appointment_id TEXT NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
+  member_id TEXT REFERENCES members(id),
+  account TEXT NOT NULL REFERENCES staff_accounts(account),
+  front_photo_id TEXT NOT NULL,
+  back_photo_id TEXT NOT NULL,
+  verified_at TEXT NOT NULL,
+  revision INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX idx_repair_intake_appointment ON repair_intake_records(appointment_id,verified_at);

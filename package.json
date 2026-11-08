@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Cloudflare Pages with isolated Production, Preview and Staff Staging resources",
+  "description": "Cloudflare Pages with isolated Production and Preview resources",
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.18.0"
   },
   "scripts": {
     "build": "node scripts/build.mjs",
@@ -20,29 +20,42 @@
     "test": "npm run build && node --test tests/*.test.mjs",
     "deploy": "node scripts/deploy.mjs",
     "deploy:preview": "node scripts/deploy.mjs --preview",
-    "deploy:staff-staging": "node scripts/deploy.mjs --staff-staging",
     "smoke": "node scripts/smoke.mjs",
     "lint": "eslint . --max-warnings 0",
     "audit:architecture": "node scripts/audit.mjs",
     "db:verify": "node scripts/verify-migrations.mjs",
-    "verify": "npm run lint && npm run audit:architecture && npm run check && npm test && npm run db:verify && npm run test:e2e",
+    "verify": "npm run verify:checks && npm run test:e2e",
+    "verify:checks": "npm run format:staff:check && npm run lint && npm run typecheck && npm run audit:architecture && npm run db:history && npm run check && npm test && npm run db:verify",
     "test:e2e": "node scripts/test-e2e.mjs",
     "preview:local": "node scripts/test-e2e.mjs --serve",
-    "preview:booking-layout": "npm run build && node scripts/preview-booking-layout.mjs",
-    "test:booking-layout": "npm run build && node --test tests/preview/booking-layout.test.mjs",
-    "release:plan": "node scripts/release-plan.mjs"
+    "release:plan": "node scripts/release-plan.mjs",
+    "typecheck": "tsc --noEmit",
+    "format:staff": "prettier --write \"frontend/staff-react/**/*.{js,jsx,ts,tsx,css}\" \"src/{services,db}/staff-platform{.js,/**/*.js}\"",
+    "format:staff:check": "prettier --check \"frontend/staff-react/**/*.{js,jsx,ts,tsx,css}\" \"src/{services,db}/staff-platform{.js,/**/*.js}\"",
+    "db:history": "node scripts/verify-migration-history.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.64.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "esbuild": "0.28.2",
     "eslint": "10.12.0",
     "globals": "17.13.0",
     "miniflare": "5.20261006.1-alpha",
+    "prettier": "3.6.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
     "wrangler": "4.149.0"
   },
   "dependencies": {
+    "@tesseract.js-data/eng": "1.0.0",
     "blueimp-load-image": "5.16.0",
+    "fflate": "0.8.2",
+    "lucide-react": "^0.468.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "tesseract.js": "7.0.0",
     "zxing-wasm": "3.1.5"
   }
 }

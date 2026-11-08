@@ -1,5 +1,45 @@
 /* Student theme and responsive layout. */
-.user-mode { --radius: 9px; background: #f5f8fa; }
+.booking-notices { display: grid; gap: 12px; margin-bottom: 24px; }
+.booking-notice { border: 1px solid var(--line); border-radius: 9px; padding: 18px; background: white; min-width: 0; }
+.booking-notice h3 { font-size: 16px; margin: 0 0 8px; }
+.booking-notice p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; }
+.booking-notice.is-important { border-inline-start: 4px solid var(--navy); }
+.booking-notice .booking-notice-read { min-height: 44px; margin-top: 16px; white-space: normal; }
+.booking-notice-read[aria-pressed=true] { background: var(--navy); color: white; }
+.booking-notice-preview { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.booking-notice-preview>div { min-width: 0; }
+.booking-notice-preview h3 { overflow-wrap: anywhere; }
+.booking-notice-preview span { font-size: 13px; color: var(--muted); }
+.booking-notice-preview button { flex-shrink: 0; min-height: 44px; }
+.booking-notice-dialog { width: min(640px,100%); }
+.booking-notice-dialog h2 { margin: 0 0 20px; }
+.booking-notice-dialog .booking-notices { margin-bottom: 20px; }
+.booking-notice-dialog .modal-actions { display: flex; justify-content: flex-end; }
+@media(max-width:480px) { .booking-notice-preview { flex-wrap: wrap; } .booking-notice-preview button { width: 100%; } .booking-notice-read { width: 100%; } }
+.booking-slot-context { margin: 5px 0 0; color: #273743; font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.booking-time-panel[data-state=paused] .booking-panel-heading { border-left: 3px solid #526674; padding-left: 10px; }
+.booking-time-panel[data-state=paused] .booking-panel-label { color: #273743; }
+.user-mode .booking-days .booking-remaining, .user-mode .booking-slots .booking-remaining { width: auto; white-space: nowrap; }
+.user-mode .booking-days .booking-choice[data-state=full] .booking-remaining,
+.user-mode .booking-slots .booking-choice[data-state=full] .booking-remaining { color: #253541; font-weight: 700; }
+.user-mode .booking-days .booking-choice[data-state=unopened] .booking-remaining,
+.user-mode .booking-slots .booking-choice[data-state=unopened] .booking-remaining { color: #526777; font-weight: 600; }
+.user-mode .booking-days .booking-choice[data-state=paused] .booking-remaining,
+.user-mode .booking-slots .booking-choice[data-state=paused] .booking-remaining { color: #273743; font-weight: 700; }
+.user-mode .booking-days .booking-choice[data-state=paused] { background: #e9eef0; }
+.user-mode .booking-days .booking-choice[data-state=paused][aria-pressed=true] { background: #22313b; color: #fff; }
+.user-mode .booking-days .booking-choice[aria-pressed=true] .booking-remaining { color: #fff; }
+.user-mode .booking-slots .booking-choice:disabled { opacity: 1; padding-right: 18px; background: #f3f6f7; border-color: #dce5ea; color: #536b79; }
+.user-mode .booking-slots .booking-choice:disabled[data-state=full] { background: #eef1f2; border-color: #ccd7dc; }
+.user-mode .booking-slots .booking-choice:disabled[data-state=paused] { background: #e9eef0; border-color: #c5d2d8; }
+.user-mode .booking-slots .booking-choice:disabled:after { display: none; }
+.user-mode .booking-slots .booking-choice:disabled .booking-remaining { color: inherit; }
+.user-mode .booking-slots .booking-choice:disabled[data-state=full] .booking-remaining { color: #253541; }
+.user-mode .booking-slots .booking-choice:disabled[data-state=paused] .booking-remaining { color: #273743; }
+.user-mode .booking-days .booking-choice:disabled { opacity: 1; }
+.booking-days:empty { display: none !important; }
+.booking-empty { flex: 1; display: grid; place-items: center; min-height: 180px; text-align: center; }
+.user-mode { --radius: 9px; --student-surface-radius: 12px; --muted: #586b79; --green: #117b68; background: #f5f8fa; }
 .user-mode [hidden] { display: none !important; }
 .user-mode .topbar { position: relative; height: 72px; }
 .user-mode .topbar-inner { max-width: none; padding: 0 clamp(24px,7vw,100px); }
@@ -19,13 +59,13 @@
 .user-mode .secondary-btn { background: #eff4f6; border-color: #dce5ea; }
 .user-mode .text-btn { min-height: 44px; padding: 10px 6px; color: #34576b; text-decoration: underline; text-underline-offset: 3px; }
 .user-mode button:disabled { opacity: .55; cursor: not-allowed; }
-.user-mode :is(button,a,input,select,textarea,summary):focus-visible { outline: 3px solid #82bba9; outline-offset: 3px; }
+.user-mode :is(button, a, input, select, textarea, summary):focus-visible { outline: 3px solid #82bba9; outline-offset: 3px; }
 .step-track { display: flex; list-style: none; padding: 0; margin: 0 0 24px; gap: 16px; }
-.step-track li { flex: 1; color: #6d7e8d; font-size: 12px; display: flex; align-items: center; gap: 8px; }
+.step-track li { flex: 1; color: #586b79; font-size: 12px; display: flex; align-items: center; gap: 8px; }
 .step-track span { width: 26px; height: 26px; background: #e5ecf0; border-radius: 50%; display: grid; place-items: center; flex: none; font-weight: 700; }
 .step-track [aria-current=step] { color: var(--navy); font-weight: 700; }
 .step-track [aria-current=step] span { background: var(--navy); color: white; }
-.student-form, .detail-section { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 28px; }
+.student-form, .detail-section { background: #fff; border: 1px solid var(--line); border-radius: var(--student-surface-radius); padding: 28px; }
 /* Picker shapes and controls are defined in shared/styles.css. */
 #booking-form:has(#booking-picker:not([hidden])) { padding: 0; border: 0; background: transparent; }
 .student-form .booking-picker { margin: 0; padding-bottom: 28px; }
@@ -91,26 +131,36 @@ fieldset.field { padding: 0; border: 0; }
 .user-mode .success-actions { justify-content: flex-start; gap: 12px; flex-wrap: wrap; }
 .user-mode .repair-qr img { display: block; width: 240px; height: 240px; max-width: 100%; object-fit: contain; }
 .user-mode .repair-qr-status { min-height: 1.7em; }
+.user-mode .repair-qr-status:empty { visibility: hidden; }
 .success-layout { display: grid; grid-template-columns: minmax(0,1fr) 264px; align-items: start; gap: 24px; margin-top: 24px; }
 .success-details { min-width: 0; }
 .success-details .selection-summary { margin-top: 0; }
 .success-details #copy-code { margin-top: 16px; }
 .user-mode .success-qr-panel { min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: #f1f7f5; text-align: center; }
 .user-mode .success-qr-panel img { margin: 0 auto; }
+.user-mode .success-qr-hint { margin: 12px 0 0; color: var(--muted); line-height: 1.7; }
 @media(max-width:759px) { .success-layout { grid-template-columns: minmax(0,1fr); } .success-qr-panel { order: -1; } }
 .list-toolbar { justify-content: flex-end; margin-bottom: 16px; }
 .import-form { margin-bottom: 24px; }
 .record-group { margin: 24px 0; }
 .record-group h2 { font-size: 17px; }
-.student-record { display: block; width: 100%; text-align: left; background: white; border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin: 12px 0; }
+.student-record { display: block; width: 100%; text-align: left; background: white; border: 1px solid var(--line); border-radius: var(--student-surface-radius); padding: 20px; margin: 12px 0; }
 .student-record .record-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .student-record strong { font-size: 16px; }
 .student-record p { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
 .user-mode .status-pill { border-radius: 6px; font-size: 12px; flex: none; }
-.user-mode .empty-state { padding: 42px 16px; background: white; border: 1px solid var(--line); border-radius: 12px; }
+.user-mode .empty-state { padding: 42px 16px; background: white; border: 1px solid var(--line); border-radius: var(--student-surface-radius); }
 .user-mode .empty-state h2 { font-size: 18px; margin: 0 0 24px; }
 .user-mode .empty-state p { margin-bottom: 16px; }
 .detail-section { margin: 16px 0; }
+#appointment-detail { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+#appointment-detail .detail-section { margin: 0; min-width: 0; }
+#detail-source-data { min-width: 0; }
+.detail-source-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+#detail-source-data .review-group { padding: 0; border: 0; }
+#detail-information + h3 { margin: 20px 0 12px; padding-top: 20px; border-top: 1px solid var(--line); }
+#detail-summary .selection-summary { margin-top: 14px; padding: 0; border: 0; background: transparent; }
+#appointment-detail > #detail-operations { padding: 20px 0 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; }
 .detail-section dl, .review-group dl { margin: 0; }
 .detail-section dl>div, .review-group dl>div { display: grid; grid-template-columns: 130px minmax(0,1fr); gap: 20px; padding: 8px 0; }
 .detail-section dt, .review-group dt { color: var(--muted); }
@@ -125,7 +175,7 @@ fieldset.field { padding: 0; border: 0; }
 .photo-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; min-width: 0; }
 .photo-card img { width: 100%; height: 140px; object-fit: cover; border-radius: 6px; }
 .photo-card p { font-size: 12px; margin: 8px 0; overflow-wrap: anywhere; }
-.photo-card button { min-height: 44px; }
+.photo-card button, #refresh-my-appointments { min-width: 44px; min-height: 44px; }
 .photo-controls { display: flex; flex-wrap: wrap; gap: 8px; }
 .photo-card progress { width: 100%; }
 .photo-preview-button { display: block; padding: 0; border: 0; width: 100%; background: transparent; }
@@ -150,6 +200,18 @@ fieldset.field { padding: 0; border: 0; }
 [data-upload-state=uploading] .upload-state-icon { border-right-color: transparent; animation: upload-spin 1s linear infinite; }
 .upload-advice { display: flex; align-items: flex-start; gap: 10px; margin: 18px 0; }
 .photo-upload-actions { justify-content: flex-start; }
+.repair-history-section { grid-column: 1 / -1; min-width: 0; }
+.repair-history-list { display: grid; gap: 0; }
+.repair-round { min-width: 0; padding: 18px 0; border-top: 1px solid var(--line); }
+.repair-round:first-child { border-top: 0; }
+.repair-round-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.repair-round-heading span { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; text-align: right; }
+.repair-round-time, .repair-round-result, .repair-round-note { margin: 8px 0; }
+.repair-round-note { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
+.repair-round-events { display: grid; gap: 12px; margin: 14px 0; padding: 0 0 0 22px; color: var(--muted); }
+.repair-round-events li { padding-left: 4px; }
+.repair-round-events time { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
+.repair-round-events p { margin: 5px 0 0; white-space: pre-wrap; }
 @keyframes upload-spin { to { transform: rotate(360deg); } }
 @media(max-width:480px) { #success-photos { padding: 16px; } .photo-upload-row { gap: 8px; } }
 .user-mode .modal-backdrop { padding: 20px; z-index: 100; }
@@ -161,7 +223,7 @@ fieldset.field { padding: 0; border: 0; }
 .photo-layer .modal { width: min(850px,100%); }
 #photo-large { display: block; max-width: 100%; max-height: 70dvh; object-fit: contain; margin: 16px auto 0; }
 @media(min-width:760px) { .photo-grid { grid-template-columns: repeat(4,minmax(0,1fr)); } }
-@media(max-width:480px) { .user-mode .topbar { height: 108px; } .user-mode .topbar-inner { flex-wrap: wrap; padding: 14px 20px 0; } .user-mode .brand { width: 100%; } .user-mode .organization-logo { width: 30px; height: 30px; } .user-mode .main-nav { height: 46px; width: 100%; gap: 10px; } .user-mode .nav-link { flex: 1; } .student-shell { padding: 26px 16px 48px; } .student-heading h1 { font-size: 26px; } .student-form,.detail-section,.user-mode .success-panel { padding: 20px 16px; border-radius: 12px; } .step-track { gap: 8px; } .step-track li { font-size: 11px; gap: 5px; } .step-actions { flex-wrap: wrap; } .step-actions .primary-btn { flex: 1; } .detail-section dl>div,.review-group dl>div { grid-template-columns: 94px minmax(0,1fr); gap: 12px; } .title-row h1 { margin: 0; } .user-mode .modal { padding: 20px; } }
+@media(max-width:480px) { .user-mode .topbar { height: 108px; } .user-mode .topbar-inner { flex-wrap: wrap; padding: 14px 20px 0; } .user-mode .brand { width: 100%; } .user-mode .organization-logo { width: 30px; height: 30px; } .user-mode .main-nav { height: 46px; width: 100%; gap: 10px; } .user-mode .nav-link { flex: 1; } .student-shell { padding: 26px 16px 48px; } .student-heading h1 { font-size: 26px; } .student-form,.detail-section,.user-mode .success-panel { padding: 20px 16px; border-radius: var(--student-surface-radius); } .step-track { gap: 8px; } .step-track li { font-size: 11px; gap: 5px; } .step-actions { flex-wrap: wrap; } .step-actions .primary-btn { flex: 1; } .detail-section dl>div,.review-group dl>div { grid-template-columns: 94px minmax(0,1fr); gap: 12px; } .title-row h1 { margin: 0; } .user-mode .modal { padding: 20px; } }
 @media(min-width:900px) {
   .student-form:not(:has(#booking-picker:not([hidden]))) { padding: 32px; }
   .student-form [data-step="2"] .form-block { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); column-gap: 32px; row-gap: 24px; align-items: start; }
@@ -170,9 +232,10 @@ fieldset.field { padding: 0; border: 0; }
   .student-form [data-step="2"] .form-block > .field { margin: 0; }
   .student-form [data-step="2"] .form-block > h3 { margin: 0; }
   .fault-options { grid-template-columns: repeat(4,minmax(0,1fr)); }
-  #booking-review, #lookup-results, #appointment-detail { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 24px; align-items: start; }
-  #booking-review > *, #lookup-results > *, #appointment-detail > * { min-width: 0; }
-  #lookup-results > :not(.record-group), #detail-summary, #detail-repair-record, #detail-operations { grid-column: 1 / -1; }
+  #booking-review, #lookup-results { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 24px; align-items: start; }
+  #booking-review > *, #lookup-results > * { min-width: 0; }
+  #lookup-results > :not(.record-group) { grid-column: 1 / -1; }
+  .detail-source-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; }
   #detail-repair-record:empty { display: none; }
   #appointment-detail .detail-section { margin: 0; }
   #appointment-detail .photo-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
@@ -186,8 +249,20 @@ fieldset.field { padding: 0; border: 0; }
 .selection-summary strong { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
 .selection-summary strong>span { white-space: nowrap; }
 .summary-slot { font-size: 18px; }
-#detail-upload { margin-top: 14px; }
+.detail-upload-actions { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.detail-upload-actions #detail-photos { display: contents; }
+.detail-upload-actions .photo-grid:empty { display: none; }
+.detail-upload-actions .photo-grid:not(:empty), .detail-upload-actions .field-error:not(:empty) { flex: 0 0 100%; }
+#detail-upload { margin: 0; }
 .photo-preview-placeholder { height: 140px; border-radius: 6px; background: #eff4f6; }
 .user-mode progress { width: 100%; height: 8px; accent-color: var(--green); }
 #appointment-detail-title { font-size: 30px; line-height: 1.3; margin: 12px 0 24px; }
 @media(max-width:480px) { #appointment-detail-title { font-size: 26px; } }
+
+#detail-summary h2 { margin-bottom: 14px; }
+.repair-history-details > summary, #detail-repair-record summary { cursor: pointer; min-height: 44px; padding-block: 10px; font-weight: 600; }
+.repair-history-details .repair-history-list { margin-top: 16px; }
+#detail-repair-record details > .detail-section { margin-top: 12px; padding: 0; border: 0; }
+#detail-current-qr img { display: block; max-width: 100%; height: auto; margin: 16px auto 0; }
+#detail-source-data > summary:not([hidden]) { cursor: pointer; padding: 10px 0; font-weight: 600; }
+#detail-operations:empty { display: none; }

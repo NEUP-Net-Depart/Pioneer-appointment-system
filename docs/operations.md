@@ -1,45 +1,62 @@
 # 部署与运维
 
-## 环境
+## 环境与绑定
 
-| 环境 | 分支 | 配置 | 附件配额 |
-|---|---|---|---|
-| Production | `main` | [wrangler.jsonc](../wrangler.jsonc) | 8 GiB |
-| Preview | `dev` 及普通功能分支 | 同文件的 `env.preview` | 512 MiB |
-| Staff Staging | `next/staff-platform` | [wrangler.staff-staging.jsonc](../wrangler.staff-staging.jsonc) | 512 MiB |
+| 环境 | 分支 | D1 | 私有 R2 | 配额 |
+| --- | --- | --- | --- | --- |
+| Production | `main` | `pioneer-appointments-production-v2` | `pioneer-attachments-production-v2` | 8 GiB |
+| 共享 Preview | `dev` 及普通功能分支 | `pioneer-appointments-preview-v2` | `pioneer-attachments-preview-v2` | 512 MiB |
 
-[生产](https://pioneer-appointment-system.pages.dev)、[dev](https://dev.pioneer-appointment-system.pages.dev)、[Staff Staging](https://pioneer-staff-staging.pages.dev/staff/)。各环境独立 D1、私有 R2 和密钥，普通 Preview 分支共用测试资源；具体资源名称以配置文件为准。
+Production/Preview 使用 [wrangler.jsonc](../wrangler.jsonc)。绑定名固定为 `DB`、`ATTACHMENTS`，配额由 `MAX_R2_BYTES` 指定。Production 与 Preview 不复用数据或密钥；普通 Preview 分支共用测试库、附件和应用密钥。
 
-Pages 使用 Actions 发布，关闭 Pages 自动部署。构建命令 `npm run build`，输出 `dist`，Functions 位于 `functions/`，保留 `nodejs_compat`。主项目生产分支为 `main`；Staff 项目使用 Direct Upload，生产分支为 `next/staff-platform`。
+入口：[生产](https://pioneer-appointment-system.pages.dev)、[dev](https://dev.pioneer-appointment-system.pages.dev)。其他分支地址由发布计划生成；[Pages 分支别名](https://developers.cloudflare.com/pages/configuration/preview-deployments/#preview-aliases)转换时须避免重名。
+
+Pages 通过 Actions Direct Upload 发布，关闭自动 Git 构建。构建命令 `npm run build`，输出 `dist`，Functions 位于 `functions/`，保留 `nodejs_compat` 和 `limits.cpu_ms=1000`。项目生产分支为 `main`。工作人员统一运行 React，版本由部署代码决定。
+
+## Secrets 与初始化
 
 | 应用 Secret | 要求 |
-|---|---|
-| `JWT_SECRET` | 至少 32 字符随机值 |
-| `PII_ENCRYPTION_KEY` | 64 位十六进制，须与现有联系方式数据匹配 |
-| `SCAN_QR_SECRET` | 可选，至少 32 字符；缺省使用 PII 密钥及独立 HMAC 域，变更会使已打印二维码失效 |
+| --- | --- |
+| `JWT_SECRET` | 至少 32 字符随机值，各环境独立 |
+| `PII_ENCRYPTION_KEY` | 64 位十六进制，须匹配已有联系方式数据 |
+| `SCAN_QR_SECRET` | 可选，至少 32 字符；缺省使用 PII 密钥及独立 HMAC 域，变更会使已打印维修码失效 |
+
+密钥保存于相应 Pages 环境。不得写入 Git、Wrangler vars、前端、日志或构建产物。私人凭证补发不使维修码失效；保留既有签名密钥，历史维修码的校验仍用于访问原工单。
+
+`root001`、`root002` 是受保护的 `superadmin`。首次 seed 从本机环境变量读取 `ROOT001_PASSWORD`、`ROOT002_PASSWORD`，各 16–128 字符；完成后清除。密码和密钥备份保存在仓库外的受限目录。seed 不覆盖已有密码，发布不初始化账号。
+
+本地启动见 [README](../README.md#本地运行)。`.dev.vars` 与 `.wrangler/` 仅供本地使用；`preview:local` 使用一次性隔离 D1/R2，终端输出访问地址，代码更新后须重启。本地预览的账号以本地夹具及终端输出为准，部署环境不会自动创建这些账号。
 
 ## CI 与权限
 
-[CI](../.github/workflows/check.yml) 先运行 `npm run verify`。`main`、`dev`、`next/staff-platform` 在各自环境迁移数据库、发布并执行 smoke；普通功能分支仅发布 Preview，不迁移；PR 和 `feat/staff-*` 仅隔离验证。手动 CI 限非 `main` 分支，遵循同样规则。
+[发布工作流](../.github/workflows/check.yml) 对推送与 PR 分阶段执行与 `npm run verify` 等价的完整检查，浏览器任务覆盖 Chromium 桌面与 WebKit 手机尺寸：
 
-仓库设置 `CLOUDFLARE_ACCOUNT_ID`，GitHub Environment 按下表配置 Token：
+| 触发 | 目标与顺序 |
+| --- | --- |
+| 推送 `main` | 验证 → Production D1 迁移 → 发布 → HTTP smoke |
+| 推送 `dev` | 验证 → Preview 快照本地演练 → 共享 Preview D1 迁移 → 发布 → smoke |
+| 推送其他分支 | 验证 → 检查 dev schema 版本 → 分支 Preview 发布 → smoke；版本不匹配时暂缓发布，不迁移 |
+| 手动 CI | 仅非 `main` 分支，遵循对应分支规则 |
+| PR、标签、分支删除 | PR 仅验证；标签和删除不发布 |
 
-| Environment | 分支限制 | Secret 与权限 |
-|---|---|---|
-| `production` | main | `CLOUDFLARE_API_TOKEN`：D1 Edit、Pages Edit、R2 Storage Edit |
-| `preview` | 不限 | `CLOUDFLARE_PREVIEW_API_TOKEN`：Pages Edit |
-| `preview-migrations` | dev | `CLOUDFLARE_PREVIEW_D1_API_TOKEN`：D1 Edit |
-| `preview-maintenance` | main | `CLOUDFLARE_PREVIEW_MAINTENANCE_API_TOKEN`：D1 Edit、R2 Storage Edit |
-| `staff-staging` | next/staff-platform | `CLOUDFLARE_STAFF_PAGES_API_TOKEN`：Pages Edit |
-| `staff-staging-migrations` | next/staff-platform | `CLOUDFLARE_STAFF_D1_API_TOKEN`：D1 Edit；`CLOUDFLARE_STAFF_MAINTENANCE_API_TOKEN`：D1 Edit、R2 Storage Edit |
+迁移或演练失败停止发布。0033 升级自动迁移业务角色并检查一人多账号冲突，无冲突时无需补权或切换开关；冲突时停止，不合并身份。dev 整条链由 `cloudflare-dev-release` 串行保护。共享 Preview 演练和迁移使用 `cloudflare-preview-migrations` 锁；本地远程操作避开正在执行的 CI。
 
-Token 限定目标账号，维护 Token 不提供给功能分支，R2 权限须支持删除。Pages Edit 无法仅限同项目 Preview；`production` 的 `SITE_URL` 设置为生产域名。
+Preview 演练仅将现有 D1 快照导出至临时本地数据库，应用待执行迁移，核验原数据及实际账号权限；不修改远程 Preview，不上传快照为 CI 工件。本地 Secrets 不进入发布目录。
 
-Staff Staging 的应用密钥和 `MAX_R2_BYTES` 存于 `staff-staging` 环境，配额须与配置文件一致。功能分支使用 `feat/staff-*`，PR base 为 `next/staff-platform`，遵守 [Ruleset](../.github/staff-staging-ruleset.json) 的线性历史、最新基线和 `test` 检查。发布与维护共用 `cloudflare-staff-staging` 锁，迁移和发布 SHA 必须一致；本地操作避开正在执行的 CI。初始化使用独立测试密码。
+仓库配置 `CLOUDFLARE_ACCOUNT_ID`，各 GitHub Environment 配置：
 
-## 发布与初始化
+| Environment | 允许分支 | Secret 与 Cloudflare 权限 |
+| --- | --- | --- |
+| `production` | `main` | `CLOUDFLARE_API_TOKEN`：D1 Edit、Pages Edit、R2 Storage Edit；变量 `SITE_URL` 为生产域名 |
+| `preview` | 普通 Preview 分支 | `CLOUDFLARE_PREVIEW_API_TOKEN`：Pages Edit |
+| `preview-migrations` | `dev` | `CLOUDFLARE_PREVIEW_D1_API_TOKEN`：D1 Edit，用于快照演练和远程迁移 |
+| `preview-maintenance` | `main` | `CLOUDFLARE_PREVIEW_MAINTENANCE_API_TOKEN`：D1 Edit、R2 Storage Edit |
 
-远程操作要求明确授权和干净工作树，默认仅打印计划。以下为 Preview 命令；生产省略 `--preview` 并改用 `--approve-production`，Staff Staging 换为 `--staff-staging` 和 `--approve-staff-staging`。Preview 迁移从 `dev` 执行，Staff 操作从 `next/staff-platform` 执行。
+Token 限定目标账号，维护 Token 不提供给功能分支，R2 权限须支持删除。Pages Edit 无法仅限同项目 Preview。
+
+## 手动发布与回退
+
+远程操作须明确授权且工作树干净，默认仅打印计划。以下为 Preview 操作；生产移除 `--preview` 并改用 `--approve-production`。Preview 迁移从 `dev` 执行。
 
 ```bash
 npm run release:plan -- --preview
@@ -48,29 +65,74 @@ npm run deploy -- --preview --execute --approve-preview
 npm run smoke -- https://<domain>
 ```
 
-首次初始化：`npm run db:seed -- --remote --preview --execute --approve-preview`。临时提供 `ROOT001_PASSWORD`、`ROOT002_PASSWORD`（各 16–128 字符），完成后清除；seed 不覆盖已有密码，发布不初始化账号。
+首次初始化使用 `npm run db:seed -- --remote --preview --execute --approve-preview`。发布计划只读取配置、提交及迁移哈希；核对目标分支、D1、R2、配额与提交后再执行。
 
-迁移前备份数据库、附件和密钥，执行 [只读数据检查](release-checks.sql)。迁移只追加，已执行 SQL 不改写；不兼容升级须暂停写入和维护。回退使用兼容当前 schema 的应用，否则成对恢复应用与数据库，并核对备份后的新增工单和附件。
+迁移前备份数据库、附件和密钥，执行 [只读数据检查](release-checks.sql)。迁移只追加，已执行 SQL 不改写；不兼容升级须停写维护。回退使用兼容当前 schema 的应用，否则成对恢复应用和数据库，并核对备份后的新增工单及附件。迁移目录及历史转换见 [数据模型](data-model.md#历史迁移)。
 
 ## 维护与备份
 
-| 任务 | 北京时间 | 启用变量 |
-|---|---|---|
+| 定时任务 | 北京时间 | 启用变量 |
+| --- | --- | --- |
 | Production/Preview 附件清理 | 周一 03:17 | `ATTACHMENT_MAINTENANCE_ENABLED=true` |
-| Production/Preview 预约逾期 | 每日 21:35 | `BOOKING_MAINTENANCE_ENABLED=true` |
-| Staff Staging 维护 | 每日 21:35 | `STAFF_MAINTENANCE_ENABLED=true` |
+| Production/Preview 预约逾期 | 每日 00:05 | `BOOKING_MAINTENANCE_ENABLED=true` |
 
-工作流位于 [.github/workflows/](../.github/workflows/)。Production/Preview 使用 `main` 脚本，目标为 production/preview/both；Staff 手动维护选择 `next/staff-platform`。默认 dry-run，不执行迁移；附件清理覆盖到期文件、超过 24 小时的未完成上传及失败补偿。
+[维护工作流](../.github/workflows/)的定时入口从默认分支派发，在 `main` 执行。手动运行默认 dry-run；启用的定时任务使用 apply。维护不迁移 schema，附件清理覆盖到期文件、超过 24 小时的未完成上传和失败补偿，物理删除成功后才释放额度。
 
 ```bash
 npm run appointments:expire -- --preview --dry-run
 npm run attachments:cleanup -- --preview --dry-run
 ```
 
-执行时将 `--dry-run` 改为 `--apply`；生产移除 `--preview`，Staff 换为 `--staff-staging`。
+执行时将 `--dry-run` 改为 `--apply`；生产移除 `--preview`。
 
-D1 备份：`npx wrangler d1 export DB --remote --output <受限备份路径>`；Preview 加 `--env preview`，Staff 加 `--config wrangler.staff-staging.jsonc`。R2 和密钥单独备份，备份与密钥不入 Git。重建或删除远程资源须单独授权。
+D1 备份使用 `npx wrangler d1 export DB --remote --output <受限备份路径>`；Preview 加 `--env preview`。R2 和密钥另行备份，均不入 Git；重建或删除远程资源须单独授权。
 
-## 扫码配置
+## 0042 私有人员迁移
 
-`SCAN_WORKBENCH_ENABLED=false` 可切换到列表工作台，一人一单约束仍生效。扫码依赖 HTTPS、摄像头授权和 [同源策略](../public/_headers)，支持相册及手动编号；手机镜头切换和手电筒需实机检查。
+Git 仅保存通用 SQL、工具及虚构测试数据。真实姓名、学号、核对决定、数据库快照及生成的 SQL 存放在本机仓库外的受限目录，不放入 GitHub Secret、CI 工件或日志。完整快照包含密码哈希等私密数据，须单独备份；不得用生产快照填充共享 Preview。
+
+先只读查询目标 `d1_migrations`。0042 原文件不再修改；后续变化必须追加迁移。Production 旧链与 Preview 0041 的待执行迁移不同，两者分别准备输入、演练和执行。
+
+私有 JSON 格式为 `{"version":1,"environment":"production","members":[...]}`。每项填写 `memberId` 或 `studentId`、准确 `name`、`decision`（`migrate` 或明确确认的 `revoke`）及 `reason`。`migrate` 项须有以下至少一项：
+
+- `post`：`departmentCode`、`positionCode`、`effectiveFrom`、`effectiveTo`。
+- `exchange`：`effectiveFrom`、`effectiveTo`。
+- `authorizations`：特殊授权数组，各项含 `roleCode`、`scope.campusIds`、`effectiveFrom`、`effectiveTo`、`reason`。
+
+日期为 `YYYY-MM-DD`，结束日不含当天，可用 `null` 表示长期。部门代码为 `hardware/network/office/art/publicity`，职位为 `member/head/deputy_head`；站代码为 `device_station/network_station/affairs_station`，职位为 `director/deputy_director`；`center` 使用 `president/vice_president`。特殊授权只填写经核对的角色、原账号校区及有效期。受保护系统账号不列入输入；未核对人员不能默认填 `revoke`。
+
+以下 Production 命令仅在本机执行，所有私有路径必须位于任何 Git 仓库之外。先导出快照并演练，不改远程数据：
+
+```powershell
+npx wrangler d1 export DB --remote --config wrangler.jsonc --output C:/Pioneer-private/production.sql
+node scripts/rehearse-preview.mjs --snapshot C:/Pioneer-private/production.sql --input C:/Pioneer-private/production-decisions.json
+node scripts/prepare-staff-cutover.mjs --input C:/Pioneer-private/production-decisions.json
+```
+
+准备工具逐人校验身份、完整性、职位、日期、校区及授权模板，并在本地验证转换。输出只有汇总；真实输入文件和生成 SQL 均拒绝写入仓库内。核对无误、提交干净且明确授权后，从本机暂存目标环境的决定：
+
+```powershell
+node scripts/prepare-staff-cutover.mjs --input C:/Pioneer-private/production-decisions.json --execute --approve-production
+```
+
+暂存只写入一次性输入表，不改变有效权限。决定绑定环境、数据库、迁移文件哈希及准备时的人员授权状态，可以提前准备并跨日上线；人员或权限变化须重新准备。CI 直接在目标 D1 内核对映射完整性、目标和版本，只接收就绪标志与汇总数量，不导出 Production 或 Preview 快照。本机准备时完成完整迁移演练；0041 结构已就绪时 CI 还会预检源状态，生产旧链由先行历史迁移补齐结构，0042 始终在同一事务内重查源状态及全部授权边界。
+
+先单独准备 Preview：输入的 `environment` 为 `preview`，准备命令加 `--preview`，执行确认改为 `--approve-preview`，快照导出加 `--env preview`。经批准合入 dev 后，原 CI 在库内预检并迁移共享 Preview，再发布代码。生产映射可提前独立暂存；Preview 验收后在停写维护窗口经批准合入 main，由原生产 CI 迁移并发布；未准备、漏人或校验失败均停止发布。
+
+需要手动迁移时，经单独授权从本机运行 `npm run db:migrate:remote -- --execute --approve-production`；Preview 加 `--preview` 并改为 `--approve-preview`。失败时 0042 的全部变更回滚，较早已成功的迁移保留账本，重试从未完成处继续。成功后删除输入表，核对依据保留在原数据库审计中。核验账号与历史数据、离任撤权、特殊留任、重复导入及校区隔离后恢复服务。
+
+删除临时表不会清除 D1 Time Travel 与离线备份，备份和恢复权限仍须受限。已有真实人员数据的 Preview 也须独立核对 Access 保护、分支别名及自定义域名，避免通过其他部署入口绕开访问控制。
+
+## v1.2 破坏性升级与验证
+
+升级到 v1.2 时，必须在停写窗口依次执行 0044–0049，再发布对应应用；值班简化版本还要求追加0050。功能分支不迁移共享 Preview；没有新 schema 时发布仍被就绪检查阻止。不能将旧应用直接回退到新 schema；需要恢复时先核对维护窗口后的新增数据，使用成对备份或追加修复迁移。
+
+迁移前保存数据库、附件和密钥，记录预约、附件、签到、人员、审计与旧排班行数。先在仓库外的私有本地副本执行 `rehearse-preview.mjs`，保留只含汇总的验证结果。0042 若尚未执行，沿用上一节的一次性人员确认前提；0047 随后删除旧维修工作权限包，不为新系统配置维修资格。
+
+迁移后检查 [release-checks.sql](release-checks.sql)、外键、`duty-workflow-0050` 就绪标记及核查表结构、归档处置数量，以及在修主修和照片引用。已排期返修关联原单，未安排申请明确归档；全部旧排班 ID 保留，只有原已发布班次生效。0050不回填签到或核查结论，不批量改写特殊时段。不会删除历史预约、维修、照片、签到、人员或审计，也不根据新流程补造历史结果。
+
+`npm run verify` 执行格式、lint、类型、架构与迁移指纹审计、语法与 Functions 构建、Node 测试、两条本地 D1 迁移链和浏览器验证。浏览器采用一次性 D1/R2 与虚构人员，覆盖预约签名、原图接收、四种结果与隐私、通常时间、直接请假和接替确认。CI 要求这些检查全部通过。
+
+照片上传超时后由经办人保留接收原图并手动补传；已有附件保留既有生命周期。附件维护先 dry-run，再按计划执行物理清理；数据库升级不执行附件清理。
+
+上线前还需在手机上验证 HTTPS、相册/摄像头权限、扫码和私有附件读取。

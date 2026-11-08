@@ -1,9 +1,10 @@
-const whitelistSelect=`SELECT w.*,(SELECT json_group_array(campus) FROM whitelist_campus_grants WHERE student_id=w.student_id) AS campuses FROM staff_whitelist w`;
+const whitelistSelect=`SELECT w.*,(SELECT member_id FROM activation_member_bindings WHERE student_id=w.student_id) AS activation_member_id,
+  (SELECT json_group_array(campus) FROM whitelist_campus_grants WHERE student_id=w.student_id) AS campuses FROM staff_whitelist w`;
 const requestSelect=`SELECT r.*,w.expected_role,w.expected_name,w.status AS whitelist_status,w.revision AS whitelist_revision,
   (SELECT json_group_array(campus) FROM whitelist_campus_grants WHERE student_id=r.student_id) AS campuses
   FROM activation_requests r JOIN staff_whitelist w ON w.student_id=r.student_id`;
 function whitelist(row){
-  return row ? {studentId:row.student_id,expectedName:row.expected_name,expectedRole:row.expected_role,status:row.status,authorizedCampuses:JSON.parse(row.campuses),revision:row.revision,createdAt:row.created_at} : null;
+  return row ? {studentId:row.student_id,expectedName:row.expected_name,expectedRole:row.expected_role,activationMemberId:row.activation_member_id || null,status:row.status,authorizedCampuses:JSON.parse(row.campuses),revision:row.revision,createdAt:row.created_at} : null;
 }
 function application(row){
   return row ? {id:row.id,studentId:row.student_id,name:row.name,homeCampus:row.home_campus,
@@ -13,15 +14,29 @@ function application(row){
 }
 export function activationRepository(db){
   return {
+    async configureMemberWhitelist(item,actor,guard,roleVersions,instant){
+      await db.batch([
+        db.prepare(`SELECT CASE WHEN EXISTS(SELECT 1 FROM staff_accounts a JOIN members m ON m.id=a.member_id
+          WHERE a.account=? AND a.member_id=? AND a.auth_version=? AND a.status='enabled' AND m.status='active')
+          AND (${guard.sql})=? AND NOT EXISTS(SELECT 1 FROM json_each(?) v LEFT JOIN roles r ON r.id=json_extract(v.value,'$.id')
+            WHERE r.id IS NULL OR r.revision<>json_extract(v.value,'$.revision') OR r.enabled<>json_extract(v.value,'$.enabled'))
+          THEN 1 ELSE abs(-9223372036854775808) END`)
+          .bind(actor.actorAccount,actor.actorMemberId,actor.authVersion,...guard.args,guard.value,JSON.stringify(roleVersions)),
+        db.prepare(`INSERT INTO staff_whitelist(student_id,expected_name,expected_role,created_by,created_at) VALUES(?,?,?,?,?)
+          ON CONFLICT(student_id) DO UPDATE SET expected_name=excluded.expected_name,expected_role=excluded.expected_role,status='open',revision=staff_whitelist.revision+1`)
+          .bind(item.studentId,item.expectedName,item.expectedRole,actor.actorAccount,instant),
+        db.prepare('INSERT OR IGNORE INTO activation_member_bindings(student_id,member_id) VALUES(?,?)').bind(item.studentId,item.memberId),
+        db.prepare('DELETE FROM whitelist_campus_grants WHERE student_id=?').bind(item.studentId),
+        ...item.authorizedCampuses.map(campus=>db.prepare('INSERT INTO whitelist_campus_grants(student_id,campus) VALUES(?,?)').bind(item.studentId,campus)),
+        db.prepare("UPDATE activation_requests SET status='rejected',password_hash='',review_note='人员姓名已更新，请重新提交激活申请',reviewed_by=?,reviewed_at=? WHERE student_id=? AND status='pending' AND name<>?")
+          .bind(actor.actorAccount,instant,item.studentId,item.expectedName),
+        db.prepare(`INSERT INTO audit_events(id,actor_member_id,actor_account,action,source_ref,after_json,occurred_at)
+          VALUES(?,?,?,'authorization.member_activation.updated',?,?,?)`)
+          .bind(crypto.randomUUID(),actor.actorMemberId,actor.actorAccount,JSON.stringify({module:'identity',type:'member',id:item.memberId}),JSON.stringify(item),instant)
+      ]);
+    },
     async findWhitelist(id){return whitelist(await db.prepare(`${whitelistSelect} WHERE w.student_id=?`).bind(id).first());},
     async listWhitelist(){return (await db.prepare(`${whitelistSelect} ORDER BY w.created_at DESC,w.student_id`).all()).results.map(whitelist);},
-    async importWhitelist(items,actor,instant){
-      await db.batch(items.flatMap(item=>[
-        db.prepare('INSERT INTO staff_whitelist(student_id,expected_name,expected_role,created_by,created_at) VALUES (?,?,?,?,?)')
-          .bind(item.studentId,item.expectedName,item.expectedRole,actor,instant),
-        ...item.authorizedCampuses.map(campus=>db.prepare('INSERT INTO whitelist_campus_grants VALUES (?,?)').bind(item.studentId,campus))
-      ]));
-    },
     async changeWhitelist(target,status,actor,instant){
       const statements=[];
       if(status==='revoked')statements.push(db.prepare(`UPDATE activation_requests SET status='rejected',password_hash='',review_note='白名单资格已撤销',reviewed_by=?,reviewed_at=?
@@ -43,11 +58,14 @@ export function activationRepository(db){
     },
     async findRequest(id){return application(await db.prepare(`${requestSelect} WHERE r.id=?`).bind(id).first());},
     async listRequests(){return (await db.prepare(`${requestSelect} ORDER BY r.created_at DESC,r.id`).all()).results.map(application);},
-    async review(items,status,note,actor,instant){
-      const results=await db.batch(items.map(item=>db.prepare(`UPDATE activation_requests
+    async review(items,status,note,actor,instant,guards=[],authorization){
+      const checks=[];
+      if(authorization)checks.push(db.prepare(`SELECT CASE WHEN EXISTS(SELECT 1 FROM staff_accounts a JOIN members m ON m.id=a.member_id WHERE a.account=? AND a.member_id=? AND a.auth_version=? AND a.status='enabled' AND m.status='active') THEN 1 ELSE abs(-9223372036854775808) END`).bind(actor,authorization.memberId,authorization.authVersion));
+      for(const guard of guards) checks.push(db.prepare(`SELECT CASE WHEN (${guard.snapshot.sql})=? AND NOT EXISTS(SELECT 1 FROM json_each(?) v LEFT JOIN roles r ON r.id=json_extract(v.value,'$.id') WHERE r.id IS NULL OR r.revision<>json_extract(v.value,'$.revision') OR r.enabled<>json_extract(v.value,'$.enabled')) THEN 1 ELSE abs(-9223372036854775808) END`).bind(...guard.snapshot.args,guard.snapshot.value,JSON.stringify(guard.roleVersions)));
+      const results=(await db.batch([...checks,...items.map(item=>db.prepare(`UPDATE activation_requests
         SET status=?,review_note=?,reviewed_by=?,reviewed_at=?,password_hash=CASE WHEN ?='rejected' THEN '' ELSE password_hash END
         WHERE id=? AND status='pending' AND EXISTS(SELECT 1 FROM staff_whitelist WHERE student_id=? AND revision=?)
-        RETURNING id`).bind(status,note,actor,instant,status,item.id,item.studentId,item.whitelistRevision)));
+        RETURNING id`).bind(status,note,actor,instant,status,item.id,item.studentId,item.whitelistRevision))])).slice(checks.length);
       return {applied:results.flatMap(result=>result.results.map(row=>row.id)),conflicts:items.filter((_,n)=>!results[n].results.length).map(item=>item.id)};
     }
   };

@@ -13,9 +13,9 @@ test('Sunday weekly overview reads earlier service days while preserving the upc
   let range;
   const repository={expirePending:async()=>{},overview:async(start,end,campuses)=>{
     range={start,end,campuses};
-    return {totals:[{campus:'南湖',date:'2026-10-12',time_slot:'19:00–19:30',occupied:3,booked:0,in_progress:1}],capacities:[{campus:'南湖',date:'2026-10-12',time_slot:'19:00–19:30',capacity:10}]};
+    return {totals:[{campus:'南湖',date:'2026-10-12',time_slot:'19:00–20:00',occupied:3,booked:0,in_progress:1}],capacities:[{campus:'南湖',date:'2026-10-12',time_slot:'19:00–20:00',capacity:10}]};
   }};
-  const service=appointmentService(repository,{},'',()=>new Date('2026-10-18T04:00:00Z'));
+  const service=appointmentService(repository,{},'',()=>new Date('2026-10-18T04:00:00Z'),{scopedActor:async actor=>actor});
   const result=await service.overview({account:'staff',role:'technician',status:'enabled',authorizedCampuses:['南湖']});
   assert.deepEqual(range,{start:'2026-10-12',end:'2026-10-24',campuses:['南湖']});
   assert.deepEqual(result.dates,['2026-10-19','2026-10-20','2026-10-21','2026-10-22']);

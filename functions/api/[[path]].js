@@ -1,5 +1,5 @@
 import { handleRequest } from '../../src/app.js';
 
-export function onRequest({ request, env }) {
-  return handleRequest(request, env);
+export function onRequest({ request, env, waitUntil }) {
+  return handleRequest(request, env, {waitUntil});
 }

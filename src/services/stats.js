@@ -1,16 +1,18 @@
 import { addDays, dateKey } from '../../shared/time.js';
 import { requireRole } from './permissions.js';
 
-export function statsService(stats, appointments, clock = () => new Date()) {
+export function statsService(stats, appointments, clock = () => new Date(), staff) {
   return {
     async summary({ range, day },actor) {
-      requireRole(actor,'admin');
+      requireRole(actor,'technician');
+      actor = await staff.scopedActor(actor, 'statistics.read');
       const instant = clock();
       await appointments.expirePending(instant.toISOString(), {campuses:actor.authorizedCampuses});
       const start = day || range === 'all' ? '' : addDays(dateKey(instant), -(Number(range) - 1));
-      const result = await stats.aggregate({start,day,campuses:actor.authorizedCampuses});
-      const { total, completed, cancelled, expired, classified, repaired } = result.summary;
-      return { range, day, total, completed, cancelled, expired, classified, repaired,
+      const end = start ? dateKey(instant) : '';
+      const result = await stats.aggregate({start,end,day,campuses:actor.authorizedCampuses});
+      const { total, completed, cancelled, expired, classified, repaired, linkedRepairs } = result.summary;
+      return { range, day, total, completed, cancelled, expired, classified, repaired, linkedRepairs,
         repairSuccessRate: classified ? Math.round(repaired / classified * 100) : 0,
         completionRate: total ? Math.round(completed / total * 100) : 0, expiredRate: total ? Math.round(expired / total * 100) : 0,
         daily: Object.fromEntries(result.daily.map(row => [row.date, { total: row.total, completed: row.completed }])),

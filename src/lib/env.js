@@ -4,7 +4,6 @@ export function validateEnv(env) {
   }
   storageLimit(env);
   if (env.SCAN_QR_SECRET !== undefined && (typeof env.SCAN_QR_SECRET !== 'string' || env.SCAN_QR_SECRET.length < 32)) throw new Error('Invalid SCAN_QR_SECRET');
-  if (env.SCAN_WORKBENCH_ENABLED !== undefined && !['true','false'].includes(env.SCAN_WORKBENCH_ENABLED)) throw new Error('Invalid SCAN_WORKBENCH_ENABLED');
 }
 
 export function storageLimit(env) {

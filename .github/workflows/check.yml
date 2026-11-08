@@ -6,15 +6,15 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-# One lock covers Staff CI, migrations, publication and smoke, including maintenance.
-# Other branches retain their existing job-level deployment concurrency.
+# Serialize the full dev verification, migration, publication and smoke chain.
+# Other branches retain their job-level deployment concurrency.
 concurrency:
-  group: ${{ github.ref == 'refs/heads/next/staff-platform' && 'cloudflare-staff-staging' || format('cloudflare-ci-{0}', github.run_id) }}
+  group: ${{ github.ref == 'refs/heads/dev' && 'cloudflare-dev-release' || format('cloudflare-ci-{0}', github.run_id) }}
   cancel-in-progress: false
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - name: Validate manual release branch
         if: github.event_name == 'workflow_dispatch'
@@ -30,8 +30,46 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium webkit
-      - run: npm run verify
+      - run: npm run verify:checks
+  browser:
+    name: browser
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.0-noble
+      options: --init --ipc=host --user 1001
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+        timeout-minutes: 5
+      - name: Run desktop and mobile workflow checks
+        run: npm run test:e2e
+        timeout-minutes: 12
+      - name: Preserve isolated UI acceptance evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: staff-platform-browser-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            output/playwright/
+          if-no-files-found: ignore
+          retention-days: 14
+  test:
+    needs: [checks, browser]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
+    steps:
+      - name: Require every verification job to succeed
+        env:
+          CHECKS_RESULT: ${{ needs.checks.result }}
+          BROWSER_RESULT: ${{ needs.browser.result }}
+        run: test "$CHECKS_RESULT" = success && test "$BROWSER_RESULT" = success
   migrate-preview:
     needs: test
     if: github.ref == 'refs/heads/dev' && ((github.event_name == 'push' && github.event.deleted != true) || github.event_name == 'workflow_dispatch')
@@ -55,70 +93,15 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PREVIEW_D1_API_TOKEN }}
           WRANGLER_SEND_METRICS: 'false'
-        run: node scripts/ci-release.mjs --migrate-preview
-  migrate-staff-staging:
-    needs: test
-    if: github.ref == 'refs/heads/next/staff-platform' && ((github.event_name == 'push' && github.event.deleted != true) || github.event_name == 'workflow_dispatch')
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    environment:
-      name: staff-staging-migrations
-      deployment: false
-    outputs:
-      commit: ${{ steps.migrate.outputs.commit }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-      - run: npm ci
-      - name: Migrate independent Staff Staging D1
-        id: migrate
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_STAFF_D1_API_TOKEN }}
-          WRANGLER_SEND_METRICS: 'false'
-        run: node scripts/ci-release.mjs --migrate-staff-staging
-  release-staff-staging:
-    needs: [test, migrate-staff-staging]
-    if: github.ref == 'refs/heads/next/staff-platform' && needs.migrate-staff-staging.result == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    environment:
-      name: staff-staging
-      url: ${{ steps.publish.outputs.url }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-      - run: npm ci
-      - name: Configure dedicated Pages secrets
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_STAFF_PAGES_API_TOKEN }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          PII_ENCRYPTION_KEY: ${{ secrets.PII_ENCRYPTION_KEY }}
-          MAX_R2_BYTES: ${{ vars.MAX_R2_BYTES }}
-        run: node scripts/staff-pages-secrets.mjs
-      - name: Publish Staff Staging and verify HTTP
-        id: publish
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_STAFF_PAGES_API_TOKEN }}
-          STAFF_MIGRATIONS_COMMIT: ${{ needs.migrate-staff-staging.outputs.commit }}
-          WRANGLER_SEND_METRICS: 'false'
-        run: node scripts/ci-release.mjs
+        run: |
+          node scripts/rehearse-preview.mjs
+          node scripts/ci-release.mjs --migrate-preview
   release:
     needs: [test, migrate-preview]
     if: >-
       always() && !cancelled() && needs.test.result == 'success' &&
       (needs.migrate-preview.result == 'success' || needs.migrate-preview.result == 'skipped') &&
       startsWith(github.ref, 'refs/heads/') &&
-      github.ref != 'refs/heads/next/staff-platform' &&
-      !startsWith(github.ref, 'refs/heads/feat/staff-') &&
       ((github.event_name == 'push' && github.event.deleted != true) ||
        (github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'))
     runs-on: ubuntu-latest

@@ -1,84 +1,63 @@
-import { parseAppointmentSearch, APPOINTMENT_SEARCH_LIMIT } from '../../shared/appointment-search.js';
-import { appointmentAccessRules } from '../lib/appointment-access.js';
 import { fail } from '../lib/http.js';
+import { parseAppointmentSearch } from '../../shared/appointment-search.js';
 import { scanCode, verifyScanCode } from '../lib/scan-code.js';
 import { onsiteBookingInput, stringField } from '../lib/validation.js';
 import { dateKey } from '../../shared/time.js';
 import { TIME_SLOTS } from '../../shared/constants.js';
-import { requireCampus, requireAppointmentAccess, appointmentScope } from './permissions.js';
-import { presentAppointment } from './appointments.js';
+import { requireCampus } from './permissions.js';
 
-export function scanService(appointments, service, encryptionKey, secret, enabled, clock = () => new Date()) {
-  const present = item => presentAppointment(item, encryptionKey, { staff: true });
-  function available() { if (!enabled) fail(404, '扫码工作台未启用'); }
+export function scanService(appointments, service, secret, clock = () => new Date(), field) {
   const expire = (now, scope) => appointments.expirePending(now.toISOString(), scope);
   async function locate(id, actor) {
     const now = clock();
     const original = await appointments.find(id);
     if (!original) fail(404, '预约不存在，请检查编号');
-    requireAppointmentAccess(actor, original, { start: true });
+    requireCampus(actor, original.campus);
     await expire(now, { id });
     const item = await appointments.find(id);
     if (!item) fail(404, '预约不存在，请检查编号');
-    requireAppointmentAccess(actor, item, { start: true });
-    if (item.status === 'booked') {
-      // Before intake, reveal device information only, matching the existing queue policy.
-      return Object.fromEntries(['id','revision','campus','date','timeSlot','deviceType','brand','deviceModel','serial','warranty','liquidMetal','dellG15','faultType','issue','liquidDrop','note','status','source','expiresAt'].map(key => [key, item[key]]));
-    }
-    return present(item);
+    return field.detail(actor, item.id);
   }
   return {
-    config() { return { enabled }; },
     async code(id, token) {
-      available();
       const item = await service.lookup(id, token);
       return { id: item.id, code: scanCode(item.id, secret) };
     },
+    async relatedCode(parentId, childId, token) {
+      const item = await service.lookup(parentId, token);
+      const relation = await appointments.relatedForScan(item.id, childId);
+      if (!relation) fail(404, '返修预约不存在或已完成');
+      await expire(clock(), { id: relation.id });
+      if ((await appointments.find(relation.id))?.status !== 'booked')
+        fail(404, '返修预约不存在或已完成');
+      return { id: relation.id, code: scanCode(relation.id, secret) };
+    },
     async resolve(input, actor) {
-      available();
       const id = input.code !== undefined ? verifyScanCode(input.code, secret) : stringField(input.id, '预约编号', 80, true);
       if (!/^(?:reserve|reverse)?[01]\d{8}-\d{2,}$/.test(id)) fail(400, '请输入完整预约编号');
       return locate(id, actor);
     },
     async search(input, actor) {
-      available();
       const query = parseAppointmentSearch(input.q);
-      if (!query) fail(400, '请输入预约编号中的数字');
+      if (!query) fail(400, '请输入预约编号、完整学号、姓名或完整联系方式');
+      if (input.mode !== undefined && !['number', 'contact', 'identity', 'studentId'].includes(input.mode))
+        fail(400, '查询方式不正确');
+      if (input.mode === 'studentId' && !query.studentId) fail(400, '请输入完整学号');
       if (!query.ready) return { items: [], hasMore: false };
-      const now = clock(), scope = appointmentScope(actor);
-      await expire(now, { campuses: scope.campuses });
-      const items = await appointments.searchNumbers(query.text, query.acrossDates ? null : dateKey(now), scope, appointmentAccessRules(actor, { start: true }));
-      return { items: items.slice(0, APPOINTMENT_SEARCH_LIMIT), hasMore: items.length > APPOINTMENT_SEARCH_LIMIT };
-    },
-    async current(actor, registrationRequestId) {
-      available();
-      await expire(clock(), { campuses: actor.authorizedCampuses });
-      let registration = null;
-      if (registrationRequestId !== undefined) {
-        const key = stringField(registrationRequestId, '登记请求编号', 36, true);
-        if (!/^[a-f0-9-]{36}$/.test(key)) fail(400, '登记请求编号不正确');
-        const found = await appointments.findRegistration(actor.account, key);
-        // A receipt contains no student information and only confirms this actor's request.
-        if (found) { requireCampus(actor, found.campus); registration = { id: found.id, status: found.status }; }
-      }
-      const items = await appointments.inProgress(actor.account);
-      const pending = await appointments.pendingRegistration(actor.account);
-      return { items: await Promise.all(items.map(item => { requireCampus(actor, item.campus); return present(item); })), pending: pending ? await locate(pending.id, actor) : null, registration };
+      return field.search(actor,{ ...query, mode: input.mode, campusId: input.campusId });
     },
     async onsite(input, actor) {
-      available();
       const key = stringField(input.requestId, '登记请求编号', 36, true);
       if (!/^[a-f0-9-]{36}$/.test(key)) fail(400, '登记请求编号不正确');
       const now = clock();
       await expire(now, { campuses: actor.authorizedCampuses });
       const previous = await appointments.findRegistration(actor.account, key);
-      if (previous) return locate(previous.id, actor);
-      if (await appointments.pendingRegistration(actor.account)) fail(409, '请先签到或取消当前临时登记');
-      if ((await appointments.inProgress(actor.account)).length) fail(409, '请先完成当前维修，再登记下一台设备');
+      if (previous) return {...await locate(previous.id,actor),accessToken:await service.registrationCredential(previous,actor)};
       const data = onsiteBookingInput({ ...input, date: dateKey(now), timeSlot: TIME_SLOTS[0], agreementAt: now.toISOString(), agreementVersion: 'v1.0' });
       requireCampus(actor, data.campus);
-      const item = await service.createOnsite(data, actor.account, key);
-      return locate(item.id, actor);
+      const item = await service.createOnsite({...data,parentAppointmentId:input.parentAppointmentId || null,linkKind:input.linkKind || null,sameDeviceAndFault:input.sameDeviceAndFault}, actor, key);
+      const visible=await locate(item.id,actor);
+      return {...visible,...(visible.name!==undefined && visible.social!==undefined ? {accessToken:item.accessToken} : {})};
     }
   };
 }
