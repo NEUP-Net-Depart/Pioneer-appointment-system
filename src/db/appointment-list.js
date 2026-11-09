@@ -41,7 +41,7 @@ export async function listStudentMatches(db, studentId, { campuses, summaryRules
   const identity = accessPredicate(identityRules, args);
   const { results } = await db
     .prepare(
-      `SELECT id,campus,date,time_slot AS timeSlot,status FROM appointments
+      `SELECT id,campus,date,time_slot AS timeSlot,status,outcome FROM appointments
       WHERE student_id=? AND campus IN (${campuses.map(() => '?').join(',')})
         AND (${summary}) AND (${identity})
       ORDER BY CASE WHEN status IN (${terminalStatuses.map(() => '?').join(',')}) THEN 1 ELSE 0 END,
