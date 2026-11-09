@@ -466,6 +466,24 @@ export function attendanceDomain({ db, auditStatement, commandAuthorization }) {
     };
   }
 
+  async function dutyAttendanceDay(day, campusId) {
+    const result = await db
+      .prepare(
+        `SELECT ar.*,(SELECT paused FROM service_day_overrides s WHERE s.business_date=e.business_date AND s.campus_id=e.campus_id) AS service_paused,e.type,e.business_date,e.campus_id,m.name AS member_name,m.student_id
+        FROM attendance_records ar JOIN attendance_events e ON e.id=ar.event_id JOIN members m ON m.id=ar.member_id
+        WHERE e.type='duty' AND e.business_date=? AND e.campus_id=? ORDER BY ar.occurred_at,ar.id`
+      )
+      .bind(day, campusId)
+      .all();
+    return {
+      records: rows(result).map((row) => ({
+        ...attendanceRecord(row),
+        memberName: row.member_name,
+        studentId: row.student_id
+      }))
+    };
+  }
+
   async function attendanceReportSettings() {
     const row = await db.prepare('SELECT * FROM attendance_report_settings WHERE id=1').first();
     return {
@@ -515,6 +533,7 @@ export function attendanceDomain({ db, auditStatement, commandAuthorization }) {
     attendanceOptions,
     attendanceExport,
     weeklyAttendanceData,
+    dutyAttendanceDay,
     attendanceReportSettings,
     updateAttendanceReportSettings,
     attendanceCorrectionFingerprint,

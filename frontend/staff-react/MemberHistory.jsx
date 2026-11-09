@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { request } from './request.js';
 import { Notice } from './field/ui';
+import { DataExpansion } from './DataExpansion.jsx';
 
 const labels = {
   'identity.member.created': '新增人员',
@@ -21,8 +22,13 @@ export function MemberHistory({ memberId }) {
     [loading, setLoading] = useState(true);
   useEffect(() => {
     const controller = new AbortController();
+    setLoading(true);
+    setItems([]);
+    setError('');
     request(`/api/members/${encodeURIComponent(memberId)}/audit`, { signal: controller.signal })
-      .then((data) => setItems(data.items || []))
+      .then((data) => {
+        if (!controller.signal.aborted) setItems(data.items || []);
+      })
       .catch((failure) => {
         if (!controller.signal.aborted) setError(failure.message);
       })
@@ -32,25 +38,23 @@ export function MemberHistory({ memberId }) {
     return () => controller.abort();
   }, [memberId]);
   return (
-    <section aria-label="人员操作记录">
+    <section aria-label="人员操作记录" aria-busy={loading}>
       <Notice>{error}</Notice>
-      {loading ? (
-        <p role="status">正在读取操作记录…</p>
-      ) : items.length ? (
-        items.map((item, index) => (
-          <article className="react-binding" key={index}>
-            <strong>{labels[item.action] || item.action}</strong>
-            {item.changes?.length > 0 && <p>{item.changes.join('、')}</p>}
-            <p>
-              {new Date(item.occurredAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })} ·{' '}
-              {item.actorAccount}
-            </p>
-            {item.reason && <p>{item.reason}</p>}
-          </article>
-        ))
-      ) : (
-        !error && <p>暂无操作记录</p>
-      )}
+      <DataExpansion ready={!loading}>
+        {items.length
+          ? items.map((item, index) => (
+              <article className="react-binding" key={index}>
+                <strong>{labels[item.action] || item.action}</strong>
+                {item.changes?.length > 0 && <p>{item.changes.join('、')}</p>}
+                <p>
+                  {new Date(item.occurredAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}{' '}
+                  · {item.actorAccount}
+                </p>
+                {item.reason && <p>{item.reason}</p>}
+              </article>
+            ))
+          : !loading && !error && <p>暂无操作记录</p>}
+      </DataExpansion>
     </section>
   );
 }

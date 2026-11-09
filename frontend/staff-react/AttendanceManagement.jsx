@@ -4,6 +4,7 @@ import { request } from './request.js';
 import { dateKey } from '../../shared/time.js';
 import { dutyTypeLabels, dutyCampusNames } from '../../shared/duty.js';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
+import { DataValue } from './DataValue';
 
 const labels = {
   upcoming: '待签到',
@@ -19,13 +20,14 @@ export function AttendanceManagement({ campusId, onDirtyChange }) {
   const active = useContext(ActivityContext),
     lock = useRef(false);
   const [day, setDay] = useState(dateKey),
-    [data, setData] = useState(null),
+    [snapshot, setData] = useState(null),
     [refresh, setRefresh] = useState(0),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [notice, setNotice] = useState('');
   const [form, setForm] = useState(null),
     [token, setToken] = useState(null);
+  const data = snapshot?.businessDate === day && snapshot?.campusId === campusId ? snapshot : null;
   useEffect(() => {
     onDirtyChange(!!form || busy);
     return () => onDirtyChange(false);
@@ -37,7 +39,6 @@ export function AttendanceManagement({ campusId, onDirtyChange }) {
     }
     const controller = new AbortController();
     setError('');
-    setData(null);
     request(`/api/attendance/day?${new URLSearchParams({ campusId, businessDate: day })}`, {
       signal: controller.signal
     })
@@ -152,7 +153,11 @@ export function AttendanceManagement({ campusId, onDirtyChange }) {
   }
   function rows(items) {
     return items.map((person) => (
-      <article className={`duty-person duty-${person.status}`} key={person.memberId}>
+      <article
+        data-motion-item={person.memberId}
+        className={`duty-person duty-${person.status}`}
+        key={person.memberId}
+      >
         <div>
           <strong>{person.name}</strong>
           <p className="field-muted">
@@ -224,60 +229,61 @@ export function AttendanceManagement({ campusId, onDirtyChange }) {
         </p>
       )}
       {notice && <p role="status">{notice}</p>}
-      {!data ? (
-        <p>{error ? '读取失败，请刷新重试。' : '正在读取值班名单…'}</p>
-      ) : (
-        <>
-          {data.paused && <p role="status">当天暂停服务，保留原班表和考勤。</p>}
-          <div className="duty-metrics">
-            {[
-              ['应到', data.summary.expected],
-              ['已签到', data.summary.arrived],
-              ['待核查', data.summary.pending]
-            ].map(([label, value]) => (
-              <div key={label}>
-                <strong>{value}</strong>
-                <span>{label}</span>
-              </div>
-            ))}
-          </div>
-          <section className="schedule-card">
-            <div className="duty-section-heading">
-              <h2>{day === dateKey() ? '今日值班' : '值班人员'}</h2>
-              <span>
-                {new Intl.DateTimeFormat('zh-CN', {
-                  weekday: 'long',
-                  timeZone: 'Asia/Shanghai'
-                }).format(new Date(`${day}T12:00:00Z`))}{' '}
-                · {dutyCampusNames[campusId]}
-              </span>
+      <>
+        {data?.paused && <p role="status">当天暂停服务，保留原班表和考勤。</p>}
+        <div className="duty-metrics">
+          {[
+            ['应到', data?.summary.expected],
+            ['已签到', data?.summary.arrived],
+            ['待核查', data?.summary.pending]
+          ].map(([label, value]) => (
+            <div key={label}>
+              <strong>
+                <DataValue label={label} preset="metric" digits={3}>
+                  {value}
+                </DataValue>
+              </strong>
+              <span>{label}</span>
             </div>
-            {rows(
-              data.items
-                .filter((person) => person.status !== 'leave')
-                .sort(
-                  (a, b) =>
-                    order[a.status] - order[b.status] || a.name.localeCompare(b.name, 'zh-CN')
-                )
-            )}
-            {!data.items.filter((person) => person.status !== 'leave').length && (
-              <p>当天没有应到人员。</p>
-            )}
+          ))}
+        </div>
+        <section className="schedule-card" aria-busy={!data}>
+          <div className="duty-section-heading">
+            <h2>{day === dateKey() ? '今日值班' : '值班人员'}</h2>
+            <span>
+              {new Intl.DateTimeFormat('zh-CN', {
+                weekday: 'long',
+                timeZone: 'Asia/Shanghai'
+              }).format(new Date(`${day}T12:00:00Z`))}{' '}
+              · {dutyCampusNames[campusId]}
+            </span>
+          </div>
+          {rows(
+            (data?.items || [])
+              .filter((person) => person.status !== 'leave')
+              .sort(
+                (a, b) => order[a.status] - order[b.status] || a.name.localeCompare(b.name, 'zh-CN')
+              )
+          )}
+          {!(data?.items || []).filter((person) => person.status !== 'leave').length && (
+            <p className={!data ? 'data-pending-copy' : undefined} aria-hidden={!data || undefined}>
+              当天没有应到人员。
+            </p>
+          )}
+        </section>
+        {!!data?.items.filter((person) => person.status === 'leave').length && (
+          <section className="schedule-card">
+            <h2>已请假</h2>
+            {rows(data.items.filter((person) => person.status === 'leave'))}
           </section>
-          {!!data.items.filter((person) => person.status === 'leave').length && (
-            <section className="schedule-card">
-              <h2>已请假</h2>
-              {rows(data.items.filter((person) => person.status === 'leave'))}
-            </section>
-          )}
-          {!!data.temporary.length && (
-            <section className="schedule-card">
-              <h2>临时到场 · {data.temporary.length}</h2>
-              {rows(data.temporary)}
-            </section>
-          )}
-        </>
-      )}
+        )}
+        {!!data?.temporary.length && (
+          <section className="schedule-card">
+            <h2>临时到场 · {data.temporary.length}</h2>
+            {rows(data.temporary)}
+          </section>
+        )}
+      </>
       {form && (
         <Modal
           title={form.recordId ? '修正签到时间' : '补记漏签'}

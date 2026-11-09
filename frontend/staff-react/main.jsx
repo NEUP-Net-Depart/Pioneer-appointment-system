@@ -347,7 +347,11 @@ class WorkspaceModuleBoundary extends React.Component {
 }
 function WorkspacePending({ error, onRetry, code = false }) {
   return (
-    <section className="workspace-pending" aria-busy={!error} aria-label="工作区内容">
+    <section
+      className={`workspace-pending${!error ? ' workspace-pending-code' : ''}`}
+      aria-busy={!error}
+      aria-label="工作区内容"
+    >
       {error && (
         <p data-motion-value="text" role="alert">
           {error}

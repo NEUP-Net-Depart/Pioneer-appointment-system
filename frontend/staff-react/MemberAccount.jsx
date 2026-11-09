@@ -122,13 +122,11 @@ export function MemberAccount({ user, detail, onSaved, onDirty, onBusy }) {
     detail.member.revision
   ]);
   return (
-    <div className="member-account">
+    <div className="member-account" aria-busy={loading}>
       <Notice>{error}</Notice>
       {protectedAccount ? (
         <p>此账号受保护，请从账号安全中管理本人密码。</p>
-      ) : loading ? (
-        <p role="status">正在读取账号…</p>
-      ) : account ? (
+      ) : loading ? null : account ? (
         item && (
           <AccountEditor
             key={JSON.stringify(item)}

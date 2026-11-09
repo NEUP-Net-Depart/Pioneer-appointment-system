@@ -1,5 +1,5 @@
 import React from 'react';
-import { AnimatedValue } from './AnimatedValue';
+import { CountBadge } from './DataValue';
 
 // Secondary navigation uses ordinary buttons with a pressed state. Every
 // section stays in the current workspace; no incomplete ARIA tab keyboard model.
@@ -34,10 +34,8 @@ export function WorkspaceSections({
           onClick={() => onChange(item.id)}
         >
           {item.label}
-          {item.count !== undefined && (
-            <span className="workspace-section-count">
-              <AnimatedValue value={item.count} />
-            </span>
+          {Object.hasOwn(item, 'count') && (
+            <CountBadge label={`${item.label}数量`} value={item.count} />
           )}
         </button>
       ))}

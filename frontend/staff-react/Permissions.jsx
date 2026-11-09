@@ -1,4 +1,3 @@
-import { DataFields } from './DataValue';
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { request } from './request.js';
 import { ActivityContext } from './field/ui';
@@ -160,14 +159,11 @@ export function Permissions() {
         </aside>
         <article className="react-card">
           <h2 data-motion-value="text">{selected?.name || '角色权限'}</h2>
-          {!selected && (
-            <DataFields pending={loading} fields={[['当前角色'], ['可配置功能'], ['授权范围']]} />
-          )}
           {!selected && error && (
             <button onClick={() => setReadRevision((value) => value + 1)}>重新读取角色权限</button>
           )}
           {!selected && !loading && !error && <p>当前没有可查看的角色。</p>}
-          {selected && (
+          {(selected || loading) && (
             <>
               {protectedRole && (
                 <p className="react-muted">最高管理员权限包受保护，请选择其他角色配置。</p>

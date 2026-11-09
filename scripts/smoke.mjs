@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { STAFF_RELEASE } from '../src/db/staff-readiness.js';
+import { setTimeout } from 'node:timers/promises';
 
 export async function smoke(base, fetcher = fetch, output = new URL('../dist/', import.meta.url)) {
   const seen = new Set();
@@ -52,7 +53,17 @@ export async function smoke(base, fetcher = fetch, output = new URL('../dist/', 
   assert.ok((await (await get('/api/unknown', 404)).json()).error);
   return { assets: seen.size, staffRelease: health.staffRelease };
 }
+export async function waitForSmoke(base, { verify = smoke, pause = setTimeout, attempts = 7, delayMs = 5000 } = {}) {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try { return await verify(base); }
+    catch (error) {
+      if (attempt === attempts) throw error;
+      console.log(`Deployment verification ${attempt}/${attempts} failed: ${error.message}. Checking again in ${delayMs} ms.`);
+      await pause(delayMs);
+    }
+  }
+}
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const result = await smoke(process.argv[2] || 'http://127.0.0.1:8788');
+  const result = await waitForSmoke(process.argv[2] || 'http://127.0.0.1:8788');
   console.log('Smoke passed: React entry and build bytes, ' + result.assets + ' assets, staff schema/guards, workflow API authentication and private paths.');
 }

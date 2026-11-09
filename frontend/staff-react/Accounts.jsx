@@ -5,6 +5,7 @@ import { ActivityContext, Modal, Notice } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { WorkspaceSections } from './WorkspaceSections';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
+import { useWorkspaceQuery } from './useWorkspaceQuery.js';
 
 const enrollmentLabels = {
   open: '待激活',
@@ -21,31 +22,13 @@ const sections = [
 ];
 
 function useAccountList(endpoint, active) {
-  const [items, setItems] = useState([]),
-    [loading, setLoading] = useState(true),
-    [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
-  useEffect(() => {
-    if (!active) return;
-    const controller = new AbortController();
-    setLoading(true);
-    setError('');
-    request(endpoint, { signal: controller.signal })
-      .then((data) => {
-        if (!controller.signal.aborted) setItems(data.items || []);
-      })
-      .catch((failure) => {
-        if (!controller.signal.aborted) {
-          if ([401, 403].includes(failure.status)) setItems([]);
-          setError(failure.message);
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [endpoint, active, revision]);
-  return { items, loading, error, refresh: () => setRevision((value) => value + 1) };
+  const result = useWorkspaceQuery(endpoint, active, revision);
+  return {
+    ...result,
+    items: result.data?.items || [],
+    refresh: () => setRevision((value) => value + 1)
+  };
 }
 
 export function Accounts({ user, embedded = false }) {

@@ -1,9 +1,9 @@
-import { DataValue } from './DataValue';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { ActivityContext, Modal, Notice } from './field/ui';
 import { request } from './request.js';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
 import { formatInstant } from '../../shared/time.js';
+import { DataExpansion } from './DataExpansion.jsx';
 
 // datetime-local always represents Shanghai here, regardless of device timezone.
 const localTime = (value) => new Date(Date.parse(value) + 8 * 3600000).toISOString().slice(0, 16);
@@ -279,37 +279,37 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
                 新增公告
               </button>
             </div>
-            {!data ? (
-              <DataValue label="校区公告" pending={loading} />
-            ) : !data.notices.length ? (
-              <p className="field-muted">暂无公告。</p>
-            ) : (
-              <div className="booking-notice-list">
-                {data.notices.map((item) => (
-                  <article data-motion-item="" key={item.id}>
-                    <div>
-                      <strong data-motion-value="text">{item.title}</strong>
-                      <span data-motion-value="text" className="booking-notice-meta">
-                        {item.important ? '必读公告' : '普通公告'} ·{' '}
-                        {item.displayMode === 'modal' ? '弹窗展示' : '页面展示'} ·{' '}
-                        {!item.enabled
-                          ? '已停用'
-                          : Date.now() < Date.parse(item.startsAt)
-                            ? '待生效'
-                            : Date.now() >= Date.parse(item.endsAt)
-                              ? '已结束'
-                              : '展示中'}
-                      </span>
-                      <p data-motion-value="text">{item.content}</p>
-                      <small data-motion-value="text">
-                        {formatInstant(item.startsAt)} 至 {formatInstant(item.endsAt)}
-                      </small>
-                    </div>
-                    <button onClick={() => openNotice(item)}>编辑公告</button>
-                  </article>
-                ))}
-              </div>
-            )}
+            <DataExpansion ready={!!data}>
+              {!data ? null : !data.notices.length ? (
+                <p className="field-muted">暂无公告。</p>
+              ) : (
+                <div className="booking-notice-list">
+                  {data.notices.map((item) => (
+                    <article data-motion-item="" key={item.id}>
+                      <div>
+                        <strong data-motion-value="text">{item.title}</strong>
+                        <span data-motion-value="text" className="booking-notice-meta">
+                          {item.important ? '必读公告' : '普通公告'} ·{' '}
+                          {item.displayMode === 'modal' ? '弹窗展示' : '页面展示'} ·{' '}
+                          {!item.enabled
+                            ? '已停用'
+                            : Date.now() < Date.parse(item.startsAt)
+                              ? '待生效'
+                              : Date.now() >= Date.parse(item.endsAt)
+                                ? '已结束'
+                                : '展示中'}
+                        </span>
+                        <p data-motion-value="text">{item.content}</p>
+                        <small data-motion-value="text">
+                          {formatInstant(item.startsAt)} 至 {formatInstant(item.endsAt)}
+                        </small>
+                      </div>
+                      <button onClick={() => openNotice(item)}>编辑公告</button>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </DataExpansion>
           </section>
         )}
         {mode === 'notices' && (
@@ -320,31 +320,31 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
               </div>
               <button onClick={onManageSuspension}>管理暂停日期</button>
             </div>
-            {!data ? (
-              <DataValue label="暂停维修公告" pending={loading} />
-            ) : !data.suspensions?.length ? (
-              <p className="field-muted">暂无待生效或当日的暂停维修公告。</p>
-            ) : (
-              <div className="booking-notice-list">
-                {data.suspensions.map((item) => (
-                  <article data-motion-item="" key={item.id}>
-                    <div>
-                      <strong data-motion-value="text">
-                        {item.businessDate} · {campus}校区暂停维修
-                      </strong>
-                      <span data-motion-value="text" className="booking-notice-meta">
-                        {item.businessDate >
-                        new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10)
-                          ? '即将暂停'
-                          : '今日暂停'}{' '}
-                        · 来自暂停安排
-                      </span>
-                      <p data-motion-value="text">{item.content}</p>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
+            <DataExpansion ready={!!data}>
+              {!data ? null : !data.suspensions?.length ? (
+                <p className="field-muted">暂无待生效或当日的暂停维修公告。</p>
+              ) : (
+                <div className="booking-notice-list">
+                  {data.suspensions.map((item) => (
+                    <article data-motion-item="" key={item.id}>
+                      <div>
+                        <strong data-motion-value="text">
+                          {item.businessDate} · {campus}校区暂停维修
+                        </strong>
+                        <span data-motion-value="text" className="booking-notice-meta">
+                          {item.businessDate >
+                          new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10)
+                            ? '即将暂停'
+                            : '今日暂停'}{' '}
+                          · 来自暂停安排
+                        </span>
+                        <p data-motion-value="text">{item.content}</p>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </DataExpansion>
           </section>
         )}
       </>

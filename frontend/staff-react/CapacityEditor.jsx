@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { DataInput } from './DataInput';
 import { TIME_SLOTS } from '../../shared/constants.js';
 import {
   gridRange,
@@ -587,13 +588,13 @@ export function CapacityEditor({ active, onNavigate }) {
         )}
       </div>
       <Notice>{error}</Notice>
-      {mode === 'template' && (message || loading) && (
+      {mode === 'template' && message && (
         <p data-motion-value="text" className="workspace-update" role="status">
-          {message || '正在更新，保留当前草稿与选区…'}
+          {message}
         </p>
       )}
       {!items.length && !loading && <p>暂无可编辑的校区配置。</p>}
-      <div hidden={mode !== 'template' || !campus}>
+      <div hidden={mode !== 'template'} aria-busy={loading}>
         <section className="field-card capacity-template">
           <div className="capacity-section-heading">
             <div>
@@ -705,31 +706,36 @@ export function CapacityEditor({ active, onNavigate }) {
                       </button>
                     </th>
                     {days.map((_, col) => {
-                      const item = at(row, col);
-                      if (!item) return <td key={col} />;
+                      const loadedItem = at(row, col);
+                      const item = loadedItem || { campus, weekday: col + 1, timeSlot: slot };
                       const key = keyOf(item),
                         selected = rangeContains(selection.range, row, col),
                         filling = preview && rangeContains(preview, row, col);
                       return (
                         <td
-                          key={key}
+                          key={col}
                           role="gridcell"
                           data-row={row}
                           data-col={col}
                           aria-label={label(item)}
                           aria-selected={selected}
-                          tabIndex={selection.end.row === row && selection.end.col === col ? 0 : -1}
+                          tabIndex={
+                            loadedItem && selection.end.row === row && selection.end.col === col
+                              ? 0
+                              : -1
+                          }
                           className={`${selected ? 'is-selected' : ''} ${filling ? 'is-fill-preview' : ''} ${drafts[key] ? 'is-dirty' : ''}`}
                           onDoubleClick={() => edit({ row, col })}
                         >
-                          <input
+                          <DataInput
+                            data-motion-value="field"
                             aria-label={`${label(item)} 预约人数`}
                             inputMode="numeric"
                             type="text"
-                            value={value(item)}
-                            disabled={busy}
+                            value={loadedItem ? value(item) : ''}
+                            disabled={busy || !loadedItem}
                             tabIndex={-1}
-                            aria-invalid={!valid(value(item))}
+                            aria-invalid={!!loadedItem && !valid(value(item))}
                             onFocus={() => {
                               setEditing(key);
                               if (editSession.current?.key === key) return;
@@ -754,6 +760,7 @@ export function CapacityEditor({ active, onNavigate }) {
                             onChange={(event) => changeEditingValue(item, event.target.value)}
                           />
                           {selected &&
+                            loadedItem &&
                             row === selection.range.bottom &&
                             col === selection.range.right &&
                             !busy && (
@@ -773,7 +780,7 @@ export function CapacityEditor({ active, onNavigate }) {
                 <tr>
                   <th>当日总名额</th>
                   {days.map((_, col) => (
-                    <td key={col}>
+                    <td key={col} data-motion-value="number">
                       {TIME_SLOTS.every((_, row) => at(row, col) && valid(value(at(row, col))))
                         ? TIME_SLOTS.reduce(
                             (sum, _, row) => sum + Number(value(at(row, col))),
@@ -787,26 +794,29 @@ export function CapacityEditor({ active, onNavigate }) {
             </table>
           </div>
           <div className="capacity-mobile-inputs">
-            {items
-              .filter((item) => item.campus === campus && item.weekday === day)
-              .map((item) => (
-                <label key={keyOf(item)}>
+            {TIME_SLOTS.map((slot, row) => {
+              const loadedItem = at(row, day - 1);
+              const item = loadedItem || { campus, weekday: day, timeSlot: slot };
+              return (
+                <label key={slot}>
                   <span>
                     {item.timeSlot}
                     <small data-motion-value="text">
                       {drafts[keyOf(item)] ? `原名额 ${item.capacity}` : '预约人数'}
                     </small>
                   </span>
-                  <input
+                  <DataInput
+                    data-motion-value="field"
                     aria-label={`${label(item)} 预约人数`}
                     inputMode="numeric"
-                    value={value(item)}
-                    disabled={busy}
-                    aria-invalid={!valid(value(item))}
+                    value={loadedItem ? value(item) : ''}
+                    disabled={busy || !loadedItem}
+                    aria-invalid={!!loadedItem && !valid(value(item))}
                     onChange={(event) => apply([[item, event.target.value]])}
                   />
                 </label>
-              ))}
+              );
+            })}
           </div>
           <details className="capacity-quick-tools">
             <summary>批量填写与复制</summary>

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { request } from './request.js';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
+import { DataValue } from './DataValue';
 
 const countLabels = {
   weekly: '每周最多一次',
@@ -78,10 +79,15 @@ export function AttendanceReportSettings({ active, onSaved }) {
       <div className="report-settings-heading">
         <div>
           <h2 id="report-settings-title">志愿登记表规则</h2>
-          {saved && !editing && (
+          {!editing && (
             <p>
-              {countLabels[saved.countMode]} · {saved.hoursPerCount} 小时/次 · 负责人
-              {saved.mergeLeaders ? '自动计入' : '按签到计入'}
+              <DataValue label="签到计数规则">
+                {saved ? countLabels[saved.countMode] : undefined}
+              </DataValue>{' '}
+              · <DataValue label="每次时长">{saved?.hoursPerCount}</DataValue> 小时/次 · 负责人
+              <DataValue label="负责人登记规则">
+                {saved ? (saved.mergeLeaders ? '自动计入' : '按签到计入') : undefined}
+              </DataValue>
             </p>
           )}
         </div>
@@ -108,7 +114,6 @@ export function AttendanceReportSettings({ active, onSaved }) {
           {message}
         </p>
       )}
-      {!saved && !error && <p className="report-settings-loading">正在读取规则…</p>}
       {editing && draft && (
         <form ref={formRef} className="report-settings-form" onSubmit={save}>
           <fieldset disabled={busy}>

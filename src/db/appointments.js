@@ -324,9 +324,9 @@ export function appointmentRepository(db) {
             AND p.generation=json_extract(e.value,'$.generation'))`).bind(input)
       ]);
     },
-    async overview(start, end, campuses) {
+    async overview(start, end, campuses, serviceStart = start) {
       const scope = campuses.length ? `campus IN (${campuses.map(() => '?').join(',')})` : '0';
-      const [totals, capacities] = await db.batch([
+      const [totals, capacities, pauses, nextService] = await db.batch([
         db
           .prepare(
             `SELECT campus,date,time_slot,COUNT(*) AS occupied,
@@ -336,9 +336,24 @@ export function appointmentRepository(db) {
           AND status<>'cancelled' GROUP BY campus,date,time_slot`
           )
           .bind(...campuses, start, end),
-        scheduleStatement(db, start, end, campuses)
+        scheduleStatement(db, start, end, campuses),
+        db.prepare('SELECT s.business_date AS date,c.name AS campus FROM service_day_overrides s JOIN campuses c ON c.id=s.campus_id WHERE s.business_date BETWEEN ? AND ? AND s.paused=1').bind(start, end),
+        db.prepare(`WITH origins(date) AS (
+          SELECT ? UNION SELECT date(date,'+1 day') FROM booking_day_slots WHERE date>=?
+          UNION SELECT date(business_date,'+1 day') FROM service_day_overrides WHERE business_date>=? AND paused=1
+        ), candidates(campus,date) AS (
+          SELECT campus,date FROM booking_day_slots WHERE date>=? AND capacity>0
+          UNION SELECT t.campus,date(o.date,'+' || ((t.weekday-CAST(strftime('%w',o.date) AS INTEGER)+7)%7) || ' days')
+          FROM origins o JOIN weekday_slot_capacities t ON t.capacity>0
+        ) SELECT MIN(date) AS date FROM candidates s WHERE ${scope}
+          AND NOT EXISTS(SELECT 1 FROM service_day_overrides p JOIN campuses c ON c.id=p.campus_id
+            WHERE c.name=s.campus AND p.business_date=s.date AND p.paused=1)
+          AND (EXISTS(SELECT 1 FROM booking_day_slots b WHERE b.campus=s.campus AND b.date=s.date AND b.capacity>0)
+            OR NOT EXISTS(SELECT 1 FROM booking_day_slots b WHERE b.campus=s.campus AND b.date=s.date))`)
+          .bind(serviceStart, serviceStart, serviceStart, serviceStart, ...campuses)
       ]);
-      return { totals: totals.results, capacities: capacities.results };
+      const paused = new Set(pauses.results.map((row) => `${row.campus}:${row.date}`));
+      return { nextServiceDate: nextService.results[0]?.date || null, totals: totals.results, capacities: capacities.results.map((row) => ({ ...row, paused: paused.has(`${row.campus}:${row.date}`) })) };
     },
     async create(item, request, onsite) {
       const suffix = `${item.campus === '浑南' ? '1' : '0'}${item.date.replaceAll('-', '')}-`;

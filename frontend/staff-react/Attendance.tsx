@@ -1,4 +1,3 @@
-import { DataValue } from './DataValue';
 import React, { useContext, useEffect, useState } from 'react';
 import { ActivityContext, api, Notice, time } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
@@ -81,7 +80,6 @@ export function Attendance({
             {loading ? '正在更新…' : '刷新记录'}
           </button>
         </div>
-        {!items.length && loading && !error && <DataValue label="签到记录" />}
         {!items.length && !loading && !error && <p className="field-muted">暂无签到记录。</p>}
         <ul className="attendance-history-list">
           {items.map((item) => (

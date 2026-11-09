@@ -2,28 +2,53 @@
 // every entry, including views that are not currently mounted.
 const entries = new Map();
 let owner = '';
+let sessionVersion = 0;
+let queryVersion = 0;
+const listeners = new Set();
 const fieldCampusKey = 'field-campus';
+function sessionChanged() {
+  sessionVersion++;
+  for (const listener of listeners) listener();
+}
+export function workspaceSessionVersion() {
+  return sessionVersion;
+}
+export function subscribeWorkspaceSession(listener) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+export function workspaceQueryVersion() {
+  return queryVersion;
+}
+export function invalidateWorkspaceQueries() {
+  queryVersion++;
+  for (const [key, cache] of entries) {
+    if (key.startsWith('query:') && cache instanceof Map)
+      for (const entry of cache.values()) entry.stale = true;
+  }
+}
 export function setWorkspaceSession(session) {
   if (owner !== session) {
     entries.clear();
-    if (owner) sessionStorage.removeItem(fieldCampusKey);
+    if (owner) globalThis.sessionStorage?.removeItem(fieldCampusKey);
     owner = session;
+    sessionChanged();
   }
 }
 export function clearWorkspaceState() {
   entries.clear();
   owner = '';
-  sessionStorage.removeItem(fieldCampusKey);
+  globalThis.sessionStorage?.removeItem(fieldCampusKey);
+  sessionChanged();
 }
-// Only the working-campus choice survives a reload. Data stays in memory,
-// and logout, account changes and authorization changes discard the choice.
 export function readFieldCampus(session, campuses) {
   try {
     const saved = JSON.parse(sessionStorage.getItem(fieldCampusKey));
     if (saved?.session === session && campuses.some((campus) => campus.id === saved.campusId))
       return saved.campusId;
   } catch {
-    /* Ignore an invalid saved choice and use the authorized server default. */
+    sessionStorage.removeItem(fieldCampusKey);
+    return '';
   }
   sessionStorage.removeItem(fieldCampusKey);
   return '';

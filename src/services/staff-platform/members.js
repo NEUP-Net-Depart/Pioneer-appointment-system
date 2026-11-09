@@ -113,24 +113,14 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
     };
     let after = parseMemberCursor(filters.cursor);
     const items = [];
-    const withIdentities = async (items) => {
-      const contexts = await repository.fieldContexts(
-        items.map((item) => item.memberId),
-        context.businessDate
-      );
-      return items.map((item) => ({
+    const withIdentities = (items) =>
+      items.map((item) => ({
         ...item,
-        identities: staffIdentities(
-          visibleIdentityContext(
-            contexts.get(item.memberId),
-            context,
-            item,
-            item.memberships || []
-          ),
-          platform.authorizer
-        )
+        identities: staffIdentities({
+          actor: { role: item.role },
+          memberships: item.memberships || []
+        })
       }));
-    };
     // Scan in bounded database pages, but fill a page with authorized members.
     // The public cursor references only the last returned (visible) member.
     for (;;) {
@@ -160,14 +150,14 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
         items.push({ ...visible, memberships });
         if (items.length === 101)
           return {
-            items: await withIdentities(items.slice(0, 100)),
+            items: withIdentities(items.slice(0, 100)),
             nextCursor: memberCursor(items[99]),
             schemaVersion: SCHEMA_VERSION
           };
       }
       if (candidates.length < 101)
         return {
-          items: await withIdentities(items),
+          items: withIdentities(items),
           nextCursor: null,
           schemaVersion: SCHEMA_VERSION
         };

@@ -1785,16 +1785,30 @@ fieldset.staffing-editor {
   #staff-react-root details {
     interpolate-size: allow-keywords;
   }
-  #staff-react-root details:not(.workspace-more-actions)::details-content {
+  #staff-react-root details:not(.workspace-more-actions):not(.statistics-help)::details-content {
     block-size: 0;
     overflow: clip;
     transition:
       block-size var(--workspace-motion-normal, 200ms) var(--workspace-motion-ease, ease-out),
       content-visibility var(--workspace-motion-normal, 200ms) allow-discrete;
   }
-  #staff-react-root details:not(.workspace-more-actions)[open]::details-content {
+  #staff-react-root
+    details:not(.workspace-more-actions):not(.statistics-help)[open]::details-content {
     block-size: auto;
   }
+}
+.statistics-help-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--workspace-motion-normal, 200ms)
+    var(--workspace-motion-ease, ease-out);
+}
+.statistics-help[open] .statistics-help-content {
+  grid-template-rows: 1fr;
+}
+.statistics-help-inner {
+  min-height: 0;
+  overflow: hidden;
 }
 .workspace-loaded-media {
   opacity: 0.7;
@@ -1808,6 +1822,7 @@ fieldset.staffing-editor {
     opacity: 1;
   }
   #staff-react-root details:not(.workspace-more-actions)::details-content,
+  .statistics-help-content,
   .workspace-loaded-media {
     transition: none;
   }

@@ -148,7 +148,8 @@ export function useField(
   return {
     data: resolved,
     error,
-    loading: pending === key || (!data && !error),
+    loading: !data && !error,
+    refreshing: !!data && pending === key,
     refresh
   };
 }

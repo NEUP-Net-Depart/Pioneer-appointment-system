@@ -134,10 +134,16 @@ export function appointmentService(
       const { campuses } = appointmentScope(user);
       await expire(instant, { campuses });
       const week = weekRange(start);
-      const { totals, capacities } = await appointments.overview(week.start, end, campuses);
+      const { totals, capacities, nextServiceDate } = await appointments.overview(week.start, end, campuses, start);
       const dates = Array.from({ length: 7 }, (_, index) => addDays(start, index)).filter(
         serviceDay
       );
+      if (nextServiceDate && nextServiceDate > end) {
+        const next = await appointments.overview(nextServiceDate, nextServiceDate, campuses);
+        totals.push(...next.totals);
+        capacities.push(...next.capacities);
+      }
+      if (nextServiceDate && !dates.includes(nextServiceDate)) dates.push(nextServiceDate);
       const makeItems = (days) =>
         capacities
           .filter((row) => days.includes(row.date))
@@ -153,7 +159,8 @@ export function appointmentService(
               timeSlot,
               capacity,
               occupied,
-              remaining: Math.max(0, capacity - occupied),
+              paused: !!row.paused,
+              remaining: row.paused ? 0 : Math.max(0, capacity - occupied),
               booked: total?.booked ?? 0,
               inProgress: total?.in_progress ?? 0,
               ended: Date.parse(slotDeadline(date, timeSlot)) <= instant.getTime()
@@ -167,6 +174,7 @@ export function appointmentService(
         end,
         dates,
         campuses,
+        nextServiceDate,
         items: makeItems(dates),
         week: { ...week, dates: weekDates, items: makeItems(weekDates) },
         updatedAt: instant.toISOString()
@@ -185,6 +193,10 @@ export function appointmentService(
         searchCapabilities: access.searchCapabilities,
         items: await staffPlatform.field.projectList(user, result.items, access.context)
       };
+    },
+    async counts(query, user) {
+      const result = await this.list({ ...query, deferCounts: false, limit: 1 }, user);
+      return { counts: result.counts, filteredCounts: result.filteredCounts };
     },
     async createOnsite(data, actor, requestId) {
       requireRole(actor, 'technician');

@@ -11,26 +11,33 @@ const listGroups =
   '[data-motion-list],.account-list,.members-results,.records-table-wrap,.field-appointments,.report-grid';
 // Product-wide semantic presets: no full-page fade or artificial data delay.
 export const dataMotionPresets = {
-  text: { duration: 160, keyframes: [{ opacity: 0.65 }, { opacity: 1 }] },
+  text: { duration: 0, keyframes: [] },
   number: {
-    duration: 180,
+    duration: 240,
     keyframes: [
-      { opacity: 0.65, transform: 'translateY(.18em)' },
-      { opacity: 1, transform: 'none' }
+      { transform: 'translateY(1em)' },
+      { transform: 'translateY(0)' }
     ]
   },
-  status: { duration: 150, keyframes: [{ opacity: 0.7 }, { opacity: 1 }] },
-  field: { duration: 140, keyframes: [{ opacity: 0.8 }, { opacity: 1 }] },
-  enter: {
-    duration: 180,
+  numberEnter: {
+    duration: 240,
     keyframes: [
-      { opacity: 0.8, clipPath: 'inset(0 0 100% 0)' },
-      { opacity: 1, clipPath: 'inset(0 0 0% 0)' }
+      { transform: 'translateY(1em)' },
+      { transform: 'translateY(0)' }
+    ]
+  },
+  status: { duration: 0, keyframes: [] },
+  field: { duration: 0, keyframes: [] },
+  enter: {
+    duration: 240,
+    keyframes: [
+      { clipPath: 'inset(0 0 100% 0)' },
+      { clipPath: 'inset(0 0 0% 0)' }
     ]
   },
   container: {
-    duration: 200,
-    keyframes: [{ opacity: 0.8 }, { opacity: 1 }]
+    duration: 240,
+    keyframes: [{ clipPath: 'inset(0 0 100% 0)' }, { clipPath: 'inset(0 0 0% 0)' }]
   },
   layout: { duration: 200 }
 };
@@ -99,6 +106,7 @@ export function observeDataMotion(root, { enterInitial = false } = {}) {
       // Offscreen rows need geometry for later reflow; their individual fields
       // do not. Avoid thousands of redundant geometry reads on long lists.
       if (node.matches(values)) {
+        if (node.closest('[data-value-motion]') || node.querySelector('[data-value-motion]')) continue;
         const parent = node.parentElement?.closest(`${items},${containers},${regions}`);
         const bounds = snapshot.get(parent);
         if (bounds && (bounds.bottom < 0 || bounds.top > innerHeight)) continue;
@@ -109,6 +117,7 @@ export function observeDataMotion(root, { enterInitial = false } = {}) {
     return snapshot;
   }
   function animate(node, frames, preset = dataMotionPresets.layout, delay = 0) {
+    if (!preset.duration || !frames.length) return;
     running.get(node)?.cancel();
     const animation = node.animate(frames, {
       duration: preset.duration,
@@ -255,6 +264,13 @@ export function observeDataMotion(root, { enterInitial = false } = {}) {
             : dataMotionPresets.container;
           queue(node, preset.keyframes, preset, node.matches(items));
         }
+        continue;
+      }
+      if (node.matches(regions) && target.height > before.height + 1) {
+        queue(node, [
+          { clipPath: `inset(0 0 ${target.height - before.height}px 0)` },
+          { clipPath: 'inset(0 0 0px 0)' }
+        ], dataMotionPresets.container);
         continue;
       }
       if (node.matches(items) && Math.abs(before.height - target.height) <= 1) {

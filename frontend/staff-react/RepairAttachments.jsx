@@ -1,9 +1,9 @@
-import { DataValue } from './DataValue';
 import React, { useContext, useEffect, useState } from 'react';
 import { apiFetch } from '../../shared/api.js';
 import { attachmentSize, attachmentUrl, uploadAttachments } from '../../shared/attachments.js';
 import { request } from './request.js';
 import { ActivityContext, Notice } from './field/ui';
+import { DataExpansion } from './DataExpansion.jsx';
 
 export function RepairAttachments({ id, revision }) {
   const active = useContext(ActivityContext);
@@ -80,24 +80,24 @@ export function RepairAttachments({ id, revision }) {
         上传补充照片
       </button>
       {error && <button onClick={() => setRetry((value) => value + 1)}>重试读取附件</button>}
-      {files ? (
-        files.length ? (
-          <ul className="record-attachments">
-            {files.map((file) => (
-              <li data-motion-item="" key={file.id}>
-                <button disabled={!!busy} onClick={() => download(file)}>
-                  {busy === file.id ? '正在读取…' : file.filename}
-                  <small data-motion-value="text">{attachmentSize(file.size)}</small>
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="field-muted">暂无可用附件。</p>
-        )
-      ) : (
-        open && !error && <DataValue label="附件" />
-      )}
+      <DataExpansion ready={!!files}>
+        {files ? (
+          files.length ? (
+            <ul className="record-attachments">
+              {files.map((file) => (
+                <li data-motion-item="" key={file.id}>
+                  <button disabled={!!busy} onClick={() => download(file)}>
+                    {busy === file.id ? '正在读取…' : file.filename}
+                    <small data-motion-value="text">{attachmentSize(file.size)}</small>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="field-muted">暂无可用附件。</p>
+          )
+        ) : null}
+      </DataExpansion>
     </details>
   );
 }

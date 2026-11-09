@@ -1,6 +1,6 @@
 import { DataValue } from './DataValue';
-import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { request } from './request.js';
+import React, { useContext, useEffect, useRef, useState } from 'react';
+import { useWorkspaceQuery } from './useWorkspaceQuery.js';
 import { ActivityContext } from './field/ui';
 import { readWorkspaceState, writeWorkspaceState } from './workspace-state.js';
 import { MemberEditor } from './MemberEditor.jsx';
@@ -11,82 +11,80 @@ import { WorkspaceMoreActions } from './WorkspaceMoreActions';
 import { StaffIdentity } from './StaffIdentity';
 import { MemberCreate } from './MemberCreate.jsx';
 
+function deriveMembers(path, cache) {
+  const params = new URLSearchParams(path.split('?')[1]);
+  const complete = cache.get('/api/members?q=&homeCampusId=&status=');
+  if (params.get('q') || !complete || complete.data.nextCursor) return null;
+  const campus = params.get('homeCampusId');
+  const status = params.get('status');
+  return {
+    ...complete,
+    data: {
+      ...complete.data,
+      items: complete.data.items.filter(
+        (item) => (!campus || item.homeCampusId === campus) && (!status || item.status === status)
+      )
+    }
+  };
+}
+
 export function Members({ user }) {
-  const routeActive = useContext(ActivityContext);
+  const active = useContext(ActivityContext);
   const viewKey = `members:${user.memberId || user.account}:${user.authVersion || 0}`;
   const saved = readWorkspaceState(viewKey);
-  const [items, setItems] = useState(saved?.items || []);
   const [q, setQ] = useState(saved?.q || '');
+  const [search, setSearch] = useState(q.trim());
   const [campus, setCampus] = useState(saved?.campus || '');
   const [status, setStatus] = useState(saved?.status || '');
-  const [nextCursor, setNextCursor] = useState(saved?.nextCursor || '');
-  const [resolvedQuery, setResolvedQuery] = useState(saved?.query || '');
-  const query = JSON.stringify([q, campus, status]);
+  const query = new URLSearchParams({ q: search, homeCampusId: campus, status }).toString();
   const [selected, setSelected] = useState(null);
   const [importing, setImporting] = useState(false);
   const [creating, setCreating] = useState(false);
   const [educationImporting, setEducationImporting] = useState(false);
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(!saved);
-  const generation = useRef(0);
-  const controller = useRef(null);
-
-  const load = useCallback(
-    async (cursor = '') => {
-      const current = ++generation.current;
-      controller.current?.abort();
-      controller.current = new AbortController();
-      setBusy(true);
-      setError('');
-      const params = new URLSearchParams({
-        q,
-        ...(campus ? { homeCampusId: campus } : {}),
-        ...(status ? { status } : {}),
-        ...(cursor ? { cursor } : {})
-      });
-      try {
-        const data = await request(`/api/members?${params}`, { signal: controller.current.signal });
-        if (current !== generation.current) return;
-        setItems((previous) =>
-          cursor
-            ? [
-                ...new Map(
-                  [...previous, ...(data.items || [])].map((item) => [item.memberId, item])
-                ).values()
-              ]
-            : data.items || []
-        );
-        setNextCursor(data.nextCursor || '');
-        setResolvedQuery(JSON.stringify([q, campus, status]));
-      } catch (err) {
-        if (current === generation.current && err.name !== 'AbortError') setError(err.message);
-      } finally {
-        if (current === generation.current) setBusy(false);
-      }
-    },
-    [q, campus, status]
-  );
+  const [revision, setRevision] = useState(0);
+  const list = useWorkspaceQuery(`/api/members?${query}`, active, revision, {
+    itemKey: 'memberId',
+    derive: deriveMembers
+  });
+  const { error, loading: busy, nextCursor } = list;
+  const items = list.data?.items || [];
+  const load = () => setRevision((value) => value + 1);
+  const sentinel = useRef(null);
 
   useEffect(() => {
-    if (!routeActive) {
-      ++generation.current;
-      controller.current?.abort();
+    const timer = setTimeout(() => setSearch(q.trim()), q.trim() ? 250 : 0);
+    return () => clearTimeout(timer);
+  }, [q]);
+
+  useEffect(() => {
+    if (
+      !active ||
+      busy ||
+      list.loadingMore ||
+      error ||
+      !nextCursor ||
+      !list.current ||
+      !sentinel.current
+    )
       return;
-    }
-    setBusy(true);
-    if (resolvedQuery !== query) setNextCursor('');
-    const timer = setTimeout(() => load(), 200);
-    return () => {
-      clearTimeout(timer);
-      ++generation.current;
-      controller.current?.abort();
-    };
-  }, [load, routeActive]);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) void list.loadMore();
+      },
+      { rootMargin: `${window.innerHeight * 2}px 0px` }
+    );
+    observer.observe(sentinel.current);
+    return () => observer.disconnect();
+  }, [active, busy, list.loadingMore, error, nextCursor, list.current, query]);
 
   useEffect(() => {
-    if (resolvedQuery === query)
-      writeWorkspaceState(viewKey, { q, campus, status, items, nextCursor, query });
-  }, [viewKey, q, campus, status, items, nextCursor, query, resolvedQuery]);
+    writeWorkspaceState(viewKey, {
+      q,
+      campus,
+      status,
+      query
+    });
+  }, [viewKey, q, campus, status, query]);
 
   return (
     <section className="react-members-page">
@@ -146,11 +144,17 @@ export function Members({ user }) {
               刷新
             </button>
           </div>
-          <span data-motion-value="number" className="members-result-count" role="status">
-            {busy ? '正在更新筛选结果…' : `已显示 ${items.length} 名成员`}
+          <span className="members-result-count" role="status">
+            已显示{' '}
+            <DataValue label="已显示成员数量">{list.current ? items.length : undefined}</DataValue>{' '}
+            名成员
           </span>
         </div>
-        <div className="react-table members-results" aria-busy={busy} data-refreshing={busy}>
+        <div
+          className="react-table members-results"
+          aria-busy={busy}
+          data-refreshing={list.refreshing}
+        >
           <div className="react-row react-row-head">
             <span>成员</span>
             <span>校区</span>
@@ -187,13 +191,10 @@ export function Members({ user }) {
                 {item.college && <small data-motion-value="text">{item.college}</small>}
               </span>
               <span className="members-row-action">
-                <button disabled={busy} onClick={() => setSelected(item)}>
-                  人员详情
-                </button>
+                <button onClick={() => setSelected(item)}>人员详情</button>
               </span>
             </div>
           ))}
-          {busy && !items.length && <DataValue label="成员列表" />}
           {!busy && !items.length && !error && (
             <div className="members-empty">
               <h2>没有找到成员</h2>
@@ -211,10 +212,10 @@ export function Members({ user }) {
             </div>
           )}
         </div>
-        <footer className="members-list-footer">
+        <footer ref={sentinel} className="members-list-footer" aria-busy={list.loadingMore}>
           {nextCursor && (
-            <button onClick={() => load(nextCursor)} disabled={busy}>
-              加载更多成员
+            <button disabled={busy || list.loadingMore} onClick={() => list.loadMore()}>
+              加载更多
             </button>
           )}
         </footer>

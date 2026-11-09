@@ -29,10 +29,13 @@ function Distribution({ values, total }: { values: Record<string, number>; total
           <div>
             <span data-motion-value="text">{label}</span>
             <strong>
-              <span data-motion-value="number">{count}</span>
+              <DataValue label={`${label}数量`}>{count}</DataValue>
               <small data-motion-value="number">
                 {' '}
-                · {total ? Math.round((count / total) * 100) : 0}%
+                ·{' '}
+                <DataValue
+                  label={`${label}占比`}
+                >{`${total ? Math.round((count / total) * 100) : 0}%`}</DataValue>
               </small>
             </strong>
           </div>
@@ -77,13 +80,13 @@ export function Statistics() {
     return () => controller.abort();
   }, [active, range, day, revision, label]);
   const data = snapshot?.data;
-  const metrics = [
-    ['预约总数', data?.total ?? '—'],
-    ['已完成维修', data?.completed ?? '—'],
-    ['关联返修', data?.linkedRepairs ?? '—'],
-    ['修复成功率', data ? `${data.repairSuccessRate}%` : '—'],
-    ['已取消', data?.cancelled ?? '—'],
-    ['已逾期', data?.expired ?? '—']
+  const metrics: [string, number | string | undefined][] = [
+    ['预约总数', data?.total],
+    ['已完成维修', data?.completed],
+    ['关联返修', data?.linkedRepairs],
+    ['修复成功率', data ? `${data.repairSuccessRate}%` : undefined],
+    ['已取消', data?.cancelled],
+    ['已逾期', data?.expired]
   ];
   return (
     <section className="report-workspace">
@@ -123,54 +126,50 @@ export function Statistics() {
             <article data-motion-item="" className="field-card" key={name}>
               <span data-motion-value="text">{name}</span>
               <strong>
-                <AnimatedValue value={count} />
+                <DataValue label={name} preset="metric" digits={6} pending={loading}>
+                  {count}
+                </DataValue>
               </strong>
             </article>
           ))}
         </div>
 
-        <details className="workspace-help">
+        <details className="workspace-help statistics-help">
           <summary>统计口径</summary>
-          <p>每日服务按预约日期统计；故障分类按已完成维修统计；校区分布按预约总数统计。</p>
-          <p>维修人员工作量为实际开始与完成记录，不代表值班考勤。</p>
+          <div className="statistics-help-content">
+            <div className="statistics-help-inner">
+              <p>每日服务按预约日期统计；故障分类按已完成维修统计；校区分布按预约总数统计。</p>
+              <p>维修人员工作量为实际开始与完成记录，不代表值班考勤。</p>
+            </div>
+          </div>
         </details>
         <div className="report-grid">
           <section className="field-card report-wide">
             <h2>每日服务</h2>
-            {!data ? (
-              <DataValue label="每日服务记录" pending={loading} />
-            ) : Object.keys(data.daily).length ? (
+            {data && Object.keys(data.daily).length ? (
               <div className="report-daily">
                 {Object.entries(data.daily).map(([date, counts]) => (
                   <article data-motion-item={date} key={date}>
                     <time dateTime={date}>{date.slice(5).replace('-', '/')}</time>
                     <strong>
-                      {counts.total}
+                      <AnimatedValue value={counts.total} />
                       <small> 条预约</small>
                     </strong>
                     <span data-motion-value="text">完成 {counts.completed} 条</span>
                   </article>
                 ))}
               </div>
-            ) : (
+            ) : data ? (
               <p className="field-muted">当前范围没有预约。</p>
-            )}
+            ) : null}
           </section>
           <section className="field-card">
             <h2>故障分类</h2>
-            {data ? (
-              <Distribution values={data.faults} total={data.completed} />
-            ) : (
-              <DataValue label="故障分类" pending={loading} />
-            )}
+            {data && <Distribution values={data.faults} total={data.completed} />}
           </section>
           <section className="field-card">
             <h2>校区分布</h2>
-            {data ? (
-              <Distribution values={data.campuses} total={data.total} />
-            ) : (
-              <DataValue label="校区分布" pending={loading} />
-            )}
+            {data && <Distribution values={data.campuses} total={data.total} />}
           </section>
           <section className="field-card report-wide">
             <h2>维修人员工作量</h2>
@@ -199,7 +198,6 @@ export function Statistics() {
                   </article>
                 ))}
             </div>
-            {!data && <DataValue label="维修人员工作量" pending={loading} />}
             {data && !Object.keys(data.technicians).length && (
               <p className="field-muted">当前范围没有已分配维修。</p>
             )}
