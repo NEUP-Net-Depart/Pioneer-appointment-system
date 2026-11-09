@@ -40,7 +40,7 @@ function RepairOrder({
       <Notice>{r.error}</Notice>
       <section className="field-ticket" aria-busy={!item}>
         {item ? (
-          <Status value={item.status} />
+          <Status value={item.status} outcome={item.outcome} />
         ) : (
           <span className="field-status">
             <DataValue label="工单状态" digits={4} />

@@ -330,7 +330,9 @@
   display: inline-flex;
   justify-content: center;
   align-items: center;
-  white-space: nowrap;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
   font-size: 12px;
   line-height: 1.4;
   min-width: 54px;
@@ -343,10 +345,6 @@
 .field-status.status-progress {
   background: #eef2fb;
   color: #556b9e;
-}
-.field-status.status-completed {
-  background: #edf4f0;
-  color: #3d6b53;
 }
 .field-status.status-pending {
   background: #f7f2e9;

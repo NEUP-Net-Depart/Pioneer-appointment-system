@@ -97,7 +97,7 @@ test('full student ID finds authorized current and historical orders through rec
   const actor=await users.find('20260001');
   const current='reserve020261105-01', history='reserve020261029-01';
   order(current);
-  order(history,{date:calendar.previousServiceDay,status:'completed'});
+  order(history,{date:calendar.previousServiceDay,status:'completed',outcome:'unrepaired'});
   order('reserve120261029-01',{campus:'浑南',date:calendar.previousServiceDay,status:'expired'});
   order('reserve020261105-02',{student_id:'101234567'});
   const records=await service.list({q:studentId},actor);
@@ -105,7 +105,8 @@ test('full student ID finds authorized current and historical orders through rec
   assert.equal((await service.list({q:studentId.slice(0,-1)},actor)).filteredCounts.all,0);
   const candidates=await scan.search({q:' '+studentId+' ',campusId:'campus-nanhu'},actor);
   assert.deepEqual(candidates.items.map(item=>item.id),[current,history]);
-  assert.deepEqual(Object.keys(candidates.items[0]),['id','campus','date','timeSlot','status']);
+  assert.deepEqual(Object.keys(candidates.items[0]),['id','campus','date','timeSlot','status','outcome']);
+  assert.equal(candidates.items.find(item=>item.id===history).outcome,'unrepaired');
   assert.equal((await scan.search({q:studentId,mode:'number'},actor)).items.length,0);
   assert.equal((await scan.search({q:'reserve'+studentId},actor)).items.length,0);
   await assert.rejects(scan.search({q:studentId,campusId:'campus-hunnan'},actor),{status:403});
@@ -276,14 +277,15 @@ test('unified lookup reuses identity and exact contact search without returning 
   const actor=await users.find('20260001');
   const social=await encryptText('wechat_exact','00'.repeat(32));
   order('reserve020261105-91',{student_id:'20269918',name:'张三',social});
-  order('reserve020261029-92',{date:calendar.previousServiceDay,student_id:'20269919',name:'张三',social,status:'completed'});
+  order('reserve020261029-92',{date:calendar.previousServiceDay,student_id:'20269919',name:'张三',social,status:'completed',outcome:'unrepaired'});
   for(let i=0;i<12;i++)order('reserve120261105-'+i,{campus:'浑南',student_id:'20269918',name:'张三',social,source:'onsite'});
   for(const query of ['20261105-91','20269918','张三','wechat_exact']) {
-    const result=await scan.search({q:query,campusId:'campus-nanhu'},actor);
+    const result=await scan.search({q:query,campusId:'campus-nanhu',mode:query==='wechat_exact' ? 'contact' : undefined},actor);
     assert.ok(result.items.some(row=>row.id==='reserve020261105-91'),query);
     assert.ok(result.items.every(row=>row.campus==='南湖'));
     assert.equal(result.hasMore,false);
     assert.ok(result.items.every(row=>!['phone','social','email','contactValue'].some(key=>Object.hasOwn(row,key))));
+    if(query==='wechat_exact')assert.equal(result.items.find(row=>row.id==='reserve020261029-92').outcome,'unrepaired');
   }
   assert.equal((await scan.search({q:'wechat_exac'},actor)).items.length,0);
   assert.ok((await scan.search({q:'张三'},actor)).items.some(row=>row.date===calendar.previousServiceDay));

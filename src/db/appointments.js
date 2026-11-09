@@ -61,7 +61,7 @@ const memberIdentity =
   '(SELECT member_id FROM staff_accounts WHERE account=appointments.assigned_to) AS assigned_member_id,(SELECT member_id FROM staff_accounts WHERE account=appointments.registered_by) AS registered_member_id';
 const select = `SELECT appointments.*,(SELECT trim(name) FROM staff_accounts WHERE account=appointments.received_by) AS received_by_name,(SELECT paused FROM service_day_overrides s JOIN campuses c ON c.id=s.campus_id WHERE s.business_date=appointments.date AND c.name=appointments.campus) AS service_paused,${assigneeName},${memberIdentity} FROM appointments`;
 const contactSelect = `SELECT appointments.id,appointments.revision,appointments.campus,appointments.date,
-  appointments.time_slot,appointments.status,appointments.phone,appointments.email,
+  appointments.time_slot,appointments.status,appointments.outcome,appointments.phone,appointments.email,
   appointments.contact_value,appointments.social,
   (SELECT generation FROM appointment_contact_index_pending p WHERE p.appointment_id=appointments.id) AS __contact_generation,
   ${memberIdentity}

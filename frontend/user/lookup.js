@@ -3,7 +3,7 @@ import { apiJson,apiBlob } from '/shared/api.js';
 import { startVisiblePolling } from '/shared/polling.js';
 import { attachmentUrl,attachmentSize } from '/shared/attachments.js';
 import { formatDate } from '/shared/time.js';
-import { statusClass,outcomeLabels,terminalStatuses } from '/shared/constants.js';
+import { appointmentStatusClass,terminalStatuses } from '/shared/constants.js';
 import { savedAppointments,saveAppointment,privateLink,parsePrivateLink,credentialHeaders,credentialStorageError,copyPrivateLink } from './credentials.js';
 import { observeDataMotion } from '/shared/data-motion.js';
 import { renderRepairQr } from './repair-qr.js';
@@ -23,7 +23,7 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
   function setNotice(target,message){target.hidden=!message;target.textContent=message;}
   function openImport(){const form=$('#import-form');form.hidden=false;$('#import-appointment').setAttribute('aria-expanded','true');$('#private-link-input').focus();}
   function card(item){
-    return `<button type="button" class="student-record" data-motion-item="record" data-detail-id="${escapeHtml(item.id)}"><span class="record-top"><strong>${escapeHtml(item.deviceType)} · ${escapeHtml(item.brand)}</strong><span class="status-pill ${statusClass[item.status]}">${statusText(item)}</span></span><p>${escapeHtml(item.campus)}校区 · ${formatDate(item.date)} · ${escapeHtml(timeLabel(item))}</p><p>${escapeHtml(item.faultType)}${item.status==='completed' ? ' · '+escapeHtml(outcomeLabels[item.outcome] || '历史未分类') : ''}</p></button>`;
+    return `<button type="button" class="student-record" data-motion-item="record" data-detail-id="${escapeHtml(item.id)}"><span class="record-top"><strong>${escapeHtml(item.deviceType)} · ${escapeHtml(item.brand)}</strong><span class="status-pill ${appointmentStatusClass(item.status,item.outcome)}">${statusText(item)}</span></span><p>${escapeHtml(item.campus)}校区 · ${formatDate(item.date)} · ${escapeHtml(timeLabel(item))}</p><p>${escapeHtml(item.faultType)}</p></button>`;
   }
   function renderList(){
     const entries=[...records.values()],items=entries.filter(row=>row.item).map(row=>row.item),failed=entries.filter(row=>row.message),unknown=entries.filter(row=>!row.item && !row.message);
@@ -86,7 +86,7 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
     if(item.status==='booked' && deadline>0 && deadline<2147480000)deadlineTimer=setTimeout(()=>{if(active && !document.hidden)void refresh();},deadline+1000);
     setNotice($('#detail-notice'),record.message ? '暂时无法更新。'+record.message : '');
     const explanation=statusExplanation(item);
-    setMarkup($('#detail-summary'),`<span class="status-pill ${statusClass[item.status]}">${statusText(item)}</span><div class="selection-summary">${timeSummary(item)}</div>${explanation ? `<p class="field-hint">${escapeHtml(explanation)}</p>` : ''}`);
+    setMarkup($('#detail-summary'),`<span class="status-pill ${appointmentStatusClass(item.status,item.outcome)}">${statusText(item)}</span><div class="selection-summary">${timeSummary(item)}</div>${explanation ? `<p class="field-hint">${escapeHtml(explanation)}</p>` : ''}`);
     setMarkup($('#detail-repair-record'),repairRecord(item));
     setMarkup($('#detail-information'),informationGroups(item,{photos:false,contacts:false,detail:true}));setMarkup($('#detail-contacts'),informationGroups(item,{device:false,detail:true}));
     const files=item.attachments || [];
