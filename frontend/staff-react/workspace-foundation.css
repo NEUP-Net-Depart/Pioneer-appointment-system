@@ -118,6 +118,37 @@ fieldset.staffing-editor {
   line-height: 1.6;
 }
 /* Keep authentication screens in the same visual system as the staff workspace. */
+.staff-mode .toast {
+  box-sizing: border-box;
+  inline-size: max-content;
+  max-inline-size: min(420px, calc(100vw - 32px));
+  min-height: 44px;
+  padding: 12px 18px;
+  border: 1px solid #e3e7ed;
+  border-radius: 12px;
+  background: #fff;
+  color: #242b35;
+  font:
+    500 14px / 1.5 Inter,
+    'Segoe UI',
+    'Microsoft YaHei',
+    sans-serif;
+  overflow-wrap: anywhere;
+  box-shadow: 0 8px 24px rgb(36 43 53 / 12%);
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+@media (max-width: 767px) {
+  .staff-mode .toast {
+    bottom: calc(88px + env(safe-area-inset-bottom));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .staff-mode .toast {
+    transition: none;
+  }
+}
 .staff-mode .login-view {
   min-height: 100dvh;
   padding: clamp(24px, 5vw, 56px) 20px;
