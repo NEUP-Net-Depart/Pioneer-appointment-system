@@ -176,7 +176,7 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
       canStart:allowed(context,'repair.start',appointmentTarget(item)) && item.status==='booked' && (!!item.receivedAt || item.date===dateKey()),
       canReceive:allowed(context,'repair.receive',appointmentTarget(item)) && item.status==='booked' && !item.receivedAt && item.date===dateKey(),
       canTransfer:allowed(context,'repair.transfer',appointmentTarget(item)) && item.status==='in_progress' && !own,
-      canFinish:allowed(context,'repair.finish.own',appointmentTarget(item)) && item.status==='in_progress' && own,canCorrect,
+      canFinish:item.status==='in_progress' && ((own && allowed(context,'repair.finish.own',appointmentTarget(item))) || canInspect),canCorrect,
       canRecoverCredential:allowed(context,'repair.correct',appointmentTarget(item)),
       canEdit:allowed(context,'repair.receive',appointmentTarget(item)),
       canSupplement:allowed(context,'repair.receive',appointmentTarget(item)) && item.photoDeferredBy===actor.account && (!item.frontPhotoId || !item.backPhotoId),
