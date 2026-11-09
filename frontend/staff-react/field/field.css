@@ -346,10 +346,6 @@
   background: #eef2fb;
   color: #556b9e;
 }
-.field-status.status-completed {
-  background: #edf4f0;
-  color: #3d6b53;
-}
 .field-status.status-pending {
   background: #f7f2e9;
   color: #7b5e2c;

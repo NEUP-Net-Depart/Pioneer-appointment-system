@@ -713,6 +713,14 @@ html{scrollbar-gutter:stable}
   .capacity-table .capacity-fill-handle { width:18px; height:18px; }
 }
 
+/* Both clients use repair outcomes to color completed appointment badges. */
+.status-completed:is(.status-pill, .field-status),
+.status-completed.outcome-unknown { color: #68727e; background: #f2f3f5; }
+.status-completed.outcome-repaired { color: #3d6b53; background: #edf4f0; }
+.status-completed.outcome-partially-repaired { color: #946514; background: #f8f2e7; }
+.status-completed.outcome-unrepaired { color: #a44850; background: #f8edef; }
+.status-completed.outcome-not-needed { color: #52677b; background: #edf1f5; }
+
 .status-cancelled { color: #536474; background: #edf1f5; }
 .status-expired { color: #855300; background: #fff2d5; }
 .staff-shell .metrics-row, .stats-metrics { grid-template-columns: repeat(6,minmax(0,1fr)); }

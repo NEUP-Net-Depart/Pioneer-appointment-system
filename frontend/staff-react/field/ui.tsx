@@ -12,7 +12,7 @@ import { Camera, Images, SwitchCamera } from 'lucide-react';
 // A hidden route remains mounted for draft continuity, but its dialogs must
 // leave the browser top layer until the route is visible again.
 export const ActivityContext = createContext(true);
-import { appointmentStatusLabel, statusClass } from '../../../shared/constants.js';
+import { appointmentStatusClass, appointmentStatusLabel } from '../../../shared/constants.js';
 import { qrImage } from '../../../shared/zxing.js';
 import { createScanner } from './scanner.js';
 import { request } from '../request.js';
@@ -30,7 +30,10 @@ export const time = (value: string) =>
   });
 export function Status({ value, outcome }: { value: string; outcome?: string }) {
   return (
-    <span data-motion-value="status" className={`field-status ${statusClass[value] || ''}`}>
+    <span
+      data-motion-value="status"
+      className={`field-status ${appointmentStatusClass(value, outcome)}`}
+    >
       {appointmentStatusLabel(value, outcome) || '状态已更新'}
     </span>
   );
