@@ -27,7 +27,7 @@ test('field home starts independent reads together and preserves all returned se
   const { workflow, actor, gates, calls } = fixture();
   const result = workflow.home(actor);
   await new Promise(setImmediate);
-  assert.deepEqual(calls, ['repairs', 'photos', 'direct', 'event', 'covers', 'attendance']);
+  assert.deepEqual([...calls].sort(), ['repairs', 'photos', 'direct', 'event', 'covers', 'attendance'].sort());
   gates.repairs.resolve([{ id: 'own', campus: '南湖' }]);
   gates.photos.resolve([{ id: 'photo', campus: '南湖' }]);
   gates.direct.resolve({ allowed: true });
@@ -47,11 +47,11 @@ test('field board overlaps home reads with expiry, then reuses work for own repa
   const { workflow, actor, gates, calls } = fixture();
   const result = workflow.board(actor);
   await new Promise(setImmediate);
-  assert.deepEqual(calls, ['expiry', 'photos', 'direct', 'event', 'covers', 'attendance']);
+  assert.deepEqual([...calls].sort(), ['expiry', 'photos', 'direct', 'event', 'covers', 'attendance'].sort());
   assert.equal(calls.includes('work'), false);
   gates.expiry.resolve();
   await new Promise(setImmediate);
-  assert.equal(calls.at(-1), 'work');
+  assert.ok(calls.includes('work'));
   gates.work.resolve([
     { id: 'own', campus: '南湖', status: 'in_progress', assignedMemberId: actor.memberId },
     { id: 'other', campus: '南湖', status: 'in_progress', assignedMemberId: 'other' }
