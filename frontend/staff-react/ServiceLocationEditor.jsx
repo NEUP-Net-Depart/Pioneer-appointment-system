@@ -1,4 +1,5 @@
-import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import React, { useContext, useEffect, useRef, useState } from 'react';
 import { addDays, dateKey, formatInstant } from '../../shared/time.js';
 import { request } from './request.js';
 import { ActivityContext, Modal, Notice } from './field/ui';
@@ -7,75 +8,47 @@ import { useUnsavedChanges } from './useUnsavedChanges.js';
 export function ServiceLocationEditor({ campus }) {
   const active = useContext(ActivityContext);
   const [date, setDate] = useState(dateKey()),
-    [snapshot, setSnapshot] = useState(null),
     [drafts, setDrafts] = useState({});
   const [error, setError] = useState(''),
     [message, setMessage] = useState(''),
-    [loading, setLoading] = useState(false),
     [busy, setBusy] = useState(false),
     [review, setReview] = useState(false);
-  const reading = useRef(null),
-    lock = useRef(false);
-  const key = `${campus}/${date}`,
-    data = snapshot?.key === key ? snapshot : null,
-    draft = drafts[key];
+  const client = useQueryClient();
+  const lock = useRef(false);
+  const key = `${campus}/${date}`;
+  const locations = useQuery({
+    queryKey: ['/api/service-locations', { dateFrom: date, dateTo: date }],
+    enabled: active && !!date
+  });
+  const history = useQuery({
+    queryKey: ['/api/service-locations/history', { campus, date }],
+    enabled: active && !!date
+  });
+  const data =
+    locations.data && history.data
+      ? {
+          ...(locations.data.items.find((item) => item.campus === campus) || {
+            location: '',
+            revision: 0
+          }),
+          ...history.data
+        }
+      : null;
+  const loading = locations.isPending || history.isPending;
+  const draft = drafts[key];
+  const refresh = () => Promise.all([locations.refetch(), history.refetch()]);
   const value = draft?.value ?? data?.location ?? '',
     conflict = !!draft && !!data && draft.revision !== data.revision;
-  const refresh = useCallback(async () => {
-    if (!active || !date || document.hidden || lock.current) return;
-    reading.current?.abort();
-    const controller = new AbortController();
-    reading.current = controller;
-    setLoading(true);
-    setError('');
-    try {
-      const [result, details] = await Promise.all([
-        request(`/api/service-locations?${new URLSearchParams({ dateFrom: date, dateTo: date })}`, {
-          signal: controller.signal
-        }),
-        request(`/api/service-locations/history?${new URLSearchParams({ campus, date })}`, {
-          signal: controller.signal
-        })
-      ]);
-      if (controller.signal.aborted) return;
-      const item = result.items.find((item) => item.campus === campus) || {
-        location: '',
-        revision: 0
-      };
-      setSnapshot({ ...item, ...details, key });
-      setDrafts((current) => {
-        if (!current[key] || current[key].value !== item.location) return current;
-        const next = { ...current };
-        delete next[key];
-        return next;
-      });
-    } catch (failure) {
-      if (!controller.signal.aborted) {
-        if ([401, 403].includes(failure.status)) {
-          setSnapshot(null);
-          setDrafts({});
-          setReview(false);
-        }
-        setError(failure.message);
-      }
-    } finally {
-      if (!controller.signal.aborted) setLoading(false);
-    }
-  }, [active, campus, date, key]);
   useEffect(() => {
-    refresh();
-    const visibility = () => {
-      if (document.hidden) {
-        reading.current?.abort();
-        setLoading(false);
-      } else refresh();
-    };
-    document.addEventListener('visibilitychange', visibility);
-    return () => {
-      reading.current?.abort();
-      document.removeEventListener('visibilitychange', visibility);
-    };
-  }, [refresh]);
+    if (!locations.data) return;
+    const location = locations.data.items.find((item) => item.campus === campus)?.location || '';
+    setDrafts((current) => {
+      if (!current[key] || current[key].value !== location) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  }, [locations.data, campus, key]);
   useEffect(() => {
     setReview(false);
     setMessage('');
@@ -103,9 +76,12 @@ export function ServiceLocationEditor({ campus }) {
   async function save(all = false) {
     if (lock.current || (all !== true && (!data || !draft || conflict))) return;
     lock.current = true;
-    reading.current?.abort();
+    await Promise.all(
+      ['/api/service-locations', '/api/service-locations/history'].map((path) =>
+        client.cancelQueries({ queryKey: [path] })
+      )
+    );
     setBusy(true);
-    setLoading(false);
     setError('');
     try {
       for (const [savedKey, entry] of all === true ? Object.entries(drafts) : [[key, draft]]) {
@@ -119,13 +95,35 @@ export function ServiceLocationEditor({ campus }) {
             revision: entry.revision
           }
         });
-        if (savedKey === key) setSnapshot({ ...result, key });
+        client.setQueriesData(
+          { queryKey: ['/api/service-locations'] },
+          (current) =>
+            current && {
+              ...current,
+              items: current.items.map((item) =>
+                item.campus === savedCampus && item.date === savedDate ? result : item
+              )
+            }
+        );
         setDrafts((current) => {
           const next = { ...current };
           delete next[savedKey];
           return next;
         });
       }
+      const affectedQueries = {
+        predicate: (query) =>
+          [
+            '/api/service-locations',
+            '/api/service-locations/history',
+            '/api/appointments',
+            '/api/appointments/overview',
+            '/api/field/home',
+            '/api/field/board'
+          ].includes(query.queryKey[0])
+      };
+      await client.cancelQueries(affectedQueries);
+      await client.invalidateQueries(affectedQueries);
       setMessage('已保存。已有预约同步显示最新地点；需要时请人工通知客户。');
       return true;
     } catch (failure) {
@@ -149,7 +147,7 @@ export function ServiceLocationEditor({ campus }) {
           <h2>维修地点</h2>
         </div>
         <button disabled={loading || busy || !date} onClick={refresh}>
-          {loading ? '正在读取…' : '读取最新地点'}
+          读取最新地点
         </button>
       </div>
       <div className="capacity-location-dates">
@@ -178,15 +176,8 @@ export function ServiceLocationEditor({ campus }) {
           })}
         </div>
       </div>
-      <Notice>{error}</Notice>
-      <p data-motion-value="number" className="workspace-update" role="status">
-        {message ||
-          (loading
-            ? '正在读取，保留未保存输入…'
-            : Object.keys(drafts).length
-              ? '切换日期和校区保留草稿；离开前请保存。'
-              : '')}
-      </p>
+      <Notice>{error || locations.error?.message || history.error?.message}</Notice>
+      <Notice>{message}</Notice>
       <form
         className="capacity-location-form"
         onSubmit={(event) => {

@@ -4,10 +4,11 @@ import React, { useLayoutEffect, useRef } from 'react';
 // The accessible value changes immediately. Only its visual position transitions.
 export function AnimatedValue({ value }: { value: string | number }) {
   const ref = useRef<HTMLSpanElement>(null);
-  const previous = useRef(value);
+  const previous = useRef<string | number | undefined>(undefined);
   useLayoutEffect(() => {
     const node = ref.current;
     if (previous.current === value || !node) return;
+    const first = previous.current === undefined;
     previous.current = value;
     node.getAnimations().forEach((animation) => animation.cancel());
     if (
@@ -16,7 +17,7 @@ export function AnimatedValue({ value }: { value: string | number }) {
       !node.getClientRects().length
     )
       return;
-    const preset = dataMotionPresets.number;
+    const preset = first ? dataMotionPresets.numberEnter : dataMotionPresets.number;
     const animation = node.animate(preset.keyframes, {
       duration: preset.duration,
       easing: 'ease-out'
@@ -34,7 +35,7 @@ export function AnimatedValue({ value }: { value: string | number }) {
     };
   }, [value]);
   return (
-    <span className="workspace-data-value" ref={ref}>
+    <span className="animated-value-content" data-value-motion="number" ref={ref}>
       {value}
     </span>
   );

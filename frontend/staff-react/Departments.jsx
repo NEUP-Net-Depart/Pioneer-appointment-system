@@ -1,39 +1,30 @@
-import React, { useContext, useEffect, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import React, { useContext, useState } from 'react';
 import { ActivityContext, Modal, Notice } from './field/ui';
 import { request } from './request.js';
 
 export function Departments() {
   const active = useContext(ActivityContext);
-  const [items, setItems] = useState([]),
-    [canManage, setCanManage] = useState(false),
-    [selected, setSelected] = useState(null),
+  const client = useQueryClient();
+  const result = useQuery({
+    queryKey: ['/api/organization/departments', { includeDisabled: '1' }],
+    enabled: active
+  });
+  const items = result.data?.items || [];
+  const canManage = result.data?.actions?.manage === true;
+  const loading = result.isPending;
+  const [selected, setSelected] = useState(null),
     [name, setName] = useState(''),
     [enabled, setEnabled] = useState(true);
-  const [loading, setLoading] = useState(true),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState(''),
-    [revision, setRevision] = useState(0);
-  const lock = useRef(false);
-  useEffect(() => {
-    if (!active) return;
-    const controller = new AbortController();
-    setLoading(true);
-    setError('');
-    request('/api/organization/departments?includeDisabled=1', { signal: controller.signal })
-      .then((data) => {
-        if (!controller.signal.aborted) {
-          setItems(data.items || []);
-          setCanManage(data.actions?.manage === true);
-        }
-      })
-      .catch((failure) => {
-        if (!controller.signal.aborted) setError(failure.message);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [active, revision]);
+  const [error, setError] = useState('');
+  const mutation = useMutation({
+    mutationFn: ({ path, method, body }) => request(path, { method, body }),
+    onSuccess: async () => {
+      await client.cancelQueries({ queryKey: ['/api/organization/departments'] });
+      await client.invalidateQueries({ queryKey: ['/api/organization/departments'] });
+    }
+  });
+  const busy = mutation.isPending;
   function edit(item) {
     setSelected(item);
     setName(item.name || '');
@@ -42,30 +33,22 @@ export function Departments() {
   }
   async function save(event) {
     event.preventDefault();
-    if (lock.current) return;
-    lock.current = true;
-    setBusy(true);
+    if (busy) return;
     setError('');
     try {
-      await request(
-        `/api/organization/departments${selected.id ? `/${encodeURIComponent(selected.id)}` : ''}`,
-        {
-          method: selected.id ? 'PATCH' : 'POST',
-          body: {
-            name,
-            enabled,
-            ...(selected.id ? { revision: selected.revision } : {}),
-            requestId: crypto.randomUUID()
-          }
+      await mutation.mutateAsync({
+        path: `/api/organization/departments${selected.id ? `/${encodeURIComponent(selected.id)}` : ''}`,
+        method: selected.id ? 'PATCH' : 'POST',
+        body: {
+          name,
+          enabled,
+          ...(selected.id ? { revision: selected.revision } : {}),
+          requestId: crypto.randomUUID()
         }
-      );
+      });
       setSelected(null);
-      setRevision((value) => value + 1);
     } catch (failure) {
       setError(failure.message);
-    } finally {
-      lock.current = false;
-      setBusy(false);
     }
   }
   return (
@@ -76,11 +59,14 @@ export function Departments() {
             新增部门
           </button>
         )}
-        <button disabled={loading} onClick={() => setRevision((value) => value + 1)}>
+        <button
+          disabled={loading}
+          onClick={() => client.invalidateQueries({ queryKey: ['/api/organization/departments'] })}
+        >
           刷新部门
         </button>
       </div>
-      {!selected && <Notice>{error}</Notice>}
+      {!selected && <Notice>{error || result.error?.message}</Notice>}
       <div className="account-list" aria-busy={loading}>
         {items.map((item) => (
           <article className="field-card department-row" key={item.id}>
@@ -121,7 +107,7 @@ export function Departments() {
               </label>
               {!enabled && <p>停用后保留已有任职及历史记录，不再接受新增任职。</p>}
             </fieldset>
-            <Notice>{error}</Notice>
+            <Notice>{error || result.error?.message}</Notice>
             <div className="field-actions">
               <button type="button" disabled={busy} onClick={() => setSelected(null)}>
                 取消

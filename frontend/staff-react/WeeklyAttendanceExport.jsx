@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Modal, Notice } from './field/ui';
 import { WeekPicker } from './WeekPicker';
 import { dateKey, weekRange } from '../../shared/time.js';
-import { request } from './request.js';
+import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../shared/api.js';
 
 export function WeeklyAttendanceExport({ campuses, onClose }) {
@@ -13,12 +13,10 @@ export function WeeklyAttendanceExport({ campuses, onClose }) {
     firstOnly: false,
     leadersOnce: false
   });
-  const [rows, setRows] = useState(null),
-    [busy, setBusy] = useState(false),
+  const [downloading, setDownloading] = useState(false),
     [error, setError] = useState('');
   const change = (patch) => {
     setScope((current) => ({ ...current, ...patch }));
-    setRows(null);
     setError('');
   };
   const params = () =>
@@ -27,9 +25,15 @@ export function WeeklyAttendanceExport({ campuses, onClose }) {
       firstOnly: scope.firstOnly ? '1' : '0',
       leadersOnce: scope.leadersOnce ? '1' : '0'
     });
+  const result = useQuery({
+    queryKey: ['/api/attendance/weekly-summary', Object.fromEntries(params())],
+    enabled: false
+  });
+  const rows = result.data?.rows;
+  const busy = downloading || result.isFetching;
   async function run(download = false) {
     if (busy) return;
-    setBusy(true);
+    setDownloading(download);
     setError('');
     try {
       if (download) {
@@ -41,11 +45,11 @@ export function WeeklyAttendanceExport({ campuses, onClose }) {
         link.download = `周考勤-${scope.weekStart}-${scope.weekEnd}.csv`;
         link.click();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
-      } else setRows((await request('/api/attendance/weekly-summary?' + params())).rows);
+      } else await result.refetch({ throwOnError: true });
     } catch (failure) {
       setError(failure.message);
     } finally {
-      setBusy(false);
+      setDownloading(false);
     }
   }
   return (

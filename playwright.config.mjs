@@ -10,22 +10,37 @@ export default defineConfig({
   reporter: 'list',
   outputDir: process.env.E2E_OUTPUT_DIR || 'output/playwright/results',
   use: {
+    baseURL: process.env.E2E_BASE_URL,
     headless: true,
     actionTimeout: 15000,
     navigationTimeout: 20000,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure'
   },
+  // Separate simulated clients keep the shared local Worker's production IP
+  // limits meaningful without accumulating every browser project's logins.
   projects: [
-    { name: 'chromium', use: { browserName: 'chromium', viewport: { width: 1440, height: 1000 } } },
+    {
+      name: 'chromium',
+      use: {
+        browserName: 'chromium',
+        viewport: { width: 1440, height: 1000 },
+        extraHTTPHeaders: { 'CF-Connecting-IP': '192.0.2.1' }
+      }
+    },
     {
       name: 'webkit-mobile',
-      testMatch: ['**/core-workflow.spec.mjs', '**/photo-compress.spec.mjs'],
+      testMatch: [
+        '**/core-workflow.spec.mjs',
+        '**/photo-compress.spec.mjs',
+        '**/records-loading.spec.mjs'
+      ],
       use: {
         browserName: 'webkit',
         viewport: { width: 375, height: 812 },
         isMobile: true,
-        hasTouch: true
+        hasTouch: true,
+        extraHTTPHeaders: { 'CF-Connecting-IP': '192.0.2.2' }
       }
     }
   ]

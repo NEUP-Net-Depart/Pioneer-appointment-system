@@ -219,8 +219,10 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
     const context = await contextFor(actor),
       campus = scoped(context, query.campusId, true),
       weekStart = week(query.weekStart || weekRange(dateKey()).start);
-    const snapshot = await repository.scheduleSnapshot(campus, weekStart);
-    const people = await repository.schedulePeople(campus);
+    const [snapshot, people] = await Promise.all([
+      repository.scheduleSnapshot(campus, weekStart),
+      repository.schedulePeople(campus)
+    ]);
     const ids = people.map((person) => person.memberId);
     const [rosters, facts, values, pauses] = await Promise.all([
       Promise.all(
@@ -235,6 +237,13 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
     if (snapshot !== (await repository.scheduleSnapshot(campus, weekStart)))
       fail(409, '人员或班表已变化，请刷新');
     const availability = values.flat();
+    const factsByMember = new Map(facts.map((fact) => [fact.memberId, fact]));
+    const availabilityByMember = new Map();
+    for (const row of availability) {
+      const key = `${row.memberId}:${row.dutyType}`;
+      if (!availabilityByMember.has(key)) availabilityByMember.set(key, []);
+      availabilityByMember.get(key).push(row);
+    }
     return {
       context,
       snapshot,
@@ -244,12 +253,10 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
       availability,
       people: people.map((person) => ({
         ...person,
-        ...facts.find((fact) => fact.memberId === person.memberId),
+        ...factsByMember.get(person.memberId),
         availability: Object.fromEntries(
           DUTY_TYPES.map((dutyType) => {
-            const rows = availability.filter(
-              (row) => row.memberId === person.memberId && row.dutyType === dutyType
-            );
+            const rows = availabilityByMember.get(`${person.memberId}:${dutyType}`) || [];
             return [
               dutyType,
               rows.find((row) => row.weekStart === weekStart && row.windows !== null)?.windows ??

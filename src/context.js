@@ -60,7 +60,7 @@ export function createContext(request, env) {
     staffPlatform: staffPlatformServiceInstance,
     field,
     async health() {
-      const [staffRelease] = await Promise.all([verifyStaffSchema(db), env.ATTACHMENTS.list({ limit: 1 })]);
+      const staffRelease = await verifyStaffSchema(db);
       return { ok: true, service: 'pioneer-repair-api', database: 'd1', attachments: 'r2', staffRelease, workflow: 'staff-platform' };
     }
   };

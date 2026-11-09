@@ -1,3 +1,4 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DataValue } from './DataValue';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { ActivityContext, Modal, Notice } from './field/ui';
@@ -10,70 +11,30 @@ const shortDate = (day) => `${Number(day.slice(5, 7))}/${Number(day.slice(8))}`;
 
 export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
   const active = useContext(ActivityContext);
-  const [today, setToday] = useState(dateKey()),
-    [data, setData] = useState(null);
+  const client = useQueryClient();
+  const [today, setToday] = useState(dateKey());
   const [selected, setSelected] = useState([]),
     [reason, setReason] = useState(''),
     [originalReason, setOriginalReason] = useState('');
-  const [loading, setLoading] = useState(true),
-    [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
-    [confirm, setConfirm] = useState(null),
-    [retry, setRetry] = useState(0);
+    [confirm, setConfirm] = useState(null);
   const command = useRef(null),
     lock = useRef(false);
   const start = weekRange(today).start,
     end = addDays(start, 13),
     dirty = reason !== originalReason;
-  const items = data?.campus === campus && data?.start === start ? data.items : [];
+  const queryKey = ['/api/service-days', { campus, start, end }];
+  const result = useQuery({ queryKey, enabled: active && !busy });
+  const data = result.data;
+  const loading = result.isPending;
+  const items = data?.items || [];
   const chosen = items.filter((item) => selected.includes(item.businessDate));
   const affectedCount = chosen.reduce((sum, item) => sum + item.affected.length, 0);
   useEffect(() => {
-    if (!active) return;
-    let controller,
-      stopped = false;
-    async function read() {
-      controller?.abort();
-      if (document.hidden) return;
-      const current = new AbortController();
-      controller = current;
-      setLoading(true);
-      setError('');
-      try {
-        const result = await request(
-          '/api/service-days?' + new URLSearchParams({ campus, start, end }),
-          { signal: current.signal }
-        );
-        if (stopped || current.signal.aborted) return;
-        setData({ ...result, start });
-        if (result.serverNow) setToday(dateKey(new Date(result.serverNow)));
-      } catch (failure) {
-        if (!stopped && !current.signal.aborted) {
-          if ([401, 403].includes(failure.status)) {
-            setData(null);
-            setSelected([]);
-          }
-          setError(failure.message);
-        }
-      } finally {
-        if (!stopped && !current.signal.aborted) setLoading(false);
-      }
-    }
-    read();
-    const visibility = () => {
-      if (document.hidden) {
-        controller?.abort();
-        setLoading(false);
-      } else read();
-    };
-    document.addEventListener('visibilitychange', visibility);
-    return () => {
-      stopped = true;
-      controller?.abort();
-      document.removeEventListener('visibilitychange', visibility);
-    };
-  }, [active, campus, start, end, retry]);
+    if (data?.serverNow) setToday(dateKey(new Date(data.serverNow)));
+  }, [data]);
 
   function select(dates) {
     setSelected(dates);
@@ -121,13 +82,31 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
         method: 'PATCH',
         body: { ...body, requestId: command.current.id }
       });
-      setData((current) => ({
+      await client.cancelQueries({ queryKey });
+      client.setQueryData(queryKey, (current) => ({
         ...current,
         items: current.items.map((item) => ({
           ...item,
           item: result.items.find((saved) => saved.businessDate === item.businessDate) || item.item
         }))
       }));
+      const affectedQueries = {
+        predicate: (query) =>
+          [
+            '/api/booking-settings/manage',
+            '/api/slot-capacities/actual',
+            '/api/field/home',
+            '/api/field/board',
+            '/api/rosters/campus-week',
+            '/api/attendance/day',
+            '/api/me/roster',
+            '/api/appointments/overview',
+            '/api/attendance/volunteer-report',
+            '/api/attendance/matrix'
+          ].includes(query.queryKey[0])
+      };
+      await client.cancelQueries(affectedQueries);
+      await client.invalidateQueries(affectedQueries);
       setOriginalReason(reason);
       setConfirm(null);
       command.current = null;
@@ -153,11 +132,11 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
         <div>
           <h2>暂停日期</h2>
         </div>
-        <button disabled={busy || loading} onClick={() => setRetry((value) => value + 1)}>
-          {loading ? '正在读取…' : '读取最新安排'}
+        <button disabled={busy || loading} onClick={() => result.refetch()}>
+          读取最新安排
         </button>
       </div>
-      <Notice>{error || notice}</Notice>
+      <Notice>{error || result.error?.message || notice}</Notice>
       {!items.length && !loading && !error && <p>暂时无法读取维修安排，请重试。</p>}
       <div className="service-day-weeks">
         {[0, 7].map((offset) => {

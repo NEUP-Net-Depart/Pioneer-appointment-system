@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { parseAppointmentSearch } from '../../../shared/appointment-search.js';
 import { api, Status } from './ui';
@@ -39,13 +40,10 @@ export function AppointmentLookup({
   allowContactSearch?: boolean;
 }) {
   const [value, setValue] = useState(''),
-    [items, setItems] = useState<Candidate[]>([]),
-    [pending, setPending] = useState(false),
     [message, setMessage] = useState(''),
     [expanded, setExpanded] = useState(false),
     [highlight, setHighlight] = useState(-1);
   const id = useId(),
-    controller = useRef<AbortController | null>(null),
     chosen = useRef(''),
     contactEnabled = allowContactSearch ?? searchCapabilities?.contact ?? true,
     studentIdEnabled = searchCapabilities?.identity ?? false,
@@ -65,81 +63,48 @@ export function AppointmentLookup({
         : ['预约编号', studentIdEnabled && '姓名、完整学号', contactEnabled && contactHint]
             .filter(Boolean)
             .join('、');
+  const [search, setSearch] = useState('');
   useEffect(() => {
-    controller.current?.abort();
-    setItems([]);
     setHighlight(-1);
     setMessage('');
-    setPending(false);
-    if (!active || disabled || !ready || chosen.current === value || document.hidden) return;
-    const abort = new AbortController();
-    controller.current = abort;
-    setPending(true);
-    const timer = setTimeout(async () => {
-      if (document.hidden) return;
-      try {
-        const result = await api<{ items: Candidate[]; hasMore: boolean }>('/api/scan/search', {
-          method: 'POST',
-          body: {
-            q: value.trim(),
-            ...(!contactEnabled
-              ? {
-                  mode:
-                    studentIdEnabled && query.studentId
-                      ? 'studentId'
-                      : studentIdEnabled
-                        ? 'identity'
-                        : 'number'
-                }
-              : {}),
-            ...(campusId ? { campusId } : {})
-          },
-          signal: abort.signal
-        });
-        if (!abort.signal.aborted) {
-          setItems(result.items);
-          setExpanded(true);
-          setMessage(
-            result.hasMore
-              ? studentIdEnabled && query.studentId
-                ? '匹配较多，可前往预约记录查看完整列表'
-                : '匹配较多，请输入更完整的编号、姓名或联系方式'
-              : !result.items.length
-                ? hasLocalMatches
-                  ? ''
-                  : '未找到权限范围内的匹配预约'
-                : ''
-          );
-        }
-      } catch (error) {
-        if (!abort.signal.aborted) setMessage((error as Error).message);
-      } finally {
-        if (!abort.signal.aborted) setPending(false);
-      }
-    }, 250);
-    const hide = () => {
-      if (document.hidden) {
-        abort.abort();
-        setPending(false);
-        setExpanded(false);
-        setItems([]);
-      }
-    };
-    document.addEventListener('visibilitychange', hide);
-    return () => {
-      clearTimeout(timer);
-      abort.abort();
-      document.removeEventListener('visibilitychange', hide);
-    };
-  }, [active, disabled, value, hasLocalMatches, campusId, ready, contactEnabled, studentIdEnabled]);
+    const timer = setTimeout(() => setSearch(value.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [value]);
+  const mode = !contactEnabled
+    ? studentIdEnabled && query?.studentId
+      ? 'studentId'
+      : studentIdEnabled
+        ? 'identity'
+        : 'number'
+    : undefined;
+  const body = { q: search, ...(mode ? { mode } : {}), ...(campusId ? { campusId } : {}) };
+  const searching = active && !disabled && ready && chosen.current !== value;
+  const result = useQuery<{ items: Candidate[]; hasMore: boolean }>({
+    queryKey: ['/api/scan/search', body],
+    queryFn: ({ signal }) =>
+      api('/api/scan/search', { method: 'POST', body, signal, timeoutMs: 15000 }),
+    enabled: searching && search === value.trim(),
+    refetchInterval: false
+  });
+  const items = searching && search === value.trim() ? result.data?.items || [] : [];
+  const pending = searching && (search !== value.trim() || result.isLoading);
+  const feedback =
+    message ||
+    result.error?.message ||
+    (result.data && searching && search === value.trim()
+      ? result.data.hasMore
+        ? studentIdEnabled && query?.studentId
+          ? '匹配较多，可前往预约记录查看完整列表'
+          : '匹配较多，请输入更完整的编号、姓名或联系方式'
+        : !items.length && !hasLocalMatches
+          ? '未找到权限范围内的匹配预约'
+          : ''
+      : '');
   useEffect(() => {
     onSearchActivityChange?.(pending || items.length > 0);
   }, [pending, items.length, onSearchActivityChange]);
   function select(value: string) {
-    controller.current?.abort();
     chosen.current = value;
-    setItems([]);
-    setPending(false);
     setMessage('');
     setExpanded(false);
     setValue(value);
@@ -236,9 +201,9 @@ export function AppointmentLookup({
           ))}
         </div>
       )}
-      {message && (
+      {feedback && (
         <p data-motion-value="text" role="status" className="field-lookup-help">
-          {message}
+          {feedback}
         </p>
       )}
     </div>

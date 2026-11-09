@@ -153,18 +153,14 @@ export async function listAppointments(
     'SELECT appointments.*',
     `SELECT appointments.*,${order.map((item, index) => `${sortColumns[item.field]} AS __page${index}`).join(',')}`
   );
-  const [items, total, filtered] = await db.batch([
-    db
-      .prepare(
-        `${pagedSelect} WHERE ${where.join(' AND ')} ORDER BY ${order.map((item) => `${sortColumns[item.field]} ${item.direction === 'asc' ? 'ASC' : 'DESC'}`).join(',')} LIMIT ?`
-      )
-      .bind(...args, limit + 1),
-    db.prepare(`${counts} WHERE ${scope}`).bind(...scopeArgs),
-    db.prepare(`${counts} WHERE ${filteredWhere}`).bind(...filteredArgs)
-  ]);
+  const statements = [db.prepare(`${pagedSelect} WHERE ${where.join(' AND ')} ORDER BY ${order.map((item) => `${sortColumns[item.field]} ${item.direction === 'asc' ? 'ASC' : 'DESC'}`).join(',')} LIMIT ?`).bind(...args, limit + 1)];
+  if (!query.deferCounts) {
+    statements.push(db.prepare(`${counts} WHERE ${scope}`).bind(...scopeArgs), db.prepare(`${counts} WHERE ${filteredWhere}`).bind(...filteredArgs));
+  }
+  const [items, total, filtered] = await db.batch(statements);
   const page = items.results.slice(0, limit),
-    { allCount, ...totals } = total.results[0],
-    { allCount: filteredTotal, ...filteredTotals } = filtered.results[0];
+    { allCount, ...totals } = total?.results?.[0] || {},
+    { allCount: filteredTotal, ...filteredTotals } = filtered?.results?.[0] || {};
   return {
     items: page.map(fromRow),
     counts: { all: allCount, ...totals },

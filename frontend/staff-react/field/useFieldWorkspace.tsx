@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from './ui';
-import { useField } from './useField';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AttendanceRecord, Home } from './types';
-import { canSelfCheckIn, rememberAttendance } from './attendance-state';
-import { readFieldCampus, writeFieldCampus } from '../workspace-state.js';
+import { canSelfCheckIn, applyAttendance } from './attendance-state';
+import { readFieldCampus, writeFieldCampus } from '../field-campus.js';
 
 export function useFieldWorkspace({
   initial,
@@ -19,11 +19,12 @@ export function useFieldWorkspace({
   workspaceLinks?: { id: string; label: string; group?: string }[];
   requestedScene?: string | null;
   onSceneChange?: (scene: string) => void;
-  onContextChange?: (home: Home) => void;
+  onContextChange?: (resource: string, campusId: string) => void;
   active?: boolean;
   onLogout: () => void;
   onNavigate: (view: string) => void;
 }) {
+  const client = useQueryClient();
   const key = `field-scene:${initial.actor.memberId}`;
   const scene =
     requestedScene ||
@@ -54,9 +55,38 @@ export function useFieldWorkspace({
   const campus = initial.campuses.some((item) => item.id === chosenCampus)
     ? chosenCampus
     : initial.campusId;
-  const result = useField(campus, scene, sessionKey, initial, active),
-    data = result.data?.campusId === campus ? result.data : null;
-  const refresh = result.refresh;
+  const resource = scene === 'today' ? '/api/field/board' : '/api/field/home';
+  const result = useQuery<Home>({
+    queryKey: [resource, { campusId: campus }],
+    enabled: active,
+    initialData:
+      resource === '/api/field/home' && initial.campusId === campus ? initial : undefined,
+    initialDataUpdatedAt: Date.parse(initial.updatedAt),
+    queryFn: async ({ signal }) => {
+      try {
+        return await api<Home>(`${resource}?campusId=${encodeURIComponent(campus)}`, {
+          signal,
+          timeoutMs: 15000
+        });
+      } catch (error) {
+        if ((error as Error & { status?: number }).status !== 403) throw error;
+        const home = await api<Home>('/api/field/home', { signal, timeoutMs: 15000 });
+        if (home.campusId !== campus && home.campuses.some((item) => item.id === campus))
+          return api<Home>('/api/field/home?campusId=' + encodeURIComponent(campus), {
+            signal,
+            timeoutMs: 15000
+          });
+        return home;
+      }
+    }
+  });
+  const data = result.data?.campusId === campus ? result.data : null;
+  const refresh = () =>
+    Promise.all(
+      ['/api/field/home', '/api/field/board'].map((path) =>
+        client.invalidateQueries({ queryKey: [path] })
+      )
+    );
   function setCampus(value: string) {
     if (busy || !initial.campuses.some((item) => item.id === value)) return;
     writeFieldCampus(sessionKey, value);
@@ -94,8 +124,10 @@ export function useFieldWorkspace({
     setCheckResult(null);
   }, [active]);
   useEffect(() => {
+    onContextChange?.(resource, campus);
+  }, [resource, campus, onContextChange]);
+  useEffect(() => {
     if (!result.data) return;
-    onContextChange?.(result.data);
     if (!data) return;
     if (scene !== 'mine' && !data.contexts.some((context) => context.id === scene)) {
       const next = data.contexts[0]?.id || 'mine';
@@ -103,7 +135,7 @@ export function useFieldWorkspace({
       setSelected('');
       setScanOpen(false);
     }
-  }, [result.data, data, scene, onContextChange, onSceneChange]);
+  }, [result.data, data, scene, onSceneChange]);
   useEffect(() => {
     sessionStorage.setItem(key, scene);
   }, [key, scene]);
@@ -209,13 +241,12 @@ export function useFieldWorkspace({
         if (!existing) throw error;
         record = { ...existing, isExisting: true };
       }
-      rememberAttendance(sessionKey, record);
       setCheckResult(record);
+      await applyAttendance(client, record);
       setCheckToken('');
       setScanOpen(false);
       setCheckPreview(null);
       setMessage(record.isExisting ? '已读取首次签到记录' : '签到成功');
-      await refresh();
     });
   }
   const campusName = initial.campuses.find((c) => c.id === campus)?.name || '';

@@ -3,7 +3,7 @@ import { ActivityContext } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { AttendanceReportSettings } from './AttendanceReportSettings.jsx';
 import { ChoiceMenu } from './ChoiceMenu.jsx';
-import { request } from './request.js';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { dateKey } from '../../shared/time.js';
 
 const monthNow = () => dateKey().slice(0, 7);
@@ -136,37 +136,18 @@ export function AttendanceReports({ canExport = true, embedded = false }) {
   const [month, setMonth] = useState(monthNow);
   const [campusId, setCampusId] = useState('');
   const [tab, setTab] = useState('volunteer');
-  const [report, setReport] = useState(null);
-  const [busy, setBusy] = useState(false);
+  const client = useQueryClient();
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState('');
-  const [revision, setRevision] = useState(0);
-  useEffect(() => {
-    if (!canExport || !active || document.hidden) return;
-    const controller = new AbortController();
-    setBusy(true);
-    const path =
-      tab === 'volunteer' ? '/api/attendance/volunteer-report' : '/api/attendance/matrix';
-    request(`${path}?${new URLSearchParams({ month, ...(campusId ? { campusId } : {}) })}`, {
-      signal: controller.signal
-    })
-      .then((data) => {
-        if (!controller.signal.aborted) {
-          setReport(data);
-          setError('');
-        }
-      })
-      .catch((failure) => {
-        if (!controller.signal.aborted) {
-          setReport(null);
-          setError(failure.message);
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setBusy(false);
-      });
-    return () => controller.abort();
-  }, [canExport, active, month, campusId, tab, revision]);
+  const result = useQuery({
+    queryKey: [
+      tab === 'volunteer' ? '/api/attendance/volunteer-report' : '/api/attendance/matrix',
+      { month, ...(campusId ? { campusId } : {}) }
+    ],
+    enabled: canExport && active
+  });
+  const report = result.data;
+  const busy = result.isPending;
   const missing =
     tab === 'volunteer'
       ? report?.weeks.flatMap((week) =>
@@ -225,7 +206,6 @@ export function AttendanceReports({ canExport = true, embedded = false }) {
               onClick={() => {
                 if (tab !== 'volunteer') {
                   setTab('volunteer');
-                  setReport(null);
                 }
               }}
             >
@@ -237,7 +217,6 @@ export function AttendanceReports({ canExport = true, embedded = false }) {
               onClick={() => {
                 if (tab !== 'matrix') {
                   setTab('matrix');
-                  setReport(null);
                 }
               }}
             >
@@ -248,8 +227,13 @@ export function AttendanceReports({ canExport = true, embedded = false }) {
             <AttendanceReportSettings
               active={active}
               onSaved={() => {
-                setReport(null);
-                setRevision((value) => value + 1);
+                Promise.all(
+                  [
+                    '/api/attendance/volunteer-report',
+                    '/api/attendance/matrix',
+                    '/api/me/volunteer-summary'
+                  ].map((path) => client.invalidateQueries({ queryKey: [path] }))
+                );
               }}
             />
           </div>
@@ -268,7 +252,6 @@ export function AttendanceReports({ canExport = true, embedded = false }) {
               value={month}
               onChange={(value) => {
                 setMonth(value);
-                setReport(null);
               }}
             />
             <ChoiceMenu
@@ -281,21 +264,28 @@ export function AttendanceReports({ canExport = true, embedded = false }) {
               ]}
               onChange={(value) => {
                 setCampusId(value);
-                setReport(null);
               }}
             />
             <button
               type="button"
               className="report-refresh"
               disabled={busy}
-              onClick={() => setRevision((value) => value + 1)}
+              onClick={() =>
+                Promise.all(
+                  [
+                    '/api/attendance/volunteer-report',
+                    '/api/attendance/matrix',
+                    '/api/me/volunteer-summary'
+                  ].map((path) => client.invalidateQueries({ queryKey: [path] }))
+                )
+              }
             >
               刷新数据
             </button>
           </div>
-          {error && (
+          {(error || result.error) && (
             <p className="react-error" role="alert">
-              {error}
+              {error || result.error?.message}
             </p>
           )}
           <div className="report-results" aria-busy={busy}>
@@ -303,8 +293,8 @@ export function AttendanceReports({ canExport = true, embedded = false }) {
               <div>
                 <h2>{tab === 'volunteer' ? '逐周文件' : '考勤明细'}</h2>
                 <p aria-live="polite">
-                  {busy && !report
-                    ? '正在读取数据…'
+                  {!report
+                    ? ''
                     : tab === 'volunteer'
                       ? `${report?.weeks.length || 0} 周 · ${totalRows} 条登记`
                       : `${report?.dates.length || 0} 个维修日 · ${totalRows} 人`}

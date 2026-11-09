@@ -12,6 +12,7 @@ export async function loginStaff(
   await page.getByRole('button', { name: '进入系统' }).click();
   await expect(page.locator('#login-id')).toBeHidden();
   await expect(page.getByRole('main')).toBeVisible();
+  await expect(page.locator('.field-sidebar [aria-current="page"]')).toHaveCount(1);
 }
 
 // Only this helper knows how desktop groups and mobile navigation expose pages.
@@ -28,8 +29,8 @@ export async function navigationEntry(page, label) {
     const group = desktop
       .locator('section')
       .filter({ has: page.getByRole('button', { name: label, exact: true, includeHidden: true }) });
-    const toggle = group.getByRole('button', { expanded: false });
-    if (await toggle.count()) await toggle.click();
+    const toggle = group.locator('h2 button, h3 button').first();
+    if ((await toggle.getAttribute('aria-expanded')) === 'false') await toggle.click();
     await expect(target).toBeVisible();
     return target;
   }

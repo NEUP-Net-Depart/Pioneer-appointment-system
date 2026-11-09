@@ -176,7 +176,7 @@ export function appointmentQuery(input) {
     status: input.status || 'all',
     timeSlot: input.timeSlot || '',
     sort: input.sort || 'createdAt',
-    direction: input.direction || 'desc'
+    direction: input.direction || 'desc', deferCounts: input.deferCounts === '1'
   };
   if (input.limit !== undefined) {
     if (!/^\d+$/.test(String(input.limit))) fail(400, '预约分页大小不正确');

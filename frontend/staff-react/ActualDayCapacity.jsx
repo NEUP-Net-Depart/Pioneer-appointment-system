@@ -1,66 +1,29 @@
 import { DataValue } from './DataValue';
 import { TIME_SLOTS } from '../../shared/constants.js';
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useState } from 'react';
 import { addDays, dateKey } from '../../shared/time.js';
 import { ActivityContext, Notice } from './field/ui';
-import { request } from './request.js';
+import { useQuery } from '@tanstack/react-query';
 
-export function ActualDayCapacity({ campus, revision, onNavigate }) {
+export function ActualDayCapacity({ campus, onNavigate }) {
   const active = useContext(ActivityContext);
-  const [date, setDate] = useState(dateKey()),
-    [snapshot, setSnapshot] = useState(null),
-    [error, setError] = useState(''),
-    [loading, setLoading] = useState(true),
-    [retry, setRetry] = useState(0);
-  useEffect(() => {
-    if (!active || !date) return;
-    let controller,
-      stopped = false;
-    async function read() {
-      controller?.abort();
-      if (document.hidden) return;
-      controller = new AbortController();
-      const current = controller;
-      setLoading(true);
-      setError('');
-      try {
-        const data = await request(
-          `/api/slot-capacities/actual?${new URLSearchParams({ campus, date })}`,
-          { signal: current.signal }
-        );
-        if (!stopped && !current.signal.aborted) setSnapshot(data);
-      } catch (failure) {
-        if (!stopped && !current.signal.aborted) {
-          if ([401, 403].includes(failure.status)) setSnapshot(null);
-          setError(failure.message);
-        }
-      } finally {
-        if (!stopped && !current.signal.aborted) setLoading(false);
-      }
-    }
-    read();
-    const visibility = () => {
-      if (document.hidden) {
-        controller?.abort();
-        setLoading(false);
-      } else read();
-    };
-    document.addEventListener('visibilitychange', visibility);
-    return () => {
-      stopped = true;
-      controller?.abort();
-      document.removeEventListener('visibilitychange', visibility);
-    };
-  }, [campus, date, active, revision, retry]);
-  const data = snapshot?.campus === campus && snapshot?.date === date ? snapshot : null;
+  const [date, setDate] = useState(dateKey());
+  const result = useQuery({
+    queryKey: ['/api/slot-capacities/actual', { campus, date }],
+    enabled: active && !!date
+  });
+  const data = result.data;
+  const loading = result.isPending;
+  const error = result.error?.message;
+
   return (
     <section className="field-card capacity-actual" aria-busy={loading}>
       <div className="capacity-section-heading">
         <div>
           <h2>日期实际容量</h2>
         </div>
-        <button disabled={loading || !date} onClick={() => setRetry((value) => value + 1)}>
-          {loading ? '正在更新…' : '更新实际数据'}
+        <button disabled={loading || !date} onClick={() => result.refetch()}>
+          更新实际数据
         </button>
       </div>
       <div className="capacity-actual-date">
@@ -80,7 +43,7 @@ export function ActualDayCapacity({ campus, revision, onNavigate }) {
         </div>
       </div>
       <Notice>{error}</Notice>
-      {error && <button onClick={() => setRetry((value) => value + 1)}>重试</button>}
+      {error && <button onClick={() => result.refetch()}>重试</button>}
       {!date && <p className="workspace-update">请选择日期。</p>}
       {date && (
         <>
