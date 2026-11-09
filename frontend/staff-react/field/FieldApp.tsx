@@ -25,7 +25,7 @@ export function FieldApp({
   workspaceLinks?: { id: string; label: string; group?: string }[];
   requestedScene?: string | null;
   onSceneChange?: (scene: string) => void;
-  onContextChange?: (home: Home) => void;
+  onContextChange?: (resource: string, campusId: string) => void;
   active?: boolean;
   onLogout: () => void;
   onNavigate: (view: string) => void;
@@ -74,7 +74,7 @@ export function FieldApp({
   });
   return (
     <>
-      <section className="field-content" aria-busy={result.loading}>
+      <section className="field-content" aria-busy={result.isPending}>
         <WorkspaceHeader
           group={scene === 'mine' ? '我的' : '现场工作'}
           title={
@@ -109,10 +109,7 @@ export function FieldApp({
             )}
           </div>
         </WorkspaceHeader>
-        <Notice>{message || result.error}</Notice>
-        <div className="workspace-update" role="status" aria-live="polite">
-          {result.refreshing ? '正在后台更新当前区域…' : ''}
-        </div>
+        <Notice>{message || result.error?.message}</Notice>
         {(scene === 'today' || scene === 'mine') && (
           <AttendanceActions
             data={
@@ -164,7 +161,15 @@ export function FieldApp({
             onNavigate={onNavigate}
             workspaceLinks={workspaceLinks}
             onLogout={onLogout}
-            data={data || initial}
+            data={
+              data || {
+                ...initial,
+                campusId: campus,
+                repairs: [],
+                pendingPhotos: [],
+                attendance: undefined
+              }
+            }
           />
         )}
         <footer className="field-footer">
@@ -252,11 +257,7 @@ export function FieldApp({
           id={selected}
           key={selected}
           customerCredential={customerCredential?.id === selected ? customerCredential : null}
-          onClose={() => {
-            setSelected('');
-            refresh();
-          }}
-          onChanged={refresh}
+          onClose={() => setSelected('')}
         />
       )}
       {registration && (
@@ -267,7 +268,6 @@ export function FieldApp({
             setCustomerCredential(accessToken ? { id, accessToken } : null);
             setRegistration(false);
             setSelected(id);
-            refresh();
             setMessage('登记成功');
           }}
         />

@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Modal, Notice } from './field/ui';
+import { useQuery } from '@tanstack/react-query';
+import React, { useContext, useRef, useState } from 'react';
+import { ActivityContext, Modal, Notice } from './field/ui';
 import { request } from './request.js';
 import { staffPermission } from '../../shared/staff-access.js';
 import { NEU_COLLEGES } from '../../shared/neu-colleges.js';
@@ -8,20 +9,18 @@ import { MemberSetup, newMemberSetup, memberDefaults } from './MemberSetup.jsx';
 export function MemberCreate({ user, onClose, onSaved, onExisting }) {
   const [profile, setProfile] = useState({ studentId: '', name: '', college: '', major: '' });
   const [setup, setSetup] = useState(() => newMemberSetup(user));
-  const [departments, setDepartments] = useState([]),
-    [error, setError] = useState(''),
+  const departmentsQuery = useQuery({
+    queryKey: ['/api/organization/departments'],
+    enabled: useContext(ActivityContext),
+    staleTime: 5 * 60000,
+    refetchInterval: false
+  });
+  const departments = departmentsQuery.data?.items || [];
+  const [error, setError] = useState(''),
     [existing, setExisting] = useState(null),
     [busy, setBusy] = useState(false);
   const lock = useRef(false);
-  useEffect(() => {
-    const controller = new AbortController();
-    request('/api/organization/departments', { signal: controller.signal })
-      .then((data) => setDepartments(data.items || []))
-      .catch((failure) => {
-        if (!controller.signal.aborted) setError(failure.message);
-      });
-    return () => controller.abort();
-  }, []);
+
   async function save(event) {
     event.preventDefault();
     if (lock.current) return;
@@ -98,7 +97,7 @@ export function MemberCreate({ user, onClose, onSaved, onExisting }) {
           disabled={busy}
           canAuthorize={staffPermission(user, 'accounts.manage')}
         />
-        <Notice>{error}</Notice>
+        <Notice>{error || departmentsQuery.error?.message}</Notice>
         {existing && (
           <button
             type="button"

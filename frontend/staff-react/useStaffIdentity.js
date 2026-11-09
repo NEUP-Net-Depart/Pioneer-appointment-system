@@ -1,104 +1,65 @@
 import { useEffect, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiJson, clearSession, useStaffSession } from '../../shared/api.js';
 import { showToast } from '../../shared/utils.js';
-import { clearWorkspaceState } from './workspace-state.js';
 
 useStaffSession();
 
-// React owns the session. Every asynchronous result is bound to the token and
-// generation that started it, including login, restoration and revalidation.
 export function useStaffIdentity() {
-  const [user, setUser] = useState(null);
-  const [hasSession, setHasSession] = useState(!!sessionStorage.getItem('pioneerToken'));
-  const [pending, setPending] = useState(!!sessionStorage.getItem('pioneerToken'));
+  const client = useQueryClient();
+  const [token, setToken] = useState(() => sessionStorage.getItem('pioneerToken'));
+  const [signingIn, setSigningIn] = useState(false);
   const [error, setError] = useState('');
-  const generation = useRef(0),
-    request = useRef(null);
+  const attempt = useRef(null);
+  const profile = useQuery({
+    queryKey: ['/api/auth/me', token],
+    queryFn: ({ signal }) => apiJson('/api/auth/me', { signal, timeoutMs: 15000 }),
+    enabled: !!token
+  });
   function reset(message = '') {
-    generation.current++;
-    request.current?.abort();
+    attempt.current?.abort();
+    client.clear();
     clearSession();
-    clearWorkspaceState();
-    setHasSession(false);
-    setUser(null);
-    setPending(false);
+    sessionStorage.removeItem('field-campus');
+    setToken(null);
+    setSigningIn(false);
     setError(message);
-  }
-  async function refresh() {
-    const token = sessionStorage.getItem('pioneerToken'),
-      version = generation.current;
-    if (!token) return;
-    request.current?.abort();
-    const controller = new AbortController();
-    request.current = controller;
-    try {
-      const profile = await apiJson('/api/auth/me', {
-        signal: controller.signal,
-        timeoutMs: 15000
-      });
-      if (
-        controller.signal.aborted ||
-        version !== generation.current ||
-        token !== sessionStorage.getItem('pioneerToken')
-      )
-        return;
-      sessionStorage.setItem('pioneerRole', profile.role);
-      sessionStorage.setItem('pioneerAccount', profile.account);
-      sessionStorage.setItem('pioneerMemberId', profile.memberId || profile.actor?.memberId || '');
-      sessionStorage.setItem('pioneerCampuses', JSON.stringify(profile.authorizedCampuses));
-      setUser(profile);
-      setError('');
-    } catch (failure) {
-      if (!controller.signal.aborted && version === generation.current)
-        setError(
-          failure.name === 'AbortError'
-            ? '会话验证超时，请检查网络后重试'
-            : failure.message || '会话验证失败，请稍后重试'
-        );
-    } finally {
-      if (!controller.signal.aborted && version === generation.current) setPending(false);
-    }
   }
   useEffect(() => {
     const expired = (event) => reset(event.detail?.message || '登录已过期，请重新登录');
     window.addEventListener('auth-expired', expired);
-    const revalidate = () => {
-      if (!document.hidden) refresh();
-    };
-    document.addEventListener('visibilitychange', revalidate);
-    const timer = setInterval(revalidate, 30000);
-    refresh();
     return () => {
-      generation.current++;
-      request.current?.abort();
-      clearInterval(timer);
+      attempt.current?.abort();
       window.removeEventListener('auth-expired', expired);
-      document.removeEventListener('visibilitychange', revalidate);
     };
   }, []);
+  useEffect(() => {
+    if (!profile.data || token !== sessionStorage.getItem('pioneerToken')) return;
+    const user = profile.data;
+    sessionStorage.setItem('pioneerRole', user.role);
+    sessionStorage.setItem('pioneerAccount', user.account);
+    sessionStorage.setItem('pioneerMemberId', user.memberId || user.actor?.memberId || '');
+    sessionStorage.setItem('pioneerCampuses', JSON.stringify(user.authorizedCampuses));
+  }, [profile.data, token]);
   async function login(account, password) {
     reset();
-    setPending(true);
-    const version = generation.current;
+    setSigningIn(true);
     const controller = new AbortController();
-    request.current = controller;
+    attempt.current = controller;
     try {
       const payload = await apiJson('/api/auth/login', {
         method: 'POST',
         json: { account: account.trim(), password },
         signal: controller.signal
       });
-      if (version !== generation.current || controller.signal.aborted) return;
+      if (controller.signal.aborted) return;
       sessionStorage.setItem('pioneerToken', payload.token);
-      setHasSession(true);
-      await refresh();
-      if (version === generation.current && sessionStorage.getItem('pioneerToken'))
-        showToast('登录成功');
+      setToken(payload.token);
+      showToast('登录成功');
     } catch (failure) {
-      if (!controller.signal.aborted && version === generation.current)
-        setError(failure.message || '无法连接服务器，请稍后重试');
+      if (!controller.signal.aborted) setError(failure.message || '无法连接服务器，请稍后重试');
     } finally {
-      if (version === generation.current) setPending(false);
+      if (!controller.signal.aborted) setSigningIn(false);
     }
   }
   async function logout() {
@@ -110,5 +71,13 @@ export function useStaffIdentity() {
       if (failure.status !== 401) showToast('网络异常，服务器会话未撤销；本机已退出');
     }
   }
-  return { user, hasSession, pending, error, login, logout, retry: refresh };
+  return {
+    user: token ? profile.data : null,
+    hasSession: !!token,
+    pending: signingIn || (!!token && profile.isPending),
+    error: error || profile.error?.message || '',
+    login,
+    logout,
+    retry: () => profile.refetch()
+  };
 }

@@ -1,10 +1,9 @@
 import { DataValue } from './DataValue';
 import { recordServiceDate } from '../../shared/record-filters.js';
-import React, { useContext, useEffect, useRef, useState } from 'react';
+import React, { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { apiFetch } from '../../shared/api.js';
 import { statusLabels, TIME_SLOTS, outcomeLabels } from '../../shared/constants.js';
 import { addDays, dateKey, serviceDay, weekRange } from '../../shared/time.js';
-import { request } from './request.js';
 import { ActivityContext, Modal, Notice, Status } from './field/ui';
 import { Repair } from './field/Repair';
 import { WorkspaceHeader } from './WorkspaceHeader';
@@ -12,7 +11,7 @@ import { WorkspaceSections } from './WorkspaceSections';
 import { WorkspaceMoreActions } from './WorkspaceMoreActions';
 import { staffPermission } from '../../shared/staff-access.js';
 
-import { useWorkspaceQuery } from './useWorkspaceQuery.js';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 
 const cleanFilters = {
   q: '',
@@ -29,13 +28,13 @@ const dayLabel = (date) =>
 
 export function Records({ user }) {
   const active = useContext(ActivityContext);
+  const client = useQueryClient();
   const today = dateKey(),
     week = weekRange(today);
   const [defaultDate, setDefaultDate] = useState(null);
   const [filters, setFilters] = useState(cleanFilters),
     [search, setSearch] = useState(''),
     [sorts, setSorts] = useState([]),
-    [revision, setRevision] = useState(0),
     [menu, setMenu] = useState(''),
     [selected, setSelected] = useState(''),
     [message, setMessage] = useState('');
@@ -56,22 +55,29 @@ export function Records({ user }) {
     deferCounts: '1',
     sorts: sorts.map((item) => `${item.key}:${item.direction}`).join(',')
   });
-  const list = useWorkspaceQuery(
-    `/api/appointments?${query}`,
-    active && defaultDate !== null,
-    revision
-  );
+  const list = useInfiniteQuery({
+    queryKey: ['/api/appointments', Object.fromEntries(query)],
+    enabled: active && defaultDate !== null,
+    initialPageParam: '',
+    getNextPageParam: (page) => page.nextCursor || undefined,
+    staleTime: (query) => (query.state.data?.pages.length > 1 ? 120000 : 30000),
+    refetchInterval: (query) => (query.state.data?.pages.length > 1 ? 120000 : 30000)
+  });
+  const items = [
+    ...new Map(
+      (list.data?.pages.flatMap((page) => page.items) || []).map((item) => [item.id, item])
+    ).values()
+  ];
   const countsQuery = new URLSearchParams({
     ...filters,
     limit: '1',
     sorts: sorts.map((item) => `${item.key}:${item.direction}`).join(',')
   });
-  const countsResult = useWorkspaceQuery(
-    `/api/appointments/counts?${countsQuery}`,
-    active && defaultDate !== null && list.current && !!list.data && menu === 'status',
-    revision
-  );
-  const overview = useWorkspaceQuery('/api/appointments/overview', active, revision);
+  const countsResult = useQuery({
+    queryKey: ['/api/appointments/counts', Object.fromEntries(countsQuery)],
+    enabled: active && defaultDate !== null && !!list.data && menu === 'status'
+  });
+  const overview = useQuery({ queryKey: ['/api/appointments/overview'], enabled: active });
   useEffect(() => {
     if (!overview.data && (!overview.error || defaultDate !== null)) return;
     const date = recordServiceDate(overview.data, today) || today;
@@ -83,20 +89,34 @@ export function Records({ user }) {
         : current
     );
   }, [overview.data, overview.error, defaultDate, today]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const node = loadMoreSentinel.current;
-    if (!active || !node || !list.nextCursor || !list.current || list.error) return undefined;
+    if (!active || !node || !list.hasNextPage || !list.data || list.error) return undefined;
+    let observing = true;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((entry) => entry.isIntersecting) && !list.loading && !list.loadingMore)
-          list.loadMore();
+        if (
+          observing &&
+          entries.some((entry) => entry.isIntersecting) &&
+          node.getBoundingClientRect().top <= window.innerHeight * 3 &&
+          !list.isFetching
+        )
+          list.fetchNextPage({ cancelRefetch: false });
       },
       { rootMargin: `${Math.round(window.innerHeight * 2)}px 0px` }
     );
     observer.observe(node);
-    return () => observer.disconnect();
-  }, [active, list.nextCursor, list.current, list.loading, list.loadingMore, list.error]);
-  const refresh = () => setRevision((value) => value + 1);
+    return () => {
+      observing = false;
+      observer.disconnect();
+    };
+  }, [active, list.hasNextPage, list.data, list.isFetching, list.error]);
+  const refresh = () =>
+    Promise.all(
+      ['/api/appointments', '/api/appointments/counts', '/api/appointments/overview'].map((path) =>
+        client.invalidateQueries({ queryKey: [path] })
+      )
+    );
   const update = (patch) => setFilters((current) => ({ ...current, ...patch }));
   const reset = () => {
     setSearch('');
@@ -127,8 +147,8 @@ export function Records({ user }) {
       setMessage(failure.message);
     }
   }
-  const data = list.data,
-    counts = countsResult.current ? countsResult.data?.filteredCounts || {} : {};
+  const data = list.data ? { ...list.data.pages.at(-1), ...list.data.pages[0], items } : undefined,
+    counts = countsResult.data ? countsResult.data?.filteredCounts || {} : {};
   const searchCapabilities = data?.searchCapabilities;
   const searchPlaceholder = [
     '编号',
@@ -275,8 +295,7 @@ export function Records({ user }) {
               <DataValue label="已加载记录数">
                 {data ? data.items?.length || 0 : undefined}
               </DataValue>{' '}
-              条{list.refreshing ? ' · 后台更新中' : ''}
-              {!list.current && data ? ' · 当前显示上次结果' : ''}
+              条
             </span>
             {sorts.length > 0 && (
               <span>
@@ -285,7 +304,7 @@ export function Records({ user }) {
             )}
           </div>
         </div>
-        <Notice>{list.error}</Notice>
+        <Notice>{list.error?.message}</Notice>
         {list.error && <button onClick={refresh}>重试读取</button>}
         <details className="records-mobile-sort">
           <summary>排序与优先级</summary>
@@ -306,7 +325,7 @@ export function Records({ user }) {
             {sorts.length > 0 && <button onClick={() => setSorts([])}>清除排序</button>}
           </div>
         </details>
-        <div data-motion-list="reveal" className="records-table-wrap" aria-busy={list.loading}>
+        <div data-motion-list="reveal" className="records-table-wrap" aria-busy={list.isPending}>
           <table className="records-table">
             <thead>
               <tr>
@@ -376,18 +395,18 @@ export function Records({ user }) {
             </tbody>
           </table>
         </div>
-        {list.nextCursor && (
+        {list.hasNextPage && (
           <div className="field-actions">
             <button
-              onClick={list.loadMore}
-              disabled={list.loadingMore || list.loading || !list.current}
+              onClick={() => list.fetchNextPage({ cancelRefetch: false })}
+              disabled={list.isFetchingNextPage || list.isPending || !list.data}
             >
-              {list.loadingMore ? '正在加载…' : '加载更多预约'}
+              加载更多预约
             </button>
           </div>
         )}
         <div ref={loadMoreSentinel} className="records-load-sentinel" aria-hidden="true" />
-        {!data?.items?.length && defaultDate !== null && !list.loading && !list.error && (
+        {!data?.items?.length && defaultDate !== null && !list.isPending && !list.error && (
           <div className="field-empty">
             <strong>没有符合条件的预约</strong>
             <p>
@@ -421,7 +440,6 @@ export function Records({ user }) {
           key={selected}
           id={selected}
           onClose={() => setSelected('')}
-          onChanged={refresh}
           sidePanel
           hideWarrantyLookup
         />
@@ -562,14 +580,7 @@ function RecordOverview({ result, filters, campuses, onFilter }) {
           </span>
         </summary>
         <div className="records-overview-body">
-          <span data-motion-value="text" className="workspace-update" role="status">
-            {result.loading
-              ? '正在更新…'
-              : data
-                ? `更新于 ${new Date(data.updatedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Shanghai' })}`
-                : '读取预约概览'}
-          </span>
-          <Notice>{result.error}</Notice>
+          <Notice>{result.error?.message}</Notice>
           {
             <>
               <div className="records-periods">

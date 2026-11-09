@@ -577,7 +577,7 @@ test('members bound pagination, search beyond the first page and replace refresh
   denied = true;
   await page.getByRole('button', { name: '刷新', exact: true }).click();
   await expect(page.locator('.members-results .react-row:not(.react-row-head)')).toHaveCount(0);
-  await expect(page.locator('.react-members-page [role="alert"]')).toBeVisible();
+  await expect(page.getByRole('alert')).toContainText('人员读取权限已变更');
 });
 
 test('cached pages remain usable during background reconciliation and survive a failed refresh', async ({
@@ -785,6 +785,91 @@ test('schedule reuses weeks and keeps the draft revision during background updat
   await page.getByRole('button', { name: '保存空闲', exact: true }).click();
   await expect.poll(() => submitted?.revision).toBe(initialRevision);
   await expect(edit).toBeVisible();
+  await page.unrouteAll({ behavior: 'wait' });
+});
+
+test('logout and authorization changes discard private rows and late responses in the same app', async ({
+  page
+}) => {
+  await page.clock.install();
+  let phase = 'initial',
+    revoked = false,
+    reads = 0,
+    release,
+    delivered;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const completion = new Promise((resolve) => {
+    delivered = resolve;
+  });
+  await page.route('**/api/members?*', async (route) => {
+    reads++;
+    const slow = phase === 'slow';
+    const name = phase === 'new' ? '新会话成员' : '旧会话私有成员';
+    if (slow) await gate;
+    try {
+      await route.fulfill({
+        json: {
+          items: [{ memberId: name, name, status: 'active', identities: [] }],
+          nextCursor: null
+        }
+      });
+    } finally {
+      if (slow) delivered();
+    }
+  });
+  for (const pattern of ['**/api/auth/me', '**/api/field/home*'])
+    await page.route(pattern, async (route) => {
+      const response = await route.fetch();
+      const data = await response.json();
+      if (revoked) {
+        data.authVersion++;
+        data.permissions = {
+          ...data.permissions,
+          'members.manage': false,
+          'accounts.manage': false,
+          'settings.manage': false
+        };
+      }
+      await route.fulfill({ response, json: data });
+    });
+  await loginStaff(page, 'root001', process.env.E2E_ROOT_PASSWORD);
+  await staffPage(page, '人员管理');
+  await expect(page.getByText('旧会话私有成员', { exact: true })).toBeVisible();
+  phase = 'slow';
+  await page.getByRole('button', { name: '刷新', exact: true }).click();
+  await expect.poll(() => reads).toBe(2);
+  try {
+    await staffPage(page, '个人中心');
+    await page
+      .locator('.field-content')
+      .getByRole('button', { name: '退出登录', exact: true })
+      .click();
+    await expect(page.locator('#login-id')).toBeVisible();
+    phase = 'new';
+    // Keep the same document, account and authorization version: isolation must
+    // come from the login lifecycle, not a reload or a different account key.
+    await page.locator('#login-id').fill('root001');
+    await page.locator('#login-password').fill(process.env.E2E_ROOT_PASSWORD);
+    await page.getByRole('button', { name: '进入系统' }).click();
+    await expect(page.getByRole('main')).toBeVisible();
+    await staffPage(page, '人员管理');
+    await expect(page.getByText('新会话成员', { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+  await completion;
+  await expect(page.getByText('旧会话私有成员', { exact: true })).toHaveCount(0);
+  expect(reads).toBe(3);
+  revoked = true;
+  await page.clock.fastForward(31000);
+  await expect(page.locator('.react-members-page')).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: '人员管理', exact: true, includeHidden: true })
+  ).toHaveCount(0);
+  await expect(page.getByText('新会话成员', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.field-content')).toBeVisible();
   await page.unrouteAll({ behavior: 'wait' });
 });
 

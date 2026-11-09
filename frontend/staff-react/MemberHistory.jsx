@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { request } from './request.js';
-import { Notice } from './field/ui';
+import React, { useContext } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { ActivityContext, Notice } from './field/ui';
 import { DataExpansion } from './DataExpansion.jsx';
 
 const labels = {
@@ -17,26 +17,15 @@ const labels = {
   'authorization.account.updated': '修改登录账号'
 };
 export function MemberHistory({ memberId }) {
-  const [items, setItems] = useState([]),
-    [error, setError] = useState(''),
-    [loading, setLoading] = useState(true);
-  useEffect(() => {
-    const controller = new AbortController();
-    setLoading(true);
-    setItems([]);
-    setError('');
-    request(`/api/members/${encodeURIComponent(memberId)}/audit`, { signal: controller.signal })
-      .then((data) => {
-        if (!controller.signal.aborted) setItems(data.items || []);
-      })
-      .catch((failure) => {
-        if (!controller.signal.aborted) setError(failure.message);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [memberId]);
+  const result = useQuery({
+    queryKey: [`/api/members/${encodeURIComponent(memberId)}/audit`],
+    enabled: useContext(ActivityContext),
+    refetchInterval: false
+  });
+  const items = result.data?.items || [];
+  const error = result.error?.message;
+  const loading = result.isPending;
+
   return (
     <section aria-label="人员操作记录" aria-busy={loading}>
       <Notice>{error}</Notice>

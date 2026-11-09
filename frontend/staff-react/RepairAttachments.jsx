@@ -1,36 +1,20 @@
-import React, { useContext, useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import React, { useContext, useState } from 'react';
 import { apiFetch } from '../../shared/api.js';
 import { attachmentSize, attachmentUrl, uploadAttachments } from '../../shared/attachments.js';
-import { request } from './request.js';
 import { ActivityContext, Notice } from './field/ui';
 import { DataExpansion } from './DataExpansion.jsx';
 
-export function RepairAttachments({ id, revision }) {
+export function RepairAttachments({ id }) {
   const active = useContext(ActivityContext);
   const [open, setOpen] = useState(false),
-    [files, setFiles] = useState(null),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(''),
-    [retry, setRetry] = useState(0),
     [selected, setSelected] = useState(null);
-  useEffect(() => {
-    if (!active || !open) return;
-    const controller = new AbortController();
-    setError('');
-    request(`/api/appointments/${encodeURIComponent(id)}/attachments`, {
-      signal: controller.signal
-    })
-      .then((value) => {
-        if (!controller.signal.aborted) setFiles(value.items);
-      })
-      .catch((failure) => {
-        if (!controller.signal.aborted) {
-          if ([401, 403].includes(failure.status)) setFiles(null);
-          setError(failure.message);
-        }
-      });
-    return () => controller.abort();
-  }, [id, revision, open, active, retry]);
+  const client = useQueryClient();
+  const queryKey = [`/api/appointments/${encodeURIComponent(id)}/attachments`];
+  const result = useQuery({ queryKey, enabled: active && open });
+  const files = result.data?.items;
   async function download(file) {
     if (busy) return;
     setBusy(file.id);
@@ -53,7 +37,7 @@ export function RepairAttachments({ id, revision }) {
   return (
     <details className="field-details" onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary>附件与设备照片</summary>
-      <Notice>{error}</Notice>
+      <Notice>{error || result.error?.message}</Notice>
       <p>出现新的外观变化可手动补拍；此处照片不替代首次接收原图。</p>
       <input
         type="file"
@@ -69,7 +53,7 @@ export function RepairAttachments({ id, revision }) {
           try {
             await uploadAttachments({ id }, [selected]);
             setSelected(null);
-            setRetry((value) => value + 1);
+            client.invalidateQueries({ queryKey });
           } catch (failure) {
             setError(failure.message);
           } finally {
@@ -79,7 +63,9 @@ export function RepairAttachments({ id, revision }) {
       >
         上传补充照片
       </button>
-      {error && <button onClick={() => setRetry((value) => value + 1)}>重试读取附件</button>}
+      {error && (
+        <button onClick={() => client.invalidateQueries({ queryKey })}>重试读取附件</button>
+      )}
       <DataExpansion ready={!!files}>
         {files ? (
           files.length ? (

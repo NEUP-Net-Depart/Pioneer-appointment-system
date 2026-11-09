@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import type { Appointment } from './types';
 import React, { useRef, useState } from 'react';
 import { drawSignature, validSignature } from '../../../shared/signature.js';
@@ -16,6 +17,7 @@ export function Registration({
   onDone: (id: string, accessToken?: string) => void;
   onClose: () => void;
 }) {
+  const client = useQueryClient();
   const [step, setStep] = useState(0),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false);
@@ -75,6 +77,19 @@ export function Registration({
           requestId: requestId.current
         }
       });
+      const affected = {
+        predicate: (query) =>
+          [
+            '/api/appointments',
+            '/api/appointments/counts',
+            '/api/appointments/overview',
+            '/api/field/home',
+            '/api/field/board',
+            '/api/stats/summary'
+          ].includes(query.queryKey[0] as string)
+      };
+      await client.cancelQueries(affected);
+      await client.invalidateQueries(affected);
       onDone(item.id, item.accessToken);
     } catch (error) {
       setError((error as Error).message);

@@ -1,9 +1,10 @@
-import { useEffect, useId, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useContext, useEffect, useId, useRef, useState } from 'react';
 import { NEU_COLLEGES } from '../../../shared/neu-colleges.js';
 import { ChoiceMenu } from '../ChoiceMenu';
 import { StaffIdentity } from '../StaffIdentity';
 import { useUnsavedChanges } from '../useUnsavedChanges.js';
-import { api } from './ui';
+import { ActivityContext, api } from './ui';
 
 type Profile = {
   member: {
@@ -22,7 +23,17 @@ export function PersonalProfile({
   initialName: string;
   identities: { code: string; label: string }[];
 }) {
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const client = useQueryClient();
+  const queryKey = ['/api/me/profile'];
+  const result = useQuery<Profile>({
+    queryKey,
+    enabled: useContext(ActivityContext),
+    refetchInterval: false,
+    refetchOnWindowFocus: false
+  });
+  const profile = result.data;
+  const initialized = useRef(false);
+  const revision = useRef<number | null>(null);
   const [name, setName] = useState(initialName);
   const [college, setCollege] = useState('');
   const [busy, setBusy] = useState(false);
@@ -30,21 +41,12 @@ export function PersonalProfile({
   const [message, setMessage] = useState('');
   const formId = useId();
   useEffect(() => {
-    const controller = new AbortController();
-    api<Profile>('/api/me/profile', { signal: controller.signal })
-      .then((result) => {
-        if (controller.signal.aborted) return;
-        if (!result?.member || typeof result.member.name !== 'string')
-          throw new Error('个人资料暂时无法读取，请刷新后重试');
-        setProfile(result);
-        setName(result.member.name);
-        setCollege(result.member.college || '');
-      })
-      .catch((failure) => {
-        if (!controller.signal.aborted) setError(failure.message);
-      });
-    return () => controller.abort();
-  }, []);
+    if (!profile || initialized.current) return;
+    initialized.current = true;
+    revision.current = profile.member.revision;
+    setName(profile.member.name);
+    setCollege(profile.member.college || '');
+  }, [profile]);
   const changed =
     !!profile &&
     (name.trim() !== profile.member.name || college !== (profile.member.college || ''));
@@ -70,13 +72,23 @@ export function PersonalProfile({
         body: {
           name: name.trim(),
           college,
-          revision: profile.member.revision,
+          revision: revision.current,
           requestId: crypto.randomUUID()
         }
       });
       if (!next?.member || typeof next.member.name !== 'string')
         throw new Error('保存结果不完整，请刷新后核对资料');
-      setProfile(next);
+      await client.cancelQueries({ queryKey });
+      client.setQueryData(queryKey, next);
+      revision.current = next.member.revision;
+      const affectedQueries = {
+        predicate: (query) =>
+          ['/api/members', '/api/users', '/api/field/home', '/api/field/board'].includes(
+            query.queryKey[0]
+          )
+      };
+      await client.cancelQueries(affectedQueries);
+      await client.invalidateQueries(affectedQueries);
       setName(next.member.name);
       setCollege(next.member.college);
       setMessage('个人资料已保存');
@@ -152,9 +164,9 @@ export function PersonalProfile({
           </label>
         </div>
       </form>
-      {error && (
+      {(error || result.error) && (
         <p role="alert" className="react-error">
-          {error}
+          {error || result.error?.message}
         </p>
       )}
       {message && <p role="status">{message}</p>}

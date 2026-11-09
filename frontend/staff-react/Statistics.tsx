@@ -1,7 +1,8 @@
+import { useQuery } from '@tanstack/react-query';
 import { MotionMeter } from './MotionMeter';
 import { DataValue } from './DataValue';
-import React, { useContext, useEffect, useState } from 'react';
-import { ActivityContext, api, Notice } from './field/ui';
+import React, { useContext, useState } from 'react';
+import { ActivityContext, Notice } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { AnimatedValue } from './AnimatedValue';
 
@@ -52,34 +53,13 @@ export function Statistics() {
   const active = useContext(ActivityContext);
   const [range, setRange] = useState('7'),
     [day, setDay] = useState('');
-  const [revision, setRevision] = useState(0);
-  const [snapshot, setSnapshot] = useState<{ data: Summary; label: string } | null>(null);
-  const [loading, setLoading] = useState(true),
-    [error, setError] = useState('');
-  const label = day || (range === 'all' ? '全部记录' : `最近 ${range} 天`);
-  useEffect(() => {
-    if (!active) return;
-    const controller = new AbortController();
-    setLoading(true);
-    setError('');
-    api<Summary>(`/api/stats/summary?${new URLSearchParams({ range, day })}`, {
-      signal: controller.signal
-    })
-      .then((data) => {
-        if (!controller.signal.aborted) setSnapshot({ data, label });
-      })
-      .catch((failure) => {
-        if (!controller.signal.aborted) {
-          if ([401, 403].includes(failure.status)) setSnapshot(null);
-          setError(failure.message);
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [active, range, day, revision, label]);
-  const data = snapshot?.data;
+  const result = useQuery<Summary>({
+    queryKey: ['/api/stats/summary', { range, day }],
+    enabled: active
+  });
+  const data = result.data;
+  const loading = result.isPending;
+  const error = result.error?.message;
   const metrics: [string, number | string | undefined][] = [
     ['预约总数', data?.total],
     ['已完成维修', data?.completed],
@@ -91,7 +71,7 @@ export function Statistics() {
   return (
     <section className="report-workspace">
       <WorkspaceHeader group="现场工作" title="统计分析">
-        <button disabled={loading} onClick={() => setRevision((value) => value + 1)}>
+        <button disabled={loading} onClick={() => result.refetch()}>
           刷新统计
         </button>
       </WorkspaceHeader>
@@ -115,9 +95,6 @@ export function Statistics() {
           <input type="date" value={day} onChange={(event) => setDay(event.target.value)} />
         </label>
         {day && <button onClick={() => setDay('')}>清除日期</button>}
-        <span data-motion-value="text" role="status">
-          {loading ? `正在读取${label}，保留已有结果…` : `当前显示：${snapshot?.label || label}`}
-        </span>
       </section>
       <Notice>{error}</Notice>
       <div aria-busy={loading}>
@@ -204,7 +181,7 @@ export function Statistics() {
           </section>
         </div>
         {!data && !loading && error && (
-          <button onClick={() => setRevision((value) => value + 1)}>重新读取统计</button>
+          <button onClick={() => result.refetch()}>重新读取统计</button>
         )}
       </div>
     </section>

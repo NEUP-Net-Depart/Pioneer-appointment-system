@@ -1,11 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { uploadAttachments } from '../../../shared/attachments.js';
-import { api } from './ui';
+import { ActivityContext, api } from './ui';
 import type { Appointment, Verification } from './types';
 import { intakePhoto } from './photos';
 
-export function useRepair({ id, onChanged }: { id: string; onChanged: () => void }) {
-  const [item, setItem] = useState<Appointment | null>(null);
+export function useRepair({ id }: { id: string }) {
+  const client = useQueryClient();
+  const queryKey = [`/api/field/appointments/${encodeURIComponent(id)}`];
+  const result = useQuery<Appointment>({
+    queryKey,
+    enabled: useContext(ActivityContext),
+    refetchInterval: false,
+    refetchOnWindowFocus: false
+  });
+  const item = result.data;
+  const initialized = useRef(false);
   const [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
     [timedOut, setTimedOut] = useState(false);
@@ -23,34 +33,37 @@ export function useRepair({ id, onChanged }: { id: string; onChanged: () => void
     [previews, setPreviews] = useState<Record<string, string>>({});
   const pending = useRef<{ signature: string; requestId: string } | null>(null);
   async function load() {
-    const value = await api<Appointment>(`/api/field/appointments/${encodeURIComponent(id)}`);
-    setItem(value);
-    return value;
+    const affected = {
+      predicate: (query) =>
+        [
+          '/api/appointments',
+          '/api/appointments/counts',
+          '/api/appointments/overview',
+          '/api/field/home',
+          '/api/field/board',
+          '/api/stats/summary'
+        ].includes(query.queryKey[0]) ||
+        String(query.queryKey[0]).startsWith(`/api/appointments/${encodeURIComponent(id)}/`) ||
+        String(query.queryKey[0]).startsWith('/api/field/appointments/')
+    };
+    await client.cancelQueries(affected);
+    await client.invalidateQueries(affected);
+    return client.getQueryData<Appointment>(queryKey);
   }
   useEffect(() => {
-    let active = true;
-    api<Appointment>(`/api/field/appointments/${encodeURIComponent(id)}`)
-      .then((value) => {
-        if (!active) return;
-        setItem(value);
-        setNote(value.repairNote || '');
-        setOutcome(value.outcome || '');
-        setVerification({
-          brand: value.brand || '',
-          model: value.deviceModel || '',
-          warranty: value.warranty || 'unknown',
-          liquidMetal: value.liquidMetal || 'unknown',
-          note: ''
-        });
-        setUploaded({ front: value.frontPhotoId || '', back: value.backPhotoId || '' });
-      })
-      .catch((failure) => {
-        if (active) setError(failure.message);
-      });
-    return () => {
-      active = false;
-    };
-  }, [id]);
+    if (!item || initialized.current) return;
+    initialized.current = true;
+    setNote(item.repairNote || '');
+    setOutcome(item.outcome || '');
+    setVerification({
+      brand: item.brand || '',
+      model: item.deviceModel || '',
+      warranty: item.warranty || 'unknown',
+      liquidMetal: item.liquidMetal || 'unknown',
+      note: ''
+    });
+    setUploaded({ front: item.frontPhotoId || '', back: item.backPhotoId || '' });
+  }, [item]);
   useEffect(() => {
     const urls = Object.fromEntries(
       Object.entries(files).map(([side, file]) => [side, URL.createObjectURL(file)])
@@ -70,7 +83,6 @@ export function useRepair({ id, onChanged }: { id: string; onChanged: () => void
       body: operation({ ...body, revision: item!.revision })
     });
     await load();
-    onChanged();
   }
   async function run(action: () => Promise<void>) {
     if (busy) return;
@@ -149,7 +161,7 @@ export function useRepair({ id, onChanged }: { id: string; onChanged: () => void
   const handoff = () => run(() => send('transfer', { receivedDevice: true }));
   return {
     item,
-    error,
+    error: error || result.error?.message || '',
     busy,
     timedOut,
     verification,

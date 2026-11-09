@@ -49,6 +49,7 @@
     "wrangler": "4.149.0"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.107.1",
     "@tesseract.js-data/eng": "1.0.0",
     "blueimp-load-image": "5.16.0",
     "fflate": "0.8.2",

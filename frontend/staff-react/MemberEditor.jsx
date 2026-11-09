@@ -1,3 +1,4 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { dateKey } from '../../shared/time.js';
 import { request } from './request.js';
@@ -20,8 +21,19 @@ const campuses = [
 export function MemberEditor({ user, member, canManageRoles, onClose, onSaved }) {
   const active = useContext(ActivityContext),
     lock = useRef(false);
-  const [detail, setDetail] = useState(null);
-  const [readRevision, setReadRevision] = useState(0);
+  const client = useQueryClient();
+  const queryKey = [`/api/members/${encodeURIComponent(member.memberId)}`];
+  const result = useQuery({
+    queryKey,
+    enabled: active,
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false
+  });
+  const detail = result.data;
+  const initialized = useRef(false);
+  const profileRevision = useRef(null),
+    bindingsRevision = useRef(null);
   const [profile, setProfile] = useState({
     name: member.name,
     college: member.college || '',
@@ -30,7 +42,13 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
     status: member.status || ''
   });
   const [bindings, setBindings] = useState([]);
-  const [roles, setRoles] = useState([]);
+  const rolesQuery = useQuery({
+    queryKey: ['/api/roles'],
+    enabled: active && canManageRoles,
+    staleTime: 5 * 60000,
+    refetchInterval: false
+  });
+  const roles = rolesQuery.data?.items || [];
   const bindableRoles = roles.filter((role) => role.actions?.bind !== false);
   const newBindingRoles = bindableRoles;
   const availableCampuses = campuses.filter((campus) =>
@@ -46,7 +64,13 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
           : []
     ).map((id) => campuses.find((campus) => campus.name === id)?.id || id);
   }
-  const [departments, setDepartments] = useState([]);
+  const departmentsQuery = useQuery({
+    queryKey: ['/api/organization/departments'],
+    enabled: active,
+    staleTime: 5 * 60000,
+    refetchInterval: false
+  });
+  const departments = departmentsQuery.data?.items || [];
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -89,43 +113,18 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
     }
   });
   useEffect(() => {
-    let active = true;
-    request(`/api/members/${encodeURIComponent(member.memberId)}`)
-      .then((data) => {
-        if (!active) return;
-        setDetail(data);
-        setBindings(data.bindings || []);
-        setProfile({
-          name: data.member.name,
-          college: data.member.college,
-          major: data.member.major,
-          homeCampusId: data.member.homeCampusId,
-          status: data.member.status
-        });
-      })
-      .catch((err) => {
-        if (active) setError(err.message);
-      });
-    request('/api/organization/departments')
-      .then((data) => {
-        if (active) setDepartments(data.items || []);
-      })
-      .catch((err) => {
-        if (active) setError(err.message);
-      });
-    if (canManageRoles)
-      request('/api/roles')
-        .then((data) => {
-          if (active) setRoles(data.items || []);
-        })
-        .catch((err) => {
-          if (active) setError(err.message);
-        });
-    return () => {
-      active = false;
-    };
-  }, [member.memberId, canManageRoles, readRevision]);
-
+    if (!detail || initialized.current) return;
+    initialized.current = true;
+    profileRevision.current = bindingsRevision.current = detail.member.revision;
+    setBindings(detail.bindings || []);
+    setProfile({
+      name: detail.member.name,
+      college: detail.member.college,
+      major: detail.member.major,
+      homeCampusId: detail.member.homeCampusId,
+      status: detail.member.status
+    });
+  }, [detail]);
   async function saveProfile(event) {
     event.preventDefault();
     if (lock.current || !detail) return;
@@ -136,9 +135,10 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
     try {
       const data = await request(`/api/members/${encodeURIComponent(member.memberId)}`, {
         method: 'PATCH',
-        body: { ...profile, revision: detail.member.revision }
+        body: { ...profile, revision: profileRevision.current }
       });
-      setDetail((current) => ({
+      await client.cancelQueries({ queryKey: queryKey });
+      client.setQueryData(queryKey, (current) => ({
         ...current,
         member: {
           ...current.member,
@@ -146,6 +146,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
           memberships: current.member.memberships
         }
       }));
+      profileRevision.current = bindingsRevision.current = data.member.revision;
       setMessage('成员资料已保存');
       onSaved();
       return true;
@@ -167,10 +168,11 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
     try {
       await request(`/api/members/${encodeURIComponent(member.memberId)}/roles`, {
         method: 'PUT',
-        body: { revision: detail.member.revision, bindings: roleBindingsPayload(bindings) }
+        body: { revision: bindingsRevision.current, bindings: roleBindingsPayload(bindings) }
       });
-      const data = await request(`/api/members/${encodeURIComponent(member.memberId)}`);
-      setDetail(data);
+      await client.cancelQueries({ queryKey });
+      const { data } = await result.refetch({ throwOnError: true });
+      bindingsRevision.current = data.member.revision;
       setBindings(data.bindings || []);
       setMessage('系统授权已保存，相关账号需要重新登录');
       onSaved();
@@ -194,8 +196,22 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
     }
   }
   async function reload() {
-    const data = await request(`/api/members/${encodeURIComponent(member.memberId)}`);
-    setDetail(data);
+    await client.invalidateQueries({ queryKey, refetchType: 'none' });
+    const { data } = await result.refetch({ throwOnError: true });
+    if (!profileDirty) {
+      profileRevision.current = data.member.revision;
+      setProfile({
+        name: data.member.name,
+        college: data.member.college,
+        major: data.member.major,
+        homeCampusId: data.member.homeCampusId,
+        status: data.member.status
+      });
+    }
+    if (!bindingsDirty) {
+      bindingsRevision.current = data.member.revision;
+      setBindings(data.bindings || []);
+    }
     onSaved();
   }
   return (
@@ -230,9 +246,12 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                 : [{ id: 'history', label: '操作记录' }])
             ]}
           />
-          {error && (
+          {(error || result.error || rolesQuery.error || departmentsQuery.error) && (
             <p data-motion-value="text" className="react-error" role="alert">
-              {error}
+              {error ||
+                result.error?.message ||
+                rolesQuery.error?.message ||
+                departmentsQuery.error?.message}
             </p>
           )}
           {message && (
@@ -322,11 +341,11 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
           </form>
 
           {!detail ? (
-            error ? (
+            error || result.error ? (
               <button
                 onClick={() => {
                   setError('');
-                  setReadRevision((value) => value + 1);
+                  result.refetch();
                 }}
               >
                 重新读取成员资料
@@ -354,10 +373,9 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                       onDirty={setAccountDirty}
                       onBusy={setBusy}
                       onSaved={async () => {
-                        const data = await request(
-                          `/api/members/${encodeURIComponent(member.memberId)}`
-                        );
-                        setDetail(data);
+                        await client.cancelQueries({ queryKey });
+                        const { data } = await result.refetch({ throwOnError: true });
+                        profileRevision.current = data.member.revision;
                         if (!profileDirty)
                           setProfile({
                             name: data.member.name,
