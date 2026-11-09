@@ -188,7 +188,9 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
   async function home(actor,query={}) {
     const context = await staff.contextFor(actor);
     const campuses = (actor.authorizedCampuses || []).map(name => ({id:campusId(name),name}));
-    const selected = query.campusId || campuses[0]?.id;
+    const homeCampus = campusId(actor.homeCampus);
+    const selected = query.campusId !== undefined ? campusId(query.campusId)
+      : campuses.find(item=>item.id===homeCampus)?.id || campuses[0]?.id;
     if (!campuses.some(item=>item.id===selected)) fail(403,'没有该校区的访问权限');
     const capability = Object.fromEntries(['repair.summary.read','repair.start','repair.transfer','repair.receive','onsite.create','attendance.self','attendance.session.manage','members.manage','roles.manage'].map(code=>[code,allowed(context,code,{campusId:selected,memberId:context.actor.memberId})]));
     const repairs = (await appointments.inProgress(actor.account)).filter(item=>item.campus===names[selected]);
@@ -201,7 +203,7 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
       permissions:context.permissions,navigation:context.navigation,
       attendance:attendance?.campusId===selected ? attendance : null,
       repairs:await projectList(actor,repairs,context),pendingPhotos:await projectList(actor,pendingPhotos,context),
-      todayDuties:context.todayDuties,identities:staffIdentities(context,authorizer,{campusId:selected}),
+      todayDuties:context.todayDuties.filter(item=>item.campusId===selected),identities:staffIdentities(context,authorizer,{campusId:selected}),
       searchCapabilities:searchCapabilities(context),
       event:await repository.dutyEvent(dateKey(),selected),
       pendingCoverInvitations:context.permissions['roster.read'] ? await repository.pendingCoverInvitations(context.actor.memberId) : 0,

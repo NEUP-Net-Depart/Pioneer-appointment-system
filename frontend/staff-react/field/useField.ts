@@ -62,18 +62,23 @@ export function useField(
     } catch (error) {
       if (controller.signal.aborted || version !== generation.current) return;
       const status = (error as Error & { status: number }).status;
-      if (status === 403 && resource === 'board') {
+      if (status === 403) {
+        removeWorkspaceState(key);
+        removeWorkspaceState(`field:${sessionKey}:${campus}:home`);
+        removeWorkspaceState(`field:${sessionKey}:${campus}:board`);
+        setSnapshot({ key, value: null });
         try {
-          const home = await api<Home>(
-            `/api/field/home${campus ? '?campusId=' + encodeURIComponent(campus) : ''}`,
-            { signal: controller.signal }
-          );
+          let home = await api<Home>('/api/field/home', { signal: controller.signal });
+          if (home.campusId !== campus && home.campuses.some((item) => item.id === campus))
+            home = await api<Home>('/api/field/home?campusId=' + encodeURIComponent(campus), {
+              signal: controller.signal
+            });
           if (version !== generation.current || controller.signal.aborted) return;
-          removeWorkspaceState(key);
-          writeWorkspaceState(`field:${sessionKey}:${campus}:home`, {
-            value: home,
-            fetchedAt: Date.now()
-          });
+          if (home.campusId === campus)
+            writeWorkspaceState(`field:${sessionKey}:${campus}:home`, {
+              value: home,
+              fetchedAt: Date.now()
+            });
           if (version === generation.current && !controller.signal.aborted) {
             setSnapshot({ key, value: home });
             setFailure({ key, message: '' });

@@ -9,6 +9,68 @@ import { encryptText } from '../src/lib/privacy.js';
 import { staffSceneAllowed } from '../shared/staff-access.js';
 function patch(input) {return appointmentPatch({requestId:crypto.randomUUID(),...input});}
 
+test('field home and board prefer the authorized home campus and validate every explicit campus',async t=>{
+  const {db,users,staff,order}=repairScenario(t);
+  order('nanhu');order('hunnan',{campus:'浑南'});
+  for(const account of ['20260001','20260003']) {
+    const actor=await users.find(account);
+    for(const read of [staff.field.home,staff.field.board]) {
+      const data=await read(actor);
+      assert.equal(data.campusId,account==='20260001'?'campus-nanhu':'campus-hunnan');
+      await assert.rejects(read(actor,{campusId:account==='20260001'?'campus-hunnan':'南湖'}),{status:403});
+    }
+  }
+  db.sqlite.exec("INSERT INTO staff_campus_grants VALUES('20260001','浑南')");
+  const actor=await users.find('20260001');
+  const first=actor.authorizedCampuses[0]==='南湖'?'campus-nanhu':'campus-hunnan';
+  for(const read of [staff.field.home,staff.field.board]) {
+    for(const [homeCampus,expected] of [
+      ['南湖','campus-nanhu'],['浑南','campus-hunnan'],
+      ['campus-nanhu','campus-nanhu'],['campus-hunnan','campus-hunnan'],
+      ['',first],[null,first],['unknown',first]
+    ]) {
+      const data=await read({...actor,homeCampus});
+      assert.equal(data.campusId,expected,String(homeCampus));
+      if(read===staff.field.board)assert.deepEqual(data.appointments.map(row=>row.id),[expected==='campus-nanhu'?'nanhu':'hunnan']);
+    }
+    for(const campus of ['南湖','campus-nanhu','浑南','campus-hunnan']) {
+      const data=await read(actor,{campusId:campus});
+      assert.equal(data.campusId,['南湖','campus-nanhu'].includes(campus)?'campus-nanhu':'campus-hunnan');
+    }
+    for(const campusId of ['unknown',''])await assert.rejects(read(actor,{campusId}),{status:403});
+    const restricted={...actor,homeCampus:'浑南',authorizedCampuses:['南湖']};
+    assert.equal((await read(restricted)).campusId,'campus-nanhu');
+    await assert.rejects(read(restricted,{campusId:'浑南'}),{status:403});
+    await assert.rejects(read({...actor,authorizedCampuses:[]}),{status:403});
+  }
+});
+
+test('changing the working campus scopes repairs, reception, photos and duties together',async t=>{
+  const {db,users,staff,order}=repairScenario(t);
+  db.sqlite.exec("INSERT INTO staff_campus_grants VALUES('20260001','浑南')");
+  const actor=await users.find('20260001');
+  for(const [suffix,campus] of [['nanhu','南湖'],['hunnan','浑南']]) {
+    order('waiting-'+suffix,{campus});
+    order('received-'+suffix,{campus,received_at:'2026-11-05T11:00:00Z',received_by:actor.account});
+    order('repair-'+suffix,{campus,status:'in_progress',assigned_to:actor.account,started_at:'2026-11-05T11:00:00Z'});
+    order('photos-'+suffix,{campus,photo_deferred_by:actor.account});
+  }
+  const contextFor=staff.contextFor;
+  staff.contextFor=async actor=>({...await contextFor(actor),todayDuties:[
+    {id:'duty-nanhu',campusId:'campus-nanhu',campusName:'南湖',dutyType:'repair'},
+    {id:'duty-hunnan',campusId:'campus-hunnan',campusName:'浑南',dutyType:'repair'}
+  ]});
+  for(const read of [staff.field.home,staff.field.board]) {
+    for(const suffix of ['nanhu','hunnan']) {
+      const data=await read(actor,{campusId:'campus-'+suffix});
+      assert.deepEqual(data.repairs.map(row=>row.id),['repair-'+suffix]);
+      assert.deepEqual(data.pendingPhotos.map(row=>row.id),['photos-'+suffix]);
+      assert.deepEqual(data.todayDuties.map(row=>row.id),['duty-'+suffix]);
+      if(read===staff.field.board)assert.deepEqual(data.appointments.map(row=>row.id).sort(),['photos-'+suffix,'received-'+suffix,'repair-'+suffix,'waiting-'+suffix].sort());
+    }
+  }
+});
+
 test('field attendance follows the actual member, day and campus without live presence',async t=>{
   const {db,users,staff,calendar}=repairScenario(t,{time:'19:10'});
   db.sqlite.prepare("UPDATE member_department_memberships SET position_code='head' WHERE member_id='member-20260002'").run();

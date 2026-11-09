@@ -3,6 +3,7 @@ import { api } from './ui';
 import { useField } from './useField';
 import type { AttendanceRecord, Home } from './types';
 import { canSelfCheckIn, rememberAttendance } from './attendance-state';
+import { readFieldCampus, writeFieldCampus } from '../workspace-state.js';
 
 export function useFieldWorkspace({
   initial,
@@ -29,7 +30,10 @@ export function useFieldWorkspace({
     initial.contexts.find((c) => c.id === sessionStorage.getItem(key))?.id ||
     initial.contexts[0]?.id ||
     'mine';
-  const [campus, setCampus] = useState(initial.campusId),
+  const sessionKey = `${initial.actor.memberId}:${initial.authVersion}`;
+  const [chosenCampus, setChosenCampus] = useState(
+      () => readFieldCampus(sessionKey, initial.campuses) || initial.campusId
+    ),
     [selected, setSelected] = useState(''),
     [scanOpen, setScanOpen] = useState(false),
     [registration, setRegistration] = useState(false);
@@ -47,10 +51,31 @@ export function useFieldWorkspace({
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
-  const sessionKey = `${initial.actor.memberId}:${initial.authVersion}`;
+  const campus = initial.campuses.some((item) => item.id === chosenCampus)
+    ? chosenCampus
+    : initial.campusId;
   const result = useField(campus, scene, sessionKey, initial, active),
-    data = result.data;
+    data = result.data?.campusId === campus ? result.data : null;
   const refresh = result.refresh;
+  function setCampus(value: string) {
+    if (busy || !initial.campuses.some((item) => item.id === value)) return;
+    writeFieldCampus(sessionKey, value);
+    setChosenCampus(value);
+    setSelected('');
+    setMessage('');
+    setScanOpen(false);
+    setRegistration(false);
+    setToken(null);
+    setCheckToken('');
+    setCheckPreview(null);
+    setCheckResult(null);
+  }
+  useEffect(() => {
+    if (chosenCampus !== campus) {
+      writeFieldCampus(sessionKey, campus);
+      setChosenCampus(campus);
+    }
+  }, [chosenCampus, campus, sessionKey]);
   useEffect(() => {
     setScanOpen(false);
     setToken(null);
@@ -69,15 +94,16 @@ export function useFieldWorkspace({
     setCheckResult(null);
   }, [active]);
   useEffect(() => {
+    if (!result.data) return;
+    onContextChange?.(result.data);
     if (!data) return;
-    onContextChange?.(data);
     if (scene !== 'mine' && !data.contexts.some((context) => context.id === scene)) {
       const next = data.contexts[0]?.id || 'mine';
       onSceneChange?.(next);
       setSelected('');
       setScanOpen(false);
     }
-  }, [data, scene, onContextChange, onSceneChange]);
+  }, [result.data, data, scene, onContextChange, onSceneChange]);
   useEffect(() => {
     sessionStorage.setItem(key, scene);
   }, [key, scene]);
@@ -192,7 +218,7 @@ export function useFieldWorkspace({
       await refresh();
     });
   }
-  const campusName = data?.campuses.find((c) => c.id === campus)?.name || '';
+  const campusName = initial.campuses.find((c) => c.id === campus)?.name || '';
   return {
     scene,
     campus,

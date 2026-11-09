@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/fixtures.mjs';
 import { readFile } from 'node:fs/promises';
 import { loginStaff, staffPage } from './support/staff.mjs';
 
@@ -207,9 +207,19 @@ test('the real isolated verifier loads its SDK and bridge under both CSP policie
       violations.push(message.text());
   });
   const response = await request.get(origin + '/index.html');
-  expect(response.headers()['content-security-policy']).toContain(
-    'frame-ancestors ' + new URL(page.url()).origin
-  );
+  const policy = response.headers()['content-security-policy'];
+  const parents = policy.split(';')
+    .find((value) => value.trim().startsWith('frame-ancestors '))
+    .trim()
+    .split(/\s+/)
+    .slice(1);
+  expect(parents).toContain(new URL(page.url()).origin);
+  for (const parent of parents) {
+    const allowed = new URL(parent);
+    expect(allowed.protocol).toBe('http:');
+    expect(allowed.hostname).toBe('127.0.0.1');
+    expect(allowed.port).toMatch(/^\d+$/);
+  }
   expect(response.headers()['x-frame-options']).toBeUndefined();
   await page.route('https://contentcenter-drcn.dbankcdn.cn/**/captcha.js', (route) =>
     route.fulfill({
