@@ -51,7 +51,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
     },
     []
   );
-  const [page, setPage] = useState('duties');
+  const [page, setPage] = useState('workbench');
   const [field, setField] = useState(null);
   const [bootError, setBootError] = useState(''),
     [bootRetry, setBootRetry] = useState(0);
@@ -94,6 +94,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
         setWorkScene(
           (current) =>
             current ||
+            data.contexts.find((context) => context.id === 'today')?.id ||
             data.contexts.find(
               (context) =>
                 context.id === sessionStorage.getItem(`field-scene:${data.actor.memberId}`)
