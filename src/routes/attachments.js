@@ -16,7 +16,7 @@ export const attachmentRoutes = [
   ['GET', /^\/api\/appointments\/([^/]+)\/attachments\/([^/]+)$/, async (context, match) => {
     await context.limit('lookup');
     const file = await context.services.attachments.download(decodeURIComponent(match[1]),decodeURIComponent(match[2]),await context.authenticate(),context.accessToken);
-    return new Response(file.body, { headers: { ...securityHeaders, 'Content-Type': file.metadata.mimeType, 'Content-Length': String(file.size),
+    return new Response(file.body, { headers: { ...securityHeaders, 'Cache-Control': 'private, max-age=300', 'Content-Type': file.metadata.mimeType, 'Content-Length': String(file.size),
       'Content-Disposition': `attachment; filename="attachment"; filename*=UTF-8''${encodeURIComponent(file.metadata.filename)}` } });
   }]
 ];

@@ -8,6 +8,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
     return db
       .prepare(
         `SELECT staff_accounts.*,m.id AS mapped_member_id,m.status AS member_status
+      ,(SELECT json_group_array(campus) FROM staff_access_campuses WHERE account=staff_accounts.account) AS campuses
       FROM staff_accounts LEFT JOIN members m ON m.id=staff_accounts.member_id WHERE staff_accounts.account=?`
       )
       .bind(account)
@@ -108,20 +109,45 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
   }
 
   async function authorizationContext(user, businessDate = dateKey()) {
-    const memberId = await ensureMember(user.account, user);
-    const member = await db
-      .prepare(
-        'SELECT m.id,m.name,m.student_id,m.home_campus_id,m.status,m.revision,m.created_at,m.updated_at FROM members m WHERE m.id=?'
-      )
-      .bind(memberId)
-      .first();
+    const account = await accountRow(user.account);
+    const memberId = account?.mapped_member_id || null;
     const authorizationDate = dateKey();
-    const [membershipItems, grantItems, duties] = await Promise.all([
-      memberships(memberId, authorizationDate),
-      grants(memberId, authorizationDate),
-      todayDuties(memberId, businessDate)
+    const result = await db.batch([
+      db
+        .prepare(
+          'SELECT m.id,m.name,m.student_id,m.home_campus_id,m.status,m.revision,m.created_at,m.updated_at FROM members m WHERE m.id=?'
+        )
+        .bind(memberId),
+      db
+        .prepare(
+          `SELECT mdm.*,d.name AS department_name,d.code AS department_code,d.kind AS organization_kind,d.enabled AS department_enabled FROM member_department_memberships mdm JOIN departments d ON d.id=mdm.department_id WHERE mdm.member_id=? AND mdm.effective_from<=? AND (mdm.effective_to IS NULL OR ?<mdm.effective_to) ORDER BY mdm.is_primary DESC,mdm.effective_from`
+        )
+        .bind(memberId, authorizationDate, authorizationDate),
+      db
+        .prepare(
+          `SELECT rg.*,mr.scope_bindings,mr.effective_from,mr.effective_to,'explicit' AS source,r.code AS role_code FROM member_roles mr JOIN roles r ON r.id=mr.role_id AND r.enabled=1 JOIN role_grants rg ON rg.role_id=r.id WHERE mr.member_id=? AND mr.effective_from<=? AND (mr.effective_to IS NULL OR ?<mr.effective_to) ORDER BY rg.permission_code`
+        )
+        .bind(memberId, authorizationDate, authorizationDate),
+      db
+        .prepare(
+          `SELECT da.*,(SELECT paused FROM service_day_overrides s WHERE s.business_date=da.business_date AND s.campus_id=da.campus_id) AS service_paused,c.name AS campus_name,${assignmentLeaveColumn} FROM duty_assignments da JOIN campuses c ON c.id=da.campus_id WHERE da.active=1 AND da.member_id=? AND da.business_date=? ORDER BY da.start_at`
+        )
+        .bind(memberId, businessDate)
     ]);
-    const account = await accountForMember(memberId);
+    const member = rows(result[0])[0] || null;
+    const membershipItems = rows(result[1]).map(membership);
+    const grantItems = rows(result[2]).map((row) => ({
+      id: row.id,
+      roleId: row.role_id,
+      roleCode: row.role_code,
+      permissionCode: row.permission_code,
+      scope: intersectScopes(parseJson(row.scope_spec, {}), parseJson(row.scope_bindings, {})),
+      conditions: parseJson(row.condition_spec, []),
+      validity: parseJson(row.validity_spec, {}),
+      source: row.source,
+      binding: { effectiveFrom: row.effective_from, effectiveTo: row.effective_to }
+    }));
+    const duties = rows(result[3]).map(assignment);
     const authVersion = account?.auth_version ?? 0;
     return {
       actor: {

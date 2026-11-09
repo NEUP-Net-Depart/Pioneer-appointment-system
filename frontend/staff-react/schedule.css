@@ -96,7 +96,7 @@
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
 }
-.duty-metrics span {
+.duty-metrics > div > span {
   color: #647084;
   font-size: 14px;
 }

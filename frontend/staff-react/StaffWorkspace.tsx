@@ -150,13 +150,6 @@ export function StaffWorkspace({
           查找功能
         </button>
         <nav aria-label="岗位工作导航">
-          {loading && (
-            <div className="workspace-skeleton" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </div>
-          )}
           {groups.map((group) => (
             <section className="workspace-nav-group" key={group.label}>
               <h2>

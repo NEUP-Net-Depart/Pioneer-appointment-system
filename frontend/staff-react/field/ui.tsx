@@ -20,7 +20,7 @@ import { useDataMotion } from '../useDataMotion';
 
 export const api = <T,>(
   url: string,
-  options: { method?: string; body?: unknown; signal?: AbortSignal } = {}
+  options: { method?: string; body?: unknown; signal?: AbortSignal; timeoutMs?: number } = {}
 ): Promise<T> => request(url, options);
 export const time = (value: string) =>
   new Date(value).toLocaleTimeString('zh-CN', {

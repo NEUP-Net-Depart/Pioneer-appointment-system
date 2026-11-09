@@ -1,8 +1,7 @@
 import { DataValue } from './DataValue';
-import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { request } from './request.js';
+import React, { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { ActivityContext } from './field/ui';
-import { readWorkspaceState, writeWorkspaceState } from './workspace-state.js';
 import { MemberEditor } from './MemberEditor.jsx';
 import { staffPermission } from '../../shared/staff-access.js';
 import { MemberImport } from './MemberImport.jsx';
@@ -12,81 +11,106 @@ import { StaffIdentity } from './StaffIdentity';
 import { MemberCreate } from './MemberCreate.jsx';
 
 export function Members({ user }) {
-  const routeActive = useContext(ActivityContext);
-  const viewKey = `members:${user.memberId || user.account}:${user.authVersion || 0}`;
-  const saved = readWorkspaceState(viewKey);
-  const [items, setItems] = useState(saved?.items || []);
-  const [q, setQ] = useState(saved?.q || '');
-  const [campus, setCampus] = useState(saved?.campus || '');
-  const [status, setStatus] = useState(saved?.status || '');
-  const [nextCursor, setNextCursor] = useState(saved?.nextCursor || '');
-  const [resolvedQuery, setResolvedQuery] = useState(saved?.query || '');
-  const query = JSON.stringify([q, campus, status]);
+  const active = useContext(ActivityContext);
+  const client = useQueryClient();
+  const [q, setQ] = useState('');
+  const [search, setSearch] = useState('');
+  const [campus, setCampus] = useState('');
+  const [status, setStatus] = useState('');
+  const allParams = { q: '', homeCampusId: '', status: '' };
+  const complete = client.getQueryData(['/api/members', allParams]);
+  const localFilters = !search && complete && !complete.pages.at(-1).nextCursor;
+  const params = localFilters ? allParams : { q: search, homeCampusId: campus, status };
   const [selected, setSelected] = useState(null);
   const [importing, setImporting] = useState(false);
   const [creating, setCreating] = useState(false);
   const [educationImporting, setEducationImporting] = useState(false);
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(!saved);
-  const generation = useRef(0);
-  const controller = useRef(null);
-
-  const load = useCallback(
-    async (cursor = '') => {
-      const current = ++generation.current;
-      controller.current?.abort();
-      controller.current = new AbortController();
-      setBusy(true);
-      setError('');
-      const params = new URLSearchParams({
-        q,
-        ...(campus ? { homeCampusId: campus } : {}),
-        ...(status ? { status } : {}),
-        ...(cursor ? { cursor } : {})
-      });
-      try {
-        const data = await request(`/api/members?${params}`, { signal: controller.current.signal });
-        if (current !== generation.current) return;
-        setItems((previous) =>
-          cursor
-            ? [
-                ...new Map(
-                  [...previous, ...(data.items || [])].map((item) => [item.memberId, item])
-                ).values()
-              ]
-            : data.items || []
-        );
-        setNextCursor(data.nextCursor || '');
-        setResolvedQuery(JSON.stringify([q, campus, status]));
-      } catch (err) {
-        if (current === generation.current && err.name !== 'AbortError') setError(err.message);
-      } finally {
-        if (current === generation.current) setBusy(false);
-      }
-    },
-    [q, campus, status]
+  const list = useInfiniteQuery({
+    queryKey: ['/api/members', params],
+    enabled: active,
+    initialPageParam: '',
+    getNextPageParam: (page) => page.nextCursor || undefined,
+    staleTime: (query) => (query.state.data?.pages.length > 1 ? 120000 : 30000),
+    refetchInterval: (query) => (query.state.data?.pages.length > 1 ? 120000 : 30000)
+  });
+  const error = list.error?.message;
+  const busy = list.isPending;
+  const items = [
+    ...new Map(
+      (list.data?.pages.flatMap((page) => page.items) || []).map((item) => [item.memberId, item])
+    ).values()
+  ].filter(
+    (item) =>
+      !localFilters ||
+      ((!campus || item.homeCampusId === campus) && (!status || item.status === status))
   );
-
-  useEffect(() => {
-    if (!routeActive) {
-      ++generation.current;
-      controller.current?.abort();
-      return;
-    }
-    setBusy(true);
-    if (resolvedQuery !== query) setNextCursor('');
-    const timer = setTimeout(() => load(), 200);
-    return () => {
-      clearTimeout(timer);
-      ++generation.current;
-      controller.current?.abort();
+  const load = async () => {
+    const affected = {
+      predicate: (query) =>
+        String(query.queryKey[0]).startsWith('/api/members') ||
+        [
+          '/api/users',
+          '/api/staff-whitelist',
+          '/api/activation-requests',
+          '/api/rosters/campus-week',
+          '/api/attendance/day',
+          '/api/field/home',
+          '/api/field/board',
+          '/api/attendance/volunteer-report',
+          '/api/attendance/matrix'
+        ].includes(query.queryKey[0])
     };
-  }, [load, routeActive]);
+    await client.cancelQueries(affected);
+    return client.invalidateQueries(affected);
+  };
+  const sentinel = useRef(null);
 
   useEffect(() => {
-    if (resolvedQuery === query)
-      writeWorkspaceState(viewKey, { q, campus, status, items, nextCursor, query });
-  }, [viewKey, q, campus, status, items, nextCursor, query, resolvedQuery]);
+    const timer = setTimeout(() => setSearch(q.trim()), q.trim() ? 250 : 0);
+    return () => clearTimeout(timer);
+  }, [q]);
+
+  useLayoutEffect(() => {
+    if (
+      !active ||
+      busy ||
+      list.isFetching ||
+      error ||
+      !list.hasNextPage ||
+      !list.data ||
+      !sentinel.current
+    )
+      return;
+    let observing = true;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Recheck live geometry: queued intersections can describe the shorter
+        // previous filter, especially when the mobile viewport changes.
+        if (
+          observing &&
+          entries.some((entry) => entry.isIntersecting) &&
+          sentinel.current.getBoundingClientRect().top <= window.innerHeight * 3
+        )
+          void list.fetchNextPage({ cancelRefetch: false });
+      },
+      { rootMargin: `${window.innerHeight * 2}px 0px` }
+    );
+    observer.observe(sentinel.current);
+    return () => {
+      observing = false;
+      observer.disconnect();
+    };
+  }, [
+    active,
+    busy,
+    list.isFetching,
+    error,
+    list.hasNextPage,
+    list.data,
+    params.q,
+    params.homeCampusId,
+    params.status
+  ]);
 
   return (
     <section className="react-members-page">
@@ -142,15 +166,20 @@ export function Members({ user }) {
                 </WorkspaceMoreActions>
               </>
             )}
-            <button onClick={() => load()} disabled={busy}>
+            <button
+              onClick={() => client.invalidateQueries({ queryKey: ['/api/members'] })}
+              disabled={busy}
+            >
               刷新
             </button>
           </div>
-          <span data-motion-value="number" className="members-result-count" role="status">
-            {busy ? '正在更新筛选结果…' : `已显示 ${items.length} 名成员`}
+          <span className="members-result-count" role="status">
+            已显示{' '}
+            <DataValue label="已显示成员数量">{list.data ? items.length : undefined}</DataValue>{' '}
+            名成员
           </span>
         </div>
-        <div className="react-table members-results" aria-busy={busy} data-refreshing={busy}>
+        <div className="react-table members-results" aria-busy={busy}>
           <div className="react-row react-row-head">
             <span>成员</span>
             <span>校区</span>
@@ -187,13 +216,10 @@ export function Members({ user }) {
                 {item.college && <small data-motion-value="text">{item.college}</small>}
               </span>
               <span className="members-row-action">
-                <button disabled={busy} onClick={() => setSelected(item)}>
-                  人员详情
-                </button>
+                <button onClick={() => setSelected(item)}>人员详情</button>
               </span>
             </div>
           ))}
-          {busy && !items.length && <DataValue label="成员列表" />}
           {!busy && !items.length && !error && (
             <div className="members-empty">
               <h2>没有找到成员</h2>
@@ -211,10 +237,13 @@ export function Members({ user }) {
             </div>
           )}
         </div>
-        <footer className="members-list-footer">
-          {nextCursor && (
-            <button onClick={() => load(nextCursor)} disabled={busy}>
-              加载更多成员
+        <footer ref={sentinel} className="members-list-footer" aria-busy={list.isFetchingNextPage}>
+          {list.hasNextPage && (
+            <button
+              disabled={list.isFetching}
+              onClick={() => list.fetchNextPage({ cancelRefetch: false })}
+            >
+              加载更多
             </button>
           )}
         </footer>

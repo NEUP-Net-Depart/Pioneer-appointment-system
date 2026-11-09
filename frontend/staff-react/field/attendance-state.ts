@@ -1,4 +1,4 @@
-import { readWorkspaceState, writeWorkspaceState } from '../workspace-state.js';
+import type { QueryClient } from '@tanstack/react-query';
 import type { AttendanceRecord, Home } from './types';
 
 export function campusAttendance(home: Home) {
@@ -14,23 +14,30 @@ export function canSelfCheckIn(home: Home) {
   return !!home.capability['attendance.self'] && !campusAttendance(home);
 }
 
-const confirmationKey = (session: string, date: string, campus: string) =>
-  `attendance:${session}:${date}:${campus}`;
-
-export function rememberAttendance(session: string, record: AttendanceRecord) {
-  if (record.type === 'duty')
-    writeWorkspaceState(confirmationKey(session, record.businessDate, record.campusId), record);
-}
-
-export function confirmedAttendance(session: string, home: Home) {
-  return readWorkspaceState(confirmationKey(session, home.businessDate, home.campusId)) as
-    | AttendanceRecord
-    | undefined;
-}
-
-export function reconcileAttendance(home: Home, confirmed?: AttendanceRecord): Home {
-  if (!confirmed || (campusAttendance(home)?.revision ?? -1) >= confirmed.revision) return home;
-  // A successful server response must survive older board/home requests and
-  // scene caches. The confirmation is scoped to this login, day and campus.
-  return { ...home, attendance: confirmed };
+// Cancel older home/board reads before publishing the server-confirmed record.
+export async function applyAttendance(client: QueryClient, record: AttendanceRecord) {
+  const affectedQueries = {
+    predicate: (query) =>
+      [
+        '/api/field/home',
+        '/api/field/board',
+        '/api/me/attendance',
+        '/api/attendance/day',
+        '/api/me/volunteer-summary',
+        '/api/attendance/volunteer-report',
+        '/api/attendance/matrix',
+        '/api/attendance/weekly-summary'
+      ].includes(query.queryKey[0])
+  };
+  await client.cancelQueries(affectedQueries);
+  const matches = (query) => ['/api/field/home', '/api/field/board'].includes(query.queryKey[0]);
+  client.setQueriesData<Home>({ predicate: matches }, (home) =>
+    home &&
+    record.type === 'duty' &&
+    home.businessDate === record.businessDate &&
+    home.campusId === record.campusId
+      ? { ...home, attendance: record }
+      : home
+  );
+  await client.invalidateQueries(affectedQueries);
 }

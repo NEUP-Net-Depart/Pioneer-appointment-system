@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { request } from './request.js';
-import { Notice } from './field/ui';
+import React, { useContext } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { ActivityContext, Notice } from './field/ui';
+import { DataExpansion } from './DataExpansion.jsx';
 
 const labels = {
   'identity.member.created': '新增人员',
@@ -16,41 +17,33 @@ const labels = {
   'authorization.account.updated': '修改登录账号'
 };
 export function MemberHistory({ memberId }) {
-  const [items, setItems] = useState([]),
-    [error, setError] = useState(''),
-    [loading, setLoading] = useState(true);
-  useEffect(() => {
-    const controller = new AbortController();
-    request(`/api/members/${encodeURIComponent(memberId)}/audit`, { signal: controller.signal })
-      .then((data) => setItems(data.items || []))
-      .catch((failure) => {
-        if (!controller.signal.aborted) setError(failure.message);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [memberId]);
+  const result = useQuery({
+    queryKey: [`/api/members/${encodeURIComponent(memberId)}/audit`],
+    enabled: useContext(ActivityContext),
+    refetchInterval: false
+  });
+  const items = result.data?.items || [];
+  const error = result.error?.message;
+  const loading = result.isPending;
+
   return (
-    <section aria-label="人员操作记录">
+    <section aria-label="人员操作记录" aria-busy={loading}>
       <Notice>{error}</Notice>
-      {loading ? (
-        <p role="status">正在读取操作记录…</p>
-      ) : items.length ? (
-        items.map((item, index) => (
-          <article className="react-binding" key={index}>
-            <strong>{labels[item.action] || item.action}</strong>
-            {item.changes?.length > 0 && <p>{item.changes.join('、')}</p>}
-            <p>
-              {new Date(item.occurredAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })} ·{' '}
-              {item.actorAccount}
-            </p>
-            {item.reason && <p>{item.reason}</p>}
-          </article>
-        ))
-      ) : (
-        !error && <p>暂无操作记录</p>
-      )}
+      <DataExpansion ready={!loading}>
+        {items.length
+          ? items.map((item, index) => (
+              <article className="react-binding" key={index}>
+                <strong>{labels[item.action] || item.action}</strong>
+                {item.changes?.length > 0 && <p>{item.changes.join('、')}</p>}
+                <p>
+                  {new Date(item.occurredAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}{' '}
+                  · {item.actorAccount}
+                </p>
+                {item.reason && <p>{item.reason}</p>}
+              </article>
+            ))
+          : !loading && !error && <p>暂无操作记录</p>}
+      </DataExpansion>
     </section>
   );
 }
