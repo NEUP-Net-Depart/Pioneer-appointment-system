@@ -116,14 +116,10 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
       .bind(memberId)
       .first();
     const authorizationDate = dateKey();
-    const [membershipItems, grantItems, duties, presence] = await Promise.all([
+    const [membershipItems, grantItems, duties] = await Promise.all([
       memberships(memberId, authorizationDate),
       grants(memberId, authorizationDate),
-      todayDuties(memberId, businessDate),
-      db
-        .prepare('SELECT * FROM staff_presence WHERE member_id=? AND business_date=?')
-        .bind(memberId, businessDate)
-        .first()
+      todayDuties(memberId, businessDate)
     ]);
     const account = await accountForMember(memberId);
     const authVersion = account?.auth_version ?? 0;
@@ -144,15 +140,6 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
       authorizationDate,
       grants: grantItems,
       todayDuties: duties,
-      presence: presence
-        ? {
-            memberId: presence.member_id,
-            businessDate: presence.business_date,
-            campusId: presence.campus_id,
-            state: presence.state,
-            revision: presence.revision
-          }
-        : null,
       authVersion,
       schemaVersion: SCHEMA_VERSION
     };

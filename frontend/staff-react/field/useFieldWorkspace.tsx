@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from './ui';
 import { useField } from './useField';
-import type { Home } from './types';
+import type { AttendanceRecord, Home } from './types';
+import { canSelfCheckIn, rememberAttendance } from './attendance-state';
 import { readFieldCampus, writeFieldCampus } from '../workspace-state.js';
 
 export function useFieldWorkspace({
@@ -39,21 +40,17 @@ export function useFieldWorkspace({
   const [message, setMessage] = useState(''),
     [token, setToken] = useState<{ token: string; expiresAt: string } | null>(null),
     [checkToken, setCheckToken] = useState('');
-  const [checkResult, setCheckResult] = useState<{
-    occurredAt: string;
-    type?: string;
-    campusId?: string;
-    isExisting?: boolean;
-    nonScheduled?: boolean;
-    identitySnapshot?: { identities?: { code: string; label: string }[] };
-  } | null>(null);
+  const [checkResult, setCheckResult] = useState<AttendanceRecord | null>(null);
   const [checkPreview, setCheckPreview] = useState<{
+    campusId: string;
     campusName: string;
     businessDate: string;
     startsAt: string;
     endsAt: string;
+    type: string;
   } | null>(null);
   const [busy, setBusy] = useState(false);
+  const lock = useRef(false);
   const campus = initial.campuses.some((item) => item.id === chosenCampus)
     ? chosenCampus
     : initial.campusId;
@@ -80,6 +77,13 @@ export function useFieldWorkspace({
     }
   }, [chosenCampus, campus, sessionKey]);
   useEffect(() => {
+    setScanOpen(false);
+    setToken(null);
+    setCheckToken('');
+    setCheckPreview(null);
+    setCheckResult(null);
+  }, [campus]);
+  useEffect(() => {
     if (active) return;
     // Leaving the route must release device-backed UI immediately. The
     // selected repair remains mounted so an unfinished form can be resumed.
@@ -104,7 +108,8 @@ export function useFieldWorkspace({
     sessionStorage.setItem(key, scene);
   }, [key, scene]);
   async function execute(action: () => Promise<void>) {
-    if (busy) return;
+    if (lock.current) return;
+    lock.current = true;
     setBusy(true);
     setMessage('');
     try {
@@ -112,6 +117,7 @@ export function useFieldWorkspace({
     } catch (error) {
       setMessage((error as Error).message);
     } finally {
+      lock.current = false;
       setBusy(false);
     }
   }
@@ -123,12 +129,16 @@ export function useFieldWorkspace({
           businessDate: string;
           startsAt: string;
           endsAt: string;
+          type: string;
         }>('/api/attendance/preview', {
           method: 'POST',
           body: { token: value }
         });
         setScanOpen(false);
-        setCheckPreview(preview);
+        setCheckPreview({
+          ...preview,
+          campusId: data?.campuses.find((item) => item.name === preview.campusName)?.id || ''
+        });
         setCheckToken(value);
       });
       return;
@@ -161,6 +171,7 @@ export function useFieldWorkspace({
     });
   }
   function openAttendance() {
+    if (!data || data.campusId !== campus || !canSelfCheckIn(data)) return;
     if (data?.directAttendance?.allowed) void checkIn('');
     else {
       setMessage('');
@@ -169,6 +180,8 @@ export function useFieldWorkspace({
   }
   async function checkIn(value: string) {
     await execute(async () => {
+      const target = value ? checkPreview : { campusId: campus, businessDate: data!.businessDate };
+      if (!target) throw new Error('请重新扫描工作人员签到码');
       let record;
       try {
         record = await api<NonNullable<typeof checkResult>>(
@@ -181,38 +194,32 @@ export function useFieldWorkspace({
           }
         );
       } catch (error) {
-        const recovered = await api<{ items: NonNullable<typeof checkResult>[] }>(
-          '/api/me/attendance?businessDate=' + (data?.businessDate || initial.businessDate)
+        const status = (error as Error & { status?: number }).status;
+        if ((status && status < 500) || (value && checkPreview?.type !== 'duty')) throw error;
+        const recovered = await api<{ items: AttendanceRecord[] }>(
+          '/api/me/attendance?' +
+            new URLSearchParams({ businessDate: target.businessDate, campusId: target.campusId })
         );
         const existing = recovered.items.find(
-          (item) => item.type === 'duty' && item.campusId === campus
+          (item) =>
+            item.type === 'duty' &&
+            item.campusId === target.campusId &&
+            item.businessDate === target.businessDate
         );
         if (!existing) throw error;
         record = { ...existing, isExisting: true };
       }
+      rememberAttendance(sessionKey, record);
       setCheckResult(record);
       setCheckToken('');
       setScanOpen(false);
-      setMessage('签到成功，已更新到岗状态');
-      await refresh();
-    });
-  }
-  async function presence(state: string) {
-    await execute(async () => {
-      await api('/api/presence/me', {
-        method: 'PATCH',
-        body: {
-          state,
-          campusId: data!.presence!.campusId,
-          revision: data!.presence!.revision
-        }
-      });
+      setCheckPreview(null);
+      setMessage(record.isExisting ? '已读取首次签到记录' : '签到成功');
       await refresh();
     });
   }
   const campusName = initial.campuses.find((c) => c.id === campus)?.name || '';
   return {
-    key,
     scene,
     campus,
     setCampus,
@@ -239,7 +246,6 @@ export function useFieldWorkspace({
     showAttendance,
     openAttendance,
     checkIn,
-    presence,
     campusName
   };
 }

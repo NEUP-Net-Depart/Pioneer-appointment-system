@@ -62,7 +62,6 @@ export const staffPlatformRoutes = [
   }],
   ['POST', /^\/api\/attendance\/corrections$/, async context => json(await context.services.staffPlatform.correctAttendance(await context.role('technician'), await readBody(context.request)), 201)],
   ['GET', /^\/api\/me\/attendance$/, async context => json(await context.services.staffPlatform.attendanceList(await context.role('technician'), { ...context.query, all:false,memberId: (await context.services.staffPlatform.contextFor(await context.role('technician'))).actor.memberId }))],
-  ['PATCH', /^\/api\/presence\/me$/, async context => json(await context.services.staffPlatform.presence(await context.role('technician'), await readBody(context.request)))],
 
   ['GET', /^\/api\/rosters\/week$/, async context=>json(await context.services.staffPlatform.rosterWeek(await context.role('technician'),context.query))],
   ['PUT', /^\/api\/rosters\/week$/, async context=>json(await context.services.staffPlatform.saveRosterWeek(await context.role('technician'),await readBody(context.request)))],

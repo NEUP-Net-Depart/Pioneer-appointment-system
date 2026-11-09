@@ -89,8 +89,7 @@
       "PUT /api/attendance/report-settings",
       "GET /api/attendance/volunteer-report",
       "GET /api/attendance/matrix",
-      "POST /api/attendance/corrections",
-      "PATCH /api/presence/me"
+      "POST /api/attendance/corrections"
     ],
     "rosters": [
       "GET /api/rosters/campus-week",
@@ -137,7 +136,7 @@
       "input": ["assignmentId", "assignmentRevision", "requestId"],
       "serverOwned": ["businessDate", "occurredAt", "eventId", "actor"],
       "atomic": ["attendance fact", "presence", "audit", "receipt"],
-      "dedupe": "duty:memberId:businessDate; repeat does not change first arrival or later presence"
+      "dedupe": "duty:memberId:businessDate; repeat preserves the first arrival"
     },
     "review": {
       "input": ["assignmentId", "assignmentRevision", "revision", "decision: absent|cleared", "requestId", "reason?"],

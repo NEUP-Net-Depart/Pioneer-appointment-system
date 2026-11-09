@@ -45,8 +45,8 @@ test('field home and board prefer the authorized home campus and validate every 
   }
 });
 
-test('changing the working campus scopes repairs, reception, photos, duties and presence together',async t=>{
-  const {db,users,staff,order,calendar}=repairScenario(t);
+test('changing the working campus scopes repairs, reception, photos and duties together',async t=>{
+  const {db,users,staff,order}=repairScenario(t);
   db.sqlite.exec("INSERT INTO staff_campus_grants VALUES('20260001','浑南')");
   const actor=await users.find('20260001');
   for(const [suffix,campus] of [['nanhu','南湖'],['hunnan','浑南']]) {
@@ -55,7 +55,6 @@ test('changing the working campus scopes repairs, reception, photos, duties and 
     order('repair-'+suffix,{campus,status:'in_progress',assigned_to:actor.account,started_at:'2026-11-05T11:00:00Z'});
     order('photos-'+suffix,{campus,photo_deferred_by:actor.account});
   }
-  db.sqlite.prepare("INSERT INTO staff_presence(member_id,business_date,campus_id,state,updated_at) VALUES(?,?,'campus-nanhu','available','2026-11-05')").run(actor.memberId,calendar.serviceDay);
   const contextFor=staff.contextFor;
   staff.contextFor=async actor=>({...await contextFor(actor),todayDuties:[
     {id:'duty-nanhu',campusId:'campus-nanhu',campusName:'南湖',dutyType:'repair'},
@@ -67,11 +66,28 @@ test('changing the working campus scopes repairs, reception, photos, duties and 
       assert.deepEqual(data.repairs.map(row=>row.id),['repair-'+suffix]);
       assert.deepEqual(data.pendingPhotos.map(row=>row.id),['photos-'+suffix]);
       assert.deepEqual(data.todayDuties.map(row=>row.id),['duty-'+suffix]);
-      assert.equal(data.presence?.campusId || null,suffix==='nanhu'?'campus-nanhu':null);
-      assert.equal(data.state,suffix==='nanhu'?'available':'unsigned');
       if(read===staff.field.board)assert.deepEqual(data.appointments.map(row=>row.id).sort(),['photos-'+suffix,'received-'+suffix,'repair-'+suffix,'waiting-'+suffix].sort());
     }
   }
+});
+
+test('field attendance follows the actual member, day and campus without live presence',async t=>{
+  const {db,users,staff,calendar}=repairScenario(t,{time:'19:10'});
+  db.sqlite.prepare("UPDATE member_department_memberships SET position_code='head' WHERE member_id='member-20260002'").run();
+  db.sqlite.prepare("INSERT INTO staff_campus_grants(account,campus) VALUES('20260001','浑南')").run();
+  const worker=await users.find('20260001'),head=await users.find('20260002');
+  const before=await staff.field.home(worker,{campusId:'campus-nanhu'});
+  assert.equal(before.attendance,null);
+  const event=await staff.createAttendanceEvent(head,{campusId:'campus-nanhu',businessDate:calendar.serviceDay});
+  const token=await staff.issueAttendanceToken(head,event.id,{revision:event.revision});
+  const record=await staff.checkIn(worker,{token:token.token,method:'qr',requestId:crypto.randomUUID()});
+  db.sqlite.prepare('DELETE FROM staff_presence WHERE member_id=?').run(worker.memberId);
+  assert.equal((await staff.field.home(worker,{campusId:'campus-nanhu'})).attendance.id,record.id);
+  assert.equal((await staff.field.board(worker,{campusId:'campus-nanhu'})).attendance.id,record.id);
+  assert.equal((await staff.field.home(worker,{campusId:'campus-hunnan'})).attendance,null);
+  assert.equal((await staff.field.home(head,{campusId:'campus-nanhu'})).attendance,null);
+  calendar.moveTo(calendar.nextDay,'19:10');
+  assert.equal((await staff.field.home(worker,{campusId:'campus-nanhu'})).attendance,null);
 });
 
 test('full student ID finds authorized current and historical orders through records and scan search',async t=>{

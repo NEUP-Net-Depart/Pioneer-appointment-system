@@ -100,7 +100,7 @@ export function AttendanceManagement({ campusId, onDirtyChange }) {
     } finally {
       setRefresh((value) => value + 1);
     }
-    setNotice(kind === 'arrival' ? `${person.name}已确认到场，今日在岗已更新` : '核查结论已保存');
+    setNotice(kind === 'arrival' ? `${person.name}已确认到场，签到记录已保存` : '核查结论已保存');
   }
   function edit(person) {
     const record = person?.record;
@@ -126,7 +126,7 @@ export function AttendanceManagement({ campusId, onDirtyChange }) {
         body: { ...form, occurredAt: new Date(`${form.occurredAt}:00+08:00`).toISOString() }
       });
       setForm(null);
-      setNotice('考勤已保存，实时在岗不受历史补录影响');
+      setNotice('考勤已保存');
       setRefresh((value) => value + 1);
       return true;
     });
@@ -163,14 +163,7 @@ export function AttendanceManagement({ campusId, onDirtyChange }) {
             {person.unavailable ? ' · 账号或校区授权已失效，请调整班表' : ''}
           </p>
         </div>
-        <span className="duty-status">
-          {labels[person.status]}
-          {person.presence === 'away'
-            ? ' · 暂离'
-            : person.presence === 'off_duty'
-              ? ' · 已离岗'
-              : ''}
-        </span>
+        <span className="duty-status">{labels[person.status]}</span>
         <div className="schedule-actions">
           {person.canConfirm && (
             <button
