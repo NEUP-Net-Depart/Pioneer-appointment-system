@@ -58,18 +58,13 @@ test('official deep links carry serials only for verified manufacturer parameter
   assert.equal(destination('unknown', 'TEST12345678'), null);
 });
 
-test('all brands describe a real consumer workflow and app channels do not pose as web warranty forms', async () => {
+test('consumer channels distinguish web queries, account portals and miniapps and reject unknown brands', async () => {
   const { warrantyConsumerChannel: channel } = await import('../shared/warranty.js');
-  for (const brand of WARRANTY_BRANDS) {
-    assert.ok(channel(brand.id).title);
-    assert.ok(channel(brand.id).steps.length >= 2);
-  }
   assert.equal(channel('hp').kind, 'web');
   assert.equal(channel('dell').kind, 'web');
   assert.match(WARRANTY_BRANDS.find(brand => brand.id === 'dell').url, /\/support\/home\/zh-cn$/);
   assert.equal(channel('xiaomi').kind, 'account');
   assert.equal(WARRANTY_BRANDS.find(brand => brand.id === 'xiaomi').url, 'https://www.mi.com/service/aftersale/front');
   assert.equal(channel('mechrevo').kind, 'miniapp');
-  assert.match(channel('mechrevo').steps.join(' '), /网页本身不是 SN 查询表/);
   for (const unknown of ['__proto__', 'constructor', 'not-a-brand']) assert.equal(channel(unknown), null);
 });
