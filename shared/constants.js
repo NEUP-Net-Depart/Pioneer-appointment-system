@@ -21,6 +21,9 @@ export const outcomeLabels = {
   repaired: '已解决', partially_repaired: '部分解决', unrepaired: '未解决', not_needed: '无需维修', legacy_unrepaired: '历史未修复（未细分）',
   legacy_unknown: '历史未分类'
 };
+export function appointmentStatusLabel(status, outcome) {
+  return status === 'completed' ? outcomeLabels[outcome] || statusLabels.completed : statusLabels[status];
+}
 export function normalizeTimeSlot(value) {
   const match = String(value ?? '').trim().replace(/：/g, ':').match(/^(\d{1,2})\s*:\s*(\d{2})\s*[‐‑‒–—−-]\s*(\d{1,2})\s*:\s*(\d{2})$/);
   if (!match) return '';

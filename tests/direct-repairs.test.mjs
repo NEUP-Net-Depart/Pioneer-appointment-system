@@ -104,7 +104,7 @@ test('full student ID finds authorized current and historical orders through rec
   assert.equal((await service.list({q:studentId.slice(0,-1)},actor)).filteredCounts.all,0);
   const candidates=await scan.search({q:' '+studentId+' ',campusId:'campus-nanhu'},actor);
   assert.deepEqual(candidates.items.map(item=>item.id),[current,history]);
-  assert.deepEqual(Object.keys(candidates.items[0]),['id','campus','date','timeSlot','status']);
+  assert.deepEqual(Object.keys(candidates.items[0]),['id','campus','date','timeSlot','status','outcome']);
   assert.equal((await scan.search({q:studentId,mode:'number'},actor)).items.length,0);
   assert.equal((await scan.search({q:'reserve'+studentId},actor)).items.length,0);
   await assert.rejects(scan.search({q:studentId,campusId:'campus-hunnan'},actor),{status:403});

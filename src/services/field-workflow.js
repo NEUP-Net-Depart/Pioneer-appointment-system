@@ -101,7 +101,7 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
       const result=await appointments.list({q:query.text,campus,contactIds,limit:APPOINTMENT_SEARCH_LIMIT,
         sort:'date',direction:'desc'}, {...scope,summaryRules,identityRules});
       return {items:result.items.filter(row=>canReadSummary(actor,row,context)).map(row=>Object.fromEntries(
-        ['id','campus','date','timeSlot','status','name','studentId','brand','deviceModel','receivedAt','assignedToName'].map(key=>[key,row[key]])
+        ['id','campus','date','timeSlot','status','outcome','name','studentId','brand','deviceModel','receivedAt','assignedToName'].map(key=>[key,row[key]])
       )),hasMore:!!result.nextCursor};
     }
     const items = [];
@@ -111,7 +111,7 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
       seen.add(row.id);
       items.push(
         Object.fromEntries(
-          ['id', 'campus', 'date', 'timeSlot', 'status'].map((key) => [
+          ['id', 'campus', 'date', 'timeSlot', 'status', 'outcome'].map((key) => [
             key,
             row[key]
           ])

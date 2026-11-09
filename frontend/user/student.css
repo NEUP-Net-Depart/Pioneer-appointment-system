@@ -148,7 +148,8 @@ fieldset.field { padding: 0; border: 0; }
 .student-record .record-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .student-record strong { font-size: 16px; }
 .student-record p { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
-.user-mode .status-pill { border-radius: 6px; font-size: 12px; flex: none; }
+.user-mode .status-pill { border-radius: 6px; font-size: 12px; flex: none; max-width: 100%; overflow-wrap: anywhere; }
+.student-record .record-top .status-pill { max-width: 50%; }
 .user-mode .empty-state { padding: 42px 16px; background: white; border: 1px solid var(--line); border-radius: var(--student-surface-radius); }
 .user-mode .empty-state h2 { font-size: 18px; margin: 0 0 24px; }
 .user-mode .empty-state p { margin-bottom: 16px; }

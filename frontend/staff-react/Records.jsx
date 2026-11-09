@@ -1,7 +1,7 @@
 import { DataFields } from './DataValue';
 import React, { useContext, useEffect, useState } from 'react';
 import { apiFetch } from '../../shared/api.js';
-import { statusLabels, TIME_SLOTS, outcomeLabels } from '../../shared/constants.js';
+import { statusLabels, TIME_SLOTS } from '../../shared/constants.js';
 import { addDays, dateKey, serviceDay, weekRange } from '../../shared/time.js';
 import { request } from './request.js';
 import { ActivityContext, Modal, Notice, Status } from './field/ui';
@@ -313,12 +313,7 @@ export function Records({ user }) {
                     <span data-motion-value="text">{item.timeSlot}</span>
                   </td>
                   <td data-label="状态">
-                    <Status value={item.status} />
-                    {item.outcome && (
-                      <span data-motion-value="text">
-                        {outcomeLabels[item.outcome] || '结果已记录'}
-                      </span>
-                    )}
+                    <Status value={item.status} outcome={item.outcome} />
                   </td>
                   <td data-label="校区">{item.campus}</td>
                   <td data-label="设备">

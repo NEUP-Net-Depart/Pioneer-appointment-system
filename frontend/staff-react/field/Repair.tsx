@@ -44,7 +44,7 @@ function RepairOrder({
       ) : (
         <>
           <section className="field-ticket">
-            <Status value={item.status} />
+            <Status value={item.status} outcome={item.outcome} />
             <p>
               {item.id} · {item.campus} · {item.date} {item.timeSlot}
             </p>

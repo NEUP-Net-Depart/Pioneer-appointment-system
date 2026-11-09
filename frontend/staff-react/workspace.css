@@ -237,9 +237,6 @@
   margin-top: 5px;
   font-size: 12px;
 }
-.records-table td .field-status {
-  white-space: nowrap;
-}
 .records-mobile-sort {
   display: none;
 }

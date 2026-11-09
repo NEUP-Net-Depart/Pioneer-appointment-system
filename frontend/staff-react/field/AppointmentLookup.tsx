@@ -9,6 +9,7 @@ type Candidate = {
   date: string;
   timeSlot: string;
   status: string;
+  outcome?: string;
   name?: string;
   studentId?: string;
 };
@@ -230,7 +231,7 @@ export function AppointmentLookup({
                   {item.campus}校区 · {item.date} · {item.timeSlot}
                 </small>
               </span>
-              <Status value={item.status} />
+              <Status value={item.status} outcome={item.outcome} />
             </button>
           ))}
         </div>
