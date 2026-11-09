@@ -253,15 +253,8 @@ test('today includes unsigned people and leave, arrival is idempotent and attrib
       .get().actor_member_id,
     head.memberId
   );
-  const context = await staff.contextFor(worker);
-  await staff.presence(worker, { state: 'off_duty', revision: context.presence.revision });
   await staff.confirmArrival(head, input);
   await staff.confirmArrival(head, { ...input, requestId: requestId() });
-  assert.equal(
-    db.sqlite.prepare('SELECT state FROM staff_presence WHERE member_id=?').get(worker.memberId)
-      .state,
-    'off_duty'
-  );
   assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM attendance_records').get().n, 1);
   assert.equal(
     (await staff.attendanceDay(head, { campusId, businessDate: weekStart })).summary.arrived,

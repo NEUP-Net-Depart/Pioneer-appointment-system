@@ -3,27 +3,9 @@ import { PersonalProfile } from './PersonalProfile';
 import type { useFieldWorkspace } from './useFieldWorkspace';
 type Props = Pick<
   ReturnType<typeof useFieldWorkspace> & Parameters<typeof useFieldWorkspace>[0],
-  | 'initial'
-  | 'onNavigate'
-  | 'workspaceLinks'
-  | 'onLogout'
-  | 'key'
-  | 'busy'
-  | 'data'
-  | 'openAttendance'
-  | 'campusName'
+  'initial' | 'onNavigate' | 'workspaceLinks' | 'onLogout' | 'data'
 >;
-export function PersonalScene({
-  initial,
-  onNavigate,
-  workspaceLinks,
-  onLogout,
-  key,
-  busy,
-  data,
-  openAttendance,
-  campusName
-}: Props) {
+export function PersonalScene({ initial, onNavigate, workspaceLinks, onLogout, data }: Props) {
   return (
     <div className="field-work-grid personal-workspace">
       <section className="field-card personal-schedule">
@@ -40,12 +22,6 @@ export function PersonalScene({
           </>
         )}
         <div className="field-actions personal-actions">
-          {(data.capability['attendance.self'] ||
-            (!data.presence && data.directAttendance?.allowed)) && (
-            <button className="field-primary" onClick={openAttendance} disabled={busy}>
-              到岗签到
-            </button>
-          )}
           <button onClick={onLogout}>退出登录</button>
         </div>
       </section>

@@ -3,16 +3,13 @@
   display: grid;
   gap: 24px;
 }
-.today-toolbar,
-.today-attendance,
-.today-attendance-heading {
+.today-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 12px 20px;
 }
-.today-toolbar,
-.today-attendance {
+.today-toolbar {
   justify-content: space-between;
 }
 .today-toolbar .staff-identities {
@@ -21,13 +18,35 @@
 .today-tools .field-search {
   margin: 20px 0 0;
 }
-.today-attendance .field-status {
-  flex: 0 0 auto;
-  min-height: 30px;
-  padding: 4px 12px;
+.attendance-shortcuts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
 }
-.today-attendance-copy > p {
-  margin: 8px 0 0;
+.field-app .attendance-quick-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+}
+.attendance-quick-action > svg {
+  flex: 0 0 24px;
+  color: var(--muted);
+}
+.attendance-quick-action > div {
+  flex: 1 1 180px;
+}
+.field-app .attendance-quick-action h2 {
+  font-size: 16px;
+}
+.attendance-quick-action p {
+  margin: 4px 0 0;
+}
+.field-app .attendance-pending {
+  border-color: #bdc9d8;
+  background: #f7f9fc;
 }
 .field-app .today-work {
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -192,8 +211,13 @@
   .today-toolbar {
     align-items: flex-start;
   }
-  .today-toolbar > .field-actions,
-  .today-attendance > .field-actions {
+  .today-toolbar > .field-actions {
+    width: 100%;
+  }
+  .attendance-shortcuts {
+    margin-bottom: 16px;
+  }
+  .attendance-quick-action > button {
     width: 100%;
   }
   .field-app .today-order {

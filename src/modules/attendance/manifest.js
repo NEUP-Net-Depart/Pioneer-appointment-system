@@ -11,7 +11,7 @@ export const attendanceManifest = {
     'attendance.correct',
     'attendance.export'
   ],
-  routes: ['/api/attendance', '/api/presence', '/api/me/volunteer-summary'],
+  routes: ['/api/attendance', '/api/me/volunteer-summary'],
   navigation: [],
   attendancePolicies: ['duty.v1', 'meeting.v1'],
   workbenchProviders: ['attendance.today'],

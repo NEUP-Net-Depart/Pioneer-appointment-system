@@ -9,7 +9,6 @@ export function workspaceDomain({ repository, platform, manifests, contextFor })
     return {
       actor: context.actor,
       todayDuties: context.todayDuties,
-      presence: context.presence,
       repairs: repairs
         .filter((item) => context.actor.authorizedCampuses.includes(item.campus))
         .map((item) =>

@@ -40,9 +40,6 @@ export function dutyRepository({ db, writeCommand }) {
         FROM duty_assignments da JOIN members m ON m.id=da.member_id JOIN campuses c ON c.id=da.campus_id
         LEFT JOIN attendance_reviews r ON r.assignment_id=da.id WHERE da.active=1 AND da.business_date=? AND da.campus_id=? ORDER BY m.name,da.start_at,da.id`
         )
-        .bind(day, campus),
-      db
-        .prepare('SELECT * FROM staff_presence WHERE business_date=? AND campus_id=?')
         .bind(day, campus)
     ]);
     return {
@@ -57,8 +54,7 @@ export function dutyRepository({ db, writeCommand }) {
                 revision: row.review_revision,
                 reason: row.review_reason
               }
-      })),
-      presence: rows(result[1])
+      }))
     };
   }
   async function reviewDuty(item, input, record, snapshot) {

@@ -2,6 +2,13 @@ import React, { useContext, useEffect, useRef, useState } from 'react';
 import { request } from './request.js';
 import { ActivityContext, Modal, Scanner, time } from './field/ui';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
+import { AttendanceCheckInButton } from './field/AttendanceActions';
+import {
+  campusAttendance,
+  confirmedAttendance,
+  reconcileAttendance,
+  rememberAttendance
+} from './field/attendance-state';
 import { addDays, dateKey, weekRange } from '../../shared/time.js';
 import {
   DUTY_START,
@@ -59,10 +66,9 @@ export function Schedule({ user, campusId, onDirtyChange }) {
       request('/api/me/roster?upcoming=1', { signal: controller.signal }),
       request('/api/rosters/covers', { signal: controller.signal }),
       request('/api/me/volunteer-summary', { signal: controller.signal }),
-      request(`/api/field/home?campusId=${campusId}`, { signal: controller.signal }),
-      request(`/api/me/attendance?businessDate=${dateKey()}`, { signal: controller.signal })
+      request(`/api/field/home?campusId=${campusId}`, { signal: controller.signal })
     ])
-      .then(([availability, mine, upcoming, covers, summary, home, attendance]) => {
+      .then(([availability, mine, upcoming, covers, summary, home]) => {
         if (!controller.signal.aborted)
           setData({
             availability,
@@ -70,8 +76,7 @@ export function Schedule({ user, campusId, onDirtyChange }) {
             upcoming: upcoming.items,
             covers: covers.items,
             summary,
-            home,
-            attendance: attendance.items
+            home
           });
       })
       .catch((failure) => {
@@ -165,7 +170,11 @@ export function Schedule({ user, campusId, onDirtyChange }) {
             : { campusId, requestId: crypto.randomUUID() }
         }
       );
+      rememberAttendance(`${user.memberId}:${user.authVersion}`, result);
       setScan(false);
+      setData((current) =>
+        current ? { ...current, home: { ...current.home, attendance: result } } : current
+      );
       setNotice(
         `${dutyCampusNames[result.campusId] || ''}签到成功 · ${time(result.occurredAt)}${result.isExisting ? '（保留首次签到）' : ''}`
       );
@@ -191,8 +200,14 @@ export function Schedule({ user, campusId, onDirtyChange }) {
       }
   }
   const run = (...args) => void mutate(...args).catch(() => {});
+  const home =
+    data &&
+    reconcileAttendance(
+      data.home,
+      confirmedAttendance(`${user.memberId}:${user.authVersion}`, data.home)
+    );
   const today = dateKey(),
-    todayRecord = data?.attendance.find((row) => row.type === 'duty'),
+    todayRecord = home?.campusId === campusId ? campusAttendance(home) : null,
     todayDuties = data?.upcoming.filter((row) => row.businessDate === today) || [];
   const next = data?.upcoming.find(
     (row) => row.businessDate > today && row.leaveStatus !== 'recorded'
@@ -237,15 +252,15 @@ export function Schedule({ user, campusId, onDirtyChange }) {
               {todayRecord ? (
                 <strong>已签到 · {time(todayRecord.occurredAt)}</strong>
               ) : (
-                <button
-                  className="field-primary"
-                  disabled={busy || !data.home.capability['attendance.self']}
-                  onClick={() =>
-                    data.home.directAttendance?.allowed ? void checkIn() : setScan(true)
-                  }
-                >
-                  {data.home.directAttendance?.allowed ? '到岗签到' : '扫码签到'}
-                </button>
+                home.campusId === campusId && (
+                  <AttendanceCheckInButton
+                    data={home}
+                    busy={busy}
+                    onCheckIn={() =>
+                      home.directAttendance?.allowed ? void checkIn() : setScan(true)
+                    }
+                  />
+                )
               )}
             </div>
           </section>

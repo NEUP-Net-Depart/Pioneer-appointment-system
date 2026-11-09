@@ -1002,9 +1002,7 @@ fieldset.staffing-editor {
   color: var(--muted);
 }
 .field-app .personal-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  display: flex;
   border-top: 1px solid var(--line);
   padding-top: 20px;
   margin-top: 24px;

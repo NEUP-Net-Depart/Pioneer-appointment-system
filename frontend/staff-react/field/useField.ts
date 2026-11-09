@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from './ui';
 import { dateKey } from '../../../shared/time.js';
 import type { Home } from './types';
+import { confirmedAttendance, reconcileAttendance } from './attendance-state';
 import {
   readWorkspaceState,
   writeWorkspaceState,
@@ -133,9 +134,14 @@ export function useField(
     };
   }, [active, key, refresh, resource, campus]);
   const data = snapshot.key === key ? snapshot.value : cached()?.value || fallback;
+  const confirmed = data ? confirmedAttendance(sessionKey, data) : undefined;
+  const resolved = useMemo(
+    () => (data ? reconcileAttendance(data, confirmed) : data),
+    [data, confirmed]
+  );
   const error = failure.key === key ? failure.message : '';
   return {
-    data,
+    data: resolved,
     error,
     loading: pending === key || (!data && !error),
     refresh

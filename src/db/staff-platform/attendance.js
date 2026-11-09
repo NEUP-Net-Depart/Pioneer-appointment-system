@@ -498,65 +498,6 @@ export function attendanceDomain({ db, auditStatement, commandAuthorization }) {
     return result[0]?.meta?.changes ? attendanceReportSettings() : null;
   }
 
-  async function setPresence(memberId, input, revision, actor, auditRecord) {
-    const at = nowIso();
-    const existing = await db
-      .prepare('SELECT * FROM staff_presence WHERE member_id=? AND business_date=?')
-      .bind(memberId, input.businessDate)
-      .first();
-    const expected = existing ? revision : 0;
-    const authorization = commandAuthorization(auditRecord);
-    if (auditRecord && !existing) return null;
-    const statement = existing
-      ? db
-          .prepare(
-            `UPDATE staff_presence SET state=?,campus_id=?,revision=revision+1,updated_at=? WHERE member_id=? AND business_date=? AND revision=? ${authorization.sql}`
-          )
-          .bind(
-            input.state,
-            input.campusId || existing.campus_id,
-            at,
-            memberId,
-            input.businessDate,
-            expected,
-            ...authorization.args
-          )
-      : db
-          .prepare(
-            `INSERT INTO staff_presence(member_id,business_date,campus_id,state,revision,updated_at) VALUES(?,?,?,?,0,?)`
-          )
-          .bind(memberId, input.businessDate, input.campusId || null, input.state, at);
-    const expectedRevision = existing ? Number(expected) + 1 : 0;
-    const result = await db.batch([
-      statement,
-      db
-        .prepare(
-          `INSERT INTO presence_events(id,member_id,business_date,from_state,to_state,occurred_at,actor_member_id,actor_account)
-      SELECT ?,?,?,?,?,?,?,? WHERE changes()>0`
-        )
-        .bind(
-          crypto.randomUUID(),
-          memberId,
-          input.businessDate,
-          existing?.state || null,
-          input.state,
-          at,
-          actor.memberId,
-          actor.account
-        ),
-      ...(auditRecord ? [auditStatement(auditRecord, true)] : [])
-    ]);
-    return result[0]?.meta?.changes
-      ? {
-          memberId,
-          businessDate: input.businessDate,
-          campusId: input.campusId || existing?.campus_id || null,
-          state: input.state,
-          revision: expectedRevision
-        }
-      : null;
-  }
-
   const { attendanceCorrectionFingerprint, correctAttendance } = attendanceCorrections(db, {
     auditStatement,
     commandAuthorization
@@ -576,7 +517,6 @@ export function attendanceDomain({ db, auditStatement, commandAuthorization }) {
     weeklyAttendanceData,
     attendanceReportSettings,
     updateAttendanceReportSettings,
-    setPresence,
     attendanceCorrectionFingerprint,
     correctAttendance
   };

@@ -104,6 +104,18 @@ export interface Verification {
   note: string;
 }
 
+export interface AttendanceRecord {
+  id: string;
+  type: string;
+  businessDate: string;
+  campusId: string;
+  occurredAt: string;
+  revision: number;
+  isExisting?: boolean;
+  nonScheduled?: boolean;
+  identitySnapshot?: { identities?: { code: string; label: string }[] };
+}
+
 export interface Home {
   searchCapabilities?: {
     identity: boolean;
@@ -122,12 +134,10 @@ export interface Home {
   campusId: string;
   contexts: { id: string; label: string }[];
   capability: Record<string, boolean>;
-  state: string;
-  reason: string;
+  attendance: AttendanceRecord | null;
   repairs: Appointment[];
   pendingPhotos: Appointment[];
   pendingCoverInvitations?: number;
-  presence?: { revision: number; campusId: string; state: string };
   event?: { id: string; revision: number; startsAt: string; endsAt: string };
   todayDuties: {
     id: string;

@@ -9,7 +9,7 @@ import {
   validDate,
   addDays
 } from '../../platform/time.js';
-import { requestId, stableJson, publicResourceRef } from '../../platform/contracts.js';
+import { requestId, stableJson } from '../../platform/contracts.js';
 import { attendanceMethod, policyFor } from '../../modules/attendance/public.js';
 import { campusId as normalizeCampusId } from '../../modules/authorization/scopes.js';
 import { csvLine } from '../../lib/csv.js';
@@ -733,40 +733,6 @@ export function attendanceDomain({
     fail(409, '签到已存在，或成员资料、授权、场次已变化，请刷新后核对');
   }
 
-  async function presence(actor, input) {
-    if (input.businessDate && input.businessDate !== dateKey()) fail(400, '只能修改今天的在岗状态');
-    const context = await contextFor(actor, input.businessDate || dateKey());
-    if (!['available', 'away', 'off_duty'].includes(input.state)) fail(400, '在岗状态不正确');
-    if (!context.presence) fail(409, '请先完成到岗签到');
-    await requirePermission(actor, 'attendance.self', {
-      campusId: context.presence.campusId,
-      memberId: context.actor.memberId
-    });
-    if (input.campusId && input.campusId !== context.presence.campusId)
-      fail(409, '在岗校区以签到记录为准');
-    const result = await repository.setPresence(
-      context.actor.memberId,
-      { ...input, businessDate: input.businessDate || dateKey() },
-      input.revision ?? 0,
-      context.actor,
-      {
-        actorMemberId: context.actor.memberId,
-        actorAccount: actor.account,
-        authVersion: context.authVersion,
-        action: 'duty.presence.changed',
-        sourceRef: publicResourceRef(
-          'duty',
-          'presence',
-          `${context.actor.memberId}:${context.businessDate}`
-        ),
-        before: context.presence,
-        after: { state: input.state, campusId: context.presence.campusId },
-        requestId: input.requestId
-      }
-    );
-    if (!result) fail(409, '在岗状态已被其他操作修改，请刷新');
-    return result;
-  }
   async function ensureDutyEvent(actor, businessDate, campusId) {
     const existing = await repository.dutyEvent(businessDate, campusId);
     if (existing) return existing;
@@ -804,7 +770,6 @@ export function attendanceDomain({
     attendanceList,
     attendanceOptions,
     attendanceExport,
-    correctAttendance,
-    presence
+    correctAttendance
   };
 }

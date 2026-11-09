@@ -1,5 +1,4 @@
 import { AppointmentLookup } from './AppointmentLookup';
-import { Status } from './ui';
 import { StaffIdentity } from '../StaffIdentity';
 import { WarrantyLookupButton } from './WarrantyLookup';
 import type { Appointment, Home } from './types';
@@ -51,10 +50,7 @@ export function TodayScene({
   busy,
   onSelect,
   onScan,
-  onRegister,
-  openAttendance,
-  showAttendance,
-  presence
+  onRegister
 }: {
   active: boolean;
   data: Home;
@@ -62,9 +58,6 @@ export function TodayScene({
   onSelect: (id: string) => void;
   onScan: () => void;
   onRegister: () => void;
-  openAttendance: () => void;
-  showAttendance: () => void;
-  presence: (state: string) => void;
 }) {
   const items = data.appointments || [];
   const waiting = items.filter(
@@ -118,41 +111,6 @@ export function TodayScene({
       </div>
       {!!data.pendingPhotos?.length && (
         <Orders title="待补传接收照片" items={data.pendingPhotos} empty="" onSelect={onSelect} />
-      )}
-      {(data.capability['attendance.self'] ||
-        data.presence ||
-        data.capability['attendance.session.manage']) && (
-        <section className="field-card today-attendance">
-          <div className="today-attendance-copy">
-            <div className="today-attendance-heading">
-              <h2>签到与到岗</h2>
-              <Status value={data.state} />
-            </div>
-            <p className="field-muted">请按实际到岗情况签到。</p>
-          </div>
-          <div className="field-actions">
-            {!data.presence && data.capability['attendance.self'] && (
-              <button disabled={busy} onClick={openAttendance}>
-                到岗签到
-              </button>
-            )}
-            {data.presence && (
-              <button
-                disabled={busy}
-                onClick={() =>
-                  presence(data.presence?.state === 'available' ? 'off_duty' : 'available')
-                }
-              >
-                {data.presence.state === 'available' ? '离岗' : '返回岗位'}
-              </button>
-            )}
-            {data.capability['attendance.session.manage'] && (
-              <button disabled={busy} onClick={showAttendance}>
-                展示签到码
-              </button>
-            )}
-          </div>
-        </section>
       )}
     </div>
   );
