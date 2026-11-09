@@ -168,7 +168,7 @@ test('hardware staff receive photos, correct a repair and keep internal notes ou
   await expect(liquidMetal.locator('dd')).toHaveText('不清楚');
 });
 
-test('office reception lets hardware take over without another photo upload', async ({
+test('office reception lets hardware take over and a manager finish with the original owner', async ({
   page,
   context
 }) => {
@@ -193,6 +193,14 @@ test('office reception lets hardware take over without another photo upload', as
   await expect(workDialog.getByLabel('设备正面照片', { exact: true })).toHaveCount(0);
   await workDialog.getByRole('button', { name: '确认接手并开始维修', exact: true }).click();
   await expect(workDialog.getByRole('button', { name: '结束本次服务', exact: true })).toBeVisible();
+  await page.reload();
+  await staffPage(page, '今日工作');
+  await page.getByRole('button').filter({ hasText: created.id }).click();
+  await dialog.getByLabel('部分解决', { exact: true }).check();
+  await dialog.getByLabel('简短处理说明').fill('系统恢复，键盘仍需更换');
+  await dialog.getByRole('button', { name: '结束本次服务', exact: true }).click();
+  await expect(dialog.getByText('部分解决 · 系统恢复，键盘仍需更换')).toBeVisible();
+  await expect(dialog.getByText('当前主修：周宁')).toBeVisible();
 });
 
 test('member availability produces a published shift visible after reloading', async ({

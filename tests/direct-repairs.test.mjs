@@ -7,6 +7,7 @@ import { appointmentPatch } from '../src/lib/validation.js';
 import { verifyStaffSchema } from '../src/db/staff-readiness.js';
 import { encryptText } from '../src/lib/privacy.js';
 import { staffSceneAllowed } from '../shared/staff-access.js';
+import { statsRepository } from '../src/db/stats.js';
 function patch(input) {return appointmentPatch({requestId:crypto.randomUUID(),...input});}
 
 test('field home and board prefer the authorized home campus and validate every explicit campus',async t=>{
@@ -134,7 +135,7 @@ test('hardware staff can receive multiple orders after hours and hand over acros
   assert.equal(transferred.startedAt,before.startedAt);
   assert.equal(transferred.date,calendar.serviceDay);
   assert.equal((await staff.field.detail(two,'a')).businessDate,calendar.nextDay);
-  await assert.rejects(service.update('a',patch({revision:transferred.revision,status:'completed',outcome:'repaired',repairNote:'完成'}),one),{status:409});
+  await assert.rejects(service.update('a',patch({revision:transferred.revision,status:'completed',outcome:'repaired',repairNote:'完成'}),one),{status:403});
   const finished=await service.update('a',patch({revision:transferred.revision,status:'completed',outcome:'partially_repaired',repairNote:'系统已修复，键盘仍需更换'}),two);
   assert.equal(finished.outcome,'partially_repaired');
   const corrected=await service.update('a',patch({revision:finished.revision,action:'correct',outcome:'unrepaired',repairNote:'复核后系统仍有故障'}),two);
@@ -148,7 +149,7 @@ test('hardware staff can receive multiple orders after hours and hand over acros
   assert.equal(Object.hasOwn(listing[0],'social'),false);
 });
 
-test('office reception leaves the order unassigned; hardware starts it across days without replacing reception evidence',async t=>{
+test('office reception and manager completion preserve the hardware owner, repair statistics and operation audit',async t=>{
   const {db,users,staff,service,order,calendar}=repairScenario(t);
   db.sqlite.exec("UPDATE member_department_memberships SET department_id='dept-office' WHERE id='post-20260001'");
   const office=await users.find('20260001'),hardware=await users.find('20260002');
@@ -169,13 +170,29 @@ test('office reception leaves the order unassigned; hardware starts it across da
   for(const key of ['receivedAt','receivedBy','frontPhotoId','backPhotoId','brand'])assert.equal(started[key],received[key]);
   assert.equal(started.assignedMemberId,hardware.memberId);
   await assert.rejects(service.transfer('joint',{revision:started.revision,requestId:crypto.randomUUID(),receivedDevice:true},office),{status:403});
+  assert.equal((await staff.field.detail(office,'joint')).canFinish,false);
+  assert.equal((await staff.field.detail(hardware,'joint')).canFinish,true);
   await assert.rejects(service.update('joint',patch({revision:started.revision,status:'completed',outcome:'repaired',repairNote:'越权结束'}),office),{status:403});
-  const finished=await service.update('joint',patch({revision:started.revision,status:'completed',outcome:'repaired',repairNote:'维修完成'}),hardware);
+  db.sqlite.exec("UPDATE member_department_memberships SET position_code='head' WHERE id='post-20260001'");
+  const manager=await users.find(office.account);
+  assert.equal((await staff.field.detail(manager,'joint')).canFinish,true);
+  order('elsewhere',{campus:'浑南',date:calendar.serviceDay,status:'in_progress',assigned_to:hardware.account});
+  await assert.rejects(service.update('elsewhere',patch({revision:0,status:'completed',outcome:'repaired',repairNote:'越校区结束'}),manager),{status:403});
+  const finished=await service.update('joint',patch({revision:started.revision,status:'completed',outcome:'repaired',repairNote:'维修完成'}),manager);
   assert.equal(finished.receivedBy,office.account);assert.equal(finished.assignedMemberId,hardware.memberId);
-  const actions=db.sqlite.prepare("SELECT action,actor_account,before_json,after_json FROM audit_events WHERE json_extract(source_ref,'$.id')=? AND action IN ('repairs.received','repairs.started','repairs.completed') ORDER BY rowid").all('joint');
-  assert.deepEqual(actions.map(row=>[row.action,row.actor_account]),[['repairs.received',office.account],['repairs.started',hardware.account],['repairs.completed',hardware.account]]);
+  assert.equal(finished.assignedTo,hardware.account);assert.equal(finished.startedAt,started.startedAt);
+  const {technicians}=await statsRepository(db).aggregate({campuses:['南湖']});
+  assert.deepEqual(technicians.map(row=>[row.account,row.completed]),[[hardware.account,1]]);
+  const actions=db.sqlite.prepare("SELECT action,actor_member_id,actor_account,occurred_at,before_json,after_json FROM audit_events WHERE json_extract(source_ref,'$.id')=? AND action IN ('repairs.received','repairs.started','repairs.completed') ORDER BY rowid").all('joint');
+  assert.deepEqual(actions.map(row=>[row.action,row.actor_account]),[['repairs.received',office.account],['repairs.started',hardware.account],['repairs.completed',manager.account]]);
   assert.equal(JSON.parse(actions[0].after_json).assignedTo,'');
   assert.equal(JSON.parse(actions[1].before_json).receivedBy,office.account);
+  const completion=actions[2];
+  assert.equal(completion.actor_member_id,manager.memberId);
+  assert.equal(completion.occurred_at,new Date().toISOString());
+  assert.equal(finished.completedAt,completion.occurred_at);
+  assert.equal(JSON.parse(completion.before_json).assignedTo,hardware.account);
+  assert.equal(JSON.parse(completion.after_json).assignedTo,hardware.account);
   assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM repair_intake_records WHERE appointment_id=?').get('joint').n,1);
 });
 

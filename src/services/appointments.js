@@ -415,12 +415,12 @@ export function appointmentService(
       }
       const command={...input,revision,requestId,verification,photosCaptured,uploadTimedOut};
       const operation=action==='correct' ? 'repairs.corrected' : input.status==='in_progress' ? 'repairs.started' : input.status==='completed' ? 'repairs.completed' : 'repairs.updated';
-      const permission=action==='correct' ? 'repair.summary.read' : input.status==='in_progress' ? 'repair.start' : input.status==='completed' || !input.status ? 'repair.finish.own' : 'repair.receive';
+      const permission=action==='correct' || input.status==='completed' ? 'repair.summary.read' : input.status==='in_progress' ? 'repair.start' : !input.status ? 'repair.finish.own' : 'repair.receive';
       return mutate(id,command,user,operation,async (item,context,at)=>{
         const own=item.assignedMemberId===context.actor.memberId;
+        const target={campusId:item.campus,id,assignedMemberId:item.assignedMemberId};
         if (action==='correct') {
           if (item.status!=='completed') fail(409,'只有已结束工单可更正结果和说明');
-          const target={campusId:item.campus,id,assignedMemberId:item.assignedMemberId};
           if (!own || !staffPlatform.evaluate(context,'repair.finish.own',target).allowed) await staffPlatform.requirePermission(user,'repair.correct',target);
           if (Object.keys(input).some(key=>!['outcome','repairNote'].includes(key))) fail(400,'更正只修改结果和说明');
           repairResult(input.outcome,input.repairNote);
@@ -430,13 +430,14 @@ export function appointmentService(
           if (item.date!==dateKey(new Date(at)) && !item.receivedAt) fail(409,'预约仅在当天接单；隔天请重新预约或现场登记');
           return {...await receiving(item,command,user,at),status:'in_progress',assignedTo:user.account,startedAt:at};
         }
-        if (item.status==='in_progress' && own && input.status==='completed') {
+        if (item.status==='in_progress' && input.status==='completed') {
+          if (!own || !staffPlatform.evaluate(context,'repair.finish.own',target).allowed) await staffPlatform.requirePermission(user,'repair.correct',target);
           repairResult(input.outcome,input.repairNote);
           return {status:'completed',outcome:input.outcome,repairNote:input.repairNote,completedAt:at};
         }
         if (item.status==='in_progress' && own && !input.status && typeof input.repairNote==='string') return {repairNote:input.repairNote};
         if (item.status==='booked' && !item.receivedAt && input.status==='cancelled') return {status:'cancelled',completedAt:at};
-        fail(409,'当前状态不能执行此操作；维修中工单请由当前主修结束或实际接手后处理');
+        fail(409,'当前状态不能执行此操作');
       },permission);
     }
   };
