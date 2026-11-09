@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import React, { useEffect, useRef, useState } from 'react';
 import { DataInput } from './DataInput';
 import { TIME_SLOTS } from '../../shared/constants.js';
 import {
@@ -71,14 +72,12 @@ export function CapacityEditor({ active, onNavigate }) {
       setSwitchBusy(false);
     }
   }
-  const [items, setItems] = useState([]),
-    [drafts, setDrafts] = useState({});
+  const [drafts, setDrafts] = useState({});
   const [campus, setCampus] = useState(''),
     [day, setDay] = useState(1),
     [mode, setMode] = useState('template');
   const [error, setError] = useState(''),
     [message, setMessage] = useState(''),
-    [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false);
   const [review, setReview] = useState(false),
     [discard, setDiscard] = useState(false),
@@ -91,15 +90,18 @@ export function CapacityEditor({ active, onNavigate }) {
     [copyTarget, setCopyTarget] = useState(''),
     [dayTarget, setDayTarget] = useState('all');
   const [editing, setEditing] = useState(''),
-    [preview, setPreview] = useState(null),
-    [revision, setRevision] = useState(0);
+    [preview, setPreview] = useState(null);
   const root = useRef(null),
     drag = useRef(null),
     editSession = useRef(null),
-    reading = useRef(null),
     lock = useRef(false),
     currentDrafts = useRef(drafts);
   currentDrafts.current = drafts;
+  const client = useQueryClient();
+  const result = useQuery({ queryKey: ['/api/slot-capacities'], enabled: active && !busy });
+  const items = result.data?.items || [];
+  const loading = result.isPending;
+  const refresh = () => result.refetch();
   const campuses = [...new Set(items.map((item) => item.campus))];
   const selection = selections[campus] || single;
   const at = (row, col) =>
@@ -112,61 +114,20 @@ export function CapacityEditor({ active, onNavigate }) {
   const conflicts = changes.filter((item) => drafts[keyOf(item)].revision !== item.revision);
   const invalid = changes.filter((item) => !valid(value(item)));
 
-  const refresh = useCallback(async () => {
-    if (!active || document.hidden || lock.current) return;
-    reading.current?.abort();
-    const controller = new AbortController();
-    reading.current = controller;
-    setLoading(true);
-    setError('');
-    try {
-      const result = await request('/api/slot-capacities', { signal: controller.signal });
-      if (controller.signal.aborted) return;
-      setItems(result.items);
-      setCampus((current) =>
-        result.items.some((item) => item.campus === current)
-          ? current
-          : result.items[0]?.campus || ''
-      );
-      // Reconcile facts without overwriting local input. A matching server value
-      // also recovers a successful save whose response was lost.
-      setDrafts((current) =>
-        Object.fromEntries(
-          result.items.flatMap((item) => {
-            const draft = current[keyOf(item)];
-            return draft && draft.value !== String(item.capacity) ? [[keyOf(item), draft]] : [];
-          })
-        )
-      );
-    } catch (failure) {
-      if (!controller.signal.aborted) {
-        if ([401, 403].includes(failure.status)) {
-          setItems([]);
-          setDrafts({});
-          setUndo(null);
-          setCopied('');
-        }
-        setError(failure.message);
-      }
-    } finally {
-      if (!controller.signal.aborted) setLoading(false);
-    }
-  }, [active]);
   useEffect(() => {
-    if (active) refresh();
-    const visibility = () => {
-      if (document.hidden) {
-        reading.current?.abort();
-        setLoading(false);
-      } else if (active) refresh();
-    };
-    document.addEventListener('visibilitychange', visibility);
-    return () => {
-      reading.current?.abort();
-      setLoading(false);
-      document.removeEventListener('visibilitychange', visibility);
-    };
-  }, [active, refresh]);
+    if (!result.data) return;
+    setCampus((current) =>
+      items.some((item) => item.campus === current) ? current : items[0]?.campus || ''
+    );
+    setDrafts((current) =>
+      Object.fromEntries(
+        items.flatMap((item) => {
+          const draft = current[keyOf(item)];
+          return draft && draft.value !== String(item.capacity) ? [[keyOf(item), draft]] : [];
+        })
+      )
+    );
+  }, [result.data]);
   useUnsavedChanges({
     dirty: !!changes.length,
     active,
@@ -489,8 +450,7 @@ export function CapacityEditor({ active, onNavigate }) {
   async function save() {
     if (lock.current || conflicts.length || invalid.length || !changes.length) return;
     lock.current = true;
-    reading.current?.abort();
-    setLoading(false);
+    await client.cancelQueries({ queryKey: ['/api/slot-capacities'] });
     setBusy(true);
     setError('');
     try {
@@ -498,14 +458,18 @@ export function CapacityEditor({ active, onNavigate }) {
         method: 'PATCH',
         body: { items: changes.map((item) => ({ ...item, capacity: Number(value(item)) })) }
       });
+      await client.cancelQueries({ queryKey: ['/api/slot-capacities'] });
       const saved = new Map(result.items.map((item) => [keyOf(item), item]));
-      setItems((current) => current.map((item) => saved.get(keyOf(item)) || item));
+      client.setQueryData(['/api/slot-capacities'], (current) => ({
+        ...current,
+        items: current.items.map((item) => saved.get(keyOf(item)) || item)
+      }));
       setDrafts((current) =>
         Object.fromEntries(Object.entries(current).filter(([key]) => !saved.has(key)))
       );
       setUndo(null);
       setReview(false);
-      setRevision((current) => current + 1);
+      await client.invalidateQueries({ queryKey: ['/api/slot-capacities/actual'] });
       setMessage(
         `已保存 ${result.items.length} 项，今天及未来对应日期的容量已同步，已有预约保留。`
       );
@@ -587,7 +551,7 @@ export function CapacityEditor({ active, onNavigate }) {
           </button>
         )}
       </div>
-      <Notice>{error}</Notice>
+      <Notice>{error || result.error?.message}</Notice>
       {mode === 'template' && message && (
         <p data-motion-value="text" className="workspace-update" role="status">
           {message}
@@ -946,9 +910,7 @@ export function CapacityEditor({ active, onNavigate }) {
       </div>
       <ActivityContext.Provider value={active && mode === 'actual'}>
         <div hidden={mode !== 'actual'}>
-          {campus && (
-            <ActualDayCapacity campus={campus} revision={revision} onNavigate={onNavigate} />
-          )}
+          {campus && <ActualDayCapacity campus={campus} onNavigate={onNavigate} />}
         </div>
       </ActivityContext.Provider>
       <ActivityContext.Provider value={active && mode === 'serviceDays'}>

@@ -1,3 +1,4 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { ActivityContext, Modal } from './field/ui';
 import { request } from './request.js';
@@ -15,45 +16,36 @@ import {
 } from '../../shared/duty.js';
 
 export function DutyPlanner({ campusId, onDirtyChange }) {
+  const client = useQueryClient();
   const active = useContext(ActivityContext),
     lock = useRef(false),
     saveId = useRef(crypto.randomUUID());
   const [week, setWeek] = useState(() => addDays(weekRange().start, 7)),
-    [snapshot, setData] = useState(null),
     [draft, setDraft] = useState([]),
+    [draftSource, setDraftSource] = useState(null),
     [dirty, setDirty] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
-    [refresh, setRefresh] = useState(0),
     [picker, setPicker] = useState(null),
     [unassigned, setUnassigned] = useState([]);
-  const data = snapshot?.weekStart === week && snapshot?.campusId === campusId ? snapshot : null;
+  const queryKey = ['/api/rosters/campus-week', { weekStart: week, campusId }];
+  const result = useQuery({ queryKey, enabled: active && !dirty });
+  const data = dirty ? draftSource : result.data;
+  const failure = error || result.error?.message;
   const visibleDraft = data ? draft : [];
   useEffect(() => {
     onDirtyChange(dirty || busy);
     return () => onDirtyChange(false);
   }, [dirty, busy, onDirtyChange]);
   useEffect(() => {
-    if (!active || dirty) return;
-    const controller = new AbortController();
-    setError('');
-    request(`/api/rosters/campus-week?${new URLSearchParams({ weekStart: week, campusId })}`, {
-      signal: controller.signal
-    })
-      .then((result) => {
-        if (controller.signal.aborted) return;
-        setData(result);
-        setDraft(result.rosters.flatMap((row) => row.assignments));
-        setUnassigned([]);
-      })
-      .catch((failure) => {
-        if (!controller.signal.aborted) setError(failure.message);
-      });
-    return () => controller.abort();
-  }, [active, week, campusId, refresh, dirty]);
+    if (!data || dirty) return;
+    setDraft(data.rosters.flatMap((row) => row.assignments));
+    setUnassigned([]);
+  }, [data, dirty]);
   function change(items) {
     saveId.current = crypto.randomUUID();
+    if (!dirty) setDraftSource(result.data);
     setDraft(items);
     setDirty(true);
     setNotice('');
@@ -90,7 +82,22 @@ export function DutyPlanner({ campusId, onDirtyChange }) {
           }))
         }
       });
-      setData(result);
+      await client.cancelQueries({ queryKey: queryKey });
+      client.setQueryData(queryKey, result);
+      const affectedQueries = {
+        predicate: (query) =>
+          [
+            '/api/me/roster',
+            '/api/attendance/day',
+            '/api/slot-capacities/actual',
+            '/api/field/home',
+            '/api/field/board',
+            '/api/attendance/volunteer-report',
+            '/api/attendance/matrix'
+          ].includes(query.queryKey[0])
+      };
+      await client.cancelQueries(affectedQueries);
+      await client.invalidateQueries(affectedQueries);
       setDraft(result.rosters.flatMap((row) => row.assignments));
       setDirty(false);
       setNotice('维修和办公班表已发布，签到已自动准备');
@@ -122,7 +129,7 @@ export function DutyPlanner({ campusId, onDirtyChange }) {
     });
     change(result.assignments);
     setUnassigned(result.unassigned);
-    setData((current) => ({ ...current, sourceVersion: result.sourceVersion }));
+    setDraftSource((current) => ({ ...current, sourceVersion: result.sourceVersion }));
     setNotice('建议已生成，请核对后发布');
   }
   function toggle(person) {
@@ -204,10 +211,10 @@ export function DutyPlanner({ campusId, onDirtyChange }) {
         </button>
         <span>维修 / 办公 · 19:00–21:00</span>
       </div>
-      {error && (
+      {failure && (
         <p role="alert" className="react-error">
-          {error}
-          <button onClick={() => setRefresh((value) => value + 1)}>重试读取</button>
+          {failure}
+          <button onClick={() => result.refetch()}>重试读取</button>
         </p>
       )}
       {notice && <p role="status">{notice}</p>}

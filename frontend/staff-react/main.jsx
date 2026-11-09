@@ -1,14 +1,13 @@
 import { workspaceModule } from './workspace-module.js';
-import { WorkspaceSkeleton } from './WorkspaceSkeleton';
+import { QueryCache, QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { createQueryClient } from './query-client.js';
 import { UnsavedPageContext } from './useUnsavedChanges.js';
-import React, { Suspense, useEffect, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { useStaffIdentity } from './useStaffIdentity.js';
 import { StaffLogin, StaffActivation } from './StaffAccess.jsx';
 import './base.css';
-import { setWorkspaceSession, clearWorkspaceState } from './workspace-state.js';
 import './workspace.css';
-import { request } from './request.js';
 const DutyModule = workspaceModule(() => import('./DutyWorkspace.jsx'), 'DutyWorkspace');
 const DutyWorkspace = DutyModule.Page;
 const MembersModule = workspaceModule(() => import('./People.jsx'), 'People');
@@ -52,9 +51,31 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
     []
   );
   const [page, setPage] = useState('workbench');
-  const [field, setField] = useState(null);
-  const [bootError, setBootError] = useState(''),
-    [bootRetry, setBootRetry] = useState(0);
+  const [fieldSelection, setFieldSelection] = useState({
+    resource: '/api/field/home',
+    campusId: ''
+  });
+  const home = useQuery({
+    queryKey: ['/api/field/home'],
+    enabled: !fieldSelection.campusId,
+    refetchInterval: false
+  });
+  const context = useQuery({
+    queryKey: fieldSelection.campusId
+      ? [fieldSelection.resource, { campusId: fieldSelection.campusId }]
+      : ['/api/field/home'],
+    enabled: false
+  });
+  const field = context.data || home.data;
+  const selectField = useCallback(
+    (resource, campusId) =>
+      setFieldSelection((current) =>
+        current.resource === resource && current.campusId === campusId
+          ? current
+          : { resource, campusId }
+      ),
+    []
+  );
   const [workScene, setWorkScene] = useState(null);
   const [visited, setVisited] = useState(['workbench', 'duties']);
   const [settingsSection, setSettingsSection] = useState('security');
@@ -83,64 +104,15 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
       setWorkScene('mine');
   }, [field, user, profile, page, settingsSection, workScene]);
   useEffect(() => {
-    if (!profile) return;
-    let active = true;
-    const controller = new AbortController();
-    setBootError('');
-    request('/api/field/home', { signal: controller.signal, timeoutMs: 15000 })
-      .then((data) => {
-        if (!active) return;
-        setField(data);
-        setWorkScene(
-          (current) =>
-            current ||
-            data.contexts.find((context) => context.id === 'today')?.id ||
-            data.contexts.find(
-              (context) =>
-                context.id === sessionStorage.getItem(`field-scene:${data.actor.memberId}`)
-            )?.id ||
-            data.contexts[0]?.id ||
-            'mine'
-        );
-      })
-      .catch((error) => {
-        if (active && !controller.signal.aborted)
-          setBootError(
-            error.name === 'AbortError'
-              ? '工作台请求超时，请重试；你也可以先进入其他页面。'
-              : error.message
-          );
-      });
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [user?.memberId, user?.account, user?.authVersion, bootRetry]);
-  useEffect(() => {
-    if (!profile) return;
-    setWorkspaceSession(
-      `${user.memberId || user.account}:${user.authVersion}:${JSON.stringify(user.permissions || {})}`
+    if (!home.data) return;
+    setWorkScene(
+      (current) =>
+        current ||
+        home.data.contexts.find((context) => context.id === 'today')?.id ||
+        home.data.contexts[0]?.id ||
+        'mine'
     );
-    setField((current) =>
-      current
-        ? {
-            ...current,
-            permissions: user.permissions,
-            navigation: user.navigation,
-            contexts: current.contexts.filter((context) =>
-              staffSceneAllowed(user, current, context.id)
-            ),
-            capability: Object.fromEntries(
-              Object.entries(current.capability).map(([code, allowed]) => [
-                code,
-                allowed && staffPermission(user, code)
-              ])
-            )
-          }
-        : current
-    );
-  }, [profile]);
-  useEffect(() => () => clearWorkspaceState(), []);
+  }, [home.data]);
   const navigate = (view) => {
     if (view === 'users') view = 'members';
     if (
@@ -253,13 +225,13 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
         onLogout={() => requestNavigate('__logout__')}
         requestedScene={workScene}
         onSceneChange={setWorkScene}
-        onContextChange={setField}
+        onContextChange={selectField}
         workspaceLinks={workspaceLinks}
       />
     ) : (
       <WorkspacePending
-        error={identityError || bootError}
-        onRetry={identityError ? onRetryIdentity : () => setBootRetry((value) => value + 1)}
+        error={identityError || home.error?.message}
+        onRetry={identityError ? onRetryIdentity : () => home.refetch()}
       />
     )
   );
@@ -304,7 +276,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
   return (
     <div data-workspace-host="true">
       <StaffWorkspace
-        loading={!profile || (page === 'workbench' && !field && !bootError)}
+        loading={!profile || (page === 'workbench' && !field && !home.error)}
         name={user.name || ''}
         entries={workspaceLinks}
         active={active}
@@ -345,7 +317,7 @@ class WorkspaceModuleBoundary extends React.Component {
     );
   }
 }
-function WorkspacePending({ error, onRetry, code = false }) {
+function WorkspacePending({ error, onRetry }) {
   return (
     <section
       className={`workspace-pending${!error ? ' workspace-pending-code' : ''}`}
@@ -362,9 +334,48 @@ function WorkspacePending({ error, onRetry, code = false }) {
           重新加载工作区
         </button>
       ) : (
-        <WorkspaceSkeleton label={code ? '正在加载页面组件' : '正在加载工作区'} />
+        <div className="workspace-code-progress" aria-hidden="true">
+          <span />
+        </div>
       )}
     </section>
+  );
+}
+function WorkspaceSession({ identity }) {
+  const [accessError, setAccessError] = useState('');
+  const [client] = useState(() =>
+    createQueryClient({
+      queryCache: new QueryCache({
+        onError: (error) => {
+          if (error.status !== 403) return;
+          // Hide every mounted route before another authorization scope can render.
+          client.clear();
+          setAccessError(error.message);
+          void identity.retry();
+        }
+      })
+    })
+  );
+  useLayoutEffect(() => () => client.clear(), [client]);
+  return (
+    <QueryClientProvider client={client}>
+      {accessError ? (
+        <WorkspacePending
+          error={accessError}
+          onRetry={async () => {
+            await identity.retry();
+            setAccessError('');
+          }}
+        />
+      ) : (
+        <Workspace
+          profile={identity.user}
+          identityError={identity.error}
+          onRetryIdentity={identity.retry}
+          onLogout={identity.logout}
+        />
+      )}
+    </QueryClientProvider>
   );
 }
 function StaffApp() {
@@ -372,13 +383,22 @@ function StaffApp() {
   if (new URLSearchParams(location.search).get('activate') === '1') return <StaffActivation />;
   if (!identity.user && !identity.hasSession)
     return <StaffLogin {...identity} onLogin={identity.login} onRetry={identity.retry} />;
-  return (
-    <Workspace
-      profile={identity.user}
-      identityError={identity.error}
-      onRetryIdentity={identity.retry}
-      onLogout={identity.logout}
-    />
-  );
+  if (!identity.user) return <WorkspacePending error={identity.error} onRetry={identity.retry} />;
+  const user = identity.user;
+  const scope = JSON.stringify([
+    user.account,
+    user.memberId,
+    user.authVersion,
+    user.role,
+    user.permissions,
+    user.authorizedCampuses,
+    user.memberships
+  ]);
+  return <WorkspaceSession key={scope} identity={identity} />;
 }
-createRoot(document.getElementById('staff-react-root')).render(<StaffApp />);
+const identityClient = createQueryClient();
+createRoot(document.getElementById('staff-react-root')).render(
+  <QueryClientProvider client={identityClient}>
+    <StaffApp />
+  </QueryClientProvider>
+);

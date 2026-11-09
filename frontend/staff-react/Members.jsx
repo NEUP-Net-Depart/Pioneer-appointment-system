@@ -1,8 +1,7 @@
 import { DataValue } from './DataValue';
-import React, { useContext, useEffect, useRef, useState } from 'react';
-import { useWorkspaceQuery } from './useWorkspaceQuery.js';
+import React, { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { ActivityContext } from './field/ui';
-import { readWorkspaceState, writeWorkspaceState } from './workspace-state.js';
 import { MemberEditor } from './MemberEditor.jsx';
 import { staffPermission } from '../../shared/staff-access.js';
 import { MemberImport } from './MemberImport.jsx';
@@ -11,44 +10,59 @@ import { WorkspaceMoreActions } from './WorkspaceMoreActions';
 import { StaffIdentity } from './StaffIdentity';
 import { MemberCreate } from './MemberCreate.jsx';
 
-function deriveMembers(path, cache) {
-  const params = new URLSearchParams(path.split('?')[1]);
-  const complete = cache.get('/api/members?q=&homeCampusId=&status=');
-  if (params.get('q') || !complete || complete.data.nextCursor) return null;
-  const campus = params.get('homeCampusId');
-  const status = params.get('status');
-  return {
-    ...complete,
-    data: {
-      ...complete.data,
-      items: complete.data.items.filter(
-        (item) => (!campus || item.homeCampusId === campus) && (!status || item.status === status)
-      )
-    }
-  };
-}
-
 export function Members({ user }) {
   const active = useContext(ActivityContext);
-  const viewKey = `members:${user.memberId || user.account}:${user.authVersion || 0}`;
-  const saved = readWorkspaceState(viewKey);
-  const [q, setQ] = useState(saved?.q || '');
-  const [search, setSearch] = useState(q.trim());
-  const [campus, setCampus] = useState(saved?.campus || '');
-  const [status, setStatus] = useState(saved?.status || '');
-  const query = new URLSearchParams({ q: search, homeCampusId: campus, status }).toString();
+  const client = useQueryClient();
+  const [q, setQ] = useState('');
+  const [search, setSearch] = useState('');
+  const [campus, setCampus] = useState('');
+  const [status, setStatus] = useState('');
+  const allParams = { q: '', homeCampusId: '', status: '' };
+  const complete = client.getQueryData(['/api/members', allParams]);
+  const localFilters = !search && complete && !complete.pages.at(-1).nextCursor;
+  const params = localFilters ? allParams : { q: search, homeCampusId: campus, status };
   const [selected, setSelected] = useState(null);
   const [importing, setImporting] = useState(false);
   const [creating, setCreating] = useState(false);
   const [educationImporting, setEducationImporting] = useState(false);
-  const [revision, setRevision] = useState(0);
-  const list = useWorkspaceQuery(`/api/members?${query}`, active, revision, {
-    itemKey: 'memberId',
-    derive: deriveMembers
+  const list = useInfiniteQuery({
+    queryKey: ['/api/members', params],
+    enabled: active,
+    initialPageParam: '',
+    getNextPageParam: (page) => page.nextCursor || undefined,
+    staleTime: (query) => (query.state.data?.pages.length > 1 ? 120000 : 30000),
+    refetchInterval: (query) => (query.state.data?.pages.length > 1 ? 120000 : 30000)
   });
-  const { error, loading: busy, nextCursor } = list;
-  const items = list.data?.items || [];
-  const load = () => setRevision((value) => value + 1);
+  const error = list.error?.message;
+  const busy = list.isPending;
+  const items = [
+    ...new Map(
+      (list.data?.pages.flatMap((page) => page.items) || []).map((item) => [item.memberId, item])
+    ).values()
+  ].filter(
+    (item) =>
+      !localFilters ||
+      ((!campus || item.homeCampusId === campus) && (!status || item.status === status))
+  );
+  const load = async () => {
+    const affected = {
+      predicate: (query) =>
+        String(query.queryKey[0]).startsWith('/api/members') ||
+        [
+          '/api/users',
+          '/api/staff-whitelist',
+          '/api/activation-requests',
+          '/api/rosters/campus-week',
+          '/api/attendance/day',
+          '/api/field/home',
+          '/api/field/board',
+          '/api/attendance/volunteer-report',
+          '/api/attendance/matrix'
+        ].includes(query.queryKey[0])
+    };
+    await client.cancelQueries(affected);
+    return client.invalidateQueries(affected);
+  };
   const sentinel = useRef(null);
 
   useEffect(() => {
@@ -56,35 +70,47 @@ export function Members({ user }) {
     return () => clearTimeout(timer);
   }, [q]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (
       !active ||
       busy ||
-      list.loadingMore ||
+      list.isFetching ||
       error ||
-      !nextCursor ||
-      !list.current ||
+      !list.hasNextPage ||
+      !list.data ||
       !sentinel.current
     )
       return;
+    let observing = true;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) void list.loadMore();
+        // Recheck live geometry: queued intersections can describe the shorter
+        // previous filter, especially when the mobile viewport changes.
+        if (
+          observing &&
+          entries.some((entry) => entry.isIntersecting) &&
+          sentinel.current.getBoundingClientRect().top <= window.innerHeight * 3
+        )
+          void list.fetchNextPage({ cancelRefetch: false });
       },
       { rootMargin: `${window.innerHeight * 2}px 0px` }
     );
     observer.observe(sentinel.current);
-    return () => observer.disconnect();
-  }, [active, busy, list.loadingMore, error, nextCursor, list.current, query]);
-
-  useEffect(() => {
-    writeWorkspaceState(viewKey, {
-      q,
-      campus,
-      status,
-      query
-    });
-  }, [viewKey, q, campus, status, query]);
+    return () => {
+      observing = false;
+      observer.disconnect();
+    };
+  }, [
+    active,
+    busy,
+    list.isFetching,
+    error,
+    list.hasNextPage,
+    list.data,
+    params.q,
+    params.homeCampusId,
+    params.status
+  ]);
 
   return (
     <section className="react-members-page">
@@ -140,21 +166,20 @@ export function Members({ user }) {
                 </WorkspaceMoreActions>
               </>
             )}
-            <button onClick={() => load()} disabled={busy}>
+            <button
+              onClick={() => client.invalidateQueries({ queryKey: ['/api/members'] })}
+              disabled={busy}
+            >
               刷新
             </button>
           </div>
           <span className="members-result-count" role="status">
             已显示{' '}
-            <DataValue label="已显示成员数量">{list.current ? items.length : undefined}</DataValue>{' '}
+            <DataValue label="已显示成员数量">{list.data ? items.length : undefined}</DataValue>{' '}
             名成员
           </span>
         </div>
-        <div
-          className="react-table members-results"
-          aria-busy={busy}
-          data-refreshing={list.refreshing}
-        >
+        <div className="react-table members-results" aria-busy={busy}>
           <div className="react-row react-row-head">
             <span>成员</span>
             <span>校区</span>
@@ -212,9 +237,12 @@ export function Members({ user }) {
             </div>
           )}
         </div>
-        <footer ref={sentinel} className="members-list-footer" aria-busy={list.loadingMore}>
-          {nextCursor && (
-            <button disabled={busy || list.loadingMore} onClick={() => list.loadMore()}>
+        <footer ref={sentinel} className="members-list-footer" aria-busy={list.isFetchingNextPage}>
+          {list.hasNextPage && (
+            <button
+              disabled={list.isFetching}
+              onClick={() => list.fetchNextPage({ cancelRefetch: false })}
+            >
               加载更多
             </button>
           )}

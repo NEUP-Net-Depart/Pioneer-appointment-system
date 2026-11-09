@@ -1,5 +1,6 @@
-import React, { useContext, useEffect, useState } from 'react';
-import { ActivityContext, api, Notice, time } from './field/ui';
+import { useInfiniteQuery } from '@tanstack/react-query';
+import React, { useContext } from 'react';
+import { ActivityContext, Notice, time } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
 
 type Record = {
@@ -23,39 +24,22 @@ export function Attendance({
   embedded?: boolean;
 }) {
   const routeActive = useContext(ActivityContext);
-  const [items, setItems] = useState<Record[]>([]);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [pageCursor, setPageCursor] = useState('');
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  useEffect(() => {
-    if (!routeActive) return;
-    const controller = new AbortController();
-    setLoading(true);
-    setError('');
-    api<{ items: Record[]; nextCursor: string | null }>(
-      '/api/me/attendance' + (pageCursor ? `?cursor=${encodeURIComponent(pageCursor)}` : ''),
-      { signal: controller.signal }
-    )
-      .then((data) => {
-        if (!controller.signal.aborted) {
-          setItems((previous) =>
-            pageCursor
-              ? [...new Map([...previous, ...data.items].map((item) => [item.id, item])).values()]
-              : data.items
-          );
-          setNextCursor(data.nextCursor);
-        }
-      })
-      .catch((failure) => {
-        if (!controller.signal.aborted) setError(failure.message);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [refreshKey, routeActive, pageCursor]);
+  const result = useInfiniteQuery<{ items: Record[]; nextCursor: string | null }>({
+    queryKey: ['/api/me/attendance'],
+    enabled: routeActive,
+    initialPageParam: '',
+    getNextPageParam: (page) => page.nextCursor || undefined,
+    staleTime: (query) => (query.state.data?.pages.length > 1 ? 120000 : 30000),
+    refetchInterval: (query) => (query.state.data?.pages.length > 1 ? 120000 : 30000)
+  });
+  const items = [
+    ...new Map(
+      (result.data?.pages.flatMap((page) => page.items) || []).map((item) => [item.id, item])
+    ).values()
+  ];
+  const error = result.error?.message;
+  const loading = result.isPending;
+
   return (
     <section className="attendance-history">
       {!embedded && (
@@ -69,15 +53,8 @@ export function Attendance({
       <section className="field-card" aria-busy={loading}>
         <div className="field-section-heading">
           <h2>签到历史</h2>
-          <button
-            type="button"
-            disabled={loading}
-            onClick={() => {
-              setPageCursor('');
-              setRefreshKey((value) => value + 1);
-            }}
-          >
-            {loading ? '正在更新…' : '刷新记录'}
+          <button type="button" disabled={result.isFetching} onClick={() => result.refetch()}>
+            刷新记录
           </button>
         </div>
         {!items.length && !loading && !error && <p className="field-muted">暂无签到记录。</p>}
@@ -102,17 +79,14 @@ export function Attendance({
             </li>
           ))}
         </ul>
-        {nextCursor && (
+        {result.hasNextPage && (
           <div className="field-actions">
             <button
               type="button"
-              disabled={loading}
-              onClick={() => {
-                if (pageCursor === nextCursor) setRefreshKey((value) => value + 1);
-                else setPageCursor(nextCursor);
-              }}
+              disabled={result.isFetching}
+              onClick={() => result.fetchNextPage({ cancelRefetch: false })}
             >
-              {loading ? '正在读取…' : '加载更早的签到'}
+              加载更早的签到
             </button>
           </div>
         )}

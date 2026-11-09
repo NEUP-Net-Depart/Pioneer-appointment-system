@@ -15,7 +15,6 @@ function RepairOrder({
   id,
   onOpen,
   onClose,
-  onChanged,
   sidePanel = false,
   hideWarrantyLookup = false,
   customerCredential
@@ -23,12 +22,11 @@ function RepairOrder({
   id: string;
   onOpen: (id: string, token?: string) => void;
   onClose: () => void;
-  onChanged: () => void;
   sidePanel?: boolean;
   hideWarrantyLookup?: boolean;
   customerCredential?: { id: string; accessToken: string } | null;
 }) {
-  const r = useRepair({ id, onChanged });
+  const r = useRepair({ id });
   const { item, busy } = r;
   const [received, setReceived] = useState(false);
   return (
@@ -242,17 +240,15 @@ function RepairOrder({
             item={item}
             onChanged={() => {
               void r.load();
-              onChanged();
             }}
             onOpen={onOpen}
           />
-          <RepairAttachments id={id} revision={item.revision} />
+          <RepairAttachments id={id} />
           {item.canEdit && (
             <RepairInformation
               item={item}
               onChanged={() => {
                 void r.load();
-                onChanged();
               }}
             />
           )}

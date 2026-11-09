@@ -1,3 +1,4 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { ActivityContext, Modal, CredentialCard, time } from './field/ui';
 import { request } from './request.js';
@@ -17,51 +18,42 @@ const labels = {
 const order = { pending: 0, upcoming: 1, absent: 2, arrived: 3, leave: 4, paused: 5 };
 const localTime = (value) => new Date(Date.parse(value) + 8 * 3600000).toISOString().slice(0, 16);
 export function AttendanceManagement({ campusId, onDirtyChange }) {
+  const client = useQueryClient();
   const active = useContext(ActivityContext),
     lock = useRef(false);
   const [day, setDay] = useState(dateKey),
-    [snapshot, setData] = useState(null),
-    [refresh, setRefresh] = useState(0),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [notice, setNotice] = useState('');
   const [form, setForm] = useState(null),
     [token, setToken] = useState(null);
-  const data = snapshot?.businessDate === day && snapshot?.campusId === campusId ? snapshot : null;
+  const result = useQuery({
+    queryKey: ['/api/attendance/day', { campusId, businessDate: day }],
+    enabled: active,
+    refetchInterval: form || busy ? false : 30000
+  });
+  const data = result.data;
+  const failure = error || result.error?.message;
   useEffect(() => {
     onDirtyChange(!!form || busy);
     return () => onDirtyChange(false);
   }, [form, busy, onDirtyChange]);
   useEffect(() => {
-    if (!active) {
-      setToken(null);
-      return;
-    }
-    const controller = new AbortController();
-    setError('');
-    request(`/api/attendance/day?${new URLSearchParams({ campusId, businessDate: day })}`, {
-      signal: controller.signal
-    })
-      .then((result) => {
-        if (!controller.signal.aborted) setData(result);
-      })
-      .catch((failure) => {
-        if (!controller.signal.aborted) setError(failure.message);
-      });
-    return () => controller.abort();
-  }, [active, campusId, day, refresh]);
-  useEffect(() => {
-    if (!active) return;
-    const update = () => {
-      if (!document.hidden && !lock.current && !form) setRefresh((value) => value + 1);
-    };
-    const timer = setInterval(update, 30000);
-    window.addEventListener('focus', update);
-    return () => {
-      clearInterval(timer);
-      window.removeEventListener('focus', update);
-    };
-  }, [active, form]);
+    if (!active) setToken(null);
+  }, [active]);
+  const refresh = () =>
+    Promise.all(
+      [
+        '/api/attendance/day',
+        '/api/me/attendance',
+        '/api/me/volunteer-summary',
+        '/api/attendance/volunteer-report',
+        '/api/attendance/matrix',
+        '/api/attendance/weekly-summary',
+        '/api/field/home',
+        '/api/field/board'
+      ].map((path) => client.invalidateQueries({ queryKey: [path] }))
+    );
   async function execute(operation) {
     if (lock.current) return;
     lock.current = true;
@@ -99,7 +91,7 @@ export function AttendanceManagement({ campusId, onDirtyChange }) {
         });
       }
     } finally {
-      setRefresh((value) => value + 1);
+      refresh();
     }
     setNotice(kind === 'arrival' ? `${person.name}已确认到场，签到记录已保存` : '核查结论已保存');
   }
@@ -128,7 +120,7 @@ export function AttendanceManagement({ campusId, onDirtyChange }) {
       });
       setForm(null);
       setNotice('考勤已保存');
-      setRefresh((value) => value + 1);
+      refresh();
       return true;
     });
   }
@@ -208,7 +200,7 @@ export function AttendanceManagement({ campusId, onDirtyChange }) {
         <button disabled={busy || !!form} onClick={() => setDay(dateKey())}>
           今天
         </button>
-        <button disabled={busy || !!form} onClick={() => setRefresh((value) => value + 1)}>
+        <button disabled={busy || !!form} onClick={() => result.refetch()}>
           刷新
         </button>
         {day === dateKey() && (
@@ -225,7 +217,7 @@ export function AttendanceManagement({ campusId, onDirtyChange }) {
       </div>
       {error && !form && !token && (
         <p role="alert" className="react-error">
-          {error}
+          {failure}
         </p>
       )}
       {notice && <p role="status">{notice}</p>}

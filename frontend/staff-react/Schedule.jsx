@@ -1,14 +1,9 @@
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { request } from './request.js';
 import { DataValue } from './DataValue';
-import { useWorkspaceQuery } from './useWorkspaceQuery.js';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AttendanceCheckInButton } from './field/AttendanceActions';
-import {
-  campusAttendance,
-  confirmedAttendance,
-  reconcileAttendance,
-  rememberAttendance
-} from './field/attendance-state';
+import { campusAttendance, applyAttendance } from './field/attendance-state';
 import { ActivityContext, Modal, Scanner, time } from './field/ui';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
 import { addDays, dateKey, weekRange } from '../../shared/time.js';
@@ -23,6 +18,7 @@ import {
 
 const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 export function Schedule({ user, campusId, onDirtyChange }) {
+  const client = useQueryClient();
   const active = useContext(ActivityContext),
     lock = useRef(false);
   const [week, setWeek] = useState(() => weekRange().start),
@@ -31,44 +27,40 @@ export function Schedule({ user, campusId, onDirtyChange }) {
   const type = types.includes(selectedType) ? selectedType : types[0];
   const [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
-    [busy, setBusy] = useState(false),
-    [refresh, setRefresh] = useState(0);
-  const availability = useWorkspaceQuery(
-    type
-      ? `/api/me/availability?${new URLSearchParams({ weekStart: week, dutyType: type })}`
-      : null,
-    active,
-    refresh
-  );
-  const mine = useWorkspaceQuery(`/api/me/roster?weekStart=${week}`, active, refresh);
-  const upcoming = useWorkspaceQuery('/api/me/roster?upcoming=1', active, refresh);
-  const covers = useWorkspaceQuery('/api/rosters/covers', active, refresh);
-  const home = useWorkspaceQuery(`/api/field/home?campusId=${campusId}`, active, refresh);
-  const hours = useWorkspaceQuery('/api/me/volunteer-summary', active, refresh);
+    [busy, setBusy] = useState(false);
+  const availability = useQuery({
+    queryKey: ['/api/me/availability', { weekStart: week, dutyType: type }],
+    enabled: active && !!type
+  });
+  const mine = useQuery({ queryKey: ['/api/me/roster', { weekStart: week }], enabled: active });
+  const upcoming = useQuery({ queryKey: ['/api/me/roster', { upcoming: '1' }], enabled: active });
+  const covers = useQuery({ queryKey: ['/api/rosters/covers'], enabled: active });
+  const home = useQuery({ queryKey: ['/api/field/home', { campusId }], enabled: active });
+  const hours = useQuery({ queryKey: ['/api/me/volunteer-summary'], enabled: active });
   const data = {
     availability: availability.data,
     mine: mine.data?.items,
     upcoming: upcoming.data?.items,
     covers: covers.data?.items
   };
-  const live =
-    home.data &&
-    reconcileAttendance(
-      home.data,
-      confirmedAttendance(`${user.memberId}:${user.authVersion}`, home.data)
-    );
+  const live = home.data;
   const summary = hours.data;
   const failure =
     error ||
-    [availability, mine, upcoming, covers, home, hours].find((result) => result.error)?.error;
+    [availability, mine, upcoming, covers, home, hours].find((result) => result.error)?.error
+      ?.message;
   const [editor, setEditor] = useState(null),
     [editorRevision, setEditorRevision] = useState(null),
     [windows, setWindows] = useState([]),
     [scan, setScan] = useState(false),
     [action, setAction] = useState(null),
     [reason, setReason] = useState(''),
-    [recipient, setRecipient] = useState(''),
-    [people, setPeople] = useState([]);
+    [recipient, setRecipient] = useState('');
+  const peopleQuery = useQuery({
+    queryKey: [`/api/rosters/assignments/${action?.item.id}/cover-candidates`],
+    enabled: active && action?.kind === 'cover'
+  });
+  const people = peopleQuery.data?.items || [];
   const campuses = (user.authorizedCampuses || []).map(
     (value) => ({ 南湖: 'campus-nanhu', 浑南: 'campus-hunnan' })[value] || value
   );
@@ -79,7 +71,7 @@ export function Schedule({ user, campusId, onDirtyChange }) {
   useEffect(() => {
     if (!active) setScan(false);
     setError('');
-  }, [active, week, type, campusId, refresh]);
+  }, [active, week, type, campusId]);
   async function mutate(path, body, method = 'POST') {
     if (lock.current) return;
     lock.current = true;
@@ -90,7 +82,27 @@ export function Schedule({ user, campusId, onDirtyChange }) {
       setEditor(null);
       setAction(null);
       setNotice('已保存');
-      setRefresh((value) => value + 1);
+      const affectedQueries = {
+        predicate: (query) =>
+          (path === '/api/me/availability'
+            ? ['/api/me/availability', '/api/rosters/campus-week']
+            : [
+                '/api/me/roster',
+                '/api/rosters/covers',
+                '/api/rosters/campus-week',
+                '/api/attendance/day',
+                '/api/slot-capacities/actual',
+                '/api/field/home',
+                '/api/field/board',
+                '/api/me/volunteer-summary',
+                '/api/attendance/volunteer-report',
+                '/api/attendance/matrix',
+                '/api/attendance/weekly-summary'
+              ]
+          ).includes(query.queryKey[0])
+      };
+      await client.cancelQueries(affectedQueries);
+      await client.invalidateQueries(affectedQueries);
       return true;
     } catch (failure) {
       setError(failure.message);
@@ -168,12 +180,11 @@ export function Schedule({ user, campusId, onDirtyChange }) {
             : { campusId, requestId: crypto.randomUUID() }
         }
       );
-      rememberAttendance(`${user.memberId}:${user.authVersion}`, result);
+      await applyAttendance(client, result);
       setScan(false);
       setNotice(
         `${dutyCampusNames[result.campusId] || ''}签到成功 · ${time(result.occurredAt)}${result.isExisting ? '（保留首次签到）' : ''}`
       );
-      setRefresh((value) => value + 1);
     } catch (failure) {
       setError(failure.message);
     } finally {
@@ -181,18 +192,11 @@ export function Schedule({ user, campusId, onDirtyChange }) {
       setBusy(false);
     }
   }
-  async function openAction(item, kind) {
+  function openAction(item, kind) {
     setReason('');
     setRecipient('');
     setError('');
-    setPeople([]);
     setAction({ item, kind });
-    if (kind === 'cover')
-      try {
-        setPeople((await request(`/api/rosters/assignments/${item.id}/cover-candidates`)).items);
-      } catch (failure) {
-        setError(failure.message);
-      }
   }
   const run = (...args) => void mutate(...args).catch(() => {});
   const today = dateKey(),
@@ -203,9 +207,9 @@ export function Schedule({ user, campusId, onDirtyChange }) {
   );
   return (
     <div className="duty-personal">
-      {failure && !scan && (
+      {(failure || peopleQuery.error) && !scan && (
         <p role="alert" className="react-error">
-          {failure}
+          {failure || peopleQuery.error?.message}
         </p>
       )}
       {notice && <p role="status">{notice}</p>}

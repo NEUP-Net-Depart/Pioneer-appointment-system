@@ -5,7 +5,7 @@ import { ActivityContext, Modal, Notice } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { WorkspaceSections } from './WorkspaceSections';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
-import { useWorkspaceQuery } from './useWorkspaceQuery.js';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 const enrollmentLabels = {
   open: '待激活',
@@ -20,16 +20,6 @@ const sections = [
   { id: 'review', label: '激活审核' },
   { id: 'invites', label: '加入资格' }
 ];
-
-function useAccountList(endpoint, active) {
-  const [revision, setRevision] = useState(0);
-  const result = useWorkspaceQuery(endpoint, active, revision);
-  return {
-    ...result,
-    items: result.data?.items || [],
-    refresh: () => setRevision((value) => value + 1)
-  };
-}
 
 export function Accounts({ user, embedded = false }) {
   const active = useContext(ActivityContext);
@@ -88,11 +78,11 @@ export function Accounts({ user, embedded = false }) {
 
 function AccountList({ user }) {
   const active = useContext(ActivityContext),
-    list = useAccountList('/api/users', active);
+    list = useQuery({ queryKey: ['/api/users'], enabled: active });
   const [query, setQuery] = useState(''),
     [selected, setSelected] = useState(null),
     [message, setMessage] = useState('');
-  const items = list.items.filter((item) =>
+  const items = (list.data?.items || []).filter((item) =>
     [item.account, item.name, item.homeCampus, ...(item.authorizedCampuses || [])]
       .join(' ')
       .toLowerCase()
@@ -110,19 +100,19 @@ function AccountList({ user }) {
             placeholder="姓名、学号或校区"
           />
         </label>
-        <button disabled={list.loading} onClick={list.refresh}>
+        <button disabled={list.isPending} onClick={list.refetch}>
           刷新账号
         </button>
         <span data-motion-value="number" role="status">
-          {list.loading ? '正在更新，保留已有账号…' : `${items.length} 个账号`}
+          {`${items.length} 个账号`}
         </span>
       </div>
-      <Notice>{list.error || message}</Notice>
+      <Notice>{list.error?.message || message}</Notice>
       <section
         data-motion-list="reveal"
         className="account-list"
         aria-label="工作人员账号列表"
-        aria-busy={list.loading}
+        aria-busy={list.isPending}
       >
         {items.map((item) => (
           <article data-motion-item="" className="field-card account-row" key={item.account}>
@@ -166,7 +156,7 @@ function AccountList({ user }) {
             </div>
           </article>
         ))}
-        {!items.length && !list.loading && !list.error && (
+        {!items.length && !list.isPending && !list.error && (
           <div className="field-empty">
             <strong data-motion-value="text">{query ? '没有匹配的账号' : '暂无可见账号'}</strong>
             {query && <button onClick={() => setQuery('')}>清除搜索</button>}
@@ -181,7 +171,6 @@ function AccountList({ user }) {
           onSaved={() => {
             setSelected(null);
             setMessage('账号已更新，旧登录会话已撤销。');
-            list.refresh();
           }}
         />
       )}
@@ -190,6 +179,7 @@ function AccountList({ user }) {
 }
 
 export function AccountEditor({ user, item, onClose, onSaved, embedded = false, onDirty, onBusy }) {
+  const client = useQueryClient();
   const active = useContext(ActivityContext);
   const [draft, setDraft] = useState({
     name: item.name,
@@ -242,6 +232,19 @@ export function AccountEditor({ user, item, onClose, onSaved, embedded = false, 
         method: 'PATCH',
         body: { ...draft, ...(reset ? { password } : {}) }
       });
+      const affected = {
+        predicate: (query) =>
+          String(query.queryKey[0]).startsWith('/api/users') ||
+          String(query.queryKey[0]).startsWith('/api/members') ||
+          [
+            '/api/field/home',
+            '/api/field/board',
+            '/api/rosters/campus-week',
+            '/api/attendance/day'
+          ].includes(query.queryKey[0])
+      };
+      await client.cancelQueries(affected);
+      await client.invalidateQueries(affected);
       await onSaved();
       return true;
     } catch (failure) {
@@ -380,8 +383,9 @@ export function AccountEditor({ user, item, onClose, onSaved, embedded = false, 
 }
 
 function ActivationReview() {
+  const client = useQueryClient();
   const active = useContext(ActivityContext),
-    list = useAccountList('/api/activation-requests', active);
+    list = useQuery({ queryKey: ['/api/activation-requests'], enabled: active });
   const [selected, setSelected] = useState([]),
     [verified, setVerified] = useState(false),
     [note, setNote] = useState(''),
@@ -389,8 +393,10 @@ function ActivationReview() {
     [message, setMessage] = useState(''),
     [history, setHistory] = useState(false);
   const lock = useRef(false),
-    pending = list.items.filter((item) => item.status === 'pending');
-  const items = history ? list.items.filter((item) => item.status !== 'pending') : pending;
+    pending = (list.data?.items || []).filter((item) => item.status === 'pending');
+  const items = history
+    ? (list.data?.items || []).filter((item) => item.status !== 'pending')
+    : pending;
   const ids = selected.filter((id) => pending.some((item) => item.id === id));
   async function review(status) {
     if (lock.current || !ids.length) return;
@@ -405,7 +411,11 @@ function ActivationReview() {
       setSelected([]);
       setVerified(false);
       setNote('');
-      list.refresh();
+      await Promise.all(
+        ['/api/activation-requests', '/api/users', '/api/staff-whitelist', '/api/members'].map(
+          (path) => client.invalidateQueries({ queryKey: [path] })
+        )
+      );
       setMessage(
         `已处理 ${result.applied.length} 条申请。${result.conflicts.length ? '部分申请已被更新，请核对最新结果。' : ''}`
       );
@@ -422,7 +432,7 @@ function ActivationReview() {
         <div>
           <h2>激活审核</h2>
         </div>
-        <button disabled={busy || list.loading} onClick={list.refresh}>
+        <button disabled={busy || list.isPending} onClick={list.refetch}>
           刷新申请
         </button>
         <button
@@ -433,8 +443,8 @@ function ActivationReview() {
           {history ? '返回待审核' : '查看已处理'}
         </button>
       </div>
-      <Notice>{list.error || message}</Notice>
-      <div data-motion-list="reveal" className="account-list" aria-busy={list.loading}>
+      <Notice>{list.error?.message || message}</Notice>
+      <div data-motion-list="reveal" className="account-list" aria-busy={list.isPending}>
         {items.map((item) => (
           <article data-motion-item="" className="field-card account-row review-row" key={item.id}>
             <div className="account-identity">
@@ -476,7 +486,7 @@ function ActivationReview() {
           </article>
         ))}
       </div>
-      {!items.length && !list.loading && !list.error && (
+      {!items.length && !list.isPending && !list.error && (
         <div className="field-empty">
           <strong data-motion-value="text">{history ? '暂无已处理申请' : '暂无待审核申请'}</strong>
         </div>
@@ -522,8 +532,9 @@ function ActivationReview() {
 }
 
 function Invitations() {
+  const client = useQueryClient();
   const active = useContext(ActivityContext),
-    list = useAccountList('/api/staff-whitelist', active);
+    list = useQuery({ queryKey: ['/api/staff-whitelist'], enabled: active });
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState(''),
     [query, setQuery] = useState('');
@@ -535,7 +546,11 @@ function Invitations() {
     setMessage('');
     try {
       await operation();
-      list.refresh();
+      await Promise.all(
+        ['/api/activation-requests', '/api/users', '/api/staff-whitelist', '/api/members'].map(
+          (path) => client.invalidateQueries({ queryKey: [path] })
+        )
+      );
     } catch (failure) {
       setMessage(failure.message);
     } finally {
@@ -543,7 +558,7 @@ function Invitations() {
       setBusy(false);
     }
   }
-  const items = list.items.filter((item) =>
+  const items = (list.data?.items || []).filter((item) =>
     `${item.studentId} ${item.expectedName || ''}`.includes(query.trim())
   );
   return (
@@ -558,12 +573,12 @@ function Invitations() {
             placeholder="学号或姓名"
           />
         </label>
-        <button disabled={busy || list.loading} onClick={list.refresh}>
+        <button disabled={busy || list.isPending} onClick={list.refetch}>
           刷新资格
         </button>
       </div>
-      <Notice>{list.error || message}</Notice>
-      <div data-motion-list="reveal" className="account-list" aria-busy={list.loading}>
+      <Notice>{list.error?.message || message}</Notice>
+      <div data-motion-list="reveal" className="account-list" aria-busy={list.isPending}>
         {items.map((item) => (
           <article
             data-motion-item=""
@@ -602,7 +617,7 @@ function Invitations() {
           </article>
         ))}
       </div>
-      {!items.length && !list.loading && !list.error && (
+      {!items.length && !list.isPending && !list.error && (
         <div className="field-empty">
           <strong data-motion-value="text">
             {query ? '没有匹配的加入资格' : '还没有加入名单'}

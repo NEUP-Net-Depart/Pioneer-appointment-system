@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import React, { useRef, useState } from 'react';
 import { request } from './request.js';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
 import { DataValue } from './DataValue';
@@ -9,7 +10,15 @@ const countLabels = {
 };
 
 export function AttendanceReportSettings({ active, onSaved }) {
-  const [saved, setSaved] = useState(null);
+  const client = useQueryClient();
+  const queryKey = ['/api/attendance/report-settings'];
+  const result = useQuery({
+    queryKey,
+    enabled: active,
+    staleTime: 5 * 60000,
+    refetchInterval: false
+  });
+  const saved = result.data;
   const [draft, setDraft] = useState(null);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -24,22 +33,6 @@ export function AttendanceReportSettings({ active, onSaved }) {
     !!saved &&
     !!draft &&
     ['countMode', 'hoursPerCount', 'mergeLeaders'].some((key) => saved[key] !== draft[key]);
-  useEffect(() => {
-    if (!active || saved) return;
-    const controller = new AbortController();
-    request('/api/attendance/report-settings', { signal: controller.signal })
-      .then((result) => {
-        if (!controller.signal.aborted) {
-          setSaved(result);
-          setDraft(result);
-          setError('');
-        }
-      })
-      .catch((failure) => {
-        if (!controller.signal.aborted) setError(failure.message);
-      });
-    return () => controller.abort();
-  }, [active, saved]);
   async function save(event) {
     event?.preventDefault();
     if (!draft || !dirty || busy) return true;
@@ -51,7 +44,9 @@ export function AttendanceReportSettings({ active, onSaved }) {
         body: { ...draft, requestId: crypto.randomUUID() }
       });
       const next = { ...result, canEdit: saved.canEdit };
-      setSaved(next);
+      await client.cancelQueries({ queryKey });
+      client.setQueryData(queryKey, next);
+      await client.invalidateQueries({ queryKey: ['/api/me/volunteer-summary'] });
       setDraft(next);
       closeEditor();
       setMessage('导出规则已保存');
@@ -97,6 +92,7 @@ export function AttendanceReportSettings({ active, onSaved }) {
             ref={editButton}
             onClick={() => {
               setMessage('');
+              setDraft(saved);
               setEditing(true);
             }}
           >
@@ -104,9 +100,9 @@ export function AttendanceReportSettings({ active, onSaved }) {
           </button>
         )}
       </div>
-      {error && (
+      {(error || result.error) && (
         <p className="react-error" role="alert">
-          {error}
+          {error || result.error?.message}
         </p>
       )}
       {message && (

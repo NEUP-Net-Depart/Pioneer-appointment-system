@@ -1,4 +1,5 @@
-import React, { useContext, useEffect, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import React, { useContext, useRef, useState } from 'react';
 import { ActivityContext, Modal, Notice } from './field/ui';
 import { request } from './request.js';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
@@ -11,72 +12,22 @@ const isoTime = (value) => new Date(`${value}:00+08:00`).toISOString();
 
 export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onManageSuspension }) {
   const active = useContext(ActivityContext);
-  const [data, setData] = useState(null),
-    [releaseTime, setReleaseTime] = useState('10:00');
+  const client = useQueryClient();
+  const [releaseTime, setReleaseTime] = useState(null);
+  const releaseRevision = useRef(null);
+  const queryKey = ['/api/booking-settings/manage', { campus }];
+  const result = useQuery({ queryKey, enabled: active });
+  const data = result.data;
+  const loading = result.isPending;
   const [editing, setEditing] = useState(null),
     [original, setOriginal] = useState(null);
   const [error, setError] = useState(''),
     [message, setMessage] = useState('');
-  const [loading, setLoading] = useState(true),
-    [busy, setBusy] = useState(false),
-    [retry, setRetry] = useState(0);
+  const [busy, setBusy] = useState(false);
   const lock = useRef(false),
-    attempt = useRef(null),
-    loaded = useRef(false),
-    draftDirty = useRef(false);
-  const timeDirty = !!data && releaseTime !== data.settings.releaseTime;
+    attempt = useRef(null);
+  const timeDirty = !!data && releaseTime !== null && releaseTime !== data.settings.releaseTime;
   const noticeDirty = !!editing && JSON.stringify(editing) !== JSON.stringify(original);
-  draftDirty.current = timeDirty || noticeDirty;
-  useEffect(() => {
-    if (!active) {
-      loaded.current = false;
-      return;
-    }
-    let controller;
-    function read() {
-      if (document.hidden || loaded.current || controller || draftDirty.current) return;
-      const current = new AbortController();
-      controller = current;
-      setLoading(true);
-      request('/api/booking-settings/manage?' + new URLSearchParams({ campus }), {
-        signal: current.signal
-      })
-        .then((result) => {
-          if (current.signal.aborted || draftDirty.current) return;
-          setData(result);
-          setReleaseTime(result.settings.releaseTime);
-          loaded.current = true;
-        })
-        .catch((error) => {
-          if (current.signal.aborted) return;
-          if ([401, 403].includes(error.status)) {
-            setData(null);
-            setEditing(null);
-          }
-          setError(error.message);
-        })
-        .finally(() => {
-          if (controller === current) {
-            controller = null;
-            setLoading(false);
-          }
-        });
-    }
-    const visibility = () => {
-      if (document.hidden) {
-        controller?.abort();
-        controller = null;
-        setLoading(false);
-      } else read();
-    };
-    read();
-    document.addEventListener('visibilitychange', visibility);
-    return () => {
-      controller?.abort();
-      document.removeEventListener('visibilitychange', visibility);
-    };
-  }, [active, campus, retry]);
-
   async function persist(kind, value) {
     const fingerprint = JSON.stringify([kind, value]);
     if (attempt.current?.fingerprint !== fingerprint)
@@ -89,15 +40,19 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
       }
     );
     attempt.current = null;
+    await client.cancelQueries({ queryKey });
+    await client.invalidateQueries({ queryKey, refetchType: 'none' });
     return result;
   }
   async function saveTime() {
     const result = await persist('settings', {
       campus,
-      revision: data.settings.revision,
+      revision: releaseRevision.current ?? data.settings.revision,
       releaseTime
     });
-    setData((current) => ({ ...current, settings: result }));
+    client.setQueryData(queryKey, (current) => ({ ...current, settings: result }));
+    releaseRevision.current = null;
+    setReleaseTime(null);
     setMessage('放号时间已保存，新预约立即使用此规则。已有预约保留。');
   }
   async function saveNotice() {
@@ -107,7 +62,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
       startsAt: isoTime(editing.startsAt),
       endsAt: isoTime(editing.endsAt)
     });
-    setData((current) => ({
+    client.setQueryData(queryKey, (current) => ({
       ...current,
       notices: [result, ...current.notices.filter((item) => item.id !== result.id)]
     }));
@@ -128,9 +83,8 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
       return true;
     } catch (error) {
       if ([401, 403].includes(error.status)) {
-        setData(null);
+        client.setQueryData(queryKey, null);
         setEditing(null);
-        loaded.current = false;
       }
       setError(error.message);
       throw error;
@@ -140,7 +94,8 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
     }
   }
   function discard() {
-    if (data) setReleaseTime(data.settings.releaseTime);
+    setReleaseTime(null);
+    releaseRevision.current = null;
     setEditing(null);
     setOriginal(null);
     attempt.current = null;
@@ -201,21 +156,19 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
           onClick={() => {
             setError('');
             setMessage('');
-            loaded.current = false;
-            setRetry((value) => value + 1);
+            result.refetch();
           }}
         >
           读取最新规则
         </button>
       </div>
-      <Notice>{error || message}</Notice>
+      <Notice>{error || result.error?.message || message}</Notice>
       {error && !editing && (
         <button
           disabled={busy || loading}
           onClick={() => {
             discard();
-            loaded.current = false;
-            setRetry((value) => value + 1);
+            result.refetch();
           }}
         >
           丢弃修改并读取最新配置
@@ -239,9 +192,12 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
                   type="time"
                   data-motion-value="field"
                   required
-                  value={data ? releaseTime : ''}
+                  value={data ? (releaseTime ?? data.settings.releaseTime) : ''}
                   disabled={busy || !data}
-                  onChange={(event) => setReleaseTime(event.target.value)}
+                  onChange={(event) => {
+                    releaseRevision.current ??= data.settings.revision;
+                    setReleaseTime(event.target.value);
+                  }}
                 />
               </label>
               <details className="workspace-help">
@@ -449,8 +405,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
                 disabled={busy || !data}
                 onClick={() => {
                   discard();
-                  loaded.current = false;
-                  setRetry((value) => value + 1);
+                  result.refetch();
                 }}
               >
                 丢弃修改并读取最新配置

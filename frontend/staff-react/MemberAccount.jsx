@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import React, { useContext, useEffect, useState } from 'react';
 import { request } from './request.js';
-import { Notice } from './field/ui';
+import { ActivityContext, Notice } from './field/ui';
 import { AccountEditor } from './Accounts.jsx';
 
 const activationStatus = {
@@ -83,44 +84,36 @@ function MemberActivation({ memberId, value: initial, onSaved, onDirty, onBusy }
 }
 
 export function MemberAccount({ user, detail, onSaved, onDirty, onBusy }) {
-  const [item, setItem] = useState(null),
-    [error, setError] = useState(''),
-    [loading, setLoading] = useState(true),
-    [enrollment, setEnrollment] = useState(null);
   const account = detail.account;
   const protectedAccount = account?.protected || detail.member.memberId === user.memberId;
-  useEffect(() => {
-    if (protectedAccount) {
-      setLoading(false);
-      return;
-    }
-    const controller = new AbortController();
-    setError('');
-    setLoading(true);
-    request(
-      account
-        ? `/api/users/${encodeURIComponent(account.account)}`
-        : `/api/members/${encodeURIComponent(detail.member.memberId)}/activation`,
-      { signal: controller.signal }
-    )
-      .then((data) => {
-        if (account) setItem(data);
-        else setEnrollment(data);
-      })
-      .catch((failure) => {
-        if (!controller.signal.aborted) setError(failure.message);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [
-    account?.account,
-    account?.authVersion,
-    protectedAccount,
-    detail.member.memberId,
-    detail.member.revision
-  ]);
+  const client = useQueryClient();
+  const queryKey = [
+    account
+      ? `/api/users/${encodeURIComponent(account.account)}`
+      : `/api/members/${encodeURIComponent(detail.member.memberId)}/activation`
+  ];
+  const result = useQuery({
+    queryKey,
+    enabled: useContext(ActivityContext) && !protectedAccount,
+    refetchInterval: false
+  });
+  const loading = !protectedAccount && result.isPending;
+  const error = result.error?.message;
+  const item = account ? result.data : null;
+  const enrollment = !account ? result.data : null;
+  const saved = async () => {
+    await client.invalidateQueries({ queryKey });
+    const affectedQueries = {
+      predicate: (query) =>
+        ['/api/users', '/api/staff-whitelist', '/api/activation-requests'].includes(
+          query.queryKey[0]
+        )
+    };
+    await client.cancelQueries(affectedQueries);
+    await client.invalidateQueries(affectedQueries);
+    await onSaved();
+  };
+
   return (
     <div className="member-account" aria-busy={loading}>
       <Notice>{error}</Notice>
@@ -134,7 +127,7 @@ export function MemberAccount({ user, detail, onSaved, onDirty, onBusy }) {
             user={user}
             item={item}
             onClose={onSaved}
-            onSaved={onSaved}
+            onSaved={saved}
             onDirty={onDirty}
             onBusy={onBusy}
           />
@@ -145,7 +138,7 @@ export function MemberAccount({ user, detail, onSaved, onDirty, onBusy }) {
             key={enrollment.stateToken}
             memberId={detail.member.memberId}
             value={enrollment}
-            onSaved={onSaved}
+            onSaved={saved}
             onDirty={onDirty}
             onBusy={onBusy}
           />
