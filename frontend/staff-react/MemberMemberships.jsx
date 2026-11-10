@@ -1,6 +1,7 @@
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { ActivityContext, Notice } from './field/ui';
-import { positionsFor, positionLabels } from '../../shared/staff-organization.js';
+import { additionalMembershipLabels, membershipLabel } from '../../shared/staff-organization.js';
+import { DepartmentAppointmentFields } from './MemberAppointmentFields.jsx';
 import { request } from './request.js';
 import { dateKey, addDays } from '../../shared/time.js';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
@@ -21,7 +22,6 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
     [endDate, setEndDate] = useState(dateKey());
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
-  const unit = departments.find((item) => item.id === draft.departmentId);
   const editable = detail.actions?.edit !== false;
   const dirty = !!ending || JSON.stringify(draft) !== JSON.stringify(empty());
   useEffect(() => {
@@ -75,18 +75,11 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
   return (
     <div className="member-memberships">
       <Notice>{error}</Notice>
-      <section aria-label="部门任职记录">
+      <section aria-label="任职与独立身份记录">
         {detail.member.memberships?.length ? (
           detail.member.memberships.map((item) => (
             <article className="react-binding" key={item.id}>
-              <strong>
-                {item.departmentName} ·{' '}
-                {item.assignmentType === 'exchange'
-                  ? '交流维修'
-                  : item.assignmentType === 'maintenance_affairs'
-                    ? '维修事务'
-                    : positionLabels[item.positionCode]}
-              </strong>
+              <strong>{membershipLabel(item)}</strong>
               <p>
                 {item.effectiveFrom} 至 {item.effectiveTo || '长期有效'}
               </p>
@@ -95,9 +88,7 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
                   disabled={busy}
                   onClick={() => {
                     setEnding(item);
-                    setEndDate(
-                      dateKey() > item.effectiveFrom ? dateKey() : addDays(item.effectiveFrom, 1)
-                    );
+                    setEndDate(dateKey() >= item.effectiveFrom ? dateKey() : item.effectiveFrom);
                   }}
                 >
                   结束任职
@@ -106,49 +97,26 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
             </article>
           ))
         ) : (
-          <p>暂无部门任职</p>
+          <p>暂无任职或独立身份</p>
         )}
       </section>
       {editable && (
         <form ref={form} className="workspace-form" onSubmit={save}>
           <fieldset className="workspace-form-fields" disabled={busy || !departments.length}>
-            <legend>{ending ? `结束 ${ending.departmentName} 任职` : '新增任职'}</legend>
+            <legend>{ending ? `结束 ${membershipLabel(ending)}` : '新增任职'}</legend>
             {ending ? (
               <label>
                 结束日期
                 <input
                   type="date"
                   required
-                  min={addDays(ending.effectiveFrom, 1)}
+                  min={ending.effectiveFrom}
                   value={endDate}
                   onChange={(event) => setEndDate(event.target.value)}
                 />
               </label>
             ) : (
               <>
-                <label>
-                  正式部门 / 组织
-                  <select
-                    required
-                    value={draft.departmentId}
-                    onChange={(event) =>
-                      setDraft({
-                        ...draft,
-                        departmentId: event.target.value,
-                        positionCode: positionsFor(
-                          departments.find((item) => item.id === event.target.value)
-                        )[0]
-                      })
-                    }
-                  >
-                    <option value="">请选择部门</option>
-                    {departments.map((department) => (
-                      <option key={department.id} value={department.id}>
-                        {department.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
                 <label>
                   任职类型
                   <select
@@ -159,10 +127,7 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
                         assignmentType: event.target.value,
                         ...(event.target.value !== 'primary'
                           ? {
-                              departmentId:
-                                event.target.value === 'exchange'
-                                  ? departments.find((item) => item.code === 'hardware')?.id || ''
-                                  : draft.departmentId,
+                              departmentId: '',
                               positionCode: 'member',
                               replacesMembershipId: ''
                             }
@@ -171,9 +136,8 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
                     }
                   >
                     {Object.entries({
-                      primary: '正式任职',
-                      exchange: '交流维修',
-                      maintenance_affairs: '维修事务'
+                      primary: '正式部门任职',
+                      ...additionalMembershipLabels
                     }).map(([code, label]) => (
                       <option key={code} value={code}>
                         {label}
@@ -183,21 +147,12 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
                 </label>
                 {draft.assignmentType === 'primary' && (
                   <>
-                    <label>
-                      职位
-                      <select
-                        value={draft.positionCode}
-                        onChange={(event) =>
-                          setDraft({ ...draft, positionCode: event.target.value })
-                        }
-                      >
-                        {positionsFor(unit).map((code) => (
-                          <option key={code} value={code}>
-                            {positionLabels[code]}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    <DepartmentAppointmentFields
+                      value={draft}
+                      onChange={setDraft}
+                      departments={departments}
+                      required
+                    />
                     <label>
                       接替任职
                       <select
@@ -214,7 +169,7 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
                           )
                           .map((item) => (
                             <option key={item.id} value={item.id}>
-                              {item.departmentName} · {positionLabels[item.positionCode]}
+                              {membershipLabel(item)}
                             </option>
                           ))}
                       </select>

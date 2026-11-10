@@ -10,6 +10,7 @@ import {
 } from '../../../shared/staff-organization.js';
 import { csvRows, inputString, tokenDigest } from './shared.js';
 import { editableMemberState } from './delegation.js';
+import { roleLabels } from '../../../shared/constants.js';
 
 const campusName = (id) => (id === 'campus-hunnan' ? '浑南' : '南湖');
 const sorted = (items) => [...new Set(items)].sort();
@@ -26,7 +27,7 @@ function normalizeMember(row, defaults, businessDate) {
       (key) => row[key] !== undefined || defaults[key] !== undefined
     )
   )
-    fail(400, '请使用正式部门、职位和交流参与字段');
+    fail(400, '请使用正式部门、职位和独立身份字段');
   const value = (key) => (row[key] !== undefined && row[key] !== '' ? row[key] : defaults[key]);
   const boolean = (key) => {
     const raw = value(key);
@@ -45,7 +46,6 @@ function normalizeMember(row, defaults, businessDate) {
     positionCode: value('positionCode') || 'member',
     exchangeParticipation: boolean('exchangeParticipation'),
     maintenanceParticipation: boolean('maintenanceParticipation'),
-    configureActivation: boolean('configureActivation'),
     effectiveFrom: value('effectiveFrom') || businessDate,
     authorizedCampuses: sorted(list(value('authorizedCampuses')).map(campusId))
   };
@@ -57,7 +57,6 @@ function normalizeMember(row, defaults, businessDate) {
   if (!validDate(item.effectiveFrom)) fail(400, '生效日期不正确');
   if (item.authorizedCampuses.some((id) => !['campus-nanhu', 'campus-hunnan'].includes(id)))
     fail(400, '授权校区不正确');
-  if (item.configureActivation && !item.authorizedCampuses.length) fail(400, '请选择激活授权校区');
   return item;
 }
 
@@ -134,15 +133,18 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
         fail(400, '请选择启用的实际部门');
       const unit = byDepartment.get(item.departmentId);
       if (unit && !positionsFor(unit).includes(item.positionCode)) fail(400, '职位与组织不匹配');
-      if (
-        item.exchangeParticipation &&
-        (!unit || unit.code === 'hardware' || unit.kind !== 'department')
-      )
-        fail(400, '请选择非硬件部的正式所属部门');
       const memberId = existing?.id || `member-${item.studentId}`;
       const accounts = data.accounts.filter((account) => account.member_id === memberId);
       if (accounts.length > 1) fail(409, '成员关联多个登录账号，导入已停止');
       const account = accounts[0] || null;
+      const invitation = data.invitations.find(
+        (invitation) => invitation.student_id === item.studentId
+      );
+      if (!account && !item.authorizedCampuses.length) {
+        item.authorizedCampuses = invitation
+          ? sorted(JSON.parse(invitation.campuses).map(campusId))
+          : [item.homeCampusId];
+      }
       const memberships = data.memberships.filter(
         (membership) => membership.member_id === memberId
       );
@@ -233,8 +235,7 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
         });
       if (item.maintenanceParticipation)
         requested.push({
-          departmentId:
-            item.departmentId || departments.find((unit) => unit.code === 'hardware')?.id,
+          departmentId: departments.find((unit) => unit.code === 'hardware')?.id,
           assignmentType: 'maintenance_affairs',
           positionCode: 'member'
         });
@@ -242,20 +243,19 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
         const matches = memberships.filter(
           (old) =>
             old.assignment_type === post.assignmentType &&
-            (post.assignmentType === 'primary'
-              ? old.is_primary === 1
-              : old.department_id === post.departmentId)
+            (!old.effective_to || old.effective_from < old.effective_to) &&
+            (post.assignmentType !== 'primary' || old.is_primary === 1)
         );
         const exact = matches.some(
           (old) =>
-            old.department_id === post.departmentId &&
+            (post.assignmentType !== 'primary' || old.department_id === post.departmentId) &&
             old.position_code === post.positionCode &&
             old.effective_from <= item.effectiveFrom &&
             (!old.effective_to || item.effectiveFrom < old.effective_to)
         );
         if (exact) continue;
         if (matches.some((old) => !old.effective_to || item.effectiveFrom < old.effective_to)) {
-          plan.conflicts.push('正式部门、职位或交流关系与现有记录冲突，请在人员详情中核对');
+          plan.conflicts.push('正式部门、职位或独立身份与现有记录冲突，请在人员详情中核对');
           continue;
         }
         if (
@@ -274,7 +274,7 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
               ? '维修事务'
               : '组织任职',
           '',
-          `${byDepartment.get(post.departmentId)?.name} · ${positionLabels[post.positionCode]} · ${item.effectiveFrom} 起`
+          `${post.assignmentType === 'primary' ? `${byDepartment.get(post.departmentId)?.name} · ${positionLabels[post.positionCode]} · ` : ''}${item.effectiveFrom} 起`
         );
       }
       const campuses = item.authorizedCampuses.map(campusName).sort();
@@ -298,14 +298,12 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
           campuses.join('、')
         );
       }
-      const invitation = data.invitations.find(
-        (invitation) => invitation.student_id === item.studentId
-      );
       if (!account && campuses.length) {
         if (invitation?.expected_role === 'superadmin') fail(403, '不能管理系统管理员激活资格');
         plan.accountRole = invitation?.expected_role || 'technician';
-        plan.invitationStatus = item.configureActivation ? 'open' : invitation?.status || 'revoked';
-        const roleLabel = (role) => (role === 'admin' ? '管理员账号' : '普通账号');
+        plan.invitationStatus =
+          invitation?.status || (existing?.status === 'inactive' ? 'revoked' : 'open');
+        const roleLabel = (role) => roleLabels[role] || '工作人员';
         const binding = data.activationBindings.find(
           (binding) => binding.student_id === item.studentId
         );
@@ -376,7 +374,11 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
       return plan;
     });
     for (const plan of plans.filter(
-      (plan) => plan.configureActivation && !plan.account && !plan.conflicts.length
+      (plan) =>
+        plan.invitation &&
+        plan.invitationStatus === 'open' &&
+        !plan.account &&
+        !plan.conflicts.length
     )) {
       if (
         !businessIdentityEligible({

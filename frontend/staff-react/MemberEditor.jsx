@@ -234,7 +234,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
             value={section}
             onChange={setSection}
             items={[
-              { id: 'profile', label: '基本资料与组织任职' },
+              { id: 'profile', label: '基本资料与任职身份' },
               ...(staffPermission(user, 'accounts.manage') ||
               (canManageRoles &&
                 !detail?.account?.protected &&

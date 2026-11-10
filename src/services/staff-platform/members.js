@@ -340,7 +340,7 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
 
   async function addMembership(actor, memberId, input) {
     if (!Number.isInteger(input?.revision) || input.revision < 0) fail(400, '成员版本不正确');
-    for (const key of ['departmentId', 'effectiveFrom']) inputString(input, key, 80, true);
+    inputString(input, 'effectiveFrom', 80, true);
     if (!validDate(input.effectiveFrom) || (input.effectiveTo && !validDate(input.effectiveTo)))
       fail(400, '任职有效期不正确');
     if (!['primary', 'exchange', 'maintenance_affairs'].includes(input.assignmentType || 'primary'))
@@ -351,13 +351,17 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
     if (!member) fail(404, '成员不存在');
     const { context } = await requireMemberPermission(actor, member);
     const targetState = await editableMember(repository, context, member, evaluate);
+    const departments = await repository.listDepartments();
+    const assignmentType = input.assignmentType || 'primary';
+    if (assignmentType !== 'primary') {
+      input = { ...input, departmentId: departments.find((item) => item.code === 'hardware')?.id };
+    }
+    inputString(input, 'departmentId', 80, true);
     await requireMemberPermission(actor, member, { departmentIds: [input.departmentId] });
-    const unit = (await repository.listDepartments()).find(
-      (item) => item.id === input.departmentId
-    );
+    const unit = departments.find((item) => item.id === input.departmentId);
     if (!unit) fail(400, '请选择有效组织');
     if (input.assignmentType === 'exchange' && unit.code !== 'hardware')
-      fail(400, '交流参与必须指向硬件部');
+      fail(400, '交流维修的组织关联不正确');
     if (
       input.assignmentType !== undefined &&
       input.assignmentType !== 'primary' &&
@@ -383,6 +387,18 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
     )
       fail(403, '跨校区管理任职须由具有全部校区管理范围的负责人设置');
     const existing = await repository.listMemberships(memberId);
+    if (
+      !input.isPrimary &&
+      existing.some(
+        (item) =>
+          item.assignmentType === input.assignmentType &&
+          (!item.effectiveTo || item.effectiveFrom < item.effectiveTo) &&
+          item.effectiveFrom < (input.effectiveTo || '9999-12-31') &&
+          (!item.effectiveTo || input.effectiveFrom < item.effectiveTo)
+      )
+    ) {
+      fail(409, '该独立身份已存在重叠有效期，请在现有记录中管理');
+    }
     if (input.replacesMembershipId) {
       const previous = existing.find((item) => item.id === input.replacesMembershipId);
       if (
@@ -400,6 +416,7 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
         (item) =>
           item.id !== input.replacesMembershipId &&
           item.isPrimary &&
+          (!item.effectiveTo || item.effectiveFrom < item.effectiveTo) &&
           item.effectiveFrom < (input.effectiveTo || '9999-12-31') &&
           (!item.effectiveTo || input.effectiveFrom < item.effectiveTo)
       )
@@ -440,7 +457,7 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
       departmentIds: [existing.departmentId]
     });
     const targetState = await editableMember(repository, context, member, evaluate);
-    if (input.effectiveTo <= existing.effectiveFrom) fail(400, '任职结束日期必须晚于生效日期');
+    if (input.effectiveTo < existing.effectiveFrom) fail(400, '任职结束日期不能早于生效日期');
     const result = await repository.endMembership(
       memberId,
       membershipId,
