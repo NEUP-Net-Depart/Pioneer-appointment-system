@@ -5,6 +5,7 @@ import { database, seedStaff } from './helpers/database.mjs';
 import { staffServices } from './fixtures/staff-services.mjs';
 import { userRepository } from '../src/db/users.js';
 import { dateKey, addDays } from '../shared/time.js';
+import { STAFF_RELEASE, verifyStaffSchema } from '../src/db/staff-readiness.js';
 
 for (const directory of ['migrations', 'database/staff-migrations']) {
   test(`${directory}: same-day end preserves history and invalidates only the ended appointment`, async (t) => {
@@ -41,7 +42,9 @@ for (const directory of ['migrations', 'database/staff-migrations']) {
       .prepare('SELECT * FROM member_department_memberships ORDER BY id')
       .all();
     const accounts = db.sqlite.prepare('SELECT * FROM staff_accounts ORDER BY account').all();
+    await assert.rejects(verifyStaffSchema(db), /Staff cutover migration is incomplete/);
     db.sqlite.exec(readFileSync(`${directory}/0052_same_day_membership_end.sql`, 'utf8'));
+    assert.equal(await verifyStaffSchema(db), STAFF_RELEASE);
     assert.deepEqual(
       db.sqlite.prepare('SELECT * FROM member_department_memberships ORDER BY id').all(),
       before

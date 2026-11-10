@@ -33,3 +33,4 @@ END;
 CREATE TRIGGER organization_authorization_delete AFTER DELETE ON member_department_memberships BEGIN
  UPDATE staff_accounts SET token_version=token_version+1,auth_version=auth_version+1 WHERE member_id=OLD.member_id;
 END;
+INSERT INTO staff_release_markers VALUES('same-day-membership-0052',strftime('%Y-%m-%dT%H:%M:%fZ','now'));
