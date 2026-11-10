@@ -22,7 +22,7 @@ export function dutyDomain({ repository, contextFor, evaluate, ensureDutyEvent }
     if (!validDate(day)) fail(400, '日期不正确');
     const [data, attendance, service, people] = await Promise.all([
       repository.dutyDay(day, campus),
-      repository.weeklyAttendanceData(day, day),
+      repository.dutyAttendanceDay(day, campus),
       repository.serviceDay(day, campus),
       repository.schedulePeople(campus)
     ]);

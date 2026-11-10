@@ -72,6 +72,9 @@ test('affairs can check in without a roster; independent issuers and private imm
   assert.deepEqual((await repository.memberships(created.member.memberId, day)).map(row => row.assignmentType).sort(), ['exchange', 'maintenance_affairs', 'primary']);
   const managed = await staff.attendanceList(manager, { all: '1', businessDate: day });
   assert.equal(managed.items.find(row => row.id === checked.id).checkinSource.issuerMemberId, second.memberId);
+  const attendanceDay = await staff.attendanceDay(manager, { campusId, businessDate: day });
+  assert.deepEqual(attendanceDay.temporary.find(row => row.record.id === checked.id).record.checkinSource, stored);
+  assert.deepEqual(attendanceDay.temporary.find(row => row.record.id === direct.id).record.checkinSource, { kind: 'direct' });
   await assert.rejects(staff.createAttendanceEvent(second, { type: 'meeting', businessDate: day, campusId }), error => error.status === 403);
   db.sqlite.prepare("UPDATE member_department_memberships SET effective_to=? WHERE id=?").run(day, `affairs-${second.account}`);
   await assert.rejects(staff.issueAttendanceToken(await users.find(second.account), event.id), error => error.status === 403);
