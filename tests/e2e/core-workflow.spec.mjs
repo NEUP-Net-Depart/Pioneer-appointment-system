@@ -276,10 +276,56 @@ test('daily duty review and historical arrival correction update the selected me
   await person.getByRole('button', { name: '补记漏签', exact: true }).click();
   const correction = page.getByRole('dialog', { name: '补记漏签', exact: true });
   await expect(correction).toContainText('周宁');
-  await expect(correction.getByLabel('实际到场时间')).toHaveValue(`${thisWeek}T19:00`);
+  await expect(correction.locator('input[type="datetime-local"]')).toHaveCount(0);
+  await expect(correction).toContainText(thisWeek);
+  await expect(correction).toContainText('班次开始时间');
   await correction.getByLabel('补录或修正原因').fill('现场已核实漏签');
   await correction.getByRole('button', { name: '保存考勤', exact: true }).click();
   await expect(person.getByText('已签到', { exact: true })).toBeVisible();
+  await expect(person).toContainText('19:00');
+  await expect(person).toContainText('按班次开始时间');
+  await person.getByRole('button', { name: '修正时间', exact: true }).click();
+  const edit = page.getByRole('dialog', { name: '修正签到时间', exact: true });
+  await expect(edit.locator('input[type="date"],input[type="datetime-local"]')).toHaveCount(0);
+  await expect(edit.getByLabel('实际到场时间')).toHaveAttribute('type', 'time');
+  await expect(edit.getByLabel('实际到场时间')).toHaveValue('19:00');
+  await edit.getByLabel('实际到场时间').fill('19:10');
+  await edit.getByLabel('补录或修正原因').fill('核实实际到场时间');
+  await edit.getByRole('button', { name: '保存考勤', exact: true }).click();
+  await expect(person).toContainText('19:10');
+  await expect(person).not.toContainText('按班次开始时间');
+});
+
+test('temporary attendance uses the selected historical date and campus without a time picker', async ({
+  page
+}) => {
+  await loginStaff(page);
+  const daily = await dutyPage(page, '今日值班');
+  await page.getByRole('combobox', { name: '值班校区', exact: true }).selectOption('campus-hunnan');
+  const day = addDays(thisWeek, -5);
+  await daily.getByLabel('值班日期').fill(day);
+  await daily.getByRole('button', { name: '刷新', exact: true }).click();
+  await daily.getByRole('button', { name: '补录其他人员', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '补记漏签', exact: true });
+  await expect(dialog).toContainText(`${day} · 浑南`);
+  await expect(
+    dialog.locator('input[type="date"],input[type="time"],input[type="datetime-local"]')
+  ).toHaveCount(0);
+  await dialog
+    .getByRole('combobox', { name: '工作人员', exact: true })
+    .selectOption('member-20261004');
+  await dialog.getByLabel('补录或修正原因').fill('已核实历史漏签');
+  await dialog.getByRole('button', { name: '保存考勤', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  const person = daily.getByRole('article').filter({ hasText: '许晨' });
+  await expect(person).toContainText('临时到场');
+  await expect(person).toContainText('19:00');
+  await expect(person).toContainText('按班次开始时间');
+  await page.reload();
+  const reloaded = await dutyPage(page, '今日值班');
+  await page.getByRole('combobox', { name: '值班校区', exact: true }).selectOption('campus-hunnan');
+  await reloaded.getByLabel('值班日期').fill(day);
+  await expect(reloaded.getByRole('article').filter({ hasText: '许晨' })).toContainText('19:00');
 });
 
 test('save-and-switch retains a failed draft and navigates only after a successful save', async ({

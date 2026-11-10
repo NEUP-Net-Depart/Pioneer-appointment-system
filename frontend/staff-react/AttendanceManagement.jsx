@@ -16,7 +16,7 @@ const labels = {
   paused: '暂停服务'
 };
 const order = { pending: 0, upcoming: 1, absent: 2, arrived: 3, leave: 4, paused: 5 };
-const localTime = (value) => new Date(Date.parse(value) + 8 * 3600000).toISOString().slice(0, 16);
+const localTime = (value) => new Date(Date.parse(value) + 8 * 3600000).toISOString().slice(11, 16);
 export function AttendanceManagement({ campusId, onDirtyChange }) {
   const client = useQueryClient();
   const active = useContext(ActivityContext),
@@ -102,11 +102,11 @@ export function AttendanceManagement({ campusId, onDirtyChange }) {
       memberId: person?.memberId || '',
       memberName: person?.name || '',
       campusId,
-      businessDate: day,
+      businessDate: record?.businessDate || day,
       recordId: record?.id,
       eventId: record?.eventId,
       revision: record?.revision,
-      occurredAt: record ? localTime(record.occurredAt) : `${day}T19:00`,
+      ...(record ? { occurredAt: localTime(record.occurredAt) } : { timeMode: 'duty_start' }),
       reason: '',
       requestId: crypto.randomUUID()
     });
@@ -116,7 +116,16 @@ export function AttendanceManagement({ campusId, onDirtyChange }) {
     return execute(async () => {
       await request('/api/attendance/corrections', {
         method: 'POST',
-        body: { ...form, occurredAt: new Date(`${form.occurredAt}:00+08:00`).toISOString() }
+        body: {
+          ...form,
+          ...(form.recordId
+            ? {
+                occurredAt: new Date(
+                  `${form.businessDate}T${form.occurredAt}:00+08:00`
+                ).toISOString()
+              }
+            : {})
+        }
       });
       setForm(null);
       setNotice('考勤已保存');
@@ -166,7 +175,7 @@ export function AttendanceManagement({ campusId, onDirtyChange }) {
                   : person.record.checkinSource?.kind === 'direct'
                     ? '本人直接签到'
                     : person.record.checkinSource?.kind === 'correction'
-                      ? `补记：${person.record.checkinSource.operatorName || person.record.checkinSource.operatorAccount}`
+                      ? `补记：${person.record.checkinSource.operatorName || person.record.checkinSource.operatorAccount}${person.record.checkinSource.timeBasis === 'duty_start' ? ' · 按班次开始时间' : ''}`
                       : '历史记录未保存来源'}
               </span>
             )}
@@ -299,7 +308,7 @@ export function AttendanceManagement({ campusId, onDirtyChange }) {
           <form ref={formRef} onSubmit={(event) => void save(event).catch(() => {})}>
             <fieldset disabled={busy}>
               <p>
-                {day} · {dutyCampusNames[campusId]}
+                {form.businessDate} · {dutyCampusNames[form.campusId]}
               </p>
               {form.memberName ? (
                 <strong>{form.memberName}</strong>
@@ -326,21 +335,27 @@ export function AttendanceManagement({ campusId, onDirtyChange }) {
                   </select>
                 </label>
               )}
-              <label>
-                实际到场时间
-                <input
-                  type="datetime-local"
-                  required
-                  value={form.occurredAt}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      occurredAt: event.target.value,
-                      requestId: crypto.randomUUID()
-                    }))
-                  }
-                />
-              </label>
+              {form.recordId ? (
+                <label>
+                  实际到场时间
+                  <input
+                    type="time"
+                    required
+                    value={form.occurredAt}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        occurredAt: event.target.value,
+                        requestId: crypto.randomUUID()
+                      }))
+                    }
+                  />
+                </label>
+              ) : (
+                <p className="field-muted">
+                  按所选值班日期的班次开始时间补记；无排班时按默认 19:00 记账。
+                </p>
+              )}
               <label>
                 补录或修正原因
                 <input
@@ -356,7 +371,12 @@ export function AttendanceManagement({ campusId, onDirtyChange }) {
                   }
                 />
               </label>
-              <p className="field-muted">补录保存实际发生时间，不改变今日实时在岗。</p>
+              <p className="field-muted">
+                {form.recordId
+                  ? '仅修正上述值班日期内的到场时间，保留修改记录。'
+                  : '补录记账时间不代表精确到场时间，操作时间另行保存。'}
+                不改变今日实时在岗。
+              </p>
               {error && <p role="alert">{error}</p>}
               <div className="schedule-actions">
                 <button type="submit" className="field-primary">

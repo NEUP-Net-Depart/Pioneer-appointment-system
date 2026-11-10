@@ -34,6 +34,8 @@
 
 `PUT /api/attendance/reviews` 接收 `{assignmentId,assignmentRevision,revision,decision,requestId,reason?}`。班次结束后才能提交 `absent` 或撤销为 `cleared`；新记录 `revision:-1`，每次写入或撤销均递增，撤销不删除行。结论绑定当时成员，接替后不转嫁给新成员。`attendance_reviews` 保存当前结论、版本、操作者和时间，审计保存每次前后值；不生成签到或在岗。并发真实签到使核查失败或显示到场。
 
-`POST /api/attendance/corrections` 可省略 `eventId`，提供 `memberId/businessDate/campusId/occurredAt/reason/requestId`，由服务端查找或按需准备值班场次；原 `recordId/eventId/revision` 修正格式继续使用。准备场次不产生签到。实际时间必须在该场次窗口内且不晚于现在，目标有效性、授权、暂停服务与事实版本在提交事务内检查，历史操作不改变实时在岗。
+`POST /api/attendance/corrections` 补记漏签提供 `memberId/businessDate/campusId/timeMode: duty_start/reason/requestId`，不提交日期时间、记录或场次 ID。服务端按所选日期、校区查找或准备场次，采用本人该校区当天最早班次的开始时间，无排班采用默认 19:00。记账时间来源以 `checkin_source.timeBasis: duty_start` 和审计记录保存，不冒充精确到场时间；操作时间独立保存。班次时间纳入并发快照，解析后发生变更则拒绝。旧客户端提供 `occurredAt` 的格式继续校验后兼容。
+
+已有记录使用 `recordId/eventId/memberId/revision/occurredAt/reason/requestId` 修正，界面只允许选择当天的时分，日期取原记录所属日期；服务端也明确拒绝值班跨日修正。实际时间修正后清除默认记账标记，保留首次签到来源、版本与审计。准备场次不产生签到。时间必须在该场次窗口内且不晚于现在，目标有效性、授权、暂停服务与事实版本在提交事务内检查，历史操作不改变实时在岗。
 
 `GET /api/me/volunteer-summary` 只从当前会话获取成员，返回本月、累计时长及 `settings/asOf` 核算依据。与管理月报共用 `calculateVolunteerReport`，包括按周起始日归属月份和负责人每周计入的原有规则。本人范围先在取数时过滤，校区权限再在聚合前应用；默认计入不生成签到。
