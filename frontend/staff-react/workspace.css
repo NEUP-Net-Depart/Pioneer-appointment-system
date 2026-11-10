@@ -1061,7 +1061,7 @@
   padding: 14px;
   box-shadow: 0 4px 20px #2228310a;
 }
-@media (max-width: 700px) {
+@media (max-width: 767px) {
   .members-workspace .members-tools {
     gap: 12px;
     padding: 16px;
@@ -1079,8 +1079,8 @@
   .members-workspace .members-results {
     padding: 0 16px;
   }
-  .members-results .react-row {
-    grid-template-columns: 1fr 1fr;
+  .field-app .members-results .react-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
     padding: 20px 0;
   }
@@ -1104,10 +1104,16 @@
   .members-results .members-row-action {
     grid-column: 1 / -1;
   }
+  .members-results .members-row-action button {
+    width: 100%;
+    scroll-margin-block: 16px calc(88px + env(safe-area-inset-bottom));
+  }
   .members-list-footer {
     flex-wrap: wrap;
     padding: 16px;
   }
+}
+@media (max-width: 700px) {
   .permissions-workspace .react-permission-layout {
     grid-template-columns: 1fr;
     gap: 16px;

@@ -6,6 +6,7 @@ import { WorkspaceHeader } from './WorkspaceHeader';
 import { WorkspaceSections } from './WorkspaceSections';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { StaffIdentity } from './StaffIdentity';
 
 const enrollmentLabels = {
   open: '待激活',
@@ -121,12 +122,8 @@ function AccountList({ user }) {
               <span data-motion-value="text">{item.account}</span>
             </div>
             <div>
-              <span className="account-label">角色</span>
-              <span data-motion-value="text">
-                {item.roleNames
-                  ? item.roleNames.join('、') || '尚未授权角色'
-                  : roleLabels[item.role] || '其他角色'}
-              </span>
+              <span className="account-label">任职与身份</span>
+              <StaffIdentity identities={item.identities} />
             </div>
             <div>
               <span className="account-label">校区</span>
@@ -183,7 +180,6 @@ export function AccountEditor({ user, item, onClose, onSaved, embedded = false, 
   const active = useContext(ActivityContext);
   const [draft, setDraft] = useState({
     name: item.name,
-    role: item.role,
     homeCampus: item.homeCampus,
     authorizedCampuses: [...item.authorizedCampuses],
     status: item.status
@@ -196,12 +192,11 @@ export function AccountEditor({ user, item, onClose, onSaved, embedded = false, 
   const dirty =
     embedded &&
     (reset ||
-      ['name', 'role', 'homeCampus', 'status'].some((key) => draft[key] !== item[key]) ||
+      ['name', 'homeCampus', 'status'].some((key) => draft[key] !== item[key]) ||
       JSON.stringify(draft.authorizedCampuses) !== JSON.stringify(item.authorizedCampuses));
   function discard() {
     setDraft({
       name: item.name,
-      role: item.role,
       homeCampus: item.homeCampus,
       authorizedCampuses: [...item.authorizedCampuses],
       status: item.status
@@ -277,23 +272,10 @@ export function AccountEditor({ user, item, onClose, onSaved, embedded = false, 
             />
           </label>
           <p data-motion-value="text" className="field-muted">
-            有效权限：{item.roleNames?.join('、') || '尚未授权'}
+            额外系统授权：{item.roleNames?.join('、') || '无'}
           </p>
-          <label>
-            基础账号类型
-            <select
-              value={draft.role}
-              onChange={(event) => setDraft({ ...draft, role: event.target.value })}
-            >
-              {Object.entries(roleLabels)
-                .filter(([role]) => role === 'technician' || role === 'admin')
-                .map(([role, label]) => (
-                  <option key={role} value={role}>
-                    {label}
-                  </option>
-                ))}
-            </select>
-          </label>
+          <StaffIdentity identities={item.identities} />
+          <p className="field-muted">任职与独立身份在人员详情的“基本资料与任职身份”中管理。</p>
           <label>
             所属校区
             <select
@@ -308,7 +290,7 @@ export function AccountEditor({ user, item, onClose, onSaved, embedded = false, 
           <fieldset className="workspace-checks">
             <legend>授权校区</legend>
             {CAMPUSES.map((campus) => (
-              <label key={campus}>
+              <label className="workspace-check" key={campus}>
                 <input
                   type="checkbox"
                   disabled={!user.authorizedCampuses.includes(campus)}

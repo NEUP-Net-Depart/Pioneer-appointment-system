@@ -22,4 +22,6 @@
 
 回归使用 `tests/e2e/records-loading.spec.mjs` 和 `tests/e2e/core-workflow.spec.mjs`，覆盖分页、失败保留、取消竞态、会话隔离及业务写入。
 
+数据容器的向下展开使用视觉遮罩，不以 `clip-path` 裁剪包含按钮的点击区域；动效结束后显式释放动画。人员列表的移动布局与底栏统一采用 767px 断点，详情按钮滚动定位时为固定底栏保留安全距离。`tests/e2e/member-identities.spec.mjs` 通过动效进行中的真实鼠标点击和跨断点命中检查覆盖这些交互。
+
 TanStack 官方参考：[默认行为](https://tanstack.com/query/latest/docs/framework/react/guides/important-defaults)、[请求取消](https://tanstack.com/query/latest/docs/framework/react/guides/query-cancellation)、[无限列表](https://tanstack.com/query/latest/docs/framework/react/guides/infinite-queries)。

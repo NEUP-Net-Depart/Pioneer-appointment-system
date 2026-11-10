@@ -7,7 +7,7 @@ import { MemberSetup, newMemberSetup, memberDefaults } from './MemberSetup.jsx';
 
 const basicHeader = 'studentId,name,college';
 const advancedHeader =
-  'studentId,name,homeCampusId,college,major,departmentId,positionCode,exchangeParticipation,maintenanceParticipation,authorizedCampuses,configureActivation,effectiveFrom';
+  'studentId,name,homeCampusId,college,major,departmentId,positionCode,exchangeParticipation,maintenanceParticipation,authorizedCampuses,effectiveFrom';
 const statusLabels = { created: '新增', updated: '更新', skipped: '跳过', conflict: '冲突' };
 const display = (value) =>
   ({ 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' })[value] || value || '未设置';

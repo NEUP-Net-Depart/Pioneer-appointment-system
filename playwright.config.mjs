@@ -34,7 +34,8 @@ export default defineConfig({
         '**/core-workflow.spec.mjs',
         '**/photo-compress.spec.mjs',
         '**/records-loading.spec.mjs',
-        '**/maintenance-affairs.spec.mjs'
+        '**/maintenance-affairs.spec.mjs',
+        '**/member-identities.spec.mjs'
       ],
       use: {
         browserName: 'webkit',
