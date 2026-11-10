@@ -44,6 +44,7 @@ function normalizeMember(row, defaults, businessDate) {
     departmentId: value('departmentId') || '',
     positionCode: value('positionCode') || 'member',
     exchangeParticipation: boolean('exchangeParticipation'),
+    maintenanceParticipation: boolean('maintenanceParticipation'),
     configureActivation: boolean('configureActivation'),
     effectiveFrom: value('effectiveFrom') || businessDate,
     authorizedCampuses: sorted(list(value('authorizedCampuses')).map(campusId))
@@ -77,6 +78,7 @@ function parseImport(input, businessDate) {
     'departmentId',
     'positionCode',
     'exchangeParticipation',
+    'maintenanceParticipation',
     'configureActivation',
     'effectiveFrom',
     'authorizedCampuses'
@@ -229,6 +231,13 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
           assignmentType: 'exchange',
           positionCode: 'member'
         });
+      if (item.maintenanceParticipation)
+        requested.push({
+          departmentId:
+            item.departmentId || departments.find((unit) => unit.code === 'hardware')?.id,
+          assignmentType: 'maintenance_affairs',
+          positionCode: 'member'
+        });
       for (const post of requested) {
         const matches = memberships.filter(
           (old) =>
@@ -259,7 +268,11 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
         plan.memberships.push(post);
         change(
           'membership',
-          post.assignmentType === 'exchange' ? '交流维修' : '组织任职',
+          post.assignmentType === 'exchange'
+            ? '交流维修'
+            : post.assignmentType === 'maintenance_affairs'
+              ? '维修事务'
+              : '组织任职',
           '',
           `${byDepartment.get(post.departmentId)?.name} · ${positionLabels[post.positionCode]} · ${item.effectiveFrom} 起`
         );
@@ -436,6 +449,7 @@ export function memberImportDomain({ repository, contextFor, evaluate }) {
       departmentId: plan.departmentId,
       positionCode: plan.positionCode,
       exchangeParticipation: plan.exchangeParticipation,
+      maintenanceParticipation: plan.maintenanceParticipation,
       authorizedCampuses: plan.authorizedCampuses,
       accountRole: plan.accountRole,
       updateAccountCampuses: plan.updateAccountCampuses,

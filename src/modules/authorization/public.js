@@ -9,7 +9,7 @@ const repairOperations = ['repair.start','repair.finish.own','repair.transfer'];
 const receptionOperations = ['repair.receive','onsite.create'];
 
 export const managementPermissions=['members.manage','accounts.manage','booking.manage','repair.correct','statistics.read','roster.manage','attendance.session.manage','attendance.correct','attendance.export'];
-export const identityPermissions=[...staffRepairPermissions,...managementPermissions,'roster.read','attendance.self'];
+export const identityPermissions=[...staffRepairPermissions,...managementPermissions,'roster.read','attendance.self','attendance.token.issue'];
 
 function values(value) {
   return Array.isArray(value) ? value : value === undefined || value === null ? [] : [value];
@@ -77,11 +77,13 @@ export function createAuthorizer({ providers = conditionProviders() } = {}) {
         const requested=values(target.campusId || target.campusIds);
         const scoped=!!actor?.memberId && !!campuses.length && requested.every(id=>campuses.some(value=>campusId(value)===campusId(id)));
         let eligible=true;
-        const repairs=posts.some(post=>post.departmentCode==='hardware');
+        const affairs=posts.some(post=>post.assignmentType==='maintenance_affairs');
+        const repairs=posts.some(post=>post.departmentCode==='hardware' && post.assignmentType!=='maintenance_affairs');
         if(repairOperations.includes(permissionCode))eligible=repairs;
-        if(receptionOperations.includes(permissionCode))eligible=repairs || posts.some(post=>post.departmentCode==='office' && post.assignmentType!=='exchange');
+        if(receptionOperations.includes(permissionCode))eligible=repairs || affairs;
         if(managementPermissions.includes(permissionCode))eligible=actor?.role==='superadmin' || isLeader(context);
         if(permissionCode==='attendance.self')eligible=actor?.role==='superadmin' || isLeader(context) || participationCodes(context,target).length>0;
+        if(permissionCode==='attendance.token.issue')eligible=actor?.role==='superadmin' || isLeader(context) || affairs;
         const allowed=scoped && eligible;
         return {allowed,matchedGrantIds:[],reasonCode:allowed?'IDENTITY_SCOPE':'IDENTITY_SCOPE_DENIED',scope:allowed?[{campusIds:campuses}]:[],explanations:[]};
       }

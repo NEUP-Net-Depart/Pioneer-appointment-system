@@ -157,6 +157,19 @@ export function AttendanceManagement({ campusId, onDirtyChange }) {
               ?.map((item) => `${dutyTypeLabels[item.dutyType]} ${item.startAt}–${item.endAt}`)
               .join('、') || '临时到场'}
             {person.record ? ` · ${time(person.record.occurredAt)}` : ''}
+            {person.record && (
+              <span className="attendance-source">
+                {' '}
+                ·{' '}
+                {person.record.checkinSource?.kind === 'qr'
+                  ? `签到码：${person.record.checkinSource.issuerName || '历史记录未保存出码人'}`
+                  : person.record.checkinSource?.kind === 'direct'
+                    ? '本人直接签到'
+                    : person.record.checkinSource?.kind === 'correction'
+                      ? `补记：${person.record.checkinSource.operatorName || person.record.checkinSource.operatorAccount}`
+                      : '历史记录未保存来源'}
+              </span>
+            )}
             {person.unavailable ? ' · 账号或校区授权已失效，请调整班表' : ''}
           </p>
         </div>

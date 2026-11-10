@@ -18,11 +18,14 @@ export function activeMemberships(context={}) {
 export function isLeader(context={}) {
   return activeMemberships(context).some(post=>post.isPrimary && leadershipPositions.includes(post.positionCode));
 }
+export function hasMaintenanceAffairs(context={}) {
+  return activeMemberships(context).some(post=>post.assignmentType==='maintenance_affairs');
+}
 export function participationCodes(context={},target={}) {
   const normalize=value=>({'南湖':'campus-nanhu','浑南':'campus-hunnan'})[value] || value;
   if(target.campusId && !(context.actor?.authorizedCampuses || []).some(value=>normalize(value)===normalize(target.campusId)))return [];
-  return [...new Set(activeMemberships(context).flatMap(post=>post.assignmentType==='exchange'
+  return [...new Set(activeMemberships(context).flatMap(post=>post.assignmentType==='maintenance_affairs'?['office']:post.assignmentType==='exchange'
     ? post.departmentCode==='hardware'?['exchange']:[]
     : post.isPrimary && post.departmentCode==='hardware'?['repair']
-    : post.isPrimary && post.departmentCode==='office'?['office']:[]))];
+    : []))];
 }

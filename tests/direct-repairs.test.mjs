@@ -150,9 +150,10 @@ test('hardware staff can receive multiple orders after hours and hand over acros
   assert.equal(Object.hasOwn(listing[0],'social'),false);
 });
 
-test('office reception and manager completion preserve the hardware owner, repair statistics and operation audit',async t=>{
+test('maintenance affairs reception and manager completion preserve the hardware owner, repair statistics and operation audit',async t=>{
   const {db,users,staff,service,order,calendar}=repairScenario(t);
   db.sqlite.exec("UPDATE member_department_memberships SET department_id='dept-office' WHERE id='post-20260001'");
+  db.sqlite.exec("INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,effective_from,created_at) VALUES('affairs','member-20260001','dept-office','maintenance_affairs',0,'2026-01-01','2026-01-01')");
   const office=await users.find('20260001'),hardware=await users.find('20260002');
   order('joint');
   seedPhoto(db,'joint-front','joint','front',office.account);
@@ -295,6 +296,7 @@ test('unified lookup reuses identity and exact contact search without returning 
 test('deferred originals stay with the receiver across repair ownership, completion and partial supplements',async t=>{
   const {db,users,repo,staff,service,order,calendar}=repairScenario(t);
   db.sqlite.exec("UPDATE member_department_memberships SET department_id='dept-office' WHERE id='post-20260001'");
+  db.sqlite.exec("INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,effective_from,created_at) VALUES('affairs','member-20260001','dept-office','maintenance_affairs',0,'2026-01-01','2026-01-01')");
   order('deferred');const receiver=await users.find('20260001'),repairer=await users.find('20260002');
   await assert.rejects(service.receive('deferred',{revision:0,requestId:crypto.randomUUID()},receiver),{status:400});
   const received=await service.receive('deferred',{revision:0,requestId:crypto.randomUUID(),photosCaptured:true,uploadTimedOut:true},receiver);

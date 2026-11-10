@@ -137,6 +137,9 @@
   gap: 12px;
 }
 .duty-day-column {
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-row: span 3;
   min-width: 0;
   border: 1px solid #e3e6eb;
   background: #fff;
@@ -155,8 +158,13 @@
   font-size: 16px;
 }
 .duty-shift-group {
+  display: flex;
+  flex-direction: column;
   padding: 14px;
   border-top: 1px solid #edf0f4;
+}
+.duty-shift-group > button:last-child {
+  margin-top: auto;
 }
 .duty-shift-group h4 {
   display: flex;

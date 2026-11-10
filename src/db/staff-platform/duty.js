@@ -92,8 +92,8 @@ export function dutyRepository({ db, writeCommand }) {
       (gate, id) => [
         db
           .prepare(
-            `INSERT INTO attendance_records(id,member_id,event_id,dedupe_key,occurred_at,recorded_at,method,source_ref,primary_department_id_snapshot,primary_department_name_snapshot,identity_snapshot,non_scheduled)
-          SELECT ?,?,?,?,?,?,'manual',?,?,?,?,0 WHERE ${gate}`
+            `INSERT INTO attendance_records(id,member_id,event_id,dedupe_key,occurred_at,recorded_at,method,source_ref,primary_department_id_snapshot,primary_department_name_snapshot,identity_snapshot,non_scheduled,checkin_source)
+            SELECT ?,?,?,?,?,?,'manual',?,?,?,?,0,? WHERE ${gate}`
           )
           .bind(
             attendanceId,
@@ -106,6 +106,11 @@ export function dutyRepository({ db, writeCommand }) {
             department?.departmentId || null,
             department?.departmentName || null,
             JSON.stringify(identitySnapshot),
+            JSON.stringify({
+              kind: 'correction',
+              operatorMemberId: record.actorMemberId,
+              operatorAccount: record.actorAccount
+            }),
             id
           ),
         db

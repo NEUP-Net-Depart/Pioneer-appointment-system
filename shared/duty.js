@@ -36,20 +36,13 @@ export function dutyLeader(memberships, day) {
 
 export function dutyCandidateTypes(memberships, day) {
   const posts = activeMemberships({ memberships, businessDate: day });
-  if (
-    posts.some(
-      (post) =>
-        post.assignmentType !== 'exchange' && globalLeadershipPositions.includes(post.positionCode)
-    )
-  )
-    return DUTY_TYPES;
   return DUTY_TYPES.filter((type) =>
     posts.some(
       (post) =>
-        post.assignmentType !== 'exchange' &&
-        post.departmentCode === (type === 'repair' ? 'hardware' : 'office') &&
-        (post.isPrimary ||
-          (type === 'repair' && ['head', 'deputy_head'].includes(post.positionCode)))
+        type === 'office' ? post.assignmentType === 'maintenance_affairs' :
+        post.assignmentType === 'primary' &&
+        (globalLeadershipPositions.includes(post.positionCode) ||
+          (post.departmentCode === 'hardware' && post.isPrimary))
     )
   );
 }

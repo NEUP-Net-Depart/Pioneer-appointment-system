@@ -200,7 +200,7 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
   async function home(actor,query={},providedContext,providedRepairs) {
     const context = providedContext || await staff.contextFor(actor);
     const {campuses,selected} = campusScope(actor,query);
-    const capability = Object.fromEntries(['repair.summary.read','repair.start','repair.transfer','repair.receive','onsite.create','attendance.self','attendance.session.manage','members.manage','roles.manage'].map(code=>[code,allowed(context,code,{campusId:selected,memberId:context.actor.memberId})]));
+    const capability = Object.fromEntries(['repair.summary.read','repair.start','repair.transfer','repair.receive','onsite.create','attendance.self','attendance.session.manage','attendance.token.issue','members.manage','roles.manage'].map(code=>[code,allowed(context,code,{campusId:selected,memberId:context.actor.memberId})]));
     const businessDate = dateKey();
     const [progress,pendingPhotos,directAttendance,event,pendingCoverInvitations,attendance] = await Promise.all([
       providedRepairs || appointments.inProgress(actor.account),
