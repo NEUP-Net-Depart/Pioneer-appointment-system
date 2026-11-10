@@ -103,7 +103,8 @@ fieldset.staffing-editor {
   font-size: 12px;
 }
 .field-app,
-.field-modal {
+.field-modal,
+.staff-mode .plugin-web-update-notice {
   --workspace-gutter: clamp(24px, 3vw, 48px);
   --workspace-top: 32px;
   --workspace-gap: 24px;
@@ -116,6 +117,63 @@ fieldset.staffing-editor {
   font-family: Inter, 'Segoe UI', 'Microsoft YaHei', sans-serif;
   font-size: 14px;
   line-height: 1.6;
+}
+/* Theme the plugin's native notification without replacing its markup or events. */
+.staff-mode .plugin-web-update-notice {
+  width: min(360px, calc(100% - 48px));
+}
+.staff-mode .plugin-web-update-notice-content {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 20px 24px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--workspace-surface);
+  color: var(--ink);
+  box-shadow: 0 8px 24px rgb(36 43 53 / 12%);
+  line-height: inherit;
+}
+.staff-mode .plugin-web-update-notice-content-title {
+  margin-bottom: 8px;
+  font-size: 16px;
+  font-weight: 650;
+}
+.staff-mode .plugin-web-update-notice-content-desc {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: inherit;
+}
+.staff-mode .plugin-web-update-notice-tools {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+.staff-mode .plugin-web-update-notice-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--workspace-surface);
+  color: var(--ink);
+  font: inherit;
+}
+.staff-mode .plugin-web-update-notice-btn:hover {
+  background: var(--workspace-subtle);
+  border-color: #aeb8c5;
+}
+.staff-mode .plugin-web-update-notice-refresh-btn {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: white;
+}
+.staff-mode .plugin-web-update-notice-refresh-btn:hover {
+  background: #3d495a;
+  border-color: #3d495a;
 }
 /* Keep authentication screens in the same visual system as the staff workspace. */
 .staff-mode .toast {
