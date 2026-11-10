@@ -27,7 +27,7 @@ export function AccountSettings({
     [confirm, setConfirm] = useState(false);
   const form = useRef<HTMLFormElement>(null);
   const security = section !== 'capacity';
-  const allowed = staffPermission(user, 'settings.manage');
+  const allowed = staffPermission(user, 'booking.manage');
   function signedOut(message: string) {
     clearSession();
     window.dispatchEvent(new CustomEvent('auth-expired', { detail: { message } }));

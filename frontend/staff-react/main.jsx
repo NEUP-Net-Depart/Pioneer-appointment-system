@@ -189,7 +189,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
       ? [{ id: 'stats', label: '统计分析' }]
       : []),
     ...(profile ? [{ id: 'settings', label: '账号安全' }] : []),
-    ...(staffPermission(effectiveUser, 'settings.manage')
+    ...(staffPermission(effectiveUser, 'booking.manage')
       ? [{ id: 'capacity', label: '预约配置' }]
       : [])
   ].map(workspaceEntry);
