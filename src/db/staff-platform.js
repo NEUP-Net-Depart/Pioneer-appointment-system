@@ -1,6 +1,5 @@
 import { serviceDayRepository } from './service-days.js';
 import { memberImportDomain } from './staff-platform/member-import.js';
-import { departmentsDomain } from './staff-platform/departments.js';
 import { membersDomain } from './staff-platform/members.js';
 import { fieldDomain } from './staff-platform/field.js';
 import { rolesDomain } from './staff-platform/roles.js';
@@ -17,7 +16,6 @@ export function staffPlatformRepository(db) {
     ...commands,
     ...membersDomain(deps),
     ...memberImportDomain(deps),
-    ...departmentsDomain(deps),
     ...rolesDomain(deps),
     ...attendance,
     ...fieldDomain({ db, event: attendance.event }),

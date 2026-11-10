@@ -285,7 +285,7 @@ test('daily duty review and historical arrival correction update the selected me
 test('save-and-switch retains a failed draft and navigates only after a successful save', async ({
   page
 }) => {
-  await loginStaff(page, 'root001', process.env.E2E_ROOT_PASSWORD);
+  await loginStaff(page, '20261001');
   await staffPage(page, '预约配置');
   await page.getByRole('button', { name: '放号时间', exact: true }).click();
   const time = page.getByLabel('放号时间（北京时间）');

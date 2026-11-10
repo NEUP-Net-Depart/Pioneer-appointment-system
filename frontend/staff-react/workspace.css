@@ -930,16 +930,6 @@
   background: white;
   overflow: hidden;
 }
-.department-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-.department-row strong {
-  flex: 1;
-  min-width: 120px;
-}
 .member-import-preview {
   max-height: 55vh;
   overflow: auto;

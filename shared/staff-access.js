@@ -9,9 +9,9 @@ export function staffViewAllowed(user, view) {
   const permissions = {
     staff: 'repair.summary.read', members: 'members.manage', permissions: 'roles.manage',
 
-    users: 'accounts.manage', stats: 'statistics.read', capacity: 'settings.manage',
+    users: 'accounts.manage', stats: 'statistics.read', capacity: 'booking.manage',
   };
-  if (view === 'members') return ['members.manage', 'accounts.manage', 'settings.manage'].some(code => staffPermission(user, code));
+  if (view === 'members') return ['members.manage', 'accounts.manage'].some(code => staffPermission(user, code));
   if (['workbench', 'settings'].includes(view)) return true;
   if (view === 'duties') return ['roster.manage','attendance.self','attendance.correct','attendance.export'].some(code => staffPermission(user,code));
   return !!permissions[view] && staffPermission(user, permissions[view]);

@@ -414,8 +414,7 @@ test('logout and authorization changes discard private rows and late responses i
         data.permissions = {
           ...data.permissions,
           'members.manage': false,
-          'accounts.manage': false,
-          'settings.manage': false
+          'accounts.manage': false
         };
       }
       await route.fulfill({ response, json: data });
