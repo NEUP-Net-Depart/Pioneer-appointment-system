@@ -30,7 +30,7 @@ export function AttendanceActions({
   onCheckIn: () => void;
   onShowCode?: () => void;
 }) {
-  const manage = !!onShowCode && data.capability['attendance.session.manage'];
+  const manage = !!onShowCode && data.capability['attendance.token.issue'];
   const pending = canSelfCheckIn(data);
   if (!manage && !pending) return null;
   const campus = data.campuses.find((item) => item.id === data.campusId)?.name;

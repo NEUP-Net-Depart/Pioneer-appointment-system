@@ -65,17 +65,25 @@ export function attendanceDomain({ db, auditStatement, commandAuthorization }) {
     const statements = [
       db
         .prepare(
-          'UPDATE attendance_tokens SET revoked_at=? WHERE event_id=? AND revoked_at IS NULL AND EXISTS(SELECT 1 FROM attendance_events WHERE id=? AND revision=?)'
+          'UPDATE attendance_tokens SET revoked_at=? WHERE event_id=? AND issued_by_member_id=? AND revoked_at IS NULL AND EXISTS(SELECT 1 FROM attendance_events WHERE id=? AND revision=?)'
         )
-        .bind(at, eventId, eventId, revision),
+        .bind(at, eventId, actorMemberId, eventId, revision),
       db
         .prepare(
-          'INSERT INTO attendance_tokens(id,event_id,token_hash,version,issued_at,expires_at) SELECT ?,?,?,COALESCE((SELECT MAX(version)+1 FROM attendance_tokens WHERE event_id=?),1),?,? WHERE EXISTS(SELECT 1 FROM attendance_events WHERE id=? AND revision=?)'
+          'INSERT INTO attendance_tokens(id,event_id,token_hash,version,issued_at,expires_at,issued_by_member_id,issued_by_name) SELECT ?,?,?,COALESCE((SELECT MAX(version)+1 FROM attendance_tokens WHERE event_id=?),1),?,?,?,(SELECT name FROM members WHERE id=?) WHERE EXISTS(SELECT 1 FROM attendance_events WHERE id=? AND revision=?)'
         )
-        .bind(crypto.randomUUID(), eventId, tokenHash, eventId, at, expiresAt, eventId, revision),
-      db
-        .prepare('UPDATE attendance_events SET revision=revision+1 WHERE id=? AND revision=?')
-        .bind(eventId, revision)
+        .bind(
+          crypto.randomUUID(),
+          eventId,
+          tokenHash,
+          eventId,
+          at,
+          expiresAt,
+          actorMemberId,
+          actorMemberId,
+          eventId,
+          revision
+        )
     ];
     const result = await db.batch(statements);
     if (!result.at(-1)?.meta?.changes) return null;
@@ -109,7 +117,7 @@ export function attendanceDomain({ db, auditStatement, commandAuthorization }) {
   async function findEventByToken(tokenHash) {
     const row = await db
       .prepare(
-        `SELECT e.*,t.id AS token_id,t.version AS token_version,t.expires_at AS token_expires_at FROM attendance_tokens t JOIN attendance_events e ON e.id=t.event_id
+        `SELECT e.*,t.id AS token_id,t.version AS token_version,t.expires_at AS token_expires_at,t.issued_by_member_id,t.issued_by_name FROM attendance_tokens t JOIN attendance_events e ON e.id=t.event_id
       WHERE t.token_hash=? AND t.revoked_at IS NULL AND t.expires_at>?`
       )
       .bind(tokenHash, nowIso())
@@ -117,7 +125,13 @@ export function attendanceDomain({ db, auditStatement, commandAuthorization }) {
     return row
       ? {
           event: event(row),
-          token: { id: row.token_id, version: row.token_version, expiresAt: row.token_expires_at }
+          token: {
+            id: row.token_id,
+            version: row.token_version,
+            expiresAt: row.token_expires_at,
+            issuerMemberId: row.issued_by_member_id,
+            issuerName: row.issued_by_name
+          }
         }
       : null;
   }
@@ -190,7 +204,7 @@ export function attendanceDomain({ db, auditStatement, commandAuthorization }) {
             record.eventId,
             record.recordedAt,
             record.recordedAt,
-            record.directLeader ? 1 : 0,
+            record.directWithoutRoster ? 1 : 0,
             record.memberId,
             record.businessDate,
             record.campusId
@@ -199,8 +213,8 @@ export function attendanceDomain({ db, auditStatement, commandAuthorization }) {
     const statements = [
       db
         .prepare(
-          `INSERT INTO attendance_records(id,member_id,event_id,dedupe_key,occurred_at,recorded_at,method,source_ref,primary_department_id_snapshot,primary_department_name_snapshot,identity_snapshot,non_scheduled)
-      SELECT ?,?,?,?,?,?,?,?,?,?,?,?${guard}`
+          `INSERT INTO attendance_records(id,member_id,event_id,dedupe_key,occurred_at,recorded_at,method,source_ref,primary_department_id_snapshot,primary_department_name_snapshot,identity_snapshot,non_scheduled,checkin_source)
+      SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?${guard}`
         )
         .bind(
           record.id,
@@ -215,6 +229,7 @@ export function attendanceDomain({ db, auditStatement, commandAuthorization }) {
           record.departmentName || null,
           json(record.identitySnapshot, {}),
           record.nonScheduled ? 1 : 0,
+          json(record.checkinSource, {}),
           ...guardArgs
         )
     ];
@@ -280,7 +295,7 @@ export function attendanceDomain({ db, auditStatement, commandAuthorization }) {
             )
             .bind(
               json({ module: 'attendance', type: 'record', id: record.id }, {}),
-              json(record, {}),
+              json({ ...record, checkinSource: undefined }, {}),
               record.memberId,
               record.requestId,
               record.payloadHash,
@@ -348,7 +363,10 @@ export function attendanceDomain({ db, auditStatement, commandAuthorization }) {
       )
       .bind(...args)
       .all();
-    return rows(result).map(attendanceRecord);
+    return rows(result).map((row) => ({
+      ...attendanceRecord(row),
+      ...(filters.includeSource ? { checkinSource: parseJson(row.checkin_source, {}) } : {})
+    }));
   }
 
   async function attendanceById(id) {
@@ -478,6 +496,7 @@ export function attendanceDomain({ db, auditStatement, commandAuthorization }) {
     return {
       records: rows(result).map((row) => ({
         ...attendanceRecord(row),
+        checkinSource: parseJson(row.checkin_source, {}),
         memberName: row.member_name,
         studentId: row.student_id
       }))

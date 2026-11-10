@@ -81,7 +81,7 @@ test('suggestions maximize real leader coverage, exclude occupied members and pr
   ].map(([memberId, membership]) => ({
     memberId,
     name: memberId,
-    memberships: [membership],
+    memberships: [membership, ...(['c', 'd'].includes(memberId) ? [{ ...post('office'), assignmentType: 'maintenance_affairs', isPrimary: false }] : [])],
     assignments: []
   }));
   const availability = [
@@ -256,10 +256,13 @@ test('today includes unsigned people and leave, arrival is idempotent and attrib
   await staff.confirmArrival(head, input);
   await staff.confirmArrival(head, { ...input, requestId: requestId() });
   assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM attendance_records').get().n, 1);
-  assert.equal(
-    (await staff.attendanceDay(head, { campusId, businessDate: weekStart })).summary.arrived,
-    1
-  );
+  const arrived = await staff.attendanceDay(head, { campusId, businessDate: weekStart });
+  assert.equal(arrived.summary.arrived, 1);
+  assert.deepEqual(arrived.items.find((row) => row.memberId === worker.memberId).record.checkinSource, {
+    kind: 'correction',
+    operatorMemberId: head.memberId,
+    operatorAccount: head.account
+  });
 });
 
 test('QR and minister confirmation race to one attendance fact and one live transition', async (t) => {

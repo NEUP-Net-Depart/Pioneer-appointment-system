@@ -83,7 +83,9 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
                 {item.departmentName} ·{' '}
                 {item.assignmentType === 'exchange'
                   ? '交流维修'
-                  : positionLabels[item.positionCode]}
+                  : item.assignmentType === 'maintenance_affairs'
+                    ? '维修事务'
+                    : positionLabels[item.positionCode]}
               </strong>
               <p>
                 {item.effectiveFrom} 至 {item.effectiveTo || '长期有效'}
@@ -155,10 +157,12 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
                       setDraft({
                         ...draft,
                         assignmentType: event.target.value,
-                        ...(event.target.value === 'exchange'
+                        ...(event.target.value !== 'primary'
                           ? {
                               departmentId:
-                                departments.find((item) => item.code === 'hardware')?.id || '',
+                                event.target.value === 'exchange'
+                                  ? departments.find((item) => item.code === 'hardware')?.id || ''
+                                  : draft.departmentId,
                               positionCode: 'member',
                               replacesMembershipId: ''
                             }
@@ -166,13 +170,15 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
                       })
                     }
                   >
-                    {Object.entries({ primary: '正式任职', exchange: '交流维修' }).map(
-                      ([code, label]) => (
-                        <option key={code} value={code}>
-                          {label}
-                        </option>
-                      )
-                    )}
+                    {Object.entries({
+                      primary: '正式任职',
+                      exchange: '交流维修',
+                      maintenance_affairs: '维修事务'
+                    }).map(([code, label]) => (
+                      <option key={code} value={code}>
+                        {label}
+                      </option>
+                    ))}
                   </select>
                 </label>
                 {draft.assignmentType === 'primary' && (

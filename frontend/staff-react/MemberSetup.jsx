@@ -9,6 +9,7 @@ export const newMemberSetup = (user) => ({
   effectiveFrom: dateKey(),
   authorizedCampuses: [],
   exchangeParticipation: false,
+  maintenanceParticipation: false,
   configureActivation: false
 });
 export const memberDefaults = (setup) => ({ ...setup });
@@ -78,6 +79,14 @@ export function MemberSetup({
           />
         </label>
       </div>
+      <label className="workspace-check">
+        <input
+          type="checkbox"
+          checked={!!value.maintenanceParticipation}
+          onChange={(event) => change({ maintenanceParticipation: event.target.checked })}
+        />
+        任职维修事务
+      </label>
       {canAuthorize && (
         <fieldset>
           <legend>授权校区</legend>
