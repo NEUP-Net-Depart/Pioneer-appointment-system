@@ -5,6 +5,10 @@
 }
 .records-overview {
   margin-bottom: 28px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: white;
 }
 .data-expansion {
   display: grid;
@@ -131,48 +135,6 @@
   .field-app .records-slot-status button {
     min-height: 44px;
   }
-}
-.records-overview-disclosure {
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: white;
-}
-.records-overview-disclosure > summary {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px;
-  gap: 16px;
-  cursor: pointer;
-  list-style: none;
-}
-.records-overview-disclosure > summary::-webkit-details-marker {
-  display: none;
-}
-.records-overview-disclosure > summary:focus-visible {
-  outline: 3px solid #9ba8ba;
-  outline-offset: 3px;
-  border-radius: 14px;
-}
-.records-overview-disclosure > summary p {
-  margin: 6px 0 0;
-}
-.records-overview-toggle {
-  font-size: 12px;
-  white-space: nowrap;
-  color: var(--muted);
-}
-.records-overview-disclosure .when-open {
-  display: none;
-}
-.records-overview-disclosure[open] .when-closed {
-  display: none;
-}
-.records-overview-disclosure[open] .when-open {
-  display: inline;
-}
-.records-overview-body {
-  padding: 0 20px 20px;
 }
 .records-periods {
   display: flex;
@@ -442,18 +404,11 @@
   }
 }
 @media (max-width: 767px) {
-  .records-overview-disclosure > summary {
+  .records-overview {
     padding: 16px;
-    align-items: flex-start;
   }
-  .records-overview-disclosure > summary h2 {
+  .records-overview > h2 {
     font-size: 17px;
-  }
-  .records-overview-disclosure > summary p {
-    font-size: 12px;
-  }
-  .records-overview-body {
-    padding: 0 16px 16px;
   }
   .records-campus-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -473,20 +428,11 @@
     padding: 16px;
   }
   .records-mobile-sort {
-    display: block;
-    padding: 0 16px 16px;
-  }
-  .records-mobile-sort > summary {
-    cursor: pointer;
-    min-height: 44px;
-    padding-block: 12px;
-    font-size: 13px;
-  }
-  .records-mobile-sort > div {
     display: flex;
     align-items: end;
+    flex-wrap: wrap;
     gap: 12px;
-    padding-block: 8px;
+    padding: 0 16px 16px;
   }
   .records-mobile-sort label {
     display: grid;
@@ -587,10 +533,14 @@
   font-weight: 600;
   margin-bottom: 8px;
 }
-.member-detail-editor label:not(.react-check) {
+.member-detail-editor label:not(.react-check):not(.workspace-check) {
   display: grid;
   gap: 8px;
   margin: 16px 0;
+}
+.member-detail-editor .workspace-form-fields label:not(.react-check):not(.workspace-check),
+.member-detail-editor .workspace-form-fields :is(fieldset, p) {
+  margin: 0;
 }
 .member-detail-editor .react-binding {
   margin: 16px 0;

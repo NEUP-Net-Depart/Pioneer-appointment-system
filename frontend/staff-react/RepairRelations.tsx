@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { api, Notice } from './field/ui';
 import { Registration } from './field/Registration';
 import type { Appointment } from './field/types';
@@ -13,6 +13,8 @@ export function RepairRelations({
   onChanged: () => void;
   onOpen: (id: string, token?: string) => void;
 }) {
+  const historyId = useId();
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [parentId, setParentId] = useState(''),
     [targetId, setTargetId] = useState('');
   const [kind, setKind] = useState('continuation'),
@@ -67,15 +69,33 @@ export function RepairRelations({
         </p>
       )}
       {!!historical.length && (
-        <details>
-          <summary>该客户有 {historical.length} 条历史维修记录</summary>
-          {historical.map((row) => (
-            <p key={row.id}>
-              <button onClick={() => onOpen(row.id)}>{row.id}</button> · {row.date} · {row.brand}{' '}
-              {row.deviceModel} · {row.faultType} · {outcomeLabels[row.outcome]}
-            </p>
-          ))}
-        </details>
+        <div className="repair-history">
+          <button
+            type="button"
+            aria-expanded={historyOpen}
+            aria-controls={historyId}
+            onClick={() => setHistoryOpen((value) => !value)}
+          >
+            {historyOpen ? '收起历史维修' : '查看历史维修'}（{historical.length}）
+          </button>
+          {historyOpen && (
+            <ul id={historyId} className="repair-history-list">
+              {historical.map((row) => (
+                <li key={row.id}>
+                  <button type="button" onClick={() => onOpen(row.id)}>
+                    {row.id}
+                  </button>
+                  <span>
+                    {row.date} · {row.brand} {row.deviceModel}
+                  </span>
+                  <span>
+                    {row.faultType} · {outcomeLabels[row.outcome]}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
       {item.canEdit &&
         !item.parentAppointmentId &&
@@ -111,7 +131,7 @@ export function RepairRelations({
                 checked={confirmed}
                 onChange={(e) => setConfirmed(e.target.checked)}
               />
-              已核对为同一设备的原故障；全新故障不关联
+              <span>已核对为同一设备的原故障；全新故障不关联</span>
             </label>
             {item.status === 'completed' && (
               <label>

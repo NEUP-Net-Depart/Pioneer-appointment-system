@@ -306,25 +306,22 @@ export function Records({ user }) {
         </div>
         <Notice>{list.error?.message}</Notice>
         {list.error && <button onClick={refresh}>重试读取</button>}
-        <details className="records-mobile-sort">
-          <summary>排序与优先级</summary>
-          <div>
-            <label>
-              组合排序
-              <select value="" onChange={(event) => cycle(event.target.value)}>
-                <option value="" disabled>
-                  选择排序字段
+        <section className="records-mobile-sort" aria-label="排序与优先级">
+          <label>
+            组合排序
+            <select value="" onChange={(event) => cycle(event.target.value)}>
+              <option value="" disabled>
+                选择排序字段
+              </option>
+              {Object.entries(columns).map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
                 </option>
-                {Object.entries(columns).map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {sorts.length > 0 && <button onClick={() => setSorts([])}>清除排序</button>}
-          </div>
-        </details>
+              ))}
+            </select>
+          </label>
+          {sorts.length > 0 && <button onClick={() => setSorts([])}>清除排序</button>}
+        </section>
         <div data-motion-list="reveal" className="records-table-wrap" aria-busy={list.isPending}>
           <table className="records-table">
             <thead>
@@ -523,20 +520,17 @@ function RecordFilter({ menu, filters, counts, campuses, slots, onChange, onClos
                 ))}
               </select>
             </label>
-            <details className="field-details">
-              <summary>查找历史记录</summary>
-              <label>
-                历史日期
-                <input
-                  type="date"
-                  max={today}
-                  value={filters.date <= today ? filters.date : ''}
-                  onChange={(event) =>
-                    onChange({ date: event.target.value, dateFrom: '', dateTo: '' })
-                  }
-                />
-              </label>
-            </details>
+            <label>
+              历史日期
+              <input
+                type="date"
+                max={today}
+                value={filters.date <= today ? filters.date : ''}
+                onChange={(event) =>
+                  onChange({ date: event.target.value, dateFrom: '', dateTo: '' })
+                }
+              />
+            </label>
             <button onClick={() => onChange({ date: '', dateFrom: '', dateTo: '', timeSlot: '' })}>
               清除时间筛选
             </button>
@@ -564,169 +558,143 @@ function RecordOverview({ result, filters, campuses, onFilter }) {
   }
   return (
     <section className="records-overview" aria-label="近期预约概览">
-      <details className="records-overview-disclosure" open>
-        <summary>
-          <div>
-            <h2>近期预约概览</h2>
-          </div>
-          <span className="records-overview-toggle">
-            <span className="when-closed">查看概览 ＋</span>
-            <span className="when-open">收起概览 −</span>
-          </span>
-        </summary>
-        <div className="records-overview-body">
-          <Notice>{result.error?.message}</Notice>
-          {
-            <>
-              <div className="records-periods">
-                {[
-                  'week',
-                  ...(data?.dates ||
-                    Array.from({ length: 7 }, (_, index) => addDays(dateKey(), index)).filter(
-                      serviceDay
-                    ))
-                ].map((value) => (
+      <h2>近期预约概览</h2>
+      <Notice>{result.error?.message}</Notice>
+      <div className="records-periods">
+        {[
+          'week',
+          ...(data?.dates ||
+            Array.from({ length: 7 }, (_, index) => addDays(dateKey(), index)).filter(serviceDay))
+        ].map((value) => (
+          <button
+            key={value}
+            disabled={!data}
+            aria-pressed={
+              value === 'week'
+                ? filters.dateFrom === data?.week.start && !!filters.dateFrom
+                : filters.date === value
+            }
+            onClick={() => {
+              onFilter({
+                campus: 'all',
+                timeSlot: '',
+                status: 'all',
+                ...(value === 'week'
+                  ? { date: '', dateFrom: data.week.start, dateTo: data.week.end }
+                  : { date: value, dateFrom: '', dateTo: '' })
+              });
+            }}
+          >
+            {value === 'week' ? '本周' : dayLabel(value)}
+          </button>
+        ))}
+      </div>
+      <div className="records-campus-grid">
+        {(data?.campuses || campuses).map((campus) => {
+          let items = (
+            data
+              ? weekly
+                ? data.week.items
+                : data.items
+              : TIME_SLOTS.map((timeSlot) => ({ campus, date, timeSlot }))
+          ).filter((item) => item.campus === campus && (weekly || item.date === date));
+          if (weekly && data)
+            items = [...new Set(items.map((item) => item.timeSlot))].map((timeSlot) => {
+              const rows = items.filter((item) => item.timeSlot === timeSlot);
+              const sum = (key) => rows.reduce((total, row) => total + row[key], 0);
+              return {
+                timeSlot,
+                capacity: sum('capacity'),
+                occupied: sum('occupied'),
+                booked: sum('booked'),
+                inProgress: sum('inProgress'),
+                remaining: rows.reduce((total, row) => total + (row.ended ? 0 : row.remaining), 0),
+                ended: rows.every((row) => row.ended)
+              };
+            });
+          return (
+            <article className="field-card records-campus" key={campus} aria-busy={!data}>
+              <h3>
+                <button aria-pressed={filters.campus === campus} onClick={() => select({ campus })}>
+                  {campus}校区
+                </button>
+              </h3>
+              {items.map((item) => (
+                <div
+                  className="records-slot"
+                  key={item.timeSlot}
+                  data-selected={
+                    (filters.campus === 'all' || filters.campus === campus) &&
+                    filters.timeSlot === item.timeSlot
+                  }
+                >
                   <button
-                    key={value}
+                    className="records-slot-main"
                     disabled={!data}
                     aria-pressed={
-                      value === 'week'
-                        ? filters.dateFrom === data?.week.start && !!filters.dateFrom
-                        : filters.date === value
+                      (filters.campus === 'all' || filters.campus === campus) &&
+                      filters.timeSlot === item.timeSlot
                     }
-                    onClick={() => {
-                      onFilter({
-                        campus: 'all',
-                        timeSlot: '',
-                        status: 'all',
-                        ...(value === 'week'
-                          ? { date: '', dateFrom: data.week.start, dateTo: data.week.end }
-                          : { date: value, dateFrom: '', dateTo: '' })
-                      });
-                    }}
+                    onClick={() => select({ campus, timeSlot: item.timeSlot })}
                   >
-                    {value === 'week' ? '本周' : dayLabel(value)}
+                    <strong data-motion-value="text">{item.timeSlot}</strong>
+                    <span data-motion-value="text">
+                      {!data ? (
+                        <DataValue label="剩余名额" />
+                      ) : item.paused ? (
+                        '暂停服务'
+                      ) : item.ended ? (
+                        '时段已结束'
+                      ) : !item.capacity ? (
+                        '暂停预约'
+                      ) : item.occupied > item.capacity ? (
+                        '超出当前上限'
+                      ) : !item.remaining ? (
+                        '名额已满'
+                      ) : (
+                        <>
+                          剩余 <DataValue label="剩余名额">{item.remaining}</DataValue> 名
+                        </>
+                      )}
+                    </span>
                   </button>
-                ))}
-              </div>
-              <div className="records-campus-grid">
-                {(data?.campuses || campuses).map((campus) => {
-                  let items = (
-                    data
-                      ? weekly
-                        ? data.week.items
-                        : data.items
-                      : TIME_SLOTS.map((timeSlot) => ({ campus, date, timeSlot }))
-                  ).filter((item) => item.campus === campus && (weekly || item.date === date));
-                  if (weekly && data)
-                    items = [...new Set(items.map((item) => item.timeSlot))].map((timeSlot) => {
-                      const rows = items.filter((item) => item.timeSlot === timeSlot);
-                      const sum = (key) => rows.reduce((total, row) => total + row[key], 0);
-                      return {
-                        timeSlot,
-                        capacity: sum('capacity'),
-                        occupied: sum('occupied'),
-                        booked: sum('booked'),
-                        inProgress: sum('inProgress'),
-                        remaining: rows.reduce(
-                          (total, row) => total + (row.ended ? 0 : row.remaining),
-                          0
-                        ),
-                        ended: rows.every((row) => row.ended)
-                      };
-                    });
-                  return (
-                    <article className="field-card records-campus" key={campus} aria-busy={!data}>
-                      <h3>
-                        <button
-                          aria-pressed={filters.campus === campus}
-                          onClick={() => select({ campus })}
-                        >
-                          {campus}校区
-                        </button>
-                      </h3>
-                      {items.map((item) => (
-                        <div
-                          className="records-slot"
-                          key={item.timeSlot}
-                          data-selected={
-                            (filters.campus === 'all' || filters.campus === campus) &&
-                            filters.timeSlot === item.timeSlot
-                          }
-                        >
-                          <button
-                            className="records-slot-main"
-                            disabled={!data}
-                            aria-pressed={
-                              (filters.campus === 'all' || filters.campus === campus) &&
-                              filters.timeSlot === item.timeSlot
-                            }
-                            onClick={() => select({ campus, timeSlot: item.timeSlot })}
-                          >
-                            <strong data-motion-value="text">{item.timeSlot}</strong>
-                            <span data-motion-value="text">
-                              {!data ? (
-                                <DataValue label="剩余名额" />
-                              ) : item.paused ? (
-                                '暂停服务'
-                              ) : item.ended ? (
-                                '时段已结束'
-                              ) : !item.capacity ? (
-                                '暂停预约'
-                              ) : item.occupied > item.capacity ? (
-                                '超出当前上限'
-                              ) : !item.remaining ? (
-                                '名额已满'
-                              ) : (
-                                <>
-                                  剩余 <DataValue label="剩余名额">{item.remaining}</DataValue> 名
-                                </>
-                              )}
-                            </span>
-                          </button>
-                          <div className="records-slot-status">
-                            <span data-motion-value="text">
-                              已占 <DataValue label="已占名额">{item.occupied}</DataValue> /{' '}
-                              <DataValue label="容量">{item.capacity}</DataValue>
-                            </span>
-                            <button
-                              disabled={!data}
-                              aria-pressed={
-                                filters.campus === campus &&
-                                filters.timeSlot === item.timeSlot &&
-                                filters.status === 'booked'
-                              }
-                              onClick={() =>
-                                select({ campus, timeSlot: item.timeSlot, status: 'booked' })
-                              }
-                            >
-                              待接收 <DataValue label="待接收">{item.booked}</DataValue>
-                            </button>
-                            <button
-                              disabled={!data}
-                              aria-pressed={
-                                filters.campus === campus &&
-                                filters.timeSlot === item.timeSlot &&
-                                filters.status === 'in_progress'
-                              }
-                              onClick={() =>
-                                select({ campus, timeSlot: item.timeSlot, status: 'in_progress' })
-                              }
-                            >
-                              维修中 <DataValue label="维修中">{item.inProgress}</DataValue>
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                      {!items.length && <p className="field-muted">该日期没有预约时段。</p>}
-                    </article>
-                  );
-                })}
-              </div>
-            </>
-          }
-        </div>
-      </details>
+                  <div className="records-slot-status">
+                    <span data-motion-value="text">
+                      已占 <DataValue label="已占名额">{item.occupied}</DataValue> /{' '}
+                      <DataValue label="容量">{item.capacity}</DataValue>
+                    </span>
+                    <button
+                      disabled={!data}
+                      aria-pressed={
+                        filters.campus === campus &&
+                        filters.timeSlot === item.timeSlot &&
+                        filters.status === 'booked'
+                      }
+                      onClick={() => select({ campus, timeSlot: item.timeSlot, status: 'booked' })}
+                    >
+                      待接收 <DataValue label="待接收">{item.booked}</DataValue>
+                    </button>
+                    <button
+                      disabled={!data}
+                      aria-pressed={
+                        filters.campus === campus &&
+                        filters.timeSlot === item.timeSlot &&
+                        filters.status === 'in_progress'
+                      }
+                      onClick={() =>
+                        select({ campus, timeSlot: item.timeSlot, status: 'in_progress' })
+                      }
+                    >
+                      维修中 <DataValue label="维修中">{item.inProgress}</DataValue>
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {!items.length && <p className="field-muted">该日期没有预约时段。</p>}
+            </article>
+          );
+        })}
+      </div>
     </section>
   );
 }

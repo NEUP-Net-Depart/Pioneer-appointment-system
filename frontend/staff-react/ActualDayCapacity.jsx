@@ -107,13 +107,6 @@ export function ActualDayCapacity({ campus, onNavigate }) {
               ) : (
                 <p className="field-muted">此日期没有配置预约时段。</p>
               )}
-              <details className="workspace-help">
-                <summary>名额计算规则</summary>
-                <p>
-                  已占用名额包含已完成、已过期预约；取消预约释放名额。现场临时登记不占用预约名额。
-                  已占用达到或超过容量时停止新增预约，低于容量后恢复放号。
-                </p>
-              </details>
             </div>
             <div className="capacity-staffing">
               <h3>工作人员</h3>
@@ -151,10 +144,6 @@ export function ActualDayCapacity({ campus, onNavigate }) {
                       </div>
                     ))}
                   </div>
-                  <details className="workspace-help">
-                    <summary>出勤计算口径</summary>
-                    <p>按已发布班次去重，并扣除已批准请假；实际到岗以签到记录为准。</p>
-                  </details>
                 </>
               ) : (
                 <p className="field-muted">人员安排请在有权限的排班管理页查看。</p>

@@ -1163,10 +1163,7 @@ fieldset.staffing-editor {
     font-size: max(16px, 1em);
   }
   .field-app .field-details > summary,
-  .field-modal .field-details > summary,
-  .field-app .capacity-quick-tools > summary,
-  .staff-mode .swap-coverage > summary,
-  .staff-mode .workspace-help > summary {
+  .field-modal .field-details > summary {
     min-height: 44px;
     padding-block: 10px;
     cursor: pointer;
@@ -1398,7 +1395,7 @@ fieldset.staffing-editor {
   color: var(--muted);
 }
 .field-app :is(.field-actions, .react-editor-actions):not(.personal-actions),
-.field-modal :is(.field-actions, .react-editor-actions) {
+.field-modal :is(.field-actions, .react-editor-actions, .roster-modal-actions) {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1415,23 +1412,39 @@ fieldset.staffing-editor {
 .field-app .workspace-heading-actions > button {
   min-width: 88px;
 }
-.field-app :is(.workspace-check, .react-check, .permission-filter),
-.field-modal :is(.workspace-check, .react-check, .roster-choice-row > label) {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: flex-start;
+:is(.field-app, .field-modal)
+  :is(
+    .workspace-check,
+    .react-check,
+    .permission-filter,
+    .roster-choice-row,
+    .field-check,
+    .booking-setting-check
+  ) {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
   gap: 10px;
   min-height: 44px;
+  margin: 0;
+  padding-block: 10px;
+  line-height: 24px;
 }
-.field-app :is(.workspace-check, .react-check, .permission-filter) > input,
-.field-modal :is(.workspace-check, .react-check, .roster-choice-row > label) > input {
-  flex: 0 0 20px;
+:is(.field-app, .field-modal)
+  :is(
+    .workspace-check,
+    .react-check,
+    .permission-filter,
+    .roster-choice-row,
+    .field-check,
+    .booking-setting-check
+  )
+  > input {
   width: 20px;
   height: 20px;
   min-height: 20px;
   padding: 0;
-  margin: 0;
+  margin: 2px 0 0;
 }
 .field-app .staff-identity,
 .field-modal .staff-identity {
@@ -1481,49 +1494,15 @@ fieldset.staffing-editor {
 .workspace-search-label input {
   width: 100%;
 }
-.field-modal .workspace-binding > summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-height: 64px;
-  padding: 8px 0;
-  cursor: pointer;
-  list-style: none;
-}
-.workspace-binding > summary::-webkit-details-marker {
-  display: none;
-}
-.workspace-binding > summary > span:first-child {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-}
-.workspace-binding > summary strong {
-  font-size: 15px;
-  font-weight: 600;
-}
-.workspace-binding > summary small {
-  color: var(--muted);
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-.workspace-binding-hint {
-  flex-shrink: 0;
-  font-size: 12px;
-  color: var(--muted);
-}
-.workspace-binding[open] .workspace-binding-hint {
-  font-size: 0;
-}
-.workspace-binding[open] .workspace-binding-hint::after {
-  content: '收起';
-  font-size: 12px;
-}
 .workspace-binding-fields {
   display: grid;
   gap: 16px;
   padding: 16px 0 4px;
+}
+.member-roles-form {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
 }
 .workspace-binding-fields > label {
   display: grid;
@@ -1532,6 +1511,98 @@ fieldset.staffing-editor {
 .workspace-binding-fields > button {
   justify-self: start;
   color: #a33434;
+}
+.field-modal .member-roles-form .workspace-binding-fields :is(label, fieldset) {
+  margin: 0;
+}
+.workspace-campus-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 24px;
+  min-width: 0;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.workspace-campus-options legend,
+.member-detail-editor .workspace-campus-options legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.member-role-binding {
+  padding-block: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.member-role-heading {
+  margin: 0;
+  padding-block: 12px;
+  font-size: 14px;
+  line-height: 24px;
+  overflow-wrap: anywhere;
+}
+summary.member-role-heading {
+  cursor: pointer;
+}
+.member-role-heading > span {
+  margin-left: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.member-import-form {
+  display: grid;
+  gap: 24px;
+}
+.member-import-form label:not(.workspace-check) {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+}
+.member-import-form :is(input:not([type='checkbox']), select, textarea) {
+  width: 100%;
+  min-width: 0;
+}
+.member-import-file-tools {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  align-items: end;
+  gap: 16px;
+}
+.member-import-file {
+  grid-column: 1 / -1;
+}
+.member-import-form > button {
+  justify-self: start;
+}
+.roster-compose {
+  display: grid;
+  gap: 20px;
+}
+.roster-compose > label:not(.roster-choice-row) {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.roster-compose > fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.week-picker,
+.week-picker > div {
+  display: grid;
+  gap: 8px;
+}
+.week-picker > div {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.week-picker select {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  width: 100%;
 }
 .workspace-launcher {
   display: grid;
@@ -1656,8 +1727,7 @@ fieldset.staffing-editor {
 .workspace-more-actions[open] > summary {
   background: var(--workspace-subtle);
 }
-.workspace-more-actions > summary:focus-visible,
-.workspace-binding > summary:focus-visible {
+.workspace-more-actions > summary:focus-visible {
   outline: 2px solid #46668b;
   outline-offset: 3px;
 }
@@ -1816,30 +1886,16 @@ fieldset.staffing-editor {
   #staff-react-root details {
     interpolate-size: allow-keywords;
   }
-  #staff-react-root details:not(.workspace-more-actions):not(.statistics-help)::details-content {
+  #staff-react-root details:not(.workspace-more-actions)::details-content {
     block-size: 0;
     overflow: clip;
     transition:
       block-size var(--workspace-motion-normal, 200ms) var(--workspace-motion-ease, ease-out),
       content-visibility var(--workspace-motion-normal, 200ms) allow-discrete;
   }
-  #staff-react-root
-    details:not(.workspace-more-actions):not(.statistics-help)[open]::details-content {
+  #staff-react-root details:not(.workspace-more-actions)[open]::details-content {
     block-size: auto;
   }
-}
-.statistics-help-content {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows var(--workspace-motion-normal, 200ms)
-    var(--workspace-motion-ease, ease-out);
-}
-.statistics-help[open] .statistics-help-content {
-  grid-template-rows: 1fr;
-}
-.statistics-help-inner {
-  min-height: 0;
-  overflow: hidden;
 }
 .workspace-loaded-media {
   opacity: 0.7;
@@ -1853,7 +1909,6 @@ fieldset.staffing-editor {
     opacity: 1;
   }
   #staff-react-root details:not(.workspace-more-actions)::details-content,
-  .statistics-help-content,
   .workspace-loaded-media {
     transition: none;
   }

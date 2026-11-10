@@ -243,7 +243,7 @@ function RepairOrder({
             }}
             onOpen={onOpen}
           />
-          <RepairAttachments id={id} />
+          <RepairAttachments key={`attachments-${id}`} id={id} />
           {item.canEdit && (
             <RepairInformation
               item={item}

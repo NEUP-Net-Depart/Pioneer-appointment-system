@@ -240,12 +240,6 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
         <h3>当日暂停维修</h3>
         <p data-motion-value="text">{reason.trim() || '该校区当日暂停维修，请选择其他日期。'}</p>
       </div>
-      <details className="workspace-help">
-        <summary>暂停影响范围</summary>
-        <p>
-          暂停当天的新预约、现场登记、开始维修和所有人员签到；办公和维修排班跳过此日。已有预约、班表和考勤保留，进行中的维修仍可完成。
-        </p>
-      </details>
       {affectedCount > 0 && (
         <p data-motion-value="text" className="service-day-impact">
           所选日期有 {affectedCount} 个预约需要联系机主，暂停不会自动取消预约。
