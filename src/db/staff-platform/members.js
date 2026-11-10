@@ -1,6 +1,7 @@
 import { parseJson, SCHEMA_VERSION } from '../../platform/contracts.js';
 import { dateKey, nowIso } from '../../platform/time.js';
 import { intersectScopes } from '../../modules/authorization/scopes.js';
+import { campusArraySql } from '../staff-access.js';
 import { memberColumns, assignmentLeaveColumn, rows, membership, assignment } from './shared.js';
 
 export function membersDomain({ db, auditStatement, commandAuthorization }) {
@@ -8,7 +9,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
     return db
       .prepare(
         `SELECT staff_accounts.*,m.id AS mapped_member_id,m.status AS member_status
-      ,(SELECT json_group_array(campus) FROM staff_access_campuses WHERE account=staff_accounts.account) AS campuses
+      ,${campusArraySql('staff_accounts')} AS campuses
       FROM staff_accounts LEFT JOIN members m ON m.id=staff_accounts.member_id WHERE staff_accounts.account=?`
       )
       .bind(account)
@@ -30,7 +31,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
     return db
       .prepare(
         `SELECT staff_accounts.*,m.id AS mapped_member_id,m.status AS member_status,
-      (SELECT json_group_array(campus) FROM staff_access_campuses WHERE account=staff_accounts.account) AS campuses
+      ${campusArraySql('staff_accounts')} AS campuses
       FROM staff_accounts LEFT JOIN members m ON m.id=staff_accounts.member_id
       WHERE staff_accounts.member_id=?`
       )
@@ -204,7 +205,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
       args.push(filters.after.name, filters.after.name, filters.after.memberId);
     }
     const query = `SELECT ${memberColumns},sa.account,sa.status AS account_status,sa.role,sa.auth_version,
-      (SELECT json_group_array(CASE g.campus WHEN '南湖' THEN 'campus-nanhu' ELSE 'campus-hunnan' END) FROM staff_access_campuses g WHERE g.account=sa.account) AS access_campuses,
+      ${campusArraySql('sa', "CASE campus WHEN '南湖' THEN 'campus-nanhu' ELSE 'campus-hunnan' END")} AS access_campuses,
       (SELECT GROUP_CONCAT(d.name,'、') FROM member_department_memberships mdm JOIN departments d ON d.id=mdm.department_id
        WHERE mdm.member_id=m.id AND mdm.is_primary=1 AND mdm.effective_from<=?
          AND (mdm.effective_to IS NULL OR ?<mdm.effective_to)) AS primary_department
