@@ -8,7 +8,7 @@ export const staffRepairPermissions = ['repair.summary.read','repair.start','rep
 const repairOperations = ['repair.start','repair.finish.own','repair.transfer'];
 const receptionOperations = ['repair.receive','onsite.create'];
 
-export const managementPermissions=['members.manage','booking.manage','repair.correct','statistics.read','roster.manage','attendance.session.manage','attendance.correct','attendance.export'];
+export const managementPermissions=['members.manage','accounts.manage','booking.manage','repair.correct','statistics.read','roster.manage','attendance.session.manage','attendance.correct','attendance.export'];
 export const identityPermissions=[...staffRepairPermissions,...managementPermissions,'roster.read','attendance.self','attendance.token.issue'];
 
 function values(value) {

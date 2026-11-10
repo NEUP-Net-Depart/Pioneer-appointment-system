@@ -22,13 +22,13 @@ test('ministers manage every department in their campus; directors and president
   const head=await users.find('20261001'),director=await users.find('20261002'),president=await users.find('20261003');
   assert.deepEqual(director.authorizedCampuses.sort(),['南湖','浑南'].sort());
   const ctx=await staff.contextFor(head);
-  for(const permission of ['members.manage','booking.manage','roster.manage','attendance.correct','attendance.session.manage']){
+  for(const permission of ['members.manage','accounts.manage','booking.manage','roster.manage','attendance.correct','attendance.session.manage']){
    assert.equal(staff.evaluate(ctx,permission,{campusId:'campus-nanhu',departmentId:'dept-office'}).allowed,true);
    assert.equal(staff.evaluate(ctx,permission,{campusId:'campus-hunnan',departmentId:'dept-network'}).allowed,false);
    assert.equal(staff.evaluate(await staff.contextFor(director),permission,{campusId:'campus-hunnan'}).allowed,true);
    assert.equal(staff.evaluate(await staff.contextFor(president),permission,{campusId:'campus-hunnan'}).allowed,true);
   }
-  for(const permission of ['roles.manage','settings.manage','accounts.manage'])assert.ok(!ctx.permissions[permission]);
+  for(const permission of ['roles.manage','settings.manage'])assert.ok(!ctx.permissions[permission]);
   const office=await staff.memberDetail(head,'member-20261004');
   await staff.updateMember(head,'member-20261004',{revision:office.member.revision,name:'办公室成员新姓名'});
   await assert.rejects(staff.memberDetail(head,'member-20261006'),{status:403});
