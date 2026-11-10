@@ -26,9 +26,11 @@
 
 ## 今日任务与核查
 
-`GET /api/attendance/day?campusId&businessDate` 从有效班次关联请假、签到、在岗及核查结论，按当前访问范围过滤后按成员去重。返回 `items/temporary/summary/people/serverNow` 及每人的可用操作。请假单列且排除应到；临时到场单列；开班前待签到，开班后待核查，无自动迟到或缺勤判断。真实到场优先于未到结论。
+`GET /api/attendance/day?campusId&businessDate` 从有效班次关联请假、签到及核查结论，按当前访问范围过滤后按成员去重。返回 `items/temporary/summary/people/serverNow` 及每人的可用操作。请假单列且排除应到；临时到场单列；开班前待签到，开班后待核查，无自动迟到或缺勤判断。真实到场优先于未到结论。
 
-`POST /api/attendance/arrivals` 仅接收 `{assignmentId,assignmentRevision,requestId}`。服务端确定今日、实际时间和班次校区，要求18:30–21:30、有效账号、校区范围、班次未请假、非暂停日。班次、目标资料和权限快照在同批写入时复核；签到、在岗、操作者审计与回执一次提交。与二维码共享人员/日期去重键，重试保留首次时间，不重置后来离岗状态。专用个人扫码入口识别工作人员码后直接提交并显示校区与时间；办公排班人员和负责人保留现有自行签到资格。
+`POST /api/attendance/arrivals` 仅接收 `{assignmentId,assignmentRevision,requestId}`。服务端确定今日、实际时间和班次校区，要求18:30–21:30、有效账号、校区范围、班次未请假、非暂停日。班次、目标资料和权限快照在同批写入时复核；签到、到场事件、操作者审计与回执一次提交。与二维码共享人员/日期去重键，重试保留首次时间。专用个人扫码入口识别工作人员码后直接提交并显示校区与时间；办公排班人员和负责人保留现有自行签到资格。
+
+工作人员无需维护实时在岗状态，手动状态切换接口已移除。工作台按本人、业务日期和当前校区的真实 `attendance_records` 隐藏已完成的签到待办；不会用 `staff_presence` 或前端身份标签代替考勤事实。历史在岗表及签到事务中的到场审计仍保留，不迁移或清除历史数据。
 
 `PUT /api/attendance/reviews` 接收 `{assignmentId,assignmentRevision,revision,decision,requestId,reason?}`。班次结束后才能提交 `absent` 或撤销为 `cleared`；新记录 `revision:-1`，每次写入或撤销均递增，撤销不删除行。结论绑定当时成员，接替后不转嫁给新成员。`attendance_reviews` 保存当前结论、版本、操作者和时间，审计保存每次前后值；不生成签到或在岗。并发真实签到使核查失败或显示到场。
 

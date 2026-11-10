@@ -118,6 +118,37 @@ fieldset.staffing-editor {
   line-height: 1.6;
 }
 /* Keep authentication screens in the same visual system as the staff workspace. */
+.staff-mode .toast {
+  box-sizing: border-box;
+  inline-size: max-content;
+  max-inline-size: min(420px, calc(100vw - 32px));
+  min-height: 44px;
+  padding: 12px 18px;
+  border: 1px solid #e3e7ed;
+  border-radius: 12px;
+  background: #fff;
+  color: #242b35;
+  font:
+    500 14px / 1.5 Inter,
+    'Segoe UI',
+    'Microsoft YaHei',
+    sans-serif;
+  overflow-wrap: anywhere;
+  box-shadow: 0 8px 24px rgb(36 43 53 / 12%);
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+}
+@media (max-width: 767px) {
+  .staff-mode .toast {
+    bottom: calc(88px + env(safe-area-inset-bottom));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .staff-mode .toast {
+    transition: none;
+  }
+}
 .staff-mode .login-view {
   min-height: 100dvh;
   padding: clamp(24px, 5vw, 56px) 20px;
@@ -570,6 +601,30 @@ fieldset.staffing-editor {
 .field-sidebar .field-sidebar-bottom button {
   min-height: 44px;
 }
+.workspace-project-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding-inline: 10px;
+  border-radius: 9px;
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: none;
+}
+.workspace-project-link:hover {
+  background: var(--workspace-subtle, #f1f3f6);
+  color: var(--ink);
+}
+.field-sidebar > .workspace-project-link {
+  align-self: flex-start;
+  flex-shrink: 0;
+}
+.workspace-launcher-footer {
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+  padding-top: 6px;
+}
 .field-sidebar .workspace-group-toggle {
   min-height: 44px;
 }
@@ -978,9 +1033,7 @@ fieldset.staffing-editor {
   color: var(--muted);
 }
 .field-app .personal-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  display: flex;
   border-top: 1px solid var(--line);
   padding-top: 20px;
   margin-top: 24px;
@@ -1763,16 +1816,30 @@ fieldset.staffing-editor {
   #staff-react-root details {
     interpolate-size: allow-keywords;
   }
-  #staff-react-root details:not(.workspace-more-actions)::details-content {
+  #staff-react-root details:not(.workspace-more-actions):not(.statistics-help)::details-content {
     block-size: 0;
     overflow: clip;
     transition:
       block-size var(--workspace-motion-normal, 200ms) var(--workspace-motion-ease, ease-out),
       content-visibility var(--workspace-motion-normal, 200ms) allow-discrete;
   }
-  #staff-react-root details:not(.workspace-more-actions)[open]::details-content {
+  #staff-react-root
+    details:not(.workspace-more-actions):not(.statistics-help)[open]::details-content {
     block-size: auto;
   }
+}
+.statistics-help-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--workspace-motion-normal, 200ms)
+    var(--workspace-motion-ease, ease-out);
+}
+.statistics-help[open] .statistics-help-content {
+  grid-template-rows: 1fr;
+}
+.statistics-help-inner {
+  min-height: 0;
+  overflow: hidden;
 }
 .workspace-loaded-media {
   opacity: 0.7;
@@ -1786,6 +1853,7 @@ fieldset.staffing-editor {
     opacity: 1;
   }
   #staff-react-root details:not(.workspace-more-actions)::details-content,
+  .statistics-help-content,
   .workspace-loaded-media {
     transition: none;
   }

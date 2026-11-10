@@ -1,5 +1,6 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDataMotion } from './useDataMotion';
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { request } from './request.js';
 import { showToast } from '../../shared/utils.js';
 
@@ -131,35 +132,32 @@ export function StaffActivation() {
   useDataMotion(motionRef, true);
   const [receipt, setReceipt] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem(receiptKey) || 'null');
+      // The receipt is a credential, so keep it within this tab's session.
+      localStorage.removeItem(receiptKey);
+      return JSON.parse(sessionStorage.getItem(receiptKey) || 'null');
     } catch {
       return null;
     }
   });
-  const [result, setResult] = useState(null),
-    [busy, setBusy] = useState(false);
+  const client = useQueryClient();
+  const resultQuery = useQuery({
+    queryKey: ['/api/activation', receipt?.id, receipt?.receipt],
+    queryFn: ({ signal }) =>
+      request(`/api/activation/${encodeURIComponent(receipt.id)}`, {
+        headers: { 'X-Activation-Receipt': receipt.receipt },
+        signal,
+        timeoutMs: 15000
+      }),
+    enabled: !!receipt,
+    refetchInterval: false
+  });
+  const result = resultQuery.data;
+  const [busy, setBusy] = useState(false);
   const labels = {
     pending: '申请已提交，等待管理员核验身份',
     approved: '审核已通过，可以使用学号和自行设置的密码登录',
     rejected: '申请未通过，可核实资料后重新申请'
   };
-  async function refresh(signal) {
-    if (!receipt) return;
-    try {
-      const item = await request(`/api/activation/${encodeURIComponent(receipt.id)}`, {
-        headers: { 'X-Activation-Receipt': receipt.receipt },
-        signal
-      });
-      if (!signal?.aborted) setResult(item);
-    } catch (error) {
-      if (!signal?.aborted) showToast(error.message);
-    }
-  }
-  useEffect(() => {
-    const controller = new AbortController();
-    refresh(controller.signal);
-    return () => controller.abort();
-  }, [receipt?.id]);
   async function submit(event) {
     event.preventDefault();
     const form = event.currentTarget,
@@ -181,9 +179,9 @@ export function StaffActivation() {
       });
       const next = { id: item.id, receipt: item.receipt };
       setReceipt(next);
-      setResult(item);
+      client.setQueryData(['/api/activation', next.id, next.receipt], item);
       try {
-        localStorage.setItem(receiptKey, JSON.stringify(next));
+        sessionStorage.setItem(receiptKey, JSON.stringify(next));
       } catch {
         showToast('申请已提交，浏览器无法保存回执，请联系管理员了解审核进度');
       }
@@ -263,6 +261,7 @@ export function StaffActivation() {
             提交激活申请
           </button>
         </form>
+        {resultQuery.error && <p role="alert">{resultQuery.error.message}</p>}
         {result && (
           <div id="activation-result">
             <h2 data-motion-value="text" id="activation-status" role="status">
@@ -275,7 +274,7 @@ export function StaffActivation() {
               id="refresh-activation"
               className="secondary-btn"
               type="button"
-              onClick={() => refresh()}
+              onClick={() => resultQuery.refetch()}
             >
               刷新审核结果
             </button>

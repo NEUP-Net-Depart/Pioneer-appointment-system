@@ -26,6 +26,10 @@ export const appointmentRoutes = [
       await context.limit('scanSearch');
     return json(await context.services.appointments.list(query, user));
   }],
+  ['GET', /^\/api\/appointments\/counts$/, async context => {
+    const user = await context.role('technician');
+    return json(await context.services.appointments.counts(appointmentQuery(context.query), user));
+  }],
   ['POST', /^\/api\/appointments$/, async context => {
     await context.limit('write');
     const input = bookingInput(await readBody(context.request));

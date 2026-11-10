@@ -9,12 +9,12 @@ import { RepairAttachments } from '../RepairAttachments';
 import { IntakePhotos } from './IntakePhotos';
 import { useRepair } from './useRepair';
 import { formatInstant } from '../../../shared/time.js';
+import { DataValue } from '../DataValue';
 
 function RepairOrder({
   id,
   onOpen,
   onClose,
-  onChanged,
   sidePanel = false,
   hideWarrantyLookup = false,
   customerCredential
@@ -22,12 +22,11 @@ function RepairOrder({
   id: string;
   onOpen: (id: string, token?: string) => void;
   onClose: () => void;
-  onChanged: () => void;
   sidePanel?: boolean;
   hideWarrantyLookup?: boolean;
   customerCredential?: { id: string; accessToken: string } | null;
 }) {
-  const r = useRepair({ id, onChanged });
+  const r = useRepair({ id });
   const { item, busy } = r;
   const [received, setReceived] = useState(false);
   return (
@@ -39,39 +38,61 @@ function RepairOrder({
       onClose={onClose}
     >
       <Notice>{r.error}</Notice>
-      {!item ? (
-        <p>正在读取工单…</p>
-      ) : (
+      <section className="field-ticket" aria-busy={!item}>
+        {item ? (
+          <Status value={item.status} outcome={item.outcome} />
+        ) : (
+          <span className="field-status">
+            <DataValue label="工单状态" digits={4} />
+          </span>
+        )}
+        <p>
+          {id} ·{' '}
+          <DataValue label="预约时间和校区">
+            {item ? `${item.campus} · ${item.date} ${item.timeSlot}` : undefined}
+          </DataValue>
+        </p>
+        <h3>
+          <DataValue label="设备信息">
+            {item ? `${item.brand} ${item.deviceModel || item.deviceType}` : undefined}
+          </DataValue>
+        </h3>
+        <p>
+          <DataValue label="预约人员">
+            {item ? [item.name, item.studentId].filter(Boolean).join(' · ') : undefined}
+          </DataValue>
+        </p>
+        <p>
+          <DataValue label="故障信息">
+            {item ? [item.faultType, item.issue].filter(Boolean).join(' ') : undefined}
+          </DataValue>
+        </p>
+        <p>
+          联系方式：
+          <DataValue label="联系方式">
+            {item
+              ? [item.contactValue || item.social || item.phone || '未记录', item.email]
+                  .filter(Boolean)
+                  .join(' ')
+              : undefined}
+          </DataValue>
+        </p>
+        <p>
+          当前主修：
+          <DataValue label="当前主修">
+            {item ? item.assignedToName || '尚未开始维修' : undefined}
+          </DataValue>
+        </p>
+        {item?.receivedAt && (
+          <p>
+            首次接收：{item.receivedByName || item.receivedBy} · {formatInstant(item.receivedAt)}
+          </p>
+        )}
+        {item?.receivedAt && item.status === 'booked' && <p>设备已接收，等待维修人员确认接手。</p>}
+        {item?.photoDeferredBy && <Notice>首次接收照片待传，由经办人手动补传原图。</Notice>}
+      </section>
+      {item && (
         <>
-          <section className="field-ticket">
-            <Status value={item.status} />
-            <p>
-              {item.id} · {item.campus} · {item.date} {item.timeSlot}
-            </p>
-            <h3>
-              {item.brand} {item.deviceModel || item.deviceType}
-            </h3>
-            <p>
-              {item.name} · {item.studentId}
-            </p>
-            <p>
-              {item.faultType} {item.issue}
-            </p>
-            <p>
-              联系方式：{item.contactValue || item.social || item.phone || '未记录'} {item.email}
-            </p>
-            <p>当前主修：{item.assignedToName || '尚未开始维修'}</p>
-            {item.receivedAt && (
-              <p>
-                首次接收：{item.receivedByName || item.receivedBy} ·{' '}
-                {formatInstant(item.receivedAt)}
-              </p>
-            )}
-            {item.receivedAt && item.status === 'booked' && (
-              <p>设备已接收，等待维修人员确认接手。</p>
-            )}
-            {item.photoDeferredBy && <Notice>首次接收照片待传，由经办人手动补传原图。</Notice>}
-          </section>
           {(item.canStart || item.canReceive) && (
             <section className="field-form">
               {!item.receivedAt && (
@@ -219,17 +240,15 @@ function RepairOrder({
             item={item}
             onChanged={() => {
               void r.load();
-              onChanged();
             }}
             onOpen={onOpen}
           />
-          <RepairAttachments id={id} revision={item.revision} />
+          <RepairAttachments id={id} />
           {item.canEdit && (
             <RepairInformation
               item={item}
               onChanged={() => {
                 void r.load();
-                onChanged();
               }}
             />
           )}

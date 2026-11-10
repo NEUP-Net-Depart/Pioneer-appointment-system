@@ -5,8 +5,7 @@ import { campusId } from '../modules/authorization/scopes.js';
 
 export function slotCapacityService(repository, staff, days=null) {
   async function authorize(actor, campuses = []) {
-
-    actor = await staff.scopedActor(actor, 'settings.manage');
+    actor = await staff.scopedActor(actor, 'booking.manage');
     for (const campus of campuses) requireCampus(actor, campus);
     return actor;
   }
@@ -48,12 +47,11 @@ export function slotCapacityService(repository, staff, days=null) {
       return result.result;
     },
     async actual(actor, { date, campus }) {
-      actor = await authorize(actor, [campus]); requireCampus(actor, campus);
+      actor = await authorize(actor, [campus]);
       if (!validDate(date)) fail(400, '请选择有效日期');
       const dutyTypes = [];
       {
-        // Aggregate staffing follows the same management permissions as rosters.
-        // A capacity editor without those grants can still inspect capacity.
+        // Aggregate staffing requires roster management for the target campus.
         for (const type of ['repair', 'office']) {
           try { await staff.requirePermission(actor, 'roster.manage', { campusId: campusId(campus) }, date); dutyTypes.push(type); }
           catch (error) { if (error.status !== 403) throw error; }

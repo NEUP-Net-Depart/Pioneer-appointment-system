@@ -3,16 +3,13 @@
   display: grid;
   gap: 24px;
 }
-.today-toolbar,
-.today-attendance,
-.today-attendance-heading {
+.today-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 12px 20px;
 }
-.today-toolbar,
-.today-attendance {
+.today-toolbar {
   justify-content: space-between;
 }
 .today-toolbar .staff-identities {
@@ -21,13 +18,90 @@
 .today-tools .field-search {
   margin: 20px 0 0;
 }
-.today-attendance .field-status {
-  flex: 0 0 auto;
-  min-height: 30px;
-  padding: 4px 12px;
+.attendance-shortcuts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
 }
-.today-attendance-copy > p {
-  margin: 8px 0 0;
+.field-app .attendance-quick-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+}
+.attendance-quick-action > svg {
+  flex: 0 0 24px;
+  color: var(--muted);
+}
+.attendance-quick-action > div {
+  flex: 1 1 180px;
+}
+.field-app .attendance-quick-action h2 {
+  font-size: 16px;
+}
+.attendance-quick-action p {
+  margin: 4px 0 0;
+}
+.field-app .attendance-pending {
+  border-color: #bdc9d8;
+  background: #f7f9fc;
+}
+.today-pending-copy,
+.data-pending-copy {
+  visibility: hidden;
+}
+.data-value-frame,
+.workspace-page .data-value-frame,
+.workspace-section-nav .data-value-frame {
+  display: inline-grid;
+  align-items: center;
+  justify-items: start;
+  min-inline-size: var(--value-digits, 2ch);
+  block-size: 1.4em;
+  line-height: 1.4;
+  vertical-align: baseline;
+  overflow: clip;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.data-value-frame::before {
+  content: '0';
+  visibility: hidden;
+  grid-area: 1 / 1;
+  line-height: inherit;
+}
+.data-value-frame > span {
+  grid-area: 1 / 1;
+}
+.data-value-frame .animated-value-content {
+  display: block;
+  min-inline-size: 0;
+  font: inherit;
+  color: inherit;
+  line-height: inherit;
+  text-align: inherit;
+}
+.data-value-frame[data-preset='badge'],
+.workspace-page .data-value-frame[data-preset='badge'],
+.workspace-section-nav .data-value-frame[data-preset='badge'] {
+  justify-items: center;
+  text-align: center;
+}
+.data-value-frame[data-preset='metric'],
+.workspace-page .data-value-frame[data-preset='metric'] {
+  justify-items: start;
+  text-align: inherit;
+  line-height: inherit;
+  block-size: auto;
+}
+.data-value-frame .data-value-loading {
+  inline-size: 1.1ch;
+  block-size: 0.85em;
+}
+.animated-value-content {
+  display: inline-block;
+  font-variant-numeric: lining-nums tabular-nums;
 }
 .field-app .today-work {
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -42,17 +116,19 @@
   gap: 10px;
   margin-bottom: 8px;
 }
-.today-section-title > span {
+.data-count-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 28px;
+  flex: 0 0 auto;
+  min-width: 44px;
   height: 28px;
   padding: 0 8px;
   border-radius: 8px;
   background: var(--workspace-subtle, #f1f3f6);
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
+  line-height: 1;
 }
 .field-app .today-order {
   gap: 8px;
@@ -192,8 +268,13 @@
   .today-toolbar {
     align-items: flex-start;
   }
-  .today-toolbar > .field-actions,
-  .today-attendance > .field-actions {
+  .today-toolbar > .field-actions {
+    width: 100%;
+  }
+  .attendance-shortcuts {
+    margin-bottom: 16px;
+  }
+  .attendance-quick-action > button {
     width: 100%;
   }
   .field-app .today-order {
@@ -409,17 +490,6 @@ body.staff-mode.field-mode {
 }
 .field-app .field-state-note {
   font-size: 14px;
-}
-.field-content > .workspace-update {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  min-height: 0;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
 }
 .field-app .personal-shortcuts {
   display: grid;

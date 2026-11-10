@@ -1,6 +1,5 @@
 import { fail } from '../lib/http.js';
 import { stringField } from '../lib/validation.js';
-import { requireCampus } from './permissions.js';
 import { CAMPUSES } from '../../shared/constants.js';
 import { bookingWindow, validReleaseTime } from '../../shared/booking-settings.js';
 import { requestId } from '../platform/contracts.js';
@@ -14,9 +13,7 @@ export function bookingSettingsService(repository, staff, clock = () => new Date
   const campusInput = campus => { if (!CAMPUSES.includes(campus)) fail(400, '请选择有效校区'); };
   async function authorize(actor, campus) {
     campusInput(campus);
-    actor = await staff.scopedActor(actor, 'settings.manage');
-    requireCampus(actor, campus);
-    const { context } = await staff.requirePermission(actor, 'settings.manage', { campusId: campus });
+    const { context } = await staff.requirePermission(actor, 'booking.manage', { campusId: campus });
     return { actorMemberId: context.actor.memberId, actorAccount: actor.account, authVersion: context.authVersion, occurredAt: clock().toISOString() };
   }
   return {

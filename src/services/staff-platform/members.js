@@ -113,24 +113,14 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
     };
     let after = parseMemberCursor(filters.cursor);
     const items = [];
-    const withIdentities = async (items) => {
-      const contexts = await repository.fieldContexts(
-        items.map((item) => item.memberId),
-        context.businessDate
-      );
-      return items.map((item) => ({
+    const withIdentities = (items) =>
+      items.map((item) => ({
         ...item,
-        identities: staffIdentities(
-          visibleIdentityContext(
-            contexts.get(item.memberId),
-            context,
-            item,
-            item.memberships || []
-          ),
-          platform.authorizer
-        )
+        identities: staffIdentities({
+          actor: { role: item.role },
+          memberships: item.memberships || []
+        })
       }));
-    };
     // Scan in bounded database pages, but fill a page with authorized members.
     // The public cursor references only the last returned (visible) member.
     for (;;) {
@@ -160,14 +150,14 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
         items.push({ ...visible, memberships });
         if (items.length === 101)
           return {
-            items: await withIdentities(items.slice(0, 100)),
+            items: withIdentities(items.slice(0, 100)),
             nextCursor: memberCursor(items[99]),
             schemaVersion: SCHEMA_VERSION
           };
       }
       if (candidates.length < 101)
         return {
-          items: await withIdentities(items),
+          items: withIdentities(items),
           nextCursor: null,
           schemaVersion: SCHEMA_VERSION
         };
@@ -353,7 +343,7 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
     for (const key of ['departmentId', 'effectiveFrom']) inputString(input, key, 80, true);
     if (!validDate(input.effectiveFrom) || (input.effectiveTo && !validDate(input.effectiveTo)))
       fail(400, '任职有效期不正确');
-    if (!['primary', 'exchange'].includes(input.assignmentType || 'primary'))
+    if (!['primary', 'exchange', 'maintenance_affairs'].includes(input.assignmentType || 'primary'))
       fail(400, '任职类型不正确');
     if (input.effectiveTo && input.effectiveTo <= input.effectiveFrom)
       fail(400, '任职有效期不正确');
@@ -368,7 +358,17 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
     if (!unit) fail(400, '请选择有效组织');
     if (input.assignmentType === 'exchange' && unit.code !== 'hardware')
       fail(400, '交流参与必须指向硬件部');
-    if (!positionsFor(unit).includes(input.positionCode || 'member')) fail(400, '职位与组织不匹配');
+    if (
+      input.assignmentType !== undefined &&
+      input.assignmentType !== 'primary' &&
+      (input.positionCode || 'member') !== 'member'
+    )
+      fail(400, '附加任职不能设置管理职务');
+    if (
+      (input.assignmentType || 'primary') === 'primary' &&
+      !positionsFor(unit).includes(input.positionCode || 'member')
+    )
+      fail(400, '职位与组织不匹配');
     input = {
       ...input,
       assignmentType: input.assignmentType || 'primary',

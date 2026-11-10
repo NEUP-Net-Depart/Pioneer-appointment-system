@@ -1,12 +1,13 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import React, { useContext, useRef, useState } from 'react';
 import { request } from './request.js';
-import { Modal, Notice } from './field/ui';
+import { ActivityContext, Modal, Notice } from './field/ui';
 import { staffPermission } from '../../shared/staff-access.js';
 import { MemberSetup, newMemberSetup, memberDefaults } from './MemberSetup.jsx';
 
 const basicHeader = 'studentId,name,college';
 const advancedHeader =
-  'studentId,name,homeCampusId,college,major,departmentId,positionCode,exchangeParticipation,authorizedCampuses,configureActivation,effectiveFrom';
+  'studentId,name,homeCampusId,college,major,departmentId,positionCode,exchangeParticipation,maintenanceParticipation,authorizedCampuses,configureActivation,effectiveFrom';
 const statusLabels = { created: '新增', updated: '更新', skipped: '跳过', conflict: '冲突' };
 const display = (value) =>
   ({ 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' })[value] || value || '未设置';
@@ -17,22 +18,20 @@ export function MemberImport({ user, initialCsv = '', onClose, onSaved }) {
     [advanced, setAdvanced] = useState(false),
     [replaceHomeCampus, setReplaceHomeCampus] = useState(false),
     [accountCampusAction, setAccountCampusAction] = useState('preserve');
-  const [departments, setDepartments] = useState([]),
-    [preview, setPreview] = useState(null),
+  const departmentsQuery = useQuery({
+    queryKey: ['/api/organization/departments'],
+    enabled: useContext(ActivityContext),
+    staleTime: 5 * 60000,
+    refetchInterval: false
+  });
+  const departments = departmentsQuery.data?.items || [];
+  const [preview, setPreview] = useState(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [done, setDone] = useState(null);
   const lock = useRef(false),
     requestId = useRef(crypto.randomUUID());
-  useEffect(() => {
-    const controller = new AbortController();
-    request('/api/organization/departments', { signal: controller.signal })
-      .then((data) => setDepartments(data.items || []))
-      .catch((failure) => {
-        if (!controller.signal.aborted) setError(failure.message);
-      });
-    return () => controller.abort();
-  }, []);
+
   async function submit(confirm = false) {
     if (lock.current) return;
     lock.current = true;
@@ -77,7 +76,7 @@ export function MemberImport({ user, initialCsv = '', onClose, onSaved }) {
   }
   return (
     <Modal title="批量导入人员" dismissible={!busy} onClose={onClose}>
-      <Notice>{error}</Notice>
+      <Notice>{error || departmentsQuery.error?.message}</Notice>
       {done ? (
         <>
           <h3>导入完成</h3>

@@ -134,10 +134,16 @@ export function appointmentService(
       const { campuses } = appointmentScope(user);
       await expire(instant, { campuses });
       const week = weekRange(start);
-      const { totals, capacities } = await appointments.overview(week.start, end, campuses);
+      const { totals, capacities, nextServiceDate } = await appointments.overview(week.start, end, campuses, start);
       const dates = Array.from({ length: 7 }, (_, index) => addDays(start, index)).filter(
         serviceDay
       );
+      if (nextServiceDate && nextServiceDate > end) {
+        const next = await appointments.overview(nextServiceDate, nextServiceDate, campuses);
+        totals.push(...next.totals);
+        capacities.push(...next.capacities);
+      }
+      if (nextServiceDate && !dates.includes(nextServiceDate)) dates.push(nextServiceDate);
       const makeItems = (days) =>
         capacities
           .filter((row) => days.includes(row.date))
@@ -153,7 +159,8 @@ export function appointmentService(
               timeSlot,
               capacity,
               occupied,
-              remaining: Math.max(0, capacity - occupied),
+              paused: !!row.paused,
+              remaining: row.paused ? 0 : Math.max(0, capacity - occupied),
               booked: total?.booked ?? 0,
               inProgress: total?.in_progress ?? 0,
               ended: Date.parse(slotDeadline(date, timeSlot)) <= instant.getTime()
@@ -167,6 +174,7 @@ export function appointmentService(
         end,
         dates,
         campuses,
+        nextServiceDate,
         items: makeItems(dates),
         week: { ...week, dates: weekDates, items: makeItems(weekDates) },
         updatedAt: instant.toISOString()
@@ -185,6 +193,10 @@ export function appointmentService(
         searchCapabilities: access.searchCapabilities,
         items: await staffPlatform.field.projectList(user, result.items, access.context)
       };
+    },
+    async counts(query, user) {
+      const result = await this.list({ ...query, deferCounts: false, limit: 1 }, user);
+      return { counts: result.counts, filteredCounts: result.filteredCounts };
     },
     async createOnsite(data, actor, requestId) {
       requireRole(actor, 'technician');
@@ -403,12 +415,12 @@ export function appointmentService(
       }
       const command={...input,revision,requestId,verification,photosCaptured,uploadTimedOut};
       const operation=action==='correct' ? 'repairs.corrected' : input.status==='in_progress' ? 'repairs.started' : input.status==='completed' ? 'repairs.completed' : 'repairs.updated';
-      const permission=action==='correct' ? 'repair.summary.read' : input.status==='in_progress' ? 'repair.start' : input.status==='completed' || !input.status ? 'repair.finish.own' : 'repair.receive';
+      const permission=action==='correct' || input.status==='completed' ? 'repair.summary.read' : input.status==='in_progress' ? 'repair.start' : !input.status ? 'repair.finish.own' : 'repair.receive';
       return mutate(id,command,user,operation,async (item,context,at)=>{
         const own=item.assignedMemberId===context.actor.memberId;
+        const target={campusId:item.campus,id,assignedMemberId:item.assignedMemberId};
         if (action==='correct') {
           if (item.status!=='completed') fail(409,'只有已结束工单可更正结果和说明');
-          const target={campusId:item.campus,id,assignedMemberId:item.assignedMemberId};
           if (!own || !staffPlatform.evaluate(context,'repair.finish.own',target).allowed) await staffPlatform.requirePermission(user,'repair.correct',target);
           if (Object.keys(input).some(key=>!['outcome','repairNote'].includes(key))) fail(400,'更正只修改结果和说明');
           repairResult(input.outcome,input.repairNote);
@@ -418,13 +430,14 @@ export function appointmentService(
           if (item.date!==dateKey(new Date(at)) && !item.receivedAt) fail(409,'预约仅在当天接单；隔天请重新预约或现场登记');
           return {...await receiving(item,command,user,at),status:'in_progress',assignedTo:user.account,startedAt:at};
         }
-        if (item.status==='in_progress' && own && input.status==='completed') {
+        if (item.status==='in_progress' && input.status==='completed') {
+          if (!own || !staffPlatform.evaluate(context,'repair.finish.own',target).allowed) await staffPlatform.requirePermission(user,'repair.correct',target);
           repairResult(input.outcome,input.repairNote);
           return {status:'completed',outcome:input.outcome,repairNote:input.repairNote,completedAt:at};
         }
         if (item.status==='in_progress' && own && !input.status && typeof input.repairNote==='string') return {repairNote:input.repairNote};
         if (item.status==='booked' && !item.receivedAt && input.status==='cancelled') return {status:'cancelled',completedAt:at};
-        fail(409,'当前状态不能执行此操作；维修中工单请由当前主修结束或实际接手后处理');
+        fail(409,'当前状态不能执行此操作');
       },permission);
     }
   };

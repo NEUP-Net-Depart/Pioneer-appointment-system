@@ -11,7 +11,7 @@
 | rosters | 整班空闲、按周例外、确定性建议、维修与办公原子发布、请假与接替确认 |
 | audit / files | 审计与请求回执、鉴权附件及存储额度 |
 
-`src/services/staff-platform/` 由 context、members、departments、roles、workspace、attendance、duty、reporting、schedule 组成；仓储按同一业务域组合。`shared/duty.js` 集中固定时段与候选规则，`modules/rosters/suggestions.js` 负责最大匹配和均衡，`modules/attendance/volunteer-report.js` 共用时长算法。没有问卷收集服务、返修审批服务或现场分派状态机。
+`src/services/staff-platform/` 由 context、members、roles、workspace、attendance、duty、reporting、schedule 组成；仓储按同一业务域组合。部门字典仅供查询，组织结构变更通过数据库迁移处理。`shared/duty.js` 集中固定时段与候选规则，`modules/rosters/suggestions.js` 负责最大匹配和均衡，`modules/attendance/volunteer-report.js` 共用时长算法。没有问卷收集服务、返修审批服务或现场分派状态机。
 
 事务携带操作者授权版本、对象版本和请求编号。排班修改、接替、维修接单交接、结果更正与必要审计/回执在同一 D1 batch 中提交。不同内容不能复用请求键；并发覆盖失败不写半份事实。R2 通过元数据预留及失败补偿维护额度，接收照片超时由本人手动补传。
 

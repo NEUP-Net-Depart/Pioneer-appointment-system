@@ -25,8 +25,6 @@ export const staffPlatformRoutes = [
   ['PATCH', /^\/api\/me\/profile$/, async context => { await context.limit('write'); return json(await context.services.staffPlatform.ownProfile(await context.role('technician'), await readBody(context.request))); }],
   ['POST', /^\/api\/members\/education-import$/, async context => json(await context.services.staffPlatform.importEducation(await context.role('technician'), await readBody(context.request)))],
   ['GET', /^\/api\/organization\/(campuses|departments|locations)$/, async (context, match) => json(await context.services.staffPlatform.organization(await context.role('technician'), match[1], context.query))],
-  ['POST', /^\/api\/organization\/departments$/, async context => { await context.limit('write'); return json(await context.services.staffPlatform.saveDepartment(await context.role('technician'), await readBody(context.request)), 201); }],
-  ['PATCH', /^\/api\/organization\/departments\/([^/]+)$/, async (context, match) => { await context.limit('write'); return json(await context.services.staffPlatform.saveDepartment(await context.role('technician'), await readBody(context.request), decodeURIComponent(match[1]))); }],
   ['GET', /^\/api\/members\/([^/]+)$/, async (context, match) => json(await context.services.staffPlatform.memberDetail(await context.role('technician'), decodeURIComponent(match[1]), context.query.businessDate))],
   ['GET', /^\/api\/members\/([^/]+)\/audit$/, async (context, match) => json(await context.services.staffPlatform.memberAudit(await context.role('technician'), decodeURIComponent(match[1])))],
   ['PATCH', /^\/api\/members\/([^/]+)$/, async (context, match) => json(await context.services.staffPlatform.updateMember(await context.role('technician'), decodeURIComponent(match[1]), bodyWithRevision(await readBody(context.request))))],
@@ -62,7 +60,6 @@ export const staffPlatformRoutes = [
   }],
   ['POST', /^\/api\/attendance\/corrections$/, async context => json(await context.services.staffPlatform.correctAttendance(await context.role('technician'), await readBody(context.request)), 201)],
   ['GET', /^\/api\/me\/attendance$/, async context => json(await context.services.staffPlatform.attendanceList(await context.role('technician'), { ...context.query, all:false,memberId: (await context.services.staffPlatform.contextFor(await context.role('technician'))).actor.memberId }))],
-  ['PATCH', /^\/api\/presence\/me$/, async context => json(await context.services.staffPlatform.presence(await context.role('technician'), await readBody(context.request)))],
 
   ['GET', /^\/api\/rosters\/week$/, async context=>json(await context.services.staffPlatform.rosterWeek(await context.role('technician'),context.query))],
   ['PUT', /^\/api\/rosters\/week$/, async context=>json(await context.services.staffPlatform.saveRosterWeek(await context.role('technician'),await readBody(context.request)))],

@@ -41,7 +41,11 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
   }
   async function projectList(actor,items,providedContext) {
     const context = providedContext || await staff.contextFor(actor);
-    return (await Promise.all(items.map(item => project(actor,item,context)))).filter(Boolean);
+    return items.filter(item => canReadSummary(actor,item,context)).map(item => {
+      const visible = { ...item };
+      for (const key of ['phone','social','email','contactType','contactValue','note','signature','agreementAt','agreementVersion','registrationKey']) delete visible[key];
+      return { ...visible, canReadDetails: true };
+    });
   }
   async function contactMatches(actor, query, providedContext) {
     const sought = appointmentContactTerm(query.q);
@@ -101,7 +105,7 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
       const result=await appointments.list({q:query.text,campus,contactIds,limit:APPOINTMENT_SEARCH_LIMIT,
         sort:'date',direction:'desc'}, {...scope,summaryRules,identityRules});
       return {items:result.items.filter(row=>canReadSummary(actor,row,context)).map(row=>Object.fromEntries(
-        ['id','campus','date','timeSlot','status','name','studentId','brand','deviceModel','receivedAt','assignedToName'].map(key=>[key,row[key]])
+        ['id','campus','date','timeSlot','status','outcome','name','studentId','brand','deviceModel','receivedAt','assignedToName'].map(key=>[key,row[key]])
       )),hasMore:!!result.nextCursor};
     }
     const items = [];
@@ -111,7 +115,7 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
       seen.add(row.id);
       items.push(
         Object.fromEntries(
-          ['id', 'campus', 'date', 'timeSlot', 'status'].map((key) => [
+          ['id', 'campus', 'date', 'timeSlot', 'status', 'outcome'].map((key) => [
             key,
             row[key]
           ])
@@ -172,7 +176,7 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
       canStart:allowed(context,'repair.start',appointmentTarget(item)) && item.status==='booked' && (!!item.receivedAt || item.date===dateKey()),
       canReceive:allowed(context,'repair.receive',appointmentTarget(item)) && item.status==='booked' && !item.receivedAt && item.date===dateKey(),
       canTransfer:allowed(context,'repair.transfer',appointmentTarget(item)) && item.status==='in_progress' && !own,
-      canFinish:allowed(context,'repair.finish.own',appointmentTarget(item)) && item.status==='in_progress' && own,canCorrect,
+      canFinish:item.status==='in_progress' && ((own && allowed(context,'repair.finish.own',appointmentTarget(item))) || canInspect),canCorrect,
       canRecoverCredential:allowed(context,'repair.correct',appointmentTarget(item)),
       canEdit:allowed(context,'repair.receive',appointmentTarget(item)),
       canSupplement:allowed(context,'repair.receive',appointmentTarget(item)) && item.photoDeferredBy===actor.account && (!item.frontPhotoId || !item.backPhotoId),
@@ -185,30 +189,50 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
       intake:await repository.latestIntake(id),
       repairCode:scanCode(item.id,secret)};
   }
-  async function home(actor,query={}) {
-    const context = await staff.contextFor(actor);
+  function campusScope(actor,query) {
     const campuses = (actor.authorizedCampuses || []).map(name => ({id:campusId(name),name}));
-    const selected = query.campusId || campuses[0]?.id;
+    const homeCampus = campusId(actor.homeCampus);
+    const selected = query.campusId !== undefined ? campusId(query.campusId)
+      : campuses.find(item=>item.id===homeCampus)?.id || campuses[0]?.id;
     if (!campuses.some(item=>item.id===selected)) fail(403,'没有该校区的访问权限');
-    const capability = Object.fromEntries(['repair.summary.read','repair.start','repair.transfer','repair.receive','onsite.create','attendance.self','attendance.session.manage','members.manage','roles.manage'].map(code=>[code,allowed(context,code,{campusId:selected,memberId:context.actor.memberId})]));
-    const repairs = (await appointments.inProgress(actor.account)).filter(item=>item.campus===names[selected]);
-    const pendingPhotos = await appointments.pendingPhotos(actor.account,names[selected]);
+    return {campuses,selected};
+  }
+  async function home(actor,query={},providedContext,providedRepairs) {
+    const context = providedContext || await staff.contextFor(actor);
+    const {campuses,selected} = campusScope(actor,query);
+    const capability = Object.fromEntries(['repair.summary.read','repair.start','repair.transfer','repair.receive','onsite.create','attendance.self','attendance.session.manage','attendance.token.issue','members.manage','roles.manage'].map(code=>[code,allowed(context,code,{campusId:selected,memberId:context.actor.memberId})]));
+    const businessDate = dateKey();
+    const [progress,pendingPhotos,directAttendance,event,pendingCoverInvitations,attendance] = await Promise.all([
+      providedRepairs || appointments.inProgress(actor.account),
+      appointments.pendingPhotos(actor.account,names[selected]),
+      staff.directAttendanceAction(actor,selected,context),
+      repository.dutyEvent(dateKey(),selected),
+      context.permissions['roster.read'] ? repository.pendingCoverInvitations(context.actor.memberId) : Promise.resolve(0),
+      repository.findAttendanceByDedupe(`duty:${context.actor.memberId}:${businessDate}`)
+    ]);
+    const repairs = progress.filter(item=>item.campus===names[selected]);
     return {businessDate:dateKey(),actor:context.actor,authVersion:context.authVersion,campuses,campusId:selected,
       contexts:capability['repair.summary.read'] ? [{id:'today',label:'今日工作'}] : [],capability,
-      directAttendance:await staff.directAttendanceAction(actor,selected,context),
-      permissions:context.permissions,navigation:context.navigation,state:context.presence?.state || 'unsigned',reason:'',
+      directAttendance,
+      permissions:context.permissions,navigation:context.navigation,
+      attendance:attendance?.campusId===selected ? attendance : null,
       repairs:await projectList(actor,repairs,context),pendingPhotos:await projectList(actor,pendingPhotos,context),
-      todayDuties:context.todayDuties,identities:staffIdentities(context,authorizer,{campusId:selected}),
-      searchCapabilities:searchCapabilities(context),presence:context.presence,
-      event:await repository.dutyEvent(dateKey(),selected),
-      pendingCoverInvitations:context.permissions['roster.read'] ? await repository.pendingCoverInvitations(context.actor.memberId) : 0,
+      todayDuties:context.todayDuties.filter(item=>item.campusId===selected),identities:staffIdentities(context,authorizer,{campusId:selected}),
+      searchCapabilities:searchCapabilities(context),
+      event,pendingCoverInvitations,
       updatedAt:new Date().toISOString()};
   }
   async function board(actor,query={}) {
-    const data = await home(actor,query);
     const context = await staff.contextFor(actor);
-    await appointments.expirePending(new Date().toISOString(),{campuses:[names[data.campusId]]});
-    const items = await appointments.openFieldWork(names[data.campusId],dateKey());
+    const {selected} = campusScope(actor,query);
+    const work = (async()=>{
+      await appointments.expirePending(new Date().toISOString(),{campuses:[names[selected]]});
+      return appointments.openFieldWork(names[selected],dateKey());
+    })();
+    const [data,items] = await Promise.all([
+      home(actor,query,context,work.then(items=>items.filter(item=>item.status==='in_progress' && item.assignedMemberId===context.actor.memberId))),
+      work
+    ]);
     return {...data,appointments:await projectList(actor,items,context)};
   }
   async function requireIntake(actor,item) {

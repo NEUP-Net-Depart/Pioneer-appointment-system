@@ -1,6 +1,6 @@
 import { escapeHtml } from '/shared/utils.js';
 import { formatDate,formatInstant } from '/shared/time.js';
-import { outcomeLabels,statusLabels,expirationMessage } from '/shared/constants.js';
+import { appointmentStatusLabel,outcomeLabels,expirationMessage } from '/shared/constants.js';
 export function timeLabel(item) {
   return item.source==='onsite' ? '现场临时登记' : item.timeSlot?.split('–')[0];
 }
@@ -24,4 +24,4 @@ export function repairRecord(item) {
   if(!['completed','in_progress','cancelled'].includes(item.status))return '';
   return `<section class="detail-section"><h2>${item.status==='completed' ? '维修结果' : '预约记录'}</h2>${item.status==='completed' ? `<p class="repair-result">${escapeHtml(outcomeLabels[item.outcome] || outcomeLabels.legacy_unknown)}</p>` : ''}<dl>${rows(item.status==='cancelled' ? [['取消时间',formatInstant(item.completedAt)]] : [['实际开始时间',formatInstant(item.startedAt)],...(item.status==='completed' ? [['完成时间',formatInstant(item.completedAt)]] : [])])}</dl></section>`;
 }
-export const statusText=item=>statusLabels[item.status] || '状态未记录';
+export const statusText=item=>appointmentStatusLabel(item.status,item.outcome) || '状态未记录';

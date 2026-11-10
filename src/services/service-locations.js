@@ -7,7 +7,7 @@ import { bookingDates } from '../../shared/booking-slots.js';
 
 export function serviceLocationService(repository,appointments,availability,encryptionKey,clock = () => new Date(),staff = null,bookingSettings = null) {
   async function authorize(actor,campus) {
-    actor = await staff.scopedActor(actor,'settings.manage');
+    actor = await staff.scopedActor(actor,'booking.manage');
     if (campus) requireCampus(actor,campus);
     return actor;
   }

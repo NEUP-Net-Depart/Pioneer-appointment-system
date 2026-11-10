@@ -1,6 +1,5 @@
 import { fail } from '../../lib/http.js';
 import { campusId as normalizeCampusId } from '../../modules/authorization/scopes.js';
-import { canManageDepartments } from './departments.js';
 
 export function workspaceDomain({ repository, platform, manifests, contextFor }) {
   async function workbench(actor) {
@@ -9,7 +8,6 @@ export function workspaceDomain({ repository, platform, manifests, contextFor })
     return {
       actor: context.actor,
       todayDuties: context.todayDuties,
-      presence: context.presence,
       repairs: repairs
         .filter((item) => context.actor.authorizedCampuses.includes(item.campus))
         .map((item) =>
@@ -53,11 +51,7 @@ export function workspaceDomain({ repository, platform, manifests, contextFor })
       fail(403, '缺少组织字典读取权限');
     const includeDisabled = query.includeDisabled === '1' || query.includeDisabled === true;
     if (kind === 'campuses') return { items: await repository.listCampuses(includeDisabled) };
-    if (kind === 'departments')
-      return {
-        items: await repository.listDepartments(includeDisabled),
-        actions: { manage: canManageDepartments(context, platform) }
-      };
+    if (kind === 'departments') return { items: await repository.listDepartments(includeDisabled) };
     if (kind === 'locations') {
       const campuses = (context.actor.authorizedCampuses || []).map(normalizeCampusId);
       if (query.campusId && !campuses.includes(normalizeCampusId(query.campusId)))

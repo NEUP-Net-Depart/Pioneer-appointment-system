@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import {test,expect} from './support/fixtures.mjs';
 
 async function harness(page){
  await page.route('**/__photo-test',route=>route.fulfill({contentType:'text/html',body:'<html><body><script src="/assets/vendor/load-image.all.min.js"></script></body></html>'}));await page.goto('/__photo-test');await page.waitForFunction(()=>typeof window.loadImage==='function');

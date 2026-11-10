@@ -12,7 +12,7 @@ import { Camera, Images, SwitchCamera } from 'lucide-react';
 // A hidden route remains mounted for draft continuity, but its dialogs must
 // leave the browser top layer until the route is visible again.
 export const ActivityContext = createContext(true);
-import { statusLabels, statusClass } from '../../../shared/constants.js';
+import { appointmentStatusClass, appointmentStatusLabel } from '../../../shared/constants.js';
 import { qrImage } from '../../../shared/zxing.js';
 import { createScanner } from './scanner.js';
 import { request } from '../request.js';
@@ -20,7 +20,7 @@ import { useDataMotion } from '../useDataMotion';
 
 export const api = <T,>(
   url: string,
-  options: { method?: string; body?: unknown; signal?: AbortSignal } = {}
+  options: { method?: string; body?: unknown; signal?: AbortSignal; timeoutMs?: number } = {}
 ): Promise<T> => request(url, options);
 export const time = (value: string) =>
   new Date(value).toLocaleTimeString('zh-CN', {
@@ -28,20 +28,13 @@ export const time = (value: string) =>
     hour: '2-digit',
     minute: '2-digit'
   });
-export function Status({ value }: { value: string }) {
+export function Status({ value, outcome }: { value: string; outcome?: string }) {
   return (
-    <span data-motion-value="status" className={`field-status ${statusClass[value] || ''}`}>
-      {statusLabels[value] ||
-        {
-          available: '空闲',
-          repairing: '维修中',
-          unsigned: '待签到',
-          on_leave: '已请假',
-          away: '暂时离岗',
-          off_duty: '已结束',
-          closed: '非工作时间'
-        }[value] ||
-        '状态已更新'}
+    <span
+      data-motion-value="status"
+      className={`field-status ${appointmentStatusClass(value, outcome)}`}
+    >
+      {appointmentStatusLabel(value, outcome) || '状态已更新'}
     </span>
   );
 }

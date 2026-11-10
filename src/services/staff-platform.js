@@ -1,6 +1,5 @@
 import { contextDomain } from './staff-platform/context.js';
 import { membersDomain } from './staff-platform/members.js';
-import { departmentsDomain } from './staff-platform/departments.js';
 import { rolesDomain } from './staff-platform/roles.js';
 import { workspaceDomain } from './staff-platform/workspace.js';
 import { attendanceDomain } from './staff-platform/attendance.js';
@@ -16,7 +15,6 @@ export function staffPlatformService({ repository, platform, manifests }) {
   return {
     ...context,
     ...members,
-    ...departmentsDomain(deps),
     ...rolesDomain({ ...deps, memberTarget: members.memberTarget }),
     ...workspaceDomain({ ...deps, manifests }),
     ...attendance,

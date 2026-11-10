@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Github } from 'lucide-react';
 import { Modal } from './field/ui';
 import { WorkspaceLauncher } from './WorkspaceLauncher';
 import { WorkspaceIcon } from './WorkspaceIcon';
@@ -118,6 +119,18 @@ export function StaffWorkspace({
   const groups = groupWorkspaceEntries(entries);
   const primary: Entry[] = mobileWorkspaceEntries(entries);
   const overflow = entries.filter((entry) => !primary.some((item) => item.id === entry.id));
+  const projectLink = (
+    <a
+      className="workspace-project-link"
+      href="https://github.com/NEUP-Net-Depart/Pioneer-appointment-system"
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="star&issue · 在 GitHub 支持项目或反馈问题（新标签页）"
+    >
+      <Github className="workspace-icon" aria-hidden="true" />
+      star&amp;issue
+    </a>
+  );
   return (
     <div className={`field-app${loading ? ' workspace-bootstrap' : ''}`} aria-busy={loading}>
       <aside className="field-sidebar" ref={sidebar}>
@@ -137,13 +150,6 @@ export function StaffWorkspace({
           查找功能
         </button>
         <nav aria-label="岗位工作导航">
-          {loading && (
-            <div className="workspace-skeleton" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </div>
-          )}
           {groups.map((group) => (
             <section className="workspace-nav-group" key={group.label}>
               <h2>
@@ -194,6 +200,7 @@ export function StaffWorkspace({
             </button>
           </div>
         </div>
+        {projectLink}
       </aside>
       {children}
       {opening && (
@@ -301,6 +308,7 @@ export function StaffWorkspace({
             onSelect={choose}
             onPrepare={onPrepare}
           />
+          <footer className="workspace-launcher-footer">{projectLink}</footer>
         </Modal>
       )}
     </div>

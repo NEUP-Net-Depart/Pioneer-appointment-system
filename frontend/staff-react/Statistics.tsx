@@ -1,7 +1,8 @@
+import { useQuery } from '@tanstack/react-query';
 import { MotionMeter } from './MotionMeter';
 import { DataValue } from './DataValue';
-import React, { useContext, useEffect, useState } from 'react';
-import { ActivityContext, api, Notice } from './field/ui';
+import React, { useContext, useState } from 'react';
+import { ActivityContext, Notice } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { AnimatedValue } from './AnimatedValue';
 
@@ -29,10 +30,13 @@ function Distribution({ values, total }: { values: Record<string, number>; total
           <div>
             <span data-motion-value="text">{label}</span>
             <strong>
-              <span data-motion-value="number">{count}</span>
+              <DataValue label={`${label}数量`}>{count}</DataValue>
               <small data-motion-value="number">
                 {' '}
-                · {total ? Math.round((count / total) * 100) : 0}%
+                ·{' '}
+                <DataValue
+                  label={`${label}占比`}
+                >{`${total ? Math.round((count / total) * 100) : 0}%`}</DataValue>
               </small>
             </strong>
           </div>
@@ -49,46 +53,25 @@ export function Statistics() {
   const active = useContext(ActivityContext);
   const [range, setRange] = useState('7'),
     [day, setDay] = useState('');
-  const [revision, setRevision] = useState(0);
-  const [snapshot, setSnapshot] = useState<{ data: Summary; label: string } | null>(null);
-  const [loading, setLoading] = useState(true),
-    [error, setError] = useState('');
-  const label = day || (range === 'all' ? '全部记录' : `最近 ${range} 天`);
-  useEffect(() => {
-    if (!active) return;
-    const controller = new AbortController();
-    setLoading(true);
-    setError('');
-    api<Summary>(`/api/stats/summary?${new URLSearchParams({ range, day })}`, {
-      signal: controller.signal
-    })
-      .then((data) => {
-        if (!controller.signal.aborted) setSnapshot({ data, label });
-      })
-      .catch((failure) => {
-        if (!controller.signal.aborted) {
-          if ([401, 403].includes(failure.status)) setSnapshot(null);
-          setError(failure.message);
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [active, range, day, revision, label]);
-  const data = snapshot?.data;
-  const metrics = [
-    ['预约总数', data?.total ?? '—'],
-    ['已完成维修', data?.completed ?? '—'],
-    ['关联返修', data?.linkedRepairs ?? '—'],
-    ['修复成功率', data ? `${data.repairSuccessRate}%` : '—'],
-    ['已取消', data?.cancelled ?? '—'],
-    ['已逾期', data?.expired ?? '—']
+  const result = useQuery<Summary>({
+    queryKey: ['/api/stats/summary', { range, day }],
+    enabled: active
+  });
+  const data = result.data;
+  const loading = result.isPending;
+  const error = result.error?.message;
+  const metrics: [string, number | string | undefined][] = [
+    ['预约总数', data?.total],
+    ['已完成维修', data?.completed],
+    ['关联返修', data?.linkedRepairs],
+    ['修复成功率', data ? `${data.repairSuccessRate}%` : undefined],
+    ['已取消', data?.cancelled],
+    ['已逾期', data?.expired]
   ];
   return (
     <section className="report-workspace">
       <WorkspaceHeader group="现场工作" title="统计分析">
-        <button disabled={loading} onClick={() => setRevision((value) => value + 1)}>
+        <button disabled={loading} onClick={() => result.refetch()}>
           刷新统计
         </button>
       </WorkspaceHeader>
@@ -112,9 +95,6 @@ export function Statistics() {
           <input type="date" value={day} onChange={(event) => setDay(event.target.value)} />
         </label>
         {day && <button onClick={() => setDay('')}>清除日期</button>}
-        <span data-motion-value="text" role="status">
-          {loading ? `正在读取${label}，保留已有结果…` : `当前显示：${snapshot?.label || label}`}
-        </span>
       </section>
       <Notice>{error}</Notice>
       <div aria-busy={loading}>
@@ -123,54 +103,50 @@ export function Statistics() {
             <article data-motion-item="" className="field-card" key={name}>
               <span data-motion-value="text">{name}</span>
               <strong>
-                <AnimatedValue value={count} />
+                <DataValue label={name} preset="metric" digits={6} pending={loading}>
+                  {count}
+                </DataValue>
               </strong>
             </article>
           ))}
         </div>
 
-        <details className="workspace-help">
+        <details className="workspace-help statistics-help">
           <summary>统计口径</summary>
-          <p>每日服务按预约日期统计；故障分类按已完成维修统计；校区分布按预约总数统计。</p>
-          <p>维修人员工作量为实际开始与完成记录，不代表值班考勤。</p>
+          <div className="statistics-help-content">
+            <div className="statistics-help-inner">
+              <p>每日服务按预约日期统计；故障分类按已完成维修统计；校区分布按预约总数统计。</p>
+              <p>维修人员工作量为实际开始与完成记录，不代表值班考勤。</p>
+            </div>
+          </div>
         </details>
         <div className="report-grid">
           <section className="field-card report-wide">
             <h2>每日服务</h2>
-            {!data ? (
-              <DataValue label="每日服务记录" pending={loading} />
-            ) : Object.keys(data.daily).length ? (
+            {data && Object.keys(data.daily).length ? (
               <div className="report-daily">
                 {Object.entries(data.daily).map(([date, counts]) => (
                   <article data-motion-item={date} key={date}>
                     <time dateTime={date}>{date.slice(5).replace('-', '/')}</time>
                     <strong>
-                      {counts.total}
+                      <AnimatedValue value={counts.total} />
                       <small> 条预约</small>
                     </strong>
                     <span data-motion-value="text">完成 {counts.completed} 条</span>
                   </article>
                 ))}
               </div>
-            ) : (
+            ) : data ? (
               <p className="field-muted">当前范围没有预约。</p>
-            )}
+            ) : null}
           </section>
           <section className="field-card">
             <h2>故障分类</h2>
-            {data ? (
-              <Distribution values={data.faults} total={data.completed} />
-            ) : (
-              <DataValue label="故障分类" pending={loading} />
-            )}
+            {data && <Distribution values={data.faults} total={data.completed} />}
           </section>
           <section className="field-card">
             <h2>校区分布</h2>
-            {data ? (
-              <Distribution values={data.campuses} total={data.total} />
-            ) : (
-              <DataValue label="校区分布" pending={loading} />
-            )}
+            {data && <Distribution values={data.campuses} total={data.total} />}
           </section>
           <section className="field-card report-wide">
             <h2>维修人员工作量</h2>
@@ -199,14 +175,13 @@ export function Statistics() {
                   </article>
                 ))}
             </div>
-            {!data && <DataValue label="维修人员工作量" pending={loading} />}
             {data && !Object.keys(data.technicians).length && (
               <p className="field-muted">当前范围没有已分配维修。</p>
             )}
           </section>
         </div>
         {!data && !loading && error && (
-          <button onClick={() => setRevision((value) => value + 1)}>重新读取统计</button>
+          <button onClick={() => result.refetch()}>重新读取统计</button>
         )}
       </div>
     </section>

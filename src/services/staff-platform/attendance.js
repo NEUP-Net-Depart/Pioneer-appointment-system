@@ -1,4 +1,4 @@
-import { leadershipPositions } from '../../../shared/staff-organization.js';
+import { leadershipPositions, hasMaintenanceAffairs } from '../../../shared/staff-organization.js';
 import { fail } from '../../lib/http.js';
 import {
   dateKey,
@@ -9,7 +9,7 @@ import {
   validDate,
   addDays
 } from '../../platform/time.js';
-import { requestId, stableJson, publicResourceRef } from '../../platform/contracts.js';
+import { requestId, stableJson } from '../../platform/contracts.js';
 import { attendanceMethod, policyFor } from '../../modules/attendance/public.js';
 import { campusId as normalizeCampusId } from '../../modules/authorization/scopes.js';
 import { csvLine } from '../../lib/csv.js';
@@ -33,7 +33,15 @@ export function attendanceDomain({
   withReceipt
 }) {
   async function createAttendanceEvent(actor, input) {
-    await requirePermission(actor, 'attendance.session.manage', { campusId: input.campusId });
+    const access = await contextFor(actor);
+    if (!evaluate(access, 'attendance.session.manage', { campusId: input.campusId }).allowed) {
+      await requirePermission(actor, 'attendance.token.issue', { campusId: input.campusId });
+      if (!['campus-nanhu', 'campus-hunnan'].includes(normalizeCampusId(input.campusId)))
+        fail(400, '请选择签到校区');
+      if ((input.type || 'duty') !== 'duty' || (input.businessDate || dateKey()) !== dateKey())
+        fail(403, '只能出示当日到岗签到码');
+      return ensureDutyEvent(actor, dateKey(), normalizeCampusId(input.campusId));
+    }
     const type = ['duty', 'meeting'].includes(input.type) ? input.type : 'duty';
     const businessDate = input.businessDate || dateKey();
     const startsAt = instant(input.startsAt || dutyWindow(businessDate).startsAt);
@@ -74,7 +82,12 @@ export function attendanceDomain({
     const context = await contextFor(actor);
     const event = await repository.attendanceEvent?.(eventId);
     if (!event) fail(404, '签到场次不存在');
-    await requirePermission(actor, 'attendance.session.manage', { campusId: event.campusId });
+    await requirePermission(actor, 'attendance.token.issue', { campusId: event.campusId });
+    if (
+      !evaluate(context, 'attendance.session.manage', { campusId: event.campusId }).allowed &&
+      (event.type !== 'duty' || event.businessDate !== dateKey())
+    )
+      fail(403, '只能出示当日到岗签到码');
     const token = randomToken();
     const expiresAt = instant(input.expiresAt || event.endsAt);
     if (Date.parse(expiresAt) <= Date.now() || Date.parse(expiresAt) > Date.parse(event.endsAt))
@@ -154,7 +167,10 @@ export function attendanceDomain({
     const leader = identities.some((item) =>
       [...leadershipPositions, 'superadmin'].includes(item.code)
     );
-    const qualified = scheduled.some((duty) => duty.dutyType === 'office') || leader;
+    const qualified =
+      hasMaintenanceAffairs(context) ||
+      scheduled.some((duty) => duty.dutyType === 'office') ||
+      leader;
     const permission = evaluate(context, 'attendance.self', {
       campusId,
       memberId: context.actor.memberId
@@ -237,6 +253,14 @@ export function attendanceDomain({
           recordedAt: now,
           method,
           sourceRef: event.sourceRef,
+          checkinSource: direct
+            ? { kind: 'direct' }
+            : {
+                kind: 'qr',
+                tokenId: found.token.id,
+                issuerMemberId: found.token.issuerMemberId,
+                issuerName: found.token.issuerName
+              },
           campusId: event.campusId,
           businessDate: event.businessDate,
           departmentId: context.memberships.find((item) => item.isPrimary)?.departmentId,
@@ -250,11 +274,12 @@ export function attendanceDomain({
           actorAccount: actor.account,
           checkInAudit: true,
           direct,
-          directLeader:
+          directWithoutRoster:
             direct &&
-            staffIdentities(context, platform.authorizer, { campusId: event.campusId }).some(
-              (item) => [...leadershipPositions, 'superadmin'].includes(item.code)
-            ),
+            (hasMaintenanceAffairs(context) ||
+              staffIdentities(context, platform.authorizer, { campusId: event.campusId }).some(
+                (item) => [...leadershipPositions, 'superadmin'].includes(item.code)
+              )),
           tokenId: found?.token.id,
           authVersion: context.authVersion,
           requestId: requestId(input.requestId),
@@ -343,7 +368,11 @@ export function attendanceDomain({
     const items = [],
       definition = { unit: 'attendance_record', timezone: 'Asia/Shanghai', version: '1.0.0' };
     for (;;) {
-      const records = await repository.listAttendance({ ...filters, after });
+      const records = await repository.listAttendance({
+        ...filters,
+        after,
+        includeSource: managing
+      });
       for (const record of records) {
         if (
           managing &&
@@ -733,40 +762,6 @@ export function attendanceDomain({
     fail(409, '签到已存在，或成员资料、授权、场次已变化，请刷新后核对');
   }
 
-  async function presence(actor, input) {
-    if (input.businessDate && input.businessDate !== dateKey()) fail(400, '只能修改今天的在岗状态');
-    const context = await contextFor(actor, input.businessDate || dateKey());
-    if (!['available', 'away', 'off_duty'].includes(input.state)) fail(400, '在岗状态不正确');
-    if (!context.presence) fail(409, '请先完成到岗签到');
-    await requirePermission(actor, 'attendance.self', {
-      campusId: context.presence.campusId,
-      memberId: context.actor.memberId
-    });
-    if (input.campusId && input.campusId !== context.presence.campusId)
-      fail(409, '在岗校区以签到记录为准');
-    const result = await repository.setPresence(
-      context.actor.memberId,
-      { ...input, businessDate: input.businessDate || dateKey() },
-      input.revision ?? 0,
-      context.actor,
-      {
-        actorMemberId: context.actor.memberId,
-        actorAccount: actor.account,
-        authVersion: context.authVersion,
-        action: 'duty.presence.changed',
-        sourceRef: publicResourceRef(
-          'duty',
-          'presence',
-          `${context.actor.memberId}:${context.businessDate}`
-        ),
-        before: context.presence,
-        after: { state: input.state, campusId: context.presence.campusId },
-        requestId: input.requestId
-      }
-    );
-    if (!result) fail(409, '在岗状态已被其他操作修改，请刷新');
-    return result;
-  }
   async function ensureDutyEvent(actor, businessDate, campusId) {
     const existing = await repository.dutyEvent(businessDate, campusId);
     if (existing) return existing;
@@ -804,7 +799,6 @@ export function attendanceDomain({
     attendanceList,
     attendanceOptions,
     attendanceExport,
-    correctAttendance,
-    presence
+    correctAttendance
   };
 }

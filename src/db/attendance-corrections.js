@@ -39,10 +39,10 @@ export function attendanceCorrections(db,{auditStatement,commandAuthorization}) 
     const factStatement=record.previous
       ? db.prepare(`UPDATE attendance_records SET occurred_at=?,recorded_at=?,revision=revision+1 WHERE id=? AND revision=? AND ${gate}`)
         .bind(record.occurredAt,record.recordedAt,record.id,record.previous.revision,...key)
-      : db.prepare(`INSERT INTO attendance_records(id,member_id,event_id,dedupe_key,occurred_at,recorded_at,method,source_ref,primary_department_id_snapshot,primary_department_name_snapshot,identity_snapshot,non_scheduled)
-        SELECT ?,?,?,?,?,?,'manual',?,?,?,?,? WHERE ${gate}`)
+      : db.prepare(`INSERT INTO attendance_records(id,member_id,event_id,dedupe_key,occurred_at,recorded_at,method,source_ref,primary_department_id_snapshot,primary_department_name_snapshot,identity_snapshot,non_scheduled,checkin_source)
+        SELECT ?,?,?,?,?,?,'manual',?,?,?,?,?,? WHERE ${gate}`)
         .bind(record.id,record.memberId,record.eventId,record.dedupeKey,record.occurredAt,record.recordedAt,JSON.stringify(record.sourceRef || {}),record.departmentId || null,
-          record.departmentName || null,JSON.stringify(record.identitySnapshot),record.nonScheduled ? 1 : 0,...key);
+          record.departmentName || null,JSON.stringify(record.identitySnapshot),record.nonScheduled ? 1 : 0,JSON.stringify({kind:'correction',operatorMemberId:audit.actorMemberId,operatorAccount:audit.actorAccount}),...key);
     const statements = [db.prepare(`INSERT OR IGNORE INTO operation_receipts(actor_member_id,action,request_id,payload_hash,resource_ref,result_json,result_status,created_at)
       SELECT ?,?,?,?,?,'{}','pending',? WHERE (${fingerprintSql})=?
       AND ${recordGuard.sql} AND date(?,'+8 hours')=? AND NOT EXISTS(SELECT 1 FROM attendance_events e JOIN service_day_overrides s ON s.campus_id=e.campus_id AND s.business_date=e.business_date WHERE e.id=? AND e.type='duty' AND s.paused=1) ${authorization.sql}`)

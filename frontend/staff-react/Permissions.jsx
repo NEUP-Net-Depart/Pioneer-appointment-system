@@ -1,4 +1,4 @@
-import { DataFields } from './DataValue';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { request } from './request.js';
 import { ActivityContext } from './field/ui';
@@ -29,13 +29,34 @@ export function Permissions() {
   const [search, setSearch] = useState('');
   const [enabledOnly, setEnabledOnly] = useState(false);
   const [group, setGroup] = useState('all');
-  const [permissions, setPermissions] = useState([]);
-  const [providers, setProviders] = useState([]);
-  const [campuses, setCampuses] = useState([]);
-  const [departments, setDepartments] = useState([]);
-  const [roles, setRoles] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [readRevision, setReadRevision] = useState(0);
+  const client = useQueryClient();
+  const definitions = useQuery({
+    queryKey: ['/api/permissions'],
+    enabled: routeActive,
+    staleTime: 5 * 60000,
+    refetchInterval: false
+  });
+  const rolesQuery = useQuery({ queryKey: ['/api/roles'], enabled: routeActive });
+  const campusesQuery = useQuery({
+    queryKey: ['/api/organization/campuses'],
+    enabled: routeActive,
+    staleTime: 5 * 60000,
+    refetchInterval: false
+  });
+  const departmentsQuery = useQuery({
+    queryKey: ['/api/organization/departments'],
+    enabled: routeActive,
+    staleTime: 5 * 60000,
+    refetchInterval: false
+  });
+  const permissions = definitions.data?.items || [];
+  const providers = definitions.data?.conditionProviders || [];
+  const campuses = campusesQuery.data?.items || [];
+  const departments = departmentsQuery.data?.items || [];
+  const roles = rolesQuery.data?.items || [];
+  const loading = [definitions, rolesQuery, campusesQuery, departmentsQuery].some(
+    (query) => query.isPending
+  );
   const [selected, setSelected] = useState(null);
   const [draft, setDraft] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -46,36 +67,10 @@ export function Permissions() {
   const protectedRole = selected?.id === 'role-superadmin';
   const readOnly = protectedRole || selected?.actions?.edit === false;
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setError('');
-    Promise.all([
-      request('/api/permissions'),
-      request('/api/roles'),
-      request('/api/organization/campuses'),
-      request('/api/organization/departments')
-    ])
-      .then(([definitions, data, campusData, departmentData]) => {
-        if (!active) return;
-        setPermissions(definitions.items || []);
-        setProviders(definitions.conditionProviders || []);
-        setCampuses(campusData.items || []);
-        setDepartments(departmentData.items || []);
-        setRoles(data.items || []);
-        const first = data.items?.[0] || null;
-        setSelected(first);
-        setDraft(structuredClone(first?.grants || []));
-      })
-      .catch((err) => {
-        if (active) setError(err.message);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [readRevision]);
+    if (selected || !roles.length) return;
+    setSelected(roles[0]);
+    setDraft(structuredClone(roles[0].grants || []));
+  }, [rolesQuery.data, selected]);
   useUnsavedChanges({
     dirty,
     active: routeActive,
@@ -113,7 +108,17 @@ export function Permissions() {
         method: 'PATCH',
         body: { revision: selected.revision, grants: draft }
       });
-      setRoles((current) => current.map((role) => (role.id === updated.id ? updated : role)));
+      await client.cancelQueries({ queryKey: ['/api/roles'] });
+      client.setQueryData(['/api/roles'], (current) => ({
+        ...current,
+        items: current.items.map((role) => (role.id === updated.id ? updated : role))
+      }));
+      const affectedQueries = {
+        predicate: (query) =>
+          ['/api/members', '/api/users', '/api/staff-whitelist'].includes(query.queryKey[0])
+      };
+      await client.cancelQueries(affectedQueries);
+      await client.invalidateQueries(affectedQueries);
       setSelected(updated);
       setDraft(structuredClone(updated.grants || []));
       setMessage('权限已保存，受影响的账号需要重新登录');
@@ -131,9 +136,14 @@ export function Permissions() {
         title="系统权限"
         description="接待、维修、排班和值班考勤按任职部门、职位及授权校区自动确定，无需在此配置。"
       />
-      {error && (
+      {(error ||
+        [definitions, rolesQuery, campusesQuery, departmentsQuery].some(
+          (query) => query.error
+        )) && (
         <p data-motion-value="text" className="react-error" role="alert">
-          {error}
+          {error ||
+            [definitions, rolesQuery, campusesQuery, departmentsQuery].find((query) => query.error)
+              ?.error?.message}
         </p>
       )}
       {message && (
@@ -160,14 +170,11 @@ export function Permissions() {
         </aside>
         <article className="react-card">
           <h2 data-motion-value="text">{selected?.name || '角色权限'}</h2>
-          {!selected && (
-            <DataFields pending={loading} fields={[['当前角色'], ['可配置功能'], ['授权范围']]} />
-          )}
           {!selected && error && (
-            <button onClick={() => setReadRevision((value) => value + 1)}>重新读取角色权限</button>
+            <button onClick={() => rolesQuery.refetch()}>重新读取角色权限</button>
           )}
           {!selected && !loading && !error && <p>当前没有可查看的角色。</p>}
-          {selected && (
+          {(selected || loading) && (
             <>
               {protectedRole && (
                 <p className="react-muted">最高管理员权限包受保护，请选择其他角色配置。</p>

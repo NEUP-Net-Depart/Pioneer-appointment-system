@@ -40,9 +40,6 @@ export function dutyRepository({ db, writeCommand }) {
         FROM duty_assignments da JOIN members m ON m.id=da.member_id JOIN campuses c ON c.id=da.campus_id
         LEFT JOIN attendance_reviews r ON r.assignment_id=da.id WHERE da.active=1 AND da.business_date=? AND da.campus_id=? ORDER BY m.name,da.start_at,da.id`
         )
-        .bind(day, campus),
-      db
-        .prepare('SELECT * FROM staff_presence WHERE business_date=? AND campus_id=?')
         .bind(day, campus)
     ]);
     return {
@@ -57,8 +54,7 @@ export function dutyRepository({ db, writeCommand }) {
                 revision: row.review_revision,
                 reason: row.review_reason
               }
-      })),
-      presence: rows(result[1])
+      }))
     };
   }
   async function reviewDuty(item, input, record, snapshot) {
@@ -96,8 +92,8 @@ export function dutyRepository({ db, writeCommand }) {
       (gate, id) => [
         db
           .prepare(
-            `INSERT INTO attendance_records(id,member_id,event_id,dedupe_key,occurred_at,recorded_at,method,source_ref,primary_department_id_snapshot,primary_department_name_snapshot,identity_snapshot,non_scheduled)
-          SELECT ?,?,?,?,?,?,'manual',?,?,?,?,0 WHERE ${gate}`
+            `INSERT INTO attendance_records(id,member_id,event_id,dedupe_key,occurred_at,recorded_at,method,source_ref,primary_department_id_snapshot,primary_department_name_snapshot,identity_snapshot,non_scheduled,checkin_source)
+            SELECT ?,?,?,?,?,?,'manual',?,?,?,?,0,? WHERE ${gate}`
           )
           .bind(
             attendanceId,
@@ -110,6 +106,11 @@ export function dutyRepository({ db, writeCommand }) {
             department?.departmentId || null,
             department?.departmentName || null,
             JSON.stringify(identitySnapshot),
+            JSON.stringify({
+              kind: 'correction',
+              operatorMemberId: record.actorMemberId,
+              operatorAccount: record.actorAccount
+            }),
             id
           ),
         db

@@ -1,7 +1,9 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { ActivityContext, Modal } from './field/ui';
 import { request } from './request.js';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
+import { DataValue } from './DataValue';
 import { addDays, weekRange } from '../../shared/time.js';
 import {
   DUTY_START,
@@ -14,44 +16,36 @@ import {
 } from '../../shared/duty.js';
 
 export function DutyPlanner({ campusId, onDirtyChange }) {
+  const client = useQueryClient();
   const active = useContext(ActivityContext),
     lock = useRef(false),
     saveId = useRef(crypto.randomUUID());
   const [week, setWeek] = useState(() => addDays(weekRange().start, 7)),
-    [data, setData] = useState(null),
     [draft, setDraft] = useState([]),
+    [draftSource, setDraftSource] = useState(null),
     [dirty, setDirty] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
-    [refresh, setRefresh] = useState(0),
     [picker, setPicker] = useState(null),
     [unassigned, setUnassigned] = useState([]);
+  const queryKey = ['/api/rosters/campus-week', { weekStart: week, campusId }];
+  const result = useQuery({ queryKey, enabled: active && !dirty });
+  const data = dirty ? draftSource : result.data;
+  const failure = error || result.error?.message;
+  const visibleDraft = data ? draft : [];
   useEffect(() => {
     onDirtyChange(dirty || busy);
     return () => onDirtyChange(false);
   }, [dirty, busy, onDirtyChange]);
   useEffect(() => {
-    if (!active || dirty) return;
-    const controller = new AbortController();
-    setError('');
-    setData(null);
-    request(`/api/rosters/campus-week?${new URLSearchParams({ weekStart: week, campusId })}`, {
-      signal: controller.signal
-    })
-      .then((result) => {
-        if (controller.signal.aborted) return;
-        setData(result);
-        setDraft(result.rosters.flatMap((row) => row.assignments));
-        setUnassigned([]);
-      })
-      .catch((failure) => {
-        if (!controller.signal.aborted) setError(failure.message);
-      });
-    return () => controller.abort();
-  }, [active, week, campusId, refresh, dirty]);
+    if (!data || dirty) return;
+    setDraft(data.rosters.flatMap((row) => row.assignments));
+    setUnassigned([]);
+  }, [data, dirty]);
   function change(items) {
     saveId.current = crypto.randomUUID();
+    if (!dirty) setDraftSource(result.data);
     setDraft(items);
     setDirty(true);
     setNotice('');
@@ -88,7 +82,22 @@ export function DutyPlanner({ campusId, onDirtyChange }) {
           }))
         }
       });
-      setData(result);
+      await client.cancelQueries({ queryKey: queryKey });
+      client.setQueryData(queryKey, result);
+      const affectedQueries = {
+        predicate: (query) =>
+          [
+            '/api/me/roster',
+            '/api/attendance/day',
+            '/api/slot-capacities/actual',
+            '/api/field/home',
+            '/api/field/board',
+            '/api/attendance/volunteer-report',
+            '/api/attendance/matrix'
+          ].includes(query.queryKey[0])
+      };
+      await client.cancelQueries(affectedQueries);
+      await client.invalidateQueries(affectedQueries);
       setDraft(result.rosters.flatMap((row) => row.assignments));
       setDirty(false);
       setNotice('维修和办公班表已发布，签到已自动准备');
@@ -108,6 +117,48 @@ export function DutyPlanner({ campusId, onDirtyChange }) {
     }
   });
   const run = (operation) => void execute(operation).catch(() => {});
+  async function reload(discard = false) {
+    await execute(async () => {
+      const latest = await result.refetch();
+      if (latest.error) throw latest.error;
+      const fresh = latest.data;
+      const published = fresh.rosters.flatMap((row) => row.assignments);
+      if (dirty && !discard) {
+        const original = new Map(
+          data.rosters.flatMap((row) => row.assignments).map((row) => [row.id, row])
+        );
+        const retained = new Set(draft.map((row) => row.id));
+        const merged = published.filter(
+          (row) =>
+            !original.has(row.id) ||
+            retained.has(row.id) ||
+            JSON.stringify(row) !== JSON.stringify(original.get(row.id))
+        );
+        const additions = draft.filter((row) => !original.has(row.id));
+        const keys = new Set(
+          merged.map((row) => `${row.memberId}:${row.businessDate}:${row.dutyType}`)
+        );
+        setDraft([
+          ...merged,
+          ...additions.filter(
+            (row) => !keys.has(`${row.memberId}:${row.businessDate}:${row.dutyType}`)
+          )
+        ]);
+        setDraftSource(fresh);
+        setNotice(
+          '已读取最新人员、空闲和班表，保留手动新增；远端修改优先保留，请核对冲突提示后发布。'
+        );
+      } else {
+        setDraft(published);
+        setDraftSource(null);
+        setDirty(false);
+        setNotice('已载入最新班表');
+      }
+      saveId.current = crypto.randomUUID();
+      setPicker(null);
+      setUnassigned([]);
+    });
+  }
   async function suggest() {
     const result = await request('/api/rosters/week/suggestions', {
       method: 'POST',
@@ -120,7 +171,7 @@ export function DutyPlanner({ campusId, onDirtyChange }) {
     });
     change(result.assignments);
     setUnassigned(result.unassigned);
-    setData((current) => ({ ...current, sourceVersion: result.sourceVersion }));
+    setDraftSource((current) => ({ ...current, sourceVersion: result.sourceVersion }));
     setNotice('建议已生成，请核对后发布');
   }
   function toggle(person) {
@@ -150,11 +201,17 @@ export function DutyPlanner({ campusId, onDirtyChange }) {
   const dates = [
     ...new Set([
       ...Array.from({ length: 4 }, (_, i) => addDays(week, i)),
-      ...draft.map((row) => row.businessDate)
+      ...visibleDraft.map((row) => row.businessDate)
     ])
   ].sort();
   const warnings = [];
   if (data) {
+    for (const row of draft) {
+      if (!data.people.some((person) => person.memberId === row.memberId))
+        warnings.push(`${row.memberName || row.memberId}已不在可排班范围，请移除该安排`);
+      if (data.paused.includes(row.businessDate))
+        warnings.push(`${row.businessDate}已暂停服务，请核对保留的安排`);
+    }
     for (const person of data.people) {
       const rows = draft.filter((row) => row.memberId === person.memberId);
       if (rows.length + Number(person.alreadyScheduled) > 1)
@@ -202,142 +259,149 @@ export function DutyPlanner({ campusId, onDirtyChange }) {
         </button>
         <span>维修 / 办公 · 19:00–21:00</span>
       </div>
-      {error && (
+      {failure && (
         <p role="alert" className="react-error">
-          {error}
+          {failure}
+          <button disabled={busy} onClick={() => void reload().catch(() => {})}>
+            重试读取
+          </button>
+          {dirty && (
+            <button
+              disabled={busy}
+              onClick={() => {
+                if (window.confirm('放弃当前未发布的调整，载入最新班表？'))
+                  void reload(true).catch(() => {});
+              }}
+            >
+              放弃草稿并读取
+            </button>
+          )}
         </p>
       )}
       {notice && <p role="status">{notice}</p>}
-      {!data ? (
-        <p>
-          {error ? '读取失败。' : '正在读取班表与空闲…'}
-          <button onClick={() => setRefresh((value) => value + 1)}>刷新</button>
-        </p>
-      ) : (
-        <form ref={formRef} onSubmit={(event) => void save(event).catch(() => {})}>
-          <fieldset disabled={busy}>
-            <div className="duty-section-heading">
-              <div>
-                <h2>安排一周值班</h2>
-                <p className="field-muted">
-                  按空闲生成建议，每人每周最多一次；手动调整可保留例外。
-                </p>
-              </div>
-              <div className="schedule-actions">
-                <button type="button" onClick={() => run(suggest)}>
-                  {draft.some((row) => row.suggested) ? '重新生成建议' : '生成建议班表'}
+      <form ref={formRef} aria-busy={!data} onSubmit={(event) => void save(event).catch(() => {})}>
+        <fieldset disabled={busy || !data}>
+          <div className="duty-section-heading">
+            <div>
+              <h2>安排一周值班</h2>
+              <p className="field-muted">按空闲生成建议，每人每周最多一次；手动调整可保留例外。</p>
+            </div>
+            <div className="schedule-actions">
+              <button type="button" onClick={() => run(suggest)}>
+                {draft.some((row) => row.suggested) ? '重新生成建议' : '生成建议班表'}
+              </button>
+              <button type="submit" className="field-primary" disabled={!dirty}>
+                发布班表
+              </button>
+              {dirty && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDirty(false);
+                    setDraft(data.rosters.flatMap((row) => row.assignments));
+                    setUnassigned([]);
+                  }}
+                >
+                  放弃调整
                 </button>
-                <button type="submit" className="field-primary" disabled={!dirty}>
-                  发布班表
-                </button>
-                {dirty && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDirty(false);
-                      setDraft(data.rosters.flatMap((row) => row.assignments));
-                      setUnassigned([]);
-                    }}
-                  >
-                    放弃调整
-                  </button>
+              )}
+            </div>
+          </div>
+          <div className="duty-week-grid">
+            {dates.map((day, index) => (
+              <section className="duty-day-column" key={day}>
+                <header>
+                  <h3>
+                    {new Intl.DateTimeFormat('zh-CN', {
+                      weekday: 'short',
+                      timeZone: 'Asia/Shanghai'
+                    }).format(new Date(`${day}T12:00:00Z`))}
+                  </h3>
+                  <span>{day.slice(5)}</span>
+                </header>
+                {data?.paused.includes(day) ? (
+                  <p>暂停服务</p>
+                ) : (
+                  DUTY_TYPES.map((type) => (
+                    <div key={type} className="duty-shift-group">
+                      <h4>
+                        {dutyTypeLabels[type]}{' '}
+                        <span>
+                          <DataValue label={`${day}${dutyTypeLabels[type]}人数`}>
+                            {data
+                              ? visibleDraft.filter(
+                                  (row) => row.businessDate === day && row.dutyType === type
+                                ).length
+                              : undefined}
+                          </DataValue>{' '}
+                          人
+                        </span>
+                      </h4>
+                      {visibleDraft
+                        .filter((row) => row.businessDate === day && row.dutyType === type)
+                        .map((row) => {
+                          const person = data.people.find(
+                            (person) => person.memberId === row.memberId
+                          );
+                          return (
+                            <div data-motion-item={row.id} key={row.id} className="duty-assignee">
+                              <span>
+                                {person?.name || row.memberName || '原值班人员'}
+                                {dutyLeader(person?.memberships || [], day) ? ' · 负责人' : ''}
+                                {row.leaveStatus === 'recorded' ? ' · 已请假' : ''}
+                                {row.suggested ? ' · 建议' : ''}
+                                {row.startAt !== DUTY_START || row.endAt !== DUTY_END
+                                  ? ` · ${row.startAt}–${row.endAt}`
+                                  : ''}
+                              </span>
+                              <button
+                                type="button"
+                                aria-label={`移除${person?.name || row.memberName} ${day}${type}`}
+                                onClick={() => change(draft.filter((item) => item !== row))}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          );
+                        })}
+                      <button
+                        type="button"
+                        className="duty-add-person"
+                        onClick={() => setPicker({ day, type, index })}
+                      >
+                        选择人员
+                      </button>
+                    </div>
+                  ))
                 )}
-              </div>
-            </div>
-            <div className="duty-week-grid">
-              {dates.map((day, index) => (
-                <section className="duty-day-column" key={day}>
-                  <header>
-                    <h3>
-                      {new Intl.DateTimeFormat('zh-CN', {
-                        weekday: 'short',
-                        timeZone: 'Asia/Shanghai'
-                      }).format(new Date(`${day}T12:00:00Z`))}
-                    </h3>
-                    <span>{day.slice(5)}</span>
-                  </header>
-                  {data.paused.includes(day) ? (
-                    <p>暂停服务</p>
-                  ) : (
-                    DUTY_TYPES.map((type) => (
-                      <div key={type} className="duty-shift-group">
-                        <h4>
-                          {dutyTypeLabels[type]}{' '}
-                          <span>
-                            {
-                              draft.filter(
-                                (row) => row.businessDate === day && row.dutyType === type
-                              ).length
-                            }{' '}
-                            人
-                          </span>
-                        </h4>
-                        {draft
-                          .filter((row) => row.businessDate === day && row.dutyType === type)
-                          .map((row) => {
-                            const person = data.people.find(
-                              (person) => person.memberId === row.memberId
-                            );
-                            return (
-                              <div key={row.id} className="duty-assignee">
-                                <span>
-                                  {person?.name || row.memberName || '原值班人员'}
-                                  {dutyLeader(person?.memberships || [], day) ? ' · 负责人' : ''}
-                                  {row.leaveStatus === 'recorded' ? ' · 已请假' : ''}
-                                  {row.suggested ? ' · 建议' : ''}
-                                  {row.startAt !== DUTY_START || row.endAt !== DUTY_END
-                                    ? ` · ${row.startAt}–${row.endAt}`
-                                    : ''}
-                                </span>
-                                <button
-                                  type="button"
-                                  aria-label={`移除${person?.name || row.memberName} ${day}${type}`}
-                                  onClick={() => change(draft.filter((item) => item !== row))}
-                                >
-                                  ×
-                                </button>
-                              </div>
-                            );
-                          })}
-                        <button
-                          type="button"
-                          className="duty-add-person"
-                          onClick={() => setPicker({ day, type, index })}
-                        >
-                          选择人员
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </section>
-              ))}
-            </div>
-            {!!warnings.length && (
-              <details className="duty-warnings" open>
-                <summary>需核对 · {warnings.length}</summary>
-                <ul>
-                  {[...new Set(warnings)].map((message) => (
-                    <li key={message}>{message}</li>
-                  ))}
-                </ul>
-                <p>这些提示供现场协调，核对后可直接发布；时间冲突仍会阻止提交。</p>
-              </details>
-            )}
-            {!!unassigned.length && (
-              <details>
-                <summary>未安排成员 · {unassigned.length}</summary>
-                <ul>
-                  {unassigned.map((person) => (
-                    <li key={person.memberId}>
-                      {person.name} · {person.reason}
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-          </fieldset>
-        </form>
-      )}
+              </section>
+            ))}
+          </div>
+          {!!warnings.length && (
+            <details className="duty-warnings" open>
+              <summary>需核对 · {warnings.length}</summary>
+              <ul>
+                {[...new Set(warnings)].map((message) => (
+                  <li key={message}>{message}</li>
+                ))}
+              </ul>
+              <p>这些提示供现场协调，核对后可直接发布；时间冲突仍会阻止提交。</p>
+            </details>
+          )}
+          {!!unassigned.length && (
+            <details>
+              <summary>未安排成员 · {unassigned.length}</summary>
+              <ul>
+                {unassigned.map((person) => (
+                  <li key={person.memberId}>
+                    {person.name} · {person.reason}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </fieldset>
+      </form>
       {picker && data && (
         <Modal
           title={`${picker.day} · ${dutyTypeLabels[picker.type]}选择人员`}

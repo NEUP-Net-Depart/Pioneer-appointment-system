@@ -1,6 +1,6 @@
-import { DataFields } from '../DataValue';
+import { DataValue } from '../DataValue';
 import { useState } from 'react';
-import { Empty, Modal, Notice, CredentialCard, Scanner, time } from './ui';
+import { Modal, Notice, CredentialCard, Scanner, time } from './ui';
 import { Repair } from './Repair';
 import { Registration } from './Registration';
 import type { Home } from './types';
@@ -9,6 +9,7 @@ import { StaffIdentity } from '../StaffIdentity';
 import { useFieldWorkspace } from './useFieldWorkspace';
 import { TodayScene } from './TodayScene';
 import { PersonalScene } from './PersonalScene';
+import { AttendanceActions } from './AttendanceActions';
 import './field.css';
 export function FieldApp({
   initial,
@@ -24,7 +25,7 @@ export function FieldApp({
   workspaceLinks?: { id: string; label: string; group?: string }[];
   requestedScene?: string | null;
   onSceneChange?: (scene: string) => void;
-  onContextChange?: (home: Home) => void;
+  onContextChange?: (resource: string, campusId: string) => void;
   active?: boolean;
   onLogout: () => void;
   onNavigate: (view: string) => void;
@@ -34,7 +35,6 @@ export function FieldApp({
     accessToken: string;
   } | null>(null);
   const {
-    key,
     scene,
     campus,
     setCampus,
@@ -61,7 +61,6 @@ export function FieldApp({
     showAttendance,
     openAttendance,
     checkIn,
-    presence,
     campusName
   } = useFieldWorkspace({
     initial,
@@ -75,7 +74,7 @@ export function FieldApp({
   });
   return (
     <>
-      <section className="field-content" aria-busy={result.loading}>
+      <section className="field-content" aria-busy={result.isPending}>
         <WorkspaceHeader
           group={scene === 'mine' ? '我的' : '现场工作'}
           title={
@@ -87,93 +86,98 @@ export function FieldApp({
         >
           <div className="field-scope">
             <span data-motion-value="text">{data?.businessDate || initial.businessDate}</span>
-            <label>
-              <span className="field-sr-only">工作校区</span>
-              <select
-                value={campus}
-                onChange={(e) => {
-                  setCampus(e.target.value);
-                  setSelected('');
-                  setMessage('');
-                }}
-              >
-                {(data?.campuses || initial.campuses).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}校区
-                  </option>
-                ))}
-              </select>
-            </label>
+            {(data?.campuses || initial.campuses).length > 1 ? (
+              <label>
+                <span className="field-sr-only">工作校区</span>
+                <select
+                  value={campus}
+                  disabled={busy}
+                  onChange={(e) => {
+                    setCampus(e.target.value);
+                    setCustomerCredential(null);
+                  }}
+                >
+                  {(data?.campuses || initial.campuses).map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}校区
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <span>{campusName}校区</span>
+            )}
           </div>
         </WorkspaceHeader>
-        <Notice>{message || result.error}</Notice>
-        <div className="workspace-update" role="status" aria-live="polite">
-          {result.loading ? '正在更新当前区域…' : ''}
-        </div>
-        {!data ? (
-          result.error ? (
-            <Empty title="暂时无法读取工作台">
-              <button onClick={refresh}>重新读取</button>
-            </Empty>
-          ) : (
-            <section className="field-card">
-              <h2 data-motion-value="text">{scene === 'mine' ? '个人工作' : '当日工作'}</h2>
-              <DataFields
-                fields={[
-                  ['工作日期', initial.businessDate],
-                  ['工作校区', campusName],
-                  ['当前岗位'],
-                  ['到岗状态'],
-                  ['当前工单']
-                ]}
-              />
-            </section>
-          )
-        ) : (
-          <>
-            {!!data.pendingCoverInvitations &&
-              workspaceLinks.some((entry) => entry.id === 'duties') && (
-                <section className="field-roster-todo" aria-label="待响应的换班邀请">
-                  <div>
-                    <strong data-motion-value="text">
-                      {data.pendingCoverInvitations} 份换班邀请等待你确认
-                    </strong>
-                  </div>
-                  <button onClick={() => onNavigate('duties')}>查看邀请</button>
-                </section>
-              )}
-            {scene === 'today' && (
-              <TodayScene
-                active={active}
-                busy={busy}
-                data={data}
-                onSelect={setSelected}
-                onScan={() => setScanOpen(true)}
-                onRegister={() => setRegistration(true)}
-                showAttendance={showAttendance}
-                openAttendance={openAttendance}
-                presence={presence}
-              />
-            )}
-            {scene === 'mine' && (
-              <PersonalScene
-                initial={initial}
-                onNavigate={onNavigate}
-                workspaceLinks={workspaceLinks}
-                onLogout={onLogout}
-                key={key}
-                busy={busy}
-                data={data}
-                openAttendance={openAttendance}
-                campusName={campusName}
-              />
-            )}
-            <footer className="field-footer">
-              <span data-motion-value="text">更新于 {time(data.updatedAt)}</span>
-              <button onClick={refresh}>刷新</button>
-            </footer>
-          </>
+        <Notice>{message || result.error?.message}</Notice>
+        {(scene === 'today' || scene === 'mine') && (
+          <AttendanceActions
+            data={
+              data || {
+                ...initial,
+                campusId: campus,
+                attendance: initial.campusId === campus ? initial.attendance : undefined
+              }
+            }
+            busy={busy || !data}
+            onCheckIn={openAttendance}
+            onShowCode={scene === 'today' ? showAttendance : undefined}
+          />
         )}
+        {!!data?.pendingCoverInvitations &&
+          workspaceLinks.some((entry) => entry.id === 'duties') && (
+            <section className="field-roster-todo" aria-label="待响应的换班邀请">
+              <div>
+                <strong data-motion-value="text">
+                  {data.pendingCoverInvitations} 份换班邀请等待你确认
+                </strong>
+              </div>
+              <button onClick={() => onNavigate('duties')}>查看邀请</button>
+            </section>
+          )}
+        {scene === 'today' && (
+          <TodayScene
+            key={campus}
+            active={active}
+            busy={busy || !data}
+            pending={!data}
+            data={
+              data || {
+                ...initial,
+                campusId: campus,
+                appointments: [],
+                repairs: [],
+                pendingPhotos: []
+              }
+            }
+            onSelect={setSelected}
+            onScan={() => setScanOpen(true)}
+            onRegister={() => setRegistration(true)}
+          />
+        )}
+        {scene === 'mine' && (
+          <PersonalScene
+            initial={initial}
+            onNavigate={onNavigate}
+            workspaceLinks={workspaceLinks}
+            onLogout={onLogout}
+            data={
+              data || {
+                ...initial,
+                campusId: campus,
+                repairs: [],
+                pendingPhotos: [],
+                attendance: undefined
+              }
+            }
+          />
+        )}
+        <footer className="field-footer">
+          <span>
+            更新于 <DataValue label="更新时间">{data ? time(data.updatedAt) : undefined}</DataValue>
+          </span>
+          <button onClick={refresh}>刷新</button>
+        </footer>
       </section>
       {checkResult && (
         <Modal
@@ -188,7 +192,8 @@ export function FieldApp({
               identities={checkResult.identitySnapshot?.identities || data?.identities}
             />
             <p data-motion-value="text">
-              {campusName}校区 · {data?.businessDate}
+              {data?.campuses.find((item) => item.id === checkResult.campusId)?.name}校区 ·{' '}
+              {checkResult.businessDate}
             </p>
             <strong data-motion-value="text">{time(checkResult.occurredAt)}</strong>
             {(checkResult.nonScheduled || checkResult.isExisting) && (
@@ -252,11 +257,7 @@ export function FieldApp({
           id={selected}
           key={selected}
           customerCredential={customerCredential?.id === selected ? customerCredential : null}
-          onClose={() => {
-            setSelected('');
-            refresh();
-          }}
-          onChanged={refresh}
+          onClose={() => setSelected('')}
         />
       )}
       {registration && (
@@ -267,7 +268,6 @@ export function FieldApp({
             setCustomerCredential(accessToken ? { id, accessToken } : null);
             setRegistration(false);
             setSelected(id);
-            refresh();
             setMessage('登记成功');
           }}
         />

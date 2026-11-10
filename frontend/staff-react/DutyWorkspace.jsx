@@ -39,7 +39,7 @@ export function DutyWorkspace({ user, initialCampus }) {
     ['history', '统计与历史']
   ];
   const panel = (id, child) => (
-    <div hidden={tab !== id}>
+    <div role="region" aria-label={tabs.find(([key]) => key === id)?.[1]} hidden={tab !== id}>
       <ActivityContext.Provider value={active && tab === id}>{child}</ActivityContext.Provider>
     </div>
   );

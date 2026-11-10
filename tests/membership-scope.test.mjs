@@ -5,6 +5,7 @@ import {database,seedStaff,seedAppointment} from './helpers/database.mjs';
 import {staffServices} from './fixtures/staff-services.mjs';
 import {userRepository} from '../src/db/users.js';
 import {weeklyAttendanceRows} from '../src/modules/attendance/weekly-export.js';
+import {createAuthorizer} from '../src/modules/authorization/public.js';
 
 function post(db,account,department,position='member'){
  db.sqlite.prepare("INSERT INTO member_department_memberships(id,member_id,department_id,position_code,assignment_type,is_primary,effective_from,created_at) VALUES(?,?,?,?,'primary',1,'2026-01-01','2026-01-01')").run('post-'+account,'member-'+account,department,position);
@@ -21,13 +22,13 @@ test('ministers manage every department in their campus; directors and president
   const head=await users.find('20261001'),director=await users.find('20261002'),president=await users.find('20261003');
   assert.deepEqual(director.authorizedCampuses.sort(),['南湖','浑南'].sort());
   const ctx=await staff.contextFor(head);
-  for(const permission of ['members.manage','roster.manage','attendance.correct','attendance.session.manage']){
+  for(const permission of ['members.manage','accounts.manage','booking.manage','roster.manage','attendance.correct','attendance.session.manage']){
    assert.equal(staff.evaluate(ctx,permission,{campusId:'campus-nanhu',departmentId:'dept-office'}).allowed,true);
    assert.equal(staff.evaluate(ctx,permission,{campusId:'campus-hunnan',departmentId:'dept-network'}).allowed,false);
    assert.equal(staff.evaluate(await staff.contextFor(director),permission,{campusId:'campus-hunnan'}).allowed,true);
    assert.equal(staff.evaluate(await staff.contextFor(president),permission,{campusId:'campus-hunnan'}).allowed,true);
   }
-  for(const permission of ['roles.manage','settings.manage','accounts.manage'])assert.ok(!ctx.permissions[permission]);
+  for(const permission of ['roles.manage','settings.manage'])assert.ok(!ctx.permissions[permission]);
   const office=await staff.memberDetail(head,'member-20261004');
   await staff.updateMember(head,'member-20261004',{revision:office.member.revision,name:'办公室成员新姓名'});
   await assert.rejects(staff.memberDetail(head,'member-20261006'),{status:403});
@@ -38,6 +39,32 @@ test('ministers manage every department in their campus; directors and president
   // A grant cannot manufacture leadership or a repair qualification.
   assert.ok(db.sqlite.prepare("SELECT code FROM roles WHERE code IN ('technician','repair_lead','office_lead','exchange','office')").all().length===0);
  }finally{db.sqlite.close();}
+});
+
+test('booking management follows active leadership and intersects its campus scope with account access',()=>{
+ const authorizer=createAuthorizer();
+ const actor={memberId:'leader',status:'enabled',role:'technician',homeCampus:'南湖',authorizedCampuses:['南湖','浑南']};
+ const post={isPrimary:true,positionCode:'deputy_head',effectiveFrom:'2026-11-01',effectiveTo:'2026-12-01'};
+ const context={authorizationDate:'2026-11-10',memberships:[post]};
+ const grants=['settings.manage','booking.manage'].map(permissionCode=>({permissionCode,scope:{all:true}}));
+ const allowed=(user,posts,target={})=>authorizer.evaluate(user,'booking.manage',target,{...context,memberships:posts},grants).allowed;
+ for(const positionCode of ['member','deputy_head','head','deputy_director','director','vice_president','president']){
+  const posts=[{...post,positionCode}];
+  assert.equal(allowed(actor,posts,{campusId:'campus-nanhu'}),positionCode!=='member',positionCode);
+  assert.equal(allowed(actor,posts,{campusId:'campus-hunnan'}),!['member','deputy_head','head'].includes(positionCode),positionCode);
+  assert.equal(allowed({...actor,authorizedCampuses:['南湖']},posts,{campusId:'campus-hunnan'}),false,positionCode);
+ }
+ assert.equal(allowed({...actor,homeCampus:'浑南'},[post],{campusId:'campus-hunnan'}),true);
+ assert.equal(allowed({...actor,homeCampus:'浑南'},[post],{campusId:'campus-nanhu'}),false);
+ assert.equal(allowed({...actor,authorizedCampuses:['浑南']},[post]),false);
+ const superadmin={...actor,role:'superadmin'};
+ assert.equal(allowed(superadmin,[],{campusIds:['campus-nanhu','campus-hunnan']}),true);
+ assert.equal(allowed({...superadmin,authorizedCampuses:['南湖']},[],{campusId:'浑南'}),false);
+ assert.equal(allowed({...superadmin,status:'disabled'},[]),false);
+ assert.equal(allowed({...superadmin,memberStatus:'inactive'},[]),false);
+ for(const change of [{effectiveFrom:'2026-11-11'},{effectiveTo:'2026-11-10'},{enabled:false},{isPrimary:false}])
+  assert.equal(allowed(actor,[{...post,...change}]),false);
+ assert.equal(allowed(actor,[]),false);
 });
 
 test('correction uses the same campus scope and stores actual recording time separately from arrival',async()=>{

@@ -1,9 +1,9 @@
-import { DataFields } from './DataValue';
-import React, { useContext, useEffect, useState } from 'react';
+import { DataValue } from './DataValue';
+import { recordServiceDate } from '../../shared/record-filters.js';
+import React, { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { apiFetch } from '../../shared/api.js';
-import { statusLabels, TIME_SLOTS, outcomeLabels } from '../../shared/constants.js';
+import { statusLabels, TIME_SLOTS } from '../../shared/constants.js';
 import { addDays, dateKey, serviceDay, weekRange } from '../../shared/time.js';
-import { request } from './request.js';
 import { ActivityContext, Modal, Notice, Status } from './field/ui';
 import { Repair } from './field/Repair';
 import { WorkspaceHeader } from './WorkspaceHeader';
@@ -11,7 +11,7 @@ import { WorkspaceSections } from './WorkspaceSections';
 import { WorkspaceMoreActions } from './WorkspaceMoreActions';
 import { staffPermission } from '../../shared/staff-access.js';
 
-import { useWorkspaceQuery } from './useWorkspaceQuery.js';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 
 const cleanFilters = {
   q: '',
@@ -28,16 +28,17 @@ const dayLabel = (date) =>
 
 export function Records({ user }) {
   const active = useContext(ActivityContext);
+  const client = useQueryClient();
   const today = dateKey(),
     week = weekRange(today);
-  const [overviewOpen, setOverviewOpen] = useState(false);
+  const [defaultDate, setDefaultDate] = useState(null);
   const [filters, setFilters] = useState(cleanFilters),
     [search, setSearch] = useState(''),
     [sorts, setSorts] = useState([]),
-    [revision, setRevision] = useState(0),
     [menu, setMenu] = useState(''),
     [selected, setSelected] = useState(''),
     [message, setMessage] = useState('');
+  const loadMoreSentinel = useRef(null);
   useEffect(() => {
     const timer = setTimeout(
       () =>
@@ -50,20 +51,76 @@ export function Records({ user }) {
   }, [search]);
   const query = new URLSearchParams({
     ...filters,
-    limit: '100',
+    limit: '30',
+    deferCounts: '1',
     sorts: sorts.map((item) => `${item.key}:${item.direction}`).join(',')
   });
-  const list = useWorkspaceQuery(`/api/appointments?${query}`, active, revision);
-  const overview = useWorkspaceQuery(
-    '/api/appointments/overview',
-    active && overviewOpen,
-    revision
-  );
-  const refresh = () => setRevision((value) => value + 1);
+  const list = useInfiniteQuery({
+    queryKey: ['/api/appointments', Object.fromEntries(query)],
+    enabled: active && defaultDate !== null,
+    initialPageParam: '',
+    getNextPageParam: (page) => page.nextCursor || undefined,
+    staleTime: (query) => (query.state.data?.pages.length > 1 ? 120000 : 30000),
+    refetchInterval: (query) => (query.state.data?.pages.length > 1 ? 120000 : 30000)
+  });
+  const items = [
+    ...new Map(
+      (list.data?.pages.flatMap((page) => page.items) || []).map((item) => [item.id, item])
+    ).values()
+  ];
+  const countsQuery = new URLSearchParams({
+    ...filters,
+    limit: '1',
+    sorts: sorts.map((item) => `${item.key}:${item.direction}`).join(',')
+  });
+  const countsResult = useQuery({
+    queryKey: ['/api/appointments/counts', Object.fromEntries(countsQuery)],
+    enabled: active && defaultDate !== null && !!list.data && menu === 'status'
+  });
+  const overview = useQuery({ queryKey: ['/api/appointments/overview'], enabled: active });
+  useEffect(() => {
+    if (!overview.data && (!overview.error || defaultDate !== null)) return;
+    const date = recordServiceDate(overview.data, today) || today;
+    if (defaultDate === date) return;
+    setDefaultDate(date);
+    setFilters((current) =>
+      defaultDate === null || (current.date === defaultDate && !current.dateFrom)
+        ? { ...current, date, dateFrom: '', dateTo: '' }
+        : current
+    );
+  }, [overview.data, overview.error, defaultDate, today]);
+  useLayoutEffect(() => {
+    const node = loadMoreSentinel.current;
+    if (!active || !node || !list.hasNextPage || !list.data || list.error) return undefined;
+    let observing = true;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (
+          observing &&
+          entries.some((entry) => entry.isIntersecting) &&
+          node.getBoundingClientRect().top <= window.innerHeight * 3 &&
+          !list.isFetching
+        )
+          list.fetchNextPage({ cancelRefetch: false });
+      },
+      { rootMargin: `${Math.round(window.innerHeight * 2)}px 0px` }
+    );
+    observer.observe(node);
+    return () => {
+      observing = false;
+      observer.disconnect();
+    };
+  }, [active, list.hasNextPage, list.data, list.isFetching, list.error]);
+  const refresh = () =>
+    Promise.all(
+      ['/api/appointments', '/api/appointments/counts', '/api/appointments/overview'].map((path) =>
+        client.invalidateQueries({ queryKey: [path] })
+      )
+    );
   const update = (patch) => setFilters((current) => ({ ...current, ...patch }));
   const reset = () => {
     setSearch('');
-    setFilters(cleanFilters);
+    setFilters({ ...cleanFilters, date: defaultDate || today });
     setSorts([]);
   };
   function cycle(key) {
@@ -90,8 +147,8 @@ export function Records({ user }) {
       setMessage(failure.message);
     }
   }
-  const data = list.data,
-    counts = data?.filteredCounts || data?.counts || {};
+  const data = list.data ? { ...list.data.pages.at(-1), ...list.data.pages[0], items } : undefined,
+    counts = countsResult.data ? countsResult.data?.filteredCounts || {} : {};
   const searchCapabilities = data?.searchCapabilities;
   const searchPlaceholder = [
     '编号',
@@ -115,7 +172,7 @@ export function Records({ user }) {
       ? dayLabel(filters.date)
       : '全部日期';
   const datePreset =
-    filters.date === today && !filters.dateFrom
+    filters.date === defaultDate && !filters.dateFrom
       ? 'today'
       : filters.dateFrom === week.start && filters.dateTo === week.end
         ? 'week'
@@ -158,9 +215,7 @@ export function Records({ user }) {
   return (
     <section className="records-workspace">
       <WorkspaceHeader group="现场工作" title="预约记录">
-        <button disabled={list.loading || overview.loading} onClick={refresh}>
-          刷新记录
-        </button>
+        <button onClick={refresh}>刷新记录</button>
         {staffPermission(user, 'statistics.read') && (
           <WorkspaceMoreActions>
             <button onClick={exportRecords}>导出全部可见记录</button>
@@ -170,7 +225,8 @@ export function Records({ user }) {
       <Notice>{message}</Notice>
       <RecordOverview
         result={overview}
-        onOpen={setOverviewOpen}
+        filters={filters}
+        campuses={user.authorizedCampuses}
         onFilter={(patch) => {
           setSearch('');
           update({ ...patch, q: '' });
@@ -213,7 +269,7 @@ export function Records({ user }) {
         <div className="records-result-tools">
           <div className="records-quick-dates" role="group" aria-label="快捷预约日期">
             {[
-              ['today', '今日预约'],
+              ['today', '当期预约'],
               ['week', '本周预约'],
               ['all', '不限日期']
             ].map(([id, label]) => (
@@ -223,7 +279,7 @@ export function Records({ user }) {
                 aria-pressed={datePreset === id}
                 onClick={() =>
                   update({
-                    date: id === 'today' ? today : '',
+                    date: id === 'today' ? defaultDate || today : '',
                     dateFrom: id === 'week' ? week.start : '',
                     dateTo: id === 'week' ? week.end : ''
                   })
@@ -234,10 +290,12 @@ export function Records({ user }) {
             ))}
           </div>
           <div className="records-result-meta" role="status">
-            <span data-motion-value="number">
-              {data ? `${data.items?.length || 0} 条记录` : '正在读取记录…'}
-              {list.loading && data ? ' · 更新中' : ''}
-              {!list.current && data ? ' · 当前显示上次结果' : ''}
+            <span>
+              已加载{' '}
+              <DataValue label="已加载记录数">
+                {data ? data.items?.length || 0 : undefined}
+              </DataValue>{' '}
+              条
             </span>
             {sorts.length > 0 && (
               <span>
@@ -246,7 +304,7 @@ export function Records({ user }) {
             )}
           </div>
         </div>
-        <Notice>{list.error}</Notice>
+        <Notice>{list.error?.message}</Notice>
         {list.error && <button onClick={refresh}>重试读取</button>}
         <details className="records-mobile-sort">
           <summary>排序与优先级</summary>
@@ -267,7 +325,7 @@ export function Records({ user }) {
             {sorts.length > 0 && <button onClick={() => setSorts([])}>清除排序</button>}
           </div>
         </details>
-        <div data-motion-list="reveal" className="records-table-wrap" aria-busy={list.loading}>
+        <div data-motion-list="reveal" className="records-table-wrap" aria-busy={list.isPending}>
           <table className="records-table">
             <thead>
               <tr>
@@ -313,12 +371,7 @@ export function Records({ user }) {
                     <span data-motion-value="text">{item.timeSlot}</span>
                   </td>
                   <td data-label="状态">
-                    <Status value={item.status} />
-                    {item.outcome && (
-                      <span data-motion-value="text">
-                        {outcomeLabels[item.outcome] || '结果已记录'}
-                      </span>
-                    )}
+                    <Status value={item.status} outcome={item.outcome} />
                   </td>
                   <td data-label="校区">{item.campus}</td>
                   <td data-label="设备">
@@ -337,17 +390,18 @@ export function Records({ user }) {
             </tbody>
           </table>
         </div>
-        {list.nextCursor && (
+        {list.hasNextPage && (
           <div className="field-actions">
             <button
-              onClick={list.loadMore}
-              disabled={list.loadingMore || list.loading || !list.current}
+              onClick={() => list.fetchNextPage({ cancelRefetch: false })}
+              disabled={list.isFetchingNextPage || list.isPending || !list.data}
             >
-              {list.loadingMore ? '正在加载…' : '加载更多预约'}
+              加载更多预约
             </button>
           </div>
         )}
-        {!data?.items?.length && !list.loading && !list.error && (
+        <div ref={loadMoreSentinel} className="records-load-sentinel" aria-hidden="true" />
+        {!data?.items?.length && defaultDate !== null && !list.isPending && !list.error && (
           <div className="field-empty">
             <strong>没有符合条件的预约</strong>
             <p>
@@ -381,7 +435,6 @@ export function Records({ user }) {
           key={selected}
           id={selected}
           onClose={() => setSelected('')}
-          onChanged={refresh}
           sidePanel
           hideWarrantyLookup
         />
@@ -426,9 +479,13 @@ function RecordFilter({ menu, filters, counts, campuses, slots, onChange, onClos
                 >
                   {label}
                   <small data-motion-value="text">
-                    {value === 'pending'
-                      ? (counts.booked || 0) + (counts.in_progress || 0)
-                      : counts[value] || 0}
+                    <DataValue label={`${label}数量`}>
+                      {value === 'pending'
+                        ? counts.booked === undefined
+                          ? undefined
+                          : counts.booked + counts.in_progress
+                        : counts[value]}
+                    </DataValue>
                   </small>
                 </button>
               )
@@ -495,24 +552,19 @@ function RecordFilter({ menu, filters, counts, campuses, slots, onChange, onClos
   );
 }
 
-function RecordOverview({ result, onFilter, onOpen }) {
+function RecordOverview({ result, filters, campuses, onFilter }) {
   const data = result.data;
-  const [selected, setSelected] = useState('');
-  const selectionExists = selected === 'week' ? !!data?.week : data?.dates.includes(selected);
-  const date = selectionExists ? selected : data?.dates[0] || '';
+  const date = filters.dateFrom || !filters.date ? 'week' : filters.date;
   const weekly = date === 'week';
   const period = weekly
-    ? { date: '', dateFrom: data.week.start, dateTo: data.week.end }
+    ? { date: '', dateFrom: data?.week.start || '', dateTo: data?.week.end || '' }
     : { date, dateFrom: '', dateTo: '' };
   function select(patch = {}) {
-    onFilter({ campus: 'all', timeSlot: '', status: 'all', ...period, ...patch });
+    onFilter({ ...filters, ...period, ...patch });
   }
   return (
     <section className="records-overview" aria-label="近期预约概览">
-      <details
-        className="records-overview-disclosure"
-        onToggle={(event) => onOpen(event.currentTarget.open)}
-      >
+      <details className="records-overview-disclosure" open>
         <summary>
           <div>
             <h2>近期预约概览</h2>
@@ -523,31 +575,30 @@ function RecordOverview({ result, onFilter, onOpen }) {
           </span>
         </summary>
         <div className="records-overview-body">
-          <span data-motion-value="text" className="workspace-update" role="status">
-            {result.loading
-              ? '正在更新…'
-              : data
-                ? `更新于 ${new Date(data.updatedAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Shanghai' })}`
-                : '读取预约概览'}
-          </span>
-          <Notice>{result.error}</Notice>
-          {!data && result.loading && !result.error && (
-            <DataFields fields={[['预约日期'], ['校区'], ['名额与占用']]} />
-          )}
-          {data && (
+          <Notice>{result.error?.message}</Notice>
+          {
             <>
               <div className="records-periods">
-                {[...(data.week ? ['week'] : []), ...data.dates].map((value) => (
+                {[
+                  'week',
+                  ...(data?.dates ||
+                    Array.from({ length: 7 }, (_, index) => addDays(dateKey(), index)).filter(
+                      serviceDay
+                    ))
+                ].map((value) => (
                   <button
                     key={value}
-                    aria-pressed={date === value}
+                    disabled={!data}
+                    aria-pressed={
+                      value === 'week'
+                        ? filters.dateFrom === data?.week.start && !!filters.dateFrom
+                        : filters.date === value
+                    }
                     onClick={() => {
-                      setSelected(value);
                       onFilter({
                         campus: 'all',
                         timeSlot: '',
                         status: 'all',
-                        q: '',
                         ...(value === 'week'
                           ? { date: '', dateFrom: data.week.start, dateTo: data.week.end }
                           : { date: value, dateFrom: '', dateTo: '' })
@@ -559,11 +610,15 @@ function RecordOverview({ result, onFilter, onOpen }) {
                 ))}
               </div>
               <div className="records-campus-grid">
-                {data.campuses.map((campus) => {
-                  let items = (weekly ? data.week.items : data.items).filter(
-                    (item) => item.campus === campus && (weekly || item.date === date)
-                  );
-                  if (weekly)
+                {(data?.campuses || campuses).map((campus) => {
+                  let items = (
+                    data
+                      ? weekly
+                        ? data.week.items
+                        : data.items
+                      : TIME_SLOTS.map((timeSlot) => ({ campus, date, timeSlot }))
+                  ).filter((item) => item.campus === campus && (weekly || item.date === date));
+                  if (weekly && data)
                     items = [...new Set(items.map((item) => item.timeSlot))].map((timeSlot) => {
                       const rows = items.filter((item) => item.timeSlot === timeSlot);
                       const sum = (key) => rows.reduce((total, row) => total + row[key], 0);
@@ -581,46 +636,84 @@ function RecordOverview({ result, onFilter, onOpen }) {
                       };
                     });
                   return (
-                    <article data-motion-item="" className="field-card records-campus" key={campus}>
+                    <article className="field-card records-campus" key={campus} aria-busy={!data}>
                       <h3>
-                        <button onClick={() => select({ campus })}>{campus}校区</button>
+                        <button
+                          aria-pressed={filters.campus === campus}
+                          onClick={() => select({ campus })}
+                        >
+                          {campus}校区
+                        </button>
                       </h3>
                       {items.map((item) => (
-                        <div data-motion-item="" className="records-slot" key={item.timeSlot}>
+                        <div
+                          className="records-slot"
+                          key={item.timeSlot}
+                          data-selected={
+                            (filters.campus === 'all' || filters.campus === campus) &&
+                            filters.timeSlot === item.timeSlot
+                          }
+                        >
                           <button
                             className="records-slot-main"
+                            disabled={!data}
+                            aria-pressed={
+                              (filters.campus === 'all' || filters.campus === campus) &&
+                              filters.timeSlot === item.timeSlot
+                            }
                             onClick={() => select({ campus, timeSlot: item.timeSlot })}
                           >
                             <strong data-motion-value="text">{item.timeSlot}</strong>
                             <span data-motion-value="text">
-                              {item.ended
-                                ? '时段已结束'
-                                : !item.capacity
-                                  ? '暂停预约'
-                                  : item.occupied > item.capacity
-                                    ? '超出当前上限'
-                                    : !item.remaining
-                                      ? '名额已满'
-                                      : `剩余 ${item.remaining} 名`}
+                              {!data ? (
+                                <DataValue label="剩余名额" />
+                              ) : item.paused ? (
+                                '暂停服务'
+                              ) : item.ended ? (
+                                '时段已结束'
+                              ) : !item.capacity ? (
+                                '暂停预约'
+                              ) : item.occupied > item.capacity ? (
+                                '超出当前上限'
+                              ) : !item.remaining ? (
+                                '名额已满'
+                              ) : (
+                                <>
+                                  剩余 <DataValue label="剩余名额">{item.remaining}</DataValue> 名
+                                </>
+                              )}
                             </span>
                           </button>
                           <div className="records-slot-status">
                             <span data-motion-value="text">
-                              已占 {item.occupied} / {item.capacity}
+                              已占 <DataValue label="已占名额">{item.occupied}</DataValue> /{' '}
+                              <DataValue label="容量">{item.capacity}</DataValue>
                             </span>
                             <button
+                              disabled={!data}
+                              aria-pressed={
+                                filters.campus === campus &&
+                                filters.timeSlot === item.timeSlot &&
+                                filters.status === 'booked'
+                              }
                               onClick={() =>
                                 select({ campus, timeSlot: item.timeSlot, status: 'booked' })
                               }
                             >
-                              待签到 {item.booked}
+                              待接收 <DataValue label="待接收">{item.booked}</DataValue>
                             </button>
                             <button
+                              disabled={!data}
+                              aria-pressed={
+                                filters.campus === campus &&
+                                filters.timeSlot === item.timeSlot &&
+                                filters.status === 'in_progress'
+                              }
                               onClick={() =>
                                 select({ campus, timeSlot: item.timeSlot, status: 'in_progress' })
                               }
                             >
-                              维修中 {item.inProgress}
+                              维修中 <DataValue label="维修中">{item.inProgress}</DataValue>
                             </button>
                           </div>
                         </div>
@@ -631,7 +724,7 @@ function RecordOverview({ result, onFilter, onOpen }) {
                 })}
               </div>
             </>
-          )}
+          }
         </div>
       </details>
     </section>
