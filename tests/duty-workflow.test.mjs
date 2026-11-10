@@ -81,7 +81,7 @@ test('suggestions maximize real leader coverage, exclude occupied members and pr
   ].map(([memberId, membership]) => ({
     memberId,
     name: memberId,
-    memberships: [membership],
+    memberships: [membership, ...(['c', 'd'].includes(memberId) ? [{ ...post('office'), assignmentType: 'maintenance_affairs', isPrimary: false }] : [])],
     assignments: []
   }));
   const availability = [

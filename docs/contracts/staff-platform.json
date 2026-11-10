@@ -1,6 +1,17 @@
 {
   "contractVersion": "staff-platform.v2",
-  "schemaVersion": "0050",
+  "schemaVersion": "0051",
+  "maintenanceAffairs": {
+    "assignmentType": "maintenance_affairs",
+    "isPrimary": false,
+    "positionCode": "member",
+    "officeIdentityGrantsReception": false,
+    "tokenPermission": "attendance.token.issue",
+    "tokenReplacement": "same event and same issuer only",
+    "attendanceSource": "checkinSource: kind, tokenId, issuerMemberId, issuerName; correction uses operatorMemberId and operatorAccount",
+    "sourceVisibility": "scoped attendance management only; absent on self-service records and workbench",
+    "automaticOfficeCandidates": "active maintenance_affairs appointment and matching availability; exchange alone does not qualify for automatic repair duty"
+  },
   "authContext": [
     "actor",
     "identities",

@@ -117,6 +117,48 @@ export function DutyPlanner({ campusId, onDirtyChange }) {
     }
   });
   const run = (operation) => void execute(operation).catch(() => {});
+  async function reload(discard = false) {
+    await execute(async () => {
+      const latest = await result.refetch();
+      if (latest.error) throw latest.error;
+      const fresh = latest.data;
+      const published = fresh.rosters.flatMap((row) => row.assignments);
+      if (dirty && !discard) {
+        const original = new Map(
+          data.rosters.flatMap((row) => row.assignments).map((row) => [row.id, row])
+        );
+        const retained = new Set(draft.map((row) => row.id));
+        const merged = published.filter(
+          (row) =>
+            !original.has(row.id) ||
+            retained.has(row.id) ||
+            JSON.stringify(row) !== JSON.stringify(original.get(row.id))
+        );
+        const additions = draft.filter((row) => !original.has(row.id));
+        const keys = new Set(
+          merged.map((row) => `${row.memberId}:${row.businessDate}:${row.dutyType}`)
+        );
+        setDraft([
+          ...merged,
+          ...additions.filter(
+            (row) => !keys.has(`${row.memberId}:${row.businessDate}:${row.dutyType}`)
+          )
+        ]);
+        setDraftSource(fresh);
+        setNotice(
+          '已读取最新人员、空闲和班表，保留手动新增；远端修改优先保留，请核对冲突提示后发布。'
+        );
+      } else {
+        setDraft(published);
+        setDraftSource(null);
+        setDirty(false);
+        setNotice('已载入最新班表');
+      }
+      saveId.current = crypto.randomUUID();
+      setPicker(null);
+      setUnassigned([]);
+    });
+  }
   async function suggest() {
     const result = await request('/api/rosters/week/suggestions', {
       method: 'POST',
@@ -164,6 +206,12 @@ export function DutyPlanner({ campusId, onDirtyChange }) {
   ].sort();
   const warnings = [];
   if (data) {
+    for (const row of draft) {
+      if (!data.people.some((person) => person.memberId === row.memberId))
+        warnings.push(`${row.memberName || row.memberId}已不在可排班范围，请移除该安排`);
+      if (data.paused.includes(row.businessDate))
+        warnings.push(`${row.businessDate}已暂停服务，请核对保留的安排`);
+    }
     for (const person of data.people) {
       const rows = draft.filter((row) => row.memberId === person.memberId);
       if (rows.length + Number(person.alreadyScheduled) > 1)
@@ -214,7 +262,20 @@ export function DutyPlanner({ campusId, onDirtyChange }) {
       {failure && (
         <p role="alert" className="react-error">
           {failure}
-          <button onClick={() => result.refetch()}>重试读取</button>
+          <button disabled={busy} onClick={() => void reload().catch(() => {})}>
+            重试读取
+          </button>
+          {dirty && (
+            <button
+              disabled={busy}
+              onClick={() => {
+                if (window.confirm('放弃当前未发布的调整，载入最新班表？'))
+                  void reload(true).catch(() => {});
+              }}
+            >
+              放弃草稿并读取
+            </button>
+          )}
         </p>
       )}
       {notice && <p role="status">{notice}</p>}

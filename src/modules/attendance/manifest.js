@@ -2,11 +2,12 @@ export const attendanceManifest = {
   code: 'attendance',
   version: '3.0.0',
   contractVersion: '2',
-  requiredSchemaVersion: '0050',
+  requiredSchemaVersion: '0051',
   dependencies: ['identity@1', 'organization@1'],
   releaseState: 'ready',
   permissions: [
     'attendance.self',
+    'attendance.token.issue',
     'attendance.session.manage',
     'attendance.correct',
     'attendance.export'

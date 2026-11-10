@@ -33,7 +33,8 @@ export default defineConfig({
       testMatch: [
         '**/core-workflow.spec.mjs',
         '**/photo-compress.spec.mjs',
-        '**/records-loading.spec.mjs'
+        '**/records-loading.spec.mjs',
+        '**/maintenance-affairs.spec.mjs'
       ],
       use: {
         browserName: 'webkit',
