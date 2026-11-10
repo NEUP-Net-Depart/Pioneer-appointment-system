@@ -42,8 +42,6 @@
     "organization": [
       "GET /api/organization/campuses",
       "GET /api/organization/departments",
-      "POST /api/organization/departments",
-      "PATCH /api/organization/departments/:id",
       "GET /api/organization/locations"
     ],
     "authorization": [

@@ -179,9 +179,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
     ...(staffPermission(effectiveUser, 'repair.summary.read')
       ? [{ id: 'staff', label: '预约记录' }]
       : []),
-    ...(publishedView('members', 'members') ||
-    staffPermission(effectiveUser, 'accounts.manage') ||
-    staffPermission(effectiveUser, 'settings.manage')
+    ...(publishedView('members', 'members') || staffPermission(effectiveUser, 'accounts.manage')
       ? [{ id: 'members', label: '人员管理' }]
       : []),
     ...(publishedView('roles', 'permissions') ? [{ id: 'permissions', label: '系统权限' }] : []),
