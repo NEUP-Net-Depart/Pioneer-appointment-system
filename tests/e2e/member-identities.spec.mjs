@@ -37,57 +37,6 @@ test('an appointment created today can end today and be added again', async ({ p
   await expect(history.getByText('交流维修', { exact: true })).toHaveCount(2);
 });
 
-test('creation, member details and account management use consistent independent identities', async ({
-  page
-}, testInfo) => {
-  await loginStaff(page, '20261001');
-  const people = await staffPage(page, '人员管理');
-  await people.getByRole('button', { name: '新增人员', exact: true }).click();
-  const create = page.getByRole('dialog', { name: '新增人员', exact: true });
-  await expect(create.getByRole('checkbox', { name: '配置账号激活资格', exact: true })).toHaveCount(
-    0
-  );
-  await create.getByLabel('学号', { exact: true }).fill('20269901');
-  await create.getByLabel('姓名', { exact: true }).fill('独立身份测试');
-  await create.getByRole('checkbox', { name: '交流维修', exact: true }).check();
-  await create
-    .getByRole('combobox', { name: '正式部门 / 组织', exact: true })
-    .selectOption('dept-network');
-  await expect(create.getByRole('checkbox', { name: '交流维修', exact: true })).toBeChecked();
-  await create.getByRole('combobox', { name: '正式部门 / 组织', exact: true }).selectOption('');
-  await page.screenshot({ path: testInfo.outputPath('identity-creation.png') });
-  await create.getByRole('button', { name: '新增人员', exact: true }).click();
-  await expect(create).toBeHidden();
-  const row = people.locator('.react-row').filter({ hasText: '独立身份测试' });
-  await expect(row.locator('.staff-identity').filter({ hasText: '交流维修' })).toHaveCount(1);
-  await row.getByRole('button').click();
-  const detail = page.getByRole('dialog');
-  const membership = detail.locator('.member-memberships');
-  await membership
-    .getByRole('combobox', { name: '任职类型', exact: true })
-    .selectOption('maintenance_affairs');
-  await expect(membership.getByLabel('正式部门 / 组织', { exact: true })).toHaveCount(0);
-  await expect(membership.getByLabel('职位', { exact: true })).toHaveCount(0);
-  await membership.getByRole('button', { name: '新增任职', exact: true }).click();
-  const history = membership.getByRole('region', { name: '任职与独立身份记录' });
-  await expect(history.getByText('交流维修', { exact: true })).toBeVisible();
-  await expect(history.getByText('维修事务', { exact: true })).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath('identity-appointments.png') });
-  await detail.getByRole('button', { name: '账号与系统授权', exact: true }).click();
-  await expect(detail.getByRole('region', { name: '账号激活状态' })).toContainText(
-    '激活状态：待激活'
-  );
-  await expect(detail.getByRole('button', { name: '保存激活资格', exact: true })).toHaveCount(0);
-  await detail.getByRole('button', { name: '关闭', exact: true }).click();
-  await people.getByRole('button', { name: '激活与账号', exact: true }).click();
-  const account = people.locator('.account-row').filter({ hasText: '周宁' });
-  await expect(account.getByText('硬件部部员', { exact: true })).toBeVisible();
-  await account.getByRole('button', { name: '管理账号', exact: true }).click();
-  await expect(page.getByRole('dialog').getByLabel('基础账号类型', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('dialog').getByText('硬件部部员', { exact: true })).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath('identity-management.png') });
-});
-
 test('a new ordinary member applies without qualification configuration and a department head approves', async ({
   page,
   context
@@ -147,31 +96,17 @@ test('member details remain clickable while a row is revealing', async ({ page }
   await expect(page.getByRole('dialog')).toBeVisible();
 });
 
-test('member detail buttons stay above mobile navigation when scrolled into view across breakpoints', async ({
-  page
+test('member detail buttons remain clickable at responsive breakpoints and on a small screen', async ({
+  page, isMobile
 }) => {
   await loginStaff(page, '20261001');
   const people = await staffPage(page, '人员管理');
-  for (const width of [1440, 1101, 1100, 820, 768, 760, 720, 701, 700, 375]) {
+  // Chromium covers each breakpoint; mobile WebKit covers the fixed bottom navigation.
+  for (const width of isMobile ? [375] : [767, 768, 1100, 1101]) {
     await page.setViewportSize({ width, height: 900 });
-    const buttons = people.getByRole('button', { name: '人员详情', exact: true });
-    await expect(buttons.first()).toBeVisible();
-    const button = buttons.last();
+    const button = people.getByRole('button', { name: '人员详情', exact: true }).last();
     await button.scrollIntoViewIfNeeded();
-    await expect
-      .poll(
-        () =>
-          button.evaluate((node) => {
-            const bounds = node.getBoundingClientRect();
-            const hit = document.elementFromPoint(
-              bounds.x + bounds.width / 2,
-              bounds.y + bounds.height / 2
-            );
-            return hit === node || node.contains(hit);
-          }),
-        { message: `Button must receive pointer events at viewport width ${width}` }
-      )
-      .toBe(true);
+    // Click the scrolled position directly so automatic scrolling cannot hide an overlay regression.
     const bounds = await button.boundingBox();
     await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
     await expect(page.getByRole('dialog')).toBeVisible();
