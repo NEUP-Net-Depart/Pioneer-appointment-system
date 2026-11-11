@@ -1,12 +1,12 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useState } from 'react';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { ActivityContext } from './field/ui';
 import { Schedule } from './Schedule.jsx';
 import { DutyPlanner } from './DutyPlanner.jsx';
 import { AttendanceManagement } from './AttendanceManagement.jsx';
 import { AttendanceReports } from './AttendanceReports.jsx';
-import { Attendance } from './Attendance';
-import { WeeklyAttendanceExport } from './WeeklyAttendanceExport';
+import { CampusScope } from './CampusScope.jsx';
+import { WorkspaceSections } from './WorkspaceSections';
 import { staffPermission } from '../../shared/staff-access.js';
 import { dutyCampusNames } from '../../shared/duty.js';
 import './schedule.css';
@@ -20,23 +20,31 @@ export function DutyWorkspace({ user, initialCampus }) {
   const campuses = (user.authorizedCampuses || []).map(
     (value) => ({ 南湖: 'campus-nanhu', 浑南: 'campus-hunnan' })[value] || value
   );
-  const [campus, setCampus] = useState(
-    initialCampus || { 南湖: 'campus-nanhu', 浑南: 'campus-hunnan' }[user.homeCampus] || campuses[0]
-  );
+  const preferred = [
+    initialCampus,
+    { 南湖: 'campus-nanhu', 浑南: 'campus-hunnan' }[user.homeCampus],
+    campuses[0]
+  ].find((id) => campuses.includes(id));
+  const [scopes, setScopes] = useState({ today: preferred, plan: preferred });
+  const campusFor = (task) => (campuses.includes(scopes[task]) ? scopes[task] : preferred);
   const [tab, setTab] = useState(manage ? 'today' : plan ? 'plan' : 'mine'),
-    [mineDirty, setMineDirty] = useState(false),
+    [, setMineDirty] = useState(false),
     [dayDirty, setDayDirty] = useState(false),
-    [planDirty, setPlanDirty] = useState(false),
-    [weekly, setWeekly] = useState(false);
-  const locked = mineDirty || dayDirty || planDirty;
-  useEffect(() => {
-    if (initialCampus) setCampus(initialCampus);
-  }, [initialCampus]);
+    [planDirty, setPlanDirty] = useState(false);
+  const scope = (task, disabled) => (
+    <CampusScope
+      label={task === 'today' ? '考勤校区' : '排班校区'}
+      campuses={campuses.map((id) => ({ id, name: dutyCampusNames[id] }))}
+      value={campusFor(task)}
+      disabled={disabled}
+      onChange={(id) => setScopes((current) => ({ ...current, [task]: id }))}
+    />
+  );
   const tabs = [
     ...(manage ? [['today', '今日值班']] : []),
     ...(plan ? [['plan', '安排下周']] : []),
     ['mine', '我的值班'],
-    ['history', '统计与历史']
+    ...(canExport || settings ? [['history', '统计与历史']] : [])
   ];
   const panel = (id, child) => (
     <div role="region" aria-label={tabs.find(([key]) => key === id)?.[1]} hidden={tab !== id}>
@@ -45,56 +53,47 @@ export function DutyWorkspace({ user, initialCampus }) {
   );
   return (
     <section className="react-page schedule-page duty-workspace">
-      <WorkspaceHeader group="排班考勤" title={manage || plan ? '值班' : '我的值班'}>
-        {campuses.length > 1 ? (
-          <label className="duty-campus-select">
-            校区
-            <select
-              aria-label="值班校区"
-              value={campus}
-              disabled={locked}
-              onChange={(event) => setCampus(event.target.value)}
-            >
-              {campuses.map((id) => (
-                <option key={id} value={id}>
-                  {dutyCampusNames[id]}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : (
-          <span>{dutyCampusNames[campus]}</span>
-        )}
-      </WorkspaceHeader>
-      <nav className="duty-tabs" aria-label="值班任务">
-        {tabs.map(([id, label]) => (
-          <button key={id} aria-pressed={tab === id} onClick={() => setTab(id)}>
-            {label}
-          </button>
-        ))}
-      </nav>
+      <WorkspaceHeader group="排班考勤" title={manage || plan ? '值班' : '我的值班'} />
+      <WorkspaceSections
+        label="值班任务"
+        items={tabs.map(([id, label]) => ({ id, label }))}
+        value={tab}
+        onChange={setTab}
+      />
       {manage &&
-        panel('today', <AttendanceManagement campusId={campus} onDirtyChange={setDayDirty} />)}
-      {plan && panel('plan', <DutyPlanner campusId={campus} onDirtyChange={setPlanDirty} />)}
-      {panel('mine', <Schedule user={user} campusId={campus} onDirtyChange={setMineDirty} />)}
-      {panel(
-        'history',
-        <>
-          {(canExport || settings) && <AttendanceReports canExport={canExport} embedded />}
-          {canExport && (
-            <div className="schedule-actions">
-              <button onClick={() => setWeekly(true)}>按周核算与导出</button>
-            </div>
-          )}
-          <Attendance embedded />
-        </>
-      )}
-      {weekly && active && (
-        <WeeklyAttendanceExport
-          campuses={campuses.map((id) => ({ id, name: dutyCampusNames[id] }))}
-          onClose={() => setWeekly(false)}
-        />
-      )}
+        panel(
+          'today',
+          <>
+            <AttendanceManagement
+              campusId={campusFor('today')}
+              onDirtyChange={setDayDirty}
+              campusControl={scope('today', dayDirty)}
+            />
+          </>
+        )}
+      {plan &&
+        panel(
+          'plan',
+          <>
+            <DutyPlanner
+              campusId={campusFor('plan')}
+              onDirtyChange={setPlanDirty}
+              campusControl={scope('plan', planDirty)}
+            />
+          </>
+        )}
+      {panel('mine', <Schedule user={user} campusId={preferred} onDirtyChange={setMineDirty} />)}
+      {(canExport || settings) &&
+        panel(
+          'history',
+          <>
+            <AttendanceReports
+              canExport={canExport}
+              embedded
+              campuses={campuses.map((id) => ({ id, name: dutyCampusNames[id] }))}
+            />
+          </>
+        )}
     </section>
   );
 }

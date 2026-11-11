@@ -22,9 +22,7 @@
   flex: 1;
   flex-wrap: wrap;
 }
-.react-topbar button,
-.react-heading button,
-.react-card button {
+:where(.react-topbar, .react-heading, .react-card) button {
   border: 0;
   border-radius: 8px;
   padding: 8px 12px;
@@ -353,10 +351,9 @@
   opacity: 0.55;
   cursor: default;
 }
-.react-member-editor :focus-visible,
-.react-permission-layout :focus-visible {
-  outline: 3px solid #93c5fd;
-  outline-offset: 3px;
+:where(.react-member-editor, .react-permission-layout) :focus-visible {
+  outline: 2px solid #626b78;
+  outline-offset: 2px;
 }
 
 .react-grant-details {
@@ -408,7 +405,7 @@
   flex: none;
   white-space: nowrap;
 }
-.react-members-page button {
+:where(.react-members-page) button {
   border: 1px solid #cbd5e1;
   border-radius: 9px;
   padding: 10px 14px;
@@ -419,7 +416,7 @@
   font-size: 13px;
   cursor: pointer;
 }
-.react-members-page button:hover {
+:where(.react-members-page) button:hover {
   border-color: #64748b;
   background: #f8fafc;
 }
@@ -427,9 +424,9 @@
   opacity: 0.55;
   cursor: default;
 }
-.react-members-page :focus-visible {
-  outline: 3px solid #93c5fd;
-  outline-offset: 3px;
+:where(.react-members-page) :focus-visible {
+  outline: 2px solid #626b78;
+  outline-offset: 2px;
 }
 .react-members-page .react-toolbar {
   flex-wrap: wrap;
@@ -724,13 +721,16 @@
   background: #f5f7fa;
   color: #243b53;
 }
-#staff-react-root button,
-#staff-react-root input:not([type='checkbox']):not([type='radio']),
-#staff-react-root select,
-#staff-react-root textarea {
+#staff-react-root button:where(:not(.workspace-control-popover *, .workspace-time-popover *)),
+#staff-react-root
+  input:where(
+    :not([type='checkbox'], [type='radio'], .workspace-control-popover *, .workspace-time-popover *)
+  ),
+#staff-react-root select:where(:not(.workspace-control-popover *, .workspace-time-popover *)),
+#staff-react-root textarea:where(:not(.workspace-control-popover *, .workspace-time-popover *)) {
   min-height: 44px;
 }
-#staff-react-root button {
+#staff-react-root button:where(:not(.workspace-control-popover *, .workspace-time-popover *)) {
   font: inherit;
   font-weight: 600;
   transition:
@@ -738,14 +738,19 @@
     border-color 0.16s ease,
     transform 0.16s ease;
 }
-#staff-react-root button:active {
+#staff-react-root
+  button:active:where(:not(.workspace-control-popover *, .workspace-time-popover *)) {
   transform: translateY(1px);
 }
-#staff-react-root button:focus-visible,
-#staff-react-root input:focus-visible,
-#staff-react-root select:focus-visible,
-#staff-react-root textarea:focus-visible {
-  outline: 3px solid #93c5fd;
+#staff-react-root
+  button:focus-visible:where(:not(.workspace-control-popover *, .workspace-time-popover *)),
+#staff-react-root
+  input:focus-visible:where(:not(.workspace-control-popover *, .workspace-time-popover *)),
+#staff-react-root
+  select:focus-visible:where(:not(.workspace-control-popover *, .workspace-time-popover *)),
+#staff-react-root
+  textarea:focus-visible:where(:not(.workspace-control-popover *, .workspace-time-popover *)) {
+  outline: 2px solid #626b78;
   outline-offset: 2px;
 }
 .react-page {

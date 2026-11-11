@@ -1,5 +1,5 @@
 import { test, expect } from './support/fixtures.mjs';
-import { dutyPage, loginStaff, staffPage } from './support/staff.mjs';
+import { chooseOption, dutyPage, loginStaff, staffPage } from './support/staff.mjs';
 
 test('records initialize the service date, restore filters and append pages', async ({ page }) => {
   let releaseOverview;
@@ -184,20 +184,20 @@ test('members paginate, search remotely, filter complete data and clear revoked 
   await expect(page.locator('.members-results .react-row:not(.react-row-head)')).toHaveCount(101);
   expect(requests.at(-1).get('cursor')).toBe('page-2');
   const completeReads = requests.length;
-  await page.getByLabel('筛选成员状态').selectOption('inactive');
+  await chooseOption(page, page.getByLabel('筛选成员状态'), 'inactive');
   await expect(page.getByText('分页成员101', { exact: true })).toBeVisible();
   await expect(page.locator('.members-results .react-row:not(.react-row-head)')).toHaveCount(1);
-  await page.getByLabel('筛选成员校区').selectOption('campus-nanhu');
+  await chooseOption(page, page.getByLabel('筛选成员校区'), 'campus-nanhu');
   await expect(page.getByRole('heading', { name: '没有找到成员' })).toBeVisible();
   await page.getByRole('button', { name: '清除筛选', exact: true }).click();
   await expect(page.locator('.members-results .react-row:not(.react-row-head)')).toHaveCount(101);
   expect(requests).toHaveLength(completeReads);
   refreshed = true;
-  await page.getByRole('button', { name: '刷新', exact: true }).click();
+  await page.getByRole('button', { name: '刷新人员', exact: true }).click();
   await expect(page.locator('.members-results .react-row:not(.react-row-head)')).toHaveCount(1);
   await expect(page.getByText('分页成员0', { exact: true })).toHaveCount(0);
   denied = true;
-  await page.getByRole('button', { name: '刷新', exact: true }).click();
+  await page.getByRole('button', { name: '刷新人员', exact: true }).click();
   await expect(page.locator('.members-results .react-row:not(.react-row-head)')).toHaveCount(0);
   await expect(page.getByRole('alert')).toContainText('人员读取权限已变更');
 });
@@ -243,7 +243,7 @@ test('refresh keeps loaded pages usable and preserves them on failure', async ({
   await page.locator('.members-list-footer').scrollIntoViewIfNeeded();
   await expect(rows).toHaveCount(101);
   phase = 'refresh';
-  await page.getByRole('button', { name: '刷新', exact: true }).click();
+  await page.getByRole('button', { name: '刷新人员', exact: true }).click();
   try {
     await expect.poll(() => pendingTail).toBe(true);
     await expect(rows).toHaveCount(101);
@@ -259,7 +259,7 @@ test('refresh keeps loaded pages usable and preserves them on failure', async ({
   await expect(page.getByText('缓存成员101', { exact: true })).toHaveCount(0);
   await expect(rows).toHaveCount(101);
   phase = 'failed';
-  await page.getByRole('button', { name: '刷新', exact: true }).click();
+  await page.getByRole('button', { name: '刷新人员', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('暂时无法同步');
   await expect(rows).toHaveCount(101);
   await expect(page.locator('.members-results')).toHaveAttribute('aria-busy', 'false');
@@ -423,7 +423,7 @@ test('logout and authorization changes discard private rows and late responses i
   await staffPage(page, '人员管理');
   await expect(page.getByText('旧会话私有成员', { exact: true })).toBeVisible();
   phase = 'slow';
-  await page.getByRole('button', { name: '刷新', exact: true }).click();
+  await page.getByRole('button', { name: '刷新人员', exact: true }).click();
   await expect.poll(() => !!slowRequest).toBe(true);
   try {
     await staffPage(page, '个人中心');

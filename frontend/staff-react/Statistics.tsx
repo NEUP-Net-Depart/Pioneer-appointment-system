@@ -5,6 +5,10 @@ import React, { useContext, useState } from 'react';
 import { ActivityContext, Notice } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { AnimatedValue } from './AnimatedValue';
+import { Select, DatePicker } from './SelectionControls.jsx';
+import { RefreshButton } from './WorkspaceToolbar.jsx';
+import { dateKey } from '../../shared/time.js';
+import { HelpHint } from './HelpHint';
 
 type Summary = {
   total: number;
@@ -71,28 +75,37 @@ export function Statistics() {
   return (
     <section className="report-workspace">
       <WorkspaceHeader group="现场工作" title="统计分析">
-        <button disabled={loading} onClick={() => result.refetch()}>
-          刷新统计
-        </button>
+        <HelpHint label="统计口径">
+          每日服务按预约日期统计；故障分类按已完成维修统计；校区分布按预约总数统计。维修人员工作量为实际开始与完成记录，不代表值班考勤。
+        </HelpHint>
+        <RefreshButton
+          key={`${range}:${day}`}
+          onRefresh={() => result.refetch({ throwOnError: true })}
+          label="刷新统计"
+        />
       </WorkspaceHeader>
       <section className="field-card report-filters" aria-label="统计范围">
         <label>
           统计范围
-          <select
-            value={range}
+          <Select
+            value={day ? 'day' : range}
             onChange={(event) => {
-              setRange(event.target.value);
-              setDay('');
+              if (event.target.value === 'day') setDay(dateKey());
+              else {
+                setRange(event.target.value);
+                setDay('');
+              }
             }}
           >
             <option value="7">最近 7 天</option>
             <option value="30">最近 30 天</option>
             <option value="all">全部记录</option>
-          </select>
+            <option value="day">指定日期</option>
+          </Select>
         </label>
         <label>
           查看单日
-          <input type="date" value={day} onChange={(event) => setDay(event.target.value)} />
+          <DatePicker value={day} onChange={(event) => setDay(event.target.value)} />
         </label>
         {day && <button onClick={() => setDay('')}>清除日期</button>}
       </section>

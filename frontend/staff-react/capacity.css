@@ -147,8 +147,26 @@
   display: grid;
   gap: 20px;
 }
+.field-app .capacity-editor .booking-rule-card {
+  margin-bottom: 0;
+}
+.booking-rule-card > .capacity-section-heading {
+  align-items: center;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
 .booking-rule-card h2 {
-  margin: 0 0 8px;
+  margin: 0;
+}
+.booking-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.booking-rule-card > .capacity-section-heading > .field-actions {
+  flex: 0 0 auto;
+  max-width: 100%;
+  padding-bottom: 0;
 }
 .booking-rule-card p {
   margin: 0;
@@ -315,6 +333,9 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+.capacity-context {
+  margin-bottom: 20px;
 }
 .field-app .capacity-campus-switch button[aria-pressed='true'],
 .field-app .capacity-mobile-days button[aria-pressed='true'],

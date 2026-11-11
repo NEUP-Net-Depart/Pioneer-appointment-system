@@ -36,7 +36,8 @@ export default defineConfig({
         '**/photo-compress.spec.mjs',
         '**/records-loading.spec.mjs',
         '**/maintenance-affairs.spec.mjs',
-        '**/member-identities.spec.mjs'
+        '**/member-identities.spec.mjs',
+        '**/admin-controls.spec.mjs'
       ],
       use: {
         browserName: 'webkit',

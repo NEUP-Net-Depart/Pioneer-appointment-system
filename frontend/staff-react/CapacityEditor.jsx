@@ -1,3 +1,6 @@
+import { Select } from './SelectionControls.jsx';
+import { RefreshButton } from './WorkspaceToolbar.jsx';
+import { HelpHint } from './HelpHint';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useEffect, useRef, useState } from 'react';
 import { DataInput } from './DataInput';
@@ -73,7 +76,7 @@ export function CapacityEditor({ active, onNavigate }) {
     }
   }
   const [drafts, setDrafts] = useState({});
-  const [campus, setCampus] = useState(''),
+  const [taskCampuses, setTaskCampuses] = useState({}),
     [day, setDay] = useState(1),
     [mode, setMode] = useState('template');
   const [error, setError] = useState(''),
@@ -103,6 +106,12 @@ export function CapacityEditor({ active, onNavigate }) {
   const loading = result.isPending;
   const refresh = () => result.refetch();
   const campuses = [...new Set(items.map((item) => item.campus))];
+  const campus = campuses.includes(taskCampuses[mode]) ? taskCampuses[mode] : campuses[0] || '';
+  const setCampus = (next) =>
+    setTaskCampuses((current) => ({
+      ...current,
+      [mode]: typeof next === 'function' ? next(current[mode]) : next
+    }));
   const selection = selections[campus] || single;
   const at = (row, col) =>
     items.find(
@@ -524,7 +533,7 @@ export function CapacityEditor({ active, onNavigate }) {
         }}
       />
       <div className="capacity-context">
-        <div className="capacity-campus-switch" aria-label="选择校区">
+        <div className="capacity-campus-switch" role="group" aria-label="当前配置校区">
           {campuses.map((name) => (
             <button
               key={name}
@@ -545,10 +554,14 @@ export function CapacityEditor({ active, onNavigate }) {
             </button>
           ))}
         </div>
-        {['template', 'actual'].includes(mode) && (
-          <button disabled={loading || busy} onClick={refresh}>
-            {loading ? '正在读取…' : '读取最新配置'}
-          </button>
+        {mode === 'template' && (
+          <RefreshButton
+            key={campus}
+            disabled={busy}
+            label="刷新每周模板"
+            onRefresh={refresh}
+            compactOnMobile
+          />
         )}
       </div>
       <Notice>{error || result.error?.message}</Notice>
@@ -562,7 +575,12 @@ export function CapacityEditor({ active, onNavigate }) {
         <section className="field-card capacity-template">
           <div className="capacity-section-heading">
             <div>
-              <h2>每周预约人数</h2>
+              <h2 className="workspace-title-with-hint">
+                每周预约人数
+                <HelpHint label="容量生效规则">
+                  容量为0时暂停该时段预约。保存后立即更新今天及未来对应校区、星期和时段的容量。已有预约全部保留；已占用达到或超过新容量时停止新增，低于新容量后恢复放号。过去日期保持原容量。
+                </HelpHint>
+              </h2>
             </div>
             <span className="capacity-template-badge">每周重复</span>
           </div>
@@ -797,7 +815,7 @@ export function CapacityEditor({ active, onNavigate }) {
               </label>
               <label>
                 填写范围
-                <select
+                <Select
                   value={scope}
                   onChange={(event) => setScope(event.target.value)}
                   disabled={busy}
@@ -805,14 +823,14 @@ export function CapacityEditor({ active, onNavigate }) {
                   <option value="selection">当前表格选区</option>
                   <option value="day">{days[day - 1]}四个时段</option>
                   <option value="week">当前校区整周</option>
-                </select>
+                </Select>
               </label>
               <button disabled={busy}>填入草稿</button>
             </form>
             <div className="capacity-copy-tools">
               <label>
                 复制日期
-                <select
+                <Select
                   value={day}
                   onChange={(event) => setDay(Number(event.target.value))}
                   disabled={busy}
@@ -822,11 +840,11 @@ export function CapacityEditor({ active, onNavigate }) {
                       {name}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
               <label>
                 复制到日期
-                <select
+                <Select
                   value={dayTarget === String(day) ? 'all' : dayTarget}
                   onChange={(event) => setDayTarget(event.target.value)}
                   disabled={busy}
@@ -840,7 +858,7 @@ export function CapacityEditor({ active, onNavigate }) {
                         </option>
                       )
                   )}
-                </select>
+                </Select>
               </label>
               <button
                 disabled={busy}
@@ -853,7 +871,7 @@ export function CapacityEditor({ active, onNavigate }) {
               <div className="capacity-copy-tools">
                 <label>
                   目标校区
-                  <select
+                  <Select
                     value={
                       copyTarget && copyTarget !== campus
                         ? copyTarget
@@ -867,7 +885,7 @@ export function CapacityEditor({ active, onNavigate }) {
                       .map((name) => (
                         <option key={name}>{name}</option>
                       ))}
-                  </select>
+                  </Select>
                 </label>
                 <button
                   disabled={busy}

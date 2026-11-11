@@ -1,3 +1,4 @@
+import { Select } from '../SelectionControls.jsx';
 import { useContext, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Camera, ChevronUp, Images } from 'lucide-react';
@@ -363,7 +364,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
     <Modal title="查询设备保修" onClose={onClose} initialFocus="select" className="warranty-dialog">
       <div className="warranty-lookup">
         <label htmlFor={id + '-brand'}>设备品牌</label>
-        <select
+        <Select
           id={id + '-brand'}
           value={brandId}
           onChange={(event) => {
@@ -384,7 +385,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
               {item.name}
             </option>
           ))}
-        </select>
+        </Select>
         <Notice>{providerError}</Notice>
         {provider?.id === 'huawei' && !provider.available && <Notice>{provider.message}</Notice>}
         <label htmlFor={id + '-serial'}>序列号 / S/N / Service Tag</label>

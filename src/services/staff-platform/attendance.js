@@ -605,12 +605,17 @@ export function attendanceDomain({
         fail(409, '成员已停用或无该校区访问权限');
       const existing = await repository.dutyEvent(input.businessDate, campusId);
       const window = existing || dutyWindow(input.businessDate);
-      if (
-        !defaultTime &&
-        (!eventWindow(window.startsAt, window.endsAt, instant(input.occurredAt)) ||
-          Date.parse(input.occurredAt) > Date.now())
-      )
-        fail(400, '补录时间必须位于签到窗口内且不能晚于现在');
+      if (!defaultTime && !eventWindow(window.startsAt, window.endsAt, instant(input.occurredAt)))
+        fail(400, '补录时间不在当天允许的签到时段内');
+      if (!defaultTime && Date.parse(input.occurredAt) > Date.now()) {
+        const time = new Intl.DateTimeFormat('zh-CN', {
+          timeZone: 'Asia/Shanghai',
+          hour: '2-digit',
+          minute: '2-digit',
+          hourCycle: 'h23'
+        }).format(new Date(input.occurredAt));
+        fail(400, `补录默认记为当天 ${time}，目前尚未到该时间，请在 ${time} 后补录`);
+      }
       const event = await ensureDutyEvent(actor, input.businessDate, campusId);
       input = {
         ...input,
@@ -661,7 +666,8 @@ export function attendanceDomain({
         duties.find((item) => item.campusId === correctionEvent.campusId)?.startAt || DUTY_START;
       occurredAt = instant(`${input.businessDate}T${startAt}:00+08:00`);
       input = { ...input, occurredAt };
-      if (Date.parse(occurredAt) > Date.now()) fail(400, '所选值班尚未开始，不能提前补录');
+      if (Date.parse(occurredAt) > Date.now())
+        fail(400, `补录默认记为当天 ${startAt}，目前尚未到该时间，请在 ${startAt} 后补录`);
     }
     const event = correctionEvent;
     if (event.type === 'duty' && dateKey(new Date(occurredAt)) !== event.businessDate)
@@ -671,11 +677,10 @@ export function attendanceDomain({
       (input.businessDate && input.businessDate !== event.businessDate)
     )
       fail(400, '补录范围与签到场次不一致');
-    if (
-      !eventWindow(event.startsAt, event.endsAt, occurredAt) ||
-      Date.parse(occurredAt) > Date.now()
-    )
-      fail(400, '补录时间必须位于场次窗口内且不能晚于现在');
+    if (!eventWindow(event.startsAt, event.endsAt, occurredAt))
+      fail(400, '所选到场时间不在该场次允许的签到时段内');
+    if (Date.parse(occurredAt) > Date.now())
+      fail(400, '所选到场时间晚于当前时间，请填写已经发生的实际到场时间');
     const primary = previousRecord
       ? {
           departmentId: previousRecord.primaryDepartmentIdSnapshot,

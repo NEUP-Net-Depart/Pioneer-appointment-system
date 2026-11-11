@@ -10,6 +10,8 @@ import { useFieldWorkspace } from './useFieldWorkspace';
 import { TodayScene } from './TodayScene';
 import { PersonalScene } from './PersonalScene';
 import { AttendanceActions } from './AttendanceActions';
+import { CampusScope } from '../CampusScope.jsx';
+import { RefreshButton } from '../WorkspaceToolbar.jsx';
 import './field.css';
 export function FieldApp({
   initial,
@@ -86,30 +88,29 @@ export function FieldApp({
         >
           <div className="field-scope">
             <span data-motion-value="text">{data?.businessDate || initial.businessDate}</span>
-            {(data?.campuses || initial.campuses).length > 1 ? (
-              <label>
-                <span className="field-sr-only">工作校区</span>
-                <select
-                  value={campus}
-                  disabled={busy}
-                  onChange={(e) => {
-                    setCampus(e.target.value);
-                    setCustomerCredential(null);
-                  }}
-                >
-                  {(data?.campuses || initial.campuses).map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}校区
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : (
-              <span>{campusName}校区</span>
-            )}
+            <RefreshButton
+              key={`${scene}:${campus}`}
+              label={scene === 'mine' ? '刷新个人中心' : '刷新工作台'}
+              compactOnMobile
+              disabled={busy}
+              onRefresh={refresh}
+            />
           </div>
         </WorkspaceHeader>
         <Notice>{message || result.error?.message}</Notice>
+        <CampusScope
+          label={scene === 'mine' ? '签到校区' : '接待校区'}
+          campuses={(data?.campuses || initial.campuses).map((item) => ({
+            id: item.id,
+            name: item.name
+          }))}
+          value={campus}
+          disabled={busy}
+          onChange={(id) => {
+            setCampus(id);
+            setCustomerCredential(null);
+          }}
+        />
         {(scene === 'today' || scene === 'mine') && (
           <AttendanceActions
             data={
@@ -176,7 +177,6 @@ export function FieldApp({
           <span>
             更新于 <DataValue label="更新时间">{data ? time(data.updatedAt) : undefined}</DataValue>
           </span>
-          <button onClick={refresh}>刷新</button>
         </footer>
       </section>
       {checkResult && (

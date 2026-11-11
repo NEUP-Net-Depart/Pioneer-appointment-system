@@ -2,6 +2,7 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import React, { useContext } from 'react';
 import { ActivityContext, Notice, time } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
+import { RefreshButton } from './WorkspaceToolbar.jsx';
 
 type Record = {
   id: string;
@@ -52,10 +53,11 @@ export function Attendance({
       <Notice>{error}</Notice>
       <section className="field-card" aria-busy={loading}>
         <div className="field-section-heading">
-          <h2>签到历史</h2>
-          <button type="button" disabled={result.isFetching} onClick={() => result.refetch()}>
-            刷新记录
-          </button>
+          <h2>本人签到历史</h2>
+          <RefreshButton
+            onRefresh={() => result.refetch({ throwOnError: true })}
+            label="刷新本人签到"
+          />
         </div>
         {!items.length && !loading && !error && <p className="field-muted">暂无签到记录。</p>}
         <ul className="attendance-history-list">

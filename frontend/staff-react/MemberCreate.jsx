@@ -1,3 +1,4 @@
+import { Select } from './SelectionControls.jsx';
 import { useQuery } from '@tanstack/react-query';
 import React, { useContext, useRef, useState } from 'react';
 import { ActivityContext, Modal, Notice } from './field/ui';
@@ -70,7 +71,7 @@ export function MemberCreate({ user, onClose, onSaved, onExisting }) {
             </label>
             <label>
               学院
-              <select
+              <Select
                 value={profile.college}
                 onChange={(event) => setProfile({ ...profile, college: event.target.value })}
               >
@@ -78,7 +79,7 @@ export function MemberCreate({ user, onClose, onSaved, onExisting }) {
                 {NEU_COLLEGES.map((college) => (
                   <option key={college}>{college}</option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label>
               专业

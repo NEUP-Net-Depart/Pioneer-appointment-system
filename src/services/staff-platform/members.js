@@ -338,7 +338,7 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
     return { member: memberPublic(after) };
   }
 
-  async function addMembership(actor, memberId, input) {
+  async function prepareMembership(actor, memberId, input) {
     if (!Number.isInteger(input?.revision) || input.revision < 0) fail(400, '成员版本不正确');
     inputString(input, 'effectiveFrom', 80, true);
     if (!validDate(input.effectiveFrom) || (input.effectiveTo && !validDate(input.effectiveTo)))
@@ -422,15 +422,55 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
       )
     )
       fail(409, '主部门任职重叠，请先结束原任职后再调岗');
-    const result = await repository.addMembership(memberId, input, input.revision, {
-      actorMemberId: context.actor.memberId,
-      actorAccount: actor.account,
-      authVersion: context.authVersion,
-      action: 'organization.membership.updated',
-      targetAccountVersion: targetState.account,
-      after: input,
-      requestId: input.requestId
-    });
+    return { input, context, targetState };
+  }
+
+  async function addMembership(actor, memberId, input) {
+    const combined = input?.memberships !== undefined;
+    const entries = combined ? input.memberships : [input];
+    if (
+      !Array.isArray(entries) ||
+      !entries.length ||
+      entries.length > 3 ||
+      entries.some((item) => !item || typeof item !== 'object')
+    )
+      fail(400, '请选择正式部门或至少一种独立身份');
+    if (new Set(entries.map((item) => item.assignmentType || 'primary')).size !== entries.length)
+      fail(400, '同一次新增不能重复选择任职类型');
+    const prepared = [];
+    for (const entry of entries) {
+      prepared.push(
+        await prepareMembership(
+          actor,
+          memberId,
+          combined
+            ? {
+                ...entry,
+                revision: input.revision,
+                effectiveFrom: input.effectiveFrom,
+                effectiveTo: input.effectiveTo,
+                requestId: input.requestId
+              }
+            : entry
+        )
+      );
+    }
+    const { context, targetState } = prepared[0];
+    const memberships = prepared.map((item) => item.input);
+    const result = await repository.addMembership(
+      memberId,
+      combined ? memberships : memberships[0],
+      input.revision,
+      {
+        actorMemberId: context.actor.memberId,
+        actorAccount: actor.account,
+        authVersion: context.authVersion,
+        action: 'organization.membership.updated',
+        targetAccountVersion: targetState.account,
+        after: combined ? { memberships } : memberships[0],
+        requestId: input.requestId
+      }
+    );
     if (!result) fail(409, '成员版本或任职范围已变化，请刷新');
     return result;
   }
