@@ -53,7 +53,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
     client.setQueryData(queryKey, (current) => ({ ...current, settings: result }));
     releaseRevision.current = null;
     setReleaseTime(null);
-    setMessage('放号时间已保存，新预约立即使用此规则。已有预约保留。');
+    setMessage('放号时间已保存。');
   }
   async function saveNotice() {
     const result = await persist('notice', {
@@ -68,9 +68,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
     }));
     setEditing(null);
     setOriginal(null);
-    setMessage(
-      result.enabled ? '公告已保存，将在设定的北京时间范围内展示。' : '公告已保存为停用状态。'
-    );
+    setMessage(result.enabled ? '公告已保存。' : '公告已保存为停用状态。');
   }
   async function perform(operation) {
     if (lock.current) throw new Error('正在保存，请稍后再试。');
@@ -177,9 +175,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
       <>
         {mode === 'release' && (
           <section className="field-card booking-rule-card">
-            <div>
-              <h2>每日放号</h2>
-            </div>
+            <h2>每日放号</h2>
             <form
               onSubmit={(event) => {
                 event.preventDefault();
@@ -200,13 +196,6 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
                   }}
                 />
               </label>
-              <details className="workspace-help">
-                <summary>放号规则</summary>
-                <p>
-                  放号前可约当天至后两天；放号后可约当天至后三天。仅开放周一至周四的未结束时段。
-                  签到、排班和统计仍按北京时间自然日计算。
-                </p>
-              </details>
               <div className="field-actions">
                 <button className="field-primary" disabled={busy || !timeDirty}>
                   {busy ? '正在保存…' : '保存放号时间'}
@@ -218,15 +207,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
         {mode === 'notices' && (
           <section className="field-card booking-rule-card">
             <div className="capacity-section-heading">
-              <div>
-                <h2>校区公告</h2>
-                <details className="workspace-help">
-                  <summary>公告展示规则</summary>
-                  <p>
-                    公告仅在预约首页展示，可选页面或弹窗形式；必读公告需点击阅读确认后才能进入下一步。时间均为北京时间。
-                  </p>
-                </details>
-              </div>
+              <h2>校区公告</h2>
               <button
                 className="field-primary"
                 disabled={busy || !data}
@@ -271,9 +252,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
         {mode === 'notices' && (
           <section className="field-card booking-rule-card">
             <div className="capacity-section-heading">
-              <div>
-                <h2>暂停维修公告</h2>
-              </div>
+              <h2>暂停维修公告</h2>
               <button onClick={onManageSuspension}>管理暂停日期</button>
             </div>
             <DataExpansion ready={!!data}>
@@ -387,7 +366,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
                 disabled={busy || !data}
                 onChange={(event) => update('important', event.target.checked)}
               />
-              <span>必读公告，进入下一步前需点击阅读确认</span>
+              <span>必读公告</span>
             </label>
             <label className="booking-setting-check">
               <input

@@ -725,7 +725,7 @@
   color: #243b53;
 }
 #staff-react-root button,
-#staff-react-root input,
+#staff-react-root input:not([type='checkbox']):not([type='radio']),
 #staff-react-root select,
 #staff-react-root textarea {
   min-height: 44px;

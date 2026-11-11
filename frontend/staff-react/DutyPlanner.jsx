@@ -378,19 +378,19 @@ export function DutyPlanner({ campusId, onDirtyChange }) {
             ))}
           </div>
           {!!warnings.length && (
-            <details className="duty-warnings" open>
-              <summary>需核对 · {warnings.length}</summary>
+            <section className="duty-warnings" aria-label="排班异常">
+              <h3>需核对 · {warnings.length}</h3>
               <ul>
                 {[...new Set(warnings)].map((message) => (
                   <li key={message}>{message}</li>
                 ))}
               </ul>
               <p>这些提示供现场协调，核对后可直接发布；时间冲突仍会阻止提交。</p>
-            </details>
+            </section>
           )}
           {!!unassigned.length && (
-            <details>
-              <summary>未安排成员 · {unassigned.length}</summary>
+            <section aria-label="未安排成员">
+              <h3>未安排成员 · {unassigned.length}</h3>
               <ul>
                 {unassigned.map((person) => (
                   <li key={person.memberId}>
@@ -398,7 +398,7 @@ export function DutyPlanner({ campusId, onDirtyChange }) {
                   </li>
                 ))}
               </ul>
-            </details>
+            </section>
           )}
         </fieldset>
       </form>

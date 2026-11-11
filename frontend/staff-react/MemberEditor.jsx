@@ -261,6 +261,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
           )}
           <form ref={profileForm} hidden={section !== 'profile'} onSubmit={saveProfile}>
             <fieldset
+              className="workspace-form-fields"
               aria-busy={!detail && !error}
               disabled={busy || !detail || detail.actions?.edit === false}
             >
@@ -397,149 +398,158 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                 !detail.account?.protected &&
                 detail.actions?.editRoles !== false && (
                   <form
+                    className="member-roles-form"
                     ref={rolesForm}
                     hidden={section !== 'participation'}
                     onSubmit={saveBindings}
                   >
                     <fieldset disabled={busy || !roles.length}>
                       <legend>系统授权{bindingsDirty ? ' · 未保存' : ''}</legend>
-                      <details>
-                        <summary>编辑系统授权</summary>
-                        {bindings.map((binding, index) => {
-                          return (
-                            <details
-                              data-motion-item=""
-                              className="react-binding workspace-binding"
-                              open={index === 0 || !binding.id}
-                              key={binding.id || `new-${index}`}
-                            >
-                              <summary>
-                                <span>
-                                  <strong data-motion-value="text">
-                                    {roles.find((role) => role.id === binding.roleId)?.name ||
-                                      '待选择角色'}
-                                  </strong>
-                                </span>
-                              </summary>
-                              <div className="workspace-binding-fields">
-                                <label>
-                                  角色
-                                  <select
-                                    value={binding.roleId}
-                                    onChange={(event) =>
-                                      editBinding(index, { roleId: event.target.value })
-                                    }
-                                  >
-                                    {bindableRoles
-                                      .filter(
-                                        (role) =>
-                                          role.id === binding.roleId ||
-                                          newBindingRoles.some(
-                                            (candidate) => candidate.id === role.id
+                      {bindings.map((binding, index) => {
+                        const Binding = bindings.length > 1 ? 'details' : 'section';
+                        const Heading = bindings.length > 1 ? 'summary' : 'h4';
+                        const selectedCampuses = bindingCampuses(binding);
+                        return (
+                          <Binding
+                            data-motion-item=""
+                            className="member-role-binding"
+                            key={binding.id || `new-${index}`}
+                            open={bindings.length > 1 ? !binding.id : undefined}
+                            onInvalid={(event) => {
+                              if (bindings.length > 1) event.currentTarget.open = true;
+                            }}
+                          >
+                            <Heading className="member-role-heading" data-motion-value="text">
+                              <strong>
+                                {roles.find((role) => role.id === binding.roleId)?.name ||
+                                  '待选择角色'}
+                              </strong>{' '}
+                              <span>
+                                {selectedCampuses
+                                  .map(
+                                    (id) => campuses.find((campus) => campus.id === id)?.name || id
+                                  )
+                                  .join('、') || '未选校区'}
+                              </span>
+                            </Heading>
+                            <div className="workspace-binding-fields">
+                              <label>
+                                角色
+                                <select
+                                  value={binding.roleId}
+                                  onChange={(event) =>
+                                    editBinding(index, { roleId: event.target.value })
+                                  }
+                                >
+                                  {bindableRoles
+                                    .filter(
+                                      (role) =>
+                                        role.id === binding.roleId ||
+                                        newBindingRoles.some(
+                                          (candidate) => candidate.id === role.id
+                                        )
+                                    )
+                                    .map((role) => (
+                                      <option key={role.id} value={role.id}>
+                                        {role.name}
+                                        {role.enabled ? '' : '（已停用）'}
+                                      </option>
+                                    ))}
+                                </select>
+                              </label>
+                              <fieldset className="workspace-campus-options">
+                                <legend>授权校区</legend>
+                                {availableCampuses.map((campus) => (
+                                  <label className="workspace-check" key={campus.id}>
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedCampuses.includes(campus.id)}
+                                      onChange={(event) => {
+                                        const selected = bindingCampuses(binding);
+                                        editBinding(index, {
+                                          scope: withCampusScope(
+                                            binding.scope || {},
+                                            event.target.checked
+                                              ? [...new Set([...selected, campus.id])]
+                                              : selected.filter((id) => id !== campus.id)
                                           )
-                                      )
-                                      .map((role) => (
-                                        <option key={role.id} value={role.id}>
-                                          {role.name}
-                                          {role.enabled ? '' : '（已停用）'}
-                                        </option>
-                                      ))}
-                                  </select>
-                                </label>
-                                <fieldset>
-                                  <legend>授权校区</legend>
-                                  {availableCampuses.map((campus) => (
-                                    <label className="workspace-check" key={campus.id}>
-                                      <input
-                                        type="checkbox"
-                                        checked={bindingCampuses(binding).includes(campus.id)}
-                                        onChange={(event) => {
-                                          const selected = bindingCampuses(binding);
-                                          editBinding(index, {
-                                            scope: withCampusScope(
-                                              binding.scope || {},
-                                              event.target.checked
-                                                ? [...new Set([...selected, campus.id])]
-                                                : selected.filter((id) => id !== campus.id)
-                                            )
-                                          });
-                                        }}
-                                      />
-                                      {campus.name}
-                                    </label>
-                                  ))}
-                                </fieldset>
+                                        });
+                                      }}
+                                    />
+                                    <span>{campus.name}</span>
+                                  </label>
+                                ))}
+                              </fieldset>
+                              <label>
+                                原因
+                                <input
+                                  required
+                                  maxLength={300}
+                                  value={binding.reason || ''}
+                                  onChange={(event) =>
+                                    editBinding(index, { reason: event.target.value })
+                                  }
+                                />
+                              </label>
+                              <div className="react-form-grid">
                                 <label>
-                                  原因
+                                  生效日期
                                   <input
+                                    type="date"
                                     required
-                                    maxLength={300}
-                                    value={binding.reason || ''}
+                                    value={binding.effectiveFrom || ''}
                                     onChange={(event) =>
-                                      editBinding(index, { reason: event.target.value })
+                                      editBinding(index, { effectiveFrom: event.target.value })
                                     }
                                   />
                                 </label>
-                                <div className="react-form-grid">
-                                  <label>
-                                    生效日期
-                                    <input
-                                      type="date"
-                                      required
-                                      value={binding.effectiveFrom || ''}
-                                      onChange={(event) =>
-                                        editBinding(index, { effectiveFrom: event.target.value })
-                                      }
-                                    />
-                                  </label>
-                                  <label>
-                                    结束日期（可选）
-                                    <input
-                                      type="date"
-                                      min={binding.effectiveFrom || undefined}
-                                      value={binding.effectiveTo || ''}
-                                      onChange={(event) =>
-                                        editBinding(index, {
-                                          effectiveTo: event.target.value || null
-                                        })
-                                      }
-                                    />
-                                  </label>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setBindings((current) => current.filter((_, i) => i !== index))
-                                  }
-                                >
-                                  移除此项授权
-                                </button>
+                                <label>
+                                  结束日期（可选）
+                                  <input
+                                    type="date"
+                                    min={binding.effectiveFrom || undefined}
+                                    value={binding.effectiveTo || ''}
+                                    onChange={(event) =>
+                                      editBinding(index, {
+                                        effectiveTo: event.target.value || null
+                                      })
+                                    }
+                                  />
+                                </label>
                               </div>
-                            </details>
-                          );
-                        })}
-                        <div className="react-editor-actions">
-                          <button
-                            type="button"
-                            disabled={!newBindingRoles.some((role) => role.enabled)}
-                            onClick={() =>
-                              setBindings((current) => [
-                                ...current,
-                                {
-                                  roleId: newBindingRoles.find((role) => role.enabled)?.id,
-                                  scope: { campusIds: [] },
-                                  effectiveFrom: dateKey(),
-                                  effectiveTo: null,
-                                  reason: ''
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setBindings((current) => current.filter((_, i) => i !== index))
                                 }
-                              ])
-                            }
-                          >
-                            添加系统授权
-                          </button>
-                          <button className="react-primary">保存系统授权</button>
-                        </div>
-                      </details>
+                              >
+                                移除此项授权
+                              </button>
+                            </div>
+                          </Binding>
+                        );
+                      })}
+                      <div className="react-editor-actions">
+                        <button
+                          type="button"
+                          disabled={!newBindingRoles.some((role) => role.enabled)}
+                          onClick={() =>
+                            setBindings((current) => [
+                              ...current,
+                              {
+                                roleId: newBindingRoles.find((role) => role.enabled)?.id,
+                                scope: { campusIds: [] },
+                                effectiveFrom: dateKey(),
+                                effectiveTo: null,
+                                reason: ''
+                              }
+                            ])
+                          }
+                        >
+                          添加系统授权
+                        </button>
+                        <button className="react-primary">保存系统授权</button>
+                      </div>
                     </fieldset>
                   </form>
                 )}

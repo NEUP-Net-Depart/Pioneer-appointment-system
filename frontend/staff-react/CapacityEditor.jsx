@@ -782,8 +782,8 @@ export function CapacityEditor({ active, onNavigate }) {
               );
             })}
           </div>
-          <details className="capacity-quick-tools">
-            <summary>批量填写与复制</summary>
+          <section className="capacity-quick-tools" aria-label="批量填写与复制">
+            <h3>批量填写与复制</h3>
             <form onSubmit={quickFill}>
               <label>
                 统一人数
@@ -898,15 +898,8 @@ export function CapacityEditor({ active, onNavigate }) {
                 </button>
               </div>
             )}
-          </details>
+          </section>
         </section>
-        <details className="workspace-help capacity-effect-note">
-          <summary>容量生效规则</summary>
-          <p>
-            容量为 0
-            时暂停该时段预约。保存后立即更新今天及未来对应校区、星期和时段的容量。已有预约全部保留；已占用达到或超过新容量时停止新增，低于新容量后恢复放号。过去日期保持原容量。
-          </p>
-        </details>
       </div>
       <ActivityContext.Provider value={active && mode === 'actual'}>
         <div hidden={mode !== 'actual'}>

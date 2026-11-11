@@ -72,7 +72,7 @@
   outline: 3px solid #9cb3d3;
   outline-offset: 3px;
 }
-.field-app input,
+.field-app input:not([type='radio']):not([type='checkbox']),
 .field-app select,
 .field-modal input:not([type='radio']):not([type='checkbox']):not([type='file']),
 .field-modal select,

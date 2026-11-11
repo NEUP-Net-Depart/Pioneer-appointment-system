@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import React, { useContext, useEffect, useRef, useState } from 'react';
+import React, { useContext, useEffect, useId, useRef, useState } from 'react';
 import { addDays, dateKey, formatInstant } from '../../shared/time.js';
 import { request } from './request.js';
 import { ActivityContext, Modal, Notice } from './field/ui';
@@ -7,6 +7,8 @@ import { useUnsavedChanges } from './useUnsavedChanges.js';
 
 export function ServiceLocationEditor({ campus }) {
   const active = useContext(ActivityContext);
+  const historyId = useId();
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [date, setDate] = useState(dateKey()),
     [drafts, setDrafts] = useState({});
   const [error, setError] = useState(''),
@@ -51,6 +53,7 @@ export function ServiceLocationEditor({ campus }) {
   }, [locations.data, campus, key]);
   useEffect(() => {
     setReview(false);
+    setHistoryOpen(false);
     setMessage('');
   }, [active, key]);
   useUnsavedChanges({
@@ -254,38 +257,57 @@ export function ServiceLocationEditor({ campus }) {
         </div>
       </form>
       {data && (
-        <details className="capacity-location-details">
-          <summary>受影响预约与修改记录</summary>
+        <section className="capacity-location-history" aria-label="受影响预约与修改记录">
           <p data-motion-value="number">
             {data.affectedAppointments?.length || 0} 条进行中的预约会使用此地点；请按需人工通知。
           </p>
-          {!!data.affectedAppointments?.length && (
-            <ul>
-              {data.affectedAppointments.map((item) => (
-                <li data-motion-item="" key={item.id}>
-                  <strong data-motion-value="text">{item.id}</strong>
-                  {[item.name, item.contactValue || item.social || item.phone, item.email]
-                    .filter(Boolean)
-                    .map((text, index) => (
-                      <span data-motion-value="text" key={index}>
-                        {text}
-                      </span>
+          <button
+            type="button"
+            aria-expanded={historyOpen}
+            aria-controls={historyId}
+            onClick={() => setHistoryOpen((value) => !value)}
+          >
+            {historyOpen ? '收起相关记录' : '查看受影响预约与修改记录'}
+          </button>
+          {historyOpen && (
+            <div id={historyId} className="capacity-location-records">
+              {!!data.affectedAppointments?.length && (
+                <section aria-label="受影响预约">
+                  <h4>受影响预约</h4>
+                  <ul>
+                    {data.affectedAppointments.map((item) => (
+                      <li data-motion-item="" key={item.id}>
+                        <strong data-motion-value="text">{item.id}</strong>
+                        {[item.name, item.contactValue || item.social || item.phone, item.email]
+                          .filter(Boolean)
+                          .map((text, index) => (
+                            <span data-motion-value="text" key={index}>
+                              {text}
+                            </span>
+                          ))}
+                      </li>
                     ))}
-                </li>
-              ))}
-            </ul>
+                  </ul>
+                </section>
+              )}
+              <section aria-label="地点修改记录">
+                <h4>地点修改记录</h4>
+                {data.changes?.length ? (
+                  <ul>
+                    {data.changes.map((item) => (
+                      <li data-motion-value="text" key={item.revision}>
+                        {formatInstant(item.createdAt)} · {item.beforeLocation || '未设置'} →{' '}
+                        {item.afterLocation || '未设置'}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="field-muted">暂无修改记录。</p>
+                )}
+              </section>
+            </div>
           )}
-          {data.changes?.length ? (
-            data.changes.map((item) => (
-              <p data-motion-value="text" key={item.revision}>
-                {formatInstant(item.createdAt)} · {item.beforeLocation || '未设置'} →{' '}
-                {item.afterLocation || '未设置'}
-              </p>
-            ))
-          ) : (
-            <p className="field-muted">暂无修改记录。</p>
-          )}
-        </details>
+        </section>
       )}
       {review && (
         <Modal title="确认修改维修地点" dismissible={!busy} onClose={() => setReview(false)}>

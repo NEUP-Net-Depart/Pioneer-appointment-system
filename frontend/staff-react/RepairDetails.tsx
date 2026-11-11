@@ -101,14 +101,14 @@ export function RepairCredential({
           }
         }}
       >
-        <label>
+        <label className="field-check">
           <input
             type="checkbox"
             required
             checked={verified}
             onChange={(event) => setVerified(event.target.checked)}
           />
-          已人工核验机主身份
+          <span>已人工核验机主身份</span>
         </label>
         <label>
           核验说明（勿录入完整联系方式）

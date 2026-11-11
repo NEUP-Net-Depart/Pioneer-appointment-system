@@ -49,7 +49,7 @@ export function MemberSetup({
         </label>
       </div>
       {canAuthorize && (
-        <fieldset className="workspace-checks">
+        <fieldset className="workspace-campus-options">
           <legend>授权校区（新增人员默认所属校区）</legend>
           {[
             ['campus-nanhu', '南湖'],
@@ -67,7 +67,7 @@ export function MemberSetup({
                   })
                 }
               />
-              {name}
+              <span>{name}</span>
             </label>
           ))}
         </fieldset>

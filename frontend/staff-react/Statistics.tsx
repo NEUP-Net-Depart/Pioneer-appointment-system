@@ -111,15 +111,6 @@ export function Statistics() {
           ))}
         </div>
 
-        <details className="workspace-help statistics-help">
-          <summary>统计口径</summary>
-          <div className="statistics-help-content">
-            <div className="statistics-help-inner">
-              <p>每日服务按预约日期统计；故障分类按已完成维修统计；校区分布按预约总数统计。</p>
-              <p>维修人员工作量为实际开始与完成记录，不代表值班考勤。</p>
-            </div>
-          </div>
-        </details>
         <div className="report-grid">
           <section className="field-card report-wide">
             <h2>每日服务</h2>

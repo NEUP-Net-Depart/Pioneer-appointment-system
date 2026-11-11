@@ -304,7 +304,7 @@ export function AccountEditor({ user, item, onClose, onSaved, embedded = false, 
                     })
                   }
                 />
-                {campus}
+                <span>{campus}</span>
               </label>
             ))}
           </fieldset>
