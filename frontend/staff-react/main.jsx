@@ -1,3 +1,4 @@
+import './web-update.js';
 import { workspaceModule } from './workspace-module.js';
 import { QueryCache, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { createQueryClient } from './query-client.js';
