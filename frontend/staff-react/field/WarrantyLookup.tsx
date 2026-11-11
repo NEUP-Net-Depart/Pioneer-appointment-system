@@ -100,9 +100,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
   const [albumBusy, setAlbumBusy] = useState(false);
   const [albumNotice, setAlbumNotice] = useState('');
   const [albumResult, setAlbumResult] = useState<AlbumResult | null>(null);
-  const [copyFailed, setCopyFailed] = useState(false);
   const [copyBusy, setCopyBusy] = useState(false);
-  const [officialBlocked, setOfficialBlocked] = useState(false);
   const serialInput = useRef<HTMLInputElement>(null);
   const albumInput = useRef<HTMLInputElement>(null);
   const albumRequest = useRef<AbortController | null>(null);
@@ -170,9 +168,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
     setCaptcha(null);
     setAnswer('');
     setMessage('');
-    setCopyFailed(false);
     setCopyBusy(false);
-    setOfficialBlocked(false);
   }
   function changeSerial(value: string) {
     invalidate();
@@ -226,55 +222,26 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
       }
     }
   }
-  async function copyAndGo() {
-    if (!destination || !valid || ocrBusy || albumBusy || copyBusy) return;
+  async function copySerial() {
+    if (!valid || ocrBusy || albumBusy || copyBusy) return;
     const attempt = ++copyAttempt.current;
-    const destinationUrl = destination.url;
-    if (!copyFailed) {
-      setCopyBusy(true);
-      setMessage('请在当前页面完成复制授权…');
-      try {
-        await navigator.clipboard.writeText(normalized);
-      } catch {
-        if (copyAttempt.current !== attempt) return;
-        setCopyBusy(false);
-        setCopyFailed(true);
-        setOfficialBlocked(false);
-        serialInput.current?.focus();
-        serialInput.current?.select();
-        setMessage('浏览器未允许复制，已选中序列号。请手动复制后再打开官网。');
-        return;
-      }
-      if (copyAttempt.current !== attempt) return;
-      setCopyBusy(false);
-    }
-    // Open only after clipboard permission resolves, so its prompt stays on this page.
-    const official = window.open('about:blank', '_blank');
-    if (official) {
-      official.opener = null;
-      const referrer = official.document.createElement('meta');
-      referrer.name = 'referrer';
-      referrer.content = 'no-referrer';
-      official.document.head.append(referrer);
-    }
-    if (official && !official.closed) {
-      official.location.replace(destinationUrl);
-      setOfficialBlocked(false);
-      setMessage('已在新标签页打开官网。');
-    } else {
-      setOfficialBlocked(true);
-      setMessage('浏览器拦截了新标签页，请点击下方链接打开官网。');
-    }
-  }
-  async function copyOnly() {
-    if (!valid || ocrBusy || albumBusy) return;
+    setCopyBusy(true);
+    setMessage('正在复制序列号，请允许浏览器复制权限…');
     try {
       await navigator.clipboard.writeText(normalized);
-      setMessage('序列号已复制，请在微信搜索「机械革命服务」小程序，绑定设备后查询。');
+      if (copyAttempt.current !== attempt) return;
+      setMessage(
+        channel?.kind === 'miniapp'
+          ? '序列号已复制，请在微信搜索「机械革命服务」小程序，绑定设备后查询。'
+          : '序列号已复制，请点击「打开品牌官网」继续查询。'
+      );
     } catch {
+      if (copyAttempt.current !== attempt) return;
       serialInput.current?.focus();
       serialInput.current?.select();
-      setMessage('浏览器未允许复制，已选中序列号，请长按手动复制。');
+      setMessage('复制失败，已选中序列号。请手动复制后再继续查询，或重试复制。');
+    } finally {
+      if (copyAttempt.current === attempt) setCopyBusy(false);
     }
   }
   function applyRecognizedSerial(value: string, source: 'scan' | 'ocr') {
@@ -538,39 +505,15 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
                 : '查询原厂保修'}
           </button>
         )}
-        {brand && !provider?.available && channel?.kind !== 'miniapp' && (
+        {brand && !provider?.available && (
           <button
             type="button"
             className="field-primary warranty-primary"
             disabled={!valid || ocrBusy || albumBusy || copyBusy || loading}
-            onClick={() => void copyAndGo()}
+            onClick={() => void copySerial()}
           >
-            {copyBusy
-              ? '等待复制授权…'
-              : copyFailed
-                ? '手动复制后打开官网'
-                : '复制序列号并前往官网'}
+            {copyBusy ? '正在复制序列号…' : '复制序列号'}
           </button>
-        )}
-        {brand && channel?.kind === 'miniapp' && (
-          <button
-            type="button"
-            className="field-primary warranty-primary"
-            disabled={!valid || ocrBusy || loading}
-            onClick={() => void copyOnly()}
-          >
-            复制序列号，前往微信查询
-          </button>
-        )}
-        {officialBlocked && destination && (
-          <a
-            href={destination.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            referrerPolicy="no-referrer"
-          >
-            在新标签页打开官网 ↗
-          </a>
         )}
         {brand && channel && (
           <section className="warranty-fallback" aria-label="查验步骤">
@@ -585,22 +528,18 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
               <button
                 type="button"
                 disabled={copyBusy || albumBusy || ocrBusy}
-                onClick={() => void copyAndGo()}
+                onClick={() => void copySerial()}
               >
-                {copyBusy
-                  ? '等待复制授权…'
-                  : copyFailed
-                    ? '手动复制后打开官网'
-                    : '复制序列号并前往官网'}
+                {copyBusy ? '正在复制序列号…' : '复制序列号'}
               </button>
             )}
             <a
-              href={brand.url}
+              href={destination?.url || brand.url}
               target="_blank"
               rel="noopener noreferrer"
               referrerPolicy="no-referrer"
             >
-              打开官方保修入口 ↗
+              {channel.kind === 'miniapp' ? '打开官方小程序说明 ↗' : '打开品牌官网 ↗'}
             </a>
           </section>
         )}
