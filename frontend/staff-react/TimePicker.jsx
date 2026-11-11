@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useControlLabel } from './useControlLabel.js';
 import './workspace-controls.css';
@@ -170,7 +170,6 @@ export function TimePicker({
   const input = useRef(null);
   const panel = useRef(null);
   const trigger = useRef(null);
-  const original = useRef(value);
   const currentDraft = useRef(value || '19:00');
   const fieldLabel = useControlLabel(input, inputProps['aria-label'], inputProps.id);
   const [editing, setEditing] = useState({ source: value, text: value });
@@ -178,6 +177,14 @@ export function TimePicker({
   const text = editing.source === value ? editing.text : value;
   const setText = (next) => setEditing({ source: value, text: next });
   const [open, setOpen] = useState(false);
+  const close = useCallback(
+    (restoreFocus = true) => {
+      setEditing({ source: value, text: value });
+      setOpen(false);
+      if (restoreFocus) trigger.current?.focus();
+    },
+    [value]
+  );
   const [draft, setDraft] = useState(value || '19:00');
   const updateDraft = (next) => {
     currentDraft.current = next;
@@ -185,7 +192,6 @@ export function TimePicker({
   };
   const show = () => {
     if (open || disabled) return;
-    original.current = text;
     updateDraft(validTime(text) ? text : '19:00');
     setOpen(true);
   };
@@ -195,7 +201,7 @@ export function TimePicker({
     const updatePosition = () => {
       if (portalTarget) return;
       if (!input.current?.getClientRects().length) {
-        setOpen(false);
+        close(false);
         return;
       }
       const bounds = input.current.getBoundingClientRect();
@@ -225,14 +231,13 @@ export function TimePicker({
         !panel.current?.contains(event.target) &&
         !input.current?.parentElement.contains(event.target)
       )
-        setOpen(false);
+        close(false);
     };
     const escape = (event) => {
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
-        setOpen(false);
-        trigger.current?.focus();
+        close();
       }
     };
     updatePosition();
@@ -254,10 +259,10 @@ export function TimePicker({
       window.visualViewport?.removeEventListener('resize', updatePosition);
       window.visualViewport?.removeEventListener('scroll', updatePosition);
     };
-  }, [open, disabled, portalTarget]);
+  }, [open, disabled, portalTarget, close]);
   useEffect(() => {
-    if (disabled) setOpen(false);
-  }, [disabled]);
+    if (disabled) close(false);
+  }, [disabled, close]);
   const digitMaximum = (index, current) => [2, current[0] === '2' ? 3 : 9, 5, 9][index];
   const changeUnit = (unit, steps) => {
     const parts = currentDraft.current.split(':');
@@ -266,7 +271,6 @@ export function TimePicker({
     const next = parts.join(':');
     updateDraft(next);
     setText(next);
-    onChange(next);
   };
   const changeDigit = (index, change) => {
     const digits = currentDraft.current.replace(':', '').split('');
@@ -276,11 +280,6 @@ export function TimePicker({
     const next = `${digits[0]}${digits[1]}:${digits[2]}${digits[3]}`;
     updateDraft(next);
     setText(next);
-    onChange(next);
-  };
-  const close = () => {
-    setOpen(false);
-    trigger.current?.focus();
   };
   return (
     <span className="workspace-time-field">
@@ -314,8 +313,8 @@ export function TimePicker({
           if (validTime(normalized)) {
             updateDraft(normalized);
             if (compact) setText(normalized);
-            onChange(normalized);
-          } else if (!next) onChange(next);
+            if (!open) onChange(normalized);
+          } else if (!next && !open) onChange(next);
         }}
         onBlur={() => {
           if (!text) return;
@@ -324,7 +323,7 @@ export function TimePicker({
           if (validTime(normalized)) {
             setText(normalized);
             updateDraft(normalized);
-            onChange(normalized);
+            if (!open) onChange(normalized);
           }
         }}
       />
@@ -378,14 +377,7 @@ export function TimePicker({
               </div>
             </div>
             <div className="time-picker-actions">
-              <button
-                type="button"
-                onClick={() => {
-                  setText(original.current);
-                  onChange(original.current);
-                  close();
-                }}
-              >
+              <button type="button" onClick={() => close()}>
                 取消
               </button>
               <button
@@ -394,7 +386,8 @@ export function TimePicker({
                 onClick={() => {
                   onChange(draft);
                   setText(draft);
-                  close();
+                  setOpen(false);
+                  trigger.current?.focus();
                 }}
               >
                 确定 {draft}

@@ -113,10 +113,10 @@ export function Records({ user }) {
       observer.disconnect();
     };
   }, [active, list.hasNextPage, list.data, list.isFetching, list.error]);
-  const refresh = () =>
+  const refresh = (throwOnError = false) =>
     Promise.all(
       ['/api/appointments', '/api/appointments/counts', '/api/appointments/overview'].map((path) =>
-        client.invalidateQueries({ queryKey: [path] })
+        client.invalidateQueries({ queryKey: [path] }, { throwOnError })
       )
     );
   const update = (patch) => setFilters((current) => ({ ...current, ...patch }));
@@ -219,7 +219,7 @@ export function Records({ user }) {
       <WorkspaceHeader group="现场工作" title="预约记录">
         <RefreshButton
           key={JSON.stringify([filters, sorts])}
-          onRefresh={refresh}
+          onRefresh={() => refresh(true)}
           label="刷新记录"
         />
         {staffPermission(user, 'statistics.read') && (
@@ -326,7 +326,7 @@ export function Records({ user }) {
           </div>
         </div>
         <Notice>{list.error?.message}</Notice>
-        {list.error && <button onClick={refresh}>重试读取</button>}
+        {list.error && <button onClick={() => refresh()}>重试读取</button>}
         <section className="records-mobile-sort" aria-label="排序与优先级">
           <label>
             组合排序
