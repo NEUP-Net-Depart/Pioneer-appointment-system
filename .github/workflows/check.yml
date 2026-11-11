@@ -13,6 +13,12 @@ concurrency:
   cancel-in-progress: false
 jobs:
   checks:
+    # Production pushes and same-repository dev -> main PRs reuse dev verification.
+    if: >-
+      !(github.event_name == 'push' && github.ref == 'refs/heads/main') &&
+      !(github.event_name == 'pull_request' &&
+        github.base_ref == 'main' && github.head_ref == 'dev' &&
+        github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -33,7 +39,13 @@ jobs:
       - run: npm run verify:checks
   browser:
     name: browser
-    needs: checks
+    # Run alongside checks while preserving the release and promotion exemptions.
+    if: >-
+      github.ref != 'refs/heads/main' &&
+      (github.event_name != 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/')) &&
+      !(github.event_name == 'pull_request' &&
+        github.base_ref == 'main' && github.head_ref == 'dev' &&
+        github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     container:
@@ -61,7 +73,7 @@ jobs:
           retention-days: 14
   test:
     needs: [checks, browser]
-    if: always()
+    if: always() && needs.checks.result != 'skipped'
     runs-on: ubuntu-24.04
     timeout-minutes: 1
     steps:
@@ -98,12 +110,16 @@ jobs:
           node scripts/ci-release.mjs --migrate-preview
   release:
     needs: [test, migrate-preview]
+    # Main pushes release directly; Preview still requires successful verification.
     if: >-
-      always() && !cancelled() && needs.test.result == 'success' &&
-      (needs.migrate-preview.result == 'success' || needs.migrate-preview.result == 'skipped') &&
+      always() && !cancelled() &&
       startsWith(github.ref, 'refs/heads/') &&
       ((github.event_name == 'push' && github.event.deleted != true) ||
-       (github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'))
+       (github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main')) &&
+      (github.ref == 'refs/heads/main' ||
+       (needs.test.result == 'success' &&
+        (needs.migrate-preview.result == 'success' ||
+         (github.ref != 'refs/heads/dev' && needs.migrate-preview.result == 'skipped'))))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
