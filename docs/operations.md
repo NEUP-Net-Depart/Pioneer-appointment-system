@@ -29,15 +29,19 @@ Pages 通过 Actions Direct Upload 发布，关闭自动 Git 构建。构建命�
 
 ## CI 与权限
 
-[发布工作流](../.github/workflows/check.yml) 对推送与 PR 分阶段执行与 `npm run verify` 等价的完整检查，浏览器任务覆盖 Chromium 桌面与 WebKit 手机尺寸：
+[发布工作流](../.github/workflows/check.yml) 在开发阶段执行与 `npm run verify` 等价的完整检查。`checks` 与 `browser` 并行运行，`test` 汇总并要求两者成功；浏览器任务覆盖 Chromium 桌面与 WebKit 手机尺寸。生产发布复用 dev 阶段的验证：
 
 | 触发 | 目标与顺序 |
 | --- | --- |
-| 推送 `main` | 验证 → Production D1 迁移 → 发布 → HTTP smoke |
+| 推送 `main` | Production D1 迁移 → 发布 → HTTP smoke，不重复运行完整验证 |
 | 推送 `dev` | 验证 → Preview 快照本地演练 → 共享 Preview D1 迁移 → 发布 → smoke |
 | 推送其他分支 | 验证 → 检查 dev schema 版本 → 分支 Preview 发布 → smoke；版本不匹配时暂缓发布，不迁移 |
 | 手动 CI | 仅非 `main` 分支，遵循对应分支规则 |
-| PR、标签、分支删除 | PR 仅验证；标签和删除不发布 |
+| 本仓库 `dev` → `main` PR | 跳过验证，不迁移、不发布；合并后由 `main` 推送发布 |
+| 其他 PR | 仅完整验证，不迁移、不发布；fork 中的同名 `dev` 分支也需验证 |
+| 标签、分支删除 | 不发布 |
+
+合并 `dev` → `main` 前，应确认对应 dev 提交的完整验证和 Preview 验收已通过。工作流通过 Job 条件跳过重复验证，保留 `test` 检查项，避免过滤整个工作流后必需检查一直等待。普通分支的推送和 PR 仍分别验证，测试内容保持不变。
 
 迁移或演练失败停止发布。0033 升级自动迁移业务角色并检查一人多账号冲突，无冲突时无需补权或切换开关；冲突时停止，不合并身份。dev 整条链由 `cloudflare-dev-release` 串行保护。共享 Preview 演练和迁移使用 `cloudflare-preview-migrations` 锁；本地远程操作避开正在执行的 CI。
 
