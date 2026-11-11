@@ -16,6 +16,20 @@ function setup(){
  post(db,'20261005','dept-hardware');post(db,'20261006','dept-art');
  return {db,users:userRepository(db),staff:staffServices(db,'00'.repeat(32))};
 }
+test('early supplementation explains its default time and retains the time guards',async(context)=>{
+ context.mock.timers.enable({apis:['Date'],now:new Date('2026-11-11T02:00:00.000Z')});
+ const {db,users,staff}=setup();
+ try{
+  const head=await users.find('20261001');
+  const input={memberId:'member-20261004',campusId:'campus-nanhu',businessDate:'2026-11-11',occurredAt:'2026-11-11T11:00:00.000Z',reason:'核实补录',requestId:crypto.randomUUID()};
+  await assert.rejects(staff.correctAttendance(head,input),{status:400,message:'补录默认记为当天 19:00，目前尚未到该时间，请在 19:00 后补录'});
+  await assert.rejects(staff.correctAttendance(head,{...input,occurredAt:'2026-11-11T01:00:00.000Z'}),{status:400,message:'补录时间不在当天允许的签到时段内'});
+  assert.equal(db.sqlite.prepare('SELECT count(*) n FROM attendance_records').get().n,0);
+  context.mock.timers.tick(10*60*60*1000);
+  await staff.correctAttendance(head,input);
+  assert.equal(db.sqlite.prepare('SELECT occurred_at FROM attendance_records').get().occurred_at,input.occurredAt);
+ }finally{db.sqlite.close();}
+});
 test('ministers manage every department in their campus; directors and presidents manage all campuses without gaining system configuration',async()=>{
  const {db,users,staff}=setup();
  try{

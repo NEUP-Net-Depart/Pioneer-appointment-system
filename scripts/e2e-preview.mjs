@@ -4,7 +4,7 @@ import { mkdir, writeFile, readFile, rm, cp, appendFile } from 'node:fs/promises
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, randomBytes } from 'node:crypto';
-import { createServer } from 'node:net';
+import { createServer } from 'node:http';
 import { root, config } from './cli.mjs';
 import { hashPassword } from '../src/lib/passwords.js';
 import { dateKey } from '../shared/time.js';
@@ -118,10 +118,24 @@ export async function startPreview(template) {
     const cfg = JSON.parse(await readFile(resolve(dir, 'wrangler.jsonc'), 'utf8'));
     cfg.pages_build_output_dir = resolve(dir, 'dist');
     await writeFile(resolve(dir, 'wrangler.jsonc'), JSON.stringify(cfg));
-    const probe = createServer();
-    await new Promise((resolve) => probe.listen(0, '127.0.0.1', resolve));
-    const port = probe.address().port;
-    await new Promise((resolve) => probe.close(resolve));
+    let port;
+    for (let attempt = 0; attempt < 20 && !port; attempt++) {
+      const probe = createServer((_, response) => {
+        response.setHeader('Connection', 'close');
+        response.end('ready');
+      });
+      await new Promise((resolve) => probe.listen(0, '127.0.0.1', resolve));
+      const candidate = probe.address().port;
+      try {
+        const response = await fetch(`http://127.0.0.1:${candidate}`, { signal: AbortSignal.timeout(1000) });
+        if (response.ok) port = candidate;
+      } catch {
+        port = undefined;
+      } finally {
+        await new Promise((resolve) => probe.close(resolve));
+      }
+    }
+    if (!port) throw new Error('No browser-accessible local Preview port available');
     const baseURL = `http://127.0.0.1:${port}`;
     // Register only the concrete origins of running local previews. The shared
     // verifier reads this append-only file across parallel Playwright workers.

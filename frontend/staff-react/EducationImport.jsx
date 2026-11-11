@@ -1,3 +1,4 @@
+import { Select } from './SelectionControls.jsx';
 import React, { useState } from 'react';
 import { Modal } from './field/ui';
 import { request } from './request.js';
@@ -94,7 +95,7 @@ export function EducationImport({ onClose, onSaved }) {
             <>
               <div className="field-actions">
                 <button onClick={template}>下载 CSV 模板</button>
-                <label>
+                <label className="field-file-button">
                   读取 CSV
                   <input
                     type="file"
@@ -143,7 +144,7 @@ export function EducationImport({ onClose, onSaved }) {
                         <td>{item.studentId}</td>
                         <td>
                           <span className="workspace-native-select">
-                            <select
+                            <Select
                               aria-label={`${item.name}所属学院`}
                               value={colleges[item.studentId] || ''}
                               onChange={(event) =>
@@ -165,7 +166,7 @@ export function EducationImport({ onClose, onSaved }) {
                                   {college}
                                 </option>
                               ))}
-                            </select>
+                            </Select>
                             <span className="workspace-chevron" aria-hidden="true" />
                           </span>
                         </td>

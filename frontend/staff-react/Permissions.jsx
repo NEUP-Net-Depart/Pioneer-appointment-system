@@ -1,3 +1,4 @@
+import { DatePicker } from './SelectionControls.jsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { request } from './request.js';
@@ -7,6 +8,7 @@ import { ScopeFields, ConditionFields } from './ScopeFields.jsx';
 import { setGrantEnabled, withGrantValidity } from './authorization-drafts.js';
 import { WorkspaceSections } from './WorkspaceSections';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
+import { RefreshButton } from './WorkspaceToolbar.jsx';
 
 const permissionGroups = [
   { id: 'all', label: '全部功能' },
@@ -135,7 +137,25 @@ export function Permissions() {
         group="人员权限"
         title="系统权限"
         description="接待、维修、排班和值班考勤按任职部门、职位及授权校区自动确定，无需在此配置。"
-      />
+      >
+        <RefreshButton
+          disabled={busy || !!dirty}
+          label="刷新角色权限"
+          onRefresh={async () => {
+            const latest = await Promise.all(
+              [definitions, rolesQuery, campusesQuery, departmentsQuery].map((query) =>
+                query.refetch({ throwOnError: true })
+              )
+            );
+            const fresh = latest[1].data?.items.find((role) => role.id === selected?.id);
+            if (fresh) {
+              setSelected(fresh);
+              setDraft(structuredClone(fresh.grants || []));
+            }
+            return latest;
+          }}
+        />
+      </WorkspaceHeader>
       {(error ||
         [definitions, rolesQuery, campusesQuery, departmentsQuery].some(
           (query) => query.error
@@ -273,14 +293,14 @@ export function Permissions() {
                             <ConditionFields
                               conditions={grant.conditions}
                               providers={providers}
+                              departments={departments}
                               requiredCodes={permission.conditionKinds}
                               onChange={(conditions) => updateGrant(index, { conditions })}
                             />
                             <div className="react-form-grid">
                               <label>
                                 权限生效日期
-                                <input
-                                  type="date"
+                                <DatePicker
                                   value={
                                     grant.validity?.effectiveFrom || grant.validity?.from || ''
                                   }
@@ -297,8 +317,7 @@ export function Permissions() {
                               </label>
                               <label>
                                 权限结束日期
-                                <input
-                                  type="date"
+                                <DatePicker
                                   value={grant.validity?.effectiveTo || grant.validity?.to || ''}
                                   onChange={(event) =>
                                     updateGrant(index, {

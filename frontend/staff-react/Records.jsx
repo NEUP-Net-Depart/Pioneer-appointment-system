@@ -1,9 +1,11 @@
+import { Select, DatePicker } from './SelectionControls.jsx';
+import { RefreshButton } from './WorkspaceToolbar.jsx';
 import { DataValue } from './DataValue';
 import { recordServiceDate } from '../../shared/record-filters.js';
 import React, { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { apiFetch } from '../../shared/api.js';
 import { statusLabels, TIME_SLOTS } from '../../shared/constants.js';
-import { addDays, dateKey, serviceDay, weekRange } from '../../shared/time.js';
+import { addDays, dateKey, serviceDay, calendarWeekRange as weekRange } from '../../shared/time.js';
 import { ActivityContext, Modal, Notice, Status } from './field/ui';
 import { Repair } from './field/Repair';
 import { WorkspaceHeader } from './WorkspaceHeader';
@@ -111,10 +113,10 @@ export function Records({ user }) {
       observer.disconnect();
     };
   }, [active, list.hasNextPage, list.data, list.isFetching, list.error]);
-  const refresh = () =>
+  const refresh = (throwOnError = false) =>
     Promise.all(
       ['/api/appointments', '/api/appointments/counts', '/api/appointments/overview'].map((path) =>
-        client.invalidateQueries({ queryKey: [path] })
+        client.invalidateQueries({ queryKey: [path] }, { throwOnError })
       )
     );
   const update = (patch) => setFilters((current) => ({ ...current, ...patch }));
@@ -215,7 +217,11 @@ export function Records({ user }) {
   return (
     <section className="records-workspace">
       <WorkspaceHeader group="现场工作" title="预约记录">
-        <button onClick={refresh}>刷新记录</button>
+        <RefreshButton
+          key={JSON.stringify([filters, sorts])}
+          onRefresh={() => refresh(true)}
+          label="刷新记录"
+        />
         {staffPermission(user, 'statistics.read') && (
           <WorkspaceMoreActions>
             <button onClick={exportRecords}>导出全部可见记录</button>
@@ -251,15 +257,30 @@ export function Records({ user }) {
             />
           </label>
           <div className="records-filter-actions">
-            <button onClick={() => setMenu('date')}>
+            <button
+              onClick={(event) => {
+                event.currentTarget.focus();
+                setMenu('date');
+              }}
+            >
               {period}
               {filters.timeSlot ? ` · ${filters.timeSlot}` : ''}
             </button>
-            <button onClick={() => setMenu('campus')}>{summaries.campus}</button>
+            <button
+              onClick={(event) => {
+                event.currentTarget.focus();
+                setMenu('campus');
+              }}
+            >
+              {summaries.campus}
+            </button>
             <button
               aria-label="更多预约状态"
               aria-haspopup="dialog"
-              onClick={() => setMenu('status')}
+              onClick={(event) => {
+                event.currentTarget.focus();
+                setMenu('status');
+              }}
             >
               {statusItems.some((item) => item.id === filters.status) ? '更多状态' : statusText}
             </button>
@@ -305,11 +326,11 @@ export function Records({ user }) {
           </div>
         </div>
         <Notice>{list.error?.message}</Notice>
-        {list.error && <button onClick={refresh}>重试读取</button>}
+        {list.error && <button onClick={() => refresh()}>重试读取</button>}
         <section className="records-mobile-sort" aria-label="排序与优先级">
           <label>
             组合排序
-            <select value="" onChange={(event) => cycle(event.target.value)}>
+            <Select value="" onChange={(event) => cycle(event.target.value)}>
               <option value="" disabled>
                 选择排序字段
               </option>
@@ -318,7 +339,7 @@ export function Records({ user }) {
                   {label}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           {sorts.length > 0 && <button onClick={() => setSorts([])}>清除排序</button>}
         </section>
@@ -510,7 +531,7 @@ function RecordFilter({ menu, filters, counts, campuses, slots, onChange, onClos
             )}
             <label>
               预约时段
-              <select
+              <Select
                 value={filters.timeSlot}
                 onChange={(event) => onChange({ timeSlot: event.target.value })}
               >
@@ -518,12 +539,11 @@ function RecordFilter({ menu, filters, counts, campuses, slots, onChange, onClos
                 {slots.map((slot) => (
                   <option key={slot}>{slot}</option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label>
               历史日期
-              <input
-                type="date"
+              <DatePicker
                 max={today}
                 value={filters.date <= today ? filters.date : ''}
                 onChange={(event) =>

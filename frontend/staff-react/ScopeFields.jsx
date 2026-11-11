@@ -1,4 +1,6 @@
+import { Select } from './SelectionControls.jsx';
 import React from 'react';
+import { additionalMembershipLabels } from '../../shared/staff-organization.js';
 
 // Shared by role grants and member bindings. Unknown extension fields survive edits.
 export function ScopeFields({
@@ -83,7 +85,13 @@ const parameterLabels = {
   assignmentType: '任职类型',
   isPrimary: '仅主部门任职'
 };
-export function ConditionFields({ conditions = [], providers = [], onChange, requiredCodes = [] }) {
+export function ConditionFields({
+  conditions = [],
+  providers = [],
+  onChange,
+  requiredCodes = [],
+  departments = []
+}) {
   function update(index, parameters) {
     onChange(conditions.map((item, i) => (i === index ? { ...item, parameters } : item)));
   }
@@ -105,7 +113,97 @@ export function ConditionFields({ conditions = [], providers = [], onChange, req
               </button>
             </div>
             {Object.entries(provider?.parameterSchema?.properties || {}).map(([key, definition]) =>
-              definition.type === 'boolean' ? (
+              key === 'departmentIds' ? (
+                <fieldset key={key}>
+                  <legend>{parameterLabels[key]}</legend>
+                  <button
+                    type="button"
+                    aria-pressed={!parameters[key]?.length}
+                    onClick={() => {
+                      const next = { ...parameters };
+                      delete next[key];
+                      update(index, next);
+                    }}
+                  >
+                    不限部门
+                  </button>
+                  {[
+                    ...departments,
+                    ...(parameters[key] || [])
+                      .filter((id) => !departments.some((department) => department.id === id))
+                      .map((id) => ({ id, name: id }))
+                  ].map((department) => (
+                    <label className="react-check" key={department.id}>
+                      <input
+                        type="checkbox"
+                        checked={(parameters[key] || []).includes(department.id)}
+                        onChange={(event) => {
+                          const selected = event.target.checked
+                            ? [...(parameters[key] || []), department.id]
+                            : (parameters[key] || []).filter((id) => id !== department.id);
+                          const next = { ...parameters };
+                          if (selected.length) next[key] = selected;
+                          else delete next[key];
+                          update(index, next);
+                        }}
+                      />
+                      {department.name}
+                    </label>
+                  ))}
+                </fieldset>
+              ) : ['departmentId', 'assignmentType'].includes(key) ? (
+                <label key={key}>
+                  {parameterLabels[key]}
+                  <Select
+                    value={parameters[key] || ''}
+                    onChange={(event) => {
+                      const next = { ...parameters };
+                      if (event.target.value) next[key] = event.target.value;
+                      else delete next[key];
+                      update(index, next);
+                    }}
+                  >
+                    <option value="">不限</option>
+                    {key === 'departmentId'
+                      ? departments.map((department) => (
+                          <option key={department.id} value={department.id}>
+                            {department.name}
+                          </option>
+                        ))
+                      : Object.entries({
+                          primary: '正式部门任职',
+                          ...additionalMembershipLabels
+                        }).map(([code, name]) => (
+                          <option key={code} value={code}>
+                            {name}
+                          </option>
+                        ))}
+                    {parameters[key] &&
+                      !(key === 'departmentId'
+                        ? departments.some((department) => department.id === parameters[key])
+                        : ['primary', ...Object.keys(additionalMembershipLabels)].includes(
+                            parameters[key]
+                          )) && <option value={parameters[key]}>{parameters[key]}</option>}
+                  </Select>
+                </label>
+              ) : key === 'isPrimary' ? (
+                <label key={key}>
+                  任职范围
+                  <Select
+                    value={parameters[key] === undefined ? '' : String(parameters[key])}
+                    onChange={(event) => {
+                      const next = { ...parameters };
+                      if (event.target.value === '') delete next[key];
+                      else next[key] = event.target.value === 'true';
+                      update(index, next);
+                    }}
+                  >
+                    <option value="">不限</option>
+                    <option value="true">正式部门任职</option>
+                    <option value="false">独立身份</option>
+                  </Select>
+                </label>
+              ) : definition.type === 'boolean' ? (
                 <label className="react-check" key={key}>
                   <input
                     type="checkbox"
@@ -150,7 +248,7 @@ export function ConditionFields({ conditions = [], providers = [], onChange, req
       })}
       <label>
         添加条件
-        <select
+        <Select
           value=""
           onChange={(event) => {
             if (event.target.value)
@@ -165,7 +263,7 @@ export function ConditionFields({ conditions = [], providers = [], onChange, req
                 {provider.description}
               </option>
             ))}
-        </select>
+        </Select>
       </label>
     </div>
   );

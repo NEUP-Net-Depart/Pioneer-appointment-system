@@ -42,8 +42,7 @@
 .field-modal h3 {
   font-size: 17px;
 }
-.field-app button,
-.field-modal button,
+:where(.field-app, .field-modal) button,
 .field-file-button {
   border: 1px solid #dde1e7;
   background: white;
@@ -57,26 +56,23 @@
     background 0.15s,
     border-color 0.15s;
 }
-.field-app button:hover,
-.field-modal button:hover {
+:where(.field-app, .field-modal) button:where(:hover) {
   background: #f1f3f5;
   border-color: #bbc2cd;
 }
-.field-app button:disabled,
-.field-modal button:disabled {
+:where(.field-app, .field-modal) button:where(:disabled) {
   cursor: not-allowed;
   opacity: 0.45;
 }
-.field-app :focus-visible,
-.field-modal :focus-visible {
-  outline: 3px solid #9cb3d3;
-  outline-offset: 3px;
+:where(.field-app, .field-modal) :focus-visible {
+  outline: 2px solid #626b78;
+  outline-offset: 2px;
 }
-.field-app input:not([type='radio']):not([type='checkbox']),
-.field-app select,
-.field-modal input:not([type='radio']):not([type='checkbox']):not([type='file']),
-.field-modal select,
-.field-modal textarea {
+:where(.field-app) input:where(:not([type='radio'], [type='checkbox'])),
+:where(.field-app) select,
+:where(.field-modal) input:where(:not([type='radio'], [type='checkbox'], [type='file'])),
+:where(.field-modal) select,
+:where(.field-modal) textarea {
   font: inherit;
   min-height: 44px;
   width: 100%;

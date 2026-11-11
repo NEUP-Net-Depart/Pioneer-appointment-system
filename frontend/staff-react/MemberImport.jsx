@@ -1,3 +1,4 @@
+import { Select } from './SelectionControls.jsx';
 import { useQuery } from '@tanstack/react-query';
 import React, { useContext, useRef, useState } from 'react';
 import { request } from './request.js';
@@ -116,27 +117,27 @@ export function MemberImport({ user, initialCsv = '', onClose, onSaved }) {
           {staffPermission(user, 'accounts.manage') && (
             <label>
               已有账号校区
-              <select
+              <Select
                 value={accountCampusAction}
                 disabled={busy}
                 onChange={(event) => setAccountCampusAction(event.target.value)}
               >
                 <option value="preserve">保留现有授权</option>
                 <option value="replace">按非空授权校区列替换</option>
-              </select>
+              </Select>
             </label>
           )}
           <div className="member-import-file-tools">
             <label>
               CSV 模板
-              <select
+              <Select
                 value={advanced ? 'advanced' : 'basic'}
                 disabled={busy}
                 onChange={(event) => setAdvanced(event.target.value === 'advanced')}
               >
                 <option value="basic">基础模板</option>
                 <option value="advanced">高级模板</option>
-              </select>
+              </Select>
             </label>
             <button disabled={busy} onClick={download}>
               下载 CSV 模板

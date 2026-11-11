@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
 import { Modal, Notice } from './field/ui';
 import { WeekPicker } from './WeekPicker';
-import { dateKey, weekRange } from '../../shared/time.js';
+import { rosterWeekKey } from '../../shared/time.js';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../shared/api.js';
 
-export function WeeklyAttendanceExport({ campuses, onClose }) {
+export function WeeklyAttendanceExport({ campuses, campusId = '', onClose }) {
   const [scope, setScope] = useState({
-    weekStart: weekRange(dateKey()).start,
-    weekEnd: weekRange(dateKey()).start,
-    campusId: '',
+    weekStart: rosterWeekKey(),
+    weekEnd: rosterWeekKey(),
+    campusId,
     firstOnly: false,
     leadersOnce: false
   });
@@ -70,25 +70,14 @@ export function WeeklyAttendanceExport({ campuses, onClose }) {
         />
         <WeekPicker
           label="结束工作周"
+          min={scope.weekStart}
           value={scope.weekEnd}
           onChange={(weekEnd) => change({ weekEnd })}
           disabled={busy}
         />
-        <label>
-          导出校区
-          <select
-            value={scope.campusId}
-            disabled={busy}
-            onChange={(event) => change({ campusId: event.target.value })}
-          >
-            <option value="">全部授权校区</option>
-            {campuses.map((campus) => (
-              <option key={campus.id} value={campus.id}>
-                {campus.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <strong>
+          {campuses.find((campus) => campus.id === scope.campusId)?.name || '全部授权校区'}
+        </strong>
         <fieldset disabled={busy}>
           <legend>特殊情况核算</legend>
           <label className="roster-choice-row">
@@ -141,10 +130,10 @@ export function WeeklyAttendanceExport({ campuses, onClose }) {
         )}
         <div className="roster-modal-actions">
           <button disabled={busy} onClick={() => run(false)}>
-            预览核算结果
+            {result.isFetching ? '正在核算…' : '预览核算结果'}
           </button>
           <button className="field-primary" disabled={busy || !rows} onClick={() => run(true)}>
-            导出本次周汇总
+            {downloading ? '正在导出…' : '导出本次周汇总'}
           </button>
         </div>
       </div>

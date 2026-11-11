@@ -518,7 +518,7 @@ test('default duty correction resolves shift time in the selected campus and pre
   t.mock.timers.setTime(new Date('2026-11-09T10:59:00Z').getTime());
   await assert.rejects(
     staff.correctAttendance(head, { ...input, memberId: head.memberId, requestId: requestId() }),
-    /尚未开始/
+    /补录默认记为当天 19:00，目前尚未到该时间，请在 19:00 后补录/
   );
   t.mock.timers.setTime(new Date('2026-11-09T11:10:00Z').getTime());
   db.sqlite.exec(

@@ -28,6 +28,7 @@ import { staffPermission, staffViewAllowed, staffSceneAllowed } from '../../shar
 import { WorkspacePage } from './WorkspacePage';
 import './workspace-foundation.css';
 import './workspace-design.css';
+import './workspace-mobile.css';
 import { workspaceEntry } from './workspace-navigation.js';
 
 const pageModules = {

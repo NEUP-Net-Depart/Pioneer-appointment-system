@@ -1,6 +1,6 @@
 import { test, expect } from './support/fixtures.mjs';
 import { readFile } from 'node:fs/promises';
-import { loginStaff, staffPage } from './support/staff.mjs';
+import { chooseOption, loginStaff, staffPage } from './support/staff.mjs';
 
 async function fixture(page, { captcha = false, huawei = false } = {}) {
   await page.addInitScript(() => {
@@ -95,7 +95,7 @@ async function imageCode(page, value) {
 test('an album barcode supplies the serial for an explicit warranty query', async ({ page }) => {
   await fixture(page);
   const dialog = await openLookup(page);
-  await dialog.getByLabel('设备品牌').selectOption('lenovo');
+  await chooseOption(page, dialog.getByLabel('设备品牌'), 'lenovo');
   await dialog
     .getByLabel('从相册导入设备标签', { exact: true })
     .setInputFiles(await imageCode(page, 'AB0OI12'));
@@ -114,7 +114,7 @@ test('denied camera access keeps manual entry usable and closing clears serial i
 }) => {
   await fixture(page);
   const dialog = await openLookup(page);
-  await dialog.getByLabel('设备品牌').selectOption('msi');
+  await chooseOption(page, dialog.getByLabel('设备品牌'), 'msi');
   await openCapture(dialog);
   await expect(dialog).toContainText('摄像头未能开启');
   await dialog.getByLabel('序列号 / S/N / Service Tag', { exact: true }).fill('TEST1234');
@@ -165,7 +165,7 @@ test('Acer waits for a human CAPTCHA answer then shows the factory response on t
     });
   });
   const dialog = await openLookup(page);
-  await dialog.getByLabel('设备品牌').selectOption('acer');
+  await chooseOption(page, dialog.getByLabel('设备品牌'), 'acer');
   await dialog.getByLabel('序列号 / S/N / Service Tag', { exact: true }).fill('TEST1234');
   await dialog.getByRole('button', { name: '获取原厂验证码', exact: true }).click();
   await expect(dialog.getByRole('group', { name: '原厂人工验证' })).toBeVisible();
@@ -255,7 +255,7 @@ test('the real isolated verifier loads its SDK and bridge under both CSP policie
     })
   );
   const dialog = await openLookup(page);
-  await dialog.getByLabel('设备品牌').selectOption('huawei');
+  await chooseOption(page, dialog.getByLabel('设备品牌'), 'huawei');
   await dialog.getByLabel('序列号 / S/N / Service Tag', { exact: true }).fill('TEST12345678');
   await dialog.getByRole('button', { name: '获取原厂验证码', exact: true }).click();
   const widget = page.frameLocator('iframe[title="华为原厂人工滑块验证"]');
@@ -283,7 +283,7 @@ test('real local OCR reads a device label and opens the fixed official page in a
     if (req.method() === 'POST') writes.push(req.url());
   });
   const dialog = await openLookup(page);
-  await dialog.getByLabel('设备品牌').selectOption('asus');
+  await chooseOption(page, dialog.getByLabel('设备品牌'), 'asus');
   // Fixed pixels keep this real OCR regression independent of OS font rendering.
   const bytes = await readFile(new URL('../fixtures/warranty-serial-label.png', import.meta.url));
   await openOcr(dialog);

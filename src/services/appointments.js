@@ -7,7 +7,7 @@ import {
   serviceDay,
   slotDeadline,
   expirationDeadline,
-  weekRange
+  calendarWeekRange as weekRange
 } from '../../shared/time.js';
 import { issueAccessToken, bookingDigest, hashAccessToken, onsiteRequestKey } from '../lib/access-tokens.js';
 import { guestAppointment } from './access.js';

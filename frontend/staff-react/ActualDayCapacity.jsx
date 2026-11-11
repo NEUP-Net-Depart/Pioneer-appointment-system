@@ -1,3 +1,6 @@
+import { DatePicker } from './SelectionControls.jsx';
+import { RefreshButton } from './WorkspaceToolbar.jsx';
+import { HelpHint } from './HelpHint';
 import { DataValue } from './DataValue';
 import { TIME_SLOTS } from '../../shared/constants.js';
 import React, { useContext, useState } from 'react';
@@ -22,14 +25,18 @@ export function ActualDayCapacity({ campus, onNavigate }) {
         <div>
           <h2>日期实际容量</h2>
         </div>
-        <button disabled={loading || !date} onClick={() => result.refetch()}>
-          更新实际数据
-        </button>
+        <RefreshButton
+          key={`${campus}:${date}`}
+          disabled={!date}
+          onRefresh={() => result.refetch({ throwOnError: true })}
+          label="刷新当日容量"
+          compactOnMobile
+        />
       </div>
       <div className="capacity-actual-date">
         <label>
           查看日期
-          <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+          <DatePicker value={date} onChange={(event) => setDate(event.target.value)} />
         </label>
         <div className="capacity-date-shortcuts" role="group" aria-label="快捷查看日期">
           {[0, 1, 2, 3].map((offset) => {
@@ -68,7 +75,12 @@ export function ActualDayCapacity({ campus, onNavigate }) {
           </div>
           <div className="capacity-actual-layout">
             <div>
-              <h3>预约名额</h3>
+              <h3 className="workspace-title-with-hint">
+                预约名额
+                <HelpHint label="名额计算规则">
+                  已占用名额包含已完成、已过期预约；取消预约释放名额。现场临时登记不占用预约名额。已占用达到或超过容量时停止新增预约，低于容量后恢复放号。
+                </HelpHint>
+              </h3>
               {!data || data.items.length ? (
                 <table className="capacity-actual-slots" aria-label="各时段预约名额">
                   <thead>
@@ -109,7 +121,12 @@ export function ActualDayCapacity({ campus, onNavigate }) {
               )}
             </div>
             <div className="capacity-staffing">
-              <h3>工作人员</h3>
+              <h3 className="workspace-title-with-hint">
+                工作人员
+                <HelpHint label="出勤计算口径">
+                  按已发布班次去重，并扣除已批准请假；实际到岗以签到记录为准。
+                </HelpHint>
+              </h3>
               {!data ? (
                 <>
                   <p data-motion-value="text" className="field-muted">

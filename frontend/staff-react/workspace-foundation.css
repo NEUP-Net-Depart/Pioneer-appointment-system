@@ -427,6 +427,7 @@ fieldset.staffing-editor {
   animation: none;
 }
 .workspace-page .react-page,
+.workspace-page .react-members-page,
 .workspace-page .field-content,
 .workspace-page .attendance-history {
   width: 100%;
@@ -436,20 +437,23 @@ fieldset.staffing-editor {
   min-width: 0;
 }
 .field-app .workspace-page .workspace-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 24px;
   margin: 0 0 28px;
   padding: 0;
   text-align: left;
 }
 .workspace-heading-copy {
+  display: contents;
   min-width: 0;
   flex: 1;
 }
 .field-app .workspace-heading .field-kicker {
-  margin: 0 0 8px;
+  grid-column: 1;
+  grid-row: 1;
+  margin: 0;
   font-size: 12px;
   line-height: 20px;
   font-weight: 500;
@@ -457,6 +461,8 @@ fieldset.staffing-editor {
   color: var(--muted);
 }
 .field-app .workspace-heading h1 {
+  grid-column: 1;
+  grid-row: 2;
   margin: 0;
   font-family: inherit;
   font-size: 28px;
@@ -465,12 +471,16 @@ fieldset.staffing-editor {
   letter-spacing: -0.025em;
 }
 .field-app .workspace-heading .workspace-heading-description {
+  grid-column: 1 / -1;
+  grid-row: 3;
   max-width: 52em;
   font-size: 14px;
   line-height: 22px;
   margin: 10px 0 0;
 }
 .workspace-heading-actions {
+  grid-column: 2;
+  grid-row: 2;
   display: flex;
   flex: 0 0 auto;
   width: max-content;
@@ -478,8 +488,8 @@ fieldset.staffing-editor {
   justify-content: flex-end;
   gap: 8px 12px;
   flex-wrap: wrap;
-  max-width: 52%;
-  padding-top: 28px;
+  max-width: 100%;
+  padding-top: 0;
 }
 .field-app h2,
 .field-modal h2 {
@@ -504,21 +514,21 @@ fieldset.staffing-editor {
 .field-modal label {
   font-weight: 500;
 }
-.field-app button,
-.field-modal button {
+:where(.field-app, .field-modal) button {
   min-height: 44px;
   font-weight: 500;
   border-radius: 10px;
 }
 .field-app
   .react-card
-  button:not(.react-primary):not([aria-pressed='true']):not(.is-selected):not(.field-primary) {
+  button:not(.react-primary):not([aria-pressed='true']):not(.is-selected):not(.field-primary):where(
+    :not(.workspace-control-popover *, .workspace-time-popover *)
+  ) {
   background-color: white;
   color: var(--ink);
   border: 1px solid var(--line);
 }
-.field-app button:hover:not(:disabled),
-.field-modal button:hover:not(:disabled) {
+:where(.field-app, .field-modal) button:where(:hover:not(:disabled)) {
   border-color: #aeb8c5;
 }
 .field-app .field-primary,
@@ -528,12 +538,10 @@ fieldset.staffing-editor {
   border-color: var(--ink);
   color: white !important;
 }
-.field-app input:not([type='checkbox']):not([type='radio']):not([type='file']),
-.field-app select,
-.field-app textarea,
-.field-modal input:not([type='checkbox']):not([type='radio']):not([type='file']),
-.field-modal select,
-.field-modal textarea {
+:where(.field-app, .field-modal)
+  input:where(:not([type='checkbox'], [type='radio'], [type='file'])),
+:where(.field-app, .field-modal) select,
+:where(.field-app, .field-modal) textarea {
   min-width: 0;
   max-width: 100%;
   border: 1px solid #d6dce5;
@@ -890,7 +898,7 @@ fieldset.staffing-editor {
 
 /* Business modules share the foundation, while keeping task-specific layouts. */
 .workspace-page .attendance-history > .field-card {
-  max-width: 1100px;
+  max-width: none;
 }
 .workspace-page .security-layout {
   max-width: 1120px;
@@ -1242,7 +1250,7 @@ fieldset.staffing-editor {
     min-height: 100dvh;
   }
   .field-app .workspace-page .workspace-heading {
-    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr);
     gap: 16px;
     margin-bottom: 24px;
   }
@@ -1251,10 +1259,15 @@ fieldset.staffing-editor {
     line-height: 32px;
   }
   .workspace-heading-actions {
+    grid-column: 1;
+    grid-row: 4;
     padding-top: 0;
     max-width: none;
     width: 100%;
     justify-content: flex-start;
+  }
+  .workspace-heading:not(:has(.workspace-heading-description)) > .workspace-heading-actions {
+    grid-row: 3;
   }
   .field-app .workspace-heading .field-kicker {
     font-size: 12px;
@@ -1427,7 +1440,7 @@ fieldset.staffing-editor {
 }
 .field-app
   :is(.workspace-list-tools, .planner-toolbar, .report-filters, .members-tools, .permission-tools)
-  > label:not(:has(input[type='checkbox'])) {
+  > label:where(:not(:has(input[type='checkbox']))) {
   display: grid;
   gap: 8px;
   flex: 1 1 180px;
@@ -1443,6 +1456,9 @@ fieldset.staffing-editor {
   > label
   > :is(input, select) {
   width: 100%;
+  min-width: 0;
+  height: 44px;
+  padding-block: 0;
 }
 .field-app
   :is(.workspace-list-tools, .planner-toolbar, .report-filters, .members-tools, .permission-tools)
@@ -1655,7 +1671,7 @@ summary.member-role-heading {
   gap: 8px;
 }
 .week-picker > div {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
 }
 .week-picker select {
   grid-column: 1 / -1;
@@ -1762,7 +1778,8 @@ summary.member-role-heading {
   justify-content: center;
   gap: 12px;
   min-height: 44px;
-  padding: 10px 14px;
+  height: 44px;
+  padding: 0 14px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: white;
@@ -1792,12 +1809,12 @@ summary.member-role-heading {
 .workspace-more-action-list {
   position: absolute;
   top: calc(100% + 8px);
-  left: 0;
+  right: 0;
   z-index: 20;
   display: grid;
   gap: 4px;
   width: max-content;
-  min-width: 200px;
+  min-width: 100%;
   max-width: calc(100vw - 48px);
   padding: 8px;
   border: 1px solid var(--line);
@@ -1820,11 +1837,17 @@ summary.member-role-heading {
 @media (max-width: 767px) {
   .field-app
     :is(.workspace-list-tools, .planner-toolbar, .report-filters, .members-tools, .permission-tools)
-    > label:not(:has(input[type='checkbox'])) {
+    > label:where(:not(:has(input[type='checkbox']))) {
     flex-basis: calc(50% - 6px);
   }
   .field-app :is(.workspace-list-tools, .members-tools, .permission-tools) > label:first-child {
     flex-basis: 100%;
+  }
+  .field-app
+    :is(.workspace-list-tools, .planner-toolbar, .report-filters, .permission-tools)
+    > label:has(.workspace-date-field, .workspace-time-field, .workspace-datetime-field) {
+    flex-basis: 200px;
+    min-width: min(100%, 190px);
   }
   .field-app :is(.planner-toolbar, .report-filters) > label:has(input[type='month']) {
     flex-basis: 100%;
@@ -2084,15 +2107,19 @@ span[data-motion-value='status'] {
   box-shadow: 0 1px 4px #1f293712;
 }
 .field-app .report-controls {
-  display: grid;
-  grid-template-columns: minmax(220px, 260px) minmax(190px, 240px) auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: end;
   justify-content: start;
   gap: 16px;
-  padding: 20px 24px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: #fff;
+  padding: 0 0 24px;
+  border-bottom: 1px solid var(--line);
+}
+.report-controls > .report-month-picker {
+  flex: 0 1 220px;
+}
+.report-controls > .workspace-refresh-control {
+  margin-left: auto;
 }
 .report-month-picker,
 .workspace-choice {
@@ -2286,10 +2313,8 @@ span[data-motion-value='status'] {
 }
 .field-app .report-settings {
   margin: 0 0 18px;
-  padding: 18px 22px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: #f8fafb;
+  padding: 0 0 18px;
+  border-bottom: 1px solid var(--line);
 }
 .report-settings-heading {
   display: flex;
@@ -2389,9 +2414,16 @@ span[data-motion-value='status'] {
 }
 @media (max-width: 700px) {
   .field-app .report-controls {
-    grid-template-columns: minmax(0, 1fr);
     gap: 14px;
-    padding: 18px;
+    padding: 0 0 24px;
+  }
+  .report-controls > .report-month-picker {
+    flex: 1 1 100%;
+  }
+  .report-controls > .workspace-refresh-control,
+  .report-controls > button {
+    flex: 1 1 130px;
+    margin-left: 0;
   }
   .field-app .report-refresh {
     width: 100%;
