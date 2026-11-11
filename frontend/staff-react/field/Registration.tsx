@@ -182,18 +182,18 @@ export function Registration({
               {form.brand} {form.deviceModel} · {form.faultType}
             </p>
           </div>
-          <details open>
-            <summary>免费维修协议</summary>
+          <section aria-label="免费维修协议">
+            <h3>免费维修协议</h3>
             <p>
               本服务为免费、自愿的互助维修，不保证一定修复。请提前备份重要数据，维修方不承担数据丢失责任。
             </p>
             <p>
               配件由机主自行准备；清灰提供免费普通硅脂或自带。在保设备建议优先联系官方售后。请如实描述故障并遵守现场秩序；工作人员不得翻阅个人文件与聊天记录。
             </p>
-          </details>
+          </section>
           <label className="field-check">
             <input type="checkbox" required />
-            机主已阅读并同意协议，确认重要数据已备份
+            <span>机主已阅读并同意协议，确认重要数据已备份</span>
           </label>
           <label>
             请机主手写姓名

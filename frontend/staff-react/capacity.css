@@ -118,12 +118,6 @@
 .service-day-preview p {
   white-space: pre-wrap;
 }
-.service-day-preview small {
-  display: block;
-  color: var(--muted);
-  margin-top: 12px;
-  line-height: 1.7;
-}
 .service-day-impact {
   color: #70451c;
 }
@@ -279,24 +273,33 @@
   border-block: 1px solid var(--line);
   padding-block: 16px;
 }
-.capacity-location-details {
+.capacity-location-history {
+  display: grid;
+  gap: 16px;
   margin-top: 24px;
   border-top: 1px solid var(--line);
   padding-top: 16px;
   overflow-wrap: anywhere;
 }
-.capacity-location-details summary {
-  min-height: 44px;
-  cursor: pointer;
-  font-weight: 600;
+.capacity-location-history > :is(p, button) {
+  margin: 0;
+  justify-self: start;
 }
-.capacity-location-details ul {
+.capacity-location-records {
+  display: grid;
+  gap: 24px;
+}
+.capacity-location-records h4 {
+  margin: 0 0 8px;
+}
+.capacity-location-history ul {
+  margin: 0;
   padding-left: 20px;
 }
-.capacity-location-details li {
+.capacity-location-history li {
   padding-block: 8px;
 }
-.capacity-location-details li span {
+.capacity-location-history li span {
   display: block;
   color: var(--muted);
 }
@@ -497,11 +500,6 @@
   border-top: 1px solid var(--line);
   padding-top: 16px;
 }
-.capacity-quick-tools summary {
-  cursor: pointer;
-  padding: 8px 0;
-  font-weight: 600;
-}
 .capacity-quick-tools form,
 .capacity-copy-tools {
   display: flex;
@@ -519,12 +517,6 @@
 }
 .capacity-quick-tools label input {
   max-width: 140px;
-}
-.capacity-effect-note {
-  max-width: 900px;
-  font-size: 13px;
-  color: var(--muted);
-  margin: 0 0 24px;
 }
 .capacity-save-bar {
   position: sticky;
@@ -780,8 +772,9 @@
     color: var(--muted);
     margin-top: 4px;
   }
-  .field-app .capacity-mobile-inputs input {
+  #staff-react-root .capacity-mobile-inputs input {
     width: 88px;
+    flex: 0 0 88px;
     text-align: center;
     font-size: 18px;
     font-variant-numeric: tabular-nums;
@@ -789,6 +782,16 @@
   .capacity-quick-tools label {
     flex: 1;
     min-width: 100px;
+  }
+  .capacity-quick-tools form {
+    display: grid;
+    grid-template-columns: minmax(64px, 0.6fr) minmax(156px, 1.4fr);
+  }
+  .capacity-quick-tools form label {
+    min-width: 0;
+  }
+  .capacity-quick-tools form > button {
+    grid-column: 1 / -1;
   }
   .capacity-quick-tools form > button,
   .capacity-copy-tools > button {

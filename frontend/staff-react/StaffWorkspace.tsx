@@ -72,7 +72,7 @@ export function StaffWorkspace({
     if (navigationLock.current || pending) return;
     setMore(false);
     if (id === active) return;
-    if (pendingEditors({ includeHidden: id === '__logout__' }).length) {
+    if (pendingEditors({ includeHidden: id === '__logout__' || id === '__refresh__' }).length) {
       setNavigationError('');
       setPending(id);
       return;
@@ -82,6 +82,7 @@ export function StaffWorkspace({
   function finishNavigation(id: string) {
     if (id.startsWith('scene:')) setExpanded(null);
     if (id === '__logout__') onLogout();
+    else if (id === '__refresh__') window.location.reload();
     else onSelect(id);
   }
   useEffect(() => {
@@ -95,10 +96,16 @@ export function StaffWorkspace({
     setResolving(true);
     setNavigationError('');
     try {
-      for (const editor of pendingEditors({ includeHidden: pending === '__logout__' })) {
+      for (const editor of pendingEditors({
+        includeHidden: pending === '__logout__' || pending === '__refresh__'
+      })) {
         if (action === 'save') {
           if ((await editor.save()) !== true)
-            throw new Error('修改尚未保存成功，请取消切换后检查页面提示，或重试保存。');
+            throw new Error(
+              pending === '__refresh__'
+                ? '修改尚未保存成功，请取消刷新后检查页面提示，或重试保存。'
+                : '修改尚未保存成功，请取消切换后检查页面提示，或重试保存。'
+            );
         } else editor.discard();
         // Let saved revisions and dirty flags reach nested editors before the
         // next operation (e.g. member profile followed by role bindings).
@@ -116,6 +123,8 @@ export function StaffWorkspace({
       setResolving(false);
     }
   }
+  const actionText =
+    pending === '__logout__' ? '退出' : pending === '__refresh__' ? '刷新' : '切换';
   const groups = groupWorkspaceEntries(entries);
   const primary: Entry[] = mobileWorkspaceEntries(entries);
   const overflow = entries.filter((entry) => !primary.some((item) => item.id === entry.id));
@@ -249,7 +258,9 @@ export function StaffWorkspace({
           <p data-motion-value="text">
             {pending === '__logout__'
               ? '保存成功后退出登录，或丢弃本次未保存的改动。'
-              : '请保存或丢弃修改后切换。'}
+              : pending === '__refresh__'
+                ? '保存成功后刷新页面，或丢弃本次未保存的改动。'
+                : '请保存或丢弃修改后切换。'}
           </p>
           {navigationError && (
             <p data-motion-value="text" className="react-error" role="alert">
@@ -260,43 +271,17 @@ export function StaffWorkspace({
             <button type="button" disabled={resolving} onClick={() => setPending(null)}>
               {pending === '__logout__' ? '取消退出' : '留在当前页面'}
             </button>
-            {pending === '__logout__' ? (
-              <>
-                <button
-                  type="button"
-                  disabled={resolving}
-                  onClick={() => resolveNavigation('discard')}
-                >
-                  丢弃并退出
-                </button>
-                <button
-                  type="button"
-                  className="field-primary"
-                  disabled={resolving}
-                  onClick={() => resolveNavigation('save')}
-                >
-                  {resolving ? '正在处理…' : '保存并退出'}
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  disabled={resolving}
-                  onClick={() => resolveNavigation('discard')}
-                >
-                  丢弃并切换
-                </button>
-                <button
-                  type="button"
-                  className="field-primary"
-                  disabled={resolving}
-                  onClick={() => resolveNavigation('save')}
-                >
-                  {resolving ? '正在处理…' : '保存并切换'}
-                </button>
-              </>
-            )}
+            <button type="button" disabled={resolving} onClick={() => resolveNavigation('discard')}>
+              丢弃并{actionText}
+            </button>
+            <button
+              type="button"
+              className="field-primary"
+              disabled={resolving}
+              onClick={() => resolveNavigation('save')}
+            >
+              {resolving ? '正在处理…' : `保存并${actionText}`}
+            </button>
           </div>
         </Modal>
       )}

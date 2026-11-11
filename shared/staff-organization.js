@@ -1,6 +1,10 @@
 import { dateKey } from './time.js';
 
 export const positionLabels = { member: '部员', deputy_head: '副部长', head: '部长', deputy_director: '副站长', director: '站长', vice_president: '副主席', president: '主席' };
+export const additionalMembershipLabels = { exchange: '交流维修', maintenance_affairs: '维修事务' };
+export function membershipLabel(post) {
+  return additionalMembershipLabels[post.assignmentType] || `${post.departmentName || ''}${positionLabels[post.positionCode] || ''}`;
+}
 export function positionsFor(unit) {
   return unit?.kind === 'center' ? ['vice_president', 'president'] : unit?.kind === 'station' ? ['deputy_director', 'director'] : ['member', 'deputy_head', 'head'];
 }

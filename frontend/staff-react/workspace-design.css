@@ -230,6 +230,56 @@
   margin: 0 -16px 16px;
   border-bottom: 1px solid var(--line);
 }
+.repair-attachments,
+.repair-attachment-list,
+.repair-attachment-upload,
+.repair-history,
+.repair-history-list {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.repair-attachments {
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.repair-attachments :is(p, ul),
+.repair-history-list {
+  margin: 0;
+}
+.repair-attachment-upload {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.repair-attachment-upload label {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.repair-attachment-upload input {
+  max-width: 100%;
+}
+.repair-attachment-upload > button,
+.repair-history > button {
+  justify-self: start;
+}
+.repair-history-list {
+  padding: 0;
+  list-style: none;
+}
+.repair-history-list > li {
+  display: grid;
+  gap: 8px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.repair-history-list button {
+  justify-self: start;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
 .repair-management {
   display: grid;
   gap: 12px;

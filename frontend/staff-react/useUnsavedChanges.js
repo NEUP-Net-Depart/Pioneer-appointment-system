@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useRef } from 'react';
 
 export const UnsavedPageContext = createContext(null);
 
-// Internal navigation may retain dirty editors. Logout collects their
+// Internal navigation may retain dirty editors. Logout and refresh collect their
 // save/discard operations, including editors on hidden routes.
 export function useUnsavedChanges({ dirty, active = true, busy = false, save, discard }) {
   const pageActive = useContext(UnsavedPageContext);

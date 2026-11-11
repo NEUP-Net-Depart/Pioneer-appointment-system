@@ -9,35 +9,32 @@ const maxAnimations = 24;
 // Lists provide geometry; their children enter as one bounded batch.
 const listGroups =
   '[data-motion-list],.account-list,.members-results,.records-table-wrap,.field-appointments,.report-grid';
+const revealFrame = (size) => ({
+  maskImage: 'linear-gradient(#000, #000)',
+  maskRepeat: 'no-repeat',
+  maskPosition: 'top',
+  maskSize: `100% ${size}`
+});
 // Product-wide semantic presets: no full-page fade or artificial data delay.
 export const dataMotionPresets = {
   text: { duration: 0, keyframes: [] },
   number: {
     duration: 240,
-    keyframes: [
-      { transform: 'translateY(1em)' },
-      { transform: 'translateY(0)' }
-    ]
+    keyframes: [{ transform: 'translateY(1em)' }, { transform: 'translateY(0)' }]
   },
   numberEnter: {
     duration: 240,
-    keyframes: [
-      { transform: 'translateY(1em)' },
-      { transform: 'translateY(0)' }
-    ]
+    keyframes: [{ transform: 'translateY(1em)' }, { transform: 'translateY(0)' }]
   },
   status: { duration: 0, keyframes: [] },
   field: { duration: 0, keyframes: [] },
   enter: {
     duration: 240,
-    keyframes: [
-      { clipPath: 'inset(0 0 100% 0)' },
-      { clipPath: 'inset(0 0 0% 0)' }
-    ]
+    keyframes: [revealFrame('0%'), revealFrame('100%')]
   },
   container: {
     duration: 240,
-    keyframes: [{ clipPath: 'inset(0 0 100% 0)' }, { clipPath: 'inset(0 0 0% 0)' }]
+    keyframes: [revealFrame('0%'), revealFrame('100%')]
   },
   layout: { duration: 200 }
 };
@@ -106,7 +103,8 @@ export function observeDataMotion(root, { enterInitial = false } = {}) {
       // Offscreen rows need geometry for later reflow; their individual fields
       // do not. Avoid thousands of redundant geometry reads on long lists.
       if (node.matches(values)) {
-        if (node.closest('[data-value-motion]') || node.querySelector('[data-value-motion]')) continue;
+        if (node.closest('[data-value-motion]') || node.querySelector('[data-value-motion]'))
+          continue;
         const parent = node.parentElement?.closest(`${items},${containers},${regions}`);
         const bounds = snapshot.get(parent);
         if (bounds && (bounds.bottom < 0 || bounds.top > innerHeight)) continue;
@@ -129,6 +127,7 @@ export function observeDataMotion(root, { enterInitial = false } = {}) {
     animation.finished.then(
       () => {
         if (running.get(node) === animation) running.delete(node);
+        animation.cancel();
         if (!running.size && resizePending) {
           resizePending = false;
           schedule();
@@ -188,7 +187,7 @@ export function observeDataMotion(root, { enterInitial = false } = {}) {
     for (const [node, animation] of running)
       if (
         !node.matches(values) &&
-        animation.effect.getKeyframes().some((frame) => 'opacity' in frame || 'clipPath' in frame)
+        animation.effect.getKeyframes().some((frame) => 'opacity' in frame || 'maskSize' in frame)
       )
         arriving.add(node);
     const enteringParent = (node) => {
@@ -267,10 +266,11 @@ export function observeDataMotion(root, { enterInitial = false } = {}) {
         continue;
       }
       if (node.matches(regions) && target.height > before.height + 1) {
-        queue(node, [
-          { clipPath: `inset(0 0 ${target.height - before.height}px 0)` },
-          { clipPath: 'inset(0 0 0px 0)' }
-        ], dataMotionPresets.container);
+        queue(
+          node,
+          [revealFrame(`${before.height}px`), revealFrame('100%')],
+          dataMotionPresets.container
+        );
         continue;
       }
       if (node.matches(items) && Math.abs(before.height - target.height) <= 1) {

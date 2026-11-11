@@ -48,14 +48,19 @@ export function activationService(repository, users, staff, members) {
       fail(409, '成员资料已变化，请刷新后重试');
     if (snapshot.data.accounts.length || invitation?.status === 'activated')
       fail(409, '已创建登录账号，请刷新后管理账号');
+    const homeCampus = { 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' }[member.home_campus_id];
     if (invitation) manageable(actor, invitation);
+    else {
+      if (!homeCampus) fail(409, '请先设置成员所属校区');
+      requireGrantScope(actor, [homeCampus]);
+    }
     if (snapshot.data.activationBindings.some((binding) => binding.member_id !== member.id))
       fail(409, '激活资格已关联其他人员，请核对现有资料');
     const grants = await members.grants(member.id);
     if (grants.some(grant => grant.roleCode === 'superadmin')) fail(403, '不能配置系统管理员激活资格');
     const roleIds = new Set(grants.map(grant => grant.roleId));
     const activeRoles = roles.filter(role => role.enabled && roleIds.has(role.id));
-    const campuses = invitation?.authorizedCampuses || [];
+    const campuses = invitation?.authorizedCampuses || [homeCampus];
     const roleVersions = roles.map(({ id, revision, enabled }) => ({ id, revision, enabled }));
     const eligible = (selected) => businessIdentityEligible({
       memberId: member.id, status: member.status, campuses: selected, grants,

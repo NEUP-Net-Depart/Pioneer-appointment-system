@@ -153,8 +153,11 @@
       "behavior": "after shift end only; undo increments revision; bound to current assignment member; audit retains history; never creates attendance; real arrival takes precedence"
     },
     "correction": {
-      "personInput": ["memberId", "businessDate", "campusId", "occurredAt", "reason", "requestId"],
+      "personInput": ["memberId", "businessDate", "campusId", "timeMode: duty_start", "reason", "requestId"],
+      "defaultTime": "server resolves the earliest assigned shift start in the selected campus and day; otherwise 19:00 Asia/Shanghai; never accepts a supplied occurredAt, recordId or eventId in duty_start mode",
+      "legacyPersonInput": ["memberId", "businessDate", "campusId", "occurredAt", "reason", "requestId"],
       "recordInput": ["recordId", "eventId", "memberId", "revision", "occurredAt", "reason", "requestId"],
+      "recordTime": "UI accepts time of day only; date is fixed to the original duty businessDate; server rejects cross-date duty corrections",
       "presenceEffect": false
     },
     "volunteerSummary": {

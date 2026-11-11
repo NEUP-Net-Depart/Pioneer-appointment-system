@@ -237,16 +237,6 @@ export function AttendanceReports({ canExport = true, embedded = false }) {
               }}
             />
           </div>
-          {tab === 'matrix' && (
-            <section className="report-settings report-fixed-rule" aria-label="考勤记录规则">
-              <div className="report-settings-heading">
-                <div>
-                  <h2>考勤记录规则</h2>
-                  <p>按实际维修日期 · 每人每天一格</p>
-                </div>
-              </div>
-            </section>
-          )}
           <div className="report-controls">
             <MonthPicker
               value={month}

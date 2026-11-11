@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useEffect, useRef, useState } from 'react';
 import { request } from './request.js';
 import { ActivityContext, Notice } from './field/ui';
 import { AccountEditor } from './Accounts.jsx';
@@ -11,75 +11,48 @@ const activationStatus = {
   activated: '已激活'
 };
 
-function MemberActivation({ memberId, value: initial, onSaved, onDirty, onBusy }) {
-  const [value, setValue] = useState(initial),
-    [campuses, setCampuses] = useState(initial.authorizedCampuses),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState(''),
-    [saved, setSaved] = useState(false);
-  const dirty = JSON.stringify(campuses) !== JSON.stringify(value.authorizedCampuses);
+function MemberActivation({ memberId, value, onSaved, onBusy }) {
+  const [error, setError] = useState(''),
+    [retry, setRetry] = useState(0);
+  const callbacks = useRef({ onSaved, onBusy });
+  callbacks.current = { onSaved, onBusy };
+  const preparing = value.status === 'unset' && value.canConfigure;
   useEffect(() => {
-    onDirty?.(dirty);
-    return () => onDirty?.(false);
-  }, [dirty, onDirty]);
-  useEffect(() => {
-    onBusy?.(busy);
-    return () => onBusy?.(false);
-  }, [busy, onBusy]);
-  async function save(event) {
-    event.preventDefault();
-    if (busy) return;
-    setBusy(true);
+    if (!preparing) return;
+    let active = true;
     setError('');
-    try {
-      const updated = await request(`/api/members/${encodeURIComponent(memberId)}/activation`, {
-        method: 'POST',
-        body: { authorizedCampuses: campuses, stateToken: value.stateToken }
+    callbacks.current.onBusy?.(true);
+    request(`/api/members/${encodeURIComponent(memberId)}/activation`, {
+      method: 'POST',
+      body: { authorizedCampuses: value.authorizedCampuses, stateToken: value.stateToken }
+    })
+      .then(async () => {
+        if (active) await callbacks.current.onSaved();
+      })
+      .catch((failure) => {
+        if (active) setError(failure.message);
+      })
+      .finally(() => {
+        if (active) callbacks.current.onBusy?.(false);
       });
-      setValue(updated);
-      setSaved(true);
-      onDirty?.(false);
-      await onSaved();
-    } catch (failure) {
-      setError(failure.message);
-    } finally {
-      setBusy(false);
-    }
-  }
+    return () => {
+      active = false;
+      callbacks.current.onBusy?.(false);
+    };
+  }, [memberId, value.stateToken, preparing, retry]);
   return (
-    <form onSubmit={save} aria-label="配置激活资格">
+    <section aria-label="账号激活状态" aria-busy={preparing && !error}>
       <Notice>{error}</Notice>
       <p>尚未创建登录账号</p>
-      <p>激活资格：{saved ? '待激活' : activationStatus[value.status]}</p>
-      <p>有效权限：{value.roleNames.join('、') || '尚未授权'}</p>
-      {!value.canConfigure && <p role="alert">请先配置有效任职、交流参与或特殊授权。</p>}
-      {saved && <p role="status">激活资格已保存</p>}
-      <fieldset disabled={busy || !value.canConfigure}>
-        <legend>激活授权校区</legend>
-        {[...new Set([...value.availableCampuses, ...value.authorizedCampuses])]
-          .sort()
-          .map((campus) => (
-            <label className="workspace-check" key={campus}>
-              <input
-                type="checkbox"
-                checked={campuses.includes(campus)}
-                onChange={(event) => {
-                  setSaved(false);
-                  setCampuses((current) =>
-                    event.target.checked
-                      ? [...current, campus].sort()
-                      : current.filter((item) => item !== campus)
-                  );
-                }}
-              />
-              {campus}
-            </label>
-          ))}
-        <button className="react-primary" disabled={!campuses.length}>
-          {busy ? '正在保存…' : '保存激活资格'}
-        </button>
-      </fieldset>
-    </form>
+      <p data-motion-value="text">
+        激活状态：{preparing ? '准备中' : activationStatus[value.status]}
+      </p>
+      <p>授权校区：{value.authorizedCampuses.join('、') || '未设置'}</p>
+      <p>额外系统授权：{value.roleNames.join('、') || '无'}</p>
+      {!value.canConfigure && <p role="alert">请先确认成员状态正常且已设置授权校区。</p>}
+      <p>成员可从登录页提交激活申请，由部长及以上负责人审核。</p>
+      {error && <button onClick={() => setRetry((value) => value + 1)}>重试读取</button>}
+    </section>
   );
 }
 
@@ -139,7 +112,6 @@ export function MemberAccount({ user, detail, onSaved, onDirty, onBusy }) {
             memberId={detail.member.memberId}
             value={enrollment}
             onSaved={saved}
-            onDirty={onDirty}
             onBusy={onBusy}
           />
         )

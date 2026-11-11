@@ -1,4 +1,4 @@
-export const STAFF_RELEASE = 'maintenance-affairs-0051';
+export const STAFF_RELEASE = 'same-day-membership-0052';
 
 // Prepare real projections, including empty tables. A database with only the
 // old staff schema must fail readiness before CI accepts a deployment.

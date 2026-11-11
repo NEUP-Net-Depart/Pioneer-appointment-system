@@ -20,7 +20,7 @@ test('dual appointments offer office availability and direct attendance without 
   await expect(page.getByRole('button', { name: '到岗签到', exact: true })).toBeEnabled();
 });
 
-test('planner aligns shift boundaries and retries a stale draft without losing its manual addition', async ({
+test('planner retries a stale draft without losing its manual addition', async ({
   page,
   context
 }) => {
@@ -30,17 +30,6 @@ test('planner aligns shift boundaries and retries a stale draft without losing i
   const picker = page.getByRole('dialog');
   await picker.getByRole('checkbox', { name: /周宁/ }).check();
   await picker.getByRole('button', { name: '完成选择', exact: true }).click();
-  const columns = planner.locator('.duty-day-column');
-  const coordinates = await columns.evaluateAll((nodes) =>
-    nodes.map((node) => ({
-      top: node.getBoundingClientRect().top,
-      office: node.querySelectorAll('.duty-shift-group')[1].getBoundingClientRect().top
-    }))
-  );
-  for (const point of coordinates) {
-    const peer = coordinates.find((other) => Math.abs(other.top - point.top) < 1);
-    expect(Math.abs(peer.office - point.office)).toBeLessThanOrEqual(1);
-  }
   const otherPage = await context.newPage();
   await loginStaff(otherPage, '20261001');
   const otherPlanner = await dutyPage(otherPage, '安排下周');

@@ -8,11 +8,12 @@
 npm run test:e2e
 ```
 
-筛选场景，或检查独立运行、并行和重复执行：
+默认使用两个进程并行执行独立用例，桌面和手机覆盖范围不变。筛选场景、串行排查，或检查重复执行：
 
 ```sh
 npm run test:e2e -- --project=chromium --grep 'requests leave'
-npm run test:e2e -- --grep 'availability produces|requests leave|historical arrival' --fully-parallel --workers=2 --repeat-each=2
+npm run test:e2e -- --workers=1
+npm run test:e2e -- --grep 'availability produces|requests leave|historical arrival' --repeat-each=2
 ```
 
 `scripts/test-e2e.mjs` 构建一次并初始化虚构人员和本地数据库。`support/fixtures.mjs` 为每个用例复制未运行的初始 D1/R2 状态，在独立端口启动 Worker，结束后移除临时目录。浏览器上下文和 Worker 共用 `WORKFLOW_TIME`；新标签页自动继承时钟。用例之间不共享预约、排班、限流或附件，也不依赖浏览器名称、执行顺序或前一个用例的结果。

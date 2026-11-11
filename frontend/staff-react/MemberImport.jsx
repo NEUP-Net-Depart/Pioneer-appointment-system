@@ -7,7 +7,7 @@ import { MemberSetup, newMemberSetup, memberDefaults } from './MemberSetup.jsx';
 
 const basicHeader = 'studentId,name,college';
 const advancedHeader =
-  'studentId,name,homeCampusId,college,major,departmentId,positionCode,exchangeParticipation,maintenanceParticipation,authorizedCampuses,configureActivation,effectiveFrom';
+  'studentId,name,homeCampusId,college,major,departmentId,positionCode,exchangeParticipation,maintenanceParticipation,authorizedCampuses,effectiveFrom';
 const statusLabels = { created: '新增', updated: '更新', skipped: '跳过', conflict: '冲突' };
 const display = (value) =>
   ({ 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' })[value] || value || '未设置';
@@ -96,7 +96,7 @@ export function MemberImport({ user, initialCsv = '', onClose, onSaved }) {
           </button>
         </>
       ) : !preview ? (
-        <>
+        <div className="member-import-form">
           <MemberSetup
             value={setup}
             onChange={setSetup}
@@ -111,32 +111,37 @@ export function MemberImport({ user, initialCsv = '', onClose, onSaved }) {
               disabled={busy}
               onChange={(event) => setReplaceHomeCampus(event.target.checked)}
             />
-            将所选校区同时用于已有人员
+            <span>将所选校区同时用于已有人员</span>
           </label>
-          <details
-            className="workspace-help"
-            onToggle={(event) => setAdvanced(event.currentTarget.open)}
-          >
-            <summary>高级 CSV 配置</summary>
-            {staffPermission(user, 'accounts.manage') && (
-              <label>
-                已有账号校区
-                <select
-                  value={accountCampusAction}
-                  disabled={busy}
-                  onChange={(event) => setAccountCampusAction(event.target.value)}
-                >
-                  <option value="preserve">保留现有授权</option>
-                  <option value="replace">按非空授权校区列替换</option>
-                </select>
-              </label>
-            )}
-          </details>
-          <div className="field-actions">
+          {staffPermission(user, 'accounts.manage') && (
+            <label>
+              已有账号校区
+              <select
+                value={accountCampusAction}
+                disabled={busy}
+                onChange={(event) => setAccountCampusAction(event.target.value)}
+              >
+                <option value="preserve">保留现有授权</option>
+                <option value="replace">按非空授权校区列替换</option>
+              </select>
+            </label>
+          )}
+          <div className="member-import-file-tools">
+            <label>
+              CSV 模板
+              <select
+                value={advanced ? 'advanced' : 'basic'}
+                disabled={busy}
+                onChange={(event) => setAdvanced(event.target.value === 'advanced')}
+              >
+                <option value="basic">基础模板</option>
+                <option value="advanced">高级模板</option>
+              </select>
+            </label>
             <button disabled={busy} onClick={download}>
               下载 CSV 模板
             </button>
-            <label>
+            <label className="member-import-file">
               读取 CSV
               <input
                 type="file"
@@ -172,7 +177,7 @@ export function MemberImport({ user, initialCsv = '', onClose, onSaved }) {
           <button className="react-primary" disabled={busy || !csv.trim()} onClick={() => submit()}>
             {busy ? '正在校验…' : '预览并核对'}
           </button>
-        </>
+        </div>
       ) : (
         <>
           <p role="status">

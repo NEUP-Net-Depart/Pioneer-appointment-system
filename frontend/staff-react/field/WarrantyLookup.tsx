@@ -602,10 +602,6 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
             >
               打开官方保修入口 ↗
             </a>
-            <details className="workspace-help">
-              <summary>海外设备查询</summary>
-              <p>默认中国大陆官方渠道。海外购买的设备，请在原厂页面切换对应地区。</p>
-            </details>
           </section>
         )}
         {captcha && (
