@@ -657,7 +657,11 @@ body.staff-mode.field-mode {
   .field-app .records-overview {
     margin-bottom: 16px;
   }
-  .field-app .records-overview > h2 {
+  .field-app .records-overview-disclosure > summary {
+    min-height: 52px;
+    padding: 12px 20px;
+  }
+  .field-app .records-overview-disclosure > summary h2 {
     font-size: 16px;
   }
 }

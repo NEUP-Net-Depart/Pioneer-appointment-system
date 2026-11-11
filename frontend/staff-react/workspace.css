@@ -5,10 +5,45 @@
 }
 .records-overview {
   margin-bottom: 28px;
-  padding: 20px;
+}
+.records-overview-disclosure {
   border: 1px solid var(--line);
   border-radius: 14px;
   background: white;
+}
+.records-overview-disclosure > summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  gap: 16px;
+  cursor: pointer;
+  list-style: none;
+}
+.records-overview-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+.records-overview-disclosure > summary:focus-visible {
+  outline: 3px solid #9ba8ba;
+  outline-offset: 3px;
+  border-radius: 14px;
+}
+.records-overview-toggle {
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.records-overview-disclosure .when-open {
+  display: none;
+}
+.records-overview-disclosure[open] .when-closed {
+  display: none;
+}
+.records-overview-disclosure[open] .when-open {
+  display: inline;
+}
+.records-overview-body {
+  padding: 0 20px 20px;
 }
 .data-expansion {
   display: grid;
@@ -404,11 +439,15 @@
   }
 }
 @media (max-width: 767px) {
-  .records-overview {
+  .records-overview-disclosure > summary {
     padding: 16px;
+    align-items: flex-start;
   }
-  .records-overview > h2 {
+  .records-overview-disclosure > summary h2 {
     font-size: 17px;
+  }
+  .records-overview-body {
+    padding: 0 16px 16px;
   }
   .records-campus-grid {
     grid-template-columns: minmax(0, 1fr);
