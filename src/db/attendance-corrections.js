@@ -8,7 +8,7 @@ const fingerprintSql = `SELECT json_object(
     (SELECT mm.*,d.name AS department_name FROM member_department_memberships mm JOIN departments d ON d.id=mm.department_id
       WHERE member_id=? AND effective_from<=date(?,'+8 hours')
       AND (effective_to IS NULL OR effective_to>date(?,'+8 hours')) ORDER BY mm.id)),
-  'duties',(SELECT json_group_array(json_array(id,week_id,revision)) FROM
+  'duties',(SELECT json_group_array(json_array(id,week_id,campus_id,start_at,end_at,revision)) FROM
     (SELECT da.* FROM duty_assignments da
       WHERE da.member_id=? AND da.business_date=(SELECT business_date FROM attendance_events WHERE id=?) AND da.active=1 ORDER BY da.id)),
   'actorDuties',(SELECT json_group_array(json_array(id,week_id,campus_id,duty_type,start_at,end_at,revision)) FROM
@@ -37,18 +37,18 @@ export function attendanceCorrections(db,{auditStatement,commandAuthorization}) 
       ? {sql:'EXISTS(SELECT 1 FROM attendance_records WHERE id=? AND member_id=? AND event_id=? AND revision=?)',args:[record.id,record.memberId,record.eventId,record.previous.revision]}
       : {sql:'NOT EXISTS(SELECT 1 FROM attendance_records WHERE dedupe_key=?)',args:[record.dedupeKey]};
     const factStatement=record.previous
-      ? db.prepare(`UPDATE attendance_records SET occurred_at=?,recorded_at=?,revision=revision+1 WHERE id=? AND revision=? AND ${gate}`)
+      ? db.prepare(`UPDATE attendance_records SET occurred_at=?,recorded_at=?,checkin_source=json_remove(checkin_source,'$.timeBasis'),revision=revision+1 WHERE id=? AND revision=? AND ${gate}`)
         .bind(record.occurredAt,record.recordedAt,record.id,record.previous.revision,...key)
       : db.prepare(`INSERT INTO attendance_records(id,member_id,event_id,dedupe_key,occurred_at,recorded_at,method,source_ref,primary_department_id_snapshot,primary_department_name_snapshot,identity_snapshot,non_scheduled,checkin_source)
         SELECT ?,?,?,?,?,?,'manual',?,?,?,?,?,? WHERE ${gate}`)
         .bind(record.id,record.memberId,record.eventId,record.dedupeKey,record.occurredAt,record.recordedAt,JSON.stringify(record.sourceRef || {}),record.departmentId || null,
-          record.departmentName || null,JSON.stringify(record.identitySnapshot),record.nonScheduled ? 1 : 0,JSON.stringify({kind:'correction',operatorMemberId:audit.actorMemberId,operatorAccount:audit.actorAccount}),...key);
+          record.departmentName || null,JSON.stringify(record.identitySnapshot),record.nonScheduled ? 1 : 0,JSON.stringify({kind:'correction',operatorMemberId:audit.actorMemberId,operatorAccount:audit.actorAccount,...(record.timeBasis ? {timeBasis:record.timeBasis} : {})}),...key);
     const statements = [db.prepare(`INSERT OR IGNORE INTO operation_receipts(actor_member_id,action,request_id,payload_hash,resource_ref,result_json,result_status,created_at)
       SELECT ?,?,?,?,?,'{}','pending',? WHERE (${fingerprintSql})=?
       AND ${recordGuard.sql} AND date(?,'+8 hours')=? AND NOT EXISTS(SELECT 1 FROM attendance_events e JOIN service_day_overrides s ON s.campus_id=e.campus_id AND s.business_date=e.business_date WHERE e.id=? AND e.type='duty' AND s.paused=1) ${authorization.sql}`)
       .bind(...key,record.recordedAt,...snapshotArgs(record.memberId,record.eventId,audit.actorMemberId,audit.businessDate,record.occurredAt),fingerprint,...recordGuard.args,record.recordedAt,audit.businessDate,record.eventId,...authorization.args),
     factStatement,
-    auditStatement({...audit,sourceRef:{module:'attendance',type:'record',id:record.id},before:record.previous || undefined,after:{memberId:record.memberId,eventId:record.eventId,occurredAt:record.occurredAt}},true),
+    auditStatement({...audit,sourceRef:{module:'attendance',type:'record',id:record.id},before:record.previous || undefined,after:{memberId:record.memberId,eventId:record.eventId,occurredAt:record.occurredAt,...(record.timeBasis ? {timeBasis:record.timeBasis} : {})}},true),
     db.prepare(`UPDATE operation_receipts SET result_status='success',resource_ref=?,result_json=(${resultSql})
       WHERE actor_member_id=? AND action=? AND request_id=? AND payload_hash=? AND resource_ref=? AND result_status='pending'`)
       .bind(JSON.stringify({module:'attendance',type:'record',id:record.id}),record.id,...key)];

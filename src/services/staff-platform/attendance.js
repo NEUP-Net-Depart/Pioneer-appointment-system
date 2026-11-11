@@ -14,7 +14,7 @@ import { attendanceMethod, policyFor } from '../../modules/attendance/public.js'
 import { campusId as normalizeCampusId } from '../../modules/authorization/scopes.js';
 import { csvLine } from '../../lib/csv.js';
 import { staffIdentities } from '../../../shared/staff-identities.js';
-import { dutyWindow } from '../../../shared/duty.js';
+import { dutyWindow, DUTY_START } from '../../../shared/duty.js';
 import { weeklyAttendanceRows } from '../../modules/attendance/weekly-export.js';
 import {
   assertDutyAttendanceDate,
@@ -569,14 +569,19 @@ export function attendanceDomain({
   }
 
   async function correctAttendance(actor, input) {
+    const defaultTime = input.timeMode === 'duty_start';
+    if (input.timeMode !== undefined && !defaultTime) fail(400, '补录时间模式不正确');
+    if (defaultTime && (input.recordId || input.eventId || input.occurredAt !== undefined))
+      fail(400, '按班次开始时间补录不能指定签到记录、场次或实际到场时间');
     if (
       typeof input.memberId !== 'string' ||
       !input.memberId ||
       input.memberId.length > 128 ||
-      typeof input.occurredAt !== 'string' ||
-      !input.occurredAt ||
-      input.occurredAt.length > 80 ||
-      !Number.isFinite(Date.parse(input.occurredAt))
+      (!defaultTime &&
+        (typeof input.occurredAt !== 'string' ||
+          !input.occurredAt ||
+          input.occurredAt.length > 80 ||
+          !Number.isFinite(Date.parse(input.occurredAt))))
     )
       fail(400, '补录人员或时间不正确');
     const reason = inputString(input, 'reason', 500, true);
@@ -601,12 +606,17 @@ export function attendanceDomain({
       const existing = await repository.dutyEvent(input.businessDate, campusId);
       const window = existing || dutyWindow(input.businessDate);
       if (
-        !eventWindow(window.startsAt, window.endsAt, instant(input.occurredAt)) ||
-        Date.parse(input.occurredAt) > Date.now()
+        !defaultTime &&
+        (!eventWindow(window.startsAt, window.endsAt, instant(input.occurredAt)) ||
+          Date.parse(input.occurredAt) > Date.now())
       )
         fail(400, '补录时间必须位于签到窗口内且不能晚于现在');
       const event = await ensureDutyEvent(actor, input.businessDate, campusId);
-      input = { ...input, eventId: event.id };
+      input = {
+        ...input,
+        eventId: event.id,
+        ...(defaultTime ? { occurredAt: `${input.businessDate}T${DUTY_START}:00+08:00` } : {})
+      };
     }
     if (
       typeof input.memberId !== 'string' ||
@@ -630,8 +640,9 @@ export function attendanceDomain({
         previousRecord.eventId !== input.eventId)
     )
       fail(404, '签到记录不存在');
-    const occurredAt = instant(input.occurredAt);
+    let occurredAt = instant(input.occurredAt);
     const correctionEvent = await repository.attendanceEvent(input.eventId);
+    if (!correctionEvent) fail(404, '签到场次不存在');
     if (
       correctionEvent?.type === 'duty' &&
       (await repository.serviceDay(correctionEvent.businessDate, correctionEvent.campusId))?.paused
@@ -644,8 +655,17 @@ export function attendanceDomain({
       context.businessDate,
       occurredAt
     );
-    const event = await repository.attendanceEvent?.(input.eventId);
-    if (!event) fail(404, '签到场次不存在');
+    if (defaultTime) {
+      const duties = await repository.todayDuties(input.memberId, input.businessDate);
+      const startAt =
+        duties.find((item) => item.campusId === correctionEvent.campusId)?.startAt || DUTY_START;
+      occurredAt = instant(`${input.businessDate}T${startAt}:00+08:00`);
+      input = { ...input, occurredAt };
+      if (Date.parse(occurredAt) > Date.now()) fail(400, '所选值班尚未开始，不能提前补录');
+    }
+    const event = correctionEvent;
+    if (event.type === 'duty' && dateKey(new Date(occurredAt)) !== event.businessDate)
+      fail(400, '只能修正所选值班日期内的到场时间');
     if (
       (input.campusId && normalizeCampusId(input.campusId) !== event.campusId) ||
       (input.businessDate && input.businessDate !== event.businessDate)
@@ -742,7 +762,8 @@ export function attendanceDomain({
           studentId: target.student_id || '',
           memberId: target.id
         },
-        nonScheduled: !duties.length
+        nonScheduled: !duties.some((item) => item.campusId === event.campusId),
+        ...(defaultTime ? { timeBasis: 'duty_start' } : {})
       },
       {
         actorMemberId: context.actor.memberId,

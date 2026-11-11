@@ -81,7 +81,12 @@ test('suggestions maximize real leader coverage, exclude occupied members and pr
   ].map(([memberId, membership]) => ({
     memberId,
     name: memberId,
-    memberships: [membership, ...(['c', 'd'].includes(memberId) ? [{ ...post('office'), assignmentType: 'maintenance_affairs', isPrimary: false }] : [])],
+    memberships: [
+      membership,
+      ...(['c', 'd'].includes(memberId)
+        ? [{ ...post('office'), assignmentType: 'maintenance_affairs', isPrimary: false }]
+        : [])
+    ],
     assignments: []
   }));
   const availability = [
@@ -258,11 +263,14 @@ test('today includes unsigned people and leave, arrival is idempotent and attrib
   assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM attendance_records').get().n, 1);
   const arrived = await staff.attendanceDay(head, { campusId, businessDate: weekStart });
   assert.equal(arrived.summary.arrived, 1);
-  assert.deepEqual(arrived.items.find((row) => row.memberId === worker.memberId).record.checkinSource, {
-    kind: 'correction',
-    operatorMemberId: head.memberId,
-    operatorAccount: head.account
-  });
+  assert.deepEqual(
+    arrived.items.find((row) => row.memberId === worker.memberId).record.checkinSource,
+    {
+      kind: 'correction',
+      operatorMemberId: head.memberId,
+      operatorAccount: head.account
+    }
+  );
 });
 
 test('QR and minister confirmation race to one attendance fact and one live transition', async (t) => {
@@ -427,6 +435,138 @@ test('scopes, suspensions and target changes remain enforced in arrival, review 
       .get(worker.memberId, weekStart).n,
     0
   );
+});
+
+test('default duty correction resolves shift time in the selected campus and preserves correction safeguards', async (t) => {
+  const { db, repository, staff, head, worker, office } = await setup(t);
+  await publish(staff, head, [shift(worker.memberId)]);
+  db.sqlite.exec("UPDATE duty_assignments SET start_at='19:05',revision=revision+1 WHERE active=1");
+  const input = {
+    memberId: worker.memberId,
+    campusId,
+    businessDate: weekStart,
+    timeMode: 'duty_start',
+    reason: '已核实漏签',
+    requestId: requestId()
+  };
+  const record = await staff.correctAttendance(head, input);
+  assert.equal(record.occurredAt, `${weekStart}T11:05:00.000Z`);
+  assert.equal(record.businessDate, weekStart);
+  assert.equal(record.nonScheduled, false);
+  const stored = db.sqlite.prepare('SELECT * FROM attendance_records WHERE id=?').get(record.id);
+  assert.equal(JSON.parse(stored.checkin_source).timeBasis, 'duty_start');
+  assert.equal(stored.recorded_at, '2026-11-09T11:10:00.000Z');
+  assert.equal((await staff.correctAttendance(head, input)).idempotent, true);
+  await assert.rejects(staff.correctAttendance(head, { ...input, requestId: requestId() }), {
+    status: 409
+  });
+  const corrected = await staff.correctAttendance(head, {
+    memberId: worker.memberId,
+    recordId: record.id,
+    eventId: record.eventId,
+    revision: record.revision,
+    occurredAt: `${weekStart}T11:06:00Z`,
+    reason: '确认实际时间',
+    requestId: requestId()
+  });
+  assert.equal(corrected.occurredAt, `${weekStart}T11:06:00.000Z`);
+  await assert.rejects(
+    staff.correctAttendance(head, {
+      memberId: worker.memberId,
+      recordId: record.id,
+      eventId: record.eventId,
+      revision: corrected.revision,
+      occurredAt: '2026-11-04T11:06:00Z',
+      reason: '不允许跨日修正',
+      requestId: requestId()
+    }),
+    /只能修正所选值班日期/
+  );
+  assert.equal(
+    JSON.parse(
+      db.sqlite.prepare('SELECT checkin_source FROM attendance_records WHERE id=?').get(record.id)
+        .checkin_source
+    ).timeBasis,
+    undefined
+  );
+  for (const extra of [
+    { occurredAt: `${weekStart}T11:00:00Z` },
+    { recordId: record.id },
+    { eventId: record.eventId },
+    { timeMode: 'unknown' }
+  ])
+    await assert.rejects(
+      staff.correctAttendance(head, { ...input, ...extra, requestId: requestId() }),
+      { status: 400 }
+    );
+  const temporary = await staff.correctAttendance(head, {
+    ...input,
+    memberId: office.memberId,
+    businessDate: '2026-11-04',
+    requestId: requestId()
+  });
+  assert.equal(temporary.occurredAt, '2026-11-04T11:00:00.000Z');
+  assert.equal(temporary.nonScheduled, true);
+  await assert.rejects(
+    staff.correctAttendance(head, { ...input, campusId: 'campus-hunnan', requestId: requestId() }),
+    { status: 403 }
+  );
+  await assert.rejects(
+    staff.correctAttendance(head, { ...input, businessDate: '2026-11-10', requestId: requestId() }),
+    { status: 400 }
+  );
+  t.mock.timers.setTime(new Date('2026-11-09T10:59:00Z').getTime());
+  await assert.rejects(
+    staff.correctAttendance(head, { ...input, memberId: head.memberId, requestId: requestId() }),
+    /尚未开始/
+  );
+  t.mock.timers.setTime(new Date('2026-11-09T11:10:00Z').getTime());
+  db.sqlite.exec(
+    "INSERT INTO service_day_overrides(business_date,campus_id,paused,reason,revision,updated_at) VALUES('2026-11-03','campus-nanhu',1,'暂停',0,'2026-11-09')"
+  );
+  await assert.rejects(
+    staff.correctAttendance(head, { ...input, businessDate: '2026-11-03', requestId: requestId() }),
+    { status: 409 }
+  );
+  db.sqlite
+    .prepare("UPDATE staff_accounts SET status='disabled' WHERE member_id=?")
+    .run(office.memberId);
+  await assert.rejects(
+    staff.correctAttendance(head, {
+      ...input,
+      memberId: office.memberId,
+      businessDate: '2026-11-02',
+      requestId: requestId()
+    }),
+    { status: 409 }
+  );
+  assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM staff_presence').get().n, 0);
+  assert.ok(await repository.attendanceById(record.id));
+});
+
+test('default correction rejects a shift change after its snapshot', async (t) => {
+  const { db, repository, staff, head, worker } = await setup(t);
+  await publish(staff, head, [shift(worker.memberId)]);
+  const fingerprint = repository.attendanceCorrectionFingerprint;
+  let calls = 0;
+  repository.attendanceCorrectionFingerprint = async (...args) => {
+    const result = await fingerprint(...args);
+    if (++calls === 1)
+      db.sqlite.exec("UPDATE duty_assignments SET start_at='19:05',revision=revision+1");
+    return result;
+  };
+  await assert.rejects(
+    staff.correctAttendance(head, {
+      memberId: worker.memberId,
+      campusId,
+      businessDate: weekStart,
+      timeMode: 'duty_start',
+      reason: '漏签',
+      requestId: requestId()
+    }),
+    { status: 409 }
+  );
+  assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM attendance_records').get().n, 0);
 });
 
 test('personal volunteer hours match the shared report calculation and do not expose another member', async (t) => {
