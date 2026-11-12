@@ -237,9 +237,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
       );
     } catch {
       if (copyAttempt.current !== attempt) return;
-      serialInput.current?.focus();
-      serialInput.current?.select();
-      setMessage('复制失败，已选中序列号。请手动复制后再继续查询，或重试复制。');
+      setMessage('复制失败，请长按上方序列号手动复制，或重试复制。');
     } finally {
       if (copyAttempt.current === attempt) setCopyBusy(false);
     }
@@ -505,16 +503,31 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
                 : '查询原厂保修'}
           </button>
         )}
-        {brand && !provider?.available && (
-          <button
-            type="button"
-            className="field-primary warranty-primary"
-            disabled={!valid || ocrBusy || albumBusy || copyBusy || loading}
-            onClick={() => void copySerial()}
-          >
-            {copyBusy ? '正在复制序列号…' : '复制序列号'}
-          </button>
-        )}
+        <div className="warranty-actions">
+          {brand && channel && (
+            <>
+              <button
+                type="button"
+                className={provider?.available ? 'field-secondary' : 'field-primary'}
+                disabled={!valid || ocrBusy || albumBusy || copyBusy || loading}
+                onClick={() => void copySerial()}
+              >
+                {copyBusy ? '正在复制序列号…' : '复制序列号'}
+              </button>
+              <a
+                href={destination?.url || brand.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                referrerPolicy="no-referrer"
+              >
+                {channel.kind === 'miniapp' ? '打开官方小程序说明 ↗' : '打开品牌官网 ↗'}
+              </a>
+            </>
+          )}
+          <div role="status" aria-live="polite">
+            <Notice>{message}</Notice>
+          </div>
+        </div>
         {brand && channel && (
           <section className="warranty-fallback" aria-label="查验步骤">
             <h3>查验步骤</h3>
@@ -524,23 +537,6 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
                 <li key={step}>{step}</li>
               ))}
             </ol>
-            {provider?.available && valid && (
-              <button
-                type="button"
-                disabled={copyBusy || albumBusy || ocrBusy}
-                onClick={() => void copySerial()}
-              >
-                {copyBusy ? '正在复制序列号…' : '复制序列号'}
-              </button>
-            )}
-            <a
-              href={destination?.url || brand.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              referrerPolicy="no-referrer"
-            >
-              {channel.kind === 'miniapp' ? '打开官方小程序说明 ↗' : '打开品牌官网 ↗'}
-            </a>
           </section>
         )}
         {captcha && (
@@ -599,9 +595,6 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
             )}
           </fieldset>
         )}
-        <div role="status" aria-live="polite">
-          <Notice>{message}</Notice>
-        </div>
         {result && (
           <section className="warranty-result" aria-label="原厂查询结果" aria-live="polite">
             <strong>

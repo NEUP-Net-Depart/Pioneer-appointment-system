@@ -310,17 +310,20 @@ test('real local OCR reads a device label, copies its serial and opens the offic
   await expect(dialog.locator('.warranty-capture')).toHaveCount(0);
   expect(writes).toEqual([]);
   const originalUrl = page.url();
+  await page.setViewportSize({ width: 375, height: 812 });
   const copy = dialog.getByRole('button', { name: '复制序列号', exact: true });
+  const officialLink = dialog.getByRole('link', { name: '打开品牌官网 ↗', exact: true });
   const pageCount = context.pages().length;
   await copy.click();
   await expect(
-    dialog.getByText('复制失败，已选中序列号。请手动复制后再继续查询，或重试复制。')
-  ).toBeVisible();
-  await expect(dialog.getByLabel('序列号 / S/N / Service Tag', { exact: true })).toBeFocused();
+    dialog.getByText('复制失败，请长按上方序列号手动复制，或重试复制。')
+  ).toBeInViewport();
+  await expect(dialog.getByLabel('序列号 / S/N / Service Tag', { exact: true })).not.toBeFocused();
+  await expect(officialLink).toBeInViewport();
   expect(copies).toEqual([]);
   expect(context.pages()).toHaveLength(pageCount);
   await copy.click();
-  await expect(dialog.getByText('序列号已复制，请点击「打开品牌官网」继续查询。')).toBeVisible();
+  await expect(dialog.getByText('序列号已复制，请点击「打开品牌官网」继续查询。')).toBeInViewport();
   expect(copies).toEqual(['ABC23456789']);
   expect(context.pages()).toHaveLength(pageCount);
   await context.route(
@@ -332,7 +335,7 @@ test('real local OCR reads a device label, copies its serial and opens the offic
       })
   );
   const popup = page.waitForEvent('popup');
-  await dialog.getByRole('link', { name: '打开品牌官网 ↗', exact: true }).click();
+  await officialLink.click();
   const official = await popup;
   await expect(official).toHaveURL(
     'https://www.asus.com.cn/support/warranty-status-inquiry/?sn=ABC23456789'
