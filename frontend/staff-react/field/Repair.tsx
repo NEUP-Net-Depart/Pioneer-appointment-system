@@ -89,10 +89,21 @@ function RepairOrder({
           </p>
         )}
         {item?.receivedAt && item.status === 'booked' && <p>设备已接收，等待维修人员确认接手。</p>}
-        {item?.photoDeferredBy && <Notice>首次接收照片待传，由经办人手动补传原图。</Notice>}
+        {r.photoBusy && <Notice>照片正在上传并保存，请保持此页面打开。</Notice>}
+        {item?.photoDeferredBy && !r.photoBusy && (
+          <Notice>首次接收照片待传，由经办人补传原图。</Notice>
+        )}
       </section>
       {item && (
         <>
+          {r.waitingForPhotos && r.canSkip && (
+            <div className="field-form">
+              <p>已等待 30 秒。可以跳过等待，上传会继续，成功后自动补入本工单。</p>
+              <div className="field-actions">
+                <button onClick={r.skip}>跳过等待，继续当前操作</button>
+              </div>
+            </div>
+          )}
           {(item.canStart || item.canReceive) && (
             <section className="field-form">
               {!item.receivedAt && (
@@ -125,7 +136,8 @@ function RepairOrder({
                     id={id}
                     uploaded={r.uploaded}
                     previews={r.previews}
-                    busy={busy}
+                    busy={busy || r.photoBusy}
+                    progress={r.photoProgress}
                     onFile={r.onFile}
                   />
                 </>
@@ -145,14 +157,14 @@ function RepairOrder({
                     仅接收设备
                   </button>
                 )}
-                {r.timedOut && item.canReceive && (
+                {!busy && r.canSkip && item.canReceive && (
                   <button disabled={busy} onClick={() => r.start(true, true)}>
-                    稍后补传，仅接收设备
+                    跳过等待，仅接收设备
                   </button>
                 )}
-                {r.timedOut && item.canStart && (
+                {!busy && r.canSkip && item.canStart && (
                   <button disabled={busy} onClick={() => r.start(false, true)}>
-                    稍后补传，接收并开始维修
+                    跳过等待，接收并开始维修
                   </button>
                 )}
               </div>
@@ -166,11 +178,12 @@ function RepairOrder({
                 id={id}
                 uploaded={r.uploaded}
                 previews={r.previews}
-                busy={busy}
+                busy={busy || r.photoBusy}
+                progress={r.photoProgress}
                 onFile={r.onFile}
               />
-              <button disabled={busy} onClick={r.supplement}>
-                手动补传原图
+              <button disabled={busy || r.photoBusy} onClick={r.supplement}>
+                重试补传照片
               </button>
             </section>
           )}
