@@ -3,6 +3,7 @@ export class HttpError extends Error {
 }
 export const fail = (status, message, code = '', fields) => { throw new HttpError(status, message, code, fields); };
 export const securityHeaders = {
+  'Alt-Svc': 'clear',
   'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store',
   'Permissions-Policy': 'camera=(self), microphone=(), geolocation=()',
@@ -11,8 +12,7 @@ export const securityHeaders = {
 export function json(payload, status = 200) {
   return new Response(JSON.stringify(payload), { status, headers: { ...securityHeaders, 'Content-Type': 'application/json; charset=utf-8' } });
 }
-export async function readBody(request, maxBytes = 1024 * 1024) {
-  if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) fail(415, '请求必须使用 application/json');
+export async function readBytes(request, maxBytes) {
   if (Number(request.headers.get('content-length')) > maxBytes) fail(413, '请求体过大');
   const reader = request.body?.getReader();
   if (!reader) fail(400, '缺少请求体');
@@ -28,6 +28,11 @@ export async function readBody(request, maxBytes = 1024 * 1024) {
   } finally { reader.releaseLock(); }
   const bytes = new Uint8Array(length); let offset = 0;
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+  return bytes;
+}
+export async function readBody(request, maxBytes = 1024 * 1024) {
+  if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) fail(415, '请求必须使用 application/json');
+  const bytes = await readBytes(request, maxBytes);
   let body;
   try { body = JSON.parse(new TextDecoder().decode(bytes)); } catch { fail(400, '请求体不是有效 JSON'); }
   if (!body || typeof body !== 'object' || Array.isArray(body)) fail(400, '请求体必须是 JSON 对象');
