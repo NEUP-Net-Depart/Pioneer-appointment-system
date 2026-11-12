@@ -1,3 +1,4 @@
+import { Select } from './SelectionControls.jsx';
 import React from 'react';
 import {
   additionalMembershipLabels,
@@ -5,13 +6,19 @@ import {
   positionLabels
 } from '../../shared/staff-organization.js';
 
-export function DepartmentAppointmentFields({ value, onChange, departments, required = false }) {
+export function DepartmentAppointmentFields({
+  value,
+  onChange,
+  departments,
+  required = false,
+  emptyLabel = '暂不设置'
+}) {
   const unit = departments.find((item) => item.id === value.departmentId);
   return (
     <div className="react-form-grid">
       <label>
         正式部门 / 组织
-        <select
+        <Select
           required={required}
           value={value.departmentId}
           onChange={(event) => {
@@ -23,17 +30,17 @@ export function DepartmentAppointmentFields({ value, onChange, departments, requ
             });
           }}
         >
-          <option value="">{required ? '请选择部门' : '暂不设置'}</option>
+          <option value="">{required ? '请选择部门' : emptyLabel}</option>
           {departments.map((item) => (
             <option key={item.id} value={item.id}>
               {item.name}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
       <label>
         职位
-        <select
+        <Select
           disabled={!unit}
           value={value.positionCode}
           onChange={(event) => onChange({ ...value, positionCode: event.target.value })}
@@ -43,7 +50,7 @@ export function DepartmentAppointmentFields({ value, onChange, departments, requ
               {positionLabels[code]}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
     </div>
   );
@@ -55,7 +62,7 @@ export function AdditionalMembershipFields({ value, onChange }) {
     maintenance_affairs: 'maintenanceParticipation'
   };
   return (
-    <fieldset className="workspace-checks">
+    <fieldset className="workspace-checks member-independent-identities">
       <legend>独立身份</legend>
       {Object.entries(additionalMembershipLabels).map(([type, label]) => (
         <label className="workspace-check" key={type}>

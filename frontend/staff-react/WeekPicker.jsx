@@ -1,48 +1,38 @@
 import React from 'react';
-import { addDays, dateKey, weekRange } from '../../shared/time.js';
+import { addDays, dateKey, calendarWeekRange, rosterWeekKey } from '../../shared/time.js';
+import { DatePicker } from './SelectionControls.jsx';
 
-// A week is selected as a Monday, rather than exposing irrelevant calendar days.
-export function WeekPicker({
-  value,
-  onChange,
-  disabled = false,
-  label = '工作周',
-  showWeekday = true
-}) {
-  const current = weekRange(value || dateKey()).start;
-  const options = Array.from({ length: 105 }, (_, i) => addDays(current, (i - 52) * 7));
+export function WeekPicker({ value, onChange, disabled = false, label = '工作周', min = '' }) {
+  const current = calendarWeekRange(value || dateKey()).start;
+  const minimum = min ? calendarWeekRange(min).start : '';
   return (
     <div className="week-picker">
-      <span data-motion-value="text">{label}</span>
+      <span>{label}</span>
       <div>
         <button
           type="button"
-          disabled={disabled}
+          disabled={disabled || (!!minimum && addDays(current, -7) < minimum)}
           aria-label="上一周"
-          onClick={() => onChange(addDays(current, -7))}
+          onClick={() => onChange(rosterWeekKey(addDays(current, -7)))}
         >
-          上一周
+          <span aria-hidden="true">‹</span>
         </button>
-        <select
+        <DatePicker
+          mode="week"
           aria-label={label}
-          disabled={disabled}
           value={current}
-          onChange={(event) => onChange(event.target.value)}
-        >
-          {options.map((day) => (
-            <option key={day} value={day}>
-              {day}
-              {showWeekday ? ' 周一' : ''} — {addDays(day, 6)}
-            </option>
-          ))}
-        </select>
+          min={minimum}
+          disabled={disabled}
+          required
+          onChange={(event) => event.target.value && onChange(rosterWeekKey(event.target.value))}
+        />
         <button
           type="button"
           disabled={disabled}
           aria-label="下一周"
-          onClick={() => onChange(addDays(current, 7))}
+          onClick={() => onChange(rosterWeekKey(addDays(current, 7)))}
         >
-          下一周
+          <span aria-hidden="true">›</span>
         </button>
       </div>
     </div>

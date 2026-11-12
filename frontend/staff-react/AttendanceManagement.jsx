@@ -6,6 +6,9 @@ import { dateKey } from '../../shared/time.js';
 import { dutyTypeLabels, dutyCampusNames } from '../../shared/duty.js';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
 import { DataValue } from './DataValue';
+import { Select, DatePicker } from './SelectionControls.jsx';
+import { TimePicker } from './TimePicker.jsx';
+import { RefreshButton } from './WorkspaceToolbar.jsx';
 
 const labels = {
   upcoming: '待签到',
@@ -17,7 +20,7 @@ const labels = {
 };
 const order = { pending: 0, upcoming: 1, absent: 2, arrived: 3, leave: 4, paused: 5 };
 const localTime = (value) => new Date(Date.parse(value) + 8 * 3600000).toISOString().slice(11, 16);
-export function AttendanceManagement({ campusId, onDirtyChange }) {
+export function AttendanceManagement({ campusId, onDirtyChange, campusControl = null }) {
   const client = useQueryClient();
   const active = useContext(ActivityContext),
     lock = useRef(false);
@@ -209,33 +212,45 @@ export function AttendanceManagement({ campusId, onDirtyChange }) {
   }
   return (
     <div className="duty-day">
-      <div className="duty-toolbar">
-        <label>
-          值班日期
-          <input
-            type="date"
-            value={day}
-            disabled={busy || !!form}
-            onChange={(event) => event.target.value && setDay(event.target.value)}
-          />
-        </label>
-        <button disabled={busy || !!form} onClick={() => setDay(dateKey())}>
-          今天
-        </button>
-        <button disabled={busy || !!form} onClick={() => result.refetch()}>
-          刷新
-        </button>
-        {day === dateKey() && (
-          <button disabled={busy || data?.paused} onClick={() => run(showCode)}>
-            展示签到码
+      <div className="duty-toolbar attendance-toolbar">
+        {campusControl}
+        <div className="duty-date-controls">
+          <label>
+            值班日期
+            <DatePicker
+              value={day}
+              disabled={busy || !!form}
+              onChange={(event) => event.target.value && setDay(event.target.value)}
+            />
+          </label>
+          <button disabled={busy || !!form} onClick={() => setDay(dateKey())}>
+            今天
           </button>
-        )}
-        <button
-          disabled={busy || !data || data.paused || day > dateKey()}
-          onClick={() => edit(null)}
-        >
-          补录其他人员
-        </button>
+        </div>
+        <div className="duty-attendance-actions">
+          <RefreshButton
+            key={`${campusId}:${day}`}
+            disabled={busy || !!form}
+            onRefresh={() => result.refetch({ throwOnError: true })}
+            label="刷新值班"
+            compactOnMobile
+          />
+          {day === dateKey() && (
+            <button
+              className="attendance-code-action"
+              disabled={busy || data?.paused}
+              onClick={() => run(showCode)}
+            >
+              展示签到码
+            </button>
+          )}
+          <button
+            disabled={busy || !data || data.paused || day > dateKey()}
+            onClick={() => edit(null)}
+          >
+            补录其他人员
+          </button>
+        </div>
       </div>
       {error && !form && !token && (
         <p role="alert" className="react-error">
@@ -306,7 +321,7 @@ export function AttendanceManagement({ campusId, onDirtyChange }) {
           }}
         >
           <form ref={formRef} onSubmit={(event) => void save(event).catch(() => {})}>
-            <fieldset disabled={busy}>
+            <fieldset className="attendance-edit-fields" disabled={busy}>
               <p>
                 {form.businessDate} · {dutyCampusNames[form.campusId]}
               </p>
@@ -315,7 +330,7 @@ export function AttendanceManagement({ campusId, onDirtyChange }) {
               ) : (
                 <label>
                   工作人员
-                  <select
+                  <Select
                     required
                     value={form.memberId}
                     onChange={(event) =>
@@ -332,29 +347,25 @@ export function AttendanceManagement({ campusId, onDirtyChange }) {
                         {person.name} · {person.studentId}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </label>
               )}
-              {form.recordId ? (
+              {form.recordId && (
                 <label>
                   实际到场时间
-                  <input
-                    type="time"
+                  <TimePicker
+                    label="选择实际到场时间"
                     required
                     value={form.occurredAt}
-                    onChange={(event) =>
+                    onChange={(value) =>
                       setForm((current) => ({
                         ...current,
-                        occurredAt: event.target.value,
+                        occurredAt: value,
                         requestId: crypto.randomUUID()
                       }))
                     }
                   />
                 </label>
-              ) : (
-                <p className="field-muted">
-                  按所选值班日期的班次开始时间补记；无排班时按默认 19:00 记账。
-                </p>
               )}
               <label>
                 补录或修正原因
@@ -371,12 +382,6 @@ export function AttendanceManagement({ campusId, onDirtyChange }) {
                   }
                 />
               </label>
-              <p className="field-muted">
-                {form.recordId
-                  ? '仅修正上述值班日期内的到场时间，保留修改记录。'
-                  : '补录记账时间不代表精确到场时间，操作时间另行保存。'}
-                不改变今日实时在岗。
-              </p>
               {error && <p role="alert">{error}</p>}
               <div className="schedule-actions">
                 <button type="submit" className="field-primary">

@@ -1,6 +1,11 @@
 import { expect } from '@playwright/test';
 import { STAFF_PASSWORD } from '../../fixtures/workflow-seed.mjs';
 
+export async function chooseOption(page, control, value) {
+  await control.click();
+  await page.locator(`[role="option"][data-value=${JSON.stringify(value)}]`).click();
+}
+
 export async function loginStaff(
   page,
   account = 'root001',

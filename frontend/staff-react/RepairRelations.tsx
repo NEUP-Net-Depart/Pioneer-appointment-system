@@ -1,4 +1,5 @@
 import { useId, useState } from 'react';
+import { Select } from './SelectionControls.jsx';
 import { api, Notice } from './field/ui';
 import { Registration } from './field/Registration';
 import type { Appointment } from './field/types';
@@ -102,14 +103,14 @@ export function RepairRelations({
         ['booked', 'in_progress'].includes(item.status) && (
           <label>
             选择原工单
-            <select value={parentId} onChange={(e) => setParentId(e.target.value)}>
+            <Select value={parentId} onChange={(e) => setParentId(e.target.value)}>
               <option value="">普通新故障不关联</option>
               {historical.map((row) => (
                 <option key={row.id} value={row.id}>
                   {row.id} · {row.faultType}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
         )}
       {item.canEdit &&
@@ -120,10 +121,10 @@ export function RepairRelations({
           <>
             <label>
               关联原因
-              <select value={kind} onChange={(e) => setKind(e.target.value)}>
+              <Select value={kind} onChange={(e) => setKind(e.target.value)}>
                 <option value="continuation">原故障继续处理</option>
                 <option value="recurrence">原故障复发</option>
-              </select>
+              </Select>
             </label>
             <label className="field-check">
               <input

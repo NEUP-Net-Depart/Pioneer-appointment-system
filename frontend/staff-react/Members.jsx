@@ -1,3 +1,5 @@
+import { Select } from './SelectionControls.jsx';
+import { RefreshButton } from './WorkspaceToolbar.jsx';
 import { DataValue } from './DataValue';
 import React, { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
@@ -120,40 +122,12 @@ export function Members({ user }) {
         </p>
       )}
       <div className="members-workspace">
-        <div className="react-toolbar members-tools">
-          <label>
-            查找成员
-            <input
-              aria-label="搜索成员"
-              value={q}
-              onChange={(event) => setQ(event.target.value)}
-              placeholder="姓名、学号或部门"
-            />
-          </label>
-          <label>
-            所属校区
-            <select
-              aria-label="筛选成员校区"
-              value={campus}
-              onChange={(event) => setCampus(event.target.value)}
-            >
-              <option value="">全部校区</option>
-              <option value="campus-nanhu">南湖</option>
-              <option value="campus-hunnan">浑南</option>
-            </select>
-          </label>
-          <label>
-            成员状态
-            <select
-              aria-label="筛选成员状态"
-              value={status}
-              onChange={(event) => setStatus(event.target.value)}
-            >
-              <option value="">全部状态</option>
-              <option value="active">正常</option>
-              <option value="inactive">停用</option>
-            </select>
-          </label>
+        <div className="members-panel-heading">
+          <span className="members-result-count" role="status">
+            已显示{' '}
+            <DataValue label="已显示成员数量">{list.data ? items.length : undefined}</DataValue>{' '}
+            名成员
+          </span>
           <div className="members-list-actions">
             {staffPermission(user, 'members.manage') && (
               <>
@@ -166,18 +140,53 @@ export function Members({ user }) {
                 </WorkspaceMoreActions>
               </>
             )}
-            <button
-              onClick={() => client.invalidateQueries({ queryKey: ['/api/members'] })}
-              disabled={busy}
-            >
-              刷新
-            </button>
+            <RefreshButton
+              key={JSON.stringify([search, campus, status])}
+              onRefresh={() => list.refetch({ throwOnError: true })}
+              label="刷新人员"
+            />
           </div>
-          <span className="members-result-count" role="status">
-            已显示{' '}
-            <DataValue label="已显示成员数量">{list.data ? items.length : undefined}</DataValue>{' '}
-            名成员
-          </span>
+        </div>
+        <div className="members-filter-grid">
+          <label>
+            查找成员
+            <input
+              aria-label="搜索成员"
+              value={q}
+              onChange={(event) => setQ(event.target.value)}
+              placeholder="姓名、学号或部门"
+            />
+          </label>
+          <label>
+            所属校区
+            <Select
+              aria-label="筛选成员校区"
+              value={campus}
+              onChange={(event) => setCampus(event.target.value)}
+            >
+              <option value="">全部校区</option>
+              {(user.authorizedCampuses || []).map((name) => (
+                <option
+                  key={name}
+                  value={{ 南湖: 'campus-nanhu', 浑南: 'campus-hunnan' }[name] || name}
+                >
+                  {name}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <label>
+            成员状态
+            <Select
+              aria-label="筛选成员状态"
+              value={status}
+              onChange={(event) => setStatus(event.target.value)}
+            >
+              <option value="">全部状态</option>
+              <option value="active">正常</option>
+              <option value="inactive">停用</option>
+            </Select>
+          </label>
         </div>
         <div className="react-table members-results" aria-busy={busy}>
           <div className="react-row react-row-head">

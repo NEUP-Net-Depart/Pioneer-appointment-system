@@ -41,7 +41,10 @@ export function AttendanceActions({
           <QrCode aria-hidden="true" />
           <div>
             <h2>现场签到码</h2>
-            <p className="field-muted">{campus}校区 · 供现场工作人员扫码签到</p>
+            <p className="field-muted">
+              {campus}校区
+              <span className="attendance-action-description"> · 供现场工作人员扫码签到</span>
+            </p>
           </div>
           <button disabled={busy} onClick={onShowCode}>
             展示签到码
@@ -53,7 +56,10 @@ export function AttendanceActions({
           <LogIn aria-hidden="true" />
           <div>
             <h2>到岗签到</h2>
-            <p className="field-muted">{campus}校区 · 到岗后签到一次即可</p>
+            <p className="field-muted">
+              {campus}校区
+              <span className="attendance-action-description"> · 到岗后签到一次即可</span>
+            </p>
           </div>
           <AttendanceCheckInButton data={data} busy={busy} onCheckIn={onCheckIn} />
         </div>

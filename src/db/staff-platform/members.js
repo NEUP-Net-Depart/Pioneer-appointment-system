@@ -346,20 +346,26 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
   }
 
   async function addMembership(memberId, input, revision, auditRecord) {
-    const id = input.id || crypto.randomUUID();
+    const combined = Array.isArray(input);
+    const entries = (combined ? input : [input]).map((item) => ({
+      ...item,
+      id: item.id || crypto.randomUUID()
+    }));
+    input = entries.find((item) => item.replacesMembershipId) || entries[0];
+    const id = entries[0].id;
     const createdAt = nowIso();
     const authorization = commandAuthorization(auditRecord);
     const statements = [
       db
         .prepare(
-          `UPDATE members SET revision=revision+1,updated_at=? WHERE id=? AND revision=? AND EXISTS(SELECT 1 FROM departments WHERE id=? AND enabled=1)
+          `UPDATE members SET revision=revision+1,updated_at=? WHERE id=? AND revision=? ${entries.map(() => 'AND EXISTS(SELECT 1 FROM departments WHERE id=? AND enabled=1)').join(' ')}
           ${input.replacesMembershipId ? 'AND EXISTS(SELECT 1 FROM member_department_memberships WHERE id=? AND member_id=members.id AND revision=?)' : ''} ${authorization.sql}`
         )
         .bind(
           createdAt,
           memberId,
           revision,
-          input.departmentId,
+          ...entries.map((item) => item.departmentId),
           ...(input.replacesMembershipId
             ? [input.replacesMembershipId, input.replacesRevision]
             : []),
@@ -379,21 +385,23 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
               )
           ]
         : []),
-      db
-        .prepare(
-          `INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,effective_from,effective_to,created_at,position_code) SELECT ?,?,?,?,?,?,?,?,? WHERE changes()>0`
-        )
-        .bind(
-          id,
-          memberId,
-          input.departmentId,
-          input.assignmentType || 'primary',
-          (input.assignmentType || 'primary') === 'primary' ? 1 : 0,
-          input.effectiveFrom,
-          input.effectiveTo || null,
-          createdAt,
-          input.positionCode || 'member'
-        )
+      ...entries.map((entry) =>
+        db
+          .prepare(
+            `INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,effective_from,effective_to,created_at,position_code) SELECT ?,?,?,?,?,?,?,?,? WHERE changes()>0`
+          )
+          .bind(
+            entry.id,
+            memberId,
+            entry.departmentId,
+            entry.assignmentType || 'primary',
+            (entry.assignmentType || 'primary') === 'primary' ? 1 : 0,
+            entry.effectiveFrom,
+            entry.effectiveTo || null,
+            createdAt,
+            entry.positionCode || 'member'
+          )
+      )
     ];
     if (auditRecord)
       statements.push(
@@ -404,7 +412,10 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
       );
     const result = await db.batch(statements);
     if (!result[0]?.meta?.changes && !result[0]?.results?.length) return null;
-    return (await listMemberships(memberId)).find((item) => item.id === id) || null;
+    const saved = (await listMemberships(memberId)).filter((item) =>
+      entries.some((entry) => entry.id === item.id)
+    );
+    return combined ? { items: saved } : saved[0] || null;
   }
 
   async function endMembership(memberId, membershipId, effectiveTo, revision, auditRecord) {
