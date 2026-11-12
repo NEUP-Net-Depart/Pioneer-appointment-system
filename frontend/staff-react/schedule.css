@@ -376,3 +376,11 @@
     padding: 16px;
   }
 }
+.duty-day .duty-person:focus {
+  outline: 2px solid #555;
+  outline-offset: 3px;
+  background: #f5f5f2;
+}
+.duty-day .duty-person {
+  scroll-margin-block: 100px;
+}

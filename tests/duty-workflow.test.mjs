@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { database, seedStaff } from './helpers/database.mjs';
+import { database, seedStaff, seedAppointment } from './helpers/database.mjs';
 import { userRepository } from '../src/db/users.js';
 import { staffPlatformRepository } from '../src/db/staff-platform.js';
 import { appointmentRepository } from '../src/db/appointments.js';
@@ -70,6 +70,25 @@ async function publish(staff, head, assignments, office = []) {
     }))
   });
 }
+
+test('work staffing scopes read-only idle and missing people without exposing attendance sources', async (t) => {
+  const { db, staff, head, worker, office } = await setup(t);
+  await publish(staff, head, [shift(worker.memberId), shift(head.memberId)]);
+  await assert.rejects(staff.workStaffing(office, { campusId }), { status: 403 });
+  await assert.rejects(staff.workStaffing(head, { campusId: 'campus-hunnan' }), { status: 403 });
+  let result = await staff.workStaffing(head, { campusId });
+  assert.equal(result.missing.length, 2);
+  assert.equal(result.idle.length, 0);
+  await staff.correctAttendance(head, { memberId: worker.memberId, campusId, businessDate: weekStart, timeMode: 'duty_start', reason: '核实到岗', requestId: requestId() });
+  result = await staff.workStaffing(head, { campusId });
+  assert.deepEqual(result.idle, [{ memberId: worker.memberId, name: worker.name }]);
+  assert.equal((await staff.attendanceDay(head, { campusId, businessDate: weekStart })).items.find(person => person.memberId === worker.memberId).workStatus, 'idle');
+  assert.equal(result.missing.length, 1);
+  await assert.rejects(staff.workStaffing(worker, { campusId }), { status: 403 });
+  seedAppointment(db, { id: 'busy-worker', status: 'in_progress', assigned_to: worker.account });
+  assert.equal((await staff.workStaffing(head, { campusId })).idle.length, 0);
+  assert.equal((await staff.attendanceDay(head, { campusId, businessDate: weekStart })).items.find(person => person.memberId === worker.memberId).workStatus, 'repairing');
+});
 
 test('suggestions maximize real leader coverage, exclude occupied members and preserve manual assignments', () => {
   const people = [
@@ -281,6 +300,7 @@ test('QR and minister confirmation race to one attendance fact and one live tran
     businessDate: weekStart,
     requestId: requestId()
   });
+  await staff.directCheckIn(head, { campusId, requestId: requestId() });
   const credential = await staff.issueAttendanceToken(head, event.id, { revision: event.revision });
   await Promise.all([
     staff.checkIn(worker, { token: credential.token, method: 'qr', requestId: requestId() }),
@@ -290,8 +310,8 @@ test('QR and minister confirmation race to one attendance fact and one live tran
       requestId: requestId()
     })
   ]);
-  assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM attendance_records').get().n, 1);
-  assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM presence_events').get().n, 1);
+  assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM attendance_records WHERE member_id=?').get(worker.memberId).n, 1);
+  assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM presence_events WHERE member_id=?').get(worker.memberId).n, 1);
 });
 
 test('absence conclusions preserve revisions, never invent attendance and give precedence to a subsequent arrival', async (t) => {

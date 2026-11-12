@@ -38,6 +38,7 @@ export default defineConfig({
         '**/maintenance-affairs.spec.mjs',
         '**/member-identities.spec.mjs',
         '**/admin-controls.spec.mjs'
+        ,'**/today-work-window.spec.mjs'
       ],
       use: {
         browserName: 'webkit',

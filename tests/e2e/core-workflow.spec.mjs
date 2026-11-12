@@ -178,7 +178,7 @@ test('cold entries wait for route code and business data instead of flashing the
   try {
     await loginStaff(page, 'root001', process.env.E2E_ROOT_PASSWORD);
     await staffPage(page, '今日工作');
-    await expect(page.getByRole('heading', { name: '今日工作', exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: '工作视窗', exact: true })).toBeVisible();
     await expect(page.locator('.field-content')).toHaveAttribute('aria-busy', 'true');
     await expect(page.getByText('今日没有待接收工单', { exact: true })).not.toBeVisible();
   } finally {
@@ -249,7 +249,7 @@ test('working campus isolates data, survives navigation and reload, and resets b
   await expect(page.locator('#login-id')).toBeVisible();
   await loginStaff(page, '20261003', 'StaffTest!2026');
   await staffPage(page, '今日工作');
-  await expect(work.locator('.workspace-campus-single')).toContainText('南湖');
+  await expect(work.getByRole('group', { name: '接待校区' }).getByRole('button', { name: '南湖', exact: true })).toBeDisabled();
   await staffPage(page, '个人中心');
   await work.getByRole('button', { name: '退出登录', exact: true }).click();
   await expect(page.locator('#login-id')).toBeVisible();

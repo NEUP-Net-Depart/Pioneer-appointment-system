@@ -580,7 +580,7 @@ test('work actions, attendance panels and notice tools use available parent spac
     await page.setViewportSize({ width, height: 1080 });
     const today = await staffPage(page, '今日工作');
     const scope = await today.getByRole('group', { name: '接待校区', exact: true }).boundingBox();
-    const shortcuts = await today.locator('.attendance-shortcuts').boundingBox();
+    const shortcuts = await today.locator('.work-window-actions').boundingBox();
     expect(shortcuts.y - scope.y - scope.height).toBeGreaterThanOrEqual(16);
     if (width >= 1280) {
       const tops = await today

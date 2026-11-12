@@ -80,13 +80,14 @@ test('field attendance follows the actual member, day and campus without live pr
   const before=await staff.field.home(worker,{campusId:'campus-nanhu'});
   assert.equal(before.attendance,null);
   const event=await staff.createAttendanceEvent(head,{campusId:'campus-nanhu',businessDate:calendar.serviceDay});
+  await staff.directCheckIn(head,{campusId:'campus-nanhu',requestId:crypto.randomUUID()});
   const token=await staff.issueAttendanceToken(head,event.id,{revision:event.revision});
   const record=await staff.checkIn(worker,{token:token.token,method:'qr',requestId:crypto.randomUUID()});
   db.sqlite.prepare('DELETE FROM staff_presence WHERE member_id=?').run(worker.memberId);
   assert.equal((await staff.field.home(worker,{campusId:'campus-nanhu'})).attendance.id,record.id);
   assert.equal((await staff.field.board(worker,{campusId:'campus-nanhu'})).attendance.id,record.id);
   assert.equal((await staff.field.home(worker,{campusId:'campus-hunnan'})).attendance,null);
-  assert.equal((await staff.field.home(head,{campusId:'campus-nanhu'})).attendance,null);
+  assert.equal((await staff.field.home(head,{campusId:'campus-nanhu'})).attendance.memberId,head.memberId);
   calendar.moveTo(calendar.nextDay,'19:10');
   assert.equal((await staff.field.home(worker,{campusId:'campus-nanhu'})).attendance,null);
 });
