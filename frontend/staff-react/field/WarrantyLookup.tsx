@@ -108,6 +108,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
   const albumInput = useRef<HTMLInputElement>(null);
   const albumRequest = useRef<AbortController | null>(null);
   const captchaInput = useRef<HTMLInputElement>(null);
+  const resultSection = useRef<HTMLElement>(null);
   const request = useRef<AbortController | null>(null);
   const copyAttempt = useRef(0);
   const id = useId();
@@ -162,6 +163,9 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
   useEffect(() => {
     if (captcha && active) captchaInput.current?.focus();
   }, [captcha, active]);
+  useEffect(() => {
+    if (result && active) resultSection.current?.scrollIntoView({ block: 'start' });
+  }, [result, active]);
   function invalidate() {
     copyAttempt.current++;
     request.current?.abort();
@@ -573,38 +577,6 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
             在新标签页打开官网 ↗
           </a>
         )}
-        {brand && channel && (
-          <section className="warranty-fallback" aria-label="查验步骤">
-            <h3>查验步骤</h3>
-            <strong>{channel.title}</strong>
-            <ol className="warranty-channel-steps">
-              {channel.steps.map((step) => (
-                <li key={step}>{step}</li>
-              ))}
-            </ol>
-            {provider?.available && valid && (
-              <button
-                type="button"
-                disabled={copyBusy || albumBusy || ocrBusy}
-                onClick={() => void copyAndGo()}
-              >
-                {copyBusy
-                  ? '等待复制授权…'
-                  : copyFailed
-                    ? '手动复制后打开官网'
-                    : '复制序列号并前往官网'}
-              </button>
-            )}
-            <a
-              href={brand.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              referrerPolicy="no-referrer"
-            >
-              打开官方保修入口 ↗
-            </a>
-          </section>
-        )}
         {captcha && (
           <fieldset className="warranty-captcha">
             <legend>原厂人工验证</legend>
@@ -665,7 +637,12 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
           <Notice>{message}</Notice>
         </div>
         {result && (
-          <section className="warranty-result" aria-label="原厂查询结果" aria-live="polite">
+          <section
+            ref={resultSection}
+            className="warranty-result"
+            aria-label="原厂查询结果"
+            aria-live="polite"
+          >
             <strong>
               {result.outcome === 'not_found' ? '原厂未查到保修信息' : statusLabels[result.status]}
             </strong>
@@ -715,6 +692,38 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
                 )}
               </>
             )}
+          </section>
+        )}
+        {brand && channel && (
+          <section className="warranty-fallback" aria-label="查验步骤">
+            <h3>查验步骤</h3>
+            <strong>{channel.title}</strong>
+            <ol className="warranty-channel-steps">
+              {channel.steps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+            {provider?.available && valid && (
+              <button
+                type="button"
+                disabled={copyBusy || albumBusy || ocrBusy}
+                onClick={() => void copyAndGo()}
+              >
+                {copyBusy
+                  ? '等待复制授权…'
+                  : copyFailed
+                    ? '手动复制后打开官网'
+                    : '复制序列号并前往官网'}
+              </button>
+            )}
+            <a
+              href={brand.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              referrerPolicy="no-referrer"
+            >
+              打开官方保修入口 ↗
+            </a>
           </section>
         )}
         <details className="warranty-privacy">
