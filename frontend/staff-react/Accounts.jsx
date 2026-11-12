@@ -1,3 +1,4 @@
+import { Select } from './SelectionControls.jsx';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { roleLabels, CAMPUSES } from '../../shared/constants.js';
 import { request } from './request.js';
@@ -7,6 +8,7 @@ import { WorkspaceSections } from './WorkspaceSections';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { StaffIdentity } from './StaffIdentity';
+import { RefreshButton, WorkspaceToolbar } from './WorkspaceToolbar.jsx';
 
 const enrollmentLabels = {
   open: '待激活',
@@ -38,25 +40,24 @@ export function Accounts({ user, embedded = false }) {
   }
   return (
     <section className="accounts-workspace">
-      {embedded ? (
-        <div className="workspace-list-tools">
-          <button onClick={copy}>复制激活网址</button>
-        </div>
-      ) : (
+      {!embedded && (
         <WorkspaceHeader group="人员权限" title="人员管理">
           <button onClick={copy}>复制激活网址</button>
         </WorkspaceHeader>
       )}
       <Notice>{copyMessage}</Notice>
-      <WorkspaceSections
-        label="账号管理功能"
-        items={sections}
-        value={section}
-        onChange={(id) => {
-          setSection(id);
-          setVisited((current) => (current.includes(id) ? current : [...current, id]));
-        }}
-      />
+      <div className="accounts-section-heading">
+        <WorkspaceSections
+          label="账号管理功能"
+          items={sections}
+          value={section}
+          onChange={(id) => {
+            setSection(id);
+            setVisited((current) => (current.includes(id) ? current : [...current, id]));
+          }}
+        />
+        {embedded && <button onClick={copy}>复制激活网址</button>}
+      </div>
       {sections.map(
         (item) =>
           visited.includes(item.id) && (
@@ -101,9 +102,12 @@ function AccountList({ user }) {
             placeholder="姓名、学号或校区"
           />
         </label>
-        <button disabled={list.isPending} onClick={list.refetch}>
-          刷新账号
-        </button>
+        <RefreshButton
+          disabled={list.isPending}
+          onRefresh={() => list.refetch({ throwOnError: true })}
+          label="刷新账号"
+          compactOnMobile
+        />
         <span data-motion-value="number" role="status">
           {`${items.length} 个账号`}
         </span>
@@ -278,14 +282,14 @@ export function AccountEditor({ user, item, onClose, onSaved, embedded = false, 
           <p className="field-muted">任职与独立身份在人员详情的“基本资料与任职身份”中管理。</p>
           <label>
             所属校区
-            <select
+            <Select
               value={draft.homeCampus}
               onChange={(event) => setDraft({ ...draft, homeCampus: event.target.value })}
             >
               {CAMPUSES.map((campus) => (
                 <option key={campus}>{campus}</option>
               ))}
-            </select>
+            </Select>
           </label>
           <fieldset className="workspace-checks">
             <legend>授权校区</legend>
@@ -311,13 +315,13 @@ export function AccountEditor({ user, item, onClose, onSaved, embedded = false, 
           {item.actions?.changeStatus && (
             <label>
               账号状态
-              <select
+              <Select
                 value={draft.status}
                 onChange={(event) => setDraft({ ...draft, status: event.target.value })}
               >
                 <option value="enabled">启用</option>
                 <option value="disabled">停用</option>
-              </select>
+              </Select>
             </label>
           )}
           {item.actions?.resetPassword && (
@@ -410,21 +414,32 @@ function ActivationReview() {
   }
   return (
     <>
-      <div className="workspace-list-tools">
-        <div>
-          <h2>激活审核</h2>
+      <WorkspaceToolbar title="激活审核">
+        <div className="workspace-segmented-control" role="group" aria-label="申请处理状态">
+          <button
+            type="button"
+            aria-pressed={!history}
+            disabled={busy}
+            onClick={() => setHistory(false)}
+          >
+            待审核
+          </button>
+          <button
+            type="button"
+            aria-pressed={history}
+            disabled={busy}
+            onClick={() => setHistory(true)}
+          >
+            已处理
+          </button>
         </div>
-        <button disabled={busy || list.isPending} onClick={list.refetch}>
-          刷新申请
-        </button>
-        <button
-          aria-pressed={history}
-          disabled={busy}
-          onClick={() => setHistory((value) => !value)}
-        >
-          {history ? '返回待审核' : '查看已处理'}
-        </button>
-      </div>
+        <RefreshButton
+          disabled={busy || list.isPending}
+          key={String(history)}
+          onRefresh={() => list.refetch({ throwOnError: true })}
+          label="刷新申请"
+        />
+      </WorkspaceToolbar>
       <Notice>{list.error?.message || message}</Notice>
       <div data-motion-list="reveal" className="account-list" aria-busy={list.isPending}>
         {items.map((item) => (
@@ -555,9 +570,12 @@ function Invitations() {
             placeholder="学号或姓名"
           />
         </label>
-        <button disabled={busy || list.isPending} onClick={list.refetch}>
-          刷新资格
-        </button>
+        <RefreshButton
+          disabled={busy || list.isPending}
+          onRefresh={() => list.refetch({ throwOnError: true })}
+          label="刷新资格"
+          compactOnMobile
+        />
       </div>
       <Notice>{list.error?.message || message}</Notice>
       <div data-motion-list="reveal" className="account-list" aria-busy={list.isPending}>

@@ -36,6 +36,7 @@
   line-height: 1.65;
 }
 .warranty-result {
+  scroll-margin-top: 80px;
   display: grid;
   gap: 12px;
   margin: 0;

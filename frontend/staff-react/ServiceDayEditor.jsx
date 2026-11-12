@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { RefreshButton } from './WorkspaceToolbar.jsx';
 import { DataValue } from './DataValue';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { ActivityContext, Modal, Notice } from './field/ui';
 import { request } from './request.js';
-import { addDays, dateKey, weekRange } from '../../shared/time.js';
+import { addDays, dateKey, rosterWeekKey } from '../../shared/time.js';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
 
 const weekdays = ['一', '二', '三', '四'];
@@ -22,7 +23,7 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
     [confirm, setConfirm] = useState(null);
   const command = useRef(null),
     lock = useRef(false);
-  const start = weekRange(today).start,
+  const start = rosterWeekKey(today),
     end = addDays(start, 13),
     dirty = reason !== originalReason;
   const queryKey = ['/api/service-days', { campus, start, end }];
@@ -132,9 +133,13 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
         <div>
           <h2>暂停日期</h2>
         </div>
-        <button disabled={busy || loading} onClick={() => result.refetch()}>
-          读取最新安排
-        </button>
+        <RefreshButton
+          key={`${campus}:${start}`}
+          disabled={busy}
+          onRefresh={() => result.refetch({ throwOnError: true })}
+          label="刷新暂停安排"
+          compactOnMobile
+        />
       </div>
       <Notice>{error || result.error?.message || notice}</Notice>
       {!items.length && !loading && !error && <p>暂时无法读取维修安排，请重试。</p>}

@@ -1,3 +1,5 @@
+import { Select } from './SelectionControls.jsx';
+import { RefreshButton } from './WorkspaceToolbar.jsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useDataMotion } from './useDataMotion';
 import React, { useState, useRef } from 'react';
@@ -227,11 +229,11 @@ export function StaffActivation() {
           </label>
           <label>
             所属校区
-            <select id="activation-campus" name="homeCampus" required>
+            <Select id="activation-campus" name="homeCampus" required>
               <option value="">请选择所属校区</option>
               <option>南湖</option>
               <option>浑南</option>
-            </select>
+            </Select>
           </label>
           <label>
             设置密码
@@ -270,14 +272,12 @@ export function StaffActivation() {
             <p data-motion-value="text" id="activation-note" hidden={!result.reviewNote}>
               {result.reviewNote}
             </p>
-            <button
+            <RefreshButton
               id="refresh-activation"
               className="secondary-btn"
-              type="button"
-              onClick={() => resultQuery.refetch()}
-            >
-              刷新审核结果
-            </button>
+              label="刷新审核结果"
+              onRefresh={() => resultQuery.refetch({ throwOnError: true })}
+            />
             <a
               id="activation-login"
               className="primary-btn"

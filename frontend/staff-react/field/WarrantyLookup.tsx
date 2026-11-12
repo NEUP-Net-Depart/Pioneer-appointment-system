@@ -1,3 +1,4 @@
+import { Select } from '../SelectionControls.jsx';
 import { useContext, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Camera, ChevronUp, Images } from 'lucide-react';
@@ -105,6 +106,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
   const albumInput = useRef<HTMLInputElement>(null);
   const albumRequest = useRef<AbortController | null>(null);
   const captchaInput = useRef<HTMLInputElement>(null);
+  const resultSection = useRef<HTMLElement>(null);
   const request = useRef<AbortController | null>(null);
   const copyAttempt = useRef(0);
   const id = useId();
@@ -159,6 +161,9 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
   useEffect(() => {
     if (captcha && active) captchaInput.current?.focus();
   }, [captcha, active]);
+  useEffect(() => {
+    if (result && active) resultSection.current?.scrollIntoView({ block: 'start' });
+  }, [result, active]);
   function invalidate() {
     copyAttempt.current++;
     request.current?.abort();
@@ -328,7 +333,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
     <Modal title="查询设备保修" onClose={onClose} initialFocus="select" className="warranty-dialog">
       <div className="warranty-lookup">
         <label htmlFor={id + '-brand'}>设备品牌</label>
-        <select
+        <Select
           id={id + '-brand'}
           value={brandId}
           onChange={(event) => {
@@ -349,7 +354,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
               {item.name}
             </option>
           ))}
-        </select>
+        </Select>
         <Notice>{providerError}</Notice>
         {provider?.id === 'huawei' && !provider.available && <Notice>{provider.message}</Notice>}
         <label htmlFor={id + '-serial'}>序列号 / S/N / Service Tag</label>
@@ -528,17 +533,6 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
             <Notice>{message}</Notice>
           </div>
         </div>
-        {brand && channel && (
-          <section className="warranty-fallback" aria-label="查验步骤">
-            <h3>查验步骤</h3>
-            <strong>{channel.title}</strong>
-            <ol className="warranty-channel-steps">
-              {channel.steps.map((step) => (
-                <li key={step}>{step}</li>
-              ))}
-            </ol>
-          </section>
-        )}
         {captcha && (
           <fieldset className="warranty-captcha">
             <legend>原厂人工验证</legend>
@@ -596,7 +590,12 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
           </fieldset>
         )}
         {result && (
-          <section className="warranty-result" aria-label="原厂查询结果" aria-live="polite">
+          <section
+            ref={resultSection}
+            className="warranty-result"
+            aria-label="原厂查询结果"
+            aria-live="polite"
+          >
             <strong>
               {result.outcome === 'not_found' ? '原厂未查到保修信息' : statusLabels[result.status]}
             </strong>
@@ -646,6 +645,17 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
                 )}
               </>
             )}
+          </section>
+        )}
+        {brand && channel && (
+          <section className="warranty-fallback" aria-label="查验步骤">
+            <h3>查验步骤</h3>
+            <strong>{channel.title}</strong>
+            <ol className="warranty-channel-steps">
+              {channel.steps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
           </section>
         )}
         <details className="warranty-privacy">

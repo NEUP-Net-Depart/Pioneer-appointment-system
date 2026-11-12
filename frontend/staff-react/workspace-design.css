@@ -15,6 +15,16 @@
 .today-toolbar .staff-identities {
   gap: 8px;
 }
+.field-app .today-toolbar > .field-actions {
+  display: grid;
+  grid-template-columns: repeat(3, max-content);
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: 100%;
+}
+.field-content > .workspace-campus-scope {
+  margin-bottom: 20px;
+}
 .today-tools .field-search {
   margin: 20px 0 0;
 }
@@ -35,7 +45,7 @@
   flex: 0 0 24px;
   color: var(--muted);
 }
-.attendance-quick-action > div {
+.attendance-quick-action > div:not(.workspace-campus-scope) {
   flex: 1 1 180px;
 }
 .field-app .attendance-quick-action h2 {
@@ -318,8 +328,14 @@
   .today-toolbar {
     align-items: flex-start;
   }
-  .today-toolbar > .field-actions {
+  .field-app .today-toolbar > .field-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     width: 100%;
+  }
+  .field-app .today-toolbar > .field-actions > button {
+    min-width: 0;
+    padding-inline: 6px;
+    white-space: nowrap;
   }
   .attendance-shortcuts {
     margin-bottom: 16px;
@@ -337,17 +353,24 @@ body.staff-mode.field-mode {
   overflow-y: visible;
 }
 /* One readable control scale, including controls nested in captions and tables. */
-#staff-react-root
-  :is(.field-app, .field-modal)
-  :is(button:not(.capacity-editor-handle), summary, .field-file-button) {
+:where(#staff-react-root .field-app, #staff-react-root .field-modal)
+  :is(button:not(.capacity-editor-handle), summary, .field-file-button):where(
+    :not(.workspace-control-popover *, .workspace-time-popover *)
+  ) {
   min-height: 44px;
   font-size: 14px;
   line-height: 1.5;
 }
-#staff-react-root :is(.field-app, .field-modal) button:not(.capacity-editor-handle) {
+:where(#staff-react-root .field-app, #staff-react-root .field-modal)
+  button:not(.capacity-editor-handle):where(
+    :not(.workspace-control-popover *, .workspace-time-popover *)
+  ) {
   min-width: 44px;
 }
-#staff-react-root :is(.field-app, .field-modal) :is(input, select, textarea, label) {
+:where(#staff-react-root .field-app, #staff-react-root .field-modal)
+  :is(input, select, textarea, label):where(
+    :not(.workspace-control-popover *, .workspace-time-popover *)
+  ) {
   font-size: 14px;
 }
 #staff-react-root
@@ -560,25 +583,24 @@ body.staff-mode.field-mode {
 .field-app .accounts-workspace .workspace-section-nav {
   width: fit-content;
   max-width: 100%;
-  padding: 4px;
+  padding: 0;
+  margin: 0;
+  height: 44px;
   gap: 4px;
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: 10px;
-  background: var(--workspace-subtle);
+  background: transparent;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .field-app .accounts-workspace .workspace-section-nav button {
-  padding: 8px 16px;
+  height: 44px;
+  padding: 0 12px;
   border: 1px solid transparent;
   border-radius: 7px;
 }
 .field-app .accounts-workspace .workspace-section-nav button[aria-pressed='true'] {
   border-color: var(--line);
-  background: var(--workspace-surface);
-}
-.field-app .members-list-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  background: var(--workspace-subtle);
 }
 .member-organization {
   display: grid;
@@ -681,27 +703,6 @@ body.staff-mode.field-mode {
     margin: 0;
   }
 }
-@media (min-width: 1280px) {
-  .field-app .members-tools {
-    display: grid;
-    grid-template-columns: minmax(180px, 1fr) 140px 140px auto;
-    align-items: end;
-  }
-  .field-app .members-tools > label {
-    width: auto;
-  }
-  .field-app .members-list-actions > button {
-    padding-inline: 12px;
-  }
-  .field-app .members-result-count {
-    grid-column: 1 / -1;
-  }
-}
-@media (max-width: 1279px) {
-  .field-app .members-tools > label:first-child {
-    flex-basis: 100%;
-  }
-}
 @media (min-width: 1600px) {
   .field-app > .workspace-page {
     max-width: 1760px;
@@ -727,10 +728,6 @@ body.staff-mode.field-mode {
   }
 }
 @media (max-width: 767px) {
-  .field-app .members-list-actions {
-    order: -1;
-    flex-basis: 100%;
-  }
   .field-app .field-bottom-nav {
     min-height: 72px;
   }

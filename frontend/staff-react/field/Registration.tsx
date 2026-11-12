@@ -1,3 +1,4 @@
+import { Select } from '../SelectionControls.jsx';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Appointment } from './types';
 import React, { useRef, useState } from 'react';
@@ -143,7 +144,7 @@ export function Registration({
             ))}
             <label>
               故障类型
-              <select
+              <Select
                 value={form.faultType}
                 onChange={(e) => setForm({ ...form, faultType: e.target.value })}
               >
@@ -159,7 +160,7 @@ export function Registration({
                 ].map((value) => (
                   <option key={value}>{value}</option>
                 ))}
-              </select>
+              </Select>
             </label>
           </div>
           <label>

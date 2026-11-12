@@ -1,5 +1,7 @@
+import { DatePicker } from './SelectionControls.jsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useContext, useEffect, useId, useRef, useState } from 'react';
+import { RefreshButton } from './WorkspaceToolbar.jsx';
 import { addDays, dateKey, formatInstant } from '../../shared/time.js';
 import { request } from './request.js';
 import { ActivityContext, Modal, Notice } from './field/ui';
@@ -149,15 +151,18 @@ export function ServiceLocationEditor({ campus }) {
         <div>
           <h2>维修地点</h2>
         </div>
-        <button disabled={loading || busy || !date} onClick={refresh}>
-          读取最新地点
-        </button>
+        <RefreshButton
+          key={`${campus}:${date}`}
+          disabled={busy || !date}
+          onRefresh={refresh}
+          label="刷新维修地点"
+          compactOnMobile
+        />
       </div>
       <div className="capacity-location-dates">
         <label>
           维修日期
-          <input
-            type="date"
+          <DatePicker
             value={date}
             disabled={busy}
             onChange={(event) => setDate(event.target.value)}

@@ -1,3 +1,6 @@
+import { Select } from './SelectionControls.jsx';
+import { WeekPicker } from './WeekPicker.jsx';
+import { HelpHint } from './HelpHint';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { request } from './request.js';
 import { DataValue } from './DataValue';
@@ -6,7 +9,10 @@ import { AttendanceCheckInButton } from './field/AttendanceActions';
 import { campusAttendance, applyAttendance } from './field/attendance-state';
 import { ActivityContext, Modal, Scanner, time } from './field/ui';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
-import { addDays, dateKey, weekRange } from '../../shared/time.js';
+import { CampusScope } from './CampusScope.jsx';
+import { RefreshButton } from './WorkspaceToolbar.jsx';
+import { Attendance } from './Attendance';
+import { addDays, dateKey, rosterWeekKey } from '../../shared/time.js';
 import {
   DUTY_START,
   DUTY_END,
@@ -17,11 +23,17 @@ import {
 } from '../../shared/duty.js';
 
 const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-export function Schedule({ user, campusId, onDirtyChange }) {
+export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
+  const [selectedCampus, setSelectedCampus] = useState(initialCampus);
+  const campusId = (user.authorizedCampuses || [])
+    .map((name) => ({ 南湖: 'campus-nanhu', 浑南: 'campus-hunnan' })[name] || name)
+    .includes(selectedCampus)
+    ? selectedCampus
+    : initialCampus;
   const client = useQueryClient();
   const active = useContext(ActivityContext),
     lock = useRef(false);
-  const [week, setWeek] = useState(() => weekRange().start),
+  const [week, setWeek] = useState(() => rosterWeekKey()),
     [selectedType, setType] = useState('');
   const types = dutyCandidateTypes(user.memberships || [], dateKey());
   const type = types.includes(selectedType) ? selectedType : types[0];
@@ -242,7 +254,14 @@ export function Schedule({ user, campusId, onDirtyChange }) {
               </p>
             )}
           </div>
-          <div>
+          <div className="duty-checkin-actions">
+            <CampusScope
+              label="签到校区"
+              campuses={campuses.map((id) => ({ id, name: dutyCampusNames[id] }))}
+              value={campusId}
+              disabled={busy || scan}
+              onChange={setSelectedCampus}
+            />
             {todayRecord ? (
               <strong>已签到 · {time(todayRecord.occurredAt)}</strong>
             ) : (
@@ -284,35 +303,51 @@ export function Schedule({ user, campusId, onDirtyChange }) {
             {summary?.settings.mergeLeaders ? '，负责人每周自动计入一次' : ''}。
           </p>
         </section>
-        <div className="duty-toolbar">
-          <label>
-            所在周
-            <input
-              type="date"
-              value={week}
-              disabled={!!editor || !!action || busy}
-              onChange={(event) =>
-                event.target.value && setWeek(weekRange(event.target.value).start)
-              }
-            />
-          </label>
-          <button
+        <div className="duty-toolbar personal-duty-toolbar">
+          <WeekPicker
+            label="所在周"
+            value={week}
             disabled={!!editor || !!action || busy}
-            onClick={() => setWeek(weekRange().start)}
-          >
+            onChange={setWeek}
+          />
+          <button disabled={!!editor || !!action || busy} onClick={() => setWeek(rosterWeekKey())}>
             本周
           </button>
           <button
             disabled={!!editor || !!action || busy}
-            onClick={() => setWeek(addDays(weekRange().start, 7))}
+            onClick={() => setWeek(addDays(rosterWeekKey(), 7))}
           >
             下周
           </button>
+          <RefreshButton
+            key={`${campusId}:${week}:${type}`}
+            label="刷新我的值班"
+            compactOnMobile
+            disabled={busy}
+            onRefresh={() =>
+              Promise.all(
+                [availability, mine, upcoming, covers, home, hours]
+                  .filter((query) => query !== availability || !!type)
+                  .map((query) => query.refetch({ throwOnError: true }))
+                  .concat(
+                    client.invalidateQueries(
+                      { queryKey: ['/api/me/attendance'] },
+                      { throwOnError: true }
+                    )
+                  )
+              )
+            }
+          />
         </div>
         {types.length > 0 && (
           <section className="schedule-card">
             <div className="duty-section-heading">
-              <h2>填写空闲</h2>
+              <h2 className="workspace-title-with-hint">
+                填写空闲
+                <HelpHint label="空闲填报规则">
+                  值班固定为19:00–21:00，通常安排持续沿用，临时变化只修改对应周。
+                </HelpHint>
+              </h2>
               {types.length === 1 ? (
                 <span className="field-muted">{dutyTypeLabels[type]}值班</span>
               ) : (
@@ -330,7 +365,6 @@ export function Schedule({ user, campusId, onDirtyChange }) {
                 </div>
               )}
             </div>
-            <p>值班固定为19:00–21:00，通常安排持续沿用，临时变化只修改对应周。</p>
             {editor ? (
               <form
                 ref={formRef}
@@ -342,14 +376,14 @@ export function Schedule({ user, campusId, onDirtyChange }) {
                     {campuses.map((campus) => (
                       <div key={campus}>
                         <strong>{dutyCampusNames[campus]}</strong>
-                        {days.map((day, i) => (
-                          <label key={day}>
+                        {[7, 1, 2, 3, 4, 5, 6].map((weekday) => (
+                          <label key={weekday}>
                             <input
                               type="checkbox"
-                              checked={availableForDuty(windows, i + 1, campus)}
-                              onChange={() => toggle(i + 1, campus)}
+                              checked={availableForDuty(windows, weekday, campus)}
+                              onChange={() => toggle(weekday, campus)}
                             />
-                            {day}
+                            {days[weekday - 1]}
                           </label>
                         ))}
                       </div>
@@ -447,7 +481,7 @@ export function Schedule({ user, campusId, onDirtyChange }) {
                     {action.kind === 'cover' && (
                       <label>
                         接替成员
-                        <select
+                        <Select
                           required
                           value={recipient}
                           onChange={(event) => setRecipient(event.target.value)}
@@ -458,7 +492,7 @@ export function Schedule({ user, campusId, onDirtyChange }) {
                               {person.name} · {person.studentId}
                             </option>
                           ))}
-                        </select>
+                        </Select>
                       </label>
                     )}
                     <label>
@@ -575,6 +609,7 @@ export function Schedule({ user, campusId, onDirtyChange }) {
           <p>扫描现场工作人员签到码后，将以本人账号直接签到。</p>
         </Modal>
       )}
+      <Attendance embedded />
     </div>
   );
 }

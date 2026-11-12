@@ -32,8 +32,12 @@ export function useFieldWorkspace({
     initial.contexts[0]?.id ||
     'mine';
   const sessionKey = `${initial.actor.memberId}:${initial.authVersion}`;
-  const [chosenCampus, setChosenCampus] = useState(
-      () => readFieldCampus(sessionKey, initial.campuses) || initial.campusId
+  const [chosenCampuses, setChosenCampuses] = useState(
+      () =>
+        ({
+          today: readFieldCampus(sessionKey, initial.campuses) || initial.campusId,
+          mine: initial.campusId
+        }) as Record<string, string>
     ),
     [selected, setSelected] = useState(''),
     [scanOpen, setScanOpen] = useState(false),
@@ -52,6 +56,7 @@ export function useFieldWorkspace({
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
+  const chosenCampus = chosenCampuses[scene];
   const campus = initial.campuses.some((item) => item.id === chosenCampus)
     ? chosenCampus
     : initial.campusId;
@@ -83,14 +88,15 @@ export function useFieldWorkspace({
   const data = result.data?.campusId === campus ? result.data : null;
   const refresh = () =>
     Promise.all(
-      ['/api/field/home', '/api/field/board'].map((path) =>
-        client.invalidateQueries({ queryKey: [path] })
-      )
+      (scene === 'mine'
+        ? [resource, '/api/me/profile', '/api/me/volunteer-summary', '/api/me/roster']
+        : [resource]
+      ).map((path) => client.invalidateQueries({ queryKey: [path] }, { throwOnError: true }))
     );
   function setCampus(value: string) {
     if (busy || !initial.campuses.some((item) => item.id === value)) return;
-    writeFieldCampus(sessionKey, value);
-    setChosenCampus(value);
+    if (scene === 'today') writeFieldCampus(sessionKey, value);
+    setChosenCampuses((current) => ({ ...current, [scene]: value }));
     setSelected('');
     setMessage('');
     setScanOpen(false);
@@ -102,10 +108,10 @@ export function useFieldWorkspace({
   }
   useEffect(() => {
     if (chosenCampus !== campus) {
-      writeFieldCampus(sessionKey, campus);
-      setChosenCampus(campus);
+      if (scene === 'today') writeFieldCampus(sessionKey, campus);
+      setChosenCampuses((current) => ({ ...current, [scene]: campus }));
     }
-  }, [chosenCampus, campus, sessionKey]);
+  }, [chosenCampus, campus, sessionKey, scene]);
   useEffect(() => {
     setScanOpen(false);
     setToken(null);

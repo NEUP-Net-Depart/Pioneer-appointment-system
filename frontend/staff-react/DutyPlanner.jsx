@@ -1,10 +1,13 @@
+import { WeekPicker } from './WeekPicker.jsx';
+import { HelpHint } from './HelpHint';
+import { RefreshButton } from './WorkspaceToolbar.jsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { ActivityContext, Modal } from './field/ui';
 import { request } from './request.js';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
 import { DataValue } from './DataValue';
-import { addDays, weekRange } from '../../shared/time.js';
+import { addDays, rosterWeekKey } from '../../shared/time.js';
 import {
   DUTY_START,
   DUTY_END,
@@ -15,12 +18,12 @@ import {
   dutyCandidateTypes
 } from '../../shared/duty.js';
 
-export function DutyPlanner({ campusId, onDirtyChange }) {
+export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
   const client = useQueryClient();
   const active = useContext(ActivityContext),
     lock = useRef(false),
     saveId = useRef(crypto.randomUUID());
-  const [week, setWeek] = useState(() => addDays(weekRange().start, 7)),
+  const [week, setWeek] = useState(() => addDays(rosterWeekKey(), 7)),
     [draft, setDraft] = useState([]),
     [draftSource, setDraftSource] = useState(null),
     [dirty, setDirty] = useState(false),
@@ -28,6 +31,7 @@ export function DutyPlanner({ campusId, onDirtyChange }) {
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
     [picker, setPicker] = useState(null),
+    [peopleSearch, setPeopleSearch] = useState(''),
     [unassigned, setUnassigned] = useState([]);
   const queryKey = ['/api/rosters/campus-week', { weekStart: week, campusId }];
   const result = useQuery({ queryKey, enabled: active && !dirty });
@@ -244,20 +248,18 @@ export function DutyPlanner({ campusId, onDirtyChange }) {
   }
   return (
     <div className="duty-planner">
-      <div className="duty-toolbar">
-        <label>
-          所在周
-          <input
-            type="date"
-            value={week}
-            disabled={dirty || busy}
-            onChange={(event) => event.target.value && setWeek(weekRange(event.target.value).start)}
-          />
-        </label>
-        <button disabled={dirty || busy} onClick={() => setWeek(addDays(weekRange().start, 7))}>
+      <div className="duty-toolbar duty-planner-toolbar">
+        {campusControl}
+        <WeekPicker label="所在周" value={week} disabled={dirty || busy} onChange={setWeek} />
+        <button disabled={dirty || busy} onClick={() => setWeek(addDays(rosterWeekKey(), 7))}>
           下周
         </button>
-        <span>维修 / 办公 · 19:00–21:00</span>
+        <RefreshButton
+          key={`${campusId}:${week}`}
+          label="读取最新班表"
+          disabled={busy}
+          onRefresh={() => reload()}
+        />
       </div>
       {failure && (
         <p role="alert" className="react-error">
@@ -283,8 +285,13 @@ export function DutyPlanner({ campusId, onDirtyChange }) {
         <fieldset disabled={busy || !data}>
           <div className="duty-section-heading">
             <div>
-              <h2>安排一周值班</h2>
-              <p className="field-muted">按空闲生成建议，每人每周最多一次；手动调整可保留例外。</p>
+              <h2 className="workspace-title-with-hint">
+                安排一周值班
+                <HelpHint label="班表生成规则">
+                  维修 /
+                  办公值班为19:00–21:00。按空闲生成建议，每人每周最多一次；手动调整可保留例外。
+                </HelpHint>
+              </h2>
             </div>
             <div className="schedule-actions">
               <button type="button" onClick={() => run(suggest)}>
@@ -367,7 +374,10 @@ export function DutyPlanner({ campusId, onDirtyChange }) {
                       <button
                         type="button"
                         className="duty-add-person"
-                        onClick={() => setPicker({ day, type, index })}
+                        onClick={() => {
+                          setPeopleSearch('');
+                          setPicker({ day, type, index });
+                        }}
                       >
                         选择人员
                       </button>
@@ -385,7 +395,6 @@ export function DutyPlanner({ campusId, onDirtyChange }) {
                   <li key={message}>{message}</li>
                 ))}
               </ul>
-              <p>这些提示供现场协调，核对后可直接发布；时间冲突仍会阻止提交。</p>
             </section>
           )}
           {!!unassigned.length && (
@@ -403,55 +412,71 @@ export function DutyPlanner({ campusId, onDirtyChange }) {
         </fieldset>
       </form>
       {picker && data && (
-        <Modal
-          title={`${picker.day} · ${dutyTypeLabels[picker.type]}选择人员`}
-          onClose={() => setPicker(null)}
-        >
+        <Modal title="选择值班人员" onClose={() => setPicker(null)}>
+          <p>
+            {picker.day} · {dutyTypeLabels[picker.type]}值班
+          </p>
           <div className="duty-people-picker">
-            {data.people.map((person) => {
-              const selected = draft.some(
-                (row) =>
-                  row.memberId === person.memberId &&
-                  row.businessDate === picker.day &&
-                  row.dutyType === picker.type
-              );
-              const sameDay = draft.some(
-                (row) =>
-                  row.memberId === person.memberId &&
-                  row.businessDate === picker.day &&
-                  row.dutyType !== picker.type
-              );
-              const weekday = new Date(`${picker.day}T12:00:00Z`).getUTCDay() || 7;
-              return (
-                <label key={person.memberId}>
-                  <input
-                    type="checkbox"
-                    disabled={busy || sameDay}
-                    checked={selected}
-                    onChange={() => toggle(person)}
-                  />
-                  <span>
-                    <strong>{person.name}</strong>
-                    <small>
-                      {dutyCandidateTypes(person.memberships, picker.day).includes(picker.type)
-                        ? '本岗位'
-                        : '跨部门'}{' '}
-                      ·{' '}
-                      {availableForDuty(person.availability[picker.type], weekday, campusId)
-                        ? '整班有空'
-                        : '未填整班空闲'}
-                      {person.alreadyScheduled ||
-                      draft.some(
-                        (row) => row.memberId === person.memberId && row.businessDate !== picker.day
-                      )
-                        ? ' · 本周已有安排'
-                        : ''}
-                      {sameDay ? ' · 同日已排其他岗位' : ''}
-                    </small>
-                  </span>
-                </label>
-              );
-            })}
+            <label className="workspace-picker-search">
+              搜索人员
+              <input
+                type="search"
+                value={peopleSearch}
+                placeholder="姓名或学号"
+                onChange={(event) => setPeopleSearch(event.target.value)}
+              />
+            </label>
+            {data.people
+              .filter((person) =>
+                `${person.name} ${person.studentId || ''}`.includes(peopleSearch.trim())
+              )
+              .map((person) => {
+                const selected = draft.some(
+                  (row) =>
+                    row.memberId === person.memberId &&
+                    row.businessDate === picker.day &&
+                    row.dutyType === picker.type
+                );
+                const sameDay = draft.some(
+                  (row) =>
+                    row.memberId === person.memberId &&
+                    row.businessDate === picker.day &&
+                    row.dutyType !== picker.type
+                );
+                const weekday = new Date(`${picker.day}T12:00:00Z`).getUTCDay() || 7;
+                return (
+                  <label key={person.memberId}>
+                    <input
+                      type="checkbox"
+                      disabled={busy || sameDay}
+                      checked={selected}
+                      onChange={() => toggle(person)}
+                    />
+                    <span>
+                      <strong>
+                        {person.name} {person.studentId}
+                      </strong>
+                      <small>
+                        {dutyCandidateTypes(person.memberships, picker.day).includes(picker.type)
+                          ? '本岗位'
+                          : '跨部门'}{' '}
+                        ·{' '}
+                        {availableForDuty(person.availability[picker.type], weekday, campusId)
+                          ? '整班有空'
+                          : '未填整班空闲'}
+                        {person.alreadyScheduled ||
+                        draft.some(
+                          (row) =>
+                            row.memberId === person.memberId && row.businessDate !== picker.day
+                        )
+                          ? ' · 本周已有安排'
+                          : ''}
+                        {sameDay ? ' · 同日已排其他岗位' : ''}
+                      </small>
+                    </span>
+                  </label>
+                );
+              })}
           </div>
           <button className="field-primary" onClick={() => setPicker(null)}>
             完成选择

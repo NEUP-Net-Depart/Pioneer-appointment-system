@@ -1,124 +1,31 @@
-import React, { useContext, useEffect, useRef, useState } from 'react';
+import React, { useContext, useState } from 'react';
 import { ActivityContext } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { AttendanceReportSettings } from './AttendanceReportSettings.jsx';
-import { ChoiceMenu } from './ChoiceMenu.jsx';
+import { CampusScope } from './CampusScope.jsx';
+import { DatePicker } from './SelectionControls.jsx';
+import { RefreshButton } from './WorkspaceToolbar.jsx';
+import { WeeklyAttendanceExport } from './WeeklyAttendanceExport.jsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { dateKey } from '../../shared/time.js';
 
 const monthNow = () => dateKey().slice(0, 7);
 const monthLabel = (month) => `${Number(month.slice(0, 4))}年${Number(month.slice(5))}月`;
 
-function adjacentMonth(month, offset) {
-  const date = new Date(`${month}-01T00:00:00Z`);
-  date.setUTCMonth(date.getUTCMonth() + offset);
-  return date.toISOString().slice(0, 7);
-}
-
 function MonthPicker({ value, onChange }) {
-  const [open, setOpen] = useState(false);
-  const [year, setYear] = useState(Number(value.slice(0, 4)));
-  const root = useRef(null);
-  const trigger = useRef(null);
-  useEffect(() => {
-    if (!open) return;
-    const closeOutside = (event) => {
-      if (!root.current?.contains(event.target)) setOpen(false);
-    };
-    const closeOnEscape = (event) => {
-      if (event.key === 'Escape') {
-        setOpen(false);
-        trigger.current?.focus();
-      }
-    };
-    document.addEventListener('pointerdown', closeOutside);
-    document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.removeEventListener('pointerdown', closeOutside);
-      document.removeEventListener('keydown', closeOnEscape);
-    };
-  }, [open]);
-  const change = (month) => {
-    if (month.slice(0, 4) < '2000' || month.slice(0, 4) > '2100') return;
-    onChange(month);
-    setYear(Number(month.slice(0, 4)));
-    setOpen(false);
-    trigger.current?.focus();
-  };
   return (
-    <div className="report-month-picker" ref={root}>
-      <span className="report-control-label">月份</span>
-      <div className="report-month-stepper">
-        <button
-          type="button"
-          aria-label="上个月"
-          onClick={() => change(adjacentMonth(value, -1))}
-          disabled={value === '2000-01'}
-        >
-          ‹
-        </button>
-        <button
-          type="button"
-          ref={trigger}
-          className="report-month-current"
-          aria-label={`选择月份，当前${monthLabel(value)}`}
-          aria-expanded={open}
-          aria-haspopup="dialog"
-          onClick={() => {
-            setYear(Number(value.slice(0, 4)));
-            setOpen(!open);
-          }}
-        >
-          {monthLabel(value)} <span className="workspace-chevron" aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          aria-label="下个月"
-          onClick={() => change(adjacentMonth(value, 1))}
-          disabled={value === '2100-12'}
-        >
-          ›
-        </button>
-      </div>
-      {open && (
-        <div className="report-month-panel" role="dialog" aria-label="选择报表月份">
-          <div className="report-month-panel-year">
-            <button
-              type="button"
-              aria-label="上一年"
-              disabled={year <= 2000}
-              onClick={() => setYear(year - 1)}
-            >
-              ‹
-            </button>
-            <strong>{year}年</strong>
-            <button
-              type="button"
-              aria-label="下一年"
-              disabled={year >= 2100}
-              onClick={() => setYear(year + 1)}
-            >
-              ›
-            </button>
-          </div>
-          <div className="report-month-grid">
-            {Array.from({ length: 12 }, (_, index) => {
-              const month = `${year}-${String(index + 1).padStart(2, '0')}`;
-              return (
-                <button
-                  type="button"
-                  key={month}
-                  aria-pressed={month === value}
-                  onClick={() => change(month)}
-                >
-                  {index + 1}月
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
+    <label className="report-month-picker">
+      月份
+      <DatePicker
+        mode="month"
+        value={value}
+        min="2000-01"
+        max="2100-12"
+        required
+        label="选择报表月份"
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
   );
 }
 
@@ -131,10 +38,17 @@ function download(bytes, filename, type) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function AttendanceReports({ canExport = true, embedded = false }) {
+export function AttendanceReports({ canExport = true, embedded = false, campuses = [] }) {
   const active = useContext(ActivityContext);
   const [month, setMonth] = useState(monthNow);
-  const [campusId, setCampusId] = useState('');
+  const [chosenCampus, setCampusId] = useState('');
+  const campusId =
+    campuses.length === 1
+      ? campuses[0].id
+      : campuses.some((campus) => campus.id === chosenCampus)
+        ? chosenCampus
+        : '';
+  const [weekly, setWeekly] = useState(false);
   const [tab, setTab] = useState('volunteer');
   const client = useQueryClient();
   const [downloading, setDownloading] = useState(false);
@@ -244,33 +158,31 @@ export function AttendanceReports({ canExport = true, embedded = false }) {
                 setMonth(value);
               }}
             />
-            <ChoiceMenu
-              label="校区"
+            <CampusScope
+              label="报表校区"
               value={campusId}
-              options={[
-                { value: '', label: '全部授权校区' },
-                { value: 'campus-nanhu', label: '南湖' },
-                { value: 'campus-hunnan', label: '浑南' }
-              ]}
+              campuses={
+                campuses.length > 1 ? [{ id: '', name: '全部授权校区' }, ...campuses] : campuses
+              }
               onChange={(value) => {
                 setCampusId(value);
               }}
             />
-            <button
-              type="button"
-              className="report-refresh"
-              disabled={busy}
-              onClick={() =>
-                Promise.all(
-                  [
-                    '/api/attendance/volunteer-report',
-                    '/api/attendance/matrix',
-                    '/api/me/volunteer-summary'
-                  ].map((path) => client.invalidateQueries({ queryKey: [path] }))
-                )
+            <RefreshButton
+              key={`${tab}:${month}:${campusId}`}
+              label="刷新报表"
+              onRefresh={() =>
+                Promise.all([
+                  result.refetch({ throwOnError: true }),
+                  client.invalidateQueries(
+                    { queryKey: ['/api/attendance/report-settings'] },
+                    { throwOnError: true }
+                  )
+                ])
               }
-            >
-              刷新数据
+            />
+            <button type="button" onClick={() => setWeekly(true)}>
+              按周核算与导出
             </button>
           </div>
           {(error || result.error) && (
@@ -338,6 +250,13 @@ export function AttendanceReports({ canExport = true, embedded = false }) {
         </>
       )}
       {!canExport && <AttendanceReportSettings active={active} />}
+      {weekly && active && (
+        <WeeklyAttendanceExport
+          campuses={campuses}
+          campusId={campusId}
+          onClose={() => setWeekly(false)}
+        />
+      )}
     </section>
   );
 }

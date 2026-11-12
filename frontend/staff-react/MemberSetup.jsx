@@ -1,3 +1,4 @@
+import { Select, DatePicker } from './SelectionControls.jsx';
 import React from 'react';
 import { dateKey } from '../../shared/time.js';
 import {
@@ -30,18 +31,17 @@ export function MemberSetup({
       <div className="react-form-grid">
         <label>
           所属校区
-          <select
+          <Select
             value={value.homeCampusId}
             onChange={(event) => change({ homeCampusId: event.target.value })}
           >
             <option value="campus-nanhu">南湖</option>
             <option value="campus-hunnan">浑南</option>
-          </select>
+          </Select>
         </label>
         <label>
           生效日期
-          <input
-            type="date"
+          <DatePicker
             required
             value={value.effectiveFrom}
             onChange={(event) => change({ effectiveFrom: event.target.value })}

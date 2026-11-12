@@ -1,13 +1,18 @@
 const MB = 1024 * 1024;
 export const INTAKE_PHOTO_MAX_BYTES = 2 * MB;
 const DEFAULTS = {
-  maxBytes: INTAKE_PHOTO_MAX_BYTES,
-  maxDimension: 2560,
+  maxBytes: 600 * 1024,
+  maxDimension: 1920,
   quality: 0.85,
   minQuality: 0.7,
-  targetMinBytes: MB,
-  targetMaxBytes: 1.5 * MB,
+  targetMinBytes: 400 * 1024,
+  targetMaxBytes: 600 * 1024,
 };
+const preparedImages = new WeakSet();
+
+export async function uploadImage(file) {
+  return preparedImages.has(file) ? file : (await compressImage(file, { strict: true })).file;
+}
 
 function namedFile(blob, name, lastModified) {
   try { return new File([blob], name, { type: blob.type, lastModified }); }
@@ -111,6 +116,7 @@ export async function compressImage(file, options = {}) {
         const keepOriginal = original.type !== 'image/heic' && original.size <= maxBytes
           && originalDimension <= maxDimension && orientation === 1 && original.size <= blob.size;
         const result = keepOriginal ? original : namedFile(blob, (file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg', file.lastModified);
+        preparedImages.add(result);
         report(100, '照片已准备好');
         return { file: result, warning: '' };
       }
@@ -122,15 +128,15 @@ export async function compressImage(file, options = {}) {
         quality = settings.quality;
       }
     }
-    throw new Error('照片压缩后仍超过 2 MB');
+    throw new Error('照片压缩后仍过大，请重新选择或拍摄');
   } catch (error) {
     if (original.type === 'image/heic') throw new Error('当前浏览器无法处理 HEIC/HEIF 照片，请转为 JPG，或在相机设置中选择“兼容性最佳”后重新拍摄', { cause: error });
     if (!settings.strict && original.size <= maxBytes) {
-      const warning = `照片压缩失败（${error.message}），原图不超过 2 MB，将上传原图`;
+      const warning = `照片压缩失败（${error.message}），将上传符合大小限制的原图`;
       report(100, '将使用原图');
       return { file: original, warning };
     }
-    throw new Error(`照片压缩失败（${error.message}），原图超过 2 MB，请重新选择或拍摄照片`, { cause: error });
+    throw new Error(`照片压缩失败（${error.message}），请重新选择或拍摄照片`, { cause: error });
   } finally {
     if (scaled && scaled !== source) { scaled.width = 0; scaled.height = 0; }
     if (source) { source.width = 0; source.height = 0; }

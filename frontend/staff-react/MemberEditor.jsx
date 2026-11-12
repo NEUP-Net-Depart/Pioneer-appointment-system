@@ -1,3 +1,5 @@
+import { Select, DatePicker } from './SelectionControls.jsx';
+import { RefreshButton } from './WorkspaceToolbar.jsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { dateKey } from '../../shared/time.js';
@@ -198,6 +200,10 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
   async function reload() {
     await client.invalidateQueries({ queryKey, refetchType: 'none' });
     const { data } = await result.refetch({ throwOnError: true });
+    await Promise.all([
+      departmentsQuery.refetch({ throwOnError: true }),
+      ...(canManageRoles ? [rolesQuery.refetch({ throwOnError: true })] : [])
+    ]);
     if (!profileDirty) {
       profileRevision.current = data.member.revision;
       setProfile({
@@ -228,13 +234,21 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
           </>
         )}
         <div hidden={confirmClose}>
+          <div className="field-actions">
+            <RefreshButton
+              disabled={busy || !!dirty}
+              label="刷新人员详情"
+              onRefresh={() => reload()}
+            />
+          </div>
           <StaffIdentity identities={detail?.member.identities} />
           <WorkspaceSections
             label="成员详情"
             value={section}
             onChange={setSection}
             items={[
-              { id: 'profile', label: '基本资料与任职身份' },
+              { id: 'profile', label: '基本资料' },
+              { id: 'memberships', label: '任职与身份' },
               ...(staffPermission(user, 'accounts.manage') ||
               (canManageRoles &&
                 !detail?.account?.protected &&
@@ -278,7 +292,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
               <label>
                 所属校区
                 <span className="workspace-native-select">
-                  <select
+                  <Select
                     data-motion-value="field"
                     value={profile.homeCampusId}
                     onChange={(event) =>
@@ -290,14 +304,14 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                         {item.name}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                   <span className="workspace-chevron" aria-hidden="true" />
                 </span>
               </label>
               <label>
                 学院
                 <span className="workspace-native-select">
-                  <select
+                  <Select
                     data-motion-value="field"
                     value={profile.college}
                     onChange={(event) => setProfile({ ...profile, college: event.target.value })}
@@ -311,21 +325,21 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                         {college}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                   <span className="workspace-chevron" aria-hidden="true" />
                 </span>
               </label>
               <label>
                 成员状态
                 <span className="workspace-native-select">
-                  <select
+                  <Select
                     data-motion-value="field"
                     value={profile.status}
                     onChange={(event) => setProfile({ ...profile, status: event.target.value })}
                   >
                     <option value="active">正常</option>
                     <option value="inactive">停用</option>
-                  </select>
+                  </Select>
                   <span className="workspace-chevron" aria-hidden="true" />
                 </span>
               </label>
@@ -354,8 +368,8 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
             ) : null
           ) : (
             <>
-              {(section === 'profile' || membershipDirty) && (
-                <div hidden={section !== 'profile'}>
+              {(section === 'memberships' || membershipDirty) && (
+                <div hidden={section !== 'memberships'}>
                   <MemberMemberships
                     detail={detail}
                     departments={departments}
@@ -435,7 +449,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                             <div className="workspace-binding-fields">
                               <label>
                                 角色
-                                <select
+                                <Select
                                   value={binding.roleId}
                                   onChange={(event) =>
                                     editBinding(index, { roleId: event.target.value })
@@ -455,7 +469,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                                         {role.enabled ? '' : '（已停用）'}
                                       </option>
                                     ))}
-                                </select>
+                                </Select>
                               </label>
                               <fieldset className="workspace-campus-options">
                                 <legend>授权校区</legend>
@@ -494,8 +508,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                               <div className="react-form-grid">
                                 <label>
                                   生效日期
-                                  <input
-                                    type="date"
+                                  <DatePicker
                                     required
                                     value={binding.effectiveFrom || ''}
                                     onChange={(event) =>
@@ -505,8 +518,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                                 </label>
                                 <label>
                                   结束日期（可选）
-                                  <input
-                                    type="date"
+                                  <DatePicker
                                     min={binding.effectiveFrom || undefined}
                                     value={binding.effectiveTo || ''}
                                     onChange={(event) =>
