@@ -35,6 +35,7 @@ function LengthInput({ maxLength, ...props }) {
   return (
     <>
       <input
+        data-track="staff.staffaccess.input.1"
         {...props}
         data-max-length={maxLength}
         aria-describedby={errorId}
@@ -63,6 +64,7 @@ export function StaffLogin({ pending, error, onLogin, onRetry }) {
         <Brand />
         <h1>工作人员登录</h1>
         <form
+          data-track="staff.staffaccess.form.2"
           className="login-form"
           id="login-form"
           onSubmit={async (event) => {
@@ -76,6 +78,7 @@ export function StaffLogin({ pending, error, onLogin, onRetry }) {
           <label>
             学号 <i>*</i>
             <input
+              data-track="staff.staffaccess.input.3"
               aria-label="学号"
               id="login-id"
               name="account"
@@ -87,6 +90,7 @@ export function StaffLogin({ pending, error, onLogin, onRetry }) {
           <label>
             密码 <i>*</i>
             <input
+              data-track="staff.staffaccess.input.4"
               aria-label="密码"
               id="login-password"
               name="password"
@@ -96,7 +100,12 @@ export function StaffLogin({ pending, error, onLogin, onRetry }) {
               autoComplete="current-password"
             />
           </label>
-          <button className="primary-btn" type="submit" disabled={pending}>
+          <button
+            data-track="staff.staffaccess.button.5"
+            className="primary-btn"
+            type="submit"
+            disabled={pending}
+          >
             进入系统 <span>→</span>
           </button>
         </form>
@@ -111,15 +120,19 @@ export function StaffLogin({ pending, error, onLogin, onRetry }) {
           {error}
         </p>
         {error && sessionStorage.getItem('pioneerToken') && (
-          <button className="secondary-btn" onClick={onRetry}>
+          <button
+            data-track="staff.staffaccess.button.6"
+            className="secondary-btn"
+            onClick={onRetry}
+          >
             重新加载工作区
           </button>
         )}
         <div className="login-links">
-          <a className="secondary-btn" href="/staff/?activate=1">
+          <a data-track="staff.staffaccess.a.7" className="secondary-btn" href="/staff/?activate=1">
             部员首次激活
           </a>
-          <a className="text-btn register-cancel" href="/">
+          <a data-track="staff.staffaccess.a.8" className="text-btn register-cancel" href="/">
             返回用户预约
           </a>
         </div>
@@ -199,6 +212,7 @@ export function StaffActivation() {
       <div className="login-panel">
         <Brand />
         <form
+          data-track="staff.staffaccess.form.9"
           id="activation-form"
           className="login-form"
           onSubmit={submit}
@@ -229,7 +243,12 @@ export function StaffActivation() {
           </label>
           <label>
             所属校区
-            <Select id="activation-campus" name="homeCampus" required>
+            <Select
+              data-track="staff.staffaccess.select.10"
+              id="activation-campus"
+              name="homeCampus"
+              required
+            >
               <option value="">请选择所属校区</option>
               <option>南湖</option>
               <option>浑南</option>
@@ -259,7 +278,12 @@ export function StaffActivation() {
               autoComplete="new-password"
             />
           </label>
-          <button className="primary-btn" type="submit" disabled={busy}>
+          <button
+            data-track="staff.staffaccess.button.11"
+            className="primary-btn"
+            type="submit"
+            disabled={busy}
+          >
             提交激活申请
           </button>
         </form>
@@ -273,12 +297,14 @@ export function StaffActivation() {
               {result.reviewNote}
             </p>
             <RefreshButton
+              data-track="staff.staffaccess.button.12"
               id="refresh-activation"
               className="secondary-btn"
               label="刷新审核结果"
               onRefresh={() => resultQuery.refetch({ throwOnError: true })}
             />
             <a
+              data-track="staff.staffaccess.a.13"
               id="activation-login"
               className="primary-btn"
               href="/staff/"
@@ -288,7 +314,11 @@ export function StaffActivation() {
             </a>
           </div>
         )}
-        <a className="secondary-btn activation-back" href="/staff/">
+        <a
+          data-track="staff.staffaccess.a.14"
+          className="secondary-btn activation-back"
+          href="/staff/"
+        >
           返回工作人员登录
         </a>
       </div>

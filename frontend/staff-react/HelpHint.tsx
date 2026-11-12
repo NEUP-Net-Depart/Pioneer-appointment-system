@@ -1,8 +1,17 @@
+import { controlPart } from '../../shared/telemetry-controls.js';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Info } from 'lucide-react';
 
-export function HelpHint({ label, children }: { label: string; children: React.ReactNode }) {
+export function HelpHint({
+  label,
+  children,
+  'data-track': trackId
+}: {
+  label: string;
+  children: React.ReactNode;
+  'data-track': string;
+}) {
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -57,6 +66,7 @@ export function HelpHint({ label, children }: { label: string; children: React.R
       onMouseLeave={() => setOpen(false)}
     >
       <button
+        data-track={trackId}
         ref={trigger}
         type="button"
         aria-label={label}
@@ -73,6 +83,7 @@ export function HelpHint({ label, children }: { label: string; children: React.R
             id={id}
             ref={panel}
             role="tooltip"
+            data-track={controlPart(trackId, 'panel')}
             className="workspace-help-tooltip"
             style={position}
           >

@@ -1,3 +1,4 @@
+import { track as trackEvent, reportClientError } from '../../../shared/telemetry-client.js';
 import { readQr, readDeviceCode } from '/shared/zxing.js';
 import { deviceSerialFromCode } from '/shared/warranty.js';
 
@@ -91,7 +92,7 @@ export async function readDeviceSerialImage(file, isCurrent = () => true) {
   throw new Error('图片中未找到设备序列号条码，请切换 OCR 识别文字。');
 }
 
-export function createScanner({
+function createScannerOperation({
   video,
   guide = null,
   status = null,
@@ -405,4 +406,23 @@ export function createScanner({
       await onCode(codes[0].text);
     }
   };
+}
+
+export function createScanner(options) {
+  return createScannerOperation({
+    ...options,
+    onState(state) {
+      if (state === 'opening') trackEvent('flow.step', { control: 'device.scan', result: 'start' });
+      if (state === 'error') reportClientError(null, 'SCANNER_ERROR', { control: 'device.scan' });
+      options.onState?.(state);
+    },
+    onCode(value) {
+      trackEvent('flow.result', { control: 'device.scan', result: 'ok' });
+      return options.onCode?.(value);
+    },
+    onCandidates(values) {
+      trackEvent('flow.result', { control: 'device.scan', result: 'ok' });
+      return options.onCandidates?.(values);
+    }
+  });
 }

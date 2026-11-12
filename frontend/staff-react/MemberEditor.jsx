@@ -228,14 +228,22 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
             <h3>放弃未保存的修改？</h3>
             <p>人员详情中的未保存修改都会丢失。</p>
             <div className="field-actions">
-              <button onClick={() => setConfirmClose(false)}>返回继续编辑</button>
-              <button onClick={onClose}>放弃修改并关闭</button>
+              <button
+                data-track="staff.membereditor.button.1"
+                onClick={() => setConfirmClose(false)}
+              >
+                返回继续编辑
+              </button>
+              <button data-track="staff.membereditor.button.2" onClick={onClose}>
+                放弃修改并关闭
+              </button>
             </div>
           </>
         )}
         <div hidden={confirmClose}>
           <div className="field-actions">
             <RefreshButton
+              data-track="staff.membereditor.refreshbutton.20"
               disabled={busy || !!dirty}
               label="刷新人员详情"
               onRefresh={() => reload()}
@@ -273,7 +281,12 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
               {message}
             </p>
           )}
-          <form ref={profileForm} hidden={section !== 'profile'} onSubmit={saveProfile}>
+          <form
+            data-track="staff.membereditor.form.3"
+            ref={profileForm}
+            hidden={section !== 'profile'}
+            onSubmit={saveProfile}
+          >
             <fieldset
               className="workspace-form-fields"
               aria-busy={!detail && !error}
@@ -283,6 +296,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
               <label>
                 姓名
                 <input
+                  data-track="staff.membereditor.input.4"
                   required
                   data-motion-value="field"
                   value={profile.name}
@@ -293,6 +307,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                 所属校区
                 <span className="workspace-native-select">
                   <Select
+                    data-track="staff.membereditor.select.5"
                     data-motion-value="field"
                     value={profile.homeCampusId}
                     onChange={(event) =>
@@ -312,6 +327,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                 学院
                 <span className="workspace-native-select">
                   <Select
+                    data-track="staff.membereditor.select.6"
                     data-motion-value="field"
                     value={profile.college}
                     onChange={(event) => setProfile({ ...profile, college: event.target.value })}
@@ -333,6 +349,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                 成员状态
                 <span className="workspace-native-select">
                   <Select
+                    data-track="staff.membereditor.select.7"
                     data-motion-value="field"
                     value={profile.status}
                     onChange={(event) => setProfile({ ...profile, status: event.target.value })}
@@ -346,18 +363,22 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
               <label>
                 专业
                 <input
+                  data-track="staff.membereditor.input.8"
                   maxLength={100}
                   value={profile.major}
                   onChange={(event) => setProfile({ ...profile, major: event.target.value })}
                 />
               </label>
-              <button className="react-primary">保存资料</button>
+              <button data-track="staff.membereditor.button.9" className="react-primary">
+                保存资料
+              </button>
             </fieldset>
           </form>
 
           {!detail ? (
             error || result.error ? (
               <button
+                data-track="staff.membereditor.button.10"
                 onClick={() => {
                   setError('');
                   result.refetch();
@@ -412,6 +433,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                 !detail.account?.protected &&
                 detail.actions?.editRoles !== false && (
                   <form
+                    data-track="staff.membereditor.form.11"
                     className="member-roles-form"
                     ref={rolesForm}
                     hidden={section !== 'participation'}
@@ -450,6 +472,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                               <label>
                                 角色
                                 <Select
+                                  data-track="staff.membereditor.select.12"
                                   value={binding.roleId}
                                   onChange={(event) =>
                                     editBinding(index, { roleId: event.target.value })
@@ -476,6 +499,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                                 {availableCampuses.map((campus) => (
                                   <label className="workspace-check" key={campus.id}>
                                     <input
+                                      data-track="staff.membereditor.input.13"
                                       type="checkbox"
                                       checked={selectedCampuses.includes(campus.id)}
                                       onChange={(event) => {
@@ -497,6 +521,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                               <label>
                                 原因
                                 <input
+                                  data-track="staff.membereditor.input.14"
                                   required
                                   maxLength={300}
                                   value={binding.reason || ''}
@@ -509,6 +534,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                                 <label>
                                   生效日期
                                   <DatePicker
+                                    data-track="staff.membereditor.input.15"
                                     required
                                     value={binding.effectiveFrom || ''}
                                     onChange={(event) =>
@@ -519,6 +545,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                                 <label>
                                   结束日期（可选）
                                   <DatePicker
+                                    data-track="staff.membereditor.input.16"
                                     min={binding.effectiveFrom || undefined}
                                     value={binding.effectiveTo || ''}
                                     onChange={(event) =>
@@ -530,6 +557,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                                 </label>
                               </div>
                               <button
+                                data-track="staff.membereditor.button.17"
                                 type="button"
                                 onClick={() =>
                                   setBindings((current) => current.filter((_, i) => i !== index))
@@ -543,6 +571,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                       })}
                       <div className="react-editor-actions">
                         <button
+                          data-track="staff.membereditor.button.18"
                           type="button"
                           disabled={!newBindingRoles.some((role) => role.enabled)}
                           onClick={() =>
@@ -560,7 +589,9 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                         >
                           添加系统授权
                         </button>
-                        <button className="react-primary">保存系统授权</button>
+                        <button data-track="staff.membereditor.button.19" className="react-primary">
+                          保存系统授权
+                        </button>
                       </div>
                     </fieldset>
                   </form>

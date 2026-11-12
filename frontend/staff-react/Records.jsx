@@ -1,3 +1,4 @@
+import { track } from '../../shared/telemetry-client.js';
 import { Select, DatePicker } from './SelectionControls.jsx';
 import { RefreshButton } from './WorkspaceToolbar.jsx';
 import { DataValue } from './DataValue';
@@ -141,9 +142,11 @@ export function Records({ user }) {
       if (!response.ok) throw new Error((await response.json()).error || '导出失败');
       const url = URL.createObjectURL(await response.blob());
       const link = document.createElement('a');
+      link.setAttribute('data-track', 'staff.records.dynamic.download');
       link.href = url;
       link.download = '先锋维修预约记录.csv';
       link.click();
+      track('flow.result', { control: 'staff.records.dynamic.download', result: 'ok' });
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (failure) {
       setMessage(failure.message);
@@ -198,6 +201,7 @@ export function Records({ user }) {
       value = sorts[index];
     return (
       <button
+        data-track="staff.records.button.1"
         className="record-sort"
         aria-label={`${columns[key]}${value ? `，第${index + 1}排序，${value.direction === 'asc' ? '升序' : '降序'}` : '，未排序'}；点击${!value ? '升序' : value.direction === 'asc' ? '降序' : '清除排序'}`}
         onClick={() => cycle(key)}
@@ -218,13 +222,16 @@ export function Records({ user }) {
     <section className="records-workspace">
       <WorkspaceHeader group="现场工作" title="预约记录">
         <RefreshButton
+          data-track="staff.records.button.2"
           key={JSON.stringify([filters, sorts])}
           onRefresh={() => refresh(true)}
           label="刷新记录"
         />
         {staffPermission(user, 'statistics.read') && (
           <WorkspaceMoreActions>
-            <button onClick={exportRecords}>导出全部可见记录</button>
+            <button data-track="staff.records.button.3" onClick={exportRecords}>
+              导出全部可见记录
+            </button>
           </WorkspaceMoreActions>
         )}
       </WorkspaceHeader>
@@ -249,6 +256,7 @@ export function Records({ user }) {
           <label>
             查找预约
             <input
+              data-track="staff.records.input.4"
               type="search"
               aria-label="查找预约"
               value={search}
@@ -258,6 +266,7 @@ export function Records({ user }) {
           </label>
           <div className="records-filter-actions">
             <button
+              data-track="staff.records.button.5"
               onClick={(event) => {
                 event.currentTarget.focus();
                 setMenu('date');
@@ -267,6 +276,7 @@ export function Records({ user }) {
               {filters.timeSlot ? ` · ${filters.timeSlot}` : ''}
             </button>
             <button
+              data-track="staff.records.button.6"
               onClick={(event) => {
                 event.currentTarget.focus();
                 setMenu('campus');
@@ -275,6 +285,7 @@ export function Records({ user }) {
               {summaries.campus}
             </button>
             <button
+              data-track="staff.records.button.7"
               aria-label="更多预约状态"
               aria-haspopup="dialog"
               onClick={(event) => {
@@ -284,7 +295,9 @@ export function Records({ user }) {
             >
               {statusItems.some((item) => item.id === filters.status) ? '更多状态' : statusText}
             </button>
-            <button onClick={reset}>重置</button>
+            <button data-track="staff.records.button.8" onClick={reset}>
+              重置
+            </button>
           </div>
         </div>
         <div className="records-result-tools">
@@ -295,6 +308,7 @@ export function Records({ user }) {
               ['all', '不限日期']
             ].map(([id, label]) => (
               <button
+                data-track="staff.records.button.9"
                 key={id}
                 type="button"
                 aria-pressed={datePreset === id}
@@ -326,11 +340,19 @@ export function Records({ user }) {
           </div>
         </div>
         <Notice>{list.error?.message}</Notice>
-        {list.error && <button onClick={() => refresh()}>重试读取</button>}
+        {list.error && (
+          <button data-track="staff.records.button.10" onClick={() => refresh()}>
+            重试读取
+          </button>
+        )}
         <section className="records-mobile-sort" aria-label="排序与优先级">
           <label>
             组合排序
-            <Select value="" onChange={(event) => cycle(event.target.value)}>
+            <Select
+              data-track="staff.records.select.11"
+              value=""
+              onChange={(event) => cycle(event.target.value)}
+            >
               <option value="" disabled>
                 选择排序字段
               </option>
@@ -341,7 +363,11 @@ export function Records({ user }) {
               ))}
             </Select>
           </label>
-          {sorts.length > 0 && <button onClick={() => setSorts([])}>清除排序</button>}
+          {sorts.length > 0 && (
+            <button data-track="staff.records.button.12" onClick={() => setSorts([])}>
+              清除排序
+            </button>
+          )}
         </section>
         <div data-motion-list="reveal" className="records-table-wrap" aria-busy={list.isPending}>
           <table className="records-table">
@@ -401,7 +427,12 @@ export function Records({ user }) {
                     </span>
                   </td>
                   <td>
-                    <button onClick={() => setSelected(item.id)}>查看详情</button>
+                    <button
+                      data-track="staff.records.button.13"
+                      onClick={() => setSelected(item.id)}
+                    >
+                      查看详情
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -411,6 +442,7 @@ export function Records({ user }) {
         {list.hasNextPage && (
           <div className="field-actions">
             <button
+              data-track="staff.records.button.14"
               onClick={() => list.fetchNextPage({ cancelRefetch: false })}
               disabled={list.isFetchingNextPage || list.isPending || !list.data}
             >
@@ -428,7 +460,9 @@ export function Records({ user }) {
                 : '调整日期、校区和状态筛选。'}
               {filters.q && ownCustomerSearch && '仅由你处理的工单可查姓名、学号和联系方式。'}
             </p>
-            <button onClick={reset}>清除筛选</button>
+            <button data-track="staff.records.button.15" onClick={reset}>
+              清除筛选
+            </button>
           </div>
         )}
       </section>
@@ -477,6 +511,7 @@ function RecordFilter({ menu, filters, counts, campuses, slots, onChange, onClos
           <div className="record-options">
             {['all', ...campuses].map((value) => (
               <button
+                data-track="staff.records.button.16"
                 key={value}
                 aria-pressed={filters.campus === value}
                 onClick={() => onChange({ campus: value === filters.campus ? 'all' : value })}
@@ -491,6 +526,7 @@ function RecordFilter({ menu, filters, counts, campuses, slots, onChange, onClos
             {[['all', '全部状态'], ['pending', '待处理'], ...Object.entries(statusLabels)].map(
               ([value, label]) => (
                 <button
+                  data-track="staff.records.button.17"
                   key={value}
                   aria-pressed={filters.status === value}
                   onClick={() => onChange({ status: filters.status === value ? 'all' : value })}
@@ -515,6 +551,7 @@ function RecordFilter({ menu, filters, counts, campuses, slots, onChange, onClos
             <div className="record-options">
               {dates.map((date) => (
                 <button
+                  data-track="staff.records.button.18"
                   key={date}
                   aria-current={date === today ? 'date' : undefined}
                   aria-pressed={filters.date === date}
@@ -532,6 +569,7 @@ function RecordFilter({ menu, filters, counts, campuses, slots, onChange, onClos
             <label>
               预约时段
               <Select
+                data-track="staff.records.select.19"
                 value={filters.timeSlot}
                 onChange={(event) => onChange({ timeSlot: event.target.value })}
               >
@@ -544,6 +582,7 @@ function RecordFilter({ menu, filters, counts, campuses, slots, onChange, onClos
             <label>
               历史日期
               <DatePicker
+                data-track="staff.records.input.20"
                 max={today}
                 value={filters.date <= today ? filters.date : ''}
                 onChange={(event) =>
@@ -551,13 +590,16 @@ function RecordFilter({ menu, filters, counts, campuses, slots, onChange, onClos
                 }
               />
             </label>
-            <button onClick={() => onChange({ date: '', dateFrom: '', dateTo: '', timeSlot: '' })}>
+            <button
+              data-track="staff.records.button.21"
+              onClick={() => onChange({ date: '', dateFrom: '', dateTo: '', timeSlot: '' })}
+            >
               清除时间筛选
             </button>
           </>
         )}
         <div className="field-actions">
-          <button className="field-primary" onClick={onClose}>
+          <button data-track="staff.records.button.22" className="field-primary" onClick={onClose}>
             完成
           </button>
         </div>
@@ -578,8 +620,8 @@ function RecordOverview({ result, filters, campuses, onFilter }) {
   }
   return (
     <section className="records-overview" aria-label="近期预约概览">
-      <details className="records-overview-disclosure" open>
-        <summary>
+      <details data-track="staff.records.details.23" className="records-overview-disclosure" open>
+        <summary data-track="staff.records.summary.24">
           <div>
             <h2>近期预约概览</h2>
           </div>
@@ -599,6 +641,7 @@ function RecordOverview({ result, filters, campuses, onFilter }) {
                 ))
             ].map((value) => (
               <button
+                data-track="staff.records.button.25"
                 key={value}
                 disabled={!data}
                 aria-pressed={
@@ -651,6 +694,7 @@ function RecordOverview({ result, filters, campuses, onFilter }) {
                 <article className="field-card records-campus" key={campus} aria-busy={!data}>
                   <h3>
                     <button
+                      data-track="staff.records.button.26"
                       aria-pressed={filters.campus === campus}
                       onClick={() => select({ campus })}
                     >
@@ -667,6 +711,7 @@ function RecordOverview({ result, filters, campuses, onFilter }) {
                       }
                     >
                       <button
+                        data-track="staff.records.button.27"
                         className="records-slot-main"
                         disabled={!data}
                         aria-pressed={
@@ -702,6 +747,7 @@ function RecordOverview({ result, filters, campuses, onFilter }) {
                           <DataValue label="容量">{item.capacity}</DataValue>
                         </span>
                         <button
+                          data-track="staff.records.button.28"
                           disabled={!data}
                           aria-pressed={
                             filters.campus === campus &&
@@ -715,6 +761,7 @@ function RecordOverview({ result, filters, campuses, onFilter }) {
                           待接收 <DataValue label="待接收">{item.booked}</DataValue>
                         </button>
                         <button
+                          data-track="staff.records.button.29"
                           disabled={!data}
                           aria-pressed={
                             filters.campus === campus &&

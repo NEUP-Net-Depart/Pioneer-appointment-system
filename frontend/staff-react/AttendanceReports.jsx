@@ -1,3 +1,4 @@
+import { track } from '../../shared/telemetry-client.js';
 import React, { useContext, useState } from 'react';
 import { ActivityContext } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
@@ -17,6 +18,7 @@ function MonthPicker({ value, onChange }) {
     <label className="report-month-picker">
       月份
       <DatePicker
+        data-track="staff.attendancereports.button.2"
         mode="month"
         value={value}
         min="2000-01"
@@ -32,9 +34,11 @@ function MonthPicker({ value, onChange }) {
 function download(bytes, filename, type) {
   const url = URL.createObjectURL(new Blob([bytes], { type }));
   const link = document.createElement('a');
+  link.setAttribute('data-track', 'staff.attendancereports.dynamic.download');
   link.href = url;
   link.download = filename;
   link.click();
+  track('flow.result', { control: 'staff.attendancereports.dynamic.download', result: 'ok' });
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
@@ -115,6 +119,7 @@ export function AttendanceReports({ canExport = true, embedded = false, campuses
         <>
           <div className="report-type-switch" role="group" aria-label="报表类型">
             <button
+              data-track="staff.attendancereports.button.8"
               type="button"
               aria-pressed={tab === 'volunteer'}
               onClick={() => {
@@ -126,6 +131,7 @@ export function AttendanceReports({ canExport = true, embedded = false, campuses
               志愿登记表
             </button>
             <button
+              data-track="staff.attendancereports.button.9"
               type="button"
               aria-pressed={tab === 'matrix'}
               onClick={() => {
@@ -159,6 +165,7 @@ export function AttendanceReports({ canExport = true, embedded = false, campuses
               }}
             />
             <CampusScope
+              data-track="staff.attendancereports.campusscope.12"
               label="报表校区"
               value={campusId}
               campuses={
@@ -169,6 +176,7 @@ export function AttendanceReports({ canExport = true, embedded = false, campuses
               }}
             />
             <RefreshButton
+              data-track="staff.attendancereports.button.10"
               key={`${tab}:${month}:${campusId}`}
               label="刷新报表"
               onRefresh={() =>
@@ -181,7 +189,11 @@ export function AttendanceReports({ canExport = true, embedded = false, campuses
                 ])
               }
             />
-            <button type="button" onClick={() => setWeekly(true)}>
+            <button
+              data-track="staff.attendancereports.button.13"
+              type="button"
+              onClick={() => setWeekly(true)}
+            >
               按周核算与导出
             </button>
           </div>
@@ -203,6 +215,7 @@ export function AttendanceReports({ canExport = true, embedded = false, campuses
                 </p>
               </div>
               <button
+                data-track="staff.attendancereports.button.11"
                 type="button"
                 className="field-primary report-download"
                 disabled={busy || downloading || !report || !!missing.length}

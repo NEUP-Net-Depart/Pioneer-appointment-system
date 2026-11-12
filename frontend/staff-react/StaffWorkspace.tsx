@@ -130,6 +130,7 @@ export function StaffWorkspace({
   const overflow = entries.filter((entry) => !primary.some((item) => item.id === entry.id));
   const projectLink = (
     <a
+      data-track="staff.staffworkspace.a.1"
       className="workspace-project-link"
       href="https://github.com/NEUP-Net-Depart/Pioneer-appointment-system"
       target="_blank"
@@ -143,13 +144,14 @@ export function StaffWorkspace({
   return (
     <div className={`field-app${loading ? ' workspace-bootstrap' : ''}`} aria-busy={loading}>
       <aside className="field-sidebar" ref={sidebar}>
-        <a className="field-brand" href="/staff/">
+        <a data-track="staff.staffworkspace.a.2" className="field-brand" href="/staff/">
           <img src="/assets/organization-logo.jpg" alt="" />
           <span>
             先锋<span>工作人员平台</span>
           </span>
         </a>
         <button
+          data-track="staff.staffworkspace.button.3"
           className="workspace-find"
           type="button"
           aria-keyshortcuts="Control+k Meta+k"
@@ -163,6 +165,7 @@ export function StaffWorkspace({
             <section className="workspace-nav-group" key={group.label}>
               <h2>
                 <button
+                  data-track="staff.staffworkspace.button.4"
                   className="workspace-group-toggle"
                   type="button"
                   aria-expanded={expandedGroups.includes(group.label)}
@@ -181,6 +184,7 @@ export function StaffWorkspace({
               <div className="workspace-nav-items" hidden={!expandedGroups.includes(group.label)}>
                 {group.items.map((entry) => (
                   <button
+                    data-track="staff.staffworkspace.button.5"
                     key={entry.id}
                     type="button"
                     className={active === entry.id ? 'active' : ''}
@@ -204,7 +208,11 @@ export function StaffWorkspace({
           </span>
           <div>
             <strong data-motion-value="text">{name}</strong>
-            <button type="button" onClick={() => choose('__logout__')}>
+            <button
+              data-track="staff.staffworkspace.button.6"
+              type="button"
+              onClick={() => choose('__logout__')}
+            >
               退出登录
             </button>
           </div>
@@ -220,6 +228,7 @@ export function StaffWorkspace({
       <nav className="field-bottom-nav" aria-label="手机岗位导航">
         {primary.map((entry) => (
           <button
+            data-track="staff.staffworkspace.button.7"
             key={entry.id}
             type="button"
             className={active === entry.id ? 'active' : ''}
@@ -239,6 +248,7 @@ export function StaffWorkspace({
         ))}
         {overflow.length > 0 && (
           <button
+            data-track="staff.staffworkspace.button.8"
             type="button"
             className={overflow.some((entry) => entry.id === active) ? 'active' : ''}
             onClick={() => setMore(true)}
@@ -268,13 +278,24 @@ export function StaffWorkspace({
             </p>
           )}
           <div className="field-actions">
-            <button type="button" disabled={resolving} onClick={() => setPending(null)}>
+            <button
+              data-track="staff.staffworkspace.button.9"
+              type="button"
+              disabled={resolving}
+              onClick={() => setPending(null)}
+            >
               {pending === '__logout__' ? '取消退出' : '留在当前页面'}
             </button>
-            <button type="button" disabled={resolving} onClick={() => resolveNavigation('discard')}>
+            <button
+              data-track="staff.staffworkspace.button.10"
+              type="button"
+              disabled={resolving}
+              onClick={() => resolveNavigation('discard')}
+            >
               丢弃并{actionText}
             </button>
             <button
+              data-track="staff.staffworkspace.button.11"
               type="button"
               className="field-primary"
               disabled={resolving}

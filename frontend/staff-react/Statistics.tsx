@@ -75,10 +75,11 @@ export function Statistics() {
   return (
     <section className="report-workspace">
       <WorkspaceHeader group="现场工作" title="统计分析">
-        <HelpHint label="统计口径">
+        <HelpHint data-track="staff.statistics.helphint.6" label="统计口径">
           每日服务按预约日期统计；故障分类按已完成维修统计；校区分布按预约总数统计。维修人员工作量为实际开始与完成记录，不代表值班考勤。
         </HelpHint>
         <RefreshButton
+          data-track="staff.statistics.button.1"
           key={`${range}:${day}`}
           onRefresh={() => result.refetch({ throwOnError: true })}
           label="刷新统计"
@@ -88,6 +89,7 @@ export function Statistics() {
         <label>
           统计范围
           <Select
+            data-track="staff.statistics.select.2"
             value={day ? 'day' : range}
             onChange={(event) => {
               if (event.target.value === 'day') setDay(dateKey());
@@ -105,9 +107,17 @@ export function Statistics() {
         </label>
         <label>
           查看单日
-          <DatePicker value={day} onChange={(event) => setDay(event.target.value)} />
+          <DatePicker
+            data-track="staff.statistics.input.3"
+            value={day}
+            onChange={(event) => setDay(event.target.value)}
+          />
         </label>
-        {day && <button onClick={() => setDay('')}>清除日期</button>}
+        {day && (
+          <button data-track="staff.statistics.button.4" onClick={() => setDay('')}>
+            清除日期
+          </button>
+        )}
       </section>
       <Notice>{error}</Notice>
       <div aria-busy={loading}>
@@ -185,7 +195,9 @@ export function Statistics() {
           </section>
         </div>
         {!data && !loading && error && (
-          <button onClick={() => result.refetch()}>重新读取统计</button>
+          <button data-track="staff.statistics.button.5" onClick={() => result.refetch()}>
+            重新读取统计
+          </button>
         )}
       </div>
     </section>

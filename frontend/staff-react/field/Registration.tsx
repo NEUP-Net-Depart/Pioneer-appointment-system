@@ -118,6 +118,7 @@ export function Registration({
       <Notice>{error}</Notice>
       {step === 0 ? (
         <form
+          data-track="staff.field.registration.form.1"
           className="field-form"
           onSubmit={(e) => {
             e.preventDefault();
@@ -135,6 +136,7 @@ export function Registration({
               <label key={key}>
                 {label}
                 <input
+                  data-track="staff.field.registration.input.2"
                   required={key !== 'deviceModel'}
                   maxLength={Number(max)}
                   value={form[key] || ''}
@@ -145,6 +147,7 @@ export function Registration({
             <label>
               故障类型
               <Select
+                data-track="staff.field.registration.select.3"
                 value={form.faultType}
                 onChange={(e) => setForm({ ...form, faultType: e.target.value })}
               >
@@ -166,15 +169,18 @@ export function Registration({
           <label>
             故障描述（选填）
             <textarea
+              data-track="staff.field.registration.textarea.4"
               value={form.issue || ''}
               maxLength={10000}
               onChange={(e) => setForm({ ...form, issue: e.target.value })}
             />
           </label>
-          <button className="field-primary">下一步：机主确认</button>
+          <button data-track="staff.field.registration.button.5" className="field-primary">
+            下一步：机主确认
+          </button>
         </form>
       ) : (
-        <form className="field-form" onSubmit={submit}>
+        <form data-track="staff.field.registration.form.6" className="field-form" onSubmit={submit}>
           <div className="field-ticket">
             <strong data-motion-value="text">
               {form.name} · {form.studentId}
@@ -193,7 +199,7 @@ export function Registration({
             </p>
           </section>
           <label className="field-check">
-            <input type="checkbox" required />
+            <input data-track="staff.field.registration.input.7" type="checkbox" required />
             <span>机主已阅读并同意协议，确认重要数据已备份</span>
           </label>
           <label>
@@ -225,6 +231,7 @@ export function Registration({
           </label>
           <div className="field-actions">
             <button
+              data-track="staff.field.registration.button.8"
               type="button"
               onClick={() => {
                 strokes.current = [];
@@ -233,10 +240,18 @@ export function Registration({
             >
               清空签名
             </button>
-            <button type="button" onClick={() => setStep(0)}>
+            <button
+              data-track="staff.field.registration.button.9"
+              type="button"
+              onClick={() => setStep(0)}
+            >
               返回修改
             </button>
-            <button className="field-primary" disabled={busy}>
+            <button
+              data-track="staff.field.registration.button.10"
+              className="field-primary"
+              disabled={busy}
+            >
               {busy ? '正在登记…' : '确认登记'}
             </button>
           </div>

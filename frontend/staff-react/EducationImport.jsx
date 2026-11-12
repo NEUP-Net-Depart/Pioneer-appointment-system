@@ -1,3 +1,4 @@
+import { track } from '../../shared/telemetry-client.js';
 import { Select } from './SelectionControls.jsx';
 import React, { useState } from 'react';
 import { Modal } from './field/ui';
@@ -64,9 +65,11 @@ export function EducationImport({ onClose, onSaved }) {
     });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
+    link.setAttribute('data-track', 'staff.educationimport.dynamic.download');
     link.href = url;
     link.download = '成员学院补充模板.csv';
     link.click();
+    track('flow.result', { control: 'staff.educationimport.dynamic.download', result: 'ok' });
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   const needsCollege = (preview?.items || []).some(
@@ -77,7 +80,11 @@ export function EducationImport({ onClose, onSaved }) {
       {done ? (
         <>
           <p role="status">已更新 {done} 名成员的学院。</p>
-          <button className="field-primary" onClick={onClose}>
+          <button
+            data-track="staff.educationimport.button.1"
+            className="field-primary"
+            onClick={onClose}
+          >
             完成
           </button>
         </>
@@ -94,10 +101,13 @@ export function EducationImport({ onClose, onSaved }) {
           {!preview ? (
             <>
               <div className="field-actions">
-                <button onClick={template}>下载 CSV 模板</button>
+                <button data-track="staff.educationimport.button.2" onClick={template}>
+                  下载 CSV 模板
+                </button>
                 <label className="field-file-button">
                   读取 CSV
                   <input
+                    data-track="staff.educationimport.input.3"
                     type="file"
                     accept=".csv,text/csv"
                     disabled={busy}
@@ -111,6 +121,7 @@ export function EducationImport({ onClose, onSaved }) {
               <label>
                 名单内容
                 <textarea
+                  data-track="staff.educationimport.textarea.4"
                   rows={8}
                   value={csv}
                   placeholder="studentId,college"
@@ -118,6 +129,7 @@ export function EducationImport({ onClose, onSaved }) {
                 />
               </label>
               <button
+                data-track="staff.educationimport.button.5"
                 className="field-primary"
                 disabled={busy || !csv.trim()}
                 onClick={() => run()}
@@ -145,6 +157,7 @@ export function EducationImport({ onClose, onSaved }) {
                         <td>
                           <span className="workspace-native-select">
                             <Select
+                              data-track="staff.educationimport.select.6"
                               aria-label={`${item.name}所属学院`}
                               value={colleges[item.studentId] || ''}
                               onChange={(event) =>
@@ -176,10 +189,15 @@ export function EducationImport({ onClose, onSaved }) {
                 </table>
               </div>
               <div className="field-actions">
-                <button disabled={busy} onClick={() => setPreview(null)}>
+                <button
+                  data-track="staff.educationimport.button.7"
+                  disabled={busy}
+                  onClick={() => setPreview(null)}
+                >
                   返回修改名单
                 </button>
                 <button
+                  data-track="staff.educationimport.button.8"
                   className="field-primary"
                   disabled={busy || needsCollege}
                   onClick={() => run(true)}

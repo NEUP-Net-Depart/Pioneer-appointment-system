@@ -37,7 +37,8 @@ export default defineConfig({
         '**/records-loading.spec.mjs',
         '**/maintenance-affairs.spec.mjs',
         '**/member-identities.spec.mjs',
-        '**/admin-controls.spec.mjs'
+        '**/admin-controls.spec.mjs',
+        '**/telemetry.spec.mjs'
       ],
       use: {
         browserName: 'webkit',

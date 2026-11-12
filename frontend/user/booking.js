@@ -1,3 +1,4 @@
+import { track } from '/shared/telemetry-client.js';
 import { $,showToast,escapeHtml } from '/shared/utils.js';
 import { apiJson } from '/shared/api.js';
 import { COLLEGES,BRANDS,STUDENT_DEVICE_TYPES,FAULT_TYPES,ANSWERS,FAULT_HINTS,AGREEMENT_VERSION,STUDENT_FIELD_LIMITS,characterCount,studentFieldErrors } from '/shared/student-booking.js';
@@ -30,8 +31,8 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
   options(field('deviceType'),STUDENT_DEVICE_TYPES,'请选择设备类型');
   options(field('brand'),[...BRANDS,{value:'other',label:'其它'}],'请选择品牌');
   options(field('college'),[...COLLEGES,{value:'other',label:'其他学院（手动填写）'}],'请选择学院');
-  for(const root of form.querySelectorAll('[data-answer]'))root.innerHTML=ANSWERS.map(answer=>`<label><input type="radio" name="${root.dataset.answer}" value="${answer}" /><span>${answer}</span></label>`).join('');
-  $('#fault-options').innerHTML=FAULT_TYPES.map(value=>`<label><input type="radio" name="faultType" value="${value}" /><span>${value}</span></label>`).join('');
+  for(const root of form.querySelectorAll('[data-answer]'))root.innerHTML=ANSWERS.map(answer=>`<label><input data-track=student.booking.input.1 type="radio" name="${root.dataset.answer}" value="${answer}" /><span>${answer}</span></label>`).join('');
+  $('#fault-options').innerHTML=FAULT_TYPES.map(value=>`<label><input data-track=student.booking.input.2 type="radio" name="faultType" value="${value}" /><span>${value}</span></label>`).join('');
   const photos=createPhotoCollection($('#booking-photos'),{inputId:'appointment-attachments',onChange:()=>{if(step===3)review();},onUploadChange:renderUploads});
   const picker=initSlotPicker({onChange:()=>{saveDraft();if(step>1 && !created){renderTime();if(picker.issue())error(picker.issue()+'其他已填信息已保留。');}}});
   function rawFields(){const values={};for(const control of form.querySelectorAll('input[name],select[name],textarea[name]')){if(control.name==='agreement' || control.type==='checkbox')continue;if(control.type==='radio'){if(control.checked)values[control.name]=control.value;}else values[control.name]=control.value;}return values;}
@@ -54,7 +55,7 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
   }
   function renderTime(){const summary=timeSummary(picker.value());$('#step-two-time').innerHTML=summary;$('#step-three-time').innerHTML=summary;}
   function review(){renderTime();$('#booking-review').innerHTML=informationGroups({...data(),photoCount:photos.entries().length});}
-  function go(next,{focus=true}={}){step=next;animateLayout(form,()=>{for(const panel of form.querySelectorAll('[data-step]'))panel.hidden=Number(panel.dataset.step)!==next;
+  function go(next,{focus=true}={}){track('flow.step',{control:['','booking.step.1','booking.step.2','booking.step.3'][next],result:'start'});step=next;animateLayout(form,()=>{for(const panel of form.querySelectorAll('[data-step]'))panel.hidden=Number(panel.dataset.step)!==next;
     [...$('#booking-steps').children].forEach((item,index)=>{if(index+1===next)item.setAttribute('aria-current','step');else item.removeAttribute('aria-current');});
     if(next===3)review();else if(next===2)renderTime();},{stagger:true});
     saveDraft();if(focus){const heading=form.querySelector(`[data-step="${next}"] h2`);heading.focus({preventScroll:true});heading.scrollIntoView({block:'start',behavior:'auto'});}picker.setHome(next===1);}

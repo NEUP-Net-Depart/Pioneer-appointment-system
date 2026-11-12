@@ -8,3 +8,7 @@ PII_ENCRYPTION_KEY=replace-with-64-hexadecimal-characters
 # Used ONLY by the local seed script, never by an HTTP endpoint:
 ROOT001_PASSWORD=replace-with-a-strong-unique-password
 ROOT002_PASSWORD=replace-with-another-strong-password
+
+# Optional local diagnostics; build with TELEMETRY_ENABLED=true too.
+# TELEMETRY_ENABLED=true
+# OBSERVABILITY_LOGS=true

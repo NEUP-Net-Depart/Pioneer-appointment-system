@@ -131,16 +131,28 @@ export function Members({ user }) {
           <div className="members-list-actions">
             {staffPermission(user, 'members.manage') && (
               <>
-                <button className="react-primary" onClick={() => setCreating(true)}>
+                <button
+                  data-track="staff.members.button.4"
+                  className="react-primary"
+                  onClick={() => setCreating(true)}
+                >
                   新增人员
                 </button>
-                <button onClick={() => setImporting(true)}>批量导入</button>
+                <button data-track="staff.members.button.5" onClick={() => setImporting(true)}>
+                  批量导入
+                </button>
                 <WorkspaceMoreActions>
-                  <button onClick={() => setEducationImporting(true)}>批量补学院</button>
+                  <button
+                    data-track="staff.members.button.6"
+                    onClick={() => setEducationImporting(true)}
+                  >
+                    批量补学院
+                  </button>
                 </WorkspaceMoreActions>
               </>
             )}
             <RefreshButton
+              data-track="staff.members.button.7"
               key={JSON.stringify([search, campus, status])}
               onRefresh={() => list.refetch({ throwOnError: true })}
               label="刷新人员"
@@ -151,6 +163,7 @@ export function Members({ user }) {
           <label>
             查找成员
             <input
+              data-track="staff.members.input.1"
               aria-label="搜索成员"
               value={q}
               onChange={(event) => setQ(event.target.value)}
@@ -160,6 +173,7 @@ export function Members({ user }) {
           <label>
             所属校区
             <Select
+              data-track="staff.members.select.2"
               aria-label="筛选成员校区"
               value={campus}
               onChange={(event) => setCampus(event.target.value)}
@@ -178,6 +192,7 @@ export function Members({ user }) {
           <label>
             成员状态
             <Select
+              data-track="staff.members.select.3"
               aria-label="筛选成员状态"
               value={status}
               onChange={(event) => setStatus(event.target.value)}
@@ -225,7 +240,9 @@ export function Members({ user }) {
                 {item.college && <small data-motion-value="text">{item.college}</small>}
               </span>
               <span className="members-row-action">
-                <button onClick={() => setSelected(item)}>人员详情</button>
+                <button data-track="staff.members.button.8" onClick={() => setSelected(item)}>
+                  人员详情
+                </button>
               </span>
             </div>
           ))}
@@ -234,6 +251,7 @@ export function Members({ user }) {
               <h2>没有找到成员</h2>
               {(q || campus || status) && (
                 <button
+                  data-track="staff.members.button.9"
                   onClick={() => {
                     setQ('');
                     setCampus('');
@@ -249,6 +267,7 @@ export function Members({ user }) {
         <footer ref={sentinel} className="members-list-footer" aria-busy={list.isFetchingNextPage}>
           {list.hasNextPage && (
             <button
+              data-track="staff.members.button.10"
               disabled={list.isFetching}
               onClick={() => list.fetchNextPage({ cancelRefetch: false })}
             >

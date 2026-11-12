@@ -1,3 +1,4 @@
+import { reportClientError, trackPage } from '../../shared/telemetry-client.js';
 import './web-update.js';
 import { workspaceModule } from './workspace-module.js';
 import { QueryCache, QueryClientProvider, useQuery } from '@tanstack/react-query';
@@ -81,6 +82,16 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
   const [workScene, setWorkScene] = useState(null);
   const [visited, setVisited] = useState(['workbench', 'duties']);
   const [settingsSection, setSettingsSection] = useState('security');
+  useEffect(() => {
+    trackPage(
+      'staff.' +
+        (page === 'workbench'
+          ? workScene || 'workbench'
+          : page === 'settings' && settingsSection === 'capacity'
+            ? 'capacity'
+            : page)
+    );
+  }, [page, workScene, settingsSection]);
   const profileRef = useRef(null);
   profileRef.current = user && { ...user, permissions: field?.permissions || user.permissions };
   useEffect(() => {
@@ -303,6 +314,9 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
 
 class WorkspaceModuleBoundary extends React.Component {
   state = { failed: false };
+  componentDidCatch(error) {
+    reportClientError(error, 'REACT_RENDER_ERROR');
+  }
   static getDerivedStateFromError() {
     return { failed: true };
   }
@@ -330,7 +344,7 @@ function WorkspacePending({ error, onRetry }) {
         </p>
       )}
       {error ? (
-        <button className="field-primary" onClick={onRetry}>
+        <button data-track="staff.main.button.1" className="field-primary" onClick={onRetry}>
           重新加载工作区
         </button>
       ) : (
@@ -380,6 +394,10 @@ function WorkspaceSession({ identity }) {
 }
 function StaffApp() {
   const identity = useStaffIdentity();
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get('activate') === '1') trackPage('staff.activation');
+    else if (!identity.user) trackPage('staff.login');
+  }, [identity.user]);
   if (new URLSearchParams(location.search).get('activate') === '1') return <StaffActivation />;
   if (!identity.user && !identity.hasSession)
     return <StaffLogin {...identity} onLogin={identity.login} onRetry={identity.retry} />;
@@ -398,7 +416,9 @@ function StaffApp() {
 }
 const identityClient = createQueryClient();
 createRoot(document.getElementById('staff-react-root')).render(
-  <QueryClientProvider client={identityClient}>
-    <StaffApp />
-  </QueryClientProvider>
+  <WorkspaceModuleBoundary>
+    <QueryClientProvider client={identityClient}>
+      <StaffApp />
+    </QueryClientProvider>
+  </WorkspaceModuleBoundary>
 );

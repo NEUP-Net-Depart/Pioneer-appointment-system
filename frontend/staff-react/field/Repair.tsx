@@ -97,11 +97,12 @@ function RepairOrder({
             <section className="field-form">
               {!item.receivedAt && (
                 <>
-                  <details className="field-details">
-                    <summary>修正设备资料</summary>
+                  <details data-track="staff.field.repair.details.1" className="field-details">
+                    <summary data-track="staff.field.repair.summary.2">修正设备资料</summary>
                     <label>
                       品牌
                       <input
+                        data-track="staff.field.repair.input.3"
                         maxLength={80}
                         value={r.verification.brand}
                         onChange={(e) =>
@@ -112,6 +113,7 @@ function RepairOrder({
                     <label>
                       型号（未知可留空）
                       <input
+                        data-track="staff.field.repair.input.4"
                         maxLength={120}
                         value={r.verification.model}
                         onChange={(e) =>
@@ -132,12 +134,18 @@ function RepairOrder({
               )}
               <div className="field-actions repair-intake-actions">
                 {item.canStart && (
-                  <button className="field-primary" disabled={busy} onClick={() => r.start()}>
+                  <button
+                    data-track="staff.field.repair.button.5"
+                    className="field-primary"
+                    disabled={busy}
+                    onClick={() => r.start()}
+                  >
                     {item.receivedAt ? '确认接手并开始维修' : '接收并开始维修'}
                   </button>
                 )}
                 {item.canReceive && (
                   <button
+                    data-track="staff.field.repair.button.6"
                     className={!item.canStart ? 'field-primary' : undefined}
                     disabled={busy}
                     onClick={() => r.start(true)}
@@ -146,12 +154,20 @@ function RepairOrder({
                   </button>
                 )}
                 {r.timedOut && item.canReceive && (
-                  <button disabled={busy} onClick={() => r.start(true, true)}>
+                  <button
+                    data-track="staff.field.repair.button.7"
+                    disabled={busy}
+                    onClick={() => r.start(true, true)}
+                  >
                     稍后补传，仅接收设备
                   </button>
                 )}
                 {r.timedOut && item.canStart && (
-                  <button disabled={busy} onClick={() => r.start(false, true)}>
+                  <button
+                    data-track="staff.field.repair.button.8"
+                    disabled={busy}
+                    onClick={() => r.start(false, true)}
+                  >
                     稍后补传，接收并开始维修
                   </button>
                 )}
@@ -169,7 +185,11 @@ function RepairOrder({
                 busy={busy}
                 onFile={r.onFile}
               />
-              <button disabled={busy} onClick={r.supplement}>
+              <button
+                data-track="staff.field.repair.button.9"
+                disabled={busy}
+                onClick={r.supplement}
+              >
                 手动补传原图
               </button>
             </section>
@@ -178,19 +198,25 @@ function RepairOrder({
             <section className="field-form">
               <label className="field-check">
                 <input
+                  data-track="staff.field.repair.input.10"
                   type="checkbox"
                   checked={received}
                   onChange={(e) => setReceived(e.target.checked)}
                 />
                 我已实际接到设备，确认成为当前主修
               </label>
-              <button disabled={busy || !received} onClick={r.handoff}>
+              <button
+                data-track="staff.field.repair.button.11"
+                disabled={busy || !received}
+                onClick={r.handoff}
+              >
                 确认接手
               </button>
             </section>
           )}
           {(item.canFinish || item.canCorrect) && (
             <form
+              data-track="staff.field.repair.form.12"
               className="field-form"
               onSubmit={(e) => {
                 e.preventDefault();
@@ -202,6 +228,7 @@ function RepairOrder({
                 {repairOutcomes.map((value) => (
                   <label className="field-check" key={value}>
                     <input
+                      data-track="staff.field.repair.input.13"
                       type="radio"
                       name="outcome"
                       required
@@ -215,6 +242,7 @@ function RepairOrder({
               <label>
                 简短处理说明
                 <textarea
+                  data-track="staff.field.repair.textarea.14"
                   required
                   maxLength={1000}
                   value={r.note}
@@ -222,7 +250,11 @@ function RepairOrder({
                   placeholder="说明处理结果；部分解决或未解决时写清剩余问题"
                 />
               </label>
-              <button className="field-primary" disabled={busy}>
+              <button
+                data-track="staff.field.repair.button.15"
+                className="field-primary"
+                disabled={busy}
+              >
                 {item.canFinish ? '结束本次服务' : '保存结果更正'}
               </button>
             </form>
@@ -264,6 +296,7 @@ function RepairOrder({
           )}
           {customerCredential && (
             <a
+              data-track="staff.field.repair.a.16"
               href={`/#${new URLSearchParams({ appointment: customerCredential.id, access: customerCredential.accessToken })}`}
               target="_blank"
               rel="noreferrer"

@@ -1,3 +1,4 @@
+import { track, reportClientError } from '../../../shared/telemetry-client.js';
 import { createWorker } from 'tesseract.js';
 import {
   deviceSerialCandidatesFromText,
@@ -18,7 +19,7 @@ function serialEvidence(result) {
 }
 
 /** @param {File} file @param {{signal?: AbortSignal, onProgress?: (message: string) => void}} [options] */
-export async function recognizeSerialPhoto(file, { signal, onProgress = () => {} } = {}) {
+async function recognizeSerialPhotoOperation(file, { signal, onProgress = () => {} } = {}) {
   if (!file.type.startsWith('image/') || file.size > 12 * 1024 * 1024)
     throw new Error('请选择不超过 12 MB 的设备标签照片。');
   const url = URL.createObjectURL(file);
@@ -107,5 +108,23 @@ export async function recognizeSerialPhoto(file, { signal, onProgress = () => {}
     URL.revokeObjectURL(url);
     if (worker) await worker.terminate().catch(() => {});
     else pending?.then((value) => value.terminate()).catch(() => {});
+  }
+}
+
+export async function recognizeSerialPhoto(file, options = {}) {
+  const started = Date.now();
+  track('flow.step', { control: 'device.ocr', result: 'start' });
+  try {
+    const result = await recognizeSerialPhotoOperation(file, options);
+    track('flow.result', { control: 'device.ocr', result: 'ok', durationMs: Date.now() - started });
+    return result;
+  } catch (error) {
+    if (options.signal?.aborted && options.signal.reason?.name !== 'TimeoutError')
+      track('flow.result', { control: 'device.ocr', result: 'cancelled' });
+    else
+      reportClientError(error, options.signal?.aborted ? 'REQUEST_TIMEOUT' : 'OCR_ERROR', {
+        control: 'device.ocr'
+      });
+    throw error;
   }
 }

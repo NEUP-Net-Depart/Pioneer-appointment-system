@@ -33,6 +33,7 @@ export function DutyWorkspace({ user, initialCampus }) {
     [planDirty, setPlanDirty] = useState(false);
   const scope = (task, disabled) => (
     <CampusScope
+      data-track="staff.dutyworkspace.select.1"
       label={task === 'today' ? '考勤校区' : '排班校区'}
       campuses={campuses.map((id) => ({ id, name: dutyCampusNames[id] }))}
       value={campusFor(task)}

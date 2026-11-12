@@ -139,6 +139,7 @@ export function Permissions() {
         description="接待、维修、排班和值班考勤按任职部门、职位及授权校区自动确定，无需在此配置。"
       >
         <RefreshButton
+          data-track="staff.permissions.refreshbutton.12"
           disabled={busy || !!dirty}
           label="刷新角色权限"
           onRefresh={async () => {
@@ -176,6 +177,7 @@ export function Permissions() {
           <h2>角色</h2>
           {roles.map((role) => (
             <button
+              data-track="staff.permissions.button.1"
               type="button"
               disabled={busy || !!dirty}
               aria-pressed={selected?.id === role.id}
@@ -191,7 +193,9 @@ export function Permissions() {
         <article className="react-card">
           <h2 data-motion-value="text">{selected?.name || '角色权限'}</h2>
           {!selected && error && (
-            <button onClick={() => rolesQuery.refetch()}>重新读取角色权限</button>
+            <button data-track="staff.permissions.button.2" onClick={() => rolesQuery.refetch()}>
+              重新读取角色权限
+            </button>
           )}
           {!selected && !loading && !error && <p>当前没有可查看的角色。</p>}
           {(selected || loading) && (
@@ -208,6 +212,7 @@ export function Permissions() {
                 <label>
                   查找权限
                   <input
+                    data-track="staff.permissions.input.3"
                     type="search"
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
@@ -216,6 +221,7 @@ export function Permissions() {
                 </label>
                 <label className="permission-filter">
                   <input
+                    data-track="staff.permissions.input.4"
                     type="checkbox"
                     checked={enabledOnly}
                     onChange={(event) => setEnabledOnly(event.target.checked)}
@@ -253,6 +259,7 @@ export function Permissions() {
                   >
                     <label className="react-permission">
                       <input
+                        data-track="staff.permissions.input.5"
                         type="checkbox"
                         checked={codes.has(permission.code)}
                         onChange={(event) =>
@@ -277,11 +284,14 @@ export function Permissions() {
                       (grant, index) =>
                         grant.permissionCode === permission.code && (
                           <details
+                            data-track="staff.permissions.details.6"
                             data-motion-item=""
                             key={grant.id || index}
                             className="react-grant-details"
                           >
-                            <summary>范围、条件与有效期</summary>
+                            <summary data-track="staff.permissions.summary.7">
+                              范围、条件与有效期
+                            </summary>
                             <ScopeFields
                               value={grant.scope}
                               onChange={(scope) => updateGrant(index, { scope })}
@@ -301,6 +311,7 @@ export function Permissions() {
                               <label>
                                 权限生效日期
                                 <DatePicker
+                                  data-track="staff.permissions.input.8"
                                   value={
                                     grant.validity?.effectiveFrom || grant.validity?.from || ''
                                   }
@@ -318,6 +329,7 @@ export function Permissions() {
                               <label>
                                 权限结束日期
                                 <DatePicker
+                                  data-track="staff.permissions.input.9"
                                   value={grant.validity?.effectiveTo || grant.validity?.to || ''}
                                   onChange={(event) =>
                                     updateGrant(index, {
@@ -345,6 +357,7 @@ export function Permissions() {
                   {dirty ? '有未保存的修改' : selected ? '已与服务器同步' : ''}
                 </span>
                 <button
+                  data-track="staff.permissions.button.10"
                   type="button"
                   disabled={!dirty || busy}
                   onClick={() => {
@@ -355,6 +368,7 @@ export function Permissions() {
                   放弃修改
                 </button>
                 <button
+                  data-track="staff.permissions.button.11"
                   type="button"
                   className="react-primary"
                   disabled={!dirty || busy}

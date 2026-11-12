@@ -25,14 +25,17 @@
     "audit:architecture": "node scripts/audit.mjs",
     "db:verify": "node scripts/verify-migrations.mjs",
     "verify": "npm run verify:checks && npm run test:e2e",
-    "verify:checks": "npm run format:staff:check && npm run lint && npm run typecheck && npm run audit:architecture && npm run db:history && npm run check && npm test && npm run db:verify",
+    "verify:checks": "npm run format:staff:check && npm run lint && npm run typecheck && npm run telemetry:check && npm run audit:architecture && npm run db:history && npm run check && npm test && npm run db:verify",
     "test:e2e": "node scripts/test-e2e.mjs",
     "preview:local": "node scripts/test-e2e.mjs --serve",
     "release:plan": "node scripts/release-plan.mjs",
     "typecheck": "tsc --noEmit",
     "format:staff": "prettier --write \"frontend/staff-react/**/*.{js,jsx,ts,tsx,css}\" \"src/{services,db}/staff-platform{.js,/**/*.js}\"",
     "format:staff:check": "prettier --check \"frontend/staff-react/**/*.{js,jsx,ts,tsx,css}\" \"src/{services,db}/staff-platform{.js,/**/*.js}\"",
-    "db:history": "node scripts/verify-migration-history.mjs"
+    "db:history": "node scripts/verify-migration-history.mjs",
+    "telemetry:catalog": "node scripts/telemetry-catalog.mjs",
+    "telemetry:check": "node scripts/telemetry-catalog.mjs --check",
+    "telemetry:query": "node scripts/telemetry-query.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

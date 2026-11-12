@@ -9,7 +9,7 @@ export function initBookingNotices() {
   const key=item=>`${campus}/${item.id}/${item.revision}`;
   const missing=()=>items.find(item=>item.important && !accepted.has(key(item)));
   const visible=()=>home && active && !document.hidden;
-  const readButton=item=>`<button type="button" class="secondary-btn booking-notice-read" data-read-notice="${escapeHtml(item.id)}">我已阅读并确认此公告</button>`;
+  const readButton=item=>`<button data-track=student.booking-notices.button.1 type="button" class="secondary-btn booking-notice-read" data-read-notice="${escapeHtml(item.id)}">我已阅读并确认此公告</button>`;
   function article(item) {
     return `<article class="booking-notice${item.important ? ' is-important' : ''}" data-announcement="${escapeHtml(item.id)}"><h3>${item.important ? '必读 · ' : ''}${escapeHtml(item.title)}</h3><p>${escapeHtml(item.content)}</p>${item.important ? readButton(item) : ''}</article>`;
   }
@@ -55,7 +55,7 @@ export function initBookingNotices() {
       if(fingerprint!==nextFingerprint){
         close();campus=nextCampus;items=nextItems;fingerprint=nextFingerprint;
         root.innerHTML=items.map(item=>item.displayMode==='modal'
-          ? `<article class="booking-notice booking-notice-preview"><div><h3>${item.important ? '必读 · ' : ''}${escapeHtml(item.title)}</h3><span>${item.important ? '阅读确认后可继续预约' : '校区公告'}</span></div><button type="button" class="secondary-btn" data-open-notices="${escapeHtml(item.id)}">查看公告</button></article>`
+          ? `<article class="booking-notice booking-notice-preview"><div><h3>${item.important ? '必读 · ' : ''}${escapeHtml(item.title)}</h3><span>${item.important ? '阅读确认后可继续预约' : '校区公告'}</span></div><button data-track=student.booking-notices.button.2 type="button" class="secondary-btn" data-open-notices="${escapeHtml(item.id)}">查看公告</button></article>`
           : article(item)).join('');
         root.insertAdjacentHTML('afterbegin','<p id="booking-notice-error" class="field-error" role="alert" hidden>请先点击阅读按钮，确认已阅读必读公告后再继续。</p>');
         body.innerHTML=items.filter(item=>item.displayMode==='modal').map(article).join('');

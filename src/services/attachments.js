@@ -6,7 +6,7 @@ import { requireRole } from './permissions.js';
 function metadata(item, staff) {
   return { id: item.id, appointmentId: item.appointmentId, filename: item.filename, mimeType: item.mimeType, size: item.size, createdAt: item.createdAt, expiresAt: item.expiresAt, purpose: item.purpose, ...(staff ? {uploadedBy:item.uploadedBy} : {}) };
 }
-export function attachmentService(appointments, attachments, bucket, maxBytes, field) {
+export function attachmentService(appointments, attachments, bucket, maxBytes, field, observation) {
   async function authorize(id, user, accessToken) {
     if (!user) return guestAppointment(appointments,id,accessToken);
     const item = await appointments.find(id);
@@ -53,7 +53,7 @@ export function attachmentService(appointments, attachments, bucket, maxBytes, f
         // D1 may have committed create() before its response was lost. Persist cleanup
         // intent and hide metadata before deleting R2, so every later failure is retryable.
         try { await attachments.markDeleting(attachmentId); await bucket.delete(objectKey); await attachments.release(attachmentId); }
-        catch { console.error('Attachment compensation incomplete; retained storage reservation', attachmentId); }
+        catch { observation?.failure('ATTACHMENT_COMPENSATION'); }
         throw error;
       }
     },

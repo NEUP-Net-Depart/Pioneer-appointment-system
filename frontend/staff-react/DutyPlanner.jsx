@@ -250,11 +250,22 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
     <div className="duty-planner">
       <div className="duty-toolbar duty-planner-toolbar">
         {campusControl}
-        <WeekPicker label="所在周" value={week} disabled={dirty || busy} onChange={setWeek} />
-        <button disabled={dirty || busy} onClick={() => setWeek(addDays(rosterWeekKey(), 7))}>
+        <WeekPicker
+          data-track="staff.dutyplanner.input.1"
+          label="所在周"
+          value={week}
+          disabled={dirty || busy}
+          onChange={setWeek}
+        />
+        <button
+          data-track="staff.dutyplanner.button.2"
+          disabled={dirty || busy}
+          onClick={() => setWeek(addDays(rosterWeekKey(), 7))}
+        >
           下周
         </button>
         <RefreshButton
+          data-track="staff.dutyplanner.refreshbutton.13"
           key={`${campusId}:${week}`}
           label="读取最新班表"
           disabled={busy}
@@ -264,11 +275,16 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
       {failure && (
         <p role="alert" className="react-error">
           {failure}
-          <button disabled={busy} onClick={() => void reload().catch(() => {})}>
+          <button
+            data-track="staff.dutyplanner.button.3"
+            disabled={busy}
+            onClick={() => void reload().catch(() => {})}
+          >
             重试读取
           </button>
           {dirty && (
             <button
+              data-track="staff.dutyplanner.button.4"
               disabled={busy}
               onClick={() => {
                 if (window.confirm('放弃当前未发布的调整，载入最新班表？'))
@@ -281,27 +297,42 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
         </p>
       )}
       {notice && <p role="status">{notice}</p>}
-      <form ref={formRef} aria-busy={!data} onSubmit={(event) => void save(event).catch(() => {})}>
+      <form
+        data-track="staff.dutyplanner.form.5"
+        ref={formRef}
+        aria-busy={!data}
+        onSubmit={(event) => void save(event).catch(() => {})}
+      >
         <fieldset disabled={busy || !data}>
           <div className="duty-section-heading">
             <div>
               <h2 className="workspace-title-with-hint">
                 安排一周值班
-                <HelpHint label="班表生成规则">
+                <HelpHint data-track="staff.dutyplanner.helphint.14" label="班表生成规则">
                   维修 /
                   办公值班为19:00–21:00。按空闲生成建议，每人每周最多一次；手动调整可保留例外。
                 </HelpHint>
               </h2>
             </div>
             <div className="schedule-actions">
-              <button type="button" onClick={() => run(suggest)}>
+              <button
+                data-track="staff.dutyplanner.button.6"
+                type="button"
+                onClick={() => run(suggest)}
+              >
                 {draft.some((row) => row.suggested) ? '重新生成建议' : '生成建议班表'}
               </button>
-              <button type="submit" className="field-primary" disabled={!dirty}>
+              <button
+                data-track="staff.dutyplanner.button.7"
+                type="submit"
+                className="field-primary"
+                disabled={!dirty}
+              >
                 发布班表
               </button>
               {dirty && (
                 <button
+                  data-track="staff.dutyplanner.button.8"
                   type="button"
                   onClick={() => {
                     setDirty(false);
@@ -362,6 +393,7 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
                                   : ''}
                               </span>
                               <button
+                                data-track="staff.dutyplanner.button.9"
                                 type="button"
                                 aria-label={`移除${person?.name || row.memberName} ${day}${type}`}
                                 onClick={() => change(draft.filter((item) => item !== row))}
@@ -372,6 +404,7 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
                           );
                         })}
                       <button
+                        data-track="staff.dutyplanner.button.10"
                         type="button"
                         className="duty-add-person"
                         onClick={() => {
@@ -420,6 +453,7 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
             <label className="workspace-picker-search">
               搜索人员
               <input
+                data-track="staff.dutyplanner.input.15"
                 type="search"
                 value={peopleSearch}
                 placeholder="姓名或学号"
@@ -447,6 +481,7 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
                 return (
                   <label key={person.memberId}>
                     <input
+                      data-track="staff.dutyplanner.input.11"
                       type="checkbox"
                       disabled={busy || sameDay}
                       checked={selected}
@@ -478,7 +513,11 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
                 );
               })}
           </div>
-          <button className="field-primary" onClick={() => setPicker(null)}>
+          <button
+            data-track="staff.dutyplanner.button.12"
+            className="field-primary"
+            onClick={() => setPicker(null)}
+          >
             完成选择
           </button>
         </Modal>

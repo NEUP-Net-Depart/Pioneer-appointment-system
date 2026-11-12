@@ -51,7 +51,10 @@ export async function prepareWarrantyDeployment(plan, cfg, warranty) {
     runtime.pages_build_output_dir = resolve(root, 'dist');
     for (const bindings of [runtime, ...Object.values(runtime.env || {})]) {
       for (const database of bindings.d1_databases || []) if (database.migrations_dir) database.migrations_dir = resolve(root, database.migrations_dir);
-      bindings.vars = { ...bindings.vars, WARRANTY_CAPTCHA_ORIGIN: '' };
+      bindings.vars = { ...bindings.vars, WARRANTY_CAPTCHA_ORIGIN: '', TELEMETRY_RELEASE: plan.commit };
+      for (const key of ['TELEMETRY_ENABLED', 'TELEMETRY_INTERACTIONS', 'TELEMETRY_SAMPLE_RATE', 'TELEMETRY_POLL_SAMPLE_RATE', 'OBSERVABILITY_LOGS']) {
+        if (process.env[key]) bindings.vars[key] = process.env[key];
+      }
     }
     (plan.environment === 'preview' ? runtime.env.preview : runtime).vars.WARRANTY_CAPTCHA_ORIGIN = warranty.origin;
     await writeFile(join(workbench, 'wrangler.jsonc'), JSON.stringify(runtime, null, 2));

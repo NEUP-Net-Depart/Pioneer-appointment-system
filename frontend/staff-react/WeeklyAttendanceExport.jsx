@@ -1,3 +1,4 @@
+import { track } from '../../shared/telemetry-client.js';
 import React, { useState } from 'react';
 import { Modal, Notice } from './field/ui';
 import { WeekPicker } from './WeekPicker';
@@ -41,9 +42,14 @@ export function WeeklyAttendanceExport({ campuses, campusId = '', onClose }) {
         if (!response.ok) throw new Error((await response.json()).error);
         const url = URL.createObjectURL(await response.blob()),
           link = document.createElement('a');
+        link.setAttribute('data-track', 'staff.weeklyattendanceexport.dynamic.download');
         link.href = url;
         link.download = `周考勤-${scope.weekStart}-${scope.weekEnd}.csv`;
         link.click();
+        track('flow.result', {
+          control: 'staff.weeklyattendanceexport.dynamic.download',
+          result: 'ok'
+        });
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       } else await result.refetch({ throwOnError: true });
     } catch (failure) {
@@ -61,6 +67,7 @@ export function WeeklyAttendanceExport({ campuses, campusId = '', onClose }) {
     >
       <div className="roster-compose">
         <WeekPicker
+          data-track="staff.weeklyattendanceexport.weekpicker.6"
           label="开始工作周"
           value={scope.weekStart}
           onChange={(weekStart) =>
@@ -69,6 +76,7 @@ export function WeeklyAttendanceExport({ campuses, campusId = '', onClose }) {
           disabled={busy}
         />
         <WeekPicker
+          data-track="staff.weeklyattendanceexport.weekpicker.7"
           label="结束工作周"
           min={scope.weekStart}
           value={scope.weekEnd}
@@ -82,6 +90,7 @@ export function WeeklyAttendanceExport({ campuses, campusId = '', onClose }) {
           <legend>特殊情况核算</legend>
           <label className="roster-choice-row">
             <input
+              data-track="staff.weeklyattendanceexport.input.2"
               type="checkbox"
               checked={scope.firstOnly}
               onChange={(event) => change({ firstOnly: event.target.checked })}
@@ -90,6 +99,7 @@ export function WeeklyAttendanceExport({ campuses, campusId = '', onClose }) {
           </label>
           <label className="roster-choice-row">
             <input
+              data-track="staff.weeklyattendanceexport.input.3"
               type="checkbox"
               checked={scope.leadersOnce}
               onChange={(event) => change({ leadersOnce: event.target.checked })}
@@ -129,10 +139,19 @@ export function WeeklyAttendanceExport({ campuses, campusId = '', onClose }) {
           </section>
         )}
         <div className="roster-modal-actions">
-          <button disabled={busy} onClick={() => run(false)}>
+          <button
+            data-track="staff.weeklyattendanceexport.button.4"
+            disabled={busy}
+            onClick={() => run(false)}
+          >
             {result.isFetching ? '正在核算…' : '预览核算结果'}
           </button>
-          <button className="field-primary" disabled={busy || !rows} onClick={() => run(true)}>
+          <button
+            data-track="staff.weeklyattendanceexport.button.5"
+            className="field-primary"
+            disabled={busy || !rows}
+            onClick={() => run(true)}
+          >
             {downloading ? '正在导出…' : '导出本次周汇总'}
           </button>
         </div>

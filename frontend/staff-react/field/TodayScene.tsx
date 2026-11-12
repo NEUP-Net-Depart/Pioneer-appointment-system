@@ -24,7 +24,12 @@ function Orders({
         <CountBadge label={`${title}数量`} value={pending ? undefined : items.length} />
       </h2>
       {items.map((item) => (
-        <button className="today-order" key={item.id} onClick={() => onSelect(item.id)}>
+        <button
+          data-track="staff.field.todayscene.button.1"
+          className="today-order"
+          key={item.id}
+          onClick={() => onSelect(item.id)}
+        >
           <strong>
             {item.name} · {item.brand} {item.deviceModel || item.deviceType}
           </strong>
@@ -87,11 +92,20 @@ export function TodayScene({
         <div className="today-toolbar">
           <StaffIdentity identities={data.identities} />
           <div className="field-actions">
-            <button className="field-primary" disabled={busy} onClick={onScan}>
+            <button
+              data-track="staff.field.todayscene.button.2"
+              className="field-primary"
+              disabled={busy}
+              onClick={onScan}
+            >
               扫码
             </button>
             {data.capability['onsite.create'] && (
-              <button disabled={busy} onClick={onRegister}>
+              <button
+                data-track="staff.field.todayscene.button.3"
+                disabled={busy}
+                onClick={onRegister}
+              >
                 现场登记
               </button>
             )}

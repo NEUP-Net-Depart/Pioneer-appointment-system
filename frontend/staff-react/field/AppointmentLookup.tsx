@@ -117,6 +117,7 @@ export function AppointmentLookup({
   return (
     <div className="field-lookup">
       <form
+        data-track="staff.field.appointmentlookup.form.1"
         className="field-search"
         onSubmit={(event) => {
           event.preventDefault();
@@ -138,6 +139,7 @@ export function AppointmentLookup({
         <label className="field-lookup-input">
           {inputLabel}
           <input
+            data-track="staff.field.appointmentlookup.input.2"
             role={inputRole}
             aria-label={inputLabel}
             aria-autocomplete="list"
@@ -171,13 +173,24 @@ export function AppointmentLookup({
             }}
           />
         </label>
-        {inputRole === 'combobox' && <button disabled={disabled || !ready}>查询</button>}
+        {inputRole === 'combobox' && (
+          <button data-track="staff.field.appointmentlookup.button.3" disabled={disabled || !ready}>
+            查询
+          </button>
+        )}
       </form>
       {pending && <p role="status">正在查找…</p>}
       {expanded && items.length > 0 && (
-        <div className="field-lookup-results" role="listbox" id={id} aria-label="匹配的预约">
+        <div
+          data-track="staff.field.appointmentlookup.div.5"
+          className="field-lookup-results"
+          role="listbox"
+          id={id}
+          aria-label="匹配的预约"
+        >
           {items.map((item, index) => (
             <button
+              data-track="staff.field.appointmentlookup.button.4"
               type="button"
               role="option"
               id={`${id}-${index}`}

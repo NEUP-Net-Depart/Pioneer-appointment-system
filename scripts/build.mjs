@@ -1,3 +1,5 @@
+import { telemetryBuildConfig } from './telemetry-build.mjs';
+import { config } from './cli.mjs';
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +13,8 @@ if (out !== join(root, 'dist')) throw new Error('Unsafe output directory');
 await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
 await cp(join(root, 'public'), out, { recursive: true });
+const telemetry = telemetryBuildConfig(await config());
+await writeFile(join(out, 'telemetry-config.js'), `window.pioneerTelemetry = Object.freeze(${JSON.stringify(telemetry)});\n`);
 const headersPath = join(out, '_headers');
 await writeFile(headersPath, staffWarrantyHeaders(await readFile(headersPath, 'utf8'), process.env.WARRANTY_CAPTCHA_ORIGIN));
 await cp(join(root, 'shared'), join(out, 'shared'), { recursive: true });

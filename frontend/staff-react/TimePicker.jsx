@@ -1,3 +1,5 @@
+import { controlPart } from '../../shared/telemetry-controls.js';
+import { track } from '../../shared/telemetry-client.js';
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useControlLabel } from './useControlLabel.js';
@@ -72,10 +74,23 @@ function Tube({ children }) {
   );
 }
 
-function TubeControl({ value, maximum, label, onStep, onWheelStep, onSet }) {
+function TubeControl({ value, maximum, label, onStep, onWheelStep, onSet, 'data-track': trackId }) {
   const surface = useRef(null);
   const drag = useRef(null);
   const wheel = useRef({ distance: 0, at: 0 });
+  const interaction = useRef({ dirty: false, timer: null });
+  const finishInteraction = useCallback(() => {
+    clearTimeout(interaction.current.timer);
+    if (!interaction.current.dirty) return;
+    interaction.current.dirty = false;
+    track('ui.change', { control: trackId });
+  }, [trackId]);
+  const scheduleInteraction = () => {
+    interaction.current.dirty = true;
+    clearTimeout(interaction.current.timer);
+    interaction.current.timer = setTimeout(finishInteraction, 250);
+  };
+  useEffect(() => () => finishInteraction(), [finishInteraction]);
   useEffect(() => {
     const node = surface.current;
     const scroll = (event) => {
@@ -92,12 +107,14 @@ function TubeControl({ value, maximum, label, onStep, onWheelStep, onSet }) {
       const direction = Math.sign(wheel.current.distance);
       wheel.current.distance = 0;
       onWheelStep(direction);
+      scheduleInteraction();
     };
     node.addEventListener('wheel', scroll, { passive: false });
     return () => node.removeEventListener('wheel', scroll);
   }, [onWheelStep]);
   return (
     <div
+      data-track={trackId}
       ref={surface}
       className="time-tube-control"
       role="spinbutton"
@@ -120,26 +137,32 @@ function TubeControl({ value, maximum, label, onStep, onWheelStep, onSet }) {
         if (!steps) return;
         drag.current.y -= steps * 18;
         onStep(steps);
+        interaction.current.dirty = true;
       }}
       onPointerUp={(event) => {
         if (drag.current?.pointerId !== event.pointerId) return;
         drag.current = null;
+        finishInteraction();
         event.currentTarget.releasePointerCapture(event.pointerId);
       }}
       onPointerCancel={() => {
         drag.current = null;
+        finishInteraction();
       }}
       onLostPointerCapture={() => {
         drag.current = null;
+        finishInteraction();
       }}
       onKeyDown={(event) => {
         const steps = { ArrowUp: 1, ArrowDown: -1, PageUp: 5, PageDown: -5 };
         if (event.key in steps) {
           event.preventDefault();
           onStep(steps[event.key]);
+          scheduleInteraction();
         } else if (event.key === 'Home' || event.key === 'End') {
           event.preventDefault();
           onSet(event.key === 'Home' ? 0 : maximum);
+          scheduleInteraction();
         } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
           event.preventDefault();
           const controls = [
@@ -164,6 +187,7 @@ export function TimePicker({
   required = false,
   label = '选择时间',
   portalTarget = null,
+  'data-track': trackId,
   ...inputProps
 }) {
   const id = useId();
@@ -285,6 +309,7 @@ export function TimePicker({
     <span className="workspace-time-field">
       <input
         {...inputProps}
+        data-track={trackId}
         ref={input}
         type="text"
         aria-label={fieldLabel || undefined}
@@ -329,6 +354,7 @@ export function TimePicker({
       />
       <button
         type="button"
+        data-track={controlPart(trackId, 'trigger')}
         className="workspace-time-open"
         ref={trigger}
         aria-label={label}
@@ -349,6 +375,7 @@ export function TimePicker({
             className={`workspace-time-popover${portalTarget ? ' workspace-time-inline' : ''}`}
             ref={panel}
             id={id}
+            data-track={controlPart(trackId, 'panel')}
             role="dialog"
             aria-label={label}
             style={portalTarget ? undefined : position}
@@ -363,6 +390,7 @@ export function TimePicker({
                       </Tube>
                     )}
                     <TubeControl
+                      data-track={controlPart(trackId, 'adjust')}
                       value={Number(draft.replace(':', '')[index])}
                       maximum={digitMaximum(index, draft)}
                       label={digitLabel}
@@ -377,13 +405,19 @@ export function TimePicker({
               </div>
             </div>
             <div className="time-picker-actions">
-              <button type="button" onClick={() => close()}>
+              <button
+                data-track={controlPart(trackId, 'cancel')}
+                type="button"
+                onClick={() => close()}
+              >
                 取消
               </button>
               <button
                 type="button"
+                data-track={controlPart(trackId, 'confirm')}
                 className="workspace-control-primary"
                 onClick={() => {
+                  track('ui.change', { control: trackId });
                   onChange(draft);
                   setText(draft);
                   setOpen(false);

@@ -89,6 +89,7 @@ export function FieldApp({
           <div className="field-scope">
             <span data-motion-value="text">{data?.businessDate || initial.businessDate}</span>
             <RefreshButton
+              data-track="staff.field.fieldapp.button.3"
               key={`${scene}:${campus}`}
               label={scene === 'mine' ? '刷新个人中心' : '刷新工作台'}
               compactOnMobile
@@ -99,6 +100,7 @@ export function FieldApp({
         </WorkspaceHeader>
         <Notice>{message || result.error?.message}</Notice>
         <CampusScope
+          data-track="staff.field.fieldapp.select.1"
           label={scene === 'mine' ? '签到校区' : '接待校区'}
           campuses={(data?.campuses || initial.campuses).map((item) => ({
             id: item.id,
@@ -133,7 +135,12 @@ export function FieldApp({
                   {data.pendingCoverInvitations} 份换班邀请等待你确认
                 </strong>
               </div>
-              <button onClick={() => onNavigate('duties')}>查看邀请</button>
+              <button
+                data-track="staff.field.fieldapp.button.2"
+                onClick={() => onNavigate('duties')}
+              >
+                查看邀请
+              </button>
             </section>
           )}
         {scene === 'today' && (
@@ -206,7 +213,11 @@ export function FieldApp({
                   .join(' · ')}
               </p>
             )}
-            <button className="field-primary" onClick={() => setCheckResult(null)}>
+            <button
+              data-track="staff.field.fieldapp.button.4"
+              className="field-primary"
+              onClick={() => setCheckResult(null)}
+            >
               返回工作台
             </button>
           </div>
@@ -228,7 +239,12 @@ export function FieldApp({
             将以 {initial.actor.name} 的账号记录到岗。
           </p>
           <Notice>{message}</Notice>
-          <button className="field-primary" disabled={busy} onClick={() => checkIn(checkToken)}>
+          <button
+            data-track="staff.field.fieldapp.button.5"
+            className="field-primary"
+            disabled={busy}
+            onClick={() => checkIn(checkToken)}
+          >
             确认签到
           </button>
         </Modal>
@@ -245,7 +261,11 @@ export function FieldApp({
           </p>
           <Notice>{message}</Notice>
           <div className="field-actions">
-            <button disabled={busy} onClick={showAttendance}>
+            <button
+              data-track="staff.field.fieldapp.button.6"
+              disabled={busy}
+              onClick={showAttendance}
+            >
               更新签到码
             </button>
           </div>
