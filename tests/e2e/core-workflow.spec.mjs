@@ -201,10 +201,9 @@ test('working campus isolates data, survives navigation and reload, and resets b
   await staffPage(page, '今日工作');
   const work = page.locator('.field-content'),
     campus = work.getByRole('group', { name: '接待校区', exact: true });
-  await expect(campus.getByRole('button', { name: '南湖', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'true'
-  );
+  await expect(
+    campus.getByRole('button', { name: '切换校区，当前南湖', exact: true })
+  ).toBeVisible();
   await work.getByRole('button', { name: '刷新工作台', exact: true }).click();
   await expect(work.getByRole('button').filter({ hasText: orders['南湖'].id })).toBeVisible();
   let releaseBoard;
@@ -217,7 +216,7 @@ test('working campus isolates data, survives navigation and reload, and resets b
     await route.continue();
   });
   try {
-    await campus.getByRole('button', { name: '浑南', exact: true }).click();
+    await campus.getByRole('button', { name: '切换校区，当前南湖', exact: true }).click();
     await expect(work.getByRole('button').filter({ hasText: orders['南湖'].id })).not.toBeVisible();
     await expect(work).toHaveAttribute('aria-busy', 'true');
   } finally {
@@ -233,34 +232,30 @@ test('working campus isolates data, survives navigation and reload, and resets b
   ).toHaveAttribute('aria-pressed', 'true');
   await staffPage(page, '今日工作');
   await work.getByRole('button', { name: '刷新工作台', exact: true }).click();
-  await expect(campus.getByRole('button', { name: '浑南', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'true'
-  );
+  await expect(
+    campus.getByRole('button', { name: '切换校区，当前浑南', exact: true })
+  ).toBeVisible();
   await page.reload();
   await staffPage(page, '今日工作');
-  await expect(campus.getByRole('button', { name: '浑南', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'true'
-  );
+  await expect(
+    campus.getByRole('button', { name: '切换校区，当前浑南', exact: true })
+  ).toBeVisible();
   await expect(work.getByRole('button').filter({ hasText: orders['浑南'].id })).toBeVisible();
   await staffPage(page, '个人中心');
   await work.getByRole('button', { name: '退出登录', exact: true }).click();
   await expect(page.locator('#login-id')).toBeVisible();
   await loginStaff(page, '20261003', 'StaffTest!2026');
   await staffPage(page, '今日工作');
-  await expect(
-    work.getByRole('group', { name: '接待校区' }).getByRole('button', { name: '南湖', exact: true })
-  ).toBeDisabled();
+  await expect(campus.getByText('南湖', { exact: true })).toBeVisible();
+  await expect(campus.getByRole('button')).toHaveCount(0);
   await staffPage(page, '个人中心');
   await work.getByRole('button', { name: '退出登录', exact: true }).click();
   await expect(page.locator('#login-id')).toBeVisible();
   await loginStaff(page, 'root001', process.env.E2E_ROOT_PASSWORD);
   await staffPage(page, '今日工作');
-  await expect(campus.getByRole('button', { name: '南湖', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'true'
-  );
+  await expect(
+    campus.getByRole('button', { name: '切换校区，当前南湖', exact: true })
+  ).toBeVisible();
 });
 
 test('hardware staff receive photos, correct a repair and keep internal notes out of the student result', async ({
