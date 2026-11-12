@@ -282,12 +282,12 @@
   display: flex;
   align-items: center;
 }
-.warranty-fallback a {
+.warranty-actions a {
   display: inline-flex;
   min-height: 44px;
   align-items: center;
 }
-.warranty-fallback button {
+.warranty-actions button {
   min-height: 44px;
 }
 .warranty-fallback h3 {
