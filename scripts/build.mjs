@@ -20,6 +20,8 @@ await cp(join(root, 'node_modules/blueimp-load-image/js/load-image.all.min.js'),
 await cp(join(root, 'node_modules/blueimp-load-image/LICENSE.txt'), join(out, 'assets/vendor/blueimp-load-image-LICENSE.txt'));
 // Keep the shared QR adapter's URLs stable for student and React staff pages.
 await mkdir(join(out, 'vendor'), { recursive: true });
+await bundle({ entryPoints: [join(root, 'node_modules/signature_pad/dist/signature_pad.js')], bundle: true, format: 'esm', platform: 'browser', target: 'es2019', minify: true, outfile: join(out, 'vendor/signature-pad.js') });
+await cp(join(root, 'node_modules/signature_pad/LICENSE'), join(out, 'vendor/signature-pad-LICENSE'));
 await cp(join(root, 'node_modules/zxing-wasm/LICENSE'), join(out, 'vendor/zxing-LICENSE'));
 for (const kind of ['reader', 'writer']) {
   await bundle({ entryPoints: [join(root, `node_modules/zxing-wasm/dist/es/${kind}/index.js`)], bundle: true, format: 'esm', platform: 'browser', target: 'es2022', minify: true, outfile: join(out, `vendor/zxing-${kind}.js`) });

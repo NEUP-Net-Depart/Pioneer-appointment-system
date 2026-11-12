@@ -30,9 +30,22 @@ export default defineConfig({
       }
     },
     {
+      name: 'chromium-touch',
+      testMatch: '**/signature.spec.mjs',
+      use: {
+        browserName: 'chromium',
+        viewport: { width: 375, height: 812 },
+        isMobile: true,
+        hasTouch: true,
+        deviceScaleFactor: 3,
+        extraHTTPHeaders: { 'CF-Connecting-IP': '192.0.2.3' }
+      }
+    },
+    {
       name: 'webkit-mobile',
       testMatch: [
         '**/core-workflow.spec.mjs',
+        '**/signature.spec.mjs',
         '**/photo-compress.spec.mjs',
         '**/records-loading.spec.mjs',
         '**/maintenance-affairs.spec.mjs',

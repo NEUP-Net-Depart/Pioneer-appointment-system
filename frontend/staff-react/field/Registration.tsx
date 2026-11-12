@@ -1,8 +1,9 @@
 import { Select } from '../SelectionControls.jsx';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Appointment } from './types';
-import React, { useRef, useState } from 'react';
-import { drawSignature, validSignature } from '../../../shared/signature.js';
+import React, { useEffect, useRef, useState } from 'react';
+import { validSignature } from '../../../shared/signature.js';
+import { createSignaturePad } from '../../../shared/signature-pad.js';
 import { api, Modal, Notice } from './ui';
 
 export function Registration({
@@ -48,21 +49,34 @@ export function Registration({
         )
       : {})
   });
-  const strokes = useRef<number[][][]>([]),
-    pointer = useRef<number | null>(null),
+  const signature = useRef(null),
+    pad = useRef<ReturnType<typeof createSignaturePad> | null>(null),
     canvas = useRef<HTMLCanvasElement>(null),
     requestId = useRef(crypto.randomUUID());
-  const point = (e: React.PointerEvent) => {
-    const r = canvas.current!.getBoundingClientRect();
-    return [
-      Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)),
-      Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))
-    ];
-  };
+  useEffect(() => {
+    if (step !== 1 || !canvas.current) return;
+    const controller = createSignaturePad(canvas.current, {
+      value: signature.current,
+      onChange: (value) => {
+        signature.current = value;
+      },
+      onError: setError
+    });
+    pad.current = controller;
+    return () => {
+      signature.current = controller.value();
+      controller.dispose();
+      pad.current = null;
+    };
+  }, [step]);
+  useEffect(() => {
+    pad.current?.setEnabled(!busy);
+  }, [busy, step]);
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
-    if (!validSignature(strokes.current)) {
+    const signed = pad.current?.value();
+    if (!validSignature(signed)) {
       setError('请机主手写本人姓名');
       return;
     }
@@ -74,7 +88,7 @@ export function Registration({
           ...form,
           ...(parent ? { parentAppointmentId: parent.id, linkKind, sameDeviceAndFault: true } : {}),
           agreement: true,
-          signature: strokes.current,
+          signature: signed,
           requestId: requestId.current
         }
       });
@@ -198,42 +212,18 @@ export function Registration({
           </label>
           <label>
             请机主手写姓名
-            <canvas
-              className="field-signature"
-              ref={canvas}
-              width={900}
-              height={360}
-              aria-label="机主签名"
-              onPointerDown={(e) => {
-                if (pointer.current !== null) return;
-                pointer.current = e.pointerId;
-                e.currentTarget.setPointerCapture(e.pointerId);
-                strokes.current.push([point(e)]);
-              }}
-              onPointerMove={(e) => {
-                if (pointer.current !== e.pointerId) return;
-                strokes.current.at(-1)!.push(point(e));
-                drawSignature(canvas.current, strokes.current);
-              }}
-              onPointerUp={() => {
-                pointer.current = null;
-              }}
-              onPointerCancel={() => {
-                pointer.current = null;
-              }}
-            />
+            <div className="field-signature">
+              <canvas ref={canvas} aria-label="机主签名" aria-disabled={busy} />
+            </div>
           </label>
           <div className="field-actions">
-            <button
-              type="button"
-              onClick={() => {
-                strokes.current = [];
-                drawSignature(canvas.current, []);
-              }}
-            >
+            <button type="button" disabled={busy} onClick={() => pad.current?.undo()}>
+              撤销上一笔
+            </button>
+            <button type="button" disabled={busy} onClick={() => pad.current?.clear()}>
               清空签名
             </button>
-            <button type="button" onClick={() => setStep(0)}>
+            <button type="button" disabled={busy} onClick={() => setStep(0)}>
               返回修改
             </button>
             <button className="field-primary" disabled={busy}>
