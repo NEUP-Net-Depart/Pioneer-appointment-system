@@ -2,16 +2,22 @@ import { test, expect } from './support/fixtures.mjs';
 import { loginStaff, staffPage, onsiteOrder, staffApi } from './support/staff.mjs';
 import { PHOTO } from './support/student.mjs';
 
-async function orderWithPhotos(page) {
+async function orderWithPhotos(page, { received = false } = {}) {
   await loginStaff(page, '20261003');
   await staffPage(page, '今日工作');
   const order = await onsiteOrder(page);
+  if (received) await staffApi(page, `/api/appointments/${order.id}/receive`, {
+    revision: 0, requestId: crypto.randomUUID(), photosCaptured: true, uploadTimedOut: true
+  });
   await page.getByRole('button', { name: '刷新工作台', exact: true }).click();
-  await page.getByRole('button').filter({ hasText: order.id }).click();
+  await page.getByRole('button').filter({ hasText: order.id }).first().click();
   const dialog = page.getByRole('dialog', { name: '维修工单', exact: true });
-  for (const side of ['正面', '背面'])
-    await dialog.getByLabel(`设备${side}照片`, { exact: true })
-      .setInputFiles({ name: `${side}.png`, mimeType: 'image/png', buffer: PHOTO });
+  for (const side of ['正面', '背面']) {
+    const input = dialog.getByLabel(`设备${side}照片`, { exact: true });
+    // setInputFiles can target disabled inputs while saved photos are being checked.
+    await expect(input).toBeEnabled();
+    await input.setInputFiles({ name: `${side}.png`, mimeType: 'image/png', buffer: PHOTO });
+  }
   return { order, dialog };
 }
 
@@ -99,17 +105,7 @@ test('a failed side shows the real error and retry reuses the successful photo',
 });
 
 test('manual supplementation also releases the modal after 30 seconds without cancelling photos', async ({ page, context }) => {
-  const { order } = await orderWithPhotos(page);
-  await staffApi(page, `/api/appointments/${order.id}/receive`, {
-    revision: 0, requestId: crypto.randomUUID(), photosCaptured: true, uploadTimedOut: true
-  });
-  await page.reload();
-  await staffPage(page, '今日工作');
-  await page.getByRole('button').filter({ hasText: order.id }).first().click();
-  const dialog = page.getByRole('dialog', { name: '维修工单', exact: true });
-  for (const side of ['正面', '背面'])
-    await dialog.getByLabel(`设备${side}照片`, { exact: true })
-      .setInputFiles({ name: `${side}.png`, mimeType: 'image/png', buffer: PHOTO });
+  const { order, dialog } = await orderWithPhotos(page, { received: true });
   let release, count = 0;
   const gate = new Promise(resolve => { release = resolve; });
   await page.route(`**/api/appointments/${order.id}/attachments`, async route => {
