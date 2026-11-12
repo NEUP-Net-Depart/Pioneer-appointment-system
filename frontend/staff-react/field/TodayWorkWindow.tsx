@@ -51,7 +51,7 @@ export function TodayWorkWindow({
             <button
               className="work-window-campus-toggle work-window-campus-single"
               type="button"
-              aria-label={`当前校区${data.campuses[0].name}`}
+              aria-label={data.campuses[0].name}
               aria-pressed="true"
               onClick={() => onCampus(data.campuses[0].id)}
             >
