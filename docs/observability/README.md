@@ -1,87 +1,112 @@
-# 全站分析与错误排查（Pages / Free）
+# 全站分析与错误排查（PostHog + Cloudflare Pages）
 
-本系统保留 Cloudflare Pages。Web Analytics 提供访问量、来源及 Core Web Vitals；Analytics Engine 保存经过白名单处理的交互、请求和错误摘要；Pages Functions 提供实时日志。没有新 Worker、通知服务、数据库迁移或遥测数据库。现有业务审计和业务统计不变。
+前端使用 PostHog 做产品分析、漏斗、热力图、会话回放、网页性能和异常分组；Cloudflare Analytics Engine 保留 API、D1、R2 和原厂接口汇总，Pages 保留结构化实时日志。无需新 Worker、数据库迁移或通知服务。浏览器直接访问 PostHog，不通过 Pages Functions 反向代理。
 
-## 启用与关闭
+## 首次配置
 
-Production 默认启用自有遥测，Preview 默认关闭。首次发布前在 Cloudflare 账户确认可用的 Analytics Engine 功能；绑定随 Pages 配置发布，首次写入自动创建数据集。绑定名 `ANALYTICS`，Production 数据集 `pioneer_telemetry_production`，Preview 数据集 `pioneer_telemetry_preview`。本地不连接远程数据集。
+在 PostHog Cloud 创建项目，选择 US 或 EU。将下列配置放在 GitHub 仓库 **Settings → Environments → production**，然后按现有流程发布 main。工作流已经传递这些变量，不需要把它们重复写入 Cloudflare Pages 运行时配置。
 
-Web Analytics 在 Cloudflare 的 Web Analytics 页面添加站点，选择手动 JS 接入，将公开站点 token 配为对应 GitHub Environment 的变量 `CF_WEB_ANALYTICS_TOKEN`。不要把 Cloudflare API token 当作站点 token。关闭 Pages 自动注入；应用也会检查已有 beacon，避免重复加载。浏览器只接收该公开 token、环境、提交版本及采集开关。`spa:false` 避免将虚拟页面重复计为完整页面浏览，虚拟页面使用自有 `page.view` 事件。CSP 只增加 Cloudflare beacon 的接收来源。
+| 类型 | 名称 | 配置值 |
+| --- | --- | --- |
+| Variable | `POSTHOG_PROJECT_TOKEN` | PostHog 项目的公开 Project Token（通常以 `phc_` 开头） |
+| Variable | `POSTHOG_HOST` | US：`https://us.i.posthog.com`；EU：`https://eu.i.posthog.com`。省略默认 US |
+| Variable | `POSTHOG_ENABLED` | `true`；Production 有 token 时默认启用，未配置 token 则不加载 SDK |
+| Variable | `POSTHOG_PROJECT_ID` | 同一项目的数字 Project ID，用于 source maps |
+| Secret | `POSTHOG_PERSONAL_API_KEY` | Personal API Key，授予 Error Tracking Write 和 Organization Read，用于构建上传 source maps |
 
-下列 GitHub Environment 变量在既有发布流程中同时作用于构建和 Pages 配置。空值沿用仓库默认值；修改后重新发布并刷新浏览器。普通功能分支仍不迁移共享 Preview。构建脚本使用目标环境，不能仅修改根配置而误启用所有 Preview。
+Project Token 与 Personal API Key 用途不同。只有公开 token、接收地址、采样配置、环境和提交版本写入浏览器配置；Personal API Key 只用于 CI 构建。source maps 上传地址按所选区域自动使用 `https://us.posthog.com` 或 `https://eu.posthog.com`。
 
-| 变量 | Production 默认 | Preview 默认 | 用途 |
-| --- | --- | --- | --- |
-| `TELEMETRY_ENABLED` | `true` | `false` | 总开关，关闭后不写分析点和自有日志 |
-| `TELEMETRY_INTERACTIONS` | `true` | `true` | 关闭 `ui.*` 交互，保留页面、业务结果和错误 |
-| `TELEMETRY_SAMPLE_RATE` | `1` | `1` | 常规请求及浏览器事件组保留比例，0–1；错误和拒绝请求优先保留 |
-| `TELEMETRY_POLL_SAMPLE_RATE` | `0.01` | `0.01` | 成功的后台 GET 刷新保留比例，0–1 |
-| `OBSERVABILITY_LOGS` | `true` | `true` | 输出已保留事件的结构化实时日志 |
-| `CF_WEB_ANALYTICS_TOKEN` | 空 | 空 | 公开站点 token，未配置时不加载 beacon |
+PostHog 控制台还需配置：
 
-`TELEMETRY_ENVIRONMENT`、`TELEMETRY_RELEASE` 由发布流程设置；浏览器不能指定服务端环境或提交版本。需要本地调试时，构建使用 `TELEMETRY_ENABLED=true npm run build`，并在本地 `.dev.vars` 中设置 `TELEMETRY_ENABLED=true`、`OBSERVABILITY_LOGS=true`；不配置远程 Analytics Engine。关闭本地调试后重新以默认参数构建。
+1. 在项目设置开启 Autocapture、Session Replay、Heatmaps 和 Web Vitals。
+2. Session Replay 选择全部会话，取消 URL、事件和 feature flag 录制触发条件，将最短时长设为 0。应用默认回放采样率为 **100%**，但控制台的录制总开关和触发条件仍然生效。
+3. Error Tracking 接收应用调用 `captureException` 上报的异常。应用自己统一捕获运行错误、未处理 Promise、React 边界、资源/模块失败、HTTP 5xx、网络失败和超时，因此关闭 SDK 重复的全局异常监听；不是关闭 Error Tracking。
+4. 发布后在 Live Events、Session Replay、Error Tracking 检查实际数据；在 Error Tracking 的 Symbol Sets 检查当前提交的 source maps。
 
-紧急关闭：将对应发布环境的 `TELEMETRY_ENABLED` 改为 `false` 后按现有流程重新发布。只修改控制台运行时变量不能更新已下载的前端配置；旧页面可能继续发出有限上报，服务端会丢弃。需要保留诊断而节省容量时，先关闭交互或调低普通事件采样率。
+Preview、本地默认不采集。需要验收 Preview 时，在 GitHub `preview` Environment 配置同样的变量，并明确设置 `POSTHOG_ENABLED=true`；验收后恢复 `false`。免费计划只有一个项目时，用 `environment` 区分 production/preview，报表默认筛选 production。本地只需在启动构建的 shell 中设置公开 token、host 和 `POSTHOG_ENABLED=true`；`.dev.vars` 是 Functions 配置，不会自动注入前端构建。
 
-## 记录内容与覆盖
+## 默认采集与开关
 
-所有自有原生控件使用固定 `data-track`，HTML 模板和动态创建控件也有显式标识。标识描述代码位置，不包含文本、用户输入、业务记录编号或人员身份。新控件必须补标识，然后运行 `npm run telemetry:catalog`；`npm run telemetry:check` 检查原生控件、共享 JSX 控件、ARIA 交互角色与路由目录。已经存在的控件 ID 不重排，API 路由 ID 按固定模式生成，插入其他路由不会改变它。
+| 配置 | 默认 | 作用 |
+| --- | --- | --- |
+| `POSTHOG_INTERACTIONS` | `true` | 自动点击/表单、热力图、无效点击、显式控件事件 |
+| `POSTHOG_REPLAY_ENABLED` | `true` | 会话回放，含控制台日志、网络时序和 canvas |
+| `POSTHOG_REPLAY_SAMPLE_RATE` | `1` | 录制 100% 会话；可设置 0–1，仅影响回放 |
+| `TELEMETRY_ENABLED` | Production `true`、Preview `false` | Cloudflare 后端指标及自有实时日志总开关，与 PostHog 分开 |
+| `TELEMETRY_SAMPLE_RATE` | `1` | 常规 API 汇总采集比例 |
+| `TELEMETRY_POLL_SAMPLE_RATE` | `1` | 成功的后台 GET 轮询也完整采集；异常和拒绝始终保留 |
+| `OBSERVABILITY_LOGS` | `true` | 输出已保留的结构化后端实时日志 |
+| `CF_WEB_ANALYTICS_TOKEN` | 空 | 可选的 Cloudflare Web Analytics 公开站点 token |
 
-`Select`、日期/时间选择器、校区选择、帮助提示和刷新按钮在每个调用位置传入固定 `data-track`。共享组件只通过 `controlPart` 派生目录中预定义的部件标识；Portal 弹层也携带所属字段标识，不从选项值、标签或日期生成 ID。自定义选择回调显式记录一次 `ui.change`；点击、选择结果与弹层开闭是不同事件。列表弹层及帮助提示（含键盘聚焦、悬停、Escape 关闭）使用 `ui.toggle`。时间数字的连续滚轮/键盘调整在 250 ms 无操作后记一次，拖动在结束时记一次，队列再按原规则合并；不记录每帧移动或具体时间值。
+上述变量在 GitHub 对应 Environment 配置后重新发布生效。环境和版本由部署流程注入。PostHog 没有普通事件抽样、每日批次上限或重复事件合并；SDK 负责批量发送、失败重试和页面离开时尽力发送。SDK 的每秒 100 条、突发 1,000 条限制只用于防止失控循环；初始本地 SDK 模块加载期间缓冲最多 1,000 次调用，模块加载失败则丢弃缓冲，不阻塞业务。不能保证网络断开、浏览器终止或广告拦截时仍完整送达。
 
-组合新增任职的空选择拒绝在前端记录 `flow.result/rejected`，成功仍按一次 HTTP 请求计量。一次请求可新增多项任职，不能把请求数当作新增任职条数。
+新前端不再使用 `/api/telemetry`。旧接口暂时保留给尚未刷新的旧页面，沿用单批 20 条/16 KiB、同源 JSON、每 IP 每实例每分钟 6 批普通事件和 2 批错误的限制；后续旧部署退出使用后再删除。这些旧保护不限制 PostHog。`TELEMETRY_INTERACTIONS` 也仅影响旧采集路径。
+
+紧急关闭：前端设置 `POSTHOG_ENABLED=false` 并重新发布；回放可立即通过 PostHog 项目录制总开关停止，再发布 `POSTHOG_REPLAY_ENABLED=false`。后端单独设置 `TELEMETRY_ENABLED=false`。已打开的页面仍持有旧构建配置，需刷新；控制台配置传播也有延迟。
+
+可选 Web Analytics：在 Cloudflare 添加站点，使用手动 token 接入，并关闭控制台自动注入以避免重复。它提供独立访问概览，业务分析以 PostHog 为准。构建仅在启用 PostHog 时，为学生端和 staff CSP 增加所选区域的接收域、SDK 资源域及 `worker-src blob:`，保修 iframe 的来源限制保持独立。
+
+## 事件与身份
+
+学生原生 JS 与工作人员 React 使用同一个本地 SDK bundle `/assets/posthog.js`；同一文档通过共享实例避免重复初始化。普通 DOM 交互交给 PostHog 自动采集，保留现有 `data-track`，可以通过元素属性筛选，不依赖易变的文案。
 
 | 事件 | 含义 |
 | --- | --- |
-| `page.view` | 学生页面、工作人员页面与工作场景切换 |
-| `ui.click/change/submit/invalid/toggle/dialog` | 点击（含原生键盘激活）、字段改变、表单提交、原生校验拒绝、折叠及弹窗开闭；不记录值 |
-| `flow.step/result` | 预约步骤、私人链接导入、照片压缩、扫码/OCR、验证码集成及前端收到的接口结果 |
-| `api.request` | 服务端请求完成，含路由、状态、耗时及依赖汇总 |
-| `client.error` | 运行异常、Promise 拒绝、React 边界、模块/资源/网络失败及超时 |
+| `$pageview` / `app.view` | 页面与虚拟页面切换；前者用于 PostHog 原生访问/热力图，后者用于业务导航分析，报表选一种口径 |
+| `$autocapture` | 点击、表单提交和字段变化，含元素属性和稳定 `data-track` |
+| `ui.change/invalid/toggle/dialog` | 自定义选择器提交、校验拒绝、折叠/弹窗/帮助提示开闭；SDK 加载前的点击也有 `ui.*` 补充 |
+| `flow.step/result` | 预约、私人链接导入、照片、扫码/OCR、维修、保修、排班、考勤、人员、权限、配置、导入导出等业务步骤与请求结果 |
+| `$exception` | 原始前端异常和堆栈，补充 `errorCode`、`requestId`、`view`、`release`、`environment` |
+| `$snapshot` / `$web_vitals` | SDK 会话回放与网页性能数据 |
+| `api.request`（Cloudflare） | 一次 API 请求的状态、耗时和 D1/R2/上游汇总 |
 
-覆盖登录、预约、维修、附件、保修、排班、考勤、人员、权限、配置、导入和导出接口。普通后台刷新使用 `X-Telemetry-Poll: 1`。学生端定时器显式传递该标记；React Query 将已有数据且最近三秒没有交互的刷新视为后台刷新，初次加载和交互后的请求保留。这个分类是客户端提示，不是鉴权信息。
+每次事件独立送入 SDK，保留发生顺序和各自请求 ID；不再将重复点击合为 `count`。同一个 Error 对象只上报一次；同一请求 ID 在 API 桥接与全局边界重复捕获时也只上报一次。主动取消单列 `flow.result/cancelled`，不会进入异常列表；超时仍是异常。HTTP 4xx 以拒绝结果记录，HTTP 5xx 同时进入 Error Tracking。
 
-点击、HTTP 请求、前端收到结果是不同阶段，不可相加当作业务成功总数。API 重试、幂等回放也计为请求尝试；漏斗是阶段次数估算，不能据此宣称独立用户转化率。真实业务数量继续查询现有业务统计。
+学生使用 SDK 匿名浏览器身份；工作人员取得 profile 后以 `staff:<memberId>` 识别，携带 role。登录尝试、退出和认证失效会重置身份及设备 ID，避免共用终端串号。匿名浏览器数量不等于真实人数，业务成功仍以服务端已提交的数据为准。点击、提交、HTTP 重试、前端收到结果是不同阶段，不能相加当作业务数量。
 
-验证码子站只通过已验证 origin、frame source 和 nonce 的桥接消息传回 `start/ok/error/cancelled`。不接收第三方内部 DOM、验证码、proof、challenge、nonce 或序列号。子站保持纯静态，不增加 API 或 D1/R2 绑定。
+虚拟页面继续显式记录；自定义 Select、日期/时间选择器、键盘操作、Portal 弹窗仍保留语义埋点。新自有控件继续分配稳定 ID，运行 `npm run telemetry:catalog` 更新目录，CI 用 `telemetry:check` 防止遗漏。验证码子站的内部第三方页面无法穿透采集，仍由经过 origin/source/nonce 校验的消息边界记录 start/ok/error/cancelled。
 
-异常只保留已知类型/错误代码及至多六个经过白名单检查的代码位置；不保存原始异常消息、请求体、响应体、Authorization、查询参数、URL fragment、设备序号、文件名、SQL 参数或业务记录 ID。无法安全识别的堆栈位置丢弃。服务端 source maps 随部署上传，前端 source maps 不公开部署。
+本次没有新增自定义脱敏层，PostHog 使用 SDK 默认采集行为；现有业务事件目录及 Cloudflare 字段白名单继续使用。前端异常保留原始消息和堆栈，以便 PostHog 分组和定位。
 
-每个 API 响应有 `X-Request-ID`，JSON 错误体也带同一 ID；前端抛出的 HTTP 错误带 `requestId`。仅复用格式正确的 UUID 请求头。业务请求体里的幂等 `requestId` 不受影响。错误合并组保存第一个请求 ID，表示一个定位样本，而不是组内每次错误的完整链路。
+## Source maps
 
-## 配额和丢弃行为
+构建生成 Vite 与共享 SDK 的 source maps。配置完整上传凭据时，`@posthog/cli` 注入 chunk/release 信息并上传到同一 PostHog 项目，版本为 Git 提交；上传失败会中止发布，避免发布与符号文件不匹配的版本。未配置上传凭据时允许构建并提示无法还原压缩堆栈；仅配置其中一项会报错。
 
-截至 2026-11-12，官方公布 Workers/Pages Functions 共享 100,000 次请求/日；Analytics Engine 含 100,000 条写入/日、10,000 次查询/日。静态资源不会触发本项目 Functions。Workers Free 每次调用 CPU 上限为 10 ms，仓库已有 `limits.cpu_ms` 设置不会提高免费套餐的实际上限。Analytics Engine 定价页目前注明尚未开始收费，本实现仍按公布的免费额度规划。
+无论上传、跳过或失败，构建都会删除部署目录内 `.map` 和 sourceMappingURL 引用。学生端和 shared 原生 JS 本来就直接发布源码，不需要额外的反混淆映射。Cloudflare 服务端 source maps 继续由 Wrangler 上传，和 PostHog 的前端映射相互独立。
 
-- 浏览器将相同维度的交互合并为次数，每 30 秒发送一批，最多 20 组、16 KiB；队列最多 100 组，错误优先于业务结果、页面和普通交互。
-- 每个浏览器/来源按 UTC 日最多发送 120 批普通事件及 20 批错误。只在 localStorage 保存当天批次数，不保存事件、会话 ID 或用户 ID；存储不可用时退回页面内存。多标签页计数存在竞争，不是事务计数。
-- 隐藏页面或离开时尽力发送；一次只发送一批，剩余事件可能丢失。离线时清空，发送失败不重试，不保留离线积压。
-- 采集端按 CF-Connecting-IP 在单实例内限制每分钟 6 批普通事件，另留 2 批错误；内存最多 2048 个键。IP 仅用于临时限流，不写日志或分析数据。实例重启、分流、键淘汰都会重置部分限制。
-- 一个业务请求最多一个分析点，依赖调用合并到该点；健康检查和采集请求自身不产生请求统计。错误、4xx 拒绝和依赖失败不受普通采样率影响。
-- 缺少绑定、写入异常、超限、队列溢出和关闭采集均允许丢数据，不延迟或改变业务结果。写入为尽力而为；平台异步写入失败可能无法反馈给应用。
+## 免费额度与用量
 
-这些是浏览器和实例级保护，不是账户级全局硬上限，也不保证抵御恶意流量。即使拒绝上报，其 HTTP 请求仍消耗 Functions 次数。Production、Preview 和其他项目共享账户额度；不能用本实例计数推断账户剩余额度。
+截至 2026-11-13，PostHog 每月免费 100 万条分析事件、5,000 次回放、10 万条异常；免费计划超额后停止接收并丢弃超额数据，额度按组织共享。免费事件保留一年、回放保留一个月。若开启付费，按产品设置 $0 billing limit 可避免超出免费用量产生支出，仍需留意项目账单设置。
 
-估算：每天新增 Functions 调用约为“实际发送批次数”；Analytics Engine 写入约为“保留的 API 请求数 + 接收并保留的事件组数”。例如 20,000 个主动请求、30,000 个成功轮询及 5,000 个事件组，在默认轮询比例下约写 25,300 点。批量发送仅减少 HTTP 次数，每个事件组仍是一条写入。
+以每日 100 人、每人一次会话估算，每月约 3,000 次回放；若每人每天两次会话则约 6,000 次，不能只用人数保证低于录制额度。100 万条事件对应 3,000 次会话时，平均每次约 333 条。默认优先完整采集，先看实际 Billing / Usage，接近额度再调整回放比例或关闭非必要事件，不预先降低采样。
 
-上线初期通过 Cloudflare 账户用量页面核对实际消耗，建议为业务和其他项目留出至少 30% 余量。接近 70,000 次 Functions 请求/日或本项目 50,000 个分析点/日时，关闭普通交互或调低采样率；这些是运维参考阈值，不是自动全局熔断。`volume` 查询是平台抽样后的写入量估算，不能作为精确计费账本。
+Cloudflare Workers/Pages Functions 共享 100,000 次请求/日；Analytics Engine 公布免费 100,000 次写入/日、10,000 次查询/日（文档仍说明尚未开始收费）。一个业务请求至多写一个分析点；健康检查和旧采集端自身不写请求汇总。前端直接上报 PostHog，不消耗本项目 Functions 请求和 Analytics Engine 写入。默认全部 API 都记录后，AE 写入约为业务请求数，加上少量旧页面事件。不同项目与 Preview 仍共享账户用量，这不是账户级硬上限。
 
-## 查询与排错
+## 看板与排错
 
-Web Analytics 查看访问和性能；Workers & Pages → 当前 Pages 项目 → Metrics 查看 Functions 用量及平台错误。选定部署 → Functions 查看实时日志，或使用：
+PostHog 报表筛选 `environment=production`：
+
+- 页面使用：`app.view` 按 `view` 分组；不要和 `$pageview` 相加。
+- 转化漏斗：用 `flow.step` 的 `control/result` 表示步骤，以 `flow.result` 的固定 `route` 和 `result=ok` 表示收到成功响应。按人或会话计算漏斗，业务记录总量仍看现有业务统计。
+- 交互：`$autocapture` 按元素 `data-track` 筛选；自定义选择结果查看 `ui.change`，弹窗查看 `ui.dialog`。
+- 异常：Error Tracking 按 release/errorCode/route 筛选，通过 requestId 对照 Cloudflare；从异常跳转关联会话回放。
+- 性能：Web Analytics / Web Vitals，以及回放中的网络瀑布；后端耗时使用 Cloudflare 请求与依赖汇总。
+
+Cloudflare 绑定 `ANALYTICS`，Production 数据集 `pioneer_telemetry_production`，Preview 数据集 `pioneer_telemetry_preview`。绑定随现有部署发布，首次写入自动建数据集；账户需开通可用的 Analytics Engine。不会为遥测读写 D1、R2 或 KV。
 
 ```bash
 npx wrangler pages deployment tail --project-name pioneer-appointment-system
 npm run telemetry:query -- --query errors --hours 24 --print
 npm run telemetry:query -- --query latency --hours 24
-npm run telemetry:query -- --query interactions --preview --hours 24
+npm run telemetry:query -- --query dependencies --hours 24
+npm run telemetry:query -- --query volume --hours 24
 ```
 
-查询脚本从环境读取 `CLOUDFLARE_ACCOUNT_ID` 和 `CLOUDFLARE_ANALYTICS_API_TOKEN`，后者只需 Account Analytics Read，不进入浏览器、Pages vars 或仓库。每次调用只发一条预定义 SELECT；`--print` 完全离线。支持 `errors/latency/funnel/interactions/dependencies/volume`，默认 24 小时，最长 2160 小时。SQL 模板见 [queries.sql](queries.sql)，可以用于 Cloudflare SQL API 或已有查询工具；不新增应用内看板或自动轮询查询。
+只读查询需要 `CLOUDFLARE_ACCOUNT_ID` 和具有 Account Analytics Read 权限的 `CLOUDFLARE_ANALYTICS_API_TOKEN`。每次脚本只发一条 SELECT，`--print` 离线输出 SQL，不做自动轮询。原有 `interactions/funnel` 模板仍可查迁移前历史数据；迁移后的前端漏斗/交互在 PostHog 查询。
 
-按路由、错误代码、服务端/前端提交版本及请求 ID 交叉定位。路由及控件字典见 [telemetry-catalog.js](../../shared/telemetry-catalog.js)。样本检索不保证能找到每条记录；Analytics Engine 会自动抽样，数据保留三个月，无法恢复完整事件顺序。
+Pages 项目的 Metrics 查看请求量及平台错误；实时日志仅在打开流时可见，不提供持久化 Workers Observability / Issues。CPU 超限、进程终止、首屏 JS 完全无法启动等故障可能来不及上报，要结合平台指标；Free 单次 CPU 上限仍为 10 ms，仓库已有 cpu_ms 设置不会提高免费套餐实际限制。
 
-Pages 日志仅在打开流时可见，不持久保存。本方案没有 Workers Logs、Workers Issues 或分布式 trace 存储。CPU 超限、进程终止、首屏脚本完全无法启动等故障可能来不及进入应用采集，须结合平台错误指标和实时日志。原生平台日志可能包含请求元数据，其格式和采集范围不受应用的自有字段白名单控制。
+Analytics Engine 数据保留三个月，存在平台抽样。即使应用采样率为 1，也不能把 AE 当作精确审计账本。D1 行数只使用现有返回元数据，不补查；R2 耗时只到取得响应流，不读取整个文件计算耗时。
 
 ## 列映射（schema 1）
 
@@ -104,6 +129,8 @@ D1 `.first()`/`.raw()` 没有行数元数据，记录调用与耗时但不补查
 
 ## 验收与维护
 
-`npm run verify` 包括目录覆盖、脱敏/限流/日期切换、无绑定和故障隔离、原生 D1 批处理及下载流、浏览器真实事件等测试。浏览器测试拦截采集请求，不连接 Cloudflare 或上传测试数据。Preview 人工验收时启用该环境开关，核对 CSP 无拒绝、beacon 仅一份、错误摘要和请求 ID 可查询，然后恢复默认关闭。保修验证仍须使用实际浏览器验证可信 origin/nonce 消息边界。
+`npm run verify` 保留后端故障隔离/限流/响应流、事件顺序/请求 ID、异常去重/取消分类、环境隔离、身份重置及真实 SDK 浏览器验收。浏览器拦截外部 PostHog 请求和 SDK 扩展资源，不向真实项目上传测试数据。旧前端队列/每日限额测试已删除，重复的人员业务场景测试不再在遥测套件重跑。
 
-官方依据：[Pages 日志限制](https://developers.cloudflare.com/pages/functions/debugging-and-logging/)、[Pages 免费额度](https://developers.cloudflare.com/pages/functions/pricing/)、[Workers CPU 限制](https://developers.cloudflare.com/workers/platform/pricing/)、[Analytics Engine 定价](https://developers.cloudflare.com/analytics/analytics-engine/pricing/)、[保留期和限制](https://developers.cloudflare.com/analytics/analytics-engine/limits/)、[抽样权重](https://developers.cloudflare.com/analytics/analytics-engine/sampling/)、[Web Analytics 接入](https://developers.cloudflare.com/web-analytics/get-started/)。发布前核对官方政策是否变化。
+上线人工验收检查：CSP 无拒绝、自动点击与业务事件都存在、回放含操作过程、异常能关联请求 ID、Symbol Sets 有当前提交，Preview 和 Production 可区分。保持 PostHog 项目本身的录制设置与应用开关一致。
+
+官方依据：[PostHog 定价](https://posthog.com/pricing)、[SDK 配置](https://posthog.com/docs/libraries/js/config)、[Source maps CLI](https://posthog.com/docs/error-tracking/upload-source-maps/cli)、[Cloudflare 代理请求消耗](https://posthog.com/docs/advanced/proxy/cloudflare)、[Pages 日志](https://developers.cloudflare.com/pages/functions/debugging-and-logging/)、[Pages 免费额度](https://developers.cloudflare.com/pages/functions/pricing/)、[Analytics Engine 定价](https://developers.cloudflare.com/analytics/analytics-engine/pricing/)、[保留期和限制](https://developers.cloudflare.com/analytics/analytics-engine/limits/)。

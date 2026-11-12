@@ -15,7 +15,7 @@ Pages 通过 Actions Direct Upload 发布，关闭自动 Git 构建。构建命�
 
 ## 分析与错误监控
 
-Pages 全站埋点、免费额度保护、Web Analytics token、Analytics Engine 查询和实时日志排查见[可观测性运行手册](observability/README.md)。Production 自有遥测默认开启，Preview 默认关闭；无新增数据库迁移。
+PostHog 接入变量、完整会话回放、source maps、Cloudflare Analytics Engine 查询和实时日志排查见[可观测性运行手册](observability/README.md)。Production 配置 PostHog token 后默认完整采集前端；后端指标默认开启，Preview 默认关闭；无新增数据库迁移。
 
 ## Secrets 与初始化
 

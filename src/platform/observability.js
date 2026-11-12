@@ -20,7 +20,7 @@ export function telemetrySettings(env) {
       : 'local',
     release: releaseId(env.TELEMETRY_RELEASE),
     sampleRate: rate(env.TELEMETRY_SAMPLE_RATE),
-    pollRate: rate(env.TELEMETRY_POLL_SAMPLE_RATE, 0.01)
+    pollRate: rate(env.TELEMETRY_POLL_SAMPLE_RATE)
   };
 }
 export function emitEvent(env, event, context = {}, metrics = {}) {

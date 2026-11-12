@@ -61,4 +61,4 @@ npm run dev
 
 API 以 [路由](src/routes/)、[平台契约](docs/contracts/staff-platform.json) 和 [模块清单](src/modules/registry.js) 为准；迁移 SQL 的不可变性由 [校验清单](database/migration-checksums.json) 校验；模块依赖由架构检查验证。
 
-全站埋点、Cloudflare Web Analytics、错误排查及免费额度控制见[可观测性运行手册](docs/observability/README.md)。
+PostHog 全站分析/回放、Cloudflare 后端指标、错误排查及免费额度配置见[可观测性运行手册](docs/observability/README.md)。

@@ -15,7 +15,7 @@
     "TELEMETRY_INTERACTIONS": "true",
     "TELEMETRY_ENVIRONMENT": "production",
     "TELEMETRY_SAMPLE_RATE": "1",
-    "TELEMETRY_POLL_SAMPLE_RATE": "0.01",
+    "TELEMETRY_POLL_SAMPLE_RATE": "1",
     "OBSERVABILITY_LOGS": "true"
   },
   "d1_databases": [
@@ -40,7 +40,7 @@
         "TELEMETRY_INTERACTIONS": "true",
         "TELEMETRY_ENVIRONMENT": "preview",
         "TELEMETRY_SAMPLE_RATE": "1",
-        "TELEMETRY_POLL_SAMPLE_RATE": "0.01",
+        "TELEMETRY_POLL_SAMPLE_RATE": "1",
         "OBSERVABILITY_LOGS": "true"
       },
       "d1_databases": [

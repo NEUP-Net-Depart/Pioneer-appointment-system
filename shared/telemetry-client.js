@@ -1,63 +1,83 @@
-import {
-  cleanEvent,
-  errorFields,
-  isErrorEvent,
-  knownControl,
-  knownView,
-  TELEMETRY_ENDPOINT,
-  releaseId,
-  routeFor
-} from './telemetry.js';
+import { cleanEvent, knownControl, knownView, releaseId, routeFor } from './telemetry.js';
 
-const BUDGET_KEY = 'pioneerTelemetryBudgetV1';
+// Load one browser bundle from both the native student app and the Vite staff app.
+const loadPostHog = () =>
+  import(/* @vite-ignore */ '/assets/posthog.js').then((module) => module.default);
+
 export function createTelemetryClient({
   config = {},
   win = globalThis.window,
   doc = globalThis.document,
   clock = Date.now,
-  fetcher,
-  storage,
-  beacon
+  loadSDK = loadPostHog
 } = {}) {
-  const queue = new Map(),
-    reported = new WeakSet(),
-    dialogs = new WeakMap();
-  let lastInteraction = -Infinity;
-  let view = 'unknown',
-    timer,
-    lastSend = -Infinity,
-    memoryBudget,
-    disposed = false;
-  const enabled = config.enabled === true;
+  const reported = new WeakSet(),
+    reportedRequests = new Set(),
+    dialogs = new WeakMap(),
+    pending = [];
+  let lastInteraction = -Infinity,
+    view = 'unknown',
+    disposed = false,
+    sdk,
+    failed = false;
+  const enabled = config.enabled === true && !!config.posthog?.token;
   const release = releaseId(config.release);
-  const priority = (event) =>
-    isErrorEvent(event) ? 3 : event.name === 'flow.result' ? 2 : event.name === 'page.view' ? 1 : 0;
-  const transport = fetcher || ((...args) => win.fetch(...args));
-  function budget(error) {
-    const day = new Date(clock()).toISOString().slice(0, 10);
-    let current = memoryBudget;
+  const context = () => ({ environment: config.environment, release, view });
+  function send(method, ...args) {
+    if (!enabled || disposed || failed) return;
     try {
-      current = JSON.parse((storage || win.localStorage).getItem(BUDGET_KEY)) || current;
+      if (sdk) sdk[method](...args);
+      // Only buffer while the local SDK chunk loads. The SDK owns batching and retries.
+      else if (pending.length < 1000) pending.push([method, ...args]);
     } catch {
-      /* Private browsing. */
+      /* Collection must never interrupt the application. */
     }
-    if (!current || current.day !== day) current = { day, ordinary: 0, errors: 0 };
-    const key = error ? 'errors' : 'ordinary',
-      limit = error ? 20 : 120;
-    current[key] = Number.isSafeInteger(current[key]) && current[key] >= 0 ? current[key] : 0;
-    if (current[key] >= limit) return false;
-    current[key]++;
-    memoryBudget = current;
-    try {
-      (storage || win.localStorage).setItem(BUDGET_KEY, JSON.stringify(current));
-    } catch {
-      /* Memory fallback. */
-    }
-    return true;
   }
+  const ready = enabled
+    ? Promise.resolve()
+        .then(loadSDK)
+        .then((loaded) => {
+          if (disposed) return;
+          loaded.init(config.posthog.token, {
+            api_host: config.posthog.host,
+            defaults: '2026-08-30',
+            autocapture: config.interactions !== false,
+            capture_pageview: false,
+            capture_pageleave: true,
+            capture_heatmaps: config.interactions !== false,
+            capture_dead_clicks: config.interactions !== false,
+            // Our early listeners and React/API bridges share one deduplicating error path.
+            // captureException still sends native PostHog Error Tracking exceptions.
+            capture_exceptions: false,
+            capture_performance: true,
+            enable_recording_console_log: true,
+            disable_session_recording: config.posthog.replay === false,
+            session_recording: {
+              sampleRate: config.posthog.replaySampleRate ?? 1,
+              captureCanvas: { recordCanvas: true }
+            },
+            person_profiles: 'identified_only',
+            cross_subdomain_cookie: false,
+            // Accommodate legitimate bursts without imposing a daily application budget.
+            rate_limiting: { events_per_second: 100, events_burst_limit: 1000 },
+            loaded(instance) {
+              instance.register(context());
+            }
+          });
+          sdk = loaded;
+          for (const [method, ...args] of pending.splice(0)) send(method, ...args);
+        })
+        .catch(() => {
+          failed = true;
+          pending.length = 0;
+        })
+    : Promise.resolve();
+
   function track(name, fields = {}) {
+    if (['ui.click', 'ui.change', 'ui.submit', 'ui.invalid'].includes(name))
+      lastInteraction = clock();
     try {
-      if (!enabled || disposed || (name.startsWith('ui.') && config.interactions === false)) return;
+      if (name.startsWith('ui.') && config.interactions === false) return;
       const event = cleanEvent({
         ...fields,
         name,
@@ -66,33 +86,10 @@ export function createTelemetryClient({
         at: clock()
       });
       if (!event) return;
-      if (['ui.click', 'ui.change', 'ui.submit', 'ui.invalid'].includes(name))
-        lastInteraction = clock();
-      const key = JSON.stringify([
-        event.name,
-        event.view,
-        event.control,
-        event.route,
-        event.result,
-        event.status,
-        event.errorName,
-        event.errorCode,
-        event.frames
-      ]);
-      const previous = queue.get(key);
-      if (previous) {
-        previous.count = Math.min(10000, previous.count + event.count);
-        previous.durationMs = Math.min(3600000, previous.durationMs + event.durationMs);
-        return;
-      }
-      if (queue.size >= 100) {
-        const candidate = [...queue].sort((a, b) => priority(a[1]) - priority(b[1]))[0];
-        if (priority(candidate[1]) > priority(event)) return;
-        queue.delete(candidate[0]);
-      }
-      queue.set(key, event);
+      // Preserve every event and request ID; do not aggregate sequences used by funnels.
+      send('capture', name, { ...event, environment: config.environment });
     } catch {
-      /* Analytics cannot interrupt an event handler. */
+      /* Collection must never interrupt the application. */
     }
   }
   function report(error, code = 'CLIENT_RUNTIME_ERROR', fields = {}) {
@@ -101,58 +98,41 @@ export function createTelemetryClient({
         if (reported.has(error)) return;
         reported.add(error);
       }
-      track('client.error', {
+      const requestId = error?.requestId || fields.requestId;
+      if (requestId) {
+        if (reportedRequests.has(requestId)) return;
+        reportedRequests.add(requestId);
+        if (reportedRequests.size > 128)
+          reportedRequests.delete(reportedRequests.values().next().value);
+      }
+      send('captureException', error ?? new Error(code), {
+        ...context(),
         ...fields,
-        ...errorFields(error, code),
-        requestId: error?.requestId || fields.requestId,
+        errorCode: code,
+        requestId,
         result: 'error'
       });
     } catch {
-      /* User-supplied thrown values are not telemetry data. */
+      /* Error reporting is best effort. */
     }
   }
-  function flush({ closing = false } = {}) {
-    try {
-      if (!enabled || disposed || !queue.size) return;
-      if (!closing && clock() - lastSend < 30000) return;
-      if (win?.navigator?.onLine === false) {
-        queue.clear();
-        return;
-      }
-      const errors = [...queue.values()].some(isErrorEvent);
-      const chosen = [...queue].filter(([, event]) => isErrorEvent(event) === errors).slice(0, 20);
-      let body;
-      while (chosen.length) {
-        body = JSON.stringify({ version: 1, events: chosen.map(([, event]) => event) });
-        if (new TextEncoder().encode(body).byteLength <= 16 * 1024) break;
-        chosen.pop();
-      }
-      for (const [key] of chosen) queue.delete(key);
-      if (!chosen.length || !budget(errors)) return;
-      lastSend = clock();
-      if (closing) {
-        const send = beacon || win?.navigator?.sendBeacon?.bind(win.navigator);
-        if (send?.(TELEMETRY_ENDPOINT, new Blob([body], { type: 'application/json' }))) return;
-      }
-      // Deliberately bypass apiFetch: no credentials, retries or recursive errors.
-      void Promise.resolve(
-        transport(TELEMETRY_ENDPOINT, {
-          method: 'POST',
-          body,
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'omit',
-          keepalive: true
-        })
-      ).catch(() => {});
-    } catch {
-      /* Drop failed batches; never retain an offline backlog. */
-    }
+  function identify(user) {
+    const memberId = user?.memberId || user?.actor?.memberId;
+    if (!memberId) return;
+    send('identify', `staff:${memberId}`, { role: user.role });
+    send('register', { audience: 'staff', role: user.role });
+  }
+  function reset() {
+    send('reset', true);
+    send('register', { ...context(), audience: 'anonymous', role: null });
   }
   function page(next) {
     next = knownView(next);
     if (view === next) return;
     view = next;
-    track('page.view');
+    send('register', context());
+    send('capture', '$pageview', context());
+    send('capture', 'app.view', context());
   }
   function control(event) {
     lastInteraction = clock();
@@ -162,6 +142,8 @@ export function createTelemetryClient({
     if (hidden && !(hidden === target && target.type === 'file' && event.type === 'change')) return;
     const id = knownControl(target.getAttribute('data-track'));
     if (!id) return;
+    // PostHog owns normal DOM interactions; keep early interactions and unsupported events.
+    if (sdk && ['click', 'change', 'submit'].includes(event.type)) return;
     track(`ui.${event.type}`, {
       control: id,
       result:
@@ -193,24 +175,34 @@ export function createTelemetryClient({
     }
   }
   const onError = (event) => {
+    const location = event.target?.src || event.target?.href || event.filename;
+    const resource = typeof location === 'string' ? location : '';
+    // A blocked analytics script is not an application resource failure.
+    if (
+      resource.includes('/assets/posthog.js') ||
+      /^https:\/\/(?:us|eu)(?:-assets)?\.i\.posthog\.com\//.test(resource)
+    )
+      return;
     if (event.error) report(event.error);
-    else report(null, event.target === win ? 'CLIENT_RUNTIME_ERROR' : 'RESOURCE_LOAD_ERROR');
+    else
+      report(
+        new Error(event.message || 'Resource failed to load'),
+        event.target === win ? 'CLIENT_RUNTIME_ERROR' : 'RESOURCE_LOAD_ERROR',
+        { resource }
+      );
   };
   const onRejection = (event) => report(event.reason, 'UNHANDLED_REJECTION');
   const onModule = (event) => report(event.payload, 'MODULE_LOAD_ERROR');
-  const onHide = () => {
-    if (doc.hidden) flush({ closing: true });
-  };
-  const onPageHide = () => flush({ closing: true });
   let observer;
-  if (enabled && win && doc) {
+  if (win && doc) {
+    // Interaction recency also classifies React Query polling when analytics is disabled.
     for (const type of ['click', 'change', 'submit', 'invalid', 'toggle'])
       doc.addEventListener(type, control, true);
+  }
+  if (enabled && win && doc) {
     win.addEventListener('error', onError, true);
     win.addEventListener('unhandledrejection', onRejection);
     win.addEventListener('vite:preloadError', onModule);
-    win.addEventListener('pagehide', onPageHide);
-    doc.addEventListener('visibilitychange', onHide);
     observer = new win.MutationObserver((records) => {
       for (const record of records)
         for (const removed of record.removedNodes) {
@@ -233,7 +225,8 @@ export function createTelemetryClient({
       attributeFilter: ['hidden', 'open', 'inert']
     });
     scanDialogs();
-    timer = win.setInterval(() => flush(), 30000);
+  }
+  if (win && doc) {
     const token = config.webAnalyticsToken;
     if (
       /^[a-f\d]{32}$/i.test(token || '') &&
@@ -250,29 +243,36 @@ export function createTelemetryClient({
   return {
     track,
     report,
-    flush,
+    ready,
+    identify,
+    cancel(error, fields) {
+      if (error && typeof error === 'object') reported.add(error);
+      track('flow.result', { ...fields, result: 'cancelled' });
+    },
+    reset,
     page,
     recentlyActive: () => clock() - lastInteraction < 3000,
-    snapshot: () => [...queue.values()].map((event) => ({ ...event })),
     dispose() {
       disposed = true;
-      queue.clear();
+      pending.length = 0;
       observer?.disconnect();
-      win?.clearInterval(timer);
       if (!doc || !win) return;
       for (const type of ['click', 'change', 'submit', 'invalid', 'toggle'])
         doc.removeEventListener(type, control, true);
       win.removeEventListener('error', onError, true);
       win.removeEventListener('unhandledrejection', onRejection);
       win.removeEventListener('vite:preloadError', onModule);
-      win.removeEventListener('pagehide', onPageHide);
-      doc.removeEventListener('visibilitychange', onHide);
     }
   };
 }
 
-const client = createTelemetryClient({ config: globalThis.window?.pioneerTelemetry || {} });
+const clientKey = Symbol.for('pioneer.telemetry');
+const client = globalThis.window
+  ? (window[clientKey] ||= createTelemetryClient({ config: window.pioneerTelemetry || {} }))
+  : createTelemetryClient();
 export const recentlyActive = () => client.recentlyActive();
+export const identifyTelemetry = (user) => client.identify(user);
+export const resetTelemetry = () => client.reset();
 export const track = (name, fields) => client.track(name, fields);
 export const reportClientError = (error, code, fields) => client.report(error, code, fields);
 export const trackPage = (view) => client.page(view);
@@ -286,9 +286,11 @@ export function trackRequest(input, method, response, durationMs, error, code) {
     requestId: response?.headers.get('X-Request-ID') || ''
   };
   if (error) {
-    if (code === 'REQUEST_CANCELLED') track('flow.result', { ...fields, result: 'cancelled' });
+    if (code === 'REQUEST_CANCELLED') client.cancel(error, fields);
     else reportClientError(error, code, fields);
   } else if (!['GET', 'HEAD'].includes(method) || !response.ok) {
+    if (response.status >= 500)
+      reportClientError(new Error(`HTTP ${response.status}`), 'HTTP_ERROR', fields);
     track('flow.result', {
       ...fields,
       result: response.status >= 500 ? 'error' : response.ok ? 'ok' : 'rejected'

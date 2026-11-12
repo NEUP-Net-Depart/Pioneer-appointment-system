@@ -9,6 +9,6 @@ PII_ENCRYPTION_KEY=replace-with-64-hexadecimal-characters
 ROOT001_PASSWORD=replace-with-a-strong-unique-password
 ROOT002_PASSWORD=replace-with-another-strong-password
 
-# Optional local diagnostics; build with TELEMETRY_ENABLED=true too.
+# Optional local Functions diagnostics. Frontend PostHog uses build-time shell variables; see docs/observability/README.md.
 # TELEMETRY_ENABLED=true
 # OBSERVABILITY_LOGS=true

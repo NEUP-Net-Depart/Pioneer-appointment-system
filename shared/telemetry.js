@@ -175,7 +175,7 @@ export function cleanEvent(input) {
 export const isErrorEvent = (event) =>
   event.name === 'client.error' || event.result === 'error' || event.status >= 500;
 
-// Versioned column contract: see docs/telemetry.sql.
+// Versioned column contract: see docs/observability/README.md.
 export function dataPoint(event, context, metrics = {}) {
   return {
     indexes: [`${event.name}:${event.route === 'unknown' ? event.view : event.route}`.slice(0, 96)],

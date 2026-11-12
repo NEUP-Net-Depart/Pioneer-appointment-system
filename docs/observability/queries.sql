@@ -1,3 +1,5 @@
+-- Frontend events after the PostHog migration live in PostHog.
+-- The interactions/funnel queries retain compatibility with historical AE data.
 -- name: errors
 SELECT blob2 AS event, blob3 AS route, blob4 AS view, blob8 AS error_type,
        blob9 AS error_code, blob10 AS code_locations, blob12 AS server_release,

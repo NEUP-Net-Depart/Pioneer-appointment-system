@@ -63,36 +63,6 @@ test('nested control parts are allowlisted without admitting input-derived ident
   assert.equal(controlPart('SECRET-TOKEN', 'panel'), '');
 });
 
-function browser(options = {}) {
-  let now = Date.UTC(2026, 10, 12),
-    value;
-  const sent = [],
-    storage = {
-      getItem: () => value || null,
-      setItem: (key, item) => {
-        value = item;
-      }
-    };
-  const client = createTelemetryClient({
-    config: { enabled: true },
-    clock: () => now,
-    storage,
-    fetcher: (url, options) => {
-      sent.push({ url, options, body: JSON.parse(options.body) });
-      return Promise.resolve({ ok: true });
-    },
-    ...options
-  });
-  return {
-    client,
-    sent,
-    next: (ms = 30000) => {
-      now += ms;
-    },
-    storage
-  };
-}
-
 test('telemetry only contains registered dimensions and code locations', () => {
   const privateValue = '张三 2026123456 private@example.com secret-access-token SN123456';
   const clean = cleanEvent(
@@ -298,95 +268,184 @@ test('D1 instrumentation uses the same statements, batch and session without ext
   assert.ok(!JSON.stringify(points).includes('private'));
 });
 
-test('browser aggregates duplicates, keeps first correlation ID, and does not retry failures', async () => {
-  const { client, sent, next } = browser();
+test('PostHog preserves event order and each request ID across asynchronous initialization', async () => {
+  const calls = [];
+  let complete;
+  const sdk = {
+    init(token, options) {
+      options.loaded(this);
+    },
+    register(properties) {
+      calls.push(['register', properties]);
+    },
+    capture(name, properties) {
+      calls.push([name, properties]);
+    }
+  };
+  const client = createTelemetryClient({
+    config: { enabled: true, environment: 'production', posthog: { token: 'test' } },
+    loadSDK: () =>
+      new Promise((resolve) => {
+        complete = resolve;
+      })
+  });
   client.page('student.booking');
-  client.track('ui.click', { control: CONTROL_IDS[0], value: 'PRIVATE' });
-  client.track('ui.click', { control: CONTROL_IDS[0], value: 'PRIVATE' });
-  const error = new Error('PRIVATE');
-  client.report(error, 'NETWORK_ERROR', { requestId: id });
-  client.report(error, 'NETWORK_ERROR');
-  assert.equal(client.snapshot().find((e) => e.name === 'ui.click').count, 2);
-  assert.equal(client.snapshot().filter((e) => e.name === 'client.error').length, 1);
-  client.flush();
-  assert.equal(sent[0].body.events[0].requestId, id);
-  assert.equal(sent[0].options.credentials, 'omit');
-  client.flush();
-  assert.equal(sent.length, 1);
-  next();
-  client.flush();
-  assert.equal(sent.length, 2);
-  assert.ok(!JSON.stringify(sent).includes('PRIVATE'));
-  const failed = browser({ fetcher: () => Promise.reject(new Error('offline')) });
-  failed.client.track('ui.click', { control: CONTROL_IDS[0] });
-  failed.client.flush();
+  client.track('flow.result', { requestId: id, result: 'ok' });
+  client.track('flow.result', { requestId: '22345678-1234-4234-8234-123456789abc', result: 'ok' });
+  client.page('student.lookup');
   await Promise.resolve();
-  assert.equal(failed.client.snapshot().length, 0);
+  complete(sdk);
+  await client.ready;
+  assert.deepEqual(
+    calls.filter(([name]) => name === 'app.view').map(([, p]) => p.view),
+    ['student.booking', 'student.lookup']
+  );
+  assert.deepEqual(
+    calls.filter(([name]) => name === 'flow.result').map(([, p]) => p.requestId),
+    [id, '22345678-1234-4234-8234-123456789abc']
+  );
+  for (let i = 0; i < 150; i++) client.track('flow.step', { result: 'ok' });
+  assert.equal(calls.filter(([name]) => name === 'flow.step').length, 150);
+  client.dispose();
 });
 
-test('browser bounds groups and payloads and prioritizes errors', () => {
-  const { client, sent } = browser();
-  for (const control of CONTROL_IDS.slice(0, 110)) client.track('ui.click', { control });
-  client.report(new Error('x'), 'NETWORK_ERROR');
-  assert.equal(client.snapshot().length, 100);
-  assert.ok(client.snapshot().some((is) => is.name === 'client.error'));
-  client.flush();
-  assert.ok(sent[0].body.events.every((e) => e.name === 'client.error'));
-  assert.ok(Buffer.byteLength(sent[0].options.body) <= 16384);
+test('PostHog deduplicates exceptions, excludes deliberate cancellations and resets staff identity', async () => {
+  const calls = [];
+  const sdk = Object.fromEntries(
+    ['init', 'register', 'capture', 'captureException', 'identify', 'reset'].map((name) => [
+      name,
+      (...args) => calls.push([name, ...args])
+    ])
+  );
+  const client = createTelemetryClient({
+    config: { enabled: true, posthog: { token: 'test' } },
+    loadSDK: async () => sdk
+  });
+  await client.ready;
+  const failure = new TypeError('useful debugging message');
+  client.report(failure, 'NETWORK_ERROR', { requestId: id });
+  client.report(failure);
+  client.report(new Error('same request reported by a boundary'), 'HTTP_ERROR', { requestId: id });
+  const cancelled = new DOMException('cancelled', 'AbortError');
+  client.cancel(cancelled, {});
+  client.report(cancelled, 'UNHANDLED_REJECTION');
+  const errors = calls.filter(([name]) => name === 'captureException');
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0][1], failure);
+  assert.equal(errors[0][2].requestId, id);
+  assert.ok(
+    calls.some(
+      ([name, event, p]) =>
+        name === 'capture' && event === 'flow.result' && p.result === 'cancelled'
+    )
+  );
+  client.identify({ memberId: 'one', role: 'staff' });
+  client.reset();
+  client.identify({ memberId: 'two', role: 'admin' });
+  assert.deepEqual(
+    calls.filter(([name]) => ['identify', 'reset'].includes(name)).map((call) => call.slice(0, 2)),
+    [
+      ['identify', 'staff:one'],
+      ['reset', true],
+      ['identify', 'staff:two']
+    ]
+  );
+  client.dispose();
 });
 
-test('browser daily budgets reserve errors and reset on UTC day change', () => {
-  const { client, sent, next } = browser();
-  for (let i = 0; i < 130; i++) {
-    client.track('ui.click', { control: CONTROL_IDS[0] });
-    client.flush();
-    next();
+test('disabled or failing PostHog cannot affect business code or load another collector', async () => {
+  let loads = 0;
+  const disabled = createTelemetryClient({
+    config: { enabled: false, posthog: { token: 'test' } },
+    loadSDK: async () => {
+      loads++;
+    }
+  });
+  disabled.track('flow.step');
+  disabled.report(new Error('ignored'));
+  await disabled.ready;
+  assert.equal(loads, 0);
+  for (const loadSDK of [
+    async () => {
+      throw new Error('blocked SDK');
+    },
+    async () => ({
+      init() {},
+      capture() {
+        throw new Error('SDK failure');
+      },
+      captureException() {
+        throw new Error('report failure');
+      }
+    })
+  ]) {
+    const client = createTelemetryClient({
+      config: { enabled: true, posthog: { token: 'test' } },
+      loadSDK
+    });
+    client.page('student.booking');
+    await client.ready;
+    assert.doesNotThrow(() => {
+      client.track('flow.result', { result: 'ok' });
+      client.report(new Error('test'));
+    });
+    client.dispose();
   }
-  assert.equal(sent.length, 120);
-  for (let i = 0; i < 25; i++) {
-    client.report(new Error('error'), 'NETWORK_ERROR');
-    client.flush();
-    next();
-  }
-  assert.equal(sent.length, 140);
-  next(86400000);
-  client.track('ui.click', { control: CONTROL_IDS[0] });
-  client.flush();
-  assert.equal(sent.length, 141);
+  disabled.dispose();
 });
 
-test('disabled collection and interaction switch avoid emitting UI batches', () => {
-  const disabled = browser({ config: { enabled: false } });
-  disabled.client.report(new Error('error'));
-  disabled.client.track('ui.click', { control: CONTROL_IDS[0] });
-  disabled.client.flush();
-  assert.equal(disabled.sent.length, 0);
-  const errorsOnly = browser({ config: { enabled: true, interactions: false } });
-  errorsOnly.client.track('ui.click', { control: CONTROL_IDS[0] });
-  errorsOnly.client.report(new Error('error'));
-  errorsOnly.client.flush();
-  assert.equal(errorsOnly.sent[0].body.events.length, 1);
-});
-
-test('build config separates local, preview and production and only exposes public configuration', async () => {
+test('build configuration isolates environments, rejects invalid destinations and never exposes upload secrets', async () => {
   const cfg = JSON.parse(await readFile('wrangler.jsonc', 'utf8'));
   for (const [environment, expected] of [
     ['local', false],
     ['preview', false],
     ['production', true]
   ]) {
-    const config = telemetryBuildConfig(cfg, {
+    const config = telemetryBuildConfig({
       TELEMETRY_ENVIRONMENT: environment,
       TELEMETRY_RELEASE: 'abcdef12',
-      JWT_SECRET: 'private'
+      POSTHOG_PROJECT_TOKEN: 'phc_test',
+      POSTHOG_PERSONAL_API_KEY: 'private-upload-secret'
     });
     assert.equal(config.enabled, expected);
-    assert.ok(!JSON.stringify(config).includes('private'));
+    assert.equal(config.posthog.replaySampleRate, 1);
+    assert.ok(!JSON.stringify(config).includes('private-upload-secret'));
   }
+  assert.equal(telemetryBuildConfig({ TELEMETRY_ENVIRONMENT: 'production' }).enabled, false);
+  for (const env of [
+    { POSTHOG_ENABLED: 'true' },
+    { POSTHOG_REPLAY_SAMPLE_RATE: 'NaN' },
+    { POSTHOG_REPLAY_SAMPLE_RATE: '1.1' },
+    { POSTHOG_HOST: 'https://bad.test; script-src *' }
+  ])
+    assert.throws(() => telemetryBuildConfig(env));
   assert.notEqual(
     cfg.analytics_engine_datasets[0].dataset,
     cfg.env.preview.analytics_engine_datasets[0].dataset
   );
+  const { posthogHeaders } = await import('../scripts/telemetry-build.mjs');
+  const { staffWarrantyHeaders } = await import('../scripts/warranty-deploy.mjs');
+  const headers = staffWarrantyHeaders(
+    await readFile('public/_headers', 'utf8'),
+    'https://verify.test'
+  );
+  const config = telemetryBuildConfig({
+    TELEMETRY_ENVIRONMENT: 'production',
+    POSTHOG_PROJECT_TOKEN: 'phc_test',
+    POSTHOG_HOST: 'https://eu.i.posthog.com'
+  });
+  const policies = [
+    ...posthogHeaders(headers, config).matchAll(/Content-Security-Policy: ([^\n]+)/g)
+  ].map((match) => match[1]);
+  assert.equal(policies.length, 2);
+  for (const policy of policies) {
+    assert.match(policy, /script-src [^;]*https:\/\/eu-assets.i.posthog.com/);
+    assert.match(policy, /connect-src [^;]*https:\/\/eu.i.posthog.com/);
+    assert.match(policy, /worker-src 'self' blob:/);
+    assert.equal((policy.match(/worker-src /g) || []).length, 1);
+    assert.ok(!policy.includes('us.i.posthog.com'));
+  }
+  assert.match(policies[1], /frame-src https:\/\/verify.test/);
 });
 
 test('analytics query CLI only sends one bounded SELECT and never exposes a write credential', async () => {
@@ -445,4 +504,31 @@ test('expected write conflicts remain rejected outcomes, not server failures', (
   assert.equal(points[0].blobs[5], 'rejected');
   assert.equal(points[0].blobs[8], 'REVISION_CONFLICT');
   assert.equal(points[0].doubles[3], 1);
+});
+
+test('source maps never remain deployable when upload is skipped or misconfigured', async () => {
+  const { mkdtemp, mkdir, writeFile, readdir, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { finishSourceMaps } = await import('../scripts/posthog-sourcemaps.mjs');
+  const directory = await mkdtemp(join(tmpdir(), 'pioneer-symbols-'));
+  try {
+    await mkdir(join(directory, 'assets'));
+    for (const enabled of [false, true]) {
+      await writeFile(
+        join(directory, 'assets/app.js'),
+        'window.example = true;\n//# sourceMappingURL=app.js.map\n//# chunkId=preserved\n'
+      );
+      await writeFile(join(directory, 'assets/app.js.map'), '{}');
+      const finish = finishSourceMaps(directory, { enabled }, { POSTHOG_PROJECT_ID: '123' });
+      if (enabled) await assert.rejects(finish, /requires both/);
+      else await finish;
+      assert.deepEqual(await readdir(join(directory, 'assets')), ['app.js']);
+      const source = await readFile(join(directory, 'assets/app.js'), 'utf8');
+      assert.ok(!source.includes('sourceMappingURL'));
+      assert.ok(source.includes('chunkId=preserved'));
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

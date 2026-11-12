@@ -48,6 +48,8 @@ for (const path of runtime) {
     assert.ok(relative(root, dependency) && !relative(root, dependency).startsWith('..'), `Import escapes repository: ${path}`);
     imports.push(dependency);
   }
+  // This shared browser bundle is built by esbuild and loaded dynamically in both apps.
+  if (path === join('shared', 'telemetry-client.js')) imports.push(resolve(root, 'frontend/staff-react/posthog-sdk.js'));
   graph.set(resolve(root, path), imports);
   if (path.startsWith('src') || path.startsWith('functions')) {
     assert.ok(!/process\.env|CREATE TABLE|ALTER TABLE|CREATE TRIGGER/i.test(source), `Runtime initialization or process state in ${path}`);

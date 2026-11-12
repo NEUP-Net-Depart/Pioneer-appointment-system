@@ -1596,6 +1596,7 @@ export const SOURCE_FILES = [
   "frontend/staff-react/field/useFieldWorkspace.tsx",
   "frontend/staff-react/field/useRepair.tsx",
   "frontend/staff-react/main.jsx",
+  "frontend/staff-react/posthog-sdk.js",
   "frontend/staff-react/query-client.js",
   "frontend/staff-react/report-xlsx.js",
   "frontend/staff-react/request.js",
