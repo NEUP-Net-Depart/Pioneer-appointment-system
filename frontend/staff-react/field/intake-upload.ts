@@ -169,7 +169,8 @@ function createUpload(id: string, token: string, onSaved: () => void) {
             const message = `${side === 'front' ? '正面' : '背面'}：${error.message || '照片上传失败，请重试。'}`;
             failures.push(message);
             progress({ value: state.progress[side]?.value ?? 0, label: '上传失败' });
-            update({ error: failures.join('；') });
+            clearTimeout(timer);
+            update({ error: failures.join('；'), canSkip: true });
           }
         })
       );

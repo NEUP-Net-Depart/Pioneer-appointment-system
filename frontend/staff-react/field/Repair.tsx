@@ -98,7 +98,11 @@ function RepairOrder({
         <>
           {r.waitingForPhotos && r.canSkip && (
             <div className="field-form">
-              <p>已等待 30 秒。可以跳过等待，上传会继续，成功后自动补入本工单。</p>
+              <p>
+                {r.error
+                  ? '照片上传失败，可以跳过并稍后重试补传。仍在上传的照片会继续，成功后自动补入本工单。'
+                  : '已等待 30 秒。可以跳过等待，上传会继续，成功后自动补入本工单。'}
+              </p>
               <div className="field-actions">
                 <button onClick={r.skip}>跳过等待，继续当前操作</button>
               </div>

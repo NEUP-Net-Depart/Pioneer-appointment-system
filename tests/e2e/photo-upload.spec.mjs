@@ -79,10 +79,12 @@ for (const skip of [false, true]) test(`slow binary photos survive 30 seconds ${
   expect(requests).toHaveLength(2);
 });
 
-test('a failed side shows the real error and retry reuses the successful photo', async ({ page }) => {
+for (const action of ['retry', 'skip', 'skip with a pending photo']) test(`a failed side allows ${action} immediately and reuses the successful photo`, async ({ page }) => {
   const { order, dialog } = await orderWithPhotos(page);
   const purposes = [];
   let failBack = true;
+  let releaseFront;
+  const frontGate = new Promise(resolve => { releaseFront = resolve; });
   await page.route(`**/api/appointments/${order.id}/attachments`, async route => {
     if (route.request().method() !== 'POST') { await route.continue(); return; }
     const purpose = route.request().headers()['x-attachment-purpose'];
@@ -90,14 +92,37 @@ test('a failed side shows the real error and retry reuses the successful photo',
     if (purpose === 'intake_back' && failBack) {
       failBack = false;
       await route.fulfill({ status: 429, contentType: 'application/json', body: JSON.stringify({ error: '上传过于频繁，请稍后重试' }) });
-    } else await route.continue();
+    } else {
+      if (purpose === 'intake_front' && action === 'skip with a pending photo') await frontGate;
+      await route.continue();
+    }
   });
   const start = dialog.getByRole('button', { name: '接收并开始维修', exact: true });
   await start.click();
   await expect(dialog.getByText(/背面：上传过于频繁/)).toBeVisible();
-  await expect(start).toBeEnabled();
-  await start.click();
+  // No clock advance: errors must allow skipping before the 30-second timer.
+  if (action === 'skip with a pending photo') {
+    await expect(dialog.getByText('照片上传失败，可以跳过并稍后重试补传。仍在上传的照片会继续，成功后自动补入本工单。')).toBeVisible();
+    await dialog.getByRole('button', { name: '跳过等待，继续当前操作', exact: true }).click();
+    releaseFront();
+  } else {
+    await expect(start).toBeEnabled();
+    const skip = dialog.getByRole('button', { name: '跳过等待，接收并开始维修', exact: true });
+    await expect(skip).toBeEnabled();
+    await (action === 'skip' ? skip : start).click();
+  }
   await expect(dialog.getByRole('button', { name: '结束本次服务', exact: true })).toBeVisible();
+  if (action !== 'retry') {
+    await expect.poll(async () => {
+      const detail = await staffApi(page, `/api/field/appointments/${order.id}`, null, 'GET');
+      return !!detail.frontPhotoId && !detail.backPhotoId && !!detail.photoDeferredBy;
+    }).toBe(true);
+    await dialog.getByRole('button', { name: '重试补传照片', exact: true }).click();
+    await expect.poll(async () => {
+      const detail = await staffApi(page, `/api/field/appointments/${order.id}`, null, 'GET');
+      return !!detail.frontPhotoId && !!detail.backPhotoId && !detail.photoDeferredBy;
+    }).toBe(true);
+  }
   expect(purposes.filter(value => value === 'intake_front')).toHaveLength(1);
   expect(purposes.filter(value => value === 'intake_back')).toHaveLength(2);
   const attachments = await staffApi(page, `/api/appointments/${order.id}/attachments`, null, 'GET');
