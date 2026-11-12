@@ -43,12 +43,20 @@ export function TodayWorkWindow({
     <section className="today-work-window" aria-label="工作视窗">
       <div className="work-window-heading">
         <div>
-          <span className="work-window-eyebrow">今日工作</span>
+          <h2 className="work-window-eyebrow">今日工作</h2>
           <h1>欢迎您！</h1>
         </div>
         <div className="work-window-campus" role="group" aria-label="接待校区">
           {data.campuses.length === 1 ? (
-            <span className="work-window-campus-single">{data.campuses[0].name}</span>
+            <button
+              className="work-window-campus-toggle work-window-campus-single"
+              type="button"
+              aria-label={`当前校区${data.campuses[0].name}`}
+              aria-pressed="true"
+              onClick={() => onCampus(data.campuses[0].id)}
+            >
+              {data.campuses[0].name}
+            </button>
           ) : (
             <button
               className="work-window-campus-toggle"

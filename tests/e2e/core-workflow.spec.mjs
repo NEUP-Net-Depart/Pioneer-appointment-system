@@ -249,7 +249,9 @@ test('working campus isolates data, survives navigation and reload, and resets b
   await expect(page.locator('#login-id')).toBeVisible();
   await loginStaff(page, '20261003', 'StaffTest!2026');
   await staffPage(page, '今日工作');
-  await expect(work.getByRole('group', { name: '接待校区' }).getByRole('button', { name: '南湖', exact: true })).toBeDisabled();
+  await expect(
+    work.getByRole('group', { name: '接待校区' }).getByRole('button', { name: '南湖', exact: true })
+  ).toBeDisabled();
   await staffPage(page, '个人中心');
   await work.getByRole('button', { name: '退出登录', exact: true }).click();
   await expect(page.locator('#login-id')).toBeVisible();
@@ -425,7 +427,8 @@ test('daily duty review and historical arrival correction update the selected me
   const person = daily.getByRole('article').filter({ hasText: '周宁' });
   await expect(person.getByText('未签到', { exact: true })).toBeVisible();
   await person.getByRole('button', { name: '确认未到', exact: true }).click();
-  await expect(person.getByText('已确认未到', { exact: true })).toBeVisible();
+  await expect(person.getByText('未签到', { exact: true })).toBeVisible();
+  await expect(person.getByRole('button', { name: '撤销未到', exact: true })).toBeVisible();
   await person.getByRole('button', { name: '撤销未到', exact: true }).click();
   await expect(person.getByText('未签到', { exact: true })).toBeVisible();
   await person.getByRole('button', { name: '补记漏签', exact: true }).click();
