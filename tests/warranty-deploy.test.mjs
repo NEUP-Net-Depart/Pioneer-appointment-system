@@ -33,9 +33,9 @@ test('staff and verifier CSPs enable only their matching origins and fail closed
 test('generated release roots share the build/runtime origin without copying Functions or bindings to the verifier', async () => {
   const cfg = await config(), original = JSON.stringify(cfg), originalFile = await readFile('wrangler.jsonc', 'utf8');
   const headers = await readFile('public/_headers', 'utf8');
-  for (const branch of ['main', 'dev', 'fix/warranty']) {
+  for (const [branch, env] of [['main', {}], ['dev', {}], ['fix/warranty', {}], ['main', { TELEMETRY_ENABLED: 'false' }], ['dev', { TELEMETRY_ENABLED: 'true' }]]) {
     const plan = release(branch), warranty = warrantyDeployment(plan, {});
-    const prepared = await prepareWarrantyDeployment(plan, cfg, warranty);
+    const prepared = await prepareWarrantyDeployment(plan, cfg, warranty, env);
     try {
       const runtime = JSON.parse(await readFile(join(prepared.workbench.cwd, 'wrangler.jsonc'), 'utf8'));
       const vars = plan.environment === 'preview' ? runtime.env.preview.vars : runtime.vars;
@@ -49,6 +49,8 @@ test('generated release roots share the build/runtime origin without copying Fun
       assert.deepEqual(runtime.env.preview.r2_buckets, cfg.env.preview.r2_buckets);
       assert.equal(runtime.vars.MAX_R2_BYTES, cfg.vars.MAX_R2_BYTES);
       assert.equal(runtime.env.preview.vars.MAX_R2_BYTES, cfg.env.preview.vars.MAX_R2_BYTES);
+      for (const [bindings, original] of [[runtime, cfg], [runtime.env.preview, cfg.env.preview]])
+        assert.deepEqual(bindings.analytics_engine_datasets, bindings.vars.TELEMETRY_ENABLED === 'true' ? original.analytics_engine_datasets : []);
       assert.deepEqual((await readdir(prepared.verifier.cwd)).sort(), ['dist', 'package.json', 'wrangler.jsonc']);
       assert.deepEqual((await readdir(join(prepared.verifier.cwd, 'dist'))).sort(), ['_headers', 'bridge.js', 'index.html', 'style.css']);
       const staticConfig = JSON.parse(await readFile(join(prepared.verifier.cwd, 'wrangler.jsonc'), 'utf8'));

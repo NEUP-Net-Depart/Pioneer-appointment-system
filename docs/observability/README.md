@@ -93,6 +93,8 @@ PostHog 报表筛选 `environment=production`：
 - 异常：Error Tracking 按 release/errorCode/route 筛选，通过 requestId 对照 Cloudflare；从异常跳转关联会话回放。
 - 性能：Web Analytics / Web Vitals，以及回放中的网络瀑布；后端耗时使用 Cloudflare 请求与依赖汇总。
 
+Cloudflare 账户需先在 **Workers & Pages → Analytics Engine** 开通服务，再发布启用后端分析的环境；未开通时，Cloudflare 会拒绝含 `ANALYTICS` 绑定的部署。暂不启用时，在对应 GitHub Environment 设置 `TELEMETRY_ENABLED=false`：部署脚本会从临时发布配置中移除这个绑定，不影响 PostHog。Preview 默认关闭，因而无需先开通该服务即可发布；验收后端分析时先开通，再设置 `TELEMETRY_ENABLED=true`。
+
 Cloudflare 绑定 `ANALYTICS`，Production 数据集 `pioneer_telemetry_production`，Preview 数据集 `pioneer_telemetry_preview`。绑定随现有部署发布，首次写入自动建数据集；账户需开通可用的 Analytics Engine。不会为遥测读写 D1、R2 或 KV。
 
 ```bash
