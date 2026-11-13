@@ -31,7 +31,7 @@ export function RepairOriginal({ original }) {
               ['原始故障', original.issue],
               ['原填保修', original.warranty],
               ['原填液金', original.liquidMetal],
-              ['Dell G15', original.dellG15],
+              ['Dell G15/G16', original.dellG15],
               ['学院', original.college],
               ['设备序列号', original.serial],
               ['进水情况', original.liquidDrop],
