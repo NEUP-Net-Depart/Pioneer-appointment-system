@@ -45,7 +45,7 @@ test('all eight EXIF orientations produce upright JPEG pixels without a second r
   }
 });
 
-test('large camera photos shrink below 2 MB with a longest side of at most 2560 px', async ({ page }) => {
+test('large camera photos shrink below 600 KB with a longest side of at most 1920 px', async ({ page }) => {
   await harness(page);
   const result = await page.evaluate(async () => {
     const canvas = document.createElement('canvas'); canvas.width = 3300; canvas.height = 2200;
@@ -66,8 +66,30 @@ test('large camera photos shrink below 2 MB with a longest side of at most 2560 
     return { originalSize: file.size, size: result.file.size, width: image.width, height: image.height, warning: result.warning };
   });
   expect(result.originalSize).toBeGreaterThan(2 * 1024 * 1024);
-  expect(result.size).toBeLessThanOrEqual(2 * 1024 * 1024);
-  expect(Math.max(result.width, result.height)).toBeLessThanOrEqual(2560);
+  expect(result.size).toBeLessThanOrEqual(600 * 1024);
+  expect(Math.max(result.width, result.height)).toBeLessThanOrEqual(1920);
   expect(result.width / result.height).toBeCloseTo(1.5, 2);
   expect(result.warning).toBe('');
+});
+
+test('small-file high-resolution photos are still resized before upload', async ({ page }) => {
+  await harness(page);
+  const result = await page.evaluate(async () => {
+    const canvas = document.createElement('canvas'); canvas.width = 2400; canvas.height = 1600;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ccc'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#333'; ctx.font = '80px sans-serif'; ctx.fillText('Device serial 12345678', 100, 200);
+    const original = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    const { uploadImage } = await import('/shared/image-compress.js');
+    const file = await uploadImage(new File([original], 'small.png', { type: 'image/png' }));
+    const bitmap = await createImageBitmap(file);
+    const measured = { before: original.size, after: file.size, width: bitmap.width, height: bitmap.height, type: file.type };
+    bitmap.close();
+    return measured;
+  });
+  expect(result.before).toBeLessThan(2 * 1024 * 1024);
+  expect(result.after).toBeLessThanOrEqual(600 * 1024);
+  expect(result.width).toBe(1920);
+  expect(result.height).toBe(1280);
+  expect(result.type).toBe('image/jpeg');
 });

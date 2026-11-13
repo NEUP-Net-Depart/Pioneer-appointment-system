@@ -1,9 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useContext, useEffect, useRef, useState } from 'react';
-import { uploadAttachments } from '../../../shared/attachments.js';
+import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ActivityContext, api } from './ui';
 import type { Appointment, Verification } from './types';
-import { intakePhoto } from './photos';
+import { intakeUpload } from './intake-upload';
 
 export function useRepair({ id }: { id: string }) {
   const client = useQueryClient();
@@ -18,7 +17,18 @@ export function useRepair({ id }: { id: string }) {
   const initialized = useRef(false);
   const [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
-    [timedOut, setTimedOut] = useState(false);
+    [waitingForPhotos, setWaitingForPhotos] = useState(false);
+  const skipWaiting = useRef<(() => void) | null>(null);
+  const actionRunning = useRef(false);
+  const photoTask = useMemo(
+    () =>
+      intakeUpload(id, () => {
+        void load().catch(() => {});
+      }),
+    [id, client]
+  );
+  const photoState = useSyncExternalStore(photoTask.subscribe, photoTask.snapshot);
+  const { files, uploaded } = photoState;
   const [verification, setVerification] = useState<Verification>({
     brand: '',
     model: '',
@@ -28,9 +38,7 @@ export function useRepair({ id }: { id: string }) {
   });
   const [note, setNote] = useState(''),
     [outcome, setOutcome] = useState('');
-  const [files, setFiles] = useState<Record<string, File>>({}),
-    [uploaded, setUploaded] = useState<Record<string, string>>({}),
-    [previews, setPreviews] = useState<Record<string, string>>({});
+  const [previews, setPreviews] = useState<Record<string, string>>({});
   const pending = useRef<{ signature: string; requestId: string } | null>(null);
   async function load() {
     const affected = {
@@ -62,8 +70,13 @@ export function useRepair({ id }: { id: string }) {
       liquidMetal: item.liquidMetal || 'unknown',
       note: ''
     });
-    setUploaded({ front: item.frontPhotoId || '', back: item.backPhotoId || '' });
+    photoTask.seed(item);
   }, [item]);
+  useEffect(() => {
+    // A receipt may succeed even if its response was lost. A fresh detail
+    // read can still enable association of this session's pending photos.
+    if (item?.receivedAt) photoTask.confirmed(item);
+  }, [item, photoTask]);
   useEffect(() => {
     const urls = Object.fromEntries(
       Object.entries(files).map(([side, file]) => [side, URL.createObjectURL(file)])
@@ -78,14 +91,16 @@ export function useRepair({ id }: { id: string }) {
     return { ...body, requestId: pending.current.requestId };
   }
   async function send(path: string, body: Record<string, unknown>, method = 'POST') {
-    await api(`/api/appointments/${encodeURIComponent(id)}/${path}`, {
+    const updated = await api<Appointment>(`/api/appointments/${encodeURIComponent(id)}/${path}`, {
       method,
       body: operation({ ...body, revision: item!.revision })
     });
     await load();
+    return updated;
   }
-  async function run(action: () => Promise<void>) {
-    if (busy) return;
+  async function run(action: () => Promise<unknown>) {
+    if (actionRunning.current) return;
+    actionRunning.current = true;
     setBusy(true);
     setError('');
     try {
@@ -94,66 +109,50 @@ export function useRepair({ id }: { id: string }) {
       setError((failure as Error).message);
       await load().catch(() => {});
     } finally {
+      actionRunning.current = false;
+      skipWaiting.current = null;
+      setWaitingForPhotos(false);
       setBusy(false);
     }
   }
-  async function photos(partial = false) {
-    if (!partial && ['front', 'back'].some((side) => !files[side] && !uploaded[side]))
-      throw new Error('请先拍摄正反面两张照片');
-    const saved = { ...uploaded };
-    const results = await Promise.allSettled(
-      ['front', 'back'].map(async (side) => {
-        if (saved[side] || !files[side]) return;
-        const [attachment] = await uploadAttachments(
-          item,
-          [await intakePhoto(files[side])],
-          `intake_${side}`
-        );
-        saved[side] = attachment.id;
-      })
-    );
-    setUploaded(saved);
-    const failures = results.filter(
-      (result): result is PromiseRejectedResult => result.status === 'rejected'
-    );
-    if (
-      failures.some(
-        (result) => result.reason?.name === 'AbortError' || result.reason?.name === 'TimeoutError'
-      )
-    )
-      setTimedOut(true);
-    if (failures.length)
-      throw new Error(
-        timedOut ||
-        failures.some((result) => ['AbortError', 'TimeoutError'].includes(result.reason?.name))
-          ? '上传超时。请保留首次接收原图，可选择稍后补传。'
-          : '照片上传失败，请手动重试。'
-      );
-    return { frontPhotoId: saved.front || undefined, backPhotoId: saved.back || undefined };
+  async function waitForPhotos(action: () => Promise<unknown>) {
+    const skip = new Promise<boolean>((resolve) => {
+      skipWaiting.current = () => resolve(true);
+    });
+    setWaitingForPhotos(true);
+    try {
+      return await Promise.race([action().then(() => false), skip]);
+    } finally {
+      skipWaiting.current = null;
+      setWaitingForPhotos(false);
+    }
   }
   const start = (receiveOnly = false, defer = false) =>
     run(async () => {
+      let skipped = false;
+      if (!item!.receivedAt) {
+        if (defer) {
+          if (!photoTask.snapshot().canSkip) return;
+          skipped = true;
+        } else {
+          skipped = await waitForPhotos(() => photoTask.upload());
+          if (!skipped && photoTask.snapshot().error) throw new Error(photoTask.snapshot().error);
+        }
+      }
       const photoData = item!.receivedAt
         ? {}
-        : defer
-          ? {
-              frontPhotoId: uploaded.front || undefined,
-              backPhotoId: uploaded.back || undefined,
-              photosCaptured: true,
-              uploadTimedOut: true
-            }
-          : await photos();
-      await send(
+        : {
+            ...photoTask.photoIds(),
+            ...(skipped ? { photosCaptured: true, uploadTimedOut: true } : {})
+          };
+      const updated = await send(
         receiveOnly ? 'receive' : 'status',
         { ...photoData, verification, ...(!receiveOnly ? { status: 'in_progress' } : {}) },
         receiveOnly ? 'POST' : 'PATCH'
       );
-      setTimedOut(false);
+      photoTask.confirmed(updated);
     });
-  const supplement = () =>
-    run(async () => {
-      await send('photos', await photos(true));
-    });
+  const supplement = () => run(() => waitForPhotos(() => photoTask.supplement()));
   const finish = () =>
     run(() => send('status', { status: 'completed', outcome, repairNote: note.trim() }, 'PATCH'));
   const correct = () =>
@@ -161,9 +160,15 @@ export function useRepair({ id }: { id: string }) {
   const handoff = () => run(() => send('transfer', { receivedDevice: true }));
   return {
     item,
-    error: error || result.error?.message || '',
+    error: error || photoState.error || result.error?.message || '',
     busy,
-    timedOut,
+    canSkip: photoState.canSkip,
+    waitingForPhotos,
+    photoBusy: photoState.uploading || photoState.linking,
+    photoProgress: photoState.progress,
+    skip: () => {
+      if (photoTask.snapshot().canSkip) skipWaiting.current?.();
+    },
     verification,
     setVerification,
     note,
@@ -173,11 +178,7 @@ export function useRepair({ id }: { id: string }) {
     files,
     uploaded,
     previews,
-    onFile: (side: string, file: File) => {
-      setFiles({ ...files, [side]: file });
-      setUploaded({ ...uploaded, [side]: '' });
-      setTimedOut(false);
-    },
+    onFile: photoTask.select,
     load,
     start,
     supplement,
