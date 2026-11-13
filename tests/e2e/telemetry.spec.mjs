@@ -36,6 +36,36 @@ test('student SDK captures navigation, autocapture, replay and correlated except
     }
   });
   expect(result).toEqual({ status: 503, id: correlation });
+  for (const upload of [false, true]) {
+    const requestId = upload
+      ? '22345678-1234-4234-8234-123456789abc'
+      : '32345678-1234-4234-8234-123456789abc';
+    const path = upload ? '/api/appointments/example/attachments' : '/api/appointments';
+    await page.route(`**${path}`, (route) =>
+      route.fulfill({
+        status: 400,
+        headers: { 'X-Request-ID': requestId },
+        json: {
+          error: 'Invalid input',
+          code: 'FIELD_INVALID',
+          fields: { [upload ? 'filename' : 'studentId']: 'Invalid' }
+        }
+      })
+    );
+    const rejected = await page.evaluate(
+      async ({ upload, path }) => {
+        const { apiJson, apiUpload } = await import('/shared/api.js');
+        try {
+          if (upload) await apiUpload(path, { body: new Blob(['image']) });
+          else await apiJson(path, { method: 'POST', json: {} });
+        } catch (error) {
+          return { code: error.code, requestId: error.requestId };
+        }
+      },
+      { upload, path }
+    );
+    expect(rejected).toEqual({ code: 'FIELD_INVALID', requestId });
+  }
   await page.evaluate(() => {
     const error = new TypeError('Example runtime failure');
     window.dispatchEvent(new ErrorEvent('error', { error }));
@@ -45,7 +75,10 @@ test('student SDK captures navigation, autocapture, replay and correlated except
   await expect.poll(() => events().filter((e) => e.name === '$exception').length).toBe(2);
   expect(
     events().some(
-      (e) => e.name === '$exception' && e.requestId === correlation && e.errorCode === 'HTTP_ERROR'
+      (e) =>
+        e.name === '$exception' &&
+        e.requestId === correlation &&
+        e.errorCode === 'SERVICE_UNAVAILABLE'
     )
   ).toBe(true);
   expect(
@@ -58,6 +91,12 @@ test('student SDK captures navigation, autocapture, replay and correlated except
       .filter((e) => e.name === 'app.view')
       .map((e) => e.view)
   ).toEqual(['student.booking', 'student.lookup', 'student.booking', 'student.lookup']);
+  const rejected = events().filter(
+    (e) => e.name === 'flow.result' && e.errorCode === 'FIELD_INVALID'
+  );
+  expect(rejected).toHaveLength(2);
+  expect(rejected.map((e) => e.failureFields[0]).sort()).toEqual(['filename', 'studentId']);
+  expect(rejected.every((e) => e.result === 'rejected')).toBe(true);
   expect(events().some((e) => e.name === '$autocapture')).toBe(true);
   await expect.poll(() => events().some((e) => e.name === '$snapshot')).toBe(true);
 });
@@ -74,6 +113,20 @@ test('staff SDK records dialogs and lazy pages and isolates shared-device identi
     (await import('/assets/posthog.js')).default.get_distinct_id()
   );
   expect(distinct).toMatch(/^staff:/);
+  const student = await context.newPage();
+  const studentEvents = await collectTelemetry(student);
+  await student.goto(new URL('/', page.url()).href);
+  await readyTelemetry(student);
+  const identity = (tab) =>
+    tab.evaluate(async () => (await import('/assets/posthog.js')).default.get_distinct_id());
+  const studentIdentity = await identity(student);
+  expect(studentIdentity).not.toBe(distinct);
+  expect(studentIdentity).not.toMatch(/^staff:/);
+  await student.reload();
+  await readyTelemetry(student);
+  expect(await identity(student)).toBe(studentIdentity);
+  expect(await identity(page)).toBe(distinct);
+
   await staffPage(page, '人员管理');
   await page.getByRole('button', { name: '新增人员', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '新增人员', exact: true });
@@ -97,6 +150,15 @@ test('staff SDK records dialogs and lazy pages and isolates shared-device identi
   );
   expect(after).not.toBe(distinct);
   expect(after).not.toMatch(/^staff:/);
+  await student.reload();
+  await readyTelemetry(student);
+  expect(await identity(student)).toBe(studentIdentity);
+  await sendPending(context);
+  expect(
+    studentEvents()
+      .filter((e) => e.name === 'app.view')
+      .every((e) => e.distinct_id === studentIdentity && e.surface === 'student')
+  ).toBe(true);
 });
 
 test('API timeouts are exceptions while deliberate cancellation stays a separate outcome', async ({
@@ -274,4 +336,115 @@ test('calendar, help and time gestures retain their field context and bound gest
       .filter((e) => e.name === 'ui.change' && e.control === id)
       .reduce((n, e) => n + e.count, 0)
   ).toBe(1);
+});
+
+test('booking validation reports missing fields, invalid fields and photo preparation separately', async ({
+  page,
+  context
+}) => {
+  const { chooseTime, fillDevice, goReview, PHOTO } = await import('./support/student.mjs');
+  const events = await collectTelemetry(page);
+  await page.goto('/');
+  await readyTelemetry(page);
+  await chooseTime(page);
+  await page.locator('#step-two-next').click();
+  await expect(page.locator('[name=studentId]')).toHaveAttribute('aria-invalid', 'true');
+  await fillDevice(page, { studentId: 'invalid' });
+  await page.locator('#step-two-next').click();
+  await page.locator('[name=studentId]').fill('20269987');
+  // Hold the external decoder so the real form sees an in-flight photo.
+  await page.evaluate(() => {
+    const loadImage = window.loadImage;
+    window.loadImage = (file, callback, options) => {
+      window.releasePhoto = () => {
+        window.loadImage = loadImage;
+        loadImage(file, callback, options);
+      };
+      return {};
+    };
+  });
+  await page
+    .locator('#appointment-attachments')
+    .setInputFiles({ name: 'photo.png', mimeType: 'image/png', buffer: PHOTO });
+  await page.waitForFunction(() => !!window.releasePhoto);
+  await page.locator('#step-two-next').click();
+  await expect(page.locator('[data-step="2"]')).toBeVisible();
+  await page.evaluate(() => window.releasePhoto());
+  await expect(page.locator('#booking-photos')).toContainText('照片已准备好');
+  await goReview(page);
+  await page.locator('#booking-submit').click();
+  await expect(page.locator('[data-error-for=signature]')).not.toBeEmpty();
+  await sendPending(context);
+  const rejected = events().filter(
+    (e) => e.result === 'rejected' && e.control.startsWith('booking.')
+  );
+  expect(rejected.map((e) => e.reason)).toEqual([
+    'FIELD_REQUIRED',
+    'FIELD_INVALID',
+    'PHOTO_PREPARING',
+    'FIELD_REQUIRED'
+  ]);
+  expect(rejected[0].missingFields).toContain('studentId');
+  expect(rejected[1].invalidFields).toEqual(['studentId']);
+  expect(rejected[3].missingFields).toEqual(['agreement', 'signature']);
+});
+
+test('booking recovery and detail navigation record outcomes and real destinations only', async ({
+  page,
+  context
+}) => {
+  const { chooseTime, fillDevice, goReview, submitStudent } = await import('./support/student.mjs');
+  const events = await collectTelemetry(page);
+  await page.goto('/');
+  await readyTelemetry(page);
+  await chooseTime(page);
+  await fillDevice(page, { studentId: '20269986' });
+  await goReview(page);
+  // The server commits but the response is lost; the existing idempotency resolver recovers it.
+  await page.route('**/api/appointments', async (route) => {
+    await route.fetch();
+    await route.abort('failed');
+  });
+  await submitStudent(page);
+  const privateLink = await page.locator('#success-link-fallback').inputValue();
+  await page.locator('#view-created-appointment').click();
+  await expect(page.locator('#appointment-detail')).toBeVisible();
+  await sendPending(context);
+  expect(
+    events()
+      .filter((e) => e.name === 'app.view')
+      .map((e) => e.view)
+  ).toEqual(['student.booking', 'student.detail']);
+  expect(
+    events()
+      .filter((e) => e.control === 'booking.submit' && e.result === 'ok')
+      .map((e) => e.reason)
+  ).toEqual(['RECOVERED']);
+  await page.reload();
+  await readyTelemetry(page);
+  await expect(page.locator('#appointment-detail')).toBeVisible();
+  await sendPending(context);
+  // Enter the private link in a fresh document, as an external link would.
+  await page.goto('about:blank');
+  await page.goto(privateLink);
+  await readyTelemetry(page);
+  await expect(page.locator('#appointment-detail')).toBeVisible();
+  await sendPending(context);
+  await page.locator('#back-to-appointments').click();
+  await expect(page.locator('#lookup-list')).toBeVisible();
+  await sendPending(context);
+  for (const name of ['app.view', '$pageview'])
+    await expect
+      .poll(() =>
+        events()
+          .filter((e) => e.name === name)
+          .map((e) => e.view)
+      )
+      .toEqual([
+        'student.booking',
+        'student.detail',
+        'student.detail',
+        'student.detail',
+        'student.lookup'
+      ]);
 });

@@ -191,7 +191,7 @@ test('disabled, missing and throwing analytics bindings preserve application res
 
 test('requests produce one summary, retain errors despite sampling, and preserve response streams', async () => {
   const points = [],
-    runtime = { ...env(points), TELEMETRY_POLL_SAMPLE_RATE: '0.01' };
+    runtime = env(points);
   const req = new Request('https://app.test/api/appointments/private-id', {
     headers: { 'X-Request-ID': id, 'X-Telemetry-Poll': '1' }
   });
@@ -210,6 +210,8 @@ test('requests produce one summary, retain errors despite sampling, and preserve
   assert.equal(wrapped.headers.get('X-Request-ID'), id);
   assert.equal(await wrapped.text(), 'download');
   assert.equal(points.length, 0);
+  createObservation(req, runtime, { random: () => 0.005 }).finish(new Response('ok'));
+  assert.equal(points.pop().doubles[3], 100);
   const failed = createObservation(req, runtime, { random: () => 0.5 });
   failed.dependency('r2', 12, true);
   failed.finish(new Response(null, { status: 503 }), new Error('secret detail'));
@@ -506,7 +508,7 @@ test('expected write conflicts remain rejected outcomes, not server failures', (
   assert.equal(points[0].doubles[3], 1);
 });
 
-test('source maps never remain deployable when upload is skipped or misconfigured', async () => {
+test('source map service failures never block publication and maps are always removed', async () => {
   const { mkdtemp, mkdir, writeFile, readdir, rm } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
@@ -514,15 +516,44 @@ test('source maps never remain deployable when upload is skipped or misconfigure
   const directory = await mkdtemp(join(tmpdir(), 'pioneer-symbols-'));
   try {
     await mkdir(join(directory, 'assets'));
-    for (const enabled of [false, true]) {
+    for (const scenario of [
+      'disabled',
+      'missing',
+      'partial',
+      'inject-failed',
+      'upload-failed',
+      'timeout',
+      'spawn-failed',
+      'success'
+    ]) {
       await writeFile(
         join(directory, 'assets/app.js'),
         'window.example = true;\n//# sourceMappingURL=app.js.map\n//# chunkId=preserved\n'
       );
       await writeFile(join(directory, 'assets/app.js.map'), '{}');
-      const finish = finishSourceMaps(directory, { enabled }, { POSTHOG_PROJECT_ID: '123' });
-      if (enabled) await assert.rejects(finish, /requires both/);
-      else await finish;
+      const credentials =
+        scenario === 'missing'
+          ? {}
+          : scenario === 'partial'
+            ? { POSTHOG_PROJECT_ID: '123' }
+            : { POSTHOG_PROJECT_ID: '123', POSTHOG_PERSONAL_API_KEY: 'test-key' };
+      await finishSourceMaps(
+        directory,
+        {
+          enabled: scenario !== 'disabled',
+          environment: 'preview',
+          release: 'abcdef12',
+          posthog: { host: 'https://us.i.posthog.com' }
+        },
+        credentials,
+        (_binary, args) => {
+          const command = args[2];
+          if (scenario === 'spawn-failed') throw new Error('could not start CLI');
+          if (scenario === 'timeout')
+            return { error: Object.assign(new Error('timed out'), { code: 'ETIMEDOUT' }) };
+          return { status: scenario === `${command}-failed` ? 1 : 0 };
+        }
+      );
       assert.deepEqual(await readdir(join(directory, 'assets')), ['app.js']);
       const source = await readFile(join(directory, 'assets/app.js'), 'utf8');
       assert.ok(!source.includes('sourceMappingURL'));

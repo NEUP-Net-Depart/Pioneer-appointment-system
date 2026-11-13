@@ -37,6 +37,7 @@ export const FLOW_CONTROLS = [
   'booking.step.1',
   'booking.step.2',
   'booking.step.3',
+  'booking.submit',
   'private-link.import',
   'device.scan',
   'device.ocr',

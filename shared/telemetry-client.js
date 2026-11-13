@@ -4,6 +4,21 @@ import { cleanEvent, knownControl, knownView, releaseId, routeFor } from './tele
 const loadPostHog = () =>
   import(/* @vite-ignore */ '/assets/posthog.js').then((module) => module.default);
 
+// PostHog-only dimensions. The legacy Analytics Engine column contract stays unchanged.
+function businessProperties(fields) {
+  const properties = {};
+  for (const key of ['reason', 'errorCode'])
+    if (typeof fields[key] === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(fields[key]))
+      properties[key] = fields[key];
+  for (const key of ['failureFields', 'missingFields', 'invalidFields'])
+    if (Array.isArray(fields[key]))
+      properties[key] = [...new Set(fields[key])]
+        .filter((field) => typeof field === 'string' && /^[a-zA-Z][\w.]{0,63}$/.test(field))
+        .sort()
+        .slice(0, 30);
+  return properties;
+}
+
 export function createTelemetryClient({
   config = {},
   win = globalThis.window,
@@ -22,7 +37,8 @@ export function createTelemetryClient({
     failed = false;
   const enabled = config.enabled === true && !!config.posthog?.token;
   const release = releaseId(config.release);
-  const context = () => ({ environment: config.environment, release, view });
+  const surface = /^\/staff(?:\/|$)/.test(win?.location?.pathname || '') ? 'staff' : 'student';
+  const context = () => ({ environment: config.environment, release, surface, view });
   function send(method, ...args) {
     if (!enabled || disposed || failed) return;
     try {
@@ -58,6 +74,9 @@ export function createTelemetryClient({
             },
             person_profiles: 'identified_only',
             cross_subdomain_cookie: false,
+            // Separate both identity and replay sessions across same-origin applications.
+            // Include the project token because persistence_name replaces the SDK token key.
+            persistence_name: `pioneer_${config.posthog.token}_${config.environment || 'local'}_${surface}`,
             // Accommodate legitimate bursts without imposing a daily application budget.
             rate_limiting: { events_per_second: 100, events_burst_limit: 1000 },
             loaded(instance) {
@@ -87,7 +106,7 @@ export function createTelemetryClient({
       });
       if (!event) return;
       // Preserve every event and request ID; do not aggregate sequences used by funnels.
-      send('capture', name, { ...event, environment: config.environment });
+      send('capture', name, { ...context(), ...event, ...businessProperties(fields) });
     } catch {
       /* Collection must never interrupt the application. */
     }
@@ -276,21 +295,31 @@ export const resetTelemetry = () => client.reset();
 export const track = (name, fields) => client.track(name, fields);
 export const reportClientError = (error, code, fields) => client.report(error, code, fields);
 export const trackPage = (view) => client.page(view);
-export function trackRequest(input, method, response, durationMs, error, code) {
+export function trackRequest(input, method, response, durationMs, error, code, payload) {
   const route = routeFor(input, method);
   if (route === 'unknown') return;
   const fields = {
     route,
     durationMs,
     status: response?.status || 0,
-    requestId: response?.headers.get('X-Request-ID') || ''
+    requestId: response?.headers.get('X-Request-ID') || '',
+    ...(!response?.ok && payload && typeof payload === 'object'
+      ? businessProperties({
+          errorCode: payload.code,
+          failureFields: Object.keys(payload.fields || {})
+        })
+      : {})
   };
   if (error) {
     if (code === 'REQUEST_CANCELLED') client.cancel(error, fields);
     else reportClientError(error, code, fields);
   } else if (!['GET', 'HEAD'].includes(method) || !response.ok) {
     if (response.status >= 500)
-      reportClientError(new Error(`HTTP ${response.status}`), 'HTTP_ERROR', fields);
+      reportClientError(
+        new Error(`HTTP ${response.status}`),
+        fields.errorCode || 'HTTP_ERROR',
+        fields
+      );
     track('flow.result', {
       ...fields,
       result: response.status >= 500 ? 'error' : response.ok ? 'ok' : 'rejected'

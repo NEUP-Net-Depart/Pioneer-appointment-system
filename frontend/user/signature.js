@@ -7,9 +7,9 @@ export function initSignature() {
   let strokes=[],signed=null,pointer=null;
   const draw=(target,value)=>drawSignature(target,value,target.clientWidth ? target.width/target.clientWidth : 1);
   const point=event=>{const box=canvas.getBoundingClientRect();return [Math.max(0,Math.min(1,(event.clientX-box.left)/box.width)),Math.max(0,Math.min(1,(event.clientY-box.top)/box.height))];};
-  function resize(){if(modal.hidden)return;const box=canvas.getBoundingClientRect(),dpr=Math.min(window.devicePixelRatio || 1,3);canvas.width=Math.round(box.width*dpr);canvas.height=Math.round(box.height*dpr);draw(canvas,strokes);}
+  function resize(){if(modal.hidden)return;const box=canvas.getBoundingClientRect(),dpr=Math.min(window.devicePixelRatio || 1,3),width=Math.round(box.width*dpr),height=Math.round(box.height*dpr);if(canvas.width===width && canvas.height===height)return;canvas.width=width;canvas.height=height;draw(canvas,strokes);}
   function close(){pointer=null;dialog.close();}
-  function open(){strokes=[];pointer=null;$('#signature-error').textContent='';dialog.open();resize();}
+  function open(){strokes=[];pointer=null;$('#signature-error').textContent='';dialog.open();resize();draw(canvas,strokes);}
   canvas.addEventListener('pointerdown',event=>{if(pointer!==null || strokes.length>=100)return;event.preventDefault();pointer=event.pointerId;canvas.setPointerCapture(pointer);strokes.push([point(event)]);});
   canvas.addEventListener('pointermove',event=>{if(event.pointerId!==pointer)return;event.preventDefault();if(strokes.flat().length>=5000)return;strokes.at(-1).push(point(event));draw(canvas,strokes);});
   function finish(event){if(event.pointerId!==pointer)return;if(strokes.at(-1).length<2)strokes.pop();pointer=null;}

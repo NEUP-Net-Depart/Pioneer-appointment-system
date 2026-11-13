@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 // Keep maps private even when upload is disabled or fails. The copied native JS
 // is already readable; Vite and the shared SDK are the transformed bundles.
-export async function finishSourceMaps(directory, config, env = process.env) {
+export async function finishSourceMaps(directory, config, env = process.env, run = spawnSync) {
   try {
     if (!config.enabled) return;
     const key = env.POSTHOG_PERSONAL_API_KEY,
@@ -24,7 +24,7 @@ export async function finishSourceMaps(directory, config, env = process.env) {
       new URL('../node_modules/@posthog/cli/run-posthog-cli.js', import.meta.url)
     );
     for (const command of ['inject', 'upload']) {
-      const result = spawnSync(
+      const result = run(
         process.execPath,
         [
           cli,
@@ -39,7 +39,7 @@ export async function finishSourceMaps(directory, config, env = process.env) {
         ],
         {
           stdio: 'inherit',
-          timeout: 120000,
+          timeout: 30000,
           env: {
             ...env,
             POSTHOG_CLI_API_KEY: key,
@@ -49,8 +49,12 @@ export async function finishSourceMaps(directory, config, env = process.env) {
         }
       );
       if (result.error || result.status !== 0)
-        throw result.error || new Error(`PostHog source map ${command} failed; release stopped.`);
+        throw (
+          result.error || new Error(`PostHog source map ${command} failed (exit ${result.status}).`)
+        );
     }
+  } catch (error) {
+    console.warn(`PostHog source maps unavailable; deployment will continue: ${error.message}`);
   } finally {
     async function clean(path) {
       for (const entry of await readdir(path, { withFileTypes: true })) {
