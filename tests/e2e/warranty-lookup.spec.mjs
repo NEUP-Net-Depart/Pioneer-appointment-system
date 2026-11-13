@@ -1,6 +1,6 @@
 import { test, expect } from './support/fixtures.mjs';
 import { readFile } from 'node:fs/promises';
-import { chooseOption, loginStaff, staffPage } from './support/staff.mjs';
+import { chooseOption, loginStaff, onsiteOrder, staffPage } from './support/staff.mjs';
 
 async function fixture(page, { captcha = false, huawei = false } = {}) {
   await page.addInitScript(() => {
@@ -24,6 +24,7 @@ async function fixture(page, { captcha = false, huawei = false } = {}) {
           'apple',
           'xiaomi',
           'huawei',
+          'honor',
           'mechrevo'
         ].map((id) => ({
           id,
@@ -320,6 +321,9 @@ test('real local OCR reads a device label, copies its serial and opens the offic
   ).toBeInViewport();
   await expect(dialog.getByLabel('序列号 / S/N / Service Tag', { exact: true })).not.toBeFocused();
   await expect(officialLink).toBeInViewport();
+  await expect(
+    dialog.getByRole('link', { name: '打开售后网点 ↗', exact: true })
+  ).toBeInViewport();
   expect(copies).toEqual([]);
   expect(context.pages()).toHaveLength(pageCount);
   await copy.click();
@@ -346,4 +350,67 @@ test('real local OCR reads a device label, copies its serial and opens the offic
   await expect(dialog).toBeVisible();
   expect(copies).toEqual(['ABC23456789']);
   await official.close();
+});
+
+async function expectIsolatedPopup(page, link, url) {
+  const popup = page.waitForEvent('popup');
+  await link.click();
+  const opened = await popup;
+  await expect(opened).toHaveURL(url);
+  expect(await opened.evaluate(() => window.opener)).toBeNull();
+  expect(await opened.evaluate(() => document.referrer)).toBe('');
+  await opened.close();
+}
+
+test('the lookup opens the fixed official service center without a serial', async ({
+  page,
+  context
+}) => {
+  await fixture(page);
+  const url = 'https://newsupport.lenovo.com.cn/serverNet.html';
+  await context.route(url, (route) =>
+    route.fulfill({
+      contentType: 'text/html; charset=utf-8',
+      body: '<meta charset="utf-8"><h1>模拟联想售后网点</h1>'
+    })
+  );
+  const dialog = await openLookup(page);
+  await chooseOption(page, dialog.getByLabel('设备品牌'), 'lenovo');
+  await expect(dialog.getByLabel('序列号 / S/N / Service Tag', { exact: true })).toHaveValue('');
+  const link = dialog.getByRole('link', { name: '打开售后网点 ↗', exact: true });
+  await expect(link).toHaveAttribute('href', url);
+  await expectIsolatedPopup(page, link, url);
+  await expect(dialog).toBeVisible();
+});
+
+test('a repair order links to the service center of its current brand', async ({
+  page,
+  context
+}) => {
+  await fixture(page);
+  const asus = 'https://www.asus.com.cn/support/service-center/';
+  const honor = 'https://www.honor.com/cn/support/service-center/';
+  await context.route(asus, (route) =>
+    route.fulfill({
+      contentType: 'text/html; charset=utf-8',
+      body: '<meta charset="utf-8"><h1>模拟华硕售后网点</h1>'
+    })
+  );
+  const order = await onsiteOrder(page, { brand: '华硕' });
+  await page.getByRole('button', { name: '刷新工作台', exact: true }).click();
+  await page.getByRole('button').filter({ hasText: order.id }).first().click();
+  const dialog = page.getByRole('dialog', { name: '维修工单', exact: true });
+  const link = dialog.getByRole('link', { name: '打开售后网点 ↗', exact: true });
+  await expect(link).toHaveAttribute('href', asus);
+  await expect(page.getByRole('dialog', { name: '查询设备保修', exact: true })).toHaveCount(0);
+  await expectIsolatedPopup(page, link, asus);
+  const details = dialog.locator('details').filter({ hasText: '修正设备资料' });
+  await details.getByText('修正设备资料', { exact: true }).click();
+  const brand = details.getByLabel('品牌', { exact: true });
+  await brand.fill('荣耀');
+  await expect(link).toHaveAttribute('href', honor);
+  await brand.fill('机械师');
+  await expect(link).toHaveCount(0);
+  await brand.fill('');
+  await expect(link).toHaveAttribute('href', asus);
 });
