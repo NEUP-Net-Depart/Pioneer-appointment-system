@@ -11,16 +11,28 @@ import { TimePicker } from './TimePicker.jsx';
 import { RefreshButton } from './WorkspaceToolbar.jsx';
 
 const labels = {
-  upcoming: '待签到',
+  upcoming: '未签到',
   pending: '未签到',
   arrived: '已签到',
-  absent: '已确认未到',
+  absent: '未签到',
   leave: '已请假',
-  paused: '暂停服务'
+  idle: '空闲',
+  repairing: '维修中'
 };
-const order = { pending: 0, upcoming: 1, absent: 2, arrived: 3, leave: 4, paused: 5 };
+const order = {
+  pending: 0,
+  upcoming: 0,
+  absent: 0,
+  idle: 1,
+  repairing: 2,
+  arrived: 3,
+  leave: 4
+};
+const personState = (person) =>
+  person.workStatus ||
+  (person.status === 'paused' ? (person.record ? 'arrived' : 'pending') : person.status);
 const localTime = (value) => new Date(Date.parse(value) + 8 * 3600000).toISOString().slice(11, 16);
-export function AttendanceManagement({ campusId, onDirtyChange, campusControl = null }) {
+export function AttendanceManagement({ campusId, onDirtyChange, campusControl = null, focus }) {
   const client = useQueryClient();
   const active = useContext(ActivityContext),
     lock = useRef(false);
@@ -36,6 +48,29 @@ export function AttendanceManagement({ campusId, onDirtyChange, campusControl = 
     refetchInterval: form || busy ? false : 30000
   });
   const data = result.data;
+  const listRef = useRef(null);
+  const focused = useRef(null);
+  const people = [...(data?.items || []), ...(data?.temporary || [])].sort(
+    (first, second) =>
+      order[personState(first)] - order[personState(second)] ||
+      first.name.localeCompare(second.name, 'zh-CN')
+  );
+  useEffect(() => {
+    if (!active || !focus || focus.campusId !== campusId || focused.current === focus.id) return;
+    if (day !== dateKey()) {
+      setDay(dateKey());
+      return;
+    }
+    if (!data || data.campusId !== campusId || data.businessDate !== day) return;
+    const target =
+      listRef.current?.querySelector(`[data-staffing="${focus.kind}"]`) || listRef.current;
+    target?.scrollIntoView({
+      block: 'center',
+      behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'
+    });
+    target?.focus({ preventScroll: true });
+    focused.current = focus.id;
+  }, [active, focus, campusId, day, data]);
   const failure = error || result.error?.message;
   useEffect(() => {
     onDirtyChange(!!form || busy);
@@ -54,7 +89,8 @@ export function AttendanceManagement({ campusId, onDirtyChange, campusControl = 
         '/api/attendance/matrix',
         '/api/attendance/weekly-summary',
         '/api/field/home',
-        '/api/field/board'
+        '/api/field/board',
+        '/api/attendance/staffing'
       ].map((path) => client.invalidateQueries({ queryKey: [path] }))
     );
   async function execute(operation) {
@@ -160,6 +196,14 @@ export function AttendanceManagement({ campusId, onDirtyChange, campusControl = 
       <article
         data-motion-item={person.memberId}
         className={`duty-person duty-${person.status}`}
+        data-staffing={
+          person.workStatus === 'idle' && person.repairEligible
+            ? 'idle'
+            : ['pending', 'upcoming', 'absent'].includes(person.status)
+              ? 'missing'
+              : undefined
+        }
+        tabIndex={-1}
         key={person.memberId}
       >
         <div>
@@ -169,7 +213,7 @@ export function AttendanceManagement({ campusId, onDirtyChange, campusControl = 
               ?.map((item) => `${dutyTypeLabels[item.dutyType]} ${item.startAt}–${item.endAt}`)
               .join('、') || '临时到场'}
             {person.record ? ` · ${time(person.record.occurredAt)}` : ''}
-            {person.record && (
+            {person.record && data.canManage && (
               <span className="attendance-source">
                 {' '}
                 ·{' '}
@@ -185,7 +229,7 @@ export function AttendanceManagement({ campusId, onDirtyChange, campusControl = 
             {person.unavailable ? ' · 账号或校区授权已失效，请调整班表' : ''}
           </p>
         </div>
-        <span className="duty-status">{labels[person.status]}</span>
+        <span className="duty-status">{labels[personState(person)]}</span>
         <div className="schedule-actions">
           {person.canConfirm && (
             <button
@@ -260,16 +304,18 @@ export function AttendanceManagement({ campusId, onDirtyChange, campusControl = 
               展示签到码
             </button>
           )}
-          <button
-            data-track="staff.attendancemanagement.button.8"
-            disabled={busy || !data || data.paused || day > dateKey()}
-            onClick={() => edit(null)}
-          >
-            补录其他人员
-          </button>
+          {data?.canManage && (
+            <button
+              data-track="staff.attendancemanagement.button.8"
+              disabled={busy || !data || data.paused || day > dateKey()}
+              onClick={() => edit(null)}
+            >
+              补录其他人员
+            </button>
+          )}
         </div>
       </div>
-      {error && !form && !token && (
+      {failure && !form && !token && (
         <p role="alert" className="react-error">
           {failure}
         </p>
@@ -293,7 +339,13 @@ export function AttendanceManagement({ campusId, onDirtyChange, campusControl = 
             </div>
           ))}
         </div>
-        <section className="schedule-card" aria-busy={!data}>
+        <section
+          className="schedule-card"
+          aria-label="值班人员"
+          aria-busy={!data}
+          ref={listRef}
+          tabIndex={-1}
+        >
           <div className="duty-section-heading">
             <h2>{day === dateKey() ? '今日值班' : '值班人员'}</h2>
             <span>
@@ -304,31 +356,13 @@ export function AttendanceManagement({ campusId, onDirtyChange, campusControl = 
               · {dutyCampusNames[campusId]}
             </span>
           </div>
-          {rows(
-            (data?.items || [])
-              .filter((person) => person.status !== 'leave')
-              .sort(
-                (a, b) => order[a.status] - order[b.status] || a.name.localeCompare(b.name, 'zh-CN')
-              )
-          )}
-          {!(data?.items || []).filter((person) => person.status !== 'leave').length && (
+          {rows(people)}
+          {!people.length && (
             <p className={!data ? 'data-pending-copy' : undefined} aria-hidden={!data || undefined}>
-              当天没有应到人员。
+              当天暂无值班或签到人员。
             </p>
           )}
         </section>
-        {!!data?.items.filter((person) => person.status === 'leave').length && (
-          <section className="schedule-card">
-            <h2>已请假</h2>
-            {rows(data.items.filter((person) => person.status === 'leave'))}
-          </section>
-        )}
-        {!!data?.temporary.length && (
-          <section className="schedule-card">
-            <h2>临时到场 · {data.temporary.length}</h2>
-            {rows(data.temporary)}
-          </section>
-        )}
       </>
       {form && (
         <Modal

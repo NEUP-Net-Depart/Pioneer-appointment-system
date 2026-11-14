@@ -1,4 +1,4 @@
-import React, { useContext, useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { ActivityContext } from './field/ui';
 import { Schedule } from './Schedule.jsx';
@@ -11,12 +11,13 @@ import { staffPermission } from '../../shared/staff-access.js';
 import { dutyCampusNames } from '../../shared/duty.js';
 import './schedule.css';
 
-export function DutyWorkspace({ user, initialCampus }) {
+export function DutyWorkspace({ user, initialCampus, focus }) {
   const active = useContext(ActivityContext);
   const manage = staffPermission(user, 'attendance.correct'),
     plan = staffPermission(user, 'roster.manage'),
     canExport = staffPermission(user, 'attendance.export'),
     settings = staffPermission(user, 'settings.manage');
+  const staffing = manage || staffPermission(user, 'attendance.token.issue');
   const campuses = (user.authorizedCampuses || []).map(
     (value) => ({ 南湖: 'campus-nanhu', 浑南: 'campus-hunnan' })[value] || value
   );
@@ -27,10 +28,15 @@ export function DutyWorkspace({ user, initialCampus }) {
   ].find((id) => campuses.includes(id));
   const [scopes, setScopes] = useState({ today: preferred, plan: preferred });
   const campusFor = (task) => (campuses.includes(scopes[task]) ? scopes[task] : preferred);
-  const [tab, setTab] = useState(manage ? 'today' : plan ? 'plan' : 'mine'),
+  const [tab, setTab] = useState(staffing ? 'today' : plan ? 'plan' : 'mine'),
     [, setMineDirty] = useState(false),
     [dayDirty, setDayDirty] = useState(false),
     [planDirty, setPlanDirty] = useState(false);
+  useEffect(() => {
+    if (!active || !focus || !staffing || !campuses.includes(focus.campusId)) return;
+    setScopes((current) => ({ ...current, today: focus.campusId }));
+    setTab('today');
+  }, [active, focus, staffing]);
   const scope = (task, disabled) => (
     <CampusScope
       data-track="staff.dutyworkspace.select.1"
@@ -42,7 +48,7 @@ export function DutyWorkspace({ user, initialCampus }) {
     />
   );
   const tabs = [
-    ...(manage ? [['today', '今日值班']] : []),
+    ...(staffing ? [['today', '今日值班']] : []),
     ...(plan ? [['plan', '安排下周']] : []),
     ['mine', '我的值班'],
     ...(canExport || settings ? [['history', '统计与历史']] : [])
@@ -54,18 +60,19 @@ export function DutyWorkspace({ user, initialCampus }) {
   );
   return (
     <section className="react-page schedule-page duty-workspace">
-      <WorkspaceHeader group="排班考勤" title={manage || plan ? '值班' : '我的值班'} />
+      <WorkspaceHeader group="排班考勤" title={staffing || plan ? '值班' : '我的值班'} />
       <WorkspaceSections
         label="值班任务"
         items={tabs.map(([id, label]) => ({ id, label }))}
         value={tab}
         onChange={setTab}
       />
-      {manage &&
+      {staffing &&
         panel(
           'today',
           <>
             <AttendanceManagement
+              focus={focus}
               campusId={campusFor('today')}
               onDirtyChange={setDayDirty}
               campusControl={scope('today', dayDirty)}

@@ -282,10 +282,20 @@
   display: flex;
   align-items: center;
 }
-.warranty-actions a {
+.warranty-links,
+.repair-warranty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+.warranty-actions a,
+.repair-warranty-actions a {
   display: inline-flex;
   min-height: 44px;
   align-items: center;
+  white-space: nowrap;
+  text-underline-offset: 3px;
 }
 .warranty-actions button {
   min-height: 44px;

@@ -36,9 +36,11 @@ export default defineConfig({
         '**/photo-compress.spec.mjs',
         '**/photo-upload.spec.mjs',
         '**/records-loading.spec.mjs',
+        '**/records-navigation.spec.mjs',
         '**/maintenance-affairs.spec.mjs',
         '**/member-identities.spec.mjs',
         '**/admin-controls.spec.mjs',
+        '**/today-work-window.spec.mjs',
         '**/telemetry.spec.mjs'
       ],
       use: {

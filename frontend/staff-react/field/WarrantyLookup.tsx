@@ -537,15 +537,26 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
               >
                 {copyBusy ? '正在复制序列号…' : '复制序列号'}
               </button>
-              <a
-                data-track="staff.field.warrantylookup.a.17"
-                href={destination?.url || brand.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                referrerPolicy="no-referrer"
-              >
-                {channel.kind === 'miniapp' ? '打开官方小程序说明 ↗' : '打开品牌官网 ↗'}
-              </a>
+              <div className="warranty-links">
+                <a
+                  data-track="staff.field.warrantylookup.a.17"
+                  href={destination?.url || brand.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  referrerPolicy="no-referrer"
+                >
+                  {channel.kind === 'miniapp' ? '打开官方小程序说明 ↗' : '打开品牌官网 ↗'}
+                </a>
+                <a
+                  data-track="staff.field.warrantylookup.service-center"
+                  href={brand.serviceCenterUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  referrerPolicy="no-referrer"
+                >
+                  打开售后网点 ↗
+                </a>
+              </div>
             </>
           )}
           <div role="status" aria-live="polite">

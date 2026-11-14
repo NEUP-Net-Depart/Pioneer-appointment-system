@@ -92,7 +92,7 @@ export function useFieldWorkspace({
     Promise.all(
       (scene === 'mine'
         ? [resource, '/api/me/profile', '/api/me/volunteer-summary', '/api/me/roster']
-        : [resource]
+        : [resource, '/api/attendance/staffing']
       ).map((path) => client.invalidateQueries({ queryKey: [path] }, { throwOnError: true }))
     );
   function setCampus(value: string) {

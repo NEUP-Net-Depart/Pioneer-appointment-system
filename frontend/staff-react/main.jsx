@@ -70,6 +70,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
     enabled: false
   });
   const field = context.data || home.data;
+  const [dutyFocus, setDutyFocus] = useState(null);
   const selectField = useCallback(
     (resource, campusId) =>
       setFieldSelection((current) =>
@@ -233,6 +234,10 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
         initial={field}
         active={visible('workbench')}
         onNavigate={requestNavigate}
+        onPeople={(campusId, kind) => {
+          setDutyFocus({ campusId, kind, id: crypto.randomUUID() });
+          requestNavigate('duties');
+        }}
         onLogout={() => requestNavigate('__logout__')}
         requestedScene={workScene}
         onSceneChange={setWorkScene}
@@ -248,7 +253,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }) {
   );
   const dutyRoute = route(
     'duties',
-    <DutyWorkspace user={effectiveUser} initialCampus={field?.campusId} />
+    <DutyWorkspace user={effectiveUser} initialCampus={field?.campusId} focus={dutyFocus} />
   );
   const moduleRoutes = [
     route(

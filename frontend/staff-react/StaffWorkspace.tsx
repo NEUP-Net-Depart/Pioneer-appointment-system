@@ -239,11 +239,7 @@ export function StaffWorkspace({
             onClick={() => choose(entry.id)}
           >
             <WorkspaceIcon name={entry.icon} />
-            {entry.id === 'scene:mine'
-              ? '我的'
-              : entry.label === '工作台'
-                ? '工作台'
-                : entry.label.replace('工作台', '')}
+            {entry.label === '工作台' ? '工作台' : entry.label.replace('工作台', '')}
           </button>
         ))}
         {overflow.length > 0 && (

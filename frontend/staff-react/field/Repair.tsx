@@ -10,6 +10,7 @@ import { IntakePhotos } from './IntakePhotos';
 import { useRepair } from './useRepair';
 import { formatInstant } from '../../../shared/time.js';
 import { DataValue } from '../DataValue';
+import { warrantyServiceCenterUrl } from '../../../shared/warranty.js';
 
 function RepairOrder({
   id,
@@ -29,6 +30,8 @@ function RepairOrder({
   const r = useRepair({ id });
   const { item, busy } = r;
   const [received, setReceived] = useState(false);
+  const activeBrand = item ? (!item.receivedAt && r.verification.brand.trim()) || item.brand : '';
+  const serviceCenterUrl = warrantyServiceCenterUrl(activeBrand);
   return (
     <Modal
       title="维修工单"
@@ -284,7 +287,20 @@ function RepairOrder({
             </p>
           )}
           {!hideWarrantyLookup && (item.canStart || item.canTransfer || item.canFinish) && (
-            <WarrantyLookupButton initialBrand={item.brand} />
+            <div className="repair-warranty-actions">
+              <WarrantyLookupButton initialBrand={activeBrand} />
+              {serviceCenterUrl && (
+                <a
+                  data-track="staff.field.repair.service-center"
+                  href={serviceCenterUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  referrerPolicy="no-referrer"
+                >
+                  打开售后网点 ↗
+                </a>
+              )}
+            </div>
           )}
           <RepairRelations
             key={id}

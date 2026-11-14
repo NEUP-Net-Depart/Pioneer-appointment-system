@@ -49,6 +49,9 @@ test('affairs can check in without a roster; independent issuers and private imm
   const second = await users.find('20261002');
   const visitor = await users.find('20261003');
   const event = await staff.createAttendanceEvent(first, { type: 'duty', campusId, businessDate: day });
+  await assert.rejects(staff.issueAttendanceToken(first, event.id), error => error.status === 403 && error.message.includes('请先完成'));
+  await staff.directCheckIn(first, { campusId, requestId: crypto.randomUUID() });
+  await staff.directCheckIn(second, { campusId, requestId: crypto.randomUUID() });
   const firstCode = await staff.issueAttendanceToken(first, event.id);
   const secondCode = await staff.issueAttendanceToken(second, event.id);
   const refreshed = await staff.issueAttendanceToken(first, event.id);
@@ -60,6 +63,14 @@ test('affairs can check in without a roster; independent issuers and private imm
   const stored = JSON.parse(db.sqlite.prepare('SELECT checkin_source FROM attendance_records WHERE id=?').get(checked.id).checkin_source);
   assert.equal(stored.issuerMemberId, second.memberId);
   assert.equal(stored.tokenId, secondCode.tokenId);
+  const readOnlyDay = await staff.attendanceDay(second, { campusId, businessDate: day });
+  assert.equal(readOnlyDay.canManage, false);
+  assert.deepEqual(readOnlyDay.people, []);
+  for (const person of [...readOnlyDay.items, ...readOnlyDay.temporary]) {
+    assert.equal(person.canCorrect, false);
+    assert.equal(person.record?.checkinSource, undefined);
+    if (person.record) assert.equal(person.workStatus, 'idle');
+  }
   const own = await staff.attendanceList(visitor, { businessDate: day });
   assert.equal(own.items[0].checkinSource, undefined);
   await assert.rejects(staff.attendanceList(visitor, { all: '1', businessDate: day }), error => error.status === 403);

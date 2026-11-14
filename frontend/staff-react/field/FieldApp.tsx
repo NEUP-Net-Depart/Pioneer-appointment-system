@@ -13,6 +13,7 @@ import { AttendanceActions } from './AttendanceActions';
 import { CampusScope } from '../CampusScope.jsx';
 import { RefreshButton } from '../WorkspaceToolbar.jsx';
 import './field.css';
+import { TodayWorkWindow } from './TodayWorkWindow';
 export function FieldApp({
   initial,
   onNavigate,
@@ -21,7 +22,8 @@ export function FieldApp({
   onSceneChange,
   onContextChange,
   active = true,
-  onLogout
+  onLogout,
+  onPeople
 }: {
   initial: Home;
   workspaceLinks?: { id: string; label: string; group?: string }[];
@@ -31,6 +33,7 @@ export function FieldApp({
   active?: boolean;
   onLogout: () => void;
   onNavigate: (view: string) => void;
+  onPeople?: (campusId: string, kind: string) => void;
 }) {
   const [customerCredential, setCustomerCredential] = useState<{
     id: string;
@@ -77,43 +80,68 @@ export function FieldApp({
   return (
     <>
       <section className="field-content" aria-busy={result.isPending}>
-        <WorkspaceHeader
-          group={scene === 'mine' ? '我的' : '现场工作'}
-          title={
-            scene === 'mine'
-              ? '个人中心'
-              : (data?.contexts || initial.contexts).find((c) => c.id === scene)?.label ||
-                '今日工作'
-          }
-        >
-          <div className="field-scope">
-            <span data-motion-value="text">{data?.businessDate || initial.businessDate}</span>
-            <RefreshButton
-              data-track="staff.field.fieldapp.button.3"
-              key={`${scene}:${campus}`}
-              label={scene === 'mine' ? '刷新个人中心' : '刷新工作台'}
-              compactOnMobile
-              disabled={busy}
-              onRefresh={refresh}
-            />
-          </div>
-        </WorkspaceHeader>
+        {scene === 'today' ? (
+          <TodayWorkWindow
+            data={
+              data || {
+                ...initial,
+                campusId: campus,
+                attendance: initial.campusId === campus ? initial.attendance : null,
+                todayDuties: initial.campusId === campus ? initial.todayDuties : []
+              }
+            }
+            busy={busy || !data}
+            onCampus={(id) => {
+              setCampus(id);
+              setCustomerCredential(null);
+            }}
+            onScan={() => setScanOpen(true)}
+            onCheckIn={openAttendance}
+            onShowCode={showAttendance}
+            onRefresh={refresh}
+            onPeople={(kind) => onPeople?.(campus, kind)}
+          />
+        ) : (
+          <WorkspaceHeader
+            group={scene === 'mine' ? '我的' : '现场工作'}
+            title={
+              scene === 'mine'
+                ? '个人中心'
+                : (data?.contexts || initial.contexts).find((c) => c.id === scene)?.label ||
+                  '今日工作'
+            }
+          >
+            <div className="field-scope">
+              <span data-motion-value="text">{data?.businessDate || initial.businessDate}</span>
+              <RefreshButton
+                data-track="staff.field.fieldapp.button.3"
+                key={`${scene}:${campus}`}
+                label={scene === 'mine' ? '刷新个人中心' : '刷新工作台'}
+                compactOnMobile
+                disabled={busy}
+                onRefresh={refresh}
+              />
+            </div>
+          </WorkspaceHeader>
+        )}
         <Notice>{message || result.error?.message}</Notice>
-        <CampusScope
-          data-track="staff.field.fieldapp.select.1"
-          label={scene === 'mine' ? '签到校区' : '接待校区'}
-          campuses={(data?.campuses || initial.campuses).map((item) => ({
-            id: item.id,
-            name: item.name
-          }))}
-          value={campus}
-          disabled={busy}
-          onChange={(id) => {
-            setCampus(id);
-            setCustomerCredential(null);
-          }}
-        />
-        {(scene === 'today' || scene === 'mine') && (
+        {scene !== 'today' && (
+          <CampusScope
+            data-track="staff.field.fieldapp.select.1"
+            label={scene === 'mine' ? '签到校区' : '接待校区'}
+            campuses={(data?.campuses || initial.campuses).map((item) => ({
+              id: item.id,
+              name: item.name
+            }))}
+            value={campus}
+            disabled={busy}
+            onChange={(id) => {
+              setCampus(id);
+              setCustomerCredential(null);
+            }}
+          />
+        )}
+        {scene === 'mine' && (
           <AttendanceActions
             data={
               data || {
@@ -124,7 +152,6 @@ export function FieldApp({
             }
             busy={busy || !data}
             onCheckIn={openAttendance}
-            onShowCode={scene === 'today' ? showAttendance : undefined}
           />
         )}
         {!!data?.pendingCoverInvitations &&
@@ -159,7 +186,6 @@ export function FieldApp({
               }
             }
             onSelect={setSelected}
-            onScan={() => setScanOpen(true)}
             onRegister={() => setRegistration(true)}
           />
         )}

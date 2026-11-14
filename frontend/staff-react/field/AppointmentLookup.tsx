@@ -21,6 +21,7 @@ export function AppointmentLookup({
   onChange,
   onSearchActivityChange,
   label,
+  hideLabel = false,
   inputRole = 'combobox',
   hasLocalMatches = false,
   campusId,
@@ -33,6 +34,7 @@ export function AppointmentLookup({
   onChange?: (value: string) => void;
   onSearchActivityChange?: (active: boolean) => void;
   label?: string;
+  hideLabel?: boolean;
   inputRole?: 'combobox' | 'textbox';
   hasLocalMatches?: boolean;
   campusId?: string;
@@ -51,16 +53,10 @@ export function AppointmentLookup({
     query = parseAppointmentSearch(value),
     numberQuery = !!query && /^\d+(?:-\d*)?$/.test(query.text),
     ready = !!query?.ready && (numberQuery || !query.contact || contactEnabled),
-    contactHint =
-      searchCapabilities?.contactScope === 'own'
-        ? '本人经手工单的完整联系方式'
-        : searchCapabilities?.contactScope === 'today'
-          ? '今日授权工单的完整联系方式'
-          : '授权范围内工单的完整联系方式',
     placeholder =
       inputRole === 'textbox'
-        ? `编号、设备或故障${studentIdEnabled ? '、姓名、完整学号' : ''}${contactEnabled ? `、${contactHint}` : ''}`
-        : ['预约编号', studentIdEnabled && '姓名、完整学号', contactEnabled && contactHint]
+        ? `编号、设备或故障${studentIdEnabled ? '、姓名、完整学号' : ''}${contactEnabled ? '、完整联系方式' : ''}`
+        : ['编号', studentIdEnabled && '姓名、完整学号', contactEnabled && '完整联系方式']
             .filter(Boolean)
             .join('、');
   const [search, setSearch] = useState('');
@@ -137,7 +133,7 @@ export function AppointmentLookup({
         }}
       >
         <label className="field-lookup-input">
-          {inputLabel}
+          {!hideLabel && inputLabel}
           <input
             data-track="staff.field.appointmentlookup.input.2"
             role={inputRole}

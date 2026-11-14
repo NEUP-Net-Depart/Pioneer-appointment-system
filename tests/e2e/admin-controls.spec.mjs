@@ -61,20 +61,21 @@ test('mobile short filters fit their content and retain focus and selection', as
   const records = await staffPage(page, '预约记录');
   const trigger = records
     .locator('.records-filter-actions')
-    .getByRole('button', { name: '全部校区', exact: true });
+    .getByRole('button', { name: '筛选预约时段', exact: true });
   await trigger.click();
-  const filter = page.getByRole('dialog', { name: '校区筛选', exact: true });
+  const filter = page.getByRole('dialog', { name: '预约时段筛选', exact: true });
   const bounds = await filter.boundingBox();
   expect(bounds.height).toBeLessThan(400);
-  expect(bounds.y).toBeGreaterThan(300);
-  await filter.getByRole('button', { name: '浑南校区', exact: true }).click();
-  await filter.getByRole('button', { name: '完成', exact: true }).click();
+  expect(bounds.y).toBeGreaterThanOrEqual(0);
+  expect(bounds.y + bounds.height).toBeLessThanOrEqual(812);
+  expect(bounds.x).toBeGreaterThanOrEqual(0);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(375);
+  const choice = filter.getByRole('button').nth(1);
+  const timeSlot = await choice.textContent();
+  await choice.click();
   await expect(filter).toBeHidden();
-  await expect(
-    records
-      .locator('.records-filter-actions')
-      .getByRole('button', { name: '浑南校区', exact: true })
-  ).toBeFocused();
+  await expect(trigger).toHaveText(timeSlot);
+  await expect(trigger).toBeFocused();
 });
 
 test('an old refresh cannot report success for a newly selected statistics scope', async ({
@@ -580,7 +581,7 @@ test('work actions, attendance panels and notice tools use available parent spac
     await page.setViewportSize({ width, height: 1080 });
     const today = await staffPage(page, '今日工作');
     const scope = await today.getByRole('group', { name: '接待校区', exact: true }).boundingBox();
-    const shortcuts = await today.locator('.attendance-shortcuts').boundingBox();
+    const shortcuts = await today.locator('.work-window-actions').boundingBox();
     expect(shortcuts.y - scope.y - scope.height).toBeGreaterThanOrEqual(16);
     if (width >= 1280) {
       const tops = await today
