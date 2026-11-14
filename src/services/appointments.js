@@ -12,6 +12,7 @@ import {
 import { issueAccessToken, bookingDigest, hashAccessToken, onsiteRequestKey } from '../lib/access-tokens.js';
 import { guestAppointment } from './access.js';
 import { repairOutcomes } from '../../shared/constants.js';
+import { confirmedRepairLink } from '../../shared/repair-links.js';
 import { bookingWindow } from '../../shared/booking-settings.js';
 import {
   appointmentScope,
@@ -210,7 +211,7 @@ export function appointmentService(
         const parent=await appointments.find(data.parentAppointmentId);
         if (!parent) fail(404,'原工单不存在');
         requireCampus(actor,parent.campus);
-        if (parent.status!=='completed' || parent.studentId!==data.studentId || !['continuation','recurrence'].includes(data.linkKind) || data.sameDeviceAndFault!==true) fail(409,'请确认同一设备原故障的续修或复发');
+        if (parent.status!=='completed' || parent.studentId!==data.studentId || !confirmedRepairLink(data)) fail(409,'请核对同一设备，并确认所选原因与原维修单的关联');
         data={...data,linkedBy:actor.account,linkedAt:clock().toISOString()};
       }
       return this.create(data, { actor: actor.account, authVersion: context.authVersion, campuses: actor.authorizedCampuses, requestId },onsiteRequestKey(actor.memberId,requestId));
@@ -327,7 +328,7 @@ export function appointmentService(
       return present(await guestAppointment(appointments, item.id, accessToken));
     },
     async link(id,input,actor) {
-      if (!['continuation','recurrence'].includes(input.linkKind) || input.sameDeviceAndFault!==true) fail(400,'请确认同一设备的原故障续修或复发');
+      if (!confirmedRepairLink(input)) fail(400,'请核对同一设备，并确认所选原因与原维修单的关联');
       return mutate(id,input,actor,'repairs.linked',async(item,context,at)=>{
         if (!['booked','in_progress'].includes(item.status) || item.parentAppointmentId) fail(409,'请选择尚未关联的本次服务工单');
         const parent=await appointments.find(input.parentAppointmentId);

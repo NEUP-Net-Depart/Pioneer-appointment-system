@@ -8,6 +8,52 @@ import {repairScenario} from './fixtures/repair-scenario.mjs';
 import {addDays} from '../shared/time.js';
 const request=(values)=>({revision:0,requestId:crypto.randomUUID(),sameDeviceAndFault:true,linkKind:'continuation',...values});
 
+test('repair-induced links require a separate confirmation and retain the original result', async t => {
+  const {db, users, repo, service, order, calendar} = repairScenario(t, {studentId:'20260009'});
+  const actor = await users.find('20260001');
+  order('original', {date:calendar.previousServiceDay, status:'completed', repair_note:'原故障已解决'});
+  order('new-fault');
+  const before = await repo.find('original');
+  const input = request({parentAppointmentId:'original', linkKind:'repair_induced'});
+  await assert.rejects(service.link('new-fault', input, actor), {status:400});
+  const linked = await service.link('new-fault', {...input, sameDeviceAndRepairRelated:true}, actor);
+  assert.equal(linked.linkKind, 'repair_induced');
+  assert.equal(linked.parentAppointmentId, 'original');
+  assert.deepEqual(await repo.find('original'), before);
+  const event = db.sqlite.prepare("SELECT after_json FROM audit_events WHERE action='repairs.linked'").get();
+  assert.equal(JSON.parse(event.after_json).linkKind, 'repair_induced');
+});
+
+test('onsite repair-induced service requires confirmation and preserves idempotency', async t => {
+  const {users, scan, order, calendar} = repairScenario(t, {studentId:'20260009'});
+  const actor = await users.find('20260001');
+  order('original', {status:'completed'});
+  calendar.moveTo(calendar.nextDay, '10:00');
+  const input = {studentId:'20260009',name:'测试客户',campus:'南湖',social:'customer-contact',deviceType:'笔记本',brand:'Lenovo',deviceModel:'',warranty:'不清楚',faultType:'系统',agreement:true,signature:signatureFixture(),requestId:crypto.randomUUID(),parentAppointmentId:'original',linkKind:'repair_induced',sameDeviceAndFault:true};
+  await assert.rejects(scan.onsite(input, actor), {status:409});
+  const accepted = {...input, requestId:crypto.randomUUID(), sameDeviceAndRepairRelated:true};
+  const linked = await scan.onsite(accepted, actor);
+  assert.equal(linked.linkKind, 'repair_induced');
+  assert.equal(linked.parentAppointmentId, 'original');
+  assert.equal((await scan.onsite(accepted, actor)).id, linked.id);
+});
+
+for (const directory of ['migrations', 'database/staff-migrations']) test(`${directory}: link expansion preserves populated rows and database guards`, () => {
+  const db = database(directory, '0054_');
+  try {
+    seedStaff(db, '20260001');
+    seedAppointment(db, {id:'original',date:'2026-11-02',student_id:'20260009',status:'completed'});
+    seedAppointment(db, {id:'existing',date:'2026-11-03',student_id:'20260009',parent_appointment_id:'original',link_kind:'continuation',linked_by:'20260001'});
+    const before = db.sqlite.prepare('SELECT * FROM appointments ORDER BY id').all();
+    db.sqlite.exec(readFileSync(`${directory}/0054_repair_induced_link.sql`, 'utf8'));
+    assert.deepEqual(db.sqlite.prepare('SELECT * FROM appointments ORDER BY id').all(), before);
+    seedAppointment(db, {id:'new-fault',student_id:'20260009',parent_appointment_id:'original',link_kind:'repair_induced',linked_by:'20260001'});
+    assert.throws(() => seedAppointment(db, {id:'wrong-owner',student_id:'20269999',parent_appointment_id:'original',link_kind:'repair_induced',linked_by:'20260001'}), /REPAIR_LINK_INVALID/);
+    assert.throws(() => db.sqlite.prepare("UPDATE appointments SET link_kind='recurrence' WHERE id='new-fault'").run(), /REPAIR_LINK_INVALID/);
+    assert.equal(db.sqlite.prepare('PRAGMA foreign_key_check').all().length, 0);
+  } finally { db.sqlite.close(); }
+});
+
 test('linking an existing booking preserves its capacity, original result, and student privacy; campuses remain scoped',async t=>{
   const {db,users,repo,staff,service,order,calendar}=repairScenario(t,{studentId:'20260009'});
   const actor=await users.find('20260001');
