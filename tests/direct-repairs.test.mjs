@@ -8,6 +8,7 @@ import { verifyStaffSchema } from '../src/db/staff-readiness.js';
 import { encryptText } from '../src/lib/privacy.js';
 import { staffSceneAllowed } from '../shared/staff-access.js';
 import { statsRepository } from '../src/db/stats.js';
+import { workloadRepository } from '../src/db/staff-platform/workload.js';
 function patch(input) {return appointmentPatch({requestId:crypto.randomUUID(),...input});}
 
 test('field home and board prefer the authorized home campus and validate every explicit campus',async t=>{
@@ -149,6 +150,13 @@ test('hardware staff can receive multiple orders after hours and hand over acros
   assert.ok(contacts.length>0);assert.ok(contacts.every(row=>row.before_json===null && row.after_json===null));
   const listing=await staff.field.projectList(one,[await repo.find('a')]);
   assert.equal(Object.hasOwn(listing[0],'social'),false);
+  const workload = await workloadRepository({ db }).memberRepairWorkload(
+    [one.memberId, two.memberId], '2026-10-31T16:00:00.000Z', new Date().toISOString()
+  );
+  assert.deepEqual(workload.map(row => ({ ...row })), [
+    { memberId: one.memberId, total: 2, monthly: 2 },
+    { memberId: two.memberId, total: 1, monthly: 1 }
+  ]);
 });
 
 test('maintenance affairs reception and manager completion preserve the hardware owner, repair statistics and operation audit',async t=>{

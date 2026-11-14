@@ -90,6 +90,21 @@ test('work staffing scopes read-only idle and missing people without exposing at
   assert.equal((await staff.attendanceDay(head, { campusId, businessDate: weekStart })).items.find(person => person.memberId === worker.memberId).workStatus, 'repairing');
 });
 
+test('duty workload is cross-campus but only exposes the visible duty members to authorized viewers', async (t) => {
+  const { db, staff, head, worker, office } = await setup(t);
+  await publish(staff, head, [shift(worker.memberId)]);
+  seedAppointment(db, { id: 'workload-foreign', campus: '浑南', status: 'completed', assigned_to: worker.account, started_at: '2026-11-08T10:00:00Z' });
+  seedAppointment(db, { id: 'workload-unlisted', status: 'completed', assigned_to: head.account, started_at: '2026-11-08T10:00:00Z' });
+  const result = await staff.attendanceWorkload(head, { campusId, businessDate: weekStart, memberIds: head.memberId });
+  assert.equal(result.month, '2026-11');
+  assert.deepEqual(result.items.map((row) => ({ ...row })), [{ memberId: worker.memberId, total: 1, monthly: 1 }]);
+  await assert.rejects(staff.attendanceWorkload(worker, { campusId, businessDate: weekStart }), { status: 403 });
+  await assert.rejects(staff.attendanceWorkload(office, { campusId, businessDate: weekStart }), { status: 403 });
+  await assert.rejects(staff.attendanceWorkload(head, { campusId: 'campus-hunnan', businessDate: weekStart }), { status: 403 });
+  await assert.rejects(staff.attendanceWorkload(head, { campusId, businessDate: 'invalid' }), { status: 400 });
+  assert.deepEqual((await staff.attendanceWorkload(head, { campusId, businessDate: '2026-10-01' })).items, []);
+});
+
 test('suggestions maximize real leader coverage, exclude occupied members and preserve manual assignments', () => {
   const people = [
     ['a', post('hardware', 'head')],
@@ -243,58 +258,27 @@ test('personnel changes at the write boundary cancel both publications and their
   );
 });
 
-test('today includes unsigned people and leave, arrival is idempotent and attributes the live confirmation to the minister', async (t) => {
+test('today includes unsigned people and leave without manual review or proxy arrival', async (t) => {
   const { db, staff, head, worker, office } = await setup(t);
   const published = await publish(staff, head, [shift(worker.memberId)], [shift(office.memberId)]);
-  const repair = published.rosters[0].assignments[0],
-    officeShift = published.rosters[1].assignments[0];
+  const officeShift = published.rosters[1].assignments[0];
   await staff.leave(office, officeShift.id, {
     revision: 0,
     reason: '有课',
     requestId: requestId()
   });
   const day = await staff.attendanceDay(head, { campusId, businessDate: weekStart });
-  assert.deepEqual(day.summary, { expected: 1, arrived: 0, pending: 1, absent: 0 });
+  assert.deepEqual(day.summary, { expected: 1, arrived: 0, absent: 0 });
   assert.equal(day.items.find((row) => row.memberId === office.memberId).status, 'leave');
-  const input = { assignmentId: repair.id, assignmentRevision: 0, requestId: requestId() };
-  const results = await Promise.all([
-    staff.confirmArrival(head, input),
-    staff.confirmArrival(head, input)
-  ]);
-  assert.ok(results.every((row) => row.saved));
-  const record = db.sqlite.prepare('SELECT * FROM attendance_records').get();
-  assert.equal(record.member_id, worker.memberId);
-  assert.equal(record.occurred_at, '2026-11-09T11:10:00.000Z');
-  assert.equal(
-    db.sqlite.prepare('SELECT actor_member_id FROM presence_events').get().actor_member_id,
-    head.memberId
-  );
-  assert.equal(
-    db.sqlite
-      .prepare(
-        "SELECT actor_member_id FROM audit_events WHERE action='attendance.arrival.confirmed'"
-      )
-      .get().actor_member_id,
-    head.memberId
-  );
-  await staff.confirmArrival(head, input);
-  await staff.confirmArrival(head, { ...input, requestId: requestId() });
-  assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM attendance_records').get().n, 1);
-  const arrived = await staff.attendanceDay(head, { campusId, businessDate: weekStart });
-  assert.equal(arrived.summary.arrived, 1);
-  assert.deepEqual(
-    arrived.items.find((row) => row.memberId === worker.memberId).record.checkinSource,
-    {
-      kind: 'correction',
-      operatorMemberId: head.memberId,
-      operatorAccount: head.account
-    }
-  );
+  assert.equal(staff.confirmArrival, undefined);
+  assert.equal(staff.reviewAttendance, undefined);
+  assert.ok(day.items.every((row) => !('canReview' in row) && !('canConfirm' in row)));
+  assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM attendance_records').get().n, 0);
 });
 
-test('QR and minister confirmation race to one attendance fact and one live transition', async (t) => {
+test('repeated QR check-in yields one attendance fact and one live transition', async (t) => {
   const { db, staff, head, worker } = await setup(t);
-  const published = await publish(staff, head, [shift(worker.memberId)]);
+  await publish(staff, head, [shift(worker.memberId)]);
   const event = await staff.createAttendanceEvent(head, {
     campusId,
     businessDate: weekStart,
@@ -304,50 +288,32 @@ test('QR and minister confirmation race to one attendance fact and one live tran
   const credential = await staff.issueAttendanceToken(head, event.id, { revision: event.revision });
   await Promise.all([
     staff.checkIn(worker, { token: credential.token, method: 'qr', requestId: requestId() }),
-    staff.confirmArrival(head, {
-      assignmentId: published.rosters[0].assignments[0].id,
-      assignmentRevision: 0,
-      requestId: requestId()
-    })
+    staff.checkIn(worker, { token: credential.token, method: 'qr', requestId: requestId() })
   ]);
   assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM attendance_records WHERE member_id=?').get(worker.memberId).n, 1);
   assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM presence_events WHERE member_id=?').get(worker.memberId).n, 1);
 });
 
-test('absence conclusions preserve revisions, never invent attendance and give precedence to a subsequent arrival', async (t) => {
+test('absence is automatic, ignores preserved legacy review decisions and clears after audited correction', async (t) => {
   const { db, staff, head, worker } = await setup(t);
   const published = await publish(staff, head, [shift(worker.memberId)]),
     item = published.rosters[0].assignments[0];
-  const input = {
-    assignmentId: item.id,
-    assignmentRevision: 0,
-    revision: -1,
-    decision: 'absent',
-    requestId: requestId()
-  };
-  await assert.rejects(staff.reviewAttendance(head, input), { status: 409 });
+  db.sqlite.prepare('INSERT INTO attendance_reviews(assignment_id,member_id,decision,revision,reason,reviewed_by,reviewed_at) VALUES(?,?,?,?,?,?,?)')
+    .run(item.id, worker.memberId, 'cleared', 2, '历史结论', head.memberId, '2026-11-09');
+  assert.equal((await staff.attendanceDay(head, { campusId, businessDate: weekStart })).items[0].status, 'upcoming');
   t.mock.timers.setTime(new Date('2026-11-09T13:10:00Z').getTime());
-  await staff.reviewAttendance(head, input);
-  await staff.reviewAttendance(head, input);
   assert.equal(
     (await staff.attendanceDay(head, { campusId, businessDate: weekStart })).items[0].status,
     'absent'
   );
-  await staff.reviewAttendance(head, {
-    ...input,
-    decision: 'cleared',
-    revision: 0,
-    requestId: requestId()
-  });
-  await assert.rejects(staff.reviewAttendance(head, { ...input, requestId: requestId() }), {
-    status: 409
-  });
-  await staff.reviewAttendance(head, { ...input, revision: 1, requestId: requestId() });
   assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM attendance_records').get().n, 0);
   assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM staff_presence').get().n, 0);
-  await staff.confirmArrival(head, {
-    assignmentId: item.id,
-    assignmentRevision: 0,
+  await staff.correctAttendance(head, {
+    memberId: worker.memberId,
+    campusId,
+    businessDate: weekStart,
+    timeMode: 'duty_start',
+    reason: '已核实漏签',
     requestId: requestId()
   });
   assert.equal(
@@ -357,37 +323,13 @@ test('absence conclusions preserve revisions, never invent attendance and give p
   assert.equal(db.sqlite.prepare('SELECT revision FROM attendance_reviews').get().revision, 2);
 });
 
-test('scopes, suspensions and target changes remain enforced in arrival, review and historical correction', async (t) => {
-  const { db, repository, staff, head, worker } = await setup(t);
+test('scopes and suspensions remain enforced in historical correction', async (t) => {
+  const { db, staff, head, worker } = await setup(t);
   await assert.rejects(
     staff.attendanceDay(head, { campusId: 'campus-hunnan', businessDate: weekStart }),
     { status: 403 }
   );
-  const published = await publish(staff, head, [shift(worker.memberId)]),
-    item = published.rosters[0].assignments[0];
-  const original = repository.confirmDuty;
-  repository.confirmDuty = (...args) => {
-    db.sqlite
-      .prepare(
-        "UPDATE staff_accounts SET status='disabled',auth_version=auth_version+1 WHERE member_id=?"
-      )
-      .run(worker.memberId);
-    return original(...args);
-  };
-  await assert.rejects(
-    staff.confirmArrival(head, {
-      assignmentId: item.id,
-      assignmentRevision: 0,
-      requestId: requestId()
-    }),
-    { status: 409 }
-  );
-  assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM staff_presence').get().n, 0);
-  db.sqlite
-    .prepare(
-      "UPDATE staff_accounts SET status='enabled',auth_version=auth_version+1 WHERE member_id=?"
-    )
-    .run(worker.memberId);
+  await publish(staff, head, [shift(worker.memberId)]);
   const correction = await staff.correctAttendance(head, {
     memberId: worker.memberId,
     campusId,
@@ -404,16 +346,6 @@ test('scopes, suspensions and target changes remain enforced in arrival, review 
     )
     .run(weekStart, campusId);
   t.mock.timers.setTime(new Date('2026-11-09T13:10:00Z').getTime());
-  await assert.rejects(
-    staff.reviewAttendance(head, {
-      assignmentId: item.id,
-      assignmentRevision: 0,
-      revision: -1,
-      decision: 'absent',
-      requestId: requestId()
-    }),
-    { status: 409 }
-  );
   await assert.rejects(publish(staff, head, [shift(worker.memberId), shift(head.memberId)]), {
     status: 409
   });
@@ -424,24 +356,6 @@ test('scopes, suspensions and target changes remain enforced in arrival, review 
       businessDate: weekStart,
       occurredAt: '2026-11-09T11:00:00Z',
       reason: '漏签',
-      requestId: requestId()
-    }),
-    { status: 409 }
-  );
-  db.sqlite.exec('DELETE FROM service_day_overrides');
-  repository.confirmDuty = original;
-  const find = repository.assignmentById;
-  repository.assignmentById = async (id) => {
-    const previous = await find(id);
-    db.sqlite
-      .prepare('UPDATE duty_assignments SET member_id=?,revision=revision+1 WHERE id=?')
-      .run(head.memberId, id);
-    return previous;
-  };
-  await assert.rejects(
-    staff.confirmArrival(head, {
-      assignmentId: item.id,
-      assignmentRevision: 0,
       requestId: requestId()
     }),
     { status: 409 }
@@ -632,4 +546,39 @@ test('personal volunteer hours match the shared report calculation and do not ex
     .reduce((sum, row) => sum + row.hours, 0);
   assert.equal(leaderSummary.monthHours, leaderExpected);
   assert.ok(leaderSummary.totalHours > leaderSummary.monthHours);
+});
+
+test('missing volunteer profiles expose shortcuts only inside current member management scope', async (t) => {
+  const { db, staff, head, worker } = await setup(t);
+  await staff.correctAttendance(head, {
+    memberId: worker.memberId,
+    campusId,
+    businessDate: '2026-11-02',
+    timeMode: 'duty_start',
+    reason: '核实漏签',
+    requestId: requestId()
+  });
+  db.sqlite.prepare("UPDATE members SET college='' WHERE id=?").run(worker.memberId);
+  const rows = async () => (await staff.volunteerReport(head, { month: '2026-11' })).weeks
+    .flatMap((week) => week.campuses.flatMap((campus) => campus.rows))
+    .filter((row) => row.memberId === worker.memberId);
+  assert.equal((await rows())[0].canManageProfile, true);
+  db.sqlite.prepare("UPDATE members SET home_campus_id='campus-hunnan' WHERE id=?").run(worker.memberId);
+  assert.equal((await rows())[0].canManageProfile, false);
+});
+
+test('office and repair shifts share one attendance fact and unique summary while retaining separate statuses', async (t) => {
+  const { db, staff, head, worker, office } = await setup(t);
+  await publish(staff, head, [shift(worker.memberId)], [shift(office.memberId)]);
+  db.sqlite.prepare("UPDATE duty_assignments SET member_id=?,start_at='18:30',end_at='19:00' WHERE duty_type='office'").run(worker.memberId);
+  const before = await staff.attendanceDay(head, { campusId, businessDate: weekStart });
+  assert.equal(before.summary.expected, 1);
+  assert.deepEqual(before.items[0].dutyStatuses, { office: 'absent', repair: 'upcoming' });
+  await staff.correctAttendance(head, {
+    memberId: worker.memberId, campusId, businessDate: weekStart,
+    timeMode: 'duty_start', reason: '双班次漏签补记', requestId: requestId()
+  });
+  const after = await staff.attendanceDay(head, { campusId, businessDate: weekStart });
+  assert.equal(after.summary.arrived, 1);
+  assert.deepEqual(after.items[0].dutyStatuses, { office: 'arrived', repair: 'arrived' });
 });

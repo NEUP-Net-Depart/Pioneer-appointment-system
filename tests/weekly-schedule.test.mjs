@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { database, seedStaff } from './helpers/database.mjs';
 import { staffServices } from './fixtures/staff-services.mjs';
 import { userRepository } from '../src/db/users.js';
@@ -95,6 +95,8 @@ for(const directory of ['migrations','database/staff-migrations'])test(`${direct
  assert.equal(db.sqlite.prepare('SELECT exchange_assignment_id FROM roster_covers').get().exchange_assignment_id,'two');
  const availability=db.sqlite.prepare('SELECT * FROM member_availability ORDER BY member_id').all();assert.equal(availability.length,2);assert.equal(JSON.parse(availability[0].windows)[0].weekday,7);assert.equal(availability[1].week_start,'');
  assert.deepEqual(db.sqlite.prepare('PRAGMA foreign_key_check').all(),[]);
+ // Current services run against the complete schema after validating the cutover itself.
+ for(const file of readdirSync(directory).filter(file=>file.endsWith('.sql') && file>'0048_weekly_schedule.sql').sort())db.sqlite.exec(readFileSync(`${directory}/${file}`,'utf8'));
  const staff=staffServices(db,'00'.repeat(32)),two=await userRepository(db).find('20261002');await staff.respondCover(two,'swap',{revision:0,decision:'accepted',requestId:request()});
  assert.equal(db.sqlite.prepare("SELECT member_id FROM duty_assignments WHERE id='one'").get().member_id,two.memberId);
  assert.equal(db.sqlite.prepare("SELECT member_id FROM duty_assignments WHERE id='two'").get().member_id,'member-20261001');

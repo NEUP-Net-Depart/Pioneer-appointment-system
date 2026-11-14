@@ -72,7 +72,10 @@ test('work window changes campus and opens the matching read-only staffing secti
   await expect(staffing).toHaveAttribute('aria-busy', 'false');
   await expect(page.getByRole('region', { name: '今日人员状态' })).toHaveCount(0);
   const idle = staffing.locator('[data-staffing="idle"]').first();
-  if (await idle.count()) await expect(idle).toBeFocused();
-  else await expect(staffing).toBeFocused();
+  if (await idle.count()) {
+    await expect(idle.locator('.duty-status')).toHaveAttribute('data-highlighted', 'true');
+    await expect(idle).toBeInViewport();
+    await expect(idle).not.toBeFocused();
+  } else await expect(staffing).toBeInViewport();
   await expect(page.getByRole('group', { name: '考勤校区' }).getByRole('button', { name: '浑南', exact: true })).toHaveAttribute('aria-pressed', 'true');
 });

@@ -182,7 +182,7 @@ export function attendanceDomain({ db, auditStatement, commandAuthorization }) {
           .first()
       : null;
     const authGuard =
-      "EXISTS(SELECT 1 FROM staff_accounts sa JOIN members m ON m.id=sa.member_id WHERE sa.account=? AND sa.auth_version=? AND sa.status='enabled' AND m.status='active')";
+      "EXISTS(SELECT 1 FROM staff_accounts sa JOIN members m ON m.id=sa.member_id WHERE sa.account=? AND sa.auth_version=? AND sa.status='enabled' AND m.status='active' AND NOT EXISTS(SELECT 1 FROM member_special_identities si WHERE si.member_id=m.id AND si.code='retired_elder'))";
     const guard = record.tokenId
       ? ` WHERE EXISTS(SELECT 1 FROM attendance_tokens t JOIN attendance_events e ON e.id=t.event_id WHERE t.id=? AND t.revoked_at IS NULL AND julianday(t.expires_at)>julianday(?) AND julianday(e.starts_at)<=julianday(?) AND julianday(e.ends_at)>=julianday(?)) AND ${authGuard}`
       : record.direct
@@ -477,6 +477,7 @@ export function attendanceDomain({ db, auditStatement, commandAuthorization }) {
     return {
       records: rows(result[0]).map((row) => ({
         ...attendanceRecord(row),
+        checkinSource: parseJson(row.checkin_source, {}),
         memberName: row.member_name,
         studentId: row.student_id
       })),

@@ -39,13 +39,13 @@ test('onsite repair-induced service requires confirmation and preserves idempote
 });
 
 for (const directory of ['migrations', 'database/staff-migrations']) test(`${directory}: link expansion preserves populated rows and database guards`, () => {
-  const db = database(directory, '0054_');
+  const db = database(directory, '0055_');
   try {
     seedStaff(db, '20260001');
     seedAppointment(db, {id:'original',date:'2026-11-02',student_id:'20260009',status:'completed'});
     seedAppointment(db, {id:'existing',date:'2026-11-03',student_id:'20260009',parent_appointment_id:'original',link_kind:'continuation',linked_by:'20260001'});
     const before = db.sqlite.prepare('SELECT * FROM appointments ORDER BY id').all();
-    db.sqlite.exec(readFileSync(`${directory}/0054_repair_induced_link.sql`, 'utf8'));
+    db.sqlite.exec(readFileSync(`${directory}/0055_repair_induced_link.sql`, 'utf8'));
     assert.deepEqual(db.sqlite.prepare('SELECT * FROM appointments ORDER BY id').all(), before);
     seedAppointment(db, {id:'new-fault',student_id:'20260009',parent_appointment_id:'original',link_kind:'repair_induced',linked_by:'20260001'});
     assert.throws(() => seedAppointment(db, {id:'wrong-owner',student_id:'20269999',parent_appointment_id:'original',link_kind:'repair_induced',linked_by:'20260001'}), /REPAIR_LINK_INVALID/);

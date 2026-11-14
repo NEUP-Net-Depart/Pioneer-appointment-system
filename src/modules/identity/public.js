@@ -11,6 +11,7 @@ export function memberPublic(row, options = {}) {
     status: row.status,
     revision: row.revision,
     memberships,
+    specialIdentities: JSON.parse(row.special_identities || '[]'),
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };

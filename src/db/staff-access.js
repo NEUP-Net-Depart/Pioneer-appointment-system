@@ -12,5 +12,10 @@ export function campusArraySql(alias, value = 'campus') {
         AND mm.effective_from<=date('now','+8 hours')
         AND (mm.effective_to IS NULL OR mm.effective_to>date('now','+8 hours'))
     )
+    OR EXISTS(SELECT 1 FROM member_special_identities si WHERE si.member_id=${alias}.member_id AND si.code='retired_elder')
   ))`;
+}
+
+export function specialIdentitiesSql(memberId) {
+  return `(SELECT json_group_array(code) FROM member_special_identities WHERE member_id=${memberId})`;
 }

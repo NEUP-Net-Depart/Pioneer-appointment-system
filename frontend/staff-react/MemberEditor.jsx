@@ -186,6 +186,34 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
       setBusy(false);
     }
   }
+  async function changeRetiredElder() {
+    if (lock.current || !detail || dirty) return;
+    lock.current = true;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    const enabled = !detail.member.specialIdentities?.includes('retired_elder');
+    try {
+      await request(`/api/members/${encodeURIComponent(member.memberId)}/retired-elder`, {
+        method: 'PUT',
+        body: { enabled, revision: detail.member.revision, requestId: crypto.randomUUID() }
+      });
+      await reload();
+      await client.invalidateQueries({
+        queryKey: [`/api/members/${encodeURIComponent(member.memberId)}/audit`]
+      });
+      setMessage(
+        enabled
+          ? '已授予退休老登身份，相关账号需重新登录'
+          : '已撤销退休老登身份，相关账号需重新登录'
+      );
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
   function editBinding(index, patch) {
     setBindings((current) =>
       current.map((binding, i) => (i === index ? { ...binding, ...patch } : binding))
@@ -398,6 +426,24 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                     onDirty={setMembershipDirty}
                     onBusy={setBusy}
                   />
+                  {detail.actions?.editSpecialIdentities && (
+                    <section className="member-special-identities" aria-label="特殊身份">
+                      <h3>特殊身份</h3>
+                      <p>
+                        退休老登拥有双校区业务管理权限，不参与值班、空闲填报或签到，保留原有任职及考勤历史。
+                      </p>
+                      <button
+                        type="button"
+                        data-track="staff.membereditor.retired-elder"
+                        disabled={busy || !!dirty}
+                        onClick={changeRetiredElder}
+                      >
+                        {detail.member.specialIdentities?.includes('retired_elder')
+                          ? '撤销退休老登身份'
+                          : '授予退休老登身份'}
+                      </button>
+                    </section>
+                  )}
                 </div>
               )}
               {(section === 'participation' || accountDirty) &&

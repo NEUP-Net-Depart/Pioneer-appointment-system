@@ -87,7 +87,7 @@ export async function collectTelemetry(page) {
     const body = request.postDataBuffer();
     if (body?.length) {
       const text =
-        url.searchParams.get('compression') === 'gzip-js'
+        body[0] === 0x1f && body[1] === 0x8b
           ? gunzipSync(body).toString()
           : body.toString();
       const data = text.startsWith('data=')
