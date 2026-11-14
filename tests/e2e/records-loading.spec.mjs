@@ -405,7 +405,8 @@ test('logout and authorization changes discard private rows and late responses i
       if (slow) delivered();
     }
   });
-  for (const pattern of ['**/api/auth/me', '**/api/field/home*'])
+  // Every source of workspace permissions must observe the same revocation.
+  for (const pattern of ['**/api/auth/me', '**/api/field/home*', '**/api/field/board*'])
     await page.route(pattern, async (route) => {
       const response = await route.fetch();
       const data = await response.json();
@@ -450,10 +451,12 @@ test('logout and authorization changes discard private rows and late responses i
   revoked = true;
   await page.clock.fastForward(31000);
   await expect(page.locator('.react-members-page')).toHaveCount(0);
+  // The renewed identity remounts today's board; wait for its permissions too.
+  await expect(page.locator('.field-content')).toBeVisible();
+  await expect(page.locator('.field-content')).toHaveAttribute('aria-busy', 'false');
   await expect(
     page.getByRole('button', { name: '人员管理', exact: true, includeHidden: true })
   ).toHaveCount(0);
   await expect(page.getByText('新会话成员', { exact: true })).toHaveCount(0);
-  await expect(page.locator('.field-content')).toBeVisible();
   await page.unrouteAll({ behavior: 'wait' });
 });
