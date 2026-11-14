@@ -458,7 +458,8 @@ test('automatic absence and historical arrival correction update the selected me
   await adjustment.getByLabel('补录或修正原因').fill('现场核实实际到场时间');
   await adjustment.getByRole('button', { name: '保存考勤', exact: true }).click();
   await expect(person).toContainText('19:08');
-  await expect(person).not.toContainText('按班次开始时间');
+  await person.getByRole('button', { name: '查看周宁的签到详情', exact: true }).click();
+  await expect(page.getByRole('dialog')).not.toContainText('按班次开始时间');
 });
 
 test('temporary attendance uses the selected historical date and campus without a time picker', async ({
@@ -486,9 +487,11 @@ test('temporary attendance uses the selected historical date and campus without 
   await dialog.getByRole('button', { name: '保存考勤', exact: true }).click();
   await expect(dialog).toBeHidden();
   const person = daily.getByRole('article').filter({ hasText: '许晨' });
-  await expect(person).toContainText('临时到场');
+  await expect(person).toContainText('临时支援');
   await expect(person).toContainText('19:00');
-  await expect(person).toContainText('按班次开始时间');
+  await person.getByRole('button', { name: '查看许晨的签到详情', exact: true }).click();
+  await expect(page.getByRole('dialog')).toContainText('按班次开始时间');
+  await page.keyboard.press('Escape');
   await page.reload();
   const reloaded = await dutyPage(page, '今日值班');
   await reloaded

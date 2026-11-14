@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
-import { resolve, relative } from 'node:path';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { jsxControls } from './telemetry-jsx.mjs';
 import { componentControlIds } from '../shared/telemetry-controls.js';
@@ -107,7 +107,7 @@ export async function telemetryCatalog() {
 
 if (
   process.argv[1] &&
-  relative(root, resolve(process.argv[1])) === 'scripts/telemetry-catalog.mjs'
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
   const path = resolve(root, 'shared/telemetry-catalog.js');
   const generated = await telemetryCatalog();
