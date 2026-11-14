@@ -34,6 +34,7 @@ export function ScopeFields({
               <legend>{label}范围</legend>
               <label className="react-check">
                 <input
+                  data-track="staff.scopefields.input.1"
                   type="checkbox"
                   checked={!explicit}
                   onChange={(event) => update(key, alias, event.target.checked ? null : [])}
@@ -46,6 +47,7 @@ export function ScopeFields({
                     {options.map((option) => (
                       <label className="react-check" key={option.id}>
                         <input
+                          data-track="staff.scopefields.input.2"
                           type="checkbox"
                           checked={values.includes(option.id)}
                           onChange={(event) =>
@@ -105,6 +107,7 @@ export function ConditionFields({
             <div className="react-heading">
               <strong data-motion-value="text">{provider?.description || condition.code}</strong>
               <button
+                data-track="staff.scopefields.button.3"
                 type="button"
                 disabled={requiredCodes.includes(condition.code)}
                 onClick={() => onChange(conditions.filter((_, i) => i !== index))}
@@ -117,6 +120,7 @@ export function ConditionFields({
                 <fieldset key={key}>
                   <legend>{parameterLabels[key]}</legend>
                   <button
+                    data-track="staff.scopefields.button.7"
                     type="button"
                     aria-pressed={!parameters[key]?.length}
                     onClick={() => {
@@ -135,6 +139,7 @@ export function ConditionFields({
                   ].map((department) => (
                     <label className="react-check" key={department.id}>
                       <input
+                        data-track="staff.scopefields.input.8"
                         type="checkbox"
                         checked={(parameters[key] || []).includes(department.id)}
                         onChange={(event) => {
@@ -155,6 +160,7 @@ export function ConditionFields({
                 <label key={key}>
                   {parameterLabels[key]}
                   <Select
+                    data-track="staff.scopefields.select.9"
                     value={parameters[key] || ''}
                     onChange={(event) => {
                       const next = { ...parameters };
@@ -190,6 +196,7 @@ export function ConditionFields({
                 <label key={key}>
                   任职范围
                   <Select
+                    data-track="staff.scopefields.select.10"
                     value={parameters[key] === undefined ? '' : String(parameters[key])}
                     onChange={(event) => {
                       const next = { ...parameters };
@@ -206,6 +213,7 @@ export function ConditionFields({
               ) : definition.type === 'boolean' ? (
                 <label className="react-check" key={key}>
                   <input
+                    data-track="staff.scopefields.input.4"
                     type="checkbox"
                     checked={parameters[key] === true}
                     onChange={(event) =>
@@ -219,6 +227,7 @@ export function ConditionFields({
                   {parameterLabels[key] || key}
                   {definition.type === 'array' ? '（多个值用逗号分隔）' : ''}
                   <input
+                    data-track="staff.scopefields.input.5"
                     value={
                       Array.isArray(parameters[key])
                         ? parameters[key].join(', ')
@@ -249,6 +258,7 @@ export function ConditionFields({
       <label>
         添加条件
         <Select
+          data-track="staff.scopefields.select.6"
           value=""
           onChange={(event) => {
             if (event.target.value)

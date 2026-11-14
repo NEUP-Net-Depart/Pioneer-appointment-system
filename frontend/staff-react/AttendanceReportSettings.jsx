@@ -88,6 +88,7 @@ export function AttendanceReportSettings({ active, onSaved }) {
         </div>
         {saved?.canEdit && !editing && (
           <button
+            data-track="staff.attendancereportsettings.button.1"
             type="button"
             ref={editButton}
             onClick={() => {
@@ -111,13 +112,19 @@ export function AttendanceReportSettings({ active, onSaved }) {
         </p>
       )}
       {editing && draft && (
-        <form ref={formRef} className="report-settings-form" onSubmit={save}>
+        <form
+          data-track="staff.attendancereportsettings.form.2"
+          ref={formRef}
+          className="report-settings-form"
+          onSubmit={save}
+        >
           <fieldset disabled={busy}>
             <legend>签到计数</legend>
             <div className="report-count-options">
               {Object.entries(countLabels).map(([value, label]) => (
                 <label key={value} className={draft.countMode === value ? 'is-selected' : ''}>
                   <input
+                    data-track="staff.attendancereportsettings.input.3"
                     type="radio"
                     name="countMode"
                     value={value}
@@ -134,6 +141,7 @@ export function AttendanceReportSettings({ active, onSaved }) {
               <span>每次时长</span>
               <span className="report-hours-control">
                 <input
+                  data-track="staff.attendancereportsettings.input.4"
                   type="number"
                   min="0.5"
                   max="24"
@@ -149,6 +157,7 @@ export function AttendanceReportSettings({ active, onSaved }) {
             </label>
             <label className="report-leader-option">
               <input
+                data-track="staff.attendancereportsettings.input.5"
                 type="checkbox"
                 checked={draft.mergeLeaders}
                 onChange={(event) => setDraft({ ...draft, mergeLeaders: event.target.checked })}
@@ -158,6 +167,7 @@ export function AttendanceReportSettings({ active, onSaved }) {
           </div>
           <div className="report-settings-actions">
             <button
+              data-track="staff.attendancereportsettings.button.6"
               type="button"
               onClick={() => {
                 setDraft(saved);
@@ -168,7 +178,12 @@ export function AttendanceReportSettings({ active, onSaved }) {
             >
               取消
             </button>
-            <button type="submit" className="field-primary" disabled={!dirty || busy}>
+            <button
+              data-track="staff.attendancereportsettings.button.7"
+              type="submit"
+              className="field-primary"
+              disabled={!dirty || busy}
+            >
               {busy ? '保存中…' : '保存规则'}
             </button>
           </div>

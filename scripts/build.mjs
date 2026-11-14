@@ -1,3 +1,5 @@
+import { telemetryBuildConfig, posthogHeaders } from './telemetry-build.mjs';
+import { finishSourceMaps } from './posthog-sourcemaps.mjs';
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,10 +13,13 @@ if (out !== join(root, 'dist')) throw new Error('Unsafe output directory');
 await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
 await cp(join(root, 'public'), out, { recursive: true });
+const telemetry = telemetryBuildConfig();
+await writeFile(join(out, 'telemetry-config.js'), `window.pioneerTelemetry = Object.freeze(${JSON.stringify(telemetry)});\n`);
 const headersPath = join(out, '_headers');
-await writeFile(headersPath, staffWarrantyHeaders(await readFile(headersPath, 'utf8'), process.env.WARRANTY_CAPTCHA_ORIGIN));
+await writeFile(headersPath, posthogHeaders(staffWarrantyHeaders(await readFile(headersPath, 'utf8'), process.env.WARRANTY_CAPTCHA_ORIGIN), telemetry));
 await cp(join(root, 'shared'), join(out, 'shared'), { recursive: true });
 await cp(join(root, 'frontend/assets'), join(out, 'assets'), { recursive: true });
+await bundle({ entryPoints: [join(root, 'frontend/staff-react/posthog-sdk.js')], bundle: true, format: 'esm', platform: 'browser', target: 'es2022', minify: true, sourcemap: true, outfile: join(out, 'assets/posthog.js') });
 await mkdir(join(out, 'assets/vendor'), { recursive: true });
 await cp(join(root, 'node_modules/blueimp-load-image/js/load-image.all.min.js'), join(out, 'assets/vendor/load-image.all.min.js'));
 await cp(join(root, 'node_modules/blueimp-load-image/LICENSE.txt'), join(out, 'assets/vendor/blueimp-load-image-LICENSE.txt'));
@@ -43,4 +48,5 @@ for (const name of await readdir(join(root, 'frontend/user'))) {
   if (!(await stat(join(root, 'frontend/user', name))).isFile()) continue;
   await cp(join(root, 'frontend/user', name), join(out, name === 'index.html' ? name : `user/${name}`));
 }
+await finishSourceMaps(out, telemetry);
 console.log('Built dist/: / and /staff/ with shared modules; Functions remain outside public assets.');

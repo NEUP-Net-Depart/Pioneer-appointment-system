@@ -13,6 +13,10 @@ Production/Preview 使用 [wrangler.jsonc](../wrangler.jsonc)。绑定名固定�
 
 Pages 通过 Actions Direct Upload 发布，关闭自动 Git 构建。构建命令 `npm run build`，输出 `dist`，Functions 位于 `functions/`，保留 `nodejs_compat` 和 `limits.cpu_ms=1000`。项目生产分支为 `main`。工作人员统一运行 React，版本由部署代码决定。
 
+## 分析与错误监控
+
+PostHog 接入变量、完整会话回放、source maps、Cloudflare Analytics Engine 查询和实时日志排查见[可观测性运行手册](observability/README.md)。Production 配置 PostHog token 后默认完整采集前端；后端指标默认开启，Preview 默认关闭；无新增数据库迁移。
+
 ## Secrets 与初始化
 
 | 应用 Secret | 要求 |

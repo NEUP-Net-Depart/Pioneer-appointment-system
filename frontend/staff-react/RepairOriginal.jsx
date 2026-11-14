@@ -20,7 +20,11 @@ export function RepairOriginal({ original }) {
   if (!original) return null;
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)}>
+      <button
+        data-track="staff.repairoriginal.button.1"
+        type="button"
+        onClick={() => setOpen(true)}
+      >
         查看原始登记与协议
       </button>
       {open && (

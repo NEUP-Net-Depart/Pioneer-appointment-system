@@ -1,3 +1,4 @@
+import { recentlyActive } from '../../shared/telemetry-client.js';
 import { QueryClient } from '@tanstack/react-query';
 import { request } from './request.js';
 
@@ -6,12 +7,14 @@ export function createQueryClient(options = {}) {
     ...options,
     defaultOptions: {
       queries: {
-        queryFn: ({ queryKey: [path, params], pageParam, signal }) => {
+        queryFn: ({ queryKey, pageParam, signal, client }) => {
+          const [path, params] = queryKey;
           const search = new URLSearchParams(params);
           if (pageParam) search.set('cursor', pageParam);
           return request(`${path}${search.size ? `?${search}` : ''}`, {
             signal,
-            timeoutMs: 15000
+            timeoutMs: 15000,
+            telemetryPoll: !!client.getQueryState(queryKey)?.dataUpdatedAt && !recentlyActive()
           });
         },
         staleTime: 30000,

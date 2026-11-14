@@ -70,6 +70,7 @@ function Orders({
       <h2 className="today-section-title">
         {mobile ? (
           <button
+            data-track="staff.field.todayscene.orders.toggle"
             type="button"
             className="today-order-heading-toggle"
             aria-expanded={!collapsed}
@@ -103,7 +104,12 @@ function Orders({
         >
           <div ref={content} className="today-order-content">
             {items.map((item) => (
-              <button className="today-order" key={item.id} onClick={() => onSelect(item.id)}>
+              <button
+                data-track="staff.field.todayscene.button.1"
+                className="today-order"
+                key={item.id}
+                onClick={() => onSelect(item.id)}
+              >
                 <strong>
                   {item.name} · {item.brand} {item.deviceModel || item.deviceType}
                 </strong>
@@ -135,6 +141,7 @@ function Orders({
         </div>
         {hidden.below > 0 && (
           <button
+            data-track="staff.field.todayscene.orders.more"
             type="button"
             className="today-order-more"
             aria-label={`向下查看其余 ${hidden.below} 单`}
@@ -204,7 +211,11 @@ export function TodayScene({
         <div className="today-toolbar">
           <div className="today-work-shortcuts">
             {data.capability['onsite.create'] && (
-              <button disabled={busy} onClick={onRegister}>
+              <button
+                data-track="staff.field.todayscene.button.3"
+                disabled={busy}
+                onClick={onRegister}
+              >
                 <ClipboardPlus size={18} />
                 现场登记
               </button>
@@ -222,6 +233,7 @@ export function TodayScene({
               }}
             >
               <button
+                data-track="staff.field.todayscene.search.open"
                 ref={searchTrigger}
                 disabled={busy}
                 aria-expanded={searchOpen && active}

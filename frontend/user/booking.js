@@ -1,3 +1,4 @@
+import { track } from '/shared/telemetry-client.js';
 import { $,showToast,escapeHtml } from '/shared/utils.js';
 import { apiJson } from '/shared/api.js';
 import { COLLEGES,BRANDS,STUDENT_DEVICE_TYPES,FAULT_TYPES,ANSWERS,FAULT_HINTS,AGREEMENT_VERSION,STUDENT_FIELD_LIMITS,characterCount,studentFieldErrors } from '/shared/student-booking.js';
@@ -26,12 +27,18 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
     for(const [control,limit] of textLimits)if(!control.disabled && characterCount(control.value)>limit)errors[errorKey(control.name)]=`必须在 ${limit} 字以内`;
     return errors;
   }
+  function rejected(control,reason,fields={}){track(control==='booking.submit' ? 'flow.result' : 'flow.step',{control,result:'rejected',reason,...fields});}
+  function validationFailure(control,errors){const values={...data(),agreement:field('agreement').checked,signature:signature.value()},failureFields=Object.keys(errors),missingFields=failureFields.filter(key=>!values[key] || !String(values[key]).trim()),invalidFields=failureFields.filter(key=>!missingFields.includes(key));
+    rejected(control,invalidFields.length ? 'FIELD_INVALID' : 'FIELD_REQUIRED',{failureFields,missingFields,invalidFields});}
+  function photoFailure(control){rejected(control,photos.entries().some(entry=>entry.state==='preparing') ? 'PHOTO_PREPARING' : 'PHOTO_PREPARATION_FAILED');}
+  function slotFailure(control){const values=picker.value(),missingFields=['campus','date','timeSlot'].filter(key=>!values[key]);rejected(control,picker.issue() || !missingFields.length ? 'SLOT_UNAVAILABLE' : 'SLOT_SELECTION_REQUIRED',{missingFields});}
+  function submitFailure(failure,reason=failure.code || (failure.status && failure.status<500 ? 'HTTP_REJECTED' : 'OUTCOME_UNCONFIRMED')){track('flow.result',{control:'booking.submit',result:failure.status && failure.status<500 ? 'rejected' : 'error',reason,errorCode:failure.code,requestId:failure.requestId,status:failure.status,failureFields:Object.keys(failure.fields || {})});}
   const options=(element,items,placeholder)=>{element.innerHTML=`<option value="">${placeholder}</option>`+items.map(item=>`<option value="${escapeHtml(item.value || item)}">${escapeHtml(item.label || item)}</option>`).join('');};
   options(field('deviceType'),STUDENT_DEVICE_TYPES,'请选择设备类型');
   options(field('brand'),[...BRANDS,{value:'other',label:'其它'}],'请选择品牌');
   options(field('college'),[...COLLEGES,{value:'other',label:'其他学院（手动填写）'}],'请选择学院');
-  for(const root of form.querySelectorAll('[data-answer]'))root.innerHTML=ANSWERS.map(answer=>`<label><input type="radio" name="${root.dataset.answer}" value="${answer}" /><span>${answer}</span></label>`).join('');
-  $('#fault-options').innerHTML=FAULT_TYPES.map(value=>`<label><input type="radio" name="faultType" value="${value}" /><span>${value}</span></label>`).join('');
+  for(const root of form.querySelectorAll('[data-answer]'))root.innerHTML=ANSWERS.map(answer=>`<label><input data-track=student.booking.input.1 type="radio" name="${root.dataset.answer}" value="${answer}" /><span>${answer}</span></label>`).join('');
+  $('#fault-options').innerHTML=FAULT_TYPES.map(value=>`<label><input data-track=student.booking.input.2 type="radio" name="faultType" value="${value}" /><span>${value}</span></label>`).join('');
   const photos=createPhotoCollection($('#booking-photos'),{inputId:'appointment-attachments',onChange:()=>{if(step===3)review();},onUploadChange:renderUploads});
   const picker=initSlotPicker({onChange:()=>{saveDraft();if(step>1 && !created){renderTime();if(picker.issue())error(picker.issue()+'其他已填信息已保留。');}}});
   function rawFields(){const values={};for(const control of form.querySelectorAll('input[name],select[name],textarea[name]')){if(control.name==='agreement' || control.type==='checkbox')continue;if(control.type==='radio'){if(control.checked)values[control.name]=control.value;}else values[control.name]=control.value;}return values;}
@@ -54,7 +61,7 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
   }
   function renderTime(){const summary=timeSummary(picker.value());$('#step-two-time').innerHTML=summary;$('#step-three-time').innerHTML=summary;}
   function review(){renderTime();$('#booking-review').innerHTML=informationGroups({...data(),photoCount:photos.entries().length});}
-  function go(next,{focus=true}={}){step=next;animateLayout(form,()=>{for(const panel of form.querySelectorAll('[data-step]'))panel.hidden=Number(panel.dataset.step)!==next;
+  function go(next,{focus=true}={}){track('flow.step',{control:['','booking.step.1','booking.step.2','booking.step.3'][next],result:'start'});step=next;animateLayout(form,()=>{for(const panel of form.querySelectorAll('[data-step]'))panel.hidden=Number(panel.dataset.step)!==next;
     [...$('#booking-steps').children].forEach((item,index)=>{if(index+1===next)item.setAttribute('aria-current','step');else item.removeAttribute('aria-current');});
     if(next===3)review();else if(next===2)renderTime();},{stagger:true});
     saveDraft();if(focus){const heading=form.querySelector(`[data-step="${next}"] h2`);heading.focus({preventScroll:true});heading.scrollIntoView({block:'start',behavior:'auto'});}picker.setHome(next===1);}
@@ -77,8 +84,8 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
   }
   form.addEventListener('input',changed);form.addEventListener('change',changed);form.addEventListener('compositionend',changed);
   form.querySelectorAll('[data-edit-step]').forEach(button=>button.addEventListener('click',()=>{if(!busy){error('');go(Number(button.dataset.editStep));}}));
-  $('#step-one-next').addEventListener('click',async()=>{if(busy)return;const button=$('#step-one-next');button.disabled=true;try{if(await picker.refresh() && picker.validate() && picker.confirmNotices()){error('');go(2);}}finally{button.disabled=button.dataset.paused==='true';}});
-  $('#step-two-next').addEventListener('click',()=>{const errors=fieldErrors();showErrors(errors);if(Object.keys(errors).length || !photos.validity())return;if(!picker.validate()){go(1);error('原到场时段当前不可预约，请重新选择。其他已填信息已保留。');return;}error('');go(3);void picker.refresh();});
+  $('#step-one-next').addEventListener('click',async()=>{if(busy)return;const button=$('#step-one-next');button.disabled=true;try{if(!await picker.refresh()){rejected('booking.step.1','AVAILABILITY_REFRESH_FAILED');return;}if(!picker.validate()){slotFailure('booking.step.1');return;}if(!picker.confirmNotices()){rejected('booking.step.1','NOTICE_UNACCEPTED');return;}error('');go(2);}finally{button.disabled=button.dataset.paused==='true';}});
+  $('#step-two-next').addEventListener('click',()=>{const errors=fieldErrors();showErrors(errors);if(Object.keys(errors).length){validationFailure('booking.step.2',errors);return;}if(!photos.validity()){photoFailure('booking.step.2');return;}if(!picker.validate()){slotFailure('booking.step.2');go(1);error('原到场时段当前不可预约，请重新选择。其他已填信息已保留。');return;}error('');go(3);void picker.refresh();});
   $('#agreement-link').addEventListener('click',event=>{event.preventDefault();agreement.open();});$('#close-agreement').addEventListener('click',()=>agreement.close());
   $('#draft-prompt').hidden=!savedDraft;
   $('#draft-discard').addEventListener('click',()=>{savedDraft=null;clearDraft();$('#draft-prompt').hidden=true;});
@@ -94,21 +101,21 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
     $('#success-photo-message').textContent=failures ? '预约已成功，部分照片未上传。你可以重试或稍后在预约详情补充。' : pending && deferredPhotos ? '你可以稍后在预约详情重新选择并补传照片。' : pending ? '照片上传不影响已成功创建的预约。' : '照片已全部上传。';
     $('#success-photo-message').hidden=pending && !failures && !deferredPhotos;$('#success-photo-advice').hidden=!pending || failures || deferredPhotos;$('#success-photo-retry').hidden=!failures;$('#success-photo-retry').disabled=uploading;$('#success-photo-later').hidden=!pending || deferredPhotos;
   }
-  function showSuccess(appointment){created=appointment;deferredPhotos=false;const saved=saveAppointment(appointment);clearDraft();clearAttempt();savedDraft=null;attempt=null;payload=null;
+  function showSuccess(appointment,reason='CREATED'){track('flow.result',{control:'booking.submit',result:'ok',reason});created=appointment;deferredPhotos=false;const saved=saveAppointment(appointment);clearDraft();clearAttempt();savedDraft=null;attempt=null;payload=null;
     form.hidden=true;$('#booking-heading').hidden=true;$('#booking-steps').hidden=true;$('#draft-prompt').hidden=true;notice('');error('');setVisible($('#success-panel'),true);
     $('#success-code').textContent=appointment.id;$('#success-summary').innerHTML=timeSummary(appointment);$('#success-link-fallback').value=privateLink(appointment);$('#success-link-fallback').hidden=saved;
     $('#credential-save-message').hidden=saved;$('#credential-save-message').textContent='此浏览器无法保存私人凭证。当前页面仍可访问预约，请复制并保留下面的完整私人查询链接。';
     void renderRepairQr($('#success-repair-qr'),appointment);renderUploads(photos.entries());picker.setActive(false);onCreated(appointment);$('#success-title').focus({preventScroll:true});window.scrollTo({top:0,behavior:'auto'});void photos.uploadAll(appointment);
   }
-  async function submit(){if(busy)return;busy=true;$('#booking-submit').disabled=true;$('#booking-submit').textContent='正在核实并提交…';form.querySelectorAll('[data-edit-step]').forEach(button=>button.disabled=true);error('');
+  async function submit(){if(busy)return;track('flow.result',{control:'booking.submit',result:'start'});busy=true;$('#booking-submit').disabled=true;$('#booking-submit').textContent='正在核实并提交…';form.querySelectorAll('[data-edit-step]').forEach(button=>button.disabled=true);error('');
     try {
-      if(attempt?.pending){const found=await resolve();if(found){showSuccess(found);return;}}
+      if(attempt?.pending){const found=await resolve();if(found){showSuccess(found,'RECOVERED');return;}}
       const values=data(),errors=fieldErrors();
       if(!field('agreement').checked)errors.agreement='请阅读并同意维修协议';if(!signature.value())errors.signature='请点击“手写本人姓名”完成签名';
-      if(Object.keys(errors).some(key=>!['agreement','signature'].includes(key))){go(2);showErrors(errors);return;}
-      showErrors(errors);if(Object.keys(errors).length || !photos.validity())return;
-      if(!await picker.refresh()){error('暂时无法核实时段和地点，请重试。已填信息已保留。');return;}if(!picker.validate()){go(1);error('到场时段当前不可预约，请重新选择。其他信息已保留。');return;}
-      if(picker.hasUnacceptedNotices()){go(1);error('所选校区有尚未确认的必读公告，请阅读确认后继续。已填信息和签名已保留。');picker.confirmNotices();return;}
+      if(Object.keys(errors).some(key=>!['agreement','signature'].includes(key))){validationFailure('booking.submit',errors);go(2);showErrors(errors);return;}
+      showErrors(errors);if(Object.keys(errors).length){validationFailure('booking.submit',errors);return;}if(!photos.validity()){photoFailure('booking.submit');return;}
+      if(!await picker.refresh()){rejected('booking.submit','AVAILABILITY_REFRESH_FAILED');error('暂时无法核实时段和地点，请重试。已填信息已保留。');return;}if(!picker.validate()){slotFailure('booking.submit');go(1);error('到场时段当前不可预约，请重新选择。其他信息已保留。');return;}
+      if(picker.hasUnacceptedNotices()){rejected('booking.submit','NOTICE_UNACCEPTED');go(1);error('所选校区有尚未确认的必读公告，请阅读确认后继续。已填信息和签名已保留。');picker.confirmNotices();return;}
       {const previousAt=payload?.agreementAt;const {brandOther,collegeOther,qqAccount,wechatAccount,...business}=values;
         // Draft-only alternative inputs never reach the server.
         void brandOther;void collegeOther;void qqAccount;void wechatAccount;
@@ -118,16 +125,17 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
       saveDraft();
       try {showSuccess(await apiJson('/api/appointments',{method:'POST',headers:{'Idempotency-Key':attempt.key},json:payload,timeoutMs:15000}));}
       catch(failure){
-        if(failure.code==='CREDENTIAL_ROTATED'){attempt.pending=false;writeAttempt(attempt);error(failure.message);return;}
+        if(failure.code==='CREDENTIAL_ROTATED'){submitFailure(failure);attempt.pending=false;writeAttempt(attempt);error(failure.message);return;}
         let found;
-        try{found=await resolve();}catch{error('暂时无法确认预约是否创建。请保持页面和原提交标识，点击提交重试核实；不要另开新预约。');return;}
-        if(found){showSuccess(found);if(failure.code==='IDEMPOTENCY_MISMATCH')notice('原请求已经创建成功，当前展示的是原预约。后续修改没有另行提交。');return;}
+        try{found=await resolve();}catch{submitFailure(failure,'OUTCOME_UNCONFIRMED');error('暂时无法确认预约是否创建。请保持页面和原提交标识，点击提交重试核实；不要另开新预约。');return;}
+        if(found){showSuccess(found,'RECOVERED');if(failure.code==='IDEMPOTENCY_MISMATCH')notice('原请求已经创建成功，当前展示的是原预约。后续修改没有另行提交。');return;}
+        submitFailure(failure);
         if(['BOOKING_NOTICE_CHANGED','SERVICE_DAY_PAUSED','SLOT_FULL','SLOT_PAUSED','SLOT_ENDED','SLOT_CHANGED','DATE_UNAVAILABLE','LOCATION_MISSING'].includes(failure.code)){attempt=null;payload=null;clearAttempt();if(failure.code==='BOOKING_NOTICE_CHANGED'){await picker.refresh();go(1);picker.confirmNotices();}else{go(1);await picker.recover(failure.message);}error(failure.message+'。其他信息和有效签名已保留。');}
         else if(failure.code==='FIELD_INVALID'){attempt=null;payload=null;clearAttempt();go(Object.keys(failure.fields || {}).some(key=>!['agreement','signature'].includes(key)) ? 2 : 3);showErrors(failure.fields || {});error(failure.message);}
         else if(failure.status && failure.status<500){attempt=null;payload=null;clearAttempt();error(failure.message);}
         else error('尚未确认创建结果。可使用原提交标识安全重试核实，已填内容已保留。');
       }
-    }catch(failure){error(failure.message || '暂时无法核实预约结果，请保持页面并重试。');}
+    }catch(failure){submitFailure(failure);error(failure.message || '暂时无法核实预约结果，请保持页面并重试。');}
     finally{busy=false;$('#booking-submit').disabled=false;$('#booking-submit').textContent='确认并提交预约';form.querySelectorAll('[data-edit-step]').forEach(button=>button.disabled=false);}
   }
   form.addEventListener('submit',event=>{event.preventDefault();void submit();});
@@ -135,7 +143,7 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
   $('#view-created-appointment').addEventListener('click',()=>{photos.pauseUpload();onViewCreated(created);});
   $('#success-photo-retry').addEventListener('click',()=>{deferredPhotos=false;void photos.uploadAll(created);});$('#success-photo-later').addEventListener('click',()=>{deferredPhotos=true;photos.pauseUpload();renderUploads(photos.entries());});
   syncConditions();
-  if(attempt?.pending){error('上次提交结果待核实，正在安全查询…');void resolve().then(found=>{if(found)showSuccess(found);else error('暂未查到创建结果，请恢复草稿并重新勾选协议、签名后，用原提交标识重试。');}).catch(failure=>{if(failure.code==='CREDENTIAL_ROTATED'){attempt.pending=false;writeAttempt(attempt);error(failure.message);notice('请通过工作人员补发的私人查询链接导入已有预约。');}else error('暂时无法确认上次提交结果，请保持原提交标识并重试核实。');});}
+  if(attempt?.pending){error('上次提交结果待核实，正在安全查询…');void resolve().then(found=>{if(found)showSuccess(found,'RECOVERED');else error('暂未查到创建结果，请恢复草稿并重新勾选协议、签名后，用原提交标识重试。');}).catch(failure=>{if(failure.code==='CREDENTIAL_ROTATED'){attempt.pending=false;writeAttempt(attempt);error(failure.message);notice('请通过工作人员补发的私人查询链接导入已有预约。');}else error('暂时无法确认上次提交结果，请保持原提交标识并重试核实。');});}
   return {
     hasDraft:()=>Boolean(!created && (savedDraft || readDraft() || Object.values(rawFields()).some(Boolean))),
     hasPending:()=>Boolean(attempt?.pending),

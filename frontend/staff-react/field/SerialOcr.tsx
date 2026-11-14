@@ -65,7 +65,10 @@ export function SerialOcr({
       setRaw('');
       setMessage('正在读取标签照片…');
     }
-    const timer = setTimeout(() => controller.abort(), 60000);
+    const timer = setTimeout(
+      () => controller.abort(new DOMException('OCR timeout', 'TimeoutError')),
+      60000
+    );
     try {
       const { recognizeSerialPhoto } = await import('./serial-ocr.js');
       if (controller.signal.aborted) throw new DOMException('Canceled', 'AbortError');
@@ -140,14 +143,19 @@ export function SerialOcr({
         <Notice>{message}</Notice>
       </div>
       {busy && (
-        <button type="button" onClick={cancel}>
+        <button data-track="staff.field.serialocr.button.1" type="button" onClick={cancel}>
           取消识别
         </button>
       )}
       {candidates.length > 0 && (
         <div className="warranty-ocr-actions">
           {candidates.map((value) => (
-            <button key={value} type="button" onClick={() => onSerial(value)}>
+            <button
+              data-track="staff.field.serialocr.button.2"
+              key={value}
+              type="button"
+              onClick={() => onSerial(value)}
+            >
               采用 {value}
             </button>
           ))}
@@ -162,6 +170,7 @@ export function SerialOcr({
           <span>{mode === 'scan' ? '未识别为 S/N' : '请核对机身序号'}</span>
           <pre>{raw}</pre>
           <button
+            data-track="staff.field.serialocr.button.3"
             ref={copyResult}
             type="button"
             className="field-primary"

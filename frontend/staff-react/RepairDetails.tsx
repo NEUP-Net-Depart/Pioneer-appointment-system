@@ -28,10 +28,11 @@ export function RepairInformation({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   return (
-    <details className="field-details">
-      <summary>更正客户与设备资料</summary>
+    <details data-track="staff.repairdetails.details.1" className="field-details">
+      <summary data-track="staff.repairdetails.summary.2">更正客户与设备资料</summary>
       <Notice>{error}</Notice>
       <form
+        data-track="staff.repairdetails.form.3"
         className="field-form"
         onSubmit={async (event) => {
           event.preventDefault();
@@ -54,13 +55,16 @@ export function RepairInformation({
           <label key={key}>
             {label}
             <input
+              data-track="staff.repairdetails.input.4"
               required={['name', 'brand', 'faultType'].includes(key)}
               value={values[key]}
               onChange={(event) => setValues({ ...values, [key]: event.target.value })}
             />
           </label>
         ))}
-        <button disabled={busy}>保存资料更正</button>
+        <button data-track="staff.repairdetails.button.5" disabled={busy}>
+          保存资料更正
+        </button>
       </form>
     </details>
   );
@@ -78,11 +82,12 @@ export function RepairCredential({
     [error, setError] = useState('');
   if (!item.canRecoverCredential) return null;
   return (
-    <details className="field-details">
-      <summary>补发客户私人查询链接</summary>
+    <details data-track="staff.repairdetails.details.6" className="field-details">
+      <summary data-track="staff.repairdetails.summary.7">补发客户私人查询链接</summary>
       <Notice>{error}</Notice>
       <p>核验客户身份后补发，原链接立即失效。</p>
       <form
+        data-track="staff.repairdetails.form.8"
         className="field-form"
         onSubmit={async (event) => {
           event.preventDefault();
@@ -103,6 +108,7 @@ export function RepairCredential({
       >
         <label className="field-check">
           <input
+            data-track="staff.repairdetails.input.9"
             type="checkbox"
             required
             checked={verified}
@@ -113,6 +119,7 @@ export function RepairCredential({
         <label>
           核验说明（勿录入完整联系方式）
           <textarea
+            data-track="staff.repairdetails.textarea.10"
             required
             minLength={8}
             maxLength={300}
@@ -120,7 +127,9 @@ export function RepairCredential({
             onChange={(event) => setReason(event.target.value)}
           />
         </label>
-        <button disabled={busy || !verified}>签发私人链接</button>
+        <button data-track="staff.repairdetails.button.11" disabled={busy || !verified}>
+          签发私人链接
+        </button>
       </form>
     </details>
   );
@@ -154,7 +163,11 @@ export function RepairHistory({ history }: { history: Appointment['repairHistory
   if (!history?.events) return null;
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)}>
+      <button
+        data-track="staff.repairdetails.button.12"
+        type="button"
+        onClick={() => setOpen(true)}
+      >
         查看维修与交接记录
       </button>
       {open && (

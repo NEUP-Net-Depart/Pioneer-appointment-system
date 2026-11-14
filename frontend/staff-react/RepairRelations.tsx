@@ -59,7 +59,10 @@ export function RepairRelations({
       {item.parentAppointmentId && (
         <p>
           本次关联原单{' '}
-          <button onClick={() => onOpen(item.parentAppointmentId!)}>
+          <button
+            data-track="staff.repairrelations.button.1"
+            onClick={() => onOpen(item.parentAppointmentId!)}
+          >
             {item.parentAppointmentId}
           </button>
         </p>
@@ -72,6 +75,7 @@ export function RepairRelations({
       {!!historical.length && (
         <div className="repair-history">
           <button
+            data-track="staff.repairrelations.button.2"
             type="button"
             aria-expanded={historyOpen}
             aria-controls={historyId}
@@ -83,7 +87,11 @@ export function RepairRelations({
             <ul id={historyId} className="repair-history-list">
               {historical.map((row) => (
                 <li key={row.id}>
-                  <button type="button" onClick={() => onOpen(row.id)}>
+                  <button
+                    data-track="staff.repairrelations.button.3"
+                    type="button"
+                    onClick={() => onOpen(row.id)}
+                  >
                     {row.id}
                   </button>
                   <span>
@@ -103,7 +111,11 @@ export function RepairRelations({
         ['booked', 'in_progress'].includes(item.status) && (
           <label>
             选择原工单
-            <Select value={parentId} onChange={(e) => setParentId(e.target.value)}>
+            <Select
+              data-track="staff.repairrelations.select.4"
+              value={parentId}
+              onChange={(e) => setParentId(e.target.value)}
+            >
               <option value="">普通新故障不关联</option>
               {historical.map((row) => (
                 <option key={row.id} value={row.id}>
@@ -121,13 +133,18 @@ export function RepairRelations({
           <>
             <label>
               关联原因
-              <Select value={kind} onChange={(e) => setKind(e.target.value)}>
+              <Select
+                data-track="staff.repairrelations.select.5"
+                value={kind}
+                onChange={(e) => setKind(e.target.value)}
+              >
                 <option value="continuation">原故障继续处理</option>
                 <option value="recurrence">原故障复发</option>
               </Select>
             </label>
             <label className="field-check">
               <input
+                data-track="staff.repairrelations.input.6"
                 type="checkbox"
                 checked={confirmed}
                 onChange={(e) => setConfirmed(e.target.checked)}
@@ -137,17 +154,26 @@ export function RepairRelations({
             {item.status === 'completed' && (
               <label>
                 本次已预约的工单编号
-                <input value={targetId} onChange={(e) => setTargetId(e.target.value.trim())} />
+                <input
+                  data-track="staff.repairrelations.input.7"
+                  value={targetId}
+                  onChange={(e) => setTargetId(e.target.value.trim())}
+                />
               </label>
             )}
             <button
+              data-track="staff.repairrelations.button.8"
               disabled={busy || !confirmed || (item.status === 'completed' && !targetId)}
               onClick={link}
             >
               关联现有工单
             </button>
             {item.status === 'completed' && (
-              <button disabled={busy || !confirmed} onClick={() => setOnsite(true)}>
+              <button
+                data-track="staff.repairrelations.button.9"
+                disabled={busy || !confirmed}
+                onClick={() => setOnsite(true)}
+              >
                 未预约，现场登记关联新单
               </button>
             )}

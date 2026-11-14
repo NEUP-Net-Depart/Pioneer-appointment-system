@@ -9,6 +9,8 @@ const warranty=warrantyDeployment(plan);
 console.log(JSON.stringify({...plan,warranty,mode:options.execute ? 'approved-execution' : 'plan-only'},null,2));
 if(options.execute){
   assertCleanRelease(plan);
+  process.env.TELEMETRY_ENVIRONMENT=plan.environment;
+  process.env.TELEMETRY_RELEASE=plan.commit;
   const prepared=await prepareWarrantyDeployment(plan,await config(),warranty);
   try{
     process.env.WARRANTY_CAPTCHA_ORIGIN=warranty.origin;

@@ -31,7 +31,7 @@ export function verifierHeaders(headers, parents = []) {
   return headers.replace("frame-ancestors 'none'", `frame-ancestors ${parents.join(' ') || "'none'"}`);
 }
 
-export async function prepareWarrantyDeployment(plan, cfg, warranty) {
+export async function prepareWarrantyDeployment(plan, cfg, warranty, env = process.env) {
   const parent = resolve(root, '.wrangler');
   await mkdir(parent, { recursive: true });
   const directory = await mkdtemp(join(parent, 'warranty-release-'));
@@ -51,7 +51,13 @@ export async function prepareWarrantyDeployment(plan, cfg, warranty) {
     runtime.pages_build_output_dir = resolve(root, 'dist');
     for (const bindings of [runtime, ...Object.values(runtime.env || {})]) {
       for (const database of bindings.d1_databases || []) if (database.migrations_dir) database.migrations_dir = resolve(root, database.migrations_dir);
-      bindings.vars = { ...bindings.vars, WARRANTY_CAPTCHA_ORIGIN: '' };
+      bindings.vars = { ...bindings.vars, WARRANTY_CAPTCHA_ORIGIN: '', TELEMETRY_RELEASE: plan.commit };
+      for (const key of ['TELEMETRY_ENABLED', 'TELEMETRY_INTERACTIONS', 'TELEMETRY_SAMPLE_RATE', 'TELEMETRY_POLL_SAMPLE_RATE', 'OBSERVABILITY_LOGS']) {
+        if (env[key]) bindings.vars[key] = env[key];
+      }
+      // A disabled collector must not require account-level Analytics Engine activation.
+      if (bindings.vars.TELEMETRY_ENABLED !== 'true')
+        bindings.analytics_engine_datasets = (bindings.analytics_engine_datasets || []).filter(dataset => dataset.binding !== 'ANALYTICS');
     }
     (plan.environment === 'preview' ? runtime.env.preview : runtime).vars.WARRANTY_CAPTCHA_ORIGIN = warranty.origin;
     await writeFile(join(workbench, 'wrangler.jsonc'), JSON.stringify(runtime, null, 2));

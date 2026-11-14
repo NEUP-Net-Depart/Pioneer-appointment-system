@@ -233,6 +233,7 @@ export function AttendanceManagement({ campusId, onDirtyChange, campusControl = 
         <div className="schedule-actions">
           {person.canConfirm && (
             <button
+              data-track="staff.attendancemanagement.button.1"
               className="field-primary"
               disabled={busy}
               onClick={() => run(() => update(person, 'arrival'))}
@@ -241,12 +242,20 @@ export function AttendanceManagement({ campusId, onDirtyChange, campusControl = 
             </button>
           )}
           {person.canReview && (
-            <button disabled={busy} onClick={() => run(() => update(person, 'review'))}>
+            <button
+              data-track="staff.attendancemanagement.button.2"
+              disabled={busy}
+              onClick={() => run(() => update(person, 'review'))}
+            >
               {person.status === 'absent' ? '撤销未到' : '确认未到'}
             </button>
           )}
           {person.canCorrect && person.status !== 'leave' && (
-            <button disabled={busy} onClick={() => edit(person)}>
+            <button
+              data-track="staff.attendancemanagement.button.3"
+              disabled={busy}
+              onClick={() => edit(person)}
+            >
               {person.record ? '修正时间' : '补记漏签'}
             </button>
           )}
@@ -262,17 +271,23 @@ export function AttendanceManagement({ campusId, onDirtyChange, campusControl = 
           <label>
             值班日期
             <DatePicker
+              data-track="staff.attendancemanagement.input.4"
               value={day}
               disabled={busy || !!form}
               onChange={(event) => event.target.value && setDay(event.target.value)}
             />
           </label>
-          <button disabled={busy || !!form} onClick={() => setDay(dateKey())}>
+          <button
+            data-track="staff.attendancemanagement.button.5"
+            disabled={busy || !!form}
+            onClick={() => setDay(dateKey())}
+          >
             今天
           </button>
         </div>
         <div className="duty-attendance-actions">
           <RefreshButton
+            data-track="staff.attendancemanagement.button.6"
             key={`${campusId}:${day}`}
             disabled={busy || !!form}
             onRefresh={() => result.refetch({ throwOnError: true })}
@@ -281,6 +296,7 @@ export function AttendanceManagement({ campusId, onDirtyChange, campusControl = 
           />
           {day === dateKey() && (
             <button
+              data-track="staff.attendancemanagement.button.7"
               className="attendance-code-action"
               disabled={busy || data?.paused}
               onClick={() => run(showCode)}
@@ -290,6 +306,7 @@ export function AttendanceManagement({ campusId, onDirtyChange, campusControl = 
           )}
           {data?.canManage && (
             <button
+              data-track="staff.attendancemanagement.button.8"
               disabled={busy || !data || data.paused || day > dateKey()}
               onClick={() => edit(null)}
             >
@@ -354,7 +371,11 @@ export function AttendanceManagement({ campusId, onDirtyChange, campusControl = 
             if (!busy) setForm(null);
           }}
         >
-          <form ref={formRef} onSubmit={(event) => void save(event).catch(() => {})}>
+          <form
+            data-track="staff.attendancemanagement.form.9"
+            ref={formRef}
+            onSubmit={(event) => void save(event).catch(() => {})}
+          >
             <fieldset className="attendance-edit-fields" disabled={busy}>
               <p>
                 {form.businessDate} · {dutyCampusNames[form.campusId]}
@@ -365,6 +386,7 @@ export function AttendanceManagement({ campusId, onDirtyChange, campusControl = 
                 <label>
                   工作人员
                   <Select
+                    data-track="staff.attendancemanagement.select.10"
                     required
                     value={form.memberId}
                     onChange={(event) =>
@@ -388,6 +410,7 @@ export function AttendanceManagement({ campusId, onDirtyChange, campusControl = 
                 <label>
                   实际到场时间
                   <TimePicker
+                    data-track="staff.attendancemanagement.input.11"
                     label="选择实际到场时间"
                     required
                     value={form.occurredAt}
@@ -404,6 +427,7 @@ export function AttendanceManagement({ campusId, onDirtyChange, campusControl = 
               <label>
                 补录或修正原因
                 <input
+                  data-track="staff.attendancemanagement.input.12"
                   required
                   maxLength={500}
                   value={form.reason}
@@ -418,10 +442,18 @@ export function AttendanceManagement({ campusId, onDirtyChange, campusControl = 
               </label>
               {error && <p role="alert">{error}</p>}
               <div className="schedule-actions">
-                <button type="submit" className="field-primary">
+                <button
+                  data-track="staff.attendancemanagement.button.13"
+                  type="submit"
+                  className="field-primary"
+                >
                   保存考勤
                 </button>
-                <button type="button" onClick={() => setForm(null)}>
+                <button
+                  data-track="staff.attendancemanagement.button.14"
+                  type="button"
+                  onClick={() => setForm(null)}
+                >
                   取消
                 </button>
               </div>
@@ -438,7 +470,11 @@ export function AttendanceManagement({ campusId, onDirtyChange, campusControl = 
           />
           <p>有效至 {time(token.expiresAt)}</p>
           {error && <p role="alert">{error}</p>}
-          <button disabled={busy} onClick={() => run(showCode)}>
+          <button
+            data-track="staff.attendancemanagement.button.15"
+            disabled={busy}
+            onClick={() => run(showCode)}
+          >
             更新签到码
           </button>
         </Modal>

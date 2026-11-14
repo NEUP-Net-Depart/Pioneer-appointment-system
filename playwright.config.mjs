@@ -52,8 +52,9 @@ export default defineConfig({
         '**/records-navigation.spec.mjs',
         '**/maintenance-affairs.spec.mjs',
         '**/member-identities.spec.mjs',
-        '**/admin-controls.spec.mjs'
-        ,'**/today-work-window.spec.mjs'
+        '**/admin-controls.spec.mjs',
+        '**/today-work-window.spec.mjs',
+        '**/telemetry.spec.mjs'
       ],
       use: {
         browserName: 'webkit',

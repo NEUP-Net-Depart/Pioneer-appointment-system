@@ -53,6 +53,7 @@ function IntakePhoto({
     <div className="field-intake-photo">
       {src ? (
         <button
+          data-track="staff.field.intakephotos.button.1"
           type="button"
           className="field-photo-preview"
           aria-label={`查看${label}`}
@@ -73,6 +74,7 @@ function IntakePhoto({
         <label className="field-photo-upload">
           {src || photoId ? '替换照片' : '拍照'}
           <input
+            data-track="staff.field.intakephotos.input.2"
             type="file"
             disabled={busy}
             accept="image/jpeg,image/png,image/webp"
@@ -95,7 +97,11 @@ function IntakePhoto({
         </div>
       )}
       {error && (
-        <button type="button" onClick={() => setRetry((value) => value + 1)}>
+        <button
+          data-track="staff.field.intakephotos.button.3"
+          type="button"
+          onClick={() => setRetry((value) => value + 1)}
+        >
           重试加载
         </button>
       )}

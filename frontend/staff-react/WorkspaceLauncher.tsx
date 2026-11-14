@@ -33,6 +33,7 @@ export function WorkspaceLauncher({
         <label>
           查找功能
           <input
+            data-track="staff.workspacelauncher.input.1"
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -62,6 +63,7 @@ export function WorkspaceLauncher({
             <div>
               {group.items.map((entry) => (
                 <button
+                  data-track="staff.workspacelauncher.button.2"
                   type="button"
                   key={entry.id}
                   aria-current={active === entry.id ? 'page' : undefined}
@@ -80,7 +82,11 @@ export function WorkspaceLauncher({
       </nav>
       {!filtered.length && (
         <Empty title="没有匹配的功能">
-          <button type="button" onClick={() => setQuery('')}>
+          <button
+            data-track="staff.workspacelauncher.button.3"
+            type="button"
+            onClick={() => setQuery('')}
+          >
             清空搜索
           </button>
         </Empty>

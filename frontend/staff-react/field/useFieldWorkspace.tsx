@@ -1,3 +1,4 @@
+import { recentlyActive } from '../../../shared/telemetry-client.js';
 import { useEffect, useRef, useState } from 'react';
 import { api } from './ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -67,11 +68,12 @@ export function useFieldWorkspace({
     initialData:
       resource === '/api/field/home' && initial.campusId === campus ? initial : undefined,
     initialDataUpdatedAt: Date.parse(initial.updatedAt),
-    queryFn: async ({ signal }) => {
+    queryFn: async ({ signal, queryKey }) => {
       try {
         return await api<Home>(`${resource}?campusId=${encodeURIComponent(campus)}`, {
           signal,
-          timeoutMs: 15000
+          timeoutMs: 15000,
+          telemetryPoll: !!client.getQueryState(queryKey)?.dataUpdatedAt && !recentlyActive()
         });
       } catch (error) {
         if ((error as Error & { status?: number }).status !== 403) throw error;

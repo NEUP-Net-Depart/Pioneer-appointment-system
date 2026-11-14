@@ -51,6 +51,7 @@ export function TodayWorkWindow({
             <span className="work-window-campus-single">{data.campuses[0].name}</span>
           ) : (
             <button
+              data-track="staff.field.todayworkwindow.campus"
               className="work-window-campus-toggle"
               type="button"
               disabled={busy || data.campuses.length < 2}
@@ -97,22 +98,38 @@ export function TodayWorkWindow({
       </div>
       <div className="work-window-actions">
         <div className="work-window-attendance">
-          <button className="work-window-scan" disabled={busy} onClick={onScan}>
+          <button
+            data-track="staff.field.todayscene.button.2"
+            className="work-window-scan"
+            disabled={busy}
+            onClick={onScan}
+          >
             <ScanLine size={18} />
             扫码
           </button>
           {manage && (
-            <button disabled={busy} onClick={signed ? onShowCode : onCheckIn}>
+            <button
+              data-track="staff.field.todayworkwindow.attendance"
+              disabled={busy}
+              onClick={signed ? onShowCode : onCheckIn}
+            >
               {signed ? <QrCode size={18} /> : <Check size={18} />}
               {signed ? '展示签到码' : '到岗签到'}
             </button>
           )}
-          <RefreshButton label="刷新工作台" compactOnMobile disabled={busy} onRefresh={onRefresh} />
+          <RefreshButton
+            data-track="staff.field.todayworkwindow.refresh"
+            label="刷新工作台"
+            compactOnMobile
+            disabled={busy}
+            onRefresh={onRefresh}
+          />
         </div>
         {canRead && (
           <div className="work-window-counts">
             {canRead && (
               <button
+                data-track="staff.field.todayworkwindow.people.idle"
                 onClick={() => onPeople('idle')}
                 disabled={!staffing.data || !!staffing.error}
               >
@@ -122,7 +139,10 @@ export function TodayWorkWindow({
               </button>
             )}
             {manage && !!staffing.data?.missing?.length && (
-              <button onClick={() => onPeople('missing')}>
+              <button
+                data-track="staff.field.todayworkwindow.people.missing"
+                onClick={() => onPeople('missing')}
+              >
                 <span>应到未签到</span>
                 <DataValue label="未签到人数">{staffing.data.missing.length}</DataValue>
                 <ArrowUpRight size={16} />
@@ -133,7 +153,10 @@ export function TodayWorkWindow({
       </div>
       {staffing.error && (
         <p role="status">
-          人员状态暂未更新<button onClick={() => staffing.refetch()}>重试</button>
+          人员状态暂未更新
+          <button data-track="staff.field.todayworkwindow.retry" onClick={() => staffing.refetch()}>
+            重试
+          </button>
         </p>
       )}
     </section>
