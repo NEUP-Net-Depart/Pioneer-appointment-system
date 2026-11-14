@@ -6,19 +6,88 @@ import { dutyCampusNames, dutyWindow } from '../../../shared/duty.js';
 import { tokenDigest, inputString } from './shared.js';
 
 export function dutyDomain({ repository, contextFor, evaluate, ensureDutyEvent }) {
-  async function authorized(actor, campusId) {
+  async function workStaffing(actor, query) {
+    const context = await contextFor(actor),
+      campus = normalizeCampus(query.campusId),
+      day = dateKey();
+    const canRead = ['attendance.correct', 'attendance.token.issue'].some(
+      (code) => evaluate(context, code, { campusId: campus }).allowed
+    );
+    if (!dutyCampusNames[campus] || !canRead) fail(403, '没有该校区的人员状态查看权限');
+    const canSeeMissing = evaluate(context, 'attendance.token.issue', { campusId: campus }).allowed;
+    const [attendance, people, busy, duties, service] = await Promise.all([
+      repository.dutyAttendanceDay(day, campus),
+      repository.schedulePeople(campus),
+      repository.busyRepairMembers(),
+      canSeeMissing ? repository.dutyDay(day, campus) : Promise.resolve({ assignments: [] }),
+      repository.serviceDay(day, campus)
+    ]);
+    const posts = await repository.membershipsForMembers(
+      people.map((person) => person.memberId),
+      day
+    );
+    const signed = new Set(
+      attendance.records
+        .filter((record) => record.campusId === campus)
+        .map((record) => record.memberId)
+    );
+    const occupied = new Set(busy.map((person) => person.memberId));
+    const eligible = new Set(
+      posts
+        .filter(
+          (post) =>
+            post.enabled !== false &&
+            post.departmentCode === 'hardware' &&
+            (post.isPrimary || post.assignmentType === 'exchange')
+        )
+        .map((post) => post.memberId)
+    );
+    const expected = new Set(
+      duties.assignments
+        .filter((item) => item.leaveStatus !== 'recorded')
+        .map((item) => item.memberId)
+    );
+    const unique = [...new Map(people.map((person) => [person.memberId, person])).values()];
+    const project = (person) => ({ memberId: person.memberId, name: person.name });
+    return {
+      campusId: campus,
+      businessDate: day,
+      idle: service?.paused
+        ? []
+        : unique
+            .filter(
+              (person) =>
+                signed.has(person.memberId) &&
+                eligible.has(person.memberId) &&
+                !occupied.has(person.memberId)
+            )
+            .map(project),
+      missing: canSeeMissing
+        ? service?.paused
+          ? []
+          : unique
+              .filter((person) => expected.has(person.memberId) && !signed.has(person.memberId))
+              .map(project)
+        : null
+    };
+  }
+  async function authorized(actor, campusId, readOnly = false) {
     const context = await contextFor(actor),
       campus = normalizeCampus(campusId);
     if (
       !dutyCampusNames[campus] ||
-      !evaluate(context, 'attendance.correct', { campusId: campus }).allowed
+      !(
+        evaluate(context, 'attendance.correct', { campusId: campus }).allowed ||
+        (readOnly && evaluate(context, 'attendance.token.issue', { campusId: campus }).allowed)
+      )
     )
       fail(403, '没有该校区的考勤管理权限');
     return { context, campus };
   }
   async function attendanceDay(actor, query) {
-    const { context, campus } = await authorized(actor, query.campusId),
+    const { context, campus } = await authorized(actor, query.campusId, true),
       day = query.businessDate || dateKey();
+    const canManage = evaluate(context, 'attendance.correct', { campusId: campus }).allowed;
     if (!validDate(day)) fail(400, '日期不正确');
     const [data, attendance, service, people] = await Promise.all([
       repository.dutyDay(day, campus),
@@ -27,19 +96,24 @@ export function dutyDomain({ repository, contextFor, evaluate, ensureDutyEvent }
       repository.schedulePeople(campus)
     ]);
     const canCorrect = (memberId) =>
-      !service?.paused && day <= dateKey() && people.some((person) => person.memberId === memberId);
+      canManage &&
+      !service?.paused &&
+      day <= dateKey() &&
+      people.some((person) => person.memberId === memberId);
     const records = attendance.records.filter(
       (row) =>
         row.campusId === campus &&
-        evaluate(context, 'attendance.correct', {
-          campusId: campus,
-          memberId: row.memberId,
-          departmentId: row.primaryDepartmentIdSnapshot
-        }).allowed
+        (!canManage ||
+          evaluate(context, 'attendance.correct', {
+            campusId: campus,
+            memberId: row.memberId,
+            departmentId: row.primaryDepartmentIdSnapshot
+          }).allowed)
     );
     const byMember = new Map();
     for (const item of data.assignments) {
       if (
+        canManage &&
         !evaluate(context, 'attendance.correct', { campusId: campus, memberId: item.memberId })
           .allowed
       )
@@ -104,20 +178,63 @@ export function dutyDomain({ repository, contextFor, evaluate, ensureDutyEvent }
         record,
         status: 'arrived'
       }));
+    const [busy, posts] =
+      day === dateKey() && !service?.paused
+        ? await Promise.all([
+            repository.busyRepairMembers(),
+            repository.membershipsForMembers(
+              people.map((person) => person.memberId),
+              day
+            )
+          ])
+        : [[], []];
+    const occupied = new Set(busy.map((person) => person.memberId));
+    const eligible = new Set(
+      posts
+        .filter(
+          (post) =>
+            post.enabled !== false &&
+            post.departmentCode === 'hardware' &&
+            (post.isPrimary || post.assignmentType === 'exchange')
+        )
+        .map((post) => post.memberId)
+    );
+    const decorate = (person) => ({
+      ...person,
+      repairEligible: eligible.has(person.memberId),
+      workStatus:
+        person.record && day === dateKey() && !service?.paused
+          ? occupied.has(person.memberId)
+            ? 'repairing'
+            : 'idle'
+          : null,
+      ...(!canManage
+        ? {
+            record: person.record ? { occurredAt: person.record.occurredAt } : null,
+            assignments: person.assignments?.map(({ dutyType, startAt, endAt }) => ({
+              dutyType,
+              startAt,
+              endAt
+            })),
+            assignment: undefined
+          }
+        : {})
+    });
     return {
+      canManage,
       businessDate: day,
       campusId: campus,
       paused: !!service?.paused,
       serverNow: now,
-      items,
-      temporary,
+      items: items.map(decorate),
+      temporary: temporary.map(decorate),
       summary: {
         expected: items.filter((row) => !['leave', 'paused'].includes(row.status)).length,
         arrived: items.filter((row) => row.status === 'arrived').length,
         pending: items.filter((row) => row.status === 'pending').length,
         absent: items.filter((row) => row.status === 'absent').length
       },
-      people: people
+      people: (canManage ? people : [])
         .filter(
           (person) =>
             evaluate(context, 'attendance.correct', { campusId: campus, memberId: person.memberId })
@@ -269,5 +386,5 @@ export function dutyDomain({ repository, contextFor, evaluate, ensureDutyEvent }
     }
     return record.result;
   }
-  return { attendanceDay, confirmArrival, reviewAttendance };
+  return { attendanceDay, confirmArrival, reviewAttendance, workStaffing };
 }

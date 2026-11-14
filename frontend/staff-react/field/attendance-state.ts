@@ -23,6 +23,7 @@ export async function applyAttendance(client: QueryClient, record: AttendanceRec
         '/api/field/board',
         '/api/me/attendance',
         '/api/attendance/day',
+        '/api/attendance/staffing',
         '/api/me/volunteer-summary',
         '/api/attendance/volunteer-report',
         '/api/attendance/matrix',
