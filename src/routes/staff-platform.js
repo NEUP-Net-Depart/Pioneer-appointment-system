@@ -42,6 +42,7 @@ export const staffPlatformRoutes = [
   ['POST', /^\/api\/members\/([^/]+)\/memberships$/, async (context, match) => json(await context.services.staffPlatform.addMembership(await context.role('technician'), decodeURIComponent(match[1]), await readBody(context.request)))],
   ['PATCH', /^\/api\/members\/([^/]+)\/memberships\/([^/]+)$/, async (context, match) => json(await context.services.staffPlatform.endMembership(await context.role('technician'), decodeURIComponent(match[1]), decodeURIComponent(match[2]), await readBody(context.request)))],
   ['PUT', /^\/api\/members\/([^/]+)\/roles$/, async (context, match) => json(await context.services.staffPlatform.bindMemberRoles(await context.role('technician'), decodeURIComponent(match[1]), await readBody(context.request)))],
+  ['PUT', /^\/api\/members\/([^/]+)\/retired-elder$/, async (context, match) => { await context.limit('write'); return json(await context.services.staffPlatform.setRetiredElder(await context.role('superadmin'), decodeURIComponent(match[1]), await readBody(context.request))); }],
   ['GET', /^\/api\/permissions$/, async context => json(await context.services.staffPlatform.permissions(await context.role('technician')))],
   ['GET', /^\/api\/roles$/, async context => json(await context.services.staffPlatform.roles(await context.role('technician')))],
   ['POST', /^\/api\/roles$/, async context => json(await context.services.staffPlatform.createRole(await context.role('technician'), await readBody(context.request)), 201)],

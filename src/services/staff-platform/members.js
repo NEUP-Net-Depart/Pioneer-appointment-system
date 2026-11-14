@@ -2,7 +2,7 @@ import { fail } from '../../lib/http.js';
 import { dateKey, validDate } from '../../platform/time.js';
 import { publicResourceRef, SCHEMA_VERSION } from '../../platform/contracts.js';
 import { memberPublic } from '../../modules/identity/public.js';
-import { staffIdentities } from '../../../shared/staff-identities.js';
+import { staffIdentities, isRetiredElder } from '../../../shared/staff-identities.js';
 import { inputString, csvRows, tokenDigest } from './shared.js';
 import { editableMember, delegableRole } from './delegation.js';
 import { memberImportDomain } from './member-import.js';
@@ -118,6 +118,7 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
         ...item,
         identities: staffIdentities({
           actor: { role: item.role },
+          specialIdentities: item.specialIdentities,
           memberships: item.memberships || []
         })
       }));
@@ -187,6 +188,7 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
     return {
       actions: {
         edit: editable,
+        editSpecialIdentities: editable && context.actor.role === 'superadmin',
         readAudit: canReadMemberAudit(context, target, memberships),
         editRoles:
           !account?.protected &&
@@ -301,6 +303,32 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
       affectedResources: [{ module: 'identity', type: 'member', id: memberId }],
       accountStatus: account?.status || ''
     };
+  }
+
+  async function setRetiredElder(actor, memberId, input) {
+    const before = await repository.memberRow(memberId);
+    if (!before) fail(404, '成员不存在');
+    const { context } = await requireMemberPermission(actor, before);
+    if (context.actor.role !== 'superadmin') fail(403, '只有超级管理员可以授予或撤销退休老登身份');
+    const targetState = await editableMember(repository, context, before, evaluate);
+    if (typeof input?.enabled !== 'boolean') fail(400, '身份状态不正确');
+    if (!Number.isInteger(input.revision) || input.revision < 0) fail(400, '成员版本不正确');
+    if (before.revision !== input.revision) fail(409, '成员已被其他操作修改，请刷新');
+    const previous = isRetiredElder(memberPublic(before));
+    if (previous === input.enabled) return { member: memberPublic(before) };
+    const after = await repository.setRetiredElder(memberId, input.enabled, input.revision, {
+      actorMemberId: context.actor.memberId,
+      actorAccount: context.actor.account,
+      authVersion: context.authVersion,
+      action: input.enabled ? 'identity.retired_elder.granted' : 'identity.retired_elder.revoked',
+      targetAccountVersion: targetState.account,
+      sourceRef: publicResourceRef('identity', 'member', memberId),
+      before: { retiredElder: previous },
+      after: { retiredElder: input.enabled },
+      requestId: input.requestId
+    });
+    if (!after) fail(409, '成员或管理员权限已变化，请刷新后重试');
+    return { member: memberPublic(after), authVersionChanged: true };
   }
 
   async function ownProfile(actor, input) {
@@ -604,6 +632,7 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
     memberDetail,
     memberAudit,
     updateMember,
+    setRetiredElder,
     ownProfile,
     addMembership,
     endMembership,

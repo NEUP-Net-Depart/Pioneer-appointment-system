@@ -116,11 +116,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
     const memberId = account?.mapped_member_id || null;
     const authorizationDate = dateKey();
     const result = await db.batch([
-      db
-        .prepare(
-          'SELECT m.id,m.name,m.student_id,m.home_campus_id,m.status,m.revision,m.created_at,m.updated_at FROM members m WHERE m.id=?'
-        )
-        .bind(memberId),
+      db.prepare(`SELECT ${memberColumns} FROM members m WHERE m.id=?`).bind(memberId),
       db
         .prepare(
           `SELECT mdm.*,d.name AS department_name,d.code AS department_code,d.kind AS organization_kind,d.enabled AS department_enabled FROM member_department_memberships mdm JOIN departments d ON d.id=mdm.department_id WHERE mdm.member_id=? AND mdm.effective_from<=? AND (mdm.effective_to IS NULL OR ?<mdm.effective_to) ORDER BY mdm.is_primary DESC,mdm.effective_from`
@@ -165,6 +161,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
         authVersion
       },
       member,
+      specialIdentities: parseJson(member?.special_identities, []),
       memberships: membershipItems,
       authorizationDate,
       grants: grantItems,
@@ -233,7 +230,8 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
       primaryDepartment: row.primary_department || '',
       revision: row.revision,
       accessCampusIds: parseJson(row.access_campuses, []),
-      memberships: []
+      memberships: [],
+      specialIdentities: parseJson(row.special_identities, [])
     }));
   }
 
@@ -334,6 +332,32 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
     const result = await db.batch(statements);
     if (!result[0]?.meta?.changes) return null;
     return memberRow(memberId);
+  }
+
+  async function setRetiredElder(memberId, enabled, revision, auditRecord) {
+    const authorization = commandAuthorization(auditRecord);
+    const statements = [
+      db
+        .prepare(
+          `UPDATE members SET revision=revision+1,updated_at=? WHERE id=? AND revision=? ${authorization.sql}
+        AND EXISTS(SELECT 1 FROM staff_accounts WHERE account=? AND role='superadmin')`
+        )
+        .bind(nowIso(), memberId, revision, ...authorization.args, auditRecord.actorAccount),
+      enabled
+        ? db
+            .prepare(
+              "INSERT INTO member_special_identities(member_id,code,granted_at) SELECT ?,'retired_elder',? WHERE changes()>0"
+            )
+            .bind(memberId, nowIso())
+        : db
+            .prepare(
+              "DELETE FROM member_special_identities WHERE member_id=? AND code='retired_elder' AND changes()>0"
+            )
+            .bind(memberId),
+      auditStatement(auditRecord, true)
+    ];
+    const result = await db.batch(statements);
+    return result[0]?.meta?.changes ? memberRow(memberId) : null;
   }
 
   async function listMemberships(memberId, includeHistory = true) {
@@ -495,6 +519,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
     authorizationContext,
     listMembers,
     updateMember,
+    setRetiredElder,
     listMemberships,
     addMembership,
     endMembership,

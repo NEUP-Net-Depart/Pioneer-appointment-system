@@ -85,6 +85,34 @@ fieldset.staffing-editor {
   color: #416d68;
   background: #edf5f3;
 }
+.staff-identity[data-identity='retired_elder'] {
+  color: #fff;
+  font-weight: 700;
+  white-space: nowrap;
+  background: linear-gradient(110deg, #7e22ce, #be185d, #4338ca, #0e7490, #7e22ce);
+  background-size: 300% 100%;
+  box-shadow: 0 1px 7px #7e22ce40;
+  animation: retired-elder-gradient 5s ease-in-out infinite;
+}
+@keyframes retired-elder-gradient {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .staff-identity[data-identity='retired_elder'] {
+    animation: none;
+  }
+}
+.member-special-identities {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
 .field-person-divider {
   display: flex;
   align-items: center;

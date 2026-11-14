@@ -1,6 +1,14 @@
 {
   "contractVersion": "staff-platform.v2",
-  "schemaVersion": "0051",
+  "schemaVersion": "0054",
+  "retiredElder": {
+    "code": "retired_elder",
+    "storage": "member_special_identities",
+    "manualGrantRole": "superadmin",
+    "managementScope": "both campuses; same business management permissions as director",
+    "dutyParticipation": false,
+    "retroactiveHistoryChanges": false
+  },
   "maintenanceAffairs": {
     "assignmentType": "maintenance_affairs",
     "isPrimary": false,
@@ -16,6 +24,7 @@
     "actor",
     "identities",
     "memberships",
+    "specialIdentities",
     "authorizationDate",
     "grants",
     "permissions",
@@ -45,6 +54,7 @@
       "POST /api/members/:memberId/activation",
       "GET /api/users/:account",
       "PATCH /api/members/:memberId",
+      "PUT /api/members/:memberId/retired-elder",
       "POST /api/members/import",
       "GET /api/workbench",
       "POST /api/members/:memberId/memberships",

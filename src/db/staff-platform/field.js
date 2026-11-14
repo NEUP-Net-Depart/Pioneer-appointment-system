@@ -103,6 +103,7 @@ export function fieldDomain({ db, event }) {
         if (member)
           contexts.set(id, {
             actor: { memberId: id, status: 'disabled', authorizedCampuses: [] },
+            specialIdentities: parseJson(member.special_identities, []),
             memberships: await reader.memberships(id, day),
             grants: [],
             todayDuties: [],

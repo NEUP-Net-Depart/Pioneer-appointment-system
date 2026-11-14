@@ -440,6 +440,7 @@ export const CONTROL_IDS = [
   "staff.membereditor.input.4",
   "staff.membereditor.input.8",
   "staff.membereditor.refreshbutton.20",
+  "staff.membereditor.retired-elder",
   "staff.membereditor.select.12",
   "staff.membereditor.select.12.option",
   "staff.membereditor.select.12.panel",
@@ -1301,6 +1302,11 @@ export const ROUTE_DEFINITIONS = [
     "id": "staff-platform.put.a8408a63",
     "method": "PUT",
     "pattern": "^\\/api\\/members\\/([^/]+)\\/roles$"
+  },
+  {
+    "id": "staff-platform.put.a4a485b0",
+    "method": "PUT",
+    "pattern": "^\\/api\\/members\\/([^/]+)\\/retired-elder$"
   },
   {
     "id": "staff-platform.get.38d40370",

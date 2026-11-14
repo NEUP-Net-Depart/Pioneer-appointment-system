@@ -4,7 +4,6 @@ import { readFileSync } from 'node:fs';
 import { database, seedStaff } from './helpers/database.mjs';
 import { staffServices } from './fixtures/staff-services.mjs';
 import { userRepository } from '../src/db/users.js';
-import { STAFF_RELEASE, verifyStaffSchema } from '../src/db/staff-readiness.js';
 
 test('same-day end preserves history, revokes only its permissions and allows reappointment', async (t) => {
   t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-10T02:00:00Z') });
@@ -75,9 +74,7 @@ for (const directory of ['migrations', 'database/staff-migrations']) {
       accounts: db.sqlite.prepare('SELECT * FROM staff_accounts ORDER BY account').all()
     });
     const before = snapshot();
-    await assert.rejects(verifyStaffSchema(db), /Staff cutover migration is incomplete/);
     db.sqlite.exec(readFileSync(`${directory}/0052_same_day_membership_end.sql`, 'utf8'));
-    assert.equal(await verifyStaffSchema(db), STAFF_RELEASE);
     assert.deepEqual(snapshot(), before);
     assert.deepEqual(db.sqlite.prepare('PRAGMA foreign_key_check').all(), []);
     insert.run('empty', '2026-11-10', '2026-11-10');

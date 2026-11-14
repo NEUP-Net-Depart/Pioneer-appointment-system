@@ -1,6 +1,6 @@
 import { dateKey } from '../../shared/time.js';
 import { staffIdentities } from '../../shared/staff-identities.js';
-import { campusArraySql } from './staff-access.js';
+import { campusArraySql, specialIdentitiesSql } from './staff-access.js';
 
 const roleNames = `(SELECT json_group_array(name) FROM (SELECT DISTINCT r.name FROM member_roles mr JOIN roles r ON r.id=mr.role_id
   WHERE mr.member_id=staff_accounts.member_id AND r.enabled=1 AND mr.effective_from<=? AND (mr.effective_to IS NULL OR mr.effective_to>?) ORDER BY r.level DESC,r.name)) AS role_names`;
@@ -8,6 +8,7 @@ const memberships = `(SELECT json_group_array(json_object('assignmentType',mdm.a
   FROM member_department_memberships mdm JOIN departments d ON d.id=mdm.department_id
   WHERE mdm.member_id=staff_accounts.member_id AND d.enabled=1 AND mdm.effective_from<=? AND (mdm.effective_to IS NULL OR mdm.effective_to>?)) AS identity_memberships`;
 const select = (extra = '') => `SELECT staff_accounts.*,(SELECT status FROM members WHERE id=staff_accounts.member_id) AS member_status,
+  ${specialIdentitiesSql('staff_accounts.member_id')} AS special_identities,
   ${campusArraySql('staff_accounts')} AS campuses
   ${extra}
   FROM staff_accounts`;
@@ -17,7 +18,7 @@ export function publicUser(row) {
     protected: !!row.protected, createdAt: row.created_at, workload: row.workload ?? 0,
     authVersion: row.auth_version ?? row.token_version ?? 0,
     ...(row.role_names !== undefined ? { roleNames: JSON.parse(row.role_names || '[]') } : {}),
-    ...(row.identity_memberships !== undefined ? { identities: staffIdentities({ actor: { role: row.role }, memberships: JSON.parse(row.identity_memberships || '[]') }) } : {}) } : null;
+    ...(row.identity_memberships !== undefined ? { identities: staffIdentities({ actor: { role: row.role }, memberships: JSON.parse(row.identity_memberships || '[]'), specialIdentities: JSON.parse(row.special_identities || '[]') }) } : {}) } : null;
 }
 export function publicUserView(user) {
   if (!user) return null;

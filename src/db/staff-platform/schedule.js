@@ -61,7 +61,8 @@ export function scheduleRepository({ db, writeCommand: write }) {
   async function schedulePeople(campus) {
     return list(
       `SELECT m.id AS memberId,m.name,m.student_id AS studentId,s.account,s.auth_version AS authVersion FROM members m JOIN staff_accounts s ON s.member_id=m.id
-      WHERE m.status='active' AND s.status='enabled' AND EXISTS(SELECT 1 FROM staff_access_campuses g WHERE g.account=s.account AND g.campus=(SELECT name FROM campuses WHERE id=?)) ORDER BY m.name,m.id`,
+      WHERE m.status='active' AND s.status='enabled' AND NOT EXISTS(SELECT 1 FROM member_special_identities si WHERE si.member_id=m.id AND si.code='retired_elder')
+      AND EXISTS(SELECT 1 FROM staff_access_campuses g WHERE g.account=s.account AND g.campus=(SELECT name FROM campuses WHERE id=?)) ORDER BY m.name,m.id`,
       campus
     );
   }
@@ -159,7 +160,7 @@ export function scheduleRepository({ db, writeCommand: write }) {
       weekIds = JSON.stringify(weeks.map((row) => row.before.id));
     const guard = `NOT EXISTS(SELECT 1 FROM json_each(?) n WHERE COALESCE((SELECT revision FROM roster_weeks WHERE id=json_extract(n.value,'$.id')),-1)<>json_extract(n.value,'$.revision'))
       AND NOT EXISTS(SELECT 1 FROM json_each(?) n WHERE NOT EXISTS(SELECT 1 FROM members m JOIN staff_accounts s ON s.member_id=m.id JOIN staff_access_campuses g ON g.account=s.account
-        WHERE m.id=json_extract(n.value,'$.memberId') AND m.status='active' AND s.status='enabled' AND g.campus=(SELECT name FROM campuses WHERE id=json_extract(n.value,'$.campusId'))))
+        WHERE m.id=json_extract(n.value,'$.memberId') AND m.status='active' AND s.status='enabled' AND NOT EXISTS(SELECT 1 FROM member_special_identities si WHERE si.member_id=m.id AND si.code='retired_elder') AND g.campus=(SELECT name FROM campuses WHERE id=json_extract(n.value,'$.campusId'))))
       AND NOT EXISTS(SELECT 1 FROM json_each(?) n JOIN duty_assignments a ON a.member_id=json_extract(n.value,'$.memberId') AND a.active=1 AND a.week_id NOT IN (SELECT value FROM json_each(?))
         AND a.business_date=json_extract(n.value,'$.businessDate') AND a.start_at<json_extract(n.value,'$.endAt') AND json_extract(n.value,'$.startAt')<a.end_at)
       ${snapshotGuard ? `AND (${snapshotGuard.sql})` : ''}`;
@@ -300,7 +301,7 @@ export function scheduleRepository({ db, writeCommand: write }) {
       record,
       `EXISTS(SELECT 1 FROM duty_assignments WHERE id=? AND revision=? AND member_id=? AND active=1)
     AND NOT EXISTS(SELECT 1 FROM roster_covers WHERE (assignment_id=? OR exchange_assignment_id=?) AND status='pending')
-    AND EXISTS(SELECT 1 FROM members m JOIN staff_accounts s ON s.member_id=m.id JOIN staff_access_campuses g ON g.account=s.account WHERE m.id=? AND m.status='active' AND s.status='enabled' AND g.campus=(SELECT name FROM campuses WHERE id=?))`,
+    AND EXISTS(SELECT 1 FROM members m JOIN staff_accounts s ON s.member_id=m.id JOIN staff_access_campuses g ON g.account=s.account WHERE m.id=? AND m.status='active' AND s.status='enabled' AND NOT EXISTS(SELECT 1 FROM member_special_identities si WHERE si.member_id=m.id AND si.code='retired_elder') AND g.campus=(SELECT name FROM campuses WHERE id=?))`,
       [item.id, item.revision, item.memberId, item.id, item.id, toMemberId, item.campusId],
       (gate, marker) => [
         db
@@ -326,7 +327,7 @@ export function scheduleRepository({ db, writeCommand: write }) {
     const guard = `EXISTS(SELECT 1 FROM roster_covers WHERE id=? AND revision=? AND status='pending')
       AND NOT EXISTS(SELECT 1 FROM json_each(?) n WHERE NOT EXISTS(SELECT 1 FROM duty_assignments a WHERE a.id=json_extract(n.value,'$.id') AND a.revision=json_extract(n.value,'$.revision') AND a.active=1))
       AND NOT EXISTS(SELECT 1 FROM json_each(?) n WHERE NOT EXISTS(SELECT 1 FROM members m JOIN staff_accounts s ON s.member_id=m.id JOIN staff_access_campuses g ON g.account=s.account
-        WHERE m.id=json_extract(n.value,'$.memberId') AND m.status='active' AND s.status='enabled' AND g.campus=(SELECT name FROM campuses WHERE id=json_extract(n.value,'$.campusId'))))
+        WHERE m.id=json_extract(n.value,'$.memberId') AND m.status='active' AND s.status='enabled' AND NOT EXISTS(SELECT 1 FROM member_special_identities si WHERE si.member_id=m.id AND si.code='retired_elder') AND g.campus=(SELECT name FROM campuses WHERE id=json_extract(n.value,'$.campusId'))))
       AND NOT EXISTS(SELECT 1 FROM json_each(?) n JOIN duty_assignments a ON a.member_id=json_extract(n.value,'$.memberId') AND a.active=1 AND a.id NOT IN (SELECT value FROM json_each(?))
         AND a.business_date=json_extract(n.value,'$.businessDate') AND a.start_at<json_extract(n.value,'$.endAt') AND json_extract(n.value,'$.startAt')<a.end_at)`;
     return write(
