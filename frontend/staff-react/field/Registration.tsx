@@ -86,7 +86,15 @@ export function Registration({
         method: 'POST',
         body: {
           ...form,
-          ...(parent ? { parentAppointmentId: parent.id, linkKind, sameDeviceAndFault: true } : {}),
+          ...(parent
+            ? {
+                parentAppointmentId: parent.id,
+                linkKind,
+                ...(linkKind === 'repair_induced'
+                  ? { sameDeviceAndRepairRelated: true }
+                  : { sameDeviceAndFault: true })
+              }
+            : {}),
           agreement: true,
           signature: signed,
           requestId: requestId.current

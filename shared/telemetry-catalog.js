@@ -1648,6 +1648,7 @@ export const SOURCE_FILES = [
   "shared/neu-colleges.js",
   "shared/polling.js",
   "shared/record-filters.js",
+  "shared/repair-links.js",
   "shared/signature-pad.js",
   "shared/signature.js",
   "shared/staff-access.js",
