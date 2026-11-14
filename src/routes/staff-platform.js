@@ -5,8 +5,9 @@ function bodyWithRevision(body) { return body && typeof body === 'object' ? body
 export const staffPlatformRoutes = [
   ['GET', /^\/api\/attendance\/staffing$/, async context=>json(await context.services.staffPlatform.workStaffing(await context.role('technician'),context.query))],
   ['GET', /^\/api\/attendance\/day$/, async context=>json(await context.services.staffPlatform.attendanceDay(await context.role('technician'),context.query))],
-  ['POST', /^\/api\/attendance\/arrivals$/, async context=>{ await context.limit('write'); return json(await context.services.staffPlatform.confirmArrival(await context.role('technician'),await readBody(context.request))); }],
-  ['PUT', /^\/api\/attendance\/reviews$/, async context=>{ await context.limit('write'); return json(await context.services.staffPlatform.reviewAttendance(await context.role('technician'),await readBody(context.request))); }],
+  ['GET', /^\/api\/attendance\/workload$/, async context=>json(await context.services.staffPlatform.attendanceWorkload(await context.role('technician'),context.query))],
+  ['POST', /^\/api\/attendance\/arrivals$/, async context=>{ await context.role('technician'); fail(410,'确认到场已停用，请由本人签到；漏签请填写原因后补记'); }],
+  ['PUT', /^\/api\/attendance\/reviews$/, async context=>{ await context.role('technician'); fail(410,'人工考勤核查已停用，班次结束未签到自动记缺勤；漏签请补记'); }],
   ['GET', /^\/api\/me\/volunteer-summary$/, async context=>json(await context.services.staffPlatform.volunteerSummary(await context.role('technician')))],
   ['GET', /^\/api\/rosters\/campus-week$/, async context=>json(await context.services.staffPlatform.campusWeek(await context.role('technician'),context.query))],
   ['PUT', /^\/api\/rosters\/campus-week$/, async context=>{ await context.limit('write'); return json(await context.services.staffPlatform.publishCampusWeek(await context.role('technician'),await readBody(context.request))); }],

@@ -69,7 +69,9 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
           .bind(...ids, businessDate, businessDate)
       );
     }
-    return (await db.batch(statements)).flatMap((result) => rows(result).map(membership));
+    return (await db.batch(statements)).flatMap((result) =>
+      rows(result).map((row) => ({ ...membership(row), memberId: row.member_id }))
+    );
   }
 
   async function grants(memberId, businessDate = dateKey()) {

@@ -477,6 +477,7 @@ export function attendanceDomain({ db, auditStatement, commandAuthorization }) {
     return {
       records: rows(result[0]).map((row) => ({
         ...attendanceRecord(row),
+        checkinSource: parseJson(row.checkin_source, {}),
         memberName: row.member_name,
         studentId: row.student_id
       })),

@@ -64,6 +64,8 @@ test('affairs can check in without a roster; independent issuers and private imm
   assert.equal(stored.issuerMemberId, second.memberId);
   assert.equal(stored.tokenId, secondCode.tokenId);
   const readOnlyDay = await staff.attendanceDay(second, { campusId, businessDate: day });
+  const workload = await staff.attendanceWorkload(second, { campusId, businessDate: day });
+  assert.deepEqual(new Set(workload.items.map(row => row.memberId)), new Set([...readOnlyDay.items, ...readOnlyDay.temporary].map(row => row.memberId)));
   assert.equal(readOnlyDay.canManage, false);
   assert.deepEqual(readOnlyDay.people, []);
   for (const person of [...readOnlyDay.items, ...readOnlyDay.temporary]) {

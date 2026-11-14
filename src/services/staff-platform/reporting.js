@@ -1,6 +1,7 @@
 import { fail } from '../../lib/http.js';
 import { addDays, dateKey, weekRange } from '../../platform/time.js';
 import { calculateVolunteerReport } from '../../modules/attendance/volunteer-report.js';
+import { attendanceHistory } from '../../modules/attendance/history.js';
 
 const campusNames = { 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' };
 
@@ -88,7 +89,7 @@ export function attendanceReportingDomain({ repository, platform, contextFor, ev
       start,
       end
     );
-    return calculateVolunteerReport({
+    const report = calculateVolunteerReport({
       month,
       weeks,
       settings,
@@ -101,6 +102,30 @@ export function attendanceReportingDomain({ repository, platform, contextFor, ev
       canRead: (campusId, memberId, departmentId) =>
         canExport(context, campusId, memberId, departmentId, query.campusId)
     });
+    const missing = report.weeks.flatMap((week) =>
+      week.campuses.flatMap((campus) => campus.rows.filter((row) => !row.college || !row.studentId))
+    );
+    const posts = missing.length
+      ? await repository.membershipsForMembers(
+          [...new Set(missing.map((row) => row.memberId))],
+          today
+        )
+      : [];
+    const members = new Map(data.members.map((member) => [member.memberId, member]));
+    for (const row of missing) {
+      const member = members.get(row.memberId);
+      row.canManageProfile =
+        !!member &&
+        evaluate(context, 'members.manage', {
+          id: row.memberId,
+          memberId: row.memberId,
+          campusId: member.homeCampusId,
+          departmentIds: posts
+            .filter((post) => post.memberId === row.memberId)
+            .map((post) => post.departmentId)
+        }).allowed;
+    }
+    return report;
   }
 
   async function volunteerSummary(actor) {
@@ -153,51 +178,70 @@ export function attendanceReportingDomain({ repository, platform, contextFor, ev
     if (query.campusId && !campusNames[query.campusId]) fail(400, '校区不正确');
     const context = await contextFor(actor);
     if (!context.permissions['attendance.export']) fail(403, '没有导出考勤的权限');
-    const data = await repository.weeklyAttendanceData(first, last);
-    const members = new Map(data.members.map((member) => [member.memberId, member]));
-    const rows = new Map(),
-      dates = new Set();
-    for (const record of data.records) {
-      if (
-        record.servicePaused ||
-        !canExport(
-          context,
-          record.campusId,
-          record.memberId,
-          record.primaryDepartmentIdSnapshot,
-          query.campusId
-        )
-      )
-        continue;
-      const key = `${record.campusId}:${record.primaryDepartmentIdSnapshot || ''}:${record.memberId}`;
-      if (!rows.has(key))
-        rows.set(key, {
-          campusId: record.campusId,
-          campus: campusNames[record.campusId],
-          department: record.primaryDepartmentNameSnapshot || '历史部门未记录',
-          memberId: record.memberId,
-          name:
-            record.identitySnapshot?.name ||
-            record.memberName ||
-            members.get(record.memberId)?.name ||
-            '',
-          studentId: record.identitySnapshot?.studentId || record.studentId || '',
-          days: new Set()
-        });
-      rows.get(key).days.add(record.businessDate);
-      dates.add(record.businessDate);
-    }
+    const campuses = Object.keys(campusNames).filter((id) =>
+      canExport(context, id, undefined, undefined, query.campusId)
+    );
+    const [data, schedules, paused] = await Promise.all([
+      repository.weeklyAttendanceData(first, last),
+      Promise.all(campuses.map((id) => repository.dutyDay(first, id, last))),
+      repository.serviceDays(first, last)
+    ]);
+    const allowed = (item) =>
+      canExport(
+        context,
+        item.campusId,
+        item.memberId,
+        item.primaryDepartmentIdSnapshot,
+        query.campusId
+      );
+    const canManage = (item) =>
+      evaluate(context, 'attendance.correct', {
+        campusId: item.campusId,
+        memberId: item.memberId,
+        departmentId: item.primaryDepartmentIdSnapshot
+      }).allowed;
+    const visibleRecords = data.records.filter(allowed);
+    const visibleAssignments = schedules
+      .flatMap((schedule) => schedule.assignments)
+      .filter(allowed);
+    const posts = await repository.membershipsForMembers(
+      [...new Set([...visibleRecords, ...visibleAssignments].map((item) => item.memberId))],
+      last < dateKey() ? last : dateKey()
+    );
+    const departments = new Map(
+      posts.filter((post) => post.isPrimary).map((post) => [post.memberId, post])
+    );
+    const history = attendanceHistory({
+      departments,
+      records: visibleRecords.map((record) => ({
+        memberId: record.memberId,
+        campusId: record.campusId,
+        businessDate: record.businessDate,
+        memberName: record.memberName,
+        studentId: record.studentId,
+        identitySnapshot: {
+          name: record.identitySnapshot?.name,
+          studentId: record.identitySnapshot?.studentId
+        },
+        primaryDepartmentNameSnapshot: record.primaryDepartmentNameSnapshot,
+        occurredAt: record.occurredAt,
+        servicePaused: record.servicePaused,
+        ...(canManage(record)
+          ? { checkinSource: record.checkinSource, recordedAt: record.recordedAt }
+          : {})
+      })),
+      assignments: visibleAssignments,
+      paused,
+      now: new Date().toISOString()
+    });
     return {
       month,
-      dates: [...dates].sort(),
-      rows: [...rows.values()]
-        .map((row) => ({ ...row, days: [...row.days].sort() }))
-        .sort(
-          (a, b) =>
-            a.campus.localeCompare(b.campus, 'zh-CN') ||
-            a.department.localeCompare(b.department, 'zh-CN') ||
-            a.name.localeCompare(b.name, 'zh-CN')
-        )
+      dates: history.dates,
+      rows: history.rows.map((row) => ({
+        ...row,
+        campus: campusNames[row.campusId],
+        canManage: canManage(row)
+      }))
     };
   }
   return {
