@@ -102,13 +102,11 @@ export function Modal({
     }
     closing.current = true;
     motion.current?.cancel();
-    const animation = dialog.animate(
-      [
-        { opacity: 1, transform: 'none' },
-        { opacity: 0.75, transform: 'none' }
-      ],
-      { duration: 120, easing: 'ease-in', fill: 'forwards' }
-    );
+    const animation = dialog.animate([{ opacity: 1 }, { opacity: 0.75 }], {
+      duration: 120,
+      easing: 'ease-in',
+      fill: 'forwards'
+    });
     motion.current = animation;
     animation.finished.then(
       () => {
@@ -133,18 +131,16 @@ export function Modal({
     const previous = document.activeElement as HTMLElement;
     dialog.showModal();
     closing.current = false;
+    // Transform animations change the containing block of fixed select popovers.
     if (
       !document.hidden &&
       !matchMedia('(prefers-reduced-motion: reduce)').matches &&
       !dialog.querySelector('video,canvas')
     )
-      motion.current = dialog.animate(
-        [
-          { opacity: 0.75, transform: 'none' },
-          { opacity: 1, transform: 'none' }
-        ],
-        { duration: 180, easing: 'cubic-bezier(.2,.75,.25,1)' }
-      );
+      motion.current = dialog.animate([{ opacity: 0.75 }, { opacity: 1 }], {
+        duration: 180,
+        easing: 'cubic-bezier(.2,.75,.25,1)'
+      });
     if (openModalCount++ === 0) {
       previousRootOverflow = document.documentElement.style.overflow;
       document.documentElement.style.overflow = 'hidden';

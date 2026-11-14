@@ -132,10 +132,13 @@ test('staff SDK records dialogs and lazy pages and isolates shared-device identi
   const dialog = page.getByRole('dialog', { name: '新增人员', exact: true });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(dialog).toBeHidden();
   await staffPage(page, '统计分析');
   await sendPending(context);
   for (const result of ['open', 'closed'])
-    expect(events().some((e) => e.name === 'ui.dialog' && e.result === result)).toBe(true);
+    await expect
+      .poll(() => events().some((e) => e.name === 'ui.dialog' && e.result === result))
+      .toBe(true);
   expect(events().some((e) => e.name === 'app.view' && e.view.startsWith('staff.'))).toBe(true);
   const personal = await staffPage(page, '个人中心');
   await personal.getByRole('button', { name: '退出登录', exact: true }).click();
