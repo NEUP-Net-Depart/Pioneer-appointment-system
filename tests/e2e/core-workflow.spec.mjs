@@ -178,7 +178,7 @@ test('cold entries wait for route code and business data instead of flashing the
   try {
     await loginStaff(page, 'root001', process.env.E2E_ROOT_PASSWORD);
     await staffPage(page, '今日工作');
-    await expect(page.getByRole('heading', { name: '今日工作', exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: '工作视窗', exact: true })).toBeVisible();
     await expect(page.locator('.field-content')).toHaveAttribute('aria-busy', 'true');
     await expect(page.getByText('今日没有待接收工单', { exact: true })).not.toBeVisible();
   } finally {
@@ -201,10 +201,9 @@ test('working campus isolates data, survives navigation and reload, and resets b
   await staffPage(page, '今日工作');
   const work = page.locator('.field-content'),
     campus = work.getByRole('group', { name: '接待校区', exact: true });
-  await expect(campus.getByRole('button', { name: '南湖', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'true'
-  );
+  await expect(
+    campus.getByRole('button', { name: '切换校区，当前南湖', exact: true })
+  ).toBeVisible();
   await work.getByRole('button', { name: '刷新工作台', exact: true }).click();
   await expect(work.getByRole('button').filter({ hasText: orders['南湖'].id })).toBeVisible();
   let releaseBoard;
@@ -217,7 +216,7 @@ test('working campus isolates data, survives navigation and reload, and resets b
     await route.continue();
   });
   try {
-    await campus.getByRole('button', { name: '浑南', exact: true }).click();
+    await campus.getByRole('button', { name: '切换校区，当前南湖', exact: true }).click();
     await expect(work.getByRole('button').filter({ hasText: orders['南湖'].id })).not.toBeVisible();
     await expect(work).toHaveAttribute('aria-busy', 'true');
   } finally {
@@ -233,32 +232,30 @@ test('working campus isolates data, survives navigation and reload, and resets b
   ).toHaveAttribute('aria-pressed', 'true');
   await staffPage(page, '今日工作');
   await work.getByRole('button', { name: '刷新工作台', exact: true }).click();
-  await expect(campus.getByRole('button', { name: '浑南', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'true'
-  );
+  await expect(
+    campus.getByRole('button', { name: '切换校区，当前浑南', exact: true })
+  ).toBeVisible();
   await page.reload();
   await staffPage(page, '今日工作');
-  await expect(campus.getByRole('button', { name: '浑南', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'true'
-  );
+  await expect(
+    campus.getByRole('button', { name: '切换校区，当前浑南', exact: true })
+  ).toBeVisible();
   await expect(work.getByRole('button').filter({ hasText: orders['浑南'].id })).toBeVisible();
   await staffPage(page, '个人中心');
   await work.getByRole('button', { name: '退出登录', exact: true }).click();
   await expect(page.locator('#login-id')).toBeVisible();
   await loginStaff(page, '20261003', 'StaffTest!2026');
   await staffPage(page, '今日工作');
-  await expect(work.locator('.workspace-campus-single')).toContainText('南湖');
+  await expect(campus.getByText('南湖', { exact: true })).toBeVisible();
+  await expect(campus.getByRole('button')).toHaveCount(0);
   await staffPage(page, '个人中心');
   await work.getByRole('button', { name: '退出登录', exact: true }).click();
   await expect(page.locator('#login-id')).toBeVisible();
   await loginStaff(page, 'root001', process.env.E2E_ROOT_PASSWORD);
   await staffPage(page, '今日工作');
-  await expect(campus.getByRole('button', { name: '南湖', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'true'
-  );
+  await expect(
+    campus.getByRole('button', { name: '切换校区，当前南湖', exact: true })
+  ).toBeVisible();
 });
 
 test('hardware staff receive photos, correct a repair and keep internal notes out of the student result', async ({
@@ -425,7 +422,8 @@ test('daily duty review and historical arrival correction update the selected me
   const person = daily.getByRole('article').filter({ hasText: '周宁' });
   await expect(person.getByText('未签到', { exact: true })).toBeVisible();
   await person.getByRole('button', { name: '确认未到', exact: true }).click();
-  await expect(person.getByText('已确认未到', { exact: true })).toBeVisible();
+  await expect(person.getByText('未签到', { exact: true })).toBeVisible();
+  await expect(person.getByRole('button', { name: '撤销未到', exact: true })).toBeVisible();
   await person.getByRole('button', { name: '撤销未到', exact: true }).click();
   await expect(person.getByText('未签到', { exact: true })).toBeVisible();
   await person.getByRole('button', { name: '补记漏签', exact: true }).click();

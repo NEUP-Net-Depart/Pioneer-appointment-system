@@ -47,10 +47,13 @@ export default defineConfig({
         '**/core-workflow.spec.mjs',
         '**/signature.spec.mjs',
         '**/photo-compress.spec.mjs',
+        '**/photo-upload.spec.mjs',
         '**/records-loading.spec.mjs',
+        '**/records-navigation.spec.mjs',
         '**/maintenance-affairs.spec.mjs',
         '**/member-identities.spec.mjs',
         '**/admin-controls.spec.mjs'
+        ,'**/today-work-window.spec.mjs'
       ],
       use: {
         browserName: 'webkit',

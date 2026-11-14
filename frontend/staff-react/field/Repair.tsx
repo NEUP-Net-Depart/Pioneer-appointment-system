@@ -10,6 +10,7 @@ import { IntakePhotos } from './IntakePhotos';
 import { useRepair } from './useRepair';
 import { formatInstant } from '../../../shared/time.js';
 import { DataValue } from '../DataValue';
+import { warrantyServiceCenterUrl } from '../../../shared/warranty.js';
 
 function RepairOrder({
   id,
@@ -29,6 +30,8 @@ function RepairOrder({
   const r = useRepair({ id });
   const { item, busy } = r;
   const [received, setReceived] = useState(false);
+  const activeBrand = item ? (!item.receivedAt && r.verification.brand.trim()) || item.brand : '';
+  const serviceCenterUrl = warrantyServiceCenterUrl(activeBrand);
   return (
     <Modal
       title="维修工单"
@@ -89,10 +92,25 @@ function RepairOrder({
           </p>
         )}
         {item?.receivedAt && item.status === 'booked' && <p>设备已接收，等待维修人员确认接手。</p>}
-        {item?.photoDeferredBy && <Notice>首次接收照片待传，由经办人手动补传原图。</Notice>}
+        {r.photoBusy && <Notice>照片正在上传并保存，请保持此页面打开。</Notice>}
+        {item?.photoDeferredBy && !r.photoBusy && (
+          <Notice>首次接收照片待传，由经办人补传原图。</Notice>
+        )}
       </section>
       {item && (
         <>
+          {r.waitingForPhotos && r.canSkip && (
+            <div className="field-form">
+              <p>
+                {r.error
+                  ? '照片上传失败，可以跳过并稍后重试补传。仍在上传的照片会继续，成功后自动补入本工单。'
+                  : '已等待 30 秒。可以跳过等待，上传会继续，成功后自动补入本工单。'}
+              </p>
+              <div className="field-actions">
+                <button onClick={r.skip}>跳过等待，继续当前操作</button>
+              </div>
+            </div>
+          )}
           {(item.canStart || item.canReceive) && (
             <section className="field-form">
               {!item.receivedAt && (
@@ -125,7 +143,8 @@ function RepairOrder({
                     id={id}
                     uploaded={r.uploaded}
                     previews={r.previews}
-                    busy={busy}
+                    busy={busy || r.photoBusy}
+                    progress={r.photoProgress}
                     onFile={r.onFile}
                   />
                 </>
@@ -145,14 +164,14 @@ function RepairOrder({
                     仅接收设备
                   </button>
                 )}
-                {r.timedOut && item.canReceive && (
+                {!busy && r.canSkip && item.canReceive && (
                   <button disabled={busy} onClick={() => r.start(true, true)}>
-                    稍后补传，仅接收设备
+                    跳过等待，仅接收设备
                   </button>
                 )}
-                {r.timedOut && item.canStart && (
+                {!busy && r.canSkip && item.canStart && (
                   <button disabled={busy} onClick={() => r.start(false, true)}>
-                    稍后补传，接收并开始维修
+                    跳过等待，接收并开始维修
                   </button>
                 )}
               </div>
@@ -166,11 +185,12 @@ function RepairOrder({
                 id={id}
                 uploaded={r.uploaded}
                 previews={r.previews}
-                busy={busy}
+                busy={busy || r.photoBusy}
+                progress={r.photoProgress}
                 onFile={r.onFile}
               />
-              <button disabled={busy} onClick={r.supplement}>
-                手动补传原图
+              <button disabled={busy || r.photoBusy} onClick={r.supplement}>
+                重试补传照片
               </button>
             </section>
           )}
@@ -233,7 +253,19 @@ function RepairOrder({
             </p>
           )}
           {!hideWarrantyLookup && (item.canStart || item.canTransfer || item.canFinish) && (
-            <WarrantyLookupButton initialBrand={item.brand} />
+            <div className="repair-warranty-actions">
+              <WarrantyLookupButton initialBrand={activeBrand} />
+              {serviceCenterUrl && (
+                <a
+                  href={serviceCenterUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  referrerPolicy="no-referrer"
+                >
+                  打开售后网点 ↗
+                </a>
+              )}
+            </div>
           )}
           <RepairRelations
             key={id}

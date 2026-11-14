@@ -1,13 +1,46 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { WARRANTY_BRANDS, warrantyBrandId, normalizeDeviceSerial, isDeviceSerial, deviceSerialFromCode } from '../shared/warranty.js';
+import { WARRANTY_BRANDS, warrantyBrandId, warrantyServiceCenterUrl, normalizeDeviceSerial, isDeviceSerial, deviceSerialFromCode } from '../shared/warranty.js';
+import { BRANDS } from '../shared/student-booking.js';
+import { warrantyService } from '../src/services/warranty.js';
 
 test('all requested brands have fixed HTTPS official entries', () => {
-  const hosts = ['www.asus.com.cn','www.acer.com.cn','consumerservice.lenovo.com.cn','support.hp.com','www.dell.com','account.msi.com','checkcoverage.apple.com','www.mi.com','consumer.huawei.com','www.mechrevo.com'];
-  assert.equal(WARRANTY_BRANDS.length, 10);
-  assert.equal(new Set(WARRANTY_BRANDS.map(brand => brand.id)).size, 10);
+  const hosts = ['www.asus.com.cn','www.acer.com.cn','consumerservice.lenovo.com.cn','support.hp.com','www.dell.com','account.msi.com','checkcoverage.apple.com','www.mi.com','consumer.huawei.com','www.honor.com','www.mechrevo.com'];
+  const serviceHosts = ['www.asus.com.cn','www.acer.com.cn','newsupport.lenovo.com.cn','support.hp.com','www.dell.com','cn.msi.com','locate.apple.com','www.mi.com','consumer.huawei.com','www.honor.com','www.mechrevo.com'];
+  assert.equal(WARRANTY_BRANDS.length, 11);
+  assert.equal(new Set(WARRANTY_BRANDS.map(brand => brand.id)).size, 11);
   assert.deepEqual(WARRANTY_BRANDS.map(brand => new URL(brand.url).hostname), hosts);
-  for (const brand of WARRANTY_BRANDS) assert.equal(new URL(brand.url).protocol, 'https:');
+  assert.deepEqual(WARRANTY_BRANDS.map(brand => new URL(brand.serviceCenterUrl).hostname), serviceHosts);
+  for (const brand of WARRANTY_BRANDS) {
+    assert.equal(new URL(brand.url).protocol, 'https:');
+    const service = new URL(brand.serviceCenterUrl);
+    assert.equal(service.protocol, 'https:');
+    assert.equal(service.username, '');
+    assert.equal(service.password, '');
+    assert.equal(service.hash, '');
+    assert.equal(service.search, brand.id === 'acer' ? '?type=1&serverid=15' : '', brand.id);
+  }
+});
+test('every student booking brand resolves to a fixed official service center', () => {
+  for (const item of BRANDS) {
+    assert.ok(warrantyBrandId(item.value), item.value);
+    assert.equal(new URL(warrantyServiceCenterUrl(item.value)).protocol, 'https:', item.value);
+  }
+});
+test('service center lookup accepts brand ids or work-order text and rejects unknown keys', () => {
+  assert.equal(warrantyBrandId('荣耀 MagicBook'), 'honor');
+  assert.equal(warrantyBrandId('榮耀 HONOR'), 'honor');
+  assert.equal(warrantyServiceCenterUrl('lenovo'), 'https://newsupport.lenovo.com.cn/serverNet.html');
+  assert.equal(warrantyServiceCenterUrl('联想 拯救者'), 'https://newsupport.lenovo.com.cn/serverNet.html');
+  assert.equal(warrantyServiceCenterUrl('荣耀'), 'https://www.honor.com/cn/support/service-center/');
+  for (const unknown of ['机械师', '未填写', '', '__proto__', 'constructor']) assert.equal(warrantyServiceCenterUrl(unknown), null, unknown);
+});
+test('honor uses a web channel and every provider explains its availability', async () => {
+  const { warrantyConsumerChannel: channel } = await import('../shared/warranty.js');
+  assert.equal(channel('honor').kind, 'web');
+  const { providers } = warrantyService().providers();
+  assert.equal(providers.length, 11);
+  for (const provider of providers) assert.ok(typeof provider.message === 'string' && provider.message.length > 0, provider.id);
 });
 test('work-order brand aliases preselect the correct official provider', () => {
   for (const [input, id] of [['联想 ThinkPad','lenovo'],['ASUS ROG','asus'],['惠普','hp'],['HP OMEN','hp'],['苹果 MacBook Air','apple'],['Xiaomi Book','xiaomi'],['华为 MateBook','huawei'],['机械革命','mechrevo']]) assert.equal(warrantyBrandId(input), id);

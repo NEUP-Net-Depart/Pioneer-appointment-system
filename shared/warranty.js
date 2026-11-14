@@ -1,15 +1,16 @@
 // Fixed first-party consumer channels; only verified deep links include serials.
 export const WARRANTY_BRANDS = [
-  { id: 'asus', name: '华硕 / ASUS / ROG', aliases: ['华硕', '華碩', 'asus', 'rog'], url: 'https://www.asus.com.cn/support/warranty-status-inquiry/', hint: '输入机身 S/N，并按官方页面完成验证与查询。' },
-  { id: 'acer', name: '宏碁 / Acer', aliases: ['宏碁', '宏基', 'acer', 'predator'], url: 'https://www.acer.com.cn/myhelp.html?serverid=62&type=2', hint: '在「质保信息查询」中输入产品序号或 SNID。' },
-  { id: 'lenovo', name: '联想 / Lenovo / ThinkPad', aliases: ['联想', '聯想', 'lenovo', 'thinkpad', 'thinkbook', '拯救者'], url: 'https://consumerservice.lenovo.com.cn/', hint: '在联想服务中选择保修查询；部分产品需要补充主机信息。' },
-  { id: 'hp', name: '惠普 / HP / OMEN', aliases: ['惠普', 'hp', 'omen'], url: 'https://support.hp.com/cn-zh/check-warranty', hint: '选择实际购买国家或地区；部分设备还需要产品编号（P/N）。' },
-  { id: 'dell', name: '戴尔 / Dell / Alienware', aliases: ['戴尔', '戴爾', 'dell', 'alienware'], url: 'https://www.dell.com/support/home/zh-cn', hint: '在「确认产品或寻求支持」粘贴 Service Tag（服务编号），选择「识别或搜索」，再查看支持服务／保修详情。' },
-  { id: 'msi', name: '微星 / MSI', aliases: ['微星', 'msi'], url: 'https://account.msi.com/zh-Hans/services/warranty-book', hint: '输入产品序列号，并亲自完成图片验证码及官方同意事项。' },
-  { id: 'apple', name: '苹果 / Apple / Mac', aliases: ['苹果', '蘋果', 'apple', 'macbook', 'imac'], url: 'https://checkcoverage.apple.com/?locale=zh_CN', hint: '输入设备序列号，按官方页面要求完成验证或登录。' },
-  { id: 'xiaomi', name: '小米 / Xiaomi / REDMI Book', aliases: ['小米', 'xiaomi', 'redmi', '红米', '紅米'], url: 'https://www.mi.com/service/aftersale/front', hint: '登录机主的小米账号后选择订单，或选择「填写申请单」粘贴 SN 查看设备售后信息；也可在小米商城 App「我的 → 退换/售后」输入 IMEI/SN。此处不是免登录的笔电保修查询表。' },
-  { id: 'huawei', name: '华为 / HUAWEI / MateBook', aliases: ['华为', '華為', 'huawei', 'matebook'], url: 'https://consumer.huawei.com/cn/support/warranty-query/', hint: '输入设备 SN，并亲自完成官方验证码。商用设备请使用对应产品线的支持入口。' },
-  { id: 'mechrevo', name: '机械革命 / MECHREVO', aliases: ['机械革命', '機械革命', 'mechrevo'], url: 'https://www.mechrevo.com/cn/policy', hint: '在微信搜索官方「机械革命服务」小程序，绑定设备后查询保修。此链接为官方操作说明。' }
+  { id: 'asus', name: '华硕 / ASUS / ROG', aliases: ['华硕', '華碩', 'asus', 'rog'], url: 'https://www.asus.com.cn/support/warranty-status-inquiry/', serviceCenterUrl: 'https://www.asus.com.cn/support/service-center/', hint: '输入机身 S/N，并按官方页面完成验证与查询。' },
+  { id: 'acer', name: '宏碁 / Acer', aliases: ['宏碁', '宏基', 'acer', 'predator'], url: 'https://www.acer.com.cn/myhelp.html?serverid=62&type=2', serviceCenterUrl: 'https://www.acer.com.cn/myhelp.html?type=1&serverid=15', hint: '在「质保信息查询」中输入产品序号或 SNID。' },
+  { id: 'lenovo', name: '联想 / Lenovo / ThinkPad', aliases: ['联想', '聯想', 'lenovo', 'thinkpad', 'thinkbook', '拯救者'], url: 'https://consumerservice.lenovo.com.cn/', serviceCenterUrl: 'https://newsupport.lenovo.com.cn/serverNet.html', hint: '在联想服务中选择保修查询；部分产品需要补充主机信息。' },
+  { id: 'hp', name: '惠普 / HP / OMEN', aliases: ['惠普', 'hp', 'omen'], url: 'https://support.hp.com/cn-zh/check-warranty', serviceCenterUrl: 'https://support.hp.com/cn-zh/help/service-center', hint: '选择实际购买国家或地区；部分设备还需要产品编号（P/N）。' },
+  { id: 'dell', name: '戴尔 / Dell / Alienware', aliases: ['戴尔', '戴爾', 'dell', 'alienware'], url: 'https://www.dell.com/support/home/zh-cn', serviceCenterUrl: 'https://www.dell.com/support/diagnose/zh-cn/servicecenter', hint: '在「确认产品或寻求支持」粘贴 Service Tag（服务编号），选择「识别或搜索」，再查看支持服务／保修详情。' },
+  { id: 'msi', name: '微星 / MSI', aliases: ['微星', 'msi'], url: 'https://account.msi.com/zh-Hans/services/warranty-book', serviceCenterUrl: 'https://cn.msi.com/page/service-location-cn-2/', hint: '输入产品序列号，并亲自完成图片验证码及官方同意事项。' },
+  { id: 'apple', name: '苹果 / Apple / Mac', aliases: ['苹果', '蘋果', 'apple', 'macbook', 'imac'], url: 'https://checkcoverage.apple.com/?locale=zh_CN', serviceCenterUrl: 'https://locate.apple.com/cn/zh/', hint: '输入设备序列号，按官方页面要求完成验证或登录。' },
+  { id: 'xiaomi', name: '小米 / Xiaomi / REDMI Book', aliases: ['小米', 'xiaomi', 'redmi', '红米', '紅米'], url: 'https://www.mi.com/service/aftersale/front', serviceCenterUrl: 'https://www.mi.com/service/sitelist', hint: '登录机主的小米账号后选择订单，或选择「填写申请单」粘贴 SN 查看设备售后信息；也可在小米商城 App「我的 → 退换/售后」输入 IMEI/SN。此处不是免登录的笔电保修查询表。' },
+  { id: 'huawei', name: '华为 / HUAWEI / MateBook', aliases: ['华为', '華為', 'huawei', 'matebook'], url: 'https://consumer.huawei.com/cn/support/warranty-query/', serviceCenterUrl: 'https://consumer.huawei.com/cn/support/service-center/', hint: '输入设备 SN，并亲自完成官方验证码。商用设备请使用对应产品线的支持入口。' },
+  { id: 'honor', name: '荣耀 / HONOR / MagicBook', aliases: ['荣耀', '榮耀', 'honor', 'magicbook'], url: 'https://www.honor.com/cn/support/warranty-query/', serviceCenterUrl: 'https://www.honor.com/cn/support/service-center/', hint: '输入设备 SN，并亲自完成官方验证码。' },
+  { id: 'mechrevo', name: '机械革命 / MECHREVO', aliases: ['机械革命', '機械革命', 'mechrevo'], url: 'https://www.mechrevo.com/cn/policy', serviceCenterUrl: 'https://www.mechrevo.com/cn/outlets', hint: '在微信搜索官方「机械革命服务」小程序，绑定设备后查询保修。此链接为官方操作说明。' }
 ];
 
 const consumerChannels = {
@@ -22,6 +23,7 @@ const consumerChannels = {
   apple: { kind: 'web', title: 'Apple 保障状态查询', steps: ['复制序列号并打开 Apple「查看保障状态」。', '粘贴序列号，按原厂要求完成验证；也可由机主登录自己的 Apple 账户查看设备。'] },
   xiaomi: { kind: 'account', title: '小米商城消费者售后', steps: ['复制 SN，由机主登录小米商城或小米商城 App。', '商城购买的设备选择对应订单；其他渠道选「填写申请单」，粘贴 SN 查看设备售后信息。', 'App 路径：我的 → 退换/售后 → 输入 IMEI/SN；需核定保修时使用原厂显示的信息或官方客服。'] },
   huawei: { kind: 'web', title: '华为消费者保修期及权益查询', steps: ['复制设备 SN 并打开原厂「保修期及权益查询」。', '粘贴 SN，人工完成图片／滑块验证码后查询。'] },
+  honor: { kind: 'web', title: '荣耀消费者保修期及权益查询', steps: ['复制设备 SN 并打开原厂「保修查询」。', '粘贴 SN，人工填写图形验证码后查询。'] },
   mechrevo: { kind: 'miniapp', title: '机械革命服务小程序', steps: ['先复制 SN，再打开微信，搜索官方「机械革命服务」小程序。', '粘贴序号并绑定设备，进入「保修查询」或保修权益。', '下方官网提供官方小程序二维码；网页本身不是 SN 查询表。'] }
 };
 export function warrantyConsumerChannel(brandId) {
@@ -33,6 +35,13 @@ export function warrantyBrandId(value) {
   return WARRANTY_BRANDS.find(brand => brand.aliases.some(alias => alias === 'hp'
     ? /(?:^|[^a-z])hp(?:[^a-z]|$)/i.test(text)
     : text.includes(alias)))?.id || '';
+}
+
+export function warrantyServiceCenterUrl(value) {
+  const id = typeof value === 'string' && WARRANTY_BRANDS.some(item => item.id === value)
+    ? value
+    : warrantyBrandId(value);
+  return WARRANTY_BRANDS.find(item => item.id === id)?.serviceCenterUrl || null;
 }
 
 export function normalizeDeviceSerial(value) {
