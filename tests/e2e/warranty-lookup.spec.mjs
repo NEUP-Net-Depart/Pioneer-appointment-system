@@ -113,6 +113,23 @@ const captchaImage =
 test('denied camera access keeps manual entry usable and closing clears serial input', async ({
   page
 }) => {
+  // Finish the opening transition during an option press, so a fixed popover
+  // cannot move between pointerdown and pointerup and lose the selection.
+  await page.addInitScript(() => {
+    const animate = Element.prototype.animate;
+    Element.prototype.animate = function (...args) {
+      const animation = animate.apply(this, args);
+      if (this.matches('dialog.warranty-dialog')) {
+        Element.prototype.animate = animate;
+        animation.pause();
+        animation.currentTime = Number(animation.effect.getTiming().duration) / 2;
+        this.addEventListener('pointerdown', (event) => {
+          if (event.target.closest('[role="option"]')) animation.finish();
+        });
+      }
+      return animation;
+    };
+  });
   await fixture(page);
   const dialog = await openLookup(page);
   await chooseOption(page, dialog.getByLabel('设备品牌'), 'msi');

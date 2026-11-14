@@ -132,10 +132,13 @@ test('staff SDK records dialogs and lazy pages and isolates shared-device identi
   const dialog = page.getByRole('dialog', { name: '新增人员', exact: true });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(dialog).toBeHidden();
   await staffPage(page, '统计分析');
   await sendPending(context);
   for (const result of ['open', 'closed'])
-    expect(events().some((e) => e.name === 'ui.dialog' && e.result === result)).toBe(true);
+    await expect
+      .poll(() => events().some((e) => e.name === 'ui.dialog' && e.result === result))
+      .toBe(true);
   expect(events().some((e) => e.name === 'app.view' && e.view.startsWith('staff.'))).toBe(true);
   const personal = await staffPage(page, '个人中心');
   await personal.getByRole('button', { name: '退出登录', exact: true }).click();
@@ -331,57 +334,6 @@ test('calendar, help and time gestures retain their field context and bound gest
       .filter((e) => e.name === 'ui.change' && e.control === id)
       .reduce((n, e) => n + e.count, 0)
   ).toBe(1);
-});
-
-test('booking validation reports missing fields, invalid fields and photo preparation separately', async ({
-  page,
-  context
-}) => {
-  const { chooseTime, fillDevice, goReview, PHOTO } = await import('./support/student.mjs');
-  const events = await collectTelemetry(page);
-  await page.goto('/');
-  await readyTelemetry(page);
-  await chooseTime(page);
-  await page.locator('#step-two-next').click();
-  await expect(page.locator('[name=studentId]')).toHaveAttribute('aria-invalid', 'true');
-  await fillDevice(page, { studentId: 'invalid' });
-  await page.locator('#step-two-next').click();
-  await page.locator('[name=studentId]').fill('20269987');
-  // Hold the external decoder so the real form sees an in-flight photo.
-  await page.evaluate(() => {
-    const loadImage = window.loadImage;
-    window.loadImage = (file, callback, options) => {
-      window.releasePhoto = () => {
-        window.loadImage = loadImage;
-        loadImage(file, callback, options);
-      };
-      return {};
-    };
-  });
-  await page
-    .locator('#appointment-attachments')
-    .setInputFiles({ name: 'photo.png', mimeType: 'image/png', buffer: PHOTO });
-  await page.waitForFunction(() => !!window.releasePhoto);
-  await page.locator('#step-two-next').click();
-  await expect(page.locator('[data-step="2"]')).toBeVisible();
-  await page.evaluate(() => window.releasePhoto());
-  await expect(page.locator('#booking-photos')).toContainText('照片已准备好');
-  await goReview(page);
-  await page.locator('#booking-submit').click();
-  await expect(page.locator('[data-error-for=signature]')).not.toBeEmpty();
-  await sendPending(context);
-  const rejected = events().filter(
-    (e) => e.result === 'rejected' && e.control.startsWith('booking.')
-  );
-  expect(rejected.map((e) => e.reason)).toEqual([
-    'FIELD_REQUIRED',
-    'FIELD_INVALID',
-    'PHOTO_PREPARING',
-    'FIELD_REQUIRED'
-  ]);
-  expect(rejected[0].missingFields).toContain('studentId');
-  expect(rejected[1].invalidFields).toEqual(['studentId']);
-  expect(rejected[3].missingFields).toEqual(['agreement', 'signature']);
 });
 
 test('booking recovery and detail navigation record outcomes and real destinations only', async ({

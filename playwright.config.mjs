@@ -45,6 +45,7 @@ export default defineConfig({
       name: 'webkit-mobile',
       testMatch: [
         '**/core-workflow.spec.mjs',
+        '**/repair-links.spec.mjs',
         '**/signature.spec.mjs',
         '**/photo-compress.spec.mjs',
         '**/photo-upload.spec.mjs',

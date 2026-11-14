@@ -4,6 +4,7 @@ import { api, Notice } from './field/ui';
 import { Registration } from './field/Registration';
 import type { Appointment } from './field/types';
 import { outcomeLabels } from '../../shared/constants.js';
+import { repairLinkKinds, repairLinkLabels } from '../../shared/repair-links.js';
 
 export function RepairRelations({
   item,
@@ -38,7 +39,9 @@ export function RepairRelations({
         body: {
           parentAppointmentId: item.status === 'completed' ? item.id : parentId,
           linkKind: kind,
-          sameDeviceAndFault: confirmed,
+          ...(kind === 'repair_induced'
+            ? { sameDeviceAndRepairRelated: confirmed }
+            : { sameDeviceAndFault: confirmed }),
           revision: child.revision,
           requestId: crypto.randomUUID()
         }
@@ -54,7 +57,7 @@ export function RepairRelations({
   if (!historical.length && !item.parentAppointmentId && item.status !== 'completed') return null;
   return (
     <section className="field-form">
-      <h3>维修历史与返修关联</h3>
+      <h3>维修历史与工单关联</h3>
       <Notice>{error}</Notice>
       {item.parentAppointmentId && (
         <p>
@@ -65,6 +68,8 @@ export function RepairRelations({
           >
             {item.parentAppointmentId}
           </button>
+          {' · '}
+          {repairLinkLabels[item.linkKind] || '历史关联'}
         </p>
       )}
       {parent && (
@@ -114,9 +119,12 @@ export function RepairRelations({
             <Select
               data-track="staff.repairrelations.select.4"
               value={parentId}
-              onChange={(e) => setParentId(e.target.value)}
+              onChange={(e) => {
+                setParentId(e.target.value);
+                setConfirmed(false);
+              }}
             >
-              <option value="">普通新故障不关联</option>
+              <option value="">不关联原工单</option>
               {historical.map((row) => (
                 <option key={row.id} value={row.id}>
                   {row.id} · {row.faultType}
@@ -136,10 +144,16 @@ export function RepairRelations({
               <Select
                 data-track="staff.repairrelations.select.5"
                 value={kind}
-                onChange={(e) => setKind(e.target.value)}
+                onChange={(e) => {
+                  setKind(e.target.value);
+                  setConfirmed(false);
+                }}
               >
-                <option value="continuation">原故障继续处理</option>
-                <option value="recurrence">原故障复发</option>
+                {repairLinkKinds.map((value) => (
+                  <option key={value} value={value}>
+                    {repairLinkLabels[value]}
+                  </option>
+                ))}
               </Select>
             </label>
             <label className="field-check">
@@ -149,7 +163,11 @@ export function RepairRelations({
                 checked={confirmed}
                 onChange={(e) => setConfirmed(e.target.checked)}
               />
-              <span>已核对为同一设备的原故障；全新故障不关联</span>
+              <span>
+                {kind === 'repair_induced'
+                  ? '已核对为同一设备，且新故障由原维修引入'
+                  : '已核对为同一设备的原故障；无关的新故障不关联'}
+              </span>
             </label>
             {item.status === 'completed' && (
               <label>
@@ -157,7 +175,10 @@ export function RepairRelations({
                 <input
                   data-track="staff.repairrelations.input.7"
                   value={targetId}
-                  onChange={(e) => setTargetId(e.target.value.trim())}
+                  onChange={(e) => {
+                    setTargetId(e.target.value.trim());
+                    setConfirmed(false);
+                  }}
                 />
               </label>
             )}
