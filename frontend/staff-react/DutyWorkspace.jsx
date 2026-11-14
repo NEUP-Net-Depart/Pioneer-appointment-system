@@ -27,6 +27,7 @@ export function DutyWorkspace({ user, initialCampus, focus }) {
     campuses[0]
   ].find((id) => campuses.includes(id));
   const [scopes, setScopes] = useState({ today: preferred, plan: preferred });
+  const [historyFocus, setHistoryFocus] = useState(null);
   const campusFor = (task) => (campuses.includes(scopes[task]) ? scopes[task] : preferred);
   const [tab, setTab] = useState(staffing ? 'today' : plan ? 'plan' : 'mine'),
     [, setMineDirty] = useState(false),
@@ -34,6 +35,7 @@ export function DutyWorkspace({ user, initialCampus, focus }) {
     [planDirty, setPlanDirty] = useState(false);
   useEffect(() => {
     if (!active || !focus || !staffing || !campuses.includes(focus.campusId)) return;
+    setHistoryFocus(null);
     setScopes((current) => ({ ...current, today: focus.campusId }));
     setTab('today');
   }, [active, focus, staffing]);
@@ -72,7 +74,7 @@ export function DutyWorkspace({ user, initialCampus, focus }) {
           'today',
           <>
             <AttendanceManagement
-              focus={focus}
+              focus={historyFocus || focus}
               campusId={campusFor('today')}
               onDirtyChange={setDayDirty}
               campusControl={scope('today', dayDirty)}
@@ -96,7 +98,17 @@ export function DutyWorkspace({ user, initialCampus, focus }) {
           'history',
           <>
             <AttendanceReports
+              user={user}
               canExport={canExport}
+              onOpenDay={
+                staffing
+                  ? (target) => {
+                      setScopes((current) => ({ ...current, today: target.campusId }));
+                      setHistoryFocus({ ...target, id: crypto.randomUUID(), kind: 'history' });
+                      setTab('today');
+                    }
+                  : undefined
+              }
               embedded
               campuses={campuses.map((id) => ({ id, name: dutyCampusNames[id] }))}
             />

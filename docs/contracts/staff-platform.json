@@ -82,6 +82,7 @@
     ],
     "attendance": [
       "GET /api/attendance/day",
+      "GET /api/attendance/workload",
       "POST /api/attendance/arrivals",
       "PUT /api/attendance/reviews",
       "POST /api/attendance/preview",
@@ -139,18 +140,13 @@
       "input": ["campusId", "businessDate?"],
       "output": ["items", "temporary", "summary", "people", "paused", "serverNow"],
       "counts": "scope first, unique members; leave excluded from expected; temporary arrivals separate",
-      "statuses": ["upcoming", "pending", "arrived", "absent", "leave", "paused"]
+      "statuses": ["upcoming", "arrived", "absent", "leave", "paused"]
     },
     "arrival": {
-      "input": ["assignmentId", "assignmentRevision", "requestId"],
-      "serverOwned": ["businessDate", "occurredAt", "eventId", "actor"],
-      "atomic": ["attendance fact", "presence", "audit", "receipt"],
-      "dedupe": "duty:memberId:businessDate; repeat preserves the first arrival"
+      "status": "retired: authenticated endpoint returns 410; service and repository writes removed; use self check-in or reasoned correction"
     },
     "review": {
-      "input": ["assignmentId", "assignmentRevision", "revision", "decision: absent|cleared", "requestId", "reason?"],
-      "initialRevision": -1,
-      "behavior": "after shift end only; undo increments revision; bound to current assignment member; audit retains history; never creates attendance; real arrival takes precedence"
+      "status": "retired: returns 410; service and repository writes removed; historical records preserved but never read for current calculations; missing attendance after final scheduled shift ends is automatically absent, corrections clear absence"
     },
     "correction": {
       "personInput": ["memberId", "businessDate", "campusId", "timeMode: duty_start", "reason", "requestId"],

@@ -104,7 +104,7 @@ export function WeeklyAttendanceExport({ campuses, campusId = '', onClose }) {
               checked={scope.leadersOnce}
               onChange={(event) => change({ leadersOnce: event.target.checked })}
             />
-            <span>所有有效负责人每值班周计一次，不依据排班或签到次数</span>
+            <span>部长、站长、主席（含副职）有效任职周计一次</span>
           </label>
         </fieldset>
         <Notice>{error}</Notice>

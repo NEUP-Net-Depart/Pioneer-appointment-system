@@ -412,7 +412,7 @@ test('daytime supplementation explains its default time without changing attenda
   await expect(form).toBeVisible();
 });
 
-test('daily duty review and historical arrival correction update the selected member', async ({
+test('automatic absence and historical arrival correction update the selected member', async ({
   page
 }) => {
   await loginStaff(page, '20261001');
@@ -420,12 +420,8 @@ test('daily duty review and historical arrival correction update the selected me
   const daily = await dutyPage(page, '今日值班');
   await daily.getByLabel('值班日期').fill(thisWeek);
   const person = daily.getByRole('article').filter({ hasText: '周宁' });
-  await expect(person.getByText('未签到', { exact: true })).toBeVisible();
-  await person.getByRole('button', { name: '确认未到', exact: true }).click();
-  await expect(person.getByText('未签到', { exact: true })).toBeVisible();
-  await expect(person.getByRole('button', { name: '撤销未到', exact: true })).toBeVisible();
-  await person.getByRole('button', { name: '撤销未到', exact: true }).click();
-  await expect(person.getByText('未签到', { exact: true })).toBeVisible();
+  await expect(person.getByText('缺勤', { exact: true })).toBeVisible();
+  await expect(person.getByRole('button', { name: /确认未到|撤销未到|确认到场/ })).toHaveCount(0);
   await person.getByRole('button', { name: '补记漏签', exact: true }).click();
   const correction = page.getByRole('dialog', { name: '补记漏签', exact: true });
   await expect(correction).toContainText('周宁');
