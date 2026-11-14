@@ -32,8 +32,12 @@ for (const path of runtime) {
       import.meta.resolve(specifier);
       continue;
     }
-    // These two public modules are generated from the declared zxing-wasm
-    // dependency by build.mjs; all other lazy imports follow the source graph.
+    // Public vendor modules are generated from declared dependencies by build.mjs.
+    if (specifier === '/vendor/signature-pad.js') {
+      assert.ok(path === join('shared', 'signature-pad.js') && Object.hasOwn(dependencies, 'signature_pad'), `Unsupported vendor import in ${path}`);
+      import.meta.resolve('signature_pad');
+      continue;
+    }
     if (['/vendor/zxing-reader.js', '/vendor/zxing-writer.js'].includes(specifier)) {
       assert.ok(path === join('shared', 'zxing.js') && Object.hasOwn(dependencies, 'zxing-wasm'), `Unsupported vendor import in ${path}`);
       import.meta.resolve('zxing-wasm');

@@ -52,7 +52,8 @@
     "0049_finalize_business_model.sql": "9a4e73ef74a14c697e9417170db95e828152fe7b5e7b4f9ac34a532bf5b5bec4",
     "0050_duty_reviews.sql": "bde896b1c76579a0ac001e052822bddfeb9a651bef5a59354249051e5a4e4935",
     "0051_maintenance_affairs.sql": "75a0e7330cb1ed907bcdbf69ae1237f2192d456a40b4ea43d63cad8521a4ebc1",
-    "0052_same_day_membership_end.sql": "56a9ac51f7ec76d64482a283fcd87b4222f7ec761fbfa5c16d2b483d2fb1f155"
+    "0052_same_day_membership_end.sql": "56a9ac51f7ec76d64482a283fcd87b4222f7ec761fbfa5c16d2b483d2fb1f155",
+    "0053_signature_documents.sql": "4537419fcdad1b272f03179617f4618d1f6a791176d902cb5a09ab396154b8e5"
   },
   "database/staff-migrations": {
     "0001_initial.sql": "6f2b0cce7f26f98d82aff4cc2e2c4a213e3b58be436b0950906a53dc14f971dd",
@@ -104,6 +105,7 @@
     "0049_finalize_business_model.sql": "9a4e73ef74a14c697e9417170db95e828152fe7b5e7b4f9ac34a532bf5b5bec4",
     "0050_duty_reviews.sql": "bde896b1c76579a0ac001e052822bddfeb9a651bef5a59354249051e5a4e4935",
     "0051_maintenance_affairs.sql": "75a0e7330cb1ed907bcdbf69ae1237f2192d456a40b4ea43d63cad8521a4ebc1",
-    "0052_same_day_membership_end.sql": "56a9ac51f7ec76d64482a283fcd87b4222f7ec761fbfa5c16d2b483d2fb1f155"
+    "0052_same_day_membership_end.sql": "56a9ac51f7ec76d64482a283fcd87b4222f7ec761fbfa5c16d2b483d2fb1f155",
+    "0053_signature_documents.sql": "4537419fcdad1b272f03179617f4618d1f6a791176d902cb5a09ab396154b8e5"
   }
 }
