@@ -376,11 +376,334 @@
     padding: 16px;
   }
 }
-.duty-day .duty-person:focus {
-  outline: 2px solid #555;
-  outline-offset: 3px;
-  background: #f5f5f2;
+.duty-day .duty-status[data-highlighted='true'] {
+  color: var(--ink);
+  background: #f0f1f2;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 .duty-day .duty-person {
   scroll-margin-block: 100px;
+}
+.duty-day .duty-person {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) 200px 84px;
+}
+.duty-day[data-can-manage='true'] .duty-person {
+  grid-template-columns: minmax(150px, 1fr) 200px 84px 160px;
+}
+.duty-day .duty-person .schedule-actions:empty {
+  display: none;
+}
+.duty-workload {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: start;
+  gap: 16px;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.duty-workload > div {
+  display: flex;
+  align-items: center;
+  justify-content: start;
+  gap: 6px;
+}
+.duty-workload dt {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  text-align: left;
+}
+.duty-workload dd {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin: 0;
+  height: 24px;
+  font-size: 18px;
+  font-weight: 600;
+  text-align: right;
+}
+.duty-workload > div:last-child dd {
+  color: var(--ink);
+  font-weight: 500;
+}
+.duty-workload .workspace-data-value {
+  min-width: var(--value-digits);
+  justify-items: end;
+}
+@media (max-width: 1050px) {
+  .duty-day .duty-person,
+  .duty-day[data-can-manage='true'] .duty-person {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px 12px;
+    align-items: start;
+  }
+  .duty-day .duty-person > div:first-child {
+    min-width: 0;
+    grid-column: 1 / -1;
+  }
+  .duty-workload {
+    grid-column: 1;
+    display: grid;
+    width: auto;
+    max-width: 100%;
+    gap: 12px;
+  }
+  .duty-workload > div {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .duty-workload dd {
+    margin: 0;
+    font-size: 16px;
+  }
+  .duty-day .duty-person .schedule-actions {
+    grid-column: 1 / -1;
+  }
+  .duty-day .duty-person .schedule-actions:empty {
+    display: none;
+  }
+}
+.field-app .report-missing-people {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px 24px;
+  margin: 0 24px 20px;
+  padding: 10px 16px;
+  border-radius: 6px;
+  background: #f6f7f8;
+}
+.report-missing-people .report-missing-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.report-missing-label span {
+  color: var(--muted);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.report-missing-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 20px;
+  min-width: 0;
+}
+.field-app .report-missing-list button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 6px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink, #17202c);
+  text-align: left;
+}
+.report-missing-list strong {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+.report-missing-list button span {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.report-missing-list button:hover strong {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.report-missing-list > span {
+  padding-block: 12px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .field-app .report-missing-people {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    margin: 0 18px 18px;
+    padding: 8px 12px;
+  }
+  .report-missing-people .report-missing-label {
+    min-height: 32px;
+  }
+  .report-missing-list {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .field-app .report-missing-list button {
+    width: 100%;
+  }
+}
+.duty-roster-sections {
+  display: grid;
+  gap: 20px;
+  margin-top: 24px;
+}
+.duty-roster-sections .duty-group {
+  min-width: 0;
+  padding: 0 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+.duty-group h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  padding: 20px 0;
+  font-size: 16px;
+  font-weight: 650;
+}
+.duty-group h3 span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.duty-roster-sections .duty-person {
+  min-height: 92px;
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+}
+.duty-person-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+}
+.duty-person-name strong {
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.duty-person-name > span,
+.duty-person-meta {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.duty-person-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+}
+.field-app .duty-checkin-detail {
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  font-size: inherit;
+  font-weight: 400;
+}
+.duty-checkin-detail:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.duty-checkin-facts {
+  display: grid;
+  gap: 18px;
+  margin: 0;
+}
+.duty-checkin-facts > div {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 16px;
+}
+.duty-checkin-facts dt {
+  color: var(--muted);
+}
+.duty-checkin-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.duty-day .duty-office-person > div:first-child {
+  grid-column: 1 / 3;
+}
+@media (max-width: 1050px) {
+  .duty-roster-sections .duty-group {
+    padding: 0 16px;
+  }
+  .duty-group h3 {
+    padding: 16px 0;
+  }
+  .duty-day .duty-person > .duty-person-identity {
+    display: contents;
+  }
+  .duty-person-name {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: center;
+  }
+  .duty-day .duty-person .duty-status {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+  .duty-person-meta {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin-top: 0;
+  }
+  .field-app .duty-checkin-detail {
+    min-height: 44px;
+  }
+  .duty-roster-sections .duty-workload {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+  .duty-day .duty-person .schedule-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+  .duty-roster-sections .duty-person .schedule-actions button {
+    min-height: 44px;
+  }
+  .duty-day .duty-office-person .duty-person-meta {
+    grid-column: 1;
+  }
+  .duty-day .duty-office-person .schedule-actions {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: center;
+  }
+}
+@media (min-width: 360px) and (max-width: 1050px) {
+  .duty-roster-sections .duty-workload {
+    grid-column: 1;
+    align-self: center;
+    gap: 10px;
+  }
+  .duty-roster-sections .duty-workload > div {
+    gap: 4px;
+  }
+  .duty-day .duty-person:not(.duty-office-person) .schedule-actions {
+    grid-column: 2;
+    grid-row: 3;
+  }
 }

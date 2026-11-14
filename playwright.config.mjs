@@ -50,6 +50,7 @@ export default defineConfig({
         '**/photo-upload.spec.mjs',
         '**/records-loading.spec.mjs',
         '**/records-navigation.spec.mjs',
+        '**/duty-workload.spec.mjs',
         '**/maintenance-affairs.spec.mjs',
         '**/member-identities.spec.mjs',
         '**/admin-controls.spec.mjs',

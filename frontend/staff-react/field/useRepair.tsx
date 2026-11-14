@@ -49,7 +49,9 @@ export function useRepair({ id }: { id: string }) {
           '/api/appointments/overview',
           '/api/field/home',
           '/api/field/board',
-          '/api/stats/summary'
+          '/api/stats/summary',
+          '/api/attendance/workload',
+          '/api/attendance/day'
         ].includes(query.queryKey[0]) ||
         String(query.queryKey[0]).startsWith(`/api/appointments/${encodeURIComponent(id)}/`) ||
         String(query.queryKey[0]).startsWith('/api/field/appointments/')

@@ -9,9 +9,11 @@ import { RefreshButton } from './WorkspaceToolbar.jsx';
 import { WeeklyAttendanceExport } from './WeeklyAttendanceExport.jsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { dateKey } from '../../shared/time.js';
+import { AttendanceHistory } from './AttendanceHistory.jsx';
+import { MemberEditor } from './MemberEditor.jsx';
+import { staffPermission } from '../../shared/staff-access.js';
 
 const monthNow = () => dateKey().slice(0, 7);
-const monthLabel = (month) => `${Number(month.slice(0, 4))}年${Number(month.slice(5))}月`;
 
 function MonthPicker({ value, onChange }) {
   return (
@@ -42,7 +44,13 @@ function download(bytes, filename, type) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function AttendanceReports({ canExport = true, embedded = false, campuses = [] }) {
+export function AttendanceReports({
+  user,
+  canExport = true,
+  embedded = false,
+  campuses = [],
+  onOpenDay
+}) {
   const active = useContext(ActivityContext);
   const [month, setMonth] = useState(monthNow);
   const [chosenCampus, setCampusId] = useState('');
@@ -57,6 +65,7 @@ export function AttendanceReports({ canExport = true, embedded = false, campuses
   const client = useQueryClient();
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState('');
+  const [editingMember, setEditingMember] = useState(null);
   const result = useQuery({
     queryKey: [
       tab === 'volunteer' ? '/api/attendance/volunteer-report' : '/api/attendance/matrix',
@@ -74,6 +83,18 @@ export function AttendanceReports({ canExport = true, embedded = false, campuses
           )
         ) || []
       : [];
+  const missingPeople = [...new Map(missing.map((row) => [row.memberId, row])).values()];
+  async function refreshMemberReports() {
+    await client.invalidateQueries({
+      predicate: (query) =>
+        String(query.queryKey[0]).startsWith('/api/members') ||
+        [
+          '/api/attendance/volunteer-report',
+          '/api/attendance/weekly-summary',
+          '/api/me/volunteer-summary'
+        ].includes(query.queryKey[0])
+    });
+  }
   const totalRows =
     tab === 'volunteer'
       ? report?.weeks.reduce(
@@ -82,7 +103,7 @@ export function AttendanceReports({ canExport = true, embedded = false, campuses
           0
         ) || 0
       : report?.rows.length || 0;
-  async function exportFile() {
+  async function exportFile(selectedReport = report) {
     if (!report || busy || downloading || missing.length) return;
     setDownloading(true);
     setError('');
@@ -99,7 +120,7 @@ export function AttendanceReports({ canExport = true, embedded = false, campuses
         );
       } else {
         download(
-          builders.attendanceMatrixWorkbook(report),
+          builders.attendanceMatrixWorkbook(selectedReport),
           `考勤记录-${month}.xlsx`,
           'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         );
@@ -111,7 +132,7 @@ export function AttendanceReports({ canExport = true, embedded = false, campuses
     }
   }
   return (
-    <section className="react-page attendance-reports">
+    <section className="react-page attendance-reports" data-view={tab}>
       {!embedded && (
         <WorkspaceHeader group="排班考勤" title={canExport ? '报表导出' : '导出规则'} />
       )}
@@ -128,7 +149,7 @@ export function AttendanceReports({ canExport = true, embedded = false, campuses
                 }
               }}
             >
-              志愿登记表
+              志愿时长
             </button>
             <button
               data-track="staff.attendancereports.button.9"
@@ -145,7 +166,7 @@ export function AttendanceReports({ canExport = true, embedded = false, campuses
           </div>
           <div hidden={tab !== 'volunteer'}>
             <AttendanceReportSettings
-              active={active}
+              active={active && tab === 'volunteer'}
               onSaved={() => {
                 Promise.all(
                   [
@@ -177,8 +198,9 @@ export function AttendanceReports({ canExport = true, embedded = false, campuses
             />
             <RefreshButton
               data-track="staff.attendancereports.button.10"
+              compactOnMobile={tab === 'matrix'}
               key={`${tab}:${month}:${campusId}`}
-              label="刷新报表"
+              label={tab === 'volunteer' ? '刷新报表' : '刷新考勤'}
               onRefresh={() =>
                 Promise.all([
                   result.refetch({ throwOnError: true }),
@@ -189,13 +211,15 @@ export function AttendanceReports({ canExport = true, embedded = false, campuses
                 ])
               }
             />
-            <button
-              data-track="staff.attendancereports.button.13"
-              type="button"
-              onClick={() => setWeekly(true)}
-            >
-              按周核算与导出
-            </button>
+            {tab === 'volunteer' && (
+              <button
+                data-track="staff.attendancereports.button.13"
+                type="button"
+                onClick={() => setWeekly(true)}
+              >
+                按周核算与导出
+              </button>
+            )}
           </div>
           {(error || result.error) && (
             <p className="react-error" role="alert">
@@ -203,31 +227,69 @@ export function AttendanceReports({ canExport = true, embedded = false, campuses
             </p>
           )}
           <div className="report-results" aria-busy={busy}>
-            <div className="report-results-heading">
-              <div>
-                <h2>{tab === 'volunteer' ? '逐周文件' : '考勤明细'}</h2>
-                <p aria-live="polite">
-                  {!report
-                    ? ''
-                    : tab === 'volunteer'
-                      ? `${report?.weeks.length || 0} 周 · ${totalRows} 条登记`
-                      : `${report?.dates.length || 0} 个维修日 · ${totalRows} 人`}
-                </p>
+            {tab === 'volunteer' && (
+              <div className="report-results-heading">
+                <div>
+                  <h2>{tab === 'volunteer' ? '逐周文件' : '考勤明细'}</h2>
+                  <p aria-live="polite">
+                    {!report
+                      ? ''
+                      : tab === 'volunteer'
+                        ? `${report?.weeks.length || 0} 周 · ${totalRows} 条登记`
+                        : `${report?.dates.length || 0} 个有记录日期 · ${totalRows} 条人员记录`}
+                  </p>
+                </div>
+                {tab === 'volunteer' && (
+                  <button
+                    data-track="staff.attendancereports.button.11"
+                    type="button"
+                    className="field-primary report-download"
+                    disabled={busy || downloading || !report || !!missing.length}
+                    onClick={() => exportFile()}
+                  >
+                    {downloading
+                      ? '正在生成…'
+                      : missing.length
+                        ? '补全资料后下载'
+                        : tab === 'volunteer'
+                          ? '下载逐周文件'
+                          : '下载考勤记录'}
+                  </button>
+                )}
               </div>
-              <button
-                data-track="staff.attendancereports.button.11"
-                type="button"
-                className="field-primary report-download"
-                disabled={busy || downloading || !report || !!missing.length}
-                onClick={exportFile}
-              >
-                {downloading ? '正在生成…' : tab === 'volunteer' ? '下载逐周文件' : '下载考勤记录'}
-              </button>
-            </div>
+            )}
             {missing.length > 0 && (
-              <p className="react-error" role="alert">
-                {missing.length} 条记录缺少学院或学号，请在人员管理补全后刷新。
-              </p>
+              <div className="report-missing-people" role="status">
+                <p className="report-missing-label">
+                  待补全 <span>{missingPeople.length} 人</span>
+                </p>
+                <div className="report-missing-list">
+                  {missingPeople.map((person) =>
+                    person.canManageProfile && staffPermission(user, 'members.manage') ? (
+                      <button
+                        key={person.memberId}
+                        type="button"
+                        data-track="staff.attendancereports.complete-profile"
+                        onClick={() => setEditingMember(person)}
+                        aria-label={`补全${person.name}的人员资料`}
+                      >
+                        <strong>{person.name}</strong>
+                        <span>
+                          缺
+                          {[!person.college && '学院', !person.studentId && '学号']
+                            .filter(Boolean)
+                            .join('、')}
+                        </span>
+                        <span className="report-missing-arrow" aria-hidden="true">
+                          ↗
+                        </span>
+                      </button>
+                    ) : (
+                      <span key={person.memberId}>{person.name} · 请联系人员管理员补全资料</span>
+                    )
+                  )}
+                </div>
+              </div>
             )}
             {tab === 'volunteer' && report && (
               <div className="report-week-list">
@@ -248,21 +310,30 @@ export function AttendanceReports({ canExport = true, embedded = false, campuses
                 ))}
               </div>
             )}
-            {tab === 'matrix' && report && (
-              <div className="report-matrix-preview">
-                <strong>{monthLabel(month)}</strong>
-                <span>
-                  {report.dates.length
-                    ? `${report.dates[0].slice(5)} 至 ${report.dates.at(-1).slice(5)}`
-                    : '暂无签到日期'}
-                </span>
-                <span>{report.rows.length} 人</span>
-              </div>
+            {tab === 'matrix' && (
+              <AttendanceHistory
+                key={`${month}:${campusId}`}
+                report={report}
+                onOpenDay={onOpenDay}
+                downloading={downloading}
+                onExport={(rows) => exportFile({ ...report, rows })}
+              />
             )}
           </div>
         </>
       )}
       {!canExport && <AttendanceReportSettings active={active} />}
+      {editingMember && active && (
+        <MemberEditor
+          user={user}
+          member={editingMember}
+          canManageRoles={
+            staffPermission(user, 'roles.manage') && editingMember.memberId !== user.memberId
+          }
+          onClose={() => setEditingMember(null)}
+          onSaved={refreshMemberReports}
+        />
+      )}
       {weekly && active && (
         <WeeklyAttendanceExport
           campuses={campuses}

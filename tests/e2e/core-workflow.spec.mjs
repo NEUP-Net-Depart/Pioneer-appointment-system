@@ -412,7 +412,7 @@ test('daytime supplementation explains its default time without changing attenda
   await expect(form).toBeVisible();
 });
 
-test('daily duty review and historical arrival correction update the selected member', async ({
+test('automatic absence and historical arrival correction update the selected member', async ({
   page
 }) => {
   await loginStaff(page, '20261001');
@@ -420,12 +420,8 @@ test('daily duty review and historical arrival correction update the selected me
   const daily = await dutyPage(page, '今日值班');
   await daily.getByLabel('值班日期').fill(thisWeek);
   const person = daily.getByRole('article').filter({ hasText: '周宁' });
-  await expect(person.getByText('未签到', { exact: true })).toBeVisible();
-  await person.getByRole('button', { name: '确认未到', exact: true }).click();
-  await expect(person.getByText('未签到', { exact: true })).toBeVisible();
-  await expect(person.getByRole('button', { name: '撤销未到', exact: true })).toBeVisible();
-  await person.getByRole('button', { name: '撤销未到', exact: true }).click();
-  await expect(person.getByText('未签到', { exact: true })).toBeVisible();
+  await expect(person.getByText('缺勤', { exact: true })).toBeVisible();
+  await expect(person.getByRole('button', { name: /确认未到|撤销未到|确认到场/ })).toHaveCount(0);
   await person.getByRole('button', { name: '补记漏签', exact: true }).click();
   const correction = page.getByRole('dialog', { name: '补记漏签', exact: true });
   await expect(correction).toContainText('周宁');
@@ -462,7 +458,8 @@ test('daily duty review and historical arrival correction update the selected me
   await adjustment.getByLabel('补录或修正原因').fill('现场核实实际到场时间');
   await adjustment.getByRole('button', { name: '保存考勤', exact: true }).click();
   await expect(person).toContainText('19:08');
-  await expect(person).not.toContainText('按班次开始时间');
+  await person.getByRole('button', { name: '查看周宁的签到详情', exact: true }).click();
+  await expect(page.getByRole('dialog')).not.toContainText('按班次开始时间');
 });
 
 test('temporary attendance uses the selected historical date and campus without a time picker', async ({
@@ -490,9 +487,11 @@ test('temporary attendance uses the selected historical date and campus without 
   await dialog.getByRole('button', { name: '保存考勤', exact: true }).click();
   await expect(dialog).toBeHidden();
   const person = daily.getByRole('article').filter({ hasText: '许晨' });
-  await expect(person).toContainText('临时到场');
+  await expect(person).toContainText('临时支援');
   await expect(person).toContainText('19:00');
-  await expect(person).toContainText('按班次开始时间');
+  await person.getByRole('button', { name: '查看许晨的签到详情', exact: true }).click();
+  await expect(page.getByRole('dialog')).toContainText('按班次开始时间');
+  await page.keyboard.press('Escape');
   await page.reload();
   const reloaded = await dutyPage(page, '今日值班');
   await reloaded

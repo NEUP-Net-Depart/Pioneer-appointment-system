@@ -7,6 +7,7 @@ import { attendanceDomain } from './staff-platform/attendance.js';
 import { commandsDomain } from './staff-platform/commands.js';
 import { scheduleRepository } from './staff-platform/schedule.js';
 import { dutyRepository } from './staff-platform/duty.js';
+import { workloadRepository } from './staff-platform/workload.js';
 
 export function staffPlatformRepository(db) {
   const commands = commandsDomain({ db });
@@ -21,6 +22,7 @@ export function staffPlatformRepository(db) {
     ...fieldDomain({ db, event: attendance.event }),
     ...scheduleRepository(deps),
     ...dutyRepository(deps),
+    ...workloadRepository(deps),
     ...serviceDayRepository(db)
   };
 }
