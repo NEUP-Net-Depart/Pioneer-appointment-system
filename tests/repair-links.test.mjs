@@ -1,3 +1,4 @@
+import { signatureFixture } from './fixtures/signature.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
@@ -35,7 +36,7 @@ test('onsite linked service is created once, does not consume online slots, and 
   const actor=await users.find('20260001');order('original',{status:'completed'});
   db.sqlite.exec('UPDATE slot_capacities SET capacity=0; UPDATE weekday_slot_capacities SET capacity=0;');
   calendar.moveTo(calendar.nextDay,'10:00');
-  const input={studentId:'20260009',name:'测试客户',campus:'南湖',social:'customer-contact',deviceType:'笔记本',brand:'Lenovo',deviceModel:'',warranty:'不清楚',faultType:'系统',agreement:true,signature:[Array.from({length:8},(_,i)=>[i/10,i/10])],requestId:crypto.randomUUID(),parentAppointmentId:'original',linkKind:'recurrence',sameDeviceAndFault:true};
+  const input={studentId:'20260009',name:'测试客户',campus:'南湖',social:'customer-contact',deviceType:'笔记本',brand:'Lenovo',deviceModel:'',warranty:'不清楚',faultType:'系统',agreement:true,signature:signatureFixture(),requestId:crypto.randomUUID(),parentAppointmentId:'original',linkKind:'recurrence',sameDeviceAndFault:true};
   const created=await scan.onsite(input,actor),again=await scan.onsite(input,actor);
   assert.equal(again.id,created.id);assert.equal(again.accessToken,created.accessToken);
   assert.equal(created.source,'onsite');assert.equal(created.parentAppointmentId,'original');

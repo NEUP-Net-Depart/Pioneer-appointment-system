@@ -137,13 +137,8 @@ test('staff SDK records dialogs and lazy pages and isolates shared-device identi
   for (const result of ['open', 'closed'])
     expect(events().some((e) => e.name === 'ui.dialog' && e.result === result)).toBe(true);
   expect(events().some((e) => e.name === 'app.view' && e.view.startsWith('staff.'))).toBe(true);
-  const logout = page.getByRole('button', { name: '退出登录', exact: true });
-  if (!(await logout.isVisible()))
-    await page
-      .getByRole('navigation', { name: '手机岗位导航', exact: true })
-      .getByRole('button', { name: '我的', exact: true })
-      .click();
-  await logout.click();
+  const personal = await staffPage(page, '个人中心');
+  await personal.getByRole('button', { name: '退出登录', exact: true }).click();
   await expect(page.getByLabel('密码', { exact: true })).toBeVisible();
   const after = await page.evaluate(async () =>
     (await import('/assets/posthog.js')).default.get_distinct_id()

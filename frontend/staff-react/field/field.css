@@ -779,14 +779,20 @@
   overflow: hidden;
 }
 .field-signature {
+  position: relative;
   display: block;
   width: 100%;
-  height: auto;
-  aspect-ratio: 2.5;
+  height: 180px;
   border: 1px dashed #aebacb;
   border-radius: 10px;
   touch-action: none;
   background: #fafbfc;
+}
+.field-signature canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
 }
 .field-form .field-check {
   display: flex;

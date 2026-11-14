@@ -433,7 +433,7 @@
 .repair-signature {
   width: 100%;
   max-width: 560px;
-  height: auto;
+  height: 200px;
   border: 1px solid #e6e8ec;
   border-radius: 8px;
 }
