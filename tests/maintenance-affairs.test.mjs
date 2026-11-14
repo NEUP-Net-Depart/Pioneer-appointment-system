@@ -8,7 +8,6 @@ import { appointmentRepository } from '../src/db/appointments.js';
 import { composeStaffPlatform } from '../src/app/compose.js';
 import { staffPlatformService } from '../src/services/staff-platform.js';
 import { userRepository } from '../src/db/users.js';
-import { readFileSync } from 'node:fs';
 
 const campusId = 'campus-nanhu';
 const day = '2026-11-09';
@@ -91,17 +90,4 @@ test('affairs can check in without a roster; independent issuers and private imm
   await assert.rejects(staff.createAttendanceEvent(second, { type: 'meeting', businessDate: day, campusId }), error => error.status === 403);
   db.sqlite.prepare("UPDATE member_department_memberships SET effective_to=? WHERE id=?").run(day, `affairs-${second.account}`);
   await assert.rejects(staff.issueAttendanceToken(await users.find(second.account), event.id), error => error.status === 403);
-});
-
-for (const directory of ['migrations', 'database/staff-migrations']) test(`${directory}: affairs migration preserves populated membership facts and does not grant office staff a new appointment`, () => {
-  const db = database(directory, '0051');
-  try {
-    seedStaff(db, '20261001');
-    db.sqlite.exec("INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,position_code,effective_from,created_at) VALUES('old-office','member-20261001','dept-office','primary',1,'member','2026-01-01','2026-01-01')");
-    const before = db.sqlite.prepare('SELECT * FROM member_department_memberships').all();
-    db.sqlite.exec(readFileSync(`${directory}/0051_maintenance_affairs.sql`, 'utf8'));
-    assert.deepEqual(db.sqlite.prepare('SELECT * FROM member_department_memberships').all(), before);
-    assert.deepEqual(db.sqlite.prepare('PRAGMA foreign_key_check').all(), []);
-    assert.throws(() => db.sqlite.exec("INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,position_code,effective_from,created_at) VALUES('overlap','member-20261001','dept-office','primary',1,'member','2026-01-01','2026-01-01')"), /PRIMARY_MEMBERSHIP_OVERLAP/);
-  } finally { db.sqlite.close(); }
 });

@@ -1,5 +1,5 @@
-import { test, expect } from './support/fixtures.mjs';
-import { collectTelemetry, readyTelemetry, sendPending } from './support/telemetry.mjs';
+import { test, expect } from '../support/fixtures.mjs';
+import { collectTelemetry, readyTelemetry, sendPending } from '../support/telemetry.mjs';
 
 // Use a visitor UA so the real SDK's bot filter does not discard headless-browser events.
 test.use({
@@ -105,7 +105,7 @@ test('staff SDK records dialogs and lazy pages and isolates shared-device identi
   page,
   context
 }) => {
-  const { loginStaff, staffPage } = await import('./support/staff.mjs');
+  const { loginStaff, staffPage } = await import('../support/staff.mjs');
   const events = await collectTelemetry(page);
   await loginStaff(page);
   await readyTelemetry(page);
@@ -228,7 +228,7 @@ test('portalled selections report one keyboard commit and retain source IDs', as
   page,
   context
 }) => {
-  const { loginStaff, staffPage } = await import('./support/staff.mjs');
+  const { loginStaff, staffPage } = await import('../support/staff.mjs');
   const events = await collectTelemetry(page);
   await loginStaff(page);
   await readyTelemetry(page);
@@ -271,7 +271,7 @@ test('calendar, help and time gestures retain their field context and bound gest
   page,
   context
 }) => {
-  const { loginStaff, staffPage } = await import('./support/staff.mjs');
+  const { loginStaff, staffPage } = await import('../support/staff.mjs');
   const events = await collectTelemetry(page);
   await loginStaff(page);
   await readyTelemetry(page);
@@ -340,7 +340,7 @@ test('booking recovery and detail navigation record outcomes and real destinatio
   page,
   context
 }) => {
-  const { chooseTime, fillDevice, goReview, submitStudent } = await import('./support/student.mjs');
+  const { chooseTime, fillDevice, goReview, submitStudent } = await import('../support/student.mjs');
   const events = await collectTelemetry(page);
   await page.goto('/');
   await readyTelemetry(page);

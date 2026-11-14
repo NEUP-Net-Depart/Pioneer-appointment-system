@@ -7,6 +7,7 @@ import { preparePreview, startPreview } from './e2e-preview.mjs';
 import { startWarrantyVerifier } from './warranty-verifier-preview.mjs';
 
 const serve = process.argv.includes('--serve');
+const diagnostics = process.argv.includes('--diagnostics');
 const verifier = await startWarrantyVerifier();
 process.env.WARRANTY_CAPTCHA_ORIGIN = verifier.origin;
 process.env.E2E_VERIFIER_PARENTS = verifier.parentsFile;
@@ -35,11 +36,12 @@ try {
     process.exitCode = await new Promise((onExit, reject) => {
       const child = spawn(
         process.execPath,
-        [runner, 'test', '--config', 'playwright.config.mjs', ...process.argv.slice(2)],
+        [runner, 'test', '--config', 'playwright.config.mjs', ...process.argv.slice(2).filter(arg => arg !== '--diagnostics')],
         {
           cwd: root,
           env: {
             ...process.env,
+            E2E_DIAGNOSTICS: String(diagnostics),
             WRANGLER_SEND_METRICS: 'false',
             E2E_TEMPLATE_DIR: template.dir,
             E2E_OUTPUT_DIR: resolve(root, 'output/playwright', basename(template.dir)),

@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { config } from '../scripts/cli.mjs';
-import { pagesSiteUrl } from '../scripts/release-plan.mjs';
-import { publishPages } from '../scripts/pages-deploy.mjs';
-import { warrantyDeployment, staffWarrantyHeaders, verifierHeaders, prepareWarrantyDeployment, publishWarrantyVerifier } from '../scripts/warranty-deploy.mjs';
-import { warrantyService } from '../src/services/warranty.js';
+import { config } from '../../../scripts/cli.mjs';
+import { pagesSiteUrl } from '../../../scripts/release-plan.mjs';
+import { publishPages } from '../../../scripts/pages-deploy.mjs';
+import { warrantyDeployment, staffWarrantyHeaders, verifierHeaders, prepareWarrantyDeployment, publishWarrantyVerifier } from '../../../scripts/warranty-deploy.mjs';
+import { warrantyService } from '../../../src/services/warranty.js';
 
 const credentials = { CLOUDFLARE_ACCOUNT_ID: 'test-account', CLOUDFLARE_API_TOKEN: 'test-token' };
 const projectResponse = project => Response.json({ success: true, result: { name: project, production_branch: 'main' } });

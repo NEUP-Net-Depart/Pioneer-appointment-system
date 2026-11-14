@@ -1,0 +1,48 @@
+name: Optional test tools
+on:
+  workflow_dispatch:
+    inputs:
+      tool:
+        description: Diagnostic to run (never deploys)
+        required: true
+        type: choice
+        default: sql
+        options: [sql, migrations, deployment, browser]
+permissions:
+  contents: read
+jobs:
+  diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: SQL read/write and scaling budgets
+        if: inputs.tool == 'sql'
+        run: npm run test:sql
+      - name: Historical migration rehearsal
+        if: inputs.tool == 'migrations'
+        run: npm run test:migrations
+      - name: Deployment artifact checks
+        if: inputs.tool == 'deployment'
+        run: npm run test:deployment
+      - name: Install diagnostic browsers
+        if: inputs.tool == 'browser'
+        run: npx playwright install --with-deps chromium webkit
+      - name: Browser diagnostics
+        if: inputs.tool == 'browser'
+        run: npm run test:e2e:diagnostics
+      - name: Preserve diagnostic reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-tools-${{ inputs.tool }}-${{ github.run_id }}
+          path: |
+            output/sql-profile/
+            output/playwright/
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { database, seedAppointment } from './helpers/database.mjs';
-import { validSignature } from '../shared/signature.js';
-import { signatureFixture } from './fixtures/signature.mjs';
+import { database, seedAppointment } from '../helpers/database.mjs';
+import { validSignature } from '../../shared/signature.js';
+import { signatureFixture } from '../fixtures/signature.mjs';
 
 for (const directory of ['migrations', 'database/staff-migrations']) {
   test(`${directory}: signature cutover preserves ordered strokes, current documents and missing evidence`, () => {

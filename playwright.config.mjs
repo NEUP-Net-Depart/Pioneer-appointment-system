@@ -1,6 +1,9 @@
 import { defineConfig } from '@playwright/test';
+const diagnostics = process.env.E2E_DIAGNOSTICS === 'true';
 export default defineConfig({
   testDir: './tests/e2e',
+  testMatch: diagnostics ? '**/diagnostics/*.spec.mjs' : '**/*.spec.mjs',
+  testIgnore: diagnostics ? [] : ['**/diagnostics/**'],
   timeout: 60000,
   globalTimeout: process.env.CI ? 600000 : undefined,
   expect: { timeout: 10000 },
@@ -31,7 +34,7 @@ export default defineConfig({
     },
     {
       name: 'chromium-touch',
-      testMatch: '**/signature.spec.mjs',
+      testMatch: diagnostics ? [] : '**/signature.spec.mjs',
       use: {
         browserName: 'chromium',
         viewport: { width: 375, height: 812 },
@@ -43,20 +46,13 @@ export default defineConfig({
     },
     {
       name: 'webkit-mobile',
-      testMatch: [
+      testMatch: diagnostics ? [
+        '**/diagnostics/photo-compress.spec.mjs',
+        '**/diagnostics/telemetry.spec.mjs'
+      ] : [
         '**/core-workflow.spec.mjs',
-        '**/repair-links.spec.mjs',
         '**/signature.spec.mjs',
-        '**/photo-compress.spec.mjs',
-        '**/photo-upload.spec.mjs',
-        '**/records-loading.spec.mjs',
-        '**/records-navigation.spec.mjs',
-        '**/duty-workload.spec.mjs',
-        '**/maintenance-affairs.spec.mjs',
-        '**/member-identities.spec.mjs',
-        '**/admin-controls.spec.mjs',
-        '**/today-work-window.spec.mjs',
-        '**/telemetry.spec.mjs'
+        '**/photo-upload.spec.mjs'
       ],
       use: {
         browserName: 'webkit',

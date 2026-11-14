@@ -1,6 +1,6 @@
-import { test, expect } from './support/fixtures.mjs';
+import { test, expect } from '../support/fixtures.mjs';
 import { readFile } from 'node:fs/promises';
-import { chooseOption, loginStaff, onsiteOrder, staffPage } from './support/staff.mjs';
+import { chooseOption, loginStaff, onsiteOrder, staffPage } from '../support/staff.mjs';
 
 async function fixture(page, { captcha = false, huawei = false } = {}) {
   await page.addInitScript(() => {
@@ -312,7 +312,7 @@ test('real local OCR reads a device label, copies its serial and opens the offic
   const dialog = await openLookup(page);
   await chooseOption(page, dialog.getByLabel('设备品牌'), 'asus');
   // Fixed pixels keep this real OCR regression independent of OS font rendering.
-  const bytes = await readFile(new URL('../fixtures/warranty-serial-label.png', import.meta.url));
+  const bytes = await readFile(new URL('../../fixtures/warranty-serial-label.png', import.meta.url));
   await openOcr(dialog);
   await dialog
     .getByLabel('选择设备标签照片', { exact: true })
