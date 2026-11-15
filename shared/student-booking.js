@@ -25,6 +25,10 @@ export const BRANDS = [
 export const STUDENT_DEVICE_TYPES = ['笔记本','台式机','其他'];
 export const FAULT_TYPES = ['清灰换硅脂','换硬盘','换内存','系统问题','蓝屏','黑屏','网络问题','其他'];
 export const ANSWERS = ['是','否','不清楚'];
+export function bookingDeviceQuestions(deviceType, brand) {
+  const laptop = deviceType === '笔记本';
+  return { liquidMetal: laptop, dellG15: laptop && brand === 'Dell' };
+}
 export const FAULT_HINTS = {
   '清灰换硅脂': '我们免费提供普通硅脂，也可自行携带。',
   '换硬盘': '更换硬盘所需配件请自行准备；不确定兼容性可在故障描述中说明。',
@@ -54,8 +58,9 @@ export function studentFieldErrors(data) {
   if (!STUDENT_DEVICE_TYPES.includes(data.deviceType)) errors.deviceType = '请选择设备类型';
   if (!FAULT_TYPES.includes(data.faultType)) errors.faultType = '请选择故障分类';
   if (!ANSWERS.includes(data.warranty)) errors.warranty = '请选择是否在保，可选不清楚';
-  if (data.deviceType === '笔记本' && !ANSWERS.includes(data.liquidMetal)) errors.liquidMetal = '请选择是否使用液金散热，可选不清楚';
-  if (data.deviceType === '笔记本' && data.brand === 'Dell' && data.dellG15 != null && data.dellG15 !== '' && !ANSWERS.includes(data.dellG15)) errors.dellG15 = '请选择是否属于 Dell G15 / G16 系列';
+  const questions = bookingDeviceQuestions(data.deviceType, data.brand);
+  if (questions.liquidMetal && !ANSWERS.includes(data.liquidMetal)) errors.liquidMetal = '请选择是否使用液金散热，可选不清楚';
+  if (questions.dellG15 && data.dellG15 != null && data.dellG15 !== '' && !ANSWERS.includes(data.dellG15)) errors.dellG15 = '请选择是否属于 Dell G15 / G16 系列';
   if (!['qq','wechat'].includes(data.contactType)) errors.contactType = '请选择 QQ 或微信';
   if (!errors.contactValue && data.contactType === 'qq' && !/^[1-9]\d{4,11}$/.test(data.contactValue || '')) errors.contactValue = '请输入 5～12 位 QQ 数字，首位不能为 0';
   if (!errors.email && data.email && (typeof data.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email))) errors.email = '请输入有效的联系邮箱';

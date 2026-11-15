@@ -199,6 +199,7 @@ export function Modal({
         }
       }}
       onCancel={(event) => {
+        if (event.target !== event.currentTarget) return;
         event.preventDefault();
         event.stopPropagation();
         dismiss();

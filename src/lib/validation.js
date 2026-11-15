@@ -10,7 +10,7 @@ import {
 } from '../../shared/constants.js';
 import { validDate } from '../../shared/time.js';
 import { validSignature } from '../../shared/signature.js';
-import { studentFieldErrors, AGREEMENT_VERSION } from '../../shared/student-booking.js';
+import { studentFieldErrors, AGREEMENT_VERSION, ANSWERS, bookingDeviceQuestions } from '../../shared/student-booking.js';
 
 export const account = (value) =>
   String(value ?? '')
@@ -35,6 +35,8 @@ export function onsiteBookingInput(input) {
     deviceModel: 120,
     serial: 120,
     warranty: 20,
+    liquidMetal: 30,
+    dellG15: 20,
     faultType: 80,
     issue: 10000,
     liquidDrop: 20,
@@ -63,6 +65,11 @@ export function onsiteBookingInput(input) {
       stringField(input[key], key, max, required.has(key))
     ])
   );
+  const questions = bookingDeviceQuestions(data.deviceType === '笔记本电脑' ? '笔记本' : data.deviceType, data.brand);
+  for (const key of ['liquidMetal','dellG15']) {
+    if (!questions[key]) data[key] = '';
+    else if (data[key] && !ANSWERS.includes(data[key])) fail(400, key === 'liquidMetal' ? '请选择是否使用液金' : '请选择是否属于 Dell G15 / G16 系列');
+  }
   if (
     !/^\d{6,20}$/.test(data.studentId) ||
     data.name.length < 2 ||

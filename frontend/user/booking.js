@@ -1,7 +1,7 @@
 import { track } from '/shared/telemetry-client.js';
 import { $,showToast,escapeHtml } from '/shared/utils.js';
 import { apiJson } from '/shared/api.js';
-import { COLLEGES,BRANDS,STUDENT_DEVICE_TYPES,FAULT_TYPES,ANSWERS,FAULT_HINTS,AGREEMENT_VERSION,STUDENT_FIELD_LIMITS,characterCount,studentFieldErrors } from '/shared/student-booking.js';
+import { COLLEGES,BRANDS,STUDENT_DEVICE_TYPES,FAULT_TYPES,ANSWERS,FAULT_HINTS,AGREEMENT_VERSION,STUDENT_FIELD_LIMITS,characterCount,studentFieldErrors,bookingDeviceQuestions } from '/shared/student-booking.js';
 import { animateLayout,reveal,setVisible,setMessage } from './motion.js';
 import { initSlotPicker } from './slot-picker.js';
 import { initSignature } from './signature.js';
@@ -44,12 +44,13 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
   function rawFields(){const values={};for(const control of form.querySelectorAll('input[name],select[name],textarea[name]')){if(control.name==='agreement' || control.type==='checkbox')continue;if(control.type==='radio'){if(control.checked)values[control.name]=control.value;}else values[control.name]=control.value;}return values;}
   function data(){const values=rawFields(),effectiveBrand=values.brand==='other' ? values.brandOther.trim() : values.brand;return {...values,brand:effectiveBrand,college:values.college==='other' ? values.collegeOther.trim() : values.college,
     contactValue:values.contactType==='qq' ? values.qqAccount.trim() : values.contactType==='wechat' ? values.wechatAccount.trim() : '',
-    liquidMetal:values.deviceType==='笔记本' ? values.liquidMetal : undefined,dellG15:values.deviceType==='笔记本' && effectiveBrand==='Dell' ? values.dellG15 : undefined};}
+    liquidMetal:bookingDeviceQuestions(values.deviceType,effectiveBrand).liquidMetal ? values.liquidMetal : undefined,dellG15:bookingDeviceQuestions(values.deviceType,effectiveBrand).dellG15 ? values.dellG15 : undefined};}
   function saveDraft(){if(restoring || created || savedDraft || busy)return;const values=rawFields();if(Object.values(values).some(Boolean) && !writeDraft(values,step))notice('此浏览器无法保存草稿，请避免刷新页面。');}
   function notice(message){setMessage($('#draft-notice'),message);}
   function condition(id,show,{clear=false}={}){const root=$(id);root.hidden=!show;for(const control of root.querySelectorAll('input')){control.disabled=!show;if(!show && clear){if(control.type==='radio')control.checked=false;else control.value='';}}}
   function syncConditions(){const values=rawFields(),effectiveBrand=values.brand==='other' ? values.brandOther.trim() : values.brand;
-    const conditions=[['#brand-other-field',values.brand==='other',true],['#college-other-field',values.college==='other',true],['#dell-g15-field',values.deviceType==='笔记本' && effectiveBrand==='Dell',true],['#liquid-metal-field',values.deviceType==='笔记本',true],['#contact-qq-field',values.contactType==='qq'],['#contact-wechat-field',values.contactType==='wechat']];
+    const questions=bookingDeviceQuestions(values.deviceType,effectiveBrand);
+    const conditions=[['#brand-other-field',values.brand==='other',true],['#college-other-field',values.college==='other',true],['#dell-g15-field',questions.dellG15,true],['#liquid-metal-field',questions.liquidMetal,true],['#contact-qq-field',values.contactType==='qq'],['#contact-wechat-field',values.contactType==='wechat']];
     const hint=FAULT_HINTS[values.faultType] || '',advice=$('#fault-advice'),hintChanged=$('#fault-advice-message').textContent!==hint;
     const update=()=>{
       for(const [id,show,clear] of conditions)condition(id,show,{clear});

@@ -11,6 +11,7 @@ import { useRepair } from './useRepair';
 import { formatInstant } from '../../../shared/time.js';
 import { DataValue } from '../DataValue';
 import { warrantyServiceCenterUrl } from '../../../shared/warranty.js';
+import { RepairToolsProvider, useRepairTools } from '../RepairTools';
 
 function RepairOrder({
   id,
@@ -28,6 +29,7 @@ function RepairOrder({
   customerCredential?: { id: string; accessToken: string } | null;
 }) {
   const r = useRepair({ id });
+  const tools = useRepairTools();
   const { item, busy } = r;
   const [received, setReceived] = useState(false);
   const activeBrand = item ? (!item.receivedAt && r.verification.brand.trim()) || item.brand : '';
@@ -38,53 +40,62 @@ function RepairOrder({
       className="repair-order-dialog"
       sidePanel={sidePanel}
       dismissible={!busy}
-      onClose={onClose}
+      onClose={() => tools?.request(null, onClose)}
     >
       <Notice>{r.error}</Notice>
-      <section className="field-ticket" aria-busy={!item}>
-        {item ? (
-          <Status value={item.status} outcome={item.outcome} />
-        ) : (
-          <span className="field-status">
-            <DataValue label="工单状态" digits={4} />
-          </span>
-        )}
-        <p>
-          {id} ·{' '}
-          <DataValue label="预约时间和校区">
-            {item ? `${item.campus} · ${item.date} ${item.timeSlot}` : undefined}
-          </DataValue>
-        </p>
-        <h3>
-          <DataValue label="设备信息">
-            {item ? `${item.brand} ${item.deviceModel || item.deviceType}` : undefined}
-          </DataValue>
-        </h3>
-        <p>
+      <section className="field-ticket repair-summary" aria-busy={!item}>
+        <div className="repair-summary-heading">
+          <h3>
+            <DataValue label="设备信息">
+              {item ? `${item.brand} ${item.deviceModel || item.deviceType}` : undefined}
+            </DataValue>
+          </h3>
+          {item ? (
+            <Status value={item.status} outcome={item.outcome} />
+          ) : (
+            <span className="field-status">
+              <DataValue label="工单状态" digits={4} />
+            </span>
+          )}
+        </div>
+        <p className="repair-summary-customer">
           <DataValue label="预约人员">
             {item ? [item.name, item.studentId].filter(Boolean).join(' · ') : undefined}
           </DataValue>
         </p>
-        <p>
-          <DataValue label="故障信息">
-            {item ? [item.faultType, item.issue].filter(Boolean).join(' ') : undefined}
+        <dl className="repair-summary-fields">
+          <dt>故障</dt>
+          <dd>
+            <DataValue label="故障信息">
+              {item ? [item.faultType, item.issue].filter(Boolean).join(' ') : undefined}
+            </DataValue>
+          </dd>
+          <dt>联系</dt>
+          <dd>
+            <DataValue label="联系方式">
+              {item
+                ? [item.contactValue || item.social || item.phone || '未记录', item.email]
+                    .filter(Boolean)
+                    .join(' ')
+                : undefined}
+            </DataValue>
+          </dd>
+          {(item?.assignedToName || item?.receivedAt) && (
+            <>
+              <dt>主修</dt>
+              <dd>
+                <DataValue label="当前主修">
+                  {item ? item.assignedToName || '尚未开始维修' : undefined}
+                </DataValue>
+              </dd>
+            </>
+          )}
+        </dl>
+        <p className="repair-summary-meta">
+          <DataValue label="预约时间和校区">
+            {item ? `${item.campus} · ${item.date} ${item.timeSlot}` : undefined}
           </DataValue>
-        </p>
-        <p>
-          联系方式：
-          <DataValue label="联系方式">
-            {item
-              ? [item.contactValue || item.social || item.phone || '未记录', item.email]
-                  .filter(Boolean)
-                  .join(' ')
-              : undefined}
-          </DataValue>
-        </p>
-        <p>
-          当前主修：
-          <DataValue label="当前主修">
-            {item ? item.assignedToName || '尚未开始维修' : undefined}
-          </DataValue>
+          <span>{id}</span>
         </p>
         {item?.receivedAt && (
           <p>
@@ -114,44 +125,29 @@ function RepairOrder({
             </div>
           )}
           {(item.canStart || item.canReceive) && (
-            <section className="field-form">
+            <section
+              className={`field-form repair-intake${item.receivedAt ? ' repair-intake-ready' : ''}`}
+              aria-label="设备接收"
+            >
               {!item.receivedAt && (
-                <>
-                  <details data-track="staff.field.repair.details.1" className="field-details">
-                    <summary data-track="staff.field.repair.summary.2">修正设备资料</summary>
-                    <label>
-                      品牌
-                      <input
-                        data-track="staff.field.repair.input.3"
-                        maxLength={80}
-                        value={r.verification.brand}
-                        onChange={(e) =>
-                          r.setVerification({ ...r.verification, brand: e.target.value })
-                        }
-                      />
-                    </label>
-                    <label>
-                      型号（未知可留空）
-                      <input
-                        data-track="staff.field.repair.input.4"
-                        maxLength={120}
-                        value={r.verification.model}
-                        onChange={(e) =>
-                          r.setVerification({ ...r.verification, model: e.target.value })
-                        }
-                      />
-                    </label>
-                  </details>
-                  <p>首次接收请拍摄正、反面照片。请在手机或本地保留原图。</p>
-                  <IntakePhotos
-                    id={id}
-                    uploaded={r.uploaded}
-                    previews={r.previews}
-                    busy={busy || r.photoBusy}
-                    progress={r.photoProgress}
-                    onFile={r.onFile}
-                  />
-                </>
+                <div className="repair-intake-heading">
+                  <h3>设备照片</h3>
+                  <span className="repair-intake-count" role="status">
+                    已准备{' '}
+                    {['front', 'back'].filter((side) => r.files[side] || r.uploaded[side]).length} /
+                    2 张
+                  </span>
+                </div>
+              )}
+              {!item.receivedAt && (
+                <IntakePhotos
+                  id={id}
+                  uploaded={r.uploaded}
+                  previews={r.previews}
+                  busy={busy || r.photoBusy}
+                  progress={r.photoProgress}
+                  onFile={r.onFile}
+                />
               )}
               <div className="field-actions repair-intake-actions">
                 {item.canStart && (
@@ -161,7 +157,7 @@ function RepairOrder({
                     disabled={busy}
                     onClick={() => r.start()}
                   >
-                    {item.receivedAt ? '确认接手并开始维修' : '接收并开始维修'}
+                    {busy ? '正在处理…' : item.receivedAt ? '开始维修' : '接收并开始维修'}
                   </button>
                 )}
                 {item.canReceive && (
@@ -286,22 +282,6 @@ function RepairOrder({
               {outcomeLabels[item.outcome || ''] || '历史未分类'} · {item.repairNote}
             </p>
           )}
-          {!hideWarrantyLookup && (item.canStart || item.canTransfer || item.canFinish) && (
-            <div className="repair-warranty-actions">
-              <WarrantyLookupButton initialBrand={activeBrand} />
-              {serviceCenterUrl && (
-                <a
-                  data-track="staff.field.repair.service-center"
-                  href={serviceCenterUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  referrerPolicy="no-referrer"
-                >
-                  打开售后网点 ↗
-                </a>
-              )}
-            </div>
-          )}
           <RepairRelations
             key={id}
             item={item}
@@ -310,34 +290,107 @@ function RepairOrder({
             }}
             onOpen={onOpen}
           />
-          <RepairAttachments key={`attachments-${id}`} id={id} />
-          {item.canEdit && (
-            <RepairInformation
-              item={item}
-              onChanged={() => {
-                void r.load();
-              }}
-            />
-          )}
-          <RepairCredential item={item} onIssued={(token) => onOpen(id, token)} />
-          {(item.repairHistory || item.original) && (
-            <section className="repair-management">
-              <h3>管理记录</h3>
-              <div className="field-actions">
+          <section className="repair-tools" aria-label="维修信息">
+            <h3>维修信息</h3>
+            <RepairAttachments key={`attachments-${id}`} id={id} />
+            <div className="repair-action-row repair-information-row">
+              {!item.canEdit && !item.receivedAt && item.canStart && (
+                <details
+                  data-track="staff.field.repair.details.1"
+                  className="field-details repair-device-correction"
+                >
+                  <summary
+                    data-track="staff.field.repair.summary.2"
+                    className="repair-tool-trigger"
+                  >
+                    修改设备信息
+                  </summary>
+                  <div className="field-form-grid">
+                    <label>
+                      品牌
+                      <input
+                        data-track="staff.field.repair.input.3"
+                        maxLength={80}
+                        value={r.verification.brand}
+                        onChange={(e) =>
+                          r.setVerification({ ...r.verification, brand: e.target.value })
+                        }
+                      />
+                    </label>
+                    <label>
+                      型号（未知可留空）
+                      <input
+                        data-track="staff.field.repair.input.4"
+                        maxLength={120}
+                        value={r.verification.model}
+                        onChange={(e) =>
+                          r.setVerification({ ...r.verification, model: e.target.value })
+                        }
+                      />
+                    </label>
+                  </div>
+                </details>
+              )}
+              {item.canEdit && (
+                <RepairInformation
+                  item={item}
+                  onChanged={(values) => {
+                    r.setVerification({
+                      ...r.verification,
+                      brand: values.brand.trim(),
+                      model: values.deviceModel.trim(),
+                      warranty: values.warranty,
+                      liquidMetal: values.liquidMetal
+                    });
+                    void r.load();
+                  }}
+                />
+              )}
+              <RepairCredential item={item} onIssued={(token) => onOpen(id, token)} />
+            </div>
+            {(item.repairHistory || item.original) && (
+              <div className="repair-action-row repair-record-actions">
                 <RepairHistory history={item.repairHistory} />
                 <RepairOriginal original={item.original} />
               </div>
+            )}
+            {customerCredential && (
+              <a
+                data-track="staff.field.repair.a.16"
+                href={`/#${new URLSearchParams({ appointment: customerCredential.id, access: customerCredential.accessToken })}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                客户私人查询链接
+              </a>
+            )}
+          </section>
+          {!hideWarrantyLookup && (item.canStart || item.canTransfer || item.canFinish) && (
+            <section className="repair-tools repair-official" aria-label="官方支持">
+              <h3>官方支持</h3>
+              <div className="repair-action-row repair-warranty-actions">
+                <WarrantyLookupButton initialBrand={activeBrand} label="查询保修状态" />
+                {serviceCenterUrl && (
+                  <a
+                    data-track="staff.field.repair.service-center"
+                    href={serviceCenterUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    referrerPolicy="no-referrer"
+                    className="repair-tool-trigger"
+                    onClick={(event) => {
+                      if (!tools) return;
+                      event.preventDefault();
+                      tools.request(null, () =>
+                        window.open(serviceCenterUrl, '_blank', 'noopener,noreferrer')
+                      );
+                    }}
+                  >
+                    查找售后网点
+                  </a>
+                )}
+              </div>
             </section>
-          )}
-          {customerCredential && (
-            <a
-              data-track="staff.field.repair.a.16"
-              href={`/#${new URLSearchParams({ appointment: customerCredential.id, access: customerCredential.accessToken })}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              客户私人查询链接
-            </a>
           )}
         </>
       )}
@@ -349,15 +402,17 @@ export function Repair(props: Omit<Parameters<typeof RepairOrder>[0], 'onOpen'>)
   const [id, setId] = useState(props.id);
   const [credential, setCredential] = useState(props.customerCredential);
   return (
-    <RepairOrder
-      {...props}
-      key={id}
-      id={id}
-      customerCredential={credential}
-      onOpen={(nextId, token) => {
-        setId(nextId);
-        setCredential(token ? { id: nextId, accessToken: token } : null);
-      }}
-    />
+    <RepairToolsProvider key={id}>
+      <RepairOrder
+        {...props}
+        key={id}
+        id={id}
+        customerCredential={credential}
+        onOpen={(nextId, token) => {
+          setId(nextId);
+          setCredential(token ? { id: nextId, accessToken: token } : null);
+        }}
+      />
+    </RepairToolsProvider>
   );
 }

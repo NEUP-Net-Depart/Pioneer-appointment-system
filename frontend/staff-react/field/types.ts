@@ -72,6 +72,9 @@ export interface Appointment {
   contactType?: string;
   contactValue?: string;
   liquidMetal?: string;
+  college?: string;
+  serial?: string;
+  liquidDrop?: string;
   dellG15?: string;
   repairCode?: string;
   canStart?: boolean;

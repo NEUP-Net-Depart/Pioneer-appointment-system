@@ -272,7 +272,7 @@ test('hardware staff receive photos, correct a repair and keep internal notes ou
       .getByLabel(`设备${side}照片`, { exact: true })
       .setInputFiles({ name: side + '.png', mimeType: 'image/png', buffer: PHOTO });
   await dialog.getByRole('button', { name: '接收并开始维修', exact: true }).click();
-  await expect(dialog.getByText('当前主修：周宁')).toBeVisible();
+  await expect(dialog.locator('.repair-summary-fields').getByText('周宁', { exact: true })).toBeVisible();
   await dialog.getByLabel('部分解决', { exact: true }).check();
   await dialog.getByLabel('简短处理说明').fill('系统恢复，键盘仍需更换（内部）');
   await dialog.getByRole('button', { name: '结束本次服务' }).click();
@@ -321,7 +321,15 @@ test('office reception lets hardware take over and a manager finish with the ori
   await worker.getByRole('button').filter({ hasText: created.id }).click();
   const workDialog = worker.getByRole('dialog', { name: '维修工单' });
   await expect(workDialog.getByLabel('设备正面照片', { exact: true })).toHaveCount(0);
-  await workDialog.getByRole('button', { name: '确认接手并开始维修', exact: true }).click();
+  const startRepair = workDialog.getByRole('button', { name: '开始维修', exact: true });
+  await expect(startRepair).toBeEnabled();
+  await expect(startRepair).toBeInViewport();
+  const startBounds = await startRepair.boundingBox();
+  const intakeBounds = await workDialog.getByRole('region', { name: '设备接收', exact: true }).boundingBox();
+  expect(startBounds.width).toBeGreaterThan(intakeBounds.width * .95);
+  expect(startBounds.height).toBeGreaterThanOrEqual(48);
+  await workDialog.screenshot({ path: test.info().outputPath('received-ready.png') });
+  await startRepair.click();
   await expect(workDialog.getByRole('button', { name: '结束本次服务', exact: true })).toBeVisible();
   await page.reload();
   await staffPage(page, '今日工作');
@@ -330,7 +338,7 @@ test('office reception lets hardware take over and a manager finish with the ori
   await dialog.getByLabel('简短处理说明').fill('系统恢复，键盘仍需更换');
   await dialog.getByRole('button', { name: '结束本次服务', exact: true }).click();
   await expect(dialog.getByText('部分解决 · 系统恢复，键盘仍需更换')).toBeVisible();
-  await expect(dialog.getByText('当前主修：周宁')).toBeVisible();
+  await expect(dialog.locator('.repair-summary-fields').getByText('周宁', { exact: true })).toBeVisible();
 });
 
 test('member availability produces a published shift visible after reloading', async ({

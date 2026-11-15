@@ -15,6 +15,7 @@ import {
 import { ActivityContext, Modal, Notice, api } from './ui';
 import { SerialOcr } from './SerialOcr';
 import './warranty.css';
+import { useRepairTools } from '../RepairTools';
 
 type WarrantyStatus = 'unknown' | 'in_warranty' | 'expired';
 type Props = { initialBrand?: string; onUseStatus?: (status: WarrantyStatus) => void };
@@ -66,17 +67,22 @@ const statusLabels = {
   pending: '尚未生效'
 };
 
-export function WarrantyLookupButton({ initialBrand = '', onUseStatus }: Props) {
+export function WarrantyLookupButton({
+  initialBrand = '',
+  onUseStatus,
+  label = '查询保修'
+}: Props & { label?: string }) {
   const [open, setOpen] = useState(false);
+  const tools = useRepairTools();
   return (
     <>
       <button
         data-track="staff.field.warrantylookup.button.1"
         type="button"
-        className="field-secondary"
-        onClick={() => setOpen(true)}
+        className="field-secondary repair-tool-trigger"
+        onClick={() => (tools ? tools.request(null, () => setOpen(true)) : setOpen(true))}
       >
-        查询保修
+        {label}
       </button>
       {open &&
         createPortal(
@@ -554,7 +560,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
                   rel="noopener noreferrer"
                   referrerPolicy="no-referrer"
                 >
-                  打开售后网点 ↗
+                  打开售后网点
                 </a>
               </div>
             </>
