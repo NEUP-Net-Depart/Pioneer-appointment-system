@@ -1,6 +1,7 @@
 import { test, expect } from './support/fixtures.mjs';
 import { loginStaff, staffPage, onsiteOrder, staffApi, chooseOption } from './support/staff.mjs';
 import { PHOTO, chooseTime } from './support/student.mjs';
+import { writeFile } from 'node:fs/promises';
 
 async function orderWithPhotos(page, { received = false, selectPhotos = true } = {}) {
   await loginStaff(page, '20261003');
@@ -20,6 +21,47 @@ async function orderWithPhotos(page, { received = false, selectPhotos = true } =
   }
   return { order, dialog };
 }
+
+test('mobile dropzone hit testing covers the icon, padding and lower edge', async ({ page, browserName }, testInfo) => {
+  test.skip(browserName !== 'chromium', 'Native drag coordinates are driven through Chromium CDP.');
+  await page.setViewportSize({ width: 375, height: 812 });
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 812, deviceScaleFactor: 3, mobile: true });
+  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+  const { dialog } = await orderWithPhotos(page, { selectPhotos: false });
+  const photo = dialog.locator('.field-intake-photo').first();
+  const zone = photo.getByRole('button', { name: '添加设备正面照片', exact: true });
+  await zone.scrollIntoViewIfNeeded();
+  const bounds = await zone.boundingBox();
+  const icon = await zone.locator('svg').boundingBox();
+  const filename = testInfo.outputPath('mobile-drag.png');
+  await writeFile(filename, PHOTO);
+  const data = { items: [], files: [filename], dragOperationsMask: 1 };
+  const points = [
+    { x: bounds.x + bounds.width / 2, y: bounds.y + 4 },
+    { x: icon.x + icon.width / 2, y: icon.y - 4 },
+    { x: icon.x + icon.width / 2, y: icon.y + icon.height / 2 },
+    { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height - 4 }
+  ];
+  await cdp.send('Input.dispatchDragEvent', { type: 'dragEnter', ...points[0], data });
+  for (const point of points) {
+    await cdp.send('Input.dispatchDragEvent', { type: 'dragOver', ...point, data });
+    await expect(photo).toHaveClass(/is-dragging/);
+    await expect(zone.getByText('松开添加', { exact: true })).toBeVisible();
+  }
+  await zone.locator('svg').dispatchEvent('dragleave', { clientX: points[2].x, clientY: points[2].y, relatedTarget: null });
+  await expect(photo).toHaveClass(/is-dragging/);
+  await zone.locator('strong').dispatchEvent('dragleave', { clientX: points[1].x, clientY: points[1].y, relatedTarget: null });
+  await expect(photo).toHaveClass(/is-dragging/);
+  await cdp.send('Input.dispatchDragEvent', { type: 'dragOver', x: bounds.x + bounds.width + 4, y: points[1].y, data });
+  await expect(photo).not.toHaveClass(/is-dragging/);
+  await cdp.send('Input.dispatchDragEvent', { type: 'dragOver', ...points[1], data });
+  await expect(photo).toHaveClass(/is-dragging/);
+  await cdp.send('Input.dispatchDragEvent', { type: 'drop', ...points[1], data });
+  await expect(photo.getByRole('img', { name: '设备正面照片', exact: true })).toBeVisible();
+  await expect(photo).not.toHaveClass(/is-dragging/);
+  await cdp.detach();
+});
 
 test('cancelling a photo picker keeps the repair dialog and selected photos', async ({ page }) => {
   const { dialog } = await orderWithPhotos(page, { selectPhotos: false });
@@ -282,7 +324,15 @@ test('repair tools protect drafts when cancelling, switching and closing', async
   await actions.screenshot({ path: testInfo.outputPath('paired-form-actions.png') });
   await actions.getByRole('button', { name: '取消', exact: true }).click();
   await expect(confirmation).toBeVisible();
-  await confirmation.getByRole('button', { name: '继续编辑', exact: true }).click();
+  await expect(confirmation.locator('.workspace-unsaved-actions > button')).toHaveCount(2);
+  const discard = confirmation.getByRole('button', { name: '丢弃并继续', exact: true });
+  const continueSave = confirmation.getByRole('button', { name: '保存并继续', exact: true });
+  await expect(discard).toHaveCSS('background-color', 'rgb(180, 35, 24)');
+  const [discardBounds, saveBounds] = await Promise.all([discard.boundingBox(), continueSave.boundingBox()]);
+  expect(Math.abs(discardBounds.y - saveBounds.y)).toBeLessThan(2);
+  expect(discardBounds.x).toBeLessThan(saveBounds.x);
+  await confirmation.screenshot({ path: testInfo.outputPath('unsaved-confirmation.png') });
+  await confirmation.getByRole('button', { name: '取消操作', exact: true }).click();
   await expect(information.getByLabel('品牌', { exact: true })).toHaveValue('未保存品牌');
   await dialog.getByRole('button', { name: '补充照片', exact: true }).click();
   await confirmation.getByRole('button', { name: '丢弃并继续', exact: true }).click();
@@ -311,7 +361,7 @@ test('repair tools protect drafts when cancelling, switching and closing', async
   await dialog.getByLabel('核验说明（勿录入完整联系方式）', { exact: true }).fill('尚未提交的身份核验');
   await dialog.getByRole('button', { name: '关闭', exact: true }).click();
   await expect(confirmation).toBeVisible();
-  await confirmation.getByRole('button', { name: '继续编辑', exact: true }).click();
+  await confirmation.getByRole('button', { name: '取消操作', exact: true }).click();
   await expect(confirmation).toHaveCount(0);
   await expect(dialog.getByRole('textbox', { name: '核验说明（勿录入完整联系方式）', exact: true })).toHaveValue('尚未提交的身份核验');
   await dialog.getByRole('button', { name: '关闭', exact: true }).click();

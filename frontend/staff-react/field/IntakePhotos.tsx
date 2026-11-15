@@ -82,6 +82,11 @@ export function PhotoUpload({
     <div
       className={`field-intake-photo${dragging && !busy ? ' is-dragging' : ''}`}
       aria-busy={busy}
+      onDragEnter={(event) => {
+        if (!event.dataTransfer.types.includes('Files')) return;
+        event.preventDefault();
+        setDragging(!busy);
+      }}
       onDragOver={(event) => {
         if (!event.dataTransfer.types.includes('Files')) return;
         event.preventDefault();
@@ -89,7 +94,20 @@ export function PhotoUpload({
         setDragging(!busy);
       }}
       onDragLeave={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node)) setDragging(false);
+        if (
+          event.relatedTarget instanceof Node &&
+          event.currentTarget.contains(event.relatedTarget)
+        )
+          return;
+        const bounds = event.currentTarget.getBoundingClientRect();
+        if (
+          event.clientX >= bounds.left &&
+          event.clientX < bounds.right &&
+          event.clientY >= bounds.top &&
+          event.clientY < bounds.bottom
+        )
+          return;
+        setDragging(false);
       }}
       onDrop={(event) => {
         event.preventDefault();
@@ -113,7 +131,7 @@ export function PhotoUpload({
             setExpanded(true);
           }}
         >
-          <img src={src} alt={label} />
+          <img src={src} alt={label} draggable={false} />
         </button>
       ) : (
         <button

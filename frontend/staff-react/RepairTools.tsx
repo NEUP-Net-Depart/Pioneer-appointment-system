@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode
 } from 'react';
-import { Modal, Notice } from './field/ui';
+import { UnsavedChangesDialog } from './UnsavedChangesDialog';
 import { useUnsavedChanges } from './useUnsavedChanges';
 
 type Editor = {
@@ -74,42 +74,13 @@ export function RepairToolsProvider({ children }: { children: ReactNode }) {
     >
       {children}
       {pending && (
-        <Modal
-          title="有未保存的调整"
-          compact
-          dismissible={!resolving}
-          onClose={() => setPending(null)}
-        >
-          <p>请保存或丢弃修改后继续。</p>
-          <Notice>{error}</Notice>
-          <div className="field-actions">
-            <button
-              data-track="staff.repairtools.keep"
-              type="button"
-              disabled={resolving}
-              onClick={() => setPending(null)}
-            >
-              继续编辑
-            </button>
-            <button
-              data-track="staff.repairtools.discard"
-              type="button"
-              disabled={resolving}
-              onClick={() => void resolve(false)}
-            >
-              丢弃并继续
-            </button>
-            <button
-              data-track="staff.repairtools.save"
-              type="button"
-              className="field-primary"
-              disabled={resolving}
-              onClick={() => void resolve(true)}
-            >
-              {resolving ? '正在处理…' : '保存并继续'}
-            </button>
-          </div>
-        </Modal>
+        <UnsavedChangesDialog
+          busy={resolving}
+          error={error}
+          onCancel={() => setPending(null)}
+          onDiscard={() => void resolve(false)}
+          onSave={() => void resolve(true)}
+        />
       )}
     </RepairToolsContext.Provider>
   );

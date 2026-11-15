@@ -527,7 +527,7 @@ test('save-and-switch retains a failed draft and navigates only after a successf
       : route.continue();
   await page.route('**/api/booking-settings', rejectSave);
   await (await navigationEntry(page, '预约记录')).click();
-  await page.getByRole('button', { name: '保存并切换', exact: true }).click();
+  await page.getByRole('button', { name: '保存并继续', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('测试保存失败');
   await expect(time).toHaveValue(next);
   const before = await staffApi(
@@ -538,7 +538,7 @@ test('save-and-switch retains a failed draft and navigates only after a successf
   );
   expect(before.settings.releaseTime).toBe(original);
   await page.unroute('**/api/booking-settings', rejectSave);
-  await page.getByRole('button', { name: '保存并切换', exact: true }).click();
+  await page.getByRole('button', { name: '保存并继续', exact: true }).click();
   await expect(page.getByRole('heading', { name: '预约记录', exact: true })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   const after = await staffApi(

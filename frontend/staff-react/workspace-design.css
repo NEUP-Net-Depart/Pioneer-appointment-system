@@ -281,6 +281,10 @@
 .field-photo-dropzone > svg {
   color: var(--muted);
 }
+.field-photo-dropzone > *,
+.field-photo-preview > img {
+  pointer-events: none;
+}
 .field-modal .field-intake-photo.is-dragging :is(.field-photo-dropzone, .field-photo-preview) {
   background: #eaf0f7;
   border-color: #506681;
@@ -538,6 +542,24 @@
 }
 .repair-panel-actions > button {
   min-width: 112px;
+}
+.workspace-unsaved-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.workspace-unsaved-actions > button {
+  min-width: 0;
+  width: 100%;
+}
+#staff-react-root .workspace-unsaved-actions > .workspace-discard {
+  background: #b42318;
+  border-color: #b42318;
+  color: #fff;
+}
+#staff-react-root .workspace-unsaved-actions > .workspace-discard:hover:enabled {
+  background: #912018;
+  border-color: #912018;
 }
 .repair-information-fields {
   display: grid;
