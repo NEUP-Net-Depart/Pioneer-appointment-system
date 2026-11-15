@@ -307,6 +307,7 @@ test('calendar, help and time gestures retain their field context and bound gest
   await expectControlIds(page);
   const digit = dialog.getByRole('spinbutton', { name: '分钟个位', exact: true });
   await digit.focus();
+  await context.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 10_000));
   for (let index = 0; index < 8; index++) await page.keyboard.press('ArrowUp');
   await context.clock.fastForward(300);
   // A wheel burst is one adjustment even when it changes many draft digits.

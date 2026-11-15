@@ -420,7 +420,7 @@ export function appointmentRepository(db) {
       return fromRow(results[0].results[0]);
     },
     async update(item,patch,correction,workflow) {
-      const writable=['name','faultType','issue','phone','social','email','contactType','contactValue','status','assignedTo','repairNote','outcome','startedAt','completedAt','frontPhotoId','backPhotoId','receivedAt','receivedBy','photoDeferredBy','brand','deviceModel','warranty','liquidMetal','parentAppointmentId','linkKind','linkedBy','linkedAt'];
+      const writable=['name','college','deviceType','serial','liquidDrop','dellG15','note','faultType','issue','phone','social','email','contactType','contactValue','status','assignedTo','repairNote','outcome','startedAt','completedAt','frontPhotoId','backPhotoId','receivedAt','receivedBy','photoDeferredBy','brand','deviceModel','warranty','liquidMetal','parentAppointmentId','linkKind','linkedBy','linkedAt'];
       const keys=writable.filter(key=>patch[key]!==undefined);
       if (!keys.length) return null;
       const guard=workflow ? ` AND EXISTS(SELECT 1 FROM staff_accounts sa JOIN members m ON m.id=sa.member_id

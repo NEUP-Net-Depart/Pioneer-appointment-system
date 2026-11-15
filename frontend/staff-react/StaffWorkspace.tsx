@@ -5,6 +5,7 @@ import { WorkspaceLauncher } from './WorkspaceLauncher';
 import { WorkspaceIcon } from './WorkspaceIcon';
 import { groupWorkspaceEntries, mobileWorkspaceEntries } from './workspace-navigation.js';
 import { pendingEditors } from './useUnsavedChanges.js';
+import { UnsavedChangesDialog } from './UnsavedChangesDialog';
 import './field/field.css';
 
 type Entry = { id: string; label: string; group?: string; icon?: string; keywords?: string };
@@ -67,12 +68,18 @@ export function StaffWorkspace({
   const [pending, setPending] = useState<string | null>(null);
   const [resolving, setResolving] = useState(false),
     [navigationError, setNavigationError] = useState('');
+  const [manualSaveMessage, setManualSaveMessage] = useState('');
   const navigationLock = useRef(false);
   function choose(id: string) {
     if (navigationLock.current || pending) return;
     setMore(false);
     if (id === active) return;
-    if (pendingEditors({ includeHidden: id === '__logout__' || id === '__refresh__' }).length) {
+    const editors = pendingEditors({ includeHidden: id === '__logout__' || id === '__refresh__' });
+    if (editors.length) {
+      const manualEditor = editors.find((editor) => !editor.canSave);
+      setManualSaveMessage(
+        manualEditor ? manualEditor.leaveMessage || '请返回页面完成操作，或丢弃修改后继续。' : ''
+      );
       setNavigationError('');
       setPending(id);
       return;
@@ -96,9 +103,13 @@ export function StaffWorkspace({
     setResolving(true);
     setNavigationError('');
     try {
-      for (const editor of pendingEditors({
+      const editors = pendingEditors({
         includeHidden: pending === '__logout__' || pending === '__refresh__'
-      })) {
+      });
+      const manualEditor = editors.find((editor) => !editor.canSave);
+      if (action === 'save' && manualEditor)
+        throw new Error(manualEditor.leaveMessage || '请返回页面完成操作，或丢弃修改后继续。');
+      for (const editor of editors) {
         if (action === 'save') {
           if ((await editor.save()) !== true)
             throw new Error(
@@ -123,8 +134,6 @@ export function StaffWorkspace({
       setResolving(false);
     }
   }
-  const actionText =
-    pending === '__logout__' ? '退出' : pending === '__refresh__' ? '刷新' : '切换';
   const groups = groupWorkspaceEntries(entries);
   const primary: Entry[] = mobileWorkspaceEntries(entries);
   const overflow = entries.filter((entry) => !primary.some((item) => item.id === entry.id));
@@ -255,52 +264,21 @@ export function StaffWorkspace({
         )}
       </nav>
       {pending && (
-        <Modal
-          title="有未保存的调整"
-          compact
-          dismissible={!resolving}
-          onClose={() => setPending(null)}
-        >
-          <p data-motion-value="text">
-            {pending === '__logout__'
+        <UnsavedChangesDialog
+          busy={resolving}
+          error={navigationError}
+          message={
+            manualSaveMessage ||
+            (pending === '__logout__'
               ? '保存成功后退出登录，或丢弃本次未保存的改动。'
               : pending === '__refresh__'
                 ? '保存成功后刷新页面，或丢弃本次未保存的改动。'
-                : '请保存或丢弃修改后切换。'}
-          </p>
-          {navigationError && (
-            <p data-motion-value="text" className="react-error" role="alert">
-              {navigationError}
-            </p>
-          )}
-          <div className="field-actions">
-            <button
-              data-track="staff.staffworkspace.button.9"
-              type="button"
-              disabled={resolving}
-              onClick={() => setPending(null)}
-            >
-              {pending === '__logout__' ? '取消退出' : '留在当前页面'}
-            </button>
-            <button
-              data-track="staff.staffworkspace.button.10"
-              type="button"
-              disabled={resolving}
-              onClick={() => resolveNavigation('discard')}
-            >
-              丢弃并{actionText}
-            </button>
-            <button
-              data-track="staff.staffworkspace.button.11"
-              type="button"
-              className="field-primary"
-              disabled={resolving}
-              onClick={() => resolveNavigation('save')}
-            >
-              {resolving ? '正在处理…' : `保存并${actionText}`}
-            </button>
-          </div>
-        </Modal>
+                : '请保存或丢弃修改后切换。')
+          }
+          onCancel={() => setPending(null)}
+          onDiscard={() => void resolveNavigation('discard')}
+          onSave={manualSaveMessage ? undefined : () => void resolveNavigation('save')}
+        />
       )}
       {more && (
         <Modal title="工作入口" initialFocus="input[type=search]" onClose={() => setMore(false)}>

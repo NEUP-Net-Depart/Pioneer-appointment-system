@@ -2,8 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createSignaturePreview } from '../../shared/signature-pad.js';
 import { formatInstant } from '../../shared/time.js';
 import { Modal } from './field/ui';
+import { useRepairTools } from './RepairTools';
 
 export function RepairOriginal({ original }) {
+  const tools = useRepairTools();
   const [open, setOpen] = useState(false),
     [invalid, setInvalid] = useState(false);
   const canvas = useRef(null);
@@ -23,7 +25,8 @@ export function RepairOriginal({ original }) {
       <button
         data-track="staff.repairoriginal.button.1"
         type="button"
-        onClick={() => setOpen(true)}
+        className="repair-tool-trigger"
+        onClick={() => (tools ? tools.request(null, () => setOpen(true)) : setOpen(true))}
       >
         查看原始登记与协议
       </button>

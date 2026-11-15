@@ -5,6 +5,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import { validSignature } from '../../../shared/signature.js';
 import { createSignaturePad } from '../../../shared/signature-pad.js';
 import { api, Modal, Notice } from './ui';
+import {
+  ANSWERS,
+  STUDENT_DEVICE_TYPES,
+  FAULT_TYPES,
+  bookingDeviceQuestions
+} from '../../../shared/student-booking.js';
 
 export function Registration({
   campus,
@@ -25,8 +31,9 @@ export function Registration({
     [busy, setBusy] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({
     campus,
-    deviceType: '笔记本电脑',
+    deviceType: '笔记本',
     warranty: '不清楚',
+    liquidMetal: '不清楚',
     liquidDrop: '不清楚',
     faultType: '系统问题',
     ...(parent
@@ -44,11 +51,17 @@ export function Registration({
             'deviceType',
             'faultType',
             'issue',
-            'warranty'
+            'warranty',
+            'liquidMetal',
+            'dellG15'
           ].map((key) => [key, parent[key] || ''])
         )
       : {})
   });
+  const questions = bookingDeviceQuestions(
+    form.deviceType === '笔记本电脑' ? '笔记本' : form.deviceType,
+    form.brand
+  );
   const signature = useRef(null),
     pad = useRef<ReturnType<typeof createSignaturePad> | null>(null),
     canvas = useRef<HTMLCanvasElement>(null),
@@ -86,6 +99,8 @@ export function Registration({
         method: 'POST',
         body: {
           ...form,
+          liquidMetal: questions.liquidMetal ? form.liquidMetal : '',
+          dellG15: questions.dellG15 ? form.dellG15 : '',
           ...(parent
             ? {
                 parentAppointmentId: parent.id,
@@ -148,11 +163,38 @@ export function Registration({
           }}
         >
           <div className="field-form-grid">
+            {(
+              [
+                ['deviceType', '设备类型', STUDENT_DEVICE_TYPES],
+                ['warranty', '是否在保', ANSWERS],
+                ...(questions.liquidMetal ? [['liquidMetal', '是否使用液金散热', ANSWERS]] : []),
+                ...(questions.dellG15 ? [['dellG15', 'Dell G15 / G16 系列', ANSWERS]] : [])
+              ] as [string, string, readonly string[]][]
+            ).map(([key, label, options]) => (
+              <label key={key}>
+                {label}
+                <Select
+                  data-track="staff.field.registration.device-choice"
+                  value={form[key] || ''}
+                  onChange={(event) => setForm({ ...form, [key]: event.target.value })}
+                >
+                  <option value="">未填写</option>
+                  {!options.includes(form[key]) && form[key] && (
+                    <option value={form[key]}>{form[key]}</option>
+                  )}
+                  {options.map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            ))}
             {[
               ['name', '姓名', 80],
               ['studentId', '学号', 20],
               ['social', 'QQ / 微信', 120],
-              ['brand', '设备厂商', 80],
+              ['brand', '品牌', 80],
               ['deviceModel', '设备型号', 120]
             ].map(([key, label, max]) => (
               <label key={key}>
@@ -167,29 +209,20 @@ export function Registration({
               </label>
             ))}
             <label>
-              故障类型
+              故障分类
               <Select
                 data-track="staff.field.registration.select.3"
                 value={form.faultType}
                 onChange={(e) => setForm({ ...form, faultType: e.target.value })}
               >
-                {[
-                  '清灰换硅脂',
-                  '换硬盘',
-                  '换内存',
-                  '系统问题',
-                  '蓝屏',
-                  '黑屏',
-                  '网络问题',
-                  '其他'
-                ].map((value) => (
+                {FAULT_TYPES.map((value) => (
                   <option key={value}>{value}</option>
                 ))}
               </Select>
             </label>
           </div>
           <label>
-            故障描述（选填）
+            故障描述与补充说明
             <textarea
               data-track="staff.field.registration.textarea.4"
               value={form.issue || ''}
