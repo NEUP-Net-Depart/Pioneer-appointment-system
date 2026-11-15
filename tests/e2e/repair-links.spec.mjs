@@ -28,6 +28,7 @@ test('private query links require explicit issuance and stay available until cop
   await expect(confirmation).toContainText('请返回工单点击“签发私人链接”');
   await expect(confirmation.getByRole('button', { name: '保存并继续', exact: true })).toHaveCount(0);
   await confirmation.getByRole('button', { name: '取消操作', exact: true }).click();
+  await expect(confirmation).toHaveCount(0);
   // An update notification uses this same navigation event while a dialog is open.
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('staff-request-navigation', { detail: '__refresh__' })));
   await expect(confirmation).toContainText('请返回工单点击“签发私人链接”');
