@@ -38,6 +38,7 @@
     "telemetry:query": "node scripts/telemetry-query.mjs",
     "test:migrations": "node --test tests/migrations/*.test.mjs && npm run db:verify",
     "test:deployment": "npm run build && node --test tests/tools/deployment/*.test.mjs",
+    "test:e2e:full": "node scripts/test-e2e.mjs --full",
     "test:e2e:diagnostics": "node scripts/test-e2e.mjs --diagnostics",
     "test:sql": "node --test tests/tools/sql-performance.test.mjs"
   },

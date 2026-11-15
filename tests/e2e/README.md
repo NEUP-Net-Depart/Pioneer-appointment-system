@@ -1,22 +1,23 @@
 # 浏览器测试
 
-浏览器测试保留用户通过页面完成任务的关键路径：预约与签名、现场接收与维修、跨校区切换、空闲填报与发布、请假与接替、考勤补录、未保存草稿，以及浏览器中的照片上传流程。权限边界、幂等、并发等规则由 `tests/*.test.mjs` 的服务和数据库测试覆盖；历史迁移另由 `npm run test:migrations` 按需执行。
+默认 CI 只运行 6 项冒烟检查，确认构建后的页面、登录、浏览器交互和后端能够协同完成任务：
 
-`signature.spec.mjs` 覆盖学生签名的旋转、等比预览、撤销和取消重签，以及现场登记的误触、返回修改、保存与后台回显。它运行于 Chromium 桌面、DPR 3 的 Chromium 触摸环境及 WebKit 手机尺寸；Chromium 触摸通过 CDP 注入原生触摸输入，WebKit 使用原生轻触和合成 Touch 事件连续书写。真实 iOS／Android 内置浏览器与手写笔仍需设备验收。
+- Chromium：学生预约并打开私人结果、工作人员上传照片并完成维修、成员填报时间并发布排班。
+- WebKit 手机尺寸：预约、照片接收与维修，以及触摸签名的旋转与确认。
 
-运行默认核心用例：
-
-```sh
-npm run test:e2e
-```
-
-默认使用两个进程并行执行独立用例。Chromium 运行核心目录全部场景；WebKit 只重复预约/维修/排班等主流程、签名和照片上传，Chromium 触摸项目专门验证签名。OCR/验证码、EXIF/图片编码与埋点 SDK 位于 `diagnostics/`，通过 `npm run test:e2e:diagnostics` 或手动工作流按需运行，不参与默认发布门禁。筛选场景、串行排查，或检查重复执行：
+权限、隐私、容量、并发和修订冲突等细节由 Node 服务与数据库测试持续覆盖。其余浏览器回归用于相关模块修改和发布前验收，按需执行；新增用例默认不进入冒烟门禁。
 
 ```sh
-npm run test:e2e -- --project=chromium --grep 'requests leave'
+npm run test:e2e                         # 默认 6 项冒烟
+npm run test:e2e:full                    # 全部 94 项，含专项诊断
+npm run test:e2e:diagnostics             # 只运行 OCR/验证码、图片编码和埋点 SDK 的 27 项诊断
+npm run test:e2e:full -- --project=chromium --grep 'requests leave'
 npm run test:e2e -- --workers=1
-npm run test:e2e -- --grep 'availability produces|requests leave|historical arrival' --repeat-each=2
 ```
+
+手动工作流 **Optional test tools** 提供 `browser-full` 和 `browser-diagnostics`。三个入口默认均使用两个进程并行执行。默认冒烟使用 `@smoke`（桌面）和 `@mobile-smoke`（手机）标签筛选现有用例，不复制测试代码；增加标签前应确认该场景能发现已有冒烟及 Node 测试无法发现的主流程故障。
+
+完整回归中，Chromium 执行所有用例，WebKit 重复主流程、签名、照片上传和图片/埋点诊断，Chromium DPR 3 触摸环境专门验证签名。真实 iOS／Android 内置浏览器与手写笔仍需设备验收。
 
 `scripts/test-e2e.mjs` 构建一次并初始化虚构人员和本地数据库。`support/fixtures.mjs` 为每个用例复制未运行的初始 D1/R2 状态，在独立端口启动 Worker，结束后移除临时目录。浏览器上下文和 Worker 共用 `WORKFLOW_TIME`；新标签页自动继承时钟。用例之间不共享预约、排班、限流或附件，也不依赖浏览器名称、执行顺序或前一个用例的结果。
 

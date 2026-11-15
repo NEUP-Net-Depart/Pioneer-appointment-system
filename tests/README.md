@@ -5,16 +5,17 @@
 | 入口 | 内容 | 何时运行 |
 | --- | --- | --- |
 | `npm test` | `tests/*.test.mjs`：领域规则、实际 SQLite 数据操作、隐私和发布保护 | 每次变更；无需前端构建 |
-| `npm run verify` | 格式、lint、类型、埋点目录与迁移指纹、Functions/前端构建、Node 和核心浏览器测试 | 默认 CI |
+| `npm run verify` | 格式、lint、类型、埋点目录与迁移指纹、Functions/前端构建、Node 和 6 项浏览器冒烟 | 默认 CI |
 | `npm run test:migrations` | `tests/migrations/` 的历史数据升级与回滚，再执行两条完整本地 D1 迁移链 | 新迁移、历史恢复或升级流程变化 |
 | `npm run test:deployment` | 构建后的发布目录、绑定和 CSP 集成检查 | 发布脚本、资源绑定或 CSP 变化 |
+| `npm run test:e2e:full` | 全部浏览器回归，含专项诊断；默认 CI 只跑 6 项冒烟 | 相关模块修改、发布前验收 |
 | `npm run test:e2e:diagnostics` | OCR/厂商验证码、图片编码和浏览器埋点诊断 | 对应模块或 SDK 升级 |
 | `npm run test:sql` | 实际本地 D1 的 SQL 读写、规模增长和执行耗时 | 查询、索引、认证或轮询变化 |
 | `npm run audit:architecture` | 基于源码结构的架构审计 | 模块划分或依赖调整，结果需结合代码评审 |
 
 按需工具可在 GitHub Actions 的 **Optional test tools** 工作流选择分支和工具运行；它只执行诊断并保存报告，不发布、不读取远程数据库。默认 CI 仍保留迁移文件指纹检查，实际 Preview 发布前仍执行已有的迁移演练。历史迁移测试并未删除。
 
-本轮删除了固定像素、边框、动画帧、断点与 DOM 排列的浏览器断言，特定机型 UA/HAL 模拟下的固定镜头调用序列，以及绑定内部调用顺序的 `field-loading` mock 测试。它们把实现细节当成契约，页面重排或服务组合调整就需要同步维护；校区权限与看板内容由实际数据库服务测试和关键浏览器流程覆盖。语法检查交给 ESLint/TypeScript，`check` 专门验证 Functions 构建。需要验证视觉效果时，应做有明确设计基准的人工或图像验收，不用零散尺寸断言替代。
+本轮删除了固定像素、边框、动画帧、断点与 DOM 排列的浏览器断言，特定机型 UA/HAL 模拟下的固定镜头调用序列，以及绑定内部调用顺序的 `field-loading` mock 测试。它们把实现细节当成契约，页面重排或服务组合调整就需要同步维护；校区权限与看板内容由实际数据库服务测试和按需浏览器回归覆盖。语法检查交给 ESLint/TypeScript，`check` 专门验证 Functions 构建。需要验证视觉效果时，应做有明确设计基准的人工或图像验收，不用零散尺寸断言替代。
 
 ## SQL 读写与性能诊断
 

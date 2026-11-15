@@ -59,7 +59,7 @@ jobs:
           cache: npm
       - run: npm ci
         timeout-minutes: 5
-      - name: Run desktop and mobile workflow checks
+      - name: Run browser smoke checks
         run: npm run test:e2e
         timeout-minutes: 12
       - name: Preserve isolated UI acceptance evidence

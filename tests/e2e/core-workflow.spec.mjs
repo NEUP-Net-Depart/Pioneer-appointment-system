@@ -16,7 +16,7 @@ import { dateKey, weekRange, addDays } from '../../shared/time.js';
 const thisWeek = weekRange(dateKey(new Date(WORKFLOW_TIME))).start;
 const nextWeek = addDays(thisWeek, 7);
 
-test('student books against the real capacity service, signs, and opens the private result', async ({
+test('student books against the real capacity service, signs, and opens the private result', { tag: ['@smoke', '@mobile-smoke'] }, async ({
   page
 }) => {
   await page.goto('/');
@@ -101,7 +101,7 @@ test('working campus isolates data, survives navigation and reload, and resets b
   ).toBeVisible();
 });
 
-test('hardware staff receive photos, correct a repair and keep internal notes out of the student result', async ({
+test('hardware staff receive photos, correct a repair and keep internal notes out of the student result', { tag: ['@smoke', '@mobile-smoke'] }, async ({
   page
 }) => {
   await loginStaff(page, '20261003', 'StaffTest!2026');
@@ -176,7 +176,7 @@ test('office reception lets hardware take over and a manager finish with the ori
   await expect(dialog.getByText('当前主修：周宁')).toBeVisible();
 });
 
-test('member availability produces a published shift visible after reloading', async ({
+test('member availability produces a published shift visible after reloading', { tag: '@smoke' }, async ({
   page,
   context
 }) => {

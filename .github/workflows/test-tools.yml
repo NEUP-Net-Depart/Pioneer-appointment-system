@@ -7,7 +7,7 @@ on:
         required: true
         type: choice
         default: sql
-        options: [sql, migrations, deployment, browser]
+        options: [sql, migrations, deployment, browser-full, browser-diagnostics]
 permissions:
   contents: read
 jobs:
@@ -31,10 +31,13 @@ jobs:
         if: inputs.tool == 'deployment'
         run: npm run test:deployment
       - name: Install diagnostic browsers
-        if: inputs.tool == 'browser'
+        if: startsWith(inputs.tool, 'browser-')
         run: npx playwright install --with-deps chromium webkit
+      - name: Full browser regression
+        if: inputs.tool == 'browser-full'
+        run: npm run test:e2e:full
       - name: Browser diagnostics
-        if: inputs.tool == 'browser'
+        if: inputs.tool == 'browser-diagnostics'
         run: npm run test:e2e:diagnostics
       - name: Preserve diagnostic reports
         if: always()

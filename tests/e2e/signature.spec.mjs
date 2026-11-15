@@ -77,7 +77,7 @@ async function draw(page, canvas, browserName, hasTouch) {
   await expect.poll(async () => (await ink(canvas)).count).toBeGreaterThan(10);
 }
 
-test('signature keeps its proportions through rotation, confirmation and cancelled replacement', async ({
+test('signature keeps its proportions through rotation, confirmation and cancelled replacement', { tag: '@mobile-smoke' }, async ({
   page,
   browserName
 }, info) => {
