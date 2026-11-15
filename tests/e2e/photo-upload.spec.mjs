@@ -369,7 +369,7 @@ test('repair tools protect drafts when cancelling, switching and closing', async
   await expect(dialog).toHaveCount(0);
 });
 
-test('supplemental photos use the shared dropzone below aligned controls', async ({ page }, testInfo) => {
+test('supplemental photos accept large originals through the shared dropzone and compress before upload', async ({ page }, testInfo) => {
   const { order, dialog } = await orderWithPhotos(page, { received: true, selectPhotos: false });
   const attachments = dialog.getByRole('region', { name: '附件与设备照片', exact: true });
   await attachments.getByRole('button', { name: '查看照片与附件', exact: true }).click();
@@ -384,7 +384,7 @@ test('supplemental photos use the shared dropzone below aligned controls', async
   await panel.screenshot({ path: testInfo.outputPath('supplement-upload.png') });
   const dataTransfer = await page.evaluateHandle(bytes => {
     const transfer = new DataTransfer();
-    transfer.items.add(new File([new Uint8Array(bytes)], '维修过程.png', { type: 'image/png' }));
+    transfer.items.add(new File([new Uint8Array(bytes), new Uint8Array(8 * 1024 * 1024 - bytes.length)], '维修过程.png', { type: 'image/png' }));
     return transfer;
   }, Array.from(PHOTO));
   await panel.locator('.field-intake-photo').dispatchEvent('drop', { dataTransfer });
@@ -399,6 +399,29 @@ test('supplemental photos use the shared dropzone below aligned controls', async
   const uploaded = await staffApi(page, `/api/appointments/${order.id}/attachments`, null, 'GET');
   expect(uploaded.items).toHaveLength(1);
   expect(uploaded.items[0].purpose).toBe('general');
+  expect(uploaded.items[0].size).toBeLessThanOrEqual(600 * 1024);
+});
+
+test('supplemental HEIC and HEIF selections reach image processing and preserve actionable decoding errors', async ({ page }) => {
+  const { dialog } = await orderWithPhotos(page, { selectPhotos: false });
+  await dialog.getByRole('button', { name: '补充照片', exact: true }).click();
+  const panel = dialog.locator('.repair-attachment-upload');
+  const input = panel.getByLabel('补充照片', { exact: true });
+  await expect(input).toHaveAttribute('accept', 'image/*');
+  for (const extension of ['heic', 'heif']) {
+    // A recognized container with undecodable pixels must reach the compressor,
+    // which can offer format-specific guidance on browsers without HEIC support.
+    await input.setInputFiles({
+      name: `camera.${extension}`,
+      mimeType: `image/${extension}`,
+      buffer: Buffer.from('00000018667479706865696300000000686569636d696631', 'hex')
+    });
+    await expect(panel.getByText(`camera.${extension}`, { exact: true })).toBeVisible();
+    await expect(panel.getByRole('alert')).toHaveCount(0);
+    await panel.getByRole('button', { name: '确认上传照片', exact: true }).click();
+    await expect(dialog.getByRole('region', { name: '附件与设备照片', exact: true }).getByRole('status')).toContainText('当前浏览器无法处理 HEIC/HEIF 照片');
+    await expect(panel.getByRole('button', { name: '确认上传照片', exact: true })).toBeEnabled();
+  }
 });
 
 for (const skip of [false, true]) test(`slow binary photos survive 30 seconds ${skip ? 'and attach after skipping and closing the modal' : 'while the user keeps waiting'}`, async ({ page, context }) => {

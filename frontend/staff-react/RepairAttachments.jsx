@@ -5,6 +5,7 @@ import { apiFetch } from '../../shared/api.js';
 import { attachmentSize, attachmentUrl, uploadAttachments } from '../../shared/attachments.js';
 import { ActivityContext, Notice } from './field/ui';
 import { PhotoUpload } from './field/IntakePhotos';
+import { supplementalPhotoError } from './field/photos';
 import { useRepairTool } from './RepairTools';
 
 export function RepairAttachments({ id }) {
@@ -158,6 +159,8 @@ export function RepairAttachments({ id }) {
             preview={preview}
             busy={!!busy}
             progress={progress}
+            accept="image/*"
+            validateFile={supplementalPhotoError}
             onFile={(_side, file) => setSelected(file)}
           />
           <div className="repair-panel-actions">

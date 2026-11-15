@@ -68,12 +68,18 @@ export function StaffWorkspace({
   const [pending, setPending] = useState<string | null>(null);
   const [resolving, setResolving] = useState(false),
     [navigationError, setNavigationError] = useState('');
+  const [manualSaveMessage, setManualSaveMessage] = useState('');
   const navigationLock = useRef(false);
   function choose(id: string) {
     if (navigationLock.current || pending) return;
     setMore(false);
     if (id === active) return;
-    if (pendingEditors({ includeHidden: id === '__logout__' || id === '__refresh__' }).length) {
+    const editors = pendingEditors({ includeHidden: id === '__logout__' || id === '__refresh__' });
+    if (editors.length) {
+      const manualEditor = editors.find((editor) => !editor.canSave);
+      setManualSaveMessage(
+        manualEditor ? manualEditor.leaveMessage || '请返回页面完成操作，或丢弃修改后继续。' : ''
+      );
       setNavigationError('');
       setPending(id);
       return;
@@ -97,9 +103,13 @@ export function StaffWorkspace({
     setResolving(true);
     setNavigationError('');
     try {
-      for (const editor of pendingEditors({
+      const editors = pendingEditors({
         includeHidden: pending === '__logout__' || pending === '__refresh__'
-      })) {
+      });
+      const manualEditor = editors.find((editor) => !editor.canSave);
+      if (action === 'save' && manualEditor)
+        throw new Error(manualEditor.leaveMessage || '请返回页面完成操作，或丢弃修改后继续。');
+      for (const editor of editors) {
         if (action === 'save') {
           if ((await editor.save()) !== true)
             throw new Error(
@@ -258,15 +268,16 @@ export function StaffWorkspace({
           busy={resolving}
           error={navigationError}
           message={
-            pending === '__logout__'
+            manualSaveMessage ||
+            (pending === '__logout__'
               ? '保存成功后退出登录，或丢弃本次未保存的改动。'
               : pending === '__refresh__'
                 ? '保存成功后刷新页面，或丢弃本次未保存的改动。'
-                : '请保存或丢弃修改后切换。'
+                : '请保存或丢弃修改后切换。')
           }
           onCancel={() => setPending(null)}
           onDiscard={() => void resolveNavigation('discard')}
-          onSave={() => void resolveNavigation('save')}
+          onSave={manualSaveMessage ? undefined : () => void resolveNavigation('save')}
         />
       )}
       {more && (

@@ -13,6 +13,8 @@ export function PhotoUpload({
   preview,
   busy,
   progress,
+  accept,
+  validateFile,
   onFile,
   label: customLabel
 }: {
@@ -22,6 +24,8 @@ export function PhotoUpload({
   preview?: string;
   busy: boolean;
   progress?: PhotoProgress;
+  accept: string;
+  validateFile: (file: File) => string;
   onFile: (side: string, file: File) => void;
   label?: string;
 }) {
@@ -32,7 +36,7 @@ export function PhotoUpload({
   const [filename, setFilename] = useState('');
   function select(files: File[]) {
     if (busy) return;
-    const message = files.length !== 1 ? '每次请添加一张照片。' : intakePhotoError(files[0]);
+    const message = files.length !== 1 ? '每次请添加一张照片。' : validateFile(files[0]);
     setSelectionError(message);
     if (message) return;
     setFilename(files[0].name);
@@ -169,7 +173,7 @@ export function PhotoUpload({
         type="file"
         hidden
         disabled={busy}
-        accept="image/jpeg,image/png,image/webp"
+        accept={accept}
         aria-label={label}
         onChange={(event) => {
           const files = Array.from(event.target.files || []);
@@ -235,6 +239,8 @@ export function IntakePhotos({
           preview={previews[side]}
           busy={busy}
           progress={progress[side]}
+          accept="image/jpeg,image/png,image/webp"
+          validateFile={intakePhotoError}
           onFile={onFile}
         />
       ))}

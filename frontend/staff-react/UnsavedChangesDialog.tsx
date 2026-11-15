@@ -14,7 +14,7 @@ export function UnsavedChangesDialog({
   message?: ReactNode;
   onCancel: () => void;
   onDiscard: () => void;
-  onSave: () => void;
+  onSave?: () => void;
 }) {
   return (
     <Modal
@@ -36,15 +36,17 @@ export function UnsavedChangesDialog({
         >
           丢弃并继续
         </button>
-        <button
-          data-track="staff.unsavedchanges.save"
-          type="button"
-          className="field-primary"
-          disabled={busy}
-          onClick={onSave}
-        >
-          {busy ? '正在处理…' : '保存并继续'}
-        </button>
+        {onSave && (
+          <button
+            data-track="staff.unsavedchanges.save"
+            type="button"
+            className="field-primary"
+            disabled={busy}
+            onClick={onSave}
+          >
+            {busy ? '正在处理…' : '保存并继续'}
+          </button>
+        )}
       </div>
     </Modal>
   );

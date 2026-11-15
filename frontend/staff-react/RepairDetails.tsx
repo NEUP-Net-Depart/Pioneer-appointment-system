@@ -275,19 +275,40 @@ export function RepairCredential({
   const [reason, setReason] = useState(''),
     [verified, setVerified] = useState(false),
     [busy, setBusy] = useState(false),
-    [error, setError] = useState('');
+    [error, setError] = useState(''),
+    [issuedToken, setIssuedToken] = useState(''),
+    [copied, setCopied] = useState(false);
   const tool = useRepairTool('credential', {
-    dirty: !!reason || verified,
+    dirty: !!reason || verified || (!!issuedToken && !copied),
     busy,
-    save,
+    leaveMessage: issuedToken
+      ? '新链接尚未复制，关闭后将无法再次查看。请返回复制或确认已交付；丢弃并继续会放弃本次新链接。'
+      : '请返回工单点击“签发私人链接”，再复制并交付新链接；也可以丢弃本次填写后继续。',
     discard: () => {
       setReason('');
       setVerified(false);
       setError('');
+      setIssuedToken('');
+      setCopied(false);
     }
   });
   const panelId = useId();
-  async function save() {
+  const issuedUrl = issuedToken
+    ? new URL(
+        `/#${new URLSearchParams({ appointment: item.id, access: issuedToken })}`,
+        location.origin
+      ).href
+    : '';
+  async function copy() {
+    setError('');
+    try {
+      await navigator.clipboard.writeText(issuedUrl);
+      setCopied(true);
+    } catch {
+      setError('复制失败，请手动复制上方链接并交付机主。');
+    }
+  }
+  async function issue() {
     if (busy) return false;
     setBusy(true);
     setError('');
@@ -298,6 +319,8 @@ export function RepairCredential({
       );
       setReason('');
       setVerified(false);
+      setIssuedToken(result.accessToken);
+      setCopied(false);
       onIssued(result.accessToken);
       return true;
     } catch (failure) {
@@ -326,57 +349,92 @@ export function RepairCredential({
       {tool.open && (
         <div className="repair-control-panel" id={panelId}>
           <Notice>{error}</Notice>
-          <p>核验客户身份后补发，原链接立即失效。</p>
-          <form
-            data-track="staff.repairdetails.form.8"
-            className="field-form"
-            ref={tool.form}
-            onSubmit={async (event) => {
-              event.preventDefault();
-              if (await save()) tool.finish();
-            }}
-          >
-            <label className="field-check">
-              <input
-                data-track="staff.repairdetails.input.9"
-                type="checkbox"
-                required
-                disabled={busy}
-                checked={verified}
-                onChange={(event) => setVerified(event.target.checked)}
-              />
-              <span>已人工核验机主身份</span>
-            </label>
-            <label>
-              核验说明（勿录入完整联系方式）
-              <textarea
-                data-track="staff.repairdetails.textarea.10"
-                required
-                minLength={8}
-                maxLength={300}
-                disabled={busy}
-                value={reason}
-                onChange={(event) => setReason(event.target.value)}
-              />
-            </label>
-            <div className="repair-panel-actions">
-              <button
-                data-track="staff.repairdetails.cancel-credential"
-                type="button"
-                disabled={busy}
-                onClick={tool.cancel}
-              >
-                取消
-              </button>
-              <button
-                data-track="staff.repairdetails.button.11"
-                className="field-primary"
-                disabled={busy || !verified}
-              >
-                {busy ? '正在签发…' : '签发私人链接'}
-              </button>
+          {issuedToken ? (
+            <div className="field-form">
+              <p>新链接已签发，原链接已失效。请复制并交付机主后关闭工单。</p>
+              <label>
+                新私人查询链接
+                <input
+                  data-track="staff.repairdetails.credential-url"
+                  readOnly
+                  value={issuedUrl}
+                  onFocus={(event) => event.currentTarget.select()}
+                />
+              </label>
+              <Notice>{copied ? '已复制新链接，请交付机主。' : ''}</Notice>
+              <div className="repair-panel-actions">
+                <button
+                  data-track="staff.repairdetails.copy-credential"
+                  type="button"
+                  onClick={() => void copy()}
+                >
+                  复制私人查询链接
+                </button>
+                <button
+                  data-track="staff.repairdetails.finish-credential"
+                  type="button"
+                  className="field-primary"
+                  onClick={() => tool.finish()}
+                >
+                  已交付，完成
+                </button>
+              </div>
             </div>
-          </form>
+          ) : (
+            <>
+              <p>核验客户身份后补发，原链接立即失效。</p>
+              <form
+                data-track="staff.repairdetails.form.8"
+                className="field-form"
+                ref={tool.form}
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  await issue();
+                }}
+              >
+                <label className="field-check">
+                  <input
+                    data-track="staff.repairdetails.input.9"
+                    type="checkbox"
+                    required
+                    disabled={busy}
+                    checked={verified}
+                    onChange={(event) => setVerified(event.target.checked)}
+                  />
+                  <span>已人工核验机主身份</span>
+                </label>
+                <label>
+                  核验说明（勿录入完整联系方式）
+                  <textarea
+                    data-track="staff.repairdetails.textarea.10"
+                    required
+                    minLength={8}
+                    maxLength={300}
+                    disabled={busy}
+                    value={reason}
+                    onChange={(event) => setReason(event.target.value)}
+                  />
+                </label>
+                <div className="repair-panel-actions">
+                  <button
+                    data-track="staff.repairdetails.cancel-credential"
+                    type="button"
+                    disabled={busy}
+                    onClick={tool.cancel}
+                  >
+                    取消
+                  </button>
+                  <button
+                    data-track="staff.repairdetails.button.11"
+                    className="field-primary"
+                    disabled={busy || !verified}
+                  >
+                    {busy ? '正在签发…' : '签发私人链接'}
+                  </button>
+                </div>
+              </form>
+            </>
+          )}
         </div>
       )}
     </section>

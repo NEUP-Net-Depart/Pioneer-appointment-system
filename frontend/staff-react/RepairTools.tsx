@@ -13,7 +13,8 @@ type Editor = {
   id: string;
   dirty: boolean;
   busy: boolean;
-  save: () => Promise<boolean>;
+  save?: () => Promise<boolean>;
+  leaveMessage?: string;
   discard: () => void;
 };
 type Destination = { id: string | null; action?: () => void };
@@ -55,7 +56,7 @@ export function RepairToolsProvider({ children }: { children: ReactNode }) {
     setError('');
     try {
       if (save) {
-        if ((await editor.current?.save()) !== true) {
+        if ((await editor.current?.save?.()) !== true) {
           setError('尚未保存成功，请返回检查填写内容后重试。');
           return;
         }
@@ -77,9 +78,10 @@ export function RepairToolsProvider({ children }: { children: ReactNode }) {
         <UnsavedChangesDialog
           busy={resolving}
           error={error}
+          message={editor.current?.leaveMessage}
           onCancel={() => setPending(null)}
           onDiscard={() => void resolve(false)}
-          onSave={() => void resolve(true)}
+          onSave={editor.current?.save ? () => void resolve(true) : undefined}
         />
       )}
     </RepairToolsContext.Provider>
@@ -98,6 +100,7 @@ export function useRepairTool(id: string, options?: Omit<Editor, 'id'>) {
     dirty: open && !!options?.dirty,
     busy: !!options?.busy,
     save: options?.save,
+    leaveMessage: options?.leaveMessage,
     discard: () => {
       options?.discard();
       tools?.finish();
@@ -109,10 +112,12 @@ export function useRepairTool(id: string, options?: Omit<Editor, 'id'>) {
     const editor: Editor = {
       id,
       ...options,
-      save: async () => {
-        if (form.current && !form.current.checkValidity()) return false;
-        return options.save();
-      }
+      save:
+        options.save &&
+        (async () => {
+          if (form.current && !form.current.checkValidity()) return false;
+          return options.save();
+        })
     };
     tools.editor.current = editor;
     return () => {
