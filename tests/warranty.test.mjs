@@ -1,3 +1,4 @@
+import { checkProperty } from './fixtures/workflow-seed.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { WARRANTY_BRANDS, warrantyBrandId, warrantyServiceCenterUrl, normalizeDeviceSerial, isDeviceSerial, deviceSerialFromCode } from '../shared/warranty.js';
@@ -48,11 +49,30 @@ test('work-order brand aliases preselect the correct official provider', () => {
   assert.equal(warrantyBrandId('未填写'), '');
   assert.equal(warrantyBrandId('ShopComputer'), '');
 });
-test('serial normalization preserves O/0, I/1 and original separators', () => {
+test('serial normalization preserves O/0, I/1 and original separators', async () => {
   assert.equal(normalizeDeviceSerial(' S/N: ｔｅｓｔＯ０Ｉ１-2345 '), 'TESTO0I1-2345');
   assert.ok(isDeviceSerial('ABCDEFGHJK'));
   assert.ok(isDeviceSerial('ABC123/456'));
-  for (const serial of ['123','AA-BB-CC-DD-EE-FF','AA:BB:CC:DD:EE:FF','reserve020261015-12','<script>','A'.repeat(41)]) assert.equal(isDeviceSerial(serial), false);
+  for (const serial of [
+    '123',
+    'AA-BB-CC-DD-EE-FF',
+    'AA:BB:CC:DD:EE:FF',
+    'reserve020261015-12',
+    '<script>',
+    'A'.repeat(41)
+  ])
+    assert.equal(isDeviceSerial(serial), false);
+  await checkProperty((fc) =>
+    fc.property(
+      fc.array(fc.constantFrom(...'abcdef0123456789OI-'), { minLength: 6, maxLength: 30 }),
+      (chars) => {
+        const raw = chars.join('');
+        const expected = raw.toUpperCase();
+        assert.equal(normalizeDeviceSerial(` S/N: ${raw} `), expected);
+        assert.equal(normalizeDeviceSerial(normalizeDeviceSerial(raw)), expected);
+      }
+    )
+  );
 });
 test('camera or album codes require one explicit serial, with no remote navigation', () => {
   assert.equal(deviceSerialFromCode('SN: TEST0O1I2345'), 'TEST0O1I2345');

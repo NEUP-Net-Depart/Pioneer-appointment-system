@@ -1,3 +1,4 @@
+import { runModel } from './fixtures/workflow-seed.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
@@ -42,6 +43,7 @@ test('confirming a deferred receipt keeps photo controls idle when no upload is 
 });
 
 test('a refreshed partial receipt keeps retry enabled and reuses the successful upload', async () => {
+  await uploadModel();
   let releaseFront;
   const front = new Promise(resolve => { releaseFront = resolve; });
   let saved = { receivedAt: '2026-10-15T02:00:00Z', revision: 1, canSupplement: true };
@@ -95,3 +97,101 @@ test('a refreshed partial receipt keeps retry enabled and reuses the successful 
   assert.equal(saved.canSupplement, false);
   assert.deepEqual(uploads, ['intake_front', 'intake_back', 'intake_back']);
 });
+
+async function uploadModel() {
+  const select = (r) => {
+    for (const side of ['front', 'back']) r.job.select(side, new File([side], side + '.png'));
+  };
+  const edges = [
+    ['idle', 'confirmed', 'CONFIRM_EMPTY', (r) => r.job.confirmed(r.saved)],
+    ['confirmed', 'selected', 'SELECT', select],
+    [
+      'selected',
+      'partial',
+      'UPLOAD_PARTIAL',
+      async (r) => {
+        await r.job.upload();
+        await flush();
+      }
+    ],
+    [
+      'partial',
+      'partial',
+      'REFRESH_PARTIAL',
+      async (r) => {
+        const before = r.requests;
+        r.job.confirmed({ ...r.saved });
+        await flush();
+        assert.equal(r.requests, before);
+      }
+    ],
+    [
+      'partial',
+      'complete',
+      'RETRY',
+      async (r) => {
+        await r.job.supplement();
+        await flush();
+      }
+    ],
+    [
+      'complete',
+      'complete',
+      'REFRESH_COMPLETE',
+      async (r) => {
+        const before = r.requests;
+        r.job.confirmed({ ...r.saved });
+        await flush();
+        assert.equal(r.requests, before);
+      }
+    ]
+  ].map(([from, to, event, run]) => ({ from, to, event, run }));
+  await runModel({
+    name: 'intake-upload',
+    initial: 'idle',
+    edges,
+    setup: async () => {
+      const r = {
+        requests: 0,
+        uploads: [],
+        saved: { receivedAt: '2026-10-15T02:00:00Z', revision: 1, canSupplement: true },
+        dispose() {}
+      };
+      r.job = uploadJob({
+        apiJson: async (_path, options = {}) => {
+          r.requests++;
+          if (options.method === 'POST') {
+            assert.equal(options.json.revision, r.saved.revision);
+            r.saved = { ...r.saved, ...options.json, revision: r.saved.revision + 1 };
+            r.saved.canSupplement = !r.saved.frontPhotoId || !r.saved.backPhotoId;
+          }
+          return { ...r.saved };
+        },
+        uploadAttachments: async (_order, _files, purpose) => {
+          r.uploads.push(purpose);
+          if (purpose === 'intake_back' && r.uploads.filter((p) => p === purpose).length === 1)
+            throw new Error('Upload rate limited');
+          return [{ id: purpose }];
+        }
+      });
+      return r;
+    },
+    observe: (r, state) => {
+      const snapshot = r.job.snapshot();
+      assert.equal(snapshot.uploading, false);
+      assert.equal(snapshot.linking, false);
+      if (state === 'partial') {
+        assert.equal(r.saved.frontPhotoId, 'intake_front');
+        assert.equal(r.saved.backPhotoId, undefined);
+        assert.equal(snapshot.canSkip, true);
+      }
+      if (state === 'complete') {
+        assert.equal(r.saved.frontPhotoId, 'intake_front');
+        assert.equal(r.saved.backPhotoId, 'intake_back');
+        assert.equal(r.saved.canSupplement, false);
+        assert.equal(r.uploads.filter((p) => p === 'intake_front').length, 1);
+        assert.equal(r.uploads.filter((p) => p === 'intake_back').length, 2);
+      }
+    }
+  });
+}

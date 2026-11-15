@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { seedPhoto } from './helpers/database.mjs';
-import { repairScenario } from './fixtures/repair-scenario.mjs';
+import { repairScenario, repairModel } from './fixtures/repair-scenario.mjs';
 import { appointmentPatch } from '../src/lib/validation.js';
 import { verifyStaffSchema } from '../src/db/staff-readiness.js';
 import { encryptText } from '../src/lib/privacy.js';
@@ -115,6 +115,7 @@ test('full student ID finds authorized current and historical orders through rec
 });
 
 test('hardware staff can receive multiple orders after hours and hand over across days without attendance',async t=>{
+  await repairModel(t);
   const {db,users,repo,staff,service,order,calendar}=repairScenario(t);
   await verifyStaffSchema(db);
   const one=await users.find('20260001'),two=await users.find('20260002'),other=await users.find('20260003');

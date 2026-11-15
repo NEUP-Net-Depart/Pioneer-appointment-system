@@ -1,3 +1,4 @@
+import { runModel } from './fixtures/workflow-seed.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { warrantyService } from '../src/services/warranty.js';
@@ -11,13 +12,34 @@ const key = '11'.repeat(32);
 function fixture({ failImage = false, responseHtml = resultHtml } = {}) {
   const calls = [];
   let now = new Date('2026-10-26T08:00:00Z');
-  const service = warrantyService({ encryptionKey: key, clock: () => now, fetcher: async (url, options = {}) => {
-    calls.push({ url, options });
-    if (url.endsWith('verify_code.ashx')) return new Response(failImage ? '<html>blocked</html>' : Uint8Array.of(137, 80, 78, 71), { headers: { 'Content-Type': failImage ? 'text/html' : 'image/Png', 'Set-Cookie': 'ASP.NET_SessionId=second-session; Path=/; HttpOnly' } });
-    if (options.method === 'POST') return new Response(responseHtml);
-    return new Response(page, { headers: { 'Set-Cookie': 'ASP.NET_SessionId=first-session; Path=/; HttpOnly' } });
-  } });
-  return { service, calls, advance() { now = new Date(now.getTime() + 180001); } };
+  const service = warrantyService({
+    encryptionKey: key,
+    clock: () => now,
+    fetcher: async (url, options = {}) => {
+      calls.push({ url, options });
+      if (url.endsWith('verify_code.ashx'))
+        return new Response(failImage ? '<html>blocked</html>' : Uint8Array.of(137, 80, 78, 71), {
+          headers: {
+            'Content-Type': failImage ? 'text/html' : 'image/Png',
+            'Set-Cookie': 'ASP.NET_SessionId=second-session; Path=/; HttpOnly'
+          }
+        });
+      if (options.method === 'POST') return new Response(responseHtml);
+      return new Response(page, {
+        headers: { 'Set-Cookie': 'ASP.NET_SessionId=first-session; Path=/; HttpOnly' }
+      });
+    }
+  });
+  return {
+    service,
+    calls,
+    respond(html) {
+      responseHtml = html;
+    },
+    advance() {
+      now = new Date(now.getTime() + 180001);
+    }
+  };
 }
 test('Acer challenge gets a real upstream image with session binding and hides cookies/form state', async () => {
   const { service, calls } = fixture();
@@ -31,6 +53,7 @@ test('Acer challenge gets a real upstream image with session binding and hides c
   assert.equal(service.providers().providers.find(p => p.id === 'acer').mode, 'captcha');
 });
 test('only a human supplied answer is submitted together with the original encrypted session', async () => {
+  await captchaModel();
   const { service, calls } = fixture();
   const challenge = await service.challenge({ brand: 'acer', serial: 'TEST1234' }, actor);
   const result = await service.query({ brand: 'acer', serial: 'TEST1234', captchaToken: challenge.token, captchaAnswer: 'HUMAN' }, actor);
@@ -64,3 +87,74 @@ test('Acer CAPTCHA error, empty result or unknown format never becomes expired c
   const { service } = fixture({ failImage: true });
   await assert.rejects(service.challenge({ brand: 'acer', serial: 'TEST1234' }, actor), error => error.code === 'WARRANTY_UPSTREAM_FORMAT');
 });
+
+async function captchaModel() {
+  const input = (r) => ({
+    brand: 'acer',
+    serial: 'TEST1234',
+    captchaToken: r.challenge.token,
+    captchaAnswer: 'HUMAN'
+  });
+  const challenge = async (r) => {
+    r.challenge = await r.service.challenge({ brand: 'acer', serial: 'TEST1234' }, actor);
+    r.result = null;
+    r.error = null;
+  };
+  const denied = async (r, change, who = actor) => {
+    const count = r.calls.length;
+    await assert.rejects(r.service.query({ ...input(r), ...change }, who));
+    assert.equal(r.calls.length, count);
+  };
+  const query = async (r, html) => {
+    r.respond(html);
+    r.result = await r.service.query(input(r), actor);
+  };
+  const edges = [
+    ['idle', 'challenge', 'CHALLENGE', challenge],
+    ['challenge', 'challenge', 'REJECT_MISMATCH', (r) => denied(r, {}, { account: 'other-staff' })],
+    ['challenge', 'challenge', 'REJECT_MISSING_PROOF', (r) => denied(r, { captchaAnswer: '' })],
+    [
+      'challenge',
+      'challenge',
+      'REJECT_TAMPERED',
+      (r) => denied(r, { captchaToken: r.challenge.token + 'bad' })
+    ],
+    ['challenge', 'expired', 'EXPIRE', (r) => r.advance()],
+    ['expired', 'expired', 'REJECT_EXPIRED', (r) => denied(r, {})],
+    ['expired', 'challenge', 'RENEW', challenge],
+    ['challenge', 'found', 'QUERY', (r) => query(r, resultHtml)],
+    ['challenge', 'not_found', 'NO_RESULT', (r) => query(r, '<p>未查询到该序列号的信息</p>')],
+    [
+      'challenge',
+      'error',
+      'WRONG_ANSWER',
+      async (r) => {
+        r.respond('<p>验证码不正确</p>');
+        try {
+          await r.service.query(input(r), actor);
+          assert.fail('expected CAPTCHA error');
+        } catch (error) {
+          assert.equal(error.code, 'WARRANTY_CAPTCHA_INVALID');
+          r.error = error;
+        }
+      }
+    ],
+    ['error', 'challenge', 'RETRY_CHALLENGE', challenge]
+  ].map(([from, to, event, run]) => ({ from, to, event, run }));
+  await runModel({
+    name: 'warranty-acer',
+    initial: 'idle',
+    edges,
+    setup: async () => ({ ...fixture(), dispose() {} }),
+    observe: (r, state) => {
+      if (state === 'idle') assert.equal(r.calls.length, 0);
+      else assert.ok(r.challenge.token);
+      if (['found', 'not_found'].includes(state)) {
+        assert.equal(r.result.outcome, state);
+        assert.equal(r.result.status, 'unknown');
+        assert.ok(!JSON.stringify(r.result).includes('PRIVATE'));
+      }
+      if (state === 'error') assert.equal(r.error.code, 'WARRANTY_CAPTCHA_INVALID');
+    }
+  });
+}

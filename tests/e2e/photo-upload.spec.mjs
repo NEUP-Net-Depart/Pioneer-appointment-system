@@ -1,3 +1,4 @@
+import { runWorkflow } from '../fixtures/workflow-seed.mjs';
 import { test, expect } from './support/fixtures.mjs';
 import { loginStaff, staffPage, onsiteOrder, staffApi } from './support/staff.mjs';
 import { PHOTO } from './support/student.mjs';
@@ -129,26 +130,73 @@ for (const action of ['retry', 'skip', 'skip with a pending photo']) test(`a fai
   expect(attachments.items).toHaveLength(2);
 });
 
-test('manual supplementation also releases the modal after 30 seconds without cancelling photos', async ({ page, context }) => {
-  const { order, dialog } = await orderWithPhotos(page, { received: true });
-  let release, count = 0;
-  const gate = new Promise(resolve => { release = resolve; });
-  await page.route(`**/api/appointments/${order.id}/attachments`, async route => {
-    if (route.request().method() !== 'POST') { await route.continue(); return; }
-    count++;
-    await gate;
-    await route.continue();
-  });
-  await dialog.getByRole('button', { name: '重试补传照片', exact: true }).click();
-  await expect.poll(() => count).toBe(2);
-  await context.clock.fastForward(30001);
-  await dialog.getByRole('button', { name: '跳过等待，继续当前操作', exact: true }).click();
-  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
-  await expect(dialog).toBeHidden();
-  release();
-  await expect.poll(async () => {
-    const detail = await staffApi(page, `/api/field/appointments/${order.id}`, null, 'GET');
-    return !!detail.frontPhotoId && !!detail.backPhotoId && !detail.photoDeferredBy;
-  }).toBe(true);
-  expect(count).toBe(2);
+test('manual supplementation also releases the modal after 30 seconds without cancelling photos', async ({
+  page,
+  context
+}) => {
+  let order, dialog, release, count;
+
+  await runWorkflow(
+    'ui-deferred-photo',
+    'initial',
+    [
+      ['initial', 'UPLOAD_PENDING', 'uploading'],
+      ['uploading', 'TIMEOUT_AND_CLOSE', 'deferred'],
+      ['deferred', 'FINISH_UPLOAD', 'linked']
+    ],
+    [
+      {
+        event: 'UPLOAD_PENDING',
+
+        run: async () => {
+          ({ order, dialog } = await orderWithPhotos(page, { received: true }));
+
+          count = 0;
+          const gate = new Promise((resolve) => {
+            release = resolve;
+          });
+          await page.route(`**/api/appointments/${order.id}/attachments`, async (route) => {
+            if (route.request().method() !== 'POST') {
+              await route.continue();
+              return;
+            }
+            count++;
+            await gate;
+            await route.continue();
+          });
+          await dialog.getByRole('button', { name: '重试补传照片', exact: true }).click();
+          await expect.poll(() => count).toBe(2);
+        }
+      },
+      {
+        event: 'TIMEOUT_AND_CLOSE',
+
+        run: async () => {
+          await context.clock.fastForward(30001);
+          await dialog.getByRole('button', { name: '跳过等待，继续当前操作', exact: true }).click();
+          await dialog.getByRole('button', { name: '关闭', exact: true }).click();
+          await expect(dialog).toBeHidden();
+        }
+      },
+      {
+        event: 'FINISH_UPLOAD',
+
+        run: async () => {
+          release();
+          await expect
+            .poll(async () => {
+              const detail = await staffApi(
+                page,
+                `/api/field/appointments/${order.id}`,
+                null,
+                'GET'
+              );
+              return !!detail.frontPhotoId && !!detail.backPhotoId && !detail.photoDeferredBy;
+            })
+            .toBe(true);
+          expect(count).toBe(2);
+        }
+      }
+    ]
+  );
 });

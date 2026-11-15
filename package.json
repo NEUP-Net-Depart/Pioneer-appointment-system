@@ -40,7 +40,11 @@
     "test:deployment": "npm run build && node --test tests/tools/deployment/*.test.mjs",
     "test:e2e:full": "node scripts/test-e2e.mjs --full",
     "test:e2e:diagnostics": "node scripts/test-e2e.mjs --diagnostics",
-    "test:sql": "node --test tests/tools/sql-performance.test.mjs"
+    "test:sql": "node --test tests/tools/sql-performance.test.mjs",
+    "test:models:node": "TEST_MODELS=1 node --test tests/*.test.mjs",
+    "test:models:e2e": "TEST_MODELS=1 node scripts/test-e2e.mjs --full",
+    "test:models": "npm run test:models:node && npm run test:models:e2e",
+    "test:properties": "TEST_PROPERTIES=1 TEST_MODELS=1 node --test tests/*.test.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -51,12 +55,14 @@
     "@types/react-dom": "^19.3.0",
     "esbuild": "0.28.2",
     "eslint": "10.12.0",
+    "fast-check": "4.10.2",
     "globals": "17.13.0",
     "miniflare": "5.20261006.1-alpha",
     "prettier": "3.6.2",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",
-    "wrangler": "4.149.0"
+    "wrangler": "4.149.0",
+    "xstate": "6.0.0-beta.2"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.107.1",

@@ -1,3 +1,4 @@
+import { runWorkflow } from './fixtures/workflow-seed.mjs';
 import { signatureFixture } from './fixtures/signature.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
@@ -37,27 +38,123 @@ test('onsite repair-induced service requires confirmation and preserves idempote
   assert.equal((await scan.onsite(accepted, actor)).id, linked.id);
 });
 
-test('linking an existing booking preserves its capacity, original result, and student privacy; campuses remain scoped',async t=>{
-  const {db,users,repo,staff,service,order,calendar}=repairScenario(t,{studentId:'20260009'});
-  const actor=await users.find('20260001');
-  order('original',{date:calendar.previousServiceDay,status:'completed',repair_note:'internal original',assigned_to:'20260001'});
-  const token='A'.repeat(43);order('return',{access_token_hash:createHash('sha256').update(token).digest('hex')});order('other-campus',{date:addDays(calendar.previousServiceDay,-7),status:'completed',campus:'浑南',repair_note:'hidden campus note'});
-  const before=await repo.find('original'),n=db.sqlite.prepare('SELECT COUNT(*) n FROM appointments').get().n;
-  await assert.rejects(service.link('return',request({parentAppointmentId:'original',sameDeviceAndFault:false}),actor),{status:400});
-  await assert.rejects(service.link('return',request({parentAppointmentId:'other-campus'}),actor),{status:403});
-  const linked=await service.link('return',request({parentAppointmentId:'original'}),actor);
-  assert.equal(linked.source,'booking');assert.equal(linked.parentAppointmentId,'original');
-  assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM appointments').get().n,n);
-  assert.deepEqual(await repo.find('original'),before);
-  await assert.rejects(service.link('return',request({revision:1,parentAppointmentId:'original'}),actor),{status:409});
-  const publicItem=await service.lookup('return',token);
-  assert.equal(publicItem.repairHistory.items.length,2);
-  assert.equal(Object.hasOwn(publicItem.repairHistory,'events'),false);
-  assert.ok(publicItem.repairHistory.items.every(row=>!Object.hasOwn(row,'repairNote') && !Object.hasOwn(row,'assignedToName')));
-  const detail=await staff.field.detail(actor,'return');
-  assert.ok((await repo.repairHistory('return',{staff:true,campuses:actor.authorizedCampuses})).events.some(row=>row.action==='repairs.linked'));
-  assert.equal(detail.customerHistory.some(row=>row.id==='other-campus'),false);
-  await assert.rejects(service.link('return',request({revision:1,parentAppointmentId:'original'}),await users.find('20260003')),{status:403});
+test('linking an existing booking preserves its capacity, original result, and student privacy; campuses remain scoped', async (t) => {
+  let db, users, repo, staff, service, order, calendar, actor, token, before, n;
+
+  await runWorkflow(
+    'repair-link',
+    'initial',
+    [
+      ['initial', 'REJECT_INVALID_LINK', 'unlinked'],
+      ['unlinked', 'LINK', 'linked'],
+      ['linked', 'REJECT_DUPLICATE_LINK', 'linked'],
+      ['linked', 'CHECK_PRIVATE_HISTORY', 'linked']
+    ],
+    [
+      {
+        event: 'REJECT_INVALID_LINK',
+
+        run: async () => {
+          ({ db, users, repo, staff, service, order, calendar } = repairScenario(t, {
+            studentId: '20260009'
+          }));
+          actor = await users.find('20260001');
+          order('original', {
+            date: calendar.previousServiceDay,
+            status: 'completed',
+            repair_note: 'internal original',
+            assigned_to: '20260001'
+          });
+          token = 'A'.repeat(43);
+          order('return', { access_token_hash: createHash('sha256').update(token).digest('hex') });
+          order('other-campus', {
+            date: addDays(calendar.previousServiceDay, -7),
+            status: 'completed',
+            campus: '浑南',
+            repair_note: 'hidden campus note'
+          });
+          before = await repo.find('original');
+          n = db.sqlite.prepare('SELECT COUNT(*) n FROM appointments').get().n;
+          await assert.rejects(
+            service.link(
+              'return',
+              request({ parentAppointmentId: 'original', sameDeviceAndFault: false }),
+              actor
+            ),
+            { status: 400 }
+          );
+          await assert.rejects(
+            service.link('return', request({ parentAppointmentId: 'other-campus' }), actor),
+            { status: 403 }
+          );
+        }
+      },
+      {
+        event: 'LINK',
+
+        run: async () => {
+          const linked = await service.link(
+            'return',
+            request({ parentAppointmentId: 'original' }),
+            actor
+          );
+          assert.equal(linked.source, 'booking');
+          assert.equal(linked.parentAppointmentId, 'original');
+          assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM appointments').get().n, n);
+          assert.deepEqual(await repo.find('original'), before);
+        }
+      },
+      {
+        event: 'REJECT_DUPLICATE_LINK',
+
+        run: async () => {
+          await assert.rejects(
+            service.link(
+              'return',
+              request({ revision: 1, parentAppointmentId: 'original' }),
+              actor
+            ),
+            { status: 409 }
+          );
+        }
+      },
+      {
+        event: 'CHECK_PRIVATE_HISTORY',
+
+        run: async () => {
+          const publicItem = await service.lookup('return', token);
+          assert.equal(publicItem.repairHistory.items.length, 2);
+          assert.equal(Object.hasOwn(publicItem.repairHistory, 'events'), false);
+          assert.ok(
+            publicItem.repairHistory.items.every(
+              (row) => !Object.hasOwn(row, 'repairNote') && !Object.hasOwn(row, 'assignedToName')
+            )
+          );
+          const detail = await staff.field.detail(actor, 'return');
+          assert.ok(
+            (
+              await repo.repairHistory('return', {
+                staff: true,
+                campuses: actor.authorizedCampuses
+              })
+            ).events.some((row) => row.action === 'repairs.linked')
+          );
+          assert.equal(
+            detail.customerHistory.some((row) => row.id === 'other-campus'),
+            false
+          );
+          await assert.rejects(
+            service.link(
+              'return',
+              request({ revision: 1, parentAppointmentId: 'original' }),
+              await users.find('20260003')
+            ),
+            { status: 403 }
+          );
+        }
+      }
+    ]
+  );
 });
 
 test('onsite linked service is created once, does not consume online slots, and requires new receipt evidence',async t=>{
