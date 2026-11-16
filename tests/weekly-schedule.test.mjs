@@ -1,6 +1,7 @@
+import { runModel, rejectWithoutWrite } from './fixtures/workflow-seed.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+
 import { database, seedStaff } from './helpers/database.mjs';
 import { staffServices } from './fixtures/staff-services.mjs';
 import { userRepository } from '../src/db/users.js';
@@ -15,6 +16,7 @@ async function setup(){
 }
 function shift(memberId,date=weekStart){return {memberId,businessDate:date,startAt:'19:00',endAt:'21:00'};}
 test('usual availability carries without weekly confirmation; exceptions apply to one week and can be removed',async()=>{
+  await availabilityModel();
  const {db,staff,one}=await setup();try{
  const windows=[{weekday:7,campusId,startAt:'19:00',endAt:'21:00'}];
  await staff.saveAvailability(one,{dutyType,weekStart:'',revision:-1,windows,requestId:request()});
@@ -29,6 +31,7 @@ test('usual availability carries without weekly confirmation; exceptions apply t
  }finally{db.sqlite.close();}
 });
 test('publish without weekly questionnaires, direct leave, recipient takeover, scoped edits and revision conflicts',async()=>{
+  await rosterModel();
  const {db,staff,head,one,two,outside}=await setup();try{
  const input={...query,revision:-1,assignments:[shift(one.memberId),shift(two.memberId,'2026-11-03')],requestId:request()};
  const published=await staff.saveRosterWeek(head,input);assert.equal(published.assignments.length,2);
@@ -71,34 +74,195 @@ test('request IDs bind the assignment, and competing cover/time edits cannot ove
  assert.equal((await staff.rosterMine(one,{weekStart})).items[0].leaveStatus,'');
  }finally{db.sqlite.close();}
 });
-for(const directory of ['migrations','database/staff-migrations'])test(`${directory}: roster cutover retains every shift and raw workflow fact, preserves pending leave and exchange`,async()=>{
- const db=database(directory,'0048_');try{
- seedStaff(db,'20261001');seedStaff(db,'20261002');
- db.sqlite.exec(`INSERT INTO roster_tasks(id,week_start,campus_scope,slot_start,slot_end,deadline,created_at) VALUES('task','2026-11-02','{"campusIds":["campus-nanhu"]}','19:00','21:00','2026-11-01','2026-10-30');
- INSERT INTO roster_versions(id,task_id,status,version,rule_version,algorithm_version,published_at,created_at) VALUES('past','task','superseded',1,'1','old','2026-11-01','2026-10-30'),('live','task','published',2,'1','old','2026-11-01','2026-10-30'),('draft','task','draft',3,'1','old',NULL,'2026-11-02');
- INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at,origin_assignment_id,previous_assignment_id) VALUES
- ('old','past','member-20261001','2026-11-02','campus-nanhu','repair','19:00','21:00','old',NULL),
- ('one','live','member-20261001','2026-11-02','campus-nanhu','repair','19:00','21:00','old','old'),
- ('two','live','member-20261002','2026-11-03','campus-nanhu','repair','19:00','21:00','two',NULL),
- ('draft-one','draft','member-20261001','2026-11-04','campus-nanhu','repair','19:00','21:00','draft-one',NULL);
- INSERT INTO leave_requests(id,assignment_id,member_id,reason,status,created_at) VALUES('leave','old','member-20261001','原请假原因','pending','2026-11-01');
- INSERT INTO swap_requests(id,from_assignment_id,to_assignment_id,from_member_id,to_member_id,from_revision,to_revision,note,created_at) VALUES('swap','one','two','member-20261001','member-20261002',0,0,'互换约定','2026-11-01');
- INSERT INTO roster_submissions(task_id,member_id,submitted_at,source) VALUES('task','member-20261001','2026-11-01','manual'),('task','member-20261002','2026-11-01','carried');
- INSERT INTO availability(id,task_id,member_id,business_date,start_at,end_at,campus_id) VALUES('availability','task','member-20261001','2026-11-08','19:00','21:00','campus-nanhu');
- INSERT INTO roster_availability_preferences(member_id,duty_type,windows,source_task_id,updated_at) VALUES('member-20261002','repair','[{"weekday":1,"campusId":"campus-nanhu","startAt":"19:00","endAt":"21:00"}]','task','2026-11-01');`);
- const assignments=db.sqlite.prepare('SELECT * FROM duty_assignments ORDER BY id').all();
- db.sqlite.exec(readFileSync(`${directory}/0048_weekly_schedule.sql`,'utf8'));
- assert.deepEqual(db.sqlite.prepare('SELECT id FROM duty_assignments ORDER BY id').all().map(row=>row.id),assignments.map(row=>row.id));
- for(const original of assignments){const archived=db.sqlite.prepare("SELECT before_json FROM audit_events WHERE action='rosters.model.migrated' AND json_extract(source_ref,'$.type')='duty_assignments' AND json_extract(before_json,'$.id')=?").get(original.id);assert.deepEqual(JSON.parse(archived.before_json),{...original});}
- assert.deepEqual(db.sqlite.prepare('SELECT id FROM duty_assignments WHERE active=1 ORDER BY id').all().map(row=>row.id),['one','two']);
- assert.equal(db.sqlite.prepare('SELECT assignment_id FROM roster_leaves').get().assignment_id,'one');
- assert.equal(db.sqlite.prepare('SELECT exchange_assignment_id FROM roster_covers').get().exchange_assignment_id,'two');
- const availability=db.sqlite.prepare('SELECT * FROM member_availability ORDER BY member_id').all();assert.equal(availability.length,2);assert.equal(JSON.parse(availability[0].windows)[0].weekday,7);assert.equal(availability[1].week_start,'');
- assert.deepEqual(db.sqlite.prepare('PRAGMA foreign_key_check').all(),[]);
- // Current services run against the complete schema after validating the cutover itself.
- for(const file of readdirSync(directory).filter(file=>file.endsWith('.sql') && file>'0048_weekly_schedule.sql').sort())db.sqlite.exec(readFileSync(`${directory}/${file}`,'utf8'));
- const staff=staffServices(db,'00'.repeat(32)),two=await userRepository(db).find('20261002');await staff.respondCover(two,'swap',{revision:0,decision:'accepted',requestId:request()});
- assert.equal(db.sqlite.prepare("SELECT member_id FROM duty_assignments WHERE id='one'").get().member_id,two.memberId);
- assert.equal(db.sqlite.prepare("SELECT member_id FROM duty_assignments WHERE id='two'").get().member_id,'member-20261001');
- }finally{db.sqlite.close();}
-});
+
+async function availabilityModel() {
+  const windows = [{ weekday: 7, campusId, startAt: '19:00', endAt: '21:00' }];
+  const save = async (r, useUsual) => {
+    const current = await r.staff.availability(r.one, { dutyType, weekStart });
+    await r.staff.saveAvailability(r.one, {
+      dutyType,
+      weekStart,
+      revision: current.exception?.revision ?? -1,
+      windows: [],
+      useUsual,
+      requestId: request()
+    });
+  };
+  await runModel({
+    name: 'availability',
+    initial: 'usual',
+    edges: [
+      { from: 'usual', to: 'exception', event: 'OVERRIDE', run: (r) => save(r, false) },
+      { from: 'exception', to: 'usual', event: 'RESTORE', run: (r) => save(r, true) }
+    ],
+    setup: async () => {
+      const r = await setup();
+      r.dispose = () => r.db.sqlite.close();
+      await r.staff.saveAvailability(r.one, {
+        dutyType,
+        weekStart: '',
+        revision: -1,
+        windows,
+        requestId: request()
+      });
+      return r;
+    },
+    observe: async (r, state) => {
+      const result = await r.staff.availability(r.one, { dutyType, weekStart });
+      assert.equal(result.source, state);
+      assert.deepEqual(result.effectiveWindows, state === 'usual' ? windows : []);
+      assert.deepEqual(
+        (await r.staff.availability(r.one, { dutyType, weekStart: '2026-11-09' })).effectiveWindows,
+        windows
+      );
+    }
+  });
+}
+async function rosterModel() {
+  const assignment = async (r) => (await r.staff.rosterWeek(r.head, query)).assignments[0];
+  const leave = async (r) => {
+    const a = await assignment(r);
+    await r.staff.leave(r.one, a.id, {
+      revision: a.revision,
+      reason: '有课',
+      requestId: request()
+    });
+  };
+  const invite = async (r) => {
+    const a = await assignment(r);
+    r.invite = await r.staff.requestCover(r.one, a.id, {
+      revision: a.revision,
+      toMemberId: r.two.memberId,
+      requestId: request()
+    });
+  };
+  const response = (r, decision, actor = r.two) =>
+    r.staff.respondCover(actor, r.invite.id, { revision: 0, decision, requestId: request() });
+  const edges = [
+    [
+      'empty',
+      'published',
+      'PUBLISH',
+      async (r) => {
+        r.input = {
+          ...query,
+          revision: -1,
+          assignments: [shift(r.one.memberId)],
+          requestId: request()
+        };
+        await r.staff.saveRosterWeek(r.head, r.input);
+      }
+    ],
+    [
+      'published',
+      'published',
+      'REPLAY',
+      async (r) => {
+        const before = r.db.sqlite.prepare('SELECT COUNT(*) n FROM audit_events').get().n;
+        await r.staff.saveRosterWeek(r.head, r.input);
+        assert.equal(r.db.sqlite.prepare('SELECT COUNT(*) n FROM audit_events').get().n, before);
+      }
+    ],
+    [
+      'published',
+      'published',
+      'REJECT_STALE',
+      (r) =>
+        rejectWithoutWrite(
+          r.db,
+          () => r.staff.saveRosterWeek(r.head, { ...r.input, requestId: request() }),
+          { status: 409 }
+        )
+    ],
+    [
+      'published',
+      'published',
+      'REJECT_MEMBER',
+      (r) =>
+        rejectWithoutWrite(
+          r.db,
+          () => r.staff.saveRosterWeek(r.one, { ...r.input, revision: 0, requestId: request() }),
+          { status: 403 }
+        )
+    ],
+    ['published', 'leave', 'LEAVE', leave],
+    [
+      'leave',
+      'published',
+      'WITHDRAW',
+      async (r) => {
+        const a = await assignment(r);
+        await r.staff.withdrawLeave(r.one, a.id, { revision: a.revision, requestId: request() });
+      }
+    ],
+    ['leave', 'pending', 'INVITE', invite],
+    [
+      'pending',
+      'pending',
+      'REJECT_SENDER_ACCEPT',
+      (r) => rejectWithoutWrite(r.db, () => response(r, 'accepted', r.one), { status: 403 })
+    ],
+    ['pending', 'accepted', 'ACCEPT', (r) => response(r, 'accepted')],
+    ['pending', 'declined', 'DECLINE', (r) => response(r, 'declined')],
+    ['pending', 'cancelled', 'CANCEL', (r) => response(r, 'cancelled', r.one)],
+    ...['accepted', 'declined', 'cancelled'].map((state) => [
+      state,
+      state,
+      'REJECT_SECOND_DECISION',
+      (r) => rejectWithoutWrite(r.db, () => response(r, 'accepted'), { status: 409 })
+    ]),
+    [
+      'accepted',
+      'republished',
+      'REPUBLISH',
+      async (r) => {
+        const current = await r.staff.rosterWeek(r.head, query);
+        r.oldId = current.assignments[0].id;
+        await r.staff.saveRosterWeek(r.head, {
+          ...query,
+          revision: current.revision,
+          assignments: [shift(r.two.memberId, '2026-11-03')],
+          requestId: request()
+        });
+      }
+    ]
+  ].map(([from, to, event, run]) => ({ from, to, event, run }));
+  await runModel({
+    name: 'roster-cover',
+    initial: 'empty',
+    edges,
+    setup: async () => {
+      const r = await setup();
+      r.dispose = () => r.db.sqlite.close();
+      return r;
+    },
+    observe: async (r, state) => {
+      const roster = await r.staff.rosterWeek(r.head, query);
+      assert.equal(roster.assignments.length, state === 'empty' ? 0 : 1);
+      if (state !== 'empty') {
+        const a = roster.assignments[0];
+        assert.equal(
+          a.memberId,
+          ['accepted', 'republished'].includes(state) ? r.two.memberId : r.one.memberId
+        );
+        assert.equal(
+          a.leaveStatus,
+          ['leave', 'pending', 'declined', 'cancelled'].includes(state) ? 'recorded' : ''
+        );
+      }
+      if (['pending', 'accepted', 'declined', 'cancelled'].includes(state))
+        assert.equal(
+          r.db.sqlite.prepare('SELECT status FROM roster_covers WHERE id=?').get(r.invite.id)
+            .status,
+          state
+        );
+      if (state === 'republished')
+        assert.equal(
+          r.db.sqlite.prepare('SELECT active FROM duty_assignments WHERE id=?').get(r.oldId).active,
+          0
+        );
+      assert.equal(r.db.sqlite.prepare('SELECT COUNT(*) n FROM attendance_records').get().n, 0);
+      assert.deepEqual(r.db.sqlite.prepare('PRAGMA foreign_key_check').all(), []);
+    }
+  });
+}

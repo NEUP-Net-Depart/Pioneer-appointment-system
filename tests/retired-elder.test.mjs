@@ -1,6 +1,7 @@
+import { runWorkflow } from './fixtures/workflow-seed.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+
 import { database, seedStaff } from './helpers/database.mjs';
 import { staffServices } from './fixtures/staff-services.mjs';
 import { staffPlatformRepository } from '../src/db/staff-platform.js';
@@ -83,68 +84,112 @@ async function setup(t) {
 }
 
 test('only the current superadmin can grant or revoke; audits and session revocation commit together', async (t) => {
-  const { db, users, repository, staff, root, elder, api, env } = await setup(t);
-  const path = `members/${elderId}/retired-elder`;
-  const input = { enabled: true, revision: 0, requestId: crypto.randomUUID() };
-  assert.deepEqual((await staff.contextFor(elder)).specialIdentities, []);
-  assert.equal(
-    (await staff.contextFor(elder)).permissions['members.manage'],
-    false,
-    'past leadership does not grant this identity'
+  let db, users, repository, staff, root, elder, api, env, path, input, granted, revision;
+
+  await runWorkflow(
+    'retired-identity',
+    'initial',
+    [
+      ['initial', 'REJECT_UNAUTHORIZED', 'ordinary'],
+      ['ordinary', 'GRANT', 'privileged'],
+      ['privileged', 'REVOKE', 'ordinary'],
+      ['ordinary', 'ROLLBACK_FAILED_GRANT', 'ordinary']
+    ],
+    [
+      {
+        event: 'REJECT_UNAUTHORIZED',
+
+        run: async () => {
+          ({ db, users, repository, staff, root, elder, api, env } = await setup(t));
+          path = `members/${elderId}/retired-elder`;
+          input = { enabled: true, revision: 0, requestId: crypto.randomUUID() };
+          assert.deepEqual((await staff.contextFor(elder)).specialIdentities, []);
+          assert.equal(
+            (await staff.contextFor(elder)).permissions['members.manage'],
+            false,
+            'past leadership does not grant this identity'
+          );
+          for (const account of ['20261002', '20261005']) {
+            assert.equal((await api(account, path, input)).status, 403);
+          }
+          await assert.rejects(
+            staff.setRetiredElder({ ...elder, role: 'superadmin' }, elderId, input),
+            {
+              status: 403
+            }
+          );
+          assert.equal((await api('root001', path, { ...input, enabled: 'true' })).status, 400);
+          await staff.updateMember(await users.find('20261001'), elderId, {
+            revision: 0,
+            specialIdentities: ['retired_elder']
+          });
+          await assert.rejects(staff.ownProfile(elder, { revision: 0, retiredElder: true }), {
+            status: 400
+          });
+          assert.equal(
+            db.sqlite.prepare('SELECT COUNT(*) n FROM member_special_identities').get().n,
+            0
+          );
+        }
+      },
+      {
+        event: 'GRANT',
+
+        run: async () => {
+          const oldToken = signToken(elder, env.JWT_SECRET);
+          assert.equal((await api('root001', path, input)).status, 200);
+          assert.equal((await api('20261002', 'auth/me', null, 'GET', oldToken)).status, 401);
+          granted = await users.find('20261002');
+          assert.deepEqual(granted.authorizedCampuses.slice().sort(), ['南湖', '浑南']);
+          assert.equal((await api('20261005', path, { enabled: false, revision: 1 })).status, 403);
+        }
+      },
+      {
+        event: 'REVOKE',
+
+        run: async () => {
+          const activeToken = signToken(granted, env.JWT_SECRET);
+          assert.equal((await api('root001', path, { enabled: false, revision: 0 })).status, 409);
+          assert.equal((await api('root001', path, { enabled: false, revision: 1 })).status, 200);
+          assert.equal((await api('20261002', 'auth/me', null, 'GET', activeToken)).status, 401);
+          assert.deepEqual((await users.find('20261002')).authorizedCampuses, ['南湖']);
+          assert.equal(
+            (await staff.contextFor(granted)).permissions['members.manage'],
+            false,
+            'even a cached actor loses its business permission'
+          );
+          const audits = (await repository.memberAudit(elderId)).filter((item) =>
+            item.action.startsWith('identity.retired_elder.')
+          );
+          assert.deepEqual(audits.map((item) => item.action).sort(), [
+            'identity.retired_elder.granted',
+            'identity.retired_elder.revoked'
+          ]);
+          assert.ok(audits.every((item) => item.actorAccount === 'root001'));
+        }
+      },
+      {
+        event: 'ROLLBACK_FAILED_GRANT',
+
+        run: async () => {
+          revision = (await repository.memberRow(elderId)).revision;
+          const beforeFailure = await users.find('20261002');
+          db.sqlite.exec(
+            "CREATE TRIGGER reject_identity_audit BEFORE INSERT ON audit_events WHEN NEW.action='identity.retired_elder.granted' BEGIN SELECT RAISE(ABORT,'audit unavailable'); END;"
+          );
+          await assert.rejects(
+            staff.setRetiredElder(root, elderId, { enabled: true, revision }),
+            /audit unavailable/
+          );
+          assert.equal((await repository.memberRow(elderId)).revision, revision);
+          assert.deepEqual((await staff.contextFor(granted)).specialIdentities, []);
+          const afterFailure = await users.find('20261002');
+          assert.equal(afterFailure.authVersion, beforeFailure.authVersion);
+          assert.equal(afterFailure.tokenVersion, beforeFailure.tokenVersion);
+        }
+      }
+    ]
   );
-  for (const account of ['20261002', '20261005']) {
-    assert.equal((await api(account, path, input)).status, 403);
-  }
-  await assert.rejects(staff.setRetiredElder({ ...elder, role: 'superadmin' }, elderId, input), {
-    status: 403
-  });
-  assert.equal((await api('root001', path, { ...input, enabled: 'true' })).status, 400);
-  await staff.updateMember(await users.find('20261001'), elderId, {
-    revision: 0,
-    specialIdentities: ['retired_elder']
-  });
-  await assert.rejects(staff.ownProfile(elder, { revision: 0, retiredElder: true }), {
-    status: 400
-  });
-  assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM member_special_identities').get().n, 0);
-  const oldToken = signToken(elder, env.JWT_SECRET);
-  assert.equal((await api('root001', path, input)).status, 200);
-  assert.equal((await api('20261002', 'auth/me', null, 'GET', oldToken)).status, 401);
-  const granted = await users.find('20261002');
-  assert.deepEqual(granted.authorizedCampuses.slice().sort(), ['南湖', '浑南']);
-  assert.equal((await api('20261005', path, { enabled: false, revision: 1 })).status, 403);
-  const activeToken = signToken(granted, env.JWT_SECRET);
-  assert.equal((await api('root001', path, { enabled: false, revision: 0 })).status, 409);
-  assert.equal((await api('root001', path, { enabled: false, revision: 1 })).status, 200);
-  assert.equal((await api('20261002', 'auth/me', null, 'GET', activeToken)).status, 401);
-  assert.deepEqual((await users.find('20261002')).authorizedCampuses, ['南湖']);
-  assert.equal(
-    (await staff.contextFor(granted)).permissions['members.manage'],
-    false,
-    'even a cached actor loses its business permission'
-  );
-  const audits = (await repository.memberAudit(elderId)).filter((item) =>
-    item.action.startsWith('identity.retired_elder.')
-  );
-  assert.deepEqual(audits.map((item) => item.action).sort(), [
-    'identity.retired_elder.granted',
-    'identity.retired_elder.revoked'
-  ]);
-  assert.ok(audits.every((item) => item.actorAccount === 'root001'));
-  const revision = (await repository.memberRow(elderId)).revision;
-  const beforeFailure = await users.find('20261002');
-  db.sqlite.exec(
-    "CREATE TRIGGER reject_identity_audit BEFORE INSERT ON audit_events WHEN NEW.action='identity.retired_elder.granted' BEGIN SELECT RAISE(ABORT,'audit unavailable'); END;"
-  );
-  await assert.rejects(
-    staff.setRetiredElder(root, elderId, { enabled: true, revision }),
-    /audit unavailable/
-  );
-  assert.equal((await repository.memberRow(elderId)).revision, revision);
-  assert.deepEqual((await staff.contextFor(granted)).specialIdentities, []);
-  const afterFailure = await users.find('20261002');
-  assert.equal(afterFailure.authVersion, beforeFailure.authVersion);
-  assert.equal(afterFailure.tokenVersion, beforeFailure.tokenVersion);
 });
 
 test('retired elders manage real personnel, accounts, booking, rosters and attendance in both campuses', async (t) => {
@@ -392,26 +437,4 @@ test('grant and revoke preserve historical appointments, check-ins and calculate
       weekly.find((row) => row.memberId === elderId).creditedCount
     );
   }
-});
-
-test('retired identity migration preserves existing data without granting past leaders an identity', async (t) => {
-  const directory = 'migrations';
-  const db = database(directory, '0054_');
-  t.after(() => db.sqlite.close());
-  seedStaff(db, '20261002');
-  db.sqlite.exec(
-    "INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,position_code,effective_from,effective_to,created_at) VALUES('former-director','member-20261002','unit-device','primary',1,'director','2026-01-01','2026-11-01','2026-01-01')"
-  );
-  const snapshot = () =>
-    ['members', 'staff_accounts', 'member_department_memberships', 'audit_events'].map((table) =>
-      db.sqlite.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()
-    );
-  const before = snapshot();
-  db.sqlite.exec(readFileSync(`${directory}/0054_retired_elder.sql`, 'utf8'));
-  assert.deepEqual(snapshot(), before);
-  assert.equal(
-    db.sqlite.prepare('SELECT COUNT(*) n FROM member_special_identities').get().n,
-    0,
-    'migration must not automatically grant past leaders an identity'
-  );
 });

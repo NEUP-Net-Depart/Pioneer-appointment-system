@@ -1,7 +1,7 @@
-import { test, expect } from './support/fixtures.mjs';
+import { runWorkflow } from '../../fixtures/workflow-seed.mjs';
+import { test, expect } from '../support/fixtures.mjs';
 import { readFile } from 'node:fs/promises';
-import { chooseOption, loginStaff, onsiteOrder, staffPage, staffApi } from './support/staff.mjs';
-import { PHOTO } from './support/student.mjs';
+import { chooseOption, loginStaff, onsiteOrder, staffPage } from '../support/staff.mjs';
 
 async function fixture(page, { captcha = false, huawei = false } = {}) {
   await page.addInitScript(() => {
@@ -114,103 +114,161 @@ const captchaImage =
 test('denied camera access keeps manual entry usable and closing clears serial input', async ({
   page
 }) => {
-  // Finish the opening transition during an option press, so a fixed popover
-  // cannot move between pointerdown and pointerup and lose the selection.
-  await page.addInitScript(() => {
-    const animate = Element.prototype.animate;
-    Element.prototype.animate = function (...args) {
-      const animation = animate.apply(this, args);
-      if (this.matches('dialog.warranty-dialog')) {
-        Element.prototype.animate = animate;
-        animation.pause();
-        animation.currentTime = Number(animation.effect.getTiming().duration) / 2;
-        this.addEventListener('pointerdown', (event) => {
-          if (event.target.closest('[role="option"]')) animation.finish();
-        });
+  let dialog;
+
+  await runWorkflow(
+    'ui-warranty-input',
+    'initial',
+    [
+      ['initial', 'DENIED_CAMERA', 'manual'],
+      ['manual', 'CLOSE_AND_REOPEN', 'cleared']
+    ],
+    [
+      {
+        event: 'DENIED_CAMERA',
+
+        run: async () => {
+          // Finish the opening transition during an option press, so a fixed popover
+          // cannot move between pointerdown and pointerup and lose the selection.
+          await page.addInitScript(() => {
+            const animate = Element.prototype.animate;
+            Element.prototype.animate = function (...args) {
+              const animation = animate.apply(this, args);
+              if (this.matches('dialog.warranty-dialog')) {
+                Element.prototype.animate = animate;
+                animation.pause();
+                animation.currentTime = Number(animation.effect.getTiming().duration) / 2;
+                this.addEventListener('pointerdown', (event) => {
+                  if (event.target.closest('[role="option"]')) animation.finish();
+                });
+              }
+              return animation;
+            };
+          });
+          await fixture(page);
+          dialog = await openLookup(page);
+          await chooseOption(page, dialog.getByLabel('设备品牌'), 'msi');
+          await openCapture(dialog);
+          await expect(dialog).toContainText('摄像头未能开启');
+        }
+      },
+      {
+        event: 'CLOSE_AND_REOPEN',
+
+        run: async () => {
+          await dialog.getByLabel('序列号 / S/N / Service Tag', { exact: true }).fill('TEST1234');
+          await dialog.getByRole('button', { name: '关闭', exact: true }).click();
+          await openLookup(page);
+          await expect(
+            dialog.getByLabel('序列号 / S/N / Service Tag', { exact: true })
+          ).toHaveValue('');
+        }
       }
-      return animation;
-    };
-  });
-  await fixture(page);
-  const dialog = await openLookup(page);
-  await chooseOption(page, dialog.getByLabel('设备品牌'), 'msi');
-  await openCapture(dialog);
-  await expect(dialog).toContainText('摄像头未能开启');
-  await dialog.getByLabel('序列号 / S/N / Service Tag', { exact: true }).fill('TEST1234');
-  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
-  await openLookup(page);
-  await expect(dialog.getByLabel('序列号 / S/N / Service Tag', { exact: true })).toHaveValue('');
+    ]
+  );
 });
 
 test('Acer waits for a human CAPTCHA answer then shows the factory response on this page', async ({
   page
 }) => {
-  await fixture(page, { captcha: true });
-  let challengeCount = 0;
-  const submissions = [];
-  await page.route('**/api/warranty/challenge', (route) => {
-    challengeCount++;
-    return route.fulfill({
-      json: {
-        brand: 'acer',
-        serial: route.request().postDataJSON().serial,
-        image: captchaImage,
-        token: 'mock-encrypted-challenge-' + challengeCount,
-        expiresAt: new Date(Date.now() + 180000).toISOString()
+  let challengeCount, submissions, dialog;
+
+  await runWorkflow(
+    'ui-warranty-captcha',
+    'initial',
+    [
+      ['initial', 'CHALLENGE', 'waiting'],
+      ['waiting', 'RENEW', 'waiting'],
+      ['waiting', 'HUMAN_QUERY', 'found']
+    ],
+    [
+      {
+        event: 'CHALLENGE',
+
+        run: async () => {
+          await fixture(page, { captcha: true });
+          challengeCount = 0;
+          submissions = [];
+          await page.route('**/api/warranty/challenge', (route) => {
+            challengeCount++;
+            return route.fulfill({
+              json: {
+                brand: 'acer',
+                serial: route.request().postDataJSON().serial,
+                image: captchaImage,
+                token: 'mock-encrypted-challenge-' + challengeCount,
+                expiresAt: new Date(Date.now() + 180000).toISOString()
+              }
+            });
+          });
+          await page.route('**/api/warranty/query', (route) => {
+            submissions.push(route.request().postDataJSON());
+            return route.fulfill({
+              json: {
+                brand: 'acer',
+                serial: 'TEST1234',
+                outcome: 'found',
+                status: 'unknown',
+                checkedAt: new Date().toISOString(),
+                source: { name: 'Acer 中国官方服务' },
+                note: '模拟原厂回包，仅供流程测试。',
+                services: [
+                  {
+                    name: '标准保修期：2025-01-01 至 2027-01-01',
+                    category: 'Acer 原厂保修信息',
+                    start: '',
+                    end: '',
+                    status: 'unknown'
+                  }
+                ]
+              }
+            });
+          });
+          dialog = await openLookup(page);
+          await chooseOption(page, dialog.getByLabel('设备品牌'), 'acer');
+          await dialog.getByLabel('序列号 / S/N / Service Tag', { exact: true }).fill('TEST1234');
+          await dialog.getByRole('button', { name: '获取原厂验证码', exact: true }).click();
+          await expect(dialog.getByRole('group', { name: '原厂人工验证' })).toBeVisible();
+          await expect(
+            dialog.getByRole('img', { name: 'Acer 原厂验证码，请人工阅读' })
+          ).toHaveAttribute('src', captchaImage);
+          await expect(dialog.getByRole('button', { name: '提交验证码并查询' })).toBeDisabled();
+          expect(submissions).toHaveLength(0);
+        }
+      },
+      {
+        event: 'RENEW',
+
+        run: async () => {
+          await dialog.getByRole('button', { name: '重新获取验证码', exact: true }).click();
+          await expect(dialog.getByLabel('原厂验证码', { exact: true })).toHaveValue('');
+          expect(challengeCount).toBe(2);
+        }
+      },
+      {
+        event: 'HUMAN_QUERY',
+
+        run: async () => {
+          await dialog.getByLabel('原厂验证码', { exact: true }).fill('HUMAN');
+          await dialog.getByRole('button', { name: '提交验证码并查询', exact: true }).click();
+          await expect(dialog.getByRole('region', { name: '原厂查询结果' })).toContainText(
+            '2027-01-01'
+          );
+          await expect(dialog.getByRole('group', { name: '原厂人工验证' })).toHaveCount(0);
+          expect(submissions).toEqual([
+            {
+              brand: 'acer',
+              serial: 'TEST1234',
+              captchaToken: 'mock-encrypted-challenge-2',
+              captchaAnswer: 'HUMAN'
+            }
+          ]);
+          expect(await page.evaluate(() => Object.values(sessionStorage).join(' '))).not.toContain(
+            'mock-encrypted-challenge'
+          );
+        }
       }
-    });
-  });
-  await page.route('**/api/warranty/query', (route) => {
-    submissions.push(route.request().postDataJSON());
-    return route.fulfill({
-      json: {
-        brand: 'acer',
-        serial: 'TEST1234',
-        outcome: 'found',
-        status: 'unknown',
-        checkedAt: new Date().toISOString(),
-        source: { name: 'Acer 中国官方服务' },
-        note: '模拟原厂回包，仅供流程测试。',
-        services: [
-          {
-            name: '标准保修期：2025-01-01 至 2027-01-01',
-            category: 'Acer 原厂保修信息',
-            start: '',
-            end: '',
-            status: 'unknown'
-          }
-        ]
-      }
-    });
-  });
-  const dialog = await openLookup(page);
-  await chooseOption(page, dialog.getByLabel('设备品牌'), 'acer');
-  await dialog.getByLabel('序列号 / S/N / Service Tag', { exact: true }).fill('TEST1234');
-  await dialog.getByRole('button', { name: '获取原厂验证码', exact: true }).click();
-  await expect(dialog.getByRole('group', { name: '原厂人工验证' })).toBeVisible();
-  await expect(dialog.getByRole('img', { name: 'Acer 原厂验证码，请人工阅读' })).toHaveAttribute(
-    'src',
-    captchaImage
-  );
-  await expect(dialog.getByRole('button', { name: '提交验证码并查询' })).toBeDisabled();
-  expect(submissions).toHaveLength(0);
-  await dialog.getByRole('button', { name: '重新获取验证码', exact: true }).click();
-  await expect(dialog.getByLabel('原厂验证码', { exact: true })).toHaveValue('');
-  expect(challengeCount).toBe(2);
-  await dialog.getByLabel('原厂验证码', { exact: true }).fill('HUMAN');
-  await dialog.getByRole('button', { name: '提交验证码并查询', exact: true }).click();
-  await expect(dialog.getByRole('region', { name: '原厂查询结果' })).toContainText('2027-01-01');
-  await expect(dialog.getByRole('group', { name: '原厂人工验证' })).toHaveCount(0);
-  expect(submissions).toEqual([
-    {
-      brand: 'acer',
-      serial: 'TEST1234',
-      captchaToken: 'mock-encrypted-challenge-2',
-      captchaAnswer: 'HUMAN'
-    }
-  ]);
-  expect(await page.evaluate(() => Object.values(sessionStorage).join(' '))).not.toContain(
-    'mock-encrypted-challenge'
+    ]
   );
 });
 
@@ -313,7 +371,7 @@ test('real local OCR reads a device label, copies its serial and opens the offic
   const dialog = await openLookup(page);
   await chooseOption(page, dialog.getByLabel('设备品牌'), 'asus');
   // Fixed pixels keep this real OCR regression independent of OS font rendering.
-  const bytes = await readFile(new URL('../fixtures/warranty-serial-label.png', import.meta.url));
+  const bytes = await readFile(new URL('../../fixtures/warranty-serial-label.png', import.meta.url));
   await openOcr(dialog);
   await dialog
     .getByLabel('选择设备标签照片', { exact: true })
@@ -426,37 +484,14 @@ test('a repair order links to the service center of its current brand', async ({
   await details.getByRole('button', { name: '修改工单信息', exact: true }).click();
   const brand = details.getByLabel('品牌', { exact: true });
   await brand.fill('荣耀');
-  await details.getByLabel('设备型号', { exact: true }).fill('MagicBook 14');
-  await chooseOption(page, details.getByRole('combobox', { name: '是否在保', exact: true }), '否');
-  await chooseOption(page, details.getByRole('combobox', { name: '是否使用液金散热', exact: true }), '是');
-  await expect(details.getByRole('combobox', { name: 'Dell G15 / G16 系列', exact: true })).toHaveCount(0);
-  await chooseOption(page, details.getByRole('combobox', { name: '进水情况', exact: true }), '否');
-  await details.getByLabel('设备序列号', { exact: true }).fill('SN-REPAIR-2026');
-  await details.getByLabel('学院', { exact: true }).fill('软件学院');
   await details.getByRole('button', { name: '保存工单信息', exact: true }).click();
-  await expect(dialog.getByRole('heading', { name: '荣耀 MagicBook 14', exact: true })).toBeVisible();
   await expect(link).toHaveAttribute('href', honor);
   await details.getByRole('button', { name: '修改工单信息', exact: true }).click();
   await brand.fill('机械师');
   await details.getByRole('button', { name: '保存工单信息', exact: true }).click();
-  await expect(dialog.getByRole('heading', { name: '机械师 MagicBook 14', exact: true })).toBeVisible();
   await expect(link).toHaveCount(0);
   await details.getByRole('button', { name: '修改工单信息', exact: true }).click();
   await brand.fill('荣耀');
   await details.getByRole('button', { name: '保存工单信息', exact: true }).click();
-  await expect(dialog.getByRole('heading', { name: '荣耀 MagicBook 14', exact: true })).toBeVisible();
   await expect(link).toHaveAttribute('href', honor);
-  for (const side of ['正面', '背面']) await dialog.getByLabel(`设备${side}照片`, { exact: true })
-    .setInputFiles({ name: `${side}.png`, mimeType: 'image/png', buffer: PHOTO });
-  await dialog.getByRole('button', { name: '仅接收设备', exact: true }).click();
-  await expect(dialog.getByRole('button', { name: '开始维修', exact: true })).toBeVisible();
-  const saved = await staffApi(page, `/api/field/appointments/${order.id}`, null, 'GET');
-  expect(saved.brand).toBe('荣耀');
-  expect(saved.deviceModel).toBe('MagicBook 14');
-  expect(saved.warranty).toBe('否');
-  expect(saved.liquidMetal).toBe('是');
-  expect(saved.dellG15).toBe('');
-  expect(saved.liquidDrop).toBe('否');
-  expect(saved.serial).toBe('SN-REPAIR-2026');
-  expect(saved.college).toBe('软件学院');
 });

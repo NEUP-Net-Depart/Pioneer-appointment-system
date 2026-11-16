@@ -1,24 +1,25 @@
 # 浏览器测试
 
-浏览器测试保留用户通过页面完成任务的关键路径：预约与签名、现场接收与维修、跨校区切换、空闲填报与发布、请假与接替、考勤补录、未保存草稿，以及必须在浏览器中验证的照片、OCR 和验证码流程。权限边界、幂等、并发和历史迁移等规则由 `tests/*.test.mjs` 的服务和数据库测试覆盖。
+默认 CI 只运行 6 项冒烟检查，确认构建后的页面、登录、浏览器交互和后端能够协同完成任务：
 
-`signature.spec.mjs` 覆盖学生签名的旋转、等比预览、撤销和取消重签，以及现场登记的误触、返回修改、保存与后台回显。它运行于 Chromium 桌面、DPR 3 的 Chromium 触摸环境及 WebKit 手机尺寸；Chromium 触摸通过 CDP 注入原生触摸输入，WebKit 使用原生轻触和合成 Touch 事件连续书写。真实 iOS／Android 内置浏览器与手写笔仍需设备验收。
+- Chromium：学生预约并打开私人结果、工作人员上传照片并完成维修、成员填报时间并发布排班。
+- WebKit 手机尺寸：预约、照片接收与维修，以及触摸签名的旋转与确认。
 
-运行全部用例：
-
-```sh
-npm run test:e2e
-```
-
-默认使用两个进程并行执行独立用例，桌面和手机覆盖范围不变。筛选场景、串行排查，或检查重复执行：
+权限、隐私、容量、并发和修订冲突等细节由 Node 服务与数据库测试持续覆盖。其余浏览器回归用于相关模块修改和发布前验收，按需执行；新增用例默认不进入冒烟门禁。
 
 ```sh
-npm run test:e2e -- --project=chromium --grep 'requests leave'
+npm run test:e2e                         # 默认 6 项冒烟
+npm run test:e2e:full                    # 全部浏览器回归，含专项诊断
+npm run test:e2e:diagnostics             # 只运行 OCR/验证码、图片编码和埋点 SDK 的 27 项诊断
+npm run test:e2e:full -- --project=chromium --grep 'requests leave'
 npm run test:e2e -- --workers=1
-npm run test:e2e -- --grep 'availability produces|requests leave|historical arrival' --repeat-each=2
 ```
 
-CI 的整套 Playwright 执行上限为 12 分钟，包含构建与初始化的工作流步骤上限为 14 分钟，浏览器任务上限为 18 分钟；单用例上限仍为 60 秒。手势聚合计数测试在连续输入期间暂停模拟时钟，再显式推进聚合窗口，避免慢速运行器将同一组输入拆成多次手势。
+手动工作流 **Optional test tools** 提供 `browser-full` 和 `browser-diagnostics`。三个入口默认均使用两个进程并行执行。默认冒烟使用 `@smoke`（桌面）和 `@mobile-smoke`（手机）标签筛选现有用例，不复制测试代码；增加标签前应确认该场景能发现已有冒烟及 Node 测试无法发现的主流程故障。
+
+完整回归中，Chromium 执行所有用例，WebKit 重复主流程、签名、照片上传和图片/埋点诊断，Chromium DPR 3 触摸环境专门验证签名。真实 iOS／Android 内置浏览器与手写笔仍需设备验收。
+
+CI 的 Playwright 执行上限为 12 分钟，包含构建与初始化的工作流步骤上限为 14 分钟，浏览器任务上限为 18 分钟；单用例上限仍为 60 秒。手势聚合计数测试在连续输入期间暂停模拟时钟，再显式推进聚合窗口，避免慢速运行器将同一组输入拆成多次手势。
 
 `scripts/test-e2e.mjs` 构建一次并初始化虚构人员和本地数据库。`support/fixtures.mjs` 为每个用例复制未运行的初始 D1/R2 状态，在独立端口启动 Worker，结束后移除临时目录。浏览器上下文和 Worker 共用 `WORKFLOW_TIME`；新标签页自动继承时钟。用例之间不共享预约、排班、限流或附件，也不依赖浏览器名称、执行顺序或前一个用例的结果。
 
@@ -33,3 +34,13 @@ CI 的整套 Playwright 执行上限为 12 分钟，包含构建与初始化的�
 - 断言用户可见结果和持久化行为。避免针对旧按钮文案的“不存在”断言、重复枚举服务层边界，或把无关角色的权限检查塞进业务长链。
 
 失败截图和 trace 由 Playwright 自动保留在 `output/playwright/`。没有图像基准比较的成功截图不作为自动验收依据。
+
+## 按需状态图
+
+`npm run test:models:e2e` 在同一组完整回归中启用 XState v6 状态图；不增加浏览器项目或冒烟标签。默认 `test:e2e`、`test:e2e:full` 和发布 CI 不启用状态图。手动工作流的 `models-browser` 会启用并归档报告。
+
+现有业务操作与断言分为具名步骤；独立转换表定义必须执行的状态和边，每条边只有在实际操作和结果断言通过后才计入覆盖。每个原有用例仍使用自己的 Worker、D1/R2、浏览器上下文和时钟，步骤之间共享该用例的业务上下文，测试之间不共享。状态图不会在浏览器中额外随机重放流程，失败继续保存现有截图和 trace。
+
+各浏览器项目的状态/转换定义与实际覆盖保存到 `output/model-reports/<运行标识>/model-report.json`；同名流程分别保留。浏览器流程不做随机探索，报告中标记为 `not-supported`。
+
+模型清单、报告字段与 seed/path/replayPath 重放说明见[测试分工](../README.md#按需属性测试与业务状态图)。
