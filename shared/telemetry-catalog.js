@@ -1614,6 +1614,7 @@ export const SOURCE_FILES = [
   "frontend/staff-react/WorkspaceSections.tsx",
   "frontend/staff-react/WorkspaceToolbar.jsx",
   "frontend/staff-react/authorization-drafts.js",
+  "frontend/staff-react/campus-preference.js",
   "frontend/staff-react/field-campus.js",
   "frontend/staff-react/field/AppointmentLookup.tsx",
   "frontend/staff-react/field/AttendanceActions.tsx",

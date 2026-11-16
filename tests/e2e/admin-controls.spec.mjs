@@ -107,6 +107,10 @@ test('campus belongs to each duty task and the weekly export inherits the report
       .getByRole('button', { name: '南湖', exact: true })
   ).toHaveAttribute('aria-pressed', 'true');
   const reports = await dutyPage(page, '统计与历史');
+  const scope = reports.getByRole('group', { name: '报表校区', exact: true });
+  await expect(scope.getByRole('button', { name: '南湖', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await scope.getByRole('button', { name: '全部授权校区', exact: true }).click();
+  await expect(scope.getByRole('button', { name: '全部授权校区', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await reports.getByRole('button', { name: '选择报表月份', exact: true }).click();
   await page
     .getByRole('dialog', { name: '选择报表月份', exact: true })
@@ -135,12 +139,20 @@ test('campus belongs to each duty task and the weekly export inherits the report
 });
 
 test('configuration tasks retain their own campus when changing views', async ({ page }) => {
+  await page.route('**/api/auth/me', async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ response, json: { ...(await response.json()), homeCampus: '浑南' } });
+  });
   await loginStaff(page);
   const configuration = await staffPage(page, '预约配置');
   const campus = configuration.getByRole('group', { name: '当前配置校区', exact: true });
-  await campus.getByRole('button', { name: '浑南校区', exact: true }).click();
+  await expect(campus.getByRole('button', { name: '浑南校区', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  );
+  await campus.getByRole('button', { name: '南湖校区', exact: true }).click();
   await configuration.getByRole('button', { name: '日期实际容量', exact: true }).click();
-  await expect(campus.getByRole('button', { name: '南湖校区', exact: true })).toHaveAttribute(
+  await expect(campus.getByRole('button', { name: '浑南校区', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true'
   );
@@ -151,12 +163,12 @@ test('configuration tasks retain their own campus when changing views', async ({
     configuration.getByRole('button', { name: '刷新每周模板', exact: true })
   ).toHaveCount(0);
   await configuration.getByRole('button', { name: '每周模板', exact: true }).click();
-  await expect(campus.getByRole('button', { name: '浑南校区', exact: true })).toHaveAttribute(
+  await expect(campus.getByRole('button', { name: '南湖校区', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true'
   );
   await configuration.getByRole('button', { name: '放号时间', exact: true }).click();
-  await expect(campus.getByRole('button', { name: '南湖校区', exact: true })).toHaveAttribute(
+  await expect(campus.getByRole('button', { name: '浑南校区', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true'
   );

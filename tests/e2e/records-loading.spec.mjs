@@ -89,6 +89,7 @@ test('records initialize the service date, restore filters and append pages', as
           }
           await expect(page.getByText('预约同学0', { exact: true })).toBeVisible();
           expect(requests[0].get('date')).toBe('2026-10-19');
+          expect(requests[0].get('campus')).toBe('南湖');
         }
       },
       {
@@ -210,6 +211,8 @@ test('members paginate, search remotely, filter complete data and clear revoked 
   });
   await loginStaff(page, 'root001', process.env.E2E_ROOT_PASSWORD);
   await staffPage(page, '人员管理');
+  await expect(page.getByLabel('筛选成员校区')).toHaveText('南湖');
+  await chooseOption(page, page.getByLabel('筛选成员校区'), '');
   await expect(page.locator('.members-results .react-row:not(.react-row-head)')).toHaveCount(100);
   await page.getByLabel('搜索成员').fill('跨页部门');
   await expect(page.getByText('分页成员150', { exact: true })).toBeVisible();

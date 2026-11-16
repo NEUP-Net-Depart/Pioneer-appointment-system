@@ -4,9 +4,15 @@ import { loginStaff, staffPage } from './support/staff.mjs';
 test('record search restores browsing filters and exposes one date preset entry', async ({
   page
 }) => {
+  await page.route('**/api/auth/me', async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ response, json: { ...(await response.json()), homeCampus: '浑南' } });
+  });
   await loginStaff(page);
   await staffPage(page, '预约记录');
   const panel = page.getByRole('region', { name: '预约查询', exact: true });
+  const campus = panel.getByRole('button', { name: '移除校区筛选' });
+  await expect(campus).toContainText('浑南');
   await panel.getByRole('button', { name: /当期 ·/ }).click();
   await page.getByRole('button', { name: '不限日期', exact: true }).click();
   await expect(panel.getByRole('button', { name: '全部日期', exact: true })).toBeVisible();
@@ -19,7 +25,9 @@ test('record search restores browsing filters and exposes one date preset entry'
     'true'
   );
   await expect(search).toHaveValue('202610');
+  await expect(campus).toHaveCount(0);
   await search.fill('');
+  await expect(campus).toContainText('浑南');
   await expect(panel.getByRole('button', { name: '维修中', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true'
@@ -55,6 +63,7 @@ test('record search restores browsing filters and exposes one date preset entry'
   await search.click();
   await expect(slots).toHaveCount(0);
   await panel.getByRole('button', { name: '重置', exact: true }).click();
+  await expect(campus).toContainText('浑南');
   await expect(panel.getByRole('button', { name: /当期 ·/ })).toBeVisible();
   await expect(panel.getByRole('button', { name: '全部', exact: true })).toHaveAttribute(
     'aria-pressed',
@@ -80,7 +89,7 @@ test('desktop sorting replaces the previous field and mobile has no sorting cont
   await expect(page.getByLabel('排序与优先级', { exact: true })).toHaveCount(0);
 });
 
-test('choosing an overview parent clears its child filters', async ({ page }) => {
+test('choosing an overview parent clears its child filters while retaining campus', async ({ page }) => {
   await loginStaff(page);
   await staffPage(page, '预约记录');
   const panel = page.getByRole('region', { name: '预约查询', exact: true });
@@ -112,6 +121,6 @@ test('choosing an overview parent clears its child filters', async ({ page }) =>
     .evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().height));
   expect(new Set(heights).size).toBe(1);
   await page.locator('.records-periods button').first().click();
-  await expect(panel.getByRole('button', { name: '移除校区筛选' })).toHaveCount(0);
+  await expect(panel.getByRole('button', { name: '移除校区筛选' })).toBeVisible();
   await expect(panel.getByRole('button', { name: '移除时段筛选' })).toHaveCount(0);
 });
