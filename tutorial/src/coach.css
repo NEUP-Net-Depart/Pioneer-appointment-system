@@ -1,0 +1,358 @@
+.tutorial-controls,
+.tutorial-start-dialog,
+.tutorial-notice,
+.tutorial-error,
+.tutorial-finished,
+.tutorial-popover {
+  font-family: 'Microsoft YaHei', system-ui, sans-serif;
+  color: #181818;
+  box-sizing: border-box;
+}
+.tutorial-start-dialog *,
+.tutorial-controls *,
+.tutorial-finished *,
+.tutorial-error * {
+  box-sizing: border-box;
+}
+.tutorial-start-dialog button,
+.tutorial-controls button,
+.tutorial-finished button,
+.tutorial-error button {
+  font: inherit;
+  cursor: pointer;
+  min-height: 44px;
+}
+.tutorial-start-dialog button:focus-visible,
+.tutorial-controls button:focus-visible,
+.tutorial-finished button:focus-visible,
+.tutorial-error button:focus-visible {
+  outline: 2px solid #222;
+  outline-offset: 3px;
+}
+.driver-overlay {
+  z-index: 2147483644 !important;
+}
+.driver-active .tutorial-controls,
+.driver-active .tutorial-error {
+  z-index: 2147483646 !important;
+}
+.driver-active .tutorial-popover,
+.driver-active .tutorial-popover *,
+.driver-active .tutorial-controls,
+.driver-active .tutorial-controls *,
+.driver-active .tutorial-error,
+.driver-active .tutorial-error * {
+  pointer-events: auto !important;
+}
+.tutorial-controls {
+  position: fixed !important;
+  right: 24px;
+  bottom: 24px;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 4px 7px 4px 17px;
+  background: #fff;
+  border: 1px solid #e2e2e2;
+  border-radius: 10px;
+  box-shadow: 0 3px 18px #0000000d;
+  font-size: 12px;
+}
+.tutorial-control-divider {
+  color: #aaa;
+  margin: 0 9px;
+}
+.tutorial-controls button {
+  background: none;
+  border: 0;
+  padding: 0 12px;
+  border-radius: 6px;
+  color: #666;
+}
+.tutorial-controls button:hover {
+  background: #f4f4f4;
+  color: #111;
+}
+.tutorial-start-dialog {
+  width: min(520px, calc(100vw - 32px));
+  max-height: 90dvh;
+  padding: 26px 32px 28px;
+  border: 1px solid #e7e7e7;
+  border-radius: 14px;
+  background: white;
+  box-shadow: 0 20px 80px #00000020;
+  overflow-y: auto;
+}
+.tutorial-start-dialog::backdrop {
+  background: #1115;
+  backdrop-filter: blur(2px);
+}
+.tutorial-start-dialog > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+}
+.tutorial-start-dialog > header > span {
+  font-size: 12px;
+  color: #777;
+  letter-spacing: 0.5px;
+}
+.tutorial-start-dialog > header > button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+}
+.tutorial-start-dialog h1 {
+  margin: 14px 0 29px;
+  font-size: 30px;
+  line-height: 1.5;
+  letter-spacing: -0.7px;
+  font-weight: 600;
+}
+.tutorial-choice {
+  border: 0;
+  padding: 0;
+  margin: 0 0 24px;
+}
+.tutorial-choice legend {
+  padding: 0;
+  margin-bottom: 10px;
+  color: #777;
+  font-size: 13px;
+}
+.tutorial-choice > div {
+  display: flex;
+  gap: 9px;
+}
+.tutorial-choice button {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid #dedede;
+  background: #fff;
+  border-radius: 8px;
+  color: #777;
+  padding: 10px 8px;
+  font-size: 14px;
+}
+.tutorial-choice button:hover {
+  background: #fafafa;
+  border-color: #aaa;
+}
+.tutorial-choice button[aria-pressed='true'] {
+  color: #181818;
+  border-color: #222;
+  background: #f7f7f7;
+  box-shadow: inset 0 0 0 1px #222;
+}
+.tutorial-path-choice button {
+  padding: 17px 15px;
+  text-align: left;
+  display: grid;
+  gap: 8px;
+}
+.tutorial-path-choice > div {
+  flex-direction: column;
+}
+.tutorial-path-choice button {
+  gap: 5px;
+}
+.tutorial-path-choice strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+.tutorial-path-choice span {
+  color: #777;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.tutorial-start-dialog footer {
+  display: grid;
+  gap: 16px;
+  background: none;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.tutorial-start-dialog footer p {
+  font-size: 13px;
+  line-height: 1.8;
+  color: #666;
+  margin: 0;
+}
+.tutorial-primary {
+  background: #202020;
+  color: white;
+  border: 1px solid #202020;
+  border-radius: 7px;
+  padding: 10px 20px;
+  min-height: 46px;
+}
+.tutorial-primary:hover {
+  background: #3c3c3c;
+}
+.driver-popover.tutorial-popover {
+  z-index: 2147483647;
+  width: min(360px, calc(100vw - 24px));
+  max-width: min(360px, calc(100vw - 24px));
+  min-width: min(270px, calc(100vw - 24px));
+  padding: 22px;
+  border-radius: 11px;
+  box-shadow: 0 8px 40px #00000020;
+  background: #fff;
+  line-height: 1.6;
+}
+.tutorial-popover .driver-popover-title {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.5;
+  margin-bottom: 0;
+  text-wrap: pretty;
+}
+.tutorial-popover .tutorial-exit {
+  padding: 6px 8px;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: #777;
+  font-size: 12px;
+}
+.tutorial-popover .tutorial-exit:hover {
+  background: #f5f5f5;
+  color: #222;
+}
+.tutorial-popover .driver-popover-footer {
+  margin-top: 20px;
+  align-items: center;
+  gap: 20px;
+}
+.tutorial-popover .driver-popover-progress-text {
+  font-size: 12px;
+  color: #999;
+  white-space: nowrap;
+}
+.tutorial-popover .driver-popover-navigation-btns {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.tutorial-popover button {
+  font-family: inherit;
+  font-size: 13px;
+  min-height: 44px;
+  min-width: 88px;
+  padding: 9px 18px;
+  margin: 0;
+  text-shadow: none;
+  border-radius: 7px;
+}
+.tutorial-popover .driver-popover-next-btn {
+  color: #fff;
+  background: #202020;
+  border: 1px solid #202020;
+}
+.tutorial-popover .driver-popover-next-btn:hover {
+  background: #3d3d3d;
+}
+.tutorial-popover .driver-popover-next-btn:focus-visible {
+  outline: 2px solid #666;
+  outline-offset: 3px;
+}
+.tutorial-popover .driver-popover-next-btn[disabled] {
+  opacity: 0.55;
+  cursor: wait;
+}
+.tutorial-notice,
+.tutorial-error,
+.tutorial-finished {
+  position: fixed !important;
+  bottom: 90px;
+  right: 24px;
+  z-index: 2147483647;
+  width: min(370px, calc(100vw - 32px));
+  padding: 22px;
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: 11px;
+  box-shadow: 0 6px 25px #00000015;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.tutorial-notice {
+  pointer-events: none;
+}
+.tutorial-error p {
+  color: #8d4c40;
+  margin: 8px 0 15px;
+}
+.tutorial-finished h2 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+.tutorial-finished p {
+  margin: 9px 0 18px;
+  color: #777;
+}
+.tutorial-finished > div,
+.tutorial-error > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.tutorial-finished button:not(.tutorial-primary),
+.tutorial-error button {
+  color: #666;
+  background: none;
+  border: 0;
+  border-radius: 7px;
+  padding: 8px 12px;
+}
+@media (max-width: 600px) {
+  .tutorial-controls {
+    right: 12px;
+    bottom: calc(80px + env(safe-area-inset-bottom));
+    max-width: calc(100vw - 24px);
+    padding-left: 13px;
+    gap: 12px;
+  }
+  .tutorial-start-dialog {
+    padding: 20px 22px 24px;
+  }
+  .tutorial-start-dialog h1 {
+    font-size: 26px;
+    margin-bottom: 25px;
+  }
+  .tutorial-path-choice button {
+    padding: 15px 12px;
+  }
+  .driver-popover.tutorial-popover {
+    padding: 19px;
+  }
+  .tutorial-popover .driver-popover-title {
+    font-size: 20px;
+  }
+  .tutorial-notice,
+  .tutorial-error,
+  .tutorial-finished {
+    right: 12px;
+    bottom: 148px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tutorial-controls *,
+  .tutorial-start-dialog *,
+  .tutorial-popover * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

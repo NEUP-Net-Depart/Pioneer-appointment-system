@@ -1,0 +1,85 @@
+name: Staff tutorial Pages
+
+on:
+  push:
+    branches: [dev, feat/staff-interactive-tutorial]
+    paths:
+      - 'tutorial/**'
+      - 'frontend/staff-react/**'
+      - 'frontend/assets/**'
+      - 'shared/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/tutorial-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staff-tutorial-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            tutorial/package-lock.json
+      - name: Install workspace and tutorial dependencies
+        run: |
+          npm ci
+          npm ci --prefix tutorial
+      - name: Check tutorial
+        run: |
+          npm run lint --prefix tutorial
+          npm test --prefix tutorial
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+      - name: Build tutorial for its Pages path
+        env:
+          TUTORIAL_BASE_PATH: ${{ steps.pages.outputs.base_path }}/
+        run: npm run build --prefix tutorial
+      - name: Verify complete workflows under the Pages path
+        env:
+          TUTORIAL_BASE_PATH: ${{ steps.pages.outputs.base_path }}/
+        run: |
+          cd tutorial
+          npx playwright install --with-deps chromium
+          npm run test:pages
+      - name: Preserve failed browser checks
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tutorial-pages-browser
+          path: tutorial/test-results/
+          retention-days: 7
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: tutorial/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy tutorial
+        id: deployment
+        uses: actions/deploy-pages@v4
