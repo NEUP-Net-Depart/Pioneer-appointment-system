@@ -22,6 +22,7 @@ import { useUnsavedChanges } from './useUnsavedChanges.js';
 import { BookingSettingsEditor } from './BookingSettingsEditor';
 import './capacity.css';
 import { UnsavedChangesDialog } from './UnsavedChangesDialog';
+import { preferredCampus } from './campus-preference.js';
 
 const days = ['周一', '周二', '周三', '周四'];
 const keyOf = (item) => `${item.campus}/${item.weekday}/${item.timeSlot}`;
@@ -33,7 +34,7 @@ const single = {
   range: { top: 0, bottom: 0, left: 0, right: 0 }
 };
 
-export function CapacityEditor({ active, onNavigate }) {
+export function CapacityEditor({ user, active, onNavigate }) {
   const rulesEditor = useRef(null);
   const noticesEditor = useRef(null),
     serviceDaysEditor = useRef(null);
@@ -107,11 +108,13 @@ export function CapacityEditor({ active, onNavigate }) {
   const loading = result.isPending;
   const refresh = () => result.refetch();
   const campuses = [...new Set(items.map((item) => item.campus))];
-  const campus = campuses.includes(taskCampuses[mode]) ? taskCampuses[mode] : campuses[0] || '';
+  const campus = campuses.includes(taskCampuses[mode])
+    ? taskCampuses[mode]
+    : preferredCampus(user, campuses);
   const setCampus = (next) =>
     setTaskCampuses((current) => ({
       ...current,
-      [mode]: typeof next === 'function' ? next(current[mode]) : next
+      [mode]: next
     }));
   const selection = selections[campus] || single;
   const at = (row, col) =>
@@ -126,9 +129,6 @@ export function CapacityEditor({ active, onNavigate }) {
 
   useEffect(() => {
     if (!result.data) return;
-    setCampus((current) =>
-      items.some((item) => item.campus === current) ? current : items[0]?.campus || ''
-    );
     setDrafts((current) =>
       Object.fromEntries(
         items.flatMap((item) => {

@@ -12,6 +12,7 @@ import { dateKey } from '../../shared/time.js';
 import { AttendanceHistory } from './AttendanceHistory.jsx';
 import { MemberEditor } from './MemberEditor.jsx';
 import { staffPermission } from '../../shared/staff-access.js';
+import { preferredCampus } from './campus-preference.js';
 
 const monthNow = () => dateKey().slice(0, 7);
 
@@ -53,13 +54,17 @@ export function AttendanceReports({
 }) {
   const active = useContext(ActivityContext);
   const [month, setMonth] = useState(monthNow);
-  const [chosenCampus, setCampusId] = useState('');
+  const defaultCampus = preferredCampus(
+    user,
+    campuses.map((campus) => campus.id)
+  );
+  const [chosenCampus, setCampusId] = useState(defaultCampus);
   const campusId =
     campuses.length === 1
       ? campuses[0].id
-      : campuses.some((campus) => campus.id === chosenCampus)
+      : chosenCampus === '' || campuses.some((campus) => campus.id === chosenCampus)
         ? chosenCampus
-        : '';
+        : defaultCampus;
   const [weekly, setWeekly] = useState(false);
   const [tab, setTab] = useState('volunteer');
   const client = useQueryClient();

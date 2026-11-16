@@ -11,13 +11,18 @@ import { EducationImport } from './EducationImport.jsx';
 import { WorkspaceMoreActions } from './WorkspaceMoreActions';
 import { StaffIdentity } from './StaffIdentity';
 import { MemberCreate } from './MemberCreate.jsx';
+import { preferredCampus } from './campus-preference.js';
+import { dutyCampusNames } from '../../shared/duty.js';
 
 export function Members({ user }) {
   const active = useContext(ActivityContext);
   const client = useQueryClient();
   const [q, setQ] = useState('');
   const [search, setSearch] = useState('');
-  const [campus, setCampus] = useState('');
+  const campuses = (user.authorizedCampuses || []).map(
+    (name) => ({ 南湖: 'campus-nanhu', 浑南: 'campus-hunnan' })[name] || name
+  );
+  const [campus, setCampus] = useState(() => preferredCampus(user, campuses));
   const [status, setStatus] = useState('');
   const allParams = { q: '', homeCampusId: '', status: '' };
   const complete = client.getQueryData(['/api/members', allParams]);
@@ -179,12 +184,9 @@ export function Members({ user }) {
               onChange={(event) => setCampus(event.target.value)}
             >
               <option value="">全部校区</option>
-              {(user.authorizedCampuses || []).map((name) => (
-                <option
-                  key={name}
-                  value={{ 南湖: 'campus-nanhu', 浑南: 'campus-hunnan' }[name] || name}
-                >
-                  {name}
+              {campuses.map((id) => (
+                <option key={id} value={id}>
+                  {dutyCampusNames[id] || id}
                 </option>
               ))}
             </Select>

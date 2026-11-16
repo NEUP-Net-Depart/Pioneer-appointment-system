@@ -185,7 +185,7 @@ export function AccountSettings({
       </div>
       {allowed && (
         <div hidden={security}>
-          <CapacityEditor active={active && !security} onNavigate={onNavigate} />
+          <CapacityEditor user={user} active={active && !security} onNavigate={onNavigate} />
         </div>
       )}
       {confirm && (
