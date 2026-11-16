@@ -19,7 +19,7 @@ permissions:
 jobs:
   dispatch-maintenance:
     # Schedules run on the default branch (dev); credentials remain main-only.
-    if: github.event_name == 'schedule' && vars.ATTACHMENT_MAINTENANCE_ENABLED == 'true'
+    if: github.ref != 'refs/heads/feat/staff-interactive-tutorial' && github.event_name == 'schedule' && vars.ATTACHMENT_MAINTENANCE_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -30,7 +30,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run cleanup-attachments.yml --repo "$GITHUB_REPOSITORY" --ref main -f environment=both -f dry_run=false
   select-targets:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.ref != 'refs/heads/feat/staff-interactive-tutorial' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -53,7 +53,7 @@ jobs:
           esac
   cleanup:
     needs: select-targets
-    if: github.event_name == 'workflow_dispatch'
+    if: github.ref != 'refs/heads/feat/staff-interactive-tutorial' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: ${{ matrix.environment == 'production' && 'production' || 'preview-maintenance' }}

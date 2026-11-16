@@ -9,6 +9,7 @@ import {STAFF_RELEASE} from '../src/db/staff-readiness.js';
 export function ciReleaseTarget(env){
   if(env.GITHUB_ACTIONS!=='true')throw new Error('CI releases must run in GitHub Actions.');
   if(!env.GITHUB_REF?.startsWith('refs/heads/') || env.GITHUB_EVENT_DELETED==='true')throw new Error('Only live repository branches may release.');
+  if(env.GITHUB_REF==='refs/heads/feat/staff-interactive-tutorial')throw new Error('The staff tutorial branch cannot publish to Cloudflare.');
   if(env.GITHUB_EVENT_NAME==='push' && env.GITHUB_REF==='refs/heads/main')return 'production';
   if(['push','workflow_dispatch'].includes(env.GITHUB_EVENT_NAME) && env.GITHUB_REF!=='refs/heads/main'){
     previewBranch(env);

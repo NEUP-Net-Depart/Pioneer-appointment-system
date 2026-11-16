@@ -12,15 +12,24 @@ const ciEnv=(event,branch)=>({GITHUB_ACTIONS:'true',GITHUB_EVENT_NAME:event,GITH
 const readyPreview=async()=>Response.json({ok:true,staffRelease:STAFF_RELEASE,workflow:'staff-platform'});
 const runCiRelease=(env,run)=>release(env,run,readyPreview);
 
-test('CI releases all repository branches, with production restricted to main pushes',()=>{
+test('CI releases business branches, with production restricted to main pushes',()=>{
   assert.equal(ciReleaseTarget(ciEnv('push','main')),'production');
-  for(const branch of ['dev','feat/nfc-checkin','fix/booking-status','experiment/nested/change','feat/staff-permissions']){
+  for(const branch of ['dev','feat/nfc-checkin','fix/booking-status','experiment/nested/change','feat/staff-permissions','tutorial/another-guide','feat/staff-interactive-tutorial-fix','feat/staff-interactive-tutorial/child']){
     for(const event of ['push','workflow_dispatch'])assert.equal(ciReleaseTarget(ciEnv(event,branch)),'preview');
   }
   for(const [event,branch] of [['workflow_dispatch','main'],['pull_request','main'],['pull_request','feat/nfc-checkin'],['pull_request_target','dev']])assert.throws(()=>ciReleaseTarget(ciEnv(event,branch)));
   for(const ref of ['refs/tags/v1','refs/pull/1/merge','refs/heads/','refs/heads/feat/../main'])assert.throws(()=>ciReleaseTarget({...ciEnv('push','dev'),GITHUB_REF:ref}));
   assert.throws(()=>ciReleaseTarget({...ciEnv('push','main'),GITHUB_EVENT_DELETED:'true'}));
   assert.throws(()=>ciReleaseTarget({...ciEnv('push','main'),GITHUB_ACTIONS:'false'}));
+});
+
+test('only the dedicated staff tutorial branch cannot publish or migrate Cloudflare',async()=>{
+  for(const event of ['push','workflow_dispatch']){
+    const env=ciEnv(event,'feat/staff-interactive-tutorial');
+    assert.throws(()=>ciReleaseTarget(env),/staff tutorial branch cannot publish to Cloudflare/);
+    await assert.rejects(()=>runCiRelease(env,()=>assert.fail('Unexpected Cloudflare publication')),/staff tutorial branch cannot publish to Cloudflare/);
+    assert.throws(()=>runCiPreviewMigration(env,()=>assert.fail('Unexpected migration')),/staff tutorial branch cannot publish to Cloudflare/);
+  }
 });
 
 test('CI migrates production in place and publishes all previews after any dev migration job',async()=>{

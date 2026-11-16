@@ -1,8 +1,9 @@
 name: Cloudflare CI and release
 on:
   push:
-    branches: ['**']
+    branches: ['**', '!feat/staff-interactive-tutorial']
   pull_request:
+    branches-ignore: [feat/staff-interactive-tutorial]
   workflow_dispatch:
 permissions:
   contents: read
@@ -15,6 +16,8 @@ jobs:
   checks:
     # Production pushes and same-repository dev -> main PRs reuse dev verification.
     if: >-
+      github.ref != 'refs/heads/feat/staff-interactive-tutorial' &&
+      github.head_ref != 'feat/staff-interactive-tutorial' &&
       !(github.event_name == 'push' && github.ref == 'refs/heads/main') &&
       !(github.event_name == 'pull_request' &&
         github.base_ref == 'main' && github.head_ref == 'dev' &&
@@ -41,6 +44,8 @@ jobs:
     name: browser
     # Run alongside checks while preserving the release and promotion exemptions.
     if: >-
+      github.ref != 'refs/heads/feat/staff-interactive-tutorial' &&
+      github.head_ref != 'feat/staff-interactive-tutorial' &&
       github.ref != 'refs/heads/main' &&
       (github.event_name != 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/')) &&
       !(github.event_name == 'pull_request' &&
@@ -115,6 +120,7 @@ jobs:
     # Main pushes release directly; Preview still requires successful verification.
     if: >-
       always() && !cancelled() &&
+      github.ref != 'refs/heads/feat/staff-interactive-tutorial' &&
       startsWith(github.ref, 'refs/heads/') &&
       ((github.event_name == 'push' && github.event.deleted != true) ||
        (github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main')) &&

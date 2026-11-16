@@ -2,26 +2,25 @@ name: Staff tutorial Pages
 
 on:
   push:
-    branches: [dev, feat/staff-interactive-tutorial]
-    paths:
-      - 'tutorial/**'
-      - 'frontend/staff-react/**'
-      - 'frontend/assets/**'
-      - 'shared/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/tutorial-pages.yml'
+    branches: [feat/staff-interactive-tutorial]
+  pull_request:
+    branches: [feat/staff-interactive-tutorial]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: staff-tutorial-pages
+  group: staff-tutorial-pages-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
   build:
+    name: Tutorial checks
+    if: >-
+      (github.event_name == 'pull_request' && github.base_ref == 'feat/staff-interactive-tutorial') ||
+      (github.ref == 'refs/heads/feat/staff-interactive-tutorial' &&
+       ((github.event_name == 'push' && github.event.deleted != true) || github.event_name == 'workflow_dispatch'))
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     permissions:
@@ -29,6 +28,8 @@ jobs:
       pages: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -40,20 +41,27 @@ jobs:
         run: |
           npm ci
           npm ci --prefix tutorial
-      - name: Check tutorial
+      - name: Check tutorial and deployment boundaries
         run: |
           npm run lint --prefix tutorial
           npm test --prefix tutorial
+          node --test tests/release.test.mjs tests/release-tag.test.mjs
       - name: Configure Pages
+        if: github.ref == 'refs/heads/feat/staff-interactive-tutorial' && github.event_name != 'pull_request'
         id: pages
         uses: actions/configure-pages@v5
+      - name: Use the project path for unpublished checks
+        if: github.event_name == 'pull_request' || github.ref != 'refs/heads/feat/staff-interactive-tutorial'
+        id: preview-path
+        shell: bash
+        run: echo "base_path=/${GITHUB_REPOSITORY#*/}" >> "$GITHUB_OUTPUT"
       - name: Build tutorial for its Pages path
         env:
-          TUTORIAL_BASE_PATH: ${{ steps.pages.outputs.base_path }}/
+          TUTORIAL_BASE_PATH: ${{ steps.pages.outputs.base_path || steps.preview-path.outputs.base_path }}/
         run: npm run build --prefix tutorial
       - name: Verify complete workflows under the Pages path
         env:
-          TUTORIAL_BASE_PATH: ${{ steps.pages.outputs.base_path }}/
+          TUTORIAL_BASE_PATH: ${{ steps.pages.outputs.base_path || steps.preview-path.outputs.base_path }}/
         run: |
           cd tutorial
           npx playwright install --with-deps chromium
@@ -66,18 +74,22 @@ jobs:
           path: tutorial/test-results/
           retention-days: 7
       - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/feat/staff-interactive-tutorial' && github.event_name != 'pull_request'
         with:
           path: tutorial/dist
 
   deploy:
     needs: build
+    if: >-
+      github.ref == 'refs/heads/feat/staff-interactive-tutorial' &&
+      ((github.event_name == 'push' && github.event.deleted != true) || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       pages: write
       id-token: write
     environment:
-      name: github-pages
+      name: staff-tutorial-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Deploy tutorial

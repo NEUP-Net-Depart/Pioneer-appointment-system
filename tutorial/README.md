@@ -40,7 +40,19 @@ npm run preview
 
 在线教程：<https://neup-net-depart.github.io/Pioneer-appointment-system/>。
 
-`.github/workflows/tutorial-pages.yml` 在 `feat/staff-interactive-tutorial` 和 `dev` 的教程、原后台组件、公共资源或依赖发生变化时自动执行，也支持手动运行。流程安装依赖、检查教程、按 Pages 子目录构建、完整验证七条工作流，再上传并部署静态文件；不使用正式后端、数据库或 Cloudflare 密钥。GitHub Pages 的发布来源须为 **GitHub Actions**，`github-pages` 环境只允许这两个分支部署。
+`.github/workflows/tutorial-pages.yml` 只为 `feat/staff-interactive-tutorial` 分支发布。该分支每次推送都会安装依赖、检查教程、按 Pages 子目录构建并完整验证七条工作流，全部成功才上传发布包，再等待发布审批。面向该分支的 PR 只执行 `Tutorial checks`，不读取 Pages 配置或发布；没有路径过滤，避免必需检查一直等待。`dev`、`main` 和其他分支不运行教程任务，不按任何分支前缀扩展范围。手动触发若可用，也只接受这个教程分支。
+
+教程独立维护，只使用现有分支，不需要将工作流同步到 `dev` 或建立其他教程分支。后续修改推送到此分支，检查通过后，由仓库现有审核人 `PeterPtroc` 在 Actions 的发布审批中核对对应提交并批准，才更新线上 Pages。发起人不能自行批准，也不能以管理员身份绕过审批；等待期间保留线上旧版本。不要为了审核而将教程合并到 `dev` 或 `main`。GitHub Pages 的发布来源须为 **GitHub Actions**。
+
+在这个教程分支上，Cloudflare 工作流不响应推送，面向此分支的 PR 也不运行业务检查；从此分支发往其他分支的 PR 跳过业务任务。手动选择此分支运行业务发布、清理附件、预约过期处理、生产发布申请或业务诊断时，任务全部跳过。发布脚本也拒绝此分支。`dev`、`main` 和其他分支仍按各自原有工作流运行；定时维护继续由默认分支派发，不从教程分支执行。
+
+以上为仓库内的工作流隔离，不是独立的权限边界。教程使用以下独立环境配置：
+
+- `staff-tutorial-pages` 环境只允许 `feat/staff-interactive-tutorial` 部署，审批人为 `PeterPtroc`，禁止自行批准和管理员绕过。不保存 Cloudflare 或数据库密钥。
+- 原 `github-pages` 环境仅移除此教程分支的部署许可，阻止旧工作流重跑绕过审批；保留其原有 `dev` 许可和其他配置。其他业务环境、分支规则、仓库级权限不修改。
+- 影响其他分支或共享服务的线上设置只能通过 PR 提交变更申请，不直接调整。
+- 仓库级 GitHub App（例如 Piper）和 Cloudflare Git 集成的范围要在对应服务单独确认。`.piper.yml` 不能替代 GitHub 分支保护，也不能保证外部 App 的分支隔离；不要将教程审核请求走业务生产发布入口。
+- 同仓库仍共享仓库级权限和可用密钥。若要求教程代码无法获得业务密钥、无法影响业务发布配置，应另建没有业务密钥与业务 App 的教程仓库。
 
 使用 `TUTORIAL_BASE_PATH` 可部署到项目子目录，默认为 `/`。Pages Action 从仓库设置读取路径，无需在源页面里硬编码域名。下面在 PowerShell 中验证 GitHub Pages 路径：
 

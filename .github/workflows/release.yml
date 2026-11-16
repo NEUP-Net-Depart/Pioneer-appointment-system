@@ -4,10 +4,11 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: piper-release-request
+  group: ${{ github.ref == 'refs/heads/feat/staff-interactive-tutorial' && format('staff-tutorial-disabled-release-{0}', github.run_id) || 'piper-release-request' }}
   cancel-in-progress: false
 jobs:
   authorize:
+    if: github.ref != 'refs/heads/feat/staff-interactive-tutorial'
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
