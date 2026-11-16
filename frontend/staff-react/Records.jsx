@@ -12,6 +12,7 @@ import { Repair } from './field/Repair';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { WorkspaceMoreActions } from './WorkspaceMoreActions';
 import { staffPermission } from '../../shared/staff-access.js';
+import { preferredCampus } from './campus-preference.js';
 import './records-workspace.css';
 
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -35,7 +36,8 @@ export function Records({ user }) {
   const today = dateKey(),
     week = weekRange(today);
   const [defaultDate, setDefaultDate] = useState(null);
-  const [filters, setFilters] = useState(cleanFilters),
+  const defaultCampus = preferredCampus(user) || 'all';
+  const [filters, setFilters] = useState(() => ({ ...cleanFilters, campus: defaultCampus })),
     [search, setSearch] = useState(''),
     [sorts, setSorts] = useState([]),
     [menu, setMenu] = useState(''),
@@ -139,7 +141,7 @@ export function Records({ user }) {
     setFilters((current) => {
       const descendants =
         Object.hasOwn(patch, 'date') || Object.hasOwn(patch, 'dateFrom')
-          ? { campus: 'all', timeSlot: '', status: 'all' }
+          ? { timeSlot: '', status: 'all' }
           : Object.hasOwn(patch, 'campus')
             ? { timeSlot: '', status: 'all' }
             : Object.hasOwn(patch, 'timeSlot')
@@ -150,7 +152,7 @@ export function Records({ user }) {
   const reset = () => {
     browseFilters.current = null;
     setSearch('');
-    setFilters({ ...cleanFilters, date: defaultDate || today });
+    setFilters({ ...cleanFilters, campus: defaultCampus, date: defaultDate || today });
     setSorts([]);
   };
   function cycle(key) {
@@ -273,7 +275,7 @@ export function Records({ user }) {
           <div className="records-active-filters" aria-label="当前筛选条件">
             {(search ||
               datePreset !== 'today' ||
-              filters.campus !== 'all' ||
+              filters.campus !== defaultCampus ||
               filters.status !== 'all' ||
               filters.timeSlot ||
               sorts.length > 0) && (

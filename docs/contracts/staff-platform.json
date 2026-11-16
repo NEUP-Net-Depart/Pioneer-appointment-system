@@ -7,6 +7,9 @@
     "manualGrantRole": "superadmin",
     "managementScope": "both campuses; same business management permissions as director",
     "dutyParticipation": false,
+    "selfAttendance": "QR and direct check-in in authorized campuses; existing windows, suspension and deduplication rules",
+    "volunteerCredit": "valid attendance only under existing counting rules; identity alone never grants automatic leader credit",
+    "attendanceCorrections": false,
     "retroactiveHistoryChanges": false
   },
   "maintenanceAffairs": {

@@ -33,6 +33,8 @@ PostHog 接入变量、完整会话回放、source maps、Cloudflare Analytics E
 
 ## CI 与权限
 
+发布操作见 [Release 操作说明](releases.md)。
+
 [发布工作流](../.github/workflows/check.yml) 在开发阶段执行与 `npm run verify` 等价的完整检查。`checks` 与 `browser` 并行运行，`test` 汇总并要求两者成功；浏览器任务只在 Chromium 桌面与 WebKit 手机尺寸运行 6 项关键流程冒烟，其余浏览器回归按需执行。生产发布复用 dev 阶段的验证：
 
 | 触发 | 目标与顺序 |

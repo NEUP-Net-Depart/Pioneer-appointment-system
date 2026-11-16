@@ -84,17 +84,10 @@ backport:
   maxFiles: 50
 
 release:
-  # temp down
-  enabled: false
+  enabled: true
   source: dev
   target: main
-  timezone: Asia/Shanghai
-  weekday: 4
-  hour: 23
-  version: patch
-  initialVersion: v0.1.0
+  requestWorkflow: release.yml
   deploymentWorkflow: check.yml
   deploymentJob: release
-  requiredChecks: [test]
-  minApprovals: 1
-
+  requiredChecks: [checks, browser, test, migrate-preview]

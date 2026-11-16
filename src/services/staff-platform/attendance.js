@@ -13,7 +13,7 @@ import { requestId, stableJson } from '../../platform/contracts.js';
 import { attendanceMethod, policyFor } from '../../modules/attendance/public.js';
 import { campusId as normalizeCampusId } from '../../modules/authorization/scopes.js';
 import { csvLine } from '../../lib/csv.js';
-import { staffIdentities } from '../../../shared/staff-identities.js';
+import { isRetiredElder, staffIdentities } from '../../../shared/staff-identities.js';
 import { dutyWindow, DUTY_START } from '../../../shared/duty.js';
 import { weeklyAttendanceRows } from '../../modules/attendance/weekly-export.js';
 import {
@@ -177,6 +177,7 @@ export function attendanceDomain({
       [...leadershipPositions, 'superadmin'].includes(item.code)
     );
     const qualified =
+      isRetiredElder(context) ||
       hasMaintenanceAffairs(context) ||
       scheduled.some((duty) => duty.dutyType === 'office') ||
       leader;
@@ -285,7 +286,8 @@ export function attendanceDomain({
           direct,
           directWithoutRoster:
             direct &&
-            (hasMaintenanceAffairs(context) ||
+            (isRetiredElder(context) ||
+              hasMaintenanceAffairs(context) ||
               staffIdentities(context, platform.authorizer, { campusId: event.campusId }).some(
                 (item) => [...leadershipPositions, 'superadmin'].includes(item.code)
               )),

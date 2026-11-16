@@ -1,5 +1,5 @@
 import { test, expect } from './support/fixtures.mjs';
-import { chooseOption, loginStaff, staffPage, staffApi } from './support/staff.mjs';
+import { chooseOption, loginStaff, staffPage, staffApi, dutyPage } from './support/staff.mjs';
 
 import { dateKey } from '../../shared/time.js';
 import { WORKFLOW_TIME } from '../fixtures/workflow-seed.mjs';
@@ -54,6 +54,13 @@ test('superadmins manually grant and revoke the retired badge across member and 
   await loginStaff(retired, '20261004');
   const personal = await staffPage(retired, '个人中心');
   await expect(personal.locator('.personal-profile [data-identity="retired_elder"]')).toBeVisible();
+  const duties = await dutyPage(retired, '我的值班');
+  await expect(duties.getByRole('button', { name: '到岗签到', exact: true })).toBeVisible();
+  await expect(duties.getByRole('heading', { name: '填写空闲', exact: true })).toHaveCount(0);
+  await expect(duties.getByRole('button', { name: '确认接替', exact: true })).toHaveCount(0);
+  const hours = duties.getByRole('region', { name: '我的志愿时长', exact: true });
+  await expect(hours).toContainText('退休老登仅按有效签到计入，未签到不计时长');
+  await expect(hours).not.toContainText('负责人每周自动计入一次');
   const managed = await staffPage(retired, '人员管理');
   await managed.getByRole('textbox', { name: '搜索成员', exact: true }).fill('20261003');
   await managed

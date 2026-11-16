@@ -13,6 +13,7 @@ import { CampusScope } from './CampusScope.jsx';
 import { RefreshButton } from './WorkspaceToolbar.jsx';
 import { Attendance } from './Attendance';
 import { addDays, dateKey, rosterWeekKey } from '../../shared/time.js';
+import { isRetiredElder } from '../../shared/staff-identities.js';
 import {
   DUTY_START,
   DUTY_END,
@@ -35,7 +36,8 @@ export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
     lock = useRef(false);
   const [week, setWeek] = useState(() => rosterWeekKey()),
     [selectedType, setType] = useState('');
-  const types = dutyCandidateTypes(user.memberships || [], dateKey());
+  const retired = isRetiredElder(user);
+  const types = retired ? [] : dutyCandidateTypes(user.memberships || [], dateKey());
   const type = types.includes(selectedType) ? selectedType : types[0];
   const [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
@@ -301,7 +303,12 @@ export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
             按现行志愿登记规则核算，每次{' '}
             <DataValue label="每次时长">{summary?.settings.hoursPerCount}</DataValue> 小时；
             {summary?.settings.countMode === 'weekly' ? '每周最多计一次' : '按实际有效签到计入'}
-            {summary?.settings.mergeLeaders ? '，负责人每周自动计入一次' : ''}。
+            {retired
+              ? '，退休老登仅按有效签到计入，未签到不计时长'
+              : summary?.settings.mergeLeaders
+                ? '，负责人每周自动计入一次'
+                : ''}
+            。
           </p>
         </section>
         <div className="duty-toolbar personal-duty-toolbar">
@@ -546,7 +553,7 @@ export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
                     </div>
                   </fieldset>
                 </form>
-              ) : (
+              ) : !retired ? (
                 <div className="schedule-actions">
                   {item.leaveStatus === 'recorded' ? (
                     <button
@@ -577,11 +584,11 @@ export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
                     邀请接替
                   </button>
                 </div>
-              )}
+              ) : null}
             </article>
           ))}
         </section>
-        {data?.covers?.length > 0 && (
+        {!retired && data?.covers?.length > 0 && (
           <section className="schedule-card">
             <h2>接替邀请</h2>
             {data.covers.map((item) => (
