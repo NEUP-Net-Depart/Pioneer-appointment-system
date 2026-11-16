@@ -109,6 +109,8 @@ jobs:
           node scripts/rehearse-preview.mjs
           node scripts/ci-release.mjs --migrate-preview
   release:
+    outputs:
+      deployed_sha: ${{ steps.production.outputs.deployed_sha }}
     needs: [test, migrate-preview]
     # Main pushes release directly; Preview still requires successful verification.
     if: >-
@@ -181,3 +183,32 @@ jobs:
           PREVIEW_MIGRATIONS_APPLIED: ${{ needs.migrate-preview.result == 'success' && 'true' || 'false' }}
           WRANGLER_SEND_METRICS: 'false'
         run: node scripts/ci-release.mjs
+
+  production-tag:
+    needs: release
+    # Main intentionally skips test ancestors; still require successful deployment.
+    if: >-
+      always() && !cancelled() &&
+      github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+      needs.release.result == 'success' && needs.release.outputs.deployed_sha == github.sha
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    concurrency:
+      group: production-tag-${{ github.sha }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.deployed_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Tag the successfully deployed main commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYED_SHA: ${{ needs.release.outputs.deployed_sha }}
+          PRODUCTION_RESULT: ${{ needs.release.result }}
+        run: node scripts/release-tag.mjs

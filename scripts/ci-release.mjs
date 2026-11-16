@@ -57,7 +57,7 @@ export async function runCiRelease(env=process.env,run=execute(env),fetcher=fetc
   if(plan.target==='production')step(run,'migrate-remote.mjs',args,plan.target);
   step(run,'deploy.mjs',args,plan.target);
   step(run,'smoke.mjs',[plan.url],plan.target);
-  if(env.GITHUB_OUTPUT)appendFileSync(env.GITHUB_OUTPUT,`url=${plan.url}\n`);
+  if(env.GITHUB_OUTPUT)appendFileSync(env.GITHUB_OUTPUT,`url=${plan.url}\n${plan.target==='production' ? `deployed_sha=${env.GITHUB_SHA}\n` : ''}`);
   console.log(`Published ${plan.branch}: ${plan.url}`);
   return plan;
 }
