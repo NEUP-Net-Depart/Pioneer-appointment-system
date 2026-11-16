@@ -1,3 +1,4 @@
+import { Select } from './SelectionControls.jsx';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { roleLabels, CAMPUSES } from '../../shared/constants.js';
 import { request } from './request.js';
@@ -7,6 +8,7 @@ import { WorkspaceSections } from './WorkspaceSections';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { StaffIdentity } from './StaffIdentity';
+import { RefreshButton, WorkspaceToolbar } from './WorkspaceToolbar.jsx';
 
 const enrollmentLabels = {
   open: '待激活',
@@ -38,25 +40,30 @@ export function Accounts({ user, embedded = false }) {
   }
   return (
     <section className="accounts-workspace">
-      {embedded ? (
-        <div className="workspace-list-tools">
-          <button onClick={copy}>复制激活网址</button>
-        </div>
-      ) : (
+      {!embedded && (
         <WorkspaceHeader group="人员权限" title="人员管理">
-          <button onClick={copy}>复制激活网址</button>
+          <button data-track="staff.accounts.button.2" onClick={copy}>
+            复制激活网址
+          </button>
         </WorkspaceHeader>
       )}
       <Notice>{copyMessage}</Notice>
-      <WorkspaceSections
-        label="账号管理功能"
-        items={sections}
-        value={section}
-        onChange={(id) => {
-          setSection(id);
-          setVisited((current) => (current.includes(id) ? current : [...current, id]));
-        }}
-      />
+      <div className="accounts-section-heading">
+        <WorkspaceSections
+          label="账号管理功能"
+          items={sections}
+          value={section}
+          onChange={(id) => {
+            setSection(id);
+            setVisited((current) => (current.includes(id) ? current : [...current, id]));
+          }}
+        />
+        {embedded && (
+          <button data-track="staff.accounts.button.1" onClick={copy}>
+            复制激活网址
+          </button>
+        )}
+      </div>
       {sections.map(
         (item) =>
           visited.includes(item.id) && (
@@ -95,15 +102,20 @@ function AccountList({ user }) {
         <label>
           查找账号
           <input
+            data-track="staff.accounts.input.3"
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="姓名、学号或校区"
           />
         </label>
-        <button disabled={list.isPending} onClick={list.refetch}>
-          刷新账号
-        </button>
+        <RefreshButton
+          data-track="staff.accounts.button.4"
+          disabled={list.isPending}
+          onRefresh={() => list.refetch({ throwOnError: true })}
+          label="刷新账号"
+          compactOnMobile
+        />
         <span data-motion-value="number" role="status">
           {`${items.length} 个账号`}
         </span>
@@ -140,7 +152,9 @@ function AccountList({ user }) {
             </div>
             <div className="account-actions">
               {item.actions?.edit ? (
-                <button onClick={() => setSelected(item)}>管理账号</button>
+                <button data-track="staff.accounts.button.5" onClick={() => setSelected(item)}>
+                  管理账号
+                </button>
               ) : (
                 <small data-motion-value="text">
                   {item.protected
@@ -156,7 +170,11 @@ function AccountList({ user }) {
         {!items.length && !list.isPending && !list.error && (
           <div className="field-empty">
             <strong data-motion-value="text">{query ? '没有匹配的账号' : '暂无可见账号'}</strong>
-            {query && <button onClick={() => setQuery('')}>清除搜索</button>}
+            {query && (
+              <button data-track="staff.accounts.button.6" onClick={() => setQuery('')}>
+                清除搜索
+              </button>
+            )}
           </div>
         )}
       </section>
@@ -260,11 +278,17 @@ export function AccountEditor({ user, item, onClose, onSaved, embedded = false, 
       <p data-motion-value="text" className="field-muted">
         {item.account} · 保存后撤销此账号已有会话。
       </p>
-      <form ref={form} className="workspace-form" onSubmit={save}>
+      <form
+        data-track="staff.accounts.form.7"
+        ref={form}
+        className="workspace-form"
+        onSubmit={save}
+      >
         <fieldset disabled={busy} className="workspace-form-fields">
           <label>
             姓名
             <input
+              data-track="staff.accounts.input.8"
               required
               maxLength={80}
               value={draft.name}
@@ -278,20 +302,22 @@ export function AccountEditor({ user, item, onClose, onSaved, embedded = false, 
           <p className="field-muted">任职与独立身份在人员详情的“基本资料与任职身份”中管理。</p>
           <label>
             所属校区
-            <select
+            <Select
+              data-track="staff.accounts.select.9"
               value={draft.homeCampus}
               onChange={(event) => setDraft({ ...draft, homeCampus: event.target.value })}
             >
               {CAMPUSES.map((campus) => (
                 <option key={campus}>{campus}</option>
               ))}
-            </select>
+            </Select>
           </label>
           <fieldset className="workspace-checks">
             <legend>授权校区</legend>
             {CAMPUSES.map((campus) => (
               <label className="workspace-check" key={campus}>
                 <input
+                  data-track="staff.accounts.input.10"
                   type="checkbox"
                   disabled={!user.authorizedCampuses.includes(campus)}
                   checked={draft.authorizedCampuses.includes(campus)}
@@ -304,26 +330,28 @@ export function AccountEditor({ user, item, onClose, onSaved, embedded = false, 
                     })
                   }
                 />
-                {campus}
+                <span>{campus}</span>
               </label>
             ))}
           </fieldset>
           {item.actions?.changeStatus && (
             <label>
               账号状态
-              <select
+              <Select
+                data-track="staff.accounts.select.11"
                 value={draft.status}
                 onChange={(event) => setDraft({ ...draft, status: event.target.value })}
               >
                 <option value="enabled">启用</option>
                 <option value="disabled">停用</option>
-              </select>
+              </Select>
             </label>
           )}
           {item.actions?.resetPassword && (
             <>
               <label className="workspace-check">
                 <input
+                  data-track="staff.accounts.input.12"
                   type="checkbox"
                   checked={reset}
                   onChange={(event) => {
@@ -337,6 +365,7 @@ export function AccountEditor({ user, item, onClose, onSaved, embedded = false, 
                 <label>
                   新登录密码
                   <input
+                    data-track="staff.accounts.input.13"
                     type="password"
                     autoComplete="new-password"
                     required
@@ -352,10 +381,19 @@ export function AccountEditor({ user, item, onClose, onSaved, embedded = false, 
         </fieldset>
         <Notice>{error}</Notice>
         <div className="field-actions">
-          <button type="button" disabled={busy} onClick={embedded ? discard : onClose}>
+          <button
+            data-track="staff.accounts.button.14"
+            type="button"
+            disabled={busy}
+            onClick={embedded ? discard : onClose}
+          >
             取消
           </button>
-          <button className="field-primary" disabled={busy || !draft.authorizedCampuses.length}>
+          <button
+            data-track="staff.accounts.button.15"
+            className="field-primary"
+            disabled={busy || !draft.authorizedCampuses.length}
+          >
             {busy ? '正在保存…' : '保存账号'}
           </button>
         </div>
@@ -410,21 +448,35 @@ function ActivationReview() {
   }
   return (
     <>
-      <div className="workspace-list-tools">
-        <div>
-          <h2>激活审核</h2>
+      <WorkspaceToolbar title="激活审核">
+        <div className="workspace-segmented-control" role="group" aria-label="申请处理状态">
+          <button
+            data-track="staff.accounts.button.26"
+            type="button"
+            aria-pressed={!history}
+            disabled={busy}
+            onClick={() => setHistory(false)}
+          >
+            待审核
+          </button>
+          <button
+            data-track="staff.accounts.button.27"
+            type="button"
+            aria-pressed={history}
+            disabled={busy}
+            onClick={() => setHistory(true)}
+          >
+            已处理
+          </button>
         </div>
-        <button disabled={busy || list.isPending} onClick={list.refetch}>
-          刷新申请
-        </button>
-        <button
-          aria-pressed={history}
-          disabled={busy}
-          onClick={() => setHistory((value) => !value)}
-        >
-          {history ? '返回待审核' : '查看已处理'}
-        </button>
-      </div>
+        <RefreshButton
+          data-track="staff.accounts.button.16"
+          disabled={busy || list.isPending}
+          key={String(history)}
+          onRefresh={() => list.refetch({ throwOnError: true })}
+          label="刷新申请"
+        />
+      </WorkspaceToolbar>
       <Notice>{list.error?.message || message}</Notice>
       <div data-motion-list="reveal" className="account-list" aria-busy={list.isPending}>
         {items.map((item) => (
@@ -433,6 +485,7 @@ function ActivationReview() {
               {item.status === 'pending' ? (
                 <label className="workspace-check">
                   <input
+                    data-track="staff.accounts.input.18"
                     type="checkbox"
                     aria-label={`选择 ${item.studentId}`}
                     disabled={busy}
@@ -478,6 +531,7 @@ function ActivationReview() {
           <strong data-motion-value="number">已选 {ids.length} 人</strong>
           <label className="workspace-check">
             <input
+              data-track="staff.accounts.input.19"
               type="checkbox"
               checked={verified}
               disabled={busy || !ids.length}
@@ -488,6 +542,7 @@ function ActivationReview() {
           <label>
             审核说明（选填）
             <textarea
+              data-track="staff.accounts.textarea.20"
               rows={2}
               maxLength={300}
               value={note}
@@ -496,10 +551,15 @@ function ActivationReview() {
             />
           </label>
           <div className="field-actions">
-            <button disabled={busy || !ids.length} onClick={() => review('rejected')}>
+            <button
+              data-track="staff.accounts.button.21"
+              disabled={busy || !ids.length}
+              onClick={() => review('rejected')}
+            >
               拒绝申请
             </button>
             <button
+              data-track="staff.accounts.button.22"
               className="field-primary"
               disabled={busy || !ids.length || !verified}
               onClick={() => review('approved')}
@@ -549,15 +609,20 @@ function Invitations() {
         <label>
           查找加入资格
           <input
+            data-track="staff.accounts.input.23"
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="学号或姓名"
           />
         </label>
-        <button disabled={busy || list.isPending} onClick={list.refetch}>
-          刷新资格
-        </button>
+        <RefreshButton
+          data-track="staff.accounts.button.24"
+          disabled={busy || list.isPending}
+          onRefresh={() => list.refetch({ throwOnError: true })}
+          label="刷新资格"
+          compactOnMobile
+        />
       </div>
       <Notice>{list.error?.message || message}</Notice>
       <div data-motion-list="reveal" className="account-list" aria-busy={list.isPending}>
@@ -581,6 +646,7 @@ function Invitations() {
             <div>
               {item.status !== 'activated' && (
                 <button
+                  data-track="staff.accounts.button.25"
                   disabled={busy}
                   onClick={() =>
                     run(async () => {

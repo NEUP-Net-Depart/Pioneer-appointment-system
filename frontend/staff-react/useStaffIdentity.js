@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiJson, clearSession, useStaffSession } from '../../shared/api.js';
 import { showToast } from '../../shared/utils.js';
+import { identifyTelemetry, resetTelemetry } from '../../shared/telemetry-client.js';
 
 useStaffSession();
 
@@ -20,6 +21,7 @@ export function useStaffIdentity() {
     attempt.current?.abort();
     client.clear();
     clearSession();
+    resetTelemetry();
     sessionStorage.removeItem('field-campus');
     setToken(null);
     setSigningIn(false);
@@ -36,6 +38,7 @@ export function useStaffIdentity() {
   useEffect(() => {
     if (!profile.data || token !== sessionStorage.getItem('pioneerToken')) return;
     const user = profile.data;
+    identifyTelemetry(user);
     sessionStorage.setItem('pioneerRole', user.role);
     sessionStorage.setItem('pioneerAccount', user.account);
     sessionStorage.setItem('pioneerMemberId', user.memberId || user.actor?.memberId || '');

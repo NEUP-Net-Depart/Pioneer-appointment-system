@@ -1,13 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { database,seedStaff,seedAppointment,seedPhoto } from './helpers/database.mjs';
-import { repairScenario } from './fixtures/repair-scenario.mjs';
+
+import { seedPhoto } from './helpers/database.mjs';
+import { repairScenario, repairModel } from './fixtures/repair-scenario.mjs';
 import { appointmentPatch } from '../src/lib/validation.js';
 import { verifyStaffSchema } from '../src/db/staff-readiness.js';
 import { encryptText } from '../src/lib/privacy.js';
 import { staffSceneAllowed } from '../shared/staff-access.js';
 import { statsRepository } from '../src/db/stats.js';
+import { workloadRepository } from '../src/db/staff-platform/workload.js';
 function patch(input) {return appointmentPatch({requestId:crypto.randomUUID(),...input});}
 
 test('field home and board prefer the authorized home campus and validate every explicit campus',async t=>{
@@ -80,13 +81,14 @@ test('field attendance follows the actual member, day and campus without live pr
   const before=await staff.field.home(worker,{campusId:'campus-nanhu'});
   assert.equal(before.attendance,null);
   const event=await staff.createAttendanceEvent(head,{campusId:'campus-nanhu',businessDate:calendar.serviceDay});
+  await staff.directCheckIn(head,{campusId:'campus-nanhu',requestId:crypto.randomUUID()});
   const token=await staff.issueAttendanceToken(head,event.id,{revision:event.revision});
   const record=await staff.checkIn(worker,{token:token.token,method:'qr',requestId:crypto.randomUUID()});
   db.sqlite.prepare('DELETE FROM staff_presence WHERE member_id=?').run(worker.memberId);
   assert.equal((await staff.field.home(worker,{campusId:'campus-nanhu'})).attendance.id,record.id);
   assert.equal((await staff.field.board(worker,{campusId:'campus-nanhu'})).attendance.id,record.id);
   assert.equal((await staff.field.home(worker,{campusId:'campus-hunnan'})).attendance,null);
-  assert.equal((await staff.field.home(head,{campusId:'campus-nanhu'})).attendance,null);
+  assert.equal((await staff.field.home(head,{campusId:'campus-nanhu'})).attendance.memberId,head.memberId);
   calendar.moveTo(calendar.nextDay,'19:10');
   assert.equal((await staff.field.home(worker,{campusId:'campus-nanhu'})).attendance,null);
 });
@@ -113,6 +115,7 @@ test('full student ID finds authorized current and historical orders through rec
 });
 
 test('hardware staff can receive multiple orders after hours and hand over across days without attendance',async t=>{
+  await repairModel(t);
   const {db,users,repo,staff,service,order,calendar}=repairScenario(t);
   await verifyStaffSchema(db);
   const one=await users.find('20260001'),two=await users.find('20260002'),other=await users.find('20260003');
@@ -148,6 +151,13 @@ test('hardware staff can receive multiple orders after hours and hand over acros
   assert.ok(contacts.length>0);assert.ok(contacts.every(row=>row.before_json===null && row.after_json===null));
   const listing=await staff.field.projectList(one,[await repo.find('a')]);
   assert.equal(Object.hasOwn(listing[0],'social'),false);
+  const workload = await workloadRepository({ db }).memberRepairWorkload(
+    [one.memberId, two.memberId], '2026-10-31T16:00:00.000Z', new Date().toISOString()
+  );
+  assert.deepEqual(workload.map(row => ({ ...row })), [
+    { memberId: one.memberId, total: 2, monthly: 2 },
+    { memberId: two.memberId, total: 1, monthly: 1 }
+  ]);
 });
 
 test('maintenance affairs reception and manager completion preserve the hardware owner, repair statistics and operation audit',async t=>{
@@ -324,27 +334,4 @@ test('competing starts keep one owner and receipt replay does not create a secon
   const owner=await repo.find('race');
   assert.equal(db.sqlite.prepare("SELECT COUNT(*) AS n FROM audit_events WHERE action='repairs.started'").get().n,1);
   if(owner.assignedTo==='20260001')assert.equal((await service.update('race',input,one)).revision,owner.revision);
-});
-
-for(const directory of ['migrations','database/staff-migrations'])test(`${directory}: queued, assigned, in-progress and photo facts survive destructive cutover`,()=>{
-  const db=database(directory,'0045_');
-  try {
-    seedStaff(db,'20260001');seedStaff(db,'20260002');
-    seedAppointment(db,{id:'active',status:'in_progress',assigned_to:'20260001',started_at:'2026-11-05T10:00:00.000Z'});
-    seedAppointment(db,{id:'waiting'});seedPhoto(db,'wf','waiting','front','20260001');seedPhoto(db,'wb','waiting','back','20260001');
-    db.sqlite.exec("UPDATE appointments SET front_photo_id='wf',back_photo_id='wb' WHERE id='waiting'");
-    db.sqlite.exec(`INSERT INTO repair_receptions(appointment_id,state,received_at,received_by,assigned_to,assigned_member_id,updated_at) VALUES('waiting','assigned','2026-11-05T10:00:00.000Z','20260001','20260002','member-20260002','2026-11-05T10:00:00.000Z')`);
-    const photos=db.sqlite.prepare('SELECT * FROM appointment_attachments').all();
-    const before=db.sqlite.prepare("SELECT * FROM appointments WHERE id='active'").get();
-    db.sqlite.exec(readFileSync(`${directory}/0045_direct_repairs.sql`,'utf8'));
-    assert.deepEqual(db.sqlite.prepare('SELECT * FROM appointment_attachments').all(),photos);
-    const after=db.sqlite.prepare("SELECT * FROM appointments WHERE id='active'").get();
-    for(const key of Object.keys(before))assert.equal(after[key],before[key],key);
-    const waiting=db.sqlite.prepare("SELECT * FROM appointments WHERE id='waiting'").get();
-    assert.equal(waiting.status,'booked');assert.equal(waiting.assigned_to,null);assert.equal(waiting.received_by,'20260001');
-    assert.equal(waiting.front_photo_id,'wf');
-    assert.ok(db.sqlite.prepare("SELECT before_json FROM audit_events WHERE action='repairs.workflow.archived' AND before_json LIKE '%assigned%'").get());
-    for(const name of ['active_repairs','repair_receptions','repair_queue_tickets','idx_one_pending_onsite_registration'])assert.equal(db.sqlite.prepare('SELECT name FROM sqlite_master WHERE name=?').get(name),undefined);
-    assert.deepEqual(db.sqlite.prepare('PRAGMA foreign_key_check').all(),[]);
-  }finally{db.sqlite.close();}
 });

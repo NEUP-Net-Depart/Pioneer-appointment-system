@@ -218,8 +218,9 @@ fieldset.field { padding: 0; border: 0; }
 .user-mode .modal-backdrop { padding: 20px; z-index: 100; }
 .user-mode .modal { border-radius: 16px; padding: 28px; max-height: calc(100dvh - 40px); overflow: auto; }
 .user-mode .signature-layer { padding: 0; }
-.user-mode .signature-layer .modal { width: 100%; max-width: none; height: 100dvh; max-height: none; border-radius: 0; display: flex; flex-direction: column; padding: 24px max(20px,env(safe-area-inset-right)); }
-#signature-canvas { flex: 1; width: 100%; min-height: 180px; height: auto; touch-action: none; border: 1px solid #cdd9df; border-radius: var(--radius); background: #f7f9fa; }
+.user-mode .signature-layer .modal { width: 100%; max-width: none; height: 100vh; height: 100dvh; max-height: none; border-radius: 0; display: flex; flex-direction: column; padding: 24px max(20px,env(safe-area-inset-right)); }
+.signature-surface { position: relative; flex: 1; min-height: 180px; border: 1px solid #cdd9df; border-radius: var(--radius); background: #f7f9fa; overflow: hidden; }
+#signature-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; border: 0; background: transparent; }
 .signature-layer .modal-actions { flex-wrap: wrap; gap: 10px; padding-bottom: env(safe-area-inset-bottom); }
 .photo-layer .modal { width: min(850px,100%); }
 #photo-large { display: block; max-width: 100%; max-height: 70dvh; object-fit: contain; margin: 16px auto 0; }
@@ -242,7 +243,7 @@ fieldset.field { padding: 0; border: 0; }
   #appointment-detail .photo-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   #booking-review > .review-group { height: 100%; }
   .user-mode .signature-layer { padding: 24px; }
-  .user-mode .signature-layer .modal { width: min(960px,100%); height: min(600px,calc(100dvh - 48px)); border-radius: 16px; }
+  .user-mode .signature-layer .modal { width: min(960px,100%); height: min(600px,calc(100vh - 48px)); height: min(600px,calc(100dvh - 48px)); border-radius: 16px; }
 }
 @media(prefers-reduced-motion:reduce) { .user-mode *, .user-mode *:before,.user-mode *:after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
 .user-mode .student-shell .primary-btn { background-image: none; box-shadow: none; }

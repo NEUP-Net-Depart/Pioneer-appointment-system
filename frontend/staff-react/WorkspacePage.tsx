@@ -12,7 +12,7 @@ export function WorkspacePage({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLElement>(null);
-  useDataMotion(ref, active, true);
+  useDataMotion(ref, active);
   return (
     <main
       ref={ref}

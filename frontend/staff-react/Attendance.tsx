@@ -2,6 +2,7 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import React, { useContext } from 'react';
 import { ActivityContext, Notice, time } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
+import { RefreshButton } from './WorkspaceToolbar.jsx';
 
 type Record = {
   id: string;
@@ -44,7 +45,11 @@ export function Attendance({
     <section className="attendance-history">
       {!embedded && (
         <WorkspaceHeader group="我的" title="本人签到记录">
-          <button type="button" onClick={() => onNavigate?.('scene:mine')}>
+          <button
+            data-track="staff.attendance.button.1"
+            type="button"
+            onClick={() => onNavigate?.('scene:mine')}
+          >
             返回个人中心
           </button>
         </WorkspaceHeader>
@@ -52,10 +57,12 @@ export function Attendance({
       <Notice>{error}</Notice>
       <section className="field-card" aria-busy={loading}>
         <div className="field-section-heading">
-          <h2>签到历史</h2>
-          <button type="button" disabled={result.isFetching} onClick={() => result.refetch()}>
-            刷新记录
-          </button>
+          <h2>本人签到历史</h2>
+          <RefreshButton
+            data-track="staff.attendance.button.2"
+            onRefresh={() => result.refetch({ throwOnError: true })}
+            label="刷新本人签到"
+          />
         </div>
         {!items.length && !loading && !error && <p className="field-muted">暂无签到记录。</p>}
         <ul className="attendance-history-list">
@@ -82,6 +89,7 @@ export function Attendance({
         {result.hasNextPage && (
           <div className="field-actions">
             <button
+              data-track="staff.attendance.button.3"
               type="button"
               disabled={result.isFetching}
               onClick={() => result.fetchNextPage({ cancelRefetch: false })}

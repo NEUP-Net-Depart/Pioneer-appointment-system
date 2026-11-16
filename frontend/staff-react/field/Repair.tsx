@@ -10,6 +10,7 @@ import { IntakePhotos } from './IntakePhotos';
 import { useRepair } from './useRepair';
 import { formatInstant } from '../../../shared/time.js';
 import { DataValue } from '../DataValue';
+import { warrantyServiceCenterUrl } from '../../../shared/warranty.js';
 
 function RepairOrder({
   id,
@@ -29,6 +30,8 @@ function RepairOrder({
   const r = useRepair({ id });
   const { item, busy } = r;
   const [received, setReceived] = useState(false);
+  const activeBrand = item ? (!item.receivedAt && r.verification.brand.trim()) || item.brand : '';
+  const serviceCenterUrl = warrantyServiceCenterUrl(activeBrand);
   return (
     <Modal
       title="维修工单"
@@ -89,19 +92,37 @@ function RepairOrder({
           </p>
         )}
         {item?.receivedAt && item.status === 'booked' && <p>设备已接收，等待维修人员确认接手。</p>}
-        {item?.photoDeferredBy && <Notice>首次接收照片待传，由经办人手动补传原图。</Notice>}
+        {r.photoBusy && <Notice>照片正在上传并保存，请保持此页面打开。</Notice>}
+        {item?.photoDeferredBy && !r.photoBusy && (
+          <Notice>首次接收照片待传，由经办人补传原图。</Notice>
+        )}
       </section>
       {item && (
         <>
+          {r.waitingForPhotos && r.canSkip && (
+            <div className="field-form">
+              <p>
+                {r.error
+                  ? '照片上传失败，可以跳过并稍后重试补传。仍在上传的照片会继续，成功后自动补入本工单。'
+                  : '已等待 30 秒。可以跳过等待，上传会继续，成功后自动补入本工单。'}
+              </p>
+              <div className="field-actions">
+                <button data-track="staff.field.repair.skip-upload" onClick={r.skip}>
+                  跳过等待，继续当前操作
+                </button>
+              </div>
+            </div>
+          )}
           {(item.canStart || item.canReceive) && (
             <section className="field-form">
               {!item.receivedAt && (
                 <>
-                  <details className="field-details">
-                    <summary>修正设备资料</summary>
+                  <details data-track="staff.field.repair.details.1" className="field-details">
+                    <summary data-track="staff.field.repair.summary.2">修正设备资料</summary>
                     <label>
                       品牌
                       <input
+                        data-track="staff.field.repair.input.3"
                         maxLength={80}
                         value={r.verification.brand}
                         onChange={(e) =>
@@ -112,6 +133,7 @@ function RepairOrder({
                     <label>
                       型号（未知可留空）
                       <input
+                        data-track="staff.field.repair.input.4"
                         maxLength={120}
                         value={r.verification.model}
                         onChange={(e) =>
@@ -125,19 +147,26 @@ function RepairOrder({
                     id={id}
                     uploaded={r.uploaded}
                     previews={r.previews}
-                    busy={busy}
+                    busy={busy || r.photoBusy}
+                    progress={r.photoProgress}
                     onFile={r.onFile}
                   />
                 </>
               )}
               <div className="field-actions repair-intake-actions">
                 {item.canStart && (
-                  <button className="field-primary" disabled={busy} onClick={() => r.start()}>
+                  <button
+                    data-track="staff.field.repair.button.5"
+                    className="field-primary"
+                    disabled={busy}
+                    onClick={() => r.start()}
+                  >
                     {item.receivedAt ? '确认接手并开始维修' : '接收并开始维修'}
                   </button>
                 )}
                 {item.canReceive && (
                   <button
+                    data-track="staff.field.repair.button.6"
                     className={!item.canStart ? 'field-primary' : undefined}
                     disabled={busy}
                     onClick={() => r.start(true)}
@@ -145,14 +174,22 @@ function RepairOrder({
                     仅接收设备
                   </button>
                 )}
-                {r.timedOut && item.canReceive && (
-                  <button disabled={busy} onClick={() => r.start(true, true)}>
-                    稍后补传，仅接收设备
+                {!busy && r.canSkip && item.canReceive && (
+                  <button
+                    data-track="staff.field.repair.button.7"
+                    disabled={busy}
+                    onClick={() => r.start(true, true)}
+                  >
+                    跳过等待，仅接收设备
                   </button>
                 )}
-                {r.timedOut && item.canStart && (
-                  <button disabled={busy} onClick={() => r.start(false, true)}>
-                    稍后补传，接收并开始维修
+                {!busy && r.canSkip && item.canStart && (
+                  <button
+                    data-track="staff.field.repair.button.8"
+                    disabled={busy}
+                    onClick={() => r.start(false, true)}
+                  >
+                    跳过等待，接收并开始维修
                   </button>
                 )}
               </div>
@@ -166,11 +203,16 @@ function RepairOrder({
                 id={id}
                 uploaded={r.uploaded}
                 previews={r.previews}
-                busy={busy}
+                busy={busy || r.photoBusy}
+                progress={r.photoProgress}
                 onFile={r.onFile}
               />
-              <button disabled={busy} onClick={r.supplement}>
-                手动补传原图
+              <button
+                data-track="staff.field.repair.button.9"
+                disabled={busy || r.photoBusy}
+                onClick={r.supplement}
+              >
+                重试补传照片
               </button>
             </section>
           )}
@@ -178,19 +220,25 @@ function RepairOrder({
             <section className="field-form">
               <label className="field-check">
                 <input
+                  data-track="staff.field.repair.input.10"
                   type="checkbox"
                   checked={received}
                   onChange={(e) => setReceived(e.target.checked)}
                 />
                 我已实际接到设备，确认成为当前主修
               </label>
-              <button disabled={busy || !received} onClick={r.handoff}>
+              <button
+                data-track="staff.field.repair.button.11"
+                disabled={busy || !received}
+                onClick={r.handoff}
+              >
                 确认接手
               </button>
             </section>
           )}
           {(item.canFinish || item.canCorrect) && (
             <form
+              data-track="staff.field.repair.form.12"
               className="field-form"
               onSubmit={(e) => {
                 e.preventDefault();
@@ -202,6 +250,7 @@ function RepairOrder({
                 {repairOutcomes.map((value) => (
                   <label className="field-check" key={value}>
                     <input
+                      data-track="staff.field.repair.input.13"
                       type="radio"
                       name="outcome"
                       required
@@ -215,6 +264,7 @@ function RepairOrder({
               <label>
                 简短处理说明
                 <textarea
+                  data-track="staff.field.repair.textarea.14"
                   required
                   maxLength={1000}
                   value={r.note}
@@ -222,7 +272,11 @@ function RepairOrder({
                   placeholder="说明处理结果；部分解决或未解决时写清剩余问题"
                 />
               </label>
-              <button className="field-primary" disabled={busy}>
+              <button
+                data-track="staff.field.repair.button.15"
+                className="field-primary"
+                disabled={busy}
+              >
                 {item.canFinish ? '结束本次服务' : '保存结果更正'}
               </button>
             </form>
@@ -233,7 +287,20 @@ function RepairOrder({
             </p>
           )}
           {!hideWarrantyLookup && (item.canStart || item.canTransfer || item.canFinish) && (
-            <WarrantyLookupButton initialBrand={item.brand} />
+            <div className="repair-warranty-actions">
+              <WarrantyLookupButton initialBrand={activeBrand} />
+              {serviceCenterUrl && (
+                <a
+                  data-track="staff.field.repair.service-center"
+                  href={serviceCenterUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  referrerPolicy="no-referrer"
+                >
+                  打开售后网点 ↗
+                </a>
+              )}
+            </div>
           )}
           <RepairRelations
             key={id}
@@ -243,7 +310,7 @@ function RepairOrder({
             }}
             onOpen={onOpen}
           />
-          <RepairAttachments id={id} />
+          <RepairAttachments key={`attachments-${id}`} id={id} />
           {item.canEdit && (
             <RepairInformation
               item={item}
@@ -264,6 +331,7 @@ function RepairOrder({
           )}
           {customerCredential && (
             <a
+              data-track="staff.field.repair.a.16"
               href={`/#${new URLSearchParams({ appointment: customerCredential.id, access: customerCredential.accessToken })}`}
               target="_blank"
               rel="noreferrer"

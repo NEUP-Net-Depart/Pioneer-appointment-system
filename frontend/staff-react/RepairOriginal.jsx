@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { drawSignature } from '../../shared/signature.js';
+import { createSignaturePreview } from '../../shared/signature-pad.js';
 import { formatInstant } from '../../shared/time.js';
 import { Modal } from './field/ui';
 
@@ -10,8 +10,9 @@ export function RepairOriginal({ original }) {
   useEffect(() => {
     if (!open || !original?.signature || !canvas.current) return;
     try {
-      drawSignature(canvas.current, JSON.parse(original.signature));
+      const preview = createSignaturePreview(canvas.current, JSON.parse(original.signature));
       setInvalid(false);
+      return () => preview.dispose();
     } catch {
       setInvalid(true);
     }
@@ -19,7 +20,11 @@ export function RepairOriginal({ original }) {
   if (!original) return null;
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)}>
+      <button
+        data-track="staff.repairoriginal.button.1"
+        type="button"
+        onClick={() => setOpen(true)}
+      >
         查看原始登记与协议
       </button>
       {open && (
@@ -31,7 +36,7 @@ export function RepairOriginal({ original }) {
               ['原始故障', original.issue],
               ['原填保修', original.warranty],
               ['原填液金', original.liquidMetal],
-              ['Dell G15', original.dellG15],
+              ['Dell G15/G16', original.dellG15],
               ['学院', original.college],
               ['设备序列号', original.serial],
               ['进水情况', original.liquidDrop],

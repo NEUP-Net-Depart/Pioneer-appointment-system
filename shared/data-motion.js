@@ -289,7 +289,15 @@ export function observeDataMotion(root, { enterInitial = false } = {}) {
   const schedule = () => {
     if (!frame) frame = requestAnimationFrame(update);
   };
-  const observer = new MutationObserver(schedule);
+  const observer = new MutationObserver((records) => {
+    if (
+      records.some((record) => record.type === 'attributes' && record.attributeName === 'hidden')
+    ) {
+      reset();
+      return;
+    }
+    schedule();
+  });
   previous = measure();
   previousValues = readValues(previous);
   if (enterInitial && !preference.matches && !document.hidden && visible(root)) {

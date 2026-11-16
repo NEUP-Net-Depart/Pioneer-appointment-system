@@ -1,3 +1,6 @@
+import { Select } from './SelectionControls.jsx';
+import { RefreshButton } from './WorkspaceToolbar.jsx';
+import { HelpHint } from './HelpHint';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useEffect, useRef, useState } from 'react';
 import { DataInput } from './DataInput';
@@ -73,7 +76,7 @@ export function CapacityEditor({ active, onNavigate }) {
     }
   }
   const [drafts, setDrafts] = useState({});
-  const [campus, setCampus] = useState(''),
+  const [taskCampuses, setTaskCampuses] = useState({}),
     [day, setDay] = useState(1),
     [mode, setMode] = useState('template');
   const [error, setError] = useState(''),
@@ -103,6 +106,12 @@ export function CapacityEditor({ active, onNavigate }) {
   const loading = result.isPending;
   const refresh = () => result.refetch();
   const campuses = [...new Set(items.map((item) => item.campus))];
+  const campus = campuses.includes(taskCampuses[mode]) ? taskCampuses[mode] : campuses[0] || '';
+  const setCampus = (next) =>
+    setTaskCampuses((current) => ({
+      ...current,
+      [mode]: typeof next === 'function' ? next(current[mode]) : next
+    }));
   const selection = selections[campus] || single;
   const at = (row, col) =>
     items.find(
@@ -524,9 +533,10 @@ export function CapacityEditor({ active, onNavigate }) {
         }}
       />
       <div className="capacity-context">
-        <div className="capacity-campus-switch" aria-label="选择校区">
+        <div className="capacity-campus-switch" role="group" aria-label="当前配置校区">
           {campuses.map((name) => (
             <button
+              data-track="staff.capacityeditor.button.1"
               key={name}
               aria-pressed={campus === name}
               disabled={busy}
@@ -545,10 +555,15 @@ export function CapacityEditor({ active, onNavigate }) {
             </button>
           ))}
         </div>
-        {['template', 'actual'].includes(mode) && (
-          <button disabled={loading || busy} onClick={refresh}>
-            {loading ? '正在读取…' : '读取最新配置'}
-          </button>
+        {mode === 'template' && (
+          <RefreshButton
+            data-track="staff.capacityeditor.button.2"
+            key={campus}
+            disabled={busy}
+            label="刷新每周模板"
+            onRefresh={refresh}
+            compactOnMobile
+          />
         )}
       </div>
       <Notice>{error || result.error?.message}</Notice>
@@ -562,13 +577,23 @@ export function CapacityEditor({ active, onNavigate }) {
         <section className="field-card capacity-template">
           <div className="capacity-section-heading">
             <div>
-              <h2>每周预约人数</h2>
+              <h2 className="workspace-title-with-hint">
+                每周预约人数
+                <HelpHint data-track="staff.capacityeditor.helphint.33" label="容量生效规则">
+                  容量为0时暂停该时段预约。保存后立即更新今天及未来对应校区、星期和时段的容量。已有预约全部保留；已占用达到或超过新容量时停止新增，低于新容量后恢复放号。过去日期保持原容量。
+                </HelpHint>
+              </h2>
             </div>
             <span className="capacity-template-badge">每周重复</span>
           </div>
           <div className="capacity-mobile-days" aria-label="模板日期">
             {days.map((name, index) => (
-              <button key={name} aria-pressed={day === index + 1} onClick={() => setDay(index + 1)}>
+              <button
+                data-track="staff.capacityeditor.button.3"
+                key={name}
+                aria-pressed={day === index + 1}
+                onClick={() => setDay(index + 1)}
+              >
                 {name}
               </button>
             ))}
@@ -579,10 +604,15 @@ export function CapacityEditor({ active, onNavigate }) {
               {selection.range.right - selection.range.left + 1} 列
             </span>
             <div>
-              <button disabled={busy} onClick={() => selectHeader('all')}>
+              <button
+                data-track="staff.capacityeditor.button.4"
+                disabled={busy}
+                onClick={() => selectHeader('all')}
+              >
                 全选
               </button>
               <button
+                data-track="staff.capacityeditor.button.5"
                 disabled={busy || !items.length}
                 onClick={() => {
                   const text = copy();
@@ -591,10 +621,19 @@ export function CapacityEditor({ active, onNavigate }) {
               >
                 复制选区
               </button>
-              <button disabled={busy || !copied} onClick={() => paste(copied)}>
+              <button
+                data-track="staff.capacityeditor.button.6"
+                disabled={busy || !copied}
+                onClick={() => paste(copied)}
+              >
                 粘贴
               </button>
-              <button disabled={busy} aria-pressed={extend} onClick={() => setExtend(!extend)}>
+              <button
+                data-track="staff.capacityeditor.button.7"
+                disabled={busy}
+                aria-pressed={extend}
+                onClick={() => setExtend(!extend)}
+              >
                 扩展选区
               </button>
             </div>
@@ -629,6 +668,7 @@ export function CapacityEditor({ active, onNavigate }) {
                 <tr>
                   <th>
                     <button
+                      data-track="staff.capacityeditor.button.8"
                       data-axis="all"
                       aria-label="选择全部时段"
                       onClick={(event) => {
@@ -641,6 +681,7 @@ export function CapacityEditor({ active, onNavigate }) {
                   {days.map((name, col) => (
                     <th key={name}>
                       <button
+                        data-track="staff.capacityeditor.button.9"
                         data-axis="col"
                         data-index={col}
                         aria-label={`选择${name}整列`}
@@ -659,6 +700,7 @@ export function CapacityEditor({ active, onNavigate }) {
                   <tr data-motion-item="" key={slot}>
                     <th scope="row">
                       <button
+                        data-track="staff.capacityeditor.button.10"
                         data-axis="row"
                         data-index={row}
                         aria-label={`选择${slot}整行`}
@@ -729,6 +771,7 @@ export function CapacityEditor({ active, onNavigate }) {
                             col === selection.range.right &&
                             !busy && (
                               <button
+                                data-track="staff.capacityeditor.button.11"
                                 className="capacity-editor-handle"
                                 tabIndex={-1}
                                 aria-label="拖动复制选区人数"
@@ -782,12 +825,13 @@ export function CapacityEditor({ active, onNavigate }) {
               );
             })}
           </div>
-          <details className="capacity-quick-tools">
-            <summary>批量填写与复制</summary>
-            <form onSubmit={quickFill}>
+          <section className="capacity-quick-tools" aria-label="批量填写与复制">
+            <h3>批量填写与复制</h3>
+            <form data-track="staff.capacityeditor.form.12" onSubmit={quickFill}>
               <label>
                 统一人数
                 <input
+                  data-track="staff.capacityeditor.input.13"
                   aria-label="统一人数"
                   inputMode="numeric"
                   value={bulk}
@@ -797,7 +841,8 @@ export function CapacityEditor({ active, onNavigate }) {
               </label>
               <label>
                 填写范围
-                <select
+                <Select
+                  data-track="staff.capacityeditor.select.14"
                   value={scope}
                   onChange={(event) => setScope(event.target.value)}
                   disabled={busy}
@@ -805,14 +850,17 @@ export function CapacityEditor({ active, onNavigate }) {
                   <option value="selection">当前表格选区</option>
                   <option value="day">{days[day - 1]}四个时段</option>
                   <option value="week">当前校区整周</option>
-                </select>
+                </Select>
               </label>
-              <button disabled={busy}>填入草稿</button>
+              <button data-track="staff.capacityeditor.button.15" disabled={busy}>
+                填入草稿
+              </button>
             </form>
             <div className="capacity-copy-tools">
               <label>
                 复制日期
-                <select
+                <Select
+                  data-track="staff.capacityeditor.select.16"
                   value={day}
                   onChange={(event) => setDay(Number(event.target.value))}
                   disabled={busy}
@@ -822,11 +870,12 @@ export function CapacityEditor({ active, onNavigate }) {
                       {name}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
               <label>
                 复制到日期
-                <select
+                <Select
+                  data-track="staff.capacityeditor.select.17"
                   value={dayTarget === String(day) ? 'all' : dayTarget}
                   onChange={(event) => setDayTarget(event.target.value)}
                   disabled={busy}
@@ -840,9 +889,10 @@ export function CapacityEditor({ active, onNavigate }) {
                         </option>
                       )
                   )}
-                </select>
+                </Select>
               </label>
               <button
+                data-track="staff.capacityeditor.button.18"
                 disabled={busy}
                 onClick={() => copyDay(dayTarget === String(day) ? 'all' : dayTarget)}
               >
@@ -853,7 +903,8 @@ export function CapacityEditor({ active, onNavigate }) {
               <div className="capacity-copy-tools">
                 <label>
                   目标校区
-                  <select
+                  <Select
+                    data-track="staff.capacityeditor.select.19"
                     value={
                       copyTarget && copyTarget !== campus
                         ? copyTarget
@@ -867,9 +918,10 @@ export function CapacityEditor({ active, onNavigate }) {
                       .map((name) => (
                         <option key={name}>{name}</option>
                       ))}
-                  </select>
+                  </Select>
                 </label>
                 <button
+                  data-track="staff.capacityeditor.button.20"
                   disabled={busy}
                   onClick={() => {
                     const target =
@@ -898,15 +950,8 @@ export function CapacityEditor({ active, onNavigate }) {
                 </button>
               </div>
             )}
-          </details>
+          </section>
         </section>
-        <details className="workspace-help capacity-effect-note">
-          <summary>容量生效规则</summary>
-          <p>
-            容量为 0
-            时暂停该时段预约。保存后立即更新今天及未来对应校区、星期和时段的容量。已有预约全部保留；已占用达到或超过新容量时停止新增，低于新容量后恢复放号。过去日期保持原容量。
-          </p>
-        </details>
       </div>
       <ActivityContext.Provider value={active && mode === 'actual'}>
         <div hidden={mode !== 'actual'}>
@@ -959,13 +1004,22 @@ export function CapacityEditor({ active, onNavigate }) {
           <p>请保存或丢弃修改后切换，也可以返回继续编辑。</p>
           <Notice>{switchError}</Notice>
           <div className="field-actions">
-            <button disabled={switchBusy} onClick={() => setNextView(null)}>
+            <button
+              data-track="staff.capacityeditor.button.21"
+              disabled={switchBusy}
+              onClick={() => setNextView(null)}
+            >
               取消切换
             </button>
-            <button disabled={switchBusy} onClick={() => resolveSwitch('discard')}>
+            <button
+              data-track="staff.capacityeditor.button.22"
+              disabled={switchBusy}
+              onClick={() => resolveSwitch('discard')}
+            >
               丢弃并切换
             </button>
             <button
+              data-track="staff.capacityeditor.button.23"
               className="field-primary"
               disabled={switchBusy}
               onClick={() => resolveSwitch('save')}
@@ -992,10 +1046,18 @@ export function CapacityEditor({ active, onNavigate }) {
                 </span>
               </div>
               <div className="field-actions">
-                <button disabled={busy} onClick={() => reconcile(item, false)}>
+                <button
+                  data-track="staff.capacityeditor.button.24"
+                  disabled={busy}
+                  onClick={() => reconcile(item, false)}
+                >
                   使用最新值
                 </button>
-                <button disabled={busy} onClick={() => reconcile(item, true)}>
+                <button
+                  data-track="staff.capacityeditor.button.25"
+                  disabled={busy}
+                  onClick={() => reconcile(item, true)}
+                >
                   保留我的修改
                 </button>
               </div>
@@ -1017,6 +1079,7 @@ export function CapacityEditor({ active, onNavigate }) {
           </div>
           <div className="field-actions">
             <button
+              data-track="staff.capacityeditor.button.26"
               disabled={busy || !undo}
               onClick={() => {
                 setDrafts(undo);
@@ -1025,10 +1088,15 @@ export function CapacityEditor({ active, onNavigate }) {
             >
               撤销上一步
             </button>
-            <button disabled={busy} onClick={() => setDiscard(true)}>
+            <button
+              data-track="staff.capacityeditor.button.27"
+              disabled={busy}
+              onClick={() => setDiscard(true)}
+            >
               放弃修改
             </button>
             <button
+              data-track="staff.capacityeditor.button.28"
               className="field-primary"
               disabled={busy || !!conflicts.length || !!invalid.length}
               onClick={() => setReview(true)}
@@ -1061,10 +1129,15 @@ export function CapacityEditor({ active, onNavigate }) {
             ))}
           </div>
           <div className="field-actions">
-            <button disabled={busy} onClick={() => setReview(false)}>
+            <button
+              data-track="staff.capacityeditor.button.29"
+              disabled={busy}
+              onClick={() => setReview(false)}
+            >
               返回编辑
             </button>
             <button
+              data-track="staff.capacityeditor.button.30"
               className="field-primary"
               disabled={busy || !!conflicts.length || !!invalid.length}
               onClick={save}
@@ -1078,8 +1151,11 @@ export function CapacityEditor({ active, onNavigate }) {
         <Modal title="放弃全部未保存修改？" onClose={() => setDiscard(false)}>
           <p>所有校区的未保存人数将恢复为最近读取的配置。</p>
           <div className="field-actions">
-            <button onClick={() => setDiscard(false)}>继续编辑</button>
+            <button data-track="staff.capacityeditor.button.31" onClick={() => setDiscard(false)}>
+              继续编辑
+            </button>
             <button
+              data-track="staff.capacityeditor.button.32"
               onClick={() => {
                 setDrafts({});
                 setUndo(null);

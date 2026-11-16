@@ -22,7 +22,9 @@ export function PersonalScene({ initial, onNavigate, workspaceLinks, onLogout, d
           </>
         )}
         <div className="field-actions personal-actions">
-          <button onClick={onLogout}>退出登录</button>
+          <button data-track="staff.field.personalscene.button.1" onClick={onLogout}>
+            退出登录
+          </button>
         </div>
       </section>
       <section className="field-card">
@@ -34,7 +36,11 @@ export function PersonalScene({ initial, onNavigate, workspaceLinks, onLogout, d
           ]
             .filter((item) => workspaceLinks.some((entry) => entry.id === item.id))
             .map((item) => (
-              <button key={item.id} onClick={() => onNavigate(item.id)}>
+              <button
+                data-track="staff.field.personalscene.button.2"
+                key={item.id}
+                onClick={() => onNavigate(item.id)}
+              >
                 <WorkspaceIcon name={item.icon} />
                 {item.label}
                 <span aria-hidden="true">→</span>

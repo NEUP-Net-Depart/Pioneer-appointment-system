@@ -1,12 +1,12 @@
-import { fail, json, readBody, securityHeaders } from '../lib/http.js';
-import { attachmentInput } from '../lib/attachment-input.js';
+import { fail, json, securityHeaders } from '../lib/http.js';
+import { readAttachment } from '../lib/attachment-input.js';
 
 export const attachmentRoutes = [
   ['POST', /^\/api\/appointments\/([^/]+)\/attachments(?:\/([^/]+))?$/, async (context, match) => {
     await context.limit('upload');
     if (match[2]) fail(405, '此路径不支持上传');
-    const body = await readBody(context.request, 8 * 1024 * 1024);
-    const result = await context.services.attachments.upload(decodeURIComponent(match[1]),attachmentInput(body),await context.authenticate(),context.accessToken);
+    const input = await readAttachment(context.request);
+    const result = await context.services.attachments.upload(decodeURIComponent(match[1]),input,await context.authenticate(),context.accessToken);
     return json(result, 201);
   }],
   ['GET', /^\/api\/appointments\/([^/]+)\/attachments$/, async (context, match) => {

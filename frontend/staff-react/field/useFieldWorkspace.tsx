@@ -1,3 +1,4 @@
+import { recentlyActive } from '../../../shared/telemetry-client.js';
 import { useEffect, useRef, useState } from 'react';
 import { api } from './ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -32,8 +33,12 @@ export function useFieldWorkspace({
     initial.contexts[0]?.id ||
     'mine';
   const sessionKey = `${initial.actor.memberId}:${initial.authVersion}`;
-  const [chosenCampus, setChosenCampus] = useState(
-      () => readFieldCampus(sessionKey, initial.campuses) || initial.campusId
+  const [chosenCampuses, setChosenCampuses] = useState(
+      () =>
+        ({
+          today: readFieldCampus(sessionKey, initial.campuses) || initial.campusId,
+          mine: initial.campusId
+        }) as Record<string, string>
     ),
     [selected, setSelected] = useState(''),
     [scanOpen, setScanOpen] = useState(false),
@@ -52,6 +57,7 @@ export function useFieldWorkspace({
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
+  const chosenCampus = chosenCampuses[scene];
   const campus = initial.campuses.some((item) => item.id === chosenCampus)
     ? chosenCampus
     : initial.campusId;
@@ -62,11 +68,12 @@ export function useFieldWorkspace({
     initialData:
       resource === '/api/field/home' && initial.campusId === campus ? initial : undefined,
     initialDataUpdatedAt: Date.parse(initial.updatedAt),
-    queryFn: async ({ signal }) => {
+    queryFn: async ({ signal, queryKey }) => {
       try {
         return await api<Home>(`${resource}?campusId=${encodeURIComponent(campus)}`, {
           signal,
-          timeoutMs: 15000
+          timeoutMs: 15000,
+          telemetryPoll: !!client.getQueryState(queryKey)?.dataUpdatedAt && !recentlyActive()
         });
       } catch (error) {
         if ((error as Error & { status?: number }).status !== 403) throw error;
@@ -83,14 +90,15 @@ export function useFieldWorkspace({
   const data = result.data?.campusId === campus ? result.data : null;
   const refresh = () =>
     Promise.all(
-      ['/api/field/home', '/api/field/board'].map((path) =>
-        client.invalidateQueries({ queryKey: [path] })
-      )
+      (scene === 'mine'
+        ? [resource, '/api/me/profile', '/api/me/volunteer-summary', '/api/me/roster']
+        : [resource, '/api/attendance/staffing']
+      ).map((path) => client.invalidateQueries({ queryKey: [path] }, { throwOnError: true }))
     );
   function setCampus(value: string) {
     if (busy || !initial.campuses.some((item) => item.id === value)) return;
-    writeFieldCampus(sessionKey, value);
-    setChosenCampus(value);
+    if (scene === 'today') writeFieldCampus(sessionKey, value);
+    setChosenCampuses((current) => ({ ...current, [scene]: value }));
     setSelected('');
     setMessage('');
     setScanOpen(false);
@@ -102,10 +110,10 @@ export function useFieldWorkspace({
   }
   useEffect(() => {
     if (chosenCampus !== campus) {
-      writeFieldCampus(sessionKey, campus);
-      setChosenCampus(campus);
+      if (scene === 'today') writeFieldCampus(sessionKey, campus);
+      setChosenCampuses((current) => ({ ...current, [scene]: campus }));
     }
-  }, [chosenCampus, campus, sessionKey]);
+  }, [chosenCampus, campus, sessionKey, scene]);
   useEffect(() => {
     setScanOpen(false);
     setToken(null);

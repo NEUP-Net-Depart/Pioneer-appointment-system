@@ -18,7 +18,7 @@ export function staffPlatformService({ repository, platform, manifests }) {
     ...rolesDomain({ ...deps, memberTarget: members.memberTarget }),
     ...workspaceDomain({ ...deps, manifests }),
     ...attendance,
-    ...dutyDomain({ ...deps, ensureDutyEvent: attendance.ensureDutyEvent }),
+    ...dutyDomain(deps),
     ...attendanceReportingDomain(deps),
     ...scheduleDomain(deps),
     recordAudit: (input) => repository.audit(input)

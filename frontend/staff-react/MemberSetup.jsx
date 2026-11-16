@@ -1,3 +1,4 @@
+import { Select, DatePicker } from './SelectionControls.jsx';
 import React from 'react';
 import { dateKey } from '../../shared/time.js';
 import {
@@ -30,18 +31,19 @@ export function MemberSetup({
       <div className="react-form-grid">
         <label>
           所属校区
-          <select
+          <Select
+            data-track="staff.membersetup.select.1"
             value={value.homeCampusId}
             onChange={(event) => change({ homeCampusId: event.target.value })}
           >
             <option value="campus-nanhu">南湖</option>
             <option value="campus-hunnan">浑南</option>
-          </select>
+          </Select>
         </label>
         <label>
           生效日期
-          <input
-            type="date"
+          <DatePicker
+            data-track="staff.membersetup.input.2"
             required
             value={value.effectiveFrom}
             onChange={(event) => change({ effectiveFrom: event.target.value })}
@@ -49,7 +51,7 @@ export function MemberSetup({
         </label>
       </div>
       {canAuthorize && (
-        <fieldset className="workspace-checks">
+        <fieldset className="workspace-campus-options">
           <legend>授权校区（新增人员默认所属校区）</legend>
           {[
             ['campus-nanhu', '南湖'],
@@ -57,6 +59,7 @@ export function MemberSetup({
           ].map(([id, name]) => (
             <label className="workspace-check" key={id}>
               <input
+                data-track="staff.membersetup.input.3"
                 type="checkbox"
                 checked={value.authorizedCampuses.includes(id)}
                 onChange={(event) =>
@@ -67,7 +70,7 @@ export function MemberSetup({
                   })
                 }
               />
-              {name}
+              <span>{name}</span>
             </label>
           ))}
         </fieldset>

@@ -1,13 +1,16 @@
+import { track } from '../../shared/telemetry-client.js';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import React, { useContext, useState } from 'react';
+import React, { useContext, useId, useState } from 'react';
 import { apiFetch } from '../../shared/api.js';
 import { attachmentSize, attachmentUrl, uploadAttachments } from '../../shared/attachments.js';
 import { ActivityContext, Notice } from './field/ui';
-import { DataExpansion } from './DataExpansion.jsx';
 
 export function RepairAttachments({ id }) {
   const active = useContext(ActivityContext);
+  const filesId = useId(),
+    uploadId = useId();
   const [open, setOpen] = useState(false),
+    [uploadOpen, setUploadOpen] = useState(false),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(''),
     [selected, setSelected] = useState(null);
@@ -15,6 +18,23 @@ export function RepairAttachments({ id }) {
   const queryKey = [`/api/appointments/${encodeURIComponent(id)}/attachments`];
   const result = useQuery({ queryKey, enabled: active && open });
   const files = result.data?.items;
+  async function upload(event) {
+    event.preventDefault();
+    if (!selected || busy) return;
+    setBusy('upload');
+    setError('');
+    try {
+      await uploadAttachments({ id }, [selected]);
+      setSelected(null);
+      setUploadOpen(false);
+      await client.invalidateQueries({ queryKey });
+      setOpen(true);
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setBusy('');
+    }
+  }
   async function download(file) {
     if (busy) return;
     setBusy(file.id);
@@ -24,9 +44,11 @@ export function RepairAttachments({ id }) {
       if (!response.ok) throw new Error('附件读取失败，请重试。');
       const url = URL.createObjectURL(await response.blob());
       const link = document.createElement('a');
+      link.setAttribute('data-track', 'staff.repairattachments.dynamic.download');
       link.href = url;
       link.download = file.filename;
       link.click();
+      track('flow.result', { control: 'staff.repairattachments.dynamic.download', result: 'ok' });
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (failure) {
       setError(failure.message);
@@ -35,55 +57,93 @@ export function RepairAttachments({ id }) {
     }
   }
   return (
-    <details className="field-details" onToggle={(event) => setOpen(event.currentTarget.open)}>
-      <summary>附件与设备照片</summary>
-      <Notice>{error || result.error?.message}</Notice>
-      <p>出现新的外观变化可手动补拍；此处照片不替代首次接收原图。</p>
-      <input
-        type="file"
-        accept="image/*"
-        disabled={!!busy}
-        onChange={(event) => setSelected(event.target.files?.[0] || null)}
-      />
-      <button
-        disabled={!selected || !!busy}
-        onClick={async () => {
-          setBusy('upload');
-          setError('');
-          try {
-            await uploadAttachments({ id }, [selected]);
+    <section className="repair-attachments" aria-label="附件与设备照片">
+      <div className="field-actions">
+        <button
+          data-track="staff.repairattachments.button.1"
+          type="button"
+          aria-expanded={open}
+          aria-controls={filesId}
+          disabled={!!busy}
+          onClick={() => setOpen((value) => !value)}
+        >
+          {open ? '收起附件与照片' : '查看附件与照片'}
+        </button>
+        <button
+          data-track="staff.repairattachments.button.2"
+          type="button"
+          aria-expanded={uploadOpen}
+          aria-controls={uploadId}
+          disabled={!!busy}
+          onClick={() => {
+            setUploadOpen((value) => !value);
             setSelected(null);
-            client.invalidateQueries({ queryKey });
-          } catch (failure) {
-            setError(failure.message);
-          } finally {
-            setBusy('');
-          }
-        }}
-      >
-        上传补充照片
-      </button>
-      {error && (
-        <button onClick={() => client.invalidateQueries({ queryKey })}>重试读取附件</button>
+            setError('');
+          }}
+        >
+          {uploadOpen ? '取消补充上传' : '上传补充照片'}
+        </button>
+      </div>
+      <Notice>{error}</Notice>
+      {open && (
+        <div id={filesId} className="repair-attachment-list">
+          <Notice>{result.error?.message}</Notice>
+          {result.error && (
+            <button data-track="staff.repairattachments.button.3" onClick={() => result.refetch()}>
+              重试读取附件
+            </button>
+          )}
+          {result.isPending && !result.error && <p role="status">正在读取附件…</p>}
+          {files ? (
+            files.length ? (
+              <ul className="record-attachments">
+                {files.map((file) => (
+                  <li data-motion-item="" key={file.id}>
+                    <button
+                      data-track="staff.repairattachments.button.4"
+                      disabled={!!busy}
+                      onClick={() => download(file)}
+                    >
+                      {busy === file.id ? '正在读取…' : file.filename}
+                      <small data-motion-value="text">{attachmentSize(file.size)}</small>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="field-muted">暂无可用附件。</p>
+            )
+          ) : null}
+        </div>
       )}
-      <DataExpansion ready={!!files}>
-        {files ? (
-          files.length ? (
-            <ul className="record-attachments">
-              {files.map((file) => (
-                <li data-motion-item="" key={file.id}>
-                  <button disabled={!!busy} onClick={() => download(file)}>
-                    {busy === file.id ? '正在读取…' : file.filename}
-                    <small data-motion-value="text">{attachmentSize(file.size)}</small>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="field-muted">暂无可用附件。</p>
-          )
-        ) : null}
-      </DataExpansion>
-    </details>
+      {uploadOpen && (
+        <form
+          data-track="staff.repairattachments.form.5"
+          id={uploadId}
+          className="repair-attachment-upload"
+          onSubmit={upload}
+        >
+          <label>
+            补充照片
+            <input
+              data-track="staff.repairattachments.input.6"
+              type="file"
+              accept="image/*"
+              required
+              disabled={!!busy}
+              onChange={(event) => setSelected(event.target.files?.[0] || null)}
+            />
+          </label>
+          <p>补充照片不替代首次接收原图。</p>
+          <button
+            data-track="staff.repairattachments.button.7"
+            className="field-primary"
+            disabled={!selected || !!busy}
+          >
+            {busy === 'upload' ? '正在上传…' : '确认上传照片'}
+          </button>
+        </form>
+      )}
+    </section>
   );
 }

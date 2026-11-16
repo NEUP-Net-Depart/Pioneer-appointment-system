@@ -1,6 +1,6 @@
 import { fail } from '../lib/http.js';
 import { requireCampus } from './permissions.js';
-import { validDate, dateKey, addDays, weekRange, serviceDay } from '../../shared/time.js';
+import { validDate, dateKey, addDays, rosterWeekKey, serviceDay } from '../../shared/time.js';
 import { campusId } from '../modules/authorization/scopes.js';
 
 export function slotCapacityService(repository, staff, days=null) {
@@ -27,7 +27,7 @@ export function slotCapacityService(repository, staff, days=null) {
       if(!input || typeof input!=='object' || Array.isArray(input))fail(400,'请核对暂停日期配置');
       if(input?.items!==undefined){
         if(!Array.isArray(input.items)||!input.items.length||input.items.length>8||typeof input.requestId!=='string'||!input.requestId||input.requestId.length>128)fail(400,'请选择1至8个维修日期');
-        const items=input.items,seen=new Set(),today=dateKey(),end=addDays(weekRange(today).start,10),campuses=[];
+        const items=input.items,seen=new Set(),today=dateKey(),end=addDays(rosterWeekKey(today),10),campuses=[];
         for(const item of items){
           const campus={'campus-nanhu':'南湖','campus-hunnan':'浑南'}[item?.campusId];
           if(!campus||!validDate(item.businessDate)||!serviceDay(item.businessDate)||item.businessDate<today||item.businessDate>end||typeof item.paused!=='boolean'||!Number.isSafeInteger(item.revision)||item.revision< -1||typeof item.reason!=='string'||item.reason.length>200)fail(400,'请选择本周或下周尚未过去的周一至周四，并核对暂停说明');

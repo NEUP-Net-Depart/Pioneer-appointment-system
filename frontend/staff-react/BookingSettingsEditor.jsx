@@ -1,3 +1,4 @@
+import { Select, DateTimePicker } from './SelectionControls.jsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useContext, useRef, useState } from 'react';
 import { ActivityContext, Modal, Notice } from './field/ui';
@@ -5,6 +6,9 @@ import { request } from './request.js';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
 import { formatInstant } from '../../shared/time.js';
 import { DataExpansion } from './DataExpansion.jsx';
+import { TimePicker } from './TimePicker.jsx';
+import { RefreshButton } from './WorkspaceToolbar.jsx';
+import { HelpHint } from './HelpHint';
 
 // datetime-local always represents Shanghai here, regardless of device timezone.
 const localTime = (value) => new Date(Date.parse(value) + 8 * 3600000).toISOString().slice(0, 16);
@@ -53,7 +57,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
     client.setQueryData(queryKey, (current) => ({ ...current, settings: result }));
     releaseRevision.current = null;
     setReleaseTime(null);
-    setMessage('放号时间已保存，新预约立即使用此规则。已有预约保留。');
+    setMessage('放号时间已保存。');
   }
   async function saveNotice() {
     const result = await persist('notice', {
@@ -68,9 +72,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
     }));
     setEditing(null);
     setOriginal(null);
-    setMessage(
-      result.enabled ? '公告已保存，将在设定的北京时间范围内展示。' : '公告已保存为停用状态。'
-    );
+    setMessage(result.enabled ? '公告已保存。' : '公告已保存为停用状态。');
   }
   async function perform(operation) {
     if (lock.current) throw new Error('正在保存，请稍后再试。');
@@ -148,23 +150,26 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
     setError('');
   }
   const update = (key, value) => setEditing((current) => ({ ...current, [key]: value }));
+  const refreshControl = (
+    <RefreshButton
+      data-track="staff.bookingsettingseditor.button.1"
+      key={`${campus}:${mode}`}
+      disabled={busy || timeDirty || noticeDirty}
+      label={mode === 'release' ? '刷新放号规则' : '刷新公告'}
+      compactOnMobile={mode === 'release'}
+      onRefresh={() => {
+        setError('');
+        setMessage('');
+        return result.refetch({ throwOnError: true });
+      }}
+    />
+  );
   return (
     <div className="booking-settings-editor" aria-busy={loading}>
-      <div className="field-actions">
-        <button
-          disabled={busy || loading || timeDirty || noticeDirty}
-          onClick={() => {
-            setError('');
-            setMessage('');
-            result.refetch();
-          }}
-        >
-          读取最新规则
-        </button>
-      </div>
       <Notice>{error || result.error?.message || message}</Notice>
       {error && !editing && (
         <button
+          data-track="staff.bookingsettingseditor.button.2"
           disabled={busy || loading}
           onClick={() => {
             discard();
@@ -177,10 +182,12 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
       <>
         {mode === 'release' && (
           <section className="field-card booking-rule-card">
-            <div>
+            <div className="capacity-section-heading">
               <h2>每日放号</h2>
+              {refreshControl}
             </div>
             <form
+              data-track="staff.bookingsettingseditor.form.3"
               onSubmit={(event) => {
                 event.preventDefault();
                 void perform(saveTime).catch(() => {});
@@ -188,29 +195,30 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
             >
               <label>
                 放号时间（北京时间）
-                <input
-                  type="time"
+                <TimePicker
+                  data-track="staff.bookingsettingseditor.input.4"
+                  label="选择放号时间"
                   data-motion-value="field"
                   required
                   value={data ? (releaseTime ?? data.settings.releaseTime) : ''}
                   disabled={busy || !data}
-                  onChange={(event) => {
+                  onChange={(value) => {
                     releaseRevision.current ??= data.settings.revision;
-                    setReleaseTime(event.target.value);
+                    setReleaseTime(value);
                   }}
                 />
               </label>
-              <details className="workspace-help">
-                <summary>放号规则</summary>
-                <p>
-                  放号前可约当天至后两天；放号后可约当天至后三天。仅开放周一至周四的未结束时段。
-                  签到、排班和统计仍按北京时间自然日计算。
-                </p>
-              </details>
               <div className="field-actions">
-                <button className="field-primary" disabled={busy || !timeDirty}>
+                <button
+                  data-track="staff.bookingsettingseditor.button.5"
+                  className="field-primary"
+                  disabled={busy || !timeDirty}
+                >
                   {busy ? '正在保存…' : '保存放号时间'}
                 </button>
+                <HelpHint data-track="staff.bookingsettingseditor.helphint.20" label="放号规则">
+                  放号前可约当天至后两天；放号后可约当天至后三天。仅开放周一至周四的未结束时段。签到、排班和统计仍按北京时间自然日计算。
+                </HelpHint>
               </div>
             </form>
           </section>
@@ -218,22 +226,23 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
         {mode === 'notices' && (
           <section className="field-card booking-rule-card">
             <div className="capacity-section-heading">
-              <div>
+              <div className="booking-section-title">
                 <h2>校区公告</h2>
-                <details className="workspace-help">
-                  <summary>公告展示规则</summary>
-                  <p>
-                    公告仅在预约首页展示，可选页面或弹窗形式；必读公告需点击阅读确认后才能进入下一步。时间均为北京时间。
-                  </p>
-                </details>
+                <HelpHint data-track="staff.bookingsettingseditor.helphint.21" label="公告展示规则">
+                  公告仅在预约首页展示，可选页面或弹窗形式；必读公告需点击阅读确认后才能进入下一步。时间均为北京时间。
+                </HelpHint>
               </div>
-              <button
-                className="field-primary"
-                disabled={busy || !data}
-                onClick={() => openNotice()}
-              >
-                新增公告
-              </button>
+              <div className="field-actions">
+                {refreshControl}
+                <button
+                  data-track="staff.bookingsettingseditor.button.6"
+                  className="field-primary"
+                  disabled={busy || !data}
+                  onClick={() => openNotice()}
+                >
+                  新增公告
+                </button>
+              </div>
             </div>
             <DataExpansion ready={!!data}>
               {!data ? null : !data.notices.length ? (
@@ -260,7 +269,12 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
                           {formatInstant(item.startsAt)} 至 {formatInstant(item.endsAt)}
                         </small>
                       </div>
-                      <button onClick={() => openNotice(item)}>编辑公告</button>
+                      <button
+                        data-track="staff.bookingsettingseditor.button.7"
+                        onClick={() => openNotice(item)}
+                      >
+                        编辑公告
+                      </button>
                     </article>
                   ))}
                 </div>
@@ -271,10 +285,13 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
         {mode === 'notices' && (
           <section className="field-card booking-rule-card">
             <div className="capacity-section-heading">
-              <div>
-                <h2>暂停维修公告</h2>
-              </div>
-              <button onClick={onManageSuspension}>管理暂停日期</button>
+              <h2>暂停维修公告</h2>
+              <button
+                data-track="staff.bookingsettingseditor.button.8"
+                onClick={onManageSuspension}
+              >
+                管理暂停日期
+              </button>
             </div>
             <DataExpansion ready={!!data}>
               {!data ? null : !data.suspensions?.length ? (
@@ -315,6 +332,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
           }}
         >
           <form
+            data-track="staff.bookingsettingseditor.form.9"
             ref={form}
             className="booking-notice-form"
             onSubmit={(event) => {
@@ -328,6 +346,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
             <label>
               公告标题
               <input
+                data-track="staff.bookingsettingseditor.input.10"
                 required
                 maxLength={80}
                 value={editing.title}
@@ -338,6 +357,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
             <label>
               公告内容
               <textarea
+                data-track="staff.bookingsettingseditor.textarea.11"
                 required
                 maxLength={2000}
                 rows={5}
@@ -349,9 +369,10 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
             <div className="booking-notice-times">
               <label>
                 开始时间（北京时间）
-                <input
+                <DateTimePicker
+                  data-track="staff.bookingsettingseditor.input.12"
+                  label="开始时间"
                   required
-                  type="datetime-local"
                   value={editing.startsAt}
                   disabled={busy || !data}
                   onChange={(event) => update('startsAt', event.target.value)}
@@ -359,9 +380,10 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
               </label>
               <label>
                 结束时间（北京时间）
-                <input
+                <DateTimePicker
+                  data-track="staff.bookingsettingseditor.input.13"
+                  label="结束时间"
                   required
-                  type="datetime-local"
                   min={editing.startsAt}
                   value={editing.endsAt}
                   disabled={busy || !data}
@@ -371,26 +393,29 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
             </div>
             <label>
               展示方式
-              <select
+              <Select
+                data-track="staff.bookingsettingseditor.select.14"
                 value={editing.displayMode}
                 disabled={busy || !data}
                 onChange={(event) => update('displayMode', event.target.value)}
               >
                 <option value="inline">页面展示</option>
                 <option value="modal">弹窗展示</option>
-              </select>
+              </Select>
             </label>
             <label className="booking-setting-check">
               <input
+                data-track="staff.bookingsettingseditor.input.15"
                 type="checkbox"
                 checked={editing.important}
                 disabled={busy || !data}
                 onChange={(event) => update('important', event.target.checked)}
               />
-              <span>必读公告，进入下一步前需点击阅读确认</span>
+              <span>必读公告</span>
             </label>
             <label className="booking-setting-check">
               <input
+                data-track="staff.bookingsettingseditor.input.16"
                 type="checkbox"
                 checked={editing.enabled}
                 disabled={busy || !data}
@@ -401,6 +426,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
             <Notice>{error}</Notice>
             {error && (
               <button
+                data-track="staff.bookingsettingseditor.button.17"
                 type="button"
                 disabled={busy || !data}
                 onClick={() => {
@@ -413,6 +439,7 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
             )}
             <div className="field-actions">
               <button
+                data-track="staff.bookingsettingseditor.button.18"
                 type="button"
                 disabled={busy || !data}
                 onClick={() => {
@@ -423,7 +450,11 @@ export function BookingSettingsEditor({ campus, editorRef, mode = 'release', onM
               >
                 放弃编辑
               </button>
-              <button className="field-primary" disabled={busy || !data}>
+              <button
+                data-track="staff.bookingsettingseditor.button.19"
+                className="field-primary"
+                disabled={busy || !data}
+              >
                 {busy ? '正在保存…' : '保存公告'}
               </button>
             </div>

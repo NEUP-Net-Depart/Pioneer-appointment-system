@@ -117,6 +117,7 @@ export interface AttendanceRecord {
 }
 
 export interface Home {
+  rosterParticipant?: boolean;
   searchCapabilities?: {
     identity: boolean;
     identityScope: 'none' | 'own' | 'today' | 'authorized';
@@ -145,6 +146,8 @@ export interface Home {
     startAt: string;
     endAt: string;
     dutyType: string;
+    leaveStatus?: string;
+    servicePaused?: boolean;
   }[];
   updatedAt: string;
   appointments?: Appointment[];

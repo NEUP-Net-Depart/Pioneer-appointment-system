@@ -42,8 +42,8 @@ export function mobileWorkspaceEntries(entries) {
     .map((id) => entries.find((entry) => entry.id === id))
     .filter(Boolean)
     .slice(0, 2);
-  const mine = entries.find((entry) => entry.id === 'scene:mine');
-  return [...work, ...(mine ? [mine] : [])];
+  const records = entries.find((entry) => entry.id === 'staff');
+  return [...work, ...(records ? [records] : [])];
 }
 
 export function matchesWorkspaceEntry(entry, group, query) {

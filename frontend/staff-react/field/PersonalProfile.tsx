@@ -32,7 +32,7 @@ export function PersonalProfile({
     refetchOnWindowFocus: false
   });
   const profile = result.data;
-  const initialized = useRef(false);
+  const baseline = useRef<Profile['member'] | null>(null);
   const revision = useRef<number | null>(null);
   const [name, setName] = useState(initialName);
   const [college, setCollege] = useState('');
@@ -40,21 +40,23 @@ export function PersonalProfile({
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const formId = useId();
+  const changed =
+    !!baseline.current &&
+    (name.trim() !== baseline.current.name || college !== (baseline.current.college || ''));
   useEffect(() => {
-    if (!profile || initialized.current) return;
-    initialized.current = true;
+    if (!profile || busy || changed) return;
+    baseline.current = profile.member;
     revision.current = profile.member.revision;
     setName(profile.member.name);
     setCollege(profile.member.college || '');
-  }, [profile]);
-  const changed =
-    !!profile &&
-    (name.trim() !== profile.member.name || college !== (profile.member.college || ''));
+  }, [profile, busy, changed]);
   const formRef = useUnsavedChanges({
     dirty: changed,
     busy,
     save,
     discard: () => {
+      baseline.current = profile?.member || null;
+      revision.current = profile?.member.revision ?? null;
       setName(profile?.member.name || initialName);
       setCollege(profile?.member.college || '');
       setError('');
@@ -81,6 +83,7 @@ export function PersonalProfile({
       await client.cancelQueries({ queryKey });
       client.setQueryData(queryKey, next);
       revision.current = next.member.revision;
+      baseline.current = next.member;
       const affectedQueries = {
         predicate: (query) =>
           ['/api/members', '/api/users', '/api/field/home', '/api/field/board'].includes(
@@ -114,6 +117,7 @@ export function PersonalProfile({
         </div>
         {(changed || busy) && (
           <button
+            data-track="staff.field.personalprofile.button.1"
             className="field-primary personal-profile-save"
             type="submit"
             form={formId}
@@ -123,11 +127,17 @@ export function PersonalProfile({
           </button>
         )}
       </div>
-      <form id={formId} ref={formRef} onSubmit={save}>
+      <form
+        data-track="staff.field.personalprofile.form.2"
+        id={formId}
+        ref={formRef}
+        onSubmit={save}
+      >
         <div className="personal-profile-grid">
           <label>
             姓名
             <input
+              data-track="staff.field.personalprofile.input.3"
               required
               maxLength={80}
               value={name}
@@ -143,6 +153,7 @@ export function PersonalProfile({
             <output>{profile?.member.studentId || '—'}</output>
           </label>
           <ChoiceMenu
+            data-track="staff.field.personalprofile.choicemenu.4"
             className="personal-college-choice"
             label="学院"
             value={college}

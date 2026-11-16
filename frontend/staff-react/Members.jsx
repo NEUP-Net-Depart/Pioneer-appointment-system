@@ -1,3 +1,5 @@
+import { Select } from './SelectionControls.jsx';
+import { RefreshButton } from './WorkspaceToolbar.jsx';
 import { DataValue } from './DataValue';
 import React, { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
@@ -120,10 +122,48 @@ export function Members({ user }) {
         </p>
       )}
       <div className="members-workspace">
-        <div className="react-toolbar members-tools">
+        <div className="members-panel-heading">
+          <span className="members-result-count" role="status">
+            已显示{' '}
+            <DataValue label="已显示成员数量">{list.data ? items.length : undefined}</DataValue>{' '}
+            名成员
+          </span>
+          <div className="members-list-actions">
+            {staffPermission(user, 'members.manage') && (
+              <>
+                <button
+                  data-track="staff.members.button.4"
+                  className="react-primary"
+                  onClick={() => setCreating(true)}
+                >
+                  新增人员
+                </button>
+                <button data-track="staff.members.button.5" onClick={() => setImporting(true)}>
+                  批量导入
+                </button>
+                <WorkspaceMoreActions>
+                  <button
+                    data-track="staff.members.button.6"
+                    onClick={() => setEducationImporting(true)}
+                  >
+                    批量补学院
+                  </button>
+                </WorkspaceMoreActions>
+              </>
+            )}
+            <RefreshButton
+              data-track="staff.members.button.7"
+              key={JSON.stringify([search, campus, status])}
+              onRefresh={() => list.refetch({ throwOnError: true })}
+              label="刷新人员"
+            />
+          </div>
+        </div>
+        <div className="members-filter-grid">
           <label>
             查找成员
             <input
+              data-track="staff.members.input.1"
               aria-label="搜索成员"
               value={q}
               onChange={(event) => setQ(event.target.value)}
@@ -132,19 +172,27 @@ export function Members({ user }) {
           </label>
           <label>
             所属校区
-            <select
+            <Select
+              data-track="staff.members.select.2"
               aria-label="筛选成员校区"
               value={campus}
               onChange={(event) => setCampus(event.target.value)}
             >
               <option value="">全部校区</option>
-              <option value="campus-nanhu">南湖</option>
-              <option value="campus-hunnan">浑南</option>
-            </select>
+              {(user.authorizedCampuses || []).map((name) => (
+                <option
+                  key={name}
+                  value={{ 南湖: 'campus-nanhu', 浑南: 'campus-hunnan' }[name] || name}
+                >
+                  {name}
+                </option>
+              ))}
+            </Select>
           </label>
           <label>
             成员状态
-            <select
+            <Select
+              data-track="staff.members.select.3"
               aria-label="筛选成员状态"
               value={status}
               onChange={(event) => setStatus(event.target.value)}
@@ -152,32 +200,8 @@ export function Members({ user }) {
               <option value="">全部状态</option>
               <option value="active">正常</option>
               <option value="inactive">停用</option>
-            </select>
+            </Select>
           </label>
-          <div className="members-list-actions">
-            {staffPermission(user, 'members.manage') && (
-              <>
-                <button className="react-primary" onClick={() => setCreating(true)}>
-                  新增人员
-                </button>
-                <button onClick={() => setImporting(true)}>批量导入</button>
-                <WorkspaceMoreActions>
-                  <button onClick={() => setEducationImporting(true)}>批量补学院</button>
-                </WorkspaceMoreActions>
-              </>
-            )}
-            <button
-              onClick={() => client.invalidateQueries({ queryKey: ['/api/members'] })}
-              disabled={busy}
-            >
-              刷新
-            </button>
-          </div>
-          <span className="members-result-count" role="status">
-            已显示{' '}
-            <DataValue label="已显示成员数量">{list.data ? items.length : undefined}</DataValue>{' '}
-            名成员
-          </span>
         </div>
         <div className="react-table members-results" aria-busy={busy}>
           <div className="react-row react-row-head">
@@ -216,7 +240,9 @@ export function Members({ user }) {
                 {item.college && <small data-motion-value="text">{item.college}</small>}
               </span>
               <span className="members-row-action">
-                <button onClick={() => setSelected(item)}>人员详情</button>
+                <button data-track="staff.members.button.8" onClick={() => setSelected(item)}>
+                  人员详情
+                </button>
               </span>
             </div>
           ))}
@@ -225,6 +251,7 @@ export function Members({ user }) {
               <h2>没有找到成员</h2>
               {(q || campus || status) && (
                 <button
+                  data-track="staff.members.button.9"
                   onClick={() => {
                     setQ('');
                     setCampus('');
@@ -240,6 +267,7 @@ export function Members({ user }) {
         <footer ref={sentinel} className="members-list-footer" aria-busy={list.isFetchingNextPage}>
           {list.hasNextPage && (
             <button
+              data-track="staff.members.button.10"
               disabled={list.isFetching}
               onClick={() => list.fetchNextPage({ cancelRefetch: false })}
             >

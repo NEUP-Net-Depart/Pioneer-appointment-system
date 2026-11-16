@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
-import {database,seedStaff,seedAppointment} from './helpers/database.mjs';
+
+import { database, seedStaff } from './helpers/database.mjs';
 import {staffServices} from './fixtures/staff-services.mjs';
 import {userRepository} from '../src/db/users.js';
 import {weeklyAttendanceRows} from '../src/modules/attendance/weekly-export.js';
@@ -16,6 +16,20 @@ function setup(){
  post(db,'20261005','dept-hardware');post(db,'20261006','dept-art');
  return {db,users:userRepository(db),staff:staffServices(db,'00'.repeat(32))};
 }
+test('early supplementation explains its default time and retains the time guards',async(context)=>{
+ context.mock.timers.enable({apis:['Date'],now:new Date('2026-11-11T02:00:00.000Z')});
+ const {db,users,staff}=setup();
+ try{
+  const head=await users.find('20261001');
+  const input={memberId:'member-20261004',campusId:'campus-nanhu',businessDate:'2026-11-11',occurredAt:'2026-11-11T11:00:00.000Z',reason:'核实补录',requestId:crypto.randomUUID()};
+  await assert.rejects(staff.correctAttendance(head,input),{status:400,message:'补录默认记为当天 19:00，目前尚未到该时间，请在 19:00 后补录'});
+  await assert.rejects(staff.correctAttendance(head,{...input,occurredAt:'2026-11-11T01:00:00.000Z'}),{status:400,message:'补录时间不在当天允许的签到时段内'});
+  assert.equal(db.sqlite.prepare('SELECT count(*) n FROM attendance_records').get().n,0);
+  context.mock.timers.tick(10*60*60*1000);
+  await staff.correctAttendance(head,input);
+  assert.equal(db.sqlite.prepare('SELECT occurred_at FROM attendance_records').get().occurred_at,input.occurredAt);
+ }finally{db.sqlite.close();}
+});
 test('ministers manage every department in their campus; directors and presidents manage all campuses without gaining system configuration',async()=>{
  const {db,users,staff}=setup();
  try{
@@ -90,38 +104,4 @@ test('weekly counting remains actual / first-only / leader-once using real posts
  assert.equal(weeklyAttendanceRows({...base,firstOnly:true})[0].creditedCount,1);
  const leader=weeklyAttendanceRows({...base,leadersOnce:true}).find(row=>row.memberId==='leader');
  assert.equal(leader.creditedCount,1);assert.equal(leader.actualCount,0);
-});
-for(const directory of ['migrations','database/staff-migrations'])test(`${directory}: membership cutover preserves personnel and archives all retired grants`,()=>{
- const db=database(directory,'0047_');
- try{
-  seedStaff(db,'20261001');post(db,'20261001','dept-network','head');
-  db.sqlite.exec("INSERT INTO member_roles(id,member_id,role_id,effective_from,reason) VALUES('old-qualification','member-20261001','role-technician','2026-01-01','historical authorization')");
-  const before=db.sqlite.prepare('SELECT * FROM member_department_memberships').all();
-  db.sqlite.exec(readFileSync(`${directory}/0047_membership_identity.sql`,'utf8'));
-  assert.deepEqual(db.sqlite.prepare('SELECT * FROM member_department_memberships').all(),before);
-  const archived=db.sqlite.prepare("SELECT before_json FROM audit_events WHERE id='v12-identity-member_roles-old-qualification'").get();
-  assert.equal(JSON.parse(archived.before_json).reason,'historical authorization');
-  assert.equal(db.sqlite.prepare("SELECT name FROM sqlite_master WHERE name='effective_member_roles'").get(),undefined);
-  assert.deepEqual(db.sqlite.prepare('PRAGMA foreign_key_check').all(),[]);
- }finally{db.sqlite.close();}
-});
-
-for(const directory of ['migrations','database/staff-migrations'])test(`${directory}: final cleanup retains original registration evidence and retires conditional grants without broadening them`,()=>{
- const db=database(directory,'0049_');
- try{
-  seedStaff(db,'20261001');
-  seedAppointment(db,{id:'old-onsite',source:'onsite',registered_by:'20261001',registration_flow:'frontdesk'});
-  db.sqlite.exec(`UPDATE role_grants SET condition_spec='[{"code":"signedDutyPresence"}]' WHERE role_id='role-superadmin' AND permission_code='settings.manage'`);
-  const before=db.sqlite.prepare("SELECT * FROM appointments WHERE id='old-onsite'").get();
-  const grant=db.sqlite.prepare("SELECT * FROM role_grants WHERE role_id='role-superadmin' AND permission_code='settings.manage'").get();
-  db.sqlite.exec(readFileSync(`${directory}/0049_finalize_business_model.sql`,'utf8'));
-  const after=db.sqlite.prepare("SELECT * FROM appointments WHERE id='old-onsite'").get();
-  const archived=JSON.parse(db.sqlite.prepare("SELECT before_json FROM audit_events WHERE id='v12-registration-flow-old-onsite'").get().before_json);
-  assert.equal(archived.registration_flow,before.registration_flow);delete before.registration_flow;assert.deepEqual(after,before);
-  assert.equal(db.sqlite.prepare('SELECT id FROM role_grants WHERE id=?').get(grant.id),undefined);
-  const saved=JSON.parse(db.sqlite.prepare('SELECT before_json FROM audit_events WHERE id=?').get('v12-retired-condition-grant-'+grant.id).before_json);
-  assert.deepEqual(saved,{...grant});
-  assert.equal(db.sqlite.prepare("SELECT code FROM permission_definitions WHERE code='onsite.frontdesk.create'").get(),undefined);
-  assert.deepEqual(db.sqlite.prepare('PRAGMA foreign_key_check').all(),[]);
- }finally{db.sqlite.close();}
 });

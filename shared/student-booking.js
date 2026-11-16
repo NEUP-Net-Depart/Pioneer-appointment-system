@@ -6,10 +6,10 @@ export const COLLEGES = [
   '资源与土木工程学院','冶金学院','材料科学与工程学院','机械工程与自动化学院',
   '信息科学与工程学院','计算机科学与工程学院','软件学院','医学与生物信息工程学院',
   '生命科学与健康学院','江河建筑学院','机器人科学与工程学院','未来技术学院',
-  '国家卓越工程师学院','国防教育学院','继续教育学院','国际教育学院',
-  '悉尼智能科技学院','民族教育学院','创新创业学院','佛山研究生创新学院',
-  '经济学院','管理学院','计算机与通信工程学院','控制工程学院','外国语言文化学院',
-  '数学与统计学院','资源与材料学院','民族学学院','智能感知与光电工程学院'
+  '体育部','国家卓越工程师学院','民族教育学院','国防教育学院','继续教育学院',
+  '国际教育学院', '悉尼智能科技学院','创新创业学院',
+  '佛山研究生创新学院','经济学院','管理学院','计算机与通信工程学院','控制工程学院',
+  '外国语言文化学院','数学与统计学院','资源与材料学院','民族学学院','智能感知与光电工程学院'
 ];
 export const BRANDS = [
   { value: '联想', label: '联想 Lenovo', source: 'https://www.lenovo.com.cn/' },
@@ -30,7 +30,7 @@ export const FAULT_HINTS = {
   '换硬盘': '更换硬盘所需配件请自行准备；不确定兼容性可在故障描述中说明。',
   '换内存': '更换内存所需配件请自行准备；不确定兼容性可在故障描述中说明。'
 };
-export const AGREEMENT_VERSION = 'v1.1';
+export const AGREEMENT_VERSION = 'v20250301';
 export const STUDENT_FIELD_LIMITS = Object.freeze({
   name:20,studentId:20,college:50,brand:30,deviceModel:60,email:254,qqAccount:12,wechatAccount:20,issue:1000
 });
@@ -55,7 +55,7 @@ export function studentFieldErrors(data) {
   if (!FAULT_TYPES.includes(data.faultType)) errors.faultType = '请选择故障分类';
   if (!ANSWERS.includes(data.warranty)) errors.warranty = '请选择是否在保，可选不清楚';
   if (data.deviceType === '笔记本' && !ANSWERS.includes(data.liquidMetal)) errors.liquidMetal = '请选择是否使用液金散热，可选不清楚';
-  if (data.deviceType === '笔记本' && data.brand === 'Dell' && data.dellG15 != null && data.dellG15 !== '' && !ANSWERS.includes(data.dellG15)) errors.dellG15 = '请选择是否属于 Dell G15 系列';
+  if (data.deviceType === '笔记本' && data.brand === 'Dell' && data.dellG15 != null && data.dellG15 !== '' && !ANSWERS.includes(data.dellG15)) errors.dellG15 = '请选择是否属于 Dell G15 / G16 系列';
   if (!['qq','wechat'].includes(data.contactType)) errors.contactType = '请选择 QQ 或微信';
   if (!errors.contactValue && data.contactType === 'qq' && !/^[1-9]\d{4,11}$/.test(data.contactValue || '')) errors.contactValue = '请输入 5～12 位 QQ 数字，首位不能为 0';
   if (!errors.email && data.email && (typeof data.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email))) errors.email = '请输入有效的联系邮箱';

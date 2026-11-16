@@ -1,3 +1,5 @@
+import { track } from '../../../shared/telemetry-client.js';
+import { Select } from '../SelectionControls.jsx';
 import { useContext, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Camera, ChevronUp, Images } from 'lucide-react';
@@ -68,7 +70,12 @@ export function WarrantyLookupButton({ initialBrand = '', onUseStatus }: Props) 
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button type="button" className="field-secondary" onClick={() => setOpen(true)}>
+      <button
+        data-track="staff.field.warrantylookup.button.1"
+        type="button"
+        className="field-secondary"
+        onClick={() => setOpen(true)}
+      >
         查询保修
       </button>
       {open &&
@@ -100,13 +107,12 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
   const [albumBusy, setAlbumBusy] = useState(false);
   const [albumNotice, setAlbumNotice] = useState('');
   const [albumResult, setAlbumResult] = useState<AlbumResult | null>(null);
-  const [copyFailed, setCopyFailed] = useState(false);
   const [copyBusy, setCopyBusy] = useState(false);
-  const [officialBlocked, setOfficialBlocked] = useState(false);
   const serialInput = useRef<HTMLInputElement>(null);
   const albumInput = useRef<HTMLInputElement>(null);
   const albumRequest = useRef<AbortController | null>(null);
   const captchaInput = useRef<HTMLInputElement>(null);
+  const resultSection = useRef<HTMLElement>(null);
   const request = useRef<AbortController | null>(null);
   const copyAttempt = useRef(0);
   const id = useId();
@@ -161,6 +167,9 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
   useEffect(() => {
     if (captcha && active) captchaInput.current?.focus();
   }, [captcha, active]);
+  useEffect(() => {
+    if (result && active) resultSection.current?.scrollIntoView({ block: 'start' });
+  }, [result, active]);
   function invalidate() {
     copyAttempt.current++;
     request.current?.abort();
@@ -170,9 +179,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
     setCaptcha(null);
     setAnswer('');
     setMessage('');
-    setCopyFailed(false);
     setCopyBusy(false);
-    setOfficialBlocked(false);
   }
   function changeSerial(value: string) {
     invalidate();
@@ -226,55 +233,24 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
       }
     }
   }
-  async function copyAndGo() {
-    if (!destination || !valid || ocrBusy || albumBusy || copyBusy) return;
+  async function copySerial() {
+    if (!valid || ocrBusy || albumBusy || copyBusy) return;
     const attempt = ++copyAttempt.current;
-    const destinationUrl = destination.url;
-    if (!copyFailed) {
-      setCopyBusy(true);
-      setMessage('请在当前页面完成复制授权…');
-      try {
-        await navigator.clipboard.writeText(normalized);
-      } catch {
-        if (copyAttempt.current !== attempt) return;
-        setCopyBusy(false);
-        setCopyFailed(true);
-        setOfficialBlocked(false);
-        serialInput.current?.focus();
-        serialInput.current?.select();
-        setMessage('浏览器未允许复制，已选中序列号。请手动复制后再打开官网。');
-        return;
-      }
-      if (copyAttempt.current !== attempt) return;
-      setCopyBusy(false);
-    }
-    // Open only after clipboard permission resolves, so its prompt stays on this page.
-    const official = window.open('about:blank', '_blank');
-    if (official) {
-      official.opener = null;
-      const referrer = official.document.createElement('meta');
-      referrer.name = 'referrer';
-      referrer.content = 'no-referrer';
-      official.document.head.append(referrer);
-    }
-    if (official && !official.closed) {
-      official.location.replace(destinationUrl);
-      setOfficialBlocked(false);
-      setMessage('已在新标签页打开官网。');
-    } else {
-      setOfficialBlocked(true);
-      setMessage('浏览器拦截了新标签页，请点击下方链接打开官网。');
-    }
-  }
-  async function copyOnly() {
-    if (!valid || ocrBusy || albumBusy) return;
+    setCopyBusy(true);
+    setMessage('正在复制序列号，请允许浏览器复制权限…');
     try {
       await navigator.clipboard.writeText(normalized);
-      setMessage('序列号已复制，请在微信搜索「机械革命服务」小程序，绑定设备后查询。');
+      if (copyAttempt.current !== attempt) return;
+      setMessage(
+        channel?.kind === 'miniapp'
+          ? '序列号已复制，请在微信搜索「机械革命服务」小程序，绑定设备后查询。'
+          : '序列号已复制，请点击「打开品牌官网」继续查询。'
+      );
     } catch {
-      serialInput.current?.focus();
-      serialInput.current?.select();
-      setMessage('浏览器未允许复制，已选中序列号，请长按手动复制。');
+      if (copyAttempt.current !== attempt) return;
+      setMessage('复制失败，请长按上方序列号手动复制，或重试复制。');
+    } finally {
+      if (copyAttempt.current === attempt) setCopyBusy(false);
     }
   }
   function applyRecognizedSerial(value: string, source: 'scan' | 'ocr') {
@@ -363,7 +339,8 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
     <Modal title="查询设备保修" onClose={onClose} initialFocus="select" className="warranty-dialog">
       <div className="warranty-lookup">
         <label htmlFor={id + '-brand'}>设备品牌</label>
-        <select
+        <Select
+          data-track="staff.field.warrantylookup.select.2"
           id={id + '-brand'}
           value={brandId}
           onChange={(event) => {
@@ -384,12 +361,13 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
               {item.name}
             </option>
           ))}
-        </select>
+        </Select>
         <Notice>{providerError}</Notice>
         {provider?.id === 'huawei' && !provider.available && <Notice>{provider.message}</Notice>}
         <label htmlFor={id + '-serial'}>序列号 / S/N / Service Tag</label>
         <div className="warranty-serial-control">
           <input
+            data-track="staff.field.warrantylookup.input.3"
             ref={serialInput}
             disabled={ocrBusy || albumBusy}
             id={id + '-serial'}
@@ -403,6 +381,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
             placeholder="输入机身序列号"
           />
           <button
+            data-track="staff.field.warrantylookup.button.4"
             type="button"
             className="warranty-icon-button"
             title="打开摄像头"
@@ -415,6 +394,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
             <Camera aria-hidden="true" size={20} />
           </button>
           <button
+            data-track="staff.field.warrantylookup.button.5"
             type="button"
             className="warranty-icon-button"
             title="从相册识别"
@@ -425,6 +405,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
             <Images aria-hidden="true" size={20} />
           </button>
           <input
+            data-track="staff.field.warrantylookup.input.6"
             ref={albumInput}
             type="file"
             accept="image/*"
@@ -448,6 +429,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
                   <div className="warranty-ocr-actions">
                     {albumResult.candidates.map((value) => (
                       <button
+                        data-track="staff.field.warrantylookup.button.7"
                         key={value}
                         type="button"
                         onClick={() => applyRecognizedSerial(value, albumResult.source)}
@@ -462,6 +444,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
                     <strong>{albumResult.source === 'scan' ? '扫码结果' : '识别文字'}</strong>
                     <pre>{albumResult.raw}</pre>
                     <button
+                      data-track="staff.field.warrantylookup.button.8"
                       type="button"
                       className="field-primary"
                       onClick={async () => {
@@ -488,6 +471,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
               <div className="warranty-capture-header-actions">
                 <div className="warranty-mode-switch" role="group" aria-label="识别方式">
                   <button
+                    data-track="staff.field.warrantylookup.button.9"
                     type="button"
                     aria-pressed={captureMode === 'scan'}
                     onClick={() => setCaptureMode('scan')}
@@ -495,6 +479,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
                     扫码
                   </button>
                   <button
+                    data-track="staff.field.warrantylookup.button.10"
                     type="button"
                     aria-pressed={captureMode === 'ocr'}
                     onClick={() => setCaptureMode('ocr')}
@@ -503,6 +488,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
                   </button>
                 </div>
                 <button
+                  data-track="staff.field.warrantylookup.button.11"
                   type="button"
                   className="warranty-collapse"
                   onClick={() => setCaptureMode(null)}
@@ -526,6 +512,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
         )}
         {provider?.available && !captcha && (
           <button
+            data-track="staff.field.warrantylookup.button.12"
             type="button"
             className="field-primary warranty-primary"
             disabled={!valid || ocrBusy || loading}
@@ -538,80 +525,49 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
                 : '查询原厂保修'}
           </button>
         )}
-        {brand && !provider?.available && channel?.kind !== 'miniapp' && (
-          <button
-            type="button"
-            className="field-primary warranty-primary"
-            disabled={!valid || ocrBusy || albumBusy || copyBusy || loading}
-            onClick={() => void copyAndGo()}
-          >
-            {copyBusy
-              ? '等待复制授权…'
-              : copyFailed
-                ? '手动复制后打开官网'
-                : '复制序列号并前往官网'}
-          </button>
-        )}
-        {brand && channel?.kind === 'miniapp' && (
-          <button
-            type="button"
-            className="field-primary warranty-primary"
-            disabled={!valid || ocrBusy || loading}
-            onClick={() => void copyOnly()}
-          >
-            复制序列号，前往微信查询
-          </button>
-        )}
-        {officialBlocked && destination && (
-          <a
-            href={destination.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            referrerPolicy="no-referrer"
-          >
-            在新标签页打开官网 ↗
-          </a>
-        )}
-        {brand && channel && (
-          <section className="warranty-fallback" aria-label="查验步骤">
-            <h3>查验步骤</h3>
-            <strong>{channel.title}</strong>
-            <ol className="warranty-channel-steps">
-              {channel.steps.map((step) => (
-                <li key={step}>{step}</li>
-              ))}
-            </ol>
-            {provider?.available && valid && (
+        <div className="warranty-actions">
+          {brand && channel && (
+            <>
               <button
+                data-track="staff.field.warrantylookup.button.16"
                 type="button"
-                disabled={copyBusy || albumBusy || ocrBusy}
-                onClick={() => void copyAndGo()}
+                className={provider?.available ? 'field-secondary' : 'field-primary'}
+                disabled={!valid || ocrBusy || albumBusy || copyBusy || loading}
+                onClick={() => void copySerial()}
               >
-                {copyBusy
-                  ? '等待复制授权…'
-                  : copyFailed
-                    ? '手动复制后打开官网'
-                    : '复制序列号并前往官网'}
+                {copyBusy ? '正在复制序列号…' : '复制序列号'}
               </button>
-            )}
-            <a
-              href={brand.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              referrerPolicy="no-referrer"
-            >
-              打开官方保修入口 ↗
-            </a>
-            <details className="workspace-help">
-              <summary>海外设备查询</summary>
-              <p>默认中国大陆官方渠道。海外购买的设备，请在原厂页面切换对应地区。</p>
-            </details>
-          </section>
-        )}
+              <div className="warranty-links">
+                <a
+                  data-track="staff.field.warrantylookup.a.17"
+                  href={destination?.url || brand.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  referrerPolicy="no-referrer"
+                >
+                  {channel.kind === 'miniapp' ? '打开官方小程序说明 ↗' : '打开品牌官网 ↗'}
+                </a>
+                <a
+                  data-track="staff.field.warrantylookup.service-center"
+                  href={brand.serviceCenterUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  referrerPolicy="no-referrer"
+                >
+                  打开售后网点 ↗
+                </a>
+              </div>
+            </>
+          )}
+          <div role="status" aria-live="polite">
+            <Notice>{message}</Notice>
+          </div>
+        </div>
         {captcha && (
           <fieldset className="warranty-captcha">
             <legend>原厂人工验证</legend>
             <button
+              data-track="staff.field.warrantylookup.button.18"
               type="button"
               className="field-secondary"
               disabled={loading}
@@ -633,6 +589,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
                 />
                 <label htmlFor={id + '-captcha'}>原厂验证码</label>
                 <input
+                  data-track="staff.field.warrantylookup.input.19"
                   ref={captchaInput}
                   id={id + '-captcha'}
                   value={answer}
@@ -652,6 +609,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
                   验证码有效至 {new Date(captcha.expiresAt).toLocaleTimeString('zh-CN')}。
                 </small>
                 <button
+                  data-track="staff.field.warrantylookup.button.20"
                   type="button"
                   disabled={loading || !/^[a-z0-9]{1,12}$/i.test(answer.trim())}
                   onClick={() =>
@@ -664,11 +622,13 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
             )}
           </fieldset>
         )}
-        <div role="status" aria-live="polite">
-          <Notice>{message}</Notice>
-        </div>
         {result && (
-          <section className="warranty-result" aria-label="原厂查询结果" aria-live="polite">
+          <section
+            ref={resultSection}
+            className="warranty-result"
+            aria-label="原厂查询结果"
+            aria-live="polite"
+          >
             <strong>
               {result.outcome === 'not_found' ? '原厂未查到保修信息' : statusLabels[result.status]}
             </strong>
@@ -707,6 +667,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
                 <small>{result.note}</small>
                 {onUseStatus && result.status !== 'unknown' && (
                   <button
+                    data-track="staff.field.warrantylookup.button.21"
                     type="button"
                     onClick={() => {
                       onUseStatus(result.status);
@@ -720,8 +681,19 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
             )}
           </section>
         )}
-        <details className="warranty-privacy">
-          <summary>数据使用说明</summary>
+        {brand && channel && (
+          <section className="warranty-fallback" aria-label="查验步骤">
+            <h3>查验步骤</h3>
+            <strong>{channel.title}</strong>
+            <ol className="warranty-channel-steps">
+              {channel.steps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+          </section>
+        )}
+        <details data-track="staff.field.warrantylookup.details.22" className="warranty-privacy">
+          <summary data-track="staff.field.warrantylookup.summary.23">数据使用说明</summary>
           <p>
             文字照片仅在本机识别，不上传。查询时序列号经后台发送给原厂；部分官方链接会带入序列号。序列号不会写入预约记录。
           </p>
@@ -773,7 +745,14 @@ function HumanWarrantyWidget({
         );
         return;
       }
-      if (event.data.nonce !== widget.nonce || used.current) return;
+      if (event.data.nonce !== widget.nonce) return;
+      if (event.data.kind === 'telemetry') {
+        const result = event.data.result;
+        if (['start', 'ok', 'error', 'cancelled'].includes(result))
+          track('flow.result', { view: 'verifier', control: 'captcha', result });
+        return;
+      }
+      if (used.current) return;
       if (
         event.data.kind === 'proof' &&
         typeof event.data.proof === 'string' &&

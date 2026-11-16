@@ -7,6 +7,8 @@ const labels = {
   'identity.member.created': '新增人员',
   'identity.member.imported': '导入更新',
   'identity.member.updated': '修改资料',
+  'identity.retired_elder.granted': '授予退休老登身份',
+  'identity.retired_elder.revoked': '撤销退休老登身份',
   'identity.qualification.granted': '新增工作资格',
   'identity.qualification.ended': '结束工作资格',
   'identity.qualification.archived': '工作资格历史归档',

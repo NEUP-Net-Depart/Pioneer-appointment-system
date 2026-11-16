@@ -79,8 +79,9 @@ export function AttendanceReportSettings({ active, onSaved }) {
               <DataValue label="签到计数规则">
                 {saved ? countLabels[saved.countMode] : undefined}
               </DataValue>{' '}
-              · <DataValue label="每次时长">{saved?.hoursPerCount}</DataValue> 小时/次 · 负责人
-              <DataValue label="负责人登记规则">
+              · <DataValue label="每次时长">{saved?.hoursPerCount}</DataValue> 小时/次 ·
+              部长、站长、主席（含副职）
+              <DataValue label="部长、站长、主席登记规则">
                 {saved ? (saved.mergeLeaders ? '自动计入' : '按签到计入') : undefined}
               </DataValue>
             </p>
@@ -88,6 +89,7 @@ export function AttendanceReportSettings({ active, onSaved }) {
         </div>
         {saved?.canEdit && !editing && (
           <button
+            data-track="staff.attendancereportsettings.button.1"
             type="button"
             ref={editButton}
             onClick={() => {
@@ -111,13 +113,19 @@ export function AttendanceReportSettings({ active, onSaved }) {
         </p>
       )}
       {editing && draft && (
-        <form ref={formRef} className="report-settings-form" onSubmit={save}>
+        <form
+          data-track="staff.attendancereportsettings.form.2"
+          ref={formRef}
+          className="report-settings-form"
+          onSubmit={save}
+        >
           <fieldset disabled={busy}>
             <legend>签到计数</legend>
             <div className="report-count-options">
               {Object.entries(countLabels).map(([value, label]) => (
                 <label key={value} className={draft.countMode === value ? 'is-selected' : ''}>
                   <input
+                    data-track="staff.attendancereportsettings.input.3"
                     type="radio"
                     name="countMode"
                     value={value}
@@ -134,6 +142,7 @@ export function AttendanceReportSettings({ active, onSaved }) {
               <span>每次时长</span>
               <span className="report-hours-control">
                 <input
+                  data-track="staff.attendancereportsettings.input.4"
                   type="number"
                   min="0.5"
                   max="24"
@@ -149,15 +158,17 @@ export function AttendanceReportSettings({ active, onSaved }) {
             </label>
             <label className="report-leader-option">
               <input
+                data-track="staff.attendancereportsettings.input.5"
                 type="checkbox"
                 checked={draft.mergeLeaders}
                 onChange={(event) => setDraft({ ...draft, mergeLeaders: event.target.checked })}
               />
-              <span>负责人每周自动计入一次</span>
+              <span>部长、站长、主席（含副职）每周自动计入一次</span>
             </label>
           </div>
           <div className="report-settings-actions">
             <button
+              data-track="staff.attendancereportsettings.button.6"
               type="button"
               onClick={() => {
                 setDraft(saved);
@@ -168,7 +179,12 @@ export function AttendanceReportSettings({ active, onSaved }) {
             >
               取消
             </button>
-            <button type="submit" className="field-primary" disabled={!dirty || busy}>
+            <button
+              data-track="staff.attendancereportsettings.button.7"
+              type="submit"
+              className="field-primary"
+              disabled={!dirty || busy}
+            >
               {busy ? '保存中…' : '保存规则'}
             </button>
           </div>

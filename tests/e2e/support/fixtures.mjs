@@ -4,12 +4,12 @@ import { WORKFLOW_TIME } from '../../fixtures/workflow-seed.mjs';
 
 export { expect };
 export const test = base.extend({
+  workflowTime: [WORKFLOW_TIME, { option: true }],
   preview: [
-    // eslint-disable-next-line no-empty-pattern -- Playwright requires destructured fixture dependencies.
-    async ({}, use) => {
+    async ({ workflowTime }, use) => {
       if (!process.env.E2E_TEMPLATE_DIR)
         throw new Error('Run browser tests with npm run test:e2e.');
-      const preview = await startPreview(process.env.E2E_TEMPLATE_DIR);
+      const preview = await startPreview(process.env.E2E_TEMPLATE_DIR, { time: workflowTime });
       try {
         await use(preview);
       } finally {
@@ -21,9 +21,9 @@ export const test = base.extend({
   baseURL: async ({ preview }, use) => {
     await use(preview.baseURL);
   },
-  context: async ({ context }, use) => {
+  context: async ({ context, workflowTime }, use) => {
     // The context clock also covers new staff tabs and popups.
-    await context.clock.install({ time: new Date(WORKFLOW_TIME) });
+    await context.clock.install({ time: new Date(workflowTime) });
     await use(context);
   }
 });

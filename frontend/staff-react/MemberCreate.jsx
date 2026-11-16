@@ -1,3 +1,4 @@
+import { Select } from './SelectionControls.jsx';
 import { useQuery } from '@tanstack/react-query';
 import React, { useContext, useRef, useState } from 'react';
 import { ActivityContext, Modal, Notice } from './field/ui';
@@ -45,12 +46,13 @@ export function MemberCreate({ user, onClose, onSaved, onExisting }) {
   }
   return (
     <Modal title="新增人员" sidePanel dismissible={!busy} onClose={onClose}>
-      <form className="workspace-form" onSubmit={save}>
+      <form data-track="staff.membercreate.form.1" className="workspace-form" onSubmit={save}>
         <fieldset className="workspace-form-fields" disabled={busy}>
           <div className="react-form-grid">
             <label>
               学号
               <input
+                data-track="staff.membercreate.input.2"
                 required
                 inputMode="numeric"
                 pattern="[0-9]{6,20}"
@@ -62,6 +64,7 @@ export function MemberCreate({ user, onClose, onSaved, onExisting }) {
             <label>
               姓名
               <input
+                data-track="staff.membercreate.input.3"
                 required
                 maxLength={80}
                 value={profile.name}
@@ -70,7 +73,8 @@ export function MemberCreate({ user, onClose, onSaved, onExisting }) {
             </label>
             <label>
               学院
-              <select
+              <Select
+                data-track="staff.membercreate.select.4"
                 value={profile.college}
                 onChange={(event) => setProfile({ ...profile, college: event.target.value })}
               >
@@ -78,11 +82,12 @@ export function MemberCreate({ user, onClose, onSaved, onExisting }) {
                 {NEU_COLLEGES.map((college) => (
                   <option key={college}>{college}</option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label>
               专业
               <input
+                data-track="staff.membercreate.input.5"
                 maxLength={100}
                 value={profile.major}
                 onChange={(event) => setProfile({ ...profile, major: event.target.value })}
@@ -100,6 +105,7 @@ export function MemberCreate({ user, onClose, onSaved, onExisting }) {
         <Notice>{error || departmentsQuery.error?.message}</Notice>
         {existing && (
           <button
+            data-track="staff.membercreate.button.6"
             type="button"
             disabled={busy}
             onClick={() => {
@@ -111,10 +117,19 @@ export function MemberCreate({ user, onClose, onSaved, onExisting }) {
           </button>
         )}
         <div className="field-actions">
-          <button type="button" disabled={busy} onClick={onClose}>
+          <button
+            data-track="staff.membercreate.button.7"
+            type="button"
+            disabled={busy}
+            onClick={onClose}
+          >
             取消
           </button>
-          <button className="react-primary" disabled={busy}>
+          <button
+            data-track="staff.membercreate.button.8"
+            className="react-primary"
+            disabled={busy}
+          >
             {busy ? '正在新增…' : '新增人员'}
           </button>
         </div>

@@ -11,7 +11,7 @@ export default defineConfig({
   resolve: { alias: [{ find: /^\/shared\//, replacement: fileURLToPath(new URL('./shared/', import.meta.url)) }] },
   build: {
     outDir: fileURLToPath(new URL('./dist/staff', import.meta.url)),
-    emptyOutDir: true, target: 'es2022', manifest: true, minify: 'esbuild',
+    emptyOutDir: true, target: 'es2022', manifest: true, minify: 'esbuild', sourcemap: true,
     rolldownOptions: { external: [/^\/vendor\//] },
   },
 });

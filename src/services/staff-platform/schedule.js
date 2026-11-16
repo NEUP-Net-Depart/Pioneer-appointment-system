@@ -1,5 +1,5 @@
 import { fail } from '../../lib/http.js';
-import { addDays, dateKey, weekRange, validDate } from '../../platform/time.js';
+import { addDays, dateKey, weekRange, rosterWeekKey, validDate } from '../../platform/time.js';
 import {
   DUTY_START,
   DUTY_END,
@@ -12,6 +12,7 @@ import { suggestDuties } from '../../modules/rosters/suggestions.js';
 import { campusId } from '../../modules/authorization/scopes.js';
 import { requestId, stableJson } from '../../platform/contracts.js';
 import { tokenDigest, inputString } from './shared.js';
+import { isRetiredElder } from '../../../shared/staff-identities.js';
 
 export function scheduleDomain({ repository, contextFor, evaluate }) {
   const type = (value) => {
@@ -85,7 +86,7 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
   async function availability(actor, query = {}) {
     const context = await contextFor(actor),
       dutyType = type(query.dutyType || 'repair'),
-      weekStart = week(query.weekStart || weekRange(dateKey()).start);
+      weekStart = week(query.weekStart || rosterWeekKey());
     const rows = await repository.availabilityRows([context.actor.memberId], dutyType, weekStart);
     const usual = rows.find((row) => !row.weekStart) || { revision: -1, windows: [] },
       exception = rows.find((row) => row.weekStart === weekStart) || null;
@@ -103,6 +104,7 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
     const context = await contextFor(actor),
       dutyType = type(input.dutyType),
       period = input.weekStart ? week(input.weekStart) : '';
+    if (isRetiredElder(context)) fail(403, '退休老登不参与值班，无需填写空闲');
     if (!Number.isInteger(input.revision) || input.revision < -1 || (input.useUsual && !period))
       fail(400, '可用时间版本或范围不正确');
     // JSON null restores usual availability while retaining the exception's revision.
@@ -139,7 +141,7 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
     const context = await contextFor(actor),
       campus = scoped(context, query.campusId),
       dutyType = type(query.dutyType || 'repair'),
-      weekStart = week(query.weekStart || weekRange(dateKey()).start);
+      weekStart = week(query.weekStart || rosterWeekKey());
     const canManage = evaluate(context, 'roster.manage', { campusId: campus }).allowed;
     const data = await repository.scheduleWeek(weekStart, campus, dutyType);
     if (!canManage)
@@ -205,7 +207,7 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
   }
   async function rosterMine(actor, query = {}) {
     const context = await contextFor(actor),
-      weekStart = week(query.weekStart || weekRange(dateKey()).start);
+      weekStart = week(query.weekStart || rosterWeekKey());
     return {
       weekStart,
       items: (query.upcoming === '1'
@@ -218,7 +220,7 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
   async function campusWeekData(actor, query) {
     const context = await contextFor(actor),
       campus = scoped(context, query.campusId, true),
-      weekStart = week(query.weekStart || weekRange(dateKey()).start);
+      weekStart = week(query.weekStart || rosterWeekKey());
     const [snapshot, people] = await Promise.all([
       repository.scheduleSnapshot(campus, weekStart),
       repository.schedulePeople(campus)

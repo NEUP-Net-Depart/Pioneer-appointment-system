@@ -2,6 +2,7 @@ import { useContext, useEffect, useState } from 'react';
 import { apiBlob } from '../../../shared/api.js';
 import { attachmentUrl } from '../../../shared/attachments.js';
 import { ActivityContext, Modal } from './ui';
+import type { PhotoProgress } from './intake-upload';
 
 function IntakePhoto({
   id,
@@ -9,6 +10,7 @@ function IntakePhoto({
   photoId,
   preview,
   busy,
+  progress,
   onFile
 }: {
   id: string;
@@ -16,6 +18,7 @@ function IntakePhoto({
   photoId?: string;
   preview?: string;
   busy: boolean;
+  progress?: PhotoProgress;
   onFile: (side: string, file: File) => void;
 }) {
   const active = useContext(ActivityContext);
@@ -50,6 +53,7 @@ function IntakePhoto({
     <div className="field-intake-photo">
       {src ? (
         <button
+          data-track="staff.field.intakephotos.button.1"
           type="button"
           className="field-photo-preview"
           aria-label={`查看${label}`}
@@ -70,6 +74,7 @@ function IntakePhoto({
         <label className="field-photo-upload">
           {src || photoId ? '替换照片' : '拍照'}
           <input
+            data-track="staff.field.intakephotos.input.2"
             type="file"
             disabled={busy}
             accept="image/jpeg,image/png,image/webp"
@@ -82,8 +87,21 @@ function IntakePhoto({
           />
         </label>
       </div>
+      {progress && (
+        <div className="field-photo-progress">
+          <progress max={100} value={progress.value} aria-label={`${label}上传进度`} />
+          <small role="status">
+            {progress.label}
+            {progress.value !== undefined ? ` · ${progress.value}%` : ''}
+          </small>
+        </div>
+      )}
       {error && (
-        <button type="button" onClick={() => setRetry((value) => value + 1)}>
+        <button
+          data-track="staff.field.intakephotos.button.3"
+          type="button"
+          onClick={() => setRetry((value) => value + 1)}
+        >
           重试加载
         </button>
       )}
@@ -101,12 +119,14 @@ export function IntakePhotos({
   uploaded,
   previews,
   busy,
+  progress = {},
   onFile
 }: {
   id: string;
   uploaded: Record<string, string>;
   previews: Record<string, string>;
   busy: boolean;
+  progress?: Record<string, PhotoProgress>;
   onFile: (side: string, file: File) => void;
 }) {
   return (
@@ -119,6 +139,7 @@ export function IntakePhotos({
           photoId={uploaded[side]}
           preview={previews[side]}
           busy={busy}
+          progress={progress[side]}
           onFile={onFile}
         />
       ))}

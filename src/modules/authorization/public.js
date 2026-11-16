@@ -3,6 +3,7 @@ import { campusId, validScope } from './scopes.js';
 import { dateKey, validDate } from '../../platform/time.js';
 import { conditionProviders, validCondition } from './conditions.js';
 import { parseJson } from '../../platform/contracts.js';
+import { isRetiredElder } from '../../../shared/staff-identities.js';
 
 export const staffRepairPermissions = ['repair.summary.read','repair.start','repair.receive','repair.finish.own','repair.transfer','customer.identity.read','customer.contact.read','onsite.create'];
 const repairOperations = ['repair.start','repair.finish.own','repair.transfer'];
@@ -69,8 +70,9 @@ export function createAuthorizer({ providers = conditionProviders() } = {}) {
         return { allowed: false, matchedGrantIds: [], reasonCode: 'INACTIVE', scope: [], explanations: [] };
       if (identityPermissions.includes(permissionCode)) {
         const posts=activeMemberships(context);
+        const retired=isRetiredElder(context);
         let campuses=actor?.authorizedCampuses || [];
-        if(permissionCode==='booking.manage' && actor?.role!=='superadmin' &&
+        if(permissionCode==='booking.manage' && actor?.role!=='superadmin' && !retired &&
           !posts.some(post=>post.isPrimary && globalLeadershipPositions.includes(post.positionCode))) {
           campuses=campuses.filter(id=>campusId(id)===campusId(actor?.homeCampus));
         }
@@ -81,8 +83,8 @@ export function createAuthorizer({ providers = conditionProviders() } = {}) {
         const repairs=posts.some(post=>post.departmentCode==='hardware' && post.assignmentType!=='maintenance_affairs');
         if(repairOperations.includes(permissionCode))eligible=repairs;
         if(receptionOperations.includes(permissionCode))eligible=repairs || affairs;
-        if(managementPermissions.includes(permissionCode))eligible=actor?.role==='superadmin' || isLeader(context);
-        if(permissionCode==='attendance.self')eligible=actor?.role==='superadmin' || isLeader(context) || participationCodes(context,target).length>0;
+        if(managementPermissions.includes(permissionCode))eligible=actor?.role==='superadmin' || isLeader(context) || retired;
+        if(permissionCode==='attendance.self')eligible=!retired && (actor?.role==='superadmin' || isLeader(context) || participationCodes(context,target).length>0);
         if(permissionCode==='attendance.token.issue')eligible=actor?.role==='superadmin' || isLeader(context) || affairs;
         const allowed=scoped && eligible;
         return {allowed,matchedGrantIds:[],reasonCode:allowed?'IDENTITY_SCOPE':'IDENTITY_SCOPE_DENIED',scope:allowed?[{campusIds:campuses}]:[],explanations:[]};

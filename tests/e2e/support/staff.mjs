@@ -1,5 +1,11 @@
+import { signatureFixture } from '../../fixtures/signature.mjs';
 import { expect } from '@playwright/test';
 import { STAFF_PASSWORD } from '../../fixtures/workflow-seed.mjs';
+
+export async function chooseOption(page, control, value) {
+  await control.click();
+  await page.locator(`[role="option"][data-value=${JSON.stringify(value)}]`).click();
+}
 
 export async function loginStaff(
   page,
@@ -90,7 +96,7 @@ export function onsiteOrder(page, values = {}) {
     deviceModel: '',
     warranty: '不清楚',
     faultType: '系统',
-    signature: [Array.from({ length: 12 }, (_, i) => [0.1 + i * 0.05, 0.2 + i * 0.03])],
+    signature: signatureFixture(),
     ...values
   });
 }

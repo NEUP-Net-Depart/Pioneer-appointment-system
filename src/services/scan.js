@@ -55,7 +55,7 @@ export function scanService(appointments, service, secret, clock = () => new Dat
       if (previous) return {...await locate(previous.id,actor),accessToken:await service.registrationCredential(previous,actor)};
       const data = onsiteBookingInput({ ...input, date: dateKey(now), timeSlot: TIME_SLOTS[0], agreementAt: now.toISOString(), agreementVersion: 'v1.0' });
       requireCampus(actor, data.campus);
-      const item = await service.createOnsite({...data,parentAppointmentId:input.parentAppointmentId || null,linkKind:input.linkKind || null,sameDeviceAndFault:input.sameDeviceAndFault}, actor, key);
+      const item = await service.createOnsite({...data,parentAppointmentId:input.parentAppointmentId || null,linkKind:input.linkKind || null,sameDeviceAndFault:input.sameDeviceAndFault,sameDeviceAndRepairRelated:input.sameDeviceAndRepairRelated}, actor, key);
       const visible=await locate(item.id,actor);
       return {...visible,...(visible.name!==undefined && visible.social!==undefined ? {accessToken:item.accessToken} : {})};
     }

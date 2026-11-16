@@ -40,5 +40,13 @@ export function DataInput({ value, ...props }) {
       document.removeEventListener('visibilitychange', stop);
     };
   }, [value]);
-  return <input {...props} value={value} ref={ref} data-value-motion="field" />;
+  return (
+    <input
+      data-track="staff.datainput.input.1"
+      {...props}
+      value={value}
+      ref={ref}
+      data-value-motion="field"
+    />
+  );
 }

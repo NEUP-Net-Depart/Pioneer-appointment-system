@@ -1,5 +1,7 @@
+import { DatePicker } from './SelectionControls.jsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import React, { useContext, useEffect, useRef, useState } from 'react';
+import React, { useContext, useEffect, useId, useRef, useState } from 'react';
+import { RefreshButton } from './WorkspaceToolbar.jsx';
 import { addDays, dateKey, formatInstant } from '../../shared/time.js';
 import { request } from './request.js';
 import { ActivityContext, Modal, Notice } from './field/ui';
@@ -7,6 +9,8 @@ import { useUnsavedChanges } from './useUnsavedChanges.js';
 
 export function ServiceLocationEditor({ campus }) {
   const active = useContext(ActivityContext);
+  const historyId = useId();
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [date, setDate] = useState(dateKey()),
     [drafts, setDrafts] = useState({});
   const [error, setError] = useState(''),
@@ -51,6 +55,7 @@ export function ServiceLocationEditor({ campus }) {
   }, [locations.data, campus, key]);
   useEffect(() => {
     setReview(false);
+    setHistoryOpen(false);
     setMessage('');
   }, [active, key]);
   useUnsavedChanges({
@@ -146,15 +151,20 @@ export function ServiceLocationEditor({ campus }) {
         <div>
           <h2>维修地点</h2>
         </div>
-        <button disabled={loading || busy || !date} onClick={refresh}>
-          读取最新地点
-        </button>
+        <RefreshButton
+          data-track="staff.servicelocationeditor.button.1"
+          key={`${campus}:${date}`}
+          disabled={busy || !date}
+          onRefresh={refresh}
+          label="刷新维修地点"
+          compactOnMobile
+        />
       </div>
       <div className="capacity-location-dates">
         <label>
           维修日期
-          <input
-            type="date"
+          <DatePicker
+            data-track="staff.servicelocationeditor.input.2"
             value={date}
             disabled={busy}
             onChange={(event) => setDate(event.target.value)}
@@ -165,6 +175,7 @@ export function ServiceLocationEditor({ campus }) {
             const day = addDays(dateKey(), offset);
             return (
               <button
+                data-track="staff.servicelocationeditor.button.3"
                 key={day}
                 disabled={busy}
                 aria-pressed={date === day}
@@ -179,6 +190,7 @@ export function ServiceLocationEditor({ campus }) {
       <Notice>{error || locations.error?.message || history.error?.message}</Notice>
       <Notice>{message}</Notice>
       <form
+        data-track="staff.servicelocationeditor.form.4"
         className="capacity-location-form"
         onSubmit={(event) => {
           event.preventDefault();
@@ -188,6 +200,7 @@ export function ServiceLocationEditor({ campus }) {
         <label>
           具体维修地点
           <textarea
+            data-track="staff.servicelocationeditor.textarea.5"
             aria-label="具体维修地点"
             rows={3}
             maxLength={200}
@@ -207,6 +220,7 @@ export function ServiceLocationEditor({ campus }) {
             <p className="field-muted">你的输入保留在上方；确认后可重新保存。</p>
             <div className="field-actions">
               <button
+                data-track="staff.servicelocationeditor.button.6"
                 type="button"
                 disabled={busy}
                 onClick={() =>
@@ -220,6 +234,7 @@ export function ServiceLocationEditor({ campus }) {
                 使用最新地点
               </button>
               <button
+                data-track="staff.servicelocationeditor.button.7"
                 type="button"
                 disabled={busy}
                 onClick={() =>
@@ -236,6 +251,7 @@ export function ServiceLocationEditor({ campus }) {
         )}
         <div className="field-actions">
           <button
+            data-track="staff.servicelocationeditor.button.8"
             type="button"
             disabled={busy || !draft}
             onClick={() =>
@@ -248,44 +264,68 @@ export function ServiceLocationEditor({ campus }) {
           >
             撤销修改
           </button>
-          <button className="field-primary" disabled={busy || !data || !draft || conflict}>
+          <button
+            data-track="staff.servicelocationeditor.button.9"
+            className="field-primary"
+            disabled={busy || !data || !draft || conflict}
+          >
             检查并保存地点
           </button>
         </div>
       </form>
       {data && (
-        <details className="capacity-location-details">
-          <summary>受影响预约与修改记录</summary>
+        <section className="capacity-location-history" aria-label="受影响预约与修改记录">
           <p data-motion-value="number">
             {data.affectedAppointments?.length || 0} 条进行中的预约会使用此地点；请按需人工通知。
           </p>
-          {!!data.affectedAppointments?.length && (
-            <ul>
-              {data.affectedAppointments.map((item) => (
-                <li data-motion-item="" key={item.id}>
-                  <strong data-motion-value="text">{item.id}</strong>
-                  {[item.name, item.contactValue || item.social || item.phone, item.email]
-                    .filter(Boolean)
-                    .map((text, index) => (
-                      <span data-motion-value="text" key={index}>
-                        {text}
-                      </span>
+          <button
+            data-track="staff.servicelocationeditor.button.10"
+            type="button"
+            aria-expanded={historyOpen}
+            aria-controls={historyId}
+            onClick={() => setHistoryOpen((value) => !value)}
+          >
+            {historyOpen ? '收起相关记录' : '查看受影响预约与修改记录'}
+          </button>
+          {historyOpen && (
+            <div id={historyId} className="capacity-location-records">
+              {!!data.affectedAppointments?.length && (
+                <section aria-label="受影响预约">
+                  <h4>受影响预约</h4>
+                  <ul>
+                    {data.affectedAppointments.map((item) => (
+                      <li data-motion-item="" key={item.id}>
+                        <strong data-motion-value="text">{item.id}</strong>
+                        {[item.name, item.contactValue || item.social || item.phone, item.email]
+                          .filter(Boolean)
+                          .map((text, index) => (
+                            <span data-motion-value="text" key={index}>
+                              {text}
+                            </span>
+                          ))}
+                      </li>
                     ))}
-                </li>
-              ))}
-            </ul>
+                  </ul>
+                </section>
+              )}
+              <section aria-label="地点修改记录">
+                <h4>地点修改记录</h4>
+                {data.changes?.length ? (
+                  <ul>
+                    {data.changes.map((item) => (
+                      <li data-motion-value="text" key={item.revision}>
+                        {formatInstant(item.createdAt)} · {item.beforeLocation || '未设置'} →{' '}
+                        {item.afterLocation || '未设置'}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="field-muted">暂无修改记录。</p>
+                )}
+              </section>
+            </div>
           )}
-          {data.changes?.length ? (
-            data.changes.map((item) => (
-              <p data-motion-value="text" key={item.revision}>
-                {formatInstant(item.createdAt)} · {item.beforeLocation || '未设置'} →{' '}
-                {item.afterLocation || '未设置'}
-              </p>
-            ))
-          ) : (
-            <p className="field-muted">暂无修改记录。</p>
-          )}
-        </details>
+        </section>
       )}
       {review && (
         <Modal title="确认修改维修地点" dismissible={!busy} onClose={() => setReview(false)}>
@@ -301,10 +341,19 @@ export function ServiceLocationEditor({ campus }) {
             条进行中的预约需要按需通知。
           </p>
           <div className="field-actions">
-            <button disabled={busy} onClick={() => setReview(false)}>
+            <button
+              data-track="staff.servicelocationeditor.button.11"
+              disabled={busy}
+              onClick={() => setReview(false)}
+            >
               返回编辑
             </button>
-            <button className="field-primary" disabled={busy || conflict} onClick={save}>
+            <button
+              data-track="staff.servicelocationeditor.button.12"
+              className="field-primary"
+              disabled={busy || conflict}
+              onClick={save}
+            >
               {busy ? '正在保存…' : '确认保存地点'}
             </button>
           </div>

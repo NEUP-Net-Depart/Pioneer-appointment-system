@@ -10,7 +10,10 @@ import { useFieldWorkspace } from './useFieldWorkspace';
 import { TodayScene } from './TodayScene';
 import { PersonalScene } from './PersonalScene';
 import { AttendanceActions } from './AttendanceActions';
+import { CampusScope } from '../CampusScope.jsx';
+import { RefreshButton } from '../WorkspaceToolbar.jsx';
 import './field.css';
+import { TodayWorkWindow } from './TodayWorkWindow';
 export function FieldApp({
   initial,
   onNavigate,
@@ -19,7 +22,8 @@ export function FieldApp({
   onSceneChange,
   onContextChange,
   active = true,
-  onLogout
+  onLogout,
+  onPeople
 }: {
   initial: Home;
   workspaceLinks?: { id: string; label: string; group?: string }[];
@@ -29,6 +33,7 @@ export function FieldApp({
   active?: boolean;
   onLogout: () => void;
   onNavigate: (view: string) => void;
+  onPeople?: (campusId: string, kind: string) => void;
 }) {
   const [customerCredential, setCustomerCredential] = useState<{
     id: string;
@@ -75,42 +80,68 @@ export function FieldApp({
   return (
     <>
       <section className="field-content" aria-busy={result.isPending}>
-        <WorkspaceHeader
-          group={scene === 'mine' ? '我的' : '现场工作'}
-          title={
-            scene === 'mine'
-              ? '个人中心'
-              : (data?.contexts || initial.contexts).find((c) => c.id === scene)?.label ||
-                '今日工作'
-          }
-        >
-          <div className="field-scope">
-            <span data-motion-value="text">{data?.businessDate || initial.businessDate}</span>
-            {(data?.campuses || initial.campuses).length > 1 ? (
-              <label>
-                <span className="field-sr-only">工作校区</span>
-                <select
-                  value={campus}
-                  disabled={busy}
-                  onChange={(e) => {
-                    setCampus(e.target.value);
-                    setCustomerCredential(null);
-                  }}
-                >
-                  {(data?.campuses || initial.campuses).map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}校区
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : (
-              <span>{campusName}校区</span>
-            )}
-          </div>
-        </WorkspaceHeader>
+        {scene === 'today' ? (
+          <TodayWorkWindow
+            data={
+              data || {
+                ...initial,
+                campusId: campus,
+                attendance: initial.campusId === campus ? initial.attendance : null,
+                todayDuties: initial.campusId === campus ? initial.todayDuties : []
+              }
+            }
+            busy={busy || !data}
+            onCampus={(id) => {
+              setCampus(id);
+              setCustomerCredential(null);
+            }}
+            onScan={() => setScanOpen(true)}
+            onCheckIn={openAttendance}
+            onShowCode={showAttendance}
+            onRefresh={refresh}
+            onPeople={(kind) => onPeople?.(campus, kind)}
+          />
+        ) : (
+          <WorkspaceHeader
+            group={scene === 'mine' ? '我的' : '现场工作'}
+            title={
+              scene === 'mine'
+                ? '个人中心'
+                : (data?.contexts || initial.contexts).find((c) => c.id === scene)?.label ||
+                  '今日工作'
+            }
+          >
+            <div className="field-scope">
+              <span data-motion-value="text">{data?.businessDate || initial.businessDate}</span>
+              <RefreshButton
+                data-track="staff.field.fieldapp.button.3"
+                key={`${scene}:${campus}`}
+                label={scene === 'mine' ? '刷新个人中心' : '刷新工作台'}
+                compactOnMobile
+                disabled={busy}
+                onRefresh={refresh}
+              />
+            </div>
+          </WorkspaceHeader>
+        )}
         <Notice>{message || result.error?.message}</Notice>
-        {(scene === 'today' || scene === 'mine') && (
+        {scene !== 'today' && (
+          <CampusScope
+            data-track="staff.field.fieldapp.select.1"
+            label={scene === 'mine' ? '签到校区' : '接待校区'}
+            campuses={(data?.campuses || initial.campuses).map((item) => ({
+              id: item.id,
+              name: item.name
+            }))}
+            value={campus}
+            disabled={busy}
+            onChange={(id) => {
+              setCampus(id);
+              setCustomerCredential(null);
+            }}
+          />
+        )}
+        {scene === 'mine' && (
           <AttendanceActions
             data={
               data || {
@@ -121,7 +152,6 @@ export function FieldApp({
             }
             busy={busy || !data}
             onCheckIn={openAttendance}
-            onShowCode={scene === 'today' ? showAttendance : undefined}
           />
         )}
         {!!data?.pendingCoverInvitations &&
@@ -132,7 +162,12 @@ export function FieldApp({
                   {data.pendingCoverInvitations} 份换班邀请等待你确认
                 </strong>
               </div>
-              <button onClick={() => onNavigate('duties')}>查看邀请</button>
+              <button
+                data-track="staff.field.fieldapp.button.2"
+                onClick={() => onNavigate('duties')}
+              >
+                查看邀请
+              </button>
             </section>
           )}
         {scene === 'today' && (
@@ -151,7 +186,6 @@ export function FieldApp({
               }
             }
             onSelect={setSelected}
-            onScan={() => setScanOpen(true)}
             onRegister={() => setRegistration(true)}
           />
         )}
@@ -176,7 +210,6 @@ export function FieldApp({
           <span>
             更新于 <DataValue label="更新时间">{data ? time(data.updatedAt) : undefined}</DataValue>
           </span>
-          <button onClick={refresh}>刷新</button>
         </footer>
       </section>
       {checkResult && (
@@ -206,7 +239,11 @@ export function FieldApp({
                   .join(' · ')}
               </p>
             )}
-            <button className="field-primary" onClick={() => setCheckResult(null)}>
+            <button
+              data-track="staff.field.fieldapp.button.4"
+              className="field-primary"
+              onClick={() => setCheckResult(null)}
+            >
               返回工作台
             </button>
           </div>
@@ -228,7 +265,12 @@ export function FieldApp({
             将以 {initial.actor.name} 的账号记录到岗。
           </p>
           <Notice>{message}</Notice>
-          <button className="field-primary" disabled={busy} onClick={() => checkIn(checkToken)}>
+          <button
+            data-track="staff.field.fieldapp.button.5"
+            className="field-primary"
+            disabled={busy}
+            onClick={() => checkIn(checkToken)}
+          >
             确认签到
           </button>
         </Modal>
@@ -245,7 +287,11 @@ export function FieldApp({
           </p>
           <Notice>{message}</Notice>
           <div className="field-actions">
-            <button disabled={busy} onClick={showAttendance}>
+            <button
+              data-track="staff.field.fieldapp.button.6"
+              disabled={busy}
+              onClick={showAttendance}
+            >
               更新签到码
             </button>
           </div>

@@ -1,3 +1,6 @@
+import { DatePicker } from './SelectionControls.jsx';
+import { RefreshButton } from './WorkspaceToolbar.jsx';
+import { HelpHint } from './HelpHint';
 import { DataValue } from './DataValue';
 import { TIME_SLOTS } from '../../shared/constants.js';
 import React, { useContext, useState } from 'react';
@@ -22,20 +25,34 @@ export function ActualDayCapacity({ campus, onNavigate }) {
         <div>
           <h2>日期实际容量</h2>
         </div>
-        <button disabled={loading || !date} onClick={() => result.refetch()}>
-          更新实际数据
-        </button>
+        <RefreshButton
+          data-track="staff.actualdaycapacity.button.1"
+          key={`${campus}:${date}`}
+          disabled={!date}
+          onRefresh={() => result.refetch({ throwOnError: true })}
+          label="刷新当日容量"
+          compactOnMobile
+        />
       </div>
       <div className="capacity-actual-date">
         <label>
           查看日期
-          <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+          <DatePicker
+            data-track="staff.actualdaycapacity.input.2"
+            value={date}
+            onChange={(event) => setDate(event.target.value)}
+          />
         </label>
         <div className="capacity-date-shortcuts" role="group" aria-label="快捷查看日期">
           {[0, 1, 2, 3].map((offset) => {
             const day = addDays(dateKey(), offset);
             return (
-              <button key={day} aria-pressed={date === day} onClick={() => setDate(day)}>
+              <button
+                data-track="staff.actualdaycapacity.button.3"
+                key={day}
+                aria-pressed={date === day}
+                onClick={() => setDate(day)}
+              >
                 {offset === 0 ? '今天' : day.slice(5).replace('-', '/')}
               </button>
             );
@@ -43,7 +60,11 @@ export function ActualDayCapacity({ campus, onNavigate }) {
         </div>
       </div>
       <Notice>{error}</Notice>
-      {error && <button onClick={() => result.refetch()}>重试</button>}
+      {error && (
+        <button data-track="staff.actualdaycapacity.button.4" onClick={() => result.refetch()}>
+          重试
+        </button>
+      )}
       {!date && <p className="workspace-update">请选择日期。</p>}
       {date && (
         <>
@@ -68,7 +89,12 @@ export function ActualDayCapacity({ campus, onNavigate }) {
           </div>
           <div className="capacity-actual-layout">
             <div>
-              <h3>预约名额</h3>
+              <h3 className="workspace-title-with-hint">
+                预约名额
+                <HelpHint data-track="staff.actualdaycapacity.helphint.6" label="名额计算规则">
+                  已占用名额包含已完成、已过期预约；取消预约释放名额。现场临时登记不占用预约名额。已占用达到或超过容量时停止新增预约，低于容量后恢复放号。
+                </HelpHint>
+              </h3>
               {!data || data.items.length ? (
                 <table className="capacity-actual-slots" aria-label="各时段预约名额">
                   <thead>
@@ -107,16 +133,14 @@ export function ActualDayCapacity({ campus, onNavigate }) {
               ) : (
                 <p className="field-muted">此日期没有配置预约时段。</p>
               )}
-              <details className="workspace-help">
-                <summary>名额计算规则</summary>
-                <p>
-                  已占用名额包含已完成、已过期预约；取消预约释放名额。现场临时登记不占用预约名额。
-                  已占用达到或超过容量时停止新增预约，低于容量后恢复放号。
-                </p>
-              </details>
             </div>
             <div className="capacity-staffing">
-              <h3>工作人员</h3>
+              <h3 className="workspace-title-with-hint">
+                工作人员
+                <HelpHint data-track="staff.actualdaycapacity.helphint.7" label="出勤计算口径">
+                  按已发布班次去重，并扣除已批准请假；实际到岗以签到记录为准。
+                </HelpHint>
+              </h3>
               {!data ? (
                 <>
                   <p data-motion-value="text" className="field-muted">
@@ -144,17 +168,16 @@ export function ActualDayCapacity({ campus, onNavigate }) {
                         </span>
                         <strong data-motion-value="number">{count} 人</strong>
                         {onNavigate && (
-                          <button onClick={() => onNavigate('duties')}>
+                          <button
+                            data-track="staff.actualdaycapacity.button.5"
+                            onClick={() => onNavigate('duties')}
+                          >
                             {type === 'repair' ? '查看维修排班' : '查看办公排班'}
                           </button>
                         )}
                       </div>
                     ))}
                   </div>
-                  <details className="workspace-help">
-                    <summary>出勤计算口径</summary>
-                    <p>按已发布班次去重，并扣除已批准请假；实际到岗以签到记录为准。</p>
-                  </details>
                 </>
               ) : (
                 <p className="field-muted">人员安排请在有权限的排班管理页查看。</p>

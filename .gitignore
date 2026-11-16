@@ -1,4 +1,6 @@
 node_modules/
+.local-env/
+.npm-cache/
 dist/
 .wrangler/
 .dev.vars

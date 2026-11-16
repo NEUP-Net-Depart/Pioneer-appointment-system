@@ -116,32 +116,35 @@ export function volunteerWorkbook(month, week, templateBytes) {
       row
     ])
   );
-  const templateRow = rows.get(23);
+  const templateRow = rows.get(4);
   if (!templateRow) throw new Error('志愿登记表模板行结构无效');
+  for (const number of rows.keys()) if (number > 3) rows.delete(number);
 
-  for (let index = 0; index < week.rows.length; index += 1) {
+  for (let index = 0; index < Math.max(1, week.rows.length); index += 1) {
     const number = index + 4;
-    let row =
-      number <= 23
-        ? rows.get(number)
-        : templateRow
-            .replace('<row r="23"', `<row r="${number}"`)
-            .replace(/r="([A-I])23"/g, (_ref, col) => `r="${col}${number}"`);
+    let row = templateRow
+      .replace('<row r="4"', `<row r="${number}"`)
+      .replace(/r="([A-O])4"/g, (_ref, col) => `r="${col}${number}"`);
     if (!row) throw new Error(`志愿登记表模板缺少第 ${number} 行`);
     const person = week.rows[index];
     const values = [
-      ['A', person.college],
-      ['B', person.name],
-      ['C', person.studentId],
-      ['D', 14, 'shared'],
-      ['E', person.hours, 'number'],
-      ['F', 15, 'shared'],
-      ['G', 16, 'shared'],
-      ['H', 17, 'shared'],
+      ['A', person?.college],
+      ['B', person?.name],
+      ['C', person?.studentId],
+      ['D', '先锋维修志愿服务'],
+      ['E', person?.hours, 'number'],
+      ['F', '共青团东北大学委员会'],
+      ['G', '东北大学先锋网络中心'],
+      ['H', '送温暖献爱心志愿服务'],
       ['I', duration]
     ];
     for (const [col, value, kind] of values) {
-      row = replaceTemplateCell(row, `${col}${number}`, value, kind);
+      row = replaceTemplateCell(
+        row,
+        `${col}${number}`,
+        person ? value : '',
+        person ? kind : 'text'
+      );
     }
     rows.set(number, row);
   }
@@ -153,13 +156,21 @@ export function volunteerWorkbook(month, week, templateBytes) {
       .join('')}</sheetData>`
   );
   files[sheetPath] = strToU8(sheet);
-  if (week.rows.length > 20) {
-    const workbookPath = 'xl/workbook.xml';
-    const source = strFromU8(files[workbookPath]);
-    const updated = source.replace('Sheet1!$A$1:$O$23', `Sheet1!$A$1:$O$${week.rows.length + 3}`);
-    if (updated === source) throw new Error('志愿登记表模板缺少打印范围');
-    files[workbookPath] = strToU8(updated);
-  }
+  const end = Math.max(4, week.rows.length + 3);
+  files[sheetPath] = strToU8(
+    sheet.replace(/<dimension ref="[^"]*"\/>/, `<dimension ref="A1:J${end}"/>`)
+  );
+  const workbookPath = 'xl/workbook.xml';
+  let source = strFromU8(files[workbookPath]);
+  const printArea = `<definedName name="_xlnm.Print_Area" localSheetId="0">Sheet1!$A$1:$J$${end}</definedName>`;
+  source = source.replace(
+    /<definedName\b[^>]*name="_xlnm.Print_Area"[^>]*>[^]*?<\/definedName>/g,
+    ''
+  );
+  source = source.includes('</definedNames>')
+    ? source.replace('</definedNames>', `${printArea}</definedNames>`)
+    : source.replace('</sheets>', `</sheets><definedNames>${printArea}</definedNames>`);
+  files[workbookPath] = strToU8(source);
   return zipSync(files, { level: 6 });
 }
 
@@ -168,7 +179,9 @@ export function attendanceMatrixWorkbook(report) {
   const end = dates.length + 3;
   const rows = [
     [text(`${report.month} 考勤记录`, 1)],
-    [text('实际维修日签到：同人同日只计一次', 2)],
+    [
+      text('实际签到记为1；班次结束未签到记缺勤；请假、待签到和暂停服务分别标明；空白表示无记录', 2)
+    ],
     [
       '姓名',
       '学号',
@@ -187,11 +200,20 @@ export function attendanceMatrixWorkbook(report) {
       merges.push(`A${row}:${column(end)}${row}`);
     }
     const days = new Set(person.days);
+    const entries = new Map((person.entries || []).map((entry) => [entry.businessDate, entry]));
+    const statusLabels = {
+      leave: '请假',
+      absent: '缺勤',
+      upcoming: '待签到',
+      paused: '暂停服务'
+    };
     rows.push(
       [
         person.name,
         person.studentId,
-        ...dates.map((date) => (days.has(date) ? 1 : '')),
+        ...dates.map((date) =>
+          days.has(date) ? 1 : statusLabels[entries.get(date)?.status] || ''
+        ),
         days.size
       ].map((value) => text(value, 4))
     );
@@ -204,7 +226,7 @@ export function volunteerZip(report, templateBytes) {
   const files = {};
   for (const week of report.weeks)
     for (const campus of week.campuses) {
-      const filename = `${campus.campus}先锋${month}月${week.weekNumber}周.xlsx`;
+      const filename = `${campus.campus}先锋信息采集表${month}月${week.weekNumber}周.xlsx`;
       files[filename] = volunteerWorkbook(
         report.month,
         { ...week, rows: campus.rows },

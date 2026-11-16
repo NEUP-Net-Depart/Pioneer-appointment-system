@@ -1,10 +1,10 @@
 // Pause network polling while the browser tab is hidden; refresh on return.
 export function startVisiblePolling(callback, interval = 30000) {
-  let timer, disposed = false, running = false;
+  let timer, disposed = false, running = false, first = true;
   async function refresh() {
     if (disposed || document.hidden || running) return;
     running = true;
-    try { await callback(); } finally { running = false; }
+    try { const telemetryPoll = !first; first = false; await callback({ telemetryPoll }); } finally { running = false; }
   }
   function stopTimer() { clearInterval(timer); timer = undefined; }
   function resume() {

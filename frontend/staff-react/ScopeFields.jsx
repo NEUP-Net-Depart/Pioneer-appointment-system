@@ -1,4 +1,6 @@
+import { Select } from './SelectionControls.jsx';
 import React from 'react';
+import { additionalMembershipLabels } from '../../shared/staff-organization.js';
 
 // Shared by role grants and member bindings. Unknown extension fields survive edits.
 export function ScopeFields({
@@ -32,6 +34,7 @@ export function ScopeFields({
               <legend>{label}范围</legend>
               <label className="react-check">
                 <input
+                  data-track="staff.scopefields.input.1"
                   type="checkbox"
                   checked={!explicit}
                   onChange={(event) => update(key, alias, event.target.checked ? null : [])}
@@ -44,6 +47,7 @@ export function ScopeFields({
                     {options.map((option) => (
                       <label className="react-check" key={option.id}>
                         <input
+                          data-track="staff.scopefields.input.2"
                           type="checkbox"
                           checked={values.includes(option.id)}
                           onChange={(event) =>
@@ -83,7 +87,13 @@ const parameterLabels = {
   assignmentType: '任职类型',
   isPrimary: '仅主部门任职'
 };
-export function ConditionFields({ conditions = [], providers = [], onChange, requiredCodes = [] }) {
+export function ConditionFields({
+  conditions = [],
+  providers = [],
+  onChange,
+  requiredCodes = [],
+  departments = []
+}) {
   function update(index, parameters) {
     onChange(conditions.map((item, i) => (i === index ? { ...item, parameters } : item)));
   }
@@ -97,6 +107,7 @@ export function ConditionFields({ conditions = [], providers = [], onChange, req
             <div className="react-heading">
               <strong data-motion-value="text">{provider?.description || condition.code}</strong>
               <button
+                data-track="staff.scopefields.button.3"
                 type="button"
                 disabled={requiredCodes.includes(condition.code)}
                 onClick={() => onChange(conditions.filter((_, i) => i !== index))}
@@ -105,9 +116,104 @@ export function ConditionFields({ conditions = [], providers = [], onChange, req
               </button>
             </div>
             {Object.entries(provider?.parameterSchema?.properties || {}).map(([key, definition]) =>
-              definition.type === 'boolean' ? (
+              key === 'departmentIds' ? (
+                <fieldset key={key}>
+                  <legend>{parameterLabels[key]}</legend>
+                  <button
+                    data-track="staff.scopefields.button.7"
+                    type="button"
+                    aria-pressed={!parameters[key]?.length}
+                    onClick={() => {
+                      const next = { ...parameters };
+                      delete next[key];
+                      update(index, next);
+                    }}
+                  >
+                    不限部门
+                  </button>
+                  {[
+                    ...departments,
+                    ...(parameters[key] || [])
+                      .filter((id) => !departments.some((department) => department.id === id))
+                      .map((id) => ({ id, name: id }))
+                  ].map((department) => (
+                    <label className="react-check" key={department.id}>
+                      <input
+                        data-track="staff.scopefields.input.8"
+                        type="checkbox"
+                        checked={(parameters[key] || []).includes(department.id)}
+                        onChange={(event) => {
+                          const selected = event.target.checked
+                            ? [...(parameters[key] || []), department.id]
+                            : (parameters[key] || []).filter((id) => id !== department.id);
+                          const next = { ...parameters };
+                          if (selected.length) next[key] = selected;
+                          else delete next[key];
+                          update(index, next);
+                        }}
+                      />
+                      {department.name}
+                    </label>
+                  ))}
+                </fieldset>
+              ) : ['departmentId', 'assignmentType'].includes(key) ? (
+                <label key={key}>
+                  {parameterLabels[key]}
+                  <Select
+                    data-track="staff.scopefields.select.9"
+                    value={parameters[key] || ''}
+                    onChange={(event) => {
+                      const next = { ...parameters };
+                      if (event.target.value) next[key] = event.target.value;
+                      else delete next[key];
+                      update(index, next);
+                    }}
+                  >
+                    <option value="">不限</option>
+                    {key === 'departmentId'
+                      ? departments.map((department) => (
+                          <option key={department.id} value={department.id}>
+                            {department.name}
+                          </option>
+                        ))
+                      : Object.entries({
+                          primary: '正式部门任职',
+                          ...additionalMembershipLabels
+                        }).map(([code, name]) => (
+                          <option key={code} value={code}>
+                            {name}
+                          </option>
+                        ))}
+                    {parameters[key] &&
+                      !(key === 'departmentId'
+                        ? departments.some((department) => department.id === parameters[key])
+                        : ['primary', ...Object.keys(additionalMembershipLabels)].includes(
+                            parameters[key]
+                          )) && <option value={parameters[key]}>{parameters[key]}</option>}
+                  </Select>
+                </label>
+              ) : key === 'isPrimary' ? (
+                <label key={key}>
+                  任职范围
+                  <Select
+                    data-track="staff.scopefields.select.10"
+                    value={parameters[key] === undefined ? '' : String(parameters[key])}
+                    onChange={(event) => {
+                      const next = { ...parameters };
+                      if (event.target.value === '') delete next[key];
+                      else next[key] = event.target.value === 'true';
+                      update(index, next);
+                    }}
+                  >
+                    <option value="">不限</option>
+                    <option value="true">正式部门任职</option>
+                    <option value="false">独立身份</option>
+                  </Select>
+                </label>
+              ) : definition.type === 'boolean' ? (
                 <label className="react-check" key={key}>
                   <input
+                    data-track="staff.scopefields.input.4"
                     type="checkbox"
                     checked={parameters[key] === true}
                     onChange={(event) =>
@@ -121,6 +227,7 @@ export function ConditionFields({ conditions = [], providers = [], onChange, req
                   {parameterLabels[key] || key}
                   {definition.type === 'array' ? '（多个值用逗号分隔）' : ''}
                   <input
+                    data-track="staff.scopefields.input.5"
                     value={
                       Array.isArray(parameters[key])
                         ? parameters[key].join(', ')
@@ -150,7 +257,8 @@ export function ConditionFields({ conditions = [], providers = [], onChange, req
       })}
       <label>
         添加条件
-        <select
+        <Select
+          data-track="staff.scopefields.select.6"
           value=""
           onChange={(event) => {
             if (event.target.value)
@@ -165,7 +273,7 @@ export function ConditionFields({ conditions = [], providers = [], onChange, req
                 {provider.description}
               </option>
             ))}
-        </select>
+        </Select>
       </label>
     </div>
   );

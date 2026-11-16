@@ -1,3 +1,5 @@
+import { Select, DatePicker } from './SelectionControls.jsx';
+import { RefreshButton } from './WorkspaceToolbar.jsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { dateKey } from '../../shared/time.js';
@@ -184,6 +186,34 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
       setBusy(false);
     }
   }
+  async function changeRetiredElder() {
+    if (lock.current || !detail || dirty) return;
+    lock.current = true;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    const enabled = !detail.member.specialIdentities?.includes('retired_elder');
+    try {
+      await request(`/api/members/${encodeURIComponent(member.memberId)}/retired-elder`, {
+        method: 'PUT',
+        body: { enabled, revision: detail.member.revision, requestId: crypto.randomUUID() }
+      });
+      await reload();
+      await client.invalidateQueries({
+        queryKey: [`/api/members/${encodeURIComponent(member.memberId)}/audit`]
+      });
+      setMessage(
+        enabled
+          ? '已授予退休老登身份，相关账号需重新登录'
+          : '已撤销退休老登身份，相关账号需重新登录'
+      );
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
   function editBinding(index, patch) {
     setBindings((current) =>
       current.map((binding, i) => (i === index ? { ...binding, ...patch } : binding))
@@ -198,6 +228,10 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
   async function reload() {
     await client.invalidateQueries({ queryKey, refetchType: 'none' });
     const { data } = await result.refetch({ throwOnError: true });
+    await Promise.all([
+      departmentsQuery.refetch({ throwOnError: true }),
+      ...(canManageRoles ? [rolesQuery.refetch({ throwOnError: true })] : [])
+    ]);
     if (!profileDirty) {
       profileRevision.current = data.member.revision;
       setProfile({
@@ -222,19 +256,35 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
             <h3>放弃未保存的修改？</h3>
             <p>人员详情中的未保存修改都会丢失。</p>
             <div className="field-actions">
-              <button onClick={() => setConfirmClose(false)}>返回继续编辑</button>
-              <button onClick={onClose}>放弃修改并关闭</button>
+              <button
+                data-track="staff.membereditor.button.1"
+                onClick={() => setConfirmClose(false)}
+              >
+                返回继续编辑
+              </button>
+              <button data-track="staff.membereditor.button.2" onClick={onClose}>
+                放弃修改并关闭
+              </button>
             </div>
           </>
         )}
         <div hidden={confirmClose}>
+          <div className="field-actions">
+            <RefreshButton
+              data-track="staff.membereditor.refreshbutton.20"
+              disabled={busy || !!dirty}
+              label="刷新人员详情"
+              onRefresh={() => reload()}
+            />
+          </div>
           <StaffIdentity identities={detail?.member.identities} />
           <WorkspaceSections
             label="成员详情"
             value={section}
             onChange={setSection}
             items={[
-              { id: 'profile', label: '基本资料与任职身份' },
+              { id: 'profile', label: '基本资料' },
+              { id: 'memberships', label: '任职与身份' },
               ...(staffPermission(user, 'accounts.manage') ||
               (canManageRoles &&
                 !detail?.account?.protected &&
@@ -259,8 +309,14 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
               {message}
             </p>
           )}
-          <form ref={profileForm} hidden={section !== 'profile'} onSubmit={saveProfile}>
+          <form
+            data-track="staff.membereditor.form.3"
+            ref={profileForm}
+            hidden={section !== 'profile'}
+            onSubmit={saveProfile}
+          >
             <fieldset
+              className="workspace-form-fields"
               aria-busy={!detail && !error}
               disabled={busy || !detail || detail.actions?.edit === false}
             >
@@ -268,6 +324,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
               <label>
                 姓名
                 <input
+                  data-track="staff.membereditor.input.4"
                   required
                   data-motion-value="field"
                   value={profile.name}
@@ -277,7 +334,8 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
               <label>
                 所属校区
                 <span className="workspace-native-select">
-                  <select
+                  <Select
+                    data-track="staff.membereditor.select.5"
                     data-motion-value="field"
                     value={profile.homeCampusId}
                     onChange={(event) =>
@@ -289,14 +347,15 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                         {item.name}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                   <span className="workspace-chevron" aria-hidden="true" />
                 </span>
               </label>
               <label>
                 学院
                 <span className="workspace-native-select">
-                  <select
+                  <Select
+                    data-track="staff.membereditor.select.6"
                     data-motion-value="field"
                     value={profile.college}
                     onChange={(event) => setProfile({ ...profile, college: event.target.value })}
@@ -310,39 +369,44 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                         {college}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                   <span className="workspace-chevron" aria-hidden="true" />
                 </span>
               </label>
               <label>
                 成员状态
                 <span className="workspace-native-select">
-                  <select
+                  <Select
+                    data-track="staff.membereditor.select.7"
                     data-motion-value="field"
                     value={profile.status}
                     onChange={(event) => setProfile({ ...profile, status: event.target.value })}
                   >
                     <option value="active">正常</option>
                     <option value="inactive">停用</option>
-                  </select>
+                  </Select>
                   <span className="workspace-chevron" aria-hidden="true" />
                 </span>
               </label>
               <label>
                 专业
                 <input
+                  data-track="staff.membereditor.input.8"
                   maxLength={100}
                   value={profile.major}
                   onChange={(event) => setProfile({ ...profile, major: event.target.value })}
                 />
               </label>
-              <button className="react-primary">保存资料</button>
+              <button data-track="staff.membereditor.button.9" className="react-primary">
+                保存资料
+              </button>
             </fieldset>
           </form>
 
           {!detail ? (
             error || result.error ? (
               <button
+                data-track="staff.membereditor.button.10"
                 onClick={() => {
                   setError('');
                   result.refetch();
@@ -353,8 +417,8 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
             ) : null
           ) : (
             <>
-              {(section === 'profile' || membershipDirty) && (
-                <div hidden={section !== 'profile'}>
+              {(section === 'memberships' || membershipDirty) && (
+                <div hidden={section !== 'memberships'}>
                   <MemberMemberships
                     detail={detail}
                     departments={departments}
@@ -362,6 +426,24 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                     onDirty={setMembershipDirty}
                     onBusy={setBusy}
                   />
+                  {detail.actions?.editSpecialIdentities && (
+                    <section className="member-special-identities" aria-label="特殊身份">
+                      <h3>特殊身份</h3>
+                      <p>
+                        退休老登拥有双校区业务管理权限，不参与值班、空闲填报或签到，保留原有任职及考勤历史。
+                      </p>
+                      <button
+                        type="button"
+                        data-track="staff.membereditor.retired-elder"
+                        disabled={busy || !!dirty}
+                        onClick={changeRetiredElder}
+                      >
+                        {detail.member.specialIdentities?.includes('retired_elder')
+                          ? '撤销退休老登身份'
+                          : '授予退休老登身份'}
+                      </button>
+                    </section>
+                  )}
                 </div>
               )}
               {(section === 'participation' || accountDirty) &&
@@ -397,149 +479,166 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                 !detail.account?.protected &&
                 detail.actions?.editRoles !== false && (
                   <form
+                    data-track="staff.membereditor.form.11"
+                    className="member-roles-form"
                     ref={rolesForm}
                     hidden={section !== 'participation'}
                     onSubmit={saveBindings}
                   >
                     <fieldset disabled={busy || !roles.length}>
                       <legend>系统授权{bindingsDirty ? ' · 未保存' : ''}</legend>
-                      <details>
-                        <summary>编辑系统授权</summary>
-                        {bindings.map((binding, index) => {
-                          return (
-                            <details
-                              data-motion-item=""
-                              className="react-binding workspace-binding"
-                              open={index === 0 || !binding.id}
-                              key={binding.id || `new-${index}`}
-                            >
-                              <summary>
-                                <span>
-                                  <strong data-motion-value="text">
-                                    {roles.find((role) => role.id === binding.roleId)?.name ||
-                                      '待选择角色'}
-                                  </strong>
-                                </span>
-                              </summary>
-                              <div className="workspace-binding-fields">
-                                <label>
-                                  角色
-                                  <select
-                                    value={binding.roleId}
-                                    onChange={(event) =>
-                                      editBinding(index, { roleId: event.target.value })
-                                    }
-                                  >
-                                    {bindableRoles
-                                      .filter(
-                                        (role) =>
-                                          role.id === binding.roleId ||
-                                          newBindingRoles.some(
-                                            (candidate) => candidate.id === role.id
+                      {bindings.map((binding, index) => {
+                        const Binding = bindings.length > 1 ? 'details' : 'section';
+                        const Heading = bindings.length > 1 ? 'summary' : 'h4';
+                        const selectedCampuses = bindingCampuses(binding);
+                        return (
+                          <Binding
+                            data-motion-item=""
+                            className="member-role-binding"
+                            key={binding.id || `new-${index}`}
+                            open={bindings.length > 1 ? !binding.id : undefined}
+                            onInvalid={(event) => {
+                              if (bindings.length > 1) event.currentTarget.open = true;
+                            }}
+                          >
+                            <Heading className="member-role-heading" data-motion-value="text">
+                              <strong>
+                                {roles.find((role) => role.id === binding.roleId)?.name ||
+                                  '待选择角色'}
+                              </strong>{' '}
+                              <span>
+                                {selectedCampuses
+                                  .map(
+                                    (id) => campuses.find((campus) => campus.id === id)?.name || id
+                                  )
+                                  .join('、') || '未选校区'}
+                              </span>
+                            </Heading>
+                            <div className="workspace-binding-fields">
+                              <label>
+                                角色
+                                <Select
+                                  data-track="staff.membereditor.select.12"
+                                  value={binding.roleId}
+                                  onChange={(event) =>
+                                    editBinding(index, { roleId: event.target.value })
+                                  }
+                                >
+                                  {bindableRoles
+                                    .filter(
+                                      (role) =>
+                                        role.id === binding.roleId ||
+                                        newBindingRoles.some(
+                                          (candidate) => candidate.id === role.id
+                                        )
+                                    )
+                                    .map((role) => (
+                                      <option key={role.id} value={role.id}>
+                                        {role.name}
+                                        {role.enabled ? '' : '（已停用）'}
+                                      </option>
+                                    ))}
+                                </Select>
+                              </label>
+                              <fieldset className="workspace-campus-options">
+                                <legend>授权校区</legend>
+                                {availableCampuses.map((campus) => (
+                                  <label className="workspace-check" key={campus.id}>
+                                    <input
+                                      data-track="staff.membereditor.input.13"
+                                      type="checkbox"
+                                      checked={selectedCampuses.includes(campus.id)}
+                                      onChange={(event) => {
+                                        const selected = bindingCampuses(binding);
+                                        editBinding(index, {
+                                          scope: withCampusScope(
+                                            binding.scope || {},
+                                            event.target.checked
+                                              ? [...new Set([...selected, campus.id])]
+                                              : selected.filter((id) => id !== campus.id)
                                           )
-                                      )
-                                      .map((role) => (
-                                        <option key={role.id} value={role.id}>
-                                          {role.name}
-                                          {role.enabled ? '' : '（已停用）'}
-                                        </option>
-                                      ))}
-                                  </select>
-                                </label>
-                                <fieldset>
-                                  <legend>授权校区</legend>
-                                  {availableCampuses.map((campus) => (
-                                    <label className="workspace-check" key={campus.id}>
-                                      <input
-                                        type="checkbox"
-                                        checked={bindingCampuses(binding).includes(campus.id)}
-                                        onChange={(event) => {
-                                          const selected = bindingCampuses(binding);
-                                          editBinding(index, {
-                                            scope: withCampusScope(
-                                              binding.scope || {},
-                                              event.target.checked
-                                                ? [...new Set([...selected, campus.id])]
-                                                : selected.filter((id) => id !== campus.id)
-                                            )
-                                          });
-                                        }}
-                                      />
-                                      {campus.name}
-                                    </label>
-                                  ))}
-                                </fieldset>
+                                        });
+                                      }}
+                                    />
+                                    <span>{campus.name}</span>
+                                  </label>
+                                ))}
+                              </fieldset>
+                              <label>
+                                原因
+                                <input
+                                  data-track="staff.membereditor.input.14"
+                                  required
+                                  maxLength={300}
+                                  value={binding.reason || ''}
+                                  onChange={(event) =>
+                                    editBinding(index, { reason: event.target.value })
+                                  }
+                                />
+                              </label>
+                              <div className="react-form-grid">
                                 <label>
-                                  原因
-                                  <input
+                                  生效日期
+                                  <DatePicker
+                                    data-track="staff.membereditor.input.15"
                                     required
-                                    maxLength={300}
-                                    value={binding.reason || ''}
+                                    value={binding.effectiveFrom || ''}
                                     onChange={(event) =>
-                                      editBinding(index, { reason: event.target.value })
+                                      editBinding(index, { effectiveFrom: event.target.value })
                                     }
                                   />
                                 </label>
-                                <div className="react-form-grid">
-                                  <label>
-                                    生效日期
-                                    <input
-                                      type="date"
-                                      required
-                                      value={binding.effectiveFrom || ''}
-                                      onChange={(event) =>
-                                        editBinding(index, { effectiveFrom: event.target.value })
-                                      }
-                                    />
-                                  </label>
-                                  <label>
-                                    结束日期（可选）
-                                    <input
-                                      type="date"
-                                      min={binding.effectiveFrom || undefined}
-                                      value={binding.effectiveTo || ''}
-                                      onChange={(event) =>
-                                        editBinding(index, {
-                                          effectiveTo: event.target.value || null
-                                        })
-                                      }
-                                    />
-                                  </label>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setBindings((current) => current.filter((_, i) => i !== index))
-                                  }
-                                >
-                                  移除此项授权
-                                </button>
+                                <label>
+                                  结束日期（可选）
+                                  <DatePicker
+                                    data-track="staff.membereditor.input.16"
+                                    min={binding.effectiveFrom || undefined}
+                                    value={binding.effectiveTo || ''}
+                                    onChange={(event) =>
+                                      editBinding(index, {
+                                        effectiveTo: event.target.value || null
+                                      })
+                                    }
+                                  />
+                                </label>
                               </div>
-                            </details>
-                          );
-                        })}
-                        <div className="react-editor-actions">
-                          <button
-                            type="button"
-                            disabled={!newBindingRoles.some((role) => role.enabled)}
-                            onClick={() =>
-                              setBindings((current) => [
-                                ...current,
-                                {
-                                  roleId: newBindingRoles.find((role) => role.enabled)?.id,
-                                  scope: { campusIds: [] },
-                                  effectiveFrom: dateKey(),
-                                  effectiveTo: null,
-                                  reason: ''
+                              <button
+                                data-track="staff.membereditor.button.17"
+                                type="button"
+                                onClick={() =>
+                                  setBindings((current) => current.filter((_, i) => i !== index))
                                 }
-                              ])
-                            }
-                          >
-                            添加系统授权
-                          </button>
-                          <button className="react-primary">保存系统授权</button>
-                        </div>
-                      </details>
+                              >
+                                移除此项授权
+                              </button>
+                            </div>
+                          </Binding>
+                        );
+                      })}
+                      <div className="react-editor-actions">
+                        <button
+                          data-track="staff.membereditor.button.18"
+                          type="button"
+                          disabled={!newBindingRoles.some((role) => role.enabled)}
+                          onClick={() =>
+                            setBindings((current) => [
+                              ...current,
+                              {
+                                roleId: newBindingRoles.find((role) => role.enabled)?.id,
+                                scope: { campusIds: [] },
+                                effectiveFrom: dateKey(),
+                                effectiveTo: null,
+                                reason: ''
+                              }
+                            ])
+                          }
+                        >
+                          添加系统授权
+                        </button>
+                        <button data-track="staff.membereditor.button.19" className="react-primary">
+                          保存系统授权
+                        </button>
+                      </div>
                     </fieldset>
                   </form>
                 )}

@@ -69,7 +69,9 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
           .bind(...ids, businessDate, businessDate)
       );
     }
-    return (await db.batch(statements)).flatMap((result) => rows(result).map(membership));
+    return (await db.batch(statements)).flatMap((result) =>
+      rows(result).map((row) => ({ ...membership(row), memberId: row.member_id }))
+    );
   }
 
   async function grants(memberId, businessDate = dateKey()) {
@@ -114,11 +116,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
     const memberId = account?.mapped_member_id || null;
     const authorizationDate = dateKey();
     const result = await db.batch([
-      db
-        .prepare(
-          'SELECT m.id,m.name,m.student_id,m.home_campus_id,m.status,m.revision,m.created_at,m.updated_at FROM members m WHERE m.id=?'
-        )
-        .bind(memberId),
+      db.prepare(`SELECT ${memberColumns} FROM members m WHERE m.id=?`).bind(memberId),
       db
         .prepare(
           `SELECT mdm.*,d.name AS department_name,d.code AS department_code,d.kind AS organization_kind,d.enabled AS department_enabled FROM member_department_memberships mdm JOIN departments d ON d.id=mdm.department_id WHERE mdm.member_id=? AND mdm.effective_from<=? AND (mdm.effective_to IS NULL OR ?<mdm.effective_to) ORDER BY mdm.is_primary DESC,mdm.effective_from`
@@ -163,6 +161,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
         authVersion
       },
       member,
+      specialIdentities: parseJson(member?.special_identities, []),
       memberships: membershipItems,
       authorizationDate,
       grants: grantItems,
@@ -231,7 +230,8 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
       primaryDepartment: row.primary_department || '',
       revision: row.revision,
       accessCampusIds: parseJson(row.access_campuses, []),
-      memberships: []
+      memberships: [],
+      specialIdentities: parseJson(row.special_identities, [])
     }));
   }
 
@@ -334,6 +334,32 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
     return memberRow(memberId);
   }
 
+  async function setRetiredElder(memberId, enabled, revision, auditRecord) {
+    const authorization = commandAuthorization(auditRecord);
+    const statements = [
+      db
+        .prepare(
+          `UPDATE members SET revision=revision+1,updated_at=? WHERE id=? AND revision=? ${authorization.sql}
+        AND EXISTS(SELECT 1 FROM staff_accounts WHERE account=? AND role='superadmin')`
+        )
+        .bind(nowIso(), memberId, revision, ...authorization.args, auditRecord.actorAccount),
+      enabled
+        ? db
+            .prepare(
+              "INSERT INTO member_special_identities(member_id,code,granted_at) SELECT ?,'retired_elder',? WHERE changes()>0"
+            )
+            .bind(memberId, nowIso())
+        : db
+            .prepare(
+              "DELETE FROM member_special_identities WHERE member_id=? AND code='retired_elder' AND changes()>0"
+            )
+            .bind(memberId),
+      auditStatement(auditRecord, true)
+    ];
+    const result = await db.batch(statements);
+    return result[0]?.meta?.changes ? memberRow(memberId) : null;
+  }
+
   async function listMemberships(memberId, includeHistory = true) {
     const result = await db
       .prepare(
@@ -346,20 +372,26 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
   }
 
   async function addMembership(memberId, input, revision, auditRecord) {
-    const id = input.id || crypto.randomUUID();
+    const combined = Array.isArray(input);
+    const entries = (combined ? input : [input]).map((item) => ({
+      ...item,
+      id: item.id || crypto.randomUUID()
+    }));
+    input = entries.find((item) => item.replacesMembershipId) || entries[0];
+    const id = entries[0].id;
     const createdAt = nowIso();
     const authorization = commandAuthorization(auditRecord);
     const statements = [
       db
         .prepare(
-          `UPDATE members SET revision=revision+1,updated_at=? WHERE id=? AND revision=? AND EXISTS(SELECT 1 FROM departments WHERE id=? AND enabled=1)
+          `UPDATE members SET revision=revision+1,updated_at=? WHERE id=? AND revision=? ${entries.map(() => 'AND EXISTS(SELECT 1 FROM departments WHERE id=? AND enabled=1)').join(' ')}
           ${input.replacesMembershipId ? 'AND EXISTS(SELECT 1 FROM member_department_memberships WHERE id=? AND member_id=members.id AND revision=?)' : ''} ${authorization.sql}`
         )
         .bind(
           createdAt,
           memberId,
           revision,
-          input.departmentId,
+          ...entries.map((item) => item.departmentId),
           ...(input.replacesMembershipId
             ? [input.replacesMembershipId, input.replacesRevision]
             : []),
@@ -379,21 +411,23 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
               )
           ]
         : []),
-      db
-        .prepare(
-          `INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,effective_from,effective_to,created_at,position_code) SELECT ?,?,?,?,?,?,?,?,? WHERE changes()>0`
-        )
-        .bind(
-          id,
-          memberId,
-          input.departmentId,
-          input.assignmentType || 'primary',
-          (input.assignmentType || 'primary') === 'primary' ? 1 : 0,
-          input.effectiveFrom,
-          input.effectiveTo || null,
-          createdAt,
-          input.positionCode || 'member'
-        )
+      ...entries.map((entry) =>
+        db
+          .prepare(
+            `INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,effective_from,effective_to,created_at,position_code) SELECT ?,?,?,?,?,?,?,?,? WHERE changes()>0`
+          )
+          .bind(
+            entry.id,
+            memberId,
+            entry.departmentId,
+            entry.assignmentType || 'primary',
+            (entry.assignmentType || 'primary') === 'primary' ? 1 : 0,
+            entry.effectiveFrom,
+            entry.effectiveTo || null,
+            createdAt,
+            entry.positionCode || 'member'
+          )
+      )
     ];
     if (auditRecord)
       statements.push(
@@ -404,7 +438,10 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
       );
     const result = await db.batch(statements);
     if (!result[0]?.meta?.changes && !result[0]?.results?.length) return null;
-    return (await listMemberships(memberId)).find((item) => item.id === id) || null;
+    const saved = (await listMemberships(memberId)).filter((item) =>
+      entries.some((entry) => entry.id === item.id)
+    );
+    return combined ? { items: saved } : saved[0] || null;
   }
 
   async function endMembership(memberId, membershipId, effectiveTo, revision, auditRecord) {
@@ -482,6 +519,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
     authorizationContext,
     listMembers,
     updateMember,
+    setRetiredElder,
     listMemberships,
     addMembership,
     endMembership,

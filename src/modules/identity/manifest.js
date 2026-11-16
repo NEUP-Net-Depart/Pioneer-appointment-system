@@ -6,5 +6,5 @@ export const identityManifest = {
     { id: 'users', path: '/staff/users', title: '账号管理', permission: 'accounts.manage' },
     { id: 'capacity', path: '/staff/capacity', title: '预约配置', permission: 'booking.manage' }],
   attendancePolicies: [], workbenchProviders: ['identity.resumeTasks'], reports: [],
-  auditActions: ['identity.member.updated', 'identity.account.mapped']
+  auditActions: ['identity.member.updated', 'identity.account.mapped', 'identity.retired_elder.granted', 'identity.retired_elder.revoked']
 };
