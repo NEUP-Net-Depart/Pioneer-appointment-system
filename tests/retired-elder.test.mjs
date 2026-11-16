@@ -295,7 +295,7 @@ test('retired elders manage real personnel, accounts, booking, rosters and atten
   );
 });
 
-test('retired elders cannot fill availability, join either duty, accept cover, check in or receive attendance corrections', async (t) => {
+test('retired elders still cannot fill availability, join either duty, accept cover or receive attendance corrections', async (t) => {
   const { db, repository, staff, users, root, elder, change, publish } = await setup(t);
   const worker = await users.find('20261003');
   const roster = await publish(campuses[0], [shift(worker.memberId)]);
@@ -337,13 +337,6 @@ test('retired elders cannot fill availability, join either duty, accept cover, c
   }
   await assert.rejects(publish(campusId, [shift(elderId)]), { status: 403 });
   await assert.rejects(
-    staff.directCheckIn(await users.find('20261002'), {
-      campusId,
-      requestId: crypto.randomUUID()
-    }),
-    { status: 403 }
-  );
-  await assert.rejects(
     staff.correctAttendance(root, {
       memberId: elderId,
       campusId,
@@ -372,14 +365,6 @@ test('retired elders cannot fill availability, join either duty, accept cover, c
   );
   await staff.directCheckIn(root, { campusId: campuses[0], requestId: crypto.randomUUID() });
   const event = await repository.dutyEvent(day, campuses[0]);
-  const token = await staff.issueAttendanceToken(root, event.id);
-  await assert.rejects(
-    staff.checkIn(await users.find('20261002'), {
-      token: token.token,
-      requestId: crypto.randomUUID()
-    }),
-    { status: 403 }
-  );
   await assert.rejects(
     staff.correctAttendance(root, {
       memberId: elderId,
@@ -395,6 +380,63 @@ test('retired elders cannot fill availability, join either duty, accept cover, c
   );
   assert.equal((await staff.volunteerSummary(await users.find('20261002'))).monthHours, 0);
 });
+
+for (const campusId of campuses)
+  test(`retired elders use both check-in methods in ${campusId} and earn attendance credit without leader credit`, async (t) => {
+    const { db, repository, staff, users, root, change, api } = await setup(t);
+    // Keep historical leader credit outside this month to isolate new attendance.
+    db.sqlite.exec(
+      "UPDATE member_department_memberships SET effective_to='2026-11-01' WHERE id='former-director'; UPDATE attendance_report_settings SET merge_leaders=1,count_mode='actual',hours_per_count=3"
+    );
+    await change(true);
+    const elder = await users.find('20261002');
+    const before = await staff.volunteerSummary(elder);
+    assert.equal(before.monthHours, 0);
+    const home = (await api('20261002', `field/home?campusId=${campusId}`)).body;
+    assert.equal(home.capability['attendance.self'], true);
+    assert.equal(home.directAttendance.allowed, true);
+    assert.equal(home.rosterParticipant, false);
+    assert.deepEqual(home.todayDuties, []);
+    assert.equal(home.capability['attendance.token.issue'], false);
+
+    await staff.directCheckIn(root, { campusId });
+    const event = await repository.dutyEvent(day, campusId);
+    const token = await staff.issueAttendanceToken(root, event.id);
+    const checked = await api('20261002', 'attendance/check-ins', { token: token.token }, 'POST');
+    assert.equal(checked.status, 200);
+    assert.equal(checked.body.campusId, campusId);
+    assert.equal(checked.body.nonScheduled, true);
+    const duplicate = await api('20261002', 'attendance/self-check-in', { campusId }, 'POST');
+    assert.equal(duplicate.status, 200);
+    assert.equal(duplicate.body.id, checked.body.id);
+    assert.equal((await staff.volunteerSummary(elder)).monthHours, 3);
+
+    t.mock.timers.setTime(new Date('2026-11-10T11:10:00Z').getTime());
+    const direct = await api('20261002', 'attendance/self-check-in', { campusId }, 'POST');
+    assert.equal(direct.status, 200);
+    assert.notEqual(direct.body.id, checked.body.id);
+    assert.equal(direct.body.nonScheduled, true);
+    for (const countMode of ['actual', 'weekly']) {
+      db.sqlite.prepare('UPDATE attendance_report_settings SET count_mode=?').run(countMode);
+      const expected = countMode === 'actual' ? 6 : 3;
+      const summary = await staff.volunteerSummary(elder);
+      assert.equal(summary.monthHours, expected);
+      assert.equal(summary.totalHours, before.totalHours + expected);
+      const report = await staff.volunteerReport(root, { month: '2026-11' });
+      const row = report.weeks
+        .find((week) => week.weekStart === day)
+        .campuses.flatMap((campus) => campus.rows)
+        .find((row) => row.memberId === elderId);
+      assert.equal(row.leader, false);
+      assert.equal(row.hours, expected);
+    }
+    const weekly = (
+      await staff.attendanceExport(root, { weekStart, memberId: elderId, leadersOnce: '1' })
+    ).rows[0];
+    assert.equal(weekly.leaderCredit, false);
+    assert.equal(weekly.actualCount, 2);
+    assert.equal(weekly.creditedCount, 2);
+  });
 
 test('grant and revoke preserve historical appointments, check-ins and calculated volunteer hours without adding current leader credit', async (t) => {
   const { db, staff, users, root, elder, change } = await setup(t);

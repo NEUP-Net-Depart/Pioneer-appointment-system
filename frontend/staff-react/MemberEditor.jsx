@@ -430,7 +430,7 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                     <section className="member-special-identities" aria-label="特殊身份">
                       <h3>特殊身份</h3>
                       <p>
-                        退休老登拥有双校区业务管理权限，不参与值班、空闲填报或签到，保留原有任职及考勤历史。
+                        退休老登拥有双校区业务管理权限，可在授权校区扫码或自行签到，仅按有效签到累计志愿时长，未签到不计时长，不享受负责人自动计入。不参与排班、空闲填报或换班，保留原有任职及考勤历史。
                       </p>
                       <button
                         type="button"
