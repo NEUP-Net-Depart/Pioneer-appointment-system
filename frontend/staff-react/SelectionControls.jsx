@@ -1,3 +1,5 @@
+import { controlPart } from '../../shared/telemetry-controls.js';
+import { track } from '../../shared/telemetry-client.js';
 import React, {
   Children,
   isValidElement,
@@ -100,6 +102,7 @@ export function Select({
   disabled = false,
   required = false,
   className = '',
+  'data-track': trackId,
   ...props
 }) {
   const options = optionsOf(children);
@@ -129,6 +132,7 @@ export function Select({
     setLocal(option.value);
     setInvalid(false);
     const target = { value: option.value, name: props.name };
+    track('ui.change', { control: trackId });
     onChange?.({ target, currentTarget: target });
     setOpen(false);
     trigger.current?.focus({ preventScroll: true });
@@ -152,6 +156,7 @@ export function Select({
     <span className={`workspace-select ${className}`} ref={root}>
       <button
         {...props}
+        data-track={trackId}
         ref={trigger}
         type="button"
         role="combobox"
@@ -180,6 +185,7 @@ export function Select({
       </button>
       {(required || props.name) && (
         <input
+          data-track={trackId}
           className="workspace-validation-input"
           tabIndex={-1}
           aria-hidden="true"
@@ -205,6 +211,7 @@ export function Select({
           <div className="workspace-control-popover" style={position} ref={panel} onKeyDown={move}>
             {options.length > 7 && (
               <input
+                data-track={controlPart(trackId, 'search')}
                 type="search"
                 aria-label={`搜索${label}`}
                 placeholder="搜索"
@@ -212,10 +219,17 @@ export function Select({
                 onChange={(event) => setSearch(event.target.value)}
               />
             )}
-            <div role="listbox" aria-label={label} id={id} className="workspace-select-options">
+            <div
+              data-track={controlPart(trackId, 'panel')}
+              role="listbox"
+              aria-label={label}
+              id={id}
+              className="workspace-select-options"
+            >
               {visible.map((option, index) => (
                 <button
                   type="button"
+                  data-track={controlPart(trackId, 'option')}
                   role="option"
                   data-value={option.value}
                   key={`${option.value}:${index}`}
@@ -261,6 +275,7 @@ export function DatePicker({
   max = '',
   mode = 'date',
   label = undefined,
+  'data-track': trackId,
   ...props
 }) {
   const [open, setOpen] = useState(false);
@@ -298,6 +313,7 @@ export function DatePicker({
     if (input.current?.matches(':disabled')) return;
     const next = mode === 'week' && day ? weekRange(day).start : day;
     if (next && !allowed(next)) return;
+    track('ui.change', { control: trackId });
     onChange?.({ target: { value: next }, currentTarget: { value: next } });
     setOpen(false);
     trigger.current?.focus({ preventScroll: true });
@@ -319,6 +335,7 @@ export function DatePicker({
     <span className="workspace-date-field">
       <input
         {...props}
+        data-track={trackId}
         ref={input}
         type="text"
         aria-label={fieldLabel || undefined}
@@ -343,6 +360,7 @@ export function DatePicker({
         }}
       />
       <button
+        data-track={controlPart(trackId, 'trigger')}
         ref={trigger}
         className="workspace-date-open"
         type="button"
@@ -365,6 +383,7 @@ export function DatePicker({
             className="workspace-control-popover workspace-calendar"
             ref={panel}
             style={position}
+            data-track={controlPart(trackId, 'panel')}
             role="dialog"
             aria-label={title}
             id={id}
@@ -372,6 +391,7 @@ export function DatePicker({
             <div className="workspace-calendar-heading">
               <button
                 type="button"
+                data-track={controlPart(trackId, 'previous')}
                 disabled={year <= 1}
                 aria-label={months ? '上一年' : '上个月'}
                 onClick={() => setMonth(monthAt(month, months ? -12 : -1))}
@@ -381,12 +401,17 @@ export function DatePicker({
               {mode === 'month' ? (
                 <strong className="workspace-calendar-year">{year}年</strong>
               ) : (
-                <button type="button" onClick={() => setMonths((current) => !current)}>
+                <button
+                  data-track={controlPart(trackId, 'mode')}
+                  type="button"
+                  onClick={() => setMonths((current) => !current)}
+                >
                   {year}年{!months && `${Number(month.slice(5))}月`}
                 </button>
               )}
               <button
                 type="button"
+                data-track={controlPart(trackId, 'next')}
                 disabled={year >= 9999}
                 aria-label={months ? '下一年' : '下个月'}
                 onClick={() => setMonth(monthAt(month, months ? 12 : 1))}
@@ -401,6 +426,7 @@ export function DatePicker({
                   return (
                     <button
                       type="button"
+                      data-track={controlPart(trackId, 'month')}
                       key={next}
                       disabled={mode === 'month' && !allowed(next)}
                       aria-pressed={next === value.slice(0, 7)}
@@ -433,6 +459,7 @@ export function DatePicker({
                   {days.map((day) => (
                     <button
                       type="button"
+                      data-track={controlPart(trackId, 'day')}
                       key={day}
                       data-day={day}
                       data-outside={day.slice(0, 7) !== month}
@@ -461,6 +488,7 @@ export function DatePicker({
             <div className="workspace-calendar-footer">
               <button
                 type="button"
+                data-track={controlPart(trackId, 'today')}
                 disabled={
                   !allowed(
                     mode === 'month'
@@ -475,7 +503,11 @@ export function DatePicker({
                 {mode === 'week' ? '本周' : mode === 'month' ? '本月' : '今天'}
               </button>
               {!required && (
-                <button type="button" onClick={() => change('')}>
+                <button
+                  data-track={controlPart(trackId, 'clear')}
+                  type="button"
+                  onClick={() => change('')}
+                >
                   清除
                 </button>
               )}
@@ -495,6 +527,7 @@ export function DateTimePicker({
   label = '日期时间',
   min = '',
   max = '',
+  'data-track': trackId,
   ...props
 }) {
   const [day, time] = value.split('T');
@@ -511,6 +544,7 @@ export function DateTimePicker({
     <span className="workspace-datetime-field" role="group" aria-label={label}>
       <DatePicker
         {...props}
+        data-track={controlPart(trackId, 'date')}
         name={undefined}
         aria-label={`${label}日期`}
         min={min.slice(0, 10)}
@@ -523,6 +557,7 @@ export function DateTimePicker({
         }
       />
       <TimePicker
+        data-track={controlPart(trackId, 'time')}
         aria-label={`${label}时刻`}
         label={`选择${label}时刻`}
         value={time || ''}
@@ -531,6 +566,7 @@ export function DateTimePicker({
         onChange={(next) => change(next && day ? `${day}T${next}` : '')}
       />
       <input
+        data-track={trackId}
         ref={validation}
         className="workspace-validation-input"
         type="text"

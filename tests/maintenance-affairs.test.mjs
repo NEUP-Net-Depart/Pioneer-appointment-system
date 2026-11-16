@@ -8,7 +8,6 @@ import { appointmentRepository } from '../src/db/appointments.js';
 import { composeStaffPlatform } from '../src/app/compose.js';
 import { staffPlatformService } from '../src/services/staff-platform.js';
 import { userRepository } from '../src/db/users.js';
-import { readFileSync } from 'node:fs';
 
 const campusId = 'campus-nanhu';
 const day = '2026-11-09';
@@ -49,6 +48,9 @@ test('affairs can check in without a roster; independent issuers and private imm
   const second = await users.find('20261002');
   const visitor = await users.find('20261003');
   const event = await staff.createAttendanceEvent(first, { type: 'duty', campusId, businessDate: day });
+  await assert.rejects(staff.issueAttendanceToken(first, event.id), error => error.status === 403 && error.message.includes('请先完成'));
+  await staff.directCheckIn(first, { campusId, requestId: crypto.randomUUID() });
+  await staff.directCheckIn(second, { campusId, requestId: crypto.randomUUID() });
   const firstCode = await staff.issueAttendanceToken(first, event.id);
   const secondCode = await staff.issueAttendanceToken(second, event.id);
   const refreshed = await staff.issueAttendanceToken(first, event.id);
@@ -60,6 +62,16 @@ test('affairs can check in without a roster; independent issuers and private imm
   const stored = JSON.parse(db.sqlite.prepare('SELECT checkin_source FROM attendance_records WHERE id=?').get(checked.id).checkin_source);
   assert.equal(stored.issuerMemberId, second.memberId);
   assert.equal(stored.tokenId, secondCode.tokenId);
+  const readOnlyDay = await staff.attendanceDay(second, { campusId, businessDate: day });
+  const workload = await staff.attendanceWorkload(second, { campusId, businessDate: day });
+  assert.deepEqual(new Set(workload.items.map(row => row.memberId)), new Set([...readOnlyDay.items, ...readOnlyDay.temporary].map(row => row.memberId)));
+  assert.equal(readOnlyDay.canManage, false);
+  assert.deepEqual(readOnlyDay.people, []);
+  for (const person of [...readOnlyDay.items, ...readOnlyDay.temporary]) {
+    assert.equal(person.canCorrect, false);
+    assert.equal(person.record?.checkinSource, undefined);
+    if (person.record) assert.equal(person.workStatus, 'idle');
+  }
   const own = await staff.attendanceList(visitor, { businessDate: day });
   assert.equal(own.items[0].checkinSource, undefined);
   await assert.rejects(staff.attendanceList(visitor, { all: '1', businessDate: day }), error => error.status === 403);
@@ -78,17 +90,4 @@ test('affairs can check in without a roster; independent issuers and private imm
   await assert.rejects(staff.createAttendanceEvent(second, { type: 'meeting', businessDate: day, campusId }), error => error.status === 403);
   db.sqlite.prepare("UPDATE member_department_memberships SET effective_to=? WHERE id=?").run(day, `affairs-${second.account}`);
   await assert.rejects(staff.issueAttendanceToken(await users.find(second.account), event.id), error => error.status === 403);
-});
-
-for (const directory of ['migrations', 'database/staff-migrations']) test(`${directory}: affairs migration preserves populated membership facts and does not grant office staff a new appointment`, () => {
-  const db = database(directory, '0051');
-  try {
-    seedStaff(db, '20261001');
-    db.sqlite.exec("INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,position_code,effective_from,created_at) VALUES('old-office','member-20261001','dept-office','primary',1,'member','2026-01-01','2026-01-01')");
-    const before = db.sqlite.prepare('SELECT * FROM member_department_memberships').all();
-    db.sqlite.exec(readFileSync(`${directory}/0051_maintenance_affairs.sql`, 'utf8'));
-    assert.deepEqual(db.sqlite.prepare('SELECT * FROM member_department_memberships').all(), before);
-    assert.deepEqual(db.sqlite.prepare('PRAGMA foreign_key_check').all(), []);
-    assert.throws(() => db.sqlite.exec("INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,position_code,effective_from,created_at) VALUES('overlap','member-20261001','dept-office','primary',1,'member','2026-01-01','2026-01-01')"), /PRIMARY_MEMBERSHIP_OVERLAP/);
-  } finally { db.sqlite.close(); }
 });

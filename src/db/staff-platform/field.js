@@ -4,6 +4,15 @@ import { membersDomain } from './members.js';
 import { rows } from './shared.js';
 
 export function fieldDomain({ db, event }) {
+  async function busyRepairMembers() {
+    return rows(
+      await db
+        .prepare(
+          "SELECT DISTINCT s.member_id AS memberId FROM appointments a JOIN staff_accounts s ON s.account=a.assigned_to WHERE a.status='in_progress'"
+        )
+        .all()
+    );
+  }
   async function listCampuses(includeDisabled = false) {
     const result = await db
       .prepare(
@@ -94,6 +103,7 @@ export function fieldDomain({ db, event }) {
         if (member)
           contexts.set(id, {
             actor: { memberId: id, status: 'disabled', authorizedCampuses: [] },
+            specialIdentities: parseJson(member.special_identities, []),
             memberships: await reader.memberships(id, day),
             grants: [],
             todayDuties: [],
@@ -104,5 +114,13 @@ export function fieldDomain({ db, event }) {
     }
     return contexts;
   }
-  return { listCampuses, listDepartments, listLocations, dutyEvent, latestIntake, fieldContexts };
+  return {
+    listCampuses,
+    listDepartments,
+    listLocations,
+    dutyEvent,
+    latestIntake,
+    fieldContexts,
+    busyRepairMembers
+  };
 }

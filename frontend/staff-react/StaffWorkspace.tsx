@@ -5,6 +5,7 @@ import { WorkspaceLauncher } from './WorkspaceLauncher';
 import { WorkspaceIcon } from './WorkspaceIcon';
 import { groupWorkspaceEntries, mobileWorkspaceEntries } from './workspace-navigation.js';
 import { pendingEditors } from './useUnsavedChanges.js';
+import { UnsavedChangesDialog } from './UnsavedChangesDialog';
 import './field/field.css';
 
 type Entry = { id: string; label: string; group?: string; icon?: string; keywords?: string };
@@ -67,12 +68,18 @@ export function StaffWorkspace({
   const [pending, setPending] = useState<string | null>(null);
   const [resolving, setResolving] = useState(false),
     [navigationError, setNavigationError] = useState('');
+  const [manualSaveMessage, setManualSaveMessage] = useState('');
   const navigationLock = useRef(false);
   function choose(id: string) {
     if (navigationLock.current || pending) return;
     setMore(false);
     if (id === active) return;
-    if (pendingEditors({ includeHidden: id === '__logout__' || id === '__refresh__' }).length) {
+    const editors = pendingEditors({ includeHidden: id === '__logout__' || id === '__refresh__' });
+    if (editors.length) {
+      const manualEditor = editors.find((editor) => !editor.canSave);
+      setManualSaveMessage(
+        manualEditor ? manualEditor.leaveMessage || '请返回页面完成操作，或丢弃修改后继续。' : ''
+      );
       setNavigationError('');
       setPending(id);
       return;
@@ -96,9 +103,13 @@ export function StaffWorkspace({
     setResolving(true);
     setNavigationError('');
     try {
-      for (const editor of pendingEditors({
+      const editors = pendingEditors({
         includeHidden: pending === '__logout__' || pending === '__refresh__'
-      })) {
+      });
+      const manualEditor = editors.find((editor) => !editor.canSave);
+      if (action === 'save' && manualEditor)
+        throw new Error(manualEditor.leaveMessage || '请返回页面完成操作，或丢弃修改后继续。');
+      for (const editor of editors) {
         if (action === 'save') {
           if ((await editor.save()) !== true)
             throw new Error(
@@ -123,13 +134,12 @@ export function StaffWorkspace({
       setResolving(false);
     }
   }
-  const actionText =
-    pending === '__logout__' ? '退出' : pending === '__refresh__' ? '刷新' : '切换';
   const groups = groupWorkspaceEntries(entries);
   const primary: Entry[] = mobileWorkspaceEntries(entries);
   const overflow = entries.filter((entry) => !primary.some((item) => item.id === entry.id));
   const projectLink = (
     <a
+      data-track="staff.staffworkspace.a.1"
       className="workspace-project-link"
       href="https://github.com/NEUP-Net-Depart/Pioneer-appointment-system"
       target="_blank"
@@ -143,13 +153,14 @@ export function StaffWorkspace({
   return (
     <div className={`field-app${loading ? ' workspace-bootstrap' : ''}`} aria-busy={loading}>
       <aside className="field-sidebar" ref={sidebar}>
-        <a className="field-brand" href="/staff/">
+        <a data-track="staff.staffworkspace.a.2" className="field-brand" href="/staff/">
           <img src="/assets/organization-logo.jpg" alt="" />
           <span>
             先锋<span>工作人员平台</span>
           </span>
         </a>
         <button
+          data-track="staff.staffworkspace.button.3"
           className="workspace-find"
           type="button"
           aria-keyshortcuts="Control+k Meta+k"
@@ -163,6 +174,7 @@ export function StaffWorkspace({
             <section className="workspace-nav-group" key={group.label}>
               <h2>
                 <button
+                  data-track="staff.staffworkspace.button.4"
                   className="workspace-group-toggle"
                   type="button"
                   aria-expanded={expandedGroups.includes(group.label)}
@@ -181,6 +193,7 @@ export function StaffWorkspace({
               <div className="workspace-nav-items" hidden={!expandedGroups.includes(group.label)}>
                 {group.items.map((entry) => (
                   <button
+                    data-track="staff.staffworkspace.button.5"
                     key={entry.id}
                     type="button"
                     className={active === entry.id ? 'active' : ''}
@@ -204,7 +217,11 @@ export function StaffWorkspace({
           </span>
           <div>
             <strong data-motion-value="text">{name}</strong>
-            <button type="button" onClick={() => choose('__logout__')}>
+            <button
+              data-track="staff.staffworkspace.button.6"
+              type="button"
+              onClick={() => choose('__logout__')}
+            >
               退出登录
             </button>
           </div>
@@ -220,6 +237,7 @@ export function StaffWorkspace({
       <nav className="field-bottom-nav" aria-label="手机岗位导航">
         {primary.map((entry) => (
           <button
+            data-track="staff.staffworkspace.button.7"
             key={entry.id}
             type="button"
             className={active === entry.id ? 'active' : ''}
@@ -230,15 +248,12 @@ export function StaffWorkspace({
             onClick={() => choose(entry.id)}
           >
             <WorkspaceIcon name={entry.icon} />
-            {entry.id === 'scene:mine'
-              ? '我的'
-              : entry.label === '工作台'
-                ? '工作台'
-                : entry.label.replace('工作台', '')}
+            {entry.label === '工作台' ? '工作台' : entry.label.replace('工作台', '')}
           </button>
         ))}
         {overflow.length > 0 && (
           <button
+            data-track="staff.staffworkspace.button.8"
             type="button"
             className={overflow.some((entry) => entry.id === active) ? 'active' : ''}
             onClick={() => setMore(true)}
@@ -249,41 +264,21 @@ export function StaffWorkspace({
         )}
       </nav>
       {pending && (
-        <Modal
-          title="有未保存的调整"
-          compact
-          dismissible={!resolving}
-          onClose={() => setPending(null)}
-        >
-          <p data-motion-value="text">
-            {pending === '__logout__'
+        <UnsavedChangesDialog
+          busy={resolving}
+          error={navigationError}
+          message={
+            manualSaveMessage ||
+            (pending === '__logout__'
               ? '保存成功后退出登录，或丢弃本次未保存的改动。'
               : pending === '__refresh__'
                 ? '保存成功后刷新页面，或丢弃本次未保存的改动。'
-                : '请保存或丢弃修改后切换。'}
-          </p>
-          {navigationError && (
-            <p data-motion-value="text" className="react-error" role="alert">
-              {navigationError}
-            </p>
-          )}
-          <div className="field-actions">
-            <button type="button" disabled={resolving} onClick={() => setPending(null)}>
-              {pending === '__logout__' ? '取消退出' : '留在当前页面'}
-            </button>
-            <button type="button" disabled={resolving} onClick={() => resolveNavigation('discard')}>
-              丢弃并{actionText}
-            </button>
-            <button
-              type="button"
-              className="field-primary"
-              disabled={resolving}
-              onClick={() => resolveNavigation('save')}
-            >
-              {resolving ? '正在处理…' : `保存并${actionText}`}
-            </button>
-          </div>
-        </Modal>
+                : '请保存或丢弃修改后切换。')
+          }
+          onCancel={() => setPending(null)}
+          onDiscard={() => void resolveNavigation('discard')}
+          onSave={manualSaveMessage ? undefined : () => void resolveNavigation('save')}
+        />
       )}
       {more && (
         <Modal title="工作入口" initialFocus="input[type=search]" onClose={() => setMore(false)}>

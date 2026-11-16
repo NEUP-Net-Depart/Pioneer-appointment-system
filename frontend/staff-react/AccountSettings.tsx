@@ -110,10 +110,16 @@ export function AccountSettings({
         </section>
         <section className="field-card">
           <h2>修改密码</h2>
-          <form ref={form} className="workspace-form" onSubmit={changePassword}>
+          <form
+            data-track="staff.accountsettings.form.1"
+            ref={form}
+            className="workspace-form"
+            onSubmit={changePassword}
+          >
             <label>
               当前密码
               <input
+                data-track="staff.accountsettings.input.2"
                 name="currentPassword"
                 type="password"
                 autoComplete="current-password"
@@ -124,6 +130,7 @@ export function AccountSettings({
             <label>
               新密码
               <input
+                data-track="staff.accountsettings.input.3"
                 name="newPassword"
                 type="password"
                 autoComplete="new-password"
@@ -137,6 +144,7 @@ export function AccountSettings({
             <label>
               确认新密码
               <input
+                data-track="staff.accountsettings.input.4"
                 name="confirmPassword"
                 type="password"
                 autoComplete="new-password"
@@ -148,7 +156,11 @@ export function AccountSettings({
             </label>
             <Notice>{error}</Notice>
             <div className="field-actions">
-              <button className="field-primary" disabled={busy}>
+              <button
+                data-track="staff.accountsettings.button.5"
+                className="field-primary"
+                disabled={busy}
+              >
                 {busy ? '正在处理…' : '修改密码并退出所有设备'}
               </button>
             </div>
@@ -159,6 +171,7 @@ export function AccountSettings({
             <h2>设备会话</h2>
           </div>
           <button
+            data-track="staff.accountsettings.button.6"
             type="button"
             disabled={busy}
             onClick={() => {
@@ -185,10 +198,19 @@ export function AccountSettings({
         >
           <p>所有设备都会退出登录，你需要重新登录后继续工作。</p>
           <div className="field-actions">
-            <button disabled={busy} onClick={() => setConfirm(false)}>
+            <button
+              data-track="staff.accountsettings.button.7"
+              disabled={busy}
+              onClick={() => setConfirm(false)}
+            >
               取消
             </button>
-            <button className="field-primary" disabled={busy} onClick={revoke}>
+            <button
+              data-track="staff.accountsettings.button.8"
+              className="field-primary"
+              disabled={busy}
+              onClick={revoke}
+            >
               {busy ? '正在撤销…' : '确认撤销并退出'}
             </button>
           </div>

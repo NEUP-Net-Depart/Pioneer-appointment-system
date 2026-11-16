@@ -12,6 +12,7 @@ import { suggestDuties } from '../../modules/rosters/suggestions.js';
 import { campusId } from '../../modules/authorization/scopes.js';
 import { requestId, stableJson } from '../../platform/contracts.js';
 import { tokenDigest, inputString } from './shared.js';
+import { isRetiredElder } from '../../../shared/staff-identities.js';
 
 export function scheduleDomain({ repository, contextFor, evaluate }) {
   const type = (value) => {
@@ -103,6 +104,7 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
     const context = await contextFor(actor),
       dutyType = type(input.dutyType),
       period = input.weekStart ? week(input.weekStart) : '';
+    if (isRetiredElder(context)) fail(403, '退休老登不参与值班，无需填写空闲');
     if (!Number.isInteger(input.revision) || input.revision < -1 || (input.useUsual && !period))
       fail(400, '可用时间版本或范围不正确');
     // JSON null restores usual availability while retaining the exception's revision.

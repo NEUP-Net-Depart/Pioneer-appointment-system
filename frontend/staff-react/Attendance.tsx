@@ -45,7 +45,11 @@ export function Attendance({
     <section className="attendance-history">
       {!embedded && (
         <WorkspaceHeader group="我的" title="本人签到记录">
-          <button type="button" onClick={() => onNavigate?.('scene:mine')}>
+          <button
+            data-track="staff.attendance.button.1"
+            type="button"
+            onClick={() => onNavigate?.('scene:mine')}
+          >
             返回个人中心
           </button>
         </WorkspaceHeader>
@@ -55,6 +59,7 @@ export function Attendance({
         <div className="field-section-heading">
           <h2>本人签到历史</h2>
           <RefreshButton
+            data-track="staff.attendance.button.2"
             onRefresh={() => result.refetch({ throwOnError: true })}
             label="刷新本人签到"
           />
@@ -84,6 +89,7 @@ export function Attendance({
         {result.hasNextPage && (
           <div className="field-actions">
             <button
+              data-track="staff.attendance.button.3"
               type="button"
               disabled={result.isFetching}
               onClick={() => result.fetchNextPage({ cancelRefetch: false })}

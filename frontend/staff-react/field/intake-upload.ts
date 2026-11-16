@@ -213,7 +213,10 @@ function createUpload(id: string, token: string, onSaved: () => void) {
     upload,
     confirmed(item: Appointment) {
       confirm(item);
-      void link();
+      // Query refreshes also confirm saved photos. Only start association for
+      // an uploaded photo that is still missing from this receipt; otherwise
+      // an idle retry button can become disabled in the middle of a click.
+      if (sides.some((side) => state.uploaded[side] && !item[`${side}PhotoId`])) void link();
     },
     async supplement() {
       update({ error: '' });

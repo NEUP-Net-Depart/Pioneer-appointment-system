@@ -1,0 +1,337 @@
+#staff-react-root .records-workspace .records-toolbar {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 16px 20px 8px;
+  border-bottom: 0;
+}
+#staff-react-root .records-workspace .records-toolbar > label {
+  width: auto;
+  min-width: 0;
+  max-width: none;
+}
+#staff-react-root .records-workspace .records-filter-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+#staff-react-root .records-workspace .records-filter-actions > button {
+  min-height: 44px;
+  white-space: nowrap;
+}
+.records-status-navigation {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  border-bottom: 0;
+  padding-inline: 20px;
+}
+.records-status-items {
+  display: flex;
+  min-width: 0;
+}
+.records-status-measure {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  display: flex;
+  width: max-content;
+  height: 0;
+  overflow: hidden;
+}
+#staff-react-root .records-status-navigation button,
+.records-status-measure > span {
+  font-size: 14px;
+  font-weight: 600;
+}
+.records-status-measure > span {
+  padding-inline: 16px;
+  white-space: nowrap;
+}
+#staff-react-root .records-status-navigation .workspace-section-nav {
+  display: flex;
+  flex: 0 0 auto;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  gap: 4px;
+  background: transparent;
+}
+#staff-react-root .records-status-navigation button {
+  flex-shrink: 0;
+  min-height: 48px;
+  padding: 10px 16px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--muted);
+  white-space: nowrap;
+}
+#staff-react-root .records-status-navigation button[aria-pressed='true'] {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+.records-active-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 8px;
+  padding: 16px 20px 4px;
+}
+.records-workspace .records-active-filters,
+.records-workspace .records-periods {
+  scrollbar-width: none;
+}
+.records-workspace .records-active-filters::-webkit-scrollbar,
+.records-workspace .records-periods::-webkit-scrollbar {
+  display: none;
+}
+.records-results {
+  min-height: calc(100dvh - 120px);
+}
+.records-query-context {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px 4px;
+}
+.records-query-context .records-active-filters {
+  flex: 1;
+  min-width: 0;
+  padding: 4px;
+  min-height: 44px;
+}
+#staff-react-root .records-workspace .records-query-context .records-result-meta {
+  flex-shrink: 0;
+  padding: 0;
+  white-space: nowrap;
+}
+#staff-react-root .records-active-filters > span,
+#staff-react-root .records-active-filters > button {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: 36px;
+  min-height: 36px;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 18px;
+  background: transparent;
+  color: #525b67;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 20px;
+  margin: 0;
+  box-shadow: none;
+}
+#staff-react-root .records-active-filters > button,
+#staff-react-root .records-active-filters > span {
+  background: white;
+  color: var(--ink);
+  box-shadow:
+    0 2px 7px #17202b14,
+    0 0 0 1px #17202b08;
+}
+.records-filter-popover {
+  position: fixed;
+  z-index: 100;
+  padding: 8px;
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  border: 1px solid #e1e4e8;
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 8px 28px #17202b1f;
+}
+.records-filter-popover .record-filter-panel,
+.records-filter-popover .record-options {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+}
+#staff-react-root .records-filter-popover .record-options button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #333;
+  text-align: left;
+}
+#staff-react-root .records-filter-popover .record-options button:hover {
+  background: #f0f1f3;
+  color: #111;
+}
+#staff-react-root .records-filter-popover .record-options button[aria-pressed='true'] {
+  background: transparent;
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 5px;
+}
+#staff-react-root .records-workspace .records-periods button {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+}
+#staff-react-root .records-workspace .records-periods button[aria-pressed='true'] {
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 7px;
+}
+#staff-react-root .records-workspace .records-slot[data-selected='true'] {
+  background: transparent;
+  box-shadow: none;
+}
+#staff-react-root .records-workspace .records-slot[data-selected='true'] .records-slot-main {
+  color: var(--ink);
+}
+#staff-react-root .records-workspace .records-slot[data-selected='true'] .records-slot-main strong {
+  text-decoration: underline;
+  text-underline-offset: 5px;
+}
+.records-workspace .records-slot-main > span {
+  position: relative;
+  justify-self: center;
+}
+.records-workspace .records-slot[data-selected='true'] .records-slot-main > span::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 1px;
+  background: currentColor;
+  pointer-events: none;
+}
+#staff-react-root .records-workspace .records-toolbar input {
+  background: #f6f7f8;
+  border-color: transparent;
+}
+#staff-react-root .records-workspace .records-toolbar input:focus {
+  background: white;
+  border-color: #a3aab4;
+}
+#staff-react-root .records-workspace .records-filter-actions > button:not(.records-reset) {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink);
+}
+#staff-react-root .records-workspace .records-filter-actions > button:not(.records-reset)::after {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 0 3px 10px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+}
+#staff-react-root .records-workspace .records-result-tools {
+  padding: 4px 20px 12px;
+}
+#staff-react-root .records-workspace .records-result-meta {
+  margin: 0;
+  padding: 0;
+  justify-content: flex-start;
+}
+#staff-react-root .records-active-filters > button:hover {
+  background: #f1f2f4;
+  color: var(--ink);
+}
+.records-filter-popover label {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid #eee;
+  font-size: 13px;
+}
+#staff-react-root .records-filter-popover[data-kind='status'] .record-options button {
+  justify-content: flex-start;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+#staff-react-root .records-workspace .records-reset {
+  border: 1px solid transparent;
+  background: #f1f2f4;
+  color: var(--ink);
+  font-weight: 500;
+}
+@media (max-width: 900px) {
+  .records-workspace .records-result-tools {
+    display: none;
+  }
+  #staff-react-root .records-workspace .records-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding: 16px 16px 4px;
+  }
+  #staff-react-root .records-workspace .records-filter-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  }
+  #staff-react-root .records-workspace .records-filter-actions > button {
+    width: 100%;
+    min-width: 0;
+    padding-inline: 10px;
+    font-size: 13px;
+  }
+  .records-status-navigation {
+    padding-inline: 12px;
+  }
+  .records-active-filters {
+    padding-inline: 16px;
+  }
+  .records-query-context {
+    padding-inline: 16px;
+    gap: 8px;
+  }
+  .records-query-context .records-active-filters {
+    padding: 4px;
+    min-height: 44px;
+    max-height: 44px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 6px;
+  }
+  #staff-react-root .records-workspace .records-result-tools {
+    padding-inline: 16px;
+  }
+  #staff-react-root .records-status-navigation button {
+    padding-inline: 9px;
+    font-size: 13px;
+  }
+  .records-status-measure > span {
+    padding-inline: 9px;
+    font-size: 13px;
+  }
+}
+@media (max-width: 900px) {
+  #staff-react-root .records-active-filters > span,
+  #staff-react-root .records-active-filters > button {
+    height: 36px;
+    min-height: 36px;
+    border-radius: 18px;
+    padding-inline: 8px;
+    font-size: 11px;
+  }
+}

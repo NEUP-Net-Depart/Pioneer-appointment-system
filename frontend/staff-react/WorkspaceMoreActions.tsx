@@ -34,6 +34,7 @@ export function WorkspaceMoreActions({
   }, [active]);
   return (
     <details
+      data-track="staff.workspacemoreactions.details.1"
       className="workspace-more-actions"
       ref={ref}
       onBlur={(event) => {
@@ -41,7 +42,7 @@ export function WorkspaceMoreActions({
           event.currentTarget.open = false;
       }}
     >
-      <summary>{label}</summary>
+      <summary data-track="staff.workspacemoreactions.summary.2">{label}</summary>
       <div
         className="workspace-more-action-list"
         role="group"

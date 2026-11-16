@@ -28,6 +28,7 @@ export function WorkspaceSections({
     >
       {items.map((item) => (
         <button
+          data-track="staff.workspacesections.button.1"
           key={item.id}
           type="button"
           aria-pressed={value === item.id}

@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdir } from 'node:fs/promises';
-import { database, seedStaff, seedAppointment, seedPhoto } from './helpers/database.mjs';
-import { stageFixture } from './fixtures/staff-cutover.mjs';
-import { rehearseSnapshot } from '../scripts/rehearse-preview.mjs';
+import { database, seedStaff, seedAppointment, seedPhoto } from '../helpers/database.mjs';
+import { stageFixture } from '../fixtures/staff-cutover.mjs';
+import { rehearseSnapshot } from '../../scripts/rehearse-preview.mjs';
 
 async function snapshot(current) {
   const before = current ? '\uffff' : '0042';
@@ -23,6 +23,7 @@ async function snapshot(current) {
         date: '2026-10-12',
         student_id: '2026' + status,
         assigned_to: ['in_progress', 'completed'].includes(status) ? '20260001' : null,
+        signature: current ? JSON.stringify({ version: 2, width: 560, height: 200, strokes: [[[56, 40], [336, 80], [168, 160]]] }) : JSON.stringify([[[0.1, 0.2], [0.6, 0.4], [0.3, 0.8]]]),
         repair_note: status === 'completed' ? '历史内部说明' : '',
         expires_at: current ? '2026-10-12T16:00:00.000Z' : '2026-10-12T13:30:00.000Z'
       });

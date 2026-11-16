@@ -42,7 +42,9 @@ export function Accounts({ user, embedded = false }) {
     <section className="accounts-workspace">
       {!embedded && (
         <WorkspaceHeader group="人员权限" title="人员管理">
-          <button onClick={copy}>复制激活网址</button>
+          <button data-track="staff.accounts.button.2" onClick={copy}>
+            复制激活网址
+          </button>
         </WorkspaceHeader>
       )}
       <Notice>{copyMessage}</Notice>
@@ -56,7 +58,11 @@ export function Accounts({ user, embedded = false }) {
             setVisited((current) => (current.includes(id) ? current : [...current, id]));
           }}
         />
-        {embedded && <button onClick={copy}>复制激活网址</button>}
+        {embedded && (
+          <button data-track="staff.accounts.button.1" onClick={copy}>
+            复制激活网址
+          </button>
+        )}
       </div>
       {sections.map(
         (item) =>
@@ -96,6 +102,7 @@ function AccountList({ user }) {
         <label>
           查找账号
           <input
+            data-track="staff.accounts.input.3"
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -103,6 +110,7 @@ function AccountList({ user }) {
           />
         </label>
         <RefreshButton
+          data-track="staff.accounts.button.4"
           disabled={list.isPending}
           onRefresh={() => list.refetch({ throwOnError: true })}
           label="刷新账号"
@@ -144,7 +152,9 @@ function AccountList({ user }) {
             </div>
             <div className="account-actions">
               {item.actions?.edit ? (
-                <button onClick={() => setSelected(item)}>管理账号</button>
+                <button data-track="staff.accounts.button.5" onClick={() => setSelected(item)}>
+                  管理账号
+                </button>
               ) : (
                 <small data-motion-value="text">
                   {item.protected
@@ -160,7 +170,11 @@ function AccountList({ user }) {
         {!items.length && !list.isPending && !list.error && (
           <div className="field-empty">
             <strong data-motion-value="text">{query ? '没有匹配的账号' : '暂无可见账号'}</strong>
-            {query && <button onClick={() => setQuery('')}>清除搜索</button>}
+            {query && (
+              <button data-track="staff.accounts.button.6" onClick={() => setQuery('')}>
+                清除搜索
+              </button>
+            )}
           </div>
         )}
       </section>
@@ -264,11 +278,17 @@ export function AccountEditor({ user, item, onClose, onSaved, embedded = false, 
       <p data-motion-value="text" className="field-muted">
         {item.account} · 保存后撤销此账号已有会话。
       </p>
-      <form ref={form} className="workspace-form" onSubmit={save}>
+      <form
+        data-track="staff.accounts.form.7"
+        ref={form}
+        className="workspace-form"
+        onSubmit={save}
+      >
         <fieldset disabled={busy} className="workspace-form-fields">
           <label>
             姓名
             <input
+              data-track="staff.accounts.input.8"
               required
               maxLength={80}
               value={draft.name}
@@ -283,6 +303,7 @@ export function AccountEditor({ user, item, onClose, onSaved, embedded = false, 
           <label>
             所属校区
             <Select
+              data-track="staff.accounts.select.9"
               value={draft.homeCampus}
               onChange={(event) => setDraft({ ...draft, homeCampus: event.target.value })}
             >
@@ -296,6 +317,7 @@ export function AccountEditor({ user, item, onClose, onSaved, embedded = false, 
             {CAMPUSES.map((campus) => (
               <label className="workspace-check" key={campus}>
                 <input
+                  data-track="staff.accounts.input.10"
                   type="checkbox"
                   disabled={!user.authorizedCampuses.includes(campus)}
                   checked={draft.authorizedCampuses.includes(campus)}
@@ -316,6 +338,7 @@ export function AccountEditor({ user, item, onClose, onSaved, embedded = false, 
             <label>
               账号状态
               <Select
+                data-track="staff.accounts.select.11"
                 value={draft.status}
                 onChange={(event) => setDraft({ ...draft, status: event.target.value })}
               >
@@ -328,6 +351,7 @@ export function AccountEditor({ user, item, onClose, onSaved, embedded = false, 
             <>
               <label className="workspace-check">
                 <input
+                  data-track="staff.accounts.input.12"
                   type="checkbox"
                   checked={reset}
                   onChange={(event) => {
@@ -341,6 +365,7 @@ export function AccountEditor({ user, item, onClose, onSaved, embedded = false, 
                 <label>
                   新登录密码
                   <input
+                    data-track="staff.accounts.input.13"
                     type="password"
                     autoComplete="new-password"
                     required
@@ -356,10 +381,19 @@ export function AccountEditor({ user, item, onClose, onSaved, embedded = false, 
         </fieldset>
         <Notice>{error}</Notice>
         <div className="field-actions">
-          <button type="button" disabled={busy} onClick={embedded ? discard : onClose}>
+          <button
+            data-track="staff.accounts.button.14"
+            type="button"
+            disabled={busy}
+            onClick={embedded ? discard : onClose}
+          >
             取消
           </button>
-          <button className="field-primary" disabled={busy || !draft.authorizedCampuses.length}>
+          <button
+            data-track="staff.accounts.button.15"
+            className="field-primary"
+            disabled={busy || !draft.authorizedCampuses.length}
+          >
             {busy ? '正在保存…' : '保存账号'}
           </button>
         </div>
@@ -417,6 +451,7 @@ function ActivationReview() {
       <WorkspaceToolbar title="激活审核">
         <div className="workspace-segmented-control" role="group" aria-label="申请处理状态">
           <button
+            data-track="staff.accounts.button.26"
             type="button"
             aria-pressed={!history}
             disabled={busy}
@@ -425,6 +460,7 @@ function ActivationReview() {
             待审核
           </button>
           <button
+            data-track="staff.accounts.button.27"
             type="button"
             aria-pressed={history}
             disabled={busy}
@@ -434,6 +470,7 @@ function ActivationReview() {
           </button>
         </div>
         <RefreshButton
+          data-track="staff.accounts.button.16"
           disabled={busy || list.isPending}
           key={String(history)}
           onRefresh={() => list.refetch({ throwOnError: true })}
@@ -448,6 +485,7 @@ function ActivationReview() {
               {item.status === 'pending' ? (
                 <label className="workspace-check">
                   <input
+                    data-track="staff.accounts.input.18"
                     type="checkbox"
                     aria-label={`选择 ${item.studentId}`}
                     disabled={busy}
@@ -493,6 +531,7 @@ function ActivationReview() {
           <strong data-motion-value="number">已选 {ids.length} 人</strong>
           <label className="workspace-check">
             <input
+              data-track="staff.accounts.input.19"
               type="checkbox"
               checked={verified}
               disabled={busy || !ids.length}
@@ -503,6 +542,7 @@ function ActivationReview() {
           <label>
             审核说明（选填）
             <textarea
+              data-track="staff.accounts.textarea.20"
               rows={2}
               maxLength={300}
               value={note}
@@ -511,10 +551,15 @@ function ActivationReview() {
             />
           </label>
           <div className="field-actions">
-            <button disabled={busy || !ids.length} onClick={() => review('rejected')}>
+            <button
+              data-track="staff.accounts.button.21"
+              disabled={busy || !ids.length}
+              onClick={() => review('rejected')}
+            >
               拒绝申请
             </button>
             <button
+              data-track="staff.accounts.button.22"
               className="field-primary"
               disabled={busy || !ids.length || !verified}
               onClick={() => review('approved')}
@@ -564,6 +609,7 @@ function Invitations() {
         <label>
           查找加入资格
           <input
+            data-track="staff.accounts.input.23"
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -571,6 +617,7 @@ function Invitations() {
           />
         </label>
         <RefreshButton
+          data-track="staff.accounts.button.24"
           disabled={busy || list.isPending}
           onRefresh={() => list.refetch({ throwOnError: true })}
           label="刷新资格"
@@ -599,6 +646,7 @@ function Invitations() {
             <div>
               {item.status !== 'activated' && (
                 <button
+                  data-track="staff.accounts.button.25"
                   disabled={busy}
                   onClick={() =>
                     run(async () => {

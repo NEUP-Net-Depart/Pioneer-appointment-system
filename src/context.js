@@ -25,7 +25,8 @@ import { storageLimit } from './lib/env.js';
 import { staffPlatformRepository } from './db/staff-platform.js';
 import { composeStaffPlatform } from './app/compose.js';
 import { staffPlatformService } from './services/staff-platform.js';
-import { requestTrace } from './platform/observability.js';
+import { createObservation, observedBucket, observedOperation } from './platform/observability.js';
+import { observedDatabase } from './db/observed.js';
 import { scanService } from './services/scan.js';
 import { fieldWorkflow } from './services/field-workflow.js';
 import { serviceLocationRepository } from './db/service-locations.js';
@@ -33,9 +34,10 @@ import { serviceLocationService } from './services/service-locations.js';
 import { bookingSettingsRepository } from './db/booking-settings.js';
 import { bookingSettingsService } from './services/booking-settings.js';
 
-export function createContext(request, env) {
+export function createContext(request, env, observation = createObservation(request, env)) {
   // Request-scoped D1 session, explicitly injected into D1 repositories. No startup I/O.
-  const db = env.DB.withSession('first-primary');
+  const session = env.DB.withSession('first-primary');
+  const db = observation.enabled ? observedDatabase(session, observation) : session;
   const clock = () => new Date();
   const users = userRepository(db), appointments = appointmentRepository(db);
   const staffPlatform = staffPlatformRepository(db);
@@ -50,9 +52,9 @@ export function createContext(request, env) {
     auth: authService(users, env.JWT_SECRET), users: userService(users, staffPlatformServiceInstance),
     activation: activationService(activationRepository(db),users,staffPlatformServiceInstance,staffPlatform),
     appointments: appointmentService(appointments, users, env.PII_ENCRYPTION_KEY, clock, staffPlatformServiceInstance, bookingSettings),
-    warranty: warrantyService({ encryptionKey: env.PII_ENCRYPTION_KEY, captchaOrigin: captchaBridgeOrigin(env.WARRANTY_CAPTCHA_ORIGIN) === new URL(request.url).origin ? '' : env.WARRANTY_CAPTCHA_ORIGIN }),
+    warranty: warrantyService({ fetcher: observation.enabled ? (...args) => observedOperation(observation, 'upstream', () => fetch(...args), { responseFailure: true }) : fetch, encryptionKey: env.PII_ENCRYPTION_KEY, captchaOrigin: captchaBridgeOrigin(env.WARRANTY_CAPTCHA_ORIGIN) === new URL(request.url).origin ? '' : env.WARRANTY_CAPTCHA_ORIGIN }),
     bookingSettings,
-    attachments: attachmentService(appointments, attachmentRepository(db), env.ATTACHMENTS, storageLimit(env), field),
+    attachments: attachmentService(appointments, attachmentRepository(db), observation.enabled ? observedBucket(env.ATTACHMENTS, observation) : env.ATTACHMENTS, storageLimit(env), field, observation),
     bookingAvailability: bookingAvailabilityService(bookingAvailabilityRepository(db), clock), stats: statsService(statsRepository(db), appointments, clock, staffPlatformServiceInstance),
     export: exportService(appointments, clock, field),
     limits: rateLimitService(rateLimitRepository(db), env.JWT_SECRET),
@@ -70,8 +72,8 @@ export function createContext(request, env) {
   const authenticate = () => authentication ||= services.auth.authenticate(request.headers.get('authorization'));
   const url = new URL(request.url);
   return {
-    request, url, query: Object.fromEntries(url.searchParams), services, authenticate, requestId: requestTrace(request),
-    observe(record) { if (env.OBSERVABILITY_LOGS === 'true') console.log(JSON.stringify(record)); },
+    request, url, query: Object.fromEntries(url.searchParams), services, authenticate, requestId: observation.requestId,
+    observation,
     accessToken: request.headers.get('X-Appointment-Token') || '',
     async role(minimum) { return requireRole(await authenticate(), minimum); },
     async permission(code) {

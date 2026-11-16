@@ -134,6 +134,7 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
           <h2>暂停日期</h2>
         </div>
         <RefreshButton
+          data-track="staff.servicedayeditor.button.1"
           key={`${campus}:${start}`}
           disabled={busy}
           onRefresh={() => result.refetch({ throwOnError: true })}
@@ -165,6 +166,7 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
                   </span>
                 </h3>
                 <button
+                  data-track="staff.servicedayeditor.button.2"
                   aria-label={`${allSelected ? '取消' : '选择'}${offset ? '下周' : '本周'}全部日期`}
                   disabled={busy || loading || !available.length}
                   onClick={() =>
@@ -185,6 +187,7 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
                   const paused = !!item?.item?.paused;
                   return (
                     <button
+                      data-track="staff.servicedayeditor.button.3"
                       key={day}
                       aria-label={`${day} 周${weekdays[index]} ${past ? '已过去' : !item ? '状态尚未读取' : paused ? '暂停维修' : '正常维修'}`}
                       aria-pressed={selected.includes(day)}
@@ -226,13 +229,18 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
             ? chosen.map((item) => shortDate(item.businessDate)).join('、')
             : '点击日期选择，再点取消'}
         </span>
-        <button disabled={busy || !selected.length} onClick={() => select([])}>
+        <button
+          data-track="staff.servicedayeditor.button.4"
+          disabled={busy || !selected.length}
+          onClick={() => select([])}
+        >
           清空选择
         </button>
       </div>
       <label className="service-day-reason">
         暂停说明（同步为公告，可选）
         <textarea
+          data-track="staff.servicedayeditor.textarea.5"
           maxLength={200}
           rows={3}
           disabled={busy || !chosen.length}
@@ -252,6 +260,7 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
       )}
       <div className="field-actions">
         <button
+          data-track="staff.servicedayeditor.button.6"
           className="field-primary"
           disabled={busy || loading || !chosen.length}
           onClick={() => setConfirm('pause')}
@@ -259,6 +268,7 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
           暂停所选日期
         </button>
         <button
+          data-track="staff.servicedayeditor.button.7"
           disabled={busy || loading || !chosen.some((item) => item.item?.paused)}
           onClick={() => setConfirm('restore')}
         >
@@ -295,6 +305,7 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
           </p>
           {affectedCount > 0 && onNavigate && (
             <button
+              data-track="staff.servicedayeditor.button.8"
               disabled={busy}
               onClick={() => {
                 setConfirm(null);
@@ -306,10 +317,15 @@ export function ServiceDayEditor({ campus, onNavigate, editorRef }) {
           )}
           <Notice>{error}</Notice>
           <div className="field-actions">
-            <button disabled={busy} onClick={() => setConfirm(null)}>
+            <button
+              data-track="staff.servicedayeditor.button.9"
+              disabled={busy}
+              onClick={() => setConfirm(null)}
+            >
               返回
             </button>
             <button
+              data-track="staff.servicedayeditor.button.10"
               className="field-primary"
               disabled={busy}
               onClick={() => {

@@ -9,14 +9,14 @@ export function createPhotoCollection(root,{inputId,existingCount=()=>0,onChange
   root.classList.add('photo-collection');
   let entries=[],disposed=false,paused=false,uploadTask,collectionVersion=0;
   const grid=document.createElement('div');grid.className='photo-grid';
-  const input=document.createElement('input');input.type='file';input.multiple=true;input.accept='image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif';input.hidden=true;if(inputId)input.id=inputId;
-  const add=document.createElement('button');add.type='button';add.className='secondary-btn';add.textContent='添加照片';
+  const input=document.createElement('input');input.setAttribute('data-track','student.photos.dynamic.file');input.type='file';input.multiple=true;input.accept='image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif';input.hidden=true;if(inputId)input.id=inputId;
+  const add=document.createElement('button');add.setAttribute('data-track','student.photos.dynamic.add');add.type='button';add.className='secondary-btn';add.textContent='添加照片';
   const error=document.createElement('p');error.className='field-error';error.setAttribute('role','alert');
   root.replaceChildren(grid,input,add,error);
   const revoke=entry=>{if(entry.url)URL.revokeObjectURL(entry.url);entry.url='';};
   function render() {
     if(disposed)return;
-    const html=entries.map(entry=>`<article class="photo-card" data-photo="${entry.id}">${entry.url ? `<button type="button" class="photo-preview-button" data-preview="${entry.id}" aria-label="预览 ${escapeHtml(entry.name)}"><img src="${entry.url}" alt="${escapeHtml(entry.name)}" /></button>` : '<div class="photo-preview-placeholder" aria-hidden="true"></div>'}<p>${escapeHtml(entry.name)}</p><p class="${entry.state==='error' ? 'is-error' : ''}" role="status">${escapeHtml(entry.message)}</p>${entry.state==='preparing' ? `<progress max="100" value="${entry.progress}" aria-label="照片准备进度"></progress>` : entry.state==='uploading' ? '<progress aria-label="照片上传进度"></progress>' : ''}<div class="photo-controls"><button type="button" class="text-btn" data-replace="${entry.id}"${entry.state==='uploading' || entry.attachment ? ' disabled' : ''}>替换</button><button type="button" class="text-btn" data-delete="${entry.id}"${entry.state==='uploading' || entry.attachment ? ' disabled' : ''}>删除</button></div></article>`).join('');
+    const html=entries.map(entry=>`<article class="photo-card" data-photo="${entry.id}">${entry.url ? `<button data-track=student.photos.button.1 type="button" class="photo-preview-button" data-preview="${entry.id}" aria-label="预览 ${escapeHtml(entry.name)}"><img src="${entry.url}" alt="${escapeHtml(entry.name)}" /></button>` : '<div class="photo-preview-placeholder" aria-hidden="true"></div>'}<p>${escapeHtml(entry.name)}</p><p class="${entry.state==='error' ? 'is-error' : ''}" role="status">${escapeHtml(entry.message)}</p>${entry.state==='preparing' ? `<progress max="100" value="${entry.progress}" aria-label="照片准备进度"></progress>` : entry.state==='uploading' ? '<progress aria-label="照片上传进度"></progress>' : ''}<div class="photo-controls"><button data-track=student.photos.button.2 type="button" class="text-btn" data-replace="${entry.id}"${entry.state==='uploading' || entry.attachment ? ' disabled' : ''}>替换</button><button data-track=student.photos.button.3 type="button" class="text-btn" data-delete="${entry.id}"${entry.state==='uploading' || entry.attachment ? ' disabled' : ''}>删除</button></div></article>`).join('');
     if(grid.dataset.renderMarkup!==html){grid.innerHTML=html;grid.dataset.renderMarkup=html;}
     add.disabled=entries.filter(entry=>!entry.attachment).length+existingCount()>=4;
   }
@@ -44,7 +44,7 @@ export function createPhotoCollection(root,{inputId,existingCount=()=>0,onChange
     if(control.dataset.preview){previewPhoto(entry.url);return;}
     if(entry.attachment || entry.state==='uploading')return;
     if(control.dataset.delete){entry.version++;revoke(entry);entries=entries.filter(item=>item!==entry);error.textContent='';render();onChange();return;}
-    const replacement=document.createElement('input');replacement.type='file';replacement.accept=input.accept;replacement.hidden=true;root.append(replacement);
+    const replacement=document.createElement('input');replacement.setAttribute('data-track','student.photos.dynamic.replacement');replacement.type='file';replacement.accept=input.accept;replacement.hidden=true;root.append(replacement);
     replacement.addEventListener('change',()=>{const file=replacement.files[0];if(file && entries.includes(entry))void prepare(entry,file);replacement.remove();},{once:true});replacement.click();
   });
   function validity() {

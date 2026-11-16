@@ -1,9 +1,16 @@
 import { Select } from '../SelectionControls.jsx';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Appointment } from './types';
-import React, { useRef, useState } from 'react';
-import { drawSignature, validSignature } from '../../../shared/signature.js';
+import React, { useEffect, useRef, useState } from 'react';
+import { validSignature } from '../../../shared/signature.js';
+import { createSignaturePad } from '../../../shared/signature-pad.js';
 import { api, Modal, Notice } from './ui';
+import {
+  ANSWERS,
+  STUDENT_DEVICE_TYPES,
+  FAULT_TYPES,
+  bookingDeviceQuestions
+} from '../../../shared/student-booking.js';
 
 export function Registration({
   campus,
@@ -24,8 +31,9 @@ export function Registration({
     [busy, setBusy] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({
     campus,
-    deviceType: '笔记本电脑',
+    deviceType: '笔记本',
     warranty: '不清楚',
+    liquidMetal: '不清楚',
     liquidDrop: '不清楚',
     faultType: '系统问题',
     ...(parent
@@ -43,26 +51,45 @@ export function Registration({
             'deviceType',
             'faultType',
             'issue',
-            'warranty'
+            'warranty',
+            'liquidMetal',
+            'dellG15'
           ].map((key) => [key, parent[key] || ''])
         )
       : {})
   });
-  const strokes = useRef<number[][][]>([]),
-    pointer = useRef<number | null>(null),
+  const questions = bookingDeviceQuestions(
+    form.deviceType === '笔记本电脑' ? '笔记本' : form.deviceType,
+    form.brand
+  );
+  const signature = useRef(null),
+    pad = useRef<ReturnType<typeof createSignaturePad> | null>(null),
     canvas = useRef<HTMLCanvasElement>(null),
     requestId = useRef(crypto.randomUUID());
-  const point = (e: React.PointerEvent) => {
-    const r = canvas.current!.getBoundingClientRect();
-    return [
-      Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)),
-      Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))
-    ];
-  };
+  useEffect(() => {
+    if (step !== 1 || !canvas.current) return;
+    const controller = createSignaturePad(canvas.current, {
+      value: signature.current,
+      onChange: (value) => {
+        signature.current = value;
+      },
+      onError: setError
+    });
+    pad.current = controller;
+    return () => {
+      signature.current = controller.value();
+      controller.dispose();
+      pad.current = null;
+    };
+  }, [step]);
+  useEffect(() => {
+    pad.current?.setEnabled(!busy);
+  }, [busy, step]);
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
-    if (!validSignature(strokes.current)) {
+    const signed = pad.current?.value();
+    if (!validSignature(signed)) {
       setError('请机主手写本人姓名');
       return;
     }
@@ -72,9 +99,19 @@ export function Registration({
         method: 'POST',
         body: {
           ...form,
-          ...(parent ? { parentAppointmentId: parent.id, linkKind, sameDeviceAndFault: true } : {}),
+          liquidMetal: questions.liquidMetal ? form.liquidMetal : '',
+          dellG15: questions.dellG15 ? form.dellG15 : '',
+          ...(parent
+            ? {
+                parentAppointmentId: parent.id,
+                linkKind,
+                ...(linkKind === 'repair_induced'
+                  ? { sameDeviceAndRepairRelated: true }
+                  : { sameDeviceAndFault: true })
+              }
+            : {}),
           agreement: true,
-          signature: strokes.current,
+          signature: signed,
           requestId: requestId.current
         }
       });
@@ -118,6 +155,7 @@ export function Registration({
       <Notice>{error}</Notice>
       {step === 0 ? (
         <form
+          data-track="staff.field.registration.form.1"
           className="field-form"
           onSubmit={(e) => {
             e.preventDefault();
@@ -125,16 +163,44 @@ export function Registration({
           }}
         >
           <div className="field-form-grid">
+            {(
+              [
+                ['deviceType', '设备类型', STUDENT_DEVICE_TYPES],
+                ['warranty', '是否在保', ANSWERS],
+                ...(questions.liquidMetal ? [['liquidMetal', '是否使用液金散热', ANSWERS]] : []),
+                ...(questions.dellG15 ? [['dellG15', 'Dell G15 / G16 系列', ANSWERS]] : [])
+              ] as [string, string, readonly string[]][]
+            ).map(([key, label, options]) => (
+              <label key={key}>
+                {label}
+                <Select
+                  data-track="staff.field.registration.device-choice"
+                  value={form[key] || ''}
+                  onChange={(event) => setForm({ ...form, [key]: event.target.value })}
+                >
+                  <option value="">未填写</option>
+                  {!options.includes(form[key]) && form[key] && (
+                    <option value={form[key]}>{form[key]}</option>
+                  )}
+                  {options.map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            ))}
             {[
               ['name', '姓名', 80],
               ['studentId', '学号', 20],
               ['social', 'QQ / 微信', 120],
-              ['brand', '设备厂商', 80],
+              ['brand', '品牌', 80],
               ['deviceModel', '设备型号', 120]
             ].map(([key, label, max]) => (
               <label key={key}>
                 {label}
                 <input
+                  data-track="staff.field.registration.input.2"
                   required={key !== 'deviceModel'}
                   maxLength={Number(max)}
                   value={form[key] || ''}
@@ -143,38 +209,33 @@ export function Registration({
               </label>
             ))}
             <label>
-              故障类型
+              故障分类
               <Select
+                data-track="staff.field.registration.select.3"
                 value={form.faultType}
                 onChange={(e) => setForm({ ...form, faultType: e.target.value })}
               >
-                {[
-                  '清灰换硅脂',
-                  '换硬盘',
-                  '换内存',
-                  '系统问题',
-                  '蓝屏',
-                  '黑屏',
-                  '网络问题',
-                  '其他'
-                ].map((value) => (
+                {FAULT_TYPES.map((value) => (
                   <option key={value}>{value}</option>
                 ))}
               </Select>
             </label>
           </div>
           <label>
-            故障描述（选填）
+            故障描述与补充说明
             <textarea
+              data-track="staff.field.registration.textarea.4"
               value={form.issue || ''}
               maxLength={10000}
               onChange={(e) => setForm({ ...form, issue: e.target.value })}
             />
           </label>
-          <button className="field-primary">下一步：机主确认</button>
+          <button data-track="staff.field.registration.button.5" className="field-primary">
+            下一步：机主确认
+          </button>
         </form>
       ) : (
-        <form className="field-form" onSubmit={submit}>
+        <form data-track="staff.field.registration.form.6" className="field-form" onSubmit={submit}>
           <div className="field-ticket">
             <strong data-motion-value="text">
               {form.name} · {form.studentId}
@@ -193,50 +254,45 @@ export function Registration({
             </p>
           </section>
           <label className="field-check">
-            <input type="checkbox" required />
+            <input data-track="staff.field.registration.input.7" type="checkbox" required />
             <span>机主已阅读并同意协议，确认重要数据已备份</span>
           </label>
           <label>
             请机主手写姓名
-            <canvas
-              className="field-signature"
-              ref={canvas}
-              width={900}
-              height={360}
-              aria-label="机主签名"
-              onPointerDown={(e) => {
-                if (pointer.current !== null) return;
-                pointer.current = e.pointerId;
-                e.currentTarget.setPointerCapture(e.pointerId);
-                strokes.current.push([point(e)]);
-              }}
-              onPointerMove={(e) => {
-                if (pointer.current !== e.pointerId) return;
-                strokes.current.at(-1)!.push(point(e));
-                drawSignature(canvas.current, strokes.current);
-              }}
-              onPointerUp={() => {
-                pointer.current = null;
-              }}
-              onPointerCancel={() => {
-                pointer.current = null;
-              }}
-            />
+            <div className="field-signature">
+              <canvas ref={canvas} aria-label="机主签名" aria-disabled={busy} />
+            </div>
           </label>
           <div className="field-actions">
             <button
+              data-track="staff.field.registration.signature.undo"
               type="button"
-              onClick={() => {
-                strokes.current = [];
-                drawSignature(canvas.current, []);
-              }}
+              disabled={busy}
+              onClick={() => pad.current?.undo()}
+            >
+              撤销上一笔
+            </button>
+            <button
+              data-track="staff.field.registration.button.8"
+              type="button"
+              disabled={busy}
+              onClick={() => pad.current?.clear()}
             >
               清空签名
             </button>
-            <button type="button" onClick={() => setStep(0)}>
+            <button
+              data-track="staff.field.registration.button.9"
+              type="button"
+              disabled={busy}
+              onClick={() => setStep(0)}
+            >
               返回修改
             </button>
-            <button className="field-primary" disabled={busy}>
+            <button
+              data-track="staff.field.registration.button.10"
+              className="field-primary"
+              disabled={busy}
+            >
               {busy ? '正在登记…' : '确认登记'}
             </button>
           </div>

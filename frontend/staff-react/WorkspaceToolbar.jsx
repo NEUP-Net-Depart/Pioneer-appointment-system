@@ -1,3 +1,5 @@
+import { track, reportClientError } from '../../shared/telemetry-client.js';
+import { isCancelledError } from '@tanstack/react-query';
 import React, { useRef, useState } from 'react';
 import './workspace-controls.css';
 
@@ -15,6 +17,7 @@ export function RefreshButton({
   disabled = false,
   label = '刷新数据',
   compactOnMobile = false,
+  'data-track': trackId,
   ...buttonProps
 }) {
   const lock = useRef(false);
@@ -36,8 +39,19 @@ export function RefreshButton({
         }).format(new Date())
       );
       setState('success');
-    } catch {
+      track('flow.result', { control: trackId, result: 'ok' });
+    } catch (error) {
       setState('error');
+      if (isCancelledError(error) || error?.name === 'AbortError') {
+        track('flow.result', { control: trackId, result: 'cancelled' });
+      } else if (error?.status >= 400 && error.status < 500) {
+        track('flow.result', {
+          control: trackId,
+          result: 'rejected',
+          status: error.status,
+          requestId: error.requestId
+        });
+      } else reportClientError(error, 'REFRESH_ERROR', { control: trackId });
     } finally {
       lock.current = false;
     }
@@ -46,6 +60,7 @@ export function RefreshButton({
     <div className={`workspace-refresh-control${compactOnMobile ? ' mobile-refresh-compact' : ''}`}>
       <button
         {...buttonProps}
+        data-track={trackId}
         type="button"
         disabled={disabled || state === 'pending'}
         aria-busy={state === 'pending'}

@@ -2,9 +2,9 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile,readdir} from 'node:fs/promises';
 import {Miniflare} from 'miniflare';
-import {cutoverDefinition,verifyRemoteCutover} from '../scripts/prepare-staff-cutover.mjs';
-import {config} from '../scripts/cli.mjs';
-import {stageD1Fixture,migrationStatements} from './fixtures/staff-cutover.mjs';
+import {cutoverDefinition,verifyRemoteCutover} from '../../scripts/prepare-staff-cutover.mjs';
+import {config} from '../../scripts/cli.mjs';
+import {stageD1Fixture,migrationStatements} from '../fixtures/staff-cutover.mjs';
 
 const post={departmentCode:'hardware',positionCode:'head',effectiveFrom:'2026-01-01',effectiveTo:'2098-01-01'};
 

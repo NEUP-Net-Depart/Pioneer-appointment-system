@@ -1,3 +1,4 @@
+import { track } from '../../../shared/telemetry-client.js';
 import { Select } from '../SelectionControls.jsx';
 import { useContext, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -14,6 +15,7 @@ import {
 import { ActivityContext, Modal, Notice, api } from './ui';
 import { SerialOcr } from './SerialOcr';
 import './warranty.css';
+import { useRepairTools } from '../RepairTools';
 
 type WarrantyStatus = 'unknown' | 'in_warranty' | 'expired';
 type Props = { initialBrand?: string; onUseStatus?: (status: WarrantyStatus) => void };
@@ -65,12 +67,22 @@ const statusLabels = {
   pending: '尚未生效'
 };
 
-export function WarrantyLookupButton({ initialBrand = '', onUseStatus }: Props) {
+export function WarrantyLookupButton({
+  initialBrand = '',
+  onUseStatus,
+  label = '查询保修'
+}: Props & { label?: string }) {
   const [open, setOpen] = useState(false);
+  const tools = useRepairTools();
   return (
     <>
-      <button type="button" className="field-secondary" onClick={() => setOpen(true)}>
-        查询保修
+      <button
+        data-track="staff.field.warrantylookup.button.1"
+        type="button"
+        className="field-secondary repair-tool-trigger"
+        onClick={() => (tools ? tools.request(null, () => setOpen(true)) : setOpen(true))}
+      >
+        {label}
       </button>
       {open &&
         createPortal(
@@ -334,6 +346,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
       <div className="warranty-lookup">
         <label htmlFor={id + '-brand'}>设备品牌</label>
         <Select
+          data-track="staff.field.warrantylookup.select.2"
           id={id + '-brand'}
           value={brandId}
           onChange={(event) => {
@@ -360,6 +373,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
         <label htmlFor={id + '-serial'}>序列号 / S/N / Service Tag</label>
         <div className="warranty-serial-control">
           <input
+            data-track="staff.field.warrantylookup.input.3"
             ref={serialInput}
             disabled={ocrBusy || albumBusy}
             id={id + '-serial'}
@@ -373,6 +387,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
             placeholder="输入机身序列号"
           />
           <button
+            data-track="staff.field.warrantylookup.button.4"
             type="button"
             className="warranty-icon-button"
             title="打开摄像头"
@@ -385,6 +400,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
             <Camera aria-hidden="true" size={20} />
           </button>
           <button
+            data-track="staff.field.warrantylookup.button.5"
             type="button"
             className="warranty-icon-button"
             title="从相册识别"
@@ -395,6 +411,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
             <Images aria-hidden="true" size={20} />
           </button>
           <input
+            data-track="staff.field.warrantylookup.input.6"
             ref={albumInput}
             type="file"
             accept="image/*"
@@ -418,6 +435,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
                   <div className="warranty-ocr-actions">
                     {albumResult.candidates.map((value) => (
                       <button
+                        data-track="staff.field.warrantylookup.button.7"
                         key={value}
                         type="button"
                         onClick={() => applyRecognizedSerial(value, albumResult.source)}
@@ -432,6 +450,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
                     <strong>{albumResult.source === 'scan' ? '扫码结果' : '识别文字'}</strong>
                     <pre>{albumResult.raw}</pre>
                     <button
+                      data-track="staff.field.warrantylookup.button.8"
                       type="button"
                       className="field-primary"
                       onClick={async () => {
@@ -458,6 +477,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
               <div className="warranty-capture-header-actions">
                 <div className="warranty-mode-switch" role="group" aria-label="识别方式">
                   <button
+                    data-track="staff.field.warrantylookup.button.9"
                     type="button"
                     aria-pressed={captureMode === 'scan'}
                     onClick={() => setCaptureMode('scan')}
@@ -465,6 +485,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
                     扫码
                   </button>
                   <button
+                    data-track="staff.field.warrantylookup.button.10"
                     type="button"
                     aria-pressed={captureMode === 'ocr'}
                     onClick={() => setCaptureMode('ocr')}
@@ -473,6 +494,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
                   </button>
                 </div>
                 <button
+                  data-track="staff.field.warrantylookup.button.11"
                   type="button"
                   className="warranty-collapse"
                   onClick={() => setCaptureMode(null)}
@@ -496,6 +518,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
         )}
         {provider?.available && !captcha && (
           <button
+            data-track="staff.field.warrantylookup.button.12"
             type="button"
             className="field-primary warranty-primary"
             disabled={!valid || ocrBusy || loading}
@@ -512,6 +535,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
           {brand && channel && (
             <>
               <button
+                data-track="staff.field.warrantylookup.button.16"
                 type="button"
                 className={provider?.available ? 'field-secondary' : 'field-primary'}
                 disabled={!valid || ocrBusy || albumBusy || copyBusy || loading}
@@ -519,14 +543,26 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
               >
                 {copyBusy ? '正在复制序列号…' : '复制序列号'}
               </button>
-              <a
-                href={destination?.url || brand.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                referrerPolicy="no-referrer"
-              >
-                {channel.kind === 'miniapp' ? '打开官方小程序说明 ↗' : '打开品牌官网 ↗'}
-              </a>
+              <div className="warranty-links">
+                <a
+                  data-track="staff.field.warrantylookup.a.17"
+                  href={destination?.url || brand.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  referrerPolicy="no-referrer"
+                >
+                  {channel.kind === 'miniapp' ? '打开官方小程序说明 ↗' : '打开品牌官网 ↗'}
+                </a>
+                <a
+                  data-track="staff.field.warrantylookup.service-center"
+                  href={brand.serviceCenterUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  referrerPolicy="no-referrer"
+                >
+                  打开售后网点
+                </a>
+              </div>
             </>
           )}
           <div role="status" aria-live="polite">
@@ -537,6 +573,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
           <fieldset className="warranty-captcha">
             <legend>原厂人工验证</legend>
             <button
+              data-track="staff.field.warrantylookup.button.18"
               type="button"
               className="field-secondary"
               disabled={loading}
@@ -558,6 +595,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
                 />
                 <label htmlFor={id + '-captcha'}>原厂验证码</label>
                 <input
+                  data-track="staff.field.warrantylookup.input.19"
                   ref={captchaInput}
                   id={id + '-captcha'}
                   value={answer}
@@ -577,6 +615,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
                   验证码有效至 {new Date(captcha.expiresAt).toLocaleTimeString('zh-CN')}。
                 </small>
                 <button
+                  data-track="staff.field.warrantylookup.button.20"
                   type="button"
                   disabled={loading || !/^[a-z0-9]{1,12}$/i.test(answer.trim())}
                   onClick={() =>
@@ -634,6 +673,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
                 <small>{result.note}</small>
                 {onUseStatus && result.status !== 'unknown' && (
                   <button
+                    data-track="staff.field.warrantylookup.button.21"
                     type="button"
                     onClick={() => {
                       onUseStatus(result.status);
@@ -658,8 +698,8 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
             </ol>
           </section>
         )}
-        <details className="warranty-privacy">
-          <summary>数据使用说明</summary>
+        <details data-track="staff.field.warrantylookup.details.22" className="warranty-privacy">
+          <summary data-track="staff.field.warrantylookup.summary.23">数据使用说明</summary>
           <p>
             文字照片仅在本机识别，不上传。查询时序列号经后台发送给原厂；部分官方链接会带入序列号。序列号不会写入预约记录。
           </p>
@@ -711,7 +751,14 @@ function HumanWarrantyWidget({
         );
         return;
       }
-      if (event.data.nonce !== widget.nonce || used.current) return;
+      if (event.data.nonce !== widget.nonce) return;
+      if (event.data.kind === 'telemetry') {
+        const result = event.data.result;
+        if (['start', 'ok', 'error', 'cancelled'].includes(result))
+          track('flow.result', { view: 'verifier', control: 'captcha', result });
+        return;
+      }
+      if (used.current) return;
       if (
         event.data.kind === 'proof' &&
         typeof event.data.proof === 'string' &&

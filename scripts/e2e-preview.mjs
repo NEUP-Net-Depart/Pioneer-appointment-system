@@ -97,7 +97,7 @@ export async function preparePreview({ serve = false } = {}) {
   }
 }
 
-export async function startPreview(template) {
+export async function startPreview(template, { time = WORKFLOW_TIME } = {}) {
   const dir = temporaryDirectory();
   let server;
   const close = async () => {
@@ -115,6 +115,14 @@ export async function startPreview(template) {
   };
   try {
     await cp(template, dir, { recursive: true, mode: constants.COPYFILE_FICLONE });
+    if (time !== WORKFLOW_TIME) {
+      const timestamp = Date.parse(time);
+      if (!Number.isFinite(timestamp)) throw new Error('Invalid preview clock');
+      await writeFile(resolve(dir, 'functions/e2e-clock.js'), `const RealDate = Date; globalThis.Date = class extends RealDate {
+        constructor(...args) { super(...(args.length ? args : [${timestamp}])); }
+        static now() { return ${timestamp}; }
+      };`);
+    }
     const cfg = JSON.parse(await readFile(resolve(dir, 'wrangler.jsonc'), 'utf8'));
     cfg.pages_build_output_dir = resolve(dir, 'dist');
     await writeFile(resolve(dir, 'wrangler.jsonc'), JSON.stringify(cfg));

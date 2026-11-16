@@ -32,6 +32,7 @@ export function MemberSetup({
         <label>
           所属校区
           <Select
+            data-track="staff.membersetup.select.1"
             value={value.homeCampusId}
             onChange={(event) => change({ homeCampusId: event.target.value })}
           >
@@ -42,6 +43,7 @@ export function MemberSetup({
         <label>
           生效日期
           <DatePicker
+            data-track="staff.membersetup.input.2"
             required
             value={value.effectiveFrom}
             onChange={(event) => change({ effectiveFrom: event.target.value })}
@@ -57,6 +59,7 @@ export function MemberSetup({
           ].map(([id, name]) => (
             <label className="workspace-check" key={id}>
               <input
+                data-track="staff.membersetup.input.3"
                 type="checkbox"
                 checked={value.authorizedCampuses.includes(id)}
                 onChange={(event) =>

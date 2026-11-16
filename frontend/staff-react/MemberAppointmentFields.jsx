@@ -19,6 +19,7 @@ export function DepartmentAppointmentFields({
       <label>
         正式部门 / 组织
         <Select
+          data-track="staff.memberappointmentfields.select.1"
           required={required}
           value={value.departmentId}
           onChange={(event) => {
@@ -41,6 +42,7 @@ export function DepartmentAppointmentFields({
       <label>
         职位
         <Select
+          data-track="staff.memberappointmentfields.select.2"
           disabled={!unit}
           value={value.positionCode}
           onChange={(event) => onChange({ ...value, positionCode: event.target.value })}
@@ -67,6 +69,7 @@ export function AdditionalMembershipFields({ value, onChange }) {
       {Object.entries(additionalMembershipLabels).map(([type, label]) => (
         <label className="workspace-check" key={type}>
           <input
+            data-track="staff.memberappointmentfields.input.3"
             type="checkbox"
             checked={!!value[fields[type]]}
             onChange={(event) => onChange({ ...value, [fields[type]]: event.target.checked })}

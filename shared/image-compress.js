@@ -1,3 +1,4 @@
+import { track, reportClientError } from './telemetry-client.js';
 const MB = 1024 * 1024;
 export const INTAKE_PHOTO_MAX_BYTES = 2 * MB;
 const DEFAULTS = {
@@ -81,7 +82,7 @@ function canvasToBlob(canvas, quality) {
 
 // Direction, decoding and scaling belong to blueimp-load-image. Only its
 // already oriented canvas is re-used, so EXIF is never applied a second time.
-export async function compressImage(file, options = {}) {
+async function compressImageOperation(file, options = {}) {
   const settings = { ...DEFAULTS, ...options };
   const { maxBytes, maxDimension, minQuality, targetMinBytes, targetMaxBytes } = settings;
   const report = (value, label) => options.onProgress?.({ value, label });
@@ -140,5 +141,18 @@ export async function compressImage(file, options = {}) {
   } finally {
     if (scaled && scaled !== source) { scaled.width = 0; scaled.height = 0; }
     if (source) { source.width = 0; source.height = 0; }
+  }
+}
+
+export async function compressImage(file, options = {}) {
+  const started = Date.now();
+  track('flow.step', { control: 'photo.compress', result: 'start' });
+  try {
+    const result = await compressImageOperation(file, options);
+    track('flow.result', { control: 'photo.compress', result: result.warning ? 'rejected' : 'ok', durationMs: Date.now() - started });
+    return result;
+  } catch (error) {
+    reportClientError(error, 'PHOTO_PROCESSING_ERROR', { control: 'photo.compress' });
+    throw error;
   }
 }

@@ -12,7 +12,9 @@ import {
 import { issueAccessToken, bookingDigest, hashAccessToken, onsiteRequestKey } from '../lib/access-tokens.js';
 import { guestAppointment } from './access.js';
 import { repairOutcomes } from '../../shared/constants.js';
+import { confirmedRepairLink } from '../../shared/repair-links.js';
 import { bookingWindow } from '../../shared/booking-settings.js';
+import { bookingDeviceQuestions } from '../../shared/student-booking.js';
 import {
   appointmentScope,
   requireRole,
@@ -210,7 +212,7 @@ export function appointmentService(
         const parent=await appointments.find(data.parentAppointmentId);
         if (!parent) fail(404,'原工单不存在');
         requireCampus(actor,parent.campus);
-        if (parent.status!=='completed' || parent.studentId!==data.studentId || !['continuation','recurrence'].includes(data.linkKind) || data.sameDeviceAndFault!==true) fail(409,'请确认同一设备原故障的续修或复发');
+        if (parent.status!=='completed' || parent.studentId!==data.studentId || !confirmedRepairLink(data)) fail(409,'请核对同一设备，并确认所选原因与原维修单的关联');
         data={...data,linkedBy:actor.account,linkedAt:clock().toISOString()};
       }
       return this.create(data, { actor: actor.account, authVersion: context.authVersion, campuses: actor.authorizedCampuses, requestId },onsiteRequestKey(actor.memberId,requestId));
@@ -327,7 +329,7 @@ export function appointmentService(
       return present(await guestAppointment(appointments, item.id, accessToken));
     },
     async link(id,input,actor) {
-      if (!['continuation','recurrence'].includes(input.linkKind) || input.sameDeviceAndFault!==true) fail(400,'请确认同一设备的原故障续修或复发');
+      if (!confirmedRepairLink(input)) fail(400,'请核对同一设备，并确认所选原因与原维修单的关联');
       return mutate(id,input,actor,'repairs.linked',async(item,context,at)=>{
         if (!['booked','in_progress'].includes(item.status) || item.parentAppointmentId) fail(409,'请选择尚未关联的本次服务工单');
         const parent=await appointments.find(input.parentAppointmentId);
@@ -339,14 +341,23 @@ export function appointmentService(
     },
     async edit(id,input,actor) {
       const contacts=['phone','social','email','contactValue'];
-      const limits={name:80,brand:80,deviceModel:120,faultType:80,issue:10000,phone:120,social:120,email:254,contactType:40,contactValue:120};
+      const limits={name:80,college:120,deviceType:80,brand:80,deviceModel:120,serial:120,warranty:30,liquidMetal:30,dellG15:20,liquidDrop:20,note:500,faultType:80,issue:10000,phone:120,social:120,email:254,contactType:40,contactValue:120};
       const patch={};
       for (const [key,limit] of Object.entries(limits)) if (Object.hasOwn(input,key)) {
         const value=stringField(input[key],key,limit,['name','brand','faultType'].includes(key));
         patch[key]=contacts.includes(key) ? await encryptText(value,encryptionKey) : value;
       }
       if (!Object.keys(patch).length) fail(400,'没有需要修改的资料');
-      return mutate(id,input,actor,'repairs.information.updated',()=>patch);
+      return mutate(id,input,actor,'repairs.information.updated',async item=>{
+        if (Object.hasOwn(patch,'note')) await staffPlatform.field.requireEligible(actor,item.campus,'repair.correct');
+        if (Object.hasOwn(patch,'deviceType') || Object.hasOwn(patch,'brand')) {
+          const type=patch.deviceType ?? item.deviceType;
+          const questions=bookingDeviceQuestions(type==='笔记本电脑' ? '笔记本' : type,patch.brand ?? item.brand);
+          if (!questions.liquidMetal) patch.liquidMetal='';
+          if (!questions.dellG15) patch.dellG15='';
+        }
+        return patch;
+      });
     },
     async receive(id,input,actor) {
       return mutate(id,input,actor,'repairs.received',async (item,context,at)=>{

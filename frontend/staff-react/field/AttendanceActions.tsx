@@ -13,7 +13,12 @@ export function AttendanceCheckInButton({
 }) {
   if (!canSelfCheckIn(data)) return null;
   return (
-    <button className="field-primary" disabled={busy} onClick={onCheckIn}>
+    <button
+      data-track="staff.field.attendanceactions.button.1"
+      className="field-primary"
+      disabled={busy}
+      onClick={onCheckIn}
+    >
       {data.directAttendance?.allowed ? '到岗签到' : '扫码签到'}
     </button>
   );
@@ -46,7 +51,11 @@ export function AttendanceActions({
               <span className="attendance-action-description"> · 供现场工作人员扫码签到</span>
             </p>
           </div>
-          <button disabled={busy} onClick={onShowCode}>
+          <button
+            data-track="staff.field.attendanceactions.button.2"
+            disabled={busy}
+            onClick={onShowCode}
+          >
             展示签到码
           </button>
         </div>

@@ -42,9 +42,12 @@ npm run dev
 
 | 命令 | 用途 |
 | --- | --- |
-| `npm run verify` | 格式、lint、类型、架构、构建、测试与迁移检查 |
+| `npm run verify` | 格式、lint、类型、迁移指纹、构建与核心回归测试 |
+| `npm run test:sql` | 可选：本地 D1 SQL 读写预算、规模增长与耗时诊断 |
 | `npm run preview:local` | 带虚构人员的隔离本地 D1/R2 预览，地址由终端输出 |
 | `npm run release:plan -- --preview` | 查看当前分支的 Preview 发布计划，不执行远程操作 |
+
+测试取舍及其他按需工具见[测试说明](tests/README.md)。
 
 ## 业务基线
 
@@ -60,3 +63,5 @@ npm run dev
 - [身份与组织映射](docs/architecture/identity-mapping.md)、[授权与字段范围](docs/architecture/authorization.md)、[签到策略](docs/architecture/attendance-policies.md)。
 
 API 以 [路由](src/routes/)、[平台契约](docs/contracts/staff-platform.json) 和 [模块清单](src/modules/registry.js) 为准；迁移 SQL 的不可变性由 [校验清单](database/migration-checksums.json) 校验；模块依赖由架构检查验证。
+
+PostHog 全站分析/回放、Cloudflare 后端指标、错误排查及免费额度配置见[可观测性运行手册](docs/observability/README.md)。

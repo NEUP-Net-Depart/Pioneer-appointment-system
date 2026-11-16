@@ -117,6 +117,7 @@ export function PersonalProfile({
         </div>
         {(changed || busy) && (
           <button
+            data-track="staff.field.personalprofile.button.1"
             className="field-primary personal-profile-save"
             type="submit"
             form={formId}
@@ -126,11 +127,17 @@ export function PersonalProfile({
           </button>
         )}
       </div>
-      <form id={formId} ref={formRef} onSubmit={save}>
+      <form
+        data-track="staff.field.personalprofile.form.2"
+        id={formId}
+        ref={formRef}
+        onSubmit={save}
+      >
         <div className="personal-profile-grid">
           <label>
             姓名
             <input
+              data-track="staff.field.personalprofile.input.3"
               required
               maxLength={80}
               value={name}
@@ -146,6 +153,7 @@ export function PersonalProfile({
             <output>{profile?.member.studentId || '—'}</output>
           </label>
           <ChoiceMenu
+            data-track="staff.field.personalprofile.choicemenu.4"
             className="personal-college-choice"
             label="学院"
             value={college}

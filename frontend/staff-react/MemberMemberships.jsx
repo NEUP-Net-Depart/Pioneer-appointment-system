@@ -1,3 +1,4 @@
+import { track } from '../../shared/telemetry-client.js';
 import { Select, DatePicker } from './SelectionControls.jsx';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { ActivityContext, Notice } from './field/ui';
@@ -63,6 +64,7 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
       ...(draft.maintenanceParticipation ? [{ assignmentType: 'maintenance_affairs' }] : [])
     ];
     if (!ending && !memberships.length) {
+      track('flow.result', { control: 'staff.membermemberships.form.2', result: 'rejected' });
       setError('请选择正式部门或至少一种独立身份');
       return;
     }
@@ -105,6 +107,7 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
         <h3>任职与身份</h3>
         {editable && !adding && !ending && (
           <button
+            data-track="staff.membermemberships.add"
             type="button"
             className="react-primary"
             disabled={busy}
@@ -127,6 +130,7 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
               </div>
               {editable && (!item.effectiveTo || item.effectiveTo > dateKey()) && (
                 <button
+                  data-track="staff.membermemberships.button.1"
                   disabled={busy || adding || !!ending}
                   onClick={() => {
                     setEnding(item);
@@ -143,13 +147,19 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
         )}
       </section>
       {editable && (adding || ending) && (
-        <form ref={form} className="workspace-form member-membership-editor" onSubmit={save}>
+        <form
+          data-track="staff.membermemberships.form.2"
+          ref={form}
+          className="workspace-form member-membership-editor"
+          onSubmit={save}
+        >
           <fieldset className="workspace-form-fields" disabled={busy}>
             <legend>{ending ? `结束 ${membershipLabel(ending)}` : '新增任职与身份'}</legend>
             {ending ? (
               <label>
                 结束日期
                 <DatePicker
+                  data-track="staff.membermemberships.input.3"
                   required
                   min={ending.effectiveFrom}
                   value={endDate}
@@ -175,6 +185,7 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
                     <label>
                       接替任职
                       <Select
+                        data-track="staff.membermemberships.select.5"
                         value={draft.replacesMembershipId}
                         onChange={(event) =>
                           setDraft({ ...draft, replacesMembershipId: event.target.value })
@@ -199,6 +210,7 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
                   <label>
                     生效日期
                     <DatePicker
+                      data-track="staff.membermemberships.input.6"
                       required
                       value={draft.effectiveFrom}
                       onChange={(event) =>
@@ -209,6 +221,7 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
                   <label>
                     结束日期（可选）
                     <DatePicker
+                      data-track="staff.membermemberships.input.7"
                       min={draft.effectiveFrom ? addDays(draft.effectiveFrom, 1) : undefined}
                       value={draft.effectiveTo}
                       onChange={(event) => setDraft({ ...draft, effectiveTo: event.target.value })}
@@ -219,6 +232,7 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
             )}
             <div className="field-actions">
               <button
+                data-track="staff.membermemberships.button.8"
                 type="button"
                 onClick={() => {
                   setEnding(null);
@@ -229,7 +243,7 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
               >
                 取消
               </button>
-              <button className="react-primary">
+              <button data-track="staff.membermemberships.button.9" className="react-primary">
                 {busy ? '正在保存…' : ending ? '确认结束任职' : '保存任职'}
               </button>
             </div>

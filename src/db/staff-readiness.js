@@ -1,4 +1,4 @@
-export const STAFF_RELEASE = 'same-day-membership-0052';
+export const STAFF_RELEASE = 'retired-elder-0054';
 
 // Prepare real projections, including empty tables. A database with only the
 // old staff schema must fail readiness before CI accepts a deployment.
@@ -8,6 +8,7 @@ export async function verifyStaffSchema(db) {
     appointments: 'parent_appointment_id,link_kind,access_token_hash,front_photo_id,back_photo_id,booking_notices,received_at,received_by,photo_deferred_by',
     members: 'id,status,college,major',
     member_department_memberships: 'member_id,position_code',
+    member_special_identities: 'member_id,code,granted_at',
     staff_access_campuses: 'account,campus',
     member_roles: 'member_id,role_id,scope_bindings,reason',
     role_grants: 'permission_code,scope_spec,condition_spec',
@@ -26,7 +27,7 @@ export async function verifyStaffSchema(db) {
     booking_notices: 'id,campus,revision,display_mode',
   };
   await db.batch(Object.entries(projections).map(([table, columns]) => db.prepare(`SELECT ${columns} FROM ${table} LIMIT 0`)));
-  const required = ['staff_account_member_sync', 'staff_account_member_insert_guard', 'staff_account_member_update_guard', 'activation_admin_submit_guard', 'activation_approve',   'service_day_booking_insert', 'service_day_repair_start', 'appointment_booking_notices', 'repair_link_insert','repair_link_update'];
+  const required = ['staff_account_member_sync', 'staff_account_member_insert_guard', 'staff_account_member_update_guard', 'activation_admin_submit_guard', 'activation_approve',   'service_day_booking_insert', 'service_day_repair_start', 'appointment_booking_notices', 'repair_link_insert','repair_link_update','special_identity_authorization_insert','special_identity_authorization_delete'];
   const result = await db.prepare(`SELECT name FROM sqlite_schema WHERE type='trigger' AND name IN (${required.map(() => '?').join(',')})`).bind(...required).all();
   if (result.results.length !== required.length) throw new Error('Staff workflow database guards are missing');
   const indexes = await db.prepare("PRAGMA index_list('staff_accounts')").all();

@@ -83,6 +83,15 @@ export function attendanceDomain({
     const event = await repository.attendanceEvent?.(eventId);
     if (!event) fail(404, '签到场次不存在');
     await requirePermission(actor, 'attendance.token.issue', { campusId: event.campusId });
+    if (event.type === 'duty') {
+      const dedupeKey = policyFor(event).getDedupeScope({
+        memberId: context.actor.memberId,
+        event
+      });
+      const attendance = await repository.findAttendanceByDedupe(dedupeKey);
+      if (!attendance || attendance.campusId !== event.campusId)
+        fail(403, '请先完成该校区当日的到岗签到，再展示签到码');
+    }
     if (
       !evaluate(context, 'attendance.session.manage', { campusId: event.campusId }).allowed &&
       (event.type !== 'duty' || event.businessDate !== dateKey())

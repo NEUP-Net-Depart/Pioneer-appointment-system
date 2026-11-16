@@ -50,7 +50,7 @@ export function initSlotPicker({onChange = () => {}} = {}) {
   const datesNow=()=>bookingDates(now(),settings()?.releaseTime || DEFAULT_RELEASE_TIME);
   const now=() => new Date(Date.now()+offset);
   function button(value,key,title) {
-    const item=document.createElement('button'); item.type='button';item.className='booking-choice';item.dataset[key]=value;
+    const item=document.createElement('button');item.setAttribute('data-track','student.slot-picker.dynamic.choice'); item.type='button';item.className='booking-choice';item.dataset[key]=value;
     const strong=document.createElement('strong');strong.textContent=title;
     item.append(strong);if(key!=='campus'){const detail=document.createElement('small'),remaining=document.createElement('span');remaining.className='booking-remaining';detail.append(remaining);item.append(detail);}return item;
   }
@@ -133,11 +133,11 @@ export function initSlotPicker({onChange = () => {}} = {}) {
     location.hidden=!dateInput.value || paused;
     location.textContent=summaries.get(dateInput.value)?.location ? `维修地点：${summaries.get(dateInput.value).location}` : loading ? '维修地点：更新中…' : '维修地点尚未配置';
   }
-  async function refresh() {
+  async function refresh({telemetryPoll=false}={}) {
     if (!campusInput.value) {render();return true;}
     const current=++generation,campus=campusInput.value;loading=true;render();
     let result;
-    try {result=await apiJson('/api/booking-availability?'+new URLSearchParams({campus}),{timeoutMs:15000});}
+    try {result=await apiJson('/api/booking-availability?'+new URLSearchParams({campus}),{timeoutMs:15000,telemetryPoll});}
     catch {if(current!==generation)return false;loading=false;loadFailed=true;failed=new Set(datesNow());render();return false;}
     if(current!==generation)return false;
     loading=false;loadFailed=false;failed=new Set();offset=Date.parse(result.serverNow)-Date.now();
@@ -164,7 +164,7 @@ export function initSlotPicker({onChange = () => {}} = {}) {
     slotInput.value=item.dataset.slot;selectionIssue=notice='';render();onChange();
   });
   $('#booking-retry').addEventListener('click',()=>void refresh());
-  const stop=startVisiblePolling(()=>active && !loading ? refresh() : undefined);
+  const stop=startVisiblePolling(options=>active && !loading ? refresh(options) : undefined);
   render();
   return {
     refresh,issue:()=>selectionIssue,

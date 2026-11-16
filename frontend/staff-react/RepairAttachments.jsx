@@ -1,37 +1,67 @@
+import { track } from '../../shared/telemetry-client.js';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import React, { useContext, useId, useState } from 'react';
+import React, { useContext, useEffect, useId, useState } from 'react';
 import { apiFetch } from '../../shared/api.js';
 import { attachmentSize, attachmentUrl, uploadAttachments } from '../../shared/attachments.js';
 import { ActivityContext, Notice } from './field/ui';
+import { PhotoUpload } from './field/IntakePhotos';
+import { supplementalPhotoError } from './field/photos';
+import { useRepairTool } from './RepairTools';
 
 export function RepairAttachments({ id }) {
   const active = useContext(ActivityContext);
   const filesId = useId(),
     uploadId = useId();
-  const [open, setOpen] = useState(false),
-    [uploadOpen, setUploadOpen] = useState(false),
-    [error, setError] = useState(''),
+  const [error, setError] = useState(''),
     [busy, setBusy] = useState(''),
-    [selected, setSelected] = useState(null);
+    [selected, setSelected] = useState(null),
+    [preview, setPreview] = useState(''),
+    [progress, setProgress] = useState(undefined);
+  const filesTool = useRepairTool('attachments');
+  const uploadTool = useRepairTool('upload', {
+    dirty: !!selected,
+    busy: !!busy,
+    save: upload,
+    discard: () => {
+      setSelected(null);
+      setError('');
+    }
+  });
+  useEffect(() => {
+    if (!selected) {
+      setPreview('');
+      return;
+    }
+    const url = URL.createObjectURL(selected);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [selected]);
   const client = useQueryClient();
   const queryKey = [`/api/appointments/${encodeURIComponent(id)}/attachments`];
-  const result = useQuery({ queryKey, enabled: active && open });
+  const result = useQuery({ queryKey, enabled: active && filesTool.open });
   const files = result.data?.items;
-  async function upload(event) {
-    event.preventDefault();
-    if (!selected || busy) return;
+  async function upload() {
+    if (!selected || busy) return false;
     setBusy('upload');
     setError('');
+    setProgress({ label: '正在处理照片' });
     try {
-      await uploadAttachments({ id }, [selected]);
+      await uploadAttachments({ id }, [selected], 'general', {
+        onProgress: ({ loaded, total }) =>
+          setProgress({
+            label: loaded >= total ? '正在保存' : '正在上传',
+            value: Math.min(99, Math.floor((loaded / Math.max(1, total)) * 100))
+          })
+      });
       setSelected(null);
-      setUploadOpen(false);
       await client.invalidateQueries({ queryKey });
-      setOpen(true);
+      return true;
     } catch (failure) {
       setError(failure.message);
+      return false;
     } finally {
       setBusy('');
+      setProgress(undefined);
     }
   }
   async function download(file) {
@@ -43,9 +73,11 @@ export function RepairAttachments({ id }) {
       if (!response.ok) throw new Error('附件读取失败，请重试。');
       const url = URL.createObjectURL(await response.blob());
       const link = document.createElement('a');
+      link.setAttribute('data-track', 'staff.repairattachments.dynamic.download');
       link.href = url;
       link.download = file.filename;
       link.click();
+      track('flow.result', { control: 'staff.repairattachments.dynamic.download', result: 'ok' });
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (failure) {
       setError(failure.message);
@@ -54,43 +86,49 @@ export function RepairAttachments({ id }) {
     }
   }
   return (
-    <section className="repair-attachments" aria-label="附件与设备照片">
-      <div className="field-actions">
-        <button
-          type="button"
-          aria-expanded={open}
-          aria-controls={filesId}
-          disabled={!!busy}
-          onClick={() => setOpen((value) => !value)}
-        >
-          {open ? '收起附件与照片' : '查看附件与照片'}
-        </button>
-        <button
-          type="button"
-          aria-expanded={uploadOpen}
-          aria-controls={uploadId}
-          disabled={!!busy}
-          onClick={() => {
-            setUploadOpen((value) => !value);
-            setSelected(null);
-            setError('');
-          }}
-        >
-          {uploadOpen ? '取消补充上传' : '上传补充照片'}
-        </button>
-      </div>
+    <section className="repair-attachments repair-action-row" aria-label="附件与设备照片">
+      <button
+        data-track="staff.repairattachments.button.1"
+        type="button"
+        className="repair-tool-trigger"
+        aria-expanded={filesTool.open}
+        aria-controls={filesId}
+        disabled={!!busy}
+        onClick={filesTool.toggle}
+      >
+        查看照片与附件
+      </button>
+      <button
+        data-track="staff.repairattachments.button.2"
+        type="button"
+        className="repair-tool-trigger"
+        aria-expanded={uploadTool.open}
+        aria-controls={uploadId}
+        disabled={!!busy}
+        onClick={uploadTool.toggle}
+      >
+        补充照片
+      </button>
       <Notice>{error}</Notice>
-      {open && (
-        <div id={filesId} className="repair-attachment-list">
+      {filesTool.open && (
+        <div id={filesId} className="repair-attachment-list repair-control-panel">
           <Notice>{result.error?.message}</Notice>
-          {result.error && <button onClick={() => result.refetch()}>重试读取附件</button>}
+          {result.error && (
+            <button data-track="staff.repairattachments.button.3" onClick={() => result.refetch()}>
+              重试读取附件
+            </button>
+          )}
           {result.isPending && !result.error && <p role="status">正在读取附件…</p>}
           {files ? (
             files.length ? (
               <ul className="record-attachments">
                 {files.map((file) => (
                   <li data-motion-item="" key={file.id}>
-                    <button disabled={!!busy} onClick={() => download(file)}>
+                    <button
+                      data-track="staff.repairattachments.button.4"
+                      disabled={!!busy}
+                      onClick={() => download(file)}
+                    >
                       {busy === file.id ? '正在读取…' : file.filename}
                       <small data-motion-value="text">{attachmentSize(file.size)}</small>
                     </button>
@@ -103,22 +141,45 @@ export function RepairAttachments({ id }) {
           ) : null}
         </div>
       )}
-      {uploadOpen && (
-        <form id={uploadId} className="repair-attachment-upload" onSubmit={upload}>
-          <label>
-            补充照片
-            <input
-              type="file"
-              accept="image/*"
-              required
+      {uploadTool.open && (
+        <form
+          data-track="staff.repairattachments.form.5"
+          id={uploadId}
+          className="repair-attachment-upload repair-control-panel"
+          ref={uploadTool.form}
+          onSubmit={async (event) => {
+            event.preventDefault();
+            if (await upload()) uploadTool.finish('attachments');
+          }}
+        >
+          <PhotoUpload
+            id={id}
+            side="supplement"
+            label="补充照片"
+            preview={preview}
+            busy={!!busy}
+            progress={progress}
+            accept="image/*"
+            validateFile={supplementalPhotoError}
+            onFile={(_side, file) => setSelected(file)}
+          />
+          <div className="repair-panel-actions">
+            <button
+              data-track="staff.repairattachments.cancel"
+              type="button"
               disabled={!!busy}
-              onChange={(event) => setSelected(event.target.files?.[0] || null)}
-            />
-          </label>
-          <p>补充照片不替代首次接收原图。</p>
-          <button className="field-primary" disabled={!selected || !!busy}>
-            {busy === 'upload' ? '正在上传…' : '确认上传照片'}
-          </button>
+              onClick={uploadTool.cancel}
+            >
+              取消
+            </button>
+            <button
+              data-track="staff.repairattachments.button.7"
+              className="field-primary"
+              disabled={!selected || !!busy}
+            >
+              {busy === 'upload' ? '正在上传…' : '确认上传照片'}
+            </button>
+          </div>
         </form>
       )}
     </section>

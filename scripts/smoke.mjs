@@ -41,6 +41,7 @@ export async function smoke(base, fetcher = fetch, output = new URL('../dist/', 
     }
     for (const [, path] of html.matchAll(/(?:src|href)="(\/[^"?#]+\.(?:m?js|css|jpg))"/g)) await asset(path);
   }
+  await asset('/vendor/signature-pad.js');
   // Pages may retain removed static assets in CDN caches; check their absence in the build instead.
   for (const path of ['/user.html', '/staff.html', '/app.js', '/src/app.js', '/.dev.vars', '/wrangler.jsonc']) await get(path, 404);
   const health = await (await get('/api/health')).json();

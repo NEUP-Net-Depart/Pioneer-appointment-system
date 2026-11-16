@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { config } from '../scripts/cli.mjs';
-import { pagesSiteUrl } from '../scripts/release-plan.mjs';
-import { publishPages } from '../scripts/pages-deploy.mjs';
-import { warrantyDeployment, staffWarrantyHeaders, verifierHeaders, prepareWarrantyDeployment, publishWarrantyVerifier } from '../scripts/warranty-deploy.mjs';
-import { warrantyService } from '../src/services/warranty.js';
+import { config } from '../../../scripts/cli.mjs';
+import { pagesSiteUrl } from '../../../scripts/release-plan.mjs';
+import { publishPages } from '../../../scripts/pages-deploy.mjs';
+import { warrantyDeployment, staffWarrantyHeaders, verifierHeaders, prepareWarrantyDeployment, publishWarrantyVerifier } from '../../../scripts/warranty-deploy.mjs';
+import { warrantyService } from '../../../src/services/warranty.js';
 
 const credentials = { CLOUDFLARE_ACCOUNT_ID: 'test-account', CLOUDFLARE_API_TOKEN: 'test-token' };
 const projectResponse = project => Response.json({ success: true, result: { name: project, production_branch: 'main' } });
@@ -33,9 +33,9 @@ test('staff and verifier CSPs enable only their matching origins and fail closed
 test('generated release roots share the build/runtime origin without copying Functions or bindings to the verifier', async () => {
   const cfg = await config(), original = JSON.stringify(cfg), originalFile = await readFile('wrangler.jsonc', 'utf8');
   const headers = await readFile('public/_headers', 'utf8');
-  for (const branch of ['main', 'dev', 'fix/warranty']) {
+  for (const [branch, env] of [['main', {}], ['dev', {}], ['fix/warranty', {}], ['main', { TELEMETRY_ENABLED: 'false' }], ['dev', { TELEMETRY_ENABLED: 'true' }]]) {
     const plan = release(branch), warranty = warrantyDeployment(plan, {});
-    const prepared = await prepareWarrantyDeployment(plan, cfg, warranty);
+    const prepared = await prepareWarrantyDeployment(plan, cfg, warranty, env);
     try {
       const runtime = JSON.parse(await readFile(join(prepared.workbench.cwd, 'wrangler.jsonc'), 'utf8'));
       const vars = plan.environment === 'preview' ? runtime.env.preview.vars : runtime.vars;
@@ -49,6 +49,8 @@ test('generated release roots share the build/runtime origin without copying Fun
       assert.deepEqual(runtime.env.preview.r2_buckets, cfg.env.preview.r2_buckets);
       assert.equal(runtime.vars.MAX_R2_BYTES, cfg.vars.MAX_R2_BYTES);
       assert.equal(runtime.env.preview.vars.MAX_R2_BYTES, cfg.env.preview.vars.MAX_R2_BYTES);
+      for (const [bindings, original] of [[runtime, cfg], [runtime.env.preview, cfg.env.preview]])
+        assert.deepEqual(bindings.analytics_engine_datasets, bindings.vars.TELEMETRY_ENABLED === 'true' ? original.analytics_engine_datasets : []);
       assert.deepEqual((await readdir(prepared.verifier.cwd)).sort(), ['dist', 'package.json', 'wrangler.jsonc']);
       assert.deepEqual((await readdir(join(prepared.verifier.cwd, 'dist'))).sort(), ['_headers', 'bridge.js', 'index.html', 'style.css']);
       const staticConfig = JSON.parse(await readFile(join(prepared.verifier.cwd, 'wrangler.jsonc'), 'utf8'));

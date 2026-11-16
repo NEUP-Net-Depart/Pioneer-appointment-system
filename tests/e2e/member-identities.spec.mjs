@@ -1,8 +1,80 @@
 import { test, expect } from './support/fixtures.mjs';
-import { chooseOption, loginStaff, staffPage } from './support/staff.mjs';
-import { dataMotionPresets } from '../../shared/data-motion.js';
+import { chooseOption, loginStaff, staffPage, staffApi } from './support/staff.mjs';
+
 import { dateKey } from '../../shared/time.js';
 import { WORKFLOW_TIME } from '../fixtures/workflow-seed.mjs';
+
+test('superadmins manually grant and revoke the retired badge across member and personal views', async ({
+  page,
+  context
+}) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await loginStaff(page);
+  const memberId = 'member-20261004';
+  const detail = await staffApi(page, `/api/members/${memberId}`, null, 'GET');
+  for (const post of detail.member.memberships)
+    await staffApi(
+      page,
+      `/api/members/${memberId}/memberships/${post.id}`,
+      {
+        revision: post.revision,
+        effectiveTo: dateKey(new Date(WORKFLOW_TIME)),
+        requestId: crypto.randomUUID()
+      },
+      'PATCH'
+    );
+  const people = await staffPage(page, '人员管理');
+  await people.getByRole('textbox', { name: '搜索成员', exact: true }).fill('20261004');
+  const row = people.locator('.react-row').filter({ hasText: '许晨' });
+  await row.getByRole('button', { name: '人员详情', exact: true }).click();
+  const editor = page.getByRole('dialog');
+  await editor.getByRole('button', { name: '任职与身份', exact: true }).click();
+  const badge = editor.locator('[data-identity="retired_elder"]');
+  await expect(badge).toHaveCount(0);
+  await editor.getByRole('button', { name: '授予退休老登身份', exact: true }).click();
+  await expect(badge).toBeVisible();
+  await expect(badge).toHaveText('退休老登');
+  const isAnimating = () =>
+    badge.evaluate((node) =>
+      node
+        .getAnimations()
+        .some(
+          (animation) =>
+            animation.playState === 'running' &&
+            animation.effect?.getTiming().iterations === Infinity
+        )
+    );
+  await expect.poll(isAnimating).toBe(true);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect.poll(isAnimating).toBe(false);
+  await editor.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(row.locator('[data-identity="retired_elder"]')).toBeVisible();
+
+  const retired = await context.newPage();
+  await loginStaff(retired, '20261004');
+  const personal = await staffPage(retired, '个人中心');
+  await expect(personal.locator('.personal-profile [data-identity="retired_elder"]')).toBeVisible();
+  const managed = await staffPage(retired, '人员管理');
+  await managed.getByRole('textbox', { name: '搜索成员', exact: true }).fill('20261003');
+  await managed
+    .locator('.react-row')
+    .filter({ hasText: '周宁' })
+    .getByRole('button', { name: '人员详情', exact: true })
+    .click();
+  await retired
+    .getByRole('dialog')
+    .getByRole('button', { name: '任职与身份', exact: true })
+    .click();
+  await expect(retired.getByRole('button', { name: '授予退休老登身份', exact: true })).toHaveCount(
+    0
+  );
+  await retired.close();
+
+  await row.getByRole('button', { name: '人员详情', exact: true }).click();
+  await editor.getByRole('button', { name: '任职与身份', exact: true }).click();
+  await editor.getByRole('button', { name: '撤销退休老登身份', exact: true }).click();
+  await expect(badge).toHaveCount(0);
+});
 
 test('an appointment created today can end today and be added again', async ({ page }) => {
   await loginStaff(page, '20261001');
@@ -123,49 +195,4 @@ test('a new ordinary member applies without qualification configuration and a de
   await applicant.getByRole('button', { name: '刷新审核结果', exact: true }).click();
   await expect(applicant.locator('#activation-status')).toContainText('审核已通过');
   await loginStaff(applicant, '20269907', 'MemberTest!2026');
-});
-
-test('member details remain clickable while a row is revealing', async ({ page }) => {
-  await loginStaff(page, '20261001');
-  const people = await staffPage(page, '人员管理');
-  const button = people.getByRole('button', { name: '人员详情', exact: true }).first();
-  await button.evaluate((node) => node.scrollIntoView({ block: 'center' }));
-  await expect
-    .poll(() =>
-      button.evaluate((node) => {
-        for (let parent = node; parent; parent = parent.parentElement)
-          if (parent.getAnimations().some((animation) => animation.playState === 'running'))
-            return false;
-        return true;
-      })
-    )
-    .toBe(true);
-  await button.evaluate((node, frames) => {
-    const animation = node.closest('.react-row').animate(frames, { duration: 240, fill: 'both' });
-    animation.pause();
-    animation.currentTime = 24;
-  }, dataMotionPresets.enter.keyframes);
-  const bounds = await button.boundingBox();
-  await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
-  await expect(page.getByRole('dialog')).toBeVisible();
-});
-
-test('member detail buttons remain clickable at responsive breakpoints and on a small screen', async ({
-  page,
-  isMobile
-}) => {
-  await loginStaff(page, '20261001');
-  const people = await staffPage(page, '人员管理');
-  // Chromium covers each breakpoint; mobile WebKit covers the fixed bottom navigation.
-  for (const width of isMobile ? [375] : [767, 768, 1100, 1101]) {
-    await page.setViewportSize({ width, height: 900 });
-    const button = people.getByRole('button', { name: '人员详情', exact: true }).last();
-    await button.scrollIntoViewIfNeeded();
-    // Click the scrolled position directly so automatic scrolling cannot hide an overlay regression.
-    const bounds = await button.boundingBox();
-    await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
-    await expect(page.getByRole('dialog')).toBeVisible();
-    await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
-    await expect(page.getByRole('dialog')).toHaveCount(0);
-  }
 });

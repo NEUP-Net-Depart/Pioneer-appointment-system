@@ -53,6 +53,7 @@ export async function rehearseSnapshot(dump, directory = resolve(root, 'migratio
     assert.equal(sqlite.prepare('PRAGMA foreign_key_check').all().length,0,'Preview snapshot has invalid foreign keys');
     const ledger = new Set(sqlite.prepare('SELECT name FROM d1_migrations').all().map(row => row.name));
     const upgradingExpirations = !ledger.has('0036_appointment_expiration_time.sql');
+    const convertingSignatures = !ledger.has('0053_signature_documents.sql');
     const extendingDay = !ledger.has('0044_appointment_day.sql'), replacingRepairs=!ledger.has('0045_direct_repairs.sql'), linkingRepairs=!ledger.has('0046_repair_links.sql');
     if (sqlite.prepare('PRAGMA table_info(staff_accounts)').all().some(row => row.name === 'member_id')) {
       const conflicts = sqlite.prepare('SELECT COUNT(*) AS count FROM (SELECT member_id FROM staff_accounts GROUP BY member_id HAVING COUNT(*)>1)').get().count;
@@ -113,6 +114,17 @@ export async function rehearseSnapshot(dump, directory = resolve(root, 'migratio
           if(extendingDay && row.status==='booked' && row.started_at===null && row.expires_at!==`${row.date}T16:00:00.000Z`) { row.expires_at=`${row.date}T16:00:00.000Z`;row.revision++; }
           if(replacingRepairs && row.outcome==='unrepaired')row.outcome='legacy_unrepaired';
           if(linkingRepairs && row.registration_flow==='repair_followup')row.registration_flow='frontdesk';
+        }
+        if (convertingSignatures && original.table === 'appointments' && row.signature) {
+          let signature;
+          try { signature = JSON.parse(row.signature); } catch { /* Preserve invalid historical evidence verbatim. */ }
+          if (signature !== undefined) {
+            if (advanceExpiration && Array.isArray(signature)) signature = {
+              version: 2, width: 560, height: 200,
+              strokes: signature.map(stroke => stroke.map(([x, y]) => [x * 560, y * 200]))
+            };
+            row.signature = JSON.stringify(signature);
+          }
         }
         return JSON.stringify(row);
       }).sort();

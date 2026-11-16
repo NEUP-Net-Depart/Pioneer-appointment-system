@@ -72,6 +72,9 @@ export interface Appointment {
   contactType?: string;
   contactValue?: string;
   liquidMetal?: string;
+  college?: string;
+  serial?: string;
+  liquidDrop?: string;
   dellG15?: string;
   repairCode?: string;
   canStart?: boolean;
@@ -117,6 +120,7 @@ export interface AttendanceRecord {
 }
 
 export interface Home {
+  rosterParticipant?: boolean;
   searchCapabilities?: {
     identity: boolean;
     identityScope: 'none' | 'own' | 'today' | 'authorized';
@@ -145,6 +149,8 @@ export interface Home {
     startAt: string;
     endAt: string;
     dutyType: string;
+    leaveStatus?: string;
+    servicePaused?: boolean;
   }[];
   updatedAt: string;
   appointments?: Appointment[];

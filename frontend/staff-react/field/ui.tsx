@@ -20,7 +20,13 @@ import { useDataMotion } from '../useDataMotion';
 
 export const api = <T,>(
   url: string,
-  options: { method?: string; body?: unknown; signal?: AbortSignal; timeoutMs?: number } = {}
+  options: {
+    method?: string;
+    body?: unknown;
+    signal?: AbortSignal;
+    telemetryPoll?: boolean;
+    timeoutMs?: number;
+  } = {}
 ): Promise<T> => request(url, options);
 export const time = (value: string) =>
   new Date(value).toLocaleTimeString('zh-CN', {
@@ -64,7 +70,8 @@ export function Modal({
   initialFocus,
   dismissible = true,
   compact = false,
-  footer
+  footer,
+  closeLabel = '关闭'
 }: {
   title: string;
   children: ReactNode;
@@ -75,6 +82,7 @@ export function Modal({
   dismissible?: boolean;
   compact?: boolean;
   footer?: ReactNode;
+  closeLabel?: string;
 }) {
   const titleId = useId();
   const ref = useRef<HTMLDialogElement>(null);
@@ -96,13 +104,11 @@ export function Modal({
     }
     closing.current = true;
     motion.current?.cancel();
-    const animation = dialog.animate(
-      [
-        { opacity: 1, transform: 'none' },
-        { opacity: 0.75, transform: 'none' }
-      ],
-      { duration: 120, easing: 'ease-in', fill: 'forwards' }
-    );
+    const animation = dialog.animate([{ opacity: 1 }, { opacity: 0.75 }], {
+      duration: 120,
+      easing: 'ease-in',
+      fill: 'forwards'
+    });
     motion.current = animation;
     animation.finished.then(
       () => {
@@ -127,18 +133,16 @@ export function Modal({
     const previous = document.activeElement as HTMLElement;
     dialog.showModal();
     closing.current = false;
+    // Transform animations change the containing block of fixed select popovers.
     if (
       !document.hidden &&
       !matchMedia('(prefers-reduced-motion: reduce)').matches &&
       !dialog.querySelector('video,canvas')
     )
-      motion.current = dialog.animate(
-        [
-          { opacity: 0.75, transform: 'none' },
-          { opacity: 1, transform: 'none' }
-        ],
-        { duration: 180, easing: 'cubic-bezier(.2,.75,.25,1)' }
-      );
+      motion.current = dialog.animate([{ opacity: 0.75 }, { opacity: 1 }], {
+        duration: 180,
+        easing: 'cubic-bezier(.2,.75,.25,1)'
+      });
     if (openModalCount++ === 0) {
       previousRootOverflow = document.documentElement.style.overflow;
       document.documentElement.style.overflow = 'hidden';
@@ -153,6 +157,7 @@ export function Modal({
   }, [active, initialFocus]);
   return (
     <dialog
+      data-track="staff.field.ui.dialog.1"
       className={`field-modal${sidePanel ? ' field-side-panel' : ''}${compact ? ' workspace-confirm-dialog' : ''}${className ? ` ${className}` : ''}`}
       ref={ref}
       aria-labelledby={titleId}
@@ -196,6 +201,7 @@ export function Modal({
         }
       }}
       onCancel={(event) => {
+        if (event.target !== event.currentTarget) return;
         event.preventDefault();
         event.stopPropagation();
         dismiss();
@@ -209,8 +215,14 @@ export function Modal({
         >
           {title}
         </h2>
-        <button type="button" disabled={!dismissible} onClick={dismiss} aria-label="关闭">
-          关闭
+        <button
+          data-track="staff.field.ui.button.2"
+          type="button"
+          disabled={!dismissible}
+          onClick={dismiss}
+          aria-label={closeLabel}
+        >
+          {closeLabel}
         </button>
       </header>
       <div ref={bodyRef} className="workspace-dialog-body">
@@ -403,6 +415,7 @@ export function Scanner({
             <label className="warranty-camera-control" title="从相册选择" aria-label="从相册选择">
               <Images aria-hidden="true" size={22} />
               <input
+                data-track="staff.field.ui.input.3"
                 type="file"
                 accept="image/*"
                 aria-label={mode === 'photo' ? '选择设备标签照片' : '选择设备标签图片'}
@@ -426,6 +439,7 @@ export function Scanner({
             </label>
             {mode === 'photo' ? (
               <button
+                data-track="staff.field.ui.button.4"
                 type="button"
                 className="warranty-shutter"
                 aria-label="拍摄识别"
@@ -445,24 +459,48 @@ export function Scanner({
             ) : (
               <span className="warranty-camera-spacer" aria-hidden="true" />
             )}
-            <button type="button" ref={switcher} disabled title="切换摄像头" aria-label="切换镜头">
+            <button
+              data-track="staff.field.ui.button.5"
+              type="button"
+              ref={switcher}
+              disabled
+              title="切换摄像头"
+              aria-label="切换镜头"
+            >
               <SwitchCamera aria-hidden="true" size={22} />
             </button>
           </div>
         )}
       </div>
       {cameraLayout === 'warranty' && (
-        <button type="button" ref={torch} hidden aria-hidden="true" />
+        <button
+          data-track="staff.field.ui.button.6"
+          type="button"
+          ref={torch}
+          hidden
+          aria-hidden="true"
+        />
       )}
       {cameraLayout !== 'warranty' && mode !== 'qr' && (
         <div className="record-options field-camera-tools">
-          <button type="button" ref={mirror} aria-pressed="false">
+          <button
+            data-track="staff.field.ui.button.7"
+            type="button"
+            ref={mirror}
+            aria-pressed="false"
+          >
             镜像预览
           </button>
-          <button type="button" ref={switcher} disabled title="正在检测可用镜头">
+          <button
+            data-track="staff.field.ui.button.8"
+            type="button"
+            ref={switcher}
+            disabled
+            title="正在检测可用镜头"
+          >
             切换镜头
           </button>
-          <button type="button" ref={torch} disabled>
+          <button data-track="staff.field.ui.button.9" type="button" ref={torch} disabled>
             补光
           </button>
         </div>
@@ -474,6 +512,7 @@ export function Scanner({
         <div className="field-actions">
           {mode !== 'device' && (
             <button
+              data-track="staff.field.ui.button.10"
               type="button"
               className="field-primary"
               disabled={cameraState === 'opening'}
@@ -501,6 +540,7 @@ export function Scanner({
             <label className="field-file-button">
               {mode === 'photo' ? '从相册选照片' : mode === 'device' ? '相册扫码' : '相册识别'}
               <input
+                data-track="staff.field.ui.input.11"
                 type="file"
                 accept="image/*"
                 aria-label={
@@ -524,12 +564,18 @@ export function Scanner({
             </label>
           )}
           {mode === 'qr' && (
-            <button type="button" ref={switcher} disabled title="正在检测可用镜头">
+            <button
+              data-track="staff.field.ui.button.12"
+              type="button"
+              ref={switcher}
+              disabled
+              title="正在检测可用镜头"
+            >
               切换镜头
             </button>
           )}
           {mode === 'qr' && (
-            <button type="button" ref={torch} disabled>
+            <button data-track="staff.field.ui.button.13" type="button" ref={torch} disabled>
               补光
             </button>
           )}
