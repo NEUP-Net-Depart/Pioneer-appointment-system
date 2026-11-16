@@ -1,12 +1,23 @@
+import { checkProperty } from './fixtures/workflow-seed.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {weekRange, calendarWeekRange, rosterWeekKey} from '../shared/time.js';
 import {appointmentService} from '../src/services/appointments.js';
 
-test('week boundaries use Monday through Sunday across weekends and years',()=>{
-  assert.deepEqual(weekRange('2026-10-12'),{start:'2026-10-12',end:'2026-10-18'});
-  assert.deepEqual(weekRange('2026-10-18'),{start:'2026-10-12',end:'2026-10-18'});
-  assert.deepEqual(weekRange('2027-01-01'),{start:'2026-12-28',end:'2027-01-03'});
+test('week boundaries use Monday through Sunday across weekends and years', async () => {
+  assert.deepEqual(weekRange('2026-10-12'), { start: '2026-10-12', end: '2026-10-18' });
+  assert.deepEqual(weekRange('2026-10-18'), { start: '2026-10-12', end: '2026-10-18' });
+  assert.deepEqual(weekRange('2027-01-01'), { start: '2026-12-28', end: '2027-01-03' });
+  await checkProperty((fc) =>
+    fc.property(fc.integer({ min: 0, max: 3650 }), (offset) => {
+      const date = new Date(Date.UTC(2020, 0, 1) + offset * 86400000).toISOString().slice(0, 10);
+      const week = weekRange(date);
+      assert.equal(new Date(week.start).getUTCDay(), 1);
+      assert.equal(new Date(week.end).getUTCDay(), 0);
+      assert.equal(Date.parse(week.end) - Date.parse(week.start), 6 * 86400000);
+      assert.ok(week.start <= date && date <= week.end);
+    })
+  );
 });
 
 test('calendar weeks begin on Sunday while roster keys retain their Monday identifier',()=>{

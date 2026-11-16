@@ -1,3 +1,4 @@
+import { runModel } from './fixtures/workflow-seed.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { warrantyService } from '../src/services/warranty.js';
@@ -30,6 +31,7 @@ test('Huawei issues the actual configured challenge type with an encrypted staff
   assert.equal(JSON.stringify(challenge.widget).includes('mock-session'), false);
 });
 test('Huawei submits a human proof for the server-selected type and never downgrades sliders to image answers', async () => {
+  await huaweiModel();
   const { service, calls } = fixture();
   const challenge = await service.challenge({ brand: 'huawei', serial: 'TEST12345678' }, actor);
   const input = { brand: 'huawei', serial: 'TEST12345678', captchaToken: challenge.token };
@@ -73,3 +75,81 @@ test('Huawei unknown and failed verification results do not become expired cover
   for (const value of ['https://example.org/path', 'javascript:alert(1)', 'http://example.org', 'https://user:pass@example.org', 'https://example.org/?token=abc']) assert.equal(captchaBridgeOrigin(value), '');
   assert.equal(captchaBridgeOrigin('https://verification.example.org'), 'https://verification.example.org');
 });
+
+async function huaweiModel() {
+  const input = (r) => ({
+    brand: 'huawei',
+    serial: 'TEST12345678',
+    captchaToken: r.challenge.token,
+    captchaProof: 'mock-human-sdk-proof'
+  });
+  const challenge = async (r) => {
+    r.challenge = await r.service.challenge({ brand: 'huawei', serial: 'TEST12345678' }, actor);
+  };
+  const edges = [
+    ['idle', 'challenge', 'CHALLENGE', challenge],
+    [
+      'challenge',
+      'challenge',
+      'REJECT_DOWNGRADE',
+      async (r) => {
+        const before = r.calls.length;
+        await assert.rejects(
+          r.service.query(
+            { ...input(r), captchaProof: undefined, captchaAnswer: 'HUMAN', type: 0 },
+            actor
+          ),
+          (e) => e.code === 'WARRANTY_CAPTCHA_REQUIRED'
+        );
+        assert.equal(r.calls.length, before);
+      }
+    ],
+    ['challenge', 'expired', 'EXPIRE', (r) => r.expire()],
+    [
+      'expired',
+      'expired',
+      'REJECT_EXPIRED',
+      async (r) => {
+        const before = r.calls.length;
+        await assert.rejects(
+          r.service.query(input(r), actor),
+          (e) => e.code === 'WARRANTY_CAPTCHA_EXPIRED'
+        );
+        assert.equal(r.calls.length, before);
+      }
+    ],
+    ['expired', 'challenge', 'RENEW', challenge],
+    [
+      'challenge',
+      'found',
+      'QUERY',
+      async (r) => {
+        r.result = await r.service.query(input(r), actor);
+      }
+    ]
+  ].map(([from, to, event, run]) => ({ from, to, event, run }));
+  await runModel({
+    name: 'warranty-huawei',
+    initial: 'idle',
+    edges,
+    setup: async () => ({ ...fixture(), dispose() {} }),
+    observe: (r, state) => {
+      if (state === 'idle') assert.equal(r.calls.length, 0);
+      else {
+        assert.equal(r.challenge.widget.type, 2);
+        assert.equal(
+          r.calls.some((call) => call.url.endsWith('/picture')),
+          false
+        );
+      }
+      if (state === 'found') {
+        assert.equal(r.result.status, 'unknown');
+        assert.equal(r.result.services.length, 1);
+        assert.ok(!JSON.stringify(r.result).includes('PRIVATE'));
+        const sent = JSON.parse(r.calls.at(-1).options.body);
+        assert.equal(sent.validate, 'mock-human-sdk-proof');
+        assert.equal(sent.type, 2);
+      }
+    }
+  });
+}

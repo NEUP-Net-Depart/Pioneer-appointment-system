@@ -1,3 +1,4 @@
+import { runModel, rejectWithoutWrite } from './fixtures/workflow-seed.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { database, seedStaff } from './helpers/database.mjs';
@@ -7,10 +8,10 @@ import { userRepository } from '../src/db/users.js';
 import { activationRepository } from '../src/db/activation.js';
 import { activationService } from '../src/services/activation.js';
 
-function fixture(t) {
+function fixture(t, managed = false) {
   t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-10T02:00:00Z') });
   const db = database();
-  t.after(() => db.sqlite.close());
+  if (!managed) t.after(() => db.sqlite.close());
   seedStaff(db, '20261001');
   seedStaff(db, '20261002');
   db.sqlite.exec(
@@ -34,6 +35,7 @@ test('activation reviewers need a current leadership appointment', async (t) => 
 });
 
 test('default activation uses the home campus, preserves revocations and scopes legacy qualifications', async (t) => {
+  await activationModel(t);
   const { db, staff, users, activation } = fixture(t);
   const leader = await users.find('20261001');
   const created = await staff.createMember(leader, {
@@ -69,3 +71,121 @@ test('default activation uses the home campus, preserves revocations and scopes 
   assert.equal(configured.status, 'open');
   await assert.rejects(activation.member('legacy-other', leader), { status: 403 });
 });
+
+async function activationModel(t) {
+  const studentId = '20269908',
+    name = '模型成员';
+  const application = { studentId, name, homeCampus: '南湖', password: 'MemberTest!2026' };
+  const submit = async (r) => {
+    r.application = await r.activation.submit(application);
+  };
+  const review = (r, status, extra = {}) =>
+    r.activation.review(
+      { ids: [r.application.id], status, identityVerified: true, ...extra },
+      r.leader
+    );
+  const edges = [
+    [
+      'open',
+      'revoked',
+      'REVOKE',
+      (r) => r.activation.changeWhitelist(studentId, { status: 'revoked' }, r.leader)
+    ],
+    [
+      'revoked',
+      'open',
+      'REOPEN',
+      (r) => r.activation.changeWhitelist(studentId, { status: 'open' }, r.leader)
+    ],
+    [
+      'revoked',
+      'revoked',
+      'REJECT_SUBMIT',
+      (r) => rejectWithoutWrite(r.db, () => submit(r), { status: 400 })
+    ],
+    ['open', 'pending', 'SUBMIT', submit],
+    ['pending', 'approved', 'APPROVE', (r) => review(r, 'approved')],
+    ['pending', 'rejected', 'REJECT', (r) => review(r, 'rejected')],
+    [
+      'pending',
+      'revoked',
+      'REVOKE_PENDING',
+      (r) => r.activation.changeWhitelist(studentId, { status: 'revoked' }, r.leader)
+    ],
+    [
+      'pending',
+      'pending',
+      'REQUIRE_IDENTITY',
+      (r) =>
+        rejectWithoutWrite(r.db, () => review(r, 'approved', { identityVerified: false }), {
+          status: 400
+        })
+    ],
+    [
+      'pending',
+      'pending',
+      'REJECT_ORDINARY_REVIEW',
+      (r) =>
+        rejectWithoutWrite(
+          r.db,
+          () =>
+            r.activation.review(
+              { ids: [r.application.id], status: 'approved', identityVerified: true },
+              r.worker
+            ),
+          { status: 403 }
+        )
+    ],
+    ['rejected', 'pending', 'RESUBMIT', submit],
+    [
+      'approved',
+      'approved',
+      'REJECT_SECOND_REVIEW',
+      (r) => rejectWithoutWrite(r.db, () => review(r, 'approved'), { status: 409 })
+    ],
+    [
+      'approved',
+      'approved',
+      'REJECT_REVOKE_ACTIVATED',
+      (r) =>
+        rejectWithoutWrite(
+          r.db,
+          () => r.activation.changeWhitelist(studentId, { status: 'revoked' }, r.leader),
+          { status: 409 }
+        )
+    ]
+  ].map(([from, to, event, run]) => ({ from, to, event, run }));
+  await runModel({
+    name: 'account-activation',
+    initial: 'open',
+    edges,
+    setup: async () => {
+      t.mock.timers.reset();
+      const r = fixture(t, true);
+      r.dispose = () => {
+        r.db.sqlite.close();
+        t.mock.timers.reset();
+      };
+      r.leader = await r.users.find('20261001');
+      r.worker = await r.users.find('20261002');
+      await r.staff.createMember(r.leader, { studentId, name, homeCampusId: 'campus-nanhu' });
+      return r;
+    },
+    observe: async (r, state) => {
+      const invitation = r.db.sqlite
+        .prepare('SELECT status FROM staff_whitelist WHERE student_id=?')
+        .get(studentId);
+      assert.equal(
+        invitation.status,
+        state === 'approved' ? 'activated' : state === 'revoked' ? 'revoked' : 'open'
+      );
+      const account = await r.users.find(studentId);
+      assert.equal(!!account, state === 'approved');
+      if (account) assert.deepEqual(account.authorizedCampuses, ['南湖']);
+      if (r.application && ['pending', 'approved', 'rejected', 'revoked'].includes(state)) {
+        const current = await r.activation.status(r.application.id, r.application.receipt);
+        assert.equal(current.status, state === 'revoked' ? 'rejected' : state);
+      }
+    }
+  });
+}

@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdir } from 'node:fs/promises';
-import { database, seedStaff, seedAppointment, seedPhoto } from './helpers/database.mjs';
-import { stageFixture } from './fixtures/staff-cutover.mjs';
-import { rehearseSnapshot } from '../scripts/rehearse-preview.mjs';
+import { database, seedStaff, seedAppointment, seedPhoto } from '../helpers/database.mjs';
+import { stageFixture } from '../fixtures/staff-cutover.mjs';
+import { rehearseSnapshot } from '../../scripts/rehearse-preview.mjs';
 
 async function snapshot(current) {
   const before = current ? '\uffff' : '0042';

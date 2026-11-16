@@ -70,7 +70,8 @@ export function Modal({
   initialFocus,
   dismissible = true,
   compact = false,
-  footer
+  footer,
+  closeLabel = '关闭'
 }: {
   title: string;
   children: ReactNode;
@@ -81,6 +82,7 @@ export function Modal({
   dismissible?: boolean;
   compact?: boolean;
   footer?: ReactNode;
+  closeLabel?: string;
 }) {
   const titleId = useId();
   const ref = useRef<HTMLDialogElement>(null);
@@ -199,6 +201,7 @@ export function Modal({
         }
       }}
       onCancel={(event) => {
+        if (event.target !== event.currentTarget) return;
         event.preventDefault();
         event.stopPropagation();
         dismiss();
@@ -217,9 +220,9 @@ export function Modal({
           type="button"
           disabled={!dismissible}
           onClick={dismiss}
-          aria-label="关闭"
+          aria-label={closeLabel}
         >
-          关闭
+          {closeLabel}
         </button>
       </header>
       <div ref={bodyRef} className="workspace-dialog-body">

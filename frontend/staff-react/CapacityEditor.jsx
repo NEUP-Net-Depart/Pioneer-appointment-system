@@ -21,6 +21,7 @@ import { WorkspaceSections } from './WorkspaceSections';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
 import { BookingSettingsEditor } from './BookingSettingsEditor';
 import './capacity.css';
+import { UnsavedChangesDialog } from './UnsavedChangesDialog';
 
 const days = ['周一', '周二', '周三', '周四'];
 const keyOf = (item) => `${item.campus}/${item.weekday}/${item.timeSlot}`;
@@ -994,40 +995,13 @@ export function CapacityEditor({ active, onNavigate }) {
         </div>
       </ActivityContext.Provider>
       {nextView && (
-        <Modal
-          compact
-          title="有尚未保存的修改"
-          onClose={() => {
-            if (!switchBusy) setNextView(null);
-          }}
-        >
-          <p>请保存或丢弃修改后切换，也可以返回继续编辑。</p>
-          <Notice>{switchError}</Notice>
-          <div className="field-actions">
-            <button
-              data-track="staff.capacityeditor.button.21"
-              disabled={switchBusy}
-              onClick={() => setNextView(null)}
-            >
-              取消切换
-            </button>
-            <button
-              data-track="staff.capacityeditor.button.22"
-              disabled={switchBusy}
-              onClick={() => resolveSwitch('discard')}
-            >
-              丢弃并切换
-            </button>
-            <button
-              data-track="staff.capacityeditor.button.23"
-              className="field-primary"
-              disabled={switchBusy}
-              onClick={() => resolveSwitch('save')}
-            >
-              保存并切换
-            </button>
-          </div>
-        </Modal>
+        <UnsavedChangesDialog
+          busy={switchBusy}
+          error={switchError}
+          onCancel={() => setNextView(null)}
+          onDiscard={() => resolveSwitch('discard')}
+          onSave={() => resolveSwitch('save')}
+        />
       )}
       {conflicts.length > 0 && (
         <section className="field-card capacity-conflicts" aria-label="配置冲突">

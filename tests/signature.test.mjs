@@ -1,3 +1,4 @@
+import { checkProperty } from './fixtures/workflow-seed.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { signatureDocument, validSignature, SIGNATURE_LIMITS } from '../shared/signature.js';
@@ -12,7 +13,7 @@ const signature = (
   ]
 ) => ({ version: 2, width: 300, height: 180, strokes });
 
-test('versioned handwriting accepts real movement regardless of sampling frequency and isolated taps', () => {
+test('versioned handwriting accepts real movement regardless of sampling frequency and isolated taps', async () => {
   assert.equal(validSignature(signature()), true);
   assert.equal(
     validSignature(
@@ -31,6 +32,34 @@ test('versioned handwriting accepts real movement regardless of sampling frequen
   assert.equal(
     validSignature(signature([Array.from({ length: 200 }, (_, i) => [50 + (i % 2), 50])])),
     false
+  );
+  await checkProperty((fc) =>
+    fc.property(
+      fc.integer({ min: 200, max: 1000 }),
+      fc.integer({ min: 200, max: 1000 }),
+      fc.integer({ min: 1, max: 50 }),
+      (width, height, samples) => {
+        const points = Array.from({ length: samples + 1 }, (_, i) => [
+          20 + (80 * i) / samples,
+          20 + (60 * i) / samples
+        ]);
+        const document = { version: 2, width, height, strokes: [points] };
+        assert.equal(validSignature(document), true);
+        assert.equal(validSignature({ ...document, strokes: [[[10, 10]], points] }), true);
+        assert.equal(
+          validSignature({
+            ...document,
+            strokes: [
+              [
+                [width + 1, 10],
+                [20, 20]
+              ]
+            ]
+          }),
+          false
+        );
+      }
+    )
   );
 });
 

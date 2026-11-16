@@ -1,3 +1,4 @@
+import { runWorkflow } from '../fixtures/workflow-seed.mjs';
 import { test, expect } from './support/fixtures.mjs';
 import { dutyPage, loginStaff } from './support/staff.mjs';
 
@@ -75,26 +76,54 @@ test('duty rows remain usable and stable while batched workload loads and update
 });
 
 test('workload failure is not shown as zero and refresh can recover', async ({ page }) => {
-  await dayFixture(page);
-  let failed = true;
-  await page.route('**/api/attendance/workload?*', (route) =>
-    route.fulfill(
-      failed
-        ? { status: 503, json: { error: '暂不可用' } }
-        : {
-            json: {
-              month: '2026-10',
-              items: people.map((person) => ({ memberId: person.memberId, monthly: 0, total: 0 }))
-            }
-          }
-    )
+  let failed, panel, counts;
+
+  await runWorkflow(
+    'ui-workload-refresh',
+    'initial',
+    [
+      ['initial', 'LOAD_FAILURE', 'failed'],
+      ['failed', 'RETRY', 'loaded']
+    ],
+    [
+      {
+        event: 'LOAD_FAILURE',
+
+        run: async () => {
+          await dayFixture(page);
+          failed = true;
+          await page.route('**/api/attendance/workload?*', (route) =>
+            route.fulfill(
+              failed
+                ? { status: 503, json: { error: '暂不可用' } }
+                : {
+                    json: {
+                      month: '2026-10',
+                      items: people.map((person) => ({
+                        memberId: person.memberId,
+                        monthly: 0,
+                        total: 0
+                      }))
+                    }
+                  }
+            )
+          );
+          await loginStaff(page);
+          panel = await dutyPage(page, '今日值班');
+          counts = panel.getByLabel('陈宇接单量', { exact: true });
+          await expect(counts.locator('dd').first()).toHaveText('—');
+          await expect(panel.getByText('空闲', { exact: true })).toBeVisible();
+        }
+      },
+      {
+        event: 'RETRY',
+
+        run: async () => {
+          failed = false;
+          await panel.getByRole('button', { name: '刷新值班', exact: true }).click();
+          await expect(counts.locator('dd').first()).toHaveText('0');
+        }
+      }
+    ]
   );
-  await loginStaff(page);
-  const panel = await dutyPage(page, '今日值班');
-  const counts = panel.getByLabel('陈宇接单量', { exact: true });
-  await expect(counts.locator('dd').first()).toHaveText('—');
-  await expect(panel.getByText('空闲', { exact: true })).toBeVisible();
-  failed = false;
-  await panel.getByRole('button', { name: '刷新值班', exact: true }).click();
-  await expect(counts.locator('dd').first()).toHaveText('0');
 });

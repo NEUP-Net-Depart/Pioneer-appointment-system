@@ -1,3 +1,5 @@
+import { runModel, rejectWithoutWrite } from './fixtures/workflow-seed.mjs';
+import { slotCapacityService } from '../src/services/slot-capacities.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { database, seedStaff, seedAppointment } from './helpers/database.mjs';
@@ -27,10 +29,10 @@ function post(departmentCode = 'hardware', positionCode = 'member') {
     effectiveFrom: '2026-01-01'
   };
 }
-async function setup(t) {
+async function setup(t, managed = false) {
   t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-09T11:10:00Z') });
   const db = database();
-  t.after(() => db.sqlite.close());
+  if (!managed) t.after(() => db.sqlite.close());
   for (const id of ['20261001', '20261002', '20261003']) seedStaff(db, id);
   for (const [id, department, position] of [
     ['20261001', 'hardware', 'head'],
@@ -295,6 +297,7 @@ test('repeated QR check-in yields one attendance fact and one live transition', 
 });
 
 test('absence is automatic, ignores preserved legacy review decisions and clears after audited correction', async (t) => {
+  await attendanceModel(t);
   const { db, staff, head, worker } = await setup(t);
   const published = await publish(staff, head, [shift(worker.memberId)]),
     item = published.rosters[0].assignments[0];
@@ -582,3 +585,132 @@ test('office and repair shifts share one attendance fact and unique summary whil
   assert.equal(after.summary.arrived, 1);
   assert.deepEqual(after.items[0].dutyStatuses, { office: 'arrived', repair: 'arrived' });
 });
+
+async function attendanceModel(t) {
+  const correction = (r) =>
+    r.staff.correctAttendance(r.head, {
+      memberId: r.worker.memberId,
+      campusId,
+      businessDate: weekStart,
+      timeMode: 'duty_start',
+      reason: '已核实漏签',
+      requestId: requestId()
+    });
+  const pause = async (r, paused) => {
+    const item = await r.repository.serviceDay(weekStart, campusId);
+    await slotCapacityService(null, r.staff, r.repository).saveServiceDay(r.head, {
+      businessDate: weekStart,
+      campusId,
+      paused,
+      reason: '模型验证',
+      revision: item?.revision ?? -1,
+      requestId: requestId()
+    });
+  };
+  const checkIn = (r) =>
+    r.staff.checkIn(r.worker, { token: r.token, method: 'qr', requestId: requestId() });
+  const edges = [
+    [
+      'upcoming',
+      'absent',
+      'END_SHIFT',
+      () => t.mock.timers.setTime(Date.parse('2026-11-09T13:10:00Z'))
+    ],
+    ['absent', 'arrived', 'CORRECT', correction],
+    ['upcoming', 'arrived', 'CHECK_IN', checkIn],
+    [
+      'arrived',
+      'arrived',
+      'REJECT_DUPLICATE_CORRECTION',
+      (r) => rejectWithoutWrite(r.db, () => correction(r), { status: 409 })
+    ],
+    [
+      'upcoming',
+      'leave',
+      'LEAVE',
+      async (r) => {
+        const a = (await r.staff.rosterMine(r.worker, { weekStart })).items[0];
+        await r.staff.leave(r.worker, a.id, {
+          revision: a.revision,
+          reason: '有课',
+          requestId: requestId()
+        });
+      }
+    ],
+    [
+      'leave',
+      'upcoming',
+      'WITHDRAW',
+      async (r) => {
+        const a = (await r.staff.rosterMine(r.worker, { weekStart })).items[0];
+        await r.staff.withdrawLeave(r.worker, a.id, {
+          revision: a.revision,
+          requestId: requestId()
+        });
+      }
+    ],
+    ['upcoming', 'paused', 'PAUSE', (r) => pause(r, true)],
+    ['paused', 'upcoming', 'RESUME', (r) => pause(r, false)],
+    [
+      'paused',
+      'paused',
+      'REJECT_CORRECTION',
+      (r) => rejectWithoutWrite(r.db, () => correction(r), { status: 409 })
+    ],
+    [
+      'upcoming',
+      'upcoming',
+      'REJECT_MEMBER_CORRECTION',
+      (r) =>
+        rejectWithoutWrite(
+          r.db,
+          () =>
+            r.staff.correctAttendance(r.worker, {
+              memberId: r.worker.memberId,
+              campusId,
+              businessDate: weekStart,
+              timeMode: 'duty_start',
+              reason: '越权补记',
+              requestId: requestId()
+            }),
+          { status: 403 }
+        )
+    ]
+  ].map(([from, to, event, run]) => ({ from, to, event, run }));
+  await runModel({
+    name: 'attendance',
+    initial: 'upcoming',
+    edges,
+    setup: async () => {
+      t.mock.timers.reset();
+      const r = await setup(t, true);
+      r.dispose = () => {
+        r.db.sqlite.close();
+        t.mock.timers.reset();
+      };
+      await publish(r.staff, r.head, [shift(r.worker.memberId)]);
+      const event = await r.staff.createAttendanceEvent(r.head, {
+        campusId,
+        businessDate: weekStart,
+        requestId: requestId()
+      });
+      await r.staff.directCheckIn(r.head, { campusId, requestId: requestId() });
+      r.token = (
+        await r.staff.issueAttendanceToken(r.head, event.id, { revision: event.revision })
+      ).token;
+      return r;
+    },
+    observe: async (r, state) => {
+      const row = (
+        await r.staff.attendanceDay(r.head, { campusId, businessDate: weekStart })
+      ).items.find((row) => row.memberId === r.worker.memberId);
+      assert.equal(row.status, state);
+      assert.equal(
+        r.db.sqlite
+          .prepare('SELECT COUNT(*) n FROM attendance_records WHERE member_id=?')
+          .get(r.worker.memberId).n,
+        state === 'arrived' ? 1 : 0
+      );
+    }
+  });
+}

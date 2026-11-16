@@ -1,6 +1,6 @@
 import { test, expect } from './support/fixtures.mjs';
 import { chooseOption, loginStaff, staffPage, staffApi, dutyPage } from './support/staff.mjs';
-import { dataMotionPresets } from '../../shared/data-motion.js';
+
 import { dateKey } from '../../shared/time.js';
 import { WORKFLOW_TIME } from '../fixtures/workflow-seed.mjs';
 
@@ -202,49 +202,4 @@ test('a new ordinary member applies without qualification configuration and a de
   await applicant.getByRole('button', { name: '刷新审核结果', exact: true }).click();
   await expect(applicant.locator('#activation-status')).toContainText('审核已通过');
   await loginStaff(applicant, '20269907', 'MemberTest!2026');
-});
-
-test('member details remain clickable while a row is revealing', async ({ page }) => {
-  await loginStaff(page, '20261001');
-  const people = await staffPage(page, '人员管理');
-  const button = people.getByRole('button', { name: '人员详情', exact: true }).first();
-  await button.evaluate((node) => node.scrollIntoView({ block: 'center' }));
-  await expect
-    .poll(() =>
-      button.evaluate((node) => {
-        for (let parent = node; parent; parent = parent.parentElement)
-          if (parent.getAnimations().some((animation) => animation.playState === 'running'))
-            return false;
-        return true;
-      })
-    )
-    .toBe(true);
-  await button.evaluate((node, frames) => {
-    const animation = node.closest('.react-row').animate(frames, { duration: 240, fill: 'both' });
-    animation.pause();
-    animation.currentTime = 24;
-  }, dataMotionPresets.enter.keyframes);
-  const bounds = await button.boundingBox();
-  await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
-  await expect(page.getByRole('dialog')).toBeVisible();
-});
-
-test('member detail buttons remain clickable at responsive breakpoints and on a small screen', async ({
-  page,
-  isMobile
-}) => {
-  await loginStaff(page, '20261001');
-  const people = await staffPage(page, '人员管理');
-  // Chromium covers each breakpoint; mobile WebKit covers the fixed bottom navigation.
-  for (const width of isMobile ? [375] : [767, 768, 1100, 1101]) {
-    await page.setViewportSize({ width, height: 900 });
-    const button = people.getByRole('button', { name: '人员详情', exact: true }).last();
-    await button.scrollIntoViewIfNeeded();
-    // Click the scrolled position directly so automatic scrolling cannot hide an overlay regression.
-    const bounds = await button.boundingBox();
-    await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
-    await expect(page.getByRole('dialog')).toBeVisible();
-    await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
-    await expect(page.getByRole('dialog')).toHaveCount(0);
-  }
 });

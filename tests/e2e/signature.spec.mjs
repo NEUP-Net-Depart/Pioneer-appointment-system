@@ -1,6 +1,7 @@
+import { runWorkflow } from '../fixtures/workflow-seed.mjs';
 import { test, expect } from './support/fixtures.mjs';
 import { chooseTime, fillDevice, goReview } from './support/student.mjs';
-import { loginStaff, staffPage, staffApi } from './support/staff.mjs';
+import { loginStaff, staffPage, staffApi, chooseOption } from './support/staff.mjs';
 
 async function ink(canvas) {
   return canvas.evaluate((element) => {
@@ -77,94 +78,190 @@ async function draw(page, canvas, browserName, hasTouch) {
   await expect.poll(async () => (await ink(canvas)).count).toBeGreaterThan(10);
 }
 
-test('signature keeps its proportions through rotation, confirmation and cancelled replacement', async ({
-  page,
-  browserName
-}, info) => {
-  const hasTouch = !!info.project.use.hasTouch;
-  await page.setViewportSize({ width: 375, height: 812 });
-  await page.goto('/');
-  await chooseTime(page);
-  await fillDevice(page);
-  await goReview(page);
-  await page.locator('#open-signature').click();
-  const canvas = page.locator('#signature-canvas');
-  await draw(page, canvas, browserName, hasTouch);
-  const original = await ink(canvas);
-  await page.setViewportSize({ width: 812, height: 450 });
-  await expect
-    .poll(async () => Math.abs((await ink(canvas)).ratio - original.ratio))
-    .toBeLessThan(0.15);
-  await page.setViewportSize({ width: 375, height: 812 });
-  await expect
-    .poll(async () => Math.abs((await ink(canvas)).ratio - original.ratio))
-    .toBeLessThan(0.15);
-  await page.locator('#confirm-signature').click();
-  const preview = page.locator('#confirmed-signature');
-  await expect(preview).toBeVisible();
-  expect(Math.abs((await ink(preview)).ratio - original.ratio)).toBeLessThan(0.15);
-  const confirmed = await preview.evaluate((c) => c.toDataURL());
-  await page.locator('#open-signature').click();
-  await draw(page, canvas, browserName, hasTouch);
-  await page.locator('#undo-signature').click();
-  expect((await ink(canvas)).count).toBe(0);
-  await page.locator('#confirm-signature').click();
-  await expect(page.locator('#signature-error')).toContainText('请完整手写本人姓名');
-  await page.locator('#cancel-signature').click();
-  expect(await preview.evaluate((c) => c.toDataURL())).toBe(confirmed);
-  await page.locator('[name=agreement]').check();
-  const response = page.waitForResponse(
-    (r) => r.url().endsWith('/api/appointments') && r.request().method() === 'POST'
-  );
-  await page.locator('#booking-submit').click();
-  expect((await response).ok()).toBeTruthy();
-  await expect(page.locator('#success-panel')).toBeVisible();
-});
+test(
+  'signature keeps its proportions through rotation, confirmation and cancelled replacement',
+  { tag: '@mobile-smoke' },
+  async ({ page, browserName }, info) => {
+    let hasTouch, canvas, original, preview, confirmed;
+
+    await runWorkflow(
+      'ui-signature',
+      'initial',
+      [
+        ['initial', 'DRAW', 'editing'],
+        ['editing', 'ROTATE', 'editing'],
+        ['editing', 'CONFIRM', 'confirmed'],
+        ['confirmed', 'REJECT_EMPTY_REPLACEMENT', 'invalid'],
+        ['invalid', 'CANCEL_REPLACEMENT', 'confirmed'],
+        ['confirmed', 'BOOK', 'saved']
+      ],
+      [
+        {
+          event: 'DRAW',
+
+          run: async () => {
+            hasTouch = !!info.project.use.hasTouch;
+            await page.setViewportSize({ width: 375, height: 812 });
+            await page.goto('/');
+            await chooseTime(page);
+            await fillDevice(page);
+            await goReview(page);
+            await page.locator('#open-signature').click();
+            canvas = page.locator('#signature-canvas');
+            await draw(page, canvas, browserName, hasTouch);
+          }
+        },
+        {
+          event: 'ROTATE',
+
+          run: async () => {
+            original = await ink(canvas);
+            await page.setViewportSize({ width: 812, height: 450 });
+            await expect
+              .poll(async () => Math.abs((await ink(canvas)).ratio - original.ratio))
+              .toBeLessThan(0.15);
+            await page.setViewportSize({ width: 375, height: 812 });
+            await expect
+              .poll(async () => Math.abs((await ink(canvas)).ratio - original.ratio))
+              .toBeLessThan(0.15);
+          }
+        },
+        {
+          event: 'CONFIRM',
+
+          run: async () => {
+            await page.locator('#confirm-signature').click();
+            preview = page.locator('#confirmed-signature');
+            await expect(preview).toBeVisible();
+            expect(Math.abs((await ink(preview)).ratio - original.ratio)).toBeLessThan(0.15);
+          }
+        },
+        {
+          event: 'REJECT_EMPTY_REPLACEMENT',
+
+          run: async () => {
+            confirmed = await preview.evaluate((c) => c.toDataURL());
+            await page.locator('#open-signature').click();
+            await draw(page, canvas, browserName, hasTouch);
+            await page.locator('#undo-signature').click();
+            expect((await ink(canvas)).count).toBe(0);
+            await page.locator('#confirm-signature').click();
+            await expect(page.locator('#signature-error')).toContainText('请完整手写本人姓名');
+          }
+        },
+        {
+          event: 'CANCEL_REPLACEMENT',
+
+          run: async () => {
+            await page.locator('#cancel-signature').click();
+            expect(await preview.evaluate((c) => c.toDataURL())).toBe(confirmed);
+          }
+        },
+        {
+          event: 'BOOK',
+
+          run: async () => {
+            await page.locator('[name=agreement]').check();
+            const response = page.waitForResponse(
+              (r) => r.url().endsWith('/api/appointments') && r.request().method() === 'POST'
+            );
+            await page.locator('#booking-submit').click();
+            expect((await response).ok()).toBeTruthy();
+            await expect(page.locator('#success-panel')).toBeVisible();
+          }
+        }
+      ]
+    );
+  }
+);
 
 test('onsite signature survives an accidental tap and returning to edit, then persists and renders', async ({
   page,
   browserName
 }, info) => {
-  const hasTouch = !!info.project.use.hasTouch;
-  await loginStaff(page);
-  await staffPage(page, '今日工作');
-  await page.getByRole('button', { name: '现场登记', exact: true }).click();
-  const registration = page.getByRole('dialog', { name: '临时维修登记', exact: true });
-  for (const [label, value] of [
-    ['姓名', '签名回归同学'],
-    ['学号', '20269996'],
-    ['QQ / 微信', '123456789'],
-    ['设备厂商', '联想']
-  ]) {
-    await registration.getByRole('textbox', { name: label, exact: true }).fill(value);
-  }
-  await registration.getByRole('button', { name: '下一步：机主确认' }).click();
-  const canvas = registration.locator('canvas');
-  await canvas.scrollIntoViewIfNeeded();
-  if (hasTouch) {
-    const b = await canvas.boundingBox();
-    await page.touchscreen.tap(b.x + 10, b.y + 10);
-  } else await canvas.click({ position: { x: 10, y: 10 } });
-  await draw(page, canvas, browserName, hasTouch);
-  const before = await ink(canvas);
-  await registration.getByRole('button', { name: '返回修改', exact: true }).click();
-  await registration.getByRole('button', { name: '下一步：机主确认' }).click();
-  await expect.poll(async () => (await ink(canvas)).count).toBeGreaterThan(10);
-  expect(Math.abs((await ink(canvas)).ratio - before.ratio)).toBeLessThan(0.1);
-  await registration.getByRole('checkbox').check();
-  const response = page.waitForResponse(
-    (r) => r.url().endsWith('/api/scan/onsite') && r.request().method() === 'POST'
+  let registration, canvas;
+
+  await runWorkflow(
+    'ui-onsite-signature',
+    'initial',
+    [
+      ['initial', 'DRAW', 'editing'],
+      ['editing', 'RETURN_TO_EDIT', 'editing'],
+      ['editing', 'REGISTER', 'saved'],
+      ['saved', 'VIEW_ORIGINAL', 'displayed']
+    ],
+    [
+      {
+        event: 'DRAW',
+
+        run: async () => {
+          const hasTouch = !!info.project.use.hasTouch;
+          await loginStaff(page);
+          await staffPage(page, '今日工作');
+          await page.getByRole('button', { name: '现场登记', exact: true }).click();
+          registration = page.getByRole('dialog', { name: '临时维修登记', exact: true });
+          for (const [label, value] of [
+            ['姓名', '签名回归同学'],
+            ['学号', '20269996'],
+            ['QQ / 微信', '123456789'],
+            ['品牌', 'Dell']
+          ]) {
+            await registration.getByRole('textbox', { name: label, exact: true }).fill(value);
+          }
+          await chooseOption(page, registration.getByRole('combobox', { name: '是否使用液金散热', exact: true }), '是');
+          await chooseOption(page, registration.getByRole('combobox', { name: 'Dell G15 / G16 系列', exact: true }), '否');
+          await registration.getByRole('button', { name: '下一步：机主确认' }).click();
+          canvas = registration.locator('canvas');
+          await canvas.scrollIntoViewIfNeeded();
+          if (hasTouch) {
+            const b = await canvas.boundingBox();
+            await page.touchscreen.tap(b.x + 10, b.y + 10);
+          } else await canvas.click({ position: { x: 10, y: 10 } });
+          await draw(page, canvas, browserName, hasTouch);
+        }
+      },
+      {
+        event: 'RETURN_TO_EDIT',
+
+        run: async () => {
+          const before = await ink(canvas);
+          await registration.getByRole('button', { name: '返回修改', exact: true }).click();
+          await registration.getByRole('button', { name: '下一步：机主确认' }).click();
+          await expect.poll(async () => (await ink(canvas)).count).toBeGreaterThan(10);
+          expect(Math.abs((await ink(canvas)).ratio - before.ratio)).toBeLessThan(0.1);
+        }
+      },
+      {
+        event: 'REGISTER',
+
+        run: async () => {
+          await registration.getByRole('checkbox').check();
+          const response = page.waitForResponse(
+            (r) => r.url().endsWith('/api/scan/onsite') && r.request().method() === 'POST'
+          );
+          await registration.getByRole('button', { name: '确认登记', exact: true }).click();
+          const result = await response;
+          expect(result.ok()).toBeTruthy();
+          const created = await result.json();
+          const detail = await staffApi(page, '/api/field/appointments/' + created.id, null, 'GET');
+          expect(detail.deviceType).toBe('笔记本');
+          expect(detail.liquidMetal).toBe('是');
+          expect(detail.dellG15).toBe('否');
+          const stored = JSON.parse(detail.original.signature);
+          expect(stored.version).toBe(2);
+          expect(stored.strokes).toHaveLength(2);
+        }
+      },
+      {
+        event: 'VIEW_ORIGINAL',
+
+        run: async () => {
+          await page.getByRole('button', { name: '查看原始登记与协议', exact: true }).click();
+          await expect
+            .poll(async () => (await ink(page.locator('.repair-signature'))).count)
+            .toBeGreaterThan(10);
+        }
+      }
+    ]
   );
-  await registration.getByRole('button', { name: '确认登记', exact: true }).click();
-  const result = await response;
-  expect(result.ok()).toBeTruthy();
-  const created = await result.json();
-  const detail = await staffApi(page, '/api/field/appointments/' + created.id, null, 'GET');
-  const stored = JSON.parse(detail.original.signature);
-  expect(stored.version).toBe(2);
-  expect(stored.strokes).toHaveLength(2);
-  await page.getByRole('button', { name: '查看原始登记与协议', exact: true }).click();
-  await expect
-    .poll(async () => (await ink(page.locator('.repair-signature'))).count)
-    .toBeGreaterThan(10);
 });
