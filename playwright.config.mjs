@@ -8,7 +8,7 @@ export default defineConfig({
   testMatch: diagnostics ? '**/diagnostics/*.spec.mjs' : '**/*.spec.mjs',
   testIgnore: smoke ? ['**/diagnostics/**'] : [],
   timeout: 60000,
-  globalTimeout: process.env.CI ? 600000 : undefined,
+  globalTimeout: process.env.CI ? 720000 : undefined,
   expect: { timeout: 10000 },
   // Each test owns its Worker and D1/R2 state; bound concurrency for CI runners.
   workers: 2,

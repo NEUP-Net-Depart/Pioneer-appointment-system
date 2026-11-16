@@ -47,7 +47,7 @@ jobs:
         github.base_ref == 'main' && github.head_ref == 'dev' &&
         github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 18
     container:
       image: mcr.microsoft.com/playwright:v1.64.0-noble
       options: --init --ipc=host --user 1001
@@ -61,7 +61,7 @@ jobs:
         timeout-minutes: 5
       - name: Run browser smoke checks
         run: npm run test:e2e
-        timeout-minutes: 12
+        timeout-minutes: 14
       - name: Preserve isolated UI acceptance evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4

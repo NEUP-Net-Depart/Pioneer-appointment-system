@@ -184,3 +184,29 @@ test('information edits preserve repair responsibility and encrypt contact histo
   assert.ok(!JSON.stringify(audit).includes('private-contact'));
   assert.ok(!(await repo.find('edit')).social.includes('private-contact'));
 });
+
+test('information edits persist registration fields and audit their changes without changing signed evidence', async t => {
+  const {db, users, repo, service, order} = repairScenario(t, {studentId:'20260009'});
+  const actor = await users.find('20260001');
+  order('registration-edit', {warranty:'不清楚', liquid_metal:'不清楚', signature:JSON.stringify(signatureFixture())});
+  const before = await repo.find('registration-edit');
+  const changes = {deviceType:'笔记本',brand:'Dell',serial:'SN-2026-1234',warranty:'否',liquidMetal:'是',dellG15:'是',liquidDrop:'否',college:'软件学院',contactType:'wechat'};
+  const detail = await service.edit('registration-edit', request(changes), actor);
+  const saved = await repo.find('registration-edit');
+  for (const [key, value] of Object.entries(changes)) {
+    assert.equal(saved[key], value, key);
+    assert.equal(detail[key], value, key);
+  }
+  for (const key of ['studentId','campus','date','timeSlot','signature','agreementAt','agreementVersion','status']) assert.equal(saved[key], before[key], key);
+  const audit = db.sqlite.prepare("SELECT before_json,after_json FROM audit_events WHERE action='repairs.information.updated'").get();
+  assert.equal(JSON.parse(audit.before_json).warranty, '不清楚');
+  for (const [key, value] of Object.entries(changes)) assert.equal(JSON.parse(audit.after_json)[key], value, key);
+  await assert.rejects(service.edit('registration-edit', request({revision:1,serial:'x'.repeat(121)}), actor), {status:400});
+  await assert.rejects(service.edit('registration-edit', request({revision:1,note:'无权修改登记备注'}), actor), {status:403});
+  assert.equal((await repo.find('registration-edit')).revision, 1);
+  const desktop = await service.edit('registration-edit', request({revision:1,deviceType:'台式机'}), actor);
+  assert.equal(desktop.liquidMetal, '');
+  assert.equal(desktop.dellG15, '');
+  assert.equal(desktop.serial, changes.serial);
+  assert.equal(desktop.warranty, changes.warranty);
+});

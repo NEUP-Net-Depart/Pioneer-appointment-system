@@ -1,7 +1,7 @@
 import { runWorkflow } from '../fixtures/workflow-seed.mjs';
 import { test, expect } from './support/fixtures.mjs';
 import { chooseTime, fillDevice, goReview } from './support/student.mjs';
-import { loginStaff, staffPage, staffApi } from './support/staff.mjs';
+import { loginStaff, staffPage, staffApi, chooseOption } from './support/staff.mjs';
 
 async function ink(canvas) {
   return canvas.evaluate((element) => {
@@ -204,10 +204,12 @@ test('onsite signature survives an accidental tap and returning to edit, then pe
             ['姓名', '签名回归同学'],
             ['学号', '20269996'],
             ['QQ / 微信', '123456789'],
-            ['设备厂商', '联想']
+            ['品牌', 'Dell']
           ]) {
             await registration.getByRole('textbox', { name: label, exact: true }).fill(value);
           }
+          await chooseOption(page, registration.getByRole('combobox', { name: '是否使用液金散热', exact: true }), '是');
+          await chooseOption(page, registration.getByRole('combobox', { name: 'Dell G15 / G16 系列', exact: true }), '否');
           await registration.getByRole('button', { name: '下一步：机主确认' }).click();
           canvas = registration.locator('canvas');
           await canvas.scrollIntoViewIfNeeded();
@@ -242,6 +244,9 @@ test('onsite signature survives an accidental tap and returning to edit, then pe
           expect(result.ok()).toBeTruthy();
           const created = await result.json();
           const detail = await staffApi(page, '/api/field/appointments/' + created.id, null, 'GET');
+          expect(detail.deviceType).toBe('笔记本');
+          expect(detail.liquidMetal).toBe('是');
+          expect(detail.dellG15).toBe('否');
           const stored = JSON.parse(detail.original.signature);
           expect(stored.version).toBe(2);
           expect(stored.strokes).toHaveLength(2);
