@@ -19,7 +19,7 @@
 
 ## 按需属性测试与业务状态图
 
-`fast-check@4.10.2` 和 `xstate@6.0.0-beta.2` 是精确锁定的开发依赖；图工具使用 v6 自带的 `xstate/graph`。这两个模式仅用于手动检查，默认 `npm test`、`verify`、浏览器冒烟和 GitHub Actions 均不启用，也不在默认路径加载这两个库。XState v6 当前使用 beta 版本，升级时须重新验证图遍历与实际业务断言。
+`fast-check@4.10.2` 和 `xstate@6.0.0-beta.2` 是精确锁定的开发依赖；图工具使用 v6 自带的 `xstate/graph`。这两个模式用于按需检查，默认 `npm test`、`verify`、浏览器冒烟和发布 CI 均不启用，也不在默认路径加载这两个库。手动工作流 **Optional test tools** 提供 `models-node`、`models-browser` 和 `properties`，均归档模型报告。XState v6 当前使用 beta 版本，升级时须重新验证图遍历与实际业务断言。
 
 | 命令 | 内容 |
 | --- | --- |
@@ -27,15 +27,18 @@
 | `npm run test:models:e2e` | 完整浏览器回归，并启用现有页面流程的状态图 |
 | `npm run test:models` | 依次执行以上两个入口 |
 | `npm run test:properties` | Node 确定性状态图，加属性数据与可缩减的业务命令序列 |
+| `npm run test:models:check` | 执行器回归：参数校验、失败缩减后精确重放、两类覆盖隔离与并发报告保存 |
 
-没有新增测试文件或测试注册。改造前的数量基线为 **146 项 Node 测试、94 项完整浏览器测试、6 项默认冒烟**，改造后的名称、参数化展开数量和冒烟标签保持一致。手动模式在同一个测试回调内运行更多路径或数据，不使用动态子测试。默认用例仍执行原有场景和关键断言。
+业务模型沿用现有测试回调，在手动模式中运行更多路径或数据，不额外注册一套业务测试。执行器自身的回归位于 `tools/model-report.test.mjs`，仅通过 `test:models:check` 或上述手动工作流运行。默认浏览器门禁仍为 **6 项冒烟**。
+
+同步最新 `dev` 后，保留私人查询凭证的显式签发与复制失败恢复、图片取消/校验/压缩、未保存草稿保护及登记资料持久化回归。继续移除没有视觉基准的尺寸、颜色、边框、图标数量和布局顺序断言，并删除主要重复这些断言的管理工具展示用例。拖放命中测试保留坐标操作，因为它验证真实拖拽事件能否进入接收区；它不要求固定像素布局。保修网点测试专注品牌保存后的链接变化，登记字段的完整校验由服务测试和登记流程覆盖。
 
 `fixtures/workflow-seed.mjs` 承载共用执行器，模型和操作适配器保留在各自的现有测试/辅助文件中：
 
 - 服务模型使用独立声明的有限状态和事件。`xstate/graph` 求最短前置路径，再逐条附加目标转换，因此自环、重放和拒绝操作也必须执行，不能只统计可达节点。
 - 每条路径、每轮随机运行及缩减重试均重新建立 fixture，结束时释放数据库和模拟时钟。模型事件调用真实业务服务与 SQLite；上传及原厂网络边界复用可控响应，不访问真实厂商。
 - 每一步检查实际业务状态与副作用。拒绝写入比较所有业务表的前后快照，包含审计和请求回执。原有并发争抢、事务失败、权限、隐私和幂等断言继续执行。
-- 页面和部分已有长流程按原有顺序执行。状态图的转换表独立于执行步骤声明；删除或漏执行步骤不会同步缩小覆盖目标。各步骤包含真实操作和结果断言，最后检查全部声明的状态与边是否执行，并输出 `[model]` 覆盖计数。
+- 页面和部分已有长流程按原有顺序执行。状态图的转换表独立于执行步骤声明；删除或漏执行步骤不会同步缩小覆盖目标。各步骤包含真实操作和结果断言，最后检查全部声明的状态与边是否执行，并输出覆盖计数和 JSON 报告。
 - ID、revision、次数和日期数值不进入图节点标识；过期版本、角色和校区通过有限事件场景验证。这里的全覆盖指已声明业务图的状态和事件转换，不等于生产代码分支覆盖，也不声称穷举所有输入组合。
 
 ### 模型与原有用例对应
@@ -70,17 +73,34 @@
 | `FC_NUM_RUNS` | 正整数，覆盖当前属性的轮次 |
 | `FC_MAX_COMMANDS` | 正整数，覆盖每条命令序列的最大长度 |
 | `FC_SEED` | 有符号 32 位整数；未指定时由 fast-check 选择 |
-| `FC_PATH` | 失败日志提供的缩减路径，必须同时设置 seed，并只选择一个原有测试用例 |
+| `FC_PATH` | 失败日志提供的缩减路径，由冒号分隔的非负安全整数组成；必须同时设置 seed，并只选择一个原有测试用例 |
+| `FC_REPLAY_PATH` | `fc.commands` 反例中的 `replayPath` 原始值，不含引号及 `replayPath=`；必须同时设置 seed 和 path，只用于命令模型。允许空日志 `:`，拒绝空字符串、非法字符和不匹配的编码长度 |
 
 ```sh
 FC_NUM_RUNS=100 FC_MAX_COMMANDS=50 npm run test:properties
 
-# 将 seed/path 替换为失败日志中的值，使用原有测试标题定位唯一属性。
-TEST_MODELS=1 TEST_PROPERTIES=1 FC_SEED=123456 FC_PATH='0:1:0' \
-  node --test --test-name-pattern='publish without weekly questionnaires' tests/weekly-schedule.test.mjs
+# 将三个值替换为同一次失败报告中的值，保留当时的运行预算。
+FC_SEED=123456 FC_PATH='0:1:0' FC_REPLAY_PATH='AAC:B' \
+  npm run test:properties -- --test-name-pattern='publish without weekly questionnaires' tests/weekly-schedule.test.mjs
 ```
 
-失败保留 fast-check 的 seed、path、最小反例/命令序列；模型错误额外注明模型名、起始状态、事件和目标状态。不要用重跑成功替代修复，不把真实业务缺陷改成模型预期。本次变更只维护测试，生产修复单独处理。基础设施发布、历史迁移和埋点诊断继续使用原来的验证方式。
+PowerShell 中先设置 `$env:FC_SEED='123456'`、`$env:FC_PATH='0:1:0'`、`$env:FC_REPLAY_PATH='AAC:B'`，再执行相同的 npm 命令；结束后用 `Remove-Item Env:FC_SEED, Env:FC_PATH, Env:FC_REPLAY_PATH` 清理。所有 npm 模型入口通过 Node 设置开关，兼容 Windows 和 Linux。
+
+命令序列的 `path` 与 `replayPath` 是两个不同参数：前者传给 `fc.check`，后者传给 `fc.commands`。重放应使用相同代码、锁定的依赖、`FC_NUM_RUNS` 和 `FC_MAX_COMMANDS`；执行器要求一个测试文件及 `--test-name-pattern`，标题需要定位唯一属性。普通数据属性只设置 seed/path，传入 `FC_REPLAY_PATH` 会明确报错，避免被静默忽略。
+
+失败保留 fast-check 的 seed、path、replayPath 和缩减后的最小反例/命令序列；模型错误额外注明模型名、起始状态、事件和目标状态。不要用重跑成功替代修复，不把真实业务缺陷改成模型预期。基础设施发布、历史迁移和埋点诊断继续使用原来的验证方式。
+
+### 模型报告
+
+每次 npm 模型入口创建独立的 `output/model-reports/<运行标识>/model-report.json`，终端输出完整路径；`test:models` 将 Node 和浏览器结果写入同一份报告。手动 Actions 在成功或失败时均归档 `output/model-reports/`。当前交付为结构化 JSON，包含状态与转换定义，可供后续生成离线 HTML；没有部署报告网站。
+
+- 每个模型包含状态/转换总数、具体定义、来源、浏览器项目、执行状态，以及独立的 `deterministic` / `random` 覆盖记录。`visitedStates`、`visitedTransitions` 是实际通过业务断言的集合，覆盖率为 0–1；失败的边不计入覆盖。空随机序列只计入已经观察成功的初始状态。
+- 确定性 `runs` 是前置路径加目标边的执行次数；随机 `runs` 来自 fast-check，`attempts` 包含生成与缩减尝试，`steps` 只统计断言通过的转换。随机覆盖包含这些尝试实际访问的状态/边，完全不混入确定性覆盖。确定性全覆盖不表示随机探索充分，也不设置随机全覆盖硬门槛。
+- 随机结果保存预算、实际 seed、fast-check 丢弃轮次与缩减次数，失败时保存 `path`、`replayPath`、`counterexample` 和错误。`numSkips` 是属性轮次的丢弃数，不是命令前置条件未满足的次数。`replay` 字段另外记录本次输入的重放参数。数据属性结果保存在顶层 `properties` 中。
+- 未启用随机模式标记为 `not-requested`；页面模型和已有单路径模型标记为 `not-supported`。这类模型没有随机探索率的成功结论。
+- 并行进程各写独立记录，执行器在子进程退出后汇总；同名浏览器模型按项目和调用实例保留，不会相互覆盖。测试失败保留已完成部分并返回非零。若强制终止整个执行器，尚未汇总的 `entries/*.json` 仍可用于诊断，不能把 `running` / `incomplete` 记录视为通过。
+
+直接使用 `TEST_MODELS=1 node --test ...` 时可设置 `MODEL_REPORT_DIR` 保存单项记录；需要汇总 JSON 时使用 npm 入口。`MODEL_REPORT_ROOT` 可调整 npm 入口的报告父目录，默认为 `output/model-reports/`。
 
 ## SQL 读写与性能诊断
 

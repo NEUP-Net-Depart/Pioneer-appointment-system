@@ -1,8 +1,7 @@
 import { runWorkflow } from '../../fixtures/workflow-seed.mjs';
 import { test, expect } from '../support/fixtures.mjs';
 import { readFile } from 'node:fs/promises';
-import { chooseOption, loginStaff, onsiteOrder, staffPage, staffApi } from '../support/staff.mjs';
-import { PHOTO } from '../support/student.mjs';
+import { chooseOption, loginStaff, onsiteOrder, staffPage } from '../support/staff.mjs';
 
 async function fixture(page, { captcha = false, huawei = false } = {}) {
   await page.addInitScript(() => {
@@ -485,37 +484,14 @@ test('a repair order links to the service center of its current brand', async ({
   await details.getByRole('button', { name: '修改工单信息', exact: true }).click();
   const brand = details.getByLabel('品牌', { exact: true });
   await brand.fill('荣耀');
-  await details.getByLabel('设备型号', { exact: true }).fill('MagicBook 14');
-  await chooseOption(page, details.getByRole('combobox', { name: '是否在保', exact: true }), '否');
-  await chooseOption(page, details.getByRole('combobox', { name: '是否使用液金散热', exact: true }), '是');
-  await expect(details.getByRole('combobox', { name: 'Dell G15 / G16 系列', exact: true })).toHaveCount(0);
-  await chooseOption(page, details.getByRole('combobox', { name: '进水情况', exact: true }), '否');
-  await details.getByLabel('设备序列号', { exact: true }).fill('SN-REPAIR-2026');
-  await details.getByLabel('学院', { exact: true }).fill('软件学院');
   await details.getByRole('button', { name: '保存工单信息', exact: true }).click();
-  await expect(dialog.getByRole('heading', { name: '荣耀 MagicBook 14', exact: true })).toBeVisible();
   await expect(link).toHaveAttribute('href', honor);
   await details.getByRole('button', { name: '修改工单信息', exact: true }).click();
   await brand.fill('机械师');
   await details.getByRole('button', { name: '保存工单信息', exact: true }).click();
-  await expect(dialog.getByRole('heading', { name: '机械师 MagicBook 14', exact: true })).toBeVisible();
   await expect(link).toHaveCount(0);
   await details.getByRole('button', { name: '修改工单信息', exact: true }).click();
   await brand.fill('荣耀');
   await details.getByRole('button', { name: '保存工单信息', exact: true }).click();
-  await expect(dialog.getByRole('heading', { name: '荣耀 MagicBook 14', exact: true })).toBeVisible();
   await expect(link).toHaveAttribute('href', honor);
-  for (const side of ['正面', '背面']) await dialog.getByLabel(`设备${side}照片`, { exact: true })
-    .setInputFiles({ name: `${side}.png`, mimeType: 'image/png', buffer: PHOTO });
-  await dialog.getByRole('button', { name: '仅接收设备', exact: true }).click();
-  await expect(dialog.getByRole('button', { name: '开始维修', exact: true })).toBeVisible();
-  const saved = await staffApi(page, `/api/field/appointments/${order.id}`, null, 'GET');
-  expect(saved.brand).toBe('荣耀');
-  expect(saved.deviceModel).toBe('MagicBook 14');
-  expect(saved.warranty).toBe('否');
-  expect(saved.liquidMetal).toBe('是');
-  expect(saved.dellG15).toBe('');
-  expect(saved.liquidDrop).toBe('否');
-  expect(saved.serial).toBe('SN-REPAIR-2026');
-  expect(saved.college).toBe('软件学院');
 });

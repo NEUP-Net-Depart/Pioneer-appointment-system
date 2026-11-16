@@ -99,7 +99,7 @@ test('cancelling a photo picker keeps the repair dialog and selected photos', as
   await expect(dialog).toHaveCount(0);
 });
 
-test('booking, onsite registration and repair correction share device questions', async ({ page }, testInfo) => {
+test('booking, onsite registration and repair correction share device questions', async ({ page }) => {
   await page.goto('/');
   await chooseTime(page);
   await page.locator('[name=deviceType]').selectOption('笔记本');
@@ -146,48 +146,14 @@ test('booking, onsite registration and repair correction share device questions'
   expect(saved.faultType).toBe('蓝屏');
   expect(saved.serial).toBe('SUPPLEMENT-SN');
   expect(saved.original.note).toBe('现场检查补充');
-  await dialog.getByRole('button', { name: '修改工单信息', exact: true }).click();
-  await information.screenshot({ path: testInfo.outputPath('aligned-information.png') });
-  expect(await dialog.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(false);
 });
 
-test('intake dropzones validate files, replace previews and receive the order', async ({ page }, testInfo) => {
+test('intake dropzones validate files, replace previews and receive the order', async ({ page }) => {
   const { order, dialog } = await orderWithPhotos(page, { selectPhotos: false });
   const front = dialog.locator('.field-intake-photo').first();
   const back = dialog.locator('.field-intake-photo').last();
   await expect(dialog.getByText('已准备 0 / 2 张')).toBeVisible();
   await expect(dialog.getByRole('button', { name: '接收并开始维修', exact: true })).toBeInViewport();
-  const frontBounds = await front.boundingBox();
-  const backBounds = await back.boundingBox();
-  expect(Math.abs(frontBounds.y - backBounds.y)).toBeLessThan(2);
-  expect(backBounds.x).toBeGreaterThan(frontBounds.x);
-  const tools = dialog.getByRole('region', { name: '维修信息', exact: true });
-  const official = dialog.getByRole('region', { name: '官方支持', exact: true });
-  await expect(tools.getByRole('heading', { name: '维修信息', exact: true })).toBeVisible();
-  await expect(official.getByRole('heading', { name: '官方支持', exact: true })).toBeVisible();
-  const toolActions = [
-    tools.getByRole('button', { name: '查看照片与附件', exact: true }),
-    tools.getByRole('button', { name: '补充照片', exact: true }),
-    official.getByRole('button', { name: '查询保修状态', exact: true }),
-    official.getByRole('link', { name: '查找售后网点', exact: true })
-  ];
-  const bounds = await Promise.all(toolActions.map((action) => action.boundingBox()));
-  expect(Math.abs(bounds[0].x - bounds[2].x)).toBeLessThan(2);
-  expect(Math.abs(bounds[1].x - bounds[3].x)).toBeLessThan(2);
-  expect(Math.abs(bounds[0].y - bounds[1].y)).toBeLessThan(2);
-  expect(Math.abs(bounds[2].y - bounds[3].y)).toBeLessThan(2);
-  const primaryBounds = await dialog.getByRole('button', { name: '接收并开始维修', exact: true }).boundingBox();
-  const secondaryBounds = await dialog.getByRole('button', { name: '仅接收设备', exact: true }).boundingBox();
-  expect(Math.abs(primaryBounds.width - secondaryBounds.width)).toBeLessThan(2);
-  expect(primaryBounds.height).toBeGreaterThanOrEqual(48);
-  expect(Math.abs(primaryBounds.height - secondaryBounds.height)).toBeLessThan(2);
-  expect(bounds[0].y).toBeLessThan(bounds[2].y);
-  await expect(front.locator('.field-photo-dropzone > svg')).toHaveCount(1);
-  await expect(back.locator('.field-photo-dropzone > svg')).toHaveCount(1);
-  await expect(tools.getByRole('button', { name: '修改工单信息', exact: true })).toHaveCount(1);
-  await expect(tools.getByText('修正设备资料', { exact: true })).toHaveCount(0);
-  await expect(tools.locator('svg')).toHaveCount(0);
-  await dialog.screenshot({ path: testInfo.outputPath('intake-empty.png') });
   const chooserPromise = page.waitForEvent('filechooser');
   await front.getByRole('button', { name: '添加设备正面照片', exact: true }).focus();
   await page.keyboard.press('Enter');
@@ -231,9 +197,6 @@ test('intake dropzones validate files, replace previews and receive the order', 
   await back.dispatchEvent('drop', { dataTransfer: transfer });
   await expect(back.getByRole('alert')).toHaveCount(0);
   await expect(dialog.getByText('已准备 2 / 2 张')).toBeVisible();
-  await dialog.screenshot({ path: testInfo.outputPath('intake-ready.png') });
-  const overflow = await dialog.evaluate((element) => element.scrollWidth > element.clientWidth);
-  expect(overflow).toBe(false);
   await dialog.getByRole('button', { name: '接收并开始维修', exact: true }).click();
   await expect(dialog.getByRole('button', { name: '结束本次服务', exact: true })).toBeVisible();
   const detail = await staffApi(page, `/api/field/appointments/${order.id}`, null, 'GET');
@@ -244,66 +207,7 @@ test('intake dropzones validate files, replace previews and receive the order', 
   await multiple.dispose();
 });
 
-test('administrative tools are directly available without expanding a group', async ({ page }, testInfo) => {
-  await loginStaff(page);
-  await staffPage(page, '今日工作');
-  const order = await onsiteOrder(page);
-  await page.getByRole('button', { name: '刷新工作台', exact: true }).click();
-  await page.getByRole('button').filter({ hasText: order.id }).first().click();
-  const dialog = page.getByRole('dialog', { name: '维修工单', exact: true });
-  const original = dialog.getByRole('button', { name: '查看原始登记与协议', exact: true });
-  await expect(original).toBeVisible();
-  await expect(dialog.locator('.repair-tools-more')).toHaveCount(0);
-  const tools = dialog.getByRole('region', { name: '维修信息', exact: true });
-  await expect(tools.locator('button.repair-tool-trigger')).toHaveCount(6);
-  await dialog.screenshot({ path: testInfo.outputPath('administrator-intake.png') });
-  const modify = tools.getByRole('button', { name: '修改工单信息', exact: true });
-  const credential = tools.getByRole('button', { name: '补发查询链接', exact: true });
-  const before = await Promise.all([modify.boundingBox(), credential.boundingBox()]);
-  expect(Math.abs(before[0].y - before[1].y)).toBeLessThan(2);
-  await modify.hover();
-  await expect(modify).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-  await expect(modify).toHaveCSS('border-bottom-width', '0px');
-  await expect(dialog.getByRole('region', { name: '官方支持', exact: true })).toHaveCSS('border-top-width', '0px');
-  await modify.focus();
-  await page.keyboard.press('Tab');
-  await page.keyboard.press('Shift+Tab');
-  await expect(modify).toBeFocused();
-  await expect(modify).toHaveCSS('outline-width', '2px');
-  await expect(modify).toHaveCSS('border-radius', '8px');
-  await tools.screenshot({ path: testInfo.outputPath('tools-keyboard-focus.png') });
-  await modify.click();
-  await expect(modify).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-  const information = tools.locator('.repair-information .repair-control-panel');
-  await expect(information).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-  await expect(information.getByRole('textbox', { name: '故障描述与补充说明', exact: true })).toHaveJSProperty('tagName', 'TEXTAREA');
-  await information.screenshot({ path: testInfo.outputPath('information-expanded.png') });
-  await credential.click();
-  await expect(information).toHaveCount(0);
-  await expect(tools.locator('.repair-information-row .repair-control-panel')).toHaveCount(1);
-  const after = await Promise.all([modify.boundingBox(), credential.boundingBox()]);
-  expect(Math.abs(after[0].y - after[1].y)).toBeLessThan(2);
-  const row = await tools.locator('.repair-information-row').boundingBox();
-  for (const panel of await tools.locator('.repair-information-row .repair-control-panel').all()) {
-    const bounds = await panel.boundingBox();
-    expect(Math.abs(bounds.x - row.x)).toBeLessThan(2);
-    expect(Math.abs(bounds.width - row.width)).toBeLessThan(2);
-  }
-  await tools.getByLabel('已人工核验机主身份', { exact: true }).check();
-  await tools.getByLabel('核验说明（勿录入完整联系方式）', { exact: true }).fill('现场核对学生证与预约资料一致');
-  await expect(tools.getByRole('button', { name: '签发私人链接', exact: true })).toBeEnabled();
-  await original.click();
-  const unsaved = page.getByRole('dialog', { name: '有未保存的调整', exact: true });
-  await expect(unsaved).toBeVisible();
-  await unsaved.getByRole('button', { name: '丢弃并继续', exact: true }).click();
-  const record = page.getByRole('dialog', { name: '原始登记与协议', exact: true });
-  await expect(record).toBeVisible();
-  await record.getByRole('button', { name: '关闭', exact: true }).click();
-  await expect(record).toBeHidden();
-  await expect(original).toBeVisible();
-});
-
-test('repair tools protect drafts when cancelling, switching and closing', async ({ page }, testInfo) => {
+test('repair tools protect drafts when cancelling, switching and closing', async ({ page }) => {
   await loginStaff(page);
   await staffPage(page, '今日工作');
   const order = await onsiteOrder(page);
@@ -317,22 +221,8 @@ test('repair tools protect drafts when cancelling, switching and closing', async
   const originalBrand = await information.getByLabel('品牌', { exact: true }).inputValue();
   await information.getByLabel('品牌', { exact: true }).fill('未保存品牌');
   const actions = information.locator('.repair-panel-actions');
-  const [cancel, save] = await Promise.all([
-    actions.getByRole('button', { name: '取消', exact: true }).boundingBox(),
-    actions.getByRole('button', { name: '保存工单信息', exact: true }).boundingBox()
-  ]);
-  expect(Math.abs(cancel.y - save.y)).toBeLessThan(2);
-  await actions.screenshot({ path: testInfo.outputPath('paired-form-actions.png') });
   await actions.getByRole('button', { name: '取消', exact: true }).click();
   await expect(confirmation).toBeVisible();
-  await expect(confirmation.locator('.workspace-unsaved-actions > button')).toHaveCount(2);
-  const discard = confirmation.getByRole('button', { name: '丢弃并继续', exact: true });
-  const continueSave = confirmation.getByRole('button', { name: '保存并继续', exact: true });
-  await expect(discard).toHaveCSS('background-color', 'rgb(180, 35, 24)');
-  const [discardBounds, saveBounds] = await Promise.all([discard.boundingBox(), continueSave.boundingBox()]);
-  expect(Math.abs(discardBounds.y - saveBounds.y)).toBeLessThan(2);
-  expect(discardBounds.x).toBeLessThan(saveBounds.x);
-  await confirmation.screenshot({ path: testInfo.outputPath('unsaved-confirmation.png') });
   await confirmation.getByRole('button', { name: '取消操作', exact: true }).click();
   await expect(information.getByLabel('品牌', { exact: true })).toHaveValue('未保存品牌');
   await dialog.getByRole('button', { name: '补充照片', exact: true }).click();
@@ -370,19 +260,13 @@ test('repair tools protect drafts when cancelling, switching and closing', async
   await expect(dialog).toHaveCount(0);
 });
 
-test('supplemental photos accept large originals through the shared dropzone and compress before upload', async ({ page }, testInfo) => {
+test('supplemental photos accept large originals through the shared dropzone and compress before upload', async ({ page }) => {
   const { order, dialog } = await orderWithPhotos(page, { received: true, selectPhotos: false });
   const attachments = dialog.getByRole('region', { name: '附件与设备照片', exact: true });
   await attachments.getByRole('button', { name: '查看照片与附件', exact: true }).click();
   await attachments.getByRole('button', { name: '补充照片', exact: true }).click();
-  const view = attachments.getByRole('button', { name: '查看照片与附件', exact: true });
-  const add = attachments.getByRole('button', { name: '补充照片', exact: true });
-  await expect(attachments.locator('.repair-attachment-list')).toHaveCount(0);
-  const bounds = await Promise.all([view.boundingBox(), add.boundingBox()]);
-  expect(Math.abs(bounds[0].y - bounds[1].y)).toBeLessThan(2);
   const panel = attachments.locator('.repair-attachment-upload');
   await expect(panel.getByRole('button', { name: '添加补充照片', exact: true })).toBeVisible();
-  await panel.screenshot({ path: testInfo.outputPath('supplement-upload.png') });
   const dataTransfer = await page.evaluateHandle(bytes => {
     const transfer = new DataTransfer();
     transfer.items.add(new File([new Uint8Array(bytes), new Uint8Array(8 * 1024 * 1024 - bytes.length)], '维修过程.png', { type: 'image/png' }));

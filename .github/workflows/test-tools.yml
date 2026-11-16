@@ -7,7 +7,7 @@ on:
         required: true
         type: choice
         default: sql
-        options: [sql, migrations, deployment, browser-full, browser-diagnostics]
+        options: [sql, migrations, deployment, browser-full, browser-diagnostics, models-node, models-browser, properties]
 permissions:
   contents: read
 jobs:
@@ -21,6 +21,15 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Verify model reporting and command replay
+        if: startsWith(inputs.tool, 'models-') || inputs.tool == 'properties'
+        run: npm run test:models:check
+      - name: Deterministic service models
+        if: inputs.tool == 'models-node'
+        run: npm run test:models:node
+      - name: Properties and random command exploration
+        if: inputs.tool == 'properties'
+        run: npm run test:properties
       - name: SQL read/write and scaling budgets
         if: inputs.tool == 'sql'
         run: npm run test:sql
@@ -31,7 +40,7 @@ jobs:
         if: inputs.tool == 'deployment'
         run: npm run test:deployment
       - name: Install diagnostic browsers
-        if: startsWith(inputs.tool, 'browser-')
+        if: startsWith(inputs.tool, 'browser-') || inputs.tool == 'models-browser'
         run: npx playwright install --with-deps chromium webkit
       - name: Full browser regression
         if: inputs.tool == 'browser-full'
@@ -39,6 +48,9 @@ jobs:
       - name: Browser diagnostics
         if: inputs.tool == 'browser-diagnostics'
         run: npm run test:e2e:diagnostics
+      - name: Browser workflow models
+        if: inputs.tool == 'models-browser'
+        run: npm run test:models:e2e
       - name: Preserve diagnostic reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -47,5 +59,6 @@ jobs:
           path: |
             output/sql-profile/
             output/playwright/
+            output/model-reports/
           if-no-files-found: ignore
           retention-days: 14

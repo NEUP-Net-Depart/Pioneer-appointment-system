@@ -1,4 +1,5 @@
 import { hashPassword } from '../../src/lib/passwords.js';
+import { modelReport, coverage, visit, checkAndReport } from '../helpers/model-report.mjs';
 export const WORKFLOW_TIME = '2026-10-15T02:00:00Z';
 export const STAFF_PASSWORD = 'StaffTest!2026';
 // Only for disposable local D1/R2. Real memberships supply reception/repair permissions; attendance and duty are independent.
@@ -55,18 +56,52 @@ export function propertyOptions(numRuns = 100) {
   if (process.env.FC_PATH !== undefined) {
     if (options.seed === undefined)
       throw new Error('FC_PATH requires FC_SEED and a single selected property');
+    if (
+      !/^\d+(?::\d+)*$/.test(process.env.FC_PATH) ||
+      process.env.FC_PATH.split(':').some((part) => !Number.isSafeInteger(Number(part)))
+    )
+      throw new Error('FC_PATH must contain colon-separated non-negative safe integers');
     options.path = process.env.FC_PATH;
   }
+  if (process.env.FC_REPLAY_PATH !== undefined) {
+    if (options.path === undefined)
+      throw new Error('FC_REPLAY_PATH requires FC_SEED and FC_PATH for a single command property');
+    const parts = process.env.FC_REPLAY_PATH.match(/^([A-Za-z0-9+/]*):([A-Za-z0-9+/]*)$/);
+    // fast-check 4 encodes run lengths in base64 characters and six boolean
+    // flags per character. ':' is the valid empty replay log; '=' is not padding.
+    if (!parts || parts[2].length !== Math.ceil(parts[1].length / 6))
+      throw new Error(
+        'FC_REPLAY_PATH must be the replayPath value from fast-check (without quotes)'
+      );
+  }
   return options;
+}
+
+export function commandOptions() {
+  propertyOptions(); // Validate the seed/path/replayPath tuple before generating commands.
+  return {
+    maxCommands: positiveInteger('FC_MAX_COMMANDS', 20),
+    ...(process.env.FC_REPLAY_PATH !== undefined ? { replayPath: process.env.FC_REPLAY_PATH } : {})
+  };
 }
 
 export async function checkProperty(build, numRuns = 100) {
   if (!propertiesEnabled) return;
   const fc = (await import('fast-check')).default;
-  await fc.assert(build(fc), propertyOptions(numRuns));
+  const options = propertyOptions(numRuns);
+  if (process.env.FC_REPLAY_PATH !== undefined)
+    throw new Error('FC_REPLAY_PATH only applies to a command model, not a data property');
+  const report = modelReport({ kind: 'property', requestedRuns: options.numRuns });
+  try {
+    await checkAndReport(fc, build(fc), options, report.record, report.save);
+    report.finish();
+  } catch (error) {
+    report.finish(error);
+    throw error;
+  }
 }
 
-async function graph(name, initial, edges) {
+async function graph(name, initial, edges, report) {
   const assert = (await import('node:assert/strict')).default;
   const { createMachine, initialTransition, transition } = await import('xstate');
   const { getShortestPaths } = await import('xstate/graph');
@@ -84,11 +119,9 @@ async function graph(name, initial, edges) {
   const machine = createMachine({ id: name, initial, states });
   const paths = getShortestPaths(machine, { limit: 10000 });
   assert.equal(paths.length, Object.keys(states).length, `${name}: unreachable declared state`);
-  const covered = new Set(),
-    visited = new Set();
   const key = (edge) => `${edge.from}/${edge.event}/${edge.to}`;
   const start = () => initialTransition(machine)[0];
-  async function execute(snapshot, event, operation) {
+  async function execute(snapshot, event, operation, phase = 'deterministic') {
     const edge = edges.find((e) => e.from === snapshot.value && e.event === event);
     assert.ok(edge, `${name}: unexpected ${snapshot.value}/${event}`);
     const [next] = transition(machine, snapshot, { type: event });
@@ -100,76 +133,154 @@ async function graph(name, initial, edges) {
       error.message = `${name} [${snapshot.value} --${event}--> ${edge.to}]: ${error.message}`;
       throw error;
     }
-    visited.add(snapshot.value);
-    visited.add(next.value);
-    covered.add(key(edge));
+    visit(report.record, phase, [snapshot.value, next.value], key(edge));
     return next;
   }
   function complete() {
-    assert.deepEqual([...visited].sort(), Object.keys(states).sort(), `${name}: unexecuted states`);
-    assert.deepEqual([...covered].sort(), edges.map(key).sort(), `${name}: unexecuted transitions`);
+    const { visitedStates, visitedTransitions } = report.record.deterministic;
+    assert.deepEqual(
+      [...visitedStates].sort(),
+      Object.keys(states).sort(),
+      `${name}: unexecuted states`
+    );
+    assert.deepEqual(
+      [...visitedTransitions].sort(),
+      edges.map(key).sort(),
+      `${name}: unexecuted transitions`
+    );
+    report.record.deterministic.status = 'passed';
+    report.save();
     console.log(
-      `[model] ${name}: ${visited.size}/${Object.keys(states).length} states, ${covered.size}/${edges.length} transitions`
+      `[model] ${name} deterministic: ${visitedStates.length}/${Object.keys(states).length} states, ${visitedTransitions.length}/${edges.length} transitions`
     );
   }
   return { start, execute, complete, paths };
+}
+
+function graphReport(name, initial, edges, kind, randomStatus) {
+  const states = [...new Set([initial, ...edges.flatMap((e) => [e.from, e.to])])];
+  return modelReport({
+    kind,
+    name,
+    initial,
+    states,
+    transitions: edges.map(({ from, event, to }) => ({
+      id: `${from}/${event}/${to}`,
+      from,
+      event,
+      to
+    })),
+    stateCount: states.length,
+    transitionCount: edges.length,
+    deterministic: coverage('running'),
+    random: coverage(randomStatus)
+  });
 }
 
 // Finite graph edges specify independent expected states. Real adapters own
 // business assertions and cleanup; revisions and IDs never enlarge the graph.
 export async function runModel({ name, initial, edges, setup, observe, random = true }) {
   if (!modelsEnabled) return;
-  const g = await graph(name, initial, edges);
-  const assert = (await import('node:assert/strict')).default;
-  async function execute(model, real, event) {
-    const edge = edges.find((e) => e.from === model.snapshot.value && e.event === event);
-    model.snapshot = await g.execute(model.snapshot, event, async (to) => {
-      await edge.run(real);
-      await observe(real, to);
-    });
-  }
-  async function withFixture(body) {
-    const real = await setup();
-    try {
-      await observe(real, initial);
-      await body(real);
-    } finally {
-      await real.dispose();
-    }
-  }
-  for (const edge of edges) {
-    const prefix = g.paths.find((path) => path.state.value === edge.from);
-    assert.ok(prefix, `${name}: no path to ${edge.from}`);
-    const events = [...prefix.steps.slice(1).map((step) => step.event.type), edge.event];
-    await withFixture(async (real) => {
-      const model = { snapshot: g.start() };
-      for (const event of events) await execute(model, real, event);
-    });
-  }
-  g.complete();
-  if (!random || !propertiesEnabled) return;
-  const fc = (await import('fast-check')).default;
-  const commands = [...new Set(edges.map((e) => e.event))].map((event) => ({
-    check: (model) => edges.some((e) => e.from === model.snapshot.value && e.event === event),
-    run: (model, real) => execute(model, real, event),
-    toString: () => event
-  }));
-  await fc.assert(
-    fc.asyncProperty(
-      fc.commands(
-        commands.map((command) => fc.constant(command)),
-        {
-          maxCommands: positiveInteger('FC_MAX_COMMANDS', 20)
-        }
-      ),
-      async (sequence) => {
-        await withFixture((real) =>
-          fc.asyncModelRun(() => ({ model: { snapshot: g.start() }, real }), sequence)
-        );
-      }
-    ),
-    propertyOptions(30)
+  const report = graphReport(
+    name,
+    initial,
+    edges,
+    'service',
+    !random ? 'not-supported' : propertiesEnabled ? 'pending' : 'not-requested'
   );
+  let phase = 'deterministic';
+  try {
+    const options = random && propertiesEnabled ? propertyOptions(30) : null;
+    const constraints = options ? commandOptions() : null;
+    const g = await graph(name, initial, edges, report);
+    const assert = (await import('node:assert/strict')).default;
+    async function execute(model, real, event) {
+      const edge = edges.find((e) => e.from === model.snapshot.value && e.event === event);
+      model.snapshot = await g.execute(
+        model.snapshot,
+        event,
+        async (to) => {
+          await edge.run(real);
+          await observe(real, to);
+        },
+        phase
+      );
+    }
+    async function withFixture(body) {
+      const real = await setup();
+      try {
+        await observe(real, initial);
+        visit(report.record, phase, [initial]);
+        await body(real);
+      } finally {
+        await real.dispose();
+      }
+    }
+    for (const edge of edges) {
+      const prefix = g.paths.find((path) => path.state.value === edge.from);
+      assert.ok(prefix, `${name}: no path to ${edge.from}`);
+      const events = [...prefix.steps.slice(1).map((step) => step.event.type), edge.event];
+      report.record.deterministic.runs++;
+      await withFixture(async (real) => {
+        const model = { snapshot: g.start() };
+        for (const event of events) await execute(model, real, event);
+      });
+      report.save();
+    }
+    g.complete();
+    if (options) {
+      phase = 'random';
+      Object.assign(report.record.random, {
+        status: 'running',
+        attempts: 0,
+        requestedRuns: options.numRuns,
+        maxCommands: constraints.maxCommands,
+        replay: {
+          seed: options.seed ?? null,
+          path: options.path ?? null,
+          replayPath: constraints.replayPath ?? null
+        }
+      });
+      const fc = (await import('fast-check')).default;
+      const commands = [...new Set(edges.map((e) => e.event))].map((event) => ({
+        check: (model) => edges.some((e) => e.from === model.snapshot.value && e.event === event),
+        run: (model, real) => execute(model, real, event),
+        toString: () => event
+      }));
+      await checkAndReport(
+        fc,
+        fc.asyncProperty(
+          fc.commands(
+            commands.map((command) => fc.constant(command)),
+            constraints
+          ),
+          async (sequence) => {
+            report.record.random.attempts++;
+            try {
+              await withFixture((real) =>
+                fc.asyncModelRun(() => ({ model: { snapshot: g.start() }, real }), sequence)
+              );
+            } finally {
+              report.save();
+            }
+          }
+        ),
+        options,
+        report.record.random,
+        report.save
+      );
+      const explored = report.record.random;
+      console.log(
+        `[model] ${name} random: ${explored.visitedStates.length}/${report.record.stateCount} states, ${explored.visitedTransitions.length}/${edges.length} transitions (${explored.runs} runs, seed ${explored.seed})`
+      );
+    }
+    report.finish();
+  } catch (error) {
+    report.record[phase].status = 'failed';
+    report.record.failedPhase = phase;
+    report.finish(error);
+    throw error;
+  }
 }
 
 // Browser workflows execute their established path once. Each stage includes
@@ -182,10 +293,23 @@ export async function runWorkflow(name, initial, transitions, stages) {
   // The graph is declared separately from the executable path. Removing a
   // stage cannot silently remove its state or edge from the coverage target.
   const edges = transitions.map(([from, event, to]) => ({ from, event, to }));
-  const g = await graph(name, initial, edges);
-  let snapshot = g.start();
-  for (const stage of stages) snapshot = await g.execute(snapshot, stage.event, stage.run);
-  g.complete();
+  const report = graphReport(name, initial, edges, 'workflow', 'not-supported');
+  try {
+    const g = await graph(name, initial, edges, report);
+    let snapshot = g.start();
+    report.record.deterministic.runs++;
+    for (const stage of stages) {
+      snapshot = await g.execute(snapshot, stage.event, stage.run);
+      report.save();
+    }
+    g.complete();
+    report.finish();
+  } catch (error) {
+    report.record.deterministic.status = 'failed';
+    report.record.failedPhase = 'deterministic';
+    report.finish(error);
+    throw error;
+  }
 }
 
 // Capture persistent facts before a rejected write, including receipts/audits.

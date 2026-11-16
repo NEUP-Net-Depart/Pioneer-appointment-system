@@ -6,10 +6,11 @@ export { expect };
 export const test = base.extend({
   workflowTime: [WORKFLOW_TIME, { option: true }],
   preview: [
-    async ({ workflowTime }, use) => {
+    async ({ workflowTime }, use, info) => {
       if (!process.env.E2E_TEMPLATE_DIR)
         throw new Error('Run browser tests with npm run test:e2e.');
       const preview = await startPreview(process.env.E2E_TEMPLATE_DIR, { time: workflowTime });
+      process.env.MODEL_REPORT_PROJECT = info.project.name;
       try {
         await use(preview);
       } finally {

@@ -41,10 +41,11 @@
     "test:e2e:full": "node scripts/test-e2e.mjs --full",
     "test:e2e:diagnostics": "node scripts/test-e2e.mjs --diagnostics",
     "test:sql": "node --test tests/tools/sql-performance.test.mjs",
-    "test:models:node": "TEST_MODELS=1 node --test tests/*.test.mjs",
-    "test:models:e2e": "TEST_MODELS=1 node scripts/test-e2e.mjs --full",
-    "test:models": "npm run test:models:node && npm run test:models:e2e",
-    "test:properties": "TEST_PROPERTIES=1 TEST_MODELS=1 node --test tests/*.test.mjs"
+    "test:models:node": "node scripts/test-models.mjs node",
+    "test:models:e2e": "node scripts/test-models.mjs e2e",
+    "test:models": "node scripts/test-models.mjs all",
+    "test:models:check": "node --test tests/tools/model-report.test.mjs",
+    "test:properties": "node scripts/test-models.mjs properties"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

@@ -9,7 +9,7 @@
 
 ```sh
 npm run test:e2e                         # 默认 6 项冒烟
-npm run test:e2e:full                    # 全部 94 项，含专项诊断
+npm run test:e2e:full                    # 全部浏览器回归，含专项诊断
 npm run test:e2e:diagnostics             # 只运行 OCR/验证码、图片编码和埋点 SDK 的 27 项诊断
 npm run test:e2e:full -- --project=chromium --grep 'requests leave'
 npm run test:e2e -- --workers=1
@@ -37,8 +37,10 @@ CI 的 Playwright 执行上限为 12 分钟，包含构建与初始化的工作�
 
 ## 按需状态图
 
-`npm run test:models:e2e` 在同一组 94 项完整回归中启用 XState v6 状态图；不增加测试、浏览器项目或冒烟标签。默认 `test:e2e`、`test:e2e:full` 和 CI 不启用状态图。
+`npm run test:models:e2e` 在同一组完整回归中启用 XState v6 状态图；不增加浏览器项目或冒烟标签。默认 `test:e2e`、`test:e2e:full` 和发布 CI 不启用状态图。手动工作流的 `models-browser` 会启用并归档报告。
 
 现有业务操作与断言分为具名步骤；独立转换表定义必须执行的状态和边，每条边只有在实际操作和结果断言通过后才计入覆盖。每个原有用例仍使用自己的 Worker、D1/R2、浏览器上下文和时钟，步骤之间共享该用例的业务上下文，测试之间不共享。状态图不会在浏览器中额外随机重放流程，失败继续保存现有截图和 trace。
 
-模型清单、服务层属性测试与 seed/path 重放说明见[测试分工](../README.md#按需属性测试与业务状态图)。
+各浏览器项目的状态/转换定义与实际覆盖保存到 `output/model-reports/<运行标识>/model-report.json`；同名流程分别保留。浏览器流程不做随机探索，报告中标记为 `not-supported`。
+
+模型清单、报告字段与 seed/path/replayPath 重放说明见[测试分工](../README.md#按需属性测试与业务状态图)。
