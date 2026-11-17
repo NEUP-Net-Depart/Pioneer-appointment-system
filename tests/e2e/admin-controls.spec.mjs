@@ -131,7 +131,7 @@ test('campus belongs to each duty task and the weekly export inherits the report
   await weekly.getByRole('button', { name: '选择开始工作周', exact: true }).click();
   const calendar = weekly.getByRole('dialog', { name: '选择开始工作周', exact: true });
   await calendar.locator('[data-day="2026-10-21"]').click();
-  await expect(start).toHaveValue('2026-10-18');
+  await expect(start).toHaveValue('2026-10-19');
   await weekly.getByRole('button', { name: '选择结束工作周', exact: true }).click();
   const end = weekly.getByRole('dialog', { name: '选择结束工作周', exact: true });
   await expect(end.locator('[data-day="2026-10-12"]')).toBeDisabled();
@@ -174,16 +174,17 @@ test('configuration tasks retain their own campus when changing views', async ({
   );
 });
 
-test('Sunday begins the selected week without changing its roster identifier', async ({ page }) => {
+test('Sunday ends the Monday-based duty week and calendar selections use its Monday identifier', async ({ page }) => {
   await loginStaff(page);
   const planner = await dutyPage(page, '安排下周');
   const week = planner.getByRole('textbox', { name: '所在周', exact: true });
   await week.fill('2026-11-15');
   await planner.getByRole('button', { name: '选择所在周', exact: true }).click();
   const calendar = page.getByRole('dialog', { name: '选择所在周', exact: true });
-  await expect(calendar.locator('.workspace-calendar-weekdays > span').first()).toHaveText('日');
+  await expect(calendar.locator('.workspace-calendar-weekdays > span').first()).toHaveText('一');
+  await expect(calendar.locator('[data-day="2026-11-09"]')).toHaveAttribute('aria-pressed', 'true');
   await expect(calendar.locator('[data-day="2026-11-15"]')).toHaveAttribute('aria-pressed', 'true');
-  await expect(calendar.locator('[data-day="2026-11-21"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(calendar.locator('[data-day="2026-11-16"]')).toHaveAttribute('aria-pressed', 'false');
   await expect(calendar.locator('[data-day="2026-11-22"]')).toHaveAttribute(
     'aria-pressed',
     'false'
@@ -191,11 +192,11 @@ test('Sunday begins the selected week without changing its roster identifier', a
   const response = page.waitForResponse(
     (response) =>
       response.url().includes('/api/rosters/campus-week') &&
-      new URL(response.url()).searchParams.get('weekStart') === '2026-11-23'
+      new URL(response.url()).searchParams.get('weekStart') === '2026-11-16'
   );
   await calendar.locator('[data-day="2026-11-22"]').click();
   expect((await response).ok()).toBe(true);
-  await expect(week).toHaveValue('2026-11-22');
+  await expect(week).toHaveValue('2026-11-16');
 });
 
 test('single-campus reports offer only their authorized campus', async ({ page }) => {

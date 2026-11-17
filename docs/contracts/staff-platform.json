@@ -21,7 +21,7 @@
     "tokenReplacement": "same event and same issuer only",
     "attendanceSource": "checkinSource: kind, tokenId, issuerMemberId, issuerName; correction uses operatorMemberId and operatorAccount",
     "sourceVisibility": "scoped attendance management only; absent on self-service records and workbench",
-    "automaticOfficeCandidates": "active maintenance_affairs appointment and matching availability; exchange alone does not qualify for automatic repair duty"
+    "automaticOfficeCandidates": "ordinary members with active maintenance_affairs appointments and whole-shift availability on the selected day and campus; at most one per day, allow empty days with nonblocking gaps; deputy heads and higher positions are exempt; exchange alone does not qualify for automatic repair duty"
   },
   "authContext": [
     "actor",
@@ -123,8 +123,6 @@
       "GET /api/me/roster",
       "GET /api/me/availability",
       "PUT /api/me/availability",
-      "POST /api/rosters/assignments/:id/leave",
-      "POST /api/rosters/assignments/:id/leave-withdraw",
       "GET /api/rosters/assignments/:id/cover-candidates",
       "POST /api/rosters/assignments/:id/cover",
       "GET /api/rosters/covers",
@@ -136,24 +134,36 @@
   },
   "idempotency": "actorMemberId + action + requestId",
   "dutyWorkflow": {
+    "availabilityWeekdays": [1, 2, 3, 4],
+    "weekConvention": "dutyWeekKey is Monday through Sunday for rosters, reminders, personal duty and weekly attendance export; existing Sunday booking calendars and service-day configuration keep their own convention; exact dates and historic Monday keys are unchanged",
+    "manualPeople": "repair: hardware members, exchange, other members; office: primary office/art/publicity members, other departments; expose homeCampusId, authorized campuses and memberships with real department/position labels; cross-department or availability mismatch remains a manual exception",
+    "participants": "availability submission and automatic suggestions only for active primary hardware members or maintenance_affairs members; all other members see a nonparticipation panel; any active deputy-head-or-higher appointment excludes availability submission, new roster assignments and cover acceptance",
+    "availability": "one shared set of usual windows and weekly exceptions without dutyType; latest legacy row per period is reused with revision protection; empty exception means unavailable, null restores usual; no new tables or migration",
+    "availabilityMinimum": "saving requires at least one Monday-through-Thursday whole shift in an authorized campus; restoring usual requires a nonempty valid usual record; legacy empty records remain readable",
+    "checkInConfirmation": "POST /api/attendance/preview accepts token or direct campusId and returns identity, event details and availabilityReminder for next week; reminder is nonblocking and contains no form; all staff entry points share one confirmation with no success dialog",
     "shift": "19:00–21:00 Asia/Shanghai; unchanged legacy special shifts retain their times and IDs",
     "checkInWindow": "18:30–21:30 Asia/Shanghai",
     "suggestions": {
       "input": ["weekStart", "campusId", "sourceVersion? (required by the planner when regenerating a loaded draft)", "assignments? (published and manual items to retain)"],
-      "output": ["assignments", "gaps", "unassigned", "sourceVersion"],
+      "output": ["assignments", "gaps", "unassigned", "optimization", "sourceVersion"],
       "writes": false,
-      "uniqueness": "one suggested shift per member per week across campuses and duty types"
+      "uniqueness": "assign every eligible hardware member exactly one weekly shift across campuses and types, including existing manual shifts; office-only members can serve on multiple available dates, preferring distinct people; unselected office-only candidates are not missing assignments",
+      "optimization": "office uses available-day matching with at most one per day, no forced availability conflicts or full coverage; then compare repair daily quotas using min-cost matching, requiring hardware completeness and repair daily spread at most two before minimizing conflicts; office and total loads have no spread constraint; preserve manual facts and report infeasibility",
+      "priority": "dual-qualified members are automatically assigned office duty ahead of repair duty; no restriction on holding both appointments",
+      "review": "gaps carry businessDate and dutyType independently; unassigned carry dutyType, reasonCode and reason; recomputed for manual drafts and publishing so missing repair candidates remain visible"
     },
     "campusWeek": {
       "input": ["weekStart", "campusId", "sourceVersion", "requestId", "rosters[2]: dutyType, revision, assignments"],
       "atomic": ["repair roster", "office roster", "daily shared duty events", "audit", "receipt"],
-      "manualExceptions": "repeat shifts, availability and department mismatches and leader gaps are warned and audited; time overlaps are rejected"
+      "manualExceptions": "ordinary member repeat shifts, availability and department mismatches are warned and audited; leadership assignments and time overlaps are rejected; no leader coverage requirement"
     },
+    "cover": "self-service: the scheduled member invites a replacement, the recipient accepts or declines and the sender may cancel; initiation and acceptance require the Shanghai current date to be earlier than every involved duty date, expiring at midnight of the earliest date; expired pending invitations are displayed as expired and excluded from pending counts without new storage; acceptance atomically updates the existing published roster without manager approval or republishing, preserving shift ID and publication timestamp while advancing assignment and roster revisions; scope, member eligibility and overlap guards remain enforced",
+    "leaveRemoval": "0056 drops roster_leaves and removes leave-specific audit and receipt rows; leave endpoints, services and status fields are removed; no replacement leave storage; leave requests are handled offline",
     "day": {
       "input": ["campusId", "businessDate?"],
       "output": ["items", "temporary", "summary", "people", "paused", "serverNow"],
-      "counts": "scope first, unique members; leave excluded from expected; temporary arrivals separate",
-      "statuses": ["upcoming", "arrived", "absent", "leave", "paused"]
+      "counts": "scope first, unique scheduled members; temporary arrivals separate",
+      "statuses": ["upcoming", "arrived", "absent", "paused"]
     },
     "arrival": {
       "status": "retired: authenticated endpoint returns 410; service and repository writes removed; use self check-in or reasoned correction"

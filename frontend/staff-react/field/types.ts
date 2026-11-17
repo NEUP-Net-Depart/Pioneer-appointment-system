@@ -149,7 +149,6 @@ export interface Home {
     startAt: string;
     endAt: string;
     dutyType: string;
-    leaveStatus?: string;
     servicePaused?: boolean;
   }[];
   updatedAt: string;

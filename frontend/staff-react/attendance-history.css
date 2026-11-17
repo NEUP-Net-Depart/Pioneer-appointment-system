@@ -72,7 +72,7 @@
 .history-columns,
 .field-app .history-person-toggle {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) repeat(5, minmax(56px, 76px)) 24px;
+  grid-template-columns: minmax(180px, 1fr) repeat(4, minmax(56px, 76px)) 24px;
   align-items: center;
   gap: 12px;
 }
@@ -290,8 +290,7 @@
     color: var(--muted);
   }
   .history-number[data-metric='support'][data-zero='true'],
-  .history-number[data-metric='absent'][data-zero='true'],
-  .history-number[data-metric='leave'][data-zero='true'] {
+  .history-number[data-metric='absent'][data-zero='true'] {
     display: none;
   }
   .history-chevron {

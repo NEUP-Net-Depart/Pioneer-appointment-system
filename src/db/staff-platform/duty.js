@@ -1,4 +1,4 @@
-import { rows, assignment, assignmentLeaveColumn } from './shared.js';
+import { rows, assignment } from './shared.js';
 
 // A publication must use the same personnel, availability, pauses and existing
 // assignments that were checked by the service, including other campuses.
@@ -13,7 +13,6 @@ SELECT json_object(
  'access',(SELECT json_group_array(json_array(account,campus)) FROM (SELECT * FROM staff_access_campuses WHERE account IN (SELECT account FROM staff_accounts WHERE member_id IN people) ORDER BY account,campus)),
  'availability',(SELECT json_group_array(json_array(member_id,duty_type,week_start,revision)) FROM (SELECT * FROM member_availability WHERE member_id IN people AND week_start IN ('',(SELECT week FROM params)) ORDER BY member_id,duty_type,week_start)),
  'shifts',(SELECT json_group_array(json_array(id,revision,active)) FROM (SELECT * FROM shifts ORDER BY id)),
- 'leaves',(SELECT json_group_array(json_array(id,revision)) FROM (SELECT * FROM roster_leaves WHERE assignment_id IN (SELECT id FROM shifts) ORDER BY id)),
  'pauses',(SELECT json_group_array(json_array(business_date,revision,paused)) FROM (SELECT * FROM service_day_overrides WHERE campus_id=(SELECT campus FROM params) AND business_date BETWEEN (SELECT week FROM params) AND date((SELECT week FROM params),'+6 day') ORDER BY business_date))
 ) snapshot`;
 
@@ -24,7 +23,7 @@ export function dutyRepository({ db }) {
     const result = await db.batch([
       db
         .prepare(
-          `SELECT da.*,m.name member_name,m.student_id,c.name campus_name,m.status member_status,${assignmentLeaveColumn}
+          `SELECT da.*,m.name member_name,m.student_id,c.name campus_name,m.status member_status
         FROM duty_assignments da JOIN members m ON m.id=da.member_id JOIN campuses c ON c.id=da.campus_id
         WHERE da.active=1 AND da.business_date BETWEEN ? AND ? AND da.campus_id=? ORDER BY m.name,da.business_date,da.start_at,da.id`
         )

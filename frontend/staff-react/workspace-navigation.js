@@ -8,7 +8,7 @@ const destinations = {
   duties: [
     '排班考勤',
     'calendar',
-    '今日 值班 排班 空闲 签到 考勤 补录 请假 接替 志愿 时长 报表 导出'
+    '今日 值班 排班 空闲 签到 考勤 补录 接替 调岗 志愿 时长 报表 导出'
   ],
   members: ['人员权限', 'people', '人员 成员 部门 导入 激活 账号 审核'],
   permissions: ['人员权限', 'shield', '角色 权限 授权'],

@@ -54,5 +54,5 @@ SELECT COUNT(*) AS broken_intake_photos FROM appointments a
  OR (back_photo_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM appointment_attachments p WHERE p.id=a.back_photo_id AND p.appointment_id=a.id));
 SELECT COUNT(*) AS pending_original_photos FROM appointments WHERE photo_deferred_by IS NOT NULL;
 SELECT active,COUNT(*) AS duty_assignments FROM duty_assignments GROUP BY active;
-SELECT COUNT(*) AS recorded_leaves FROM roster_leaves WHERE withdrawn_at IS NULL;
+SELECT COUNT(*) AS retired_leave_tables FROM sqlite_schema WHERE name='roster_leaves';
 SELECT status,COUNT(*) AS cover_invitations FROM roster_covers GROUP BY status;

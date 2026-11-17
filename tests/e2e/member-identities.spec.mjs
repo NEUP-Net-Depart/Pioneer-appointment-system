@@ -24,6 +24,7 @@ test('superadmins manually grant and revoke the retired badge across member and 
       'PATCH'
     );
   const people = await staffPage(page, '人员管理');
+  await chooseOption(page, people.getByLabel('筛选成员校区'), detail.member.homeCampusId);
   await people.getByRole('textbox', { name: '搜索成员', exact: true }).fill('20261004');
   const row = people.locator('.react-row').filter({ hasText: '许晨' });
   await row.getByRole('button', { name: '人员详情', exact: true }).click();
@@ -62,6 +63,7 @@ test('superadmins manually grant and revoke the retired badge across member and 
   await expect(hours).toContainText('退休老登仅按有效签到计入，未签到不计时长');
   await expect(hours).not.toContainText('负责人每周自动计入一次');
   const managed = await staffPage(retired, '人员管理');
+  await chooseOption(retired, managed.getByLabel('筛选成员校区'), 'campus-nanhu');
   await managed.getByRole('textbox', { name: '搜索成员', exact: true }).fill('20261003');
   await managed
     .locator('.react-row')

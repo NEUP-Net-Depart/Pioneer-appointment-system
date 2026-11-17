@@ -138,7 +138,7 @@ export function ActualDayCapacity({ campus, onNavigate }) {
               <h3 className="workspace-title-with-hint">
                 工作人员
                 <HelpHint data-track="staff.actualdaycapacity.helphint.7" label="出勤计算口径">
-                  按已发布班次去重，并扣除已批准请假；实际到岗以签到记录为准。
+                  按已发布班次去重；实际到岗以签到记录为准。
                 </HelpHint>
               </h3>
               {!data ? (

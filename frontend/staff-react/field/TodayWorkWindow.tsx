@@ -30,9 +30,7 @@ export function TodayWorkWindow({
   const canRead = manage || data.permissions['attendance.correct'];
   const staffing = useWorkStaffing(data.campusId, !!canRead);
   const signed = campusAttendance(data);
-  const scheduled = data.todayDuties.some(
-    (duty) => duty.leaveStatus !== 'recorded' && !duty.servicePaused
-  );
+  const scheduled = data.todayDuties.some((duty) => !duty.servicePaused);
   const date = new Intl.DateTimeFormat('zh-CN', {
     timeZone: 'Asia/Shanghai',
     month: 'long',

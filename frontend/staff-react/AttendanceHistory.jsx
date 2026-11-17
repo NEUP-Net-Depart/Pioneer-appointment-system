@@ -8,7 +8,6 @@ import './attendance-history.css';
 const labels = {
   arrived: '已签到',
   absent: '缺勤',
-  leave: '已请假',
   upcoming: '待签到',
   paused: '暂停服务'
 };
@@ -16,7 +15,6 @@ const metrics = [
   ['expected', '应到'],
   ['arrived', '已签到'],
   ['absent', '缺勤'],
-  ['leave', '请假'],
   ['support', '临时支援'],
   ['upcoming', '待签到']
 ];
@@ -100,7 +98,6 @@ export function AttendanceHistory({ report, onOpenDay, onExport, downloading }) 
         <span>应到</span>
         <span>已签到</span>
         <span>缺勤</span>
-        <span>请假</span>
         <span>支援</span>
         <span />
       </div>
@@ -123,19 +120,21 @@ export function AttendanceHistory({ report, onOpenDay, onExport, downloading }) 
                   {row.department ? ` · ${row.department}` : ''}
                 </span>
               </span>
-              {metrics.slice(0, 5).map(([metric, label]) => (
-                <span
-                  className="history-number"
-                  key={metric}
-                  data-metric={metric}
-                  data-zero={row.summary[metric] === 0}
-                >
-                  <span>{label}</span>
-                  <DataValue label={label} digits={2}>
-                    {row.summary[metric]}
-                  </DataValue>
-                </span>
-              ))}
+              {metrics
+                .filter(([metric]) => metric !== 'upcoming')
+                .map(([metric, label]) => (
+                  <span
+                    className="history-number"
+                    key={metric}
+                    data-metric={metric}
+                    data-zero={row.summary[metric] === 0}
+                  >
+                    <span>{label}</span>
+                    <DataValue label={label} digits={2}>
+                      {row.summary[metric]}
+                    </DataValue>
+                  </span>
+                ))}
               <span className="history-chevron" aria-hidden="true">
                 <ChevronDown size={17} />
               </span>
@@ -162,7 +161,7 @@ export function AttendanceHistory({ report, onOpenDay, onExport, downloading }) 
                           {entry.assignments
                             .map(
                               (item) =>
-                                `${dutyTypeLabels[item.dutyType]} ${item.startAt}–${item.endAt}${item.leaveStatus === 'recorded' ? '（已请假）' : ''}`
+                                `${dutyTypeLabels[item.dutyType]} ${item.startAt}–${item.endAt}`
                             )
                             .join('、') || '无排班'}
                         </span>
