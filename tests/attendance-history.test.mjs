@@ -6,10 +6,14 @@ import { attendanceReportingDomain } from '../src/services/staff-platform/report
 const assignment = (memberId, extra = {}) => ({ memberId, memberName: memberId, campusId: 'campus-nanhu', businessDate: '2026-11-12', startAt: '19:00', endAt: '21:00', dutyType: 'repair', ...extra });
 const run = (assignments, records = [], paused = []) => attendanceHistory({ assignments, records, paused, now: '2026-11-14T08:00:00Z' });
 
-test('history automatically marks unsigned completed shifts absent, distinguishing leave and future', () => {
+test('history counts published shifts regardless of retired leave metadata and distinguishes future dates', () => {
   const report = run([assignment('missing'), assignment('absent', { review: { decision: 'absent' } }), assignment('leave', { leaveStatus: 'recorded' }), assignment('future', { businessDate: '2026-11-16' })]);
   const states = Object.fromEntries(report.rows.map(row => [row.memberId, row.entries[0].status]));
-  assert.deepEqual(states, { missing: 'absent', absent: 'absent', future: 'upcoming', leave: 'leave' });
+  assert.deepEqual(states, { missing: 'absent', absent: 'absent', future: 'upcoming', leave: 'absent' });
+  const legacy = report.rows.find(row => row.memberId === 'leave');
+  assert.equal(legacy.summary.expected, 1);
+  assert.equal('leave' in legacy.summary, false);
+  assert.equal('leaveStatus' in legacy.entries[0].assignments[0], false);
 });
 
 test('multiple shifts count once, real attendance supersedes absence, and support is separate', () => {
@@ -57,7 +61,7 @@ test('report service filters members and campuses before aggregation and restric
   assert.equal(managed.rows[0].entries[0].record.checkinSource.issuerName, 'issuer');
 });
 
-test('absence follows the last non-leave shift end and disappears after correction without a review', () => {
+test('absence follows the last shift end and disappears after correction without a review', () => {
   const assignments = [assignment('person'), assignment('person', { endAt: '22:00', review: { decision: 'cleared' } })];
   const make = (now, records = []) => attendanceHistory({ assignments, records, paused: [], now }).rows[0];
   assert.equal(make('2026-11-12T13:30:00Z').entries[0].status, 'upcoming');

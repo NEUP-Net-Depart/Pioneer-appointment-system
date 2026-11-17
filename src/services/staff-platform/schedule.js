@@ -1,11 +1,16 @@
 import { fail } from '../../lib/http.js';
-import { addDays, dateKey, weekRange, rosterWeekKey, validDate } from '../../platform/time.js';
+import { addDays, dateKey, weekRange, dutyWeekKey, validDate } from '../../platform/time.js';
 import {
   DUTY_START,
   DUTY_END,
   DUTY_TYPES,
-  dutyLeader,
+  DUTY_WEEKDAYS,
+  dutyTypeLabels,
+  isDutyExempt,
   dutyCandidateTypes,
+  dutyAvailability,
+  hasDutyAvailability,
+  dutyPlanningReview,
   availableForDuty
 } from '../../../shared/duty.js';
 import { suggestDuties } from '../../modules/rosters/suggestions.js';
@@ -37,8 +42,7 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
     return values.map((row) => {
       if (
         !Number.isInteger(row.weekday) ||
-        row.weekday < 1 ||
-        row.weekday > 7 ||
+        !DUTY_WEEKDAYS.includes(row.weekday) ||
         !/^([01]\d|2[0-3]):[0-5]\d$/.test(row.startAt) ||
         !/^([01]\d|2[0-3]):[0-5]\d$/.test(row.endAt) ||
         row.startAt >= row.endAt
@@ -85,26 +89,29 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
   }
   async function availability(actor, query = {}) {
     const context = await contextFor(actor),
-      dutyType = type(query.dutyType || 'repair'),
-      weekStart = week(query.weekStart || rosterWeekKey());
-    const rows = await repository.availabilityRows([context.actor.memberId], dutyType, weekStart);
-    const usual = rows.find((row) => !row.weekStart) || { revision: -1, windows: [] },
-      exception = rows.find((row) => row.weekStart === weekStart) || null;
+      weekStart = week(query.weekStart || dutyWeekKey());
+    const rows = await repository.availabilityRows([context.actor.memberId], weekStart);
+    const value = dutyAvailability(rows, weekStart);
+    const participates =
+      !isRetiredElder(context) &&
+      dutyCandidateTypes(context.memberships, context.authorizationDate).length > 0;
     return {
-      dutyType,
       weekStart,
-      usual,
-      exception,
-      effectiveWindows: exception?.windows ?? usual.windows,
-      source: exception?.windows ? 'exception' : 'usual',
-      updatedThisWeek: !!exception?.windows
+      ...value,
+      participates,
+      needsAvailability:
+        participates &&
+        !hasDutyAvailability(value.effectiveWindows, context.actor.authorizedCampuses.map(campusId))
     };
   }
   async function saveAvailability(actor, input) {
     const context = await contextFor(actor),
-      dutyType = type(input.dutyType),
       period = input.weekStart ? week(input.weekStart) : '';
     if (isRetiredElder(context)) fail(403, '退休老登不参与值班，无需填写空闲');
+    if (isDutyExempt(context.memberships, context.authorizationDate))
+      fail(403, '部长（含副）及以上不参与值班统计');
+    if (!dutyCandidateTypes(context.memberships, context.authorizationDate).length)
+      fail(403, '当前任职不参与值班统计');
     if (!Number.isInteger(input.revision) || input.revision < -1 || (input.useUsual && !period))
       fail(400, '可用时间版本或范围不正确');
     // JSON null restores usual availability while retaining the exception's revision.
@@ -112,15 +119,24 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
       ...input,
       windows: input.useUsual ? null : windows(context, input.windows)
     };
-    const before =
-      (await repository.availabilityRows([context.actor.memberId], dutyType, period)).find(
-        (row) => row.weekStart === period
-      ) || null;
+    const current = dutyAvailability(
+      await repository.availabilityRows([context.actor.memberId], period),
+      period
+    );
+    if (
+      !hasDutyAvailability(
+        input.useUsual ? current.usual.windows : normalized.windows,
+        context.actor.authorizedCampuses.map(campusId)
+      )
+    )
+      fail(400, '请至少选择一天完整空闲时间');
+    const before = period ? current.exception : current.usual;
+    const storageType = before?.dutyType || 'repair';
     const cmd = await command(
       context,
       'rosters.availability.updated',
       input,
-      `${context.actor.memberId}:${dutyType}:${period}`,
+      `${context.actor.memberId}:availability:${period}`,
       before,
       normalized
     );
@@ -128,20 +144,20 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
       await done(
         repository.saveAvailability(
           context.actor.memberId,
-          dutyType,
+          storageType,
           period,
           normalized,
           cmd.record
         ),
         cmd.record
       );
-    return availability(actor, { dutyType, weekStart: period || undefined });
+    return availability(actor, { weekStart: period || undefined });
   }
   async function rosterWeek(actor, query) {
     const context = await contextFor(actor),
       campus = scoped(context, query.campusId),
       dutyType = type(query.dutyType || 'repair'),
-      weekStart = week(query.weekStart || rosterWeekKey());
+      weekStart = week(query.weekStart || dutyWeekKey());
     const canManage = evaluate(context, 'roster.manage', { campusId: campus }).allowed;
     const data = await repository.scheduleWeek(weekStart, campus, dutyType);
     if (!canManage)
@@ -153,25 +169,22 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
     const people = await repository.schedulePeople(campus),
       values = await repository.availabilityRows(
         people.map((row) => row.memberId),
-        dutyType,
         weekStart
       );
     return {
       ...data,
       canManage,
       people: people.map((person) => {
-        const exception = values.find(
-            (row) =>
-              row.memberId === person.memberId &&
-              row.weekStart === weekStart &&
-              row.windows !== null
-          ),
-          usual = values.find((row) => row.memberId === person.memberId && !row.weekStart);
+        const value = dutyAvailability(
+          values.filter((row) => row.memberId === person.memberId),
+          weekStart
+        );
         return {
           ...person,
-          windows: ((exception || usual)?.windows || []).filter((row) => row.campusId === campus),
-          availabilitySource: exception ? 'exception' : usual ? 'usual' : 'unset',
-          availabilityUpdatedAt: (exception || usual)?.updatedAt || null
+          windows: value.effectiveWindows.filter((row) => row.campusId === campus),
+          availabilitySource: value.usual.revision < 0 && !value.exception ? 'unset' : value.source,
+          availabilityUpdatedAt:
+            (value.source === 'exception' ? value.exception : value.usual)?.updatedAt || null
         };
       }),
       history: await repository.scheduleHistory(data.id)
@@ -189,10 +202,20 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
       fail(409, '班表已变化，请刷新');
     const snapshot = await repository.scheduleSnapshot(campus, weekStart);
     const people = await repository.schedulePeople(campus);
+    const facts = await repository.rosterMemberFacts(
+      people.map((person) => person.memberId),
+      weekStart
+    );
+    const memberships = new Map(facts.map((person) => [person.memberId, person.memberships]));
     const paused = (await repository.serviceDays(weekStart, addDays(weekStart, 6)))
       .filter((row) => row.campusId === campus && row.paused)
       .map((row) => row.businessDate);
-    const items = normalizeWeek(before, input.assignments, people, paused);
+    const items = normalizeWeek(
+      before,
+      input.assignments,
+      people.map((person) => ({ ...person, memberships: memberships.get(person.memberId) })),
+      paused
+    );
     assertNoOverlap(items);
     cmd.record.after = { ...before, assignments: items, revision: before.revision + 1 };
     await done(
@@ -207,20 +230,22 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
   }
   async function rosterMine(actor, query = {}) {
     const context = await contextFor(actor),
-      weekStart = week(query.weekStart || rosterWeekKey());
+      weekStart = week(query.weekStart || dutyWeekKey());
     return {
       weekStart,
       items: (query.upcoming === '1'
         ? await repository.upcomingAssignments(context.actor.memberId, dateKey())
         : await repository.listAssignments(context.actor.memberId, weekStart)
-      ).filter((row) => evaluate(context, 'roster.read', { campusId: row.campusId }).allowed)
+      )
+        .filter((row) => evaluate(context, 'roster.read', { campusId: row.campusId }).allowed)
+        .map((row) => ({ ...row, canRequestCover: row.businessDate > dateKey() }))
     };
   }
 
   async function campusWeekData(actor, query) {
     const context = await contextFor(actor),
       campus = scoped(context, query.campusId, true),
-      weekStart = week(query.weekStart || rosterWeekKey());
+      weekStart = week(query.weekStart || dutyWeekKey());
     const [snapshot, people] = await Promise.all([
       repository.scheduleSnapshot(campus, weekStart),
       repository.schedulePeople(campus)
@@ -231,18 +256,16 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
         DUTY_TYPES.map((dutyType) => repository.scheduleWeek(weekStart, campus, dutyType))
       ),
       repository.rosterMemberFacts(ids, weekStart),
-      Promise.all(
-        DUTY_TYPES.map((dutyType) => repository.availabilityRows(ids, dutyType, weekStart))
-      ),
+      repository.availabilityRows(ids, weekStart),
       repository.serviceDays(weekStart, addDays(weekStart, 6))
     ]);
     if (snapshot !== (await repository.scheduleSnapshot(campus, weekStart)))
       fail(409, '人员或班表已变化，请刷新');
-    const availability = values.flat();
+    const availability = values;
     const factsByMember = new Map(facts.map((fact) => [fact.memberId, fact]));
     const availabilityByMember = new Map();
     for (const row of availability) {
-      const key = `${row.memberId}:${row.dutyType}`;
+      const key = row.memberId;
       if (!availabilityByMember.has(key)) availabilityByMember.set(key, []);
       availabilityByMember.get(key).push(row);
     }
@@ -258,13 +281,8 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
         ...factsByMember.get(person.memberId),
         availability: Object.fromEntries(
           DUTY_TYPES.map((dutyType) => {
-            const rows = availabilityByMember.get(`${person.memberId}:${dutyType}`) || [];
-            return [
-              dutyType,
-              rows.find((row) => row.weekStart === weekStart && row.windows !== null)?.windows ??
-                rows.find((row) => !row.weekStart)?.windows ??
-                []
-            ];
+            const rows = availabilityByMember.get(person.memberId) || [];
+            return [dutyType, dutyAvailability(rows, weekStart).effectiveWindows];
           })
         )
       })),
@@ -280,10 +298,21 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
       rosters: data.rosters,
       paused: data.paused,
       people: data.people.map(
-        ({ memberId, name, studentId, memberships, availability, assignments }) => ({
+        ({
           memberId,
           name,
           studentId,
+          homeCampusId,
+          campuses,
+          memberships,
+          availability,
+          assignments
+        }) => ({
+          memberId,
+          name,
+          studentId,
+          homeCampusId,
+          campuses,
           memberships,
           availability,
           alreadyScheduled: assignments.some((row) => row.campusId !== data.campusId)
@@ -314,6 +343,13 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
       if (!same && (startAt !== DUTY_START || endAt !== DUTY_END))
         fail(400, '新班次统一为19:00–21:00');
       if (!same && paused.includes(row.businessDate)) fail(409, '该日期已暂停服务，不能新增班次');
+      if (
+        isDutyExempt(
+          people.find((person) => person.memberId === row.memberId)?.memberships || [],
+          row.businessDate
+        )
+      )
+        fail(400, '部长（含副）及以上不参与值班统计，请移除对应安排');
       return {
         id: same ? previous.id : crypto.randomUUID(),
         memberId: row.memberId,
@@ -348,14 +384,18 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
     if (!Array.isArray(input.assignments || [])) fail(400, '保留班次格式不正确');
     const kept = data.rosters.flatMap((before) => {
       const values = (input.assignments || data.rosters.flatMap((row) => row.assignments)).filter(
-        (row) => row.dutyType === before.dutyType
+        (row) =>
+          row.dutyType === before.dutyType &&
+          !isDutyExempt(
+            data.people.find((person) => person.memberId === row.memberId)?.memberships || [],
+            row.businessDate
+          )
       );
       const normalized = normalizeWeek(before, values, data.people, data.paused);
       return normalized.map((row, i) => ({
         ...row,
         id: values[i].id || `retained-${before.dutyType}-${i}-${row.memberId}-${row.businessDate}`,
-        campusId: data.campusId,
-        leaveStatus: before.assignments.find((old) => old.id === row.id)?.leaveStatus || ''
+        campusId: data.campusId
       }));
     });
     assertNoOverlap(kept);
@@ -392,8 +432,12 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
     for (const person of data.people) {
       const mine = assignments.filter((row) => row.memberId === person.memberId);
       if (
-        mine.length + person.assignments.filter((row) => row.campusId !== data.campusId).length >
-        1
+        DUTY_WEEKDAYS.some((weekday) =>
+          dutyCandidateTypes(person.memberships, addDays(data.weekStart, weekday - 1)).includes(
+            'repair'
+          )
+        ) &&
+        mine.length + person.assignments.filter((row) => row.campusId !== data.campusId).length > 1
       )
         warnings.push(`${person.name}本周有多次值班`);
       for (const row of mine) {
@@ -404,24 +448,25 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
           warnings.push(`${person.name}为跨部门安排`);
       }
     }
-    for (let i = 0; i < 4; i++) {
-      const day = addDays(data.weekStart, i);
-      if (!data.paused.includes(day) && !assignments.some((row) => row.businessDate === day))
-        warnings.push(`${day}尚未安排值班人员`);
-      if (
-        !data.paused.includes(day) &&
-        !assignments.some(
-          (row) =>
-            row.businessDate === day &&
-            data.rosters.flatMap((roster) => roster.assignments).find((old) => old.id === row.id)
-              ?.leaveStatus !== 'recorded' &&
-            dutyLeader(
-              data.people.find((person) => person.memberId === row.memberId)?.memberships || [],
-              day
-            )
-        )
-      )
-        warnings.push(`${day}缺少硬件部负责人或更高职位人员`);
+    const review = dutyPlanningReview({ ...data, assignments });
+    warnings.push(...review.gaps.map((row) => `${row.businessDate}${row.reason}`));
+    warnings.push(
+      ...review.unassigned
+        .filter((row) => row.reasonCode !== 'scheduled_elsewhere')
+        .map((row) => `${row.name} · ${dutyTypeLabels[row.dutyType]} · ${row.reason}`)
+    );
+    const days = DUTY_WEEKDAYS.map((weekday) => addDays(data.weekStart, weekday - 1)).filter(
+      (day) => !data.paused.includes(day)
+    );
+    for (const dutyType of ['repair']) {
+      const counts = days.map(
+        (day) =>
+          assignments.filter(
+            (row) => row.businessDate === day && (!dutyType || row.dutyType === dutyType)
+          ).length
+      );
+      if (counts.length && Math.max(...counts) - Math.min(...counts) > 2)
+        warnings.push(`${dutyTypeLabels[dutyType] || '合计'}每日人数相差超过2人`);
     }
     cmd.record.after = {
       rosters: weeks.map((row) => ({ ...row.before, assignments: row.items })),
@@ -445,41 +490,21 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
     scoped(context, item.campusId);
     return { context, item };
   }
-  async function leave(actor, id, input) {
-    const { context, item } = await ownAssignment(actor, id),
-      reason = inputString(input, 'reason', 500, true);
-    const cmd = await command(
-      context,
-      'rosters.leave.recorded',
-      { ...input, assignmentId: id },
-      item.weekId,
-      item,
-      { ...item, leaveStatus: 'recorded', reason }
+  async function dutyPeople(campus, businessDate) {
+    const people = await repository.schedulePeople(campus);
+    const facts = await repository.rosterMemberFacts(
+      people.map((person) => person.memberId),
+      businessDate,
+      businessDate
     );
-    if (cmd.replay) return { recorded: true };
-    if (input.revision !== item.revision) fail(409, '班次已变化');
-    await done(repository.recordLeave(item, { reason }, cmd.record), cmd.record);
-    return { recorded: true };
-  }
-  async function withdrawLeave(actor, id, input) {
-    const { context, item } = await ownAssignment(actor, id);
-    const cmd = await command(
-      context,
-      'rosters.leave.withdrawn',
-      { ...input, assignmentId: id },
-      item.weekId,
-      item,
-      { ...item, leaveStatus: '' }
-    );
-    if (cmd.replay) return { withdrawn: true };
-    if (input.revision !== item.revision) fail(409, '班次已变化');
-    await done(repository.withdrawLeave(item, cmd.record), cmd.record);
-    return { withdrawn: true };
+    const memberships = new Map(facts.map((person) => [person.memberId, person.memberships]));
+    return people.filter((person) => !isDutyExempt(memberships.get(person.memberId), businessDate));
   }
   async function coverCandidates(actor, id) {
     const { item } = await ownAssignment(actor, id);
+    if (item.businessDate <= dateKey()) fail(409, '调岗须在值班日期前发起和同意');
     return {
-      items: (await repository.schedulePeople(item.campusId)).filter(
+      items: (await dutyPeople(item.campusId, item.businessDate)).filter(
         (person) => person.memberId !== item.memberId
       )
     };
@@ -488,7 +513,7 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
     const { context, item } = await ownAssignment(actor, id);
     if (
       input.toMemberId === item.memberId ||
-      !(await repository.schedulePeople(item.campusId)).some(
+      !(await dutyPeople(item.campusId, item.businessDate)).some(
         (person) => person.memberId === input.toMemberId
       )
     )
@@ -505,6 +530,7 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
       result
     );
     if (cmd.replay) return cmd.replay;
+    if (item.businessDate <= dateKey()) fail(409, '调岗须在值班日期前发起和同意');
     if (input.revision !== item.revision) fail(409, '班次已变化');
     return done(repository.createCover(item, input.toMemberId, note, cmd.record), cmd.record);
   }
@@ -523,17 +549,24 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
         !evaluate(context, 'roster.read', { campusId: exchangeAssignment.campusId }).allowed
       )
         continue;
+      const expired =
+        row.status === 'pending' &&
+        [item, exchangeAssignment].some(
+          (assignment) => assignment && assignment.businessDate <= dateKey()
+        );
       items.push({
         id: row.id,
-        status: row.status,
+        status: expired ? 'expired' : row.status,
         revision: row.revision,
         note: row.note,
         fromName: row.from_name,
         toName: row.to_name,
         assignment: item,
         exchangeAssignment,
-        canRespond: row.to_member_id === context.actor.memberId && row.status === 'pending',
-        canCancel: row.from_member_id === context.actor.memberId && row.status === 'pending'
+        canRespond:
+          row.to_member_id === context.actor.memberId && row.status === 'pending' && !expired,
+        canCancel:
+          row.from_member_id === context.actor.memberId && row.status === 'pending' && !expired
       });
     }
     return { items };
@@ -565,6 +598,7 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
     if (input.revision !== row.revision || row.status !== 'pending') fail(409, '邀请已变化');
     const changes = [];
     if (input.decision === 'accepted') {
+      if (original.businessDate <= dateKey()) fail(409, '调岗须在值班日期前发起和同意');
       if (
         !original.active ||
         original.revision !== row.assignment_revision ||
@@ -581,7 +615,17 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
         )
           fail(409, '互换班次已变化');
         scoped(context, other.campusId);
+        if (other.businessDate <= dateKey()) fail(409, '调岗须在值班日期前发起和同意');
         changes.push({ ...other, memberId: row.from_member_id });
+      }
+      for (const change of changes) {
+        const [person] = await repository.rosterMemberFacts(
+          [change.memberId],
+          change.businessDate,
+          change.businessDate
+        );
+        if (isDutyExempt(person?.memberships, change.businessDate))
+          fail(403, '部长（含副）及以上不参与值班统计，不能接替班次');
       }
     }
     cmd.record.after.changes = changes;
@@ -597,8 +641,6 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
     campusWeek,
     rosterSuggestions,
     publishCampusWeek,
-    leave,
-    withdrawLeave,
     coverCandidates,
     requestCover,
     covers,

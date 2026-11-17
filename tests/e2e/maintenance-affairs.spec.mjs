@@ -10,7 +10,7 @@ test('dual appointments offer office availability and direct attendance without 
   await staffPage(page, '今日工作');
   await expect(page.getByRole('button', { name: '展示签到码', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '到岗签到', exact: true }).click();
-  await page.getByRole('button', { name: '返回工作台', exact: true }).click();
+  await page.getByRole('button', { name: '确认签到', exact: true }).click();
   await expect(page.getByRole('region', { name: '工作视窗' }).getByText('已签到', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '展示签到码', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '展示签到码', exact: true }).click();
@@ -63,7 +63,7 @@ test('planner retries a stale draft without losing its manual addition', async (
           const otherPlanner = await dutyPage(otherPage, '安排下周');
           await otherPlanner.getByRole('button', { name: '选择人员', exact: true }).nth(1).click();
           const otherPicker = otherPage.getByRole('dialog');
-          await otherPicker.getByRole('checkbox', { name: /林悦/ }).check();
+          await otherPicker.getByRole('checkbox', { name: /陈宇/ }).check();
           await otherPicker.getByRole('button', { name: '完成选择', exact: true }).click();
           await otherPlanner.getByRole('button', { name: /发布/ }).click();
           await expect(
@@ -88,7 +88,7 @@ test('planner retries a stale draft without losing its manual addition', async (
           await expect(planner.locator('.duty-assignee').filter({ hasText: '周宁' })).toHaveCount(
             1
           );
-          await expect(planner.locator('.duty-assignee').filter({ hasText: '林悦' })).toHaveCount(
+          await expect(planner.locator('.duty-assignee').filter({ hasText: '陈宇' })).toHaveCount(
             1
           );
           await planner.getByRole('button', { name: /发布/ }).click();

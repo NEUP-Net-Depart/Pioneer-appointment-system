@@ -2,7 +2,7 @@ import { parseJson, SCHEMA_VERSION } from '../../platform/contracts.js';
 import { dateKey, nowIso } from '../../platform/time.js';
 import { intersectScopes } from '../../modules/authorization/scopes.js';
 import { campusArraySql } from '../staff-access.js';
-import { memberColumns, assignmentLeaveColumn, rows, membership, assignment } from './shared.js';
+import { memberColumns, rows, membership, assignment } from './shared.js';
 
 export function membersDomain({ db, auditStatement, commandAuthorization }) {
   async function accountRow(account) {
@@ -101,7 +101,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
   async function todayDuties(memberId, businessDate = dateKey()) {
     const result = await db
       .prepare(
-        `SELECT da.*,(SELECT paused FROM service_day_overrides s WHERE s.business_date=da.business_date AND s.campus_id=da.campus_id) AS service_paused,c.name AS campus_name,${assignmentLeaveColumn} FROM duty_assignments da
+        `SELECT da.*,(SELECT paused FROM service_day_overrides s WHERE s.business_date=da.business_date AND s.campus_id=da.campus_id) AS service_paused,c.name AS campus_name FROM duty_assignments da
       
       JOIN campuses c ON c.id=da.campus_id
       WHERE da.active=1 AND da.member_id=? AND da.business_date=? ORDER BY da.start_at`
@@ -129,7 +129,7 @@ export function membersDomain({ db, auditStatement, commandAuthorization }) {
         .bind(memberId, authorizationDate, authorizationDate),
       db
         .prepare(
-          `SELECT da.*,(SELECT paused FROM service_day_overrides s WHERE s.business_date=da.business_date AND s.campus_id=da.campus_id) AS service_paused,c.name AS campus_name,${assignmentLeaveColumn} FROM duty_assignments da JOIN campuses c ON c.id=da.campus_id WHERE da.active=1 AND da.member_id=? AND da.business_date=? ORDER BY da.start_at`
+          `SELECT da.*,(SELECT paused FROM service_day_overrides s WHERE s.business_date=da.business_date AND s.campus_id=da.campus_id) AS service_paused,c.name AS campus_name FROM duty_assignments da JOIN campuses c ON c.id=da.campus_id WHERE da.active=1 AND da.member_id=? AND da.business_date=? ORDER BY da.start_at`
         )
         .bind(memberId, businessDate)
     ]);

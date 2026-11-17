@@ -1,7 +1,7 @@
 import { controlPart } from '../../shared/telemetry-controls.js';
 import { track } from '../../shared/telemetry-client.js';
 import React from 'react';
-import { addDays, dateKey, calendarWeekRange, rosterWeekKey } from '../../shared/time.js';
+import { addDays, dateKey, weekRange } from '../../shared/time.js';
 import { DatePicker } from './SelectionControls.jsx';
 
 export function WeekPicker({
@@ -12,8 +12,8 @@ export function WeekPicker({
   min = '',
   'data-track': trackId
 }) {
-  const current = calendarWeekRange(value || dateKey()).start;
-  const minimum = min ? calendarWeekRange(min).start : '';
+  const current = weekRange(value || dateKey()).start;
+  const minimum = min ? weekRange(min).start : '';
   return (
     <div className="week-picker">
       <span>{label}</span>
@@ -25,7 +25,7 @@ export function WeekPicker({
           aria-label="上一周"
           onClick={() => {
             track('ui.change', { control: trackId });
-            onChange(rosterWeekKey(addDays(current, -7)));
+            onChange(addDays(current, -7));
           }}
         >
           <span aria-hidden="true">‹</span>
@@ -33,12 +33,13 @@ export function WeekPicker({
         <DatePicker
           data-track={controlPart(trackId, 'date')}
           mode="week"
+          weekStartsOn={1}
           aria-label={label}
           value={current}
           min={minimum}
           disabled={disabled}
           required
-          onChange={(event) => event.target.value && onChange(rosterWeekKey(event.target.value))}
+          onChange={(event) => event.target.value && onChange(event.target.value)}
         />
         <button
           data-track={controlPart(trackId, 'next')}
@@ -47,7 +48,7 @@ export function WeekPicker({
           aria-label="下一周"
           onClick={() => {
             track('ui.change', { control: trackId });
-            onChange(rosterWeekKey(addDays(current, 7)));
+            onChange(addDays(current, 7));
           }}
         >
           <span aria-hidden="true">›</span>

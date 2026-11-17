@@ -11,7 +11,7 @@
 npm run test:e2e                         # 默认 6 项冒烟
 npm run test:e2e:full                    # 全部浏览器回归，含专项诊断
 npm run test:e2e:diagnostics             # 只运行 OCR/验证码、图片编码和埋点 SDK 的 27 项诊断
-npm run test:e2e:full -- --project=chromium --grep 'requests leave'
+npm run test:e2e:full -- --project=chromium --grep 'invites a replacement'
 npm run test:e2e -- --workers=1
 ```
 

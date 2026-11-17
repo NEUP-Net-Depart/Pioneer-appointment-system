@@ -2,14 +2,14 @@ import { track } from '../../shared/telemetry-client.js';
 import React, { useState } from 'react';
 import { Modal, Notice } from './field/ui';
 import { WeekPicker } from './WeekPicker';
-import { rosterWeekKey } from '../../shared/time.js';
+import { dutyWeekKey } from '../../shared/time.js';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../shared/api.js';
 
 export function WeeklyAttendanceExport({ campuses, campusId = '', onClose }) {
   const [scope, setScope] = useState({
-    weekStart: rosterWeekKey(),
-    weekEnd: rosterWeekKey(),
+    weekStart: dutyWeekKey(),
+    weekEnd: dutyWeekKey(),
     campusId,
     firstOnly: false,
     leadersOnce: false

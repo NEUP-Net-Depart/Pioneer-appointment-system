@@ -1,6 +1,7 @@
-import { addDays } from '../../platform/time.js';
+import { addDays, dateKey } from '../../platform/time.js';
 import { dutyWindow } from '../../../shared/duty.js';
-import { rows, assignment, membership, assignmentLeaveColumn } from './shared.js';
+import { leadershipPositions } from '../../../shared/staff-organization.js';
+import { rows, assignment, membership } from './shared.js';
 import { parseJson } from '../../platform/contracts.js';
 
 export function scheduleRepository({ db, writeCommand: write }) {
@@ -11,7 +12,7 @@ export function scheduleRepository({ db, writeCommand: write }) {
         .bind(...args)
         .all()
     );
-  const shifts = `SELECT da.*,m.name AS member_name,c.name AS campus_name,${assignmentLeaveColumn} FROM duty_assignments da JOIN members m ON m.id=da.member_id JOIN campuses c ON c.id=da.campus_id`;
+  const shifts = `SELECT da.*,m.name AS member_name,c.name AS campus_name FROM duty_assignments da JOIN members m ON m.id=da.member_id JOIN campuses c ON c.id=da.campus_id`;
   async function scheduleWeek(week, campus, type) {
     const row = await db
       .prepare('SELECT * FROM roster_weeks WHERE week_start=? AND campus_id=? AND duty_type=?')
@@ -60,18 +61,17 @@ export function scheduleRepository({ db, writeCommand: write }) {
   }
   async function schedulePeople(campus) {
     return list(
-      `SELECT m.id AS memberId,m.name,m.student_id AS studentId,s.account,s.auth_version AS authVersion FROM members m JOIN staff_accounts s ON s.member_id=m.id
+      `SELECT m.id AS memberId,m.name,m.student_id AS studentId,m.home_campus_id AS homeCampusId,s.account,s.auth_version AS authVersion FROM members m JOIN staff_accounts s ON s.member_id=m.id
       WHERE m.status='active' AND s.status='enabled' AND NOT EXISTS(SELECT 1 FROM member_special_identities si WHERE si.member_id=m.id AND si.code='retired_elder')
       AND EXISTS(SELECT 1 FROM staff_access_campuses g WHERE g.account=s.account AND g.campus=(SELECT name FROM campuses WHERE id=?)) ORDER BY m.name,m.id`,
       campus
     );
   }
-  async function availabilityRows(memberIds, type, week) {
+  async function availabilityRows(memberIds, week) {
     return (
       await list(
-        `SELECT * FROM member_availability WHERE member_id IN (SELECT value FROM json_each(?)) AND duty_type=? AND week_start IN ('',?)`,
+        `SELECT * FROM member_availability WHERE member_id IN (SELECT value FROM json_each(?)) AND week_start IN ('',?)`,
         JSON.stringify(memberIds),
-        type,
         week
       )
     ).map((row) => ({
@@ -208,8 +208,9 @@ export function scheduleRepository({ db, writeCommand: write }) {
   async function saveAvailability(memberId, type, week, input, record) {
     return write(
       record,
-      'COALESCE((SELECT revision FROM member_availability WHERE member_id=? AND duty_type=? AND week_start=?),-1)=?',
-      [memberId, type, week, input.revision],
+      `COALESCE((SELECT revision FROM member_availability WHERE member_id=? AND week_start=? ORDER BY updated_at DESC,duty_type DESC LIMIT 1),-1)=?
+      AND COALESCE((SELECT duty_type FROM member_availability WHERE member_id=? AND week_start=? ORDER BY updated_at DESC,duty_type DESC LIMIT 1),'repair')=?`,
+      [memberId, week, input.revision, memberId, week, type],
       (gate, marker) => [
         db
           .prepare(
@@ -228,64 +229,6 @@ export function scheduleRepository({ db, writeCommand: write }) {
       ]
     );
   }
-  async function recordLeave(item, input, record) {
-    return write(
-      record,
-      `EXISTS(SELECT 1 FROM duty_assignments WHERE id=? AND member_id=? AND active=1 AND revision=?) AND NOT EXISTS(SELECT 1 FROM roster_leaves WHERE assignment_id=? AND member_id=? AND withdrawn_at IS NULL)`,
-      [item.id, item.memberId, item.revision, item.id, item.memberId],
-      (gate, marker) => [
-        db
-          .prepare(
-            `INSERT INTO roster_leaves(id,assignment_id,member_id,reason,recorded_at) SELECT ?,?,?,?,? WHERE ${gate}`
-          )
-          .bind(crypto.randomUUID(), item.id, item.memberId, input.reason, record.at, marker),
-        db
-          .prepare(
-            `UPDATE duty_assignments SET revision=revision+1,updated_at=? WHERE id=? AND ${gate}`
-          )
-          .bind(record.at, item.id, marker),
-        db
-          .prepare(
-            `UPDATE roster_covers SET assignment_revision=assignment_revision+CASE WHEN assignment_id=? THEN 1 ELSE 0 END,exchange_revision=exchange_revision+CASE WHEN exchange_assignment_id=? THEN 1 ELSE 0 END WHERE status='pending' AND (assignment_id=? OR exchange_assignment_id=?) AND ${gate}`
-          )
-          .bind(item.id, item.id, item.id, item.id, marker),
-        db
-          .prepare(
-            `UPDATE roster_weeks SET revision=revision+1,updated_at=? WHERE id=? AND ${gate}`
-          )
-          .bind(record.at, item.weekId, marker)
-      ]
-    );
-  }
-  async function withdrawLeave(item, record) {
-    return write(
-      record,
-      'EXISTS(SELECT 1 FROM duty_assignments WHERE id=? AND active=1 AND member_id=? AND revision=?) AND EXISTS(SELECT 1 FROM roster_leaves WHERE assignment_id=? AND member_id=? AND withdrawn_at IS NULL)',
-      [item.id, item.memberId, item.revision, item.id, item.memberId],
-      (gate, marker) => [
-        db
-          .prepare(
-            `UPDATE roster_leaves SET withdrawn_at=?,revision=revision+1 WHERE assignment_id=? AND member_id=? AND withdrawn_at IS NULL AND ${gate}`
-          )
-          .bind(record.at, item.id, item.memberId, marker),
-        db
-          .prepare(
-            `UPDATE duty_assignments SET revision=revision+1,updated_at=? WHERE id=? AND ${gate}`
-          )
-          .bind(record.at, item.id, marker),
-        db
-          .prepare(
-            `UPDATE roster_covers SET assignment_revision=assignment_revision+CASE WHEN assignment_id=? THEN 1 ELSE 0 END,exchange_revision=exchange_revision+CASE WHEN exchange_assignment_id=? THEN 1 ELSE 0 END WHERE status='pending' AND (assignment_id=? OR exchange_assignment_id=?) AND ${gate}`
-          )
-          .bind(item.id, item.id, item.id, item.id, marker),
-        db
-          .prepare(
-            `UPDATE roster_weeks SET revision=revision+1,updated_at=? WHERE id=? AND ${gate}`
-          )
-          .bind(record.at, item.weekId, marker)
-      ]
-    );
-  }
   async function covers(memberId) {
     return list(
       `SELECT r.*,f.name AS from_name,t.name AS to_name FROM roster_covers r JOIN members f ON f.id=r.from_member_id JOIN members t ON t.id=r.to_member_id WHERE r.from_member_id=? OR r.to_member_id=? ORDER BY r.created_at DESC`,
@@ -299,10 +242,23 @@ export function scheduleRepository({ db, writeCommand: write }) {
   async function createCover(item, toMemberId, note, record) {
     return write(
       record,
-      `EXISTS(SELECT 1 FROM duty_assignments WHERE id=? AND revision=? AND member_id=? AND active=1)
+      `EXISTS(SELECT 1 FROM duty_assignments WHERE id=? AND revision=? AND member_id=? AND active=1 AND business_date>?)
     AND NOT EXISTS(SELECT 1 FROM roster_covers WHERE (assignment_id=? OR exchange_assignment_id=?) AND status='pending')
-    AND EXISTS(SELECT 1 FROM members m JOIN staff_accounts s ON s.member_id=m.id JOIN staff_access_campuses g ON g.account=s.account WHERE m.id=? AND m.status='active' AND s.status='enabled' AND NOT EXISTS(SELECT 1 FROM member_special_identities si WHERE si.member_id=m.id AND si.code='retired_elder') AND g.campus=(SELECT name FROM campuses WHERE id=?))`,
-      [item.id, item.revision, item.memberId, item.id, item.id, toMemberId, item.campusId],
+    AND EXISTS(SELECT 1 FROM members m JOIN staff_accounts s ON s.member_id=m.id JOIN staff_access_campuses g ON g.account=s.account WHERE m.id=? AND m.status='active' AND s.status='enabled' AND NOT EXISTS(SELECT 1 FROM member_special_identities si WHERE si.member_id=m.id AND si.code='retired_elder') AND g.campus=(SELECT name FROM campuses WHERE id=?)
+      AND NOT EXISTS(SELECT 1 FROM member_department_memberships mm JOIN departments d ON d.id=mm.department_id WHERE mm.member_id=m.id AND d.enabled=1 AND mm.effective_from<=? AND (mm.effective_to IS NULL OR mm.effective_to>?) AND mm.position_code IN (SELECT value FROM json_each(?))))`,
+      [
+        item.id,
+        item.revision,
+        item.memberId,
+        dateKey(),
+        item.id,
+        item.id,
+        toMemberId,
+        item.campusId,
+        item.businessDate,
+        item.businessDate,
+        JSON.stringify(leadershipPositions)
+      ],
       (gate, marker) => [
         db
           .prepare(
@@ -325,15 +281,25 @@ export function scheduleRepository({ db, writeCommand: write }) {
     const ids = changes.map((row) => row.id),
       json = JSON.stringify(changes);
     const guard = `EXISTS(SELECT 1 FROM roster_covers WHERE id=? AND revision=? AND status='pending')
-      AND NOT EXISTS(SELECT 1 FROM json_each(?) n WHERE NOT EXISTS(SELECT 1 FROM duty_assignments a WHERE a.id=json_extract(n.value,'$.id') AND a.revision=json_extract(n.value,'$.revision') AND a.active=1))
+      AND NOT EXISTS(SELECT 1 FROM json_each(?) n WHERE json_extract(n.value,'$.businessDate')<=? OR NOT EXISTS(SELECT 1 FROM duty_assignments a WHERE a.id=json_extract(n.value,'$.id') AND a.revision=json_extract(n.value,'$.revision') AND a.active=1))
       AND NOT EXISTS(SELECT 1 FROM json_each(?) n WHERE NOT EXISTS(SELECT 1 FROM members m JOIN staff_accounts s ON s.member_id=m.id JOIN staff_access_campuses g ON g.account=s.account
-        WHERE m.id=json_extract(n.value,'$.memberId') AND m.status='active' AND s.status='enabled' AND NOT EXISTS(SELECT 1 FROM member_special_identities si WHERE si.member_id=m.id AND si.code='retired_elder') AND g.campus=(SELECT name FROM campuses WHERE id=json_extract(n.value,'$.campusId'))))
+        WHERE m.id=json_extract(n.value,'$.memberId') AND m.status='active' AND s.status='enabled' AND NOT EXISTS(SELECT 1 FROM member_special_identities si WHERE si.member_id=m.id AND si.code='retired_elder') AND g.campus=(SELECT name FROM campuses WHERE id=json_extract(n.value,'$.campusId'))
+        AND NOT EXISTS(SELECT 1 FROM member_department_memberships mm JOIN departments d ON d.id=mm.department_id WHERE mm.member_id=m.id AND d.enabled=1 AND mm.effective_from<=json_extract(n.value,'$.businessDate') AND (mm.effective_to IS NULL OR mm.effective_to>json_extract(n.value,'$.businessDate')) AND mm.position_code IN (SELECT value FROM json_each(?)))))
       AND NOT EXISTS(SELECT 1 FROM json_each(?) n JOIN duty_assignments a ON a.member_id=json_extract(n.value,'$.memberId') AND a.active=1 AND a.id NOT IN (SELECT value FROM json_each(?))
         AND a.business_date=json_extract(n.value,'$.businessDate') AND a.start_at<json_extract(n.value,'$.endAt') AND json_extract(n.value,'$.startAt')<a.end_at)`;
     return write(
       record,
       guard,
-      [cover.id, cover.revision, json, json, json, JSON.stringify(ids)],
+      [
+        cover.id,
+        cover.revision,
+        json,
+        dateKey(),
+        json,
+        JSON.stringify(leadershipPositions),
+        json,
+        JSON.stringify(ids)
+      ],
       (gate, marker) => [
         ...changes.map((item) =>
           db
@@ -365,8 +331,12 @@ export function scheduleRepository({ db, writeCommand: write }) {
   async function pendingCoverInvitations(memberId) {
     return (
       await db
-        .prepare("SELECT COUNT(*) n FROM roster_covers WHERE to_member_id=? AND status='pending'")
-        .bind(memberId)
+        .prepare(
+          `SELECT COUNT(*) n FROM roster_covers r JOIN duty_assignments a ON a.id=r.assignment_id
+          WHERE r.to_member_id=? AND r.status='pending' AND a.active=1 AND a.business_date>?
+          AND (r.exchange_assignment_id IS NULL OR EXISTS(SELECT 1 FROM duty_assignments other WHERE other.id=r.exchange_assignment_id AND other.active=1 AND other.business_date>?))`
+        )
+        .bind(memberId, dateKey(), dateKey())
         .first()
     ).n;
   }
@@ -439,8 +409,6 @@ export function scheduleRepository({ db, writeCommand: write }) {
     scheduleHistory,
     saveSchedules,
     saveAvailability,
-    recordLeave,
-    withdrawLeave,
     covers,
     cover,
     createCover,

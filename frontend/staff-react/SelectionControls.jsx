@@ -10,7 +10,12 @@ import React, {
   useState
 } from 'react';
 import { createPortal } from 'react-dom';
-import { addDays, dateKey, calendarWeekRange as weekRange } from '../../shared/time.js';
+import {
+  addDays,
+  dateKey,
+  calendarWeekRange,
+  weekRange as mondayWeekRange
+} from '../../shared/time.js';
 import { TimePicker } from './TimePicker.jsx';
 import { useControlLabel } from './useControlLabel.js';
 import './workspace-controls.css';
@@ -274,10 +279,12 @@ export function DatePicker({
   min = '',
   max = '',
   mode = 'date',
+  weekStartsOn = 0,
   label = undefined,
   'data-track': trackId,
   ...props
 }) {
+  const weekRange = weekStartsOn === 1 ? mondayWeekRange : calendarWeekRange;
   const [open, setOpen] = useState(false);
   const [month, setMonth] = useState((value || dateKey()).slice(0, 7));
   const [months, setMonths] = useState(false);
@@ -447,7 +454,10 @@ export function DatePicker({
             ) : (
               <>
                 <div className="workspace-calendar-weekdays" aria-hidden="true">
-                  {['日', '一', '二', '三', '四', '五', '六'].map((day) => (
+                  {(weekStartsOn === 1
+                    ? ['一', '二', '三', '四', '五', '六', '日']
+                    : ['日', '一', '二', '三', '四', '五', '六']
+                  ).map((day) => (
                     <span key={day}>{day}</span>
                   ))}
                 </div>

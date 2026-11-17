@@ -7,8 +7,8 @@
 | identity / organization | 稳定成员、账号、真实任职、校区和部门 |
 | authorization | 任职确定的固定业务能力、系统配置授权、对象和校区范围 |
 | repairs | 预约容量、设备接收、直接接单、交接、四种结果与返修关系 |
-| duty / attendance | 今日名单、直接确认到场、核查未到、现场凭证、历史补记、共用的个人与管理时长算法 |
-| rosters | 整班空闲、按周例外、确定性建议、维修与办公原子发布、请假与接替确认 |
+| duty / attendance | 今日名单、本人签到、自动缺勤判断、现场凭证、历史补记、共用的个人与管理时长算法 |
+| rosters | 整班空闲、按周例外、确定性建议、维修与办公原子发布、双方自助调岗确认 |
 | audit / files | 审计与请求回执、鉴权附件及存储额度 |
 
 `src/services/staff-platform/` 由 context、members、roles、workspace、attendance、duty、reporting、schedule 组成；仓储按同一业务域组合。部门字典仅供查询，组织结构变更通过数据库迁移处理。`shared/duty.js` 集中固定时段与候选规则，`modules/rosters/suggestions.js` 负责最大匹配和均衡，`modules/attendance/volunteer-report.js` 共用时长算法。没有问卷收集服务、返修审批服务或现场分派状态机。

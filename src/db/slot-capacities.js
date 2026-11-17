@@ -63,8 +63,7 @@ export function slotCapacityRepository(db) {
         dutyTypes.length ? db.prepare(`SELECT da.duty_type,COUNT(DISTINCT da.member_id) AS total FROM duty_assignments da
           
           JOIN campuses c ON c.id=da.campus_id
-          WHERE c.name=? AND da.business_date=? AND da.duty_type IN (${dutyTypes.map(() => '?').join(',')})
-          AND NOT EXISTS(SELECT 1 FROM roster_leaves lr WHERE lr.assignment_id=da.id AND lr.member_id=da.member_id AND lr.withdrawn_at IS NULL)
+          WHERE da.active=1 AND c.name=? AND da.business_date=? AND da.duty_type IN (${dutyTypes.map(() => '?').join(',')})
           GROUP BY da.duty_type`).bind(campus, date, ...dutyTypes).all() : null
       ]);
       return { source: snapshot.total ? 'snapshot' : 'template',

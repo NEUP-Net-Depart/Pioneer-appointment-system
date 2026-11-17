@@ -7,15 +7,20 @@ import { ActivityContext, Modal } from './field/ui';
 import { request } from './request.js';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
 import { DataValue } from './DataValue';
-import { addDays, rosterWeekKey } from '../../shared/time.js';
+import { addDays, dutyWeekKey } from '../../shared/time.js';
+import { activeMemberships, membershipLabel } from '../../shared/staff-organization.js';
 import {
   DUTY_START,
   DUTY_END,
   DUTY_TYPES,
+  DUTY_WEEKDAYS,
   dutyTypeLabels,
-  dutyLeader,
+  dutyCampusNames,
+  isDutyExempt,
   availableForDuty,
-  dutyCandidateTypes
+  dutyCandidateTypes,
+  dutyPlanningReview,
+  manualDutyPriority
 } from '../../shared/duty.js';
 
 export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
@@ -23,7 +28,7 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
   const active = useContext(ActivityContext),
     lock = useRef(false),
     saveId = useRef(crypto.randomUUID());
-  const [week, setWeek] = useState(() => addDays(rosterWeekKey(), 7)),
+  const [week, setWeek] = useState(() => addDays(dutyWeekKey(), 7)),
     [draft, setDraft] = useState([]),
     [draftSource, setDraftSource] = useState(null),
     [dirty, setDirty] = useState(false),
@@ -32,7 +37,7 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
     [notice, setNotice] = useState(''),
     [picker, setPicker] = useState(null),
     [peopleSearch, setPeopleSearch] = useState(''),
-    [unassigned, setUnassigned] = useState([]);
+    [optimization, setOptimization] = useState(null);
   const queryKey = ['/api/rosters/campus-week', { weekStart: week, campusId }];
   const result = useQuery({ queryKey, enabled: active && !dirty });
   const data = dirty ? draftSource : result.data;
@@ -44,10 +49,11 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
   }, [dirty, busy, onDirtyChange]);
   useEffect(() => {
     if (!data || dirty) return;
+    setOptimization(null);
     setDraft(data.rosters.flatMap((row) => row.assignments));
-    setUnassigned([]);
   }, [data, dirty]);
   function change(items) {
+    setOptimization(null);
     saveId.current = crypto.randomUUID();
     if (!dirty) setDraftSource(result.data);
     setDraft(items);
@@ -92,7 +98,9 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
         predicate: (query) =>
           [
             '/api/me/roster',
+            '/api/rosters/covers',
             '/api/attendance/day',
+            '/api/attendance/staffing',
             '/api/slot-capacities/actual',
             '/api/field/home',
             '/api/field/board',
@@ -117,7 +125,6 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
       setDirty(false);
       setDraft(data?.rosters.flatMap((row) => row.assignments) || []);
       setPicker(null);
-      setUnassigned([]);
     }
   });
   const run = (operation) => void execute(operation).catch(() => {});
@@ -160,7 +167,6 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
       }
       saveId.current = crypto.randomUUID();
       setPicker(null);
-      setUnassigned([]);
     });
   }
   async function suggest() {
@@ -174,7 +180,7 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
       }
     });
     change(result.assignments);
-    setUnassigned(result.unassigned);
+    setOptimization(result.optimization);
     setDraftSource((current) => ({ ...current, sourceVersion: result.sourceVersion }));
     setNotice('建议已生成，请核对后发布');
   }
@@ -204,11 +210,62 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
   }
   const dates = [
     ...new Set([
-      ...Array.from({ length: 4 }, (_, i) => addDays(week, i)),
+      ...DUTY_WEEKDAYS.map((weekday) => addDays(week, weekday - 1)),
       ...visibleDraft.map((row) => row.businessDate)
     ])
   ].sort();
   const warnings = [];
+  const review = data
+    ? dutyPlanningReview({ ...data, assignments: draft })
+    : { gaps: [], unassigned: [] };
+  const unassigned = review.unassigned.filter(
+    (person) => person.reasonCode !== 'scheduled_elsewhere'
+  );
+  const serviceDates = DUTY_WEEKDAYS.map((weekday) => addDays(week, weekday - 1)).filter(
+    (day) => !data?.paused.includes(day)
+  );
+  const activeDraft = draft.filter((row) => serviceDates.includes(row.businessDate));
+  const loadRange = (dutyType = '') => {
+    const counts = serviceDates.map(
+      (day) =>
+        draft.filter((row) => row.businessDate === day && (!dutyType || row.dutyType === dutyType))
+          .length
+    );
+    return {
+      min: counts.length ? Math.min(...counts) : 0,
+      max: counts.length ? Math.max(...counts) : 0
+    };
+  };
+  const conflicts = new Set(
+    activeDraft
+      .filter((row) => {
+        const person = data?.people.find((item) => item.memberId === row.memberId);
+        const weekday = new Date(`${row.businessDate}T12:00:00Z`).getUTCDay();
+        return person && !availableForDuty(person.availability[row.dutyType], weekday, campusId);
+      })
+      .map((row) => row.memberId)
+  );
+  const pickerPeople =
+    picker && data
+      ? data.people
+          .filter((person) => !isDutyExempt(person.memberships, picker.day))
+          .map((person) => ({
+            ...person,
+            posts: activeMemberships({ memberships: person.memberships, businessDate: picker.day }),
+            rank: manualDutyPriority(person.memberships, picker.day, picker.type)
+          }))
+          .filter((person) =>
+            `${person.name} ${person.studentId || ''} ${dutyCampusNames[person.homeCampusId] || ''} ${(person.campuses || []).join(' ')} ${person.posts.map(membershipLabel).join(' ')}`.includes(
+              peopleSearch.trim()
+            )
+          )
+          .sort(
+            (first, second) =>
+              first.rank - second.rank ||
+              first.name.localeCompare(second.name, 'zh-CN') ||
+              first.memberId.localeCompare(second.memberId)
+          )
+      : [];
   if (data) {
     for (const row of draft) {
       if (!data.people.some((person) => person.memberId === row.memberId))
@@ -218,9 +275,16 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
     }
     for (const person of data.people) {
       const rows = draft.filter((row) => row.memberId === person.memberId);
-      if (rows.length + Number(person.alreadyScheduled) > 1)
+      if (
+        serviceDates.some((day) =>
+          dutyCandidateTypes(person.memberships, day).includes('repair')
+        ) &&
+        rows.length + Number(person.alreadyScheduled) > 1
+      )
         warnings.push(`${person.name}本周有多次安排`);
       for (const row of rows) {
+        if (isDutyExempt(person.memberships, row.businessDate))
+          warnings.push(`${person.name}不参与值班统计，请移除对应安排`);
         const weekday = new Date(`${row.businessDate}T12:00:00Z`).getUTCDay() || 7;
         if (!availableForDuty(person.availability[row.dutyType], weekday, campusId))
           warnings.push(`${person.name} ${row.businessDate}不在已填整班空闲内`);
@@ -228,22 +292,12 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
           warnings.push(`${person.name}为跨部门安排`);
       }
     }
-    for (const day of dates) {
-      if (!data.paused.includes(day) && !draft.some((row) => row.businessDate === day))
-        warnings.push(`${day}尚未安排值班人员`);
-      if (
-        !data.paused.includes(day) &&
-        !draft.some(
-          (row) =>
-            row.businessDate === day &&
-            row.leaveStatus !== 'recorded' &&
-            dutyLeader(
-              data.people.find((person) => person.memberId === row.memberId)?.memberships || [],
-              day
-            )
-        )
-      )
-        warnings.push(`${day}缺少硬件部负责人或更高职位人员`);
+    for (const dutyType of ['repair']) {
+      const range = loadRange(dutyType);
+      if (range.max - range.min > 2)
+        warnings.push(
+          `${dutyTypeLabels[dutyType] || '合计'}每日人数为${range.min}–${range.max}人，相差超过2人`
+        );
     }
   }
   return (
@@ -260,7 +314,7 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
         <button
           data-track="staff.dutyplanner.button.2"
           disabled={dirty || busy}
-          onClick={() => setWeek(addDays(rosterWeekKey(), 7))}
+          onClick={() => setWeek(addDays(dutyWeekKey(), 7))}
         >
           下周
         </button>
@@ -309,8 +363,7 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
               <h2 className="workspace-title-with-hint">
                 安排一周值班
                 <HelpHint data-track="staff.dutyplanner.helphint.14" label="班表生成规则">
-                  维修 /
-                  办公值班为19:00–21:00。按空闲生成建议，每人每周最多一次；手动调整可保留例外。
+                  硬件部员每周一天，维修每日人数差不超过2人，尽量避开空闲冲突。办公按当天空闲安排，每天最多一人，缺人可留空。
                 </HelpHint>
               </h2>
             </div>
@@ -337,7 +390,6 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
                   onClick={() => {
                     setDirty(false);
                     setDraft(data.rosters.flatMap((row) => row.assignments));
-                    setUnassigned([]);
                   }}
                 >
                   放弃调整
@@ -345,6 +397,69 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
               )}
             </div>
           </div>
+          {data && (
+            <div className="duty-plan-metrics" role="group" aria-label="排班概览">
+              {['', ...DUTY_TYPES].map((dutyType) => {
+                const range = loadRange(dutyType);
+                return (
+                  <span key={dutyType}>
+                    {dutyTypeLabels[dutyType] || '合计'}{' '}
+                    <strong>
+                      {range.min === range.max ? range.min : `${range.min}–${range.max}`}
+                    </strong>{' '}
+                    人/天
+                  </span>
+                );
+              })}
+              <span data-warning={conflicts.size > 0}>
+                空闲冲突 <strong>{conflicts.size}</strong> 人
+              </span>
+            </div>
+          )}
+          {optimization &&
+            (!optimization.balanced || !optimization.complete || !optimization.weeklyOnce) && (
+              <p className="react-error" role="status">
+                现有安排无法同时满足全部条件，请核对保留班次与可排日期。
+              </p>
+            )}
+          {(review.gaps.length > 0 || unassigned.length > 0) && (
+            <section className="duty-planning-review" aria-label="排班核对">
+              <h3>排班待核对</h3>
+              <div className="duty-review-types">
+                {DUTY_TYPES.map((dutyType) => {
+                  const members = unassigned.filter((person) => person.dutyType === dutyType);
+                  const gaps = review.gaps.filter((row) => row.dutyType === dutyType);
+                  if (!members.length && !gaps.length) return null;
+                  return (
+                    <div key={dutyType}>
+                      <h4>{dutyTypeLabels[dutyType]}值班</h4>
+                      {members.length > 0 && (
+                        <ul aria-label={`${dutyTypeLabels[dutyType]}待安排成员`}>
+                          {members.map((person) => (
+                            <li key={person.memberId}>
+                              <strong>{person.name}</strong>
+                              <span>{person.reason}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {gaps.length > 0 && (
+                        <p>
+                          缺岗：
+                          {gaps
+                            .map(
+                              (row) =>
+                                `周${['一', '二', '三', '四'][DUTY_WEEKDAYS.findIndex((weekday) => addDays(week, weekday - 1) === row.businessDate)]}`
+                            )
+                            .join('、')}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
           <div className="duty-week-grid">
             {dates.map((day, index) => (
               <section className="duty-day-column" key={day}>
@@ -385,8 +500,6 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
                             <div data-motion-item={row.id} key={row.id} className="duty-assignee">
                               <span>
                                 {person?.name || row.memberName || '原值班人员'}
-                                {dutyLeader(person?.memberships || [], day) ? ' · 负责人' : ''}
-                                {row.leaveStatus === 'recorded' ? ' · 已请假' : ''}
                                 {row.suggested ? ' · 建议' : ''}
                                 {row.startAt !== DUTY_START || row.endAt !== DUTY_END
                                   ? ` · ${row.startAt}–${row.endAt}`
@@ -422,22 +535,10 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
           </div>
           {!!warnings.length && (
             <section className="duty-warnings" aria-label="排班异常">
-              <h3>需核对 · {warnings.length}</h3>
+              <h3>需核对 · {new Set(warnings).size}</h3>
               <ul>
                 {[...new Set(warnings)].map((message) => (
                   <li key={message}>{message}</li>
-                ))}
-              </ul>
-            </section>
-          )}
-          {!!unassigned.length && (
-            <section aria-label="未安排成员">
-              <h3>未安排成员 · {unassigned.length}</h3>
-              <ul>
-                {unassigned.map((person) => (
-                  <li key={person.memberId}>
-                    {person.name} · {person.reason}
-                  </li>
                 ))}
               </ul>
             </section>
@@ -456,30 +557,34 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
                 data-track="staff.dutyplanner.input.15"
                 type="search"
                 value={peopleSearch}
-                placeholder="姓名或学号"
+                placeholder="姓名、学号、校区或部门"
                 onChange={(event) => setPeopleSearch(event.target.value)}
               />
             </label>
-            {data.people
-              .filter((person) =>
-                `${person.name} ${person.studentId || ''}`.includes(peopleSearch.trim())
-              )
-              .map((person) => {
-                const selected = draft.some(
-                  (row) =>
-                    row.memberId === person.memberId &&
-                    row.businessDate === picker.day &&
-                    row.dutyType === picker.type
-                );
-                const sameDay = draft.some(
-                  (row) =>
-                    row.memberId === person.memberId &&
-                    row.businessDate === picker.day &&
-                    row.dutyType !== picker.type
-                );
-                const weekday = new Date(`${picker.day}T12:00:00Z`).getUTCDay() || 7;
-                return (
-                  <label key={person.memberId}>
+            {pickerPeople.map((person, index) => {
+              const selected = draft.some(
+                (row) =>
+                  row.memberId === person.memberId &&
+                  row.businessDate === picker.day &&
+                  row.dutyType === picker.type
+              );
+              const sameDay = draft.some(
+                (row) =>
+                  row.memberId === person.memberId &&
+                  row.businessDate === picker.day &&
+                  row.dutyType !== picker.type
+              );
+              const weekday = new Date(`${picker.day}T12:00:00Z`).getUTCDay() || 7;
+              return (
+                <React.Fragment key={person.memberId}>
+                  {(index === 0 || pickerPeople[index - 1].rank !== person.rank) && (
+                    <h3 className="duty-picker-group">
+                      {picker.type === 'repair'
+                        ? ['硬件部部员', '交流维修', '其他部员'][person.rank]
+                        : ['基础事务站部员', '其他部门部员'][person.rank]}
+                    </h3>
+                  )}
+                  <label>
                     <input
                       data-track="staff.dutyplanner.input.11"
                       type="checkbox"
@@ -487,18 +592,21 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
                       checked={selected}
                       onChange={() => toggle(person)}
                     />
-                    <span>
-                      <strong>
-                        {person.name} {person.studentId}
-                      </strong>
-                      <small>
-                        {dutyCandidateTypes(person.memberships, picker.day).includes(picker.type)
-                          ? '本岗位'
-                          : '跨部门'}{' '}
-                        ·{' '}
+                    <span className="duty-picker-person">
+                      <span className="duty-picker-person-heading">
+                        <strong>{person.name}</strong>
+                        <span>{person.studentId}</span>
+                      </span>
+                      <span className="duty-picker-person-details">
+                        {dutyCampusNames[person.homeCampusId] ||
+                          (person.campuses || []).join(' / ') ||
+                          dutyCampusNames[campusId]}{' '}
+                        · {person.posts.map(membershipLabel).join(' · ') || '暂无任职'}
+                      </span>
+                      <span className="duty-picker-person-availability">
                         {availableForDuty(person.availability[picker.type], weekday, campusId)
                           ? '整班有空'
-                          : '未填整班空闲'}
+                          : '空闲未覆盖，需协调'}
                         {person.alreadyScheduled ||
                         draft.some(
                           (row) =>
@@ -507,11 +615,12 @@ export function DutyPlanner({ campusId, onDirtyChange, campusControl = null }) {
                           ? ' · 本周已有安排'
                           : ''}
                         {sameDay ? ' · 同日已排其他岗位' : ''}
-                      </small>
+                      </span>
                     </span>
                   </label>
-                );
-              })}
+                </React.Fragment>
+              );
+            })}
           </div>
           <button
             data-track="staff.dutyplanner.button.12"

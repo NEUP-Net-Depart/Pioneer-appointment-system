@@ -44,6 +44,9 @@ export function calendarWeekRange(key = dateKey()) {
 export function rosterWeekKey(key = dateKey()) {
   return addDays(calendarWeekRange(key).start, 1);
 }
+export function dutyWeekKey(key = dateKey()) {
+  return weekRange(key).start;
+}
 export function serviceDay(key) {
   const day = calendar(key).getUTCDay();
   return day >= 1 && day <= 4;

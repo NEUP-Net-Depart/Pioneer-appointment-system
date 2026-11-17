@@ -6,24 +6,28 @@ import { request } from './request.js';
 import { DataValue } from './DataValue';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AttendanceCheckInButton } from './field/AttendanceActions';
-import { campusAttendance, applyAttendance } from './field/attendance-state';
-import { ActivityContext, Modal, Scanner, time } from './field/ui';
+import { campusAttendance } from './field/attendance-state';
+import { CheckInDialog } from './field/CheckInDialog';
+import { ActivityContext, time } from './field/ui';
 import { useUnsavedChanges } from './useUnsavedChanges.js';
 import { CampusScope } from './CampusScope.jsx';
 import { RefreshButton } from './WorkspaceToolbar.jsx';
 import { Attendance } from './Attendance';
-import { addDays, dateKey, rosterWeekKey } from '../../shared/time.js';
+import { addDays, dateKey, dutyWeekKey } from '../../shared/time.js';
 import { isRetiredElder } from '../../shared/staff-identities.js';
 import {
   DUTY_START,
   DUTY_END,
+  DUTY_WEEKDAYS,
   dutyTypeLabels,
   dutyCampusNames,
   availableForDuty,
-  dutyCandidateTypes
+  hasDutyAvailability,
+  dutyCandidateTypes,
+  isDutyExempt
 } from '../../shared/duty.js';
 
-const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+const days = ['周一', '周二', '周三', '周四'];
 export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
   const [selectedCampus, setSelectedCampus] = useState(initialCampus);
   const campusId = (user.authorizedCampuses || [])
@@ -34,17 +38,16 @@ export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
   const client = useQueryClient();
   const active = useContext(ActivityContext),
     lock = useRef(false);
-  const [week, setWeek] = useState(() => rosterWeekKey()),
-    [selectedType, setType] = useState('');
+  const [week, setWeek] = useState(() => dutyWeekKey());
   const retired = isRetiredElder(user);
-  const types = retired ? [] : dutyCandidateTypes(user.memberships || [], dateKey());
-  const type = types.includes(selectedType) ? selectedType : types[0];
+  const exempt = retired || isDutyExempt(user.memberships || [], dateKey());
+  const participates = !exempt && dutyCandidateTypes(user.memberships || [], dateKey()).length > 0;
   const [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
     [busy, setBusy] = useState(false);
   const availability = useQuery({
-    queryKey: ['/api/me/availability', { weekStart: week, dutyType: type }],
-    enabled: active && !!type
+    queryKey: ['/api/me/availability', { weekStart: week }],
+    enabled: active && participates
   });
   const mine = useQuery({ queryKey: ['/api/me/roster', { weekStart: week }], enabled: active });
   const upcoming = useQuery({ queryKey: ['/api/me/roster', { upcoming: '1' }], enabled: active });
@@ -72,7 +75,7 @@ export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
     [recipient, setRecipient] = useState('');
   const peopleQuery = useQuery({
     queryKey: [`/api/rosters/assignments/${action?.item.id}/cover-candidates`],
-    enabled: active && action?.kind === 'cover'
+    enabled: active && !!action
   });
   const people = peopleQuery.data?.items || [];
   const campuses = (user.authorizedCampuses || []).map(
@@ -85,7 +88,7 @@ export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
   useEffect(() => {
     if (!active) setScan(false);
     setError('');
-  }, [active, week, type, campusId]);
+  }, [active, week, campusId]);
   async function mutate(path, body, method = 'POST') {
     if (lock.current) return;
     lock.current = true;
@@ -95,7 +98,7 @@ export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
       await request(path, { method, body: { ...body, requestId: crypto.randomUUID() } });
       setEditor(null);
       setAction(null);
-      setNotice('已保存');
+      setNotice(body.decision === 'accepted' ? '调岗已生效' : '已保存');
       const affectedQueries = {
         predicate: (query) =>
           (path === '/api/me/availability'
@@ -105,6 +108,7 @@ export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
                 '/api/rosters/covers',
                 '/api/rosters/campus-week',
                 '/api/attendance/day',
+                '/api/attendance/staffing',
                 '/api/slot-capacities/actual',
                 '/api/field/home',
                 '/api/field/board',
@@ -128,10 +132,13 @@ export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
   }
   async function saveAvailability(event) {
     event.preventDefault();
+    if (!hasDutyAvailability(windows, campuses)) {
+      setError('请至少选择一天完整空闲时间');
+      return false;
+    }
     return mutate(
       '/api/me/availability',
       {
-        dutyType: type,
         weekStart: editor === 'usual' ? '' : week,
         revision: editorRevision,
         windows
@@ -141,9 +148,8 @@ export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
   }
   async function saveAction(event) {
     event.preventDefault();
-    return mutate(`/api/rosters/assignments/${action.item.id}/${action.kind}`, {
+    return mutate(`/api/rosters/assignments/${action.item.id}/cover`, {
       revision: action.item.revision,
-      reason,
       note: reason,
       toMemberId: recipient
     });
@@ -165,7 +171,10 @@ export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
         : (data.availability.exception?.revision ?? -1)
     );
     setWindows(
-      kind === 'usual' ? data.availability.usual.windows : data.availability.effectiveWindows
+      (kind === 'usual'
+        ? data.availability.usual.windows
+        : data.availability.effectiveWindows
+      ).filter((row) => DUTY_WEEKDAYS.includes(row.weekday))
     );
     setEditor(kind);
     setError('');
@@ -177,48 +186,17 @@ export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
       ...(!selected ? [{ weekday, campusId: campus, startAt: DUTY_START, endAt: DUTY_END }] : [])
     ]);
   }
-  async function checkIn(token = '') {
-    if (lock.current) return;
-    lock.current = true;
-    setBusy(true);
-    setError('');
-    try {
-      if (token && !token.startsWith('pioneer:attendance:v1:'))
-        throw new Error('请扫描现场工作人员签到码');
-      const result = await request(
-        token ? '/api/attendance/check-ins' : '/api/attendance/self-check-in',
-        {
-          method: 'POST',
-          body: token
-            ? { token, method: 'qr', requestId: crypto.randomUUID() }
-            : { campusId, requestId: crypto.randomUUID() }
-        }
-      );
-      await applyAttendance(client, result);
-      setScan(false);
-      setNotice(
-        `${dutyCampusNames[result.campusId] || ''}签到成功 · ${time(result.occurredAt)}${result.isExisting ? '（保留首次签到）' : ''}`
-      );
-    } catch (failure) {
-      setError(failure.message);
-    } finally {
-      lock.current = false;
-      setBusy(false);
-    }
-  }
-  function openAction(item, kind) {
+  function openAction(item) {
     setReason('');
     setRecipient('');
     setError('');
-    setAction({ item, kind });
+    setAction({ item });
   }
   const run = (...args) => void mutate(...args).catch(() => {});
   const today = dateKey(),
     todayRecord = live?.campusId === campusId ? campusAttendance(live) : null,
     todayDuties = data?.upcoming?.filter((row) => row.businessDate === today) || [];
-  const next = data?.upcoming?.find(
-    (row) => row.businessDate > today && row.leaveStatus !== 'recorded'
-  );
+  const next = data?.upcoming?.find((row) => row.businessDate > today);
   return (
     <div className="duty-personal">
       {(failure || peopleQuery.error) && !scan && (
@@ -238,7 +216,6 @@ export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
               <p key={row.id}>
                 {dutyCampusNames[row.campusId]} · {dutyTypeLabels[row.dutyType]} {row.startAt}–
                 {row.endAt}
-                {row.leaveStatus === 'recorded' ? ' · 已请假' : ''}
               </p>
             ))}
             {!todayDuties.length && (
@@ -269,13 +246,7 @@ export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
               <strong>已签到 · {time(todayRecord.occurredAt)}</strong>
             ) : (
               live?.campusId === campusId && (
-                <AttendanceCheckInButton
-                  data={live}
-                  busy={busy}
-                  onCheckIn={() =>
-                    live.directAttendance?.allowed ? void checkIn() : setScan(true)
-                  }
-                />
+                <AttendanceCheckInButton data={live} busy={busy} onCheckIn={() => setScan(true)} />
               )
             )}
           </div>
@@ -322,27 +293,27 @@ export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
           <button
             data-track="staff.schedule.button.2"
             disabled={!!editor || !!action || busy}
-            onClick={() => setWeek(rosterWeekKey())}
+            onClick={() => setWeek(dutyWeekKey())}
           >
             本周
           </button>
           <button
             data-track="staff.schedule.button.3"
             disabled={!!editor || !!action || busy}
-            onClick={() => setWeek(addDays(rosterWeekKey(), 7))}
+            onClick={() => setWeek(addDays(dutyWeekKey(), 7))}
           >
             下周
           </button>
           <RefreshButton
             data-track="staff.schedule.refreshbutton.23"
-            key={`${campusId}:${week}:${type}`}
+            key={`${campusId}:${week}`}
             label="刷新我的值班"
             compactOnMobile
             disabled={busy}
             onRefresh={() =>
               Promise.all(
                 [availability, mine, upcoming, covers, home, hours]
-                  .filter((query) => query !== availability || !!type)
+                  .filter((query) => query !== availability || participates)
                   .map((query) => query.refetch({ throwOnError: true }))
                   .concat(
                     client.invalidateQueries(
@@ -354,139 +325,141 @@ export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
             }
           />
         </div>
-        {types.length > 0 && (
-          <section className="schedule-card">
-            <div className="duty-section-heading">
-              <h2 className="workspace-title-with-hint">
-                填写空闲
-                <HelpHint data-track="staff.schedule.helphint.24" label="空闲填报规则">
-                  值班固定为19:00–21:00，通常安排持续沿用，临时变化只修改对应周。
-                </HelpHint>
-              </h2>
-              {types.length === 1 ? (
-                <span className="field-muted">{dutyTypeLabels[type]}值班</span>
+        <section
+          className="schedule-card duty-availability-card"
+          aria-labelledby="duty-availability-title"
+        >
+          <div className="duty-section-heading">
+            <h2 id="duty-availability-title">{participates ? '空闲时间' : '值班统计'}</h2>
+            {participates && <span className="duty-shift-time">19:00–21:00</span>}
+          </div>
+          {!participates ? (
+            <p className="duty-statistics-exempt">不参与值班统计</p>
+          ) : (
+            <>
+              {editor ? (
+                <form
+                  data-track="staff.schedule.form.5"
+                  ref={formRef}
+                  onSubmit={(event) => void saveAvailability(event).catch(() => {})}
+                >
+                  <fieldset disabled={busy}>
+                    <legend>{editor === 'usual' ? '通常空闲' : '仅此周空闲'} · 至少选一天</legend>
+                    <div className="duty-availability">
+                      {campuses.map((campus) => (
+                        <fieldset key={campus} className="duty-availability-campus">
+                          <legend>{dutyCampusNames[campus]}</legend>
+                          <div className="duty-weekday-options">
+                            {DUTY_WEEKDAYS.map((weekday) => (
+                              <label key={weekday}>
+                                <input
+                                  data-track="staff.schedule.input.6"
+                                  type="checkbox"
+                                  checked={availableForDuty(windows, weekday, campus)}
+                                  onChange={() => toggle(weekday, campus)}
+                                />
+                                {days[weekday - 1]}
+                              </label>
+                            ))}
+                          </div>
+                        </fieldset>
+                      ))}
+                    </div>
+                    {windows.some((row) => row.startAt > DUTY_START || row.endAt < DUTY_END) && (
+                      <p className="field-muted">
+                        部分旧时间未覆盖完整值班，需重新勾选整班；未调整的原填报会保留。
+                      </p>
+                    )}
+                    <div className="schedule-actions">
+                      <button
+                        data-track="staff.schedule.button.7"
+                        className="field-primary"
+                        type="submit"
+                        disabled={!hasDutyAvailability(windows, campuses)}
+                      >
+                        保存空闲
+                      </button>
+                      <button
+                        data-track="staff.schedule.button.8"
+                        type="button"
+                        onClick={() => setEditor(null)}
+                      >
+                        取消
+                      </button>
+                    </div>
+                  </fieldset>
+                </form>
               ) : (
-                <div className="duty-tabs">
-                  {types.map((value) => (
-                    <button
-                      data-track="staff.schedule.button.4"
-                      key={value}
-                      disabled={!!editor || busy}
-                      aria-pressed={type === value}
-                      onClick={() => setType(value)}
-                    >
-                      {dutyTypeLabels[value]}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            {editor ? (
-              <form
-                data-track="staff.schedule.form.5"
-                ref={formRef}
-                onSubmit={(event) => void saveAvailability(event).catch(() => {})}
-              >
-                <fieldset disabled={busy}>
-                  <legend>{editor === 'usual' ? '通常空闲' : '仅此周空闲'}</legend>
-                  <div className="duty-availability">
-                    {campuses.map((campus) => (
-                      <div key={campus}>
-                        <strong>{dutyCampusNames[campus]}</strong>
-                        {[7, 1, 2, 3, 4, 5, 6].map((weekday) => (
-                          <label key={weekday}>
-                            <input
-                              data-track="staff.schedule.input.6"
-                              type="checkbox"
-                              checked={availableForDuty(windows, weekday, campus)}
-                              onChange={() => toggle(weekday, campus)}
-                            />
-                            {days[weekday - 1]}
-                          </label>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                  {windows.some((row) => row.startAt > DUTY_START || row.endAt < DUTY_END) && (
-                    <p className="field-muted">
-                      部分旧时间未覆盖完整值班，需重新勾选整班；未调整的原填报会保留。
-                    </p>
+                <>
+                  <p
+                    className={!data?.availability ? 'data-pending-copy' : undefined}
+                    aria-hidden={!data?.availability || undefined}
+                  >
+                    {data?.availability?.source === 'exception' ? '本周单独安排' : '沿用通常安排'}：
+                    {(data?.availability?.effectiveWindows || [])
+                      .filter(
+                        (row) =>
+                          DUTY_WEEKDAYS.includes(row.weekday) &&
+                          row.startAt <= DUTY_START &&
+                          row.endAt >= DUTY_END
+                      )
+                      .sort(
+                        (first, second) =>
+                          first.weekday - second.weekday ||
+                          campuses.indexOf(first.campusId) - campuses.indexOf(second.campusId)
+                      )
+                      .map((row) => `${days[row.weekday - 1]} ${dutyCampusNames[row.campusId]}`)
+                      .join('、') || '暂无整班空闲'}
+                  </p>
+                  {data?.availability?.effectiveWindows.some(
+                    (row) => row.startAt > DUTY_START || row.endAt < DUTY_END
+                  ) && (
+                    <p className="field-muted">部分旧时间未覆盖19:00–21:00，请重新勾选整班空闲。</p>
                   )}
                   <div className="schedule-actions">
                     <button
-                      data-track="staff.schedule.button.7"
-                      className="field-primary"
-                      type="submit"
+                      data-track="staff.schedule.button.9"
+                      disabled={busy || !data?.availability || !!action}
+                      onClick={() => editAvailability('usual')}
                     >
-                      保存空闲
+                      修改通常时间
                     </button>
                     <button
-                      data-track="staff.schedule.button.8"
-                      type="button"
-                      onClick={() => setEditor(null)}
+                      data-track="staff.schedule.button.10"
+                      disabled={busy || !data?.availability || !!action}
+                      onClick={() => editAvailability('exception')}
                     >
-                      取消
+                      只修改本周
                     </button>
+                    {data?.availability?.source === 'exception' && (
+                      <button
+                        data-track="staff.schedule.button.11"
+                        disabled={
+                          busy ||
+                          !!action ||
+                          !hasDutyAvailability(data.availability.usual.windows, campuses)
+                        }
+                        onClick={() =>
+                          run(
+                            '/api/me/availability',
+                            {
+                              weekStart: week,
+                              revision: data.availability.exception.revision,
+                              useUsual: true
+                            },
+                            'PUT'
+                          )
+                        }
+                      >
+                        本周恢复沿用
+                      </button>
+                    )}
                   </div>
-                </fieldset>
-              </form>
-            ) : (
-              <>
-                <p
-                  className={!data?.availability ? 'data-pending-copy' : undefined}
-                  aria-hidden={!data?.availability || undefined}
-                >
-                  {data?.availability?.source === 'exception' ? '本周单独安排' : '沿用通常安排'}：
-                  {(data?.availability?.effectiveWindows || [])
-                    .filter((row) => row.startAt <= DUTY_START && row.endAt >= DUTY_END)
-                    .map((row) => `${days[row.weekday - 1]} ${dutyCampusNames[row.campusId]}`)
-                    .join('、') || '暂无整班空闲'}
-                </p>
-                {data?.availability?.effectiveWindows.some(
-                  (row) => row.startAt > DUTY_START || row.endAt < DUTY_END
-                ) && (
-                  <p className="field-muted">部分旧时间未覆盖19:00–21:00，请重新勾选整班空闲。</p>
-                )}
-                <div className="schedule-actions">
-                  <button
-                    data-track="staff.schedule.button.9"
-                    disabled={busy || !data?.availability || !!action}
-                    onClick={() => editAvailability('usual')}
-                  >
-                    修改通常时间
-                  </button>
-                  <button
-                    data-track="staff.schedule.button.10"
-                    disabled={busy || !data?.availability || !!action}
-                    onClick={() => editAvailability('exception')}
-                  >
-                    只修改本周
-                  </button>
-                  {data?.availability?.source === 'exception' && (
-                    <button
-                      data-track="staff.schedule.button.11"
-                      disabled={busy || !!action}
-                      onClick={() =>
-                        run(
-                          '/api/me/availability',
-                          {
-                            dutyType: type,
-                            weekStart: week,
-                            revision: data.availability.exception.revision,
-                            useUsual: true
-                          },
-                          'PUT'
-                        )
-                      }
-                    >
-                      本周恢复沿用
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-          </section>
-        )}
+                </>
+              )}
+            </>
+          )}
+        </section>
         <section className="schedule-card">
           <h2>我的本周班次</h2>
           {!data?.mine?.length && (
@@ -503,7 +476,7 @@ export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
                 {item.businessDate} · {dutyCampusNames[item.campusId]} ·{' '}
                 {dutyTypeLabels[item.dutyType]} {item.startAt}–{item.endAt}
               </strong>
-              <p>{item.leaveStatus === 'recorded' ? '已请假' : '按班次到场签到'}</p>
+              <p>按班次到场签到</p>
               {action?.item.id === item.id ? (
                 <form
                   data-track="staff.schedule.form.12"
@@ -511,37 +484,38 @@ export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
                   onSubmit={(event) => void saveAction(event).catch(() => {})}
                 >
                   <fieldset disabled={busy}>
-                    {action.kind === 'cover' && (
-                      <label>
-                        接替成员
-                        <Select
-                          data-track="staff.schedule.select.13"
-                          required
-                          value={recipient}
-                          onChange={(event) => setRecipient(event.target.value)}
-                        >
-                          <option value="">请选择</option>
-                          {people.map((person) => (
-                            <option key={person.memberId} value={person.memberId}>
-                              {person.name} · {person.studentId}
-                            </option>
-                          ))}
-                        </Select>
-                      </label>
-                    )}
                     <label>
-                      {action.kind === 'leave' ? '请假原因' : '给接替者的说明（可选）'}
+                      接替成员
+                      <Select
+                        data-track="staff.schedule.select.13"
+                        required
+                        value={recipient}
+                        onChange={(event) => setRecipient(event.target.value)}
+                      >
+                        <option value="">请选择</option>
+                        {people.map((person) => (
+                          <option key={person.memberId} value={person.memberId}>
+                            {person.name} · {person.studentId}
+                          </option>
+                        ))}
+                      </Select>
+                    </label>
+                    <label>
+                      给接替者的说明（可选）
                       <input
                         data-track="staff.schedule.input.14"
-                        required={action.kind === 'leave'}
                         maxLength={500}
                         value={reason}
                         onChange={(event) => setReason(event.target.value)}
                       />
                     </label>
                     <div className="schedule-actions">
-                      <button data-track="staff.schedule.button.15" type="submit">
-                        {action.kind === 'leave' ? '登记请假' : '发送接替邀请'}
+                      <button
+                        data-track="staff.schedule.button.15"
+                        type="submit"
+                        disabled={!item.canRequestCover || item.businessDate <= today}
+                      >
+                        发送接替邀请
                       </button>
                       <button
                         data-track="staff.schedule.button.16"
@@ -553,33 +527,12 @@ export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
                     </div>
                   </fieldset>
                 </form>
-              ) : !retired ? (
+              ) : !retired && item.canRequestCover && item.businessDate > today ? (
                 <div className="schedule-actions">
-                  {item.leaveStatus === 'recorded' ? (
-                    <button
-                      data-track="staff.schedule.button.17"
-                      disabled={busy || !!editor || !!action}
-                      onClick={() =>
-                        run(`/api/rosters/assignments/${item.id}/leave-withdraw`, {
-                          revision: item.revision
-                        })
-                      }
-                    >
-                      撤销请假
-                    </button>
-                  ) : (
-                    <button
-                      data-track="staff.schedule.button.18"
-                      disabled={busy || !!editor || !!action}
-                      onClick={() => void openAction(item, 'leave')}
-                    >
-                      登记请假
-                    </button>
-                  )}
                   <button
                     data-track="staff.schedule.button.19"
                     disabled={busy || !!editor || !!action}
-                    onClick={() => void openAction(item, 'cover')}
+                    onClick={() => openAction(item)}
                   >
                     邀请接替
                   </button>
@@ -604,28 +557,31 @@ export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
                       pending: '待对方确认',
                       accepted: '已接替',
                       declined: '已拒绝',
-                      cancelled: '已撤回'
+                      cancelled: '已撤回',
+                      expired: '已过调岗期限'
                     }[item.status]
                   }
                   {item.note ? ` · ${item.note}` : ''}
                 </p>
                 <div className="schedule-actions">
                   {item.canRespond &&
-                    ['accepted', 'declined'].map((decision) => (
-                      <button
-                        data-track="staff.schedule.button.20"
-                        key={decision}
-                        disabled={busy}
-                        onClick={() =>
-                          run(`/api/rosters/covers/${item.id}/response`, {
-                            revision: item.revision,
-                            decision
-                          })
-                        }
-                      >
-                        {decision === 'accepted' ? '确认接替' : '拒绝'}
-                      </button>
-                    ))}
+                    ['accepted', 'declined']
+                      .filter((decision) => decision !== 'accepted' || !exempt)
+                      .map((decision) => (
+                        <button
+                          data-track="staff.schedule.button.20"
+                          key={decision}
+                          disabled={busy}
+                          onClick={() =>
+                            run(`/api/rosters/covers/${item.id}/response`, {
+                              revision: item.revision,
+                              decision
+                            })
+                          }
+                        >
+                          {decision === 'accepted' ? '确认接替' : '拒绝'}
+                        </button>
+                      ))}
                   {item.canCancel && (
                     <button
                       data-track="staff.schedule.button.21"
@@ -646,12 +602,16 @@ export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
           </section>
         )}
       </>
-      {scan && active && (
-        <Modal title="工作人员签到" onClose={() => setScan(false)}>
-          <Scanner onCode={(value) => void checkIn(value)} />
-          {error && <p role="alert">{error}</p>}
-          <p>扫描现场工作人员签到码后，将以本人账号直接签到。</p>
-        </Modal>
+      {scan && active && live && (
+        <CheckInDialog
+          home={live}
+          scan={!live.directAttendance?.allowed}
+          onClose={() => setScan(false)}
+          onComplete={(record) => {
+            setScan(false);
+            setNotice(`${dutyCampusNames[record.campusId]}签到成功 · ${time(record.occurredAt)}`);
+          }}
+        />
       )}
       <Attendance embedded />
     </div>

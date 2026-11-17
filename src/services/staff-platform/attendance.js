@@ -7,14 +7,21 @@ import {
   nowIso,
   weekRange,
   validDate,
-  addDays
+  addDays,
+  dutyWeekKey
 } from '../../platform/time.js';
 import { requestId, stableJson } from '../../platform/contracts.js';
 import { attendanceMethod, policyFor } from '../../modules/attendance/public.js';
 import { campusId as normalizeCampusId } from '../../modules/authorization/scopes.js';
 import { csvLine } from '../../lib/csv.js';
 import { isRetiredElder, staffIdentities } from '../../../shared/staff-identities.js';
-import { dutyWindow, DUTY_START } from '../../../shared/duty.js';
+import {
+  dutyWindow,
+  DUTY_START,
+  dutyCandidateTypes,
+  dutyAvailability,
+  hasDutyAvailability
+} from '../../../shared/duty.js';
 import { weeklyAttendanceRows } from '../../modules/attendance/weekly-export.js';
 import {
   assertDutyAttendanceDate,
@@ -170,9 +177,7 @@ export function attendanceDomain({
   async function directAttendanceAction(actor, campusId, providedContext) {
     const context = providedContext || (await contextFor(actor)),
       identities = staffIdentities(context, platform.authorizer, { campusId });
-    const scheduled = context.todayDuties.filter(
-      (duty) => duty.campusId === campusId && duty.leaveStatus !== 'recorded'
-    );
+    const scheduled = context.todayDuties.filter((duty) => duty.campusId === campusId);
     const leader = identities.some((item) =>
       [...leadershipPositions, 'superadmin'].includes(item.code)
     );
@@ -311,14 +316,46 @@ export function attendanceDomain({
   }
 
   async function previewAttendance(actor, input) {
-    const { event } = await attendanceCredential(actor, input);
+    let event, context;
+    if (input.token !== undefined) {
+      ({ event, context } = await attendanceCredential(actor, input));
+    } else {
+      const campusId = normalizeCampusId(input.campusId);
+      const decision = await directAttendanceAction(actor, campusId);
+      if (!decision.allowed) fail(403, decision.reason);
+      context = await contextFor(actor);
+      const businessDate = dateKey();
+      event = { campusId, businessDate, type: 'duty', ...dutyWindow(businessDate) };
+      if (!eventWindow(event.startsAt, event.endsAt, nowIso())) fail(409, '当前不在签到时间窗口');
+      assertDutyAttendanceDate(event, 409);
+    }
     const campusName = { 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' }[event.campusId];
+    const weekStart = addDays(dutyWeekKey(), 7);
+    let needsAvailability = false;
+    if (
+      event.type === 'duty' &&
+      !isRetiredElder(context) &&
+      dutyCandidateTypes(context.memberships, context.authorizationDate).length
+    ) {
+      const value = dutyAvailability(
+        await repository.availabilityRows([context.actor.memberId], weekStart),
+        weekStart
+      );
+      needsAvailability = !hasDutyAvailability(
+        value.effectiveWindows,
+        context.actor.authorizedCampuses.map(normalizeCampusId)
+      );
+    }
     return {
+      campusId: event.campusId,
       campusName,
       businessDate: event.businessDate,
       startsAt: event.startsAt,
       endsAt: event.endsAt,
-      type: event.type
+      type: event.type,
+      memberName: context.actor.name,
+      identities: context.identities,
+      availabilityReminder: { weekStart, needsAvailability }
     };
   }
 

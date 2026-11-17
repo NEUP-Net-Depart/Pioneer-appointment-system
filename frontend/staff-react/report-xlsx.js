@@ -179,9 +179,7 @@ export function attendanceMatrixWorkbook(report) {
   const end = dates.length + 3;
   const rows = [
     [text(`${report.month} 考勤记录`, 1)],
-    [
-      text('实际签到记为1；班次结束未签到记缺勤；请假、待签到和暂停服务分别标明；空白表示无记录', 2)
-    ],
+    [text('实际签到记为1；班次结束未签到记缺勤；待签到和暂停服务分别标明；空白表示无记录', 2)],
     [
       '姓名',
       '学号',
@@ -202,7 +200,6 @@ export function attendanceMatrixWorkbook(report) {
     const days = new Set(person.days);
     const entries = new Map((person.entries || []).map((entry) => [entry.businessDate, entry]));
     const statusLabels = {
-      leave: '请假',
       absent: '缺勤',
       upcoming: '待签到',
       paused: '暂停服务'

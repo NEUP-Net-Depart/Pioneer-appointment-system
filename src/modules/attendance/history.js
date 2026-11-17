@@ -19,9 +19,9 @@ export function attendanceHistory({ records, assignments, paused, now, departmen
   for (const record of records) ensure(record).record = record;
   for (const assignment of assignments) ensure(assignment).assignments.push(assignment);
   const rows = [...groups.values()].map(person => {
-    const summary = { expected: 0, arrived: 0, leave: 0, absent: 0, support: 0, upcoming: 0 };
+    const summary = { expected: 0, arrived: 0, absent: 0, support: 0, upcoming: 0 };
     const entries = [...person.entries.values()].map(entry => {
-      const expected = entry.assignments.filter(item => item.leaveStatus !== 'recorded');
+      const expected = entry.assignments;
       const isPaused = pauses.has(`${person.campusId}:${entry.businessDate}`) || entry.record?.servicePaused;
       const status = attendanceStatus({ ...entry, paused: isPaused, now });
       if (!isPaused) {
@@ -29,7 +29,7 @@ export function attendanceHistory({ records, assignments, paused, now, departmen
         if (status === 'arrived' && !expected.length) summary.support++;
         if (Object.hasOwn(summary, status)) summary[status]++;
       }
-      return { ...entry, assignments: entry.assignments.map(({ dutyType, startAt, endAt, leaveStatus }) => ({ dutyType, startAt, endAt, leaveStatus })), status, support: status === 'arrived' && !expected.length };
+      return { ...entry, assignments: entry.assignments.map(({ dutyType, startAt, endAt }) => ({ dutyType, startAt, endAt })), status, support: status === 'arrived' && !expected.length };
     }).sort((left, right) => right.businessDate.localeCompare(left.businessDate));
     return { ...person, entries, summary, days: entries.filter(entry => entry.status === 'arrived').map(entry => entry.businessDate).sort() };
   }).sort((left, right) => compareAttendanceDepartments(left, right) || left.name.localeCompare(right.name, 'zh-CN') || left.campusId.localeCompare(right.campusId));

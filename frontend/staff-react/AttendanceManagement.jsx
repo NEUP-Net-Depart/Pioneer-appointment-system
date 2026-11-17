@@ -15,7 +15,6 @@ const labels = {
   upcoming: '未签到',
   arrived: '已签到',
   absent: '缺勤',
-  leave: '已请假',
   idle: '空闲',
   repairing: '维修中'
 };
@@ -24,8 +23,7 @@ const order = {
   absent: 0,
   idle: 1,
   repairing: 2,
-  arrived: 3,
-  leave: 4
+  arrived: 3
 };
 const personState = (person) =>
   person.workStatus ||
@@ -286,7 +284,7 @@ export function AttendanceManagement({ campusId, onDirtyChange, campusControl = 
           {labels[personState(person)]}
         </span>
         <div className="schedule-actions">
-          {person.canCorrect && person.status !== 'leave' && (
+          {person.canCorrect && (
             <button
               data-track="staff.attendancemanagement.button.3"
               disabled={busy}

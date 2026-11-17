@@ -62,7 +62,7 @@ test('work window changes campus and opens the matching read-only staffing secti
   }
   await expect(window.getByRole('button', { name: '展示签到码', exact: true })).toHaveCount(0);
   await window.getByRole('button', { name: '到岗签到', exact: true }).click();
-  await page.getByRole('button', { name: '返回工作台', exact: true }).click();
+  await page.getByRole('button', { name: '确认签到', exact: true }).click();
   await expect(window.getByText('已签到', { exact: true })).toBeVisible();
   await window.getByRole('button', { name: '展示签到码', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '展示签到码' })).toBeVisible();
