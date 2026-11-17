@@ -15,6 +15,7 @@ export function PhotoUpload({
   progress,
   accept,
   validateFile,
+  onChecking,
   onFile,
   label: customLabel
 }: {
@@ -25,7 +26,8 @@ export function PhotoUpload({
   busy: boolean;
   progress?: PhotoProgress;
   accept: string;
-  validateFile: (file: File) => string;
+  validateFile: (file: File) => string | Promise<string>;
+  onChecking?: (side: string, checking: boolean) => void;
   onFile: (side: string, file: File) => void;
   label?: string;
 }) {
@@ -34,9 +36,30 @@ export function PhotoUpload({
   const [dragging, setDragging] = useState(false);
   const [selectionError, setSelectionError] = useState('');
   const [filename, setFilename] = useState('');
-  function select(files: File[]) {
+  const selection = useRef(0);
+  const [checking, setChecking] = useState(false);
+  useEffect(() => {
+    onChecking?.(side, checking);
+    return () => onChecking?.(side, false);
+  }, [checking, onChecking, side]);
+  useEffect(() => {
+    setChecking(false);
+    return () => {
+      selection.current++;
+    };
+  }, [busy, active]);
+  async function select(files: File[]) {
     if (busy) return;
-    const message = files.length !== 1 ? '每次请添加一张照片。' : validateFile(files[0]);
+    const version = ++selection.current;
+    setChecking(true);
+    let message;
+    try {
+      message = files.length !== 1 ? '每次请添加一张照片。' : await validateFile(files[0]);
+    } catch (error) {
+      message = error.message || '无法读取照片，请重新选择';
+    }
+    if (selection.current !== version) return;
+    setChecking(false);
     setSelectionError(message);
     if (message) return;
     setFilename(files[0].name);
@@ -85,7 +108,7 @@ export function PhotoUpload({
   return (
     <div
       className={`field-intake-photo${dragging && !busy ? ' is-dragging' : ''}`}
-      aria-busy={busy}
+      aria-busy={busy || checking}
       onDragEnter={(event) => {
         if (!event.dataTransfer.types.includes('Files')) return;
         event.preventDefault();
@@ -186,6 +209,7 @@ export function PhotoUpload({
           {selectionError}
         </p>
       )}
+      {checking && <small role="status">正在检查照片…</small>}
       {progress && (
         <div className="field-photo-progress">
           <progress max={100} value={progress.value} aria-label={`${label}上传进度`} />
@@ -219,6 +243,7 @@ export function IntakePhotos({
   previews,
   busy,
   progress = {},
+  onChecking,
   onFile
 }: {
   id: string;
@@ -226,6 +251,7 @@ export function IntakePhotos({
   previews: Record<string, string>;
   busy: boolean;
   progress?: Record<string, PhotoProgress>;
+  onChecking?: (side: string, checking: boolean) => void;
   onFile: (side: string, file: File) => void;
 }) {
   return (
@@ -241,6 +267,7 @@ export function IntakePhotos({
           progress={progress[side]}
           accept="image/jpeg,image/png,image/webp"
           validateFile={intakePhotoError}
+          onChecking={onChecking}
           onFile={onFile}
         />
       ))}

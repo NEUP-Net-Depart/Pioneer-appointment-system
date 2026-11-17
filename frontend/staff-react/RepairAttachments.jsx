@@ -1,6 +1,6 @@
 import { track } from '../../shared/telemetry-client.js';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import React, { useContext, useEffect, useId, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useId, useState } from 'react';
 import { apiFetch } from '../../shared/api.js';
 import { attachmentSize, attachmentUrl, uploadAttachments } from '../../shared/attachments.js';
 import { ActivityContext, Notice } from './field/ui';
@@ -17,10 +17,12 @@ export function RepairAttachments({ id }) {
     [selected, setSelected] = useState(null),
     [preview, setPreview] = useState(''),
     [progress, setProgress] = useState(undefined);
+  const [checkingPhoto, setCheckingPhoto] = useState(false);
+  const onPhotoChecking = useCallback((_side, checking) => setCheckingPhoto(checking), []);
   const filesTool = useRepairTool('attachments');
   const uploadTool = useRepairTool('upload', {
     dirty: !!selected,
-    busy: !!busy,
+    busy: !!busy || checkingPhoto,
     save: upload,
     discard: () => {
       setSelected(null);
@@ -41,7 +43,7 @@ export function RepairAttachments({ id }) {
   const result = useQuery({ queryKey, enabled: active && filesTool.open });
   const files = result.data?.items;
   async function upload() {
-    if (!selected || busy) return false;
+    if (!selected || busy || checkingPhoto) return false;
     setBusy('upload');
     setError('');
     setProgress({ label: '正在处理照片' });
@@ -161,6 +163,7 @@ export function RepairAttachments({ id }) {
             progress={progress}
             accept="image/*"
             validateFile={supplementalPhotoError}
+            onChecking={onPhotoChecking}
             onFile={(_side, file) => setSelected(file)}
           />
           <div className="repair-panel-actions">
@@ -175,7 +178,7 @@ export function RepairAttachments({ id }) {
             <button
               data-track="staff.repairattachments.button.7"
               className="field-primary"
-              disabled={!selected || !!busy}
+              disabled={!selected || !!busy || checkingPhoto}
             >
               {busy === 'upload' ? '正在上传…' : '确认上传照片'}
             </button>
