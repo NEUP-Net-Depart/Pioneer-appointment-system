@@ -130,16 +130,25 @@ test('Shanghai duty-date midnight blocks both new requests and pending acceptanc
  }finally{db.sqlite.close();}
 });
 
-test('legacy two-shift exchanges expire at the earlier duty date', async () => {
+test('expired legacy exchanges do not block a new cover for the later shift', async () => {
  const {db,staff,head,one,two}=await setup();try{
- const published=await staff.saveRosterWeek(head,{...query,revision:-1,assignments:[shift(one.memberId,'2026-11-03'),shift(two.memberId)],requestId:request()});
+ seedStaff(db,'20261005');
+ const third=await userRepository(db).find('20261005');
+ const published=await staff.saveRosterWeek(head,{...query,revision:-1,assignments:[shift(one.memberId),shift(two.memberId,'2026-11-05')],requestId:request()});
  const original=published.assignments.find(row=>row.memberId===one.memberId);
  const other=published.assignments.find(row=>row.memberId===two.memberId);
  db.sqlite.prepare("INSERT INTO roster_covers(id,assignment_id,exchange_assignment_id,from_member_id,to_member_id,assignment_revision,exchange_revision,status,created_at) VALUES('swap',?,?,?,?,?,?,'pending','2026-11-01')")
   .run(original.id,other.id,one.memberId,two.memberId,original.revision,other.revision);
+ const replacement=()=>staff.requestCover(two,other.id,{revision:other.revision,toMemberId:third.memberId,requestId:request()});
+ await rejectWithoutWrite(db,replacement,{status:409});
  mock.timers.setTime(Date.parse('2026-11-01T16:00:00Z'));
  await rejectWithoutWrite(db,()=>staff.respondCover(two,'swap',{revision:0,decision:'accepted',requestId:request()}),{status:409});
  assert.equal((await staff.covers(two)).items[0].status,'expired');
+ assert.equal(await staffPlatformRepository(db).pendingCoverInvitations(two.memberId),0);
+ const invite=await replacement();
+ assert.equal(db.sqlite.prepare("SELECT status FROM roster_covers WHERE id='swap'").get().status,'pending');
+ await staff.respondCover(third,invite.id,{revision:0,decision:'accepted',requestId:request()});
+ assert.equal(db.sqlite.prepare('SELECT member_id FROM duty_assignments WHERE id=?').get(other.id).member_id,third.memberId);
  }finally{db.sqlite.close();}
 });
 

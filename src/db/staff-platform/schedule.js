@@ -240,19 +240,24 @@ export function scheduleRepository({ db, writeCommand: write }) {
     return db.prepare('SELECT * FROM roster_covers WHERE id=?').bind(id).first();
   }
   async function createCover(item, toMemberId, note, record) {
+    const today = dateKey();
     return write(
       record,
       `EXISTS(SELECT 1 FROM duty_assignments WHERE id=? AND revision=? AND member_id=? AND active=1 AND business_date>?)
-    AND NOT EXISTS(SELECT 1 FROM roster_covers WHERE (assignment_id=? OR exchange_assignment_id=?) AND status='pending')
+    AND NOT EXISTS(SELECT 1 FROM roster_covers r JOIN duty_assignments a ON a.id=r.assignment_id
+      WHERE (r.assignment_id=? OR r.exchange_assignment_id=?) AND r.status='pending' AND a.active=1 AND a.business_date>?
+      AND (r.exchange_assignment_id IS NULL OR EXISTS(SELECT 1 FROM duty_assignments other WHERE other.id=r.exchange_assignment_id AND other.active=1 AND other.business_date>?)))
     AND EXISTS(SELECT 1 FROM members m JOIN staff_accounts s ON s.member_id=m.id JOIN staff_access_campuses g ON g.account=s.account WHERE m.id=? AND m.status='active' AND s.status='enabled' AND NOT EXISTS(SELECT 1 FROM member_special_identities si WHERE si.member_id=m.id AND si.code='retired_elder') AND g.campus=(SELECT name FROM campuses WHERE id=?)
       AND NOT EXISTS(SELECT 1 FROM member_department_memberships mm JOIN departments d ON d.id=mm.department_id WHERE mm.member_id=m.id AND d.enabled=1 AND mm.effective_from<=? AND (mm.effective_to IS NULL OR mm.effective_to>?) AND mm.position_code IN (SELECT value FROM json_each(?))))`,
       [
         item.id,
         item.revision,
         item.memberId,
-        dateKey(),
+        today,
         item.id,
         item.id,
+        today,
+        today,
         toMemberId,
         item.campusId,
         item.businessDate,
