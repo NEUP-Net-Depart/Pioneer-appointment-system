@@ -167,6 +167,8 @@ test('personal schedule stays editable while hours and invitations are pending',
   try {
     await expect(page.getByRole('button', { name: '修改通常时间', exact: true })).toBeEnabled();
     await page.getByRole('button', { name: '修改通常时间', exact: true }).click();
+    await expect(page.getByRole('button', { name: '保存空闲', exact: true })).toBeDisabled();
+    await page.getByRole('group', { name: '南湖', exact: true }).getByRole('checkbox', { name: '周一', exact: true }).check();
     await expect(page.getByRole('button', { name: '保存空闲', exact: true })).toBeEnabled();
   } finally {
     releaseHours();
