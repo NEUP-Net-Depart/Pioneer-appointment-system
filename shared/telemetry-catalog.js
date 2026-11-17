@@ -1676,6 +1676,7 @@ export const SOURCE_FILES = [
   "shared/data-motion.js",
   "shared/duty.js",
   "shared/image-compress.js",
+  "shared/image-input.js",
   "shared/input-limits.js",
   "shared/neu-colleges.js",
   "shared/polling.js",

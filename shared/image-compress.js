@@ -1,13 +1,14 @@
 import { track, reportClientError } from './telemetry-client.js';
+import { inspectImage } from './image-input.js';
 const MB = 1024 * 1024;
 export const INTAKE_PHOTO_MAX_BYTES = 2 * MB;
 const DEFAULTS = {
-  maxBytes: 600 * 1024,
+  maxBytes: MB,
   maxDimension: 1920,
   quality: 0.85,
   minQuality: 0.7,
-  targetMinBytes: 400 * 1024,
-  targetMaxBytes: 600 * 1024,
+  targetMinBytes: 800 * 1024,
+  targetMaxBytes: MB,
 };
 const preparedImages = new WeakSet();
 
@@ -24,27 +25,8 @@ function namedFile(blob, name, lastModified) {
   }
 }
 
-function readHeader(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(new Uint8Array(reader.result));
-    reader.onerror = reader.onabort = () => reject(new Error('无法读取照片，请重新选择'));
-    reader.readAsArrayBuffer(file.slice(0, 64));
-  });
-}
-
 async function imageFile(file) {
-  if (!file || !file.size) throw new Error('请选择有效的照片');
-  const header = await readHeader(file);
-  const text = String.fromCharCode(...header);
-  let type;
-  if (header[0] === 255 && header[1] === 216 && header[2] === 255) type = 'image/jpeg';
-  else if ([137, 80, 78, 71, 13, 10, 26, 10].every((byte, index) => header[index] === byte)) type = 'image/png';
-  else if (text.slice(0, 4) === 'RIFF' && text.slice(8, 12) === 'WEBP') type = 'image/webp';
-  else if (text.slice(4, 8) === 'ftyp' && /(?:heic|heix|hevc|hevx|heim|heis|hevm|hevs|mif1|msf1)/.test(text.slice(8))) type = 'image/heic';
-  else if (/\.(heic|heif)$/i.test(file.name) || /image\/hei[cf]/i.test(file.type)) {
-    throw new Error('无法读取 HEIC/HEIF 照片，请转为 JPG，或在相机设置中选择“兼容性最佳”后重新拍摄');
-  } else throw new Error('照片格式不支持，请选择 JPG、PNG 或 WebP');
+  const { type } = await inspectImage(file);
   return file.type === type ? file : namedFile(new Blob([file], { type }), file.name, file.lastModified);
 }
 

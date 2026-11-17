@@ -3,6 +3,7 @@ import { test, expect } from './support/fixtures.mjs';
 import { loginStaff, staffPage, onsiteOrder, staffApi, chooseOption } from './support/staff.mjs';
 import { PHOTO, chooseTime } from './support/student.mjs';
 import { writeFile } from 'node:fs/promises';
+import { cameraPhoto, CORRUPT_JPEG, CORRUPT_HEIC } from '../fixtures/photos.mjs';
 
 async function orderWithPhotos(page, { received = false, selectPhotos = true } = {}) {
   await loginStaff(page, '20261003');
@@ -22,6 +23,98 @@ async function orderWithPhotos(page, { received = false, selectPhotos = true } =
   }
   return { order, dialog };
 }
+
+for (const received of [false, true]) test(`8 and 15 MiB originals compress before ${received ? 'deferred intake supplementation' : 'receiving the device'}`, async ({ page }) => {
+  const { order, dialog } = await orderWithPhotos(page, { received, selectPhotos: false });
+  const uploads = [];
+  await page.route(`**/api/appointments/${order.id}/attachments`, async route => {
+    if (route.request().method() === 'POST') uploads.push(route.request().headers()['x-attachment-purpose']);
+    await route.continue();
+  });
+  const front = cameraPhoto(8), back = cameraPhoto(15);
+  expect(front.length).toBeGreaterThanOrEqual(8 * 1024 * 1024);
+  expect(back.length).toBeGreaterThanOrEqual(15 * 1024 * 1024);
+  await dialog.getByLabel('设备正面照片', { exact: true }).setInputFiles({
+    name: 'camera-8MiB.png', mimeType: 'image/png', buffer: front
+  });
+  await expect(dialog.getByRole('img', { name: '设备正面照片', exact: true })).toBeVisible();
+  await page.route('**/__large-camera.png', route => route.fulfill({ contentType: 'image/png', body: back }));
+  const transfer = await page.evaluateHandle(async () => {
+    const data = new DataTransfer();
+    data.items.add(new File([await (await fetch('/__large-camera.png')).blob()], 'camera-15MiB.png', { type: 'image/png' }));
+    return data;
+  });
+  await dialog.locator('.field-intake-photo').last().dispatchEvent('drop', { dataTransfer: transfer });
+  await transfer.dispose();
+  await expect(dialog.getByRole('img', { name: '设备背面照片', exact: true })).toBeVisible();
+  await expect(dialog.locator('.field-intake-photo [role=alert]')).toHaveCount(0);
+  await dialog.getByRole('button', { name: received ? '重试补传照片' : '接收并开始维修', exact: true }).click();
+  await expect.poll(async () => {
+    const detail = await staffApi(page, `/api/field/appointments/${order.id}`, null, 'GET');
+    return !!detail.frontPhotoId && !!detail.backPhotoId && !detail.photoDeferredBy;
+  }).toBe(true);
+  expect(uploads.sort()).toEqual(['intake_back', 'intake_front']);
+  const saved = await staffApi(page, `/api/appointments/${order.id}/attachments`, null, 'GET');
+  expect(saved.items.map(item => item.purpose).sort()).toEqual(['intake_back', 'intake_front']);
+  for (const item of saved.items) {
+    // The server measures actual bytes; WebKit omits binary postDataBuffer().
+    expect(item.mimeType).toBe('image/jpeg');
+    expect(item.size).toBeGreaterThan(0);
+    expect(item.size).toBeLessThanOrEqual(1024 * 1024);
+  }
+});
+
+test('unsafe pixel dimensions fail before preview and corrupt pixels explain the compression failure', async ({ page }) => {
+  const { order, dialog } = await orderWithPhotos(page);
+  const front = dialog.locator('.field-intake-photo').first();
+  const input = front.getByLabel('设备正面照片', { exact: true });
+  const preview = front.getByRole('img', { name: '设备正面照片', exact: true });
+  await expect(preview).toBeVisible();
+  const previous = await preview.getAttribute('src');
+  const oversized = Buffer.from(PHOTO);
+  oversized.writeUInt32BE(10001, 16); oversized.writeUInt32BE(5000, 20);
+  await input.setInputFiles({ name: 'huge-pixels.png', mimeType: 'image/png', buffer: oversized });
+  await expect(front.getByRole('alert')).toContainText('5000 万像素');
+  await expect(preview).toHaveAttribute('src', previous);
+  await input.setInputFiles({ name: 'damaged.jpg', mimeType: 'image/jpeg', buffer: CORRUPT_JPEG });
+  await expect(front.getByText('damaged.jpg', { exact: true })).toBeVisible();
+  await dialog.getByRole('button', { name: '接收并开始维修', exact: true }).click();
+  await expect(dialog.getByText(/正面：照片压缩失败（图片解码失败/)).toBeVisible();
+  await expect(dialog.getByRole('button', { name: '接收并开始维修', exact: true })).toBeEnabled();
+  const saved = await staffApi(page, `/api/appointments/${order.id}/attachments`, null, 'GET');
+  expect(saved.items.map(item => item.purpose)).toEqual(['intake_back']);
+});
+
+test('photo inspection blocks stale uploads and a newer selection wins over a slow replacement', async ({ page }) => {
+  const { dialog } = await orderWithPhotos(page);
+  const front = dialog.locator('.field-intake-photo').first();
+  const input = front.getByLabel('设备正面照片', { exact: true });
+  const start = dialog.getByRole('button', { name: '接收并开始维修', exact: true });
+  await expect(front.getByRole('img', { name: '设备正面照片', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('img', { name: '设备背面照片', exact: true })).toBeVisible();
+  await page.evaluate(() => {
+    const arrayBuffer = Blob.prototype.arrayBuffer;
+    let release, pending;
+    const gate = new Promise(resolve => { release = resolve; });
+    window.releasePhotoRead = async () => { release(); await pending; };
+    // Hold only the next header read; allow the next selection to finish first.
+    Blob.prototype.arrayBuffer = function () {
+      Blob.prototype.arrayBuffer = arrayBuffer;
+      pending = gate.then(() => arrayBuffer.call(this));
+      return pending;
+    };
+  });
+  await input.setInputFiles({ name: 'slow.png', mimeType: 'image/png', buffer: PHOTO });
+  await expect(front.getByText('正在检查照片…', { exact: true })).toBeVisible();
+  await expect(start).toBeDisabled();
+  await input.setInputFiles({ name: 'latest.png', mimeType: 'image/png', buffer: PHOTO });
+  await expect(front.getByText('latest.png', { exact: true })).toBeVisible();
+  await expect(start).toBeEnabled();
+  await page.evaluate(() => window.releasePhotoRead());
+  await expect(front.getByText('latest.png', { exact: true })).toBeVisible();
+  await start.click();
+  await expect(dialog.getByRole('button', { name: '结束本次服务', exact: true })).toBeVisible();
+});
 
 test('mobile dropzone hit testing covers the icon, padding and lower edge', async ({ page, browserName }, testInfo) => {
   test.skip(browserName !== 'chromium', 'Native drag coordinates are driven through Chromium CDP.');
@@ -158,8 +251,8 @@ test('intake dropzones validate files, replace previews and receive the order', 
   await front.getByRole('button', { name: '添加设备正面照片', exact: true }).focus();
   await page.keyboard.press('Enter');
   const chooser = await chooserPromise;
-  await chooser.setFiles({ name: 'oversized.png', mimeType: 'image/png', buffer: Buffer.alloc(5 * 1024 * 1024 + 1) });
-  await expect(front.getByRole('alert')).toContainText('5 MB');
+  await chooser.setFiles({ name: 'oversized.png', mimeType: 'image/png', buffer: Buffer.alloc(32 * 1024 * 1024 + 1) });
+  await expect(front.getByRole('alert')).toContainText('32 MiB');
   await expect(dialog.getByText('已准备 0 / 2 张')).toBeVisible();
   const transfer = await page.evaluateHandle((bytes) => {
     const data = new DataTransfer();
@@ -181,7 +274,7 @@ test('intake dropzones validate files, replace previews and receive the order', 
     return data;
   });
   await front.dispatchEvent('drop', { dataTransfer: invalid });
-  await expect(front.getByRole('alert')).toContainText('5 MB');
+  await expect(front.getByRole('alert')).toContainText('JPEG、PNG 或 WebP');
   await expect(front.locator('img')).toHaveAttribute('src', original);
   const multiple = await page.evaluateHandle(() => {
     const data = new DataTransfer();
@@ -284,7 +377,7 @@ test('supplemental photos accept large originals through the shared dropzone and
   const uploaded = await staffApi(page, `/api/appointments/${order.id}/attachments`, null, 'GET');
   expect(uploaded.items).toHaveLength(1);
   expect(uploaded.items[0].purpose).toBe('general');
-  expect(uploaded.items[0].size).toBeLessThanOrEqual(600 * 1024);
+  expect(uploaded.items[0].size).toBeLessThanOrEqual(1024 * 1024);
 });
 
 test('supplemental HEIC and HEIF selections reach image processing and preserve actionable decoding errors', async ({ page }) => {
@@ -299,7 +392,7 @@ test('supplemental HEIC and HEIF selections reach image processing and preserve 
     await input.setInputFiles({
       name: `camera.${extension}`,
       mimeType: `image/${extension}`,
-      buffer: Buffer.from('00000018667479706865696300000000686569636d696631', 'hex')
+      buffer: CORRUPT_HEIC
     });
     await expect(panel.getByText(`camera.${extension}`, { exact: true })).toBeVisible();
     await expect(panel.getByRole('alert')).toHaveCount(0);
