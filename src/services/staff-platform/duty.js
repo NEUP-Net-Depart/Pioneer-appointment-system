@@ -41,11 +41,7 @@ export function dutyDomain({ repository, contextFor, evaluate }) {
         )
         .map((post) => post.memberId)
     );
-    const expected = new Set(
-      duties.assignments
-        .filter((item) => item.leaveStatus !== 'recorded')
-        .map((item) => item.memberId)
-    );
+    const expected = new Set(duties.assignments.map((item) => item.memberId));
     const unique = [...new Map(people.map((person) => [person.memberId, person])).values()];
     const project = (person) => ({ memberId: person.memberId, name: person.name });
     return {
@@ -152,8 +148,7 @@ export function dutyDomain({ repository, contextFor, evaluate }) {
     }
     const now = nowIso();
     const items = [...byMember.values()].map((person) => {
-      const expected = person.assignments.filter((row) => row.leaveStatus !== 'recorded');
-      const item = expected[0] || person.assignments[0];
+      const item = person.assignments[0];
       const record = records.find((row) => row.memberId === person.memberId);
       return {
         ...person,
@@ -248,7 +243,7 @@ export function dutyDomain({ repository, contextFor, evaluate }) {
       items: items.map(decorate),
       temporary: temporary.map(decorate),
       summary: {
-        expected: items.filter((row) => !['leave', 'paused'].includes(row.status)).length,
+        expected: items.filter((row) => row.status !== 'paused').length,
         arrived: items.filter((row) => row.status === 'arrived').length,
         absent: items.filter((row) => row.status === 'absent').length
       },

@@ -48,8 +48,8 @@
 | `booking-capacity` | 可预约、满额、超额、暂停、零容量、截止、缺少地点；恢复与调额 | `booking-slots.test.mjs`：availability distinguishes |
 | `booking-reservation` | 创建、取消释放容量、满额拒绝、现场登记不占线上容量 | `booking-concurrency.test.mjs`：competing online bookings |
 | `repair-lifecycle` | 接收、直接开始、跨日开始、交接、结束、更正、部分/完整补图、取消、过期；越校区、过期版本、原主修、无确认交接及终态拒绝 | `direct-repairs.test.mjs`：hardware staff can receive multiple orders |
-| `availability`、`roster-cover` | 通常时间/周例外/恢复；发布/重放、请假/撤销、邀请/接受/拒绝/取消、重新发布；版本与权限拒绝 | `weekly-schedule.test.mjs`：usual availability、publish without weekly questionnaires |
-| `attendance` | 待签到、到场、请假、缺勤、暂停；补记、恢复、重复补记及无权补记拒绝 | `duty-workflow.test.mjs`：absence is automatic |
+| `availability`、`roster-cover` | 通常时间/周例外/恢复；发布/重放、双方邀请/接受/拒绝/取消、重新发布；版本与权限拒绝 | `weekly-schedule.test.mjs`：usual availability、publish without weekly questionnaires |
+| `attendance` | 待签到、到场、缺勤、暂停；补记、恢复、重复补记及无权补记拒绝 | `duty-workflow.test.mjs`：absence is automatic |
 | `account-activation` | 开放、撤销、申请待审、批准、拒绝、重新提交；未核验身份、无权审核、重复审核与已激活资格撤销拒绝 | `member-activation-defaults.test.mjs`：default activation uses |
 | `membership-lifecycle`、`membership-transaction` | 任职生效、当日结束、导入预览、重新任职；组合任职原子写入与无效/重复/事务失败拒绝 | `member-end-date.test.mjs`：same-day end；`member-identities.test.mjs`：combined appointments |
 | `retired-identity` | 普通/授予/撤销；权限与会话失效、无权授予及审计失败回滚 | `retired-elder.test.mjs`：only the current superadmin |

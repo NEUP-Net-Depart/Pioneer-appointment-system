@@ -1,4 +1,5 @@
 import {test,expect} from '../support/fixtures.mjs';
+import { PHOTO } from '../support/student.mjs';
 
 async function harness(page){
  await page.route('**/__photo-test',route=>route.fulfill({contentType:'text/html',body:'<html><body><script src="/assets/vendor/load-image.all.min.js"></script></body></html>'}));await page.goto('/__photo-test');await page.waitForFunction(()=>typeof window.loadImage==='function');
@@ -45,7 +46,7 @@ test('all eight EXIF orientations produce upright JPEG pixels without a second r
   }
 });
 
-test('large camera photos shrink below 600 KB with a longest side of at most 1920 px', async ({ page }) => {
+test('large camera photos use the 1 MiB budget with a longest side of at most 1920 px', async ({ page }) => {
   await harness(page);
   const result = await page.evaluate(async () => {
     const canvas = document.createElement('canvas'); canvas.width = 3300; canvas.height = 2200;
@@ -66,7 +67,8 @@ test('large camera photos shrink below 600 KB with a longest side of at most 192
     return { originalSize: file.size, size: result.file.size, width: image.width, height: image.height, warning: result.warning };
   });
   expect(result.originalSize).toBeGreaterThan(2 * 1024 * 1024);
-  expect(result.size).toBeLessThanOrEqual(600 * 1024);
+  expect(result.size).toBeGreaterThan(600 * 1024);
+  expect(result.size).toBeLessThanOrEqual(1024 * 1024);
   expect(Math.max(result.width, result.height)).toBeLessThanOrEqual(1920);
   expect(result.width / result.height).toBeCloseTo(1.5, 2);
   expect(result.warning).toBe('');
@@ -88,8 +90,50 @@ test('small-file high-resolution photos are still resized before upload', async 
     return measured;
   });
   expect(result.before).toBeLessThan(2 * 1024 * 1024);
-  expect(result.after).toBeLessThanOrEqual(600 * 1024);
+  expect(result.after).toBeLessThanOrEqual(1024 * 1024);
   expect(result.width).toBe(1920);
   expect(result.height).toBe(1280);
   expect(result.type).toBe('image/jpeg');
+});
+
+test('unsafe originals are rejected before decoding even when original fallback is allowed', async ({ page }) => {
+  await harness(page);
+  const result = await page.evaluate(async bytes => {
+    const { compressImage } = await import('/shared/image-compress.js');
+    const loadImage = window.loadImage;
+    let decodes = 0;
+    window.loadImage = Object.assign((...args) => { decodes++; return loadImage(...args); }, loadImage);
+    const huge = new Uint8Array(bytes);
+    const header = new DataView(huge.buffer);
+    header.setUint32(16, 10001); header.setUint32(20, 5000);
+    const errors = [];
+    try {
+      for (const file of [
+        new File([new Uint8Array(bytes), new Uint8Array(32 * 1024 * 1024 + 1 - bytes.length)], 'huge-file.png', { type: 'image/png' }),
+        new File([huge], 'huge-pixels.png', { type: 'image/png' })
+      ]) {
+        try { await compressImage(file, { strict: false }); errors.push('unexpected success'); }
+        catch (error) { errors.push(error.message); }
+      }
+    } finally { window.loadImage = loadImage; }
+    return { decodes, errors };
+  }, Array.from(PHOTO));
+  expect(result.decodes).toBe(0);
+  expect(result.errors[0]).toContain('32 MiB');
+  expect(result.errors[1]).toContain('5000 万像素');
+});
+
+test('JPEG encoding failures retain the specific cause instead of uploading an original', async ({ page }) => {
+  await harness(page);
+  const message = await page.evaluate(async bytes => {
+    const { uploadImage } = await import('/shared/image-compress.js');
+    const toBlob = HTMLCanvasElement.prototype.toBlob;
+    HTMLCanvasElement.prototype.toBlob = callback => callback(null);
+    try {
+      await uploadImage(new File([new Uint8Array(bytes)], 'camera.png', { type: 'image/png' }));
+      return 'unexpected success';
+    } catch (error) { return error.message; }
+    finally { HTMLCanvasElement.prototype.toBlob = toBlob; }
+  }, Array.from(PHOTO));
+  expect(message).toContain('照片压缩失败（JPEG 编码失败）');
 });

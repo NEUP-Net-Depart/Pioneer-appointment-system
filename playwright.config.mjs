@@ -56,6 +56,7 @@ export default defineConfig({
         '**/diagnostics/telemetry.spec.mjs'
       ] : [
         '**/core-workflow.spec.mjs',
+        '**/duty-statistics.spec.mjs',
         '**/signature.spec.mjs',
         '**/photo-upload.spec.mjs',
         '**/diagnostics/photo-compress.spec.mjs',

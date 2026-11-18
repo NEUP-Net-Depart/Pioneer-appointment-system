@@ -36,7 +36,7 @@ try {
     'appointment_contact_index_pending','appointment_contact_index_tokens'])
     assert.ok(names.has(name), `Missing schema object: ${name}`);
   for (const name of ['roster_tasks','roster_versions','roster_collection_series','effective_member_roles','repair_followups','active_repairs','repair_receptions','repair_queue_tickets','repair_queue_counters',
-    'idx_one_pending_dispatch','reception_start_guard','field_presence_busy_guard',
+    'idx_one_pending_dispatch','reception_start_guard','field_presence_busy_guard','roster_leaves',
     'idx_one_pending_onsite_registration','legacy_admin_logins','member_work_profiles'])
     assert.ok(!names.has(name), `Retired workflow remains: ${name}`);
   assert.equal(capacities.results.length, 4);

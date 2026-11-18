@@ -379,7 +379,7 @@ test('member availability produces a published shift visible after reloading', {
   await expect(personal.getByRole('article').filter({ hasText: nextWeek })).toContainText('维修');
 });
 
-test('a member requests leave and the recipient confirms the replacement', async ({
+test('a member invites a replacement and the recipient confirms without manager approval', async ({
   page,
   context
 }) => {
@@ -390,10 +390,7 @@ test('a member requests leave and the recipient confirms the replacement', async
   const personal = await dutyPage(worker, '我的值班');
   await personal.getByRole('textbox', { name: '所在周', exact: true }).fill(nextWeek);
   const shift = personal.getByRole('article').filter({ hasText: nextWeek });
-  await shift.getByRole('button', { name: '登记请假', exact: true }).click();
-  await personal.getByLabel('请假原因').fill('临时有课');
-  await shift.getByRole('button', { name: '登记请假', exact: true }).click();
-  await expect(shift.getByRole('button', { name: '撤销请假', exact: true })).toBeVisible();
+  await expect(personal.getByRole('button', { name: /请假/ })).toHaveCount(0);
   await shift.getByRole('button', { name: '邀请接替', exact: true }).click();
   await chooseOption(
     worker,

@@ -300,11 +300,13 @@ test('retired elders still cannot fill availability, join either duty, accept co
   const worker = await users.find('20261003');
   const roster = await publish(campuses[0], [shift(worker.memberId)]);
   const assignment = roster.rosters.find((row) => row.dutyType === 'repair').assignments[0];
+  t.mock.timers.setTime(Date.parse('2026-11-08T12:00:00Z'));
   const invitation = await staff.requestCover(worker, assignment.id, {
     toMemberId: elderId,
     revision: assignment.revision,
     requestId: crypto.randomUUID()
   });
+  t.mock.timers.setTime(Date.parse(`${day}T11:10:00Z`));
   await change(true);
   const campusId = campuses[0];
   assert.ok(

@@ -2,8 +2,6 @@ import { specialIdentitiesSql } from '../staff-access.js';
 
 const memberColumns = `m.id,m.name,m.student_id,m.home_campus_id,m.college,m.major,m.status,m.revision,m.created_at,m.updated_at,${specialIdentitiesSql('m.id')} AS special_identities`;
 
-const assignmentLeaveColumn = `(SELECT 'recorded' FROM roster_leaves l WHERE l.assignment_id=da.id AND l.member_id=da.member_id AND l.withdrawn_at IS NULL LIMIT 1) AS leave_status`;
-
 function rows(result) {
   return result?.results || [];
 }
@@ -45,10 +43,9 @@ function assignment(row) {
         endAt: row.end_at,
         revision: row.revision,
         active: !!row.active,
-        leaveStatus: row.leave_status || '',
         servicePaused: !!row.service_paused
       }
     : null;
 }
 
-export { memberColumns, assignmentLeaveColumn, rows, json, membership, assignment };
+export { memberColumns, rows, json, membership, assignment };

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { outcomeLabels, repairOutcomes } from '../../../shared/constants.js';
 import { Modal, Notice, Status } from './ui';
 import { RepairInformation, RepairCredential, RepairHistory } from '../RepairDetails';
@@ -32,6 +32,11 @@ function RepairOrder({
   const tools = useRepairTools();
   const { item, busy } = r;
   const [received, setReceived] = useState(false);
+  const [photoChecks, setPhotoChecks] = useState<Record<string, boolean>>({});
+  const onPhotoChecking = useCallback((side: string, checking: boolean) => {
+    setPhotoChecks((current) => ({ ...current, [side]: checking }));
+  }, []);
+  const checkingPhotos = Object.values(photoChecks).some(Boolean);
   const activeBrand = item ? (!item.receivedAt && r.verification.brand.trim()) || item.brand : '';
   const serviceCenterUrl = warrantyServiceCenterUrl(activeBrand);
   return (
@@ -146,6 +151,7 @@ function RepairOrder({
                   previews={r.previews}
                   busy={busy || r.photoBusy}
                   progress={r.photoProgress}
+                  onChecking={onPhotoChecking}
                   onFile={r.onFile}
                 />
               )}
@@ -154,7 +160,7 @@ function RepairOrder({
                   <button
                     data-track="staff.field.repair.button.5"
                     className="field-primary"
-                    disabled={busy}
+                    disabled={busy || checkingPhotos}
                     onClick={() => r.start()}
                   >
                     {busy ? '正在处理…' : item.receivedAt ? '开始维修' : '接收并开始维修'}
@@ -164,7 +170,7 @@ function RepairOrder({
                   <button
                     data-track="staff.field.repair.button.6"
                     className={!item.canStart ? 'field-primary' : undefined}
-                    disabled={busy}
+                    disabled={busy || checkingPhotos}
                     onClick={() => r.start(true)}
                   >
                     仅接收设备
@@ -173,7 +179,7 @@ function RepairOrder({
                 {!busy && r.canSkip && item.canReceive && (
                   <button
                     data-track="staff.field.repair.button.7"
-                    disabled={busy}
+                    disabled={busy || checkingPhotos}
                     onClick={() => r.start(true, true)}
                   >
                     跳过等待，仅接收设备
@@ -182,7 +188,7 @@ function RepairOrder({
                 {!busy && r.canSkip && item.canStart && (
                   <button
                     data-track="staff.field.repair.button.8"
-                    disabled={busy}
+                    disabled={busy || checkingPhotos}
                     onClick={() => r.start(false, true)}
                   >
                     跳过等待，接收并开始维修
@@ -201,11 +207,12 @@ function RepairOrder({
                 previews={r.previews}
                 busy={busy || r.photoBusy}
                 progress={r.photoProgress}
+                onChecking={onPhotoChecking}
                 onFile={r.onFile}
               />
               <button
                 data-track="staff.field.repair.button.9"
-                disabled={busy || r.photoBusy}
+                disabled={busy || r.photoBusy || checkingPhotos}
                 onClick={r.supplement}
               >
                 重试补传照片

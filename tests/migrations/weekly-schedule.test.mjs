@@ -4,7 +4,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { database, seedStaff } from '../helpers/database.mjs';
 import { staffServices } from '../fixtures/staff-services.mjs';
 import { userRepository } from '../../src/db/users.js';
-for(const directory of ['migrations','database/staff-migrations'])test(`${directory}: roster cutover retains every shift and raw workflow fact, preserves pending leave and exchange`,async()=>{
+for(const directory of ['migrations','database/staff-migrations'])test(`${directory}: roster cutover retains every shift and raw workflow fact, preserves pending leave and exchange`,async(t)=>{
+ t.mock.timers.enable({apis:['Date'],now:new Date('2026-11-01T12:00:00Z')});
  const db=database(directory,'0048_');try{
  seedStaff(db,'20261001');seedStaff(db,'20261002');
  db.sqlite.exec(`INSERT INTO roster_tasks(id,week_start,campus_scope,slot_start,slot_end,deadline,created_at) VALUES('task','2026-11-02','{"campusIds":["campus-nanhu"]}','19:00','21:00','2026-11-01','2026-10-30');
@@ -28,8 +29,13 @@ for(const directory of ['migrations','database/staff-migrations'])test(`${direct
  assert.equal(db.sqlite.prepare('SELECT exchange_assignment_id FROM roster_covers').get().exchange_assignment_id,'two');
  const availability=db.sqlite.prepare('SELECT * FROM member_availability ORDER BY member_id').all();assert.equal(availability.length,2);assert.equal(JSON.parse(availability[0].windows)[0].weekday,7);assert.equal(availability[1].week_start,'');
  assert.deepEqual(db.sqlite.prepare('PRAGMA foreign_key_check').all(),[]);
+ db.sqlite.exec(`INSERT INTO audit_events(id,action,source_ref,occurred_at) VALUES('leave-audit','rosters.leave.recorded','{}','2026-11-01');
+ INSERT INTO operation_receipts(actor_member_id,action,request_id,payload_hash,result_json,created_at) VALUES('member-20261001','rosters.leave.recorded','leave-request','hash','{}','2026-11-01');`);
  // Current services run against the complete schema after validating the cutover itself.
  for(const file of readdirSync(directory).filter(file=>file.endsWith('.sql') && file>'0048_weekly_schedule.sql').sort())db.sqlite.exec(readFileSync(`${directory}/${file}`,'utf8'));
+ assert.equal(db.sqlite.prepare("SELECT COUNT(*) n FROM sqlite_schema WHERE name='roster_leaves' OR name='idx_roster_leave_assignment'").get().n,0);
+ assert.equal(db.sqlite.prepare("SELECT COUNT(*) n FROM audit_events WHERE action IN ('rosters.leave.recorded','rosters.leave.withdrawn') OR (action='rosters.model.migrated' AND json_extract(source_ref,'$.type')='leave_requests')").get().n,0);
+ assert.equal(db.sqlite.prepare("SELECT COUNT(*) n FROM operation_receipts WHERE action IN ('rosters.leave.recorded','rosters.leave.withdrawn')").get().n,0);
  const staff=staffServices(db,'00'.repeat(32)),two=await userRepository(db).find('20261002');await staff.respondCover(two,'swap',{revision:0,decision:'accepted',requestId:request()});
  assert.equal(db.sqlite.prepare("SELECT member_id FROM duty_assignments WHERE id='one'").get().member_id,two.memberId);
  assert.equal(db.sqlite.prepare("SELECT member_id FROM duty_assignments WHERE id='two'").get().member_id,'member-20261001');

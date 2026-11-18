@@ -5,7 +5,7 @@ import { Repair } from './Repair';
 import { Registration } from './Registration';
 import type { Home } from './types';
 import { WorkspaceHeader } from '../WorkspaceHeader';
-import { StaffIdentity } from '../StaffIdentity';
+import { CheckInDialog } from './CheckInDialog';
 import { useFieldWorkspace } from './useFieldWorkspace';
 import { TodayScene } from './TodayScene';
 import { PersonalScene } from './PersonalScene';
@@ -55,9 +55,6 @@ export function FieldApp({
     setToken,
     checkToken,
     setCheckToken,
-    checkResult,
-    setCheckResult,
-    checkPreview,
     busy,
     result,
     data,
@@ -65,7 +62,6 @@ export function FieldApp({
     resolve,
     showAttendance,
     openAttendance,
-    checkIn,
     campusName
   } = useFieldWorkspace({
     initial,
@@ -212,43 +208,6 @@ export function FieldApp({
           </span>
         </footer>
       </section>
-      {checkResult && (
-        <Modal
-          title={checkResult.isExisting ? '你已完成到岗签到' : '到岗签到成功'}
-          compact
-          onClose={() => setCheckResult(null)}
-        >
-          <div className="field-checkin-result">
-            <span className="react-eyebrow">工作人员到岗</span>
-            <h2 data-motion-value="text">{initial.actor.name}</h2>
-            <StaffIdentity
-              identities={checkResult.identitySnapshot?.identities || data?.identities}
-            />
-            <p data-motion-value="text">
-              {data?.campuses.find((item) => item.id === checkResult.campusId)?.name}校区 ·{' '}
-              {checkResult.businessDate}
-            </p>
-            <strong data-motion-value="text">{time(checkResult.occurredAt)}</strong>
-            {(checkResult.nonScheduled || checkResult.isExisting) && (
-              <p data-motion-value="text" className="field-muted">
-                {[
-                  checkResult.nonScheduled ? '非排班到场参与工作' : '',
-                  checkResult.isExisting ? '保留首次签到时间' : ''
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </p>
-            )}
-            <button
-              data-track="staff.field.fieldapp.button.4"
-              className="field-primary"
-              onClick={() => setCheckResult(null)}
-            >
-              返回工作台
-            </button>
-          </div>
-        </Modal>
-      )}
       {scanOpen && (
         <Modal title="扫一扫" onClose={() => setScanOpen(false)}>
           <Scanner onCode={resolve} />
@@ -256,24 +215,17 @@ export function FieldApp({
         </Modal>
       )}
       {checkToken && (
-        <Modal title="确认到岗签到" compact onClose={() => setCheckToken('')}>
-          <p>
-            {checkPreview?.campusName}校区 · {checkPreview?.businessDate}
-            <br />
-            {checkPreview && `${time(checkPreview.startsAt)}–${time(checkPreview.endsAt)}`}
-            <br />
-            将以 {initial.actor.name} 的账号记录到岗。
-          </p>
-          <Notice>{message}</Notice>
-          <button
-            data-track="staff.field.fieldapp.button.5"
-            className="field-primary"
-            disabled={busy}
-            onClick={() => checkIn(checkToken)}
-          >
-            确认签到
-          </button>
-        </Modal>
+        <CheckInDialog
+          home={data || initial}
+          token={checkToken === 'direct' ? '' : checkToken}
+          onClose={() => setCheckToken('')}
+          onComplete={(record) => {
+            setCheckToken('');
+            setMessage(
+              record.isExisting ? '已读取首次签到记录' : `签到成功 · ${time(record.occurredAt)}`
+            );
+          }}
+        />
       )}
       {token && (
         <Modal title="展示签到码" onClose={() => setToken(null)}>

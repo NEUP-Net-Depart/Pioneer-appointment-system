@@ -1,5 +1,6 @@
 import { runModel, rejectWithoutWrite } from './fixtures/workflow-seed.mjs';
 import { slotCapacityService } from '../src/services/slot-capacities.js';
+import { slotCapacityRepository } from '../src/db/slot-capacities.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { database, seedStaff, seedAppointment } from './helpers/database.mjs';
@@ -9,7 +10,9 @@ import { appointmentRepository } from '../src/db/appointments.js';
 import { composeStaffPlatform } from '../src/app/compose.js';
 import { staffPlatformService } from '../src/services/staff-platform.js';
 import { suggestDuties } from '../src/modules/rosters/suggestions.js';
-import { dutyLeader } from '../shared/duty.js';
+import { dutyAvailability, dutyCandidateTypes, isDutyExempt } from '../shared/duty.js';
+import { addDays } from '../shared/time.js';
+import { staffPlatformRoutes } from '../src/routes/staff-platform.js';
 
 const weekStart = '2026-11-09',
   campusId = 'campus-nanhu';
@@ -75,7 +78,7 @@ async function publish(staff, head, assignments, office = []) {
 
 test('work staffing scopes read-only idle and missing people without exposing attendance sources', async (t) => {
   const { db, staff, head, worker, office } = await setup(t);
-  await publish(staff, head, [shift(worker.memberId), shift(head.memberId)]);
+  await publish(staff, head, [shift(worker.memberId), shift(office.memberId)]);
   await assert.rejects(staff.workStaffing(office, { campusId }), { status: 403 });
   await assert.rejects(staff.workStaffing(head, { campusId: 'campus-hunnan' }), { status: 403 });
   let result = await staff.workStaffing(head, { campusId });
@@ -107,19 +110,37 @@ test('duty workload is cross-campus but only exposes the visible duty members to
   assert.deepEqual((await staff.attendanceWorkload(head, { campusId, businessDate: '2026-10-01' })).items, []);
 });
 
-test('suggestions maximize real leader coverage, exclude occupied members and preserve manual assignments', () => {
+test('only ordinary members participate in duty statistics regardless of secondary leadership', () => {
+  const member = post();
+  const affairs = { ...post('office'), assignmentType: 'maintenance_affairs', isPrimary: false };
+  assert.deepEqual(dutyCandidateTypes([member, affairs], weekStart), ['repair', 'office']);
+  assert.deepEqual(dutyCandidateTypes([post('office')], weekStart), []);
+  assert.deepEqual(dutyCandidateTypes([{ ...member, assignmentType: 'exchange', isPrimary: false }], weekStart), []);
+  assert.deepEqual(dutyCandidateTypes([{ ...member, effectiveFrom: '2026-12-01' }], weekStart), []);
+  assert.deepEqual(dutyCandidateTypes([{ ...member, positionCode: '' }], weekStart), []);
+  for (const position of ['deputy_head', 'head', 'deputy_director', 'director', 'vice_president', 'president']) {
+    const leadership = { ...post('network', position), isPrimary: false };
+    assert.equal(isDutyExempt([member, leadership], weekStart), true);
+    assert.deepEqual(dutyCandidateTypes([member, leadership, affairs], weekStart), []);
+    assert.deepEqual(dutyCandidateTypes([member, { ...leadership, effectiveTo: weekStart }, affairs], weekStart), ['repair', 'office']);
+  }
+});
+
+test('suggestions balance ordinary members, exclude leaders and occupied members, and preserve ordinary manual assignments', () => {
   const people = [
-    ['a', post('hardware', 'head')],
-    ['b', post('hardware', 'deputy_head')],
-    ['c', post('office', 'head')],
-    ['d', post('station', 'director')],
-    ['e', post('network', 'head')]
+    ['a', post('hardware')],
+    ['b', post('hardware')],
+    ['c', post('office')],
+    ['d', post('network')],
+    ['e', post('hardware', 'deputy_head')],
+    ['f', post('hardware', 'head')],
+    ['g', post('station', 'director')]
   ].map(([memberId, membership]) => ({
     memberId,
     name: memberId,
     memberships: [
       membership,
-      ...(['c', 'd'].includes(memberId)
+      ...(['c', 'd', 'g'].includes(memberId)
         ? [{ ...post('office'), assignmentType: 'maintenance_affairs', isPrimary: false }]
         : [])
     ],
@@ -130,7 +151,9 @@ test('suggestions maximize real leader coverage, exclude occupied members and pr
     ['b', 'repair', [1]],
     ['c', 'office', [1, 2, 3]],
     ['d', 'office', [3]],
-    ['e', 'repair', [1, 2, 3]]
+    ['e', 'repair', [1, 2, 3]],
+    ['f', 'repair', [1, 2, 3]],
+    ['g', 'office', [1, 2, 3]]
   ].map(([memberId, dutyType, days]) => ({
     memberId,
     dutyType,
@@ -140,16 +163,17 @@ test('suggestions maximize real leader coverage, exclude occupied members and pr
   const input = { weekStart, campusId, people, availability, paused: ['2026-11-12'] };
   const result = suggestDuties(input);
   assert.deepEqual(result, suggestDuties(input));
-  assert.equal(result.assignments.length, 4);
+  assert.equal(result.assignments.length, 5);
   assert.equal(new Set(result.assignments.map((row) => row.memberId)).size, 4);
-  assert.equal(result.gaps.length, 0, 'matching moves the flexible leader to Tuesday');
+  assert.deepEqual(result.gaps.map((row) => [row.businessDate, row.dutyType]), [
+    ['2026-11-11', 'repair']
+  ], 'office coverage must not conceal a missing repair shift');
   assert.equal(result.assignments.find((row) => row.memberId === 'b').businessDate, '2026-11-09');
   assert.equal(result.assignments.find((row) => row.memberId === 'a').businessDate, '2026-11-10');
   assert.ok(
-    !result.assignments.some((row) => row.memberId === 'e'),
-    'network heads are neither repair candidates nor hardware leaders'
+    !result.assignments.some((row) => ['e', 'f', 'g'].includes(row.memberId)),
+    'leaders do not participate even when old availability exists'
   );
-  assert.equal(dutyLeader([post('office', 'head')], weekStart), false);
   people[0].assignments = [{ campusId: 'campus-hunnan' }];
   const occupied = suggestDuties(input);
   assert.ok(!occupied.assignments.some((row) => row.memberId === 'a'));
@@ -160,14 +184,242 @@ test('suggestions maximize real leader coverage, exclude occupied members and pr
     result.assignments.some((row) => row.businessDate === '2026-11-12'),
     false
   );
-  const kept = [{ ...shift('c', '2026-11-11'), id: 'manual', campusId, dutyType: 'office' }];
+  const kept = [
+    { ...shift('c', '2026-11-11'), id: 'manual', campusId, dutyType: 'office' },
+    { ...shift('e'), id: 'legacy-leader', campusId, dutyType: 'repair' }
+  ];
   const regenerated = suggestDuties({ ...input, kept });
   assert.deepEqual(
     regenerated.assignments.find((row) => row.id === 'manual'),
     kept[0]
   );
-  assert.equal(regenerated.assignments.filter((row) => row.memberId === 'c').length, 1);
+  assert.equal(regenerated.assignments.filter((row) => row.businessDate === kept[0].businessDate && row.dutyType === 'office').length, 1);
+  assert.equal(regenerated.assignments.some((row) => row.id === 'legacy-leader'), false);
 });
+
+test('unified availability accepts Monday through Thursday and rejects leadership or unrelated members without writes', async (t) => {
+  const { db, staff, head, worker, office } = await setup(t);
+  const input = {
+    weekStart: '', revision: -1,
+    windows: [{ weekday: 1, campusId, startAt: '19:00', endAt: '21:00' }],
+    requestId: requestId()
+  };
+  await rejectWithoutWrite(db, () => staff.saveAvailability(head, input), { status: 403 });
+  for (const weekday of [5, 6, 7])
+    await rejectWithoutWrite(db, () => staff.saveAvailability(worker, {
+      ...input, requestId: requestId(), windows: [{ ...input.windows[0], weekday }]
+    }), { status: 400 });
+  await rejectWithoutWrite(db, () => staff.saveAvailability(office, {
+    ...input, dutyType: 'office', requestId: requestId()
+  }), { status: 403 });
+  const saved = await staff.saveAvailability(worker, input);
+  assert.deepEqual(saved.usual.windows, input.windows);
+  db.sqlite.prepare("INSERT INTO member_department_memberships(id,member_id,department_id,position_code,assignment_type,is_primary,effective_from,created_at) VALUES('office-affairs',?,'dept-office','member','maintenance_affairs',0,'2026-01-01','2026-01-01')").run(office.memberId);
+  const values = [1, 2, 3, 4].map((weekday) => ({ ...input.windows[0], weekday }));
+  const officeSaved = await staff.saveAvailability(office, { ...input, dutyType: 'office', windows: values, requestId: requestId() });
+  assert.deepEqual(officeSaved.usual.windows, values);
+});
+
+test('availability requires a whole weekday and refuses restoring an empty usual record without writes', async (t) => {
+  const { db, staff, worker } = await setup(t);
+  const input = { weekStart: '', revision: -1, requestId: requestId(), windows: [] };
+  for (const values of [[], [{ weekday: 1, campusId, startAt: '19:30', endAt: '20:00' }]])
+    await rejectWithoutWrite(db, () => staff.saveAvailability(worker, { ...input, windows: values, requestId: requestId() }), { status: 400 });
+  await rejectWithoutWrite(db, () => staff.saveAvailability(worker, {
+    ...input, weekStart: addDays(weekStart, 7), useUsual: true
+  }), { status: 400 });
+  const values = [{ weekday: 4, campusId, startAt: '19:00', endAt: '21:00' }];
+  await staff.saveAvailability(worker, { ...input, windows: values });
+  await rejectWithoutWrite(db, () => staff.saveAvailability(worker, {
+    ...input, revision: 0, requestId: requestId()
+  }), { status: 400 });
+});
+
+test('QR and direct confirmations remind only eligible members about next week and never prevent attendance', async (t) => {
+  const { db, staff, head, worker, office } = await setup(t);
+  const nextWeek = addDays(weekStart, 7);
+  const leader = await staff.previewAttendance(head, { campusId });
+  assert.equal(leader.availabilityReminder.needsAvailability, false);
+  await staff.directCheckIn(head, { campusId, requestId: requestId() });
+  const event = await staff.createAttendanceEvent(head, { campusId, businessDate: weekStart, requestId: requestId() });
+  const credential = await staff.issueAttendanceToken(head, event.id, { revision: event.revision });
+  const missing = await staff.previewAttendance(worker, { token: credential.token });
+  assert.deepEqual(missing.availabilityReminder, { weekStart: nextWeek, needsAvailability: true });
+  assert.equal(missing.memberName, worker.name);
+  const checkedIn = await staff.checkIn(worker, { token: credential.token, method: 'qr', requestId: requestId() });
+  assert.equal(checkedIn.businessDate, weekStart, 'missing availability never blocks check-in');
+  const values = [{ weekday: 1, campusId, startAt: '19:00', endAt: '21:00' }];
+  await staff.saveAvailability(worker, { weekStart: '', revision: -1, windows: values, requestId: requestId() });
+  assert.equal((await staff.previewAttendance(worker, { token: credential.token })).availabilityReminder.needsAvailability, false);
+  db.sqlite.prepare('INSERT INTO member_availability(member_id,duty_type,week_start,windows,revision,updated_at) VALUES(?,?,?,?,?,?)')
+    .run(worker.memberId, 'repair', nextWeek, '[]', 0, '2026-11-09');
+  assert.equal((await staff.previewAttendance(worker, { token: credential.token })).availabilityReminder.needsAvailability, true);
+  assert.equal((await staff.availability(worker, { weekStart: nextWeek })).needsAvailability, true);
+  await staff.saveAvailability(worker, { weekStart: nextWeek, revision: 0, windows: values, requestId: requestId() });
+  assert.equal((await staff.previewAttendance(worker, { token: credential.token })).availabilityReminder.needsAvailability, false);
+  db.sqlite.prepare("INSERT INTO member_department_memberships(id,member_id,department_id,position_code,assignment_type,is_primary,effective_from,created_at) VALUES('affairs-checkin',?,'dept-hardware','member','maintenance_affairs',0,'2026-01-01','2026-01-01')").run(office.memberId);
+  assert.equal((await staff.previewAttendance(office, { campusId })).availabilityReminder.needsAvailability, true);
+  await staff.directCheckIn(office, { campusId, requestId: requestId() });
+});
+
+test('unfilled repair members are assigned with explicit conflicts and remain visible when manually omitted', async (t) => {
+  const { staff, head, worker, office } = await setup(t);
+  const current = await staff.campusWeek(head, { weekStart, campusId });
+  const result = await staff.rosterSuggestions(head, { weekStart, campusId, sourceVersion: current.sourceVersion, assignments: [] });
+  const assigned = result.assignments.find((person) => person.memberId === worker.memberId);
+  assert.equal(assigned.availabilityConflict, true);
+  assert.equal(assigned.dutyType, 'repair');
+  const published = await publish(staff, head, [], [shift(office.memberId)]);
+  assert.ok(published.warnings.some((message) => message.includes(`${weekStart}尚未安排维修值班`)));
+  assert.ok(published.warnings.some((message) => message.includes(worker.name) && message.includes('尚未填空闲')));
+});
+
+test('leave storage and actions are removed while roster coverage and direct office check-in remain usable', async (t) => {
+  const { db, staff, repository, head, worker } = await setup(t);
+  const initial = await publish(staff, head, [shift(worker.memberId)]);
+  const item = initial.rosters.find((row) => row.dutyType === 'repair').assignments[0];
+  assert.equal(db.sqlite.prepare("SELECT COUNT(*) n FROM sqlite_schema WHERE name='roster_leaves'").get().n, 0);
+  assert.equal(staff.leave, undefined);
+  assert.equal(staff.withdrawLeave, undefined);
+  assert.equal(repository.recordLeave, undefined);
+  assert.equal(repository.withdrawLeave, undefined);
+  for (const suffix of ['leave', 'leave-withdraw'])
+    assert.equal(staffPlatformRoutes.some(([method, pattern]) => method === 'POST' && pattern.test(`/api/rosters/assignments/${item.id}/${suffix}`)), false);
+  const current = await staff.campusWeek(head, { weekStart, campusId });
+  const republished = await publish(staff, head, current.rosters.find((row) => row.dutyType === 'repair').assignments);
+  assert.ok(!republished.warnings.includes(`${weekStart}尚未安排维修值班`));
+  const retained = republished.rosters.find((row) => row.dutyType === 'repair').assignments[0];
+  assert.equal(retained.id, item.id);
+  assert.equal('leaveStatus' in retained, false);
+  const suggestions = await staff.rosterSuggestions(head, { weekStart, campusId, sourceVersion: republished.sourceVersion });
+  assert.equal(suggestions.assignments.filter((row) => row.memberId === worker.memberId).length, 1);
+  const day = await staff.attendanceDay(head, { campusId, businessDate: weekStart });
+  assert.equal(day.summary.expected, 1);
+  assert.equal(day.items[0].status, 'upcoming');
+  db.sqlite.prepare("UPDATE duty_assignments SET duty_type='office' WHERE id=?").run(item.id);
+  const signed = await staff.directCheckIn(worker, { campusId, requestId: requestId() });
+  assert.equal(signed.memberId, worker.memberId);
+});
+
+test('unified availability reads the latest legacy record, including explicit empty and restored exceptions', () => {
+  const usual = [{ weekday: 1, campusId, startAt: '19:00', endAt: '21:00' }];
+  const rows = [
+    { dutyType: 'repair', weekStart: '', windows: [], revision: 3, updatedAt: '2026-11-01' },
+    { dutyType: 'office', weekStart: '', windows: usual, revision: 0, updatedAt: '2026-11-02' },
+    { dutyType: 'repair', weekStart, windows: usual, revision: 0, updatedAt: '2026-11-03' },
+    { dutyType: 'office', weekStart, windows: [], revision: 0, updatedAt: '2026-11-04' }
+  ];
+  assert.deepEqual(dutyAvailability(rows, weekStart).effectiveWindows, []);
+  rows[3].windows = null;
+  const restored = dutyAvailability(rows, weekStart);
+  assert.equal(restored.source, 'usual');
+  assert.deepEqual(restored.effectiveWindows, usual);
+  assert.equal(restored.exception.revision, 0);
+});
+
+test('one availability record serves both duties and dual appointments automatically prefer office', async (t) => {
+  const { db, staff, head, worker } = await setup(t);
+  db.sqlite.prepare("INSERT INTO member_department_memberships(id,member_id,department_id,position_code,assignment_type,is_primary,effective_from,created_at) VALUES('dual-affairs',?,'dept-office','member','maintenance_affairs',0,'2026-01-01','2026-01-01')").run(worker.memberId);
+  const values = [{ weekday: 1, campusId, startAt: '19:00', endAt: '21:00' }];
+  db.sqlite.prepare('INSERT INTO member_availability(member_id,duty_type,week_start,windows,revision,updated_at) VALUES(?,?,?,?,?,?)')
+    .run(worker.memberId, 'office', '', JSON.stringify(values), 4, '2026-11-01');
+  const fromLegacy = await staff.availability(worker, { weekStart });
+  assert.equal(fromLegacy.usual.revision, 4);
+  const input = { weekStart: '', revision: 4, windows: values, requestId: requestId() };
+  await staff.saveAvailability(worker, input);
+  await rejectWithoutWrite(db, () => staff.saveAvailability(worker, { ...input, requestId: requestId() }), { status: 409 });
+  assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM member_availability WHERE member_id=?').get(worker.memberId).n, 1);
+  for (const dutyType of ['repair', 'office']) {
+    assert.deepEqual((await staff.availability(worker, { weekStart, dutyType })).effectiveWindows, values);
+    const roster = await staff.rosterWeek(head, { weekStart, campusId, dutyType });
+    assert.deepEqual(roster.people.find((person) => person.memberId === worker.memberId).windows, values);
+  }
+  const current = await staff.campusWeek(head, { weekStart, campusId });
+  const person = current.people.find((row) => row.memberId === worker.memberId);
+  assert.deepEqual(person.availability.repair, values);
+  assert.deepEqual(person.availability.office, values);
+  const suggestion = await staff.rosterSuggestions(head, { weekStart, campusId, sourceVersion: current.sourceVersion, assignments: [] });
+  assert.deepEqual(suggestion.assignments.filter((row) => row.memberId === worker.memberId).map((row) => row.dutyType), ['office']);
+});
+
+test('office preference respects occupied days and retained manual duties remain intact', () => {
+  const people = [{ memberId: 'dual', name: '双任职', memberships: [post(), { ...post('office'), assignmentType: 'maintenance_affairs', isPrimary: false }], assignments: [] }];
+  const availability = [{ memberId: 'dual', dutyType: 'repair', weekStart: '', windows: [1, 2].map((weekday) => ({ weekday, campusId, startAt: '19:00', endAt: '21:00' })) }];
+  const kept = [1, 2].map((weekday) => ({ ...shift(`other-${weekday}`, `2026-11-${weekday === 1 ? '09' : '10'}`), campusId, dutyType: 'office' }));
+  const input = { weekStart, campusId, people, availability, kept, paused: [] };
+  assert.equal(suggestDuties(input).assignments.find((row) => row.memberId === 'dual').dutyType, 'repair');
+  const manual = { ...shift('dual'), id: 'manual-dual', campusId, dutyType: 'repair' };
+  const result = suggestDuties({ ...input, kept: [manual] });
+  assert.deepEqual(result.assignments, [manual]);
+});
+
+test('publication rejects leadership and suggestions discard legacy leader arrangements without mutating history', async (t) => {
+  const { db, staff, head, worker } = await setup(t);
+  await rejectWithoutWrite(db, () => publish(staff, head, [shift(head.memberId)]), { status: 400 });
+  await rejectWithoutWrite(db, () => staff.saveRosterWeek(head, {
+    weekStart, campusId, dutyType: 'repair', revision: -1,
+    assignments: [shift(head.memberId)], requestId: requestId()
+  }), { status: 400 });
+  const current = await publish(staff, head, [shift(worker.memberId)]);
+  const legacy = current.rosters[0].assignments[0];
+  db.sqlite.prepare('UPDATE duty_assignments SET member_id=? WHERE id=?').run(head.memberId, legacy.id);
+  const data = await staff.campusWeek(head, { weekStart, campusId });
+  const suggestion = await staff.rosterSuggestions(head, {
+    weekStart, campusId, sourceVersion: data.sourceVersion,
+    assignments: data.rosters.flatMap((roster) => roster.assignments)
+  });
+  assert.equal(suggestion.assignments.some((row) => row.memberId === head.memberId), false);
+  assert.equal(suggestion.gaps.some((gap) => /负责人/.test(gap.reason)), false);
+  assert.equal(db.sqlite.prepare('SELECT active FROM duty_assignments WHERE id=?').get(legacy.id).active, 1);
+});
+
+test('leaders cannot receive cover invitations or accept an invitation issued before their promotion', async (t) => {
+  const { db, staff, head, worker, office } = await setup(t);
+  t.mock.timers.setTime(Date.parse('2026-11-08T12:00:00Z'));
+  const current = await publish(staff, head, [shift(worker.memberId)]);
+  const item = current.rosters[0].assignments[0];
+  const candidates = await staff.coverCandidates(worker, item.id);
+  assert.equal(candidates.items.some((person) => person.memberId === head.memberId), false);
+  await rejectWithoutWrite(db, () => staff.requestCover(worker, item.id, {
+    revision: item.revision, toMemberId: head.memberId, requestId: requestId()
+  }), { status: 400 });
+  const invite = await staff.requestCover(worker, item.id, {
+    revision: item.revision, toMemberId: office.memberId, requestId: requestId()
+  });
+  db.sqlite.prepare("UPDATE member_department_memberships SET position_code='deputy_head' WHERE member_id=?").run(office.memberId);
+  await rejectWithoutWrite(db, () => staff.respondCover(office, invite.id, {
+    revision: 0, decision: 'accepted', requestId: requestId()
+  }), { status: 403 });
+});
+
+for (const operation of ['createCover', 'decideCover']) {
+  test(`promotion at the ${operation} write boundary rejects the cover without roster, audit or receipt changes`, async (t) => {
+    const { db, repository, staff, head, worker, office } = await setup(t);
+    t.mock.timers.setTime(Date.parse('2026-11-08T12:00:00Z'));
+    const current = await publish(staff, head, [shift(worker.memberId)]);
+    const item = current.rosters[0].assignments[0];
+    const input = { revision: item.revision, toMemberId: office.memberId, requestId: requestId() };
+    const invite = operation === 'decideCover' ? await staff.requestCover(worker, item.id, input) : null;
+    const original = repository[operation];
+    repository[operation] = (...args) => {
+      db.sqlite.prepare("UPDATE member_department_memberships SET position_code='deputy_head' WHERE member_id=?").run(office.memberId);
+      return original(...args);
+    };
+    const audits = db.sqlite.prepare('SELECT COUNT(*) n FROM audit_events').get().n;
+    const receipts = db.sqlite.prepare('SELECT COUNT(*) n FROM operation_receipts').get().n;
+    await assert.rejects(
+      invite
+        ? staff.respondCover(office, invite.id, { revision: 0, decision: 'accepted', requestId: requestId() })
+        : staff.requestCover(worker, item.id, input),
+      { status: 409 }
+    );
+    assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM audit_events').get().n, audits);
+    assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM operation_receipts').get().n, receipts);
+    assert.deepEqual(await repository.scheduleWeek(weekStart, campusId, 'repair'), current.rosters[0]);
+    assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM roster_covers').get().n, invite ? 1 : 0);
+    if (invite) assert.equal((await repository.cover(invite.id)).status, 'pending');
+  });
+}
 
 test('joint publication prepares shared events without attendance, retains IDs and rejects a stale or conflicting pair atomically', async (t) => {
   const { db, staff, head, worker, office } = await setup(t);
@@ -260,22 +512,36 @@ test('personnel changes at the write boundary cancel both publications and their
   );
 });
 
-test('today includes unsigned people and leave without manual review or proxy arrival', async (t) => {
+test('today includes all unsigned scheduled people without manual review or proxy arrival', async (t) => {
   const { db, staff, head, worker, office } = await setup(t);
-  const published = await publish(staff, head, [shift(worker.memberId)], [shift(office.memberId)]);
-  const officeShift = published.rosters[1].assignments[0];
-  await staff.leave(office, officeShift.id, {
-    revision: 0,
-    reason: '有课',
-    requestId: requestId()
-  });
+  await publish(staff, head, [shift(worker.memberId)], [shift(office.memberId)]);
   const day = await staff.attendanceDay(head, { campusId, businessDate: weekStart });
-  assert.deepEqual(day.summary, { expected: 1, arrived: 0, absent: 0 });
-  assert.equal(day.items.find((row) => row.memberId === office.memberId).status, 'leave');
+  assert.deepEqual(day.summary, { expected: 2, arrived: 0, absent: 0 });
+  assert.equal(day.items.find((row) => row.memberId === office.memberId).status, 'upcoming');
   assert.equal(staff.confirmArrival, undefined);
   assert.equal(staff.reviewAttendance, undefined);
   assert.ok(day.items.every((row) => !('canReview' in row) && !('canConfirm' in row)));
   assert.equal(db.sqlite.prepare('SELECT COUNT(*) n FROM attendance_records').get().n, 0);
+});
+
+test('actual staffing follows current assignments after manager edits and self-service cover', async (t) => {
+  const { db, staff, head, worker, office } = await setup(t);
+  t.mock.timers.setTime(Date.parse('2026-11-08T12:00:00Z'));
+  const capacity = slotCapacityRepository(db);
+  const counts = async () => (await capacity.actual(weekStart, '南湖', ['repair', 'office'])).staffing;
+  await publish(staff, head, [shift(worker.memberId)]);
+  assert.deepEqual(await counts(), { repair: 1, office: 0 });
+  const current = await publish(staff, head, [shift(office.memberId)]);
+  assert.deepEqual(await counts(), { repair: 1, office: 0 });
+  const item = current.rosters.find(row => row.dutyType === 'repair').assignments[0];
+  const invite = await staff.requestCover(office, item.id, { revision: item.revision, toMemberId: worker.memberId, requestId: requestId() });
+  await staff.respondCover(worker, invite.id, { revision: 0, decision: 'accepted', requestId: requestId() });
+  assert.deepEqual(await counts(), { repair: 1, office: 0 });
+  const day = await staff.attendanceDay(head, { campusId, businessDate: weekStart });
+  assert.deepEqual(day.items.map(person => person.memberId), [worker.memberId]);
+  assert.equal(day.summary.expected, 1);
+  await publish(staff, head, []);
+  assert.deepEqual(await counts(), { repair: 0, office: 0 });
 });
 
 test('repeated QR check-in yields one attendance fact and one live transition', async (t) => {
@@ -623,31 +889,6 @@ async function attendanceModel(t) {
       'arrived',
       'REJECT_DUPLICATE_CORRECTION',
       (r) => rejectWithoutWrite(r.db, () => correction(r), { status: 409 })
-    ],
-    [
-      'upcoming',
-      'leave',
-      'LEAVE',
-      async (r) => {
-        const a = (await r.staff.rosterMine(r.worker, { weekStart })).items[0];
-        await r.staff.leave(r.worker, a.id, {
-          revision: a.revision,
-          reason: '有课',
-          requestId: requestId()
-        });
-      }
-    ],
-    [
-      'leave',
-      'upcoming',
-      'WITHDRAW',
-      async (r) => {
-        const a = (await r.staff.rosterMine(r.worker, { weekStart })).items[0];
-        await r.staff.withdrawLeave(r.worker, a.id, {
-          revision: a.revision,
-          requestId: requestId()
-        });
-      }
     ],
     ['upcoming', 'paused', 'PAUSE', (r) => pause(r, true)],
     ['paused', 'upcoming', 'RESUME', (r) => pause(r, false)],

@@ -6,9 +6,9 @@ import { readStoredContact, normalizedContact, contactSearchToken, contactSearch
 import { presentAppointment } from './appointments.js';
 import { appointmentAccessRules } from '../modules/authorization/appointment-access.js';
 import { requestId, stableJson } from '../platform/contracts.js';
-import { staffIdentities } from '../../shared/staff-identities.js';
+import { staffIdentities, isRetiredElder } from '../../shared/staff-identities.js';
 import { APPOINTMENT_SEARCH_LIMIT, appointmentContactTerm } from '../../shared/appointment-search.js';
-import { activeMemberships, isLeader } from '../../shared/staff-organization.js';
+import { dutyCandidateTypes } from '../../shared/duty.js';
 
 export function fieldWorkflow({ repository, appointments, staff, authorizer, encryptionKey, secret }) {
   const names = { 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' };
@@ -215,7 +215,7 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
     return {businessDate:dateKey(),actor:context.actor,authVersion:context.authVersion,campuses,campusId:selected,
       contexts:capability['repair.summary.read'] ? [{id:'today',label:'今日工作'}] : [],capability,
       directAttendance,
-      rosterParticipant: context.actor.role !== 'superadmin' && !isLeader(context) && activeMemberships(context).some(post => post.assignmentType === 'maintenance_affairs' || (post.isPrimary && post.departmentCode === 'hardware' && post.positionCode === 'member')),
+      rosterParticipant: !isRetiredElder(context) && dutyCandidateTypes(context.memberships, context.authorizationDate).length > 0,
       permissions:context.permissions,navigation:context.navigation,
       attendance:attendance?.campusId===selected ? attendance : null,
       repairs:await projectList(actor,repairs,context),pendingPhotos:await projectList(actor,pendingPhotos,context),
