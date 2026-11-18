@@ -217,7 +217,7 @@ export function fieldWorkflow({ repository, appointments, staff, authorizer, enc
       directAttendance,
       rosterParticipant: !isRetiredElder(context) && dutyCandidateTypes(context.memberships, context.authorizationDate).length > 0,
       permissions:context.permissions,navigation:context.navigation,
-      attendance:attendance?.campusId===selected ? attendance : null,
+      attendance,
       repairs:await projectList(actor,repairs,context),pendingPhotos:await projectList(actor,pendingPhotos,context),
       todayDuties:context.todayDuties.filter(item=>item.campusId===selected),identities:staffIdentities(context,authorizer,{campusId:selected}),
       searchCapabilities:searchCapabilities(context),

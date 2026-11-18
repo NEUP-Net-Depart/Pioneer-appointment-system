@@ -2,20 +2,23 @@ import { leadershipPositions } from '../../../shared/staff-organization.js';
 import {addDays,serviceDay} from '../../../shared/time.js';
 import {staffIdentities} from '../../../shared/staff-identities.js';
 import {attendanceFactContext} from './fact-context.js';
+import {volunteerCampus} from './volunteer-campus.js';
 
 // Authorization and suspension are applied to each fact before combining campuses.
 // A weekly credit is a report calculation, never an attendance or presence write.
-export function weeklyAttendanceRows({week,records,facts,paused,authorizer,canExport,firstOnly=false,leadersOnce=false}) {
+export function weeklyAttendanceRows({week,records,facts,paused,authorizer,canExport,members=[],firstOnly=false,leadersOnce=false}) {
   const names={'campus-nanhu':'南湖','campus-hunnan':'浑南'},rows=new Map();
+  const byMember=new Map(members.map(member=>[member.memberId,member]));
   const suspended=(day,campus)=>paused.some(item=>item.paused&&item.businessDate===day&&item.campusId===campus);
   const ensure=(memberId,name,studentId)=>{
     if(!rows.has(memberId))rows.set(memberId,{weekStart:week,memberId,name,studentId,departments:new Set(),identities:new Set(),campuses:new Set(),actualCount:0,excludedCount:0,leaderCredit:false,leaderSeen:false});
     return rows.get(memberId);
   };
   for(const record of records){
-    if(!canExport({memberId:record.memberId,campusId:record.campusId,departmentId:record.primaryDepartmentIdSnapshot,id:record.id}))continue;
+    const campusId=volunteerCampus(record,byMember.get(record.memberId));
+    if(!canExport({memberId:record.memberId,campusId,departmentId:record.primaryDepartmentIdSnapshot,id:record.id}))continue;
     const row=ensure(record.memberId,record.identitySnapshot?.name||record.memberName,record.identitySnapshot?.studentId||record.studentId||'');
-    row.departments.add(record.primaryDepartmentNameSnapshot||'历史部门未记录');row.campuses.add(names[record.campusId]||record.campusId);
+    row.departments.add(record.primaryDepartmentNameSnapshot||'历史部门未记录');row.campuses.add(names[campusId]||campusId);
     for(const identity of record.identitySnapshot?.identities||[])row.identities.add(identity.label);
     if(suspended(record.businessDate,record.campusId))row.excludedCount++;else row.actualCount++;
   }
@@ -25,6 +28,8 @@ export function weeklyAttendanceRows({week,records,facts,paused,authorizer,canEx
       const context=attendanceFactContext(fact,day),departments=context.memberships.filter(item=>item.isPrimary);
       for(const campus of fact.campuses||[]){
         const campusId={'南湖':'campus-nanhu','浑南':'campus-hunnan'}[campus]||campus;
+        const homeCampus=byMember.get(fact.memberId)?.homeCampusId;
+        if(homeCampus && campusId!==homeCampus)continue;
         for(const department of departments.length?departments:[{}]){
           const target={memberId:fact.memberId,campusId,departmentId:department.departmentId};
           if(!canExport(target))continue;

@@ -365,8 +365,12 @@ function WorkspaceSession({ identity }) {
   const [client] = useState(() =>
     createQueryClient({
       queryCache: new QueryCache({
-        onError: (error) => {
+        onError: (error, query) => {
           if (error.status !== 403) return;
+          if (query.meta?.accessErrorScope === 'operation') {
+            void identity.retry();
+            return;
+          }
           // Hide every mounted route before another authorization scope can render.
           client.clear();
           setAccessError(error.message);

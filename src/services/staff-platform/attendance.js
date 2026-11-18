@@ -20,7 +20,8 @@ import {
   DUTY_START,
   dutyCandidateTypes,
   dutyAvailability,
-  hasDutyAvailability
+  hasDutyAvailability,
+  dutyCampusNames
 } from '../../../shared/duty.js';
 import { weeklyAttendanceRows } from '../../modules/attendance/weekly-export.js';
 import {
@@ -140,19 +141,13 @@ export function attendanceDomain({
       (await repository.serviceDay(event.businessDate, event.campusId))?.paused
     )
       fail(409, '该日期暂停维修，不能签到', 'SERVICE_DAY_PAUSED');
-    const authorization = await requirePermission(actor, 'attendance.self', {
-      campusId: event.campusId,
-      memberId: actor.memberId
+    const context = await contextFor(actor);
+    const authorization = evaluate(context, 'attendance.self', {
+      ...(event.type === 'duty' ? {} : { campusId: event.campusId }),
+      memberId: context.actor.memberId
     });
-    const context = authorization.context;
-    const campusNames = { 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' };
-    if (
-      event.campusId &&
-      !(actor.authorizedCampuses || []).some(
-        (value) => value === event.campusId || value === campusNames[event.campusId]
-      )
-    )
-      fail(403, '没有该校区的签到权限');
+    if (!authorization.allowed)
+      fail(403, '当前身份无法签到，请联系负责人核对任职信息', 'ATTENDANCE_IDENTITY_DENIED');
     const policy = policyFor(event);
     if (!policy) fail(400, '签到策略不存在');
     const now = nowIso();
@@ -160,7 +155,7 @@ export function attendanceDomain({
     assertDutyAttendanceDate(event, 409);
     const eligible = policy.checkEligibility({
       event,
-      context: { ...context, attendanceEligible: authorization.result.allowed }
+      context: { ...context, attendanceEligible: authorization.allowed }
     });
     if (!eligible) fail(403, '当前成员没有该场次的签到资格');
     return { found, event, context, policy, now };
@@ -175,6 +170,7 @@ export function attendanceDomain({
   }
 
   async function directAttendanceAction(actor, campusId, providedContext) {
+    if (!Object.hasOwn(dutyCampusNames, campusId)) fail(400, '请选择有效的签到校区');
     const context = providedContext || (await contextFor(actor)),
       identities = staffIdentities(context, platform.authorizer, { campusId });
     const scheduled = context.todayDuties.filter((duty) => duty.campusId === campusId);
@@ -243,6 +239,15 @@ export function attendanceDomain({
     );
   }
 
+  function checkRecordedCampus(event, record) {
+    if (event.type === 'duty' && record && record.campusId !== event.campusId)
+      fail(
+        409,
+        `今天已在${dutyCampusNames[record.campusId] || '其他'}校区签到，不能在两个校区重复签到`,
+        'ATTENDANCE_OTHER_CAMPUS'
+      );
+  }
+
   async function commitAttendance(
     actor,
     input,
@@ -252,6 +257,7 @@ export function attendanceDomain({
     assertDutyAttendanceDate(event, 409);
     const dedupeKey = policy.getDedupeScope({ memberId: context.actor.memberId, event });
     const existing = await repository.findAttendanceByDedupe(dedupeKey);
+    checkRecordedCampus(event, existing);
     if (existing) return { ...existing, isExisting: true, result: policy.describeResult(existing) };
     const method = direct ? 'manual' : attendanceMethod(input.method);
     const occurredAt = now;
@@ -283,6 +289,8 @@ export function attendanceDomain({
           identitySnapshot: {
             name: context.actor.name,
             memberId: context.actor.memberId,
+            homeCampusId:
+              context.member?.home_campus_id || normalizeCampusId(context.actor.homeCampus),
             identities: context.identities
           },
           nonScheduled: !context.todayDuties.some((duty) => duty.campusId === event.campusId),
@@ -306,6 +314,7 @@ export function attendanceDomain({
       );
       if (!created) {
         const concurrent = await repository.findAttendanceByDedupe(dedupeKey);
+        checkRecordedCampus(event, concurrent);
         if (concurrent)
           return { ...concurrent, isExisting: true, result: policy.describeResult(concurrent) };
         fail(409, '签到记录已被其他请求创建');
@@ -329,7 +338,11 @@ export function attendanceDomain({
       if (!eventWindow(event.startsAt, event.endsAt, nowIso())) fail(409, '当前不在签到时间窗口');
       assertDutyAttendanceDate(event, 409);
     }
-    const campusName = { 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' }[event.campusId];
+    if (event.type === 'duty') {
+      const key = policyFor(event).getDedupeScope({ memberId: context.actor.memberId, event });
+      checkRecordedCampus(event, await repository.findAttendanceByDedupe(key));
+    }
+    const campusName = dutyCampusNames[event.campusId];
     const weekStart = addDays(dutyWeekKey(), 7);
     let needsAvailability = false;
     if (
@@ -349,6 +362,21 @@ export function attendanceDomain({
     return {
       campusId: event.campusId,
       campusName,
+      otherDutyCampusNames:
+        event.type === 'duty'
+          ? [
+              ...new Set(
+                context.todayDuties
+                  .filter(
+                    (duty) =>
+                      duty.businessDate === event.businessDate &&
+                      !duty.servicePaused &&
+                      duty.campusId !== event.campusId
+                  )
+                  .map((duty) => dutyCampusNames[duty.campusId])
+              )
+            ]
+          : [],
       businessDate: event.businessDate,
       startsAt: event.startsAt,
       endsAt: event.endsAt,
@@ -385,14 +413,8 @@ export function attendanceDomain({
         await requirePermission(actor, 'roster.read', { memberId: context.actor.memberId });
       filters.memberId = query?.memberId || context.actor.memberId;
     }
-    if (!managing) {
-      if (
-        filters.campusId &&
-        !evaluate(context, 'roster.read', { campusId: filters.campusId }).allowed
-      )
-        fail(403, '没有该校区的访问权限');
-      filters.campusIds = context.actor.authorizedCampuses.map(normalizeCampusId);
-    }
+    if (filters.campusId && !Object.hasOwn(dutyCampusNames, filters.campusId))
+      fail(400, '校区不正确');
     let after;
     if (query?.cursor) {
       try {
@@ -578,6 +600,7 @@ export function attendanceDomain({
       rows.push(
         ...weeklyAttendanceRows({
           week,
+          members: data.members,
           records: data.records.filter(
             (row) => row.businessDate >= week && row.businessDate <= addDays(week, 6)
           ),
@@ -813,7 +836,8 @@ export function attendanceDomain({
         identitySnapshot: {
           name: target.name,
           studentId: target.student_id || '',
-          memberId: target.id
+          memberId: target.id,
+          homeCampusId: target.home_campus_id
         },
         nonScheduled: !duties.some((item) => item.campusId === event.campusId),
         ...(defaultTime ? { timeBasis: 'duty_start' } : {})

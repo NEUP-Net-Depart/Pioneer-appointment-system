@@ -155,7 +155,7 @@ export function attendanceReportingDomain({ repository, platform, contextFor, ev
       canRead: (campusId, id) =>
         Object.hasOwn(campusNames, campusId) &&
         (!id || id === memberId) &&
-        evaluate(context, 'roster.read', { campusId, memberId }).allowed
+        evaluate(context, 'roster.read', { memberId }).allowed
     });
     const values = result.weeks.map((week) => ({
       weekStart: week.weekStart,

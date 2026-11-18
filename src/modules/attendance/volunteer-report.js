@@ -3,6 +3,7 @@ import { addDays, weekRange } from '../../platform/time.js';
 import { attendanceFactContext } from './fact-context.js';
 import { staffIdentities } from '../../../shared/staff-identities.js';
 import { dutyCampusNames as campusNames } from '../../../shared/duty.js';
+import { volunteerCampus } from './volunteer-campus.js';
 
 export function calculateVolunteerReport({
   month,
@@ -42,15 +43,16 @@ export function calculateVolunteerReport({
   };
   for (const record of data.records) {
     const week = weekRange(record.businessDate).start;
+    const campusId = volunteerCampus(record, members.get(record.memberId));
     if (
       !byWeek.has(week) ||
       record.businessDate > today ||
       record.businessDate > addDays(week, 3) ||
       pausedKeys.has(`${record.businessDate}:${record.campusId}`) ||
-      !canRead(record.campusId, record.memberId, record.primaryDepartmentIdSnapshot, query.campusId)
+      !canRead(campusId, record.memberId, record.primaryDepartmentIdSnapshot, query.campusId)
     )
       continue;
-    const row = ensure(week, record.campusId, record.memberId, record);
+    const row = ensure(week, campusId, record.memberId, record);
     row.dates.add(record.businessDate);
   }
   if (settings.mergeLeaders)
@@ -58,9 +60,10 @@ export function calculateVolunteerReport({
       for (const fact of facts) {
         if (!fact.active) continue;
         const eligible = [];
+        const homeCampus = members.get(fact.memberId)?.homeCampusId;
         for (const campus of fact.campuses || []) {
           const campusId = { 南湖: 'campus-nanhu', 浑南: 'campus-hunnan' }[campus] || campus;
-          if (!campusNames[campusId]) continue;
+          if (!campusNames[campusId] || (homeCampus && campusId !== homeCampus)) continue;
           for (let day = 0; day < 4; day++) {
             const date = addDays(week, day);
             if (date > today || pausedKeys.has(`${date}:${campusId}`)) continue;
@@ -94,7 +97,6 @@ export function calculateVolunteerReport({
             item.businessDate <= addDays(week, 3) &&
             !pausedKeys.has(`${item.businessDate}:${item.campusId}`)
         )?.campusId;
-        const homeCampus = members.get(fact.memberId)?.homeCampusId;
         const chosen =
           eligible.find((item) => item.campusId === assignmentCampus) ||
           eligible.find((item) => item.campusId === attendanceCampus) ||

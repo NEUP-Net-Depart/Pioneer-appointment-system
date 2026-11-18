@@ -45,6 +45,106 @@ test('unified availability offers four weekdays with accessible mobile controls'
 test.describe('single check-in confirmation and scheduling review', () => {
   test.use({ workflowTime: '2026-10-15T11:10:00Z' });
 
+  async function supportCode(page, campusId = 'campus-hunnan', account = 'root001') {
+    await loginStaff(page, account);
+    await staffApi(page, '/api/attendance/self-check-in', { campusId, requestId: crypto.randomUUID() });
+    const event = await staffApi(page, '/api/attendance/events', { campusId, type: 'duty' });
+    const credential = await staffApi(page, `/api/attendance/events/${event.id}/token`, { revision: event.revision });
+    const bytes = await page.evaluate(async (token) => {
+      const { qrImage } = await import('/shared/zxing.js');
+      const image = await qrImage(token);
+      return Array.from(new Uint8Array(await image.arrayBuffer()));
+    }, credential.token);
+    return { name: 'support.png', mimeType: 'image/png', buffer: Buffer.from(bytes) };
+  }
+
+  test('capture cross-campus attendance dialogs', async ({ page, context }) => {
+    const support = await supportCode(page);
+    const { publishDuty } = await import('./support/staff.mjs');
+    await publishDuty(page, { weekStart: '2026-10-12', businessDate: '2026-10-15' });
+    const home = await supportCode(await context.newPage(), 'campus-nanhu', '20261001');
+    const member = await context.newPage();
+    await loginStaff(member, '20261003');
+    await staffPage(member, '今日工作');
+    const scan = async (image) => {
+      await member.getByRole('button', { name: '扫码', exact: true }).click();
+      await member.screenshot({ path: 'output/attendance-preview/scanner.png', animations: 'disabled' });
+      await member.getByLabel('相册识别', { exact: true }).setInputFiles(image);
+    };
+    await scan(support);
+    const confirm = member.getByRole('button', { name: '确认在浑南签到' });
+    await expect(confirm).toBeEnabled();
+    await member.screenshot({ path: 'output/attendance-preview/support.png', animations: 'disabled' });
+    await confirm.click();
+    await expect(member.getByRole('dialog')).toHaveCount(0);
+    await member.screenshot({ path: 'output/attendance-preview/signed.png', animations: 'disabled' });
+    await scan(home);
+    await expect(member.getByRole('alert')).toContainText('不能在两个校区重复签到');
+    await member.screenshot({ path: 'output/attendance-preview/conflict.png', animations: 'disabled' });
+  });
+
+  test('cross-campus support check-in recovers a lost response and stays signed after reloading', async ({ page, context }) => {
+    const image = await supportCode(page);
+    const member = await context.newPage();
+    await loginStaff(member, '20261003');
+    await staffPage(member, '今日工作');
+    await member.getByRole('button', { name: '扫码', exact: true }).click();
+    await member.getByLabel('相册识别', { exact: true }).setInputFiles(image);
+    const confirmation = member.getByRole('dialog', { name: '确认到岗信息', exact: true });
+    await expect(confirmation).toContainText('浑南校区');
+    await member.route('**/api/attendance/check-ins', async (route) => {
+      await route.fetch();
+      await route.abort('failed');
+    }, { times: 1 });
+    await confirmation.getByRole('button', { name: '确认签到', exact: true }).click();
+    await expect(confirmation).toHaveCount(0);
+    const window = member.getByRole('region', { name: '工作视窗' });
+    await expect(window.getByText('已签到', { exact: true })).toBeVisible();
+    await member.reload();
+    await expect(window.getByText('已签到', { exact: true })).toBeVisible();
+    const history = await staffApi(member, '/api/me/attendance?campusId=campus-hunnan', null, 'GET');
+    expect(history.items).toHaveLength(1);
+    expect(history.items[0].campusId).toBe('campus-hunnan');
+    expect(history.items[0].nonScheduled).toBe(true);
+    const summary = await staffApi(member, '/api/me/volunteer-summary', null, 'GET');
+    expect(summary.totalHours).toBeGreaterThan(0);
+  });
+
+  test('check-in failures stay in the dialog, revalidate identity and allow retry or rescan', async ({ page, context }) => {
+    const image = await supportCode(page);
+    const member = await context.newPage();
+    await loginStaff(member, '20261003');
+    await staffPage(member, '今日工作');
+    let attempts = 0;
+    await member.route('**/api/attendance/preview', async (route) => {
+      attempts++;
+      if (attempts === 1)
+        return route.fulfill({ status: 403, json: { error: '当前身份无法签到，请联系负责人核对任职信息', code: 'ATTENDANCE_IDENTITY_DENIED' } });
+      if (attempts === 2)
+        return route.fulfill({ status: 409, json: { error: '该日期暂停维修，不能签到', code: 'SERVICE_DAY_PAUSED' } });
+      return route.continue();
+    });
+    await member.getByRole('button', { name: '扫码', exact: true }).click();
+    const refreshedIdentity = member.waitForResponse((response) => new URL(response.url()).pathname === '/api/auth/me');
+    await member.getByLabel('相册识别', { exact: true }).setInputFiles(image);
+    const confirmation = member.getByRole('dialog', { name: '确认到岗信息', exact: true });
+    await expect(confirmation.getByRole('alert')).toContainText('当前身份无法签到');
+    await member.screenshot({ path: 'output/attendance-preview/identity.png', animations: 'disabled' });
+    expect((await refreshedIdentity).ok()).toBe(true);
+    await expect(member.getByRole('button', { name: '重新加载工作区', exact: true })).toHaveCount(0);
+    await expect(confirmation.getByRole('button', { name: '确认签到', exact: true })).toBeDisabled();
+    await confirmation.getByRole('button', { name: '重新读取', exact: true }).click();
+    await expect(confirmation.getByRole('alert')).toContainText('暂停维修');
+    await member.screenshot({ path: 'output/attendance-preview/paused.png', animations: 'disabled' });
+    await confirmation.getByRole('button', { name: '重新扫码', exact: true }).click();
+    await expect(member.getByRole('dialog', { name: '工作人员签到', exact: true })).toBeVisible();
+    await member.getByLabel('相册识别', { exact: true }).setInputFiles(image);
+    await expect(confirmation.getByRole('button', { name: '确认签到', exact: true })).toBeEnabled();
+    await confirmation.getByRole('button', { name: '关闭', exact: true }).click();
+    await expect(member.getByRole('dialog')).toHaveCount(0);
+    await expect(member.getByRole('region', { name: '工作视窗' })).toBeVisible();
+  });
+
   test('QR confirmation reminds an unfilled repair member without a form or a second result dialog', async ({ page, context }) => {
     await loginStaff(page, '20261001');
     await staffApi(page, '/api/attendance/self-check-in', { campusId: 'campus-nanhu', requestId: crypto.randomUUID() });
@@ -82,6 +182,7 @@ test.describe('single check-in confirmation and scheduling review', () => {
     const confirmation = page.getByRole('dialog', { name: '确认到岗信息', exact: true });
     await expect(confirmation).toBeVisible();
     await expect(confirmation.getByRole('heading', { name: '陈宇', exact: true })).toBeVisible();
+    await page.screenshot({ path: 'output/attendance-preview/direct.png', animations: 'disabled' });
     await expect(confirmation.getByRole('note')).toHaveCount(0);
     await page.route('**/api/attendance/self-check-in', async (route) => {
       await route.fetch();

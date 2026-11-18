@@ -9,6 +9,7 @@ import './check-in.css';
 type Preview = {
   campusId: string;
   campusName: string;
+  otherDutyCampusNames?: string[];
   businessDate: string;
   startsAt: string;
   endsAt: string;
@@ -39,11 +40,13 @@ export function CheckInDialog({
   const scanning = scan && !token;
   const preview = useQuery<Preview>({
     queryKey: ['attendance-confirmation', { token, campusId: home.campusId }],
+    meta: { accessErrorScope: 'operation' },
     queryFn: ({ signal }) =>
       api('/api/attendance/preview', {
         method: 'POST',
         body: token ? { token } : { campusId: home.campusId },
-        signal
+        signal,
+        timeoutMs: 15000
       }),
     enabled: !scanning,
     staleTime: 0,
@@ -75,17 +78,15 @@ export function CheckInDialog({
         const recovered = await api<{ items: AttendanceRecord[] }>(
           '/api/me/attendance?' +
             new URLSearchParams({
-              businessDate: preview.data.businessDate,
-              campusId: preview.data.campusId
+              businessDate: preview.data.businessDate
             })
         );
         const existing = recovered.items.find(
-          (item) =>
-            item.type === 'duty' &&
-            item.campusId === preview.data.campusId &&
-            item.businessDate === preview.data.businessDate
+          (item) => item.type === 'duty' && item.businessDate === preview.data.businessDate
         );
         if (!existing) throw failure;
+        if (existing.campusId !== preview.data.campusId)
+          throw new Error('今天已在其他校区签到，不能在两个校区重复签到');
         record = { ...existing, isExisting: true };
       }
       await applyAttendance(client, record).catch(() => {});
@@ -129,6 +130,12 @@ export function CheckInDialog({
                   {time(preview.data.startsAt)}–{time(preview.data.endsAt)}
                 </p>
               </div>
+              {!!preview.data.otherDutyCampusNames?.length && (
+                <p className="check-in-reminder" role="note">
+                  今天你在{preview.data.otherDutyCampusNames.join('、')}有值班。在
+                  {preview.data.campusName}签到不会抵扣原班次缺勤，请先与原校区负责人确认。
+                </p>
+              )}
               {preview.data.availabilityReminder.needsAvailability && (
                 <p className="check-in-reminder" role="note">
                   下周空闲未填写，请到「我的值班」补填。
@@ -163,7 +170,11 @@ export function CheckInDialog({
             disabled={busy || !preview.data || !!preview.error}
             onClick={() => void submit()}
           >
-            {busy ? '正在签到…' : '确认签到'}
+            {busy
+              ? '正在签到…'
+              : preview.data?.otherDutyCampusNames?.length
+                ? `确认在${preview.data.campusName}签到`
+                : '确认签到'}
           </button>
         </div>
       )}

@@ -73,7 +73,7 @@ test('changing the working campus scopes repairs, reception, photos and duties t
   }
 });
 
-test('field attendance follows the actual member, day and campus without live presence',async t=>{
+test('field attendance follows the actual member and day across viewing campuses without live presence',async t=>{
   const {db,users,staff,calendar}=repairScenario(t,{time:'19:10'});
   db.sqlite.prepare("UPDATE member_department_memberships SET position_code='head' WHERE member_id='member-20260002'").run();
   db.sqlite.prepare("INSERT INTO staff_campus_grants(account,campus) VALUES('20260001','浑南')").run();
@@ -87,7 +87,7 @@ test('field attendance follows the actual member, day and campus without live pr
   db.sqlite.prepare('DELETE FROM staff_presence WHERE member_id=?').run(worker.memberId);
   assert.equal((await staff.field.home(worker,{campusId:'campus-nanhu'})).attendance.id,record.id);
   assert.equal((await staff.field.board(worker,{campusId:'campus-nanhu'})).attendance.id,record.id);
-  assert.equal((await staff.field.home(worker,{campusId:'campus-hunnan'})).attendance,null);
+  assert.equal((await staff.field.home(worker,{campusId:'campus-hunnan'})).attendance.id,record.id);
   assert.equal((await staff.field.home(head,{campusId:'campus-nanhu'})).attendance.memberId,head.memberId);
   calendar.moveTo(calendar.nextDay,'19:10');
   assert.equal((await staff.field.home(worker,{campusId:'campus-nanhu'})).attendance,null);
