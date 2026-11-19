@@ -44,7 +44,7 @@ export async function finishSourceMaps(directory, config, env = process.env, run
             ...env,
             POSTHOG_CLI_API_KEY: key,
             POSTHOG_CLI_PROJECT_ID: project,
-            POSTHOG_CLI_HOST: config.posthog.host.replace('.i.posthog.com', '.posthog.com')
+            POSTHOG_CLI_HOST: config.posthog.uiHost
           }
         }
       );
