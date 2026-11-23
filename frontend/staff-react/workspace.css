@@ -398,10 +398,6 @@
   padding-top: 24px;
   border-top: 1px solid #e6e8ec;
 }
-.record-private-link {
-  display: grid;
-  gap: 12px;
-}
 .record-attachments {
   list-style: none;
   padding: 0;

@@ -19,21 +19,4 @@ export function saveAppointment(entry,previousId) {
   memory.delete(entry.id);memory.set(entry.id,{id:entry.id,accessToken:entry.accessToken});
   try {localStorage.setItem(KEY,JSON.stringify([...memory.values()].reverse().slice(0,100)));return true;}catch{return false;}
 }
-export function privateLink(entry) {
-  const url=new URL('/',location.origin);url.hash=new URLSearchParams({appointment:entry.id,access:entry.accessToken}).toString();return url.href;
-}
-export function parsePrivateLink(value) {
-  try {
-    const url=new URL(value);
-    if(url.origin!==location.origin || url.pathname!=='/' || url.search || url.username || url.password)return null;
-    const params=new URLSearchParams(url.hash.slice(1));
-    if([...params.keys()].length!==2 || !params.has('appointment') || !params.has('access'))return null;
-    const entry={id:params.get('appointment'),accessToken:params.get('access')};return valid(entry) ? entry : null;
-  } catch{return null;}
-}
 export const credentialHeaders=entry=>({'X-Appointment-Token':entry.accessToken});
-export async function copyPrivateLink(entry,input,onMessage) {
-  const link=privateLink(entry);input.value=link;
-  try {await navigator.clipboard.writeText(link);onMessage?.('私人查询链接已复制，请妥善保存。');}
-  catch {input.hidden=false;input.focus();input.select();onMessage?.('请复制选中的完整私人查询链接。');}
-}

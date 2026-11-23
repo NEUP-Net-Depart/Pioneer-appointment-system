@@ -46,10 +46,3 @@ export function ownsRepair(user, item) {
       (!!user.memberId && item.assignedMemberId === user.memberId))
   );
 }
-export function ownsRegistration(user, item) {
-  return (
-    !!user &&
-    (item.registeredBy === user.account ||
-      (!!user.memberId && item.registeredMemberId === user.memberId))
-  );
-}

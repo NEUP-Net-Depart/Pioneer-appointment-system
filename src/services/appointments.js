@@ -9,18 +9,13 @@ import {
   expirationDeadline,
   calendarWeekRange as weekRange
 } from '../../shared/time.js';
-import { issueAccessToken, bookingDigest, hashAccessToken, onsiteRequestKey } from '../lib/access-tokens.js';
+import { issueAccessToken, bookingDigest, hashAccessToken } from '../lib/access-tokens.js';
 import { guestAppointment } from './access.js';
 import { repairOutcomes } from '../../shared/constants.js';
 import { confirmedRepairLink } from '../../shared/repair-links.js';
 import { bookingWindow } from '../../shared/booking-settings.js';
 import { bookingDeviceQuestions } from '../../shared/student-booking.js';
-import {
-  appointmentScope,
-  requireRole,
-  requireCampus,
-  ownsRegistration
-} from './permissions.js';
+import { appointmentScope, requireRole, requireCampus } from './permissions.js';
 
 export async function presentAppointment(item, encryptionKey, { staff = false } = {}) {
   const [phone, social, email, contactValue] = await Promise.all(
@@ -50,11 +45,11 @@ export function appointmentService(
   staffPlatform,
   bookingSettings = null
 ) {
-  const present = async (item, staff = false, campuses) => {
+  const present = async (item) => {
     const [visible, location, repairHistory] = await Promise.all([
-      presentAppointment(item, encryptionKey, { staff }),
+      presentAppointment(item, encryptionKey),
       appointments.location(item.date, item.campus),
-      appointments.repairHistory(item.id, { staff, campuses })
+      appointments.repairHistory(item.id)
     ]);
     return {
       ...visible,
@@ -120,8 +115,8 @@ export function appointmentService(
       if (!item)
         fail(
           409,
-          '本次预约已创建，但私人凭证已由工作人员重新签发，请使用新链接',
-          'CREDENTIAL_ROTATED'
+          '本次预约已创建。此浏览器无法查看该预约，请联系工作人员查询',
+          'BOOKING_ACCESS_UNAVAILABLE'
         );
       return {
         found: true,
@@ -215,22 +210,11 @@ export function appointmentService(
         if (parent.status!=='completed' || parent.studentId!==data.studentId || !confirmedRepairLink(data)) fail(409,'请核对同一设备，并确认所选原因与原维修单的关联');
         data={...data,linkedBy:actor.account,linkedAt:clock().toISOString()};
       }
-      return this.create(data, { actor: actor.account, authVersion: context.authVersion, campuses: actor.authorizedCampuses, requestId },onsiteRequestKey(actor.memberId,requestId));
-    },
-    async registrationCredential(item,actor) {
-      if (!ownsRegistration(actor,item)) return null;
-      await staffPlatform.requirePermission(actor,'onsite.create',{campusId:item.campus,id:item.id});
-      const visible=await staffPlatform.field.detail(actor,item.id);
-      if (visible.name===undefined || visible.social===undefined) return null;
-      const saved=await appointments.findRequest(onsiteRequestKey(actor.memberId,item.registrationKey));
-      if (!saved || saved.appointmentId!==item.id) return null;
-      const token=await decryptText(saved.encryptedToken,encryptionKey);
-      // A reprint must never resurrect a credential revoked by an administrator.
-      return await appointments.findByCredential(item.id,hashAccessToken(token)) ? token : null;
+      return this.create(data, { actor: actor.account, authVersion: context.authVersion, requestId });
     },
     async create(data, onsite, requestKey) {
-      const digest = requestKey ? bookingDigest(data) : null;
-      if (requestKey) {
+      const digest = !onsite && requestKey ? bookingDigest(data) : null;
+      if (digest) {
         const previous = await this.resolveAttempt(requestKey, digest);
         if (previous.found) return previous.appointment;
       }
@@ -264,8 +248,8 @@ export function appointmentService(
           fail(409, '该日期尚未配置维修地点，请重新选择日期', 'LOCATION_MISSING');
       } else if (data.date !== today || instant.getTime() >= Date.parse(expiresAt))
         fail(400, '当天临时登记有效期限已结束');
-      const timestamp = instant.toISOString(),
-        credential = issueAccessToken();
+      const timestamp = instant.toISOString();
+      const credential = onsite ? null : issueAccessToken();
       const [phone, social, email, contactValue] = await Promise.all(
         [data.phone, data.social, data.email, data.contactValue].map((value) =>
           encryptText(value, encryptionKey)
@@ -291,14 +275,13 @@ export function appointmentService(
         createdAt: timestamp,
         agreementAt: timestamp,
         agreementVersion: data.agreementVersion || 'v1.0',
-        accessTokenHash: credential.hash,
-        credentialRotatedAt: timestamp,
+        accessTokenHash: credential?.hash ?? null,
         phone,
         social,
         email,
         contactValue
       };
-      const request = requestKey
+      const request = digest
         ? {
             key: requestKey,
             digest,
@@ -314,14 +297,15 @@ export function appointmentService(
         fail(409, '该预约时段已经结束', 'SLOT_ENDED');
       if (onsite && Date.parse(expiresAt) <= checkedAt.getTime())
         fail(400, '当天临时登记有效期限已结束');
-      item.createdAt = item.agreementAt = item.credentialRotatedAt = checkedAt.toISOString();
+      item.createdAt = item.agreementAt = checkedAt.toISOString();
       const created = await appointments.create(item, request, onsite);
       if (!created) {
-        const replay=requestKey && await this.resolveAttempt(requestKey,digest);
+        const replay=request && await this.resolveAttempt(requestKey,digest);
         if (replay?.found) return replay.appointment;
         fail(409,'账号权限已更新，请刷新后重试');
       }
-      return { ...(await present(created, !!onsite, onsite?.campuses)), accessToken: credential.token };
+      if (onsite) return { id: created.id };
+      return { ...(await present(created)), accessToken: credential.token };
     },
     async lookup(id, accessToken) {
       const item = await guestAppointment(appointments, id, accessToken);
@@ -381,38 +365,6 @@ export function appointmentService(
         if (input.receivedDevice!==true) fail(400,'请确认已经实际接到设备');
         return {assignedTo:actor.account};
       },'repair.transfer');
-    },
-    async recover(id, input, actor) {
-      const item = await appointments.find(id);
-      if (!item) fail(404, '预约不存在');
-      {
-        requireCampus(actor, item.campus);
-        await staffPlatform.requirePermission(actor, 'repair.correct', {
-          campusId: item.campus,
-          id: item.id,
-          assignedMemberId: item.assignedMemberId,
-          businessDate: item.date
-        });
-      }
-      if (
-        input.identityVerified !== true ||
-        typeof input.reason !== 'string' ||
-        input.reason.trim().length < 8 ||
-        input.reason.length > 300
-      )
-        fail(400, '请确认已人工核验身份，并记录至少 8 字的核验说明');
-      const credential = issueAccessToken();
-      if (
-        !(await appointments.rotateCredential(
-          item,
-          credential.hash,
-          actor.account,
-          input.reason.trim(),
-          clock().toISOString()
-        ))
-      )
-        fail(409, '预约已更新，请刷新后重试');
-      return { id: item.id, accessToken: credential.token };
     },
     async update(id,{patch:input,revision,action,requestId,verification,photosCaptured,uploadTimedOut},user,accessToken) {
       if (!user) {

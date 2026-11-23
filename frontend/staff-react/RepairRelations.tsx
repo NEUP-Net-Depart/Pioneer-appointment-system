@@ -13,7 +13,7 @@ export function RepairRelations({
 }: {
   item: Appointment;
   onChanged: () => void;
-  onOpen: (id: string, token?: string) => void;
+  onOpen: (id: string) => void;
 }) {
   const historyId = useId();
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -206,10 +206,10 @@ export function RepairRelations({
           parent={item}
           linkKind={kind}
           onClose={() => setOnsite(false)}
-          onDone={(id, token) => {
+          onDone={(id) => {
             setOnsite(false);
             onChanged();
-            onOpen(id, token);
+            onOpen(id);
           }}
         />
       )}

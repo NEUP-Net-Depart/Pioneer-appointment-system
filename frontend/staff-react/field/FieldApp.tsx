@@ -1,5 +1,4 @@
 import { DataValue } from '../DataValue';
-import { useState } from 'react';
 import { Modal, Notice, CredentialCard, Scanner, time } from './ui';
 import { Repair } from './Repair';
 import { Registration } from './Registration';
@@ -35,10 +34,6 @@ export function FieldApp({
   onNavigate: (view: string) => void;
   onPeople?: (campusId: string, kind: string) => void;
 }) {
-  const [customerCredential, setCustomerCredential] = useState<{
-    id: string;
-    accessToken: string;
-  } | null>(null);
   const {
     scene,
     campus,
@@ -89,7 +84,6 @@ export function FieldApp({
             busy={busy || !data}
             onCampus={(id) => {
               setCampus(id);
-              setCustomerCredential(null);
             }}
             onScan={() => setScanOpen(true)}
             onCheckIn={openAttendance}
@@ -133,7 +127,6 @@ export function FieldApp({
             disabled={busy}
             onChange={(id) => {
               setCampus(id);
-              setCustomerCredential(null);
             }}
           />
         )}
@@ -255,7 +248,6 @@ export function FieldApp({
           sidePanel={scene !== 'repair'}
           id={selected}
           key={selected}
-          customerCredential={customerCredential?.id === selected ? customerCredential : null}
           onClose={() => setSelected('')}
         />
       )}
@@ -263,8 +255,7 @@ export function FieldApp({
         <Registration
           campus={campusName}
           onClose={() => setRegistration(false)}
-          onDone={(id, accessToken) => {
-            setCustomerCredential(accessToken ? { id, accessToken } : null);
+          onDone={(id) => {
             setRegistration(false);
             setSelected(id);
             setMessage('登记成功');

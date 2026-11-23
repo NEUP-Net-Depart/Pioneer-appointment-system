@@ -89,7 +89,7 @@
 fieldset.field { padding: 0; border: 0; }
 .field legend { padding: 0; margin-bottom: 10px; }
 .field i { font-style: normal; color: #a94e26; }
-.field :is(input:not([type=radio]),select,textarea), .private-link-fallback { display: block; width: 100%; border: 1px solid #cdd9df; border-radius: var(--radius); padding: 12px 14px; margin-top: 10px; background: #fff; color: var(--ink); font-size: 16px; font-weight: 400; min-height: 48px; }
+.field :is(input:not([type=radio]),select,textarea) { display: block; width: 100%; border: 1px solid #cdd9df; border-radius: var(--radius); padding: 12px 14px; margin-top: 10px; background: #fff; color: var(--ink); font-size: 16px; font-weight: 400; min-height: 48px; }
 .field textarea { resize: vertical; }
 .field [aria-invalid=true] { border-color: #b54b3c; }
 .field-error { display: block; color: #a43c30; font-size: 13px; font-weight: 400; margin-top: 6px; }
@@ -135,40 +135,127 @@ fieldset.field { padding: 0; border: 0; }
 .success-layout { display: grid; grid-template-columns: minmax(0,1fr) 264px; align-items: start; gap: 24px; margin-top: 24px; }
 .success-details { min-width: 0; }
 .success-details .selection-summary { margin-top: 0; }
-.success-details #copy-code { margin-top: 16px; }
 .user-mode .success-qr-panel { min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: #f1f7f5; text-align: center; }
 .user-mode .success-qr-panel img { margin: 0 auto; }
 .user-mode .success-qr-hint { margin: 12px 0 0; color: var(--muted); line-height: 1.7; }
 @media(max-width:759px) { .success-layout { grid-template-columns: minmax(0,1fr); } .success-qr-panel { order: -1; } }
-.list-toolbar { justify-content: flex-end; margin-bottom: 16px; }
-.import-form { margin-bottom: 24px; }
-.record-group { margin: 24px 0; }
+#lookup-list .student-heading { margin-bottom: 8px; }
+#lookup-list .student-heading h1 { margin: 0; }
+.lookup-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.record-group { margin: 16px 0; }
 .record-group h2 { font-size: 17px; }
-.student-record { display: block; width: 100%; text-align: left; background: white; border: 1px solid var(--line); border-radius: var(--student-surface-radius); padding: 20px; margin: 12px 0; }
+.student-record { display: grid; width: 100%; gap: 5px; text-align: left; background: white; border: 1px solid var(--line); border-radius: var(--student-surface-radius); padding: 16px 20px; margin: 10px 0; }
+.student-record:hover { border-color: #a6c6be; }
 .student-record .record-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .student-record strong { font-size: 16px; }
-.student-record p { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
+.student-record .record-schedule { font-variant-numeric: tabular-nums; font-weight: 600; }
+.student-record .record-location { color: var(--muted); }
 .user-mode .status-pill { border-radius: 6px; font-size: 12px; flex: none; max-width: 100%; overflow-wrap: anywhere; }
+.user-mode .status-reserved { background: #e6f3ee; color: #195b46; }
+.user-mode .status-received { background: #e9eef8; color: #334b76; }
 .student-record .record-top .status-pill { max-width: 50%; }
 .user-mode .empty-state { padding: 42px 16px; background: white; border: 1px solid var(--line); border-radius: var(--student-surface-radius); }
-.user-mode .empty-state h2 { font-size: 18px; margin: 0 0 24px; }
-.user-mode .empty-state p { margin-bottom: 16px; }
+.user-mode .empty-state h2 { font-size: 18px; margin: 0 0 16px; }
 .detail-section { margin: 16px 0; }
-#appointment-detail { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
-#appointment-detail .detail-section { margin: 0; min-width: 0; }
-#detail-source-data { min-width: 0; }
-.detail-source-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
-#detail-source-data .review-group { padding: 0; border: 0; }
-#detail-information + h3 { margin: 20px 0 12px; padding-top: 20px; border-top: 1px solid var(--line); }
-#detail-summary .selection-summary { margin-top: 14px; padding: 0; border: 0; background: transparent; }
-#appointment-detail > #detail-operations { padding: 20px 0 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; }
-.detail-section dl, .review-group dl { margin: 0; }
-.detail-section dl>div, .review-group dl>div { display: grid; grid-template-columns: 130px minmax(0,1fr); gap: 20px; padding: 8px 0; }
-.detail-section dt, .review-group dt { color: var(--muted); }
-.detail-section dd, .review-group dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.user-mode:has(#lookup-view.is-active #lookup-detail:not([hidden])) { background: #fff; }
+#lookup-detail {
+  container: appointment-detail / inline-size;
+  --navy: #202020;
+  --navy-2: #3b3b3b;
+  --ink: #202020;
+  --muted: #575757;
+  --line: #dedede;
+  --soft: #f5f5f5;
+  --green: #505050;
+  max-width: 840px;
+  margin-inline: auto;
+  color: var(--ink);
+}
+.user-mode #lookup-detail .text-btn { color: var(--ink); }
+.user-mode #lookup-detail .secondary-btn { background: #fff; border-color: var(--line); color: var(--ink); }
+.user-mode #lookup-detail .secondary-btn:hover { background: var(--soft); border-color: #bcbcbc; }
+.user-mode #lookup-detail .danger-btn { color: var(--ink) !important; border-color: var(--line) !important; }
+.user-mode #lookup-detail :is(.field-hint, .field-error, .is-error) { color: var(--muted); }
+.user-mode #lookup-detail .notice { background: var(--soft); border-color: var(--line); }
+.user-mode #lookup-detail :is(button, a, input, summary):focus-visible { outline-color: #505050; }
+.detail-page-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-bottom: 8px; }
+#appointment-detail-title { margin: 0; padding-inline-start: 14px; border-inline-start: 1px solid var(--line); font-size: 16px; line-height: 1.3; }
+#appointment-detail > * { min-width: 0; padding-block: 20px; }
+#appointment-detail > * + * { border-top: 1px solid var(--line); }
+#appointment-detail .detail-section { margin: 0; border: 0; border-radius: 0; background: transparent; padding-inline: 0; }
+.detail-ticket {
+  --detail-qr-size: clamp(120px, 38cqi, 144px);
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: minmax(0,1fr);
+  gap: 14px;
+}
+.detail-overview { position: relative; isolation: isolate; min-width: 0; }
+.detail-overview-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.detail-overview-heading h2 { margin: 0; color: var(--muted); font-size: 15px; font-weight: 500; }
+.detail-status-backdrop {
+  position: absolute;
+  inset-inline-end: calc(var(--detail-qr-size) * .31);
+  inset-block-end: calc(-1 * clamp(46px, 16cqi, 76px));
+  z-index: -1;
+  color: var(--ink);
+  opacity: .11;
+  mask-image: linear-gradient(to right, rgb(0 0 0 / .3), #000 72%);
+  font-size: min(clamp(64px, 23cqi, 112px), calc(86cqi / var(--detail-status-length)));
+  font-weight: 900;
+  letter-spacing: -.07em;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+}
+.detail-schedule-time { margin: 6px 0 0; font-size: clamp(22px, 5.6cqi, 30px); font-weight: 700; line-height: 1.28; }
+.detail-schedule-time span { display: inline-block; }
+.detail-time { font-variant-numeric: tabular-nums; }
+.detail-location { max-width: 28em; margin: 9px 0 0; font-size: 17px; font-weight: 600; line-height: 1.4; text-wrap: pretty; }
+.detail-location-label { display: block; margin-bottom: 2px; color: var(--muted); font-size: 14px; font-weight: 500; }
+.detail-arrival-note { max-width: 32em; margin: 6px 0 0; color: var(--muted); font-size: 15px; line-height: 1.5; text-wrap: pretty; }
+.detail-ticket-credential { align-self: start; min-width: 0; }
+.detail-ticket-code {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) var(--detail-qr-size);
+  align-items: center;
+  column-gap: 12px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.detail-ticket-code figcaption { grid-area: 1 / 1; max-width: 13em; text-align: start; }
+.user-mode #lookup-detail .detail-ticket-code .text-btn { padding-inline: 0; }
+.user-mode #lookup-detail #detail-save-qr { padding-block: 0; font: inherit; }
+.detail-qr-caption { margin: 0; }
+.detail-credential-number { margin: 12px 0 0; font-size: 14px; color: var(--muted); }
+.detail-credential-number + .detail-credential-number { margin-top: 0; }
+.detail-credential-number strong { display: inline-block; color: var(--ink); font-variant-numeric: tabular-nums; }
+.detail-qr-content { position: relative; grid-area: 1 / 2; width: var(--detail-qr-size); aspect-ratio: 1; display: grid; align-content: center; justify-items: center; margin: 0; text-align: center; }
+.user-mode .detail-qr-content img { width: 100%; height: auto; margin: 0; background: transparent; mix-blend-mode: multiply; }
+.detail-qr-content .repair-qr-status:empty { display: none; }
+.detail-qr-content p { margin: 0; color: var(--muted); }
+.detail-qr-content button { max-width: 100%; margin-top: 8px; overflow-wrap: anywhere; }
+.detail-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.appointment-detail-section > h2 { margin: 0 0 10px; font-size: 17px; }
+.detail-fault-description, .repair-result { font-size: 16px; }
+.detail-fault-description { margin: 0 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+#appointment-detail .record-note { margin: 10px 0 0; line-height: 1.65; }
+[data-repair-history] > article > p { margin: 0 0 8px; }
+[data-repair-history] > p { margin: 4px 0 0; }
+#detail-upload-message:empty, #detail-repair-record:empty, #detail-attachments:empty, #detail-operations:empty { display: none; }
+#detail-operations { text-align: end; }
+#detail-operations .notice { text-align: start; }
+:is(.detail-section, .appointment-detail-section, .review-group) dl { margin: 0; }
+:is(.detail-section, .appointment-detail-section, .review-group) dl > div { display: grid; grid-template-columns: 130px minmax(0,1fr); gap: 20px; padding: 8px 0; }
+.appointment-detail-section dl > div { padding-block: 4px; }
+:is(.detail-section, .appointment-detail-section, .review-group) dt { color: var(--muted); }
+:is(.detail-section, .appointment-detail-section, .review-group) dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .review-group { border-bottom: 1px solid var(--line); padding: 20px 0; }
-.detail-section summary, .review-group summary { cursor: pointer; min-height: 44px; color: #34576b; padding: 10px 0; }
-.repair-result { font-size: 22px; font-weight: 700; }
+:is(.detail-section, .appointment-detail-section, .review-group) summary { cursor: pointer; min-height: 44px; color: #34576b; padding: 10px 0; }
+.repair-result { margin: 0 0 6px; font-weight: 700; line-height: 1.35; }
 .user-mode .record-note { white-space: pre-wrap; }
 .cancel-confirm { margin-top: 16px; }
 .danger-btn { color: #a43c30 !important; border-color: #e6c6bd !important; }
@@ -237,13 +324,52 @@ fieldset.field { padding: 0; border: 0; }
   #booking-review, #lookup-results { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 24px; align-items: start; }
   #booking-review > *, #lookup-results > * { min-width: 0; }
   #lookup-results > :not(.record-group) { grid-column: 1 / -1; }
-  .detail-source-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; }
-  #detail-repair-record:empty { display: none; }
-  #appointment-detail .detail-section { margin: 0; }
   #appointment-detail .photo-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   #booking-review > .review-group { height: 100%; }
   .user-mode .signature-layer { padding: 24px; }
   .user-mode .signature-layer .modal { width: min(960px,100%); height: min(600px,calc(100vh - 48px)); height: min(600px,calc(100dvh - 48px)); border-radius: 16px; }
+}
+@container appointment-detail (min-width: 520px) {
+  .detail-ticket {
+    --detail-qr-size: clamp(152px, 23cqi, 192px);
+    grid-template-columns: minmax(0,1fr) clamp(184px, 28cqi, 232px);
+    column-gap: clamp(24px, 6cqi, 52px);
+  }
+  .detail-status-backdrop {
+    inset-inline-end: 0;
+    inset-block-end: 0;
+    font-size: min(clamp(100px, 19cqi, 152px), calc(60cqi / var(--detail-status-length)));
+  }
+  .detail-schedule-time { margin-top: 10px; font-size: clamp(25px, 4.3cqi, 36px); }
+  .detail-location { margin-top: 14px; }
+  .detail-arrival-note { margin-top: 10px; }
+  .detail-credential-number { margin-top: 18px; }
+  .detail-ticket-code { grid-template-columns: minmax(0,1fr); }
+  .detail-qr-content { grid-area: 1 / 1; }
+  .detail-ticket-code figcaption { grid-area: 2 / 1; max-width: none; padding-inline-start: calc(var(--detail-qr-size) * .11); }
+  .detail-ticket-code figcaption:has(#detail-save-hint:not([hidden])) { width: var(--detail-qr-size); padding-inline-start: 0; text-align: center; }
+}
+@container appointment-detail (min-width: 728px) {
+  #appointment-detail .detail-ticket { padding-block: 28px; }
+  .detail-location { margin-top: 18px; font-size: 18px; }
+  .detail-arrival-note { margin-top: 12px; }
+  .detail-credential-number { margin-top: 24px; }
+}
+@media (max-width: 480px) {
+  .appointment-detail-section dl > div { grid-template-columns: 94px minmax(0,1fr); gap: 12px; }
+}
+@media (min-width: 720px) {
+  .appointment-detail-section { display: grid; grid-template-columns: 150px minmax(0,1fr); align-items: start; column-gap: 20px; }
+  .appointment-detail-section > h2 { grid-area: 1 / 1; margin: 0; }
+  .appointment-detail-section > :not(h2) { grid-column: 2; }
+  :is(#detail-information, #detail-contacts) dl { columns: 2; column-gap: 28px; }
+  .appointment-detail-section dl > div { grid-template-columns: 88px minmax(0,1fr); gap: 12px; break-inside: avoid; }
+}
+@media (forced-colors: active), (prefers-contrast: more) {
+  .detail-status-backdrop { position: static; z-index: auto; color: CanvasText; opacity: 1; mask-image: none; font-size: 14px; letter-spacing: normal; white-space: normal; padding: 4px 9px; border: 1px solid currentColor; border-radius: 999px; }
+}
+@media (forced-colors: active) {
+  .user-mode .detail-qr-content img { background: #fff; mix-blend-mode: normal; }
 }
 @media(prefers-reduced-motion:reduce) { .user-mode *, .user-mode *:before,.user-mode *:after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
 .user-mode .student-shell .primary-btn { background-image: none; box-shadow: none; }
@@ -251,20 +377,12 @@ fieldset.field { padding: 0; border: 0; }
 .selection-summary strong { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
 .selection-summary strong>span { white-space: nowrap; }
 .summary-slot { font-size: 18px; }
-.detail-upload-actions { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.detail-upload-actions { display: flex; align-items: flex-start; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .detail-upload-actions #detail-photos { display: contents; }
 .detail-upload-actions .photo-grid:empty { display: none; }
 .detail-upload-actions .photo-grid:not(:empty), .detail-upload-actions .field-error:not(:empty) { flex: 0 0 100%; }
 #detail-upload { margin: 0; }
 .photo-preview-placeholder { height: 140px; border-radius: 6px; background: #eff4f6; }
 .user-mode progress { width: 100%; height: 8px; accent-color: var(--green); }
-#appointment-detail-title { font-size: 30px; line-height: 1.3; margin: 12px 0 24px; }
-@media(max-width:480px) { #appointment-detail-title { font-size: 26px; } }
-
-#detail-summary h2 { margin-bottom: 14px; }
-.repair-history-details > summary, #detail-repair-record summary { cursor: pointer; min-height: 44px; padding-block: 10px; font-weight: 600; }
+.repair-history-details > summary { cursor: pointer; min-height: 44px; padding-block: 10px; font-weight: 600; }
 .repair-history-details .repair-history-list { margin-top: 16px; }
-#detail-repair-record details > .detail-section { margin-top: 12px; padding: 0; border: 0; }
-#detail-current-qr img { display: block; max-width: 100%; height: auto; margin: 16px auto 0; }
-#detail-source-data > summary:not([hidden]) { cursor: pointer; padding: 10px 0; font-weight: 600; }
-#detail-operations:empty { display: none; }
