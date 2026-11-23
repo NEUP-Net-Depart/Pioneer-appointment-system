@@ -1,11 +1,10 @@
-import { track } from '/shared/telemetry-client.js';
 import { $,showToast,escapeHtml } from '/shared/utils.js';
 import { apiJson,apiBlob } from '/shared/api.js';
 import { startVisiblePolling } from '/shared/polling.js';
 import { attachmentUrl,attachmentSize } from '/shared/attachments.js';
 import { formatDate } from '/shared/time.js';
 import { terminalStatuses } from '/shared/constants.js';
-import { savedAppointments,saveAppointment,privateLink,parsePrivateLink,credentialHeaders,credentialStorageError,copyPrivateLink } from './credentials.js';
+import { savedAppointments,saveAppointment,credentialHeaders,credentialStorageError } from './credentials.js';
 import { observeDataMotion } from '/shared/data-motion.js';
 import { renderRepairQr } from './repair-qr.js';
 import { appointmentTicketImage } from './appointment-ticket.js';
@@ -19,7 +18,7 @@ const detailFreshness = 30_000;
 export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false,hasPending=()=>false}={}) {
   const root=$('#lookup-results'),detail=$('#appointment-detail');
   observeDataMotion(root);observeDataMotion(detail);
-  const records=new Map();let active=false,detailId=null,generation=0,refreshing=false,importing=false,cancelling=false,detailPhotos=null,deadlineTimer,viewVersion=0;
+  const records=new Map();let active=false,detailId=null,generation=0,refreshing=false,cancelling=false,detailPhotos=null,deadlineTimer;
   const urls=new Set(),qrImages=new Map();
   const inFlight=new Map();
   function request(entry,options={}) {
@@ -49,13 +48,12 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
   }
   function updateFailure(row,failure) {
     row.checkedAt=Date.now();
-    row.message=failure.status===404 ? '私人凭证失效或无权限，请联系工作人员核验后重新签发。' : failure.status ? failure.message : '网络异常或请求超时，请重试。';
+    row.message=failure.status===404 ? '此浏览器无法访问该预约，请联系工作人员查询。' : failure.status ? failure.message : '网络异常或请求超时，请重试。';
   }
   function needsUpdate(row,maxAge) {
     return !row.checkedAt || Date.now()-row.checkedAt>=maxAge;
   }
   function setNotice(target,message){target.hidden=!message;target.textContent=message;}
-  function openImport(){const form=$('#import-form');form.hidden=false;$('#import-appointment').setAttribute('aria-expanded','true');$('#private-link-input').focus();}
   function card(item){
     const awaitingArrival=isAwaitingArrival(item);
     const location=item.location || item.locationSnapshot || '维修地点待确认';
@@ -70,12 +68,11 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
     const entries=[...records.values()],items=entries.filter(row=>row.item).map(row=>row.item),failed=entries.filter(row=>row.message),unknown=entries.filter(row=>!row.item && !row.message);
     const storageError=credentialStorageError();
     const empty=!entries.length && !storageError;
-    $('#import-appointment').hidden=empty;
     $('#refresh-my-appointments').hidden=empty;
     const current=items.filter(item=>!terminalStatuses.includes(item.status)).sort((a,b)=>(a.date+a.timeSlot).localeCompare(b.date+b.timeSlot));
     const history=items.filter(item=>terminalStatuses.includes(item.status)).sort((a,b)=>(b.date+b.timeSlot).localeCompare(a.date+a.timeSlot));
     let html;
-    if(empty)html='<div class="empty-state"><h2>此浏览器暂无预约记录</h2><div class="lookup-empty-actions"><button data-track=student.lookup.button.3 type="button" class="primary-btn" data-open-import aria-controls="import-form">找回预约记录</button><button data-track=student.lookup.button.2 type="button" class="text-btn" data-book-new>去预约</button></div></div>';
+    if(empty)html='<div class="empty-state"><h2>此浏览器暂无预约记录</h2><button data-track=student.lookup.button.2 type="button" class="primary-btn" data-book-new>去预约</button></div>';
     else {
       html=`<section class="record-group"><h2>当前预约${current.length ? ` · ${current.length}` : ''}</h2>${current.map(card).join('') || '<p class="field-hint">暂无当前预约。</p>'}</section><section class="record-group"><h2>历史预约${history.length ? ` · ${history.length}` : ''}</h2>${history.map(card).join('') || '<p class="field-hint">暂无历史预约。</p>'}</section>`;
       html+=unknown.map(row=>`<article class="notice" aria-busy="true">${escapeHtml(row.entry.id)} · 正在读取预约…</article>`).join('');
@@ -96,7 +93,7 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
       root.replaceChildren(template.content);root.dataset.renderMarkup=html;
       if(focused?.isConnected)focused.focus({preventScroll:true});
     }
-    setNotice($('#lookup-notice'),storageError ? '本机保存的预约记录暂时无法读取。请重试，或通过完整私人查询链接查看。' : failed.length ? '部分预约暂时无法更新，已保留最近确认的信息。' : '');
+    setNotice($('#lookup-notice'),storageError ? '此浏览器保存的预约记录暂时无法读取，请重试。' : failed.length ? '部分预约暂时无法更新，已保留最近确认的信息。' : '');
   }
   function existingPhotos(){return records.get(detailId)?.item?.attachments?.filter(file=>['general','student_photo'].includes(file.purpose) && file.mimeType.startsWith('image/')) || [];}
   function releaseUrls(){urls.forEach(url=>URL.revokeObjectURL(url));urls.clear();}
@@ -114,10 +111,8 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
             <figcaption>
               <p class="detail-qr-caption" id="detail-qr-caption"></p>
               <p class="detail-qr-caption" id="detail-save-hint" hidden>建议<button data-track=student.lookup.button.save-qr class="text-btn" id="detail-save-qr" type="button" disabled>保存</button></p>
-              <button data-track=student.lookup.button.7 class="text-btn" id="detail-copy-link" type="button">复制本页链接</button>
             </figcaption>
           </figure>
-          <input data-track=student.lookup.input.8 class="private-link-fallback" id="detail-private-link" type="text" readonly hidden aria-label="私人查询链接" />
         </div>
       </div>
       <div id="detail-repair-record"></div>
@@ -141,7 +136,6 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
       syncUploadButton(entries);
       $('#detail-upload-message').textContent=entries.some(entry=>entry.state==='upload-error') ? '部分照片未上传，可再次点击上传重试。已成功的照片不会重复上传。' : '';
     }});
-    $('#detail-copy-link').addEventListener('click',()=>void copyPrivateLink(records.get(detailId).item,$('#detail-private-link'),showToast));
     const saveQr=$('#detail-save-qr');
     saveQr.addEventListener('click',()=>{
       const appointment=records.get(detailId)?.item;
@@ -184,7 +178,6 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
     const canCheckIn=isAwaitingArrival(item) && !item.servicePaused;
     $('#detail-qr-caption').textContent=canCheckIn ? '到场需核销二维码' : historic ? '历史二维码，仅供查询' : '预约二维码';
     $('#detail-save-hint').hidden=!canCheckIn;
-    $('#detail-copy-link').hidden=canCheckIn;
     const historyPanel=detail.querySelector('[data-repair-history]');
     const historySignature=JSON.stringify(item.repairHistory);
     if((item.repairHistory?.items?.length || 0)<2)historyPanel?.remove();
@@ -231,8 +224,8 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
     else if(detailPhotos)updateDetail();
     else if(records.get(detailId)?.item)mountDetail(records.get(detailId).item);
   }
-  async function showList(){viewVersion++;generation++;refreshing=false;detailId=null;detailPhotos?.dispose();detailPhotos=null;clearTimeout(deadlineTimer);releaseUrls();$('#lookup-list').hidden=false;$('#lookup-detail').hidden=true;readEntries();renderList();$('#lookup-list h1').focus({preventScroll:true});await refresh();}
-  async function showDetail(id,{force=false}={}){const sameDetail=detailId===id;viewVersion++;generation++;refreshing=false;detailId=id;$('#lookup-list').hidden=true;$('#lookup-detail').hidden=false;readEntries();
+  async function showList(){generation++;refreshing=false;detailId=null;detailPhotos?.dispose();detailPhotos=null;clearTimeout(deadlineTimer);releaseUrls();$('#lookup-list').hidden=false;$('#lookup-detail').hidden=true;readEntries();renderList();$('#lookup-list h1').focus({preventScroll:true});await refresh();}
+  async function showDetail(id,{force=false}={}){const sameDetail=detailId===id;generation++;refreshing=false;detailId=id;$('#lookup-list').hidden=true;$('#lookup-detail').hidden=false;readEntries();
     const record=records.get(id);
     if(record?.item){if(!sameDetail || !detailPhotos)mountDetail(record.item);else updateDetail();}
     else {detailPhotos?.dispose();detailPhotos=null;detail.innerHTML='<section class="detail-section" aria-busy="true"><h2>预约详情</h2><p>正在读取最新预约信息…</p></section>';}
@@ -240,20 +233,13 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
     if(!force && record?.item && !needsUpdate(record,detailFreshness))return;
     refreshing=true;
     try{
-      if(!record)throw new Error('本机未保存此预约的有效凭证，请通过完整私人查询链接查看。');
+      if(!record)throw new Error('此浏览器没有保存该预约记录。');
       const item=await request(record.entry);
       if(current!==generation || detailId!==id)return;
       if(item.id!==id){saveAppointment(item,id);records.delete(id);detailId=item.id;onNavigate('detail',item.id);}
       commit(item);if(!detailPhotos || item.id!==id)mountDetail(item);else updateDetail();
-    }catch(failure){if(current!==generation)return;if(record)updateFailure(record,failure);if(record?.item){updateDetail();}else{detail.innerHTML=`<section class="detail-section"><h2>预约暂时无法读取</h2><p>${escapeHtml(failure.status===404 ? '链接失效或无权限，请联系工作人员核验后重新签发。' : failure.message)}</p><button data-track=student.lookup.button.17 class="secondary-btn" type="button" data-detail-retry>重试</button></section>`;}}
+    }catch(failure){if(current!==generation)return;if(record)updateFailure(record,failure);if(record?.item){updateDetail();}else{detail.innerHTML=`<section class="detail-section"><h2>预约暂时无法读取</h2><p>${escapeHtml(failure.status===404 ? '此浏览器无法访问该预约，请联系工作人员查询。' : failure.message)}</p><button data-track=student.lookup.button.17 class="secondary-btn" type="button" data-detail-retry>重试</button></section>`;}}
     finally{if(current===generation)refreshing=false;}
-  }
-  async function importLink(value){if(importing)return;track('flow.step',{control:'private-link.import',result:'start'});const entry=parsePrivateLink(value);if(!entry){track('flow.result',{control:'private-link.import',result:'rejected',reason:'PRIVATE_LINK_INVALID'});throw new Error('请使用本系统完整、同源的私人查询链接，不能仅填写编号或学号。');}importing=true;const targetVersion=viewVersion;
-    const button=$('#import-form [type=submit]');button.disabled=true;
-    try{const item=await request(entry);track('flow.result',{control:'private-link.import',result:'ok'});commit(item);const saved=saveAppointment(item,entry.id);if(!active || targetVersion!==viewVersion){renderList();return;}$('#import-error').textContent='';onNavigate('detail',item.id);await showDetail(item.id);
-      if(!saved){setNotice($('#detail-notice'),'浏览器无法保存凭证。当前会话仍可访问，请保留完整私人查询链接。');$('#detail-private-link').value=privateLink(item);$('#detail-private-link').hidden=false;}}
-    catch(failure){track('flow.result',{control:'private-link.import',result:'rejected',reason:failure.code || (failure.status===404 ? 'PRIVATE_LINK_UNAVAILABLE' : failure.status ? 'HTTP_ERROR' : 'NETWORK_ERROR'),errorCode:failure.code,requestId:failure.requestId,status:failure.status});if(failure.status===404)throw new Error('链接失效或无权限。请联系工作人员核验身份后重新签发。',{cause:failure});if(!failure.status)throw new Error('网络异常或请求超时，请重试，输入内容已保留。',{cause:failure});throw failure;}
-    finally{importing=false;button.disabled=false;}
   }
   async function cancel(){if(cancelling)return;const id=detailId,item=records.get(id)?.item;if(!item)return;cancelling=true;generation++;refreshing=false;const button=detail.querySelector('[data-cancel-confirm]');button.disabled=true;
     try{const result=await apiJson(`/api/appointments/${encodeURIComponent(id)}/status`,{method:'PATCH',headers:credentialHeaders(item),json:{status:'cancelled',revision:item.revision},timeoutMs:15000});commit({...item,...result});}
@@ -276,10 +262,8 @@ export function initLookup({onNavigate=()=>{},onRebook=()=>{},hasDraft=()=>false
         if(file.mimeType.startsWith('image/'))previewPhoto(url);else{const link=document.createElement('a');link.setAttribute('data-track','student.lookup.dynamic.download');link.href=url;link.download=file.filename;link.click();setTimeout(()=>{URL.revokeObjectURL(url);urls.delete(url);},60000);}}
       catch(failure){showToast(failure.message);}finally{target.disabled=false;}}
   });
-  root.addEventListener('click',event=>{const target=event.target.closest('button');if(!target)return;if(target.dataset.detailId){onNavigate('detail',target.dataset.detailId);void showDetail(target.dataset.detailId);}if(target.hasAttribute('data-open-import'))openImport();if(target.hasAttribute('data-book-new'))onNavigate('booking');if(target.dataset.retryId)void refresh({force:true,onlyId:target.dataset.retryId});});
-  $('#import-appointment').addEventListener('click',()=>{const expanded=!$('#import-form').hidden;$('#import-form').hidden=expanded;$('#import-appointment').setAttribute('aria-expanded',String(!expanded));if(!expanded)$('#private-link-input').focus();});
-  $('#import-form').addEventListener('submit',event=>{event.preventDefault();$('#import-error').textContent='';void importLink($('#private-link-input').value.trim()).catch(failure=>$('#import-error').textContent=failure.message || '网络异常，请重试。');});
+  root.addEventListener('click',event=>{const target=event.target.closest('button');if(!target)return;if(target.dataset.detailId){onNavigate('detail',target.dataset.detailId);void showDetail(target.dataset.detailId);}if(target.hasAttribute('data-book-new'))onNavigate('booking');if(target.dataset.retryId)void refresh({force:true,onlyId:target.dataset.retryId});});
   $('#refresh-my-appointments').addEventListener('click',()=>void refresh({force:true}));$('#back-to-appointments').addEventListener('click',()=>{onNavigate('lookup');void showList();});
   startVisiblePolling(options=>active ? refresh(options) : undefined);
-  return {refresh,showList,showDetail,importLink,setActive(value){active=value;if(!value){viewVersion++;generation++;refreshing=false;detailPhotos?.pauseUpload();clearTimeout(deadlineTimer);}},add(item){commit(item);if(active && !detailId)renderList();},openImport};
+  return {refresh,showList,showDetail,setActive(value){active=value;if(!value){generation++;refreshing=false;detailPhotos?.pauseUpload();clearTimeout(deadlineTimer);}},add(item){commit(item);if(active && !detailId)renderList();}};
 }

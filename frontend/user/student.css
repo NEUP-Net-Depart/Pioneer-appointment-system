@@ -89,7 +89,7 @@
 fieldset.field { padding: 0; border: 0; }
 .field legend { padding: 0; margin-bottom: 10px; }
 .field i { font-style: normal; color: #a94e26; }
-.field :is(input:not([type=radio]),select,textarea), .private-link-fallback { display: block; width: 100%; border: 1px solid #cdd9df; border-radius: var(--radius); padding: 12px 14px; margin-top: 10px; background: #fff; color: var(--ink); font-size: 16px; font-weight: 400; min-height: 48px; }
+.field :is(input:not([type=radio]),select,textarea) { display: block; width: 100%; border: 1px solid #cdd9df; border-radius: var(--radius); padding: 12px 14px; margin-top: 10px; background: #fff; color: var(--ink); font-size: 16px; font-weight: 400; min-height: 48px; }
 .field textarea { resize: vertical; }
 .field [aria-invalid=true] { border-color: #b54b3c; }
 .field-error { display: block; color: #a43c30; font-size: 13px; font-weight: 400; margin-top: 6px; }
@@ -135,7 +135,6 @@ fieldset.field { padding: 0; border: 0; }
 .success-layout { display: grid; grid-template-columns: minmax(0,1fr) 264px; align-items: start; gap: 24px; margin-top: 24px; }
 .success-details { min-width: 0; }
 .success-details .selection-summary { margin-top: 0; }
-.success-details #copy-code { margin-top: 16px; }
 .user-mode .success-qr-panel { min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: #f1f7f5; text-align: center; }
 .user-mode .success-qr-panel img { margin: 0 auto; }
 .user-mode .success-qr-hint { margin: 12px 0 0; color: var(--muted); line-height: 1.7; }
@@ -143,7 +142,6 @@ fieldset.field { padding: 0; border: 0; }
 #lookup-list .student-heading { margin-bottom: 8px; }
 #lookup-list .student-heading h1 { margin: 0; }
 .lookup-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-.import-form { margin-bottom: 24px; }
 .record-group { margin: 16px 0; }
 .record-group h2 { font-size: 17px; }
 .student-record { display: grid; width: 100%; gap: 5px; text-align: left; background: white; border: 1px solid var(--line); border-radius: var(--student-surface-radius); padding: 16px 20px; margin: 10px 0; }
@@ -158,7 +156,6 @@ fieldset.field { padding: 0; border: 0; }
 .student-record .record-top .status-pill { max-width: 50%; }
 .user-mode .empty-state { padding: 42px 16px; background: white; border: 1px solid var(--line); border-radius: var(--student-surface-radius); }
 .user-mode .empty-state h2 { font-size: 18px; margin: 0 0 16px; }
-.lookup-empty-actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 18px; }
 .detail-section { margin: 16px 0; }
 .user-mode:has(#lookup-view.is-active #lookup-detail:not([hidden])) { background: #fff; }
 #lookup-detail {
@@ -236,7 +233,6 @@ fieldset.field { padding: 0; border: 0; }
 .detail-credential-number { margin: 12px 0 0; font-size: 14px; color: var(--muted); }
 .detail-credential-number + .detail-credential-number { margin-top: 0; }
 .detail-credential-number strong { display: inline-block; color: var(--ink); font-variant-numeric: tabular-nums; }
-.detail-ticket-credential .private-link-fallback { min-width: 0; margin: 0; }
 .detail-qr-content { position: relative; grid-area: 1 / 2; width: var(--detail-qr-size); aspect-ratio: 1; display: grid; align-content: center; justify-items: center; margin: 0; text-align: center; }
 .user-mode .detail-qr-content img { width: 100%; height: auto; margin: 0; background: transparent; mix-blend-mode: multiply; }
 .detail-qr-content .repair-qr-status:empty { display: none; }

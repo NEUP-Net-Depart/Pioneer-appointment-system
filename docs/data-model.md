@@ -9,7 +9,7 @@
 | roles / role_grants / member_roles | 剩余系统配置权限，不含独立维修资格包 |
 | staff_whitelist / whitelist_campus_grants / activation_requests | 登录邀请和账号激活核验 |
 | appointments | 预约及工单、接收事实、当前主修、结果、待传经办人、直接返修关系 |
-| repair_intake_records / appointment_corrections / credential_recoveries | 原始核验、修改及凭证补发历史 |
+| repair_intake_records / appointment_corrections / credential_recoveries | 原始核验、修改及旧版访问审计 |
 | weekday_slot_capacities / booking_day_slots / booking_requests | 线上容量模板、实际日期容量、创建幂等回执 |
 | booking_settings / booking_notices / service_locations / service_location_changes | 放号、公告与确认版本、地点快照和变更 |
 | service_day_overrides / service_day_receipts | 暂停服务及幂等操作，不删除原记录 |
@@ -26,7 +26,7 @@
 
 数据库触发器继续控制线上容量、同人同日有效线上预约、附件关联与关键状态转换。现场登记不占容量，没有 active_repairs、单人维修占用或待接手约束。received_at/received_by 记录实际接收；photo_deferred_by 追踪人工补传，经手和维修责任分别记录。
 
-联系方式与创建回执中的私人凭证加密保存，学生凭证仅存哈希。访问单张工单联系方式留审计，不在列表或审计中重复明文存储。学生端采用明确的公开字段投影，关联历史沿用同一投影。
+联系方式和线上预约创建回执中的浏览器访问凭证加密保存，工单仅保存访问凭证的哈希。访问单张工单联系方式留审计，不在列表或审计中重复明文存储。学生端采用明确的公开字段投影，关联历史沿用同一投影。
 
 ## 历史迁移
 

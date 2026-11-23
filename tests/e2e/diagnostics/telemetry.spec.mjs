@@ -206,7 +206,7 @@ test('blocked SDK leaves student navigation operational', async ({ page }) => {
   await page.route('**/assets/posthog.js', (route) => route.abort());
   await page.goto('/');
   await page.getByRole('button', { name: '我的预约', exact: true }).click();
-  await expect(page.getByRole('button', { name: '找回预约记录' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '去预约', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '预约维修', exact: true }).click();
   await expect(page.locator('#booking-form')).toBeVisible();
 });
@@ -354,9 +354,9 @@ test('booking recovery and detail navigation record outcomes and real destinatio
     await route.abort('failed');
   });
   await submitStudent(page);
-  const privateLink = await page.locator('#success-link-fallback').inputValue();
   await page.locator('#view-created-appointment').click();
   await expect(page.locator('#appointment-detail')).toBeVisible();
+  const detailUrl = page.url();
   await sendPending(context);
   expect(
     events()
@@ -372,9 +372,9 @@ test('booking recovery and detail navigation record outcomes and real destinatio
   await readyTelemetry(page);
   await expect(page.locator('#appointment-detail')).toBeVisible();
   await sendPending(context);
-  // Enter the private link in a fresh document, as an external link would.
+  // Load the saved appointment directly in a new document in the same browser.
   await page.goto('about:blank');
-  await page.goto(privateLink);
+  await page.goto(detailUrl);
   await readyTelemetry(page);
   await expect(page.locator('#appointment-detail')).toBeVisible();
   await sendPending(context);

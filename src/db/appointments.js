@@ -58,7 +58,7 @@ const columns = {
 const assigneeName =
   "(SELECT trim(name) FROM staff_accounts WHERE account=appointments.assigned_to AND status='enabled') AS assigned_to_name";
 const memberIdentity =
-  '(SELECT member_id FROM staff_accounts WHERE account=appointments.assigned_to) AS assigned_member_id,(SELECT member_id FROM staff_accounts WHERE account=appointments.registered_by) AS registered_member_id';
+  '(SELECT member_id FROM staff_accounts WHERE account=appointments.assigned_to) AS assigned_member_id';
 const select = `SELECT appointments.*,(SELECT trim(name) FROM staff_accounts WHERE account=appointments.received_by) AS received_by_name,(SELECT paused FROM service_day_overrides s JOIN campuses c ON c.id=s.campus_id WHERE s.business_date=appointments.date AND c.name=appointments.campus) AS service_paused,${assigneeName},${memberIdentity} FROM appointments`;
 const contactSelect = `SELECT appointments.id,appointments.revision,appointments.campus,appointments.date,
   appointments.time_slot,appointments.status,appointments.outcome,appointments.phone,appointments.email,
@@ -83,7 +83,6 @@ function fromRow(row) {
         assignedToName: row.assigned_to_name || '',
         receivedByName: row.received_by_name || '',
         assignedMemberId: row.assigned_member_id || '',
-        registeredMemberId: row.registered_member_id || '',
         ...(row.__contact_generation !== undefined ? { contactIndexGeneration: row.__contact_generation } : {}),
         ...Object.fromEntries(
           Object.entries(columns).map(([key, column]) => [
@@ -184,7 +183,9 @@ export function appointmentRepository(db) {
     async findRequest(key) {
       return db
         .prepare(
-          'SELECT request_key AS requestKey,digest,appointment_id AS appointmentId,encrypted_token AS encryptedToken FROM booking_requests WHERE request_key=?'
+          `SELECT r.digest,r.appointment_id AS appointmentId,r.encrypted_token AS encryptedToken
+          FROM booking_requests r JOIN appointments a ON a.id=r.appointment_id
+          WHERE r.request_key=? AND a.source='booking'`
         )
         .bind(key)
         .first();
@@ -280,22 +281,6 @@ export function appointmentRepository(db) {
           .first()
       );
     },
-    async rotateCredential(item, hash, actor, reason, instant) {
-      const results = await db.batch([
-        db
-          .prepare(
-            `INSERT INTO credential_recoveries(id,appointment_id,actor,reason,created_at)
-          SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM appointments WHERE id=? AND revision=?)`
-          )
-          .bind(crypto.randomUUID(), item.id, actor, reason, instant, item.id, item.revision),
-        db
-          .prepare(
-            'UPDATE appointments SET access_token_hash=?,credential_rotated_at=?,revision=revision+1 WHERE id=? AND revision=? RETURNING id'
-          )
-          .bind(hash, instant, item.id, item.revision)
-      ]);
-      return results.at(-1).results.length > 0;
-    },
     list(query, scope) {
       return listAppointments(db, select, fromRow, query, scope);
     },
@@ -360,6 +345,7 @@ export function appointmentRepository(db) {
       const prefix = `reserve${suffix}`;
       // One D1 statement allocates the ID and runs capacity/uniqueness constraints atomically.
       // Include historical booking prefixes so their suffixes are never reused.
+      // Onsite orders satisfy the existing hash constraint without issuing an access token.
       const values = Object.keys(writeColumns).map((key) =>
         key === 'locationSnapshot'
           ? "COALESCE((SELECT location FROM service_locations WHERE campus=? AND date=?),'')"
@@ -383,7 +369,7 @@ export function appointmentRepository(db) {
       const insert = db
         .prepare(
           `INSERT INTO appointments(id,${Object.values(writeColumns).join(',')},access_token_hash,credential_rotated_at)
-        SELECT ? || printf('%02d',COALESCE(MAX(CAST(substr(id,instr(id,'-')+1) AS INTEGER)),0)+1),${values.join(',')},?,?
+        SELECT ? || printf('%02d',COALESCE(MAX(CAST(substr(id,instr(id,'-')+1) AS INTEGER)),0)+1),${values.join(',')},COALESCE(?,lower(hex(randomblob(32)))),?
         FROM appointments WHERE id LIKE ? OR id LIKE ? OR id LIKE ?
         HAVING 1 ${request ? 'AND NOT EXISTS(SELECT 1 FROM booking_requests WHERE request_key=?)' : ''}
         ${onsite ? `AND EXISTS(SELECT 1 FROM staff_accounts s JOIN members m ON m.id=s.member_id JOIN staff_access_campuses g ON g.account=s.account
@@ -394,7 +380,7 @@ export function appointmentRepository(db) {
           prefix,
           ...args,
           item.accessTokenHash,
-          item.credentialRotatedAt,
+          item.createdAt,
           `${prefix}%`,
           `reverse${suffix}%`,
           `${suffix}%`,

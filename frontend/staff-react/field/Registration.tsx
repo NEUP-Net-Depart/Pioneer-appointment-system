@@ -22,7 +22,7 @@ export function Registration({
   campus: string;
   parent?: Appointment;
   linkKind?: string;
-  onDone: (id: string, accessToken?: string) => void;
+  onDone: (id: string) => void;
   onClose: () => void;
 }) {
   const client = useQueryClient();
@@ -95,7 +95,7 @@ export function Registration({
     }
     setBusy(true);
     try {
-      const item = await api<{ id: string; accessToken?: string }>('/api/scan/onsite', {
+      const item = await api<{ id: string }>('/api/scan/onsite', {
         method: 'POST',
         body: {
           ...form,
@@ -128,7 +128,7 @@ export function Registration({
       };
       await client.cancelQueries(affected);
       await client.invalidateQueries(affected);
-      onDone(item.id, item.accessToken);
+      onDone(item.id);
     } catch (error) {
       setError((error as Error).message);
     } finally {
