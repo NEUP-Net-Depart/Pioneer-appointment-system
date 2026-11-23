@@ -253,7 +253,7 @@ export function appointmentRepository(db) {
     async repairHistory(id,{staff=false,campuses}={}) {
       const scope=campuses ? ` AND campus IN (${campuses.map(()=>'?').join(',') || "''"})` : '';
       const items=(await db.prepare(`${repairChain} ${select} WHERE id IN (SELECT id FROM repair_chain)${scope} ORDER BY created_at,id`).bind(id,...(campuses || [])).all()).results.map(fromRow);
-      const fields=['id','campus','date','timeSlot','status','outcome','parentAppointmentId','linkKind','startedAt','completedAt','source','expiresAt','createdAt',...(staff?['repairNote','assignedToName']:[])];
+      const fields=['id','campus','date','timeSlot','status','outcome','parentAppointmentId','linkKind','receivedAt','startedAt','completedAt','source','expiresAt','createdAt',...(staff?['repairNote','assignedToName']:[])];
       const result={items:items.map(item=>Object.fromEntries(fields.map(key=>[key,item[key]])))};
       if (staff) {
         const ids=JSON.stringify(items.map(item=>item.id));

@@ -206,7 +206,7 @@ test('blocked SDK leaves student navigation operational', async ({ page }) => {
   await page.route('**/assets/posthog.js', (route) => route.abort());
   await page.goto('/');
   await page.getByRole('button', { name: '我的预约', exact: true }).click();
-  await expect(page.getByRole('button', { name: '已有预约？通过私人查询链接查看' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '找回预约记录' })).toBeVisible();
   await page.getByRole('button', { name: '预约维修', exact: true }).click();
   await expect(page.locator('#booking-form')).toBeVisible();
 });

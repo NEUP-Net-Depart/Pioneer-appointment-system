@@ -81,11 +81,11 @@
   </section>
 </section>
 <section class="view" id="lookup-view" data-view="lookup">
-  <section id="lookup-list"><div class="student-heading title-row"><h1 tabindex="-1">我的预约</h1><button data-track=student.index.button.42 class="text-btn" id="import-appointment" type="button" hidden aria-expanded="false" aria-controls="import-form">导入预约</button></div>
+  <section id="lookup-list"><div class="student-heading title-row"><h1 tabindex="-1">我的预约</h1><div class="lookup-actions"><button data-track=student.index.button.42 class="text-btn" id="import-appointment" type="button" hidden aria-expanded="false" aria-controls="import-form">找回预约记录</button><button data-track=student.index.button.46 class="text-btn" id="refresh-my-appointments" type="button" hidden>刷新</button></div></div>
     <form data-track=student.index.form.43 id="import-form" class="student-form import-form" hidden novalidate><label class="field">私人查询链接<input data-track=student.index.input.44 id="private-link-input" type="url" data-max-length="2048" autocomplete="off" placeholder="粘贴完整私人查询链接" /></label><button data-track=student.index.button.45 class="primary-btn" type="submit">查看预约</button><p id="import-error" class="field-error" role="alert"></p></form>
-    <div class="list-toolbar"><button data-track=student.index.button.46 class="text-btn" id="refresh-my-appointments" type="button">刷新</button></div><p id="lookup-notice" class="notice" role="status" hidden></p><div id="lookup-results" aria-live="polite"></div>
+    <p id="lookup-notice" class="notice" role="status" hidden></p><div id="lookup-results" aria-live="polite"></div>
   </section>
-  <section id="lookup-detail" hidden><button data-track=student.index.button.47 id="back-to-appointments" class="text-btn" type="button">← 我的预约</button><h1 id="appointment-detail-title" tabindex="-1">预约详情</h1><p id="detail-notice" class="notice" role="status" hidden></p><div id="appointment-detail"></div></section>
+  <section id="lookup-detail" hidden><div class="detail-page-heading"><button data-track=student.index.button.47 id="back-to-appointments" class="text-btn" type="button">← 我的预约</button><h1 id="appointment-detail-title" tabindex="-1">预约详情</h1></div><p id="detail-notice" class="notice" role="status" hidden></p><div id="appointment-detail"></div></section>
 </section>
 </main>
 <div class="modal-backdrop" id="booking-notice-modal" hidden><section data-track="student.index.section.48" class="modal booking-notice-dialog" role="dialog" aria-modal="true" aria-labelledby="booking-notice-title"><h2 id="booking-notice-title">校区预约公告</h2><div id="booking-notice-body" class="booking-notices"></div><div class="modal-actions"><button data-track="student.index.button.49" id="close-booking-notices" type="button" class="primary-btn">返回预约</button></div></section></div>
