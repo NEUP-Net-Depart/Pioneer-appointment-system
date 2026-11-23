@@ -218,6 +218,7 @@ export function FieldApp({
         <CheckInDialog
           home={data || initial}
           token={checkToken === 'direct' ? '' : checkToken}
+          scan={checkToken !== 'direct'}
           onClose={() => setCheckToken('')}
           onComplete={(record) => {
             setCheckToken('');

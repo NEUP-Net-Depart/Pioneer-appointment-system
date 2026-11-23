@@ -56,6 +56,11 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
   const availableCampuses = campuses.filter((campus) =>
     (user.authorizedCampuses || []).some((id) => id === campus.id || id === campus.name)
   );
+  const profileCampuses = campuses.filter(
+    (campus) =>
+      campus.id === detail?.member.homeCampusId ||
+      detail?.actions?.editableHomeCampuses?.includes(campus.id)
+  );
   function bindingCampuses(binding) {
     const raw = binding.scope?.campusIds ?? binding.scope?.campuses;
     return (
@@ -338,11 +343,12 @@ export function MemberEditor({ user, member, canManageRoles, onClose, onSaved })
                     data-track="staff.membereditor.select.5"
                     data-motion-value="field"
                     value={profile.homeCampusId}
+                    disabled={profileCampuses.length < 2}
                     onChange={(event) =>
                       setProfile({ ...profile, homeCampusId: event.target.value })
                     }
                   >
-                    {campuses.map((item) => (
+                    {profileCampuses.map((item) => (
                       <option key={item.id} value={item.id}>
                         {item.name}
                       </option>

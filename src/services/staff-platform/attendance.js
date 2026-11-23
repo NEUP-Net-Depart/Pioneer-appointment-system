@@ -140,19 +140,23 @@ export function attendanceDomain({
       (await repository.serviceDay(event.businessDate, event.campusId))?.paused
     )
       fail(409, '该日期暂停维修，不能签到', 'SERVICE_DAY_PAUSED');
-    const authorization = await requirePermission(actor, 'attendance.self', {
+    const context = await contextFor(actor);
+    const authorization = evaluate(context, 'attendance.self', {
       campusId: event.campusId,
-      memberId: actor.memberId
+      memberId: context.actor.memberId
     });
-    const context = authorization.context;
-    const campusNames = { 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' };
-    if (
-      event.campusId &&
-      !(actor.authorizedCampuses || []).some(
-        (value) => value === event.campusId || value === campusNames[event.campusId]
-      )
-    )
-      fail(403, '没有该校区的签到权限');
+    if (!authorization.allowed) {
+      const outsideCampus =
+        event.campusId &&
+        !context.actor.authorizedCampuses.some(
+          (campus) => normalizeCampusId(campus) === normalizeCampusId(event.campusId)
+        );
+      fail(
+        403,
+        outsideCampus ? '你没有该校区的签到权限' : '当前身份不能使用这个签到码',
+        'ATTENDANCE_CHECK_IN_DENIED'
+      );
+    }
     const policy = policyFor(event);
     if (!policy) fail(400, '签到策略不存在');
     const now = nowIso();
@@ -160,9 +164,9 @@ export function attendanceDomain({
     assertDutyAttendanceDate(event, 409);
     const eligible = policy.checkEligibility({
       event,
-      context: { ...context, attendanceEligible: authorization.result.allowed }
+      context: { ...context, attendanceEligible: authorization.allowed }
     });
-    if (!eligible) fail(403, '当前成员没有该场次的签到资格');
+    if (!eligible) fail(403, '你不在该场次的签到名单中', 'ATTENDANCE_CHECK_IN_DENIED');
     return { found, event, context, policy, now };
   }
 

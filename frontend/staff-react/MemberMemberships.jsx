@@ -177,6 +177,7 @@ export function MemberMemberships({ detail, departments, onSaved, onDirty, onBus
                     })
                   }
                   departments={departments}
+                  allowGlobalLeadership={detail.actions?.assignGlobalLeadership === true}
                   emptyLabel="不添加部门"
                 />
                 <AdditionalMembershipFields value={draft} onChange={setDraft} />
