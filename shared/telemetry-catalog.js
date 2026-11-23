@@ -1631,6 +1631,7 @@ export const SOURCE_FILES = [
   "frontend/staff-react/query-client.js",
   "frontend/staff-react/report-xlsx.js",
   "frontend/staff-react/request.js",
+  "frontend/staff-react/staff-install.ts",
   "frontend/staff-react/useControlLabel.js",
   "frontend/staff-react/useDataMotion.ts",
   "frontend/staff-react/useStaffIdentity.js",

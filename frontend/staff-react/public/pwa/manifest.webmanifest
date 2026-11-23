@@ -1,0 +1,16 @@
+{
+  "id": "/staff/",
+  "name": "先锋硬件部 · 工作人员工作台",
+  "short_name": "硬件部工作台",
+  "lang": "zh-CN",
+  "start_url": "/staff/",
+  "scope": "/staff/",
+  "display": "standalone",
+  "theme_color": "#102a43",
+  "background_color": "#f5f7fa",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
