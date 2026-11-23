@@ -147,7 +147,8 @@ test.describe('single check-in confirmation and scheduling review', () => {
     const member = page.getByRole('dialog', { name: '周宁', exact: true });
     await expect(member.getByText('未填写统计表', { exact: true }).first()).toBeVisible();
     await member.getByRole('button', { name: '交换班次', exact: true }).click();
-    await expect(member.getByText('当前没有可选班次', { exact: true })).toBeVisible();
+    await member.getByRole('combobox', { name: '与谁交换', exact: true }).click();
+    await expect(member.getByRole('option', { name: /预览负责人/ })).toBeEnabled();
     await member.getByRole('button', { name: '移动班次', exact: true }).click();
     await member.getByRole('combobox', { name: '移动到', exact: true }).click();
     await member.locator('[role="option"]:not(:disabled)').filter({ hasText: '维修' }).first().click();
