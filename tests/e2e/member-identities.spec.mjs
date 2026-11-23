@@ -4,6 +4,38 @@ import { chooseOption, loginStaff, staffPage, staffApi, dutyPage } from './suppo
 import { dateKey } from '../../shared/time.js';
 import { WORKFLOW_TIME } from '../fixtures/workflow-seed.mjs';
 
+test('member editing only offers manageable campuses and appointments @smoke', async ({ page, context }) => {
+  async function openEditor(actorPage, account) {
+    await loginStaff(actorPage, account);
+    const people = await staffPage(actorPage, '人员管理');
+    await people.locator('.react-row').filter({ hasText: '周宁' }).getByRole('button', { name: '人员详情', exact: true }).click();
+    return actorPage.getByRole('dialog');
+  }
+
+  const member = await openEditor(page, '20261001');
+  const campus = member.getByRole('combobox', { name: '所属校区', exact: true });
+  await expect(campus).toHaveText('南湖');
+  await expect(campus).toBeDisabled();
+  await member.getByRole('button', { name: '任职与身份', exact: true }).click();
+  await member.getByRole('button', { name: '新增任职', exact: true }).click();
+  const organization = member.getByRole('combobox', { name: '正式部门 / 组织', exact: true });
+  await organization.click();
+  await expect(page.getByRole('option', { name: '硬件部', exact: true })).toBeVisible();
+  await expect(page.getByRole('option', { name: '设备服务站', exact: true })).toHaveCount(0);
+
+  const admin = await context.newPage();
+  const adminEditor = await openEditor(admin, 'root001');
+  const adminCampus = adminEditor.getByRole('combobox', { name: '所属校区', exact: true });
+  await chooseOption(admin, adminCampus, 'campus-hunnan');
+  await expect(adminCampus).toHaveText('浑南');
+  await chooseOption(admin, adminCampus, 'campus-nanhu');
+  await adminEditor.getByRole('button', { name: '任职与身份', exact: true }).click();
+  await adminEditor.getByRole('button', { name: '新增任职', exact: true }).click();
+  await chooseOption(admin, adminEditor.getByRole('combobox', { name: '正式部门 / 组织', exact: true }), 'unit-device');
+  await adminEditor.getByRole('combobox', { name: '职位', exact: true }).click();
+  await expect(admin.getByRole('option', { name: '站长', exact: true })).toBeVisible();
+});
+
 test('superadmins manually grant and revoke the retired badge across member and personal views', async ({
   page,
   context

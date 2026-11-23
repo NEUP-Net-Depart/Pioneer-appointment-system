@@ -52,6 +52,8 @@ export function CheckInDialog({
     refetchOnWindowFocus: false,
     retry: false
   });
+  const accessDenied =
+    (preview.error as (Error & { code?: string }) | null)?.code === 'ATTENDANCE_CHECK_IN_DENIED';
   async function submit() {
     if (lock.current || !preview.data) return;
     lock.current = true;
@@ -143,28 +145,36 @@ export function CheckInDialog({
               <p className="react-error" role="alert">
                 {preview.error.message}
               </p>
-              <button
-                data-track="staff.field.checkin.retry"
-                disabled={busy || preview.isFetching}
-                onClick={() => void preview.refetch()}
-              >
-                重新读取
-              </button>
+              {!accessDenied && (
+                <button
+                  data-track="staff.field.checkin.retry"
+                  disabled={busy || preview.isFetching}
+                  onClick={() => void preview.refetch()}
+                >
+                  重新读取
+                </button>
+              )}
               {scan && (
-                <button data-track="staff.field.checkin.rescan" onClick={() => setToken('')}>
+                <button
+                  data-track="staff.field.checkin.rescan"
+                  className={accessDenied ? 'field-primary' : undefined}
+                  onClick={() => setToken('')}
+                >
                   重新扫码
                 </button>
               )}
             </>
           )}
-          <button
-            data-track="staff.field.checkin.confirm"
-            className="field-primary"
-            disabled={busy || !preview.data || !!preview.error}
-            onClick={() => void submit()}
-          >
-            {busy ? '正在签到…' : '确认签到'}
-          </button>
+          {!preview.error && (
+            <button
+              data-track="staff.field.checkin.confirm"
+              className="field-primary"
+              disabled={busy || !preview.data}
+              onClick={() => void submit()}
+            >
+              {busy ? '正在签到…' : '确认签到'}
+            </button>
+          )}
         </div>
       )}
       {error && (
