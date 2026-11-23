@@ -8,7 +8,15 @@ export const DUTY_CHECK_IN_END = '21:30';
 export const DUTY_TYPES = ['repair', 'office'];
 export const DUTY_WEEKDAYS = [1, 2, 3, 4];
 export const dutyTypeLabels = { repair: '维修', office: '办公' };
+export const dutyEligibilityRequirements = {
+  repair: '维修班次仅限硬件部部员或具有「交流维修」任职的成员',
+  office: '办公班次仅限具有「维修事务」任职的成员'
+};
 export const dutyCampusNames = { 'campus-nanhu': '南湖', 'campus-hunnan': '浑南' };
+export const dutyAvailabilityLabels = {
+  missing: '未填写统计表',
+  conflict: '与其时间冲突'
+};
 
 export function dutyWindow(day) {
   return {
@@ -33,17 +41,37 @@ export function hasDutyAvailability(windows, campuses = Object.keys(dutyCampusNa
   );
 }
 
+export function dutyAvailabilityLabel(person, row, campusId, weekStart) {
+  if (!person) return '';
+  const windows = person.availability[row.dutyType];
+  const weekday = new Date(`${row.businessDate}T12:00:00Z`).getUTCDay() || 7;
+  if (availableForDuty(windows, weekday, campusId)) return '当天有空';
+  if (
+    !DUTY_WEEKDAYS.some(
+      (day) => dutyCandidateTypes(person.memberships, addDays(weekStart, day - 1)).length
+    )
+  ) {
+    return '无需填报';
+  }
+  return hasDutyAvailability(windows)
+    ? dutyAvailabilityLabels.conflict
+    : dutyAvailabilityLabels.missing;
+}
+
 export function dutyPlanningReview({ weekStart, campusId, people, assignments, paused }) {
-  const days = DUTY_WEEKDAYS.map((weekday) => addDays(weekStart, weekday - 1));
+  const days = DUTY_WEEKDAYS.map((weekday) => addDays(weekStart, weekday - 1)).filter(
+    (day) => !paused.includes(day)
+  );
+  const activeAssignments = assignments.filter((row) => !paused.includes(row.businessDate));
   const candidates = people.filter((person) =>
     days.some((day) => dutyCandidateTypes(person.memberships, day).length)
   );
-  const gaps = days
-    .filter((day) => !paused.includes(day))
-    .flatMap((businessDate) =>
+  const gaps = days.flatMap((businessDate) =>
       DUTY_TYPES.filter(
         (dutyType) =>
-          !assignments.some((row) => row.businessDate === businessDate && row.dutyType === dutyType)
+          !activeAssignments.some(
+            (row) => row.businessDate === businessDate && row.dutyType === dutyType
+          )
       ).map((dutyType) => ({
         businessDate,
         dutyType,
@@ -54,15 +82,11 @@ export function dutyPlanningReview({ weekStart, campusId, people, assignments, p
     .filter((person) =>
       days.some((day) => dutyCandidateTypes(person.memberships, day).includes('repair'))
     )
-    .filter((person) => !assignments.some((row) => row.memberId === person.memberId))
+    .filter((person) => !activeAssignments.some((row) => row.memberId === person.memberId))
     .map((person) => {
       const windows = person.availability.repair;
       const dutyType = 'repair';
-      const occupied =
-        person.alreadyScheduled || person.assignments?.some((row) => row.campusId !== campusId);
-      const reasonCode = occupied
-        ? 'scheduled_elsewhere'
-        : !hasDutyAvailability(windows)
+      const reasonCode = !hasDutyAvailability(windows)
           ? 'missing_availability'
           : !hasDutyAvailability(windows, [campusId])
             ? 'other_campus'
@@ -79,8 +103,7 @@ export function dutyPlanningReview({ weekStart, campusId, people, assignments, p
         dutyType,
         reasonCode,
         reason: {
-          scheduled_elsewhere: '本周已有其他校区班次',
-          missing_availability: '尚未填空闲',
+          missing_availability: dutyAvailabilityLabels.missing,
           other_campus: '空闲在其他校区',
           paused: '空闲日均已暂停服务',
           not_scheduled: '尚未安排，请核对'
@@ -117,18 +140,34 @@ export function isDutyExempt(memberships, day) {
   );
 }
 
+function isHardwareMember(post) {
+  return (
+    post.positionCode === 'member' &&
+    post.assignmentType === 'primary' &&
+    post.departmentCode === 'hardware' &&
+    post.isPrimary
+  );
+}
+
+export function canAssignDuty(memberships, day, dutyType) {
+  if (isDutyExempt(memberships, day)) return false;
+  return activeMemberships({ memberships, businessDate: day }).some((post) => {
+    if (post.positionCode !== 'member') return false;
+    if (dutyType === 'repair')
+      return isHardwareMember(post) || (post.assignmentType === 'exchange' && post.departmentCode === 'hardware');
+    return dutyType === 'office' && post.assignmentType === 'maintenance_affairs';
+  });
+}
+
 export function dutyCandidateTypes(memberships, day) {
   if (isDutyExempt(memberships, day)) return [];
   const posts = activeMemberships({ memberships, businessDate: day });
   return DUTY_TYPES.filter((type) =>
     posts.some(
       (post) =>
-        post.positionCode === 'member' &&
-        (type === 'office'
-          ? post.assignmentType === 'maintenance_affairs'
-          : post.assignmentType === 'primary' &&
-            post.departmentCode === 'hardware' &&
-            post.isPrimary)
+        type === 'office'
+          ? post.positionCode === 'member' && post.assignmentType === 'maintenance_affairs'
+          : isHardwareMember(post)
     )
   );
 }
@@ -136,14 +175,7 @@ export function dutyCandidateTypes(memberships, day) {
 export function manualDutyPriority(memberships, day, dutyType) {
   const posts = activeMemberships({ memberships, businessDate: day });
   if (dutyType === 'repair') {
-    if (
-      posts.some(
-        (post) =>
-          post.isPrimary && post.departmentCode === 'hardware' && post.positionCode === 'member'
-      )
-    )
-      return 0;
-    return posts.some((post) => post.assignmentType === 'exchange') ? 1 : 2;
+    return posts.some(isHardwareMember) ? 0 : 1;
   }
   return posts.some(
     (post) =>

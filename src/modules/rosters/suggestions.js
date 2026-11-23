@@ -11,21 +11,33 @@ import {
 } from '../../../shared/duty.js';
 import { balancedPlans, comparePlans, officePlan } from './balanced-assignment.js';
 
-export function suggestDuties({ weekStart, campusId, people, availability, paused, kept = [] }) {
+export function suggestDuties({
+  weekStart,
+  campusId,
+  people,
+  availability,
+  paused,
+  kept = [],
+  excluded = []
+}) {
   const weekDays = DUTY_WEEKDAYS.map((weekday) => addDays(weekStart, weekday - 1));
   const days = weekDays.filter((day) => !paused.includes(day));
   const assignments = kept
     .filter(
       (row) =>
-        !isDutyExempt(
+        paused.includes(row.businessDate) || !isDutyExempt(
           people.find((person) => person.memberId === row.memberId)?.memberships || [],
           row.businessDate
         )
     )
     .map((row) => ({ ...row }));
-  const used = new Set(assignments.map((row) => row.memberId));
+  const activeKept = assignments.filter((row) => !paused.includes(row.businessDate));
+  const used = new Set(activeKept.map((row) => row.memberId));
+  const exclusionKeys = new Set(
+    excluded.map((row) => `${row.memberId}:${row.businessDate}:${row.dutyType}`)
+  );
   const candidates = people
-    .filter((person) => weekDays.some((day) => dutyCandidateTypes(person.memberships, day).length))
+    .filter((person) => days.some((day) => dutyCandidateTypes(person.memberships, day).length))
     .slice()
     .sort((a, b) => a.memberId.localeCompare(b.memberId))
     .map((person) => {
@@ -33,26 +45,30 @@ export function suggestDuties({ weekStart, campusId, people, availability, pause
         availability.filter((row) => row.memberId === person.memberId),
         weekStart
       ).effectiveWindows;
-      const weeklyOnce = weekDays.some((day) =>
+      const weeklyOnce = days.some((day) =>
         dutyCandidateTypes(person.memberships, day).includes('repair')
       );
-      const options = days.flatMap((businessDate) =>
-        dutyCandidateTypes(person.memberships, businessDate).map((dutyType) => ({
-          businessDate,
-          dutyType,
-          conflict: !availableForDuty(
-            windows,
-            new Date(`${businessDate}T12:00:00Z`).getUTCDay(),
-            campusId
+      const options = days.filter((day) => !person.assignments.some(
+        (row) => row.campusId !== campusId && row.businessDate === day && row.startAt < DUTY_END && row.endAt > DUTY_START
+      )).flatMap((businessDate) =>
+        dutyCandidateTypes(person.memberships, businessDate)
+          .filter(
+            (dutyType) => !exclusionKeys.has(`${person.memberId}:${businessDate}:${dutyType}`)
           )
-        }))
+          .map((dutyType) => ({
+            businessDate,
+            dutyType,
+            conflict: !availableForDuty(
+              windows,
+              new Date(`${businessDate}T12:00:00Z`).getUTCDay(),
+              campusId
+            )
+          }))
       );
-      const occupied = person.assignments.some((row) => row.campusId !== campusId);
       return {
         ...person,
         options,
         weeklyOnce,
-        occupied,
         availability: { repair: windows, office: windows }
       };
     });
@@ -61,12 +77,11 @@ export function suggestDuties({ weekStart, campusId, people, availability, pause
   );
   const officeItems = officePlan(
     candidates
-      .filter((person) => !person.weeklyOnce || (!person.occupied && !used.has(person.memberId)))
+      .filter((person) => !person.weeklyOnce || !used.has(person.memberId))
       .map((person) => ({
         ...person,
         officeLoad:
-          assignments.filter((row) => row.memberId === person.memberId).length +
-          person.assignments.filter((row) => row.campusId !== campusId).length,
+          activeKept.filter((row) => row.memberId === person.memberId).length,
         options: person.options.filter(
           (option) =>
             option.dutyType === 'office' &&
@@ -74,9 +89,6 @@ export function suggestDuties({ weekStart, campusId, people, availability, pause
             officeDays.includes(option.businessDate) &&
             !assignments.some(
               (row) => row.businessDate === option.businessDate && row.memberId === person.memberId
-            ) &&
-            !person.assignments.some(
-              (row) => row.businessDate === option.businessDate && row.campusId !== campusId
             )
         )
       })),
@@ -84,7 +96,7 @@ export function suggestDuties({ weekStart, campusId, people, availability, pause
   );
   for (const row of officeItems) used.add(row.person.memberId);
   const eligible = candidates
-    .filter((person) => person.weeklyOnce && !person.occupied && !used.has(person.memberId))
+    .filter((person) => person.weeklyOnce && !used.has(person.memberId))
     .map((person) => ({
       ...person,
       options: person.options.filter((option) => option.dutyType === 'repair')
@@ -128,6 +140,7 @@ export function suggestDuties({ weekStart, campusId, people, availability, pause
       dutyType: row.dutyType,
       startAt: DUTY_START,
       endAt: DUTY_END,
+      source: 'auto',
       suggested: true,
       availabilityConflict: row.conflict
     });
@@ -141,7 +154,6 @@ export function suggestDuties({ weekStart, campusId, people, availability, pause
   });
   for (const person of review.unassigned) {
     const candidate = candidates.find((row) => row.memberId === person.memberId);
-    if (person.reasonCode === 'scheduled_elsewhere') continue;
     person.reasonCode = days.length ? 'no_eligible_day' : 'paused';
     person.reason = days.length ? '可排日期无有效任职，请手动核对' : '本周服务日均已暂停';
     if (candidate.options.length) person.reason = '保留安排导致条件无法同时满足，请手动核对';
@@ -151,15 +163,14 @@ export function suggestDuties({ weekStart, campusId, people, availability, pause
     ...review,
     optimization: {
       complete:
-        best?.score[0] === 0 &&
-        !review.unassigned.some((row) => row.reasonCode !== 'scheduled_elsewhere'),
+        days.length > 0 && best?.score[0] === 0 && review.unassigned.length === 0,
       weeklyOnce: candidates
         .filter((person) => person.weeklyOnce)
         .every(
           (person) =>
-            assignments.filter((row) => row.memberId === person.memberId).length +
-              person.assignments.filter((row) => row.campusId !== campusId).length ===
-            1
+            assignments.filter(
+              (row) => row.memberId === person.memberId && !paused.includes(row.businessDate)
+            ).length === 1
         ),
       balanced: best?.score[1] === 0,
       conflicts: best?.score[2] || 0,

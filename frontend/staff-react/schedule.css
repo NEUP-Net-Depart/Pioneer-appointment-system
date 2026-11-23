@@ -134,110 +134,285 @@
 .duty-week-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  column-gap: 12px;
 }
 .duty-day-column {
   display: grid;
   grid-template-rows: subgrid;
   grid-row: span 3;
   min-width: 0;
-  border: 1px solid #e3e6eb;
-  background: #fff;
+  border: 1px solid var(--line);
   border-radius: 12px;
-  overflow: hidden;
+  background: white;
 }
 .duty-day-column > header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #f6f8fb;
+  gap: 8px;
+  min-height: 60px;
   padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
 }
 .duty-day-column h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: 19px;
+}
+.duty-day-column time {
+  margin-inline-start: 6px;
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 .duty-shift-group {
-  display: flex;
-  flex-direction: column;
-  padding: 14px;
-  border-top: 1px solid #edf0f4;
+  min-width: 0;
+  padding: 9px 9px 12px;
 }
-.duty-shift-group > button:last-child {
-  margin-top: auto;
+.duty-shift-group + .duty-shift-group {
+  border-top: 1px solid var(--line);
 }
-.duty-shift-group h4 {
+.duty-shift-heading {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  margin: 0 0 12px;
+  padding-inline-start: 7px;
+  margin: 0 0 4px;
+  font-size: 14px;
 }
-.duty-shift-group h4 span {
-  color: #697589;
-  font-size: 12px;
-  font-weight: 400;
+.duty-paused-day {
+  grid-row: span 2;
+  padding: 16px;
 }
-.duty-assignee {
+.duty-paused-day h4 {
+  margin: 0;
+  font-size: 16px;
+}
+.duty-paused-day ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+}
+.duty-planner button.duty-assignee-name {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 5px;
+  gap: 6px 12px;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: start;
+  box-shadow: none;
+}
+.duty-planner button.duty-icon-action:hover,
+.duty-planner button.duty-assignee-name:hover,
+.duty-review-list button:hover {
+  background: #f1f3f6;
+}
+.duty-shift-count,
+.duty-assignee-status {
+  color: var(--muted);
   font-size: 13px;
-  padding: 3px 0;
+  font-weight: 500;
 }
-.duty-planning-review {
-  padding: 20px 0;
-  margin-bottom: 24px;
-  border-block: 1px solid var(--line);
+.duty-shift-count {
+  margin-inline-start: 5px;
 }
-.duty-planning-review h3 {
-  margin: 0 0 18px;
-  font-size: 18px;
-}
-.duty-review-types {
+.duty-planner button.duty-assignee-name {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
-  gap: 24px;
+  justify-items: start;
+  justify-content: start;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
-.duty-review-types h4 {
-  margin: 0 0 10px;
-  font-size: 16px;
+.duty-assignee {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
-.duty-review-types ul {
+.duty-planner button.duty-icon-action {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+}
+.duty-planner button.duty-remove-assignee {
+  color: var(--muted);
+}
+.duty-planner button.duty-remove-assignee:is(:hover, :focus-visible) {
+  color: var(--danger, #9a3030);
+}
+.duty-plan-state,
+.duty-plan-actions,
+.duty-picker-row-actions,
+.duty-person-current,
+.duty-person-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+}
+.duty-plan-feedback,
+.duty-person-current > span {
+  color: var(--muted);
+}
+.duty-plan-feedback {
+  font-size: 14px;
+}
+.duty-plan-feedback:empty {
+  position: absolute;
+}
+.duty-plan-heading {
+  min-width: 0;
+}
+.duty-plan-actions {
+  gap: 6px 10px;
+  justify-content: flex-end;
+  align-self: flex-start;
+}
+.duty-plan-state {
+  gap: 2px 12px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.duty-plan-state strong {
+  color: var(--ink);
+}
+.duty-planner .duty-draft-actions {
+  position: relative;
+  margin: 0;
+}
+.duty-draft-actions summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding-inline: 9px;
+  font-size: 14px;
+  border-radius: 8px;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.duty-draft-actions summary::-webkit-details-marker {
+  display: none;
+}
+.duty-draft-actions summary:hover,
+.duty-draft-actions[open] summary {
+  background: #edf0f3;
+}
+.duty-draft-actions > div {
+  position: absolute;
+  z-index: 2;
+  inset-block-start: calc(100% + 4px);
+  inset-inline-end: 0;
   display: grid;
-  gap: 10px;
-  margin: 0 0 12px;
+  min-width: max-content;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: white;
+  box-shadow: 0 8px 24px #1f293318;
+}
+.duty-draft-actions > div button {
+  border: 0;
+  box-shadow: none;
+  text-align: start;
+}
+.duty-draft-actions > div button:hover {
+  background: #f1f3f6;
+}
+.duty-planner button.duty-text-action {
+  padding-inline: 4px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.duty-planner button.duty-remove {
+  color: var(--danger, #9a3030);
+}
+.duty-shift-group[data-drop-state='ready'] {
+  background: #f0f4f8;
+  outline: 1px dashed #6d7e90;
+  outline-offset: -3px;
+}
+.duty-shift-group[data-drop-state='available'] {
+  background: #edf1f5;
+  outline: 2px solid var(--ink);
+  outline-offset: -3px;
+}
+.duty-drop-hint {
+  display: inline-block;
+  margin-inline-start: 8px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+.duty-assignee-name[draggable='true'] {
+  cursor: grab;
+}
+.duty-review-list {
+  display: grid;
+  gap: 20px;
+}
+.duty-review-list h3 {
+  font-size: 15px;
+  margin: 0 0 6px;
+}
+.duty-review-list ul {
+  margin: 0;
   padding: 0;
   list-style: none;
 }
-.duty-review-types li {
+.duty-review-list li {
+  margin: 0;
+}
+.duty-review-list button {
+  width: 100%;
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 16px;
-}
-.duty-review-types li span {
-  color: var(--muted);
-}
-.duty-review-types p {
-  margin: 0;
-  line-height: 1.7;
-}
-.duty-workspace .duty-assignee button {
-  min-height: 32px;
-  padding: 3px 7px;
-  background: transparent;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 9px 6px;
   border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  text-align: start;
 }
-.duty-add-person {
-  width: 100%;
+.duty-review-list button > span {
+  color: var(--muted);
+  font-weight: 400;
+}
+.duty-draft-conflict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.duty-draft-conflicts {
+  padding: 12px 0;
+  border-block: 1px solid var(--line);
+}
+.duty-draft-conflict + .duty-draft-conflict {
   margin-top: 8px;
-  border-style: dashed;
-}
-.duty-warnings {
-  padding: 16px;
-  background: #fffbf1;
-  border-radius: 12px;
-  margin-top: 20px;
-  font-size: 14px;
 }
 .duty-workspace details {
   margin-top: 18px;
@@ -253,23 +428,105 @@
   overflow: auto;
   margin-bottom: 16px;
 }
-.duty-people-picker > label:has(input[type='checkbox']) {
+.duty-picker-row {
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.duty-picker-row-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.duty-picker-row .duty-picker-entry {
   display: flex;
   gap: 12px;
-  align-items: center;
-  padding: 13px 4px;
-  border-bottom: 1px solid #edf0f4;
+  align-items: flex-start;
+  min-height: 44px;
+  min-width: 0;
+  flex: 1;
 }
-.duty-people-picker input[type='checkbox'] {
+.duty-planner button.duty-picker-arrange[aria-expanded='true'] {
+  background: #f1f3f6;
+}
+.duty-picker-dialog .workspace-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+.duty-picker-row-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-top: 10px;
+}
+.duty-person-current {
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.duty-person-actions {
+  justify-content: space-between;
+  width: 100%;
+}
+.duty-person-days {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.duty-person-days > div {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.duty-move-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+.duty-adjustment-modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 10px;
+  background: #f1f3f6;
+}
+.duty-adjustment-modes button {
+  border: 1px solid transparent;
+  background: transparent;
+  box-shadow: none;
+}
+.duty-adjustment-modes button[aria-pressed='true'] {
+  border-color: var(--line);
+  background: white;
+  font-weight: 650;
+}
+.duty-review-dialog .workspace-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+@media (max-width: 600px) {
+  .duty-person-days {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .duty-planner button.duty-assignee-name,
+  .duty-review-list button,
+  .duty-picker-row-actions button {
+    min-height: 44px;
+  }
+}
+.duty-picker-dialog .duty-people-picker .duty-picker-entry > input[type='checkbox'] {
   width: 18px;
   height: 18px;
   flex: 0 0 18px;
+  margin: 13px;
 }
 .duty-people-picker .duty-picker-person {
   display: grid;
-  gap: 8px;
+  gap: 3px;
   min-width: 0;
   width: 100%;
+  overflow-wrap: anywhere;
 }
 .duty-picker-person-heading {
   display: flex;
@@ -287,26 +544,12 @@
   font-size: 14px;
 }
 .duty-picker-person-details {
-  font-size: 15px;
-  line-height: 1.6;
+  font-size: 14px;
+  line-height: 1.5;
 }
-.duty-picker-group {
+.duty-people-picker .duty-picker-group {
   margin: 20px 0 4px;
   font-size: 15px;
-}
-.duty-plan-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 24px;
-  margin: 16px 0 20px;
-  line-height: 1.7;
-}
-.duty-plan-metrics strong {
-  font-size: 18px;
-  font-variant-numeric: tabular-nums;
-}
-.duty-plan-metrics [data-warning='true'] {
-  color: var(--danger, #b42318);
 }
 .duty-today-card {
   display: flex;
@@ -432,6 +675,9 @@
   .duty-week-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .duty-day-column:nth-child(n + 3) {
+    margin-top: 12px;
+  }
   .duty-person {
     flex-wrap: wrap;
   }
@@ -454,6 +700,21 @@
   }
   .duty-week-grid {
     grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .duty-day-column {
+    grid-template-rows: auto;
+    grid-row: auto;
+  }
+  .duty-paused-day {
+    grid-row: auto;
+  }
+  .duty-day-column:nth-child(n + 3) {
+    margin-top: 0;
+  }
+  .duty-planner .duty-section-heading {
+    align-items: stretch;
+    flex-direction: column;
   }
   .duty-workspace .schedule-card {
     padding: 16px;

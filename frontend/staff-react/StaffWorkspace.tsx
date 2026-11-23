@@ -77,6 +77,7 @@ export function StaffWorkspace({
   const [resolving, setResolving] = useState(false),
     [navigationError, setNavigationError] = useState('');
   const [manualSaveMessage, setManualSaveMessage] = useState('');
+  const [navigationSaveLabel, setNavigationSaveLabel] = useState('');
   const navigationLock = useRef(false);
   function choose(id: string) {
     if (navigationLock.current || pending) return;
@@ -85,6 +86,10 @@ export function StaffWorkspace({
     const editors = pendingEditors({ includeHidden: id === '__logout__' || id === '__refresh__' });
     if (editors.length) {
       const manualEditor = editors.find((editor) => !editor.canSave);
+      const labels = new Set(editors.map((editor) => editor.saveLabel));
+      setNavigationSaveLabel(
+        labels.has('发布并继续') && labels.size > 1 ? '保存并发布后继续' : editors[0].saveLabel
+      );
       setManualSaveMessage(
         manualEditor ? manualEditor.leaveMessage || '请返回页面完成操作，或丢弃修改后继续。' : ''
       );
@@ -289,13 +294,16 @@ export function StaffWorkspace({
         <UnsavedChangesDialog
           busy={resolving}
           error={navigationError}
+          saveLabel={navigationSaveLabel || undefined}
           message={
             manualSaveMessage ||
-            (pending === '__logout__'
-              ? '保存成功后退出登录，或丢弃本次未保存的改动。'
-              : pending === '__refresh__'
-                ? '保存成功后刷新页面，或丢弃本次未保存的改动。'
-                : '请保存或丢弃修改后切换。')
+            (navigationSaveLabel
+              ? '继续前将发布当前排班调整。'
+              : pending === '__logout__'
+                ? '保存成功后退出登录，或丢弃本次未保存的改动。'
+                : pending === '__refresh__'
+                  ? '保存成功后刷新页面，或丢弃本次未保存的改动。'
+                  : '请保存或丢弃修改后切换。')
           }
           onCancel={() => setPending(null)}
           onDiscard={() => void resolveNavigation('discard')}

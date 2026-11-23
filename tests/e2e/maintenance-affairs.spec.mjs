@@ -38,6 +38,12 @@ test('planner retries a stale draft without losing its manual addition', async (
   context
 }) => {
   let planner;
+  const confirmPublish = async (managerPage, managerPlanner) => {
+    await managerPlanner.getByRole('button', { name: '发布班表', exact: true }).click();
+    const confirmation = managerPage.getByRole('dialog', { name: '发布前确认', exact: true });
+    await confirmation.getByRole('button', { name: '确认发布', exact: true }).click();
+    return confirmation;
+  };
 
   await runWorkflow(
     'ui-roster-conflict',
@@ -54,20 +60,20 @@ test('planner retries a stale draft without losing its manual addition', async (
         run: async () => {
           await loginStaff(page, '20261001');
           planner = await dutyPage(page, '安排下周');
-          await planner.getByRole('button', { name: '选择人员', exact: true }).first().click();
+          await planner.getByRole('button', { name: /选择人员$/ }).first().click();
           const picker = page.getByRole('dialog');
           await picker.getByRole('checkbox', { name: /周宁/ }).check();
           await picker.getByRole('button', { name: '完成选择', exact: true }).click();
           const otherPage = await context.newPage();
           await loginStaff(otherPage, '20261001');
           const otherPlanner = await dutyPage(otherPage, '安排下周');
-          await otherPlanner.getByRole('button', { name: '选择人员', exact: true }).nth(1).click();
+          await otherPlanner.getByRole('button', { name: /选择人员$/ }).nth(1).click();
           const otherPicker = otherPage.getByRole('dialog');
           await otherPicker.getByRole('checkbox', { name: /陈宇/ }).check();
           await otherPicker.getByRole('button', { name: '完成选择', exact: true }).click();
-          await otherPlanner.getByRole('button', { name: /发布/ }).click();
+          await confirmPublish(otherPage, otherPlanner);
           await expect(
-            otherPlanner.getByText('维修和办公班表已发布，签到已自动准备')
+            otherPlanner.getByText('班表已发布', { exact: true })
           ).toBeVisible();
         }
       },
@@ -75,8 +81,9 @@ test('planner retries a stale draft without losing its manual addition', async (
         event: 'CONFLICT',
 
         run: async () => {
-          await planner.getByRole('button', { name: /发布/ }).click();
-          await expect(planner.getByRole('alert')).toBeVisible();
+          const confirmation = await confirmPublish(page, planner);
+          await expect(confirmation.getByRole('alert')).toBeVisible();
+          await confirmation.getByRole('button', { name: '关闭', exact: true }).click();
         }
       },
       {
@@ -91,8 +98,8 @@ test('planner retries a stale draft without losing its manual addition', async (
           await expect(planner.locator('.duty-assignee').filter({ hasText: '陈宇' })).toHaveCount(
             1
           );
-          await planner.getByRole('button', { name: /发布/ }).click();
-          await expect(planner.getByText('维修和办公班表已发布，签到已自动准备')).toBeVisible();
+          await confirmPublish(page, planner);
+          await expect(planner.getByText('班表已发布', { exact: true })).toBeVisible();
         }
       }
     ]

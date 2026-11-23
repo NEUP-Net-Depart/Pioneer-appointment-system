@@ -57,14 +57,13 @@ test('matching minimizes actual conflicts among all balanced allocations in a sm
   assert.ok(result.optimization.daily.every((row) => row.repair >= 1));
 });
 
-test('office preference and cross-campus weekly occupancy remain intact', () => {
+test('office preference still applies and a historical out-of-campus shift only blocks its own time', () => {
   const input = scenario([[1, 2, 3, 4], [1], [2], [3]]);
   input.people[0].memberships.push(post('hardware', 'maintenance_affairs'));
-  input.people[1].assignments.push({ campusId: 'campus-hunnan', businessDate: weekStart });
+  input.people[1].assignments.push({ campusId: 'campus-hunnan', businessDate: weekStart, startAt: '19:00', endAt: '21:00' });
   const result = suggestDuties(input);
   assert.equal(result.assignments.find((row) => row.memberId === 'member-0').dutyType, 'office');
-  assert.equal(result.assignments.some((row) => row.memberId === 'member-1'), false);
-  assert.equal(result.unassigned.find((row) => row.memberId === 'member-1').reasonCode, 'scheduled_elsewhere');
+  assert.notEqual(result.assignments.find((row) => row.memberId === 'member-1').businessDate, weekStart);
 });
 
 test('office only fills actual available days with at most one person and allows an empty day', () => {
@@ -86,7 +85,7 @@ test('office can rotate one available member across dates without forcing unavai
   const input = scenario([[1, 2, 3], []]);
   for (const person of input.people)
     person.memberships = [post('network'), post('network', 'maintenance_affairs')];
-  input.people[0].assignments = [{ campusId: 'campus-hunnan', businessDate: addDays(weekStart, 1) }];
+  input.people[0].assignments = [{ campusId: 'campus-hunnan', businessDate: addDays(weekStart, 1), startAt: '19:00', endAt: '21:00' }];
   const result = suggestDuties(input);
   assert.deepEqual(result.assignments.map((row) => row.businessDate).sort(), [weekStart, addDays(weekStart, 2)]);
   assert.ok(result.assignments.every((row) => row.memberId === 'member-0'));
