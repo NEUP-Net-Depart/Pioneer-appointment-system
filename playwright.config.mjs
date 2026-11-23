@@ -59,6 +59,7 @@ export default defineConfig({
         '**/duty-statistics.spec.mjs',
         '**/signature.spec.mjs',
         '**/photo-upload.spec.mjs',
+        '**/staff-pwa.spec.mjs',
         '**/diagnostics/photo-compress.spec.mjs',
         '**/diagnostics/telemetry.spec.mjs'
       ],

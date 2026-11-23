@@ -6,9 +6,15 @@ import { WorkspaceIcon } from './WorkspaceIcon';
 import { groupWorkspaceEntries, mobileWorkspaceEntries } from './workspace-navigation.js';
 import { pendingEditors } from './useUnsavedChanges.js';
 import { UnsavedChangesDialog } from './UnsavedChangesDialog';
+import {
+  showStaffInstallPrompt,
+  staffInstallInstructions,
+  useStaffAppInstalled
+} from './staff-install';
 import './field/field.css';
 
 type Entry = { id: string; label: string; group?: string; icon?: string; keywords?: string };
+const installEntry = { id: '__install__', label: '安装到桌面', icon: 'download' };
 export function StaffWorkspace({
   children,
   name,
@@ -30,7 +36,9 @@ export function StaffWorkspace({
   onLogout: () => void;
   loading?: boolean;
 }) {
-  const [more, setMore] = useState(false);
+  const [more, setMore] = useState<'mobile' | 'desktop' | null>(null);
+  const [installHelp, setInstallHelp] = useState(false);
+  const appInstalled = useStaffAppInstalled();
   const sidebar = useRef<HTMLElement>(null);
   const activeGroup = entries.find((entry) => entry.id === active)?.group || '其他';
   const [expanded, setExpanded] = useState<string[] | null>(null);
@@ -51,7 +59,7 @@ export function StaffWorkspace({
       )
         return;
       event.preventDefault();
-      setMore(true);
+      setMore('desktop');
     };
     window.addEventListener('keydown', find);
     return () => window.removeEventListener('keydown', find);
@@ -72,7 +80,7 @@ export function StaffWorkspace({
   const navigationLock = useRef(false);
   function choose(id: string) {
     if (navigationLock.current || pending) return;
-    setMore(false);
+    setMore(null);
     if (id === active) return;
     const editors = pendingEditors({ includeHidden: id === '__logout__' || id === '__refresh__' });
     if (editors.length) {
@@ -135,6 +143,20 @@ export function StaffWorkspace({
     }
   }
   const groups = groupWorkspaceEntries(entries);
+  const launcherGroups =
+    more === 'mobile' && !appInstalled
+      ? groups.map((group) =>
+          group.label === '我的' ? { ...group, items: [...group.items, installEntry] } : group
+        )
+      : groups;
+  async function chooseLauncherEntry(id: string) {
+    if (id !== installEntry.id) {
+      choose(id);
+    } else if (!(await showStaffInstallPrompt())) {
+      setMore(null);
+      setInstallHelp(true);
+    }
+  }
   const primary: Entry[] = mobileWorkspaceEntries(entries);
   const overflow = entries.filter((entry) => !primary.some((item) => item.id === entry.id));
   const projectLink = (
@@ -164,7 +186,7 @@ export function StaffWorkspace({
           className="workspace-find"
           type="button"
           aria-keyshortcuts="Control+k Meta+k"
-          onClick={() => setMore(true)}
+          onClick={() => setMore('desktop')}
         >
           <WorkspaceIcon name="search" />
           查找功能
@@ -256,7 +278,7 @@ export function StaffWorkspace({
             data-track="staff.staffworkspace.button.8"
             type="button"
             className={overflow.some((entry) => entry.id === active) ? 'active' : ''}
-            onClick={() => setMore(true)}
+            onClick={() => setMore('mobile')}
           >
             <WorkspaceIcon name="more" />
             更多
@@ -281,14 +303,19 @@ export function StaffWorkspace({
         />
       )}
       {more && (
-        <Modal title="工作入口" initialFocus="input[type=search]" onClose={() => setMore(false)}>
+        <Modal title="工作入口" initialFocus="input[type=search]" onClose={() => setMore(null)}>
           <WorkspaceLauncher
-            groups={groups}
+            groups={launcherGroups}
             active={active}
-            onSelect={choose}
+            onSelect={chooseLauncherEntry}
             onPrepare={onPrepare}
           />
           <footer className="workspace-launcher-footer">{projectLink}</footer>
+        </Modal>
+      )}
+      {installHelp && !appInstalled && (
+        <Modal title="安装到桌面" compact onClose={() => setInstallHelp(false)}>
+          <p>{staffInstallInstructions()}</p>
         </Modal>
       )}
     </div>

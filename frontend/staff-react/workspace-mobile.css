@@ -371,3 +371,32 @@
     gap: 12px;
   }
 }
+@media (display-mode: standalone) {
+  .staff-mode .login-view {
+    padding-top: max(clamp(24px, 5vw, 56px), env(safe-area-inset-top));
+    padding-bottom: max(clamp(24px, 5vw, 56px), env(safe-area-inset-bottom));
+    padding-left: max(20px, env(safe-area-inset-left));
+    padding-right: max(20px, env(safe-area-inset-right));
+  }
+  .field-app {
+    padding-top: env(safe-area-inset-top);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+@media (display-mode: standalone) and (max-width: 767px) {
+  .field-bottom-nav {
+    padding-left: max(8px, env(safe-area-inset-left));
+    padding-right: max(8px, env(safe-area-inset-right));
+  }
+  .field-modal:not(.field-side-panel):not(.workspace-confirm-dialog)[open] {
+    max-height: min(85dvh, calc(100dvh - env(safe-area-inset-top)));
+  }
+  .field-modal > header,
+  .workspace-dialog-body,
+  .workspace-dialog-footer {
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+  }
+}
