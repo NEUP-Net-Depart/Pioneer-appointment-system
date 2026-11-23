@@ -171,11 +171,12 @@ test('suggestions balance ordinary members, exclude leaders and occupied members
   const input = { weekStart, campusId, people, availability, paused: ['2026-11-12'] };
   const result = suggestDuties(input);
   assert.deepEqual(result, suggestDuties(input));
-  assert.equal(result.assignments.length, 5);
+  assert.equal(result.assignments.length, 4);
   assert.equal(new Set(result.assignments.map((row) => row.memberId)).size, 4);
-  assert.deepEqual(result.gaps.map((row) => [row.businessDate, row.dutyType]), [
-    ['2026-11-11', 'repair']
+  assert.deepEqual(result.gaps.filter((row) => row.dutyType === 'repair').map((row) => row.businessDate), [
+    '2026-11-11'
   ], 'office coverage must not conceal a missing repair shift');
+  assert.equal(result.gaps.filter((row) => row.dutyType === 'office').length, 1);
   assert.equal(result.assignments.find((row) => row.memberId === 'b').businessDate, '2026-11-09');
   assert.equal(result.assignments.find((row) => row.memberId === 'a').businessDate, '2026-11-10');
   assert.ok(
@@ -336,6 +337,19 @@ test('unfilled repair members are assigned with explicit conflicts and remain vi
   const published = await publish(staff, head, [], [shift(office.memberId)]);
   assert.ok(published.warnings.some((message) => message.includes(`${weekStart}尚未安排维修值班`)));
   assert.ok(published.warnings.some((message) => message.includes(worker.name) && message.includes('未填写统计表')));
+});
+
+test('suggestions explain why a required member cannot be scheduled and leave persisted shifts intact', async (t) => {
+  const { db, staff, head, worker } = await setup(t);
+  const current = await publish(staff, head, [shift(worker.memberId)]);
+  const excluded = [0, 1, 2, 3].map((offset) => ({
+    memberId: worker.memberId,
+    businessDate: addDays(weekStart, offset),
+    dutyType: 'repair'
+  }));
+  await rejectWithoutWrite(db, () => staff.rosterSuggestions(head, {
+    weekStart, campusId, sourceVersion: current.sourceVersion, assignments: [], excluded
+  }), { status: 409, message: /本周没有可安排的班次/ });
 });
 
 test('leave storage and actions are removed while roster coverage and direct office check-in remain usable', async (t) => {

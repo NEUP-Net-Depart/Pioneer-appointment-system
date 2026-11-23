@@ -656,7 +656,7 @@ export function DutyPlanner({ campusId, onDirtyChange, onNavigate, campusControl
               <h2 className="workspace-title-with-hint">
                 安排一周值班
                 <HelpHint data-track="staff.dutyplanner.helphint.14" label="班表生成规则">
-                  硬件部员每周一天，维修每日人数差不超过2人，尽量避开空闲冲突。办公按当天空闲安排，每天最多一人，缺人可留空。
+                  优先补齐办公值班。每人每周最多一班，硬件部员每周一天。维修人数最多相差两人，尽量避开空闲冲突。
                 </HelpHint>
               </h2>
               {data && (

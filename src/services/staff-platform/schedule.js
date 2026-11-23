@@ -446,6 +446,7 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
     });
     assertNoOverlap(kept.filter((row) => !data.paused.includes(row.businessDate)));
     const result = suggestDuties({ ...data, kept, excluded });
+    if (!result.optimization.complete) fail(409, result.optimization.reason);
     return { ...result, sourceVersion: await tokenDigest(data.snapshot) };
   }
   async function publishCampusWeek(actor, input) {
