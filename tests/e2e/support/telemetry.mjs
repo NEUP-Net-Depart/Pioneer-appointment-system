@@ -20,7 +20,8 @@ export async function collectTelemetry(page) {
     release: 'abcdef12',
     posthog: {
       token: 'phc_e2e',
-      host: 'https://us.i.posthog.com',
+      host: 'https://t.ptroc.cn',
+      uiHost: 'https://us.posthog.com',
       replay: true,
       replaySampleRate: 1
     }
@@ -60,7 +61,7 @@ export async function collectTelemetry(page) {
       });
     }
   );
-  await page.route(/^https:\/\/(?:us|eu)(?:-assets)?\.i\.posthog\.com\//, async (route) => {
+  await page.route(/^https:\/\/(?:t\.ptroc\.cn|(?:us|eu)(?:-assets)?\.i\.posthog\.com)\//, async (route) => {
     const request = route.request(),
       url = new URL(request.url());
     const headers = {

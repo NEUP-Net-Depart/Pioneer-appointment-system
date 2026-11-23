@@ -8,6 +8,7 @@ import { editableMember, delegableRole } from './delegation.js';
 import { memberImportDomain } from './member-import.js';
 import { positionsFor, globalLeadershipPositions } from '../../../shared/staff-organization.js';
 import { NEU_COLLEGES } from '../../../shared/neu-colleges.js';
+import { dutyCampusNames } from '../../../shared/duty.js';
 
 export function membersDomain({ repository, platform, contextFor, evaluate }) {
   const { importMembers, createMember } = memberImportDomain({ repository, contextFor, evaluate });
@@ -45,6 +46,12 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
 
   function memberCursor(member) {
     return encodeURIComponent(JSON.stringify([member.name, member.memberId]));
+  }
+
+  function canManageGlobalAppointments(context) {
+    return Object.keys(dutyCampusNames).every(
+      (campusId) => evaluate(context, 'members.manage', { campusId }).allowed
+    );
   }
 
   function canReadMemberAudit(context, member, memberships) {
@@ -188,6 +195,14 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
     return {
       actions: {
         edit: editable,
+        editableHomeCampuses: editable
+          ? Object.keys(dutyCampusNames).filter(
+              (campusId) =>
+                evaluate(context, 'members.manage', memberTarget(target, memberships, { campusId }))
+                  .allowed
+            )
+          : [],
+        assignGlobalLeadership: editable && canManageGlobalAppointments(context),
         editSpecialIdentities: editable && context.actor.role === 'superadmin',
         readAudit: canReadMemberAudit(context, target, memberships),
         editRoles:
@@ -409,9 +424,7 @@ export function membersDomain({ repository, platform, contextFor, evaluate }) {
     };
     if (
       globalLeadershipPositions.includes(input.positionCode) &&
-      !['campus-nanhu', 'campus-hunnan'].every(
-        (campusId) => evaluate(context, 'members.manage', { campusId }).allowed
-      )
+      !canManageGlobalAppointments(context)
     )
       fail(403, '跨校区管理任职须由具有全部校区管理范围的负责人设置');
     const existing = await repository.listMemberships(memberId);

@@ -543,7 +543,7 @@ test('source map service failures never block publication and maps are always re
           enabled: scenario !== 'disabled',
           environment: 'preview',
           release: 'abcdef12',
-          posthog: { host: 'https://us.i.posthog.com' }
+          posthog: { host: 'https://t.ptroc.cn', uiHost: 'https://us.posthog.com' }
         },
         credentials,
         (_binary, args) => {

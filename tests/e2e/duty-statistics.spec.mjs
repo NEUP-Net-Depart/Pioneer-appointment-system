@@ -45,21 +45,49 @@ test('unified availability offers four weekdays with accessible mobile controls'
 test.describe('single check-in confirmation and scheduling review', () => {
   test.use({ workflowTime: '2026-10-15T11:10:00Z' });
 
-  test('QR confirmation reminds an unfilled repair member without a form or a second result dialog', async ({ page, context }) => {
-    await loginStaff(page, '20261001');
-    await staffApi(page, '/api/attendance/self-check-in', { campusId: 'campus-nanhu', requestId: crypto.randomUUID() });
-    const event = await staffApi(page, '/api/attendance/events', { campusId: 'campus-nanhu', type: 'duty', requestId: crypto.randomUUID() });
+  async function attendanceImage(page, campusId) {
+    await staffApi(page, '/api/attendance/self-check-in', { campusId, requestId: crypto.randomUUID() });
+    const event = await staffApi(page, '/api/attendance/events', { campusId, type: 'duty', requestId: crypto.randomUUID() });
     const credential = await staffApi(page, `/api/attendance/events/${event.id}/token`, { revision: event.revision });
     const bytes = await page.evaluate(async (token) => {
       const { qrImage } = await import('/shared/zxing.js');
       const image = await qrImage(token);
       return Array.from(new Uint8Array(await image.arrayBuffer()));
     }, credential.token);
+    return { name: 'attendance.png', mimeType: 'image/png', buffer: Buffer.from(bytes) };
+  }
+
+  test('wrong-campus QR stays in the dialog and a local QR can be rescanned @smoke @mobile-smoke', async ({ page, context }) => {
+    await loginStaff(page);
+    const wrongCampus = await attendanceImage(page, 'campus-hunnan');
+    const issuer = await context.newPage();
+    await loginStaff(issuer, '20261001');
+    const localCampus = await attendanceImage(issuer, 'campus-nanhu');
     const member = await context.newPage();
     await loginStaff(member, '20261003');
     await staffPage(member, '今日工作');
     await member.getByRole('button', { name: '扫码', exact: true }).click();
-    await member.getByLabel('相册识别', { exact: true }).setInputFiles({ name: 'attendance.png', mimeType: 'image/png', buffer: Buffer.from(bytes) });
+    const album = member.getByLabel('相册识别', { exact: true });
+    await album.setInputFiles(wrongCampus);
+    const confirmation = member.getByRole('dialog', { name: '确认到岗信息', exact: true });
+    await expect(confirmation.getByRole('alert')).toHaveText('你没有该校区的签到权限');
+    await expect(confirmation.getByRole('button', { name: '确认签到', exact: true })).toHaveCount(0);
+    await expect(member.getByRole('button', { name: '重新加载工作区', exact: true })).toHaveCount(0);
+    await confirmation.getByRole('button', { name: '重新扫码', exact: true }).click();
+    await album.setInputFiles(localCampus);
+    await confirmation.getByRole('button', { name: '确认签到', exact: true }).click();
+    await expect(member.getByRole('dialog')).toHaveCount(0);
+    await expect(member.getByRole('region', { name: '工作视窗' }).getByText('已签到', { exact: true })).toBeVisible();
+  });
+
+  test('QR confirmation reminds an unfilled repair member without a form or a second result dialog', async ({ page, context }) => {
+    await loginStaff(page, '20261001');
+    const image = await attendanceImage(page, 'campus-nanhu');
+    const member = await context.newPage();
+    await loginStaff(member, '20261003');
+    await staffPage(member, '今日工作');
+    await member.getByRole('button', { name: '扫码', exact: true }).click();
+    await member.getByLabel('相册识别', { exact: true }).setInputFiles(image);
     const confirmation = member.getByRole('dialog', { name: '确认到岗信息', exact: true });
     await expect(confirmation).toBeVisible();
     await expect(member.getByRole('dialog')).toHaveCount(1);

@@ -56,6 +56,7 @@ export function createTelemetryClient({
           if (disposed) return;
           loaded.init(config.posthog.token, {
             api_host: config.posthog.host,
+            ui_host: config.posthog.uiHost,
             defaults: '2026-08-30',
             autocapture: config.interactions !== false,
             capture_pageview: false,
@@ -199,6 +200,7 @@ export function createTelemetryClient({
     // A blocked analytics script is not an application resource failure.
     if (
       resource.includes('/assets/posthog.js') ||
+      resource.startsWith(`${config.posthog?.host}/`) ||
       /^https:\/\/(?:us|eu)(?:-assets)?\.i\.posthog\.com\//.test(resource)
     )
       return;

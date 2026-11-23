@@ -2,6 +2,7 @@ import { Select } from './SelectionControls.jsx';
 import React from 'react';
 import {
   additionalMembershipLabels,
+  globalLeadershipPositions,
   positionsFor,
   positionLabels
 } from '../../shared/staff-organization.js';
@@ -10,10 +11,16 @@ export function DepartmentAppointmentFields({
   value,
   onChange,
   departments,
+  allowGlobalLeadership = true,
   required = false,
   emptyLabel = '暂不设置'
 }) {
-  const unit = departments.find((item) => item.id === value.departmentId);
+  const availablePositions = (unit) =>
+    positionsFor(unit).filter(
+      (code) => allowGlobalLeadership || !globalLeadershipPositions.includes(code)
+    );
+  const availableDepartments = departments.filter((item) => availablePositions(item).length > 0);
+  const unit = availableDepartments.find((item) => item.id === value.departmentId);
   return (
     <div className="react-form-grid">
       <label>
@@ -23,16 +30,16 @@ export function DepartmentAppointmentFields({
           required={required}
           value={value.departmentId}
           onChange={(event) => {
-            const next = departments.find((item) => item.id === event.target.value);
+            const next = availableDepartments.find((item) => item.id === event.target.value);
             onChange({
               ...value,
               departmentId: event.target.value,
-              positionCode: positionsFor(next)[0]
+              positionCode: availablePositions(next)[0]
             });
           }}
         >
           <option value="">{required ? '请选择部门' : emptyLabel}</option>
-          {departments.map((item) => (
+          {availableDepartments.map((item) => (
             <option key={item.id} value={item.id}>
               {item.name}
             </option>
@@ -47,7 +54,7 @@ export function DepartmentAppointmentFields({
           value={value.positionCode}
           onChange={(event) => onChange({ ...value, positionCode: event.target.value })}
         >
-          {positionsFor(unit).map((code) => (
+          {availablePositions(unit).map((code) => (
             <option key={code} value={code}>
               {positionLabels[code]}
             </option>
