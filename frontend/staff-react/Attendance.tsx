@@ -1,8 +1,8 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
-import React, { useContext } from 'react';
+import { useContext } from 'react';
 import { ActivityContext, Notice, time } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
-import { RefreshButton } from './WorkspaceToolbar.jsx';
+import { RefreshButton } from './WorkspaceToolbar.tsx';
 
 type Record = {
   id: string;
@@ -30,8 +30,8 @@ export function Attendance({
     enabled: routeActive,
     initialPageParam: '',
     getNextPageParam: (page) => page.nextCursor || undefined,
-    staleTime: (query) => (query.state.data?.pages.length > 1 ? 120000 : 30000),
-    refetchInterval: (query) => (query.state.data?.pages.length > 1 ? 120000 : 30000)
+    staleTime: (query) => ((query.state.data?.pages.length ?? 0) > 1 ? 120000 : 30000),
+    refetchInterval: (query) => ((query.state.data?.pages.length ?? 0) > 1 ? 120000 : 30000)
   });
   const items = [
     ...new Map(

@@ -2,15 +2,15 @@ import { DataValue } from '../DataValue';
 import { Modal, Notice, CredentialCard, Scanner, time } from './ui';
 import { Repair } from './Repair';
 import { Registration } from './Registration';
-import type { Home } from './types';
+import type { FieldNavigationProps, Home } from './types';
 import { WorkspaceHeader } from '../WorkspaceHeader';
 import { CheckInDialog } from './CheckInDialog';
 import { useFieldWorkspace } from './useFieldWorkspace';
 import { TodayScene } from './TodayScene';
 import { PersonalScene } from './PersonalScene';
 import { AttendanceActions } from './AttendanceActions';
-import { CampusScope } from '../CampusScope.jsx';
-import { RefreshButton } from '../WorkspaceToolbar.jsx';
+import { CampusScope } from '../CampusScope.tsx';
+import { RefreshButton } from '../WorkspaceToolbar.tsx';
 import './field.css';
 import { TodayWorkWindow } from './TodayWorkWindow';
 export function FieldApp({
@@ -23,15 +23,12 @@ export function FieldApp({
   active = true,
   onLogout,
   onPeople
-}: {
+}: FieldNavigationProps & {
   initial: Home;
-  workspaceLinks?: { id: string; label: string; group?: string }[];
   requestedScene?: string | null;
   onSceneChange?: (scene: string) => void;
   onContextChange?: (resource: string, campusId: string) => void;
   active?: boolean;
-  onLogout: () => void;
-  onNavigate: (view: string) => void;
   onPeople?: (campusId: string, kind: string) => void;
 }) {
   const {
@@ -60,13 +57,10 @@ export function FieldApp({
     campusName
   } = useFieldWorkspace({
     initial,
-    onNavigate,
-    workspaceLinks,
     requestedScene,
     onSceneChange,
     onContextChange,
-    active,
-    onLogout
+    active
   });
   return (
     <>
@@ -125,7 +119,7 @@ export function FieldApp({
             }))}
             value={campus}
             disabled={busy}
-            onChange={(id) => {
+            onChange={(id: string) => {
               setCampus(id);
             }}
           />
@@ -136,7 +130,7 @@ export function FieldApp({
               data || {
                 ...initial,
                 campusId: campus,
-                attendance: initial.campusId === campus ? initial.attendance : undefined
+                attendance: initial.campusId === campus ? initial.attendance : null
               }
             }
             busy={busy || !data}
@@ -190,7 +184,7 @@ export function FieldApp({
                 campusId: campus,
                 repairs: [],
                 pendingPhotos: [],
-                attendance: undefined
+                attendance: null
               }
             }
           />

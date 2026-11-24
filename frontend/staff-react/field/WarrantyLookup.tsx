@@ -1,5 +1,11 @@
-import { track } from '../../../shared/telemetry-client.js';
-import { Select } from '../SelectionControls.jsx';
+import type {
+  WarrantyChallenge as Captcha,
+  WarrantyProvider as Provider,
+  WarrantyResult as Result,
+  WarrantyStatus
+} from '../../../shared/warranty.ts';
+import { track } from '../../../shared/telemetry-client.ts';
+import { Select } from '../SelectionControls.tsx';
 import { useContext, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Camera, ChevronUp, Images } from 'lucide-react';
@@ -11,55 +17,14 @@ import {
   deviceSerialCandidatesFromText,
   warrantyOfficialDestination,
   warrantyConsumerChannel
-} from '../../../shared/warranty.js';
+} from '../../../shared/warranty.ts';
 import { ActivityContext, Modal, Notice, api } from './ui';
 import { SerialOcr } from './SerialOcr';
 import './warranty.css';
 import { useRepairTools } from '../RepairTools';
 
-type WarrantyStatus = 'unknown' | 'in_warranty' | 'expired';
 type Props = { initialBrand?: string; onUseStatus?: (status: WarrantyStatus) => void };
-type Provider = {
-  id: string;
-  available: boolean;
-  mode?: 'automatic' | 'captcha';
-  message: string;
-  captchaOrigin?: string;
-};
-type Widget = {
-  origin: string;
-  type: number;
-  lang: string;
-  challenge: string;
-  hcg: string;
-  hct: string;
-  nonce: string;
-};
-type Captcha = {
-  brand: string;
-  serial: string;
-  image?: string;
-  widget?: Widget;
-  token: string;
-  expiresAt: string;
-};
 type AlbumResult = { source: 'scan' | 'ocr'; candidates: string[]; raw: string };
-type Result = {
-  brand: string;
-  serial: string;
-  outcome: 'found' | 'not_found';
-  status: WarrantyStatus;
-  checkedAt: string;
-  source: { name: string; url: string };
-  note: string;
-  services: {
-    name: string;
-    category: string;
-    start: string;
-    end: string;
-    status: WarrantyStatus | 'pending';
-  }[];
-};
 const statusLabels = {
   unknown: '暂无法确认',
   in_warranty: '有效期内',
@@ -282,7 +247,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
     setAlbumResult(null);
     setAlbumNotice('正在扫描图片…');
     try {
-      const { inspectDeviceImage } = await import('./scanner.js');
+      const { inspectDeviceImage } = await import('./scanner.ts');
       const scanned = await inspectDeviceImage(file, current);
       if (!current()) return false;
       if (scanned.candidates.length === 1) {
@@ -304,7 +269,7 @@ function WarrantyLookup({ initialBrand, onUseStatus, onClose }: Props & { onClos
         return true;
       }
       setAlbumNotice('正在识别标签文字…');
-      const { recognizeSerialPhoto } = await import('./serial-ocr.js');
+      const { recognizeSerialPhoto } = await import('./serial-ocr.ts');
       if (!current()) return false;
       const recognized = await recognizeSerialPhoto(file, {
         signal: controller.signal,
@@ -714,7 +679,7 @@ function HumanWarrantyWidget({
   onProof,
   onError
 }: {
-  widget: Widget;
+  widget: NonNullable<Captcha['widget']>;
   onProof: (proof: string) => void;
   onError: () => void;
 }) {

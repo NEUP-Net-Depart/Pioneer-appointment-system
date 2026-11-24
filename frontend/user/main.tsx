@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { hydrateRoot } from 'react-dom/client';
-import { reportClientError, trackPage } from '../../shared/telemetry-client.js';
+import { reportClientError, trackPage } from '../../shared/telemetry-client.ts';
 import { AgreementDialog } from './AgreementDialog';
 import { BookingNoticeDialog } from './BookingNotices';
 import { BookingView } from './BookingView';

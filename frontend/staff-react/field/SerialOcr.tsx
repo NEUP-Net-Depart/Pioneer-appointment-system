@@ -1,5 +1,5 @@
 import { useContext, useEffect, useRef, useState } from 'react';
-import { deviceSerialCandidatesFromText } from '../../../shared/warranty.js';
+import { deviceSerialCandidatesFromText } from '../../../shared/warranty.ts';
 import { ActivityContext, Notice, Scanner } from './ui';
 
 export function SerialOcr({
@@ -70,7 +70,7 @@ export function SerialOcr({
       60000
     );
     try {
-      const { recognizeSerialPhoto } = await import('./serial-ocr.js');
+      const { recognizeSerialPhoto } = await import('./serial-ocr.ts');
       if (controller.signal.aborted) throw new DOMException('Canceled', 'AbortError');
       const result = await recognizeSerialPhoto(file, {
         signal: controller.signal,

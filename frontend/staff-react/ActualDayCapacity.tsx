@@ -1,0 +1,207 @@
+import type { CampusEditorProps } from './management-types.ts';
+
+interface ActualCapacityDto {
+  source: 'snapshot' | 'template';
+  items: { timeSlot: string; capacity: number; occupied: number }[];
+  staffing: Record<string, number> | null;
+}
+import { DatePicker } from './SelectionControls.tsx';
+import { RefreshButton } from './WorkspaceToolbar.tsx';
+import { HelpHint } from './HelpHint';
+import { DataValue } from './DataValue';
+import { TIME_SLOTS } from '../../shared/constants.ts';
+import { useContext, useState } from 'react';
+import { addDays, dateKey } from '../../shared/time.ts';
+import { ActivityContext, Notice } from './field/ui';
+import { useQuery } from '@tanstack/react-query';
+
+export function ActualDayCapacity({ campus, onNavigate }: CampusEditorProps) {
+  const active = useContext(ActivityContext);
+  const [date, setDate] = useState(dateKey());
+  const result = useQuery<ActualCapacityDto>({
+    queryKey: ['/api/slot-capacities/actual', { campus, date }],
+    enabled: active && !!date
+  });
+  const data = result.data;
+  const loading = result.isPending;
+  const error = result.error?.message;
+
+  return (
+    <section className="field-card capacity-actual" aria-busy={loading}>
+      <div className="capacity-section-heading">
+        <div>
+          <h2>日期实际容量</h2>
+        </div>
+        <RefreshButton
+          data-track="staff.actualdaycapacity.button.1"
+          key={`${campus}:${date}`}
+          disabled={!date}
+          onRefresh={() => result.refetch({ throwOnError: true })}
+          label="刷新当日容量"
+          compactOnMobile
+        />
+      </div>
+      <div className="capacity-actual-date">
+        <label>
+          查看日期
+          <DatePicker
+            data-track="staff.actualdaycapacity.input.2"
+            value={date}
+            onChange={(event) => setDate(event.target.value)}
+          />
+        </label>
+        <div className="capacity-date-shortcuts" role="group" aria-label="快捷查看日期">
+          {[0, 1, 2, 3].map((offset) => {
+            const day = addDays(dateKey(), offset);
+            return (
+              <button
+                data-track="staff.actualdaycapacity.button.3"
+                key={day}
+                aria-pressed={date === day}
+                onClick={() => setDate(day)}
+              >
+                {offset === 0 ? '今天' : day.slice(5).replace('-', '/')}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <Notice>{error}</Notice>
+      {error && (
+        <button data-track="staff.actualdaycapacity.button.4" onClick={() => result.refetch()}>
+          重试
+        </button>
+      )}
+      {!date && <p className="workspace-update">请选择日期。</p>}
+      {date && (
+        <>
+          <div className="capacity-source">
+            <span>
+              容量来源：
+              <DataValue label="容量来源" pending={loading}>
+                {data
+                  ? data.source === 'snapshot'
+                    ? date < dateKey()
+                      ? '历史日期容量'
+                      : '当日实际容量'
+                    : '使用每周容量规则'
+                  : null}
+              </DataValue>
+            </span>
+            {data && date < dateKey() && data.source !== 'snapshot' && (
+              <p data-motion-value="text">
+                该历史日期没有保存服务日容量，以下按当前每周规则展示，仅供参考。
+              </p>
+            )}
+          </div>
+          <div className="capacity-actual-layout">
+            <div>
+              <h3 className="workspace-title-with-hint">
+                预约名额
+                <HelpHint data-track="staff.actualdaycapacity.helphint.6" label="名额计算规则">
+                  已占用名额包含已完成、已过期预约；取消预约释放名额。现场临时登记不占用预约名额。已占用达到或超过容量时停止新增预约，低于容量后恢复放号。
+                </HelpHint>
+              </h3>
+              {!data || data.items.length ? (
+                <table className="capacity-actual-slots" aria-label="各时段预约名额">
+                  <thead>
+                    <tr>
+                      <th scope="col">到场时段</th>
+                      <th scope="col">名额</th>
+                      <th scope="col">已占用</th>
+                      <th scope="col">剩余</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(
+                      data?.items ||
+                      TIME_SLOTS.map((timeSlot) => ({
+                        timeSlot,
+                        capacity: undefined,
+                        occupied: undefined
+                      }))
+                    ).map((item) => (
+                      <tr data-motion-item="" key={item.timeSlot}>
+                        <th scope="row">{item.timeSlot}</th>
+                        <td>
+                          <DataValue label={`${item.timeSlot}名额`} pending={loading}>
+                            {item.capacity}
+                          </DataValue>
+                        </td>
+                        <td>
+                          <DataValue label={`${item.timeSlot}已占用`} pending={loading}>
+                            {item.occupied}
+                          </DataValue>
+                        </td>
+                        <td>
+                          <strong>
+                            <DataValue label={`${item.timeSlot}剩余`} pending={loading}>
+                              {item.capacity !== undefined && item.occupied !== undefined
+                                ? Math.max(0, item.capacity - item.occupied)
+                                : null}
+                            </DataValue>
+                          </strong>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="field-muted">此日期没有配置预约时段。</p>
+              )}
+            </div>
+            <div className="capacity-staffing">
+              <h3 className="workspace-title-with-hint">
+                工作人员
+                <HelpHint data-track="staff.actualdaycapacity.helphint.7" label="出勤计算口径">
+                  按已发布班次去重；实际到岗以签到记录为准。
+                </HelpHint>
+              </h3>
+              {!data ? (
+                <>
+                  <p data-motion-value="text" className="field-muted">
+                    预计出勤
+                  </p>
+                  <div className="capacity-staffing-list">
+                    {['维修排班', '办公排班'].map((label) => (
+                      <div data-motion-item="" className="capacity-staffing-row" key={label}>
+                        <span data-motion-value="text">{label}</span>
+                        <DataValue label={label} pending={loading} />
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : data.staffing ? (
+                <>
+                  <p data-motion-value="text" className="field-muted">
+                    预计出勤
+                  </p>
+                  <div className="capacity-staffing-list">
+                    {Object.entries(data.staffing).map(([type, count]) => (
+                      <div data-motion-item="" className="capacity-staffing-row" key={type}>
+                        <span data-motion-value="text">
+                          {type === 'repair' ? '维修排班' : '办公排班'}
+                        </span>
+                        <strong data-motion-value="number">{count} 人</strong>
+                        {onNavigate && (
+                          <button
+                            data-track="staff.actualdaycapacity.button.5"
+                            onClick={() => onNavigate?.('duties')}
+                          >
+                            {type === 'repair' ? '查看维修排班' : '查看办公排班'}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p className="field-muted">人员安排请在有权限的排班管理页查看。</p>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}

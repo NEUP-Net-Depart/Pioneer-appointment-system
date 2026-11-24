@@ -1,0 +1,24 @@
+import type { Route } from './route.ts';
+import { fail, json, securityHeaders } from '../lib/http.ts';
+import { readAttachment } from '../lib/attachment-input.ts';
+
+export const attachmentRoutes: Route[] = [
+  ['POST', /^\/api\/appointments\/([^/]+)\/attachments(?:\/([^/]+))?$/, async (context, match: string[]) => {
+    await context.limit('upload');
+    if (match[2]) fail(405, '此路径不支持上传');
+    const input = await readAttachment(context.request);
+    const result = await context.services.attachments.upload(decodeURIComponent(match[1]),input,await context.authenticate(),context.accessToken);
+    return json(result, 201);
+  }],
+  ['GET', /^\/api\/appointments\/([^/]+)\/attachments$/, async (context, match: string[]) => {
+    await context.limit('lookup');
+    return json(await context.services.attachments.list(decodeURIComponent(match[1]),await context.authenticate(),context.accessToken));
+  }],
+  ['GET', /^\/api\/appointments\/([^/]+)\/attachments\/([^/]+)$/, async (context, match: string[]) => {
+    await context.limit('lookup');
+    const file = await context.services.attachments.download(decodeURIComponent(match[1]),decodeURIComponent(match[2]),await context.authenticate(),context.accessToken);
+    // R2 supplies a native WHATWG byte stream. Worker and DOM declarations differ on completed reads.
+    return new Response(file.body as BodyInit, { headers: { ...securityHeaders, 'Cache-Control': 'private, max-age=300', 'Content-Type': file.metadata.mimeType, 'Content-Length': String(file.size),
+      'Content-Disposition': `attachment; filename="attachment"; filename*=UTF-8''${encodeURIComponent(file.metadata.filename)}` } });
+  }]
+];

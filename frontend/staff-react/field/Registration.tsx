@@ -1,16 +1,18 @@
-import { Select } from '../SelectionControls.jsx';
+import type { SignatureDocument } from '../../../shared/appointment-types.ts';
+import type { Query } from '@tanstack/react-query';
+import { Select } from '../SelectionControls.tsx';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Appointment } from './types';
 import React, { useEffect, useRef, useState } from 'react';
-import { validSignature } from '../../../shared/signature.js';
-import { createSignaturePad } from '../../../shared/signature-pad.js';
+import { validSignature } from '../../../shared/signature.ts';
+import { createSignaturePad } from '../../../shared/signature-pad.ts';
 import { api, Modal, Notice } from './ui';
 import {
   ANSWERS,
   STUDENT_DEVICE_TYPES,
   FAULT_TYPES,
   bookingDeviceQuestions
-} from '../../../shared/student-booking.js';
+} from '../../../shared/student-booking.ts';
 
 export function Registration({
   campus,
@@ -38,23 +40,25 @@ export function Registration({
     faultType: '系统问题',
     ...(parent
       ? Object.fromEntries(
-          [
-            'name',
-            'studentId',
-            'social',
-            'phone',
-            'email',
-            'contactType',
-            'contactValue',
-            'brand',
-            'deviceModel',
-            'deviceType',
-            'faultType',
-            'issue',
-            'warranty',
-            'liquidMetal',
-            'dellG15'
-          ].map((key) => [key, parent[key] || ''])
+          (
+            [
+              'name',
+              'studentId',
+              'social',
+              'phone',
+              'email',
+              'contactType',
+              'contactValue',
+              'brand',
+              'deviceModel',
+              'deviceType',
+              'faultType',
+              'issue',
+              'warranty',
+              'liquidMetal',
+              'dellG15'
+            ] as const
+          ).map((key) => [key, parent[key] || ''])
         )
       : {})
   });
@@ -62,7 +66,7 @@ export function Registration({
     form.deviceType === '笔记本电脑' ? '笔记本' : form.deviceType,
     form.brand
   );
-  const signature = useRef(null),
+  const signature = useRef<SignatureDocument | null>(null),
     pad = useRef<ReturnType<typeof createSignaturePad> | null>(null),
     canvas = useRef<HTMLCanvasElement>(null),
     requestId = useRef(crypto.randomUUID());
@@ -116,7 +120,7 @@ export function Registration({
         }
       });
       const affected = {
-        predicate: (query) =>
+        predicate: (query: Query) =>
           [
             '/api/appointments',
             '/api/appointments/counts',

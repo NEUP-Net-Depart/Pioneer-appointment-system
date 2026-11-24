@@ -115,14 +115,14 @@ Git 仅保存通用 SQL、工具及虚构测试数据。真实姓名、学号、
 
 ```powershell
 npx wrangler d1 export DB --remote --config wrangler.jsonc --output C:/Pioneer-private/production.sql
-node scripts/rehearse-preview.mjs --snapshot C:/Pioneer-private/production.sql --input C:/Pioneer-private/production-decisions.json
-node scripts/prepare-staff-cutover.mjs --input C:/Pioneer-private/production-decisions.json
+node scripts/rehearse-preview.ts --snapshot C:/Pioneer-private/production.sql --input C:/Pioneer-private/production-decisions.json
+node scripts/prepare-staff-cutover.ts --input C:/Pioneer-private/production-decisions.json
 ```
 
 准备工具逐人校验身份、完整性、职位、日期、校区及授权模板，并在本地验证转换。输出只有汇总；真实输入文件和生成 SQL 均拒绝写入仓库内。核对无误、提交干净且明确授权后，从本机暂存目标环境的决定：
 
 ```powershell
-node scripts/prepare-staff-cutover.mjs --input C:/Pioneer-private/production-decisions.json --execute --approve-production
+node scripts/prepare-staff-cutover.ts --input C:/Pioneer-private/production-decisions.json --execute --approve-production
 ```
 
 暂存只写入一次性输入表，不改变有效权限。决定绑定环境、数据库、迁移文件哈希及准备时的人员授权状态，可以提前准备并跨日上线；人员或权限变化须重新准备。CI 直接在目标 D1 内核对映射完整性、目标和版本，只接收就绪标志与汇总数量，不导出 Production 或 Preview 快照。本机准备时完成完整迁移演练；0041 结构已就绪时 CI 还会预检源状态，生产旧链由先行历史迁移补齐结构，0042 始终在同一事务内重查源状态及全部授权边界。
@@ -137,7 +137,7 @@ node scripts/prepare-staff-cutover.mjs --input C:/Pioneer-private/production-dec
 
 升级到 v1.2 时，必须在停写窗口依次执行 0044–0049，再发布对应应用；值班简化版本还要求追加0050。功能分支不迁移共享 Preview；没有新 schema 时发布仍被就绪检查阻止。不能将旧应用直接回退到新 schema；需要恢复时先核对维护窗口后的新增数据，使用成对备份或追加修复迁移。
 
-迁移前保存数据库、附件和密钥，记录预约、附件、签到、人员、审计与旧排班行数。先在仓库外的私有本地副本执行 `rehearse-preview.mjs`，保留只含汇总的验证结果。0042 若尚未执行，沿用上一节的一次性人员确认前提；0047 随后删除旧维修工作权限包，不为新系统配置维修资格。
+迁移前保存数据库、附件和密钥，记录预约、附件、签到、人员、审计与旧排班行数。先在仓库外的私有本地副本执行 `rehearse-preview.ts`，保留只含汇总的验证结果。0042 若尚未执行，沿用上一节的一次性人员确认前提；0047 随后删除旧维修工作权限包，不为新系统配置维修资格。
 
 迁移后检查 [release-checks.sql](release-checks.sql)、外键、`duty-workflow-0050` 就绪标记及核查表结构、归档处置数量，以及在修主修和照片引用。已排期返修关联原单，未安排申请明确归档；全部旧排班 ID 保留，只有原已发布班次生效。0050不回填签到或核查结论，不批量改写特殊时段。不会删除历史预约、维修、照片、签到、人员或审计，也不根据新流程补造历史结果。
 

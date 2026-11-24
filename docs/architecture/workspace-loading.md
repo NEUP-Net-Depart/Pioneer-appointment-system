@@ -1,6 +1,6 @@
 # React 管理端查询
 
-管理端直接使用 TanStack Query 的 `useQuery`、`useInfiniteQuery`、`useMutation` 和 QueryClient API。`query-client.js` 只配置默认请求函数及生命周期策略；传输层 `request` 不处理缓存或失效。
+管理端直接使用 TanStack Query 的 `useQuery`、`useInfiniteQuery`、`useMutation` 和 QueryClient API。`query-client.ts` 只配置默认请求函数及生命周期策略；传输层 `request` 不处理缓存或失效。
 
 ## 会话和查询键
 
@@ -20,8 +20,8 @@
 - 表单只保留用户草稿及开始编辑时的版本号。后台数据不覆盖草稿，提交不采用后台更新后的版本号。
 - 优先显示已有数据，首次加载沿用简洁指示。不使用骨架屏，不展示后台刷新或缓存状态文案。
 
-回归使用 `tests/e2e/records-loading.spec.mjs` 和 `tests/e2e/core-workflow.spec.mjs`，覆盖分页、失败保留、取消竞态、会话隔离及业务写入。
+回归使用 `tests/e2e/records-loading.spec.ts` 和 `tests/e2e/core-workflow.spec.ts`，覆盖分页、失败保留、取消竞态、会话隔离及业务写入。
 
-数据容器的向下展开使用视觉遮罩，不以 `clip-path` 裁剪包含按钮的点击区域；动效结束后显式释放动画。人员列表的移动布局与底栏统一采用 767px 断点，详情按钮滚动定位时为固定底栏保留安全距离。`tests/e2e/member-identities.spec.mjs` 通过动效进行中的真实鼠标点击和跨断点命中检查覆盖这些交互。
+数据容器的向下展开使用视觉遮罩，不以 `clip-path` 裁剪包含按钮的点击区域；动效结束后显式释放动画。人员列表的移动布局与底栏统一采用 767px 断点，详情按钮滚动定位时为固定底栏保留安全距离。`tests/e2e/member-identities.spec.ts` 通过动效进行中的真实鼠标点击和跨断点命中检查覆盖这些交互。
 
 TanStack 官方参考：[默认行为](https://tanstack.com/query/latest/docs/framework/react/guides/important-defaults)、[请求取消](https://tanstack.com/query/latest/docs/framework/react/guides/query-cancellation)、[无限列表](https://tanstack.com/query/latest/docs/framework/react/guides/infinite-queries)。

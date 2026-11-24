@@ -1,15 +1,17 @@
 import { WorkspaceIcon } from '../WorkspaceIcon';
 import { PersonalProfile } from './PersonalProfile';
-import type { useFieldWorkspace } from './useFieldWorkspace';
-type Props = Pick<
-  ReturnType<typeof useFieldWorkspace> & Parameters<typeof useFieldWorkspace>[0],
-  'initial' | 'onNavigate' | 'workspaceLinks' | 'onLogout' | 'data'
->;
-export function PersonalScene({ initial, onNavigate, workspaceLinks, onLogout, data }: Props) {
+import type { FieldNavigationProps, Home } from './types';
+export function PersonalScene({
+  initial,
+  onNavigate,
+  workspaceLinks = [],
+  onLogout,
+  data
+}: FieldNavigationProps & { initial: Home; data: Home }) {
   return (
     <div className="field-work-grid personal-workspace">
       <section className="field-card personal-schedule">
-        <PersonalProfile initialName={initial.actor.name} identities={data.identities} />
+        <PersonalProfile initialName={initial.actor.name} identities={data.identities ?? []} />
         {workspaceLinks.some((entry) => entry.id === 'duties') && (
           <>
             <h3>今日安排</h3>

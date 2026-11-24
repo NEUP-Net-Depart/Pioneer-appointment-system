@@ -4,7 +4,7 @@
 
 | 入口 | 内容 | 何时运行 |
 | --- | --- | --- |
-| `npm test` | `tests/*.test.mjs`：领域规则、实际 SQLite 数据操作、隐私和发布保护 | 每次变更；无需前端构建 |
+| `npm test` | `tests/*.test.ts`：领域规则、实际 SQLite 数据操作、隐私和发布保护 | 每次变更；无需前端构建 |
 | `npm run verify` | 格式、lint、类型、埋点目录与迁移指纹、Functions/前端构建、Node 和 6 项浏览器冒烟 | 默认 CI |
 | `npm run test:migrations` | `tests/migrations/` 的历史数据升级与回滚，再执行两条完整本地 D1 迁移链 | 新迁移、历史恢复或升级流程变化 |
 | `npm run test:deployment` | 构建后的发布目录、绑定和 CSP 集成检查 | 发布脚本、资源绑定或 CSP 变化 |
@@ -29,11 +29,11 @@
 | `npm run test:properties` | Node 确定性状态图，加属性数据与可缩减的业务命令序列 |
 | `npm run test:models:check` | 执行器回归：参数校验、失败缩减后精确重放、两类覆盖隔离与并发报告保存 |
 
-业务模型沿用现有测试回调，在手动模式中运行更多路径或数据，不额外注册一套业务测试。执行器自身的回归位于 `tools/model-report.test.mjs`，仅通过 `test:models:check` 或上述手动工作流运行。默认浏览器门禁仍为 **6 项冒烟**。
+业务模型沿用现有测试回调，在手动模式中运行更多路径或数据，不额外注册一套业务测试。执行器自身的回归位于 `tools/model-report.test.ts`，仅通过 `test:models:check` 或上述手动工作流运行。默认浏览器门禁仍为 **6 项冒烟**。
 
 浏览器回归覆盖图片取消、校验与压缩、未保存草稿保护及登记资料持久化。继续移除没有视觉基准的尺寸、颜色、边框、图标数量和布局顺序断言，并删除主要重复这些断言的管理工具展示用例。拖放命中测试保留坐标操作，因为它验证真实拖拽事件能否进入接收区；它不要求固定像素布局。保修网点测试专注品牌保存后的链接变化，登记字段的完整校验由服务测试和登记流程覆盖。
 
-`fixtures/workflow-seed.mjs` 承载共用执行器，模型和操作适配器保留在各自的现有测试/辅助文件中：
+`fixtures/workflow-seed.ts` 承载共用执行器，模型和操作适配器保留在各自的现有测试/辅助文件中：
 
 - 服务模型使用独立声明的有限状态和事件。`xstate/graph` 求最短前置路径，再逐条附加目标转换，因此自环、重放和拒绝操作也必须执行，不能只统计可达节点。
 - 每条路径、每轮随机运行及缩减重试均重新建立 fixture，结束时释放数据库和模拟时钟。模型事件调用真实业务服务与 SQLite；上传及原厂网络边界复用可控响应，不访问真实厂商。
@@ -45,22 +45,22 @@
 
 | 模型 | 状态/转换与拒绝分支 | 原有测试位置（标题起始词） |
 | --- | --- | --- |
-| `booking-capacity` | 可预约、满额、超额、暂停、零容量、截止、缺少地点；恢复与调额 | `booking-slots.test.mjs`：availability distinguishes |
-| `booking-reservation` | 创建、取消释放容量、满额拒绝、现场登记不占线上容量 | `booking-concurrency.test.mjs`：competing online bookings |
-| `repair-lifecycle` | 接收、直接开始、跨日开始、交接、结束、更正、部分/完整补图、取消、过期；越校区、过期版本、原主修、无确认交接及终态拒绝 | `direct-repairs.test.mjs`：hardware staff can receive multiple orders |
-| `availability`、`roster-cover` | 通常时间/周例外/恢复；发布/重放、双方邀请/接受/拒绝/取消、重新发布；版本与权限拒绝 | `weekly-schedule.test.mjs`：usual availability、publish without weekly questionnaires |
-| `attendance` | 待签到、到场、缺勤、暂停；补记、恢复、重复补记及无权补记拒绝 | `duty-workflow.test.mjs`：absence is automatic |
-| `account-activation` | 开放、撤销、申请待审、批准、拒绝、重新提交；未核验身份、无权审核、重复审核与已激活资格撤销拒绝 | `member-activation-defaults.test.mjs`：default activation uses |
-| `membership-lifecycle`、`membership-transaction` | 任职生效、当日结束、导入预览、重新任职；组合任职原子写入与无效/重复/事务失败拒绝 | `member-end-date.test.mjs`：same-day end；`member-identities.test.mjs`：combined appointments |
-| `retired-identity` | 普通/授予/撤销；权限与会话失效、无权授予及审计失败回滚 | `retired-elder.test.mjs`：only the current superadmin |
-| `repair-link` | 未关联/已关联，确认与校区拒绝、重复关联拒绝、学生历史隐私 | `repair-links.test.mjs`：linking an existing booking |
-| `intake-upload` | 空接收确认、选图、部分失败、刷新、重试与完整关联；复用已成功图片 | `intake-upload.test.mjs`：a refreshed partial receipt |
-| `warranty-acer`、`warranty-huawei`、`warranty-lenovo` | 挑战/续期/过期、人工验证、结果/无结果/未知/失败及重试；会话不匹配、篡改、缺少证明与验证类型降级拒绝；保修截止日 | `warranty-captcha.test.mjs`：only a human；`warranty-huawei.test.mjs`：Huawei submits；`warranty-service.test.mjs`：server sends only |
-| `ui-student-booking`、`ui-working-campus`、`ui-repair`、`ui-office-reception`、`ui-save-draft` | 预约与私人结果、校区切换/重载/会话重置、维修结束与更正、办公室接收、保存失败保留草稿与重试切换 | `e2e/core-workflow.spec.mjs` 中对应现有流程 |
-| `ui-record-pagination`、`ui-refresh`、`ui-cancel-pagination`、`ui-schedule-draft`、`ui-session-isolation` | 筛选/恢复/分页、刷新失败保留数据、取消及晚到响应、原草稿版本、退出和权限撤销 | `e2e/records-loading.spec.mjs` 中对应现有流程 |
-| `ui-signature`、`ui-onsite-signature`、`ui-deferred-photo` | 签名旋转/确认/空签拒绝/替换取消/保存，现场签名返回编辑，照片超时关闭后完成关联 | `e2e/signature.spec.mjs`；`e2e/photo-upload.spec.mjs`：manual supplementation |
-| `ui-workload-refresh`、`ui-roster-conflict`、`ui-repair-link` | 加载失败后恢复，冲突草稿保留并重试，关联原因变更后重新确认 | `e2e/duty-workload.spec.mjs`：workload failure；`e2e/maintenance-affairs.spec.mjs`：planner retries；`e2e/repair-links.spec.mjs` |
-| `ui-warranty-input`、`ui-warranty-captcha` | 摄像头拒绝后手动输入、关闭清空，人工验证码等待/换码/查询 | `e2e/diagnostics/warranty-lookup.spec.mjs`：denied camera、Acer waits |
+| `booking-capacity` | 可预约、满额、超额、暂停、零容量、截止、缺少地点；恢复与调额 | `booking-slots.test.ts`：availability distinguishes |
+| `booking-reservation` | 创建、取消释放容量、满额拒绝、现场登记不占线上容量 | `booking-concurrency.test.ts`：competing online bookings |
+| `repair-lifecycle` | 接收、直接开始、跨日开始、交接、结束、更正、部分/完整补图、取消、过期；越校区、过期版本、原主修、无确认交接及终态拒绝 | `direct-repairs.test.ts`：hardware staff can receive multiple orders |
+| `availability`、`roster-cover` | 通常时间/周例外/恢复；发布/重放、双方邀请/接受/拒绝/取消、重新发布；版本与权限拒绝 | `weekly-schedule.test.ts`：usual availability、publish without weekly questionnaires |
+| `attendance` | 待签到、到场、缺勤、暂停；补记、恢复、重复补记及无权补记拒绝 | `duty-workflow.test.ts`：absence is automatic |
+| `account-activation` | 开放、撤销、申请待审、批准、拒绝、重新提交；未核验身份、无权审核、重复审核与已激活资格撤销拒绝 | `member-activation-defaults.test.ts`：default activation uses |
+| `membership-lifecycle`、`membership-transaction` | 任职生效、当日结束、导入预览、重新任职；组合任职原子写入与无效/重复/事务失败拒绝 | `member-end-date.test.ts`：same-day end；`member-identities.test.ts`：combined appointments |
+| `retired-identity` | 普通/授予/撤销；权限与会话失效、无权授予及审计失败回滚 | `retired-elder.test.ts`：only the current superadmin |
+| `repair-link` | 未关联/已关联，确认与校区拒绝、重复关联拒绝、学生历史隐私 | `repair-links.test.ts`：linking an existing booking |
+| `intake-upload` | 空接收确认、选图、部分失败、刷新、重试与完整关联；复用已成功图片 | `intake-upload.test.ts`：a refreshed partial receipt |
+| `warranty-acer`、`warranty-huawei`、`warranty-lenovo` | 挑战/续期/过期、人工验证、结果/无结果/未知/失败及重试；会话不匹配、篡改、缺少证明与验证类型降级拒绝；保修截止日 | `warranty-captcha.test.ts`：only a human；`warranty-huawei.test.ts`：Huawei submits；`warranty-service.test.ts`：server sends only |
+| `ui-student-booking`、`ui-working-campus`、`ui-repair`、`ui-office-reception`、`ui-save-draft` | 预约与私人结果、校区切换/重载/会话重置、维修结束与更正、办公室接收、保存失败保留草稿与重试切换 | `e2e/core-workflow.spec.ts` 中对应现有流程 |
+| `ui-record-pagination`、`ui-refresh`、`ui-cancel-pagination`、`ui-schedule-draft`、`ui-session-isolation` | 筛选/恢复/分页、刷新失败保留数据、取消及晚到响应、原草稿版本、退出和权限撤销 | `e2e/records-loading.spec.ts` 中对应现有流程 |
+| `ui-signature`、`ui-onsite-signature`、`ui-deferred-photo` | 签名旋转/确认/空签拒绝/替换取消/保存，现场签名返回编辑，照片超时关闭后完成关联 | `e2e/signature.spec.ts`；`e2e/photo-upload.spec.ts`：manual supplementation |
+| `ui-workload-refresh`、`ui-roster-conflict`、`ui-repair-link` | 加载失败后恢复，冲突草稿保留并重试，关联原因变更后重新确认 | `e2e/duty-workload.spec.ts`：workload failure；`e2e/maintenance-affairs.spec.ts`：planner retries；`e2e/repair-links.spec.ts` |
+| `ui-warranty-input`、`ui-warranty-captcha` | 摄像头拒绝后手动输入、关闭清空，人工验证码等待/换码/查询 | `e2e/diagnostics/warranty-lookup.spec.ts`：denied camera、Acer waits |
 
 属性数据覆盖预约日期、容量守恒、TSV 格式与填充周期、签名采样、序列号字符保真、周边界、真实 SQLite 聚合和保修起止日。预约竞争随机化容量与提交人数。其余可重复执行的服务模型使用 `fc.commands` / `fc.asyncModelRun` 生成并缩减事件序列；预约容量和创建模型的随机输入由同一原有用例中的数据属性负责，不重复运行另一套随机断言。页面只走确定性路径。
 
@@ -81,7 +81,7 @@ FC_NUM_RUNS=100 FC_MAX_COMMANDS=50 npm run test:properties
 
 # 将三个值替换为同一次失败报告中的值，保留当时的运行预算。
 FC_SEED=123456 FC_PATH='0:1:0' FC_REPLAY_PATH='AAC:B' \
-  npm run test:properties -- --test-name-pattern='publish without weekly questionnaires' tests/weekly-schedule.test.mjs
+  npm run test:properties -- --test-name-pattern='publish without weekly questionnaires' tests/weekly-schedule.test.ts
 ```
 
 PowerShell 中先设置 `$env:FC_SEED='123456'`、`$env:FC_PATH='0:1:0'`、`$env:FC_REPLAY_PATH='AAC:B'`，再执行相同的 npm 命令；结束后用 `Remove-Item Env:FC_SEED, Env:FC_PATH, Env:FC_REPLAY_PATH` 清理。所有 npm 模型入口通过 Node 设置开关，兼容 Windows 和 Linux。
@@ -113,7 +113,7 @@ npm run test:sql
 
 覆盖单账号读取、普通成员与领导的 `/api/auth/me`、指定校区的预约余量和注销写入。每种规模重复三次，每次都检查预算；报告包括 SQL 文本、语句数、`meta.rows_read`、`meta.rows_written`、D1 执行毫秒数和本地 SQL 调用耗时合计的中位数。初始化、迁移、客户端令牌准备及反例不计入业务预算。报告保存在 `output/sql-profile/report.json`，失败也保留已完成部分；工具退出非零即表示失败。
 
-读写行数使用宽裕的上限，并要求大数据集读行数不超过小数据集的 `2 倍 + 32`。这允许小范围实现调整，同时能发现全局扫描。预算位于 `tests/tools/sql-performance.test.mjs`。增加场景时通过同一个 `sqlProfiler` 执行真实服务；不要复制生产 SQL 当作业务场景，也不要自动接受新的预算。逐条 SQL 能帮助区分调用次数增加和单条扫描成本增加。
+读写行数使用宽裕的上限，并要求大数据集读行数不超过小数据集的 `2 倍 + 32`。这允许小范围实现调整，同时能发现全局扫描。预算位于 `tests/tools/sql-performance.test.ts`。增加场景时通过同一个 `sqlProfiler` 执行真实服务；不要复制生产 SQL 当作业务场景，也不要自动接受新的预算。逐条 SQL 能帮助区分调用次数增加和单条扫描成本增加。
 
 `first()` 原生返回值不带 meta，工具将其转换为一次 `all()` 并保留首行语义；`batch()` 按返回的每条语句统计，不重复查询。缺少计数元数据会报错。该适配器仅用于本地诊断，不改生产数据库包装器。
 

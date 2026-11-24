@@ -1,11 +1,11 @@
 import type { CSSProperties } from 'react';
-import { formatDate, formatInstant } from '../../shared/time.js';
+import { formatDate, formatInstant } from '../../shared/time.ts';
 import {
   appointmentStatusClass,
   appointmentStatusLabel,
   outcomeLabels,
   expirationMessage
-} from '../../shared/constants.js';
+} from '../../shared/constants.ts';
 import type { Appointment, BookingFields, SlotSummary } from './types';
 
 export const appointmentLocation = (item: SlotSummary) =>

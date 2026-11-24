@@ -1,4 +1,4 @@
-import React, { useRef, type ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { useDataMotion } from './useDataMotion';
 
 // Route geometry belongs to the shell. Modules only lay out their contents.

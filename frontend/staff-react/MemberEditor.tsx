@@ -1,0 +1,696 @@
+import type { ItemsResponse } from '../../shared/api-types.ts';
+import { failureFrom } from '../../shared/api-types.ts';
+import type {
+  MemberDto,
+  OrganizationUnitDto,
+  RoleBindingDto,
+  RoleDto,
+  StaffProfileDto
+} from '../../shared/staff-types.ts';
+import type { MemberDetailDto } from './management-types.ts';
+import { Select, DatePicker } from './SelectionControls.tsx';
+import { RefreshButton } from './WorkspaceToolbar.tsx';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useContext, useEffect, useRef, useState } from 'react';
+import { dateKey } from '../../shared/time.ts';
+import { request } from './request.ts';
+import { withCampusScope, roleBindingsPayload } from './authorization-drafts.ts';
+import { ActivityContext, Modal } from './field/ui';
+import { WorkspaceSections } from './WorkspaceSections';
+import { StaffIdentity } from './StaffIdentity';
+import { useUnsavedChanges } from './useUnsavedChanges.ts';
+import { NEU_COLLEGES } from '../../shared/neu-colleges.ts';
+import { MemberMemberships } from './MemberMemberships.tsx';
+import { MemberAccount } from './MemberAccount.tsx';
+import { MemberHistory } from './MemberHistory.tsx';
+import { staffPermission } from '../../shared/staff-access.ts';
+
+const campuses = [
+  { id: 'campus-nanhu', name: '南湖' },
+  { id: 'campus-hunnan', name: '浑南' }
+];
+
+export function MemberEditor({
+  user,
+  member,
+  canManageRoles,
+  onClose,
+  onSaved
+}: {
+  user: StaffProfileDto;
+  member: Pick<MemberDto, 'memberId' | 'name'> &
+    Partial<Pick<MemberDto, 'college' | 'major' | 'homeCampusId' | 'status'>>;
+  canManageRoles?: boolean;
+  onClose: () => void;
+  onSaved: () => unknown;
+}) {
+  const active = useContext(ActivityContext),
+    lock = useRef(false);
+  const client = useQueryClient();
+  const queryKey = [`/api/members/${encodeURIComponent(member.memberId)}`];
+  const result = useQuery<MemberDetailDto>({
+    queryKey,
+    enabled: active,
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false
+  });
+  const detail = result.data;
+  const initialized = useRef(false);
+  const profileRevision = useRef<number | null>(null),
+    bindingsRevision = useRef<number | null>(null);
+  const [profile, setProfile] = useState({
+    name: member.name,
+    college: member.college || '',
+    major: member.major || '',
+    homeCampusId: member.homeCampusId || '',
+    status: member.status || ''
+  });
+  const [bindings, setBindings] = useState<RoleBindingDto[]>([]);
+  const rolesQuery = useQuery<ItemsResponse<RoleDto>>({
+    queryKey: ['/api/roles'],
+    enabled: active && canManageRoles,
+    staleTime: 5 * 60000,
+    refetchInterval: false
+  });
+  const roles = rolesQuery.data?.items || [];
+  const bindableRoles = roles.filter((role) => role.actions?.bind !== false);
+  const newBindingRoles = bindableRoles;
+  const firstBindableRole = newBindingRoles.find((role) => role.enabled);
+  const availableCampuses = campuses.filter((campus) =>
+    (user.authorizedCampuses || []).some((id: string) => id === campus.id || id === campus.name)
+  );
+  const profileCampuses = campuses.filter(
+    (campus) =>
+      campus.id === detail?.member.homeCampusId ||
+      detail?.actions?.editableHomeCampuses?.includes(campus.id)
+  );
+  function bindingCampuses(binding: RoleBindingDto) {
+    const raw = binding.scope?.campusIds ?? binding.scope?.campuses;
+    return (
+      Array.isArray(raw)
+        ? raw
+        : raw === 'bound'
+          ? detail?.account?.authorizedCampuses || user.authorizedCampuses || []
+          : []
+    ).map((id: string) => campuses.find((campus) => campus.name === id)?.id || id);
+  }
+  const departmentsQuery = useQuery<ItemsResponse<OrganizationUnitDto>>({
+    queryKey: ['/api/organization/departments'],
+    enabled: active,
+    staleTime: 5 * 60000,
+    refetchInterval: false
+  });
+  const departments = departmentsQuery.data?.items || [];
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [section, setSection] = useState('profile'),
+    [confirmClose, setConfirmClose] = useState(false);
+  const [membershipDirty, setMembershipDirty] = useState(false);
+  const [accountDirty, setAccountDirty] = useState(false);
+  const profileDirty =
+    detail &&
+    (['name', 'college', 'major', 'homeCampusId', 'status'] as const).some(
+      (key) => profile[key] !== detail.member[key]
+    );
+  const bindingsDirty =
+    detail && JSON.stringify(bindings) !== JSON.stringify(detail.bindings || []);
+  const dirty = profileDirty || bindingsDirty || membershipDirty || accountDirty;
+  const profileForm = useUnsavedChanges({
+    dirty: !!profileDirty,
+    active,
+    busy,
+    save: saveProfile,
+    discard: () => {
+      if (!detail) return;
+      setProfile({
+        name: detail.member.name,
+        college: detail.member.college,
+        major: detail.member.major,
+        homeCampusId: detail.member.homeCampusId,
+        status: detail.member.status
+      });
+      setConfirmClose(false);
+    }
+  });
+  const rolesForm = useUnsavedChanges({
+    dirty: !!bindingsDirty,
+    active,
+    busy,
+    save: saveBindings,
+    discard: () => {
+      setBindings(structuredClone(detail?.bindings || []));
+      setConfirmClose(false);
+    }
+  });
+  useEffect(() => {
+    if (!detail || initialized.current) return;
+    initialized.current = true;
+    profileRevision.current = bindingsRevision.current = detail.member.revision;
+    setBindings(detail.bindings || []);
+    setProfile({
+      name: detail.member.name,
+      college: detail.member.college,
+      major: detail.member.major,
+      homeCampusId: detail.member.homeCampusId,
+      status: detail.member.status
+    });
+  }, [detail]);
+  async function saveProfile(event: { preventDefault(): void }) {
+    event.preventDefault();
+    if (lock.current || !detail) return;
+    lock.current = true;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const data = await request<{ member: MemberDto }>(
+        `/api/members/${encodeURIComponent(member.memberId)}`,
+        {
+          method: 'PATCH',
+          body: { ...profile, revision: profileRevision.current }
+        }
+      );
+      await client.cancelQueries({ queryKey: queryKey });
+      client.setQueryData<MemberDetailDto>(
+        queryKey,
+        (current) =>
+          current && {
+            ...current,
+            member: {
+              ...current.member,
+              ...data.member,
+              memberships: current.member.memberships
+            }
+          }
+      );
+      profileRevision.current = bindingsRevision.current = data.member.revision;
+      setMessage('成员资料已保存');
+      onSaved();
+      return true;
+    } catch (err) {
+      setError(failureFrom(err).message);
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function saveBindings(event: { preventDefault(): void }) {
+    event.preventDefault();
+    if (lock.current || !detail) return;
+    lock.current = true;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      await request(`/api/members/${encodeURIComponent(member.memberId)}/roles`, {
+        method: 'PUT',
+        body: { revision: bindingsRevision.current, bindings: roleBindingsPayload(bindings) }
+      });
+      await client.cancelQueries({ queryKey });
+      const { data } = await result.refetch({ throwOnError: true });
+      if (!data) throw new Error('人员资料读取失败');
+      bindingsRevision.current = data.member.revision;
+      setBindings(data.bindings || []);
+      setMessage('系统授权已保存，相关账号需要重新登录');
+      onSaved();
+      return true;
+    } catch (err) {
+      setError(failureFrom(err).message);
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+  async function changeRetiredElder() {
+    if (lock.current || !detail || dirty) return;
+    lock.current = true;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    const enabled = !detail.member.specialIdentities?.includes('retired_elder');
+    try {
+      await request(`/api/members/${encodeURIComponent(member.memberId)}/retired-elder`, {
+        method: 'PUT',
+        body: { enabled, revision: detail.member.revision, requestId: crypto.randomUUID() }
+      });
+      await reload();
+      await client.invalidateQueries({
+        queryKey: [`/api/members/${encodeURIComponent(member.memberId)}/audit`]
+      });
+      setMessage(
+        enabled
+          ? '已授予退休老登身份，相关账号需重新登录'
+          : '已撤销退休老登身份，相关账号需重新登录'
+      );
+    } catch (err) {
+      setError(failureFrom(err).message);
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+  function editBinding(index: number, patch: Partial<RoleBindingDto>) {
+    setBindings((current) =>
+      current.map((binding, i) => (i === index ? { ...binding, ...patch } : binding))
+    );
+  }
+  function close() {
+    if (!busy) {
+      if (dirty) setConfirmClose(true);
+      else onClose();
+    }
+  }
+  async function reload() {
+    await client.invalidateQueries({ queryKey, refetchType: 'none' });
+    const { data } = await result.refetch({ throwOnError: true });
+    if (!data) throw new Error('人员资料读取失败');
+    await Promise.all([
+      departmentsQuery.refetch({ throwOnError: true }),
+      ...(canManageRoles ? [rolesQuery.refetch({ throwOnError: true })] : [])
+    ]);
+    if (!profileDirty) {
+      profileRevision.current = data.member.revision;
+      setProfile({
+        name: data.member.name,
+        college: data.member.college,
+        major: data.member.major,
+        homeCampusId: data.member.homeCampusId,
+        status: data.member.status
+      });
+    }
+    if (!bindingsDirty) {
+      bindingsRevision.current = data.member.revision;
+      setBindings(data.bindings || []);
+    }
+    onSaved();
+  }
+  return (
+    <Modal title={member.name} sidePanel dismissible={!busy} onClose={close}>
+      <div className="member-detail-editor">
+        {confirmClose && (
+          <>
+            <h3>放弃未保存的修改？</h3>
+            <p>人员详情中的未保存修改都会丢失。</p>
+            <div className="field-actions">
+              <button
+                data-track="staff.membereditor.button.1"
+                onClick={() => setConfirmClose(false)}
+              >
+                返回继续编辑
+              </button>
+              <button data-track="staff.membereditor.button.2" onClick={onClose}>
+                放弃修改并关闭
+              </button>
+            </div>
+          </>
+        )}
+        <div hidden={confirmClose}>
+          <div className="field-actions">
+            <RefreshButton
+              data-track="staff.membereditor.refreshbutton.20"
+              disabled={busy || !!dirty}
+              label="刷新人员详情"
+              onRefresh={() => reload()}
+            />
+          </div>
+          <StaffIdentity identities={detail?.member.identities} />
+          <WorkspaceSections
+            label="成员详情"
+            value={section}
+            onChange={setSection}
+            items={[
+              { id: 'profile', label: '基本资料' },
+              { id: 'memberships', label: '任职与身份' },
+              ...(staffPermission(user, 'accounts.manage') ||
+              (canManageRoles &&
+                !detail?.account?.protected &&
+                detail?.actions?.editRoles !== false)
+                ? [{ id: 'participation', label: '账号与系统授权' }]
+                : []),
+              ...(detail?.actions?.readAudit === false
+                ? []
+                : [{ id: 'history', label: '操作记录' }])
+            ]}
+          />
+          {(error || result.error || rolesQuery.error || departmentsQuery.error) && (
+            <p data-motion-value="text" className="react-error" role="alert">
+              {error ||
+                result.error?.message ||
+                rolesQuery.error?.message ||
+                departmentsQuery.error?.message}
+            </p>
+          )}
+          {message && (
+            <p data-motion-value="text" role="status">
+              {message}
+            </p>
+          )}
+          <form
+            data-track="staff.membereditor.form.3"
+            ref={profileForm}
+            hidden={section !== 'profile'}
+            onSubmit={saveProfile}
+          >
+            <fieldset
+              className="workspace-form-fields"
+              aria-busy={!detail && !error}
+              disabled={busy || !detail || detail.actions?.edit === false}
+            >
+              <legend>成员资料{profileDirty ? ' · 未保存' : ''}</legend>
+              <label>
+                姓名
+                <input
+                  data-track="staff.membereditor.input.4"
+                  required
+                  data-motion-value="field"
+                  value={profile.name}
+                  onChange={(event) => setProfile({ ...profile, name: event.target.value })}
+                />
+              </label>
+              <label>
+                所属校区
+                <span className="workspace-native-select">
+                  <Select
+                    data-track="staff.membereditor.select.5"
+                    data-motion-value="field"
+                    value={profile.homeCampusId}
+                    disabled={profileCampuses.length < 2}
+                    onChange={(event) =>
+                      setProfile({ ...profile, homeCampusId: event.target.value })
+                    }
+                  >
+                    {profileCampuses.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name}
+                      </option>
+                    ))}
+                  </Select>
+                  <span className="workspace-chevron" aria-hidden="true" />
+                </span>
+              </label>
+              <label>
+                学院
+                <span className="workspace-native-select">
+                  <Select
+                    data-track="staff.membereditor.select.6"
+                    data-motion-value="field"
+                    value={profile.college}
+                    onChange={(event) => setProfile({ ...profile, college: event.target.value })}
+                  >
+                    <option value="">待补充</option>
+                    {profile.college && !NEU_COLLEGES.includes(profile.college) && (
+                      <option value={profile.college}>{profile.college}</option>
+                    )}
+                    {NEU_COLLEGES.map((college) => (
+                      <option key={college} value={college}>
+                        {college}
+                      </option>
+                    ))}
+                  </Select>
+                  <span className="workspace-chevron" aria-hidden="true" />
+                </span>
+              </label>
+              <label>
+                成员状态
+                <span className="workspace-native-select">
+                  <Select
+                    data-track="staff.membereditor.select.7"
+                    data-motion-value="field"
+                    value={profile.status}
+                    onChange={(event) =>
+                      setProfile({ ...profile, status: event.target.value as MemberDto['status'] })
+                    }
+                  >
+                    <option value="active">正常</option>
+                    <option value="inactive">停用</option>
+                  </Select>
+                  <span className="workspace-chevron" aria-hidden="true" />
+                </span>
+              </label>
+              <label>
+                专业
+                <input
+                  data-track="staff.membereditor.input.8"
+                  maxLength={100}
+                  value={profile.major}
+                  onChange={(event) => setProfile({ ...profile, major: event.target.value })}
+                />
+              </label>
+              <button data-track="staff.membereditor.button.9" className="react-primary">
+                保存资料
+              </button>
+            </fieldset>
+          </form>
+
+          {!detail ? (
+            error || result.error ? (
+              <button
+                data-track="staff.membereditor.button.10"
+                onClick={() => {
+                  setError('');
+                  result.refetch();
+                }}
+              >
+                重新读取成员资料
+              </button>
+            ) : null
+          ) : (
+            <>
+              {(section === 'memberships' || membershipDirty) && (
+                <div hidden={section !== 'memberships'}>
+                  <MemberMemberships
+                    detail={detail}
+                    departments={departments}
+                    onSaved={reload}
+                    onDirty={setMembershipDirty}
+                    onBusy={setBusy}
+                  />
+                  {detail.actions?.editSpecialIdentities && (
+                    <section className="member-special-identities" aria-label="特殊身份">
+                      <h3>特殊身份</h3>
+                      <p>
+                        退休老登拥有双校区业务管理权限，可在授权校区扫码或自行签到，仅按有效签到累计志愿时长，未签到不计时长，不享受负责人自动计入。不参与排班、空闲填报或换班，保留原有任职及考勤历史。
+                      </p>
+                      <button
+                        type="button"
+                        data-track="staff.membereditor.retired-elder"
+                        disabled={busy || !!dirty}
+                        onClick={changeRetiredElder}
+                      >
+                        {detail.member.specialIdentities?.includes('retired_elder')
+                          ? '撤销退休老登身份'
+                          : '授予退休老登身份'}
+                      </button>
+                    </section>
+                  )}
+                </div>
+              )}
+              {(section === 'participation' || accountDirty) &&
+                staffPermission(user, 'accounts.manage') && (
+                  <div hidden={section !== 'participation'}>
+                    <MemberAccount
+                      user={user}
+                      detail={detail}
+                      onDirty={setAccountDirty}
+                      onBusy={setBusy}
+                      onSaved={async () => {
+                        await client.cancelQueries({ queryKey });
+                        const { data } = await result.refetch({ throwOnError: true });
+                        if (!data) throw new Error('人员资料读取失败');
+                        profileRevision.current = data.member.revision;
+                        if (!profileDirty)
+                          setProfile({
+                            name: data.member.name,
+                            college: data.member.college,
+                            major: data.member.major,
+                            homeCampusId: data.member.homeCampusId,
+                            status: data.member.status
+                          });
+                        onSaved();
+                      }}
+                    />
+                  </div>
+                )}
+              {section === 'history' && <MemberHistory memberId={member.memberId} />}
+              {detail.account?.protected && (
+                <p className="react-muted">此系统账号受保护，仅本人可验证原密码后修改密码。</p>
+              )}
+              {canManageRoles &&
+                !detail.account?.protected &&
+                detail.actions?.editRoles !== false && (
+                  <form
+                    data-track="staff.membereditor.form.11"
+                    className="member-roles-form"
+                    ref={rolesForm}
+                    hidden={section !== 'participation'}
+                    onSubmit={saveBindings}
+                  >
+                    <fieldset disabled={busy || !roles.length}>
+                      <legend>系统授权{bindingsDirty ? ' · 未保存' : ''}</legend>
+                      {bindings.map((binding, index) => {
+                        const Binding = bindings.length > 1 ? 'details' : 'section';
+                        const Heading = bindings.length > 1 ? 'summary' : 'h4';
+                        const selectedCampuses = bindingCampuses(binding);
+                        return (
+                          <Binding
+                            data-motion-item=""
+                            className="member-role-binding"
+                            key={binding.id || `new-${index}`}
+                            open={bindings.length > 1 ? !binding.id : undefined}
+                            onInvalid={(event) => {
+                              if (bindings.length > 1) event.currentTarget.open = true;
+                            }}
+                          >
+                            <Heading className="member-role-heading" data-motion-value="text">
+                              <strong>
+                                {roles.find((role) => role.id === binding.roleId)?.name ||
+                                  '待选择角色'}
+                              </strong>{' '}
+                              <span>
+                                {selectedCampuses
+                                  .map(
+                                    (id: string) =>
+                                      campuses.find((campus) => campus.id === id)?.name || id
+                                  )
+                                  .join('、') || '未选校区'}
+                              </span>
+                            </Heading>
+                            <div className="workspace-binding-fields">
+                              <label>
+                                角色
+                                <Select
+                                  data-track="staff.membereditor.select.12"
+                                  value={binding.roleId}
+                                  onChange={(event) =>
+                                    editBinding(index, { roleId: event.target.value })
+                                  }
+                                >
+                                  {bindableRoles
+                                    .filter(
+                                      (role) =>
+                                        role.id === binding.roleId ||
+                                        newBindingRoles.some(
+                                          (candidate) => candidate.id === role.id
+                                        )
+                                    )
+                                    .map((role) => (
+                                      <option key={role.id} value={role.id}>
+                                        {role.name}
+                                        {role.enabled ? '' : '（已停用）'}
+                                      </option>
+                                    ))}
+                                </Select>
+                              </label>
+                              <fieldset className="workspace-campus-options">
+                                <legend>授权校区</legend>
+                                {availableCampuses.map((campus) => (
+                                  <label className="workspace-check" key={campus.id}>
+                                    <input
+                                      data-track="staff.membereditor.input.13"
+                                      type="checkbox"
+                                      checked={selectedCampuses.includes(campus.id)}
+                                      onChange={(event) => {
+                                        const selected = bindingCampuses(binding);
+                                        editBinding(index, {
+                                          scope: withCampusScope(
+                                            binding.scope || {},
+                                            event.target.checked
+                                              ? [...new Set([...selected, campus.id])]
+                                              : selected.filter((id: string) => id !== campus.id)
+                                          )
+                                        });
+                                      }}
+                                    />
+                                    <span>{campus.name}</span>
+                                  </label>
+                                ))}
+                              </fieldset>
+                              <label>
+                                原因
+                                <input
+                                  data-track="staff.membereditor.input.14"
+                                  required
+                                  maxLength={300}
+                                  value={binding.reason || ''}
+                                  onChange={(event) =>
+                                    editBinding(index, { reason: event.target.value })
+                                  }
+                                />
+                              </label>
+                              <div className="react-form-grid">
+                                <label>
+                                  生效日期
+                                  <DatePicker
+                                    data-track="staff.membereditor.input.15"
+                                    required
+                                    value={binding.effectiveFrom || ''}
+                                    onChange={(event) =>
+                                      editBinding(index, { effectiveFrom: event.target.value })
+                                    }
+                                  />
+                                </label>
+                                <label>
+                                  结束日期（可选）
+                                  <DatePicker
+                                    data-track="staff.membereditor.input.16"
+                                    min={binding.effectiveFrom || undefined}
+                                    value={binding.effectiveTo || ''}
+                                    onChange={(event) =>
+                                      editBinding(index, {
+                                        effectiveTo: event.target.value || null
+                                      })
+                                    }
+                                  />
+                                </label>
+                              </div>
+                              <button
+                                data-track="staff.membereditor.button.17"
+                                type="button"
+                                onClick={() =>
+                                  setBindings((current) => current.filter((_, i) => i !== index))
+                                }
+                              >
+                                移除此项授权
+                              </button>
+                            </div>
+                          </Binding>
+                        );
+                      })}
+                      <div className="react-editor-actions">
+                        <button
+                          data-track="staff.membereditor.button.18"
+                          type="button"
+                          disabled={!firstBindableRole}
+                          onClick={() =>
+                            firstBindableRole &&
+                            setBindings((current) => [
+                              ...current,
+                              {
+                                roleId: firstBindableRole.id,
+                                scope: { campusIds: [] },
+                                effectiveFrom: dateKey(),
+                                effectiveTo: null,
+                                reason: ''
+                              }
+                            ])
+                          }
+                        >
+                          添加系统授权
+                        </button>
+                        <button data-track="staff.membereditor.button.19" className="react-primary">
+                          保存系统授权
+                        </button>
+                      </div>
+                    </fieldset>
+                  </form>
+                )}
+            </>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}

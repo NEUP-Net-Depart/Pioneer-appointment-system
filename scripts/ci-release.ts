@@ -1,0 +1,74 @@
+import { isObject } from '../shared/api-types.ts';
+
+type ReleaseStep = (script: string, args: string[]) => { status: number | null; error?: Error };
+import {spawnSync} from 'node:child_process';
+import {appendFileSync} from 'node:fs';
+import {resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {config,root} from './cli.ts';
+import {pagesSiteUrl,previewBranch} from './release-plan.ts';
+import {STAFF_RELEASE} from '../src/db/staff-readiness.ts';
+
+export function ciReleaseTarget(env: NodeJS.ProcessEnv){
+  if(env.GITHUB_ACTIONS!=='true')throw new Error('CI releases must run in GitHub Actions.');
+  if(!env.GITHUB_REF?.startsWith('refs/heads/') || env.GITHUB_EVENT_DELETED==='true')throw new Error('Only live repository branches may release.');
+  if(env.GITHUB_EVENT_NAME==='push' && env.GITHUB_REF==='refs/heads/main')return 'production';
+  if(['push','workflow_dispatch'].includes(env.GITHUB_EVENT_NAME ?? '') && env.GITHUB_REF!=='refs/heads/main'){
+    previewBranch(env);
+    return 'preview';
+  }
+  throw new Error('Only branch pushes or manual runs on non-main branches may release.');
+}
+export function ciReleasePlan(env: NodeJS.ProcessEnv, cfg: { name: string }){
+  const target=ciReleaseTarget(env),branch=(env.GITHUB_REF ?? '').slice('refs/heads/'.length);
+  if(target==='production' && !env.SITE_URL)throw new Error('Configure SITE_URL before releasing.');
+  const url=new URL(target==='production' ? (env.SITE_URL ?? '') : pagesSiteUrl(cfg.name,branch));
+  if(url.protocol!=='https:' || url.username || url.password || url.pathname!=='/' || url.search || url.hash)throw new Error('SITE_URL must be the HTTPS site origin.');
+  return {target,branch,url:url.origin};
+}
+function credentials(env: NodeJS.ProcessEnv){
+  for(const key of ['CLOUDFLARE_ACCOUNT_ID','CLOUDFLARE_API_TOKEN'])if(!env[key])throw new Error(`Configure ${key} before releasing.`);
+}
+const execute=(env: NodeJS.ProcessEnv): ReleaseStep => (script, args)=>spawnSync(process.execPath,[resolve(root,'scripts',script),...args],{cwd:root,env,stdio:'inherit'});
+function step(run: ReleaseStep,script: string,args: string[],target: string){
+  console.log(`CI ${target}: ${script}`);
+  const result=run(script,args);
+  if(result.error || result.status!==0)throw result.error || new Error(`${script} failed (${result.status}); release stopped.`);
+}
+export function runCiPreviewMigration(env=process.env,run=execute(env)){
+  if(ciReleaseTarget(env)!=='preview' || previewBranch(env)!=='dev')throw new Error('Only dev may automatically migrate the shared Preview database.');
+  credentials(env);
+  step(run,'migrate-remote.ts',['--preview','--execute','--approve-preview'],'preview');
+}
+export async function runCiRelease(env=process.env,run=execute(env),fetcher=fetch){
+  const cfg=await config(),plan=ciReleasePlan(env,cfg);
+  credentials(env);
+  if(plan.branch==='dev' && env.PREVIEW_MIGRATIONS_APPLIED!=='true')throw new Error('The dev Preview migration job must succeed before publishing.');
+  if(plan.target==='preview' && plan.branch!=='dev'){
+    // Branch previews share dev's D1. Wait for dev's migration instead of
+    // publishing an incompatible worker or letting a feature branch migrate it.
+    const response=await fetcher(new URL('/api/health',pagesSiteUrl(cfg.name,'dev')),{signal:AbortSignal.timeout(20000),redirect:'error'});
+    if(!response.ok)throw new Error(`Shared Preview readiness check failed (${response.status}).`);
+    const health=await response.json();
+    if(!isObject(health) || health.ok!==true || health.workflow!=='staff-platform' || typeof health.staffRelease!=='string')throw new Error('Shared Preview readiness response is invalid.');
+    if(health.staffRelease!==STAFF_RELEASE){
+      console.log(`::notice::Preview publication deferred: shared dev database reports ${health.staffRelease}; this branch requires ${STAFF_RELEASE}. Publish again after dev migration completes.`);
+      return {...plan,skipped:true};
+    }
+  }
+  const args=[...(plan.target==='preview' ? ['--preview'] : []),'--execute',`--approve-${plan.target}`];
+  if(plan.target==='production')step(run,'migrate-remote.ts',args,plan.target);
+  step(run,'deploy.ts',args,plan.target);
+  step(run,'smoke.ts',[plan.url],plan.target);
+  if(env.GITHUB_OUTPUT)appendFileSync(env.GITHUB_OUTPUT,`url=${plan.url}\n${plan.target==='production' ? `deployed_sha=${env.GITHUB_SHA}\n` : ''}`);
+  console.log(`Published ${plan.branch}: ${plan.url}`);
+  return plan;
+}
+if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+  const args=process.argv.slice(2);
+  if(args.length===1 && args[0]==='--migrate-preview')runCiPreviewMigration();
+  else if(!args.length)await runCiRelease();
+  else{
+    throw new Error('Use ci-release.ts or --migrate-preview.');
+  }
+}

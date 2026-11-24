@@ -1,4 +1,4 @@
-import { controlPart } from '../../shared/telemetry-controls.js';
+import { controlPart } from '../../shared/telemetry-controls.ts';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Info } from 'lucide-react';

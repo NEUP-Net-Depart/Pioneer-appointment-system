@@ -116,7 +116,7 @@ export function useRepairTool(id: string, options?: Omit<Editor, 'id'>) {
         options.save &&
         (async () => {
           if (form.current && !form.current.checkValidity()) return false;
-          return options.save();
+          return (await options.save?.()) ?? false;
         })
     };
     tools.editor.current = editor;

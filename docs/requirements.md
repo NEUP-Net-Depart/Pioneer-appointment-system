@@ -1,6 +1,6 @@
 # 业务规则与权限
 
-本页记录当前业务规则。表单细节见 [学生配置](../shared/student-booking.js)，接口见 [平台契约](contracts/staff-platform.json)。业务日期均为 Asia/Shanghai。
+本页记录当前业务规则。表单细节见 [学生配置](../shared/student-booking.ts)，接口见 [平台契约](contracts/staff-platform.json)。业务日期均为 Asia/Shanghai。
 
 ## 预约与接收
 

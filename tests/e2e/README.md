@@ -21,11 +21,11 @@ npm run test:e2e -- --workers=1
 
 CI 的 Playwright 执行上限为 12 分钟，包含构建与初始化的工作流步骤上限为 14 分钟，浏览器任务上限为 18 分钟；单用例上限仍为 60 秒。手势聚合计数测试在连续输入期间暂停模拟时钟，再显式推进聚合窗口，避免慢速运行器将同一组输入拆成多次手势。
 
-`scripts/test-e2e.mjs` 构建一次并初始化虚构人员和本地数据库。`support/fixtures.mjs` 为每个用例复制未运行的初始 D1/R2 状态，在独立端口启动 Worker，结束后移除临时目录。浏览器上下文和 Worker 共用 `WORKFLOW_TIME`；新标签页自动继承时钟。用例之间不共享预约、排班、限流或附件，也不依赖浏览器名称、执行顺序或前一个用例的结果。
+`scripts/test-e2e.ts` 构建一次并初始化虚构人员和本地数据库。`support/fixtures.ts` 为每个用例复制未运行的初始 D1/R2 状态，在独立端口启动 Worker，结束后移除临时目录。浏览器上下文和 Worker 共用 `WORKFLOW_TIME`；新标签页自动继承时钟。用例之间不共享预约、排班、限流或附件，也不依赖浏览器名称、执行顺序或前一个用例的结果。
 
 新增和修改用例时：
 
-- 使用 `support/fixtures.mjs` 的 `test` 和 `expect`，由 `npm run test:e2e` 启动。
+- 使用 `support/fixtures.ts` 的 `test` 和 `expect`，由 `npm run test:e2e` 启动。
 - `loginStaff` 只完成登录。使用 `staffPage` 或 `dutyPage` 显式进入目标页面，重新加载后也需要导航。
 - 桌面分组、手机主导航和功能弹窗的差异集中在 `navigationEntry` 中。导航辅助函数不自动丢弃草稿；草稿场景自行处理确认。
 - 优先按角色、标签和可见业务内容定位，在目标页面内查询，避免命中保留在 DOM 中的隐藏页面。

@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { outcomeLabels, repairOutcomes } from '../../../shared/constants.js';
+import { outcomeLabels, repairOutcomes } from '../../../shared/constants.ts';
 import { Modal, Notice, Status } from './ui';
 import { RepairInformation, RepairHistory } from '../RepairDetails';
 import { RepairRelations } from '../RepairRelations';
@@ -8,9 +8,9 @@ import { RepairOriginal } from '../RepairOriginal';
 import { RepairAttachments } from '../RepairAttachments';
 import { IntakePhotos } from './IntakePhotos';
 import { useRepair } from './useRepair';
-import { formatInstant } from '../../../shared/time.js';
+import { formatInstant } from '../../../shared/time.ts';
 import { DataValue } from '../DataValue';
-import { warrantyServiceCenterUrl } from '../../../shared/warranty.js';
+import { warrantyServiceCenterUrl } from '../../../shared/warranty.ts';
 import { RepairToolsProvider, useRepairTools } from '../RepairTools';
 
 function RepairOrder({
@@ -284,7 +284,7 @@ function RepairOrder({
           )}
           {item.status === 'completed' && (
             <p>
-              {outcomeLabels[item.outcome || ''] || '历史未分类'} · {item.repairNote}
+              {(item.outcome && outcomeLabels[item.outcome]) || '历史未分类'} · {item.repairNote}
             </p>
           )}
           <RepairRelations

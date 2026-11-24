@@ -48,7 +48,7 @@ Preview、本地默认不采集。需要验收 Preview 时，在 GitHub `preview
 
 ## 事件与身份
 
-学生原生 JS 与工作人员 React 使用同一个本地 SDK bundle `/assets/posthog.js`；同一文档通过共享实例避免重复初始化。普通 DOM 交互交给 PostHog 自动采集，保留现有 `data-track`，可以通过元素属性筛选，不依赖易变的文案。
+学生端和工作人员端 React 使用同一个本地 SDK bundle `/assets/posthog.js`；同一文档通过共享实例避免重复初始化。普通 DOM 交互交给 PostHog 自动采集，保留现有 `data-track`，可以通过元素属性筛选，不依赖易变的文案。
 
 | 事件 | 含义 |
 | --- | --- |

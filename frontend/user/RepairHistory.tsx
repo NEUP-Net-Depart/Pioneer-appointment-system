@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { formatDate } from '../../shared/time.js';
+import { formatDate } from '../../shared/time.ts';
 import { statusText } from './presentation';
 import { RepairQr } from './RepairQr';
 import type { Appointment } from './types';

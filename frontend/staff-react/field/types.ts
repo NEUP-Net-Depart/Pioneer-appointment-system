@@ -1,17 +1,24 @@
-export interface Appointment {
-  id: string;
-  revision: number;
-  campus: string;
-  date: string;
-  timeSlot: string;
-  status: string;
+import type { AppointmentSummaryDto, StoredRepairLink } from '../../../shared/appointment-types.ts';
+import type { IdentityLabel, PermissionDecisions } from '../../../shared/staff-types.ts';
+
+export type { AttendanceRecordDto as AttendanceRecord } from '../../../shared/staff-types.ts';
+import type { AttendanceRecordDto } from '../../../shared/staff-types.ts';
+
+export interface FieldNavigationProps {
+  workspaceLinks?: { id: string; label: string; group?: string }[];
+  onLogout: () => void;
+  onNavigate: (view: string) => void;
+}
+
+export interface Appointment extends AppointmentSummaryDto {
   receivedAt?: string;
   receivedBy?: string;
   receivedByName?: string;
   photoDeferredBy?: string;
   canSupplement?: boolean;
+  repairNumber?: string | null;
   parentAppointmentId?: string;
-  linkKind?: string;
+  linkKind?: StoredRepairLink;
   customerHistory?: {
     id: string;
     date: string;
@@ -46,7 +53,6 @@ export interface Appointment {
   businessDate?: string;
   frontPhotoId?: string;
   backPhotoId?: string;
-  servicePaused?: boolean;
   deviceType: string;
   brand: string;
   deviceModel: string;
@@ -55,7 +61,7 @@ export interface Appointment {
   warranty?: string;
   assignedToName?: string;
   assignedMemberId?: string;
-  assigneeIdentities?: { code: string; label: string }[];
+  assigneeIdentities?: IdentityLabel[];
   assigneeIdentitySnapshot?: {
     memberId: string;
     name: string;
@@ -63,7 +69,6 @@ export interface Appointment {
   } | null;
   startedAt?: string;
   repairNote?: string;
-  outcome?: string;
   name?: string;
   studentId?: string;
   phone?: string;
@@ -106,18 +111,6 @@ export interface Verification {
   note: string;
 }
 
-export interface AttendanceRecord {
-  id: string;
-  type: string;
-  businessDate: string;
-  campusId: string;
-  occurredAt: string;
-  revision: number;
-  isExisting?: boolean;
-  nonScheduled?: boolean;
-  identitySnapshot?: { identities?: { code: string; label: string }[] };
-}
-
 export interface Home {
   rosterParticipant?: boolean;
   searchCapabilities?: {
@@ -128,7 +121,7 @@ export interface Home {
   };
   directAttendance?: { allowed: boolean; reason: string };
   identities?: { code: string; label: string }[];
-  permissions: Record<string, boolean>;
+  permissions: PermissionDecisions;
   navigation: { id: string }[];
   businessDate: string;
   actor: { memberId: string; name: string };
@@ -137,7 +130,7 @@ export interface Home {
   campusId: string;
   contexts: { id: string; label: string }[];
   capability: Record<string, boolean>;
-  attendance: AttendanceRecord | null;
+  attendance: AttendanceRecordDto | null;
   repairs: Appointment[];
   pendingPhotos: Appointment[];
   pendingCoverInvitations?: number;

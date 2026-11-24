@@ -1,10 +1,12 @@
-import React, { useEffect, useRef, useState, type ReactNode } from 'react';
+import { failureFrom } from '../../shared/api-types.ts';
+import type { WorkspaceEntry } from './workspace-navigation.ts';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Github } from 'lucide-react';
 import { Modal } from './field/ui';
 import { WorkspaceLauncher } from './WorkspaceLauncher';
 import { WorkspaceIcon } from './WorkspaceIcon';
-import { groupWorkspaceEntries, mobileWorkspaceEntries } from './workspace-navigation.js';
-import { pendingEditors } from './useUnsavedChanges.js';
+import { groupWorkspaceEntries, mobileWorkspaceEntries } from './workspace-navigation.ts';
+import { pendingEditors } from './useUnsavedChanges.ts';
 import { UnsavedChangesDialog } from './UnsavedChangesDialog';
 import {
   showStaffInstallPrompt,
@@ -13,7 +15,7 @@ import {
 } from './staff-install';
 import './field/field.css';
 
-type Entry = { id: string; label: string; group?: string; icon?: string; keywords?: string };
+type Entry = WorkspaceEntry;
 const installEntry = { id: '__install__', label: '安装到桌面', icon: 'download' };
 export function StaffWorkspace({
   children,
@@ -140,7 +142,8 @@ export function StaffWorkspace({
       const id = pending;
       setPending(null);
       finishNavigation(id);
-    } catch (error) {
+    } catch (errorValue) {
+      const error = failureFrom(errorValue);
       setNavigationError(error instanceof Error ? error.message : '操作失败，请重试。');
     } finally {
       navigationLock.current = false;

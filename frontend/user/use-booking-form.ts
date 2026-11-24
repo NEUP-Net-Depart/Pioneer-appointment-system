@@ -5,7 +5,7 @@ import {
   FAULT_HINTS,
   STUDENT_FIELD_LIMITS,
   studentFieldErrors
-} from '../../shared/student-booking.js';
+} from '../../shared/student-booking.ts';
 import { reveal, useLayoutMotion } from './motion';
 import { useCurrent } from './use-current';
 import type { BookingFields, FieldErrors, Step } from './types';
@@ -29,7 +29,7 @@ const textLimits = {
   brandOther: STUDENT_FIELD_LIMITS.brand,
   collegeOther: STUDENT_FIELD_LIMITS.college
 };
-const faultHints: Record<string, string> = FAULT_HINTS;
+const faultHints = FAULT_HINTS;
 
 function conditions(fields: BookingFields) {
   const device = bookingDeviceQuestions(

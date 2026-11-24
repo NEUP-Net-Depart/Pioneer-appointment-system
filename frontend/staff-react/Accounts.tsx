@@ -1,0 +1,739 @@
+import type { Query } from '@tanstack/react-query';
+import type { ItemsResponse } from '../../shared/api-types.ts';
+import type { StaffAccountDto, StaffProfileDto, StaffRole } from '../../shared/staff-types.ts';
+
+export type AccountItem = StaffAccountDto & {
+  actions?: { edit?: boolean; changeStatus?: boolean; resetPassword?: boolean };
+};
+
+interface AccountEditorProps {
+  user: StaffProfileDto;
+  item: AccountItem;
+  onClose: () => void;
+  onSaved: () => unknown;
+  embedded?: boolean;
+  onDirty?: (dirty: boolean) => void;
+  onBusy?: (busy: boolean) => void;
+}
+interface InvitationItem {
+  studentId: string;
+  expectedName?: string;
+  expectedRole: StaffRole;
+  homeCampus: string;
+  authorizedCampuses: string[];
+  status: 'open' | 'revoked' | 'activated' | 'pending' | 'approved' | 'rejected';
+}
+interface ActivationReviewItem extends InvitationItem {
+  id: string;
+  name: string;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewNote?: string;
+}
+import { failureFrom } from '../../shared/api-types.ts';
+import { Select } from './SelectionControls.tsx';
+import { useContext, useEffect, useRef, useState } from 'react';
+import { roleLabels, CAMPUSES } from '../../shared/constants.ts';
+import { request } from './request.ts';
+import { ActivityContext, Modal, Notice } from './field/ui';
+import { WorkspaceHeader } from './WorkspaceHeader';
+import { WorkspaceSections } from './WorkspaceSections';
+import { useUnsavedChanges } from './useUnsavedChanges.ts';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { StaffIdentity } from './StaffIdentity';
+import { RefreshButton, WorkspaceToolbar } from './WorkspaceToolbar.tsx';
+
+const enrollmentLabels = {
+  open: '待激活',
+  revoked: '已撤销',
+  activated: '已激活',
+  pending: '待审核',
+  approved: '已通过',
+  rejected: '已拒绝'
+};
+const sections = [
+  { id: 'accounts', label: '账号列表' },
+  { id: 'review', label: '激活审核' },
+  { id: 'invites', label: '加入资格' }
+];
+
+export function Accounts({
+  user,
+  embedded = false
+}: {
+  user: StaffProfileDto;
+  embedded?: boolean;
+}) {
+  const active = useContext(ActivityContext);
+  const [section, setSection] = useState('accounts'),
+    [visited, setVisited] = useState(['accounts']);
+  const [copyMessage, setCopyMessage] = useState('');
+  const activationUrl = new URL('/staff/?activate=1', location.origin).href;
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(activationUrl);
+      setCopyMessage('激活网址已复制，可发给已获得加入资格的成员。');
+    } catch {
+      setCopyMessage(`请复制激活网址：${activationUrl}`);
+    }
+  }
+  return (
+    <section className="accounts-workspace">
+      {!embedded && (
+        <WorkspaceHeader group="人员权限" title="人员管理">
+          <button data-track="staff.accounts.button.2" onClick={copy}>
+            复制激活网址
+          </button>
+        </WorkspaceHeader>
+      )}
+      <Notice>{copyMessage}</Notice>
+      <div className="accounts-section-heading">
+        <WorkspaceSections
+          label="账号管理功能"
+          items={sections}
+          value={section}
+          onChange={(id) => {
+            setSection(id);
+            setVisited((current) => (current.includes(id) ? current : [...current, id]));
+          }}
+        />
+        {embedded && (
+          <button data-track="staff.accounts.button.1" onClick={copy}>
+            复制激活网址
+          </button>
+        )}
+      </div>
+      {sections.map(
+        (item) =>
+          visited.includes(item.id) && (
+            <ActivityContext.Provider key={item.id} value={active && section === item.id}>
+              <div hidden={section !== item.id}>
+                {item.id === 'accounts' ? (
+                  <AccountList user={user} />
+                ) : item.id === 'review' ? (
+                  <ActivationReview />
+                ) : (
+                  <Invitations />
+                )}
+              </div>
+            </ActivityContext.Provider>
+          )
+      )}
+    </section>
+  );
+}
+
+function AccountList({ user }: { user: StaffProfileDto }) {
+  const active = useContext(ActivityContext),
+    list = useQuery<ItemsResponse<AccountItem>>({ queryKey: ['/api/users'], enabled: active });
+  const [query, setQuery] = useState(''),
+    [selected, setSelected] = useState<AccountItem | null>(null),
+    [message, setMessage] = useState('');
+  const items = (list.data?.items || []).filter((item) =>
+    [item.account, item.name, item.homeCampus, ...(item.authorizedCampuses || [])]
+      .join(' ')
+      .toLowerCase()
+      .includes(query.toLowerCase().trim())
+  );
+  return (
+    <>
+      <div className="workspace-list-tools">
+        <label>
+          查找账号
+          <input
+            data-track="staff.accounts.input.3"
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="姓名、学号或校区"
+          />
+        </label>
+        <RefreshButton
+          data-track="staff.accounts.button.4"
+          disabled={list.isPending}
+          onRefresh={() => list.refetch({ throwOnError: true })}
+          label="刷新账号"
+          compactOnMobile
+        />
+        <span data-motion-value="number" role="status">
+          {`${items.length} 个账号`}
+        </span>
+      </div>
+      <Notice>{list.error?.message || message}</Notice>
+      <section
+        data-motion-list="reveal"
+        className="account-list"
+        aria-label="工作人员账号列表"
+        aria-busy={list.isPending}
+      >
+        {items.map((item) => (
+          <article data-motion-item="" className="field-card account-row" key={item.account}>
+            <div className="account-identity">
+              <strong data-motion-value="text">{item.name}</strong>
+              <span data-motion-value="text">{item.account}</span>
+            </div>
+            <div>
+              <span className="account-label">任职与身份</span>
+              <StaffIdentity identities={item.identities} />
+            </div>
+            <div>
+              <span className="account-label">校区</span>
+              <span data-motion-value="text">{item.homeCampus}</span>
+              <small data-motion-value="text">
+                授权 {(item.authorizedCampuses || []).join('、')}
+              </small>
+            </div>
+            <div>
+              <span data-motion-value="text" className="account-state" data-state={item.status}>
+                {item.status === 'enabled' ? '已启用' : '已停用'}
+              </span>
+              <small data-motion-value="number">{item.workload || 0} 条维修记录</small>
+            </div>
+            <div className="account-actions">
+              {item.actions?.edit ? (
+                <button data-track="staff.accounts.button.5" onClick={() => setSelected(item)}>
+                  管理账号
+                </button>
+              ) : (
+                <small data-motion-value="text">
+                  {item.protected
+                    ? '系统保护账号'
+                    : item.account === user.account
+                      ? '本人账号'
+                      : '仅可查看'}
+                </small>
+              )}
+            </div>
+          </article>
+        ))}
+        {!items.length && !list.isPending && !list.error && (
+          <div className="field-empty">
+            <strong data-motion-value="text">{query ? '没有匹配的账号' : '暂无可见账号'}</strong>
+            {query && (
+              <button data-track="staff.accounts.button.6" onClick={() => setQuery('')}>
+                清除搜索
+              </button>
+            )}
+          </div>
+        )}
+      </section>
+      {selected && (
+        <AccountEditor
+          user={user}
+          item={selected}
+          onClose={() => setSelected(null)}
+          onSaved={() => {
+            setSelected(null);
+            setMessage('账号已更新，旧登录会话已撤销。');
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+export function AccountEditor({
+  user,
+  item,
+  onClose,
+  onSaved,
+  embedded = false,
+  onDirty,
+  onBusy
+}: AccountEditorProps) {
+  const client = useQueryClient();
+  const active = useContext(ActivityContext);
+  const [draft, setDraft] = useState({
+    name: item.name,
+    homeCampus: item.homeCampus,
+    authorizedCampuses: [...item.authorizedCampuses],
+    status: item.status
+  });
+  const [password, setPassword] = useState(''),
+    [reset, setReset] = useState(false),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState('');
+  const lock = useRef(false);
+  const dirty =
+    embedded &&
+    (reset ||
+      (['name', 'homeCampus', 'status'] as const).some((key) => draft[key] !== item[key]) ||
+      JSON.stringify(draft.authorizedCampuses) !== JSON.stringify(item.authorizedCampuses));
+  function discard() {
+    setDraft({
+      name: item.name,
+      homeCampus: item.homeCampus,
+      authorizedCampuses: [...item.authorizedCampuses],
+      status: item.status
+    });
+    setPassword('');
+    setReset(false);
+  }
+  const form = useUnsavedChanges({ dirty, active, busy, save, discard });
+  useEffect(() => {
+    onDirty?.(dirty);
+  }, [dirty, onDirty]);
+  useEffect(() => () => onDirty?.(false), [onDirty]);
+  useEffect(() => {
+    if (!active) {
+      setPassword('');
+      setReset(false);
+    }
+  }, [active]);
+  async function save(event: { preventDefault(): void }) {
+    event.preventDefault();
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    onBusy?.(true);
+    setError('');
+    try {
+      await request(`/api/users/${encodeURIComponent(item.account)}`, {
+        method: 'PATCH',
+        body: { ...draft, ...(reset ? { password } : {}) }
+      });
+      const affected = {
+        predicate: (query: Query) =>
+          String(query.queryKey[0]).startsWith('/api/users') ||
+          String(query.queryKey[0]).startsWith('/api/members') ||
+          [
+            '/api/field/home',
+            '/api/field/board',
+            '/api/rosters/campus-week',
+            '/api/attendance/day'
+          ].includes(String(query.queryKey[0]))
+      };
+      await client.cancelQueries(affected);
+      await client.invalidateQueries(affected);
+      await onSaved();
+      return true;
+    } catch (failureValue) {
+      const failure = failureFrom(failureValue);
+      setError(failure.message);
+    } finally {
+      lock.current = false;
+      setBusy(false);
+      onBusy?.(false);
+    }
+  }
+  const content = (
+    <>
+      <p data-motion-value="text" className="field-muted">
+        {item.account} · 保存后撤销此账号已有会话。
+      </p>
+      <form
+        data-track="staff.accounts.form.7"
+        ref={form}
+        className="workspace-form"
+        onSubmit={save}
+      >
+        <fieldset disabled={busy} className="workspace-form-fields">
+          <label>
+            姓名
+            <input
+              data-track="staff.accounts.input.8"
+              required
+              maxLength={80}
+              value={draft.name}
+              onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+            />
+          </label>
+          <p data-motion-value="text" className="field-muted">
+            额外系统授权：{item.roleNames?.join('、') || '无'}
+          </p>
+          <StaffIdentity identities={item.identities} />
+          <p className="field-muted">任职与独立身份在人员详情的“基本资料与任职身份”中管理。</p>
+          <label>
+            所属校区
+            <Select
+              data-track="staff.accounts.select.9"
+              value={draft.homeCampus}
+              onChange={(event) => setDraft({ ...draft, homeCampus: event.target.value })}
+            >
+              {CAMPUSES.map((campus) => (
+                <option key={campus}>{campus}</option>
+              ))}
+            </Select>
+          </label>
+          <fieldset className="workspace-checks">
+            <legend>授权校区</legend>
+            {CAMPUSES.map((campus) => (
+              <label className="workspace-check" key={campus}>
+                <input
+                  data-track="staff.accounts.input.10"
+                  type="checkbox"
+                  disabled={!user.authorizedCampuses.includes(campus)}
+                  checked={draft.authorizedCampuses.includes(campus)}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      authorizedCampuses: event.target.checked
+                        ? [...draft.authorizedCampuses, campus]
+                        : draft.authorizedCampuses.filter((value) => value !== campus)
+                    })
+                  }
+                />
+                <span>{campus}</span>
+              </label>
+            ))}
+          </fieldset>
+          {item.actions?.changeStatus && (
+            <label>
+              账号状态
+              <Select
+                data-track="staff.accounts.select.11"
+                value={draft.status}
+                onChange={(event) =>
+                  setDraft({ ...draft, status: event.target.value as AccountItem['status'] })
+                }
+              >
+                <option value="enabled">启用</option>
+                <option value="disabled">停用</option>
+              </Select>
+            </label>
+          )}
+          {item.actions?.resetPassword && (
+            <>
+              <label className="workspace-check">
+                <input
+                  data-track="staff.accounts.input.12"
+                  type="checkbox"
+                  checked={reset}
+                  onChange={(event) => {
+                    setReset(event.target.checked);
+                    setPassword('');
+                  }}
+                />
+                同时重置密码
+              </label>
+              {reset && (
+                <label>
+                  新登录密码
+                  <input
+                    data-track="staff.accounts.input.13"
+                    type="password"
+                    autoComplete="new-password"
+                    required
+                    minLength={8}
+                    maxLength={128}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                  />
+                </label>
+              )}
+            </>
+          )}
+        </fieldset>
+        <Notice>{error}</Notice>
+        <div className="field-actions">
+          <button
+            data-track="staff.accounts.button.14"
+            type="button"
+            disabled={busy}
+            onClick={embedded ? discard : onClose}
+          >
+            取消
+          </button>
+          <button
+            data-track="staff.accounts.button.15"
+            className="field-primary"
+            disabled={busy || !draft.authorizedCampuses.length}
+          >
+            {busy ? '正在保存…' : '保存账号'}
+          </button>
+        </div>
+      </form>
+    </>
+  );
+  return embedded ? (
+    content
+  ) : (
+    <Modal title={`管理账号 · ${item.name}`} dismissible={!busy} onClose={onClose} sidePanel>
+      {content}
+    </Modal>
+  );
+}
+
+function ActivationReview() {
+  const client = useQueryClient();
+  const active = useContext(ActivityContext),
+    list = useQuery<ItemsResponse<ActivationReviewItem>>({
+      queryKey: ['/api/activation-requests'],
+      enabled: active
+    });
+  const [selected, setSelected] = useState<string[]>([]),
+    [verified, setVerified] = useState(false),
+    [note, setNote] = useState(''),
+    [busy, setBusy] = useState(false),
+    [message, setMessage] = useState(''),
+    [history, setHistory] = useState(false);
+  const lock = useRef(false),
+    pending = (list.data?.items || []).filter((item) => item.status === 'pending');
+  const items = history
+    ? (list.data?.items || []).filter((item) => item.status !== 'pending')
+    : pending;
+  const ids = selected.filter((id) => pending.some((item) => item.id === id));
+  async function review(status: string) {
+    if (lock.current || !ids.length) return;
+    lock.current = true;
+    setBusy(true);
+    setMessage('');
+    try {
+      const result = await request<{ applied: string[]; conflicts: string[] }>(
+        '/api/activation-requests/review',
+        {
+          method: 'POST',
+          body: { ids, status, identityVerified: verified, reviewNote: note.trim() }
+        }
+      );
+      setSelected([]);
+      setVerified(false);
+      setNote('');
+      await Promise.all(
+        ['/api/activation-requests', '/api/users', '/api/staff-whitelist', '/api/members'].map(
+          (path) => client.invalidateQueries({ queryKey: [path] })
+        )
+      );
+      setMessage(
+        `已处理 ${result.applied.length} 条申请。${result.conflicts.length ? '部分申请已被更新，请核对最新结果。' : ''}`
+      );
+    } catch (failureValue) {
+      const failure = failureFrom(failureValue);
+      setMessage(failure.message);
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      <WorkspaceToolbar title="激活审核">
+        <div className="workspace-segmented-control" role="group" aria-label="申请处理状态">
+          <button
+            data-track="staff.accounts.button.26"
+            type="button"
+            aria-pressed={!history}
+            disabled={busy}
+            onClick={() => setHistory(false)}
+          >
+            待审核
+          </button>
+          <button
+            data-track="staff.accounts.button.27"
+            type="button"
+            aria-pressed={history}
+            disabled={busy}
+            onClick={() => setHistory(true)}
+          >
+            已处理
+          </button>
+        </div>
+        <RefreshButton
+          data-track="staff.accounts.button.16"
+          disabled={busy || list.isPending}
+          key={String(history)}
+          onRefresh={() => list.refetch({ throwOnError: true })}
+          label="刷新申请"
+        />
+      </WorkspaceToolbar>
+      <Notice>{list.error?.message || message}</Notice>
+      <div data-motion-list="reveal" className="account-list" aria-busy={list.isPending}>
+        {items.map((item) => (
+          <article data-motion-item="" className="field-card account-row review-row" key={item.id}>
+            <div className="account-identity">
+              {item.status === 'pending' ? (
+                <label className="workspace-check">
+                  <input
+                    data-track="staff.accounts.input.18"
+                    type="checkbox"
+                    aria-label={`选择 ${item.studentId}`}
+                    disabled={busy}
+                    checked={ids.includes(item.id)}
+                    onChange={(event) => {
+                      setVerified(false);
+                      setSelected(
+                        event.target.checked
+                          ? [...ids, item.id]
+                          : ids.filter((id) => id !== item.id)
+                      );
+                    }}
+                  />
+                  <strong data-motion-value="text">{item.name}</strong>
+                </label>
+              ) : (
+                <strong data-motion-value="text">{item.name}</strong>
+              )}
+              <span data-motion-value="text">{item.studentId}</span>
+            </div>
+            <div>
+              <span data-motion-value="text">{roleLabels[item.expectedRole] || '其他角色'}</span>
+              <small data-motion-value="text">
+                所属 {item.homeCampus} · 授权 {item.authorizedCampuses.join('、')}
+              </small>
+            </div>
+            <div>
+              <span data-motion-value="text" className="account-state" data-state={item.status}>
+                {enrollmentLabels[item.status] || '状态已更新'}
+              </span>
+              {item.reviewNote && <small data-motion-value="text">{item.reviewNote}</small>}
+            </div>
+          </article>
+        ))}
+      </div>
+      {!items.length && !list.isPending && !list.error && (
+        <div className="field-empty">
+          <strong data-motion-value="text">{history ? '暂无已处理申请' : '暂无待审核申请'}</strong>
+        </div>
+      )}
+      {!history && pending.length > 0 && (
+        <section className="field-card review-decision">
+          <strong data-motion-value="number">已选 {ids.length} 人</strong>
+          <label className="workspace-check">
+            <input
+              data-track="staff.accounts.input.19"
+              type="checkbox"
+              checked={verified}
+              disabled={busy || !ids.length}
+              onChange={(event) => setVerified(event.target.checked)}
+            />
+            我已逐一核实选中申请的本人身份
+          </label>
+          <label>
+            审核说明（选填）
+            <textarea
+              data-track="staff.accounts.textarea.20"
+              rows={2}
+              maxLength={300}
+              value={note}
+              disabled={busy}
+              onChange={(event) => setNote(event.target.value)}
+            />
+          </label>
+          <div className="field-actions">
+            <button
+              data-track="staff.accounts.button.21"
+              disabled={busy || !ids.length}
+              onClick={() => review('rejected')}
+            >
+              拒绝申请
+            </button>
+            <button
+              data-track="staff.accounts.button.22"
+              className="field-primary"
+              disabled={busy || !ids.length || !verified}
+              onClick={() => review('approved')}
+            >
+              {busy ? '正在处理…' : '批准申请'}
+            </button>
+          </div>
+        </section>
+      )}
+    </>
+  );
+}
+
+function Invitations() {
+  const client = useQueryClient();
+  const active = useContext(ActivityContext),
+    list = useQuery<ItemsResponse<InvitationItem>>({
+      queryKey: ['/api/staff-whitelist'],
+      enabled: active
+    });
+  const [busy, setBusy] = useState(false),
+    [message, setMessage] = useState(''),
+    [query, setQuery] = useState('');
+  const lock = useRef(false);
+  async function run(operation: () => unknown) {
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    setMessage('');
+    try {
+      await operation();
+      await Promise.all(
+        ['/api/activation-requests', '/api/users', '/api/staff-whitelist', '/api/members'].map(
+          (path) => client.invalidateQueries({ queryKey: [path] })
+        )
+      );
+    } catch (failureValue) {
+      const failure = failureFrom(failureValue);
+      setMessage(failure.message);
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+  const items = (list.data?.items || []).filter((item) =>
+    `${item.studentId} ${item.expectedName || ''}`.includes(query.trim())
+  );
+  return (
+    <>
+      <div className="workspace-list-tools">
+        <label>
+          查找加入资格
+          <input
+            data-track="staff.accounts.input.23"
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="学号或姓名"
+          />
+        </label>
+        <RefreshButton
+          data-track="staff.accounts.button.24"
+          disabled={busy || list.isPending}
+          onRefresh={() => list.refetch({ throwOnError: true })}
+          label="刷新资格"
+          compactOnMobile
+        />
+      </div>
+      <Notice>{list.error?.message || message}</Notice>
+      <div data-motion-list="reveal" className="account-list" aria-busy={list.isPending}>
+        {items.map((item) => (
+          <article
+            data-motion-item=""
+            className="field-card account-row invite-row"
+            key={item.studentId}
+          >
+            <div className="account-identity">
+              <strong data-motion-value="text">{item.expectedName || '待核实姓名'}</strong>
+              <span data-motion-value="text">{item.studentId}</span>
+            </div>
+            <div>
+              <span data-motion-value="text">{roleLabels[item.expectedRole] || '其他角色'}</span>
+              <small data-motion-value="text">授权 {item.authorizedCampuses.join('、')}</small>
+            </div>
+            <span data-motion-value="text" className="account-state" data-state={item.status}>
+              {enrollmentLabels[item.status] || '状态已更新'}
+            </span>
+            <div>
+              {item.status !== 'activated' && (
+                <button
+                  data-track="staff.accounts.button.25"
+                  disabled={busy}
+                  onClick={() =>
+                    run(async () => {
+                      await request(`/api/staff-whitelist/${encodeURIComponent(item.studentId)}`, {
+                        method: 'PATCH',
+                        body: { status: item.status === 'open' ? 'revoked' : 'open' }
+                      });
+                      setMessage('加入资格已更新。');
+                    })
+                  }
+                >
+                  {item.status === 'open' ? '撤销资格' : '恢复资格'}
+                </button>
+              )}
+            </div>
+          </article>
+        ))}
+      </div>
+      {!items.length && !list.isPending && !list.error && (
+        <div className="field-empty">
+          <strong data-motion-value="text">
+            {query ? '没有匹配的加入资格' : '还没有加入名单'}
+          </strong>
+        </div>
+      )}
+    </>
+  );
+}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type Ref } from 'react';
-import { qrImage } from '../../shared/zxing.js';
+import { qrImage } from '../../shared/zxing.ts';
 import { appointmentPath, studentJson } from './api';
 import { credentialHeaders } from './credentials';
 import type { Credential } from './types';

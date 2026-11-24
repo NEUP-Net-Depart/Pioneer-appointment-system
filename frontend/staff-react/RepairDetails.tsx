@@ -1,8 +1,8 @@
 import { useId, useState } from 'react';
 import { api, Notice, Modal } from './field/ui';
 import type { Appointment } from './field/types';
-import { outcomeLabels, statusLabels } from '../../shared/constants.js';
-import { formatInstant } from '../../shared/time.js';
+import { outcomeLabels, statusLabels } from '../../shared/constants.ts';
+import { formatInstant } from '../../shared/time.ts';
 import { useRepairTool, useRepairTools } from './RepairTools';
 import { Select } from './SelectionControls';
 import {
@@ -10,7 +10,7 @@ import {
   STUDENT_DEVICE_TYPES,
   FAULT_TYPES,
   bookingDeviceQuestions
-} from '../../shared/student-booking.js';
+} from '../../shared/student-booking.ts';
 
 const fields = {
   brand: '品牌',
@@ -80,7 +80,7 @@ export function RepairInformation({
 }) {
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(
-      Object.keys(fields).map((key) => [
+      (Object.keys(fields) as (keyof typeof fields)[]).map((key) => [
         key,
         key === 'note'
           ? item.original?.note || ''
@@ -184,8 +184,8 @@ export function RepairInformation({
                           ? 'QQ 账号'
                           : values.contactType === 'wechat'
                             ? '微信账号'
-                            : fields[key]
-                        : fields[key]
+                            : fields[key as keyof typeof fields]
+                        : fields[key as keyof typeof fields]
                     ])
                     .map(([key, label]) => (
                       <label
@@ -208,12 +208,13 @@ export function RepairInformation({
                             <option value="">未填写</option>
                             {!fieldOptions[key].includes(values[key]) && values[key] && (
                               <option value={values[key]}>
-                                {optionLabels[values[key]] || values[key]}
+                                {optionLabels[values[key] as keyof typeof optionLabels] ||
+                                  values[key]}
                               </option>
                             )}
                             {fieldOptions[key].map((option) => (
                               <option key={option} value={option}>
-                                {optionLabels[option] || option}
+                                {optionLabels[option as keyof typeof optionLabels] || option}
                               </option>
                             ))}
                           </Select>
@@ -323,15 +324,16 @@ export function RepairHistory({ history }: { history: Appointment['repairHistory
               const display = (key: string, value: unknown) =>
                 String(
                   (key === 'outcome'
-                    ? outcomeLabels[String(value)]
+                    ? outcomeLabels[String(value) as keyof typeof outcomeLabels]
                     : key === 'status'
-                      ? statusLabels[String(value)]
+                      ? statusLabels[String(value) as keyof typeof statusLabels]
                       : value) || '—'
                 );
               return (
                 <article key={index} className="repair-history-event">
                   <p>
-                    {formatInstant(event.occurredAt)} · {actions[event.action] || event.action} ·{' '}
+                    {formatInstant(event.occurredAt)} ·{' '}
+                    {actions[event.action as keyof typeof actions] || event.action} ·{' '}
                     {event.actorName || ''} {event.reason}
                   </p>
                   {Object.entries(historyFields)

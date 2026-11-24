@@ -1,26 +1,12 @@
-import { apiJson } from '../../shared/api.js';
+import { apiJson } from '../../shared/api.ts';
+import type { ApiRequestOptions } from '../../shared/api.ts';
+export { failureFrom } from '../../shared/api-types.ts';
+export type { ApiFailure as Failure } from '../../shared/api-types.ts';
 import type { Appointment, Credential } from './types';
 import { credentialHeaders } from './credentials';
 
-type JsonOptions = NonNullable<Parameters<typeof apiJson>[1]> &
-  RequestInit & {
-    json?: unknown;
-    telemetryPoll?: boolean;
-  };
-
-export function studentJson<T>(path: string, options: JsonOptions = {}): Promise<T> {
-  return apiJson(path, { timeoutMs: 15000, ...options });
-}
-
-export type Failure = Error & {
-  code?: string;
-  status?: number;
-  requestId?: string;
-  fields?: Record<string, string>;
-};
-
-export function failureFrom(value: unknown): Failure {
-  return value instanceof Error ? value : new Error(String(value ?? ''));
+export function studentJson<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
+  return apiJson<T>(path, { timeoutMs: 15000, ...options });
 }
 
 export function appointmentPath(id: string) {
@@ -29,7 +15,7 @@ export function appointmentPath(id: string) {
 
 export async function readAppointment(
   entry: Credential,
-  options: JsonOptions = {}
+  options: ApiRequestOptions = {}
 ): Promise<Appointment> {
   const item = await studentJson<Omit<Appointment, 'accessToken'>>(appointmentPath(entry.id), {
     ...options,
