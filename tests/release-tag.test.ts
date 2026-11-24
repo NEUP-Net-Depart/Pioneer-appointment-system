@@ -59,12 +59,20 @@ test('rejects Preview, feature, PR, manual production and failed or mismatched d
 test('production reports the deployed SHA only after migration, Pages and smoke all succeed',async()=>{
   const directory=mkdtempSync(join(tmpdir(),'production-tag-'));
   try{
-    for(const failure of ['migrate-remote.ts','deploy.ts','smoke.ts',null]){
+    const stages = ['migrate-remote.ts', 'deploy.ts', 'smoke.ts'];
+    for(const failure of [...stages,null]){
       const output=join(directory,failure || 'success'),calls: string[]=[];
       const releaseEnv={...env(),GITHUB_OUTPUT:output,CLOUDFLARE_ACCOUNT_ID:'test',CLOUDFLARE_API_TOKEN:'test',SITE_URL:'https://example.test'};
       const run=(script: string)=>{calls.push(script);return {status:script===failure ? 1 : 0};};
-      if(failure){await assert.rejects(runCiRelease(releaseEnv,run));assert.equal(existsSync(output),false);}
-      else {await runCiRelease(releaseEnv,run);assert.ok(readFileSync(output,'utf8').includes(`deployed_sha=${sha}\n`));assert.deepEqual(calls,['migrate-remote.ts','deploy.ts','smoke.ts']);}
+      if(failure){
+        await assert.rejects(runCiRelease(releaseEnv,run), /release stopped/);
+        assert.equal(existsSync(output),false);
+        assert.deepEqual(calls, stages.slice(0, stages.indexOf(failure) + 1));
+      } else {
+        await runCiRelease(releaseEnv,run);
+        assert.ok(readFileSync(output,'utf8').includes(`deployed_sha=${sha}\n`));
+        assert.deepEqual(calls, stages);
+      }
     }
   }finally{rmSync(directory,{recursive:true,force:true});}
 });

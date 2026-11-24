@@ -7,7 +7,9 @@ import { slotCapacityService } from '../src/services/slot-capacities.ts';
 import { slotCapacityRepository } from '../src/db/slot-capacities.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { database, seedStaff, seedAppointment } from './helpers/database.ts';
+import { database, seedStaff, seedAppointment, testEnvironment } from './helpers/database.ts';
+import { handleRequest } from '../src/app.ts';
+import { signToken } from '../src/lib/jwt.ts';
 import { userRepository } from '../src/db/users.ts';
 import { staffPlatformRepository } from '../src/db/staff-platform.ts';
 import { appointmentRepository } from '../src/db/appointments.ts';
@@ -17,7 +19,6 @@ import { suggestDuties } from '../src/modules/rosters/suggestions.ts';
 import { dutyPlacementIssue, mergeDutyDraft } from '../frontend/staff-react/duty-draft.ts';
 import { canAssignDuty, dutyAvailability, dutyCandidateTypes, dutyPlanningReview, isDutyExempt } from '../shared/duty.ts';
 import { addDays } from '../shared/time.ts';
-import { staffPlatformRoutes } from '../src/routes/staff-platform.ts';
 
 const weekStart = '2026-11-09',
   campusId = 'campus-nanhu';
@@ -362,31 +363,20 @@ test('suggestions explain why a required member cannot be scheduled and leave pe
   }), { status: 409, message: /本周没有可安排的班次/ });
 });
 
-test('leave storage and actions are removed while roster coverage and direct office check-in remain usable', async (t) => {
-  const { db, staff, repository, head, worker } = await setup(t);
+test('republishing a repair shift preserves its identity and coverage', async (t) => {
+  const { staff, head, worker } = await setup(t);
   const initial = await publish(staff, head, [shift(worker.memberId)]);
   const item = present(initial.rosters.find((row) => row.dutyType === 'repair')).assignments[0];
-  assert.equal(present(db.sqlite.prepare("SELECT COUNT(*) n FROM sqlite_schema WHERE name='roster_leaves'").get()).n, 0);
-  assert.equal(Reflect.get(staff, 'leave'), undefined);
-  assert.equal(Reflect.get(staff, 'withdrawLeave'), undefined);
-  assert.equal(Reflect.get(repository, 'recordLeave'), undefined);
-  assert.equal(Reflect.get(repository, 'withdrawLeave'), undefined);
-  for (const suffix of ['leave', 'leave-withdraw'])
-    assert.equal(staffPlatformRoutes.some(([method, pattern]) => method === 'POST' && pattern.test(`/api/rosters/assignments/${item.id}/${suffix}`)), false);
   const current = await staff.campusWeek(head, { weekStart, campusId });
   const republished = await publish(staff, head, present(current.rosters.find((row) => row.dutyType === 'repair')).assignments);
   assert.ok(!present(republished.warnings).includes(`${weekStart}尚未安排维修值班`));
   const retained = present(republished.rosters.find((row) => row.dutyType === 'repair')).assignments[0];
   assert.equal(retained.id, item.id);
-  assert.equal('leaveStatus' in retained, false);
   const suggestions = await staff.rosterSuggestions(head, { weekStart, campusId, sourceVersion: republished.sourceVersion });
   assert.equal(suggestions.assignments.filter((row) => row.memberId === worker.memberId).length, 1);
   const day = await staff.attendanceDay(head, { campusId, businessDate: weekStart });
   assert.equal(day.summary.expected, 1);
   assert.equal(day.items[0].status, 'upcoming');
-  db.sqlite.prepare("UPDATE duty_assignments SET duty_type='office' WHERE id=?").run(item.id);
-  const signed = await staff.directCheckIn(worker, { campusId, requestId: requestId() });
-  assert.equal(signed.memberId, worker.memberId);
 });
 
 test('unified availability reads the latest legacy record, including explicit empty and restored exceptions', () => {
@@ -692,17 +682,26 @@ test('personnel changes at the write boundary cancel both publications and their
   );
 });
 
-test('today includes all unsigned scheduled people without manual review or proxy arrival', async (t) => {
+test('today includes both unsigned repair and office staff', async (t) => {
   const { db, staff, head, worker, office } = await setup(t);
   addDutyMembership(db, office, 'maintenance_affairs');
   await publish(staff, head, [shift(worker.memberId)], [shift(office.memberId)]);
   const day = await staff.attendanceDay(head, { campusId, businessDate: weekStart });
   assert.deepEqual(day.summary, { expected: 2, arrived: 0, absent: 0 });
   assert.equal(present(day.items.find((row) => row.memberId === office.memberId)).status, 'upcoming');
-  assert.equal(Reflect.get(staff, 'confirmArrival'), undefined);
-  assert.equal(Reflect.get(staff, 'reviewAttendance'), undefined);
-  assert.ok(day.items.every((row) => !('canReview' in row) && !('canConfirm' in row)));
   assert.equal(present(db.sqlite.prepare('SELECT COUNT(*) n FROM attendance_records').get()).n, 0);
+});
+
+test('legacy attendance clients receive 401 before sign-in and 410 after sign-in', async (t) => {
+  const { db, worker } = await setup(t);
+  const env = testEnvironment(db);
+  const token = signToken(worker, env.JWT_SECRET);
+  for (const [method, path] of [['POST', 'arrivals'], ['PUT', 'reviews']]) {
+    const url = `https://app.test/api/attendance/${path}`;
+    assert.equal((await handleRequest(new Request(url, { method }), env)).status, 401);
+    const request = new Request(url, { method, headers: { Authorization: `Bearer ${token}` } });
+    assert.equal((await handleRequest(request, env)).status, 410);
+  }
 });
 
 test('actual staffing follows current assignments after manager edits and self-service cover', async (t) => {

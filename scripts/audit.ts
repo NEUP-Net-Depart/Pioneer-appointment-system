@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readdir, readFile, access } from 'node:fs/promises';
-import { join, resolve, dirname, relative } from 'node:path';
+import { join, resolve, dirname, normalize, relative, sep } from 'node:path';
+import { build } from 'esbuild';
 import { root } from './cli.ts';
 import { runtimeStateErrors } from './runtime-state-audit.ts';
 
@@ -13,32 +14,47 @@ async function walk(dir: string): Promise<string[]> {
   return paths;
 }
 const runtime = (await Promise.all(['frontend','shared','src','functions'].map(walk))).flat().filter(path => /\.(?:[jt]sx?|html|css)$/.test(path) && !path.endsWith('.d.ts'));
+// Read each module's emitted imports before bundling so type-only imports and exports disappear.
+const { metafile } = await build({
+  absWorkingDir: root,
+  entryPoints: runtime.filter(path => /\.[jt]sx?$/.test(path)),
+  outdir: '.wrangler/audit',
+  bundle: false, write: false, metafile: true,
+  format: 'esm', target: 'esnext', jsx: 'preserve', legalComments: 'none'
+});
+const runtimeImports = new Map<string, string[]>();
+for (const output of Object.values(metafile.outputs)) {
+  if (output.entryPoint && output.bytes > 0) {
+    runtimeImports.set(normalize(output.entryPoint), output.imports.map(entry => entry.path));
+  }
+}
 const { dependencies = {} } = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 const forbidden = /node:sqlite|http\.createServer|fs\.writeFileSync|fs\.createReadStream|ATTACHMENTS_DIR|DB_FILE|storage_path|BEGIN IMMEDIATE|[?&]mode=(?:user|staff)|nginx|systemd|dotenv/i;
 const graph = new Map<string, string[]>();
 for (const path of runtime) {
   const source = await readFile(join(root, path), 'utf8');
   assert.ok(!forbidden.test(source), `Retired architecture in ${path}`);
-  if (!/\.[jt]sx?$/.test(path)) continue;
+  const specifiers = runtimeImports.get(path);
+  if (!specifiers) continue;
   const imports: string[] = [];
-  const typeImports = new Set(
-    [...source.matchAll(/import\s+type\s+[\s\S]*?from\s+['"]([^'"]+)['"]/g)].map(match => match[1])
-  );
-  for (const [, specifier] of source.matchAll(/(?:from\s+|import\s+|import\s*\(\s*)['"]([^'"]+)['"]/g)) {
+  for (const specifier of specifiers) {
     if (specifier.startsWith('node:')) {
       assert.ok(['node:crypto', 'node:buffer'].includes(specifier) && path.startsWith(join('src', 'lib')), `Unsupported runtime dependency in ${path}`);
       continue;
     }
     if (!specifier.startsWith('.') && !specifier.startsWith('/')) {
-      if (typeImports.has(specifier) && specifier === '@cloudflare/workers-types') continue;
       const packageName = specifier.startsWith('@') ? specifier.split('/').slice(0, 2).join('/') : specifier.split('/')[0];
       assert.ok(Object.hasOwn(dependencies, packageName) &&
-        (['staff-react', 'user'].some(app => path.startsWith(join('frontend', app) + '/')) ||
-          (typeImports.has(specifier) && path.startsWith('shared/'))), `Unsupported package dependency ${specifier} in ${path}`);
+        ['staff-react', 'user'].some(app => path.startsWith(join('frontend', app) + sep)), `Unsupported package dependency ${specifier} in ${path}`);
       import.meta.resolve(specifier);
       continue;
     }
     // Public vendor modules are generated from declared dependencies by build.ts.
+    if (specifier === '/assets/posthog.js') {
+      assert.equal(path, join('shared', 'telemetry-client.ts'), `Unsupported SDK import in ${path}`);
+      imports.push(resolve(root, 'frontend/staff-react/posthog-sdk.ts'));
+      continue;
+    }
     if (specifier === '/vendor/signature-pad.js') {
       assert.ok(path === join('shared', 'signature-pad.ts') && Object.hasOwn(dependencies, 'signature_pad'), `Unsupported vendor import in ${path}`);
       import.meta.resolve('signature_pad');
@@ -58,8 +74,6 @@ for (const path of runtime) {
     assert.ok(relative(root, dependency) && !relative(root, dependency).startsWith('..'), `Import escapes repository: ${path}`);
     imports.push(dependency);
   }
-  // This shared browser bundle is built by esbuild and loaded dynamically in both apps.
-  if (path === join('shared', 'telemetry-client.ts')) imports.push(resolve(root, 'frontend/staff-react/posthog-sdk.ts'));
   graph.set(resolve(root, path), imports);
   if (path.startsWith('src') || path.startsWith('functions')) {
     assert.ok(!/process\.env|CREATE TABLE|ALTER TABLE|CREATE TRIGGER/i.test(source), `Runtime initialization or process state in ${path}`);

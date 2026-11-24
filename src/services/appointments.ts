@@ -2,7 +2,6 @@ import type { AppointmentChanges, AppointmentListQuery, AppointmentRecord } from
 import type { BookingNoticeDto, RepairOutcome, RepairVerification } from '../../shared/appointment-types.ts';
 import type { StaffAccountDto } from '../../shared/staff-types.ts';
 import type { appointmentRepository } from '../db/appointments.ts';
-import type { userRepository } from '../db/users.ts';
 import type { appointmentPatch, BookingData } from '../lib/validation.ts';
 import type { FieldWorkflow } from './field-workflow.ts';
 import type { StaffService } from './staff-platform.ts';
@@ -67,7 +66,6 @@ export async function presentAppointment(item: AppointmentRecord, encryptionKey:
 }
 export function appointmentService(
   appointments: AppointmentRepository,
-  _users: ReturnType<typeof userRepository>,
   encryptionKey: string,
   clock = () => new Date(),
   staffPlatform: StaffService & { field: FieldWorkflow },
@@ -108,7 +106,7 @@ export function appointmentService(
     const contactBefore: Partial<Record<keyof AppointmentRecord, string>> = {};
     for (const key of ['phone','social','email','contactValue'] as const) if (Object.hasOwn(patch,key))
       contactBefore[key]=await encryptText(await readStoredContact(item[key],encryptionKey),encryptionKey);
-    const updated=await appointments.update(item,patch,null,{
+    const updated=await appointments.update(item,patch,{
       actor:{...actor,memberId:context.actor.memberId,authVersion:context.authVersion},
       action,requestId:receipt.requestId,payloadHash:receipt.payloadHash,at,
       reason:typeof input.reason === 'string' ? input.reason : '',verification:input.verification,contactBefore

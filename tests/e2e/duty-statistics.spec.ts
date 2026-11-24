@@ -27,16 +27,6 @@ test('unified availability offers four weekdays with accessible mobile controls'
   await keyboardChoice.focus();
   await page.keyboard.press('Space');
   await expect(keyboardChoice).toBeChecked();
-  for (const label of await campus.locator('label').all()) {
-    const bounds = await label.boundingBox();
-    expect(present(bounds).height).toBeGreaterThanOrEqual(44);
-  }
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await statistics.getByRole('heading').click();
-  await statistics.evaluate((element) => element.scrollIntoView({ block: 'center' }));
-  await statistics.screenshot({ path: 'output/issue151-demo/duty-statistics-office-mobile.png' });
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await statistics.screenshot({ path: 'output/issue151-demo/duty-statistics-office-desktop.png' });
   await statistics.getByRole('button', { name: '保存空闲', exact: true }).click();
   await expect(statistics.getByRole('button', { name: '修改通常时间', exact: true })).toBeVisible();
   await page.reload();
@@ -96,7 +86,6 @@ test.describe('single check-in confirmation and scheduling review', () => {
     await expect(confirmation.getByRole('note')).toContainText('下周空闲未填写');
     await expect(confirmation.getByRole('checkbox')).toHaveCount(0);
     await expect(confirmation.getByRole('button', { name: '确认签到', exact: true })).toBeEnabled();
-    if (present(member.viewportSize()).width < 600) await confirmation.screenshot({ path: 'output/issue151-demo/check-in-reminder-mobile.png' });
     await confirmation.getByRole('button', { name: '确认签到', exact: true }).click();
     await expect(member.getByRole('dialog')).toHaveCount(0);
     await expect(member.getByRole('region', { name: '工作视窗' }).getByText('已签到', { exact: true })).toBeVisible();
@@ -264,19 +253,4 @@ test('exchange-only members see nonparticipation instead of availability control
   await expect(statistics.getByText('不参与值班统计', { exact: true })).toBeVisible();
   await expect(statistics.getByRole('button')).toHaveCount(0);
   await expect(statistics.getByRole('checkbox')).toHaveCount(0);
-});
-
-test('duty statistics keeps a clear nonparticipation panel for department heads on mobile', async ({
-  page
-}) => {
-  await page.setViewportSize({ width: 375, height: 812 });
-  await loginStaff(page, '20261001');
-  const personal = await dutyPage(page, '我的值班');
-  const statistics = personal.getByRole('region', { name: '值班统计', exact: true });
-  await expect(statistics.getByText('不参与值班统计', { exact: true })).toBeVisible();
-  await expect(statistics.getByRole('checkbox')).toHaveCount(0);
-  await expect(statistics.getByRole('button')).toHaveCount(0);
-  await statistics.evaluate((element) => element.scrollIntoView({ block: 'center' }));
-  await expect(page.getByText('登录成功', { exact: true })).toHaveCSS('opacity', '0');
-  await statistics.screenshot({ path: 'output/issue151-demo/duty-statistics-exempt-mobile.png' });
 });

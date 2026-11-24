@@ -11,7 +11,7 @@ export function staffServices(db: Database, encryptionKey: string, secret = 'tes
   const platform = composeStaffPlatform({ repository, repairs: appointments });
   const staff = staffPlatformService({ repository, platform, manifests: platform.manifests });
   const field = fieldWorkflow({ repository, appointments, staff, authorizer: platform.authorizer, encryptionKey, secret });
-  return Object.assign(staff, { field });
+  return { ...staff, field };
 }
 
 

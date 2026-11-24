@@ -329,7 +329,7 @@ export function scheduleDomain({ repository, contextFor, evaluate }: StaffDomain
       repository.schedulePeople(campus)
     ]);
     const ids = people.map((person) => person.memberId);
-    const [rosters, facts, values, pauses] = await Promise.all([
+    const [rosters, facts, availability, pauses] = await Promise.all([
       Promise.all(
         DUTY_TYPES.map((dutyType) => repository.scheduleWeek(weekStart, campus, dutyType))
       ),
@@ -339,7 +339,6 @@ export function scheduleDomain({ repository, contextFor, evaluate }: StaffDomain
     ]);
     if (snapshot !== (await repository.scheduleSnapshot(campus, weekStart)))
       fail(409, '人员或班表已变化，请刷新');
-    const availability = values;
     const pausedDates = new Set(
       pauses.filter((row) => row.paused).map((row) => `${row.campusId}:${row.businessDate}`)
     );
@@ -358,21 +357,23 @@ export function scheduleDomain({ repository, contextFor, evaluate }: StaffDomain
       campusId: campus,
       rosters,
       availability,
-      people: people.map((person) => ({
-        ...person,
-        ...factsByMember.get(person.memberId),
-        memberships: factsByMember.get(person.memberId)?.memberships ?? [],
-        campuses: factsByMember.get(person.memberId)?.campuses ?? [],
-        assignments: (factsByMember.get(person.memberId)?.assignments || []).filter(
-          (row) => !pausedDates.has(`${row.campusId}:${row.businessDate}`)
-        ),
-        availability: {
-          repair: dutyAvailability(availabilityByMember.get(person.memberId) || [], weekStart)
-            .effectiveWindows,
-          office: dutyAvailability(availabilityByMember.get(person.memberId) || [], weekStart)
-            .effectiveWindows
-        }
-      })),
+      people: people.map((person) => {
+        const fact = factsByMember.get(person.memberId);
+        const { effectiveWindows } = dutyAvailability(
+          availabilityByMember.get(person.memberId) ?? [],
+          weekStart
+        );
+        return {
+          ...person,
+          ...fact,
+          memberships: fact?.memberships ?? [],
+          campuses: fact?.campuses ?? [],
+          assignments: (fact?.assignments ?? []).filter(
+            (row) => !pausedDates.has(`${row.campusId}:${row.businessDate}`)
+          ),
+          availability: { repair: effectiveWindows, office: effectiveWindows }
+        };
+      }),
       paused: pauses
         .filter((row) => row.campusId === campus && row.paused)
         .map((row) => row.businessDate)

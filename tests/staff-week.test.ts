@@ -1,7 +1,6 @@
 import { database } from './helpers/database.ts';
 import { staffActor, staffServices } from './fixtures/staff-services.ts';
 import { appointmentRepository } from '../src/db/appointments.ts';
-import { userRepository } from '../src/db/users.ts';
 import { checkProperty } from './fixtures/workflow-seed.ts';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
@@ -43,7 +42,7 @@ test('Sunday weekly overview starts the new week and excludes the prior service 
     range={start,end,campuses};
     return {nextServiceDate: null, totals:[{capacity:10,campus:'南湖',date:'2026-10-12',time_slot:'19:00–20:00',occupied:3,booked:0,in_progress:1}],capacities:[{campus:'南湖',date:'2026-10-12',time_slot:'19:00–20:00',capacity:10,paused:false}]};
   };
-  const service=appointmentService(repository,userRepository(db),'',()=>new Date('2026-10-18T04:00:00Z'),{...staffServices(db, ''), scopedActor:async actor=>actor});
+  const service=appointmentService(repository,'',()=>new Date('2026-10-18T04:00:00Z'),{...staffServices(db, ''), scopedActor:async actor=>actor});
   const result=await service.overview(staffActor());
   assert.deepEqual(range,{start:'2026-10-18',end:'2026-10-24',campuses:['南湖']});
   assert.deepEqual(result.dates,['2026-10-19','2026-10-20','2026-10-21','2026-10-22']);

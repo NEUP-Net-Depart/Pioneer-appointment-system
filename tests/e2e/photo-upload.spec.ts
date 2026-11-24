@@ -474,7 +474,7 @@ for (const action of ['retry', 'skip', 'skip with a pending photo']) test(`a fai
     purposes.push(purpose);
     if (purpose === 'intake_back' && failBack) {
       failBack = false;
-      await route.fulfill({ status: 429, contentType: 'application/json', body: JSON.stringify({ error: '上传过于频繁，请稍后重试' }) });
+      await route.fulfill({ status: 429, contentType: 'application/json', body: action === 'retry' ? 'null' : JSON.stringify({ error: '上传过于频繁，请稍后重试' }) });
     } else {
       if (purpose === 'intake_front' && action === 'skip with a pending photo') await frontGate;
       await route.continue();
@@ -482,7 +482,7 @@ for (const action of ['retry', 'skip', 'skip with a pending photo']) test(`a fai
   });
   const start = dialog.getByRole('button', { name: '接收并开始维修', exact: true });
   await start.click();
-  await expect(dialog.getByText(/背面：上传过于频繁/)).toBeVisible();
+  await expect(dialog.getByText(action === 'retry' ? /背面：上传失败，请重试/ : /背面：上传过于频繁/)).toBeVisible();
   // No clock advance: errors must allow skipping before the 30-second timer.
   if (action === 'skip with a pending photo') {
     await expect(dialog.getByText('照片上传失败，可以跳过并稍后重试补传。仍在上传的照片会继续，成功后自动补入本工单。')).toBeVisible();

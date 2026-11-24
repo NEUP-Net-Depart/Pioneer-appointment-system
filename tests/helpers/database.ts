@@ -1,4 +1,3 @@
-import { createContext } from '../../src/context.ts';
 import type { D1Result } from '@cloudflare/workers-types';
 import type { SQLInputValue, SQLOutputValue } from 'node:sqlite';
 import type { Database, DatabaseStatement, PioneerEnvironment } from '../../src/platform/environment.ts';
@@ -128,11 +127,11 @@ export function seedPhoto(db: TestDatabase,id: string,appointment: string,side: 
   db.sqlite.prepare(`INSERT INTO appointment_attachments(id,appointment_id,filename,mime_type,size,object_key,created_at,expires_at,purpose,uploaded_by) VALUES(?,?,'original.png','image/png',16,?,'2026-01-01','2099-01-01',?,?)`).run(id,appointment,'test/'+id,'intake_'+side,account);
 }
 
-export function testRequestContext(request: Request, db: Database) {
-  return createContext(request, {
+export function testEnvironment(db: Database): PioneerEnvironment {
+  return {
     DB: { withSession: () => db },
     ATTACHMENTS: unusedAttachments,
     JWT_SECRET: 'local-test-secret'.repeat(2),
     PII_ENCRYPTION_KEY: '00'.repeat(32)
-  });
+  };
 }

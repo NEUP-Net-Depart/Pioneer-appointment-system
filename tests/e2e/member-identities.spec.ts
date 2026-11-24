@@ -154,10 +154,7 @@ test('an appointment created today can end today and be added again', async ({ p
   await expect(history.getByText('交流维修', { exact: true })).toHaveCount(2);
 });
 
-test('existing members can add a department and both independent identities together', async ({
-  page,
-  isMobile
-}) => {
+test('existing members can add a department and both independent identities together', async ({ page }) => {
   await loginStaff(page, '20261001');
   const people = await staffPage(page, '人员管理');
   await people.getByRole('button', { name: '新增人员', exact: true }).click();
@@ -184,13 +181,6 @@ test('existing members can add a department and both independent identities toge
   await chooseOption(page, department, 'dept-network');
   await membership.getByRole('checkbox', { name: '交流维修', exact: true }).check();
   await membership.getByRole('checkbox', { name: '维修事务', exact: true }).check();
-  const identities = membership.getByRole('group', { name: '独立身份', exact: true });
-  await expect(identities).toHaveCSS('border-top-width', '1px');
-  await expect(identities).toHaveCSS('padding-left', '12px');
-  await identities.scrollIntoViewIfNeeded();
-  await page.screenshot({
-    path: `output/member-appointments-${isMobile ? 'mobile' : 'desktop'}.png`
-  });
   await membership.getByRole('button', { name: '保存任职', exact: true }).click();
   const history = membership.getByRole('region', { name: '任职与独立身份记录' });
   await expect(history.getByRole('button', { name: '结束任职', exact: true })).toHaveCount(3);

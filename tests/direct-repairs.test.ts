@@ -10,6 +10,7 @@ import { encryptText } from '../src/lib/privacy.ts';
 import { staffSceneAllowed } from '../shared/staff-access.ts';
 import { statsRepository } from '../src/db/stats.ts';
 import { workloadRepository } from '../src/db/staff-platform/workload.ts';
+import { dutyWeekKey } from '../shared/time.ts';
 function patch(input: Parameters<typeof appointmentPatch>[0]) {return appointmentPatch({requestId:crypto.randomUUID(),...input});}
 
 test('field home and board prefer the authorized home campus and validate every explicit campus',async t=>{
@@ -49,26 +50,28 @@ test('field home and board prefer the authorized home campus and validate every 
 });
 
 test('changing the working campus scopes repairs, reception, photos and duties together',async t=>{
-  const {db,users,staff,order}=repairScenario(t);
+  const {db,users,staff,order,calendar}=repairScenario(t);
   db.sqlite.exec("INSERT INTO staff_campus_grants VALUES('20260001','浑南')");
+  db.sqlite.prepare("UPDATE member_department_memberships SET position_code='head' WHERE member_id='member-20260002'").run();
   const actor=present(await users.find('20260001'));
+  const head=present(await users.find('20260002'));
+  const roster=await staff.saveRosterWeek(head,{
+    weekStart:dutyWeekKey(calendar.serviceDay), campusId:'campus-nanhu', dutyType:'repair',
+    revision:-1, requestId:crypto.randomUUID(),
+    assignments:[{memberId:actor.memberId, businessDate:calendar.serviceDay, startAt:'19:00', endAt:'21:00'}]
+  });
   for(const [suffix,campus] of [['nanhu','南湖'],['hunnan','浑南']]) {
     order('waiting-'+suffix,{campus});
     order('received-'+suffix,{campus,received_at:'2026-11-05T11:00:00Z',received_by:actor.account});
     order('repair-'+suffix,{campus,status:'in_progress',assigned_to:actor.account,started_at:'2026-11-05T11:00:00Z'});
     order('photos-'+suffix,{campus,photo_deferred_by:actor.account});
   }
-  const contextFor=staff.contextFor;
-  staff.contextFor=async account=>({...await contextFor(account),todayDuties:[
-    {id:'duty-nanhu',campusId:'campus-nanhu',campusName:'南湖',dutyType:'repair' as const, weekId: 'test', memberId: actor.memberId, memberName: actor.name, businessDate: '2026-11-05', startAt: '19:00', endAt: '21:00', source: null, homeCampusId: 'campus-nanhu', revision: 0, servicePaused: false, active: true},
-    {id:'duty-hunnan',campusId:'campus-hunnan',campusName:'浑南',dutyType:'repair' as const, weekId: 'test', memberId: actor.memberId, memberName: actor.name, businessDate: '2026-11-05', startAt: '19:00', endAt: '21:00', source: null, homeCampusId: 'campus-hunnan', revision: 0, servicePaused: false, active: true}
-  ]});
   for(const read of [staff.field.home,staff.field.board]) {
     for(const suffix of ['nanhu','hunnan']) {
       const data=await read(actor,{campusId:'campus-'+suffix});
       assert.deepEqual(data.repairs.map(row=>row.id),['repair-'+suffix]);
       assert.deepEqual(data.pendingPhotos.map(row=>row.id),['photos-'+suffix]);
-      assert.deepEqual(data.todayDuties.map(row=>row.id),['duty-'+suffix]);
+      assert.deepEqual(data.todayDuties.map(row=>row.id),suffix==='nanhu' ? [roster.assignments[0].id] : []);
       if(read===staff.field.board) { assert.deepEqual((data as Awaited<ReturnType<typeof staff.field.board>>).appointments.map(row=>row.id).sort(),['photos-'+suffix,'received-'+suffix,'repair-'+suffix,'waiting-'+suffix].sort()); }
     }
   }

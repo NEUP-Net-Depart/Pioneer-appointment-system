@@ -1,8 +1,6 @@
 import type { Route } from './route.ts';
 import { json, readBody, fail, securityHeaders } from '../lib/http.ts';
 
-function bodyWithRevision(body: Record<string, unknown>) { return body && typeof body === 'object' ? body : {}; }
-
 export const staffPlatformRoutes: Route[] = [
   ['GET', /^\/api\/attendance\/staffing$/, async context=>json(await context.services.staffPlatform.workStaffing(await context.role('technician'),context.query))],
   ['GET', /^\/api\/attendance\/day$/, async context=>json(await context.services.staffPlatform.attendanceDay(await context.role('technician'),context.query))],
@@ -30,7 +28,7 @@ export const staffPlatformRoutes: Route[] = [
   ['GET', /^\/api\/organization\/(campuses|departments|locations)$/, async (context, match) => json(await context.services.staffPlatform.organization(await context.role('technician'), match[1], context.query))],
   ['GET', /^\/api\/members\/([^/]+)$/, async (context, match: string[]) => json(await context.services.staffPlatform.memberDetail(await context.role('technician'), decodeURIComponent(match[1]), context.query.businessDate))],
   ['GET', /^\/api\/members\/([^/]+)\/audit$/, async (context, match: string[]) => json(await context.services.staffPlatform.memberAudit(await context.role('technician'), decodeURIComponent(match[1])))],
-  ['PATCH', /^\/api\/members\/([^/]+)$/, async (context, match: string[]) => json(await context.services.staffPlatform.updateMember(await context.role('technician'), decodeURIComponent(match[1]), bodyWithRevision(await readBody(context.request))))],
+  ['PATCH', /^\/api\/members\/([^/]+)$/, async (context, match: string[]) => json(await context.services.staffPlatform.updateMember(await context.role('technician'), decodeURIComponent(match[1]), await readBody(context.request)))],
   ['POST', /^\/api\/members\/import$/, async context => {
     const actor = await context.role('technician'); const input = await readBody(context.request);
     if (typeof input.csv !== 'string' || input.csv.length > 1024 * 1024) fail(400, '成员导入内容不正确');

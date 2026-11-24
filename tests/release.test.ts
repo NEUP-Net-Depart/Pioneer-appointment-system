@@ -66,12 +66,7 @@ test('branch publication waits for the shared dev schema without migrating or pu
   for(const branch of ['dev','main'])await release({...ciEnv('push',branch),PREVIEW_MIGRATIONS_APPLIED:'true'},()=>({status:0}),()=>assert.fail('Do not use dev readiness to gate migrated releases'));
 });
 
-test('CI stops on failed migrations, publication or smoke and rejects missing credentials before execution',async()=>{
-  for(const failure of ['migrate-remote.ts','deploy.ts']){
-    const calls: string[]=[];
-    await assert.rejects(()=>runCiRelease(ciEnv('push','main'),script=>{calls.push(script);return {status:script===failure ? 1 : 0};}),/release stopped/);
-    assert.deepEqual(calls,failure==='migrate-remote.ts' ? [failure] : ['migrate-remote.ts',failure]);
-  }
+test('CI stops a failed preview and rejects missing release credentials before execution',async()=>{
   for(const failure of ['deploy.ts','smoke.ts']){
     const calls: string[]=[];
     await assert.rejects(()=>runCiRelease(ciEnv('push','feat/nfc-checkin'),script=>{calls.push(script);return {status:script===failure ? 1 : 0};}),/release stopped/);

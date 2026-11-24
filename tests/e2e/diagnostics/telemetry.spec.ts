@@ -25,7 +25,7 @@ test('student SDK captures navigation, autocapture, replay and correlated except
       status: 503,
       contentType: 'application/json',
       headers: { 'X-Request-ID': correlation },
-      body: JSON.stringify({ error: 'Unavailable', code: 'SERVICE_UNAVAILABLE' })
+      body: 'null'
     })
   );
   const result = await page.evaluate(async () => {
@@ -81,7 +81,7 @@ test('student SDK captures navigation, autocapture, replay and correlated except
       (e) =>
         e.name === '$exception' &&
         e.requestId === correlation &&
-        e.errorCode === 'SERVICE_UNAVAILABLE'
+        e.errorCode === 'HTTP_ERROR'
     )
   ).toBe(true);
   expect(

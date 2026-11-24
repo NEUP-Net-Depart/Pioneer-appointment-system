@@ -1,4 +1,4 @@
-import type { ApiErrorResponse, ApiFailure } from './api-types.ts';
+import { isObject, type ApiFailure } from './api-types.ts';
 
 export interface ApiRequestOptions extends RequestInit {
   json?: unknown;
@@ -23,6 +23,17 @@ let staffSession = false;
 export function useStaffSession() { staffSession = true; }
 export function clearSession() {
   ['pioneerRole','pioneerMemberId','pioneerAccount','pioneerToken','pioneerCampuses'].forEach(key => sessionStorage.removeItem(key));
+}
+function httpFailure(payload: unknown, status: number, requestId: string | null, fallback: string): ApiFailure {
+  const details = isObject(payload) ? payload : {};
+  const error: ApiFailure = new Error(typeof details.error === 'string' && details.error ? details.error : fallback);
+  error.status = status;
+  error.requestId = requestId || (typeof details.requestId === 'string' ? details.requestId : undefined);
+  if (typeof details.code === 'string') error.code = details.code;
+  if (isObject(details.fields)) {
+    error.fields = Object.fromEntries(Object.entries(details.fields).filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
+  }
+  return error;
 }
 function deadline(timeoutMs: number | undefined, signal?: AbortSignal | null) {
   if (!timeoutMs) return { signal, timedOut: () => false, dispose() {} };
@@ -64,13 +75,7 @@ export async function apiJson<T = unknown>(input: string, { timeoutMs, ...option
   }
   trackRequest(input, method, response, Date.now() - started, null, null, payload);
   if (!response.ok) {
-    const failure = payload as ApiErrorResponse;
-    const error: ApiFailure = new Error(failure.error || '请求失败，请稍后重试');
-    error.requestId = response.headers.get('X-Request-ID') || failure.requestId;
-    error.status = response.status;
-    error.code = failure.code;
-    error.fields = failure.fields;
-    throw error;
+    throw httpFailure(payload, response.status, response.headers.get('X-Request-ID'), '请求失败，请稍后重试');
   }
   return payload as T;
   } finally { limit.dispose(); }
@@ -91,10 +96,9 @@ export function apiUpload<T = unknown>(input: string, { body, headers: values = 
       settled = true;
       signal?.removeEventListener('abort', abort);
       const response = xhr.status ? { status: xhr.status, ok: xhr.status >= 200 && xhr.status < 300, headers: new Headers({ 'X-Request-ID': xhr.getResponseHeader('X-Request-ID') || '' }) } : null;
-      if (error && (typeof error === 'object' || typeof error === 'function')) {
-        Object.assign(error, { requestId: response?.headers.get('X-Request-ID') || undefined });
-      }
-      trackRequest(input, 'POST', response, Date.now() - started, payload ? null : error, code, payload);
+      const requestId = response?.headers.get('X-Request-ID');
+      if (requestId && error instanceof Error) Object.assign(error, { requestId });
+      trackRequest(input, 'POST', response, Date.now() - started, code ? error : null, code, payload);
       if (error) reject(error); else resolve(payload as T);
     };
     if (signal?.aborted) { done(new DOMException('上传已取消', 'AbortError'), null, 'REQUEST_CANCELLED'); return; }
@@ -114,8 +118,7 @@ export function apiUpload<T = unknown>(input: string, { body, headers: values = 
       try { payload = JSON.parse(xhr.responseText); }
       catch { done(Object.assign(new Error('上传响应异常，请重试。'), { status: xhr.status }), null, 'INVALID_RESPONSE'); return; }
       if (xhr.status < 200 || xhr.status >= 300) {
-        const failure = payload as ApiErrorResponse;
-        done(Object.assign(new Error(failure.error || '上传失败，请重试。'), { status: xhr.status, code: failure.code, fields: failure.fields }), payload);
+        done(httpFailure(payload, xhr.status, xhr.getResponseHeader('X-Request-ID'), '上传失败，请重试。'), payload);
       } else done(null, payload);
     };
     signal?.addEventListener('abort', abort, { once: true });

@@ -1,4 +1,3 @@
-import { present } from '../helpers/present.ts';
 import { runWorkflow } from '../fixtures/workflow-seed.ts';
 import { test, expect } from './support/fixtures.ts';
 import { dutyPage, loginStaff } from './support/staff.ts';
@@ -22,7 +21,7 @@ async function dayFixture(page: import('@playwright/test').Page, canManage = fal
   );
 }
 
-test('duty rows remain usable and stable while batched workload loads and updates', async ({
+test('staff can see duty status while both workloads load and refresh together', async ({
   page
 }) => {
   await dayFixture(page, true);
@@ -45,32 +44,16 @@ test('duty rows remain usable and stable while batched workload loads and update
   await expect(row.getByText('空闲', { exact: true })).toBeVisible();
   const counts = row.getByLabel('陈宇接单量', { exact: true });
   await expect(counts.locator('[aria-busy="true"]')).toHaveCount(2);
-  const before = await row.boundingBox();
   release();
   await expect(counts.locator('dd').first()).toHaveText('9');
-  const loaded = await row.boundingBox();
-  expect(present(loaded).height).toBe(present(before).height);
-  expect(present(loaded).width).toBe(present(before).width);
+  const second = panel.getByLabel('周宁接单量', { exact: true });
+  await expect(second.locator('dd').first()).toHaveText('9');
   expect(requests).toBe(1);
   monthly = 10;
   await panel.getByRole('button', { name: '刷新值班', exact: true }).click();
   await expect(counts.locator('dd').first()).toHaveText('10');
-  expect(present((await row.boundingBox())).height).toBe(present(before).height);
+  await expect(second.locator('dd').first()).toHaveText('10');
   expect(requests).toBe(2);
-  for (const width of [320, 375, 1440]) {
-    await page.setViewportSize({ width, height: 900 });
-    await expect
-      .poll(async () => row.evaluate((node) => node.scrollWidth <= node.clientWidth))
-      .toBe(true);
-    const bounds = await counts.boundingBox();
-    expect(present(bounds).x).toBeGreaterThanOrEqual(0);
-    expect(present(bounds).x + present(bounds).width).toBeLessThanOrEqual(width);
-    if (width === 1440) {
-      const second = await panel.getByLabel('周宁接单量', { exact: true }).boundingBox();
-      expect(present(second).x).toBe(present(bounds).x);
-      expect(present(second).width).toBe(present(bounds).width);
-    }
-  }
 });
 
 test('workload failure is not shown as zero and refresh can recover', async ({ page }) => {

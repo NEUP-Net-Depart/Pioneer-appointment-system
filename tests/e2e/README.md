@@ -1,18 +1,16 @@
 # 浏览器测试
 
-默认 CI 只运行 6 项冒烟检查，确认构建后的页面、登录、浏览器交互和后端能够协同完成任务：
-
-- Chromium：学生预约并打开私人结果、工作人员上传照片并完成维修、成员填报时间并发布排班。
-- WebKit 手机尺寸：预约、照片接收与维修，以及触摸签名的旋转与确认。
+默认 CI 在 Chromium 桌面与 WebKit 手机尺寸上运行冒烟测试。两个项目都覆盖学生预约、上传照片并完成维修，以及扫错校区签到码后的恢复。桌面项目还覆盖排班发布、成员可编辑范围和 PWA 安装，手机项目覆盖旋转后的签名和 iOS 安装提示。
 
 权限、隐私、容量、并发和修订冲突等细节由 Node 服务与数据库测试持续覆盖。其余浏览器回归用于相关模块修改和发布前验收，按需执行；新增用例默认不进入冒烟门禁。
 
 ```sh
-npm run test:e2e                         # 默认 6 项冒烟
+npm run test:e2e                         # 默认冒烟
 npm run test:e2e:full                    # 全部浏览器回归，含专项诊断
-npm run test:e2e:diagnostics             # 只运行 OCR/验证码、图片编码和埋点 SDK 的 27 项诊断
+npm run test:e2e:diagnostics             # OCR/验证码、图片编码和埋点 SDK 诊断
 npm run test:e2e:full -- --project=chromium --grep 'invites a replacement'
 npm run test:e2e -- --workers=1
+npx playwright test --list               # 列出当前默认冒烟用例
 ```
 
 手动工作流 **Optional test tools** 提供 `browser-full` 和 `browser-diagnostics`。三个入口默认均使用两个进程并行执行。默认冒烟使用 `@smoke`（桌面）和 `@mobile-smoke`（手机）标签筛选现有用例，不复制测试代码；增加标签前应确认该场景能发现已有冒烟及 Node 测试无法发现的主流程故障。

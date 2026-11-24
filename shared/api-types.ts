@@ -1,12 +1,5 @@
 export type FieldErrors = Record<string, string>;
 
-export interface ApiErrorResponse {
-  error?: string;
-  code?: string;
-  fields?: FieldErrors;
-  requestId?: string;
-}
-
 export type ApiFailure = Error & {
   code?: string;
   status?: number;

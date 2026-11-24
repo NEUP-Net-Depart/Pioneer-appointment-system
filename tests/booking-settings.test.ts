@@ -1,14 +1,13 @@
 import type { SlotCapacityDto } from '../shared/appointment-types.ts';
-import type { PermissionDecisions } from '../shared/staff-types.ts';
+import type { PermissionDecisions, StaffProfileDto } from '../shared/staff-types.ts';
 import type { ManagedBookingDto } from '../frontend/staff-react/management-types.ts';
-import { unusedAttachments } from './helpers/database.ts';
 import { present } from './helpers/present.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { bookingWindow, validReleaseTime } from '../shared/booking-settings.ts';
 import { bookingDates } from '../shared/booking-slots.ts';
-import { database, seedStaff } from './helpers/database.ts';
+import { database, seedStaff, testEnvironment } from './helpers/database.ts';
 import { userRepository } from '../src/db/users.ts';
 import { signToken } from '../src/lib/jwt.ts';
 import { handleRequest } from '../src/app.ts';
@@ -23,7 +22,7 @@ test('booking configuration APIs share the leadership campus boundary through ac
       VALUES('booking-leader','member-20261001','dept-network','deputy_head','primary',1,'2026-01-01','2026-01-01');
     INSERT INTO member_roles(id,member_id,role_id,effective_from) VALUES('settings-only','member-20261003','role-superadmin','2026-01-01');`);
   const users = userRepository(db);
-  const env = { DB: { withSession: () => db }, ATTACHMENTS: unusedAttachments, JWT_SECRET: 'booking-test-secret'.repeat(2), PII_ENCRYPTION_KEY: '00'.repeat(32) };
+  const env = testEnvironment(db);
   async function api<T = unknown>(account: string, path: string, body?: object, method = body ? 'PATCH' : 'GET') {
     const actor = present(await users.find(account));
     const response = await handleRequest(new Request(`https://app.test/api/${path}`, {
@@ -33,7 +32,8 @@ test('booking configuration APIs share the leadership campus boundary through ac
     const payload: T = await response.json();
     return { status: response.status, body: payload };
   }
-  const profile = (await api<{ permissions: PermissionDecisions }>('20261001','auth/me')).body;
+  const profile = (await api<StaffProfileDto>('20261001','auth/me')).body;
+  assert.equal(profile.memberId, 'member-20261001');
   assert.ok(!profile.permissions['settings.manage']);
   const settingsOnly = (await api<{ permissions: PermissionDecisions }>('20261003','auth/me')).body;
   assert.equal(settingsOnly.permissions['settings.manage'], true);
@@ -80,6 +80,22 @@ test('booking configuration APIs share the leadership campus boundary through ac
   assert.equal((await api<{ permissions: PermissionDecisions }>('20261001','auth/me')).body.permissions['booking.manage'], false);
   assert.equal((await api('20261001','slot-capacities')).status, 403);
   assert.equal((await api('20261001','booking-settings',changes[1][1]('南湖'))).status, 403);
+});
+
+test('an availability request spanning release time uses the same booking window for every date', async t => {
+  const before = new Date('2026-10-12T09:59:59+08:00');
+  t.mock.timers.enable({ apis: ['Date'], now: before });
+  const db = database();
+  t.after(() => db.sqlite.close());
+  const request = new Request('https://app.test/api/booking-availability?campus=南湖');
+  const pending = handleRequest(request, testEnvironment(db));
+  t.mock.timers.setTime(before.getTime() + 1000);
+  const response = await pending;
+  assert.equal(response.status, 200);
+  const result: { serverNow: string; bookingSettings: { serverNow: string }; items: { date: string; serverNow: string }[] } = await response.json();
+  assert.equal(result.serverNow, result.bookingSettings.serverNow);
+  assert.deepEqual(result.items.map(item => item.date), bookingDates(new Date(result.serverNow)));
+  assert.ok(result.items.every(item => item.serverNow === result.serverNow));
 });
 
 test('release time advances only the booking horizon, with midnight and Shanghai boundaries', () => {

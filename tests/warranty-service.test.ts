@@ -1,12 +1,13 @@
-import { database, testRequestContext } from './helpers/database.ts';
-import { staffActor } from './fixtures/staff-services.ts';
+import { database, seedStaff, testEnvironment } from './helpers/database.ts';
+import { handleRequest } from '../src/app.ts';
+import { userRepository } from '../src/db/users.ts';
+import { signToken } from '../src/lib/jwt.ts';
 import { HttpError } from '../src/lib/http.ts';
 import { present } from './helpers/present.ts';
 import { checkProperty, modelEdges, runModel } from './fixtures/workflow-seed.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { warrantyService, normalizeLenovoWarranty } from '../src/services/warranty.ts';
-import { warrantyRoutes } from '../src/routes/warranty.ts';
 
 const details = (rows: ReturnType<typeof row>[]) => ({ statusCode: '200', data: { detailinfo: { warranty: rows, onsite: [], other: [] } } });
 const row = (overrides: Partial<{ ServiceProductName: string; ServiceProductSmallClass: string; PartStartDate: string; PartEndDate: string }> = {}) => ({ ServiceProductName: '整机有限保修', ServiceProductSmallClass: '基础服务', PartStartDate: '2025-10-26 00:00:00', PartEndDate: '2026-10-26 00:00:00', ...overrides });
@@ -79,21 +80,25 @@ test('timeouts, network failures, non-JSON and upstream failures return safe err
 test('warranty routes require a staff session before reading inputs or contacting upstream', async (t) => {
   const db = database();
   t.after(() => db.sqlite.close());
-  const request = new Request('https://example.invalid/api/warranty/query', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ brand: 'lenovo', serial: 'TEST1234' }) });
-  const context = testRequestContext(request, db);
-  for (const [, , handler] of warrantyRoutes) {
-    await assert.rejects(Promise.resolve(handler({ ...context, role: async role => { assert.equal(role, 'technician'); throw new Error('unauthorized'); } }, [''])), /unauthorized/);
+  const env = testEnvironment(db);
+  const base = 'https://app.test/api/warranty/';
+  const upstream = t.mock.method(globalThis, 'fetch', async () =>
+    Response.json({ statusCode: '100', message: '保修信息不存在', data: [] }));
+  for (const [method, path] of [['GET', 'providers'], ['POST', 'challenge'], ['POST', 'query']]) {
+    assert.equal((await handleRequest(new Request(base + path, { method }), env)).status, 401);
   }
-  const seen: (string | Record<string, unknown>)[] = [];
-  context.role = async () => { seen.push('auth'); return staffActor(); };
-  context.limit = async scope => { seen.push(scope); };
-  context.services.warranty.query = async body => {
-    seen.push(body);
-    return warrantyService({ fetcher: async () => Response.json({ statusCode: '100', message: '保修信息不存在', data: [] }) }).query(body);
-  };
-  const response = await warrantyRoutes[2][2](context, ['']);
+  assert.equal(upstream.mock.callCount(), 0);
+  seedStaff(db, '20261001');
+  const staff = present(await userRepository(db).find('20261001'));
+  const response = await handleRequest(new Request(base + 'query', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${signToken(staff, env.JWT_SECRET)}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ brand: 'lenovo', serial: 'TEST1234' })
+  }), env);
+  assert.equal(response.status, 200);
   assert.equal(response.headers.get('Cache-Control'), 'no-store');
-  assert.deepEqual(seen, ['auth', 'warranty', { brand: 'lenovo', serial: 'TEST1234' }]);
+  assert.equal((await response.json()).outcome, 'not_found');
+  assert.equal(upstream.mock.callCount(), 1);
 });
 
 type LenovoPayload = ReturnType<typeof details> | { statusCode: string; message: string; data: [] };

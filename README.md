@@ -29,7 +29,7 @@ Production 与 Preview 独立保存数据、附件与密钥；Preview 分支共�
 
 ## 本地运行
 
-需要 Node.js 22.18+：
+使用 Node.js 22.x（至少 22.18.0）或 24.11.0 及以上版本。
 
 ```bash
 npm ci

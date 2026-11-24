@@ -435,7 +435,7 @@ export function appointmentRepository(db: Database) {
       const row = results[0].results[0];
       return row ? fromRow(row) : null;
     },
-    async update(item: AppointmentRecord,patch: AppointmentChanges,_correction?: null,workflow?: WorkflowAudit) {
+    async update(item: AppointmentRecord,patch: AppointmentChanges,workflow?: WorkflowAudit) {
       const writable=['name','college','deviceType','serial','liquidDrop','dellG15','note','faultType','issue','phone','social','email','contactType','contactValue','status','assignedTo','repairNote','outcome','startedAt','completedAt','frontPhotoId','backPhotoId','receivedAt','receivedBy','photoDeferredBy','brand','deviceModel','warranty','liquidMetal','parentAppointmentId','linkKind','linkedBy','linkedAt'] as const;
       const keys=writable.filter(key=>patch[key]!==undefined);
       if (!keys.length) return null;

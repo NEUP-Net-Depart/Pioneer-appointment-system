@@ -6,7 +6,6 @@ import type { bookingAvailabilityService } from './booking-availability.ts';
 import type { bookingSettingsService } from './booking-settings.ts';
 import type { StaffService } from './staff-platform.ts';
 
-type PublicBookingSettings = Awaited<ReturnType<ReturnType<typeof bookingSettingsService>['public']>>;
 import { requireCampus } from './permissions.ts';
 import { fail } from '../lib/http.ts';
 import { dateKey,addDays,serviceDay } from '../../shared/time.ts';
@@ -39,24 +38,30 @@ export function serviceLocationService(
         ...(permitted('customer.contact.read') ? {contactType:row.contactType,...Object.fromEntries(await Promise.all((['phone','social','email','contactValue'] as const).map(async key=>[key,await decryptText(row[key] ?? '',encryptionKey)])))} : {})};
     }));
   }
-  async function dayAvailability(campus: string, date: string, dates: string[]) {
-      const instant=clock();
-      const [summary,location] = await Promise.all([availability.summary({campus,date}),dates.includes(date)
-        ? appointments.ensureDefaultLocation(date,campus,instant.toISOString()) : appointments.location(date,campus)]);
-      const service=await appointments.serviceDay(date,campus);
-      return { campus,date,paused:!!service?.paused,pauseReason:service?.paused?service.reason:'',timeSlots:TIME_SLOTS,slotCapacities:summary.slotCapacities,slots:summary.slots,
-        location:location?.location || '',locationRevision:location?.revision ?? null,serverNow:clock().toISOString() };
+  async function dayAvailability(campus: string, date: string, bookable: boolean, serverNow: string) {
+    const [summary, location, service] = await Promise.all([
+      availability.summary({ campus, date }),
+      bookable ? appointments.ensureDefaultLocation(date, campus, serverNow) : appointments.location(date, campus),
+      appointments.serviceDay(date, campus)
+    ]);
+    return {
+      campus, date, paused: !!service?.paused, pauseReason: service?.paused ? service.reason : '',
+      timeSlots: TIME_SLOTS, slotCapacities: summary.slotCapacities, slots: summary.slots,
+      location: location?.location || '', locationRevision: location?.revision ?? null, serverNow
+    };
   }
   return {
     async details(campus: string,date: string,actor: StaffAccountDto) {
       actor=await authorize(actor,campus);
       return {changes:await repository.changes(campus,date),affectedAppointments:await affectedAppointments(campus,date,actor)};
     },
-    async availability(campus: string,date?: string,settings?: PublicBookingSettings | null): Promise<Awaited<ReturnType<typeof dayAvailability>> | { serverNow: string; bookingSettings?: PublicBookingSettings; items: Awaited<ReturnType<typeof dayAvailability>>[] }> {
-      settings ||= bookingSettings ? await bookingSettings.public(campus) : null;
-      const dates = bookingDates(clock(),settings?.releaseTime);
-      if (!date) return {serverNow:clock().toISOString(),...(settings ? {bookingSettings:settings} : {}),items:await Promise.all(dates.map(day=>this.availability(campus,day,settings))) as Awaited<ReturnType<typeof dayAvailability>>[]};
-      return dayAvailability(campus,date,dates);
+    async availability(campus: string, date?: string) {
+      const settings = await bookingSettings?.public(campus);
+      const serverNow = settings?.serverNow ?? clock().toISOString();
+      const dates = bookingDates(new Date(serverNow), settings?.releaseTime);
+      if (date) return dayAvailability(campus, date, dates.includes(date), serverNow);
+      const items = await Promise.all(dates.map(day => dayAvailability(campus, day, true, serverNow)));
+      return { serverNow, ...(settings ? { bookingSettings: settings } : {}), items };
     },
     async list(actor: StaffAccountDto,start = dateKey(clock()),end = addDays(start,6)) {
       actor=await authorize(actor);

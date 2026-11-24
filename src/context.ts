@@ -49,39 +49,44 @@ export function createContext(request: Request, env: PioneerEnvironment, observa
   const scanSecret = env.SCAN_QR_SECRET || env.PII_ENCRYPTION_KEY;
   const field = fieldWorkflow({ repository: staffPlatform, appointments, staff: staffService, authorizer: platform.authorizer,
     encryptionKey: env.PII_ENCRYPTION_KEY, secret: scanSecret });
-  const staffPlatformServiceInstance = Object.assign(staffService, { field });
-  const bookingSettings = bookingSettingsService(bookingSettingsRepository(db), staffPlatformServiceInstance, clock);
+  const staff = { ...staffService, field };
+  const auth = authService(users, env.JWT_SECRET);
+  const bookingSettings = bookingSettingsService(bookingSettingsRepository(db), staff, clock);
+  const bookingAvailability = bookingAvailabilityService(bookingAvailabilityRepository(db), clock);
+  const repairs = appointmentService(appointments, env.PII_ENCRYPTION_KEY, clock, staff, bookingSettings);
   const services = {
-    auth: authService(users, env.JWT_SECRET), users: userService(users, staffPlatformServiceInstance),
-    activation: activationService(activationRepository(db),users,staffPlatformServiceInstance,staffPlatform),
-    appointments: appointmentService(appointments, users, env.PII_ENCRYPTION_KEY, clock, staffPlatformServiceInstance, bookingSettings),
+    auth,
+    users: userService(users, staff),
+    activation: activationService(activationRepository(db), users, staff, staffPlatform),
+    appointments: repairs,
+    scan: scanService(appointments, repairs, scanSecret, clock, field),
     warranty: warrantyService({ fetcher: observation.enabled ? (...args) => observedOperation(observation, 'upstream', () => fetch(...args), { responseFailure: true }) : fetch, encryptionKey: env.PII_ENCRYPTION_KEY, captchaOrigin: captchaBridgeOrigin(env.WARRANTY_CAPTCHA_ORIGIN) === new URL(request.url).origin ? '' : env.WARRANTY_CAPTCHA_ORIGIN }),
     bookingSettings,
     attachments: attachmentService(appointments, attachmentRepository(db), observation.enabled ? observedBucket(env.ATTACHMENTS, observation) : env.ATTACHMENTS, storageLimit(env), field, observation),
-    bookingAvailability: bookingAvailabilityService(bookingAvailabilityRepository(db), clock), stats: statsService(statsRepository(db), appointments, clock, staffPlatformServiceInstance),
+    bookingAvailability,
+    serviceLocations: serviceLocationService(serviceLocationRepository(db), appointments, bookingAvailability, env.PII_ENCRYPTION_KEY, clock, staff, bookingSettings),
+    stats: statsService(statsRepository(db), appointments, clock, staff),
     export: exportService(appointments, clock, field),
     limits: rateLimitService(rateLimitRepository(db), env.JWT_SECRET),
-    slotCapacities: slotCapacityService(slotCapacityRepository(db), staffPlatformServiceInstance,serviceDayRepository(db)),
-    staffPlatform: staffPlatformServiceInstance,
+    slotCapacities: slotCapacityService(slotCapacityRepository(db), staff, serviceDayRepository(db)),
+    staffPlatform: staff,
     field,
     async health() {
       const staffRelease = await verifyStaffSchema(db);
       return { ok: true, service: 'pioneer-repair-api', database: 'd1', attachments: 'r2', staffRelease, workflow: 'staff-platform' };
     }
   };
-  const scan = scanService(appointments, services.appointments, scanSecret, clock, field);
-  const serviceLocations = serviceLocationService(serviceLocationRepository(db),appointments,services.bookingAvailability,env.PII_ENCRYPTION_KEY,clock,staffPlatformServiceInstance,bookingSettings);
-  let authentication;
-  const authenticate = () => authentication ||= services.auth.authenticate(request.headers.get('authorization'));
+  let authentication: ReturnType<typeof auth.authenticate> | undefined;
+  const authenticate = () => authentication ??= auth.authenticate(request.headers.get('authorization'));
   const url = new URL(request.url);
   return {
-    request, url, query: Object.fromEntries(url.searchParams), services: { ...services, scan, serviceLocations }, authenticate, requestId: observation.requestId,
+    request, url, query: Object.fromEntries(url.searchParams), services, authenticate, requestId: observation.requestId,
     observation,
     accessToken: request.headers.get('X-Appointment-Token') || '',
     async role(minimum: StaffRole) { return requireRole(await authenticate(), minimum); },
     async permission(code: string) {
       const actor = requireRole(await authenticate(), 'technician');
-      return staffPlatformServiceInstance.scopedActor(actor, code);
+      return staff.scopedActor(actor, code);
     },
     async limit(scope: RateLimitScope, options?: { consume?: boolean }) {
       // Supplied by Cloudflare on the edge. Missing IPs share a conservative bucket in local dev.

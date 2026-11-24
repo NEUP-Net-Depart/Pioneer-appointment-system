@@ -1,5 +1,4 @@
 import { staffActor, staffServices } from './fixtures/staff-services.ts';
-import { userRepository } from '../src/db/users.ts';
 import { present } from './helpers/present.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -26,7 +25,7 @@ test('overview finds the next service beyond the display window, respecting camp
     assert.equal(data.nextServiceDate, '2026-11-17');
     assert.equal((await repository.overview('2026-11-08', '2026-11-14', ['浑南'])).nextServiceDate, '2026-11-09');
     assert.equal((await repository.overview('2026-11-08', '2026-11-14', [])).nextServiceDate, null);
-    const service = appointmentService(repository, userRepository(db), '', () => new Date('2026-11-08T04:00:00Z'), { ...staffServices(db, ''), scopedActor: async (actor) => actor });
+    const service = appointmentService(repository, '', () => new Date('2026-11-08T04:00:00Z'), { ...staffServices(db, ''), scopedActor: async (actor) => actor });
     const overview = await service.overview(staffActor());
     assert.equal(recordServiceDate(overview, '2026-11-08'), '2026-11-17');
     assert.ok(overview.dates.includes('2026-11-17'));

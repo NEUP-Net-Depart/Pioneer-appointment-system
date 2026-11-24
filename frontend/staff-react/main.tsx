@@ -11,7 +11,7 @@ interface DutyFocus {
   memberId?: string;
 }
 interface WorkspaceProps {
-  profile?: StaffProfileDto | null;
+  user: StaffProfileDto;
   identityError: string;
   onRetryIdentity: () => unknown;
   onLogout: () => void;
@@ -62,19 +62,7 @@ const pageModules = {
   users: MembersModule
 };
 
-function Workspace({ profile, identityError, onRetryIdentity, onLogout }: WorkspaceProps) {
-  const user: StaffProfileDto = profile || {
-    account: '',
-    memberId: '',
-    name: '',
-    role: 'technician',
-    status: 'disabled',
-    homeCampus: '',
-    authorizedCampuses: [],
-    authVersion: 0,
-    permissions: {},
-    navigation: []
-  };
+function Workspace({ user, identityError, onRetryIdentity, onLogout }: WorkspaceProps) {
   const [opening, setOpening] = useState<string | null>(null);
   const navigationSequence = useRef(0);
   useEffect(
@@ -123,11 +111,11 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }: Worksp
             : page)
     );
   }, [page, workScene, settingsSection]);
-  const profileRef = useRef<StaffProfileDto | null>(null);
-  profileRef.current = user && { ...user, permissions: field?.permissions || user.permissions };
+  const effectiveUser = { ...user, permissions: field?.permissions || user.permissions };
+  const profileRef = useRef(effectiveUser);
+  profileRef.current = effectiveUser;
   useEffect(() => {
-    if (!profile) return;
-    const currentProfile = { ...user, permissions: field?.permissions || user.permissions };
+    const currentProfile = profileRef.current;
     const target = page === 'settings' && settingsSection === 'capacity' ? 'capacity' : page;
     if (!staffViewAllowed(currentProfile, target)) {
       setSettingsSection('security');
@@ -146,7 +134,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }: Worksp
       !staffSceneAllowed(currentProfile, field, workScene)
     )
       setWorkScene('mine');
-  }, [field, user, profile, page, settingsSection, workScene]);
+  }, [field, user, page, settingsSection, workScene]);
   useEffect(() => {
     const available = home.data;
     if (!available) return;
@@ -161,7 +149,6 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }: Worksp
   const navigate = (view: string) => {
     if (view === 'users') view = 'members';
     if (
-      !profile ||
       !(view.startsWith('scene:')
         ? staffSceneAllowed(profileRef.current, field, view.slice(6))
         : staffViewAllowed(profileRef.current, view))
@@ -201,7 +188,6 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }: Worksp
   };
   const requestNavigate = (view: string) =>
     window.dispatchEvent(new CustomEvent('staff-request-navigation', { detail: view }));
-  const effectiveUser = { ...user, permissions: field?.permissions || user.permissions };
   const published = new Set((field?.navigation || user.navigation || []).map((entry) => entry.id));
   const publishedView = (id: string, view: string) =>
     published.has(id) && staffViewAllowed(effectiveUser, view);
@@ -209,7 +195,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }: Worksp
     ...(field?.contexts || [])
       .filter((context) => staffSceneAllowed(effectiveUser, field, context.id))
       .map((context) => ({ ...context, id: `scene:${context.id}` })),
-    ...(profile && field ? [{ id: 'scene:mine', label: '个人中心' }] : []),
+    ...(field ? [{ id: 'scene:mine', label: '个人中心' }] : []),
     ...(staffViewAllowed(effectiveUser, 'duties')
       ? [
           {
@@ -232,7 +218,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }: Worksp
     ...(staffPermission(effectiveUser, 'statistics.read')
       ? [{ id: 'stats', label: '统计分析' }]
       : []),
-    ...(profile ? [{ id: 'settings', label: '账号安全' }] : []),
+    { id: 'settings', label: '账号安全' },
     ...(staffPermission(effectiveUser, 'booking.manage')
       ? [{ id: 'capacity', label: '预约配置' }]
       : [])
@@ -247,7 +233,7 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }: Worksp
   // Hidden routes stop polling and device-backed UI.
   const visible = (view: string) => page === view;
   const route = (view: string, child: ReactNode, allowed = true) =>
-    profile && allowed && staffViewAllowed(effectiveUser, view) && visited.includes(view) ? (
+    allowed && staffViewAllowed(effectiveUser, view) && visited.includes(view) ? (
       <ActivityContext.Provider key={view} value={visible(view)}>
         <UnsavedPageContext.Provider value={visible(view)}>
           <WorkspacePage route={view} active={visible(view)}>
@@ -324,23 +310,18 @@ function Workspace({ profile, identityError, onRetryIdentity, onLogout }: Worksp
   return (
     <div data-workspace-host="true">
       <StaffWorkspace
-        loading={!profile || (page === 'workbench' && !field && !home.error)}
+        loading={page === 'workbench' && !field && !home.error}
         name={user.name || ''}
         entries={workspaceLinks}
         active={active}
         onSelect={navigate}
         onPrepare={(view) => {
-          if (profile && staffViewAllowed(profileRef.current, view))
+          if (staffViewAllowed(profileRef.current, view))
             pageModules[view as keyof typeof pageModules]?.preload().catch(() => {});
         }}
         opening={workspaceLinks.find((entry) => entry.id === opening)?.label}
         onLogout={onLogout}
       >
-        {!profile && (
-          <main className="workspace-page">
-            <WorkspacePending error={identityError} onRetry={onRetryIdentity} />
-          </main>
-        )}
         {fieldRoute}
         {dutyRoute}
         {moduleRoutes}
@@ -392,7 +373,7 @@ function WorkspacePending({ error, onRetry }: { error?: string; onRetry?: () => 
     </section>
   );
 }
-function WorkspaceSession({ identity }: { identity: ReturnType<typeof useStaffIdentity> }) {
+function WorkspaceSession(props: WorkspaceProps) {
   const [accessError, setAccessError] = useState('');
   const [client] = useState(() =>
     createQueryClient({
@@ -404,13 +385,13 @@ function WorkspaceSession({ identity }: { identity: ReturnType<typeof useStaffId
             query.queryKey[0] === 'attendance-confirmation' &&
             error.code === 'ATTENDANCE_CHECK_IN_DENIED'
           ) {
-            void identity.retry();
+            void props.onRetryIdentity();
             return;
           }
           // Hide every mounted route before another authorization scope can render.
           client.clear();
           setAccessError(error.message);
-          void identity.retry();
+          void props.onRetryIdentity();
         }
       })
     })
@@ -422,17 +403,12 @@ function WorkspaceSession({ identity }: { identity: ReturnType<typeof useStaffId
         <WorkspacePending
           error={accessError}
           onRetry={async () => {
-            await identity.retry();
+            await props.onRetryIdentity();
             setAccessError('');
           }}
         />
       ) : (
-        <Workspace
-          profile={identity.user}
-          identityError={identity.error}
-          onRetryIdentity={identity.retry}
-          onLogout={identity.logout}
-        />
+        <Workspace {...props} />
       )}
     </QueryClientProvider>
   );
@@ -457,7 +433,15 @@ function StaffApp() {
     user.authorizedCampuses,
     user.memberships
   ]);
-  return <WorkspaceSession key={scope} identity={identity} />;
+  return (
+    <WorkspaceSession
+      key={scope}
+      user={user}
+      identityError={identity.error}
+      onRetryIdentity={identity.retry}
+      onLogout={identity.logout}
+    />
+  );
 }
 const identityClient = createQueryClient();
 const mount = document.getElementById('staff-react-root');
