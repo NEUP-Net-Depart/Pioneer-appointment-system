@@ -28,7 +28,7 @@ for (const path of runtime) {
     }
     if (!specifier.startsWith('.') && !specifier.startsWith('/')) {
       const packageName = specifier.startsWith('@') ? specifier.split('/').slice(0, 2).join('/') : specifier.split('/')[0];
-      assert.ok(path.startsWith(join('frontend', 'staff-react')) && Object.hasOwn(dependencies, packageName), `Unsupported package dependency ${specifier} in ${path}`);
+      assert.ok(['staff-react', 'user'].some(app => path.startsWith(join('frontend', app) + '/')) && Object.hasOwn(dependencies, packageName), `Unsupported package dependency ${specifier} in ${path}`);
       import.meta.resolve(specifier);
       continue;
     }
@@ -68,7 +68,7 @@ function visit(path) {
   visited.add(path);
   for (const dependency of graph.get(path) || []) visit(dependency);
 }
-for (const entry of ['frontend/user/main.js','frontend/staff-react/main.jsx','functions/api/[[path]].js']) visit(resolve(root, entry));
+for (const entry of ['frontend/user/main.tsx','frontend/staff-react/main.jsx','functions/api/[[path]].js']) visit(resolve(root, entry));
 const unreachable = [...graph.keys()].filter(path => !visited.has(path)).map(path => relative(root,path));
 assert.equal(unreachable.length, 0, `Unreachable runtime modules: ${unreachable.join(', ')}`);
 const { manifests, validateManifests } = await import('../src/modules/registry.js');

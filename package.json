@@ -29,7 +29,7 @@
     "test:e2e": "node scripts/test-e2e.mjs",
     "preview:local": "node scripts/test-e2e.mjs --serve",
     "release:plan": "node scripts/release-plan.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.student.json",
     "format:staff": "prettier --write \"frontend/staff-react/**/*.{js,jsx,ts,tsx,css}\" \"src/{services,db}/staff-platform{.js,/**/*.js}\"",
     "format:staff:check": "prettier --check \"frontend/staff-react/**/*.{js,jsx,ts,tsx,css}\" \"src/{services,db}/staff-platform{.js,/**/*.js}\"",
     "db:history": "node scripts/verify-migration-history.mjs",

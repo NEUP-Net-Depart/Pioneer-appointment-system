@@ -60,6 +60,7 @@ export default defineConfig({
         '**/signature.spec.mjs',
         '**/photo-upload.spec.mjs',
         '**/staff-pwa.spec.mjs',
+        '**/student-compatibility.spec.mjs',
         '**/diagnostics/photo-compress.spec.mjs',
         '**/diagnostics/telemetry.spec.mjs'
       ],
