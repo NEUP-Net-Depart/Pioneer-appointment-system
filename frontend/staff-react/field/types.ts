@@ -81,7 +81,6 @@ export interface Appointment {
   canFinish?: boolean;
   canTransfer?: boolean;
   canCorrect?: boolean;
-  canRecoverCredential?: boolean;
   original?: {
     brand?: string;
     deviceModel?: string;

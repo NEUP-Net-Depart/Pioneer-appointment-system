@@ -25,7 +25,7 @@ PostHog 接入变量、完整会话回放、source maps、Cloudflare Analytics E
 | `PII_ENCRYPTION_KEY` | 64 位十六进制，须匹配已有联系方式数据 |
 | `SCAN_QR_SECRET` | 可选，至少 32 字符；缺省使用 PII 密钥及独立 HMAC 域，变更会使已打印维修码失效 |
 
-密钥保存于相应 Pages 环境。不得写入 Git、Wrangler vars、前端、日志或构建产物。私人凭证补发不使维修码失效；保留既有签名密钥，历史维修码的校验仍用于访问原工单。
+密钥保存于相应 Pages 环境。不得写入 Git、Wrangler vars、前端、日志或构建产物。保留既有签名密钥，以便使用历史维修码查询原工单。
 
 `root001`、`root002` 是受保护的 `superadmin`。首次 seed 从本机环境变量读取 `ROOT001_PASSWORD`、`ROOT002_PASSWORD`，各 16–128 字符；完成后清除。密码和密钥备份保存在仓库外的受限目录。seed 不覆盖已有密码，发布不初始化账号。
 

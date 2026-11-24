@@ -164,7 +164,8 @@ test('onsite linked service is created once, does not consume online slots, and 
   calendar.moveTo(calendar.nextDay,'10:00');
   const input={studentId:'20260009',name:'测试客户',campus:'南湖',social:'customer-contact',deviceType:'笔记本',brand:'Lenovo',deviceModel:'',warranty:'不清楚',faultType:'系统',agreement:true,signature:signatureFixture(),requestId:crypto.randomUUID(),parentAppointmentId:'original',linkKind:'recurrence',sameDeviceAndFault:true};
   const created=await scan.onsite(input,actor),again=await scan.onsite(input,actor);
-  assert.equal(again.id,created.id);assert.equal(again.accessToken,created.accessToken);
+  assert.equal(again.id,created.id);
+  assert.equal(created.accessToken,undefined);assert.equal(again.accessToken,undefined);
   assert.equal(created.source,'onsite');assert.equal(created.parentAppointmentId,'original');
   assert.equal(created.date,calendar.nextDay);
   assert.equal(created.receivedAt,'');assert.equal(created.frontPhotoId,null);

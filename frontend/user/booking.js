@@ -1,5 +1,5 @@
 import { track } from '/shared/telemetry-client.js';
-import { $,showToast,escapeHtml } from '/shared/utils.js';
+import { $,escapeHtml } from '/shared/utils.js';
 import { apiJson } from '/shared/api.js';
 import { COLLEGES,BRANDS,STUDENT_DEVICE_TYPES,FAULT_TYPES,ANSWERS,FAULT_HINTS,AGREEMENT_VERSION,STUDENT_FIELD_LIMITS,characterCount,studentFieldErrors,bookingDeviceQuestions } from '/shared/student-booking.js';
 import { animateLayout,reveal,setVisible,setMessage } from './motion.js';
@@ -8,7 +8,7 @@ import { initSignature } from './signature.js';
 import { createPhotoCollection } from './photos.js';
 import { dialogController } from './dialogs.js';
 import { timeSummary,informationGroups } from './presentation.js';
-import { saveAppointment,privateLink,copyPrivateLink } from './credentials.js';
+import { saveAppointment } from './credentials.js';
 import { renderRepairQr } from './repair-qr.js';
 import { readDraft,writeDraft,clearDraft,requestKey,readAttempt,writeAttempt,clearAttempt } from './draft.js';
 
@@ -94,6 +94,11 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
     for(const control of form.querySelectorAll('[name]')){if(control.name==='agreement')continue;const value=draft.fields[control.name];if(control.type==='radio')control.checked=control.value===value;else if(value!==undefined)control.value=value;}
     syncConditions();signature.reset();photos.reset();await picker.restore(draft.fields);restoring=false;$('#draft-prompt').hidden=true;notice('已恢复文本和选择。请重新选择照片、勾选协议并完成手写签名。');go(picker.validate() && !picker.hasUnacceptedNotices() ? Math.min(Object.keys(fieldErrors()).length ? 2 : 3,Math.max(1,draft.step || 1)) : 1);changed();saveDraft();});
   async function resolve(){if(!attempt)return null;const result=await apiJson('/api/booking-attempts/resolve',{method:'POST',json:{requestKey:attempt.key},timeoutMs:15000});return result.found ? result.appointment : null;}
+  function showAccessUnavailable(failure) {
+    attempt.pending=false;
+    writeAttempt(attempt);
+    error(failure.message);
+  }
   function renderUploads(entries){if(!created)return;$('#success-photos').hidden=!entries.length;
     const uploaded=entries.filter(entry=>entry.attachment).length,failures=entries.some(entry=>entry.state==='upload-error'),pending=uploaded<entries.length,uploading=entries.some(entry=>entry.state==='uploading');
     $('#success-photo-count').textContent=`${uploaded} / ${entries.length} 张`;$('#success-photo-total').max=entries.length || 1;$('#success-photo-total').value=uploaded;
@@ -104,8 +109,8 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
   }
   function showSuccess(appointment,reason='CREATED'){track('flow.result',{control:'booking.submit',result:'ok',reason});created=appointment;deferredPhotos=false;const saved=saveAppointment(appointment);clearDraft();clearAttempt();savedDraft=null;attempt=null;payload=null;
     form.hidden=true;$('#booking-heading').hidden=true;$('#booking-steps').hidden=true;$('#draft-prompt').hidden=true;notice('');error('');setVisible($('#success-panel'),true);
-    $('#success-code').textContent=appointment.id;$('#success-summary').innerHTML=timeSummary(appointment);$('#success-link-fallback').value=privateLink(appointment);$('#success-link-fallback').hidden=saved;
-    $('#credential-save-message').hidden=saved;$('#credential-save-message').textContent='此浏览器无法保存私人凭证。当前页面仍可访问预约，请复制并保留下面的完整私人查询链接。';
+    $('#success-code').textContent=appointment.id;$('#success-summary').innerHTML=timeSummary(appointment);
+    $('#credential-save-message').hidden=saved;$('#credential-save-message').textContent='此浏览器无法保存预约记录。请在关闭页面前保存到场二维码。';
     void renderRepairQr($('#success-repair-qr'),appointment);renderUploads(photos.entries());picker.setActive(false);onCreated(appointment);$('#success-title').focus({preventScroll:true});window.scrollTo({top:0,behavior:'auto'});void photos.uploadAll(appointment);
   }
   async function submit(){if(busy)return;track('flow.result',{control:'booking.submit',result:'start'});busy=true;$('#booking-submit').disabled=true;$('#booking-submit').textContent='正在核实并提交…';form.querySelectorAll('[data-edit-step]').forEach(button=>button.disabled=true);error('');
@@ -126,9 +131,14 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
       saveDraft();
       try {showSuccess(await apiJson('/api/appointments',{method:'POST',headers:{'Idempotency-Key':attempt.key},json:payload,timeoutMs:15000}));}
       catch(failure){
-        if(failure.code==='CREDENTIAL_ROTATED'){submitFailure(failure);attempt.pending=false;writeAttempt(attempt);error(failure.message);return;}
+        if(failure.code==='BOOKING_ACCESS_UNAVAILABLE')throw failure;
         let found;
-        try{found=await resolve();}catch{submitFailure(failure,'OUTCOME_UNCONFIRMED');error('暂时无法确认预约是否创建。请保持页面和原提交标识，点击提交重试核实；不要另开新预约。');return;}
+        try{found=await resolve();}catch(recoveryFailure){
+          if(recoveryFailure.code==='BOOKING_ACCESS_UNAVAILABLE')throw recoveryFailure;
+          submitFailure(failure,'OUTCOME_UNCONFIRMED');
+          error('暂时无法确认预约是否创建。请保持页面和原提交标识，点击提交重试核实；不要另开新预约。');
+          return;
+        }
         if(found){showSuccess(found,'RECOVERED');if(failure.code==='IDEMPOTENCY_MISMATCH')notice('原请求已经创建成功，当前展示的是原预约。后续修改没有另行提交。');return;}
         submitFailure(failure);
         if(['BOOKING_NOTICE_CHANGED','SERVICE_DAY_PAUSED','SLOT_FULL','SLOT_PAUSED','SLOT_ENDED','SLOT_CHANGED','DATE_UNAVAILABLE','LOCATION_MISSING'].includes(failure.code)){attempt=null;payload=null;clearAttempt();if(failure.code==='BOOKING_NOTICE_CHANGED'){await picker.refresh();go(1);picker.confirmNotices();}else{go(1);await picker.recover(failure.message);}error(failure.message+'。其他信息和有效签名已保留。');}
@@ -136,15 +146,18 @@ export function initBooking({onCreated=()=>{},onViewCreated=()=>{}}={}) {
         else if(failure.status && failure.status<500){attempt=null;payload=null;clearAttempt();error(failure.message);}
         else error('尚未确认创建结果。可使用原提交标识安全重试核实，已填内容已保留。');
       }
-    }catch(failure){submitFailure(failure);error(failure.message || '暂时无法核实预约结果，请保持页面并重试。');}
+    }catch(failure){
+      submitFailure(failure);
+      if(failure.code==='BOOKING_ACCESS_UNAVAILABLE')showAccessUnavailable(failure);
+      else error(failure.message || '暂时无法核实预约结果，请保持页面并重试。');
+    }
     finally{busy=false;$('#booking-submit').disabled=false;$('#booking-submit').textContent='确认并提交预约';form.querySelectorAll('[data-edit-step]').forEach(button=>button.disabled=false);}
   }
   form.addEventListener('submit',event=>{event.preventDefault();void submit();});
-  $('#copy-code').addEventListener('click',()=>void copyPrivateLink(created,$('#success-link-fallback'),showToast));
   $('#view-created-appointment').addEventListener('click',()=>{photos.pauseUpload();onViewCreated(created);});
   $('#success-photo-retry').addEventListener('click',()=>{deferredPhotos=false;void photos.uploadAll(created);});$('#success-photo-later').addEventListener('click',()=>{deferredPhotos=true;photos.pauseUpload();renderUploads(photos.entries());});
   syncConditions();
-  if(attempt?.pending){error('上次提交结果待核实，正在安全查询…');void resolve().then(found=>{if(found)showSuccess(found,'RECOVERED');else error('暂未查到创建结果，请恢复草稿并重新勾选协议、签名后，用原提交标识重试。');}).catch(failure=>{if(failure.code==='CREDENTIAL_ROTATED'){attempt.pending=false;writeAttempt(attempt);error(failure.message);notice('请通过工作人员补发的私人查询链接导入已有预约。');}else error('暂时无法确认上次提交结果，请保持原提交标识并重试核实。');});}
+  if(attempt?.pending){error('上次提交结果待核实，正在安全查询…');void resolve().then(found=>{if(found)showSuccess(found,'RECOVERED');else error('暂未查到创建结果，请恢复草稿并重新勾选协议、签名后，用原提交标识重试。');}).catch(failure=>{if(failure.code==='BOOKING_ACCESS_UNAVAILABLE')showAccessUnavailable(failure);else error('暂时无法确认上次提交结果，请保持原提交标识并重试核实。');});}
   return {
     hasDraft:()=>Boolean(!created && (savedDraft || readDraft() || Object.values(rawFields()).some(Boolean))),
     hasPending:()=>Boolean(attempt?.pending),

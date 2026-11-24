@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { outcomeLabels, repairOutcomes } from '../../../shared/constants.js';
 import { Modal, Notice, Status } from './ui';
-import { RepairInformation, RepairCredential, RepairHistory } from '../RepairDetails';
+import { RepairInformation, RepairHistory } from '../RepairDetails';
 import { RepairRelations } from '../RepairRelations';
 import { WarrantyLookupButton } from './WarrantyLookup';
 import { RepairOriginal } from '../RepairOriginal';
@@ -18,15 +18,13 @@ function RepairOrder({
   onOpen,
   onClose,
   sidePanel = false,
-  hideWarrantyLookup = false,
-  customerCredential
+  hideWarrantyLookup = false
 }: {
   id: string;
-  onOpen: (id: string, token?: string) => void;
+  onOpen: (id: string) => void;
   onClose: () => void;
   sidePanel?: boolean;
   hideWarrantyLookup?: boolean;
-  customerCredential?: { id: string; accessToken: string } | null;
 }) {
   const r = useRepair({ id });
   const tools = useRepairTools();
@@ -353,23 +351,12 @@ function RepairOrder({
                   }}
                 />
               )}
-              <RepairCredential item={item} onIssued={(token) => onOpen(id, token)} />
             </div>
             {(item.repairHistory || item.original) && (
               <div className="repair-action-row repair-record-actions">
                 <RepairHistory history={item.repairHistory} />
                 <RepairOriginal original={item.original} />
               </div>
-            )}
-            {customerCredential && (
-              <a
-                data-track="staff.field.repair.a.16"
-                href={`/#${new URLSearchParams({ appointment: customerCredential.id, access: customerCredential.accessToken })}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                客户私人查询链接
-              </a>
             )}
           </section>
           {!hideWarrantyLookup && (item.canStart || item.canTransfer || item.canFinish) && (
@@ -407,19 +394,9 @@ function RepairOrder({
 
 export function Repair(props: Omit<Parameters<typeof RepairOrder>[0], 'onOpen'>) {
   const [id, setId] = useState(props.id);
-  const [credential, setCredential] = useState(props.customerCredential);
   return (
     <RepairToolsProvider key={id}>
-      <RepairOrder
-        {...props}
-        key={id}
-        id={id}
-        customerCredential={credential}
-        onOpen={(nextId, token) => {
-          setId(nextId);
-          setCredential(token ? { id: nextId, accessToken: token } : null);
-        }}
-      />
+      <RepairOrder {...props} id={id} onOpen={setId} />
     </RepairToolsProvider>
   );
 }

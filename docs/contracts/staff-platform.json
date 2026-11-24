@@ -147,9 +147,9 @@
       "input": ["weekStart", "campusId", "sourceVersion? (required by the planner when regenerating a loaded draft)", "assignments? (published and manual items to retain)"],
       "output": ["assignments", "gaps", "unassigned", "optimization", "sourceVersion"],
       "writes": false,
-      "uniqueness": "assign every eligible hardware member exactly one weekly shift across campuses and types, including existing manual shifts; office-only members can serve on multiple available dates, preferring distinct people; unselected office-only candidates are not missing assignments",
-      "optimization": "office uses available-day matching with at most one per day, no forced availability conflicts or full coverage; then compare repair daily quotas using min-cost matching, requiring hardware completeness and repair daily spread at most two before minimizing conflicts; office and total loads have no spread constraint; preserve manual facts and report infeasibility",
-      "priority": "dual-qualified members are automatically assigned office duty ahead of repair duty; no restriction on holding both appointments",
+      "uniqueness": "assign each eligible hardware member exactly one weekly shift across duty types in their campus; assign office-only candidates at most once and count retained shifts toward the weekly limit",
+      "optimization": "joint min-cost matching with repair daily spread at most two and at most one automatic office assignment on each uncovered available day; preserve retained shifts and return 409 if no feasible plan exists",
+      "priority": "maximize office days covered, then minimize conflicts; prefer using dual-qualified candidates in the office when both primary objectives are tied",
       "review": "gaps carry businessDate and dutyType independently; unassigned carry dutyType, reasonCode and reason; recomputed for manual drafts and publishing so missing repair candidates remain visible"
     },
     "campusWeek": {

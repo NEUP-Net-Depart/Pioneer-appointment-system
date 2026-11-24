@@ -1,5 +1,5 @@
 import { test, expect } from './support/fixtures.mjs';
-import { loginStaff, dutyPage, staffApi, staffPage } from './support/staff.mjs';
+import { loginStaff, dutyPage, staffApi, staffPage, navigationEntry } from './support/staff.mjs';
 import { dateKey } from '../../shared/time.js';
 import { WORKFLOW_TIME } from '../fixtures/workflow-seed.mjs';
 
@@ -122,34 +122,74 @@ test.describe('single check-in confirmation and scheduling review', () => {
     expect(attendance.items).toHaveLength(1);
   });
 
-  test('repair omissions remain visible before suggestions, after manual changes and after publishing an office shift', async ({ page }) => {
+  test('repair omissions remain visible before suggestions, after manual changes and after publishing an office shift', async ({ page, browserName }) => {
     await loginStaff(page, '20261001');
     const planner = await dutyPage(page, '安排下周');
-    const review = planner.getByRole('region', { name: '排班核对', exact: true });
+    const review = planner.getByRole('region', { name: '异常信息', exact: true });
+    const openReview = () => planner.getByRole('button', { name: /^异常信息/ }).click();
+    const closeReview = () => page.getByRole('dialog', { name: '异常信息', exact: true }).getByRole('button', { name: '关闭', exact: true }).click();
+    const assigneeInPlanner = () => planner.locator('.duty-assignee').getByRole('button', { name: '周宁', exact: true });
+    const removeShift = async () => {
+      await planner.getByRole('button', { name: '移除周宁', exact: true }).click();
+    };
     const repair = review.getByRole('list', { name: '维修待安排成员', exact: true });
+    await openReview();
     await expect(repair.getByText('周宁', { exact: true })).toBeVisible();
-    await expect(repair).toContainText('尚未填空闲');
+    await expect(repair).toContainText('未填写统计表');
+    await closeReview();
     await planner.getByRole('button', { name: '生成建议班表', exact: true }).click();
-    await expect(planner.getByText('建议已生成，请核对后发布', { exact: true })).toBeVisible();
+    await expect(planner.getByText('建议已生成', { exact: true })).toBeVisible();
+    await openReview();
     await expect(repair.getByText('周宁', { exact: true })).toHaveCount(0);
-    await expect(planner.getByRole('group', { name: '排班概览' })).toContainText('空闲冲突');
-    await planner.getByRole('button', { name: /^移除周宁 / }).click();
+    await expect(review.getByRole('button', { name: /周宁.*自动.*未填写统计表/ })).toBeVisible();
+    await closeReview();
+    await assigneeInPlanner().click();
+    const member = page.getByRole('dialog', { name: '周宁', exact: true });
+    await expect(member.getByText('未填写统计表', { exact: true }).first()).toBeVisible();
+    await member.getByRole('button', { name: '交换班次', exact: true }).click();
+    await member.getByRole('combobox', { name: '与谁交换', exact: true }).click();
+    await expect(member.getByRole('option', { name: /预览负责人/ })).toBeEnabled();
+    await member.getByRole('button', { name: '移动班次', exact: true }).click();
+    await member.getByRole('combobox', { name: '移动到', exact: true }).click();
+    await member.locator('[role="option"]:not(:disabled)').filter({ hasText: '维修' }).first().click();
+    await member.getByRole('button', { name: '确认调整', exact: true }).click();
+    await expect(member).toHaveCount(0);
+    await planner.getByRole('button', { name: '撤销', exact: true }).click();
+    if (browserName === 'chromium') {
+      const assignee = page.locator('.duty-assignee').getByRole('button', { name: '周宁', exact: true });
+      const columns = planner.locator('.duty-day-column');
+      const weekday = await columns.filter({ hasNot: assignee }).first().getByRole('heading', { level: 3 }).innerText();
+      const target = columns.filter({ has: page.getByRole('heading', { name: weekday, level: 3, exact: true }) }).locator('.duty-shift-group').first();
+      await planner.locator('.duty-assignee').getByRole('button', { name: '周宁', exact: true }).dragTo(target);
+      await expect(target.getByRole('button', { name: '周宁', exact: true })).toBeVisible();
+      await planner.getByRole('button', { name: '撤销', exact: true }).click();
+    }
+    await removeShift();
+    await openReview();
     await expect(repair.getByText('周宁', { exact: true })).toBeVisible();
-    await planner.getByRole('button', { name: '选择人员', exact: true }).first().click();
+    await closeReview();
+    await planner.getByRole('button', { name: /选择人员$/ }).first().click();
     let picker = page.getByRole('dialog', { name: '选择值班人员', exact: true });
+    await expect(picker.getByRole('checkbox', { name: /陈宇/ })).toBeVisible();
     await picker.getByRole('checkbox', { name: /周宁/ }).check();
     await picker.getByRole('button', { name: '完成选择', exact: true }).click();
-    await expect(repair.getByText('周宁', { exact: true })).toHaveCount(0);
-    await planner.getByRole('button', { name: /^移除周宁 / }).click();
-    await expect(repair.getByText('周宁', { exact: true })).toBeVisible();
-    await planner.getByRole('button', { name: '选择人员', exact: true }).nth(1).click();
+    await expect(assigneeInPlanner()).toBeVisible();
+    await removeShift();
+    await planner.getByRole('button', { name: /选择人员$/ }).nth(1).click();
     picker = page.getByRole('dialog', { name: '选择值班人员', exact: true });
+    await expect(picker.getByRole('checkbox', { name: /周宁/ })).toHaveCount(0);
     await picker.getByRole('checkbox', { name: /陈宇/ }).check();
     await picker.getByRole('button', { name: '完成选择', exact: true }).click();
+    await (await navigationEntry(page, '今日工作')).click();
+    const leave = page.getByRole('dialog', { name: '有未保存的调整' });
+    await expect(leave.getByRole('button', { name: '发布并继续', exact: true })).toBeVisible();
+    await leave.getByRole('button', { name: '取消操作' }).click();
     await planner.getByRole('button', { name: '发布班表', exact: true }).click();
-    await expect(planner.getByText('维修和办公班表已发布，签到已自动准备', { exact: true })).toBeVisible();
+    await page.getByRole('dialog', { name: '发布前确认', exact: true }).getByRole('button', { name: '确认发布', exact: true }).click();
+    await expect(planner.getByText('班表已发布', { exact: true })).toBeVisible();
+    await openReview();
     await expect(repair.getByText('周宁', { exact: true })).toBeVisible();
-    await expect(review.getByRole('heading', { name: '维修值班', exact: true }).locator('..')).toContainText('缺岗：');
+    await expect(review.getByRole('heading', { name: '缺岗', exact: true })).toBeVisible();
   });
 });
 
@@ -196,10 +236,10 @@ test('duty statistics excludes a promoted deputy and their old availability from
   await expect(statistics.getByRole('button')).toHaveCount(0);
   const planner = await dutyPage(page, '安排下周');
   await planner.getByRole('button', { name: '生成建议班表', exact: true }).click();
-  await expect(planner.getByText('建议已生成，请核对后发布', { exact: true })).toBeVisible();
-  await expect(planner.getByRole('button', { name: /^移除周宁 / })).toHaveCount(0);
+  await expect(planner.getByText('建议已生成', { exact: true })).toBeVisible();
+  await expect(planner.locator('.duty-assignee').getByRole('button', { name: '周宁', exact: true })).toHaveCount(0);
   await expect(planner.getByText(/缺少硬件部负责人/)).toHaveCount(0);
-  await planner.getByRole('button', { name: '选择人员', exact: true }).first().click();
+  await planner.getByRole('button', { name: /选择人员$/ }).first().click();
   const picker = page.getByRole('dialog', { name: '选择值班人员', exact: true });
   await expect(picker.getByRole('checkbox', { name: /周宁/ })).toHaveCount(0);
   await expect(picker.getByRole('checkbox', { name: /林悦/ })).toHaveCount(0);

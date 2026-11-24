@@ -7,13 +7,13 @@ const scheduleSnapshotSql = `WITH params AS (SELECT ? campus,? week), people AS 
 ), shifts AS (SELECT * FROM duty_assignments WHERE business_date BETWEEN (SELECT week FROM params) AND date((SELECT week FROM params),'+6 day') AND (campus_id=(SELECT campus FROM params) OR member_id IN people))
 SELECT json_object(
  'weeks',(SELECT json_group_array(json_array(id,revision)) FROM (SELECT * FROM roster_weeks WHERE campus_id=(SELECT campus FROM params) AND week_start=(SELECT week FROM params) ORDER BY id)),
- 'members',(SELECT json_group_array(json_array(m.id,m.revision,m.status,s.account,s.auth_version,s.status)) FROM members m JOIN staff_accounts s ON s.member_id=m.id WHERE m.id IN people ORDER BY m.id),
+ 'members',(SELECT json_group_array(json_array(m.id,m.revision,m.home_campus_id,m.status,s.account,s.auth_version,s.status)) FROM members m JOIN staff_accounts s ON s.member_id=m.id WHERE m.id IN people ORDER BY m.id),
  'posts',(SELECT json_group_array(json_array(id,revision)) FROM (SELECT * FROM member_department_memberships WHERE member_id IN people ORDER BY id)),
  'departments',(SELECT json_group_array(json_array(id,revision,enabled)) FROM (SELECT * FROM departments ORDER BY id)),
  'access',(SELECT json_group_array(json_array(account,campus)) FROM (SELECT * FROM staff_access_campuses WHERE account IN (SELECT account FROM staff_accounts WHERE member_id IN people) ORDER BY account,campus)),
  'availability',(SELECT json_group_array(json_array(member_id,duty_type,week_start,revision)) FROM (SELECT * FROM member_availability WHERE member_id IN people AND week_start IN ('',(SELECT week FROM params)) ORDER BY member_id,duty_type,week_start)),
  'shifts',(SELECT json_group_array(json_array(id,revision,active)) FROM (SELECT * FROM shifts ORDER BY id)),
- 'pauses',(SELECT json_group_array(json_array(business_date,revision,paused)) FROM (SELECT * FROM service_day_overrides WHERE campus_id=(SELECT campus FROM params) AND business_date BETWEEN (SELECT week FROM params) AND date((SELECT week FROM params),'+6 day') ORDER BY business_date))
+ 'pauses',(SELECT json_group_array(json_array(campus_id,business_date,revision,paused)) FROM (SELECT * FROM service_day_overrides s WHERE business_date BETWEEN (SELECT week FROM params) AND date((SELECT week FROM params),'+6 day') AND (campus_id=(SELECT campus FROM params) OR EXISTS(SELECT 1 FROM shifts a WHERE a.active=1 AND a.campus_id=s.campus_id AND a.business_date=s.business_date)) ORDER BY campus_id,business_date))
 ) snapshot`;
 
 export function dutyRepository({ db }) {

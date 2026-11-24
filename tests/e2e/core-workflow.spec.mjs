@@ -222,9 +222,18 @@ test(
           event: 'RECEIVE_AND_START',
 
           run: async () => {
+            await page.goto('/');
+            await chooseTime(page);
+            await fillDevice(page, { studentId: '20269992' });
+            await goReview(page);
+            const bookingResponse = page.waitForResponse(response =>
+              new URL(response.url()).pathname === '/api/appointments' &&
+              response.request().method() === 'POST' && response.status() === 201
+            );
+            await submitStudent(page);
+            created = await (await bookingResponse).json();
             await loginStaff(page, '20261003', 'StaffTest!2026');
             await staffPage(page, '今日工作');
-            created = await onsiteOrder(page);
             await page.getByRole('button', { name: '刷新工作台', exact: true }).click();
             await page.getByRole('button').filter({ hasText: created.id }).click();
             dialog = page.getByRole('dialog', { name: '维修工单' });
@@ -268,9 +277,8 @@ test(
             const visible = await customer.json();
             expect(visible.outcome).toBe('repaired');
             expect(JSON.stringify(visible)).not.toMatch(/内部|repairNote|actorAccount|before_json/);
-            await page.goto(
-              '/#' + new URLSearchParams({ appointment: created.id, access: created.accessToken })
-            );
+            await page.goto('/#lookup');
+            await page.getByRole('button', { name: /笔记本.*联想/ }).click();
             const liquidMetal = page
               .locator('#detail-information dl > div')
               .filter({ has: page.getByText('液金散热', { exact: true }) });
@@ -370,9 +378,10 @@ test('member availability produces a published shift visible after reloading', {
   const planner = await dutyPage(manager, '安排下周');
   await planner.getByRole('textbox', { name: '所在周', exact: true }).fill(nextWeek);
   await planner.getByRole('button', { name: '生成建议班表', exact: true }).click();
-  await expect(planner.getByRole('button', { name: /^移除周宁 / })).toBeVisible();
+  await expect(planner.locator('.duty-assignee').getByRole('button', { name: '周宁', exact: true })).toBeVisible();
   await planner.getByRole('button', { name: '发布班表', exact: true }).click();
-  await expect(planner.getByRole('button', { name: '发布班表', exact: true })).toBeDisabled();
+  await manager.getByRole('dialog', { name: '发布前确认', exact: true }).getByRole('button', { name: '确认发布', exact: true }).click();
+  await expect(planner.getByText('班表已发布', { exact: true })).toBeVisible();
   await page.reload();
   personal = await dutyPage(page, '我的值班');
   await personal.getByRole('textbox', { name: '所在周', exact: true }).fill(nextWeek);

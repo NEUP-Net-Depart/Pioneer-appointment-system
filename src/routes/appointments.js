@@ -46,11 +46,6 @@ export const appointmentRoutes = [
     const attachments = await context.services.attachments.list(item.id,null,context.accessToken);
     return json({ ...item, attachments: attachments.items });
   }],
-  ['POST', /^\/api\/appointments\/([^/]+)\/credential$/, async (context,match) => {
-    const actor=await context.role('technician');
-    await context.limit('write');
-    return json(await context.services.appointments.recover(decodeURIComponent(match[1]),await readBody(context.request),actor));
-  }],
   ['PATCH', /^\/api\/appointments\/([^/]+)\/status$/, async (context, match) => {
     await context.limit('write');
     const input = appointmentPatch(await readBody(context.request));

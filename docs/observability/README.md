@@ -55,7 +55,7 @@ Preview、本地默认不采集。需要验收 Preview 时，在 GitHub `preview
 | `$pageview` / `app.view` | 页面与虚拟页面切换；前者用于 PostHog 原生访问/热力图，后者用于业务导航分析，报表选一种口径 |
 | `$autocapture` | 点击、表单提交和字段变化，含元素属性和稳定 `data-track` |
 | `ui.change/invalid/toggle/dialog` | 自定义选择器提交、校验拒绝、折叠/弹窗/帮助提示开闭；SDK 加载前的点击也有 `ui.*` 补充 |
-| `flow.step/result` | 预约、私人链接导入、照片、扫码/OCR、维修、保修、排班、考勤、人员、权限、配置、导入导出等业务步骤与请求结果 |
+| `flow.step/result` | 预约、照片、扫码/OCR、维修、保修、排班、考勤、人员、权限、配置、导入导出等业务步骤与请求结果 |
 | `$exception` | 原始前端异常和堆栈，补充 `errorCode`、`requestId`、`view`、`release`、`environment` |
 | `$snapshot` / `$web_vitals` | SDK 会话回放与网页性能数据 |
 | `api.request`（Cloudflare） | 一次 API 请求的状态、耗时和 D1/R2/上游汇总 |
@@ -64,7 +64,7 @@ Preview、本地默认不采集。需要验收 Preview 时，在 GitHub `preview
 
 SDK 持久化键按项目 token、环境和 `surface=student/staff` 隔离，包括身份、设备及录制会话；同一浏览器跨标签页访问两端、刷新或工作人员退出均不会把学生操作归给工作人员。切换到独立持久化键后，旧共享身份不迁移，首次访问会生成新的匿名身份；跨发布版本比较独立访客数时需考虑这一变化。学生使用 SDK 匿名浏览器身份；工作人员取得 profile 后以 `staff:<memberId>` 识别，携带 role。登录尝试、退出和认证失效会重置身份及设备 ID，避免共用终端串号。匿名浏览器数量不等于真实人数，业务成功仍以服务端已提交的数据为准。点击、提交、HTTP 重试、前端收到结果是不同阶段，不能相加当作业务数量。
 
-详情页直接进入、刷新和私人链接导入只记录实际的 `student.detail`，不把加载期间的列表容器记作一次 `student.lookup`；返回列表时才记录 lookup。虚拟页面继续显式记录；自定义 Select、日期/时间选择器、键盘操作、Portal 弹窗仍保留语义埋点。新自有控件继续分配稳定 ID，运行 `npm run telemetry:catalog` 更新目录，CI 用 `telemetry:check` 防止遗漏。验证码子站的内部第三方页面无法穿透采集，仍由经过 origin/source/nonce 校验的消息边界记录 start/ok/error/cancelled。
+详情页直接进入和刷新只记录实际的 `student.detail`，不把加载期间的列表容器记作一次 `student.lookup`；返回列表时才记录 lookup。虚拟页面继续显式记录；自定义 Select、日期/时间选择器、键盘操作、Portal 弹窗仍保留语义埋点。新自有控件继续分配稳定 ID，运行 `npm run telemetry:catalog` 更新目录，CI 用 `telemetry:check` 防止遗漏。验证码子站的内部第三方页面无法穿透采集，仍由经过 origin/source/nonce 校验的消息边界记录 start/ok/error/cancelled。
 
 本次没有新增自定义脱敏层，PostHog 使用 SDK 默认采集行为；现有业务事件目录及 Cloudflare 字段白名单继续使用。前端异常保留原始消息和堆栈，以便 PostHog 分组和定位。
 

@@ -71,6 +71,7 @@ export function Modal({
   dismissible = true,
   compact = false,
   footer,
+  showCloseButton = true,
   closeLabel = '关闭'
 }: {
   title: string;
@@ -82,6 +83,7 @@ export function Modal({
   dismissible?: boolean;
   compact?: boolean;
   footer?: ReactNode;
+  showCloseButton?: boolean;
   closeLabel?: string;
 }) {
   const titleId = useId();
@@ -215,15 +217,17 @@ export function Modal({
         >
           {title}
         </h2>
-        <button
-          data-track="staff.field.ui.button.2"
-          type="button"
-          disabled={!dismissible}
-          onClick={dismiss}
-          aria-label={closeLabel}
-        >
-          {closeLabel}
-        </button>
+        {showCloseButton && (
+          <button
+            data-track="staff.field.ui.button.2"
+            type="button"
+            disabled={!dismissible}
+            onClick={dismiss}
+            aria-label={closeLabel}
+          >
+            {closeLabel}
+          </button>
+        )}
       </header>
       <div ref={bodyRef} className="workspace-dialog-body">
         {children}

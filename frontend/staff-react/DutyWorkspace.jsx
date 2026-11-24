@@ -7,6 +7,8 @@ import { AttendanceManagement } from './AttendanceManagement.jsx';
 import { AttendanceReports } from './AttendanceReports.jsx';
 import { CampusScope } from './CampusScope.jsx';
 import { WorkspaceSections } from './WorkspaceSections';
+import { UnsavedChangesDialog } from './UnsavedChangesDialog';
+import { pendingEditors } from './useUnsavedChanges.js';
 import { staffPermission } from '../../shared/staff-access.js';
 import { dutyCampusNames } from '../../shared/duty.js';
 import './schedule.css';
@@ -32,7 +34,38 @@ export function DutyWorkspace({ user, initialCampus, focus }) {
   const [tab, setTab] = useState(staffing ? 'today' : plan ? 'plan' : 'mine'),
     [, setMineDirty] = useState(false),
     [dayDirty, setDayDirty] = useState(false),
-    [planDirty, setPlanDirty] = useState(false);
+    [planDirty, setPlanDirty] = useState(false),
+    [pendingNavigation, setPendingNavigation] = useState(null),
+    [navigationBusy, setNavigationBusy] = useState(false),
+    [navigationError, setNavigationError] = useState('');
+  function navigateFromPlan(next) {
+    if (pendingNavigation) return;
+    if (tab !== 'plan' || !planDirty) {
+      next();
+      return;
+    }
+    const [editor] = pendingEditors();
+    if (!editor) return;
+    setNavigationError('');
+    setPendingNavigation({ next, editor });
+  }
+  async function resolveNavigation(save) {
+    if (navigationBusy || !pendingNavigation) return;
+    const { editor, next } = pendingNavigation;
+    setNavigationBusy(true);
+    setNavigationError('');
+    try {
+      if (save) {
+        if ((await editor.save()) !== true) throw new Error('班表尚未发布，请检查草稿。');
+      } else editor.discard();
+      setPendingNavigation(null);
+      next();
+    } catch (error) {
+      setNavigationError(error.message);
+    } finally {
+      setNavigationBusy(false);
+    }
+  }
   useEffect(() => {
     if (!active || !focus || !staffing || !campuses.includes(focus.campusId)) return;
     setHistoryFocus(null);
@@ -46,7 +79,12 @@ export function DutyWorkspace({ user, initialCampus, focus }) {
       campuses={campuses.map((id) => ({ id, name: dutyCampusNames[id] }))}
       value={campusFor(task)}
       disabled={disabled}
-      onChange={(id) => setScopes((current) => ({ ...current, [task]: id }))}
+      onChange={(id) => {
+        if (id === campusFor(task)) return;
+        const apply = () => setScopes((current) => ({ ...current, [task]: id }));
+        if (task === 'plan') navigateFromPlan(apply);
+        else apply();
+      }}
     />
   );
   const tabs = [
@@ -67,7 +105,9 @@ export function DutyWorkspace({ user, initialCampus, focus }) {
         label="值班任务"
         items={tabs.map(([id, label]) => ({ id, label }))}
         value={tab}
-        onChange={setTab}
+        onChange={(id) => {
+          if (id !== tab) navigateFromPlan(() => setTab(id));
+        }}
       />
       {staffing &&
         panel(
@@ -88,7 +128,8 @@ export function DutyWorkspace({ user, initialCampus, focus }) {
             <DutyPlanner
               campusId={campusFor('plan')}
               onDirtyChange={setPlanDirty}
-              campusControl={scope('plan', planDirty)}
+              onNavigate={navigateFromPlan}
+              campusControl={scope('plan')}
             />
           </>
         )}
@@ -114,6 +155,21 @@ export function DutyWorkspace({ user, initialCampus, focus }) {
             />
           </>
         )}
+      {pendingNavigation && (
+        <UnsavedChangesDialog
+          busy={navigationBusy}
+          error={navigationError}
+          message={
+            pendingNavigation.editor.canSave
+              ? '继续前将发布当前排班调整。'
+              : pendingNavigation.editor.leaveMessage
+          }
+          saveLabel={pendingNavigation.editor.saveLabel}
+          onCancel={() => setPendingNavigation(null)}
+          onDiscard={() => void resolveNavigation(false)}
+          onSave={pendingNavigation.editor.canSave ? () => void resolveNavigation(true) : undefined}
+        />
+      )}
     </section>
   );
 }

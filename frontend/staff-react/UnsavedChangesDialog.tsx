@@ -5,6 +5,7 @@ export function UnsavedChangesDialog({
   busy,
   error,
   message = '请保存或丢弃修改后继续。',
+  saveLabel = '保存并继续',
   onCancel,
   onDiscard,
   onSave
@@ -12,6 +13,7 @@ export function UnsavedChangesDialog({
   busy: boolean;
   error?: string;
   message?: ReactNode;
+  saveLabel?: string;
   onCancel: () => void;
   onDiscard: () => void;
   onSave?: () => void;
@@ -44,7 +46,7 @@ export function UnsavedChangesDialog({
             disabled={busy}
             onClick={onSave}
           >
-            {busy ? '正在处理…' : '保存并继续'}
+            {busy ? '正在处理…' : saveLabel}
           </button>
         )}
       </div>
