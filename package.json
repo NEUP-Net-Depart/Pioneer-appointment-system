@@ -45,9 +45,7 @@
     "test:models:e2e": "node scripts/test-models.mjs e2e",
     "test:models": "node scripts/test-models.mjs all",
     "test:models:check": "node --test tests/tools/model-report.test.mjs",
-    "test:properties": "node scripts/test-models.mjs properties",
-    "test:student-equivalence": "node scripts/test-student-equivalence.mjs",
-    "test:build-isolation": "npm run build && node --test tests/tools/deployment/frontend-build.test.mjs"
+    "test:properties": "node scripts/test-models.mjs properties"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
