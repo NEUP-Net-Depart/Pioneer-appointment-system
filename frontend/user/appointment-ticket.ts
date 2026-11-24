@@ -1,10 +1,11 @@
-import { formatDate } from '/shared/time.js';
-import { appointmentLocation, timeLabel } from './presentation.js';
+import type { Appointment } from './types';
+import { formatDate } from '../../shared/time.js';
+import { appointmentLocation, timeLabel } from './presentation';
 
 const fontFamily = 'system-ui, "Microsoft YaHei", sans-serif';
 const locationFont = `500 31px ${fontFamily}`;
 
-function wrapLocation(context, text, width) {
+function wrapLocation(context: CanvasRenderingContext2D, text: string, width: number) {
   const lines = [];
   let line = '';
   for (const character of text) {
@@ -18,7 +19,7 @@ function wrapLocation(context, text, width) {
   return lines;
 }
 
-export function appointmentTicketImage(appointment, qrImage) {
+export function appointmentTicketImage(appointment: Appointment, qrImage: HTMLImageElement | null) {
   const canvas = document.createElement('canvas');
   const width = 640;
   const paperInset = 24;
@@ -30,7 +31,11 @@ export function appointmentTicketImage(appointment, qrImage) {
   if (!context || !qrImage?.naturalWidth) throw new Error('预约单生成失败');
 
   context.font = locationFont;
-  const locationLines = wrapLocation(context, `${appointment.campus}校区 · ${appointmentLocation(appointment)}`, contentWidth);
+  const locationLines = wrapLocation(
+    context,
+    `${appointment.campus}校区 · ${appointmentLocation(appointment)}`,
+    contentWidth
+  );
   const locationY = 194;
   const dividerY = locationY + locationLines.length * locationLineHeight + 28;
   const qrY = dividerY + 24;
@@ -58,7 +63,9 @@ export function appointmentTicketImage(appointment, qrImage) {
   context.font = `700 76px ${fontFamily}`;
   context.fillText(timeLabel(appointment) || '', inset - 3, 98, contentWidth);
   context.font = locationFont;
-  locationLines.forEach((line, index) => context.fillText(line, inset, locationY + index * locationLineHeight));
+  locationLines.forEach((line, index) =>
+    context.fillText(line, inset, locationY + index * locationLineHeight)
+  );
 
   context.fillStyle = background;
   context.beginPath();

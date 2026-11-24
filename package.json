@@ -29,7 +29,7 @@
     "test:e2e": "node scripts/test-e2e.mjs",
     "preview:local": "node scripts/test-e2e.mjs --serve",
     "release:plan": "node scripts/release-plan.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.student.json",
     "format:staff": "prettier --write \"frontend/staff-react/**/*.{js,jsx,ts,tsx,css}\" \"src/{services,db}/staff-platform{.js,/**/*.js}\"",
     "format:staff:check": "prettier --check \"frontend/staff-react/**/*.{js,jsx,ts,tsx,css}\" \"src/{services,db}/staff-platform{.js,/**/*.js}\"",
     "db:history": "node scripts/verify-migration-history.mjs",
@@ -45,7 +45,9 @@
     "test:models:e2e": "node scripts/test-models.mjs e2e",
     "test:models": "node scripts/test-models.mjs all",
     "test:models:check": "node --test tests/tools/model-report.test.mjs",
-    "test:properties": "node scripts/test-models.mjs properties"
+    "test:properties": "node scripts/test-models.mjs properties",
+    "test:student-equivalence": "node scripts/test-student-equivalence.mjs",
+    "test:build-isolation": "npm run build && node --test tests/tools/deployment/frontend-build.test.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

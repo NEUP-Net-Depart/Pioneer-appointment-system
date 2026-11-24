@@ -20,7 +20,7 @@ export function staffWarrantyHeaders(headers, value = '') {
   const origin = captchaBridgeOrigin(value);
   if (value && !origin) throw new Error('WARRANTY_CAPTCHA_ORIGIN must be an HTTPS origin or a local preview origin');
   const source = headers.replaceAll('\r\n', '\n');
-  const start = source.indexOf('/staff/*\n'), end = source.indexOf('\n/staff/assets/*', start);
+  const start = source.indexOf('/staff/*\n'), end = source.indexOf('\n/app-assets/*', start);
   if (start < 0 || end < 0) throw new Error('Staff CSP template is missing.');
   const staff = source.slice(start, end).replace("object-src 'none';", `frame-src ${origin || "'none'"}; worker-src 'self'; object-src 'none';`);
   return source.slice(0, start) + staff + source.slice(end);

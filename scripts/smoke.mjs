@@ -21,7 +21,7 @@ export async function smoke(base, fetcher = fetch, output = new URL('../dist/', 
     if (/\.m?js$/.test(path)) assert.match(type, /javascript/, path + ' must be JavaScript');
     if (/\.css$/.test(path)) assert.match(type, /text\/css/, path + ' must be CSS');
     assert.doesNotMatch(bytes.toString('utf8', 0, 100), /<!doctype html/i, path + ' returned an HTML fallback');
-    if (path.startsWith('/staff/assets/')) {
+    if (path.startsWith('/app-assets/')) {
       const local = await readFile(new URL('.' + path, output));
       const hash = value => createHash('sha256').update(value).digest('hex');
       assert.equal(hash(bytes), hash(local), path + ' differs from this release build');
@@ -30,15 +30,15 @@ export async function smoke(base, fetcher = fetch, output = new URL('../dist/', 
   for (const entry of ['/', '/staff/']) {
     const response = await get(entry), html = await response.text();
     assert.match(response.headers.get('content-type') || '', /text\/html/);
-    assert.ok(html.includes(entry === '/' ? 'id="booking-form"' : 'id="staff-react-root"'));
+    assert.ok(html.includes(entry === '/' ? 'id="student-react-root"' : 'id="staff-react-root"'));
     if (entry === '/staff/') {
       assert.doesNotMatch(html, /id="(?:app-shell|staff-view|users-table|login-form)"/);
       assert.doesNotMatch(html, /(?:src|href)\s*=\s*["'](?:\/staff\/|\.\/)?(?:main|auth|scan)\.js(?:[?#][^"']*)?["']/, 'Staff HTML must not reference legacy scripts');
-      const local = await readFile(new URL('staff/index.html', output), 'utf8');
-      const modules = value => [...value.matchAll(/src="(\/staff\/assets\/[^"?]+\.js)"/g)].map(match => match[1]);
-      assert.ok(modules(html).length, 'React entry module is missing');
-      assert.deepEqual(modules(html), modules(local), 'Deployed React entry does not match this build');
     }
+    const local = await readFile(new URL(entry === '/' ? 'index.html' : 'staff/index.html', output), 'utf8');
+    const modules = value => [...value.matchAll(/src="(\/app-assets\/[^"?]+\.js)"/g)].map(match => match[1]);
+    assert.equal(modules(html).length, 1, entry + ' must have one React entry module');
+    assert.deepEqual(modules(html), modules(local), entry + ' does not match this build');
     for (const [, path] of html.matchAll(/(?:src|href)="(\/[^"?#]+\.(?:m?js|css|jpg))"/g)) await asset(path);
   }
   await asset('/vendor/signature-pad.js');

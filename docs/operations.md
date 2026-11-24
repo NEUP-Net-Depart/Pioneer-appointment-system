@@ -11,7 +11,7 @@ Production/Preview 使用 [wrangler.jsonc](../wrangler.jsonc)。绑定名固定�
 
 入口：[生产](https://pioneer-appointment-system.pages.dev)、[dev](https://dev.pioneer-appointment-system.pages.dev)。其他分支地址由发布计划生成；[Pages 分支别名](https://developers.cloudflare.com/pages/configuration/preview-deployments/#preview-aliases)转换时须避免重名。
 
-Pages 通过 Actions Direct Upload 发布，关闭自动 Git 构建。构建命令 `npm run build`，输出 `dist`，Functions 位于 `functions/`，保留 `nodejs_compat` 和 `limits.cpu_ms=1000`。项目生产分支为 `main`。工作人员统一运行 React，版本由部署代码决定。
+Pages 通过 Actions Direct Upload 发布，关闭自动 Git 构建。构建命令 `npm run build`，输出 `dist`，Functions 位于 `functions/`，保留 `nodejs_compat` 和 `limits.cpu_ms=1000`。项目生产分支为 `main`。Vite 从 `frontend/index.html` 与 `frontend/staff/index.html` 生成两个入口，内容哈希资源发布到 `/app-assets/`。PWA 和版本检查资源使用 `/staff/` 下的原路径。共享样式、SDK、签名库、WASM 和 OCR Worker 使用同源固定路径，PostHog Source Map 处理在构建完成后执行。
 
 ## 分析与错误监控
 

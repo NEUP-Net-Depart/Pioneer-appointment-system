@@ -2,7 +2,7 @@
 
 面向南湖、浑南校区的免费维修预约系统，提供学生预约与查询、工作人员现场维修、排班、考勤和成员授权管理。
 
-学生端使用原生 HTML/CSS/JavaScript，工作人员端使用 React、TypeScript 与 Vite。入口为学生端 `/`、工作人员端 `/staff/` 和同源 `/api/*`。
+学生端与工作人员端使用 React 19 和 TypeScript。根目录的 Vite 多页面构建一次产出学生端 `/` 和工作人员端 `/staff/`，两端调用同源 `/api/*`。
 
 ## Cloudflare 架构
 

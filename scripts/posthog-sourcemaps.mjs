@@ -3,8 +3,7 @@ import { readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Keep maps private even when upload is disabled or fails. The copied native JS
-// is already readable; Vite and the shared SDK are the transformed bundles.
+// Keep maps private even when upload is disabled or fails.
 export async function finishSourceMaps(directory, config, env = process.env, run = spawnSync) {
   try {
     if (!config.enabled) return;

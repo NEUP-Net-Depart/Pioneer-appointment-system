@@ -44,3 +44,12 @@ CI 的 Playwright 执行上限为 12 分钟，包含构建与初始化的工作�
 各浏览器项目的状态/转换定义与实际覆盖保存到 `output/model-reports/<运行标识>/model-report.json`；同名流程分别保留。浏览器流程不做随机探索，报告中标记为 `not-supported`。
 
 模型清单、报告字段与 seed/path/replayPath 重放说明见[测试分工](../README.md#按需属性测试与业务状态图)。
+
+
+## 学生端等价与构建隔离
+
+`npm run test:student-equivalence` 使用固定的原版 `dev` 提交 `2781f39` 和当前工作区各构建并运行同一组 Playwright 场景。测试为两个版本分别准备本地 D1/R2，使用固定时钟、相同视口和本机字体。截图固定滚动位置和指针，等待图像解码并触发相同的浏览器重绘，连续两次截图稳定后逐字节比较 PNG。差异写入 Playwright 附件。基准图位于 `output/student-equivalence/run-*/screenshots/`。
+
+Chromium 桌面和 WebKit 手机场景覆盖三步预约、余量加载与失败、表单错误、公告、协议、签名、照片预览、成功页、空列表、列表、详情和取消确认。行为断言检查真实创建与取消、表单和草稿、公告版本、凭证请求头、提交结果恢复及部分照片上传重试。工作人员登录和已加载的预约记录页与原版比较，其他岗位流程继续由既有 E2E 用例覆盖。
+
+`npm run test:build-isolation` 检查两个 HTML 入口、学生样式字节、PWA 与版本检查资源、CSP、WASM、OCR Worker、Source Map 清理及 Pages 路由。

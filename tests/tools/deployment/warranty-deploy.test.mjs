@@ -18,7 +18,7 @@ test('staff and verifier CSPs enable only their matching origins and fail closed
   const built = staffWarrantyHeaders(headers, origin);
   assert.ok(built.includes(`frame-src ${origin}; worker-src 'self'`));
   assert.equal(built.split('/staff/*')[0].includes(origin), false);
-  assert.equal(built.split('/staff/*')[1].split('/staff/assets/*')[0].match(/script-src[^;]+/)[0].includes(origin), false);
+  assert.equal(built.split('/staff/*')[1].split('/app-assets/*')[0].match(/script-src[^;]+/)[0].includes(origin), false);
   assert.ok(staffWarrantyHeaders(headers).includes("frame-src 'none'"));
   assert.equal(staffWarrantyHeaders(headers.replace(/\r?\n/g, '\r\n'), origin), built);
   for (const value of ['http://evil.example', 'https://verify.example/path', "https://verify.example; script-src *"]) assert.throws(() => staffWarrantyHeaders(headers, value));

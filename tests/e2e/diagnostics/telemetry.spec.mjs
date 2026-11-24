@@ -289,7 +289,9 @@ test('calendar, help and time gestures retain their field context and bound gest
   await expect(calendar).toHaveAttribute('data-track', `${dateId}.panel`);
   await calendar.locator('button[data-day]:not(:disabled)').nth(10).press('Enter');
   await sendPending(context);
-  expect(events().some((e) => e.name === 'ui.change' && e.control === dateId)).toBe(true);
+  await expect
+    .poll(() => events().some((e) => e.name === 'ui.change' && e.control === dateId))
+    .toBe(true);
   for (const result of ['open', 'closed'])
     expect(
       events().some(
@@ -341,7 +343,9 @@ test('booking recovery and detail navigation record outcomes and real destinatio
   page,
   context
 }) => {
-  const { chooseTime, fillDevice, goReview, submitStudent } = await import('../support/student.mjs');
+  const { chooseTime, fillDevice, goReview, submitStudent } = await import(
+    '../support/student.mjs'
+  );
   const events = await collectTelemetry(page);
   await page.goto('/');
   await readyTelemetry(page);
@@ -358,11 +362,13 @@ test('booking recovery and detail navigation record outcomes and real destinatio
   await expect(page.locator('#appointment-detail')).toBeVisible();
   const detailUrl = page.url();
   await sendPending(context);
-  expect(
-    events()
-      .filter((e) => e.name === 'app.view')
-      .map((e) => e.view)
-  ).toEqual(['student.booking', 'student.detail']);
+  await expect
+    .poll(() =>
+      events()
+        .filter((e) => e.name === 'app.view')
+        .map((e) => e.view)
+    )
+    .toEqual(['student.booking', 'student.detail']);
   expect(
     events()
       .filter((e) => e.control === 'booking.submit' && e.result === 'ok')

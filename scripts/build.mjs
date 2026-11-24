@@ -1,6 +1,6 @@
 import { telemetryBuildConfig, posthogHeaders } from './telemetry-build.mjs';
 import { finishSourceMaps } from './posthog-sourcemaps.mjs';
-import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'vite';
@@ -42,11 +42,6 @@ for (const name of await readdir(join(root, 'node_modules/tesseract.js-core'))) 
   if (/^tesseract-core.*\.(?:wasm|wasm\.js)$/.test(name)) await cp(join(root, 'node_modules/tesseract.js-core', name), join(out, 'vendor/ocr/core', name));
 }
 await cp(join(root, 'node_modules/@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz'), join(out, 'vendor/ocr/lang/eng.traineddata.gz'));
-await build({ configFile: join(root, 'vite.staff.config.mjs') });
-await mkdir(join(out, 'user'));
-for (const name of await readdir(join(root, 'frontend/user'))) {
-  if (!(await stat(join(root, 'frontend/user', name))).isFile()) continue;
-  await cp(join(root, 'frontend/user', name), join(out, name === 'index.html' ? name : `user/${name}`));
-}
+await build({ configFile: join(root, 'vite.config.mjs') });
 await finishSourceMaps(out, telemetry);
 console.log('Built dist/: / and /staff/ with shared modules; Functions remain outside public assets.');

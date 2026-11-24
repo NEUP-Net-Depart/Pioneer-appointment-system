@@ -6,7 +6,10 @@ const smoke = suite === 'smoke';
 export default defineConfig({
   testDir: './tests/e2e',
   testMatch: diagnostics ? '**/diagnostics/*.spec.mjs' : '**/*.spec.mjs',
-  testIgnore: smoke ? ['**/diagnostics/**'] : [],
+  testIgnore: [
+    ...(smoke ? ['**/diagnostics/**'] : []),
+    ...(process.env.E2E_STUDENT_BASELINE ? [] : ['**/student-equivalence.spec.mjs'])
+  ],
   timeout: 60000,
   globalTimeout: process.env.CI ? 720000 : undefined,
   expect: { timeout: 10000 },
@@ -60,6 +63,8 @@ export default defineConfig({
         '**/signature.spec.mjs',
         '**/photo-upload.spec.mjs',
         '**/staff-pwa.spec.mjs',
+        '**/student-equivalence.spec.mjs',
+        '**/student-compatibility.spec.mjs',
         '**/diagnostics/photo-compress.spec.mjs',
         '**/diagnostics/telemetry.spec.mjs'
       ],
