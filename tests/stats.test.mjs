@@ -61,6 +61,7 @@ test('recent statistics include both date boundaries, exclude future dates, and 
       assert.deepEqual(result.faults, { 系统: total });
       assert.deepEqual(result.technicians['20260001'], {
         assignedToName: '20260001',
+        studentId: '20260001',
         identity: { code: 'member', label: '硬件部部员' },
         started: total,
         completed: total

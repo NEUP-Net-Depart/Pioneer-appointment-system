@@ -250,13 +250,20 @@
   }
   .field-app .report-filters {
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
   }
-  .field-app .report-filters > label {
+  .field-app .report-filters > :is(label, .report-campus-field) {
     width: 100%;
     max-width: none;
     min-width: 0;
+  }
+  .field-app .report-filters > :is(.report-day-field, button) {
+    grid-column: 1 / -1;
+  }
+  .report-person-filters > input {
+    flex-basis: 100%;
+    max-width: none;
   }
   .field-app .records-filter-actions {
     display: grid;

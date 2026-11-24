@@ -19,7 +19,7 @@ export function statsRepository(db) {
         `SELECT fault_type AS label,COUNT(*) AS total FROM appointments WHERE ${where} AND ${finished} GROUP BY fault_type ORDER BY total DESC,fault_type`,
         `SELECT campus AS label,COUNT(*) AS total FROM appointments WHERE ${where} GROUP BY campus ORDER BY total DESC,campus`
       ];
-      const workload = db.prepare(`SELECT w.*,trim(s.name) AS assigned_to_name,
+      const workload = db.prepare(`SELECT w.*,trim(s.name) AS assigned_to_name,m.student_id,
           (SELECT json_object('positionCode',mm.position_code,'departmentName',d.name)
            FROM member_department_memberships mm JOIN departments d ON d.id=mm.department_id
            WHERE mm.member_id=s.member_id AND mm.is_primary=1 AND d.enabled=1
@@ -30,6 +30,7 @@ export function statsRepository(db) {
           FROM appointments WHERE ${where} AND assigned_to IS NOT NULL AND status IN ('in_progress','completed')
           GROUP BY assigned_to
         ) w LEFT JOIN staff_accounts s ON s.account=w.account AND s.status='enabled'
+        LEFT JOIN members m ON m.id=s.member_id
         ORDER BY w.completed DESC,w.account`).bind(identityDate,identityDate,...args);
       const [summary, daily, faults, campuses, technicians] = await db.batch([
         ...sql.map(statement => db.prepare(statement).bind(...args)), workload
