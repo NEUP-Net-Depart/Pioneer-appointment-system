@@ -7,11 +7,14 @@ import {
   DUTY_WEEKDAYS,
   dutyTypeLabels,
   isDutyExempt,
+  canAssignDuty,
+  dutyEligibilityRequirements,
   dutyCandidateTypes,
   dutyAvailability,
+  dutyAvailabilityLabel,
+  dutyAvailabilityLabels,
   hasDutyAvailability,
-  dutyPlanningReview,
-  availableForDuty
+  dutyPlanningReview
 } from '../../../shared/duty.js';
 import { suggestDuties } from '../../modules/rosters/suggestions.js';
 import { campusId } from '../../modules/authorization/scopes.js';
@@ -216,13 +219,14 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
       people.map((person) => ({ ...person, memberships: memberships.get(person.memberId) })),
       paused
     );
-    assertNoOverlap(items);
+    assertNoOverlap(items.filter((row) => !paused.includes(row.businessDate)));
     cmd.record.after = { ...before, assignments: items, revision: before.revision + 1 };
     await done(
       repository.saveSchedules(
         [{ before, items }],
         cmd.record,
-        repository.scheduleSnapshotGuard(campus, weekStart, snapshot)
+        repository.scheduleSnapshotGuard(campus, weekStart, snapshot),
+        paused
       ),
       cmd.record
     );
@@ -262,6 +266,9 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
     if (snapshot !== (await repository.scheduleSnapshot(campus, weekStart)))
       fail(409, '人员或班表已变化，请刷新');
     const availability = values;
+    const pausedDates = new Set(
+      pauses.filter((row) => row.paused).map((row) => `${row.campusId}:${row.businessDate}`)
+    );
     const factsByMember = new Map(facts.map((fact) => [fact.memberId, fact]));
     const availabilityByMember = new Map();
     for (const row of availability) {
@@ -279,6 +286,9 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
       people: people.map((person) => ({
         ...person,
         ...factsByMember.get(person.memberId),
+        assignments: (factsByMember.get(person.memberId)?.assignments || []).filter(
+          (row) => !pausedDates.has(`${row.campusId}:${row.businessDate}`)
+        ),
         availability: Object.fromEntries(
           DUTY_TYPES.map((dutyType) => {
             const rows = availabilityByMember.get(person.memberId) || [];
@@ -315,7 +325,16 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
           campuses,
           memberships,
           availability,
-          alreadyScheduled: assignments.some((row) => row.campusId !== data.campusId)
+          otherShifts: assignments
+            .filter((row) => row.campusId !== data.campusId)
+            .map((row) => ({
+              businessDate: row.businessDate,
+              startAt: row.startAt,
+              endAt: row.endAt,
+              ...(evaluate(data.context, 'roster.manage', { campusId: row.campusId }).allowed
+                ? { campusId: row.campusId, dutyType: row.dutyType }
+                : {})
+            }))
         })
       )
     };
@@ -326,42 +345,52 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
   }
   function normalizeWeek(before, values, people, paused) {
     if (!Array.isArray(values) || values.length > 300) fail(400, '班次格式不正确或过多');
-    const items = values.map((row) => {
-      if (!people.some((person) => person.memberId === row.memberId))
-        fail(403, '排班人员无该校区访问权限或已停用');
+    const originals = new Map(before.assignments.map((row) => [row.id, row]));
+    const preserved = before.assignments.filter((row) => paused.includes(row.businessDate));
+    const items = values.flatMap((row) => {
       if (!validDate(row.businessDate) || weekRange(row.businessDate).start !== before.weekStart)
         fail(400, '班次日期必须位于当前周');
       const startAt = row.startAt || DUTY_START,
         endAt = row.endAt || DUTY_END;
-      const previous = before.assignments.find((item) => item.id === row.id);
+      const previous = originals.get(row.id);
       const same =
         previous &&
         previous.memberId === row.memberId &&
         previous.businessDate === row.businessDate &&
         previous.startAt === startAt &&
         previous.endAt === endAt;
+      if (
+        paused.includes(row.businessDate) ||
+        (previous && paused.includes(previous.businessDate))
+      ) {
+        if (!same) fail(409, '该日期已暂停维修，原班次不可调整');
+        return [];
+      }
+      const person = people.find((item) => item.memberId === row.memberId);
+      if (person?.homeCampusId !== before.campusId)
+        fail(403, '只能安排所属校区的在岗成员，请核对人员');
       if (!same && (startAt !== DUTY_START || endAt !== DUTY_END))
         fail(400, '新班次统一为19:00–21:00');
-      if (!same && paused.includes(row.businessDate)) fail(409, '该日期已暂停服务，不能新增班次');
-      if (
-        isDutyExempt(
-          people.find((person) => person.memberId === row.memberId)?.memberships || [],
-          row.businessDate
-        )
-      )
+      if (isDutyExempt(person.memberships || [], row.businessDate))
         fail(400, '部长（含副）及以上不参与值班统计，请移除对应安排');
+      if (!canAssignDuty(person.memberships, row.businessDate, before.dutyType))
+        fail(
+          400,
+          `${person.name}无${dutyTypeLabels[before.dutyType]}值班资格。${dutyEligibilityRequirements[before.dutyType]}`
+        );
       return {
         id: same ? previous.id : crypto.randomUUID(),
         memberId: row.memberId,
         businessDate: row.businessDate,
         startAt,
         endAt,
-        dutyType: before.dutyType
+        dutyType: before.dutyType,
+        source: same ? previous.source : row.source === 'auto' ? 'auto' : 'manual'
       };
     });
     if (new Set(items.map((row) => row.id)).size !== items.length)
       fail(400, '不能重复提交同一班次');
-    return items;
+    return [...items, ...preserved];
   }
   function assertNoOverlap(items) {
     for (let i = 0; i < items.length; i++)
@@ -382,24 +411,42 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
     if (input.sourceVersion && input.sourceVersion !== (await tokenDigest(data.snapshot)))
       fail(409, '空闲、人员或班表已变化，请刷新后重新核对');
     if (!Array.isArray(input.assignments || [])) fail(400, '保留班次格式不正确');
+    const excluded = input.excluded ?? [];
+    if (
+      !Array.isArray(excluded) ||
+      excluded.length > 300 ||
+      excluded.some(
+        (row) =>
+          typeof row?.memberId !== 'string' ||
+          !validDate(row.businessDate) ||
+          weekRange(row.businessDate).start !== data.weekStart ||
+          !DUTY_TYPES.includes(row.dutyType)
+      )
+    )
+      fail(400, '排除班次格式不正确');
     const kept = data.rosters.flatMap((before) => {
       const values = (input.assignments || data.rosters.flatMap((row) => row.assignments)).filter(
         (row) =>
           row.dutyType === before.dutyType &&
-          !isDutyExempt(
+          !data.paused.includes(row.businessDate) &&
+          canAssignDuty(
             data.people.find((person) => person.memberId === row.memberId)?.memberships || [],
-            row.businessDate
+            row.businessDate,
+            before.dutyType
           )
       );
       const normalized = normalizeWeek(before, values, data.people, data.paused);
       return normalized.map((row, i) => ({
         ...row,
-        id: values[i].id || `retained-${before.dutyType}-${i}-${row.memberId}-${row.businessDate}`,
+        id: data.paused.includes(row.businessDate)
+          ? row.id
+          : values[i].id || `retained-${before.dutyType}-${i}-${row.memberId}-${row.businessDate}`,
         campusId: data.campusId
       }));
     });
-    assertNoOverlap(kept);
-    const result = suggestDuties({ ...data, kept });
+    assertNoOverlap(kept.filter((row) => !data.paused.includes(row.businessDate)));
+    const result = suggestDuties({ ...data, kept, excluded });
+    if (!result.optimization.complete) fail(409, result.optimization.reason);
     return { ...result, sourceVersion: await tokenDigest(data.snapshot) };
   }
   async function publishCampusWeek(actor, input) {
@@ -427,33 +474,33 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
       return { before, items: normalizeWeek(before, value.assignments, data.people, data.paused) };
     });
     const assignments = weeks.flatMap((row) => row.items);
-    assertNoOverlap(assignments);
+    const activeAssignments = assignments.filter((row) => !data.paused.includes(row.businessDate));
+    assertNoOverlap(activeAssignments);
     const warnings = [];
     for (const person of data.people) {
-      const mine = assignments.filter((row) => row.memberId === person.memberId);
+      const mine = activeAssignments.filter((row) => row.memberId === person.memberId);
       if (
-        DUTY_WEEKDAYS.some((weekday) =>
-          dutyCandidateTypes(person.memberships, addDays(data.weekStart, weekday - 1)).includes(
-            'repair'
-          )
+        DUTY_WEEKDAYS.some(
+          (weekday) =>
+            dutyCandidateTypes(person.memberships, addDays(data.weekStart, weekday - 1)).includes(
+              'repair'
+            ) && !data.paused.includes(addDays(data.weekStart, weekday - 1))
         ) &&
-        mine.length + person.assignments.filter((row) => row.campusId !== data.campusId).length > 1
+        mine.length > 1
       )
         warnings.push(`${person.name}本周有多次值班`);
       for (const row of mine) {
-        const weekday = new Date(`${row.businessDate}T12:00:00Z`).getUTCDay() || 7;
-        if (!availableForDuty(person.availability[row.dutyType], weekday, data.campusId))
-          warnings.push(`${person.name} ${row.businessDate}不在已填整班空闲内`);
-        if (!dutyCandidateTypes(person.memberships, row.businessDate).includes(row.dutyType))
-          warnings.push(`${person.name}为跨部门安排`);
+        const label = dutyAvailabilityLabel(person, row, data.campusId, data.weekStart);
+        if (label === dutyAvailabilityLabels.conflict || label === dutyAvailabilityLabels.missing)
+          warnings.push(`${person.name} · ${row.businessDate} · ${label}`);
       }
     }
     const review = dutyPlanningReview({ ...data, assignments });
     warnings.push(...review.gaps.map((row) => `${row.businessDate}${row.reason}`));
     warnings.push(
-      ...review.unassigned
-        .filter((row) => row.reasonCode !== 'scheduled_elsewhere')
-        .map((row) => `${row.name} · ${dutyTypeLabels[row.dutyType]} · ${row.reason}`)
+      ...review.unassigned.map(
+        (row) => `${row.name} · ${dutyTypeLabels[row.dutyType]} · ${row.reason}`
+      )
     );
     const days = DUTY_WEEKDAYS.map((weekday) => addDays(data.weekStart, weekday - 1)).filter(
       (day) => !data.paused.includes(day)
@@ -476,7 +523,8 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
       repository.saveSchedules(
         weeks,
         cmd.record,
-        repository.scheduleSnapshotGuard(data.campusId, data.weekStart, data.snapshot)
+        repository.scheduleSnapshotGuard(data.campusId, data.weekStart, data.snapshot),
+        data.paused
       ),
       cmd.record
     );
@@ -490,34 +538,27 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
     scoped(context, item.campusId);
     return { context, item };
   }
-  async function dutyPeople(campus, businessDate) {
-    const people = await repository.schedulePeople(campus);
+  async function dutyPeople({ campusId, businessDate, dutyType }) {
+    const people = await repository.schedulePeople(campusId);
     const facts = await repository.rosterMemberFacts(
       people.map((person) => person.memberId),
       businessDate,
       businessDate
     );
     const memberships = new Map(facts.map((person) => [person.memberId, person.memberships]));
-    return people.filter((person) => !isDutyExempt(memberships.get(person.memberId), businessDate));
+    return people.filter((person) =>
+      canAssignDuty(memberships.get(person.memberId), businessDate, dutyType)
+    );
   }
   async function coverCandidates(actor, id) {
     const { item } = await ownAssignment(actor, id);
-    if (item.businessDate <= dateKey()) fail(409, '调岗须在值班日期前发起和同意');
+    await assertCoverDay(item);
     return {
-      items: (await dutyPeople(item.campusId, item.businessDate)).filter(
-        (person) => person.memberId !== item.memberId
-      )
+      items: (await dutyPeople(item)).filter((person) => person.memberId !== item.memberId)
     };
   }
   async function requestCover(actor, id, input) {
     const { context, item } = await ownAssignment(actor, id);
-    if (
-      input.toMemberId === item.memberId ||
-      !(await dutyPeople(item.campusId, item.businessDate)).some(
-        (person) => person.memberId === input.toMemberId
-      )
-    )
-      fail(400, '请选择该校区的接替成员');
     const result = { id: crypto.randomUUID() },
       note = inputString(input, 'note', 500);
     const cmd = await command(
@@ -530,9 +571,20 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
       result
     );
     if (cmd.replay) return cmd.replay;
-    if (item.businessDate <= dateKey()) fail(409, '调岗须在值班日期前发起和同意');
+    if (
+      input.toMemberId === item.memberId ||
+      !(await dutyPeople(item)).some((person) => person.memberId === input.toMemberId)
+    )
+      fail(400, `请选择具备资格的本校区接替成员。${dutyEligibilityRequirements[item.dutyType]}`);
+    await assertCoverDay(item);
     if (input.revision !== item.revision) fail(409, '班次已变化');
     return done(repository.createCover(item, input.toMemberId, note, cmd.record), cmd.record);
+  }
+  async function assertCoverDay(item) {
+    if (item.businessDate <= dateKey()) fail(409, '调岗须在值班日期前发起和同意');
+    const days = await repository.serviceDays(item.businessDate, item.businessDate);
+    if (days.some((row) => row.campusId === item.campusId && row.paused))
+      fail(409, '该日期已暂停维修，原班次不可调岗');
   }
   async function covers(actor) {
     const context = await contextFor(actor),
@@ -556,7 +608,11 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
         );
       items.push({
         id: row.id,
-        status: expired ? 'expired' : row.status,
+        status: expired
+          ? 'expired'
+          : row.status === 'pending' && row.paused
+            ? 'paused'
+            : row.status,
         revision: row.revision,
         note: row.note,
         fromName: row.from_name,
@@ -564,9 +620,15 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
         assignment: item,
         exchangeAssignment,
         canRespond:
-          row.to_member_id === context.actor.memberId && row.status === 'pending' && !expired,
+          row.to_member_id === context.actor.memberId &&
+          row.status === 'pending' &&
+          !expired &&
+          !row.paused,
         canCancel:
-          row.from_member_id === context.actor.memberId && row.status === 'pending' && !expired
+          row.from_member_id === context.actor.memberId &&
+          row.status === 'pending' &&
+          !expired &&
+          !row.paused
       });
     }
     return { items };
@@ -598,7 +660,7 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
     if (input.revision !== row.revision || row.status !== 'pending') fail(409, '邀请已变化');
     const changes = [];
     if (input.decision === 'accepted') {
-      if (original.businessDate <= dateKey()) fail(409, '调岗须在值班日期前发起和同意');
+      await assertCoverDay(original);
       if (
         !original.active ||
         original.revision !== row.assignment_revision ||
@@ -615,17 +677,15 @@ export function scheduleDomain({ repository, contextFor, evaluate }) {
         )
           fail(409, '互换班次已变化');
         scoped(context, other.campusId);
-        if (other.businessDate <= dateKey()) fail(409, '调岗须在值班日期前发起和同意');
+        await assertCoverDay(other);
         changes.push({ ...other, memberId: row.from_member_id });
       }
       for (const change of changes) {
-        const [person] = await repository.rosterMemberFacts(
-          [change.memberId],
-          change.businessDate,
-          change.businessDate
-        );
-        if (isDutyExempt(person?.memberships, change.businessDate))
-          fail(403, '部长（含副）及以上不参与值班统计，不能接替班次');
+        if (!(await dutyPeople(change)).some((person) => person.memberId === change.memberId))
+          fail(
+            403,
+            `接替者须属于班次校区并具备资格。${dutyEligibilityRequirements[change.dutyType]}`
+          );
       }
     }
     cmd.record.after.changes = changes;

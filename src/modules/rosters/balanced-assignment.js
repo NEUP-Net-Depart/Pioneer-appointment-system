@@ -1,8 +1,11 @@
-function matchPeople(people, days, capacities, balanceFrom = null) {
+function matchPeople(people, slots, costs) {
   const source = 0,
-    firstDay = people.length + 1,
-    sink = firstDay + days.length;
+    firstSlot = people.length + 1,
+    sink = firstSlot + slots.length;
   const graph = Array.from({ length: sink + 1 }, () => []);
+  const slotIndex = new Map(
+    slots.map((slot, index) => [`${slot.dutyType}:${slot.businessDate}`, firstSlot + index])
+  );
   function edge(from, to, capacity, cost) {
     const forward = { to, capacity, cost, reverse: graph[to].length };
     graph[from].push(forward);
@@ -10,27 +13,31 @@ function matchPeople(people, days, capacities, balanceFrom = null) {
     return forward;
   }
   const choices = people.map((person, index) => {
-    edge(source, index + 1, 1, 0);
-    return person.options.map((option) => ({
-      option,
-      edge: edge(
-        index + 1,
-        firstDay + days.indexOf(option.businessDate),
-        1,
-        option.cost ?? Number(option.conflict)
-      )
-    }));
+    const from = index + 1;
+    edge(source, from, 1, 0);
+    if (!person.needsWeeklyShift) edge(from, sink, 1, 0);
+    return person.options.flatMap((option) => {
+      const to = slotIndex.get(`${option.dutyType}:${option.businessDate}`);
+      if (to === undefined) return [];
+      const cost = option.dutyType === 'office'
+        ? -costs.office - (person.needsWeeklyShift ? costs.dualOffice : 0)
+        : Number(option.conflict) * costs.conflict;
+      return [{ option, edge: edge(from, to, 1, cost) }];
+    });
   });
-  capacities.forEach((capacity, index) => {
-    if (!balanceFrom) edge(firstDay + index, sink, capacity, 0);
-    else
-      for (let slot = 0; slot < capacity; slot++)
-        edge(
-          firstDay + index,
-          sink,
-          1,
-          (2 * (balanceFrom[index] + slot) + 1) * (people.length + 1)
-        );
+  const requiredEdges = [];
+  slots.forEach((slot, index) => {
+    const from = firstSlot + index;
+    if (slot.dutyType === 'office') {
+      edge(from, sink, 1, 0);
+      return;
+    }
+    for (let count = slot.fixed; count < slot.upper; count++) {
+      const required = count < slot.lower;
+      const cost = 2 * count + 1 - (count === 0 ? costs.repairDay : 0);
+      const link = edge(from, sink, 1, cost - (required ? costs.requiredSeat : 0));
+      if (required) requiredEdges.push(link);
+    }
   });
   let flow = 0;
   while (flow < people.length) {
@@ -52,7 +59,7 @@ function matchPeople(people, days, capacities, balanceFrom = null) {
         }
       });
     }
-    if (!previous[sink]) break;
+    if (!previous[sink]) return null;
     for (let target = sink; target !== source; ) {
       const { from, index } = previous[target];
       const link = graph[from][index];
@@ -62,86 +69,56 @@ function matchPeople(people, days, capacities, balanceFrom = null) {
     }
     flow++;
   }
-  return {
-    items: choices.flatMap((options, index) =>
-      options
-        .filter((choice) => choice.edge.capacity === 0)
-        .map((choice) => ({ ...choice.option, person: people[index] }))
-    ),
-    complete: flow === people.length
-  };
-}
-
-function balancedLoads(total, fixed) {
-  const count = fixed.length;
-  if (!count) return [];
-  const unique = new Map();
-  function fill(lower, values, remaining) {
-    if (values.length === count) {
-      if (!remaining) unique.set(values.join(','), values);
-      return;
-    }
-    const minimum = Math.max(lower, fixed[values.length]);
-    for (let value = minimum; value <= Math.min(lower + 2, remaining); value++)
-      fill(lower, [...values, value], remaining - value);
-  }
-  for (
-    let lower = Math.max(0, Math.ceil(total / count) - 2);
-    lower <= Math.floor(total / count);
-    lower++
-  )
-    fill(lower, [], total);
-  return [...unique.values()];
-}
-
-export function balancedPlans(people, days, fixed) {
-  const total = people.length + fixed.reduce((sum, value) => sum + value, 0);
-  const plans = balancedLoads(total, fixed).flatMap((loads) => {
-    const matched = matchPeople(
-      people,
-      days,
-      loads.map((value, index) => value - fixed[index])
-    );
-    return matched.complete ? [{ ...matched, loads }] : [];
-  });
-  if (plans.length) return plans;
-  const fallback = matchPeople(
-    people,
-    days,
-    days.map(() => people.length),
-    fixed
+  if (requiredEdges.some((link) => link.capacity)) return null;
+  return choices.flatMap((options, index) =>
+    options
+      .filter((choice) => choice.edge.capacity === 0)
+      .map((choice) => ({ ...choice.option, person: people[index] }))
   );
-  return [
-    {
-      ...fallback,
-      loads: days.map(
-        (day, index) =>
-          fixed[index] + fallback.items.filter((row) => row.businessDate === day).length
-      )
-    }
-  ];
 }
 
-export function comparePlans(first, second) {
+function comparePlans(first, second) {
   for (let index = 0; index < first.length; index++) {
     if (first[index] !== second[index]) return first[index] - second[index];
   }
   return 0;
 }
 
-export function officePlan(people, days) {
-  const slots = people.flatMap((person) =>
-    Array.from({ length: person.weeklyOnce ? 1 : days.length }, (_, index) => ({
-      ...person,
-      options: person.options.map((option) => ({
-        ...option,
-        cost: (index + (person.officeLoad || 0)) * (people.length + 1) + Number(!person.weeklyOnce)
-      }))
-    }))
-  );
-  return matchPeople(
-    slots,
-    days,
-    days.map(() => 1)
-  ).items;
+export function bestDutyPlan(people, days, officeDays, fixedRepair, maxSpread) {
+  const required = people.filter((person) => person.needsWeeklyShift).length;
+  const fixedTotal = fixedRepair.reduce((sum, count) => sum + count, 0);
+  const mostRepair = fixedTotal + required;
+  const leastRepair = Math.max(fixedTotal, mostRepair - officeDays.length);
+  const repairDay = mostRepair ** 2 + 1;
+  const dualOffice = (days.length + 1) * repairDay;
+  const conflict = (officeDays.length + 1) * dualOffice;
+  const office = (required + 1) * conflict;
+  const costs = { repairDay, dualOffice, conflict, office, requiredSeat: (officeDays.length + 1) * office };
+  const officeSlots = officeDays.map((businessDate) => ({ businessDate, dutyType: 'office' }));
+  const firstLower = Math.max(0, Math.ceil(leastRepair / days.length) - maxSpread);
+  const lastLower = Math.floor(mostRepair / days.length);
+  let best = null;
+  for (let lower = firstLower; lower <= lastLower; lower++) {
+    const upper = lower + maxSpread;
+    if (fixedRepair.some((count) => count > upper)) continue;
+    const repairSlots = days.map((businessDate, index) => ({
+      businessDate, dutyType: 'repair', lower, upper, fixed: fixedRepair[index]
+    }));
+    const items = matchPeople(people, [...officeSlots, ...repairSlots], costs);
+    if (!items) continue;
+    const offices = items.filter((row) => row.dutyType === 'office');
+    const repairLoads = days.map((day, index) => fixedRepair[index] + items.filter(
+      (row) => row.dutyType === 'repair' && row.businessDate === day
+    ).length);
+    const conflicts = items.filter((row) => row.conflict).length;
+    const score = [
+      -offices.length,
+      conflicts,
+      -offices.filter((row) => row.person.needsWeeklyShift).length,
+      repairLoads.filter((count) => count === 0).length,
+      repairLoads.reduce((sum, count) => sum + count ** 2, 0)
+    ];
+    if (!best || comparePlans(score, best.score) < 0) best = { items, conflicts, score };
+  }
+  return best;
 }

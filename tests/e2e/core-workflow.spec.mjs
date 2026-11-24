@@ -378,9 +378,10 @@ test('member availability produces a published shift visible after reloading', {
   const planner = await dutyPage(manager, '安排下周');
   await planner.getByRole('textbox', { name: '所在周', exact: true }).fill(nextWeek);
   await planner.getByRole('button', { name: '生成建议班表', exact: true }).click();
-  await expect(planner.getByRole('button', { name: /^移除周宁 / })).toBeVisible();
+  await expect(planner.locator('.duty-assignee').getByRole('button', { name: '周宁', exact: true })).toBeVisible();
   await planner.getByRole('button', { name: '发布班表', exact: true }).click();
-  await expect(planner.getByRole('button', { name: '发布班表', exact: true })).toBeDisabled();
+  await manager.getByRole('dialog', { name: '发布前确认', exact: true }).getByRole('button', { name: '确认发布', exact: true }).click();
+  await expect(planner.getByText('班表已发布', { exact: true })).toBeVisible();
   await page.reload();
   personal = await dutyPage(page, '我的值班');
   await personal.getByRole('textbox', { name: '所在周', exact: true }).fill(nextWeek);

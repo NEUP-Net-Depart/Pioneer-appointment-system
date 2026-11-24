@@ -9,23 +9,42 @@ import {
   dutyCandidateTypes,
   isDutyExempt
 } from '../../../shared/duty.js';
-import { balancedPlans, comparePlans, officePlan } from './balanced-assignment.js';
+import { bestDutyPlan } from './balanced-assignment.js';
 
-export function suggestDuties({ weekStart, campusId, people, availability, paused, kept = [] }) {
+const maxSpread = 2;
+
+export function suggestDuties({
+  weekStart,
+  campusId,
+  people,
+  availability,
+  paused,
+  kept = [],
+  excluded = []
+}) {
   const weekDays = DUTY_WEEKDAYS.map((weekday) => addDays(weekStart, weekday - 1));
   const days = weekDays.filter((day) => !paused.includes(day));
   const assignments = kept
     .filter(
       (row) =>
-        !isDutyExempt(
+        paused.includes(row.businessDate) || !isDutyExempt(
           people.find((person) => person.memberId === row.memberId)?.memberships || [],
           row.businessDate
         )
     )
     .map((row) => ({ ...row }));
-  const used = new Set(assignments.map((row) => row.memberId));
+  const activeKept = assignments.filter((row) => !paused.includes(row.businessDate));
+  const keptCounts = new Map();
+  for (const row of activeKept)
+    keptCounts.set(row.memberId, (keptCounts.get(row.memberId) || 0) + 1);
+  const officeDays = days.filter(
+    (day) => !activeKept.some((row) => row.businessDate === day && row.dutyType === 'office')
+  );
+  const exclusionKeys = new Set(
+    excluded.map((row) => `${row.memberId}:${row.businessDate}:${row.dutyType}`)
+  );
   const candidates = people
-    .filter((person) => weekDays.some((day) => dutyCandidateTypes(person.memberships, day).length))
+    .filter((person) => days.some((day) => dutyCandidateTypes(person.memberships, day).length))
     .slice()
     .sort((a, b) => a.memberId.localeCompare(b.memberId))
     .map((person) => {
@@ -33,92 +52,54 @@ export function suggestDuties({ weekStart, campusId, people, availability, pause
         availability.filter((row) => row.memberId === person.memberId),
         weekStart
       ).effectiveWindows;
-      const weeklyOnce = weekDays.some((day) =>
+      const needsWeeklyShift = days.some((day) =>
         dutyCandidateTypes(person.memberships, day).includes('repair')
       );
-      const options = days.flatMap((businessDate) =>
-        dutyCandidateTypes(person.memberships, businessDate).map((dutyType) => ({
-          businessDate,
-          dutyType,
-          conflict: !availableForDuty(
-            windows,
-            new Date(`${businessDate}T12:00:00Z`).getUTCDay(),
-            campusId
+      const options = days.filter((day) => !person.assignments.some(
+        (row) => row.campusId !== campusId && row.businessDate === day && row.startAt < DUTY_END && row.endAt > DUTY_START
+      )).flatMap((businessDate) =>
+        dutyCandidateTypes(person.memberships, businessDate)
+          .filter(
+            (dutyType) => !exclusionKeys.has(`${person.memberId}:${businessDate}:${dutyType}`)
           )
-        }))
+          .map((dutyType) => ({
+            businessDate,
+            dutyType,
+            conflict: !availableForDuty(
+              windows,
+              new Date(`${businessDate}T12:00:00Z`).getUTCDay(),
+              campusId
+            )
+          }))
+          .filter((option) => option.dutyType === 'repair' || (
+            !option.conflict && officeDays.includes(option.businessDate)
+          ))
       );
-      const occupied = person.assignments.some((row) => row.campusId !== campusId);
       return {
         ...person,
         options,
-        weeklyOnce,
-        occupied,
+        needsWeeklyShift,
         availability: { repair: windows, office: windows }
       };
     });
-  const officeDays = days.filter(
-    (day) => !assignments.some((row) => row.businessDate === day && row.dutyType === 'office')
+  const pending = candidates.filter(
+    (person) => !keptCounts.has(person.memberId) && (person.needsWeeklyShift || person.options.length)
   );
-  const officeItems = officePlan(
-    candidates
-      .filter((person) => !person.weeklyOnce || (!person.occupied && !used.has(person.memberId)))
-      .map((person) => ({
-        ...person,
-        officeLoad:
-          assignments.filter((row) => row.memberId === person.memberId).length +
-          person.assignments.filter((row) => row.campusId !== campusId).length,
-        options: person.options.filter(
-          (option) =>
-            option.dutyType === 'office' &&
-            !option.conflict &&
-            officeDays.includes(option.businessDate) &&
-            !assignments.some(
-              (row) => row.businessDate === option.businessDate && row.memberId === person.memberId
-            ) &&
-            !person.assignments.some(
-              (row) => row.businessDate === option.businessDate && row.campusId !== campusId
-            )
-        )
-      })),
-    officeDays
-  );
-  for (const row of officeItems) used.add(row.person.memberId);
-  const eligible = candidates
-    .filter((person) => person.weeklyOnce && !person.occupied && !used.has(person.memberId))
-    .map((person) => ({
-      ...person,
-      options: person.options.filter((option) => option.dutyType === 'repair')
-    }));
-  const choices = balancedPlans(
-    eligible,
-    days,
-    days.map(
-      (day) =>
-        assignments.filter((row) => row.businessDate === day && row.dutyType === 'repair').length
-    )
-  );
-  const spread = (loads) => (loads.length ? Math.max(...loads) - Math.min(...loads) : 0);
-  let best = null;
-  const officeLoads = days.map(
+  const repeated = candidates.find((person) => (keptCounts.get(person.memberId) || 0) > 1);
+  const blocked = pending.find((person) => !person.options.length);
+  const fixedRepair = days.map(
     (day) =>
-      assignments.filter((row) => row.businessDate === day && row.dutyType === 'office').length +
-      officeItems.filter((row) => row.businessDate === day).length
+      activeKept.filter((row) => row.businessDate === day && row.dutyType === 'repair').length
   );
-  for (const repair of choices) {
-    const totalLoads = days.map((day, index) => repair.loads[index] + officeLoads[index]);
-    const items = repair.items;
-    const score = [
-      eligible.length - items.length,
-      Math.max(0, spread(repair.loads) - 2),
-      items.filter((row) => row.conflict).length,
-      repair.loads.filter((value) => !value).length,
-      spread(repair.loads),
-      repair.loads.reduce((sum, value) => sum + value * value, 0)
-    ];
-    if (!best || comparePlans(score, best.score) < 0)
-      best = { items, score, totalLoads, repairLoads: repair.loads, officeLoads };
+  let reason = null;
+  if (!days.length) reason = '本周服务日均已暂停，无法生成班表';
+  else if (repeated) reason = `${repeated.name}本周已有多个班次，请先调整为一次`;
+  else if (blocked) reason = `${blocked.name}本周没有可安排的班次，请核对任职和排除项`;
+  const best = reason ? null : bestDutyPlan(pending, days, officeDays, fixedRepair, maxSpread);
+  if (!best && !reason) {
+    reason = '无法将每日维修人数差控制在 2 人以内，请核对保留班次和排除项';
   }
-  for (const row of [...officeItems, ...(best?.items || [])]) {
+  for (const row of best?.items || []) {
     assignments.push({
       id: `suggested-${row.person.memberId}-${row.businessDate}-${row.dutyType}`,
       memberId: row.person.memberId,
@@ -128,6 +109,7 @@ export function suggestDuties({ weekStart, campusId, people, availability, pause
       dutyType: row.dutyType,
       startAt: DUTY_START,
       endAt: DUTY_END,
+      source: 'auto',
       suggested: true,
       availabilityConflict: row.conflict
     });
@@ -141,35 +123,28 @@ export function suggestDuties({ weekStart, campusId, people, availability, pause
   });
   for (const person of review.unassigned) {
     const candidate = candidates.find((row) => row.memberId === person.memberId);
-    if (person.reasonCode === 'scheduled_elsewhere') continue;
-    person.reasonCode = days.length ? 'no_eligible_day' : 'paused';
-    person.reason = days.length ? '可排日期无有效任职，请手动核对' : '本周服务日均已暂停';
-    if (candidate.options.length) person.reason = '保留安排导致条件无法同时满足，请手动核对';
+    if (!candidate.options.length) {
+      person.reasonCode = 'no_eligible_day';
+      person.reason = '本周没有可安排的班次，请核对任职和排除项';
+    }
   }
+  const daily = days.map((businessDate) => {
+    const rows = assignments.filter((row) => row.businessDate === businessDate);
+    const repair = rows.filter((row) => row.dutyType === 'repair').length;
+    return { businessDate, repair, office: rows.length - repair, total: rows.length };
+  });
+  const repairLoads = daily.map((row) => row.repair);
   return {
     assignments,
     ...review,
     optimization: {
-      complete:
-        best?.score[0] === 0 &&
-        !review.unassigned.some((row) => row.reasonCode !== 'scheduled_elsewhere'),
-      weeklyOnce: candidates
-        .filter((person) => person.weeklyOnce)
-        .every(
-          (person) =>
-            assignments.filter((row) => row.memberId === person.memberId).length +
-              person.assignments.filter((row) => row.campusId !== campusId).length ===
-            1
-        ),
-      balanced: best?.score[1] === 0,
-      conflicts: best?.score[2] || 0,
-      maxSpread: 2,
-      daily: days.map((businessDate, index) => ({
-        businessDate,
-        repair: best.repairLoads[index],
-        office: best.officeLoads[index],
-        total: best.totalLoads[index]
-      }))
+      complete: Boolean(best),
+      reason,
+      weeklyOnce: !repeated && !review.unassigned.length,
+      balanced: repairLoads.length > 0 && Math.max(...repairLoads) - Math.min(...repairLoads) <= maxSpread,
+      conflicts: best?.conflicts || 0,
+      maxSpread,
+      daily
     }
   };
 }

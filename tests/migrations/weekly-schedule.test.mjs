@@ -8,6 +8,7 @@ for(const directory of ['migrations','database/staff-migrations'])test(`${direct
  t.mock.timers.enable({apis:['Date'],now:new Date('2026-11-01T12:00:00Z')});
  const db=database(directory,'0048_');try{
  seedStaff(db,'20261001');seedStaff(db,'20261002');
+ db.sqlite.exec("INSERT INTO member_department_memberships(id,member_id,department_id,position_code,assignment_type,is_primary,effective_from,created_at) VALUES('post-one','member-20261001','dept-hardware','member','primary',1,'2026-01-01','2026-01-01'),('post-two','member-20261002','dept-hardware','member','primary',1,'2026-01-01','2026-01-01')");
  db.sqlite.exec(`INSERT INTO roster_tasks(id,week_start,campus_scope,slot_start,slot_end,deadline,created_at) VALUES('task','2026-11-02','{"campusIds":["campus-nanhu"]}','19:00','21:00','2026-11-01','2026-10-30');
  INSERT INTO roster_versions(id,task_id,status,version,rule_version,algorithm_version,published_at,created_at) VALUES('past','task','superseded',1,'1','old','2026-11-01','2026-10-30'),('live','task','published',2,'1','old','2026-11-01','2026-10-30'),('draft','task','draft',3,'1','old',NULL,'2026-11-02');
  INSERT INTO duty_assignments(id,version_id,member_id,business_date,campus_id,duty_type,start_at,end_at,origin_assignment_id,previous_assignment_id) VALUES

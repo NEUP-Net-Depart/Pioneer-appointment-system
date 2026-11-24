@@ -10,7 +10,8 @@ export function useUnsavedChanges({
   busy = false,
   save,
   discard,
-  leaveMessage = ''
+  leaveMessage = '',
+  saveLabel = ''
 }) {
   const pageActive = useContext(UnsavedPageContext);
   const current = useRef(null),
@@ -21,7 +22,8 @@ export function useUnsavedChanges({
     busy,
     save,
     discard,
-    leaveMessage
+    leaveMessage,
+    saveLabel
   };
   useEffect(() => {
     const guard = (event) => {
@@ -31,6 +33,7 @@ export function useUnsavedChanges({
       event.detail?.editors.push({
         canSave: typeof current.current.save === 'function',
         leaveMessage: current.current.leaveMessage,
+        saveLabel: current.current.saveLabel,
         async save() {
           if (current.current.busy) throw new Error('当前操作正在提交，请稍后再试。');
           if (!current.current.save)

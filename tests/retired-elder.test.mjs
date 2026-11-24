@@ -297,6 +297,9 @@ test('retired elders manage real personnel, accounts, booking, rosters and atten
 
 test('retired elders still cannot fill availability, join either duty, accept cover or receive attendance corrections', async (t) => {
   const { db, repository, staff, users, root, elder, change, publish } = await setup(t);
+  db.sqlite.prepare(`INSERT INTO member_department_memberships
+    (id,member_id,department_id,position_code,assignment_type,is_primary,effective_from,created_at)
+    VALUES('elder-exchange',?,'dept-hardware','member','exchange',0,'2026-11-03','2026-11-03')`).run(elderId);
   const worker = await users.find('20261003');
   const roster = await publish(campuses[0], [shift(worker.memberId)]);
   const assignment = roster.rosters.find((row) => row.dutyType === 'repair').assignments[0];

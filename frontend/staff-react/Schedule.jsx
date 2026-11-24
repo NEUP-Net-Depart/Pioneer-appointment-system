@@ -558,7 +558,8 @@ export function Schedule({ user, campusId: initialCampus, onDirtyChange }) {
                       accepted: '已接替',
                       declined: '已拒绝',
                       cancelled: '已撤回',
-                      expired: '已过调岗期限'
+                      expired: '已过调岗期限',
+                      paused: '暂停维修'
                     }[item.status]
                   }
                   {item.note ? ` · ${item.note}` : ''}

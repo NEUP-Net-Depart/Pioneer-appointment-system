@@ -104,6 +104,7 @@ export function Select({
   defaultValue = undefined,
   onChange = undefined,
   children = undefined,
+  placeholder = '请选择',
   disabled = false,
   required = false,
   className = '',
@@ -185,7 +186,7 @@ export function Select({
           }
         }}
       >
-        <span>{selected?.label || '请选择'}</span>
+        <span>{selected?.label || placeholder}</span>
         <span className="workspace-chevron" aria-hidden="true" />
       </button>
       {(required || props.name) && (

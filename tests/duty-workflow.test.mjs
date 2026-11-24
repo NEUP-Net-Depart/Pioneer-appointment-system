@@ -10,7 +10,8 @@ import { appointmentRepository } from '../src/db/appointments.js';
 import { composeStaffPlatform } from '../src/app/compose.js';
 import { staffPlatformService } from '../src/services/staff-platform.js';
 import { suggestDuties } from '../src/modules/rosters/suggestions.js';
-import { dutyAvailability, dutyCandidateTypes, isDutyExempt } from '../shared/duty.js';
+import { dutyPlacementIssue, mergeDutyDraft } from '../frontend/staff-react/duty-draft.js';
+import { canAssignDuty, dutyAvailability, dutyCandidateTypes, dutyPlanningReview, isDutyExempt } from '../shared/duty.js';
 import { addDays } from '../shared/time.js';
 import { staffPlatformRoutes } from '../src/routes/staff-platform.js';
 
@@ -31,6 +32,12 @@ function post(departmentCode = 'hardware', positionCode = 'member') {
     assignmentType: 'primary',
     effectiveFrom: '2026-01-01'
   };
+}
+function addDutyMembership(db, member, type) {
+  db.sqlite.prepare(`INSERT INTO member_department_memberships
+    (id,member_id,department_id,position_code,assignment_type,is_primary,effective_from,created_at)
+    VALUES(?,?,?,'member',?,0,'2026-01-01','2026-01-01')`)
+    .run(`${member.memberId}-${type}`, member.memberId, type === 'exchange' ? 'dept-hardware' : 'dept-office', type);
 }
 async function setup(t, managed = false) {
   t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-09T11:10:00Z') });
@@ -78,6 +85,7 @@ async function publish(staff, head, assignments, office = []) {
 
 test('work staffing scopes read-only idle and missing people without exposing attendance sources', async (t) => {
   const { db, staff, head, worker, office } = await setup(t);
+  addDutyMembership(db, office, 'exchange');
   await publish(staff, head, [shift(worker.memberId), shift(office.memberId)]);
   await assert.rejects(staff.workStaffing(office, { campusId }), { status: 403 });
   await assert.rejects(staff.workStaffing(head, { campusId: 'campus-hunnan' }), { status: 403 });
@@ -163,23 +171,21 @@ test('suggestions balance ordinary members, exclude leaders and occupied members
   const input = { weekStart, campusId, people, availability, paused: ['2026-11-12'] };
   const result = suggestDuties(input);
   assert.deepEqual(result, suggestDuties(input));
-  assert.equal(result.assignments.length, 5);
+  assert.equal(result.assignments.length, 4);
   assert.equal(new Set(result.assignments.map((row) => row.memberId)).size, 4);
-  assert.deepEqual(result.gaps.map((row) => [row.businessDate, row.dutyType]), [
-    ['2026-11-11', 'repair']
+  assert.deepEqual(result.gaps.filter((row) => row.dutyType === 'repair').map((row) => row.businessDate), [
+    '2026-11-11'
   ], 'office coverage must not conceal a missing repair shift');
+  assert.equal(result.gaps.filter((row) => row.dutyType === 'office').length, 1);
   assert.equal(result.assignments.find((row) => row.memberId === 'b').businessDate, '2026-11-09');
   assert.equal(result.assignments.find((row) => row.memberId === 'a').businessDate, '2026-11-10');
   assert.ok(
     !result.assignments.some((row) => ['e', 'f', 'g'].includes(row.memberId)),
     'leaders do not participate even when old availability exists'
   );
-  people[0].assignments = [{ campusId: 'campus-hunnan' }];
+  people[0].assignments = [{ ...shift('a', '2026-11-10'), campusId: 'campus-hunnan' }];
   const occupied = suggestDuties(input);
-  assert.ok(!occupied.assignments.some((row) => row.memberId === 'a'));
-  assert.ok(
-    occupied.unassigned.some((row) => row.memberId === 'a' && row.reason.includes('其他校区'))
-  );
+  assert.notEqual(occupied.assignments.find((row) => row.memberId === 'a').businessDate, '2026-11-10');
   assert.equal(
     result.assignments.some((row) => row.businessDate === '2026-11-12'),
     false
@@ -195,6 +201,64 @@ test('suggestions balance ordinary members, exclude leaders and occupied members
   );
   assert.equal(regenerated.assignments.filter((row) => row.businessDate === kept[0].businessDate && row.dutyType === 'office').length, 1);
   assert.equal(regenerated.assignments.some((row) => row.id === 'legacy-leader'), false);
+});
+
+test('paused shifts do not fulfill the weekly repair requirement and regeneration respects an excluded slot', () => {
+  const pausedShift = { ...shift('worker'), id: 'paused', campusId, dutyType: 'repair' };
+  const person = { memberId: 'worker', name: 'worker', memberships: [post()], assignments: [], availability: { repair: [], office: [] } };
+  const input = { weekStart, campusId, people: [person], paused: [weekStart], availability: [], kept: [pausedShift] };
+  assert.equal(dutyPlanningReview({ ...input, assignments: [pausedShift] }).unassigned.length, 1);
+  const first = suggestDuties(input);
+  const proposed = first.assignments.find((row) => row.suggested);
+  assert.ok(proposed);
+  assert.notEqual(proposed.businessDate, weekStart);
+  assert.equal(first.optimization.weeklyOnce, true);
+  const second = suggestDuties({ ...input, excluded: [proposed] });
+  assert.deepEqual(second.assignments.find((row) => row.id === pausedShift.id), pausedShift);
+  assert.equal(second.assignments.filter((row) => row.suggested).length, 1);
+  assert.notEqual(second.assignments.find((row) => row.suggested).businessDate, proposed.businessDate);
+});
+
+test('publishing around a pause preserves original rows and blocks adjustments to them', async (t) => {
+  const { db, staff, repository, head, worker, office } = await setup(t);
+  t.mock.timers.setTime(Date.parse('2026-11-08T12:00:00Z'));
+  addDutyMembership(db, office, 'exchange');
+  const first = await publish(staff, head, [shift(worker.memberId)]);
+  const original = first.rosters[0].assignments[0];
+  const invite = await staff.requestCover(worker, original.id, {
+    toMemberId: office.memberId, revision: original.revision, requestId: requestId()
+  });
+  db.sqlite.prepare(`INSERT INTO service_day_overrides(business_date,campus_id,paused,reason,revision,updated_at)
+    VALUES(?,?,1,'暂停',0,?)`).run(weekStart, campusId, weekStart);
+  const openDay = addDays(weekStart, 1);
+  const replacement = shift(worker.memberId, openDay);
+  await rejectWithoutWrite(db, () => publish(staff, head, [{ ...original, businessDate: openDay }]), { status: 409 });
+  await rejectWithoutWrite(db, () => publish(staff, head, [shift(office.memberId)]), { status: 409 });
+  assert.equal((await staff.covers(office)).items[0].status, 'paused');
+  assert.equal(await repository.pendingCoverInvitations(office.memberId), 0);
+  await rejectWithoutWrite(db, () => staff.respondCover(office, invite.id, {
+    revision: 0, decision: 'accepted', requestId: requestId()
+  }), { status: 409 });
+  const suggested = await staff.rosterSuggestions(head, { campusId, weekStart, assignments: [] });
+  assert.ok(suggested.assignments.some((row) => row.memberId === worker.memberId && row.suggested && row.businessDate !== weekStart));
+  const published = await publish(staff, head, [replacement]);
+  assert.deepEqual(published.rosters[0].assignments.find((row) => row.id === original.id), original);
+  assert.ok(!published.warnings.some((warning) => warning.includes('多次值班') || warning.includes(weekStart)));
+  assert.deepEqual((await staff.rosterMine(worker, { weekStart })).items.map((row) => row.businessDate), [openDay]);
+});
+
+test('draft refresh merges independent edits and requires a choice for competing moves', () => {
+  const original = { ...shift('worker'), id: 'published', dutyType: 'repair' };
+  const local = { ...original, id: 'local', businessDate: '2026-11-10' };
+  const remote = { ...original, id: 'remote', businessDate: '2026-11-11' };
+  const unaffected = { ...shift('other'), id: 'unaffected', dutyType: 'repair' };
+  assert.deepEqual(mergeDutyDraft([original], [local], [original, unaffected]), { rows: [local, unaffected], conflicts: [] });
+  assert.deepEqual(mergeDutyDraft([original], [local], [remote, unaffected]), {
+    rows: [remote, unaffected],
+    conflicts: [{ memberId: original.memberId, local: [local], remote: [remote] }]
+  });
+  const independent = { ...original, id: 'independent', businessDate: '2026-11-12' };
+  assert.deepEqual(mergeDutyDraft([original], [local], [original, independent]), { rows: [independent, local], conflicts: [] });
 });
 
 test('unified availability accepts Monday through Thursday and rejects leadership or unrelated members without writes', async (t) => {
@@ -263,7 +327,8 @@ test('QR and direct confirmations remind only eligible members about next week a
 });
 
 test('unfilled repair members are assigned with explicit conflicts and remain visible when manually omitted', async (t) => {
-  const { staff, head, worker, office } = await setup(t);
+  const { db, staff, head, worker, office } = await setup(t);
+  addDutyMembership(db, office, 'maintenance_affairs');
   const current = await staff.campusWeek(head, { weekStart, campusId });
   const result = await staff.rosterSuggestions(head, { weekStart, campusId, sourceVersion: current.sourceVersion, assignments: [] });
   const assigned = result.assignments.find((person) => person.memberId === worker.memberId);
@@ -271,7 +336,20 @@ test('unfilled repair members are assigned with explicit conflicts and remain vi
   assert.equal(assigned.dutyType, 'repair');
   const published = await publish(staff, head, [], [shift(office.memberId)]);
   assert.ok(published.warnings.some((message) => message.includes(`${weekStart}尚未安排维修值班`)));
-  assert.ok(published.warnings.some((message) => message.includes(worker.name) && message.includes('尚未填空闲')));
+  assert.ok(published.warnings.some((message) => message.includes(worker.name) && message.includes('未填写统计表')));
+});
+
+test('suggestions explain why a required member cannot be scheduled and leave persisted shifts intact', async (t) => {
+  const { db, staff, head, worker } = await setup(t);
+  const current = await publish(staff, head, [shift(worker.memberId)]);
+  const excluded = [0, 1, 2, 3].map((offset) => ({
+    memberId: worker.memberId,
+    businessDate: addDays(weekStart, offset),
+    dutyType: 'repair'
+  }));
+  await rejectWithoutWrite(db, () => staff.rosterSuggestions(head, {
+    weekStart, campusId, sourceVersion: current.sourceVersion, assignments: [], excluded
+  }), { status: 409, message: /本周没有可安排的班次/ });
 });
 
 test('leave storage and actions are removed while roster coverage and direct office check-in remain usable', async (t) => {
@@ -373,8 +451,72 @@ test('publication rejects leadership and suggestions discard legacy leader arran
   assert.equal(db.sqlite.prepare('SELECT active FROM duty_assignments WHERE id=?').get(legacy.id).active, 1);
 });
 
+test('duty type eligibility governs placement, publication and retained suggestions on the shift date', async (t) => {
+  const { db, staff, head, worker, office } = await setup(t);
+  const officeDay = addDays(weekStart, 1);
+  const officeShift = shift(office.memberId, officeDay);
+  await rejectWithoutWrite(db, () => publish(staff, head, [], [officeShift]), { status: 400 });
+  await rejectWithoutWrite(db, () => publish(staff, head, [], [shift(worker.memberId)]), { status: 400 });
+  addDutyMembership(db, office, 'maintenance_affairs');
+  await rejectWithoutWrite(db, () => staff.saveRosterWeek(head, {
+    weekStart, campusId, dutyType: 'repair', revision: -1,
+    assignments: [shift(office.memberId)], requestId: requestId()
+  }), { status: 400 });
+  addDutyMembership(db, office, 'exchange');
+  const current = await publish(staff, head, [shift(office.memberId)], [officeShift]);
+  const person = current.people.find(({ memberId }) => memberId === office.memberId);
+  const exchange = person.memberships.find(({ assignmentType }) => assignmentType === 'exchange');
+  assert.equal(canAssignDuty([exchange], weekStart, 'repair'), true);
+  assert.equal(canAssignDuty([exchange], weekStart, 'office'), false);
+  assert.deepEqual(dutyCandidateTypes([exchange], weekStart), []);
+  db.sqlite.prepare('UPDATE member_department_memberships SET effective_to=? WHERE id=?').run(officeDay, exchange.id);
+  const updated = await staff.campusWeek(head, { weekStart, campusId });
+  const updatedPerson = updated.people.find(({ memberId }) => memberId === office.memberId);
+  assert.equal(dutyPlacementIssue({ data: updated, rows: [], person: updatedPerson, row: {
+    ...officeShift, dutyType: 'repair'
+  } }), '无维修值班资格');
+  db.sqlite.prepare('UPDATE member_department_memberships SET effective_to=? WHERE id=?').run(weekStart, exchange.id);
+  const suggested = await staff.rosterSuggestions(head, { weekStart, campusId });
+  assert.ok(suggested.assignments.some((row) => row.memberId === office.memberId && row.dutyType === 'office'));
+  assert.ok(!suggested.assignments.some((row) => row.memberId === office.memberId && row.dutyType === 'repair'));
+  assert.equal((await staff.campusWeek(head, { weekStart, campusId })).rosters[0].assignments[0].memberId, office.memberId);
+});
+
+test('office cover requires maintenance affairs and rechecks an expiring appointment when accepting', async (t) => {
+  const { db, repository, staff, head, worker, office } = await setup(t);
+  t.mock.timers.setTime(Date.parse('2026-11-08T12:00:00Z'));
+  addDutyMembership(db, office, 'maintenance_affairs');
+  const current = await publish(staff, head, [], [shift(office.memberId)]);
+  const item = current.rosters[1].assignments[0];
+  const requestCover = () => staff.requestCover(office, item.id, {
+    revision: item.revision, toMemberId: worker.memberId, requestId: requestId()
+  });
+  assert.ok(!(await staff.coverCandidates(office, item.id)).items.some(({ memberId }) => memberId === worker.memberId));
+  await rejectWithoutWrite(db, requestCover, { status: 400 });
+  addDutyMembership(db, worker, 'maintenance_affairs');
+  const invitation = await requestCover();
+  db.sqlite.exec('DROP TRIGGER organization_authorization_update');
+  const original = repository.decideCover;
+  const expire = db.sqlite.prepare("UPDATE member_department_memberships SET effective_to=? WHERE member_id=? AND assignment_type='maintenance_affairs'");
+  repository.decideCover = async (...args) => {
+    expire.run(weekStart, worker.memberId);
+    try {
+      return await original(...args);
+    } finally {
+      expire.run(null, worker.memberId);
+    }
+  };
+  const accept = () => staff.respondCover(worker, invitation.id, {
+    revision: 0, decision: 'accepted', requestId: requestId()
+  });
+  await rejectWithoutWrite(db, accept, { status: 409 });
+  repository.decideCover = original;
+  assert.deepEqual(await accept(), { status: 'accepted' });
+});
+
 test('leaders cannot receive cover invitations or accept an invitation issued before their promotion', async (t) => {
   const { db, staff, head, worker, office } = await setup(t);
+  addDutyMembership(db, office, 'exchange');
   t.mock.timers.setTime(Date.parse('2026-11-08T12:00:00Z'));
   const current = await publish(staff, head, [shift(worker.memberId)]);
   const item = current.rosters[0].assignments[0];
@@ -386,7 +528,7 @@ test('leaders cannot receive cover invitations or accept an invitation issued be
   const invite = await staff.requestCover(worker, item.id, {
     revision: item.revision, toMemberId: office.memberId, requestId: requestId()
   });
-  db.sqlite.prepare("UPDATE member_department_memberships SET position_code='deputy_head' WHERE member_id=?").run(office.memberId);
+  db.sqlite.prepare("UPDATE member_department_memberships SET position_code='deputy_head' WHERE member_id=? AND is_primary=1").run(office.memberId);
   await rejectWithoutWrite(db, () => staff.respondCover(office, invite.id, {
     revision: 0, decision: 'accepted', requestId: requestId()
   }), { status: 403 });
@@ -395,6 +537,7 @@ test('leaders cannot receive cover invitations or accept an invitation issued be
 for (const operation of ['createCover', 'decideCover']) {
   test(`promotion at the ${operation} write boundary rejects the cover without roster, audit or receipt changes`, async (t) => {
     const { db, repository, staff, head, worker, office } = await setup(t);
+    addDutyMembership(db, office, 'exchange');
     t.mock.timers.setTime(Date.parse('2026-11-08T12:00:00Z'));
     const current = await publish(staff, head, [shift(worker.memberId)]);
     const item = current.rosters[0].assignments[0];
@@ -402,7 +545,7 @@ for (const operation of ['createCover', 'decideCover']) {
     const invite = operation === 'decideCover' ? await staff.requestCover(worker, item.id, input) : null;
     const original = repository[operation];
     repository[operation] = (...args) => {
-      db.sqlite.prepare("UPDATE member_department_memberships SET position_code='deputy_head' WHERE member_id=?").run(office.memberId);
+      db.sqlite.prepare("UPDATE member_department_memberships SET position_code='deputy_head' WHERE member_id=? AND is_primary=1").run(office.memberId);
       return original(...args);
     };
     const audits = db.sqlite.prepare('SELECT COUNT(*) n FROM audit_events').get().n;
@@ -421,8 +564,30 @@ for (const operation of ['createCover', 'decideCover']) {
   });
 }
 
+test('an out-of-campus member with access is excluded from suggestions, publication and cover', async (t) => {
+  const { db, staff, head, worker, office } = await setup(t);
+  addDutyMembership(db, office, 'exchange');
+  t.mock.timers.setTime(Date.parse('2026-11-08T12:00:00Z'));
+  db.sqlite.prepare("UPDATE members SET home_campus_id='campus-hunnan' WHERE id=?").run(office.memberId);
+  const current = await staff.campusWeek(head, { weekStart, campusId });
+  assert.ok(!current.people.some((person) => person.memberId === office.memberId));
+  const suggestions = await staff.rosterSuggestions(head, { weekStart, campusId, assignments: [] });
+  assert.ok(!suggestions.assignments.some((row) => row.memberId === office.memberId));
+  await assert.rejects(publish(staff, head, [shift(office.memberId)]), { status: 403 });
+  const generated = suggestions.assignments.find((row) => row.memberId === worker.memberId);
+  assert.equal(generated.source, 'auto');
+  const published = await publish(staff, head, [generated]);
+  const item = published.rosters[0].assignments[0];
+  assert.equal(item.source, 'auto');
+  assert.ok(!(await staff.coverCandidates(worker, item.id)).items.some((person) => person.memberId === office.memberId));
+  await assert.rejects(staff.requestCover(worker, item.id, {
+    revision: item.revision, toMemberId: office.memberId, requestId: requestId()
+  }), { status: 400 });
+});
+
 test('joint publication prepares shared events without attendance, retains IDs and rejects a stale or conflicting pair atomically', async (t) => {
   const { db, staff, head, worker, office } = await setup(t);
+  addDutyMembership(db, office, 'maintenance_affairs');
   const current = await staff.campusWeek(head, { weekStart, campusId });
   const input = {
     weekStart,
@@ -484,6 +649,7 @@ test('joint publication prepares shared events without attendance, retains IDs a
 
 test('personnel changes at the write boundary cancel both publications and their audit and receipt', async (t) => {
   const { db, repository, staff, head, worker, office } = await setup(t);
+  addDutyMembership(db, office, 'maintenance_affairs');
   const original = repository.saveSchedules;
   repository.saveSchedules = (...args) => {
     db.sqlite
@@ -514,6 +680,7 @@ test('personnel changes at the write boundary cancel both publications and their
 
 test('today includes all unsigned scheduled people without manual review or proxy arrival', async (t) => {
   const { db, staff, head, worker, office } = await setup(t);
+  addDutyMembership(db, office, 'maintenance_affairs');
   await publish(staff, head, [shift(worker.memberId)], [shift(office.memberId)]);
   const day = await staff.attendanceDay(head, { campusId, businessDate: weekStart });
   assert.deepEqual(day.summary, { expected: 2, arrived: 0, absent: 0 });
@@ -526,6 +693,7 @@ test('today includes all unsigned scheduled people without manual review or prox
 
 test('actual staffing follows current assignments after manager edits and self-service cover', async (t) => {
   const { db, staff, head, worker, office } = await setup(t);
+  addDutyMembership(db, office, 'exchange');
   t.mock.timers.setTime(Date.parse('2026-11-08T12:00:00Z'));
   const capacity = slotCapacityRepository(db);
   const counts = async () => (await capacity.actual(weekStart, '南湖', ['repair', 'office'])).staffing;
@@ -838,6 +1006,7 @@ test('missing volunteer profiles expose shortcuts only inside current member man
 
 test('office and repair shifts share one attendance fact and unique summary while retaining separate statuses', async (t) => {
   const { db, staff, head, worker, office } = await setup(t);
+  addDutyMembership(db, office, 'maintenance_affairs');
   await publish(staff, head, [shift(worker.memberId)], [shift(office.memberId)]);
   db.sqlite.prepare("UPDATE duty_assignments SET member_id=?,start_at='18:30',end_at='19:00' WHERE duty_type='office'").run(worker.memberId);
   const before = await staff.attendanceDay(head, { campusId, businessDate: weekStart });

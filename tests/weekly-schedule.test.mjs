@@ -133,6 +133,7 @@ test('Shanghai duty-date midnight blocks both new requests and pending acceptanc
 test('expired legacy exchanges do not block a new cover for the later shift', async () => {
  const {db,staff,head,one,two}=await setup();try{
  seedStaff(db,'20261005');
+ db.sqlite.exec("INSERT INTO member_department_memberships(id,member_id,department_id,position_code,assignment_type,is_primary,effective_from,created_at) VALUES('third-exchange','member-20261005','dept-hardware','member','exchange',0,'2026-01-01','2026-01-01')");
  const third=await userRepository(db).find('20261005');
  const published=await staff.saveRosterWeek(head,{...query,revision:-1,assignments:[shift(one.memberId),shift(two.memberId,'2026-11-05')],requestId:request()});
  const original=published.assignments.find(row=>row.memberId===one.memberId);
