@@ -1392,8 +1392,18 @@
   padding: 16px 0;
   border-bottom: 1px solid var(--line);
 }
-.report-workload article > div {
+.report-workload-person {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(max-content, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+.report-workload-person > div {
+  display: grid;
+  overflow-wrap: anywhere;
+}
+.report-workload-person > .staff-identities {
+  margin-block: 0;
 }
 .report-workload small {
   color: var(--muted);
@@ -1415,8 +1425,10 @@
   .report-workload article {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  .report-workload article > div {
+  .report-workload-person {
     grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
   }
   .report-workload article > span {
     font-size: 12px;

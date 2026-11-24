@@ -9,6 +9,7 @@ import { Select, DatePicker } from './SelectionControls.jsx';
 import { RefreshButton } from './WorkspaceToolbar.jsx';
 import { dateKey } from '../../shared/time.js';
 import { HelpHint } from './HelpHint';
+import { StaffIdentity, type Identity } from './StaffIdentity';
 
 type Summary = {
   total: number;
@@ -21,7 +22,10 @@ type Summary = {
   daily: Record<string, { total: number; completed: number }>;
   faults: Record<string, number>;
   campuses: Record<string, number>;
-  technicians: Record<string, { assignedToName?: string; started: number; completed: number }>;
+  technicians: Record<
+    string,
+    { assignedToName?: string; identity: Identity | null; started: number; completed: number }
+  >;
 };
 
 function Distribution({ values, total }: { values: Record<string, number>; total: number }) {
@@ -169,9 +173,12 @@ export function Statistics() {
                 .sort((a, b) => b[1].completed - a[1].completed)
                 .map(([account, counts]) => (
                   <article data-motion-item={account} key={account}>
-                    <div>
-                      <strong data-motion-value="text">{counts.assignedToName || account}</strong>
-                      {counts.assignedToName && <small data-motion-value="text">{account}</small>}
+                    <div className="report-workload-person">
+                      <div>
+                        <strong data-motion-value="text">{counts.assignedToName || account}</strong>
+                        {counts.assignedToName && <small data-motion-value="text">{account}</small>}
+                      </div>
+                      {counts.identity && <StaffIdentity identities={[counts.identity]} />}
                     </div>
                     <span>
                       开始 <b>{counts.started}</b>

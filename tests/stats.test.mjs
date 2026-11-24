@@ -12,6 +12,14 @@ test('recent statistics include both date boundaries, exclude future dates, and 
   try {
     seedStaff(db, '20260001');
     const today = '2026-11-06';
+    const addMembership = db.sqlite.prepare(`
+      INSERT INTO member_department_memberships
+        (id,member_id,department_id,assignment_type,is_primary,position_code,effective_from,effective_to,created_at)
+      VALUES (?,'member-20260001','dept-hardware',?,?,?,?,?,'2026-01-01')
+    `);
+    addMembership.run('previous', 'primary', 1, 'head', '2026-01-01', today);
+    addMembership.run('current', 'primary', 1, 'member', today, null);
+    addMembership.run('exchange', 'exchange', 0, 'member', today, null);
     for (const offset of [-30, -29, -7, -6, -1, 0, 1])
       seedAppointment(db, {
         id: `day${offset}`,
@@ -51,15 +59,30 @@ test('recent statistics include both date boundaries, exclude future dates, and 
       );
       assert.deepEqual(result.campuses, { 南湖: total });
       assert.deepEqual(result.faults, { 系统: total });
-      assert.equal(result.technicians['20260001'].started, total);
-      assert.equal(result.technicians['20260001'].completed, total);
+      assert.deepEqual(result.technicians['20260001'], {
+        assignedToName: '20260001',
+        identity: { code: 'member', label: '硬件部部员' },
+        started: total,
+        completed: total
+      });
     }
     instant = new Date('2026-11-05T15:59:59.999Z');
     const beforeMidnight = await service.summary({ range: '7' }, actor);
     assert.deepEqual(Object.keys(beforeMidnight.daily), ['2026-10-30', '2026-10-31', '2026-11-05']);
+    assert.deepEqual(beforeMidnight.technicians['20260001'].identity, {
+      code: 'head',
+      label: '硬件部部长'
+    });
     instant = new Date('2026-11-05T16:00:00.000Z');
     const afterMidnight = await service.summary({ range: '7' }, actor);
     assert.deepEqual(Object.keys(afterMidnight.daily), ['2026-10-31', '2026-11-05', '2026-11-06']);
+    db.sqlite.prepare("UPDATE member_department_memberships SET effective_to=? WHERE id='current'").run(today);
+    db.sqlite.prepare("INSERT INTO member_special_identities VALUES ('member-20260001','retired_elder',?)").run(instant.toISOString());
+    const afterRetirement = await service.summary({ range: '7' }, actor);
+    assert.deepEqual(afterRetirement.technicians['20260001'].identity, {
+      code: 'retired_elder',
+      label: '退休老登'
+    });
   } finally {
     db.sqlite.close();
   }
