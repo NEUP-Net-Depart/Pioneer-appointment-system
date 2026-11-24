@@ -42,25 +42,3 @@ export function saveAppointment(entry: Credential, previousId?: string) {
 export const credentialHeaders = (entry: Credential) => ({
   'X-Appointment-Token': entry.accessToken
 });
-
-// Links issued before the import UI was retired carry the credential in the fragment.
-export function parsePrivateLink(value: string) {
-  try {
-    const url = new URL(value);
-    if (
-      url.origin !== location.origin ||
-      url.pathname !== '/' ||
-      url.search ||
-      url.username ||
-      url.password
-    )
-      return null;
-    const params = new URLSearchParams(url.hash.slice(1));
-    if ([...params.keys()].length !== 2 || !params.has('appointment') || !params.has('access'))
-      return null;
-    const entry = { id: params.get('appointment') || '', accessToken: params.get('access') || '' };
-    return valid(entry) ? entry : null;
-  } catch {
-    return null;
-  }
-}

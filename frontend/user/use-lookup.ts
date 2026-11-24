@@ -38,7 +38,6 @@ export function useLookup(onAlias: (id: string) => void, toast: (message: string
     cancelling: false
   }).current;
   const [detailId, setDetailId] = useState<string | null>(null);
-  const [importNotice, setImportNotice] = useState('');
   const [entries, setEntries] = useState<RecordRow[]>([]);
   const [detailError, setDetailError] = useState('');
   const [detailNotice, setDetailNotice] = useState('');
@@ -285,31 +284,6 @@ export function useLookup(onAlias: (id: string) => void, toast: (message: string
     refresh,
     cancel,
     qrImages,
-    importNotice,
-    setImportNotice,
-    async importPrivateLink(entry: Credential) {
-      const generation = state.generation;
-      try {
-        const item = await request(entry);
-        const saved = saveAppointment(item, entry.id);
-        commit(item);
-        if (generation !== state.generation || !state.active) return;
-        aliasHandler.current(item.id);
-        await showDetail(item.id);
-        if (!saved && state.detailId === item.id)
-          setDetailNotice('浏览器无法保存凭证。当前会话仍可访问，请保留完整私人查询链接。');
-      } catch (value) {
-        if (generation !== state.generation || !state.active) return;
-        const failure = failureFrom(value);
-        setImportNotice(
-          failure.status === 404
-            ? '链接失效或无权限。请联系工作人员核验身份后重新签发。'
-            : failure.status
-              ? failure.message
-              : '网络异常或请求超时，请重试。'
-        );
-      }
-    },
     setActive(active: boolean) {
       state.active = active;
       if (!active) {

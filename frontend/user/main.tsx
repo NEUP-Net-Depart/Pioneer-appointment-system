@@ -1,7 +1,6 @@
 import { StrictMode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { hydrateRoot } from 'react-dom/client';
 import { reportClientError, trackPage } from '../../shared/telemetry-client.js';
-import { parsePrivateLink } from './credentials';
 import { AgreementDialog } from './AgreementDialog';
 import { BookingNoticeDialog } from './BookingNotices';
 import { BookingView } from './BookingView';
@@ -44,21 +43,13 @@ function StudentApp() {
   }
   function navigate(target: Route, record = true) {
     activate(target, record);
-    lookup.setImportNotice('');
     if (target.kind === 'lookup') void lookup.showList();
     else if (target.kind === 'detail') void lookup.showDetail(target.id);
   }
-  function importPrivateLink() {
-    const entry = parsePrivateLink(location.href);
-    history.replaceState(null, '', location.pathname + '#lookup');
-    navigate({ kind: 'lookup' }, false);
-    if (entry) void lookup.importPrivateLink(entry);
-    else lookup.setImportNotice('预约链接格式不正确，请使用完整私人查询链接。');
-  }
 
-  const navigation = useRef({ navigate, importPrivateLink });
+  const navigation = useRef(navigate);
   useLayoutEffect(() => {
-    navigation.current = { navigate, importPrivateLink };
+    navigation.current = navigate;
   });
   useLayoutEffect(() => {
     if (activation) window.scrollTo({ top: 0, behavior: 'auto' });
@@ -67,25 +58,21 @@ function StudentApp() {
     function readHash() {
       const fragment = location.hash;
       if (fragment === lastHandled.current) return;
-      if (fragment.includes('appointment=') || fragment.includes('access=')) {
-        navigation.current.importPrivateLink();
-        return;
-      }
       if (fragment.startsWith('#detail=')) {
         let id: string;
         try {
           id = decodeURIComponent(fragment.slice(8));
         } catch {
           history.replaceState(null, '', '#lookup');
-          navigation.current.navigate({ kind: 'lookup' }, false);
+          navigation.current({ kind: 'lookup' }, false);
           return;
         }
-        navigation.current.navigate({ kind: 'detail', id }, false);
-      } else if (fragment === '#lookup') navigation.current.navigate({ kind: 'lookup' }, false);
+        navigation.current({ kind: 'detail', id }, false);
+      } else if (fragment === '#lookup') navigation.current({ kind: 'lookup' }, false);
       else {
         if (fragment && fragment !== '#booking')
           history.replaceState(null, '', location.pathname + location.search);
-        navigation.current.navigate({ kind: 'booking' }, false);
+        navigation.current({ kind: 'booking' }, false);
       }
     }
     window.addEventListener('popstate', readHash);

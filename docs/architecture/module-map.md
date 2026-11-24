@@ -19,7 +19,7 @@
 
 学生端 React 入口位于 `frontend/user/main.tsx`。预约视图由 `SlotPicker`、`DeviceStep`、`ReviewStep` 和 `BookingSuccess` 组成，查询视图由 `LookupView` 和 `AppointmentDetail` 组成。公告、协议、手写签名、图片选择和维修码各自封装。共享校验、时段计算、图片压缩、签名画布及 ZXing 适配器仍由 `shared/` 提供。学生端使用独立的严格 TypeScript 配置。
 
-`use-availability` 管理余量轮询和请求代次，`use-booking-form` 管理条件输入和验证，`use-booking` 管理提交、幂等恢复及草稿。查询由 `use-lookup` 管理请求去重、版本比对、取消和历史编号归并。凭证与草稿沿用浏览器存储键及结构。已有私人链接的片段由学生路由读取，凭证通过请求头校验后保存，浏览器地址栏转为本机详情链接。
+`use-availability` 管理余量轮询和请求代次，`use-booking-form` 管理条件输入和验证，`use-booking` 管理提交、幂等恢复及草稿。查询由 `use-lookup` 管理请求去重、版本比对、取消和历史编号归并。凭证与草稿沿用浏览器存储键及结构。`#detail=` 详情路由使用当前浏览器保存的预约凭证。
 
 `audit:architecture` 是按需使用的模块可达性、依赖、SQL 层次和请求状态审计；`db:history` 在默认 CI 校验两条迁移链的 SQL 指纹。`verify` 保留格式、lint、类型、埋点目录、Functions/前端构建、服务测试与 6 项桌面/移动浏览器冒烟。历史迁移及本地 D1 完整链由 `test:migrations` 按需执行，SQL 读写成本由 `test:sql` 诊断；分工见[测试说明](../../tests/README.md)。契约和实现均以 v1.2 为业务基线，无旧接口别名或运行时兼容轨道。
 

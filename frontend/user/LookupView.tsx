@@ -113,13 +113,8 @@ export function LookupView({
             </button>
           </div>
         </div>
-        <p
-          id="lookup-notice"
-          className="notice"
-          role="status"
-          hidden={!notice && !lookup.importNotice}
-        >
-          {lookup.importNotice || notice}
+        <p id="lookup-notice" className="notice" role="status" hidden={!notice}>
+          {notice}
         </p>
         <div ref={list} id="lookup-results" aria-live="polite">
           {empty ? (
