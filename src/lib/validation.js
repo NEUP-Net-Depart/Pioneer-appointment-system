@@ -267,10 +267,12 @@ export function liveQuery(input) {
 }
 export function statsQuery(input) {
   const range = input.range || 'all',
-    day = input.day || '';
+    day = input.day || '',
+    campus = input.campus || '';
   if (!['7', '30', 'all'].includes(range) || (day && !validDate(day)))
     fail(400, '统计范围或日期不正确');
-  return { range, day };
+  if (campus && !CAMPUSES.includes(campus)) fail(400, '校区不正确');
+  return { range, day, campus };
 }
 export function slotCapacityInput(input) {
   if (!CAMPUSES.includes(input.campus)) fail(400, '校区不正确');

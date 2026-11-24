@@ -1293,10 +1293,19 @@
   gap: 16px;
   margin-bottom: 20px;
 }
-.report-filters label {
+.report-filters label,
+.report-campus-field {
   display: grid;
   gap: 8px;
   min-width: 160px;
+}
+.report-campus-field {
+  flex: 1 1 180px;
+}
+.report-campus-name {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
 }
 .report-workspace > .field-top {
   align-items: start;
@@ -1384,6 +1393,27 @@
 .report-distribution meter::-webkit-meter-optimum-value {
   background: #566579;
 }
+.report-person-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 0 4px;
+}
+.report-person-filters > input {
+  flex: 1 1 180px;
+  min-width: 0;
+  max-width: 280px;
+  min-height: 44px;
+}
+.report-person-filters > .workspace-select {
+  width: 160px;
+}
+.report-person-filters > [role='status'] {
+  margin-inline-start: auto;
+  font-size: 13px;
+  color: var(--muted);
+}
 .report-workload article {
   display: grid;
   grid-template-columns: minmax(150px, 1fr) repeat(3, minmax(90px, 0.5fr));
@@ -1392,8 +1422,18 @@
   padding: 16px 0;
   border-bottom: 1px solid var(--line);
 }
-.report-workload article > div {
+.report-workload-person {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(max-content, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+.report-workload-person > div {
+  display: grid;
+  overflow-wrap: anywhere;
+}
+.report-workload-person > .staff-identities {
+  margin-block: 0;
 }
 .report-workload small {
   color: var(--muted);
@@ -1415,15 +1455,13 @@
   .report-workload article {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-  .report-workload article > div {
+  .report-workload-person {
     grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
   }
   .report-workload article > span {
     font-size: 12px;
-  }
-  .report-filters label {
-    flex: 1;
-    min-width: 120px;
   }
 }
 
