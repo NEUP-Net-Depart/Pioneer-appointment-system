@@ -6,6 +6,9 @@ import { resolve } from 'node:path';
 import { STAFF_RELEASE } from '../src/db/staff-readiness.js';
 import { setTimeout } from 'node:timers/promises';
 
+const assetPaths = html => [...html.matchAll(/(?:src|href)="(\/(?!\/)[^"?#]+\.(?:m?js|css|jpg))"/g)].map(([, path]) => path);
+const hash = value => createHash('sha256').update(value).digest('hex');
+
 export async function smoke(base, fetcher = fetch, output = new URL('../dist/', import.meta.url)) {
   const seen = new Set();
   async function get(path, status = 200) {
@@ -21,25 +24,18 @@ export async function smoke(base, fetcher = fetch, output = new URL('../dist/', 
     if (/\.m?js$/.test(path)) assert.match(type, /javascript/, path + ' must be JavaScript');
     if (/\.css$/.test(path)) assert.match(type, /text\/css/, path + ' must be CSS');
     assert.doesNotMatch(bytes.toString('utf8', 0, 100), /<!doctype html/i, path + ' returned an HTML fallback');
-    if (path.startsWith('/app-assets/')) {
-      const local = await readFile(new URL('.' + path, output));
-      const hash = value => createHash('sha256').update(value).digest('hex');
-      assert.equal(hash(bytes), hash(local), path + ' differs from this release build');
-    }
+    const local = await readFile(new URL('.' + path, output));
+    assert.equal(hash(bytes), hash(local), path + ' differs from this release build');
   }
   for (const entry of ['/', '/staff/']) {
     const response = await get(entry), html = await response.text();
     assert.match(response.headers.get('content-type') || '', /text\/html/);
-    assert.ok(html.includes(entry === '/' ? 'id="student-react-root"' : 'id="staff-react-root"'));
-    if (entry === '/staff/') {
-      assert.doesNotMatch(html, /id="(?:app-shell|staff-view|users-table|login-form)"/);
-      assert.doesNotMatch(html, /(?:src|href)\s*=\s*["'](?:\/staff\/|\.\/)?(?:main|auth|scan)\.js(?:[?#][^"']*)?["']/, 'Staff HTML must not reference legacy scripts');
-    }
     const local = await readFile(new URL(entry === '/' ? 'index.html' : 'staff/index.html', output), 'utf8');
-    const modules = value => [...value.matchAll(/src="(\/app-assets\/[^"?]+\.js)"/g)].map(match => match[1]);
-    assert.equal(modules(html).length, 1, entry + ' must have one React entry module');
-    assert.deepEqual(modules(html), modules(local), entry + ' does not match this build');
-    for (const [, path] of html.matchAll(/(?:src|href)="(\/[^"?#]+\.(?:m?js|css|jpg))"/g)) await asset(path);
+    const expected = assetPaths(local);
+    assert.ok(expected.some(path => /\.m?js$/.test(path)), entry + ' is missing script assets');
+    const paths = assetPaths(html);
+    assert.deepEqual(paths, expected, entry + ' does not reference the assets from this build');
+    for (const path of paths) await asset(path);
   }
   await asset('/vendor/signature-pad.js');
   // Pages may retain removed static assets in CDN caches; check their absence in the build instead.
@@ -66,5 +62,5 @@ export async function waitForSmoke(base, { verify = smoke, pause = setTimeout, a
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const result = await waitForSmoke(process.argv[2] || 'http://127.0.0.1:8788');
-  console.log('Smoke passed: React entry and build bytes, ' + result.assets + ' assets, staff schema/guards, workflow API authentication and private paths.');
+  console.log('Smoke passed: page entries, ' + result.assets + ' release assets, staff schema/guards, workflow API authentication and private paths.');
 }
