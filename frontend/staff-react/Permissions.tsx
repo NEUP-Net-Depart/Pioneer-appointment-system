@@ -1,0 +1,412 @@
+import type { Query } from '@tanstack/react-query';
+import type { ConditionProviderDto } from '../../shared/staff-types.ts';
+
+interface PermissionsResponse
+  extends ItemsResponse<PermissionDefinitionDto & { delegable?: boolean }> {
+  conditionProviders: ConditionProviderDto[];
+}
+import type { ItemsResponse } from '../../shared/api-types.ts';
+import { failureFrom } from '../../shared/api-types.ts';
+import type {
+  OrganizationUnitDto,
+  PermissionDefinitionDto,
+  RoleDto,
+  RoleGrant
+} from '../../shared/staff-types.ts';
+import { DatePicker } from './SelectionControls.tsx';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useContext, useEffect, useMemo, useState } from 'react';
+import { request } from './request.ts';
+import { ActivityContext } from './field/ui';
+import { WorkspaceHeader } from './WorkspaceHeader';
+import { ScopeFields, ConditionFields } from './ScopeFields.tsx';
+import { setGrantEnabled, withGrantValidity } from './authorization-drafts.ts';
+import { WorkspaceSections } from './WorkspaceSections';
+import { useUnsavedChanges } from './useUnsavedChanges.ts';
+import { RefreshButton } from './WorkspaceToolbar.tsx';
+
+const permissionGroups = [
+  { id: 'all', label: '全部功能' },
+  { id: 'repair', label: '接待与维修' },
+  { id: 'roster', label: '排班与申请' },
+  { id: 'attendance', label: '签到与在岗' },
+  { id: 'management', label: '管理与数据' }
+];
+const permissionGroup = (code: string) =>
+  /^(repair|onsite)\./.test(code)
+    ? 'repair'
+    : /^(roster|leave|swap)\./.test(code)
+      ? 'roster'
+      : /^(attendance|presence|meeting)\./.test(code)
+        ? 'attendance'
+        : 'management';
+
+export function Permissions() {
+  const routeActive = useContext(ActivityContext);
+  const [search, setSearch] = useState('');
+  const [enabledOnly, setEnabledOnly] = useState(false);
+  const [group, setGroup] = useState('all');
+  const client = useQueryClient();
+  const definitions = useQuery<PermissionsResponse>({
+    queryKey: ['/api/permissions'],
+    enabled: routeActive,
+    staleTime: 5 * 60000,
+    refetchInterval: false
+  });
+  const rolesQuery = useQuery<ItemsResponse<RoleDto>>({
+    queryKey: ['/api/roles'],
+    enabled: routeActive
+  });
+  const campusesQuery = useQuery<ItemsResponse<OrganizationUnitDto>>({
+    queryKey: ['/api/organization/campuses'],
+    enabled: routeActive,
+    staleTime: 5 * 60000,
+    refetchInterval: false
+  });
+  const departmentsQuery = useQuery<ItemsResponse<OrganizationUnitDto>>({
+    queryKey: ['/api/organization/departments'],
+    enabled: routeActive,
+    staleTime: 5 * 60000,
+    refetchInterval: false
+  });
+  const permissions = definitions.data?.items || [];
+  const providers = definitions.data?.conditionProviders || [];
+  const campuses = campusesQuery.data?.items || [];
+  const departments = departmentsQuery.data?.items || [];
+  const roles = rolesQuery.data?.items || [];
+  const loading = [definitions, rolesQuery, campusesQuery, departmentsQuery].some(
+    (query) => query.isPending
+  );
+  const [selected, setSelected] = useState<RoleDto | null>(null);
+  const [draft, setDraft] = useState<RoleGrant[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const dirty = !!selected && JSON.stringify(draft) !== JSON.stringify(selected?.grants || []);
+  const codes = useMemo(() => new Set(draft.map((grant) => grant.permissionCode)), [draft]);
+  const protectedRole = selected?.id === 'role-superadmin';
+  const readOnly = protectedRole || selected?.actions?.edit === false;
+  useEffect(() => {
+    if (selected || !roles.length) return;
+    setSelected(roles[0]);
+    setDraft(structuredClone(roles[0].grants || []));
+  }, [rolesQuery.data, selected]);
+  useUnsavedChanges({
+    dirty,
+    active: routeActive,
+    busy,
+    save,
+    discard: () => {
+      setDraft(structuredClone(selected?.grants || []));
+      setError('');
+    }
+  });
+  const visiblePermissions = permissions.filter(
+    (permission) =>
+      (permission.delegable !== false || codes.has(permission.code)) &&
+      (!enabledOnly || codes.has(permission.code)) &&
+      (search.trim() || group === 'all' || permissionGroup(permission.code) === group) &&
+      `${permission.name} ${permission.description || ''}`.includes(search.trim())
+  );
+  function select(role: RoleDto) {
+    setSelected(role);
+    setDraft(structuredClone(role.grants || []));
+    setError('');
+    setMessage('');
+  }
+  function updateGrant(index: number, patch: Partial<RoleGrant>) {
+    setDraft((current) =>
+      current.map((grant, i) => (i === index ? { ...grant, ...patch } : grant))
+    );
+  }
+  async function save() {
+    if (!selected) return;
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const updated = await request<RoleDto>(`/api/roles/${encodeURIComponent(selected.id)}`, {
+        method: 'PATCH',
+        body: { revision: selected.revision, grants: draft }
+      });
+      await client.cancelQueries({ queryKey: ['/api/roles'] });
+      client.setQueryData<ItemsResponse<RoleDto>>(
+        ['/api/roles'],
+        (current) =>
+          current && {
+            ...current,
+            items: current.items.map((role) => (role.id === updated.id ? updated : role))
+          }
+      );
+      const affectedQueries = {
+        predicate: (query: Query) =>
+          ['/api/members', '/api/users', '/api/staff-whitelist'].includes(
+            query.queryKey[0] as string
+          )
+      };
+      await client.cancelQueries(affectedQueries);
+      await client.invalidateQueries(affectedQueries);
+      setSelected(updated);
+      setDraft(structuredClone(updated.grants || []));
+      setMessage('权限已保存，受影响的账号需要重新登录');
+      return true;
+    } catch (err) {
+      setError(failureFrom(err).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="react-page permissions-workspace">
+      <WorkspaceHeader
+        group="人员权限"
+        title="系统权限"
+        description="接待、维修、排班和值班考勤按任职部门、职位及授权校区自动确定，无需在此配置。"
+      >
+        <RefreshButton
+          data-track="staff.permissions.refreshbutton.12"
+          disabled={busy || !!dirty}
+          label="刷新角色权限"
+          onRefresh={async () => {
+            const latest = await Promise.all([
+              definitions.refetch({ throwOnError: true }),
+              rolesQuery.refetch({ throwOnError: true }),
+              campusesQuery.refetch({ throwOnError: true }),
+              departmentsQuery.refetch({ throwOnError: true })
+            ]);
+            const fresh = latest[1].data?.items.find((role) => role.id === selected?.id);
+            if (fresh) {
+              setSelected(fresh);
+              setDraft(structuredClone(fresh.grants || []));
+            }
+            return latest;
+          }}
+        />
+      </WorkspaceHeader>
+      {(error ||
+        [definitions, rolesQuery, campusesQuery, departmentsQuery].some(
+          (query) => query.error
+        )) && (
+        <p data-motion-value="text" className="react-error" role="alert">
+          {error ||
+            [definitions, rolesQuery, campusesQuery, departmentsQuery].find((query) => query.error)
+              ?.error?.message}
+        </p>
+      )}
+      {message && (
+        <p data-motion-value="text" role="status">
+          {message}
+        </p>
+      )}
+      <div className="react-permission-layout">
+        <aside data-motion-list="reveal" className="react-card" aria-label="角色列表">
+          <h2>角色</h2>
+          {roles.map((role) => (
+            <button
+              data-track="staff.permissions.button.1"
+              type="button"
+              disabled={busy || !!dirty}
+              aria-pressed={selected?.id === role.id}
+              className={selected?.id === role.id ? 'is-selected' : ''}
+              data-motion-item={role.id}
+              key={role.id}
+              onClick={() => select(role)}
+            >
+              {role.name}
+            </button>
+          ))}
+        </aside>
+        <article className="react-card">
+          <h2 data-motion-value="text">{selected?.name || '角色权限'}</h2>
+          {!selected && error && (
+            <button data-track="staff.permissions.button.2" onClick={() => rolesQuery.refetch()}>
+              重新读取角色权限
+            </button>
+          )}
+          {!selected && !loading && !error && <p>当前没有可查看的角色。</p>}
+          {(selected || loading) && (
+            <>
+              {protectedRole && (
+                <p className="react-muted">最高管理员权限包受保护，请选择其他角色配置。</p>
+              )}
+              {readOnly && !protectedRole && (
+                <p className="react-muted">
+                  此角色涉及本人、系统账号或管理范围以外的授权，仅可查看。
+                </p>
+              )}
+              <div className="permission-tools">
+                <label>
+                  查找权限
+                  <input
+                    data-track="staff.permissions.input.3"
+                    type="search"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="按功能名称查找"
+                  />
+                </label>
+                <label className="permission-filter">
+                  <input
+                    data-track="staff.permissions.input.4"
+                    type="checkbox"
+                    checked={enabledOnly}
+                    onChange={(event) => setEnabledOnly(event.target.checked)}
+                  />
+                  只看已启用
+                </label>
+                <span data-motion-value="number">
+                  已启用 {codes.size} 项 · 当前显示 {visiblePermissions.length} 项
+                </span>
+              </div>
+              <WorkspaceSections
+                label="权限功能分类"
+                value={search.trim() ? 'all' : group}
+                onChange={(value) => {
+                  setGroup(value);
+                  setSearch('');
+                }}
+                items={permissionGroups.filter(
+                  ({ id }) =>
+                    id === 'all' ||
+                    permissions.some((permission) => permissionGroup(permission.code) === id)
+                )}
+              />
+              <fieldset
+                disabled={busy || !selected || readOnly}
+                data-motion-list="reveal"
+                className="react-permission-fields"
+              >
+                <legend className="sr-only">角色权限</legend>
+                {visiblePermissions.map((permission) => (
+                  <section
+                    data-motion-item={permission.code}
+                    className="react-permission-item"
+                    key={permission.code}
+                  >
+                    <label className="react-permission">
+                      <input
+                        data-track="staff.permissions.input.5"
+                        type="checkbox"
+                        checked={codes.has(permission.code)}
+                        onChange={(event) =>
+                          setDraft((current) =>
+                            setGrantEnabled(
+                              current,
+                              permission,
+                              event.target.checked,
+                              selected?.grants || []
+                            )
+                          )
+                        }
+                      />
+                      <span>
+                        <strong data-motion-value="text">{permission.name}</strong>
+                        <small data-motion-value="text">
+                          {permission.description || permission.code}
+                        </small>
+                      </span>
+                    </label>
+                    {draft.map(
+                      (grant, index) =>
+                        grant.permissionCode === permission.code && (
+                          <details
+                            data-track="staff.permissions.details.6"
+                            data-motion-item=""
+                            key={grant.id || index}
+                            className="react-grant-details"
+                          >
+                            <summary data-track="staff.permissions.summary.7">
+                              范围、条件与有效期
+                            </summary>
+                            <ScopeFields
+                              value={grant.scope}
+                              onChange={(scope) => updateGrant(index, { scope })}
+                              campuses={campuses}
+                              departments={departments}
+                              kinds={permission.scopeKinds}
+                              inherit="沿用账号授权范围"
+                            />
+                            <ConditionFields
+                              conditions={grant.conditions}
+                              providers={providers}
+                              departments={departments}
+                              requiredCodes={permission.conditionKinds}
+                              onChange={(conditions) => updateGrant(index, { conditions })}
+                            />
+                            <div className="react-form-grid">
+                              <label>
+                                权限生效日期
+                                <DatePicker
+                                  data-track="staff.permissions.input.8"
+                                  value={
+                                    grant.validity?.effectiveFrom || grant.validity?.from || ''
+                                  }
+                                  onChange={(event) =>
+                                    updateGrant(index, {
+                                      validity: withGrantValidity(
+                                        grant.validity,
+                                        'effectiveFrom',
+                                        event.target.value
+                                      )
+                                    })
+                                  }
+                                />
+                              </label>
+                              <label>
+                                权限结束日期
+                                <DatePicker
+                                  data-track="staff.permissions.input.9"
+                                  value={grant.validity?.effectiveTo || grant.validity?.to || ''}
+                                  onChange={(event) =>
+                                    updateGrant(index, {
+                                      validity: withGrantValidity(
+                                        grant.validity,
+                                        'effectiveTo',
+                                        event.target.value
+                                      )
+                                    })
+                                  }
+                                />
+                              </label>
+                            </div>
+                          </details>
+                        )
+                    )}
+                  </section>
+                ))}
+              </fieldset>
+              {selected && !visiblePermissions.length && (
+                <p className="members-empty">没有匹配的权限，请调整筛选条件。</p>
+              )}
+              <div className="react-editor-actions">
+                <span data-motion-value="text" aria-live="polite">
+                  {dirty ? '有未保存的修改' : selected ? '已与服务器同步' : ''}
+                </span>
+                <button
+                  data-track="staff.permissions.button.10"
+                  type="button"
+                  disabled={!dirty || busy}
+                  onClick={() => {
+                    setDraft(structuredClone(selected?.grants || []));
+                    setError('');
+                  }}
+                >
+                  放弃修改
+                </button>
+                <button
+                  data-track="staff.permissions.button.11"
+                  type="button"
+                  className="react-primary"
+                  disabled={!dirty || busy}
+                  onClick={save}
+                >
+                  {busy ? '正在保存…' : '保存权限'}
+                </button>
+              </div>
+            </>
+          )}
+        </article>
+      </div>
+    </section>
+  );
+}

@@ -11,16 +11,16 @@
 | rosters | 整班空闲、按周例外、确定性建议、维修与办公原子发布、双方自助调岗确认 |
 | audit / files | 审计与请求回执、鉴权附件及存储额度 |
 
-`src/services/staff-platform/` 由 context、members、roles、workspace、attendance、duty、reporting、schedule 组成；仓储按同一业务域组合。部门字典仅供查询，组织结构变更通过数据库迁移处理。`shared/duty.js` 集中固定时段与候选规则，`modules/rosters/suggestions.js` 负责最大匹配和均衡，`modules/attendance/volunteer-report.js` 共用时长算法。没有问卷收集服务、返修审批服务或现场分派状态机。
+`src/services/staff-platform/` 由 context、members、roles、workspace、attendance、duty、reporting、schedule 组成；仓储按同一业务域组合。部门字典仅供查询，组织结构变更通过数据库迁移处理。`shared/duty.ts` 集中固定时段与候选规则，`modules/rosters/suggestions.ts` 负责最大匹配和均衡，`modules/attendance/volunteer-report.ts` 共用时长算法。没有问卷收集服务、返修审批服务或现场分派状态机。
 
 事务携带操作者授权版本、对象版本和请求编号。排班修改、接替、维修接单交接、结果更正与必要审计/回执在同一 D1 batch 中提交。不同内容不能复用请求键；并发覆盖失败不写半份事实。R2 通过元数据预留及失败补偿维护额度，接收照片超时由本人手动补传。
 
 前端维修工单独立，排班和考勤日常入口合并为「值班」，由今日、安排下周、我的值班、统计与历史组成。人员、预约、值班页面复用现有查询及未保存修改提示；照片文件只保留在当前组件内。学生数据由明确字段投影产生，不能通过展开服务端内部工单泄漏说明或审计。
 
-学生端 React 入口位于 `frontend/user/main.tsx`。预约视图由 `SlotPicker`、`DeviceStep`、`ReviewStep` 和 `BookingSuccess` 组成，查询视图由 `LookupView` 和 `AppointmentDetail` 组成。公告、协议、手写签名、图片选择和维修码各自封装。共享校验、时段计算、图片压缩、签名画布及 ZXing 适配器仍由 `shared/` 提供。学生端使用独立的严格 TypeScript 配置。
+学生端 React 入口位于 `frontend/user/main.tsx`。预约视图由 `SlotPicker`、`DeviceStep`、`ReviewStep` 和 `BookingSuccess` 组成，查询视图由 `LookupView` 和 `AppointmentDetail` 组成。公告、协议、手写签名、图片选择和维修码各自封装。共享校验、时段计算、图片压缩、签名画布及 ZXing 适配器仍由 `shared/` 提供。两个前端、浏览器共享模块和保修验证页使用浏览器 TypeScript 配置。Functions 使用 Cloudflare Worker 类型，工程脚本使用 Node.js 类型，测试使用涵盖本地 Node.js 和浏览器执行环境的配置。各配置启用严格模式。
 
 `use-availability` 管理余量轮询和请求代次，`use-booking-form` 管理条件输入和验证，`use-booking` 管理提交、幂等恢复及草稿。查询由 `use-lookup` 管理请求去重、版本比对、取消和历史编号归并。凭证与草稿沿用浏览器存储键及结构。`#detail=` 详情路由使用当前浏览器保存的预约凭证。
 
 `audit:architecture` 是按需使用的模块可达性、依赖、SQL 层次和请求状态审计；`db:history` 在默认 CI 校验两条迁移链的 SQL 指纹。`verify` 保留格式、lint、类型、埋点目录、Functions/前端构建、服务测试与 6 项桌面/移动浏览器冒烟。历史迁移及本地 D1 完整链由 `test:migrations` 按需执行，SQL 读写成本由 `test:sql` 诊断；分工见[测试说明](../../tests/README.md)。契约和实现均以 v1.2 为业务基线，无旧接口别名或运行时兼容轨道。
 
-维修集成测试复用 `tests/fixtures/repair-scenario.mjs`，统一场景时钟、预约日期和有效期。用例用服务日、前次到访日、次日及显式推进时间表达业务关系；时钟只在当前测试内生效并自动复原。迁移测试使用固定历史数据，不根据运行当天生成预约。服务和数据库约束仍使用真实实现。
+维修集成测试复用 `tests/fixtures/repair-scenario.ts`，统一场景时钟、预约日期和有效期。用例用服务日、前次到访日、次日及显式推进时间表达业务关系；时钟只在当前测试内生效并自动复原。迁移测试使用固定历史数据，不根据运行当天生成预约。服务和数据库约束仍使用真实实现。

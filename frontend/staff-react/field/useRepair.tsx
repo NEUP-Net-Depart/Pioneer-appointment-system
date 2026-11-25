@@ -1,3 +1,4 @@
+import type { Query } from '@tanstack/react-query';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ActivityContext, api } from './ui';
@@ -42,7 +43,7 @@ export function useRepair({ id }: { id: string }) {
   const pending = useRef<{ signature: string; requestId: string } | null>(null);
   async function load() {
     const affected = {
-      predicate: (query) =>
+      predicate: (query: Query) =>
         [
           '/api/appointments',
           '/api/appointments/counts',
@@ -52,9 +53,11 @@ export function useRepair({ id }: { id: string }) {
           '/api/stats/summary',
           '/api/attendance/workload',
           '/api/attendance/day'
-        ].includes(query.queryKey[0]) ||
-        String(query.queryKey[0]).startsWith(`/api/appointments/${encodeURIComponent(id)}/`) ||
-        String(query.queryKey[0]).startsWith('/api/field/appointments/')
+        ].includes(query.queryKey[0] as string) ||
+        String(query.queryKey[0] as string).startsWith(
+          `/api/appointments/${encodeURIComponent(id)}/`
+        ) ||
+        String(query.queryKey[0] as string).startsWith('/api/field/appointments/')
     };
     await client.cancelQueries(affected);
     await client.invalidateQueries(affected);
@@ -93,9 +96,10 @@ export function useRepair({ id }: { id: string }) {
     return { ...body, requestId: pending.current.requestId };
   }
   async function send(path: string, body: Record<string, unknown>, method = 'POST') {
+    if (!item) throw new Error('工单详情尚未加载');
     const updated = await api<Appointment>(`/api/appointments/${encodeURIComponent(id)}/${path}`, {
       method,
-      body: operation({ ...body, revision: item!.revision })
+      body: operation({ ...body, revision: item.revision })
     });
     await load();
     return updated;
@@ -131,8 +135,9 @@ export function useRepair({ id }: { id: string }) {
   }
   const start = (receiveOnly = false, defer = false) =>
     run(async () => {
+      if (!item) return;
       let skipped = false;
-      if (!item!.receivedAt) {
+      if (!item.receivedAt) {
         if (defer) {
           if (!photoTask.snapshot().canSkip) return;
           skipped = true;
@@ -141,7 +146,7 @@ export function useRepair({ id }: { id: string }) {
           if (!skipped && photoTask.snapshot().error) throw new Error(photoTask.snapshot().error);
         }
       }
-      const photoData = item!.receivedAt
+      const photoData = item.receivedAt
         ? {}
         : {
             ...photoTask.photoIds(),

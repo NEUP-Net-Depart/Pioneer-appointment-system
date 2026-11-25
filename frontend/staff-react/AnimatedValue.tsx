@@ -1,5 +1,5 @@
-import { dataMotionPresets } from '../../shared/data-motion.js';
-import React, { useLayoutEffect, useRef } from 'react';
+import { dataMotionPresets } from '../../shared/data-motion.ts';
+import { useLayoutEffect, useRef } from 'react';
 
 // The accessible value changes immediately. Only its visual position transitions.
 export function AnimatedValue({ value }: { value: string | number }) {

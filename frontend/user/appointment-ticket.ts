@@ -1,5 +1,5 @@
 import type { Appointment } from './types';
-import { formatDate } from '../../shared/time.js';
+import { formatDate } from '../../shared/time.ts';
 import { appointmentLocation, timeLabel } from './presentation';
 
 const fontFamily = 'system-ui, "Microsoft YaHei", sans-serif';

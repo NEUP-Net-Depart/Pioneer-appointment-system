@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
-import { startVisiblePolling } from '../../shared/polling.js';
-import { CAMPUSES, TIME_SLOTS } from '../../shared/constants.js';
-import { bookingDates, slotAvailability } from '../../shared/booking-slots.js';
-import { DEFAULT_RELEASE_TIME } from '../../shared/booking-settings.js';
+import { startVisiblePolling } from '../../shared/polling.ts';
+import { CAMPUSES, TIME_SLOTS } from '../../shared/constants.ts';
+import { bookingDates, slotAvailability } from '../../shared/booking-slots.ts';
+import { DEFAULT_RELEASE_TIME } from '../../shared/booking-settings.ts';
 import { studentJson } from './api';
 import { reveal, useLayoutMotion } from './motion';
 import { useCurrent } from './use-current';
@@ -259,7 +259,7 @@ export function useAvailability(onChange: (selection: SlotSelection, issue: stri
     },
     async restore(values: Partial<SlotSelection>) {
       model.selection = {
-        campus: CAMPUSES.includes(values.campus || '') ? values.campus || '' : '',
+        campus: CAMPUSES.some(campus => campus === values.campus) ? values.campus || '' : '',
         date: values.date || '',
         timeSlot: values.timeSlot || ''
       };

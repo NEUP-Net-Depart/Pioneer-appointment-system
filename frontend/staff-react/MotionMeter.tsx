@@ -1,5 +1,3 @@
-import React from 'react';
-
 // Native semantics update immediately; the visual fill shares the page's
 // animation budget instead of creating one independent effect per row.
 export function MotionMeter({

@@ -1,0 +1,22 @@
+import type { Route } from './route.ts';
+import { json, readBody } from '../lib/http.ts';
+import { slotCapacityInput, slotCapacityBatchInput } from '../lib/validation.ts';
+
+export const slotCapacityRoutes: Route[] = [
+  ['GET', /^\/api\/service-days$/, async context => json(await context.services.slotCapacities.serviceDay(await context.permission('booking.manage'),context.query))],
+  ['PATCH', /^\/api\/service-days$/, async context => {const actor=await context.permission('booking.manage');await context.limit('write');return json(await context.services.slotCapacities.saveServiceDay(actor,await readBody(context.request)));}],
+  ['GET', /^\/api\/slot-capacities\/actual$/, async context => {
+    return json(await context.services.slotCapacities.actual(await context.permission('booking.manage'), context.query));
+  }],
+  ['GET', /^\/api\/slot-capacities$/, async context => {
+    return json(await context.services.slotCapacities.list(await context.permission('booking.manage')));
+  }],
+  ['PATCH', /^\/api\/slot-capacities$/, async context => {
+    const actor = await context.permission('booking.manage');
+    await context.limit('write');
+    const input = await readBody(context.request);
+    return json(input.items !== undefined
+      ? await context.services.slotCapacities.updateMany(slotCapacityBatchInput(input), actor)
+      : await context.services.slotCapacities.update(slotCapacityInput(input), actor));
+  }]
+];

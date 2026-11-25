@@ -106,8 +106,8 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PREVIEW_D1_API_TOKEN }}
           WRANGLER_SEND_METRICS: 'false'
         run: |
-          node scripts/rehearse-preview.mjs
-          node scripts/ci-release.mjs --migrate-preview
+          node scripts/rehearse-preview.ts
+          node scripts/ci-release.ts --migrate-preview
   release:
     outputs:
       deployed_sha: ${{ steps.production.outputs.deployed_sha }}
@@ -159,7 +159,7 @@ jobs:
           TELEMETRY_POLL_SAMPLE_RATE: ${{ vars.TELEMETRY_POLL_SAMPLE_RATE }}
           OBSERVABILITY_LOGS: ${{ vars.OBSERVABILITY_LOGS }}
           WRANGLER_SEND_METRICS: 'false'
-        run: node scripts/ci-release.mjs
+        run: node scripts/ci-release.ts
       - name: Publish branch Preview and verify its URL
         id: preview
         if: github.ref != 'refs/heads/main'
@@ -182,7 +182,7 @@ jobs:
           OBSERVABILITY_LOGS: ${{ vars.OBSERVABILITY_LOGS }}
           PREVIEW_MIGRATIONS_APPLIED: ${{ needs.migrate-preview.result == 'success' && 'true' || 'false' }}
           WRANGLER_SEND_METRICS: 'false'
-        run: node scripts/ci-release.mjs
+        run: node scripts/ci-release.ts
 
   production-tag:
     needs: release
@@ -211,4 +211,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           DEPLOYED_SHA: ${{ needs.release.outputs.deployed_sha }}
           PRODUCTION_RESULT: ${{ needs.release.result }}
-        run: node scripts/release-tag.mjs
+        run: node scripts/release-tag.ts

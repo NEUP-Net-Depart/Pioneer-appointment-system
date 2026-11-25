@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { startVisiblePolling } from '../../shared/polling.js';
+import { startVisiblePolling } from '../../shared/polling.ts';
 import { appointmentPath, failureFrom, readAppointment, studentJson, type Failure } from './api';
 import {
   credentialHeaders,

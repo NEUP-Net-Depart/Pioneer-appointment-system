@@ -1,4 +1,4 @@
-import React, { type CSSProperties, type ReactNode } from 'react';
+import { type CSSProperties, type ReactNode } from 'react';
 import { AnimatedValue } from './AnimatedValue';
 
 /** Static labels stay visible; only a server-owned value waits for its response. */

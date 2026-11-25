@@ -1,5 +1,6 @@
-import { apiJson } from '../../../shared/api.js';
-import { uploadAttachments } from '../../../shared/attachments.js';
+import { failureFrom } from '../../../shared/api-types.ts';
+import { apiJson } from '../../../shared/api.ts';
+import { uploadAttachments } from '../../../shared/attachments.ts';
 import { intakePhoto } from './photos';
 import type { Appointment } from './types';
 
@@ -13,7 +14,9 @@ type Snapshot = {
   canSkip: boolean;
   error: string;
 };
-const sides = ['front', 'back'];
+const sides = ['front', 'back'] as const;
+export type PhotoSide = (typeof sides)[number];
+type Receipt = Pick<Appointment, 'frontPhotoId' | 'backPhotoId' | 'canSupplement'>;
 const jobs = new Map<string, ReturnType<typeof createUpload>>();
 
 // A job belongs to the login session and order, not to a modal's lifetime.
@@ -28,7 +31,7 @@ export function intakeUpload(id: string, onSaved: () => void) {
   return job;
 }
 
-function createUpload(id: string, token: string, onSaved: () => void) {
+function createUpload(id: string, token: string | null, onSaved: () => void) {
   let state: Snapshot = {
     files: {},
     uploaded: {},
@@ -56,7 +59,7 @@ function createUpload(id: string, token: string, onSaved: () => void) {
     frontPhotoId: state.uploaded.front || undefined,
     backPhotoId: state.uploaded.back || undefined
   });
-  function confirm(item: Appointment) {
+  function confirm(item: Receipt) {
     const files = { ...state.files },
       uploaded = { ...state.uploaded };
     for (const side of sides) {
@@ -115,13 +118,15 @@ function createUpload(id: string, token: string, onSaved: () => void) {
             onSaved();
             break;
           } catch (error) {
-            if (error.status !== 409 || attempt) throw error;
+            if (failureFrom(error).status !== 409 || attempt) throw error;
           }
         }
       }
     })()
       .catch((error) => {
-        update({ error: `照片关联工单失败：${error.message} 已上传照片会保留，可重试补传。` });
+        update({
+          error: `照片关联工单失败：${failureFrom(error).message} 已上传照片会保留，可重试补传。`
+        });
       })
       .finally(() => {
         linkTask = undefined;
@@ -166,7 +171,7 @@ function createUpload(id: string, token: string, onSaved: () => void) {
             progress({ value: 100, label: '已上传' });
             void link();
           } catch (error) {
-            const message = `${side === 'front' ? '正面' : '背面'}：${error.message || '照片上传失败，请重试。'}`;
+            const message = `${side === 'front' ? '正面' : '背面'}：${failureFrom(error).message || '照片上传失败，请重试。'}`;
             failures.push(message);
             progress({ value: state.progress[side]?.value ?? 0, label: '上传失败' });
             clearTimeout(timer);
@@ -193,13 +198,15 @@ function createUpload(id: string, token: string, onSaved: () => void) {
     },
     snapshot: () => state,
     photoIds,
-    seed(item: Appointment) {
+    seed(item: Pick<Receipt, 'frontPhotoId' | 'backPhotoId'>) {
       const uploaded = { ...state.uploaded };
-      for (const side of sides)
-        if (!state.files[side] && item[`${side}PhotoId`]) uploaded[side] = item[`${side}PhotoId`];
+      for (const side of sides) {
+        const saved = item[`${side}PhotoId`];
+        if (!state.files[side] && saved) uploaded[side] = saved;
+      }
       update({ uploaded });
     },
-    select(side: string, file: File) {
+    select(side: PhotoSide, file: File) {
       if (state.uploading || state.linking) return;
       clearTimeout(timer);
       update({
@@ -211,7 +218,7 @@ function createUpload(id: string, token: string, onSaved: () => void) {
       });
     },
     upload,
-    confirmed(item: Appointment) {
+    confirmed(item: Receipt) {
       confirm(item);
       // Query refreshes also confirm saved photos. Only start association for
       // an uploaded photo that is still missing from this receipt; otherwise

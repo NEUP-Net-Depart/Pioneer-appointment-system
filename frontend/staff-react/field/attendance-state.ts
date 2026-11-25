@@ -1,3 +1,4 @@
+import type { Query } from '@tanstack/react-query';
 import type { QueryClient } from '@tanstack/react-query';
 import type { AttendanceRecord, Home } from './types';
 
@@ -17,7 +18,7 @@ export function canSelfCheckIn(home: Home) {
 // Cancel older home/board reads before publishing the server-confirmed record.
 export async function applyAttendance(client: QueryClient, record: AttendanceRecord) {
   const affectedQueries = {
-    predicate: (query) =>
+    predicate: (query: Query) =>
       [
         '/api/field/home',
         '/api/field/board',
@@ -28,10 +29,11 @@ export async function applyAttendance(client: QueryClient, record: AttendanceRec
         '/api/attendance/volunteer-report',
         '/api/attendance/matrix',
         '/api/attendance/weekly-summary'
-      ].includes(query.queryKey[0])
+      ].includes(query.queryKey[0] as string)
   };
   await client.cancelQueries(affectedQueries);
-  const matches = (query) => ['/api/field/home', '/api/field/board'].includes(query.queryKey[0]);
+  const matches = (query: Query) =>
+    ['/api/field/home', '/api/field/board'].includes(query.queryKey[0] as string);
   client.setQueriesData<Home>({ predicate: matches }, (home) =>
     home &&
     record.type === 'duty' &&

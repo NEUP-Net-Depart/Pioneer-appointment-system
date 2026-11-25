@@ -22,6 +22,6 @@ Tag 格式为 `release-YYYYMMDD-<12位SHA>`，日期取部署提交的 committer
 验证：
 
 ```sh
-node --test tests/release.test.mjs tests/release-tag.test.mjs
-npx eslint scripts/ci-release.mjs scripts/release-tag.mjs tests/release-tag.test.mjs --max-warnings 0
+node --test tests/release.test.ts tests/release-tag.test.ts
+npx eslint scripts/ci-release.ts scripts/release-tag.ts tests/release-tag.test.ts --max-warnings 0
 ```

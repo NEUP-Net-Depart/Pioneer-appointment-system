@@ -35,7 +35,7 @@ PostHog 接入变量、完整会话回放、source maps、Cloudflare Analytics E
 
 发布操作见 [Release 操作说明](releases.md)。
 
-[发布工作流](../.github/workflows/check.yml) 在开发阶段执行与 `npm run verify` 等价的完整检查。`checks` 与 `browser` 并行运行，`test` 汇总并要求两者成功；浏览器任务只在 Chromium 桌面与 WebKit 手机尺寸运行 6 项关键流程冒烟，其余浏览器回归按需执行。生产发布复用 dev 阶段的验证：
+[发布工作流](../.github/workflows/check.yml) 在开发阶段执行与 `npm run verify` 等价的完整检查。`checks` 与 `browser` 并行运行，`test` 汇总并要求两者成功；浏览器任务只在 Chromium 桌面与 WebKit 手机尺寸运行关键流程冒烟，其余浏览器回归按需执行。生产发布复用 dev 阶段的验证：
 
 | 触发 | 目标与顺序 |
 | --- | --- |
@@ -115,14 +115,14 @@ Git 仅保存通用 SQL、工具及虚构测试数据。真实姓名、学号、
 
 ```powershell
 npx wrangler d1 export DB --remote --config wrangler.jsonc --output C:/Pioneer-private/production.sql
-node scripts/rehearse-preview.mjs --snapshot C:/Pioneer-private/production.sql --input C:/Pioneer-private/production-decisions.json
-node scripts/prepare-staff-cutover.mjs --input C:/Pioneer-private/production-decisions.json
+node scripts/rehearse-preview.ts --snapshot C:/Pioneer-private/production.sql --input C:/Pioneer-private/production-decisions.json
+node scripts/prepare-staff-cutover.ts --input C:/Pioneer-private/production-decisions.json
 ```
 
 准备工具逐人校验身份、完整性、职位、日期、校区及授权模板，并在本地验证转换。输出只有汇总；真实输入文件和生成 SQL 均拒绝写入仓库内。核对无误、提交干净且明确授权后，从本机暂存目标环境的决定：
 
 ```powershell
-node scripts/prepare-staff-cutover.mjs --input C:/Pioneer-private/production-decisions.json --execute --approve-production
+node scripts/prepare-staff-cutover.ts --input C:/Pioneer-private/production-decisions.json --execute --approve-production
 ```
 
 暂存只写入一次性输入表，不改变有效权限。决定绑定环境、数据库、迁移文件哈希及准备时的人员授权状态，可以提前准备并跨日上线；人员或权限变化须重新准备。CI 直接在目标 D1 内核对映射完整性、目标和版本，只接收就绪标志与汇总数量，不导出 Production 或 Preview 快照。本机准备时完成完整迁移演练；0041 结构已就绪时 CI 还会预检源状态，生产旧链由先行历史迁移补齐结构，0042 始终在同一事务内重查源状态及全部授权边界。
@@ -137,11 +137,11 @@ node scripts/prepare-staff-cutover.mjs --input C:/Pioneer-private/production-dec
 
 升级到 v1.2 时，必须在停写窗口依次执行 0044–0049，再发布对应应用；值班简化版本还要求追加0050。功能分支不迁移共享 Preview；没有新 schema 时发布仍被就绪检查阻止。不能将旧应用直接回退到新 schema；需要恢复时先核对维护窗口后的新增数据，使用成对备份或追加修复迁移。
 
-迁移前保存数据库、附件和密钥，记录预约、附件、签到、人员、审计与旧排班行数。先在仓库外的私有本地副本执行 `rehearse-preview.mjs`，保留只含汇总的验证结果。0042 若尚未执行，沿用上一节的一次性人员确认前提；0047 随后删除旧维修工作权限包，不为新系统配置维修资格。
+迁移前保存数据库、附件和密钥，记录预约、附件、签到、人员、审计与旧排班行数。先在仓库外的私有本地副本执行 `rehearse-preview.ts`，保留只含汇总的验证结果。0042 若尚未执行，沿用上一节的一次性人员确认前提；0047 随后删除旧维修工作权限包，不为新系统配置维修资格。
 
 迁移后检查 [release-checks.sql](release-checks.sql)、外键、`duty-workflow-0050` 就绪标记及核查表结构、归档处置数量，以及在修主修和照片引用。已排期返修关联原单，未安排申请明确归档；全部旧排班 ID 保留，只有原已发布班次生效。0050不回填签到或核查结论，不批量改写特殊时段。不会删除历史预约、维修、照片、签到、人员或审计，也不根据新流程补造历史结果。
 
-`npm run verify` 执行格式、lint、类型、埋点目录与迁移指纹检查、Functions 与前端构建、Node 测试和 6 项浏览器冒烟。每个浏览器用例独立使用一次性 D1/R2 与虚构人员；冒烟覆盖预约签名、照片接收与维修、排班发布，其他页面回归通过 `npm run test:e2e:full` 按需执行。权限、结果与隐私等规则由服务层测试持续覆盖。用例分工和筛选、并行运行方法见[浏览器测试说明](../tests/e2e/README.md)。CI 要求这些默认检查全部通过。历史迁移演练、发布产物检查、设备与 SDK 浏览器诊断、SQL 读写预算为按需工具，入口及适用范围见[测试说明](../tests/README.md)。SQL 工具针对 issue #144 检查单账号认证及预约余量随数据规模增长的成本，并输出逐条 SQL 读写计数。
+`npm run verify` 执行格式、lint、类型、埋点目录与迁移指纹检查、Functions 与前端构建、Node 测试和浏览器冒烟。每个浏览器用例独立使用一次性 D1/R2 与虚构人员；冒烟覆盖预约签名、照片接收与维修、排班发布、跨校区扫码纠错、成员可编辑范围和 PWA 安装，其他页面回归通过 `npm run test:e2e:full` 按需执行。权限、结果与隐私等规则由服务层测试持续覆盖。用例分工和筛选、并行运行方法见[浏览器测试说明](../tests/e2e/README.md)。CI 要求这些默认检查全部通过。历史迁移演练、发布产物检查、设备与 SDK 浏览器诊断、SQL 读写预算为按需工具，入口及适用范围见[测试说明](../tests/README.md)。SQL 工具针对 issue #144 检查单账号认证及预约余量随数据规模增长的成本，并输出逐条 SQL 读写计数。
 
 现场照片等待 30 秒后显示跳过按钮；任意一张上传失败时立即允许跳过，无须等满 30 秒，也不取消其他正在进行的上传。经办人跳过后可继续接收或维修，照片完成上传后自动关联原工单；关闭工单弹窗不会中断任务。刷新、关闭网页或手机系统挂起可能中断上传，原图仍应保留，失败时由经办人重试补传。已成功上传的照片在当前页面会被复用。已有附件保留既有生命周期。附件维护先 dry-run，再按计划执行物理清理；数据库升级不执行附件清理。
 

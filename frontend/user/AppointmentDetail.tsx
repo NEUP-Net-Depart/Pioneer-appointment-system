@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { apiBlob } from '../../shared/api.js';
-import { attachmentUrl, attachmentSize } from '../../shared/attachments.js';
-import { terminalStatuses } from '../../shared/constants.js';
-import { formatDate } from '../../shared/time.js';
+import { apiBlob } from '../../shared/api.ts';
+import { attachmentUrl, attachmentSize } from '../../shared/attachments.ts';
+import { terminalStatuses } from '../../shared/constants.ts';
+import { formatDate } from '../../shared/time.ts';
 import { failureFrom } from './api';
 import { appointmentTicketImage } from './appointment-ticket';
 import { credentialHeaders } from './credentials';
@@ -188,7 +188,7 @@ function Operations({
   useLayoutEffect(() => {
     if (clicked.current) (cancelOpen ? confirm : launcher).current?.focus();
   }, [cancelOpen]);
-  const historic = terminalStatuses.includes(item.status);
+  const historic = terminalStatuses.some(status => status === item.status);
   return (
     <div id="detail-operations">
       {item.status === 'booked' && !item.receivedAt ? (
@@ -310,7 +310,7 @@ export function AppointmentDetail({
   const image = useRef<HTMLImageElement>(null);
   const [qrReady, setQrReady] = useState(false);
   const arrived = isAwaitingArrival(item) && !item.servicePaused;
-  const historic = terminalStatuses.includes(item.status);
+  const historic = terminalStatuses.some(status => status === item.status);
   const explanation = statusExplanation(item);
   function save() {
     try {

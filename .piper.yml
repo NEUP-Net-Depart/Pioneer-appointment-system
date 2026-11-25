@@ -47,7 +47,7 @@ labels:
       - 'scripts/**'
       - 'package.json'
       - 'package-lock.json'
-      - 'eslint.config.js'
+      - 'eslint.config.ts'
   - name: area/ci
     files: ['.github/**']
     highRisk: true

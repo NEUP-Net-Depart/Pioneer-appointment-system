@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef } from 'react';
-import { terminalStatuses } from '../../shared/constants.js';
-import { observeDataMotion } from '../../shared/data-motion.js';
-import { formatDate } from '../../shared/time.js';
+import { terminalStatuses } from '../../shared/constants.ts';
+import { observeDataMotion } from '../../shared/data-motion.ts';
+import { formatDate } from '../../shared/time.ts';
 import { isAwaitingArrival, statusText, studentStatusClass, timeLabel } from './presentation';
 import { AppointmentDetail } from './AppointmentDetail';
 import type { Appointment } from './types';
@@ -30,7 +30,7 @@ function RecordCard({ item, detail }: { item: Appointment; detail: (id: string) 
           (timeLabel(item) || '')}
       </span>
       <span className="record-location">
-        {item.campus + '校区' + (terminalStatuses.includes(item.status) ? '' : ' · ' + location)}
+        {item.campus + '校区' + (terminalStatuses.some(status => status === item.status) ? '' : ' · ' + location)}
       </span>
       {awaiting && item.servicePaused && (
         <span className="record-schedule is-error">当天暂停维修</span>
@@ -69,10 +69,10 @@ export function LookupView({
   const { entries, item, detailId, detailError, detailNotice, storageError } = lookup;
   const empty = !entries.length && !storageError;
   const current = entries
-    .flatMap((row) => (row.item && !terminalStatuses.includes(row.item.status) ? [row.item] : []))
+    .flatMap((row) => (row.item && !terminalStatuses.some(status => status === row.item?.status) ? [row.item] : []))
     .sort((a, b) => (a.date + a.timeSlot).localeCompare(b.date + b.timeSlot));
   const history = entries
-    .flatMap((row) => (row.item && terminalStatuses.includes(row.item.status) ? [row.item] : []))
+    .flatMap((row) => (row.item && terminalStatuses.some(status => status === row.item?.status) ? [row.item] : []))
     .sort((a, b) => (b.date + b.timeSlot).localeCompare(a.date + a.timeSlot));
   const failed = entries.filter((row) => row.message);
   const unknown = entries.filter((row) => !row.item && !row.message);

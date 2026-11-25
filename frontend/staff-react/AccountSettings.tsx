@@ -1,23 +1,17 @@
+import type { StaffProfileDto } from '../../shared/staff-types.ts';
 import React, { useContext, useEffect, useRef, useState } from 'react';
-import { clearSession } from '../../shared/api.js';
+import { clearSession } from '../../shared/api.ts';
 import { ActivityContext, api, Modal, Notice } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { CapacityEditor } from './CapacityEditor';
-import { staffPermission } from '../../shared/staff-access.js';
+import { staffPermission } from '../../shared/staff-access.ts';
 
 export function AccountSettings({
   user,
   section,
   onNavigate
 }: {
-  user: {
-    name: string;
-    account: string;
-    homeCampus: string;
-    authorizedCampuses: string[];
-    role: string;
-    permissions?: Record<string, boolean>;
-  };
+  user: StaffProfileDto;
   section: string;
   onNavigate?: (view: string) => void;
 }) {

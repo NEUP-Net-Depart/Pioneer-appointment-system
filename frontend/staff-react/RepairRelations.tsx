@@ -1,10 +1,10 @@
 import { useId, useState } from 'react';
-import { Select } from './SelectionControls.jsx';
+import { Select } from './SelectionControls.tsx';
 import { api, Notice } from './field/ui';
 import { Registration } from './field/Registration';
 import type { Appointment } from './field/types';
-import { outcomeLabels } from '../../shared/constants.js';
-import { repairLinkKinds, repairLinkLabels } from '../../shared/repair-links.js';
+import { outcomeLabels } from '../../shared/constants.ts';
+import { repairLinkKinds, repairLinkLabels } from '../../shared/repair-links.ts';
 
 export function RepairRelations({
   item,
@@ -64,17 +64,18 @@ export function RepairRelations({
           本次关联原单{' '}
           <button
             data-track="staff.repairrelations.button.1"
-            onClick={() => onOpen(item.parentAppointmentId!)}
+            onClick={() => item.parentAppointmentId && onOpen(item.parentAppointmentId)}
           >
             {item.parentAppointmentId}
           </button>
           {' · '}
-          {repairLinkLabels[item.linkKind] || '历史关联'}
+          {(item.linkKind && repairLinkLabels[item.linkKind]) || '历史关联'}
         </p>
       )}
       {parent && (
         <p>
-          原单结果：{outcomeLabels[parent.outcome]} · {parent.repairNote}
+          原单结果：{outcomeLabels[parent.outcome as keyof typeof outcomeLabels]} ·{' '}
+          {parent.repairNote}
         </p>
       )}
       {!!historical.length && (
@@ -103,7 +104,7 @@ export function RepairRelations({
                     {row.date} · {row.brand} {row.deviceModel}
                   </span>
                   <span>
-                    {row.faultType} · {outcomeLabels[row.outcome]}
+                    {row.faultType} · {outcomeLabels[row.outcome as keyof typeof outcomeLabels]}
                   </span>
                 </li>
               ))}

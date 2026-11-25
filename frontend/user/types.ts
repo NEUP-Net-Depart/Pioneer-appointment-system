@@ -1,10 +1,12 @@
-export type Step = 1 | 2 | 3;
+import type { AppointmentCredential, AppointmentSummaryDto, AttachmentDto, SlotSelection } from '../../shared/appointment-types.ts';
 
-export interface SlotSelection {
-  campus: string;
-  date: string;
-  timeSlot: string;
-}
+export type { SlotSelection } from '../../shared/appointment-types.ts';
+export type { FieldErrors } from '../../shared/api-types.ts';
+export type { BookingNoticeDto as Notice, SignatureDocument as Signature } from '../../shared/appointment-types.ts';
+export type Credential = AppointmentCredential;
+export type Attachment = AttachmentDto;
+
+export type Step = 1 | 2 | 3;
 
 export interface SlotSummary extends SlotSelection {
   location?: string;
@@ -14,24 +16,8 @@ export interface SlotSummary extends SlotSelection {
   source?: string;
 }
 
-export interface Credential {
-  id: string;
-  accessToken: string;
-}
-
-export interface Attachment {
-  id: string;
-  filename: string;
-  mimeType: string;
-  size: number;
-  purpose: string;
-}
-
-export interface Appointment extends Credential, SlotSummary, Partial<BookingFields> {
-  status: string;
-  revision: number;
+export interface Appointment extends Credential, SlotSummary, AppointmentSummaryDto, Partial<BookingFields> {
   currentLocationRevision?: number;
-  outcome?: string;
   repairNumber?: string;
   receivedAt?: string;
   completedAt?: string;
@@ -67,30 +53,11 @@ export interface BookingFields {
   qqAccount: string;
   wechatAccount: string;
 }
-export type FieldErrors = Record<string, string>;
 export type BookingDraft = {
   fields: Partial<BookingFields & SlotSelection>;
   step: number;
   savedAt: number;
 };
 export type Attempt = { key: string; pending?: boolean };
-
-export interface Notice {
-  id: string;
-  revision: number;
-  type: string;
-  title: string;
-  content: string;
-  important: boolean;
-  displayMode: string;
-  businessDate?: string;
-}
-
-export interface Signature {
-  version: number;
-  width: number;
-  height: number;
-  strokes: number[][][];
-}
 
 export type Route = { kind: 'booking' | 'lookup' } | { kind: 'detail'; id: string };

@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["vite/client"],
+    "paths": {
+      "/vendor/signature-pad.js": ["./node_modules/signature_pad"],
+      "/vendor/zxing-reader.js": ["./node_modules/zxing-wasm/dist/es/reader/index.d.ts"],
+      "/vendor/zxing-writer.js": ["./node_modules/zxing-wasm/dist/es/writer/index.d.ts"],
+      "/assets/posthog.js": ["./frontend/staff-react/posthog-sdk.ts"]
+    }
+  },
+  "include": ["frontend/**/*.ts", "frontend/**/*.tsx", "shared/**/*.ts", "warranty-verifier/**/*.ts"]
+}

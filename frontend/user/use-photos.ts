@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
-import { compressImage } from '../../shared/image-compress.js';
-import { attachmentSize, uploadAttachments } from '../../shared/attachments.js';
+import { compressImage } from '../../shared/image-compress.ts';
+import type { NamedUpload } from '../../shared/image-compress.ts';
+
+import { attachmentSize, uploadAttachments } from '../../shared/attachments.ts';
 import { failureFrom } from './api';
 import { useCurrent } from './use-current';
 import type { Attachment, Credential } from './types';
@@ -12,7 +14,7 @@ export interface Photo {
   state: 'preparing' | 'ready' | 'error' | 'uploading' | 'uploaded' | 'upload-error';
   message: string;
   progress: number;
-  file?: File;
+  file?: NamedUpload;
   url?: string;
   attachment?: Attachment;
 }

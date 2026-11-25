@@ -1,12 +1,13 @@
-import { uploadImage } from '../../../shared/image-compress.js';
-import { inspectImage } from '../../../shared/image-input.js';
+import { failureFrom } from '../../../shared/api-types.ts';
+import { uploadImage } from '../../../shared/image-compress.ts';
+import { inspectImage } from '../../../shared/image-input.ts';
 
 async function photoError(file: File): Promise<string> {
   try {
     await inspectImage(file);
     return '';
   } catch (error) {
-    return error.message;
+    return failureFrom(error).message;
   }
 }
 
@@ -22,7 +23,7 @@ export async function intakePhotoError(file: File): Promise<string> {
 }
 
 // Keep the original for preview; every uploaded copy goes through compression.
-export async function intakePhoto(file: File): Promise<File> {
+export async function intakePhoto(file: File) {
   const error = await intakePhotoError(file);
   if (error) throw new Error(error);
   return uploadImage(file);

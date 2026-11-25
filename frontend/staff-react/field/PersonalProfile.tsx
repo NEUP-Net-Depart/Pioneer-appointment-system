@@ -1,9 +1,10 @@
+import type { Query } from '@tanstack/react-query';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useContext, useEffect, useId, useRef, useState } from 'react';
-import { NEU_COLLEGES } from '../../../shared/neu-colleges.js';
+import { NEU_COLLEGES } from '../../../shared/neu-colleges.ts';
 import { ChoiceMenu } from '../ChoiceMenu';
 import { StaffIdentity } from '../StaffIdentity';
-import { useUnsavedChanges } from '../useUnsavedChanges.js';
+import { useUnsavedChanges } from '../useUnsavedChanges.ts';
 import { ActivityContext, api } from './ui';
 
 type Profile = {
@@ -62,7 +63,7 @@ export function PersonalProfile({
       setError('');
     }
   });
-  async function save(event?: React.FormEvent) {
+  async function save(event?: { preventDefault(): void }) {
     event?.preventDefault();
     if (!profile || !changed || busy) return true;
     setBusy(true);
@@ -85,9 +86,9 @@ export function PersonalProfile({
       revision.current = next.member.revision;
       baseline.current = next.member;
       const affectedQueries = {
-        predicate: (query) =>
+        predicate: (query: Query) =>
           ['/api/members', '/api/users', '/api/field/home', '/api/field/board'].includes(
-            query.queryKey[0]
+            query.queryKey[0] as string
           )
       };
       await client.cancelQueries(affectedQueries);

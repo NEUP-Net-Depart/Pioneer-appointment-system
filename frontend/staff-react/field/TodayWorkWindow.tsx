@@ -1,8 +1,8 @@
 import { Check, QrCode, ArrowUpRight, ScanLine } from 'lucide-react';
 import { StaffIdentity } from '../StaffIdentity';
-import { RefreshButton } from '../WorkspaceToolbar.jsx';
+import { RefreshButton } from '../WorkspaceToolbar.tsx';
 import { DataValue } from '../DataValue';
-import { useWorkStaffing } from '../WorkStaffing.jsx';
+import { useWorkStaffing } from '../WorkStaffing.tsx';
 import { campusAttendance } from './attendance-state';
 import type { Home } from './types';
 import './today-work-window.css';
@@ -81,7 +81,7 @@ export function TodayWorkWindow({
       <div className="work-window-meta">
         <div className="work-window-identities">
           <StaffIdentity
-            identities={data.identities.filter((identity) => identity.code !== 'staff')}
+            identities={(data.identities ?? []).filter((identity) => identity.code !== 'staff')}
           />
         </div>
         <div className="work-window-context">

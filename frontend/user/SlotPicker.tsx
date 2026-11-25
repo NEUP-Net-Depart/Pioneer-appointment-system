@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, type CSSProperties } from 'react';
-import { CAMPUSES, TIME_SLOTS } from '../../shared/constants.js';
+import { CAMPUSES, TIME_SLOTS } from '../../shared/constants.ts';
 import { BookingNotices, type BookingAnnouncements } from './BookingNotices';
 import { reduced } from './motion';
 import type { Availability } from './use-availability';

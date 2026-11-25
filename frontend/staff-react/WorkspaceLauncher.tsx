@@ -1,7 +1,7 @@
-import React, { useId, useState } from 'react';
+import { useId, useState } from 'react';
 import { Empty } from './field/ui';
 import { WorkspaceIcon } from './WorkspaceIcon';
-import { matchesWorkspaceEntry } from './workspace-navigation.js';
+import { matchesWorkspaceEntry } from './workspace-navigation.ts';
 
 type Group = {
   label: string;

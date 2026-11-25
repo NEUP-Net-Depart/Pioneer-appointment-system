@@ -1,4 +1,5 @@
-import React, {
+import type { AppointmentStatus, StoredRepairOutcome } from '../../../shared/appointment-types.ts';
+import {
   createContext,
   useContext,
   useEffect,
@@ -12,10 +13,10 @@ import { Camera, Images, SwitchCamera } from 'lucide-react';
 // A hidden route remains mounted for draft continuity, but its dialogs must
 // leave the browser top layer until the route is visible again.
 export const ActivityContext = createContext(true);
-import { appointmentStatusClass, appointmentStatusLabel } from '../../../shared/constants.js';
-import { qrImage } from '../../../shared/zxing.js';
-import { createScanner } from './scanner.js';
-import { request } from '../request.js';
+import { appointmentStatusClass, appointmentStatusLabel } from '../../../shared/constants.ts';
+import { qrImage } from '../../../shared/zxing.ts';
+import { createScanner } from './scanner.ts';
+import { request } from '../request.ts';
 import { useDataMotion } from '../useDataMotion';
 
 export const api = <T,>(
@@ -34,7 +35,13 @@ export const time = (value: string) =>
     hour: '2-digit',
     minute: '2-digit'
   });
-export function Status({ value, outcome }: { value: string; outcome?: string }) {
+export function Status({
+  value,
+  outcome
+}: {
+  value: AppointmentStatus;
+  outcome?: StoredRepairOutcome | null;
+}) {
   return (
     <span
       data-motion-value="status"
@@ -127,11 +134,12 @@ export function Modal({
   }
   useDataMotion(bodyRef, active);
   useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog) return;
     if (!active) {
-      ref.current?.close();
+      dialog.close();
       return;
     }
-    const dialog = ref.current!;
     const previous = document.activeElement as HTMLElement;
     dialog.showModal();
     closing.current = false;
@@ -179,14 +187,14 @@ export function Modal({
         if (event.key !== 'Tab') return;
         event.stopPropagation();
         const controls = [
-          ...ref.current!.querySelectorAll<HTMLElement>(
+          ...event.currentTarget.querySelectorAll<HTMLElement>(
             'button,input,select,textarea,a[href],summary,[tabindex]'
           )
         ].filter(
           (node) => node.tabIndex >= 0 && !node.matches(':disabled') && node.getClientRects().length
         );
         const first = controls[0],
-          last = controls.at(-1);
+          last = controls[controls.length - 1];
         if (!first) {
           event.preventDefault();
           return;
@@ -351,22 +359,26 @@ export function Scanner({
   albumImageCallback.current = onAlbumImage;
   const [cameraState, setCameraState] = useState('idle');
   useEffect(() => {
+    const videoElement = video.current;
+    const torchButton = torch.current;
+    const switchButton = switcher.current;
+    if (!videoElement || !torchButton || !switchButton) return;
     const instance = createScanner({
-      video: video.current!,
+      video: videoElement,
       guide: guide.current,
-      status: status.current!,
-      torch: torch.current!,
-      switchCamera: switcher.current!,
+      status: status.current,
+      torch: torchButton,
+      switchCamera: switchButton,
       mirrorCamera: mirror.current,
       mode,
       onImage: (file) => imageCallback.current?.(file),
       canStart: () => active && !document.hidden,
-      onCode: (code) => {
+      onCode: (code: string) => {
         instance.stop();
         callback.current?.(code);
       },
-      onCandidates: (codes) => candidatesCallback.current?.(codes),
-      onUnrecognized: (codes) => unrecognizedCallback.current?.(codes),
+      onCandidates: (codes: string[]) => candidatesCallback.current?.(codes),
+      onUnrecognized: (codes: string[]) => unrecognizedCallback.current?.(codes),
       onState: setCameraState
     });
     scanner.current = instance;

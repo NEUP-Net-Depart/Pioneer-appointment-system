@@ -1,12 +1,13 @@
+import { failureFrom } from '../../../shared/api-types.ts';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { Image } from 'lucide-react';
-import { apiBlob } from '../../../shared/api.js';
-import { attachmentUrl } from '../../../shared/attachments.js';
+import { apiBlob } from '../../../shared/api.ts';
+import { attachmentUrl } from '../../../shared/attachments.ts';
 import { ActivityContext, Modal } from './ui';
-import type { PhotoProgress } from './intake-upload';
+import type { PhotoProgress, PhotoSide } from './intake-upload';
 import { intakePhotoError } from './photos';
 
-export function PhotoUpload({
+export function PhotoUpload<T extends PhotoSide | 'supplement'>({
   id,
   side,
   photoId,
@@ -20,7 +21,7 @@ export function PhotoUpload({
   label: customLabel
 }: {
   id: string;
-  side: string;
+  side: T;
   photoId?: string;
   preview?: string;
   busy: boolean;
@@ -28,7 +29,7 @@ export function PhotoUpload({
   accept: string;
   validateFile: (file: File) => string | Promise<string>;
   onChecking?: (side: string, checking: boolean) => void;
-  onFile: (side: string, file: File) => void;
+  onFile: (side: T, file: File) => void;
   label?: string;
 }) {
   const active = useContext(ActivityContext);
@@ -56,7 +57,7 @@ export function PhotoUpload({
     try {
       message = files.length !== 1 ? '每次请添加一张照片。' : await validateFile(files[0]);
     } catch (error) {
-      message = error.message || '无法读取照片，请重新选择';
+      message = failureFrom(error).message || '无法读取照片，请重新选择';
     }
     if (selection.current !== version) return;
     setChecking(false);
@@ -252,11 +253,11 @@ export function IntakePhotos({
   busy: boolean;
   progress?: Record<string, PhotoProgress>;
   onChecking?: (side: string, checking: boolean) => void;
-  onFile: (side: string, file: File) => void;
+  onFile: (side: PhotoSide, file: File) => void;
 }) {
   return (
     <div className="field-intake-photos" aria-label="本次设备照片">
-      {['front', 'back'].map((side) => (
+      {(['front', 'back'] as const).map((side) => (
         <PhotoUpload
           key={side}
           id={id}

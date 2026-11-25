@@ -1,20 +1,25 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["ES2022", "DOM"],
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "types": [],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "allowImportingTsExtensions": true,
-    "jsx": "react-jsx",
-    "allowJs": true,
-    "checkJs": false,
+    "allowJs": false,
     "noEmit": true,
-    "strict": false,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "skipLibCheck": true,
-    "esModuleInterop": true
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true
   },
-  "include": [
-    "frontend/staff-react/**/*.ts",
-    "frontend/staff-react/**/*.tsx"
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.browser.json" },
+    { "path": "./tsconfig.worker.json" },
+    { "path": "./tsconfig.node.json" },
+    { "path": "./tsconfig.tests.json" }
   ]
 }

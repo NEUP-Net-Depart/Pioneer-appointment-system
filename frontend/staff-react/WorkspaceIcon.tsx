@@ -1,5 +1,3 @@
-import React from 'react';
-
 const paths: Record<string, string> = {
   desk: 'M3 10h18v10H3z M6 10V5h12v5 M7 15h10',
   repair: 'm14 6 4 4 M20 4a6 6 0 0 1-7 8L6 19a2 2 0 0 1-3-3l7-7a6 6 0 0 1 8-7l-4 4 4 4z',

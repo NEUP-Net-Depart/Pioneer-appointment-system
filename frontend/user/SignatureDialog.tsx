@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react';
-import { validSignature } from '../../shared/signature.js';
-import { createSignaturePad, createSignaturePreview } from '../../shared/signature-pad.js';
+import { validSignature } from '../../shared/signature.ts';
+import { createSignaturePad, createSignaturePreview } from '../../shared/signature-pad.ts';
 import { DialogLayer, useDialogs } from './dialogs';
 import type { Signature } from './types';
 

@@ -12,6 +12,6 @@
 
 单独执行 `npm run build` 时，可用 `WARRANTY_CAPTCHA_ORIGIN` 指定本地验证来源。缺失配置会生成 `frame-src 'none'` 并停用华为人工验证；后端未配置或与构建值不一致时，前端明确提示停用，不展示会被 CSP 拦截的查询按钮。
 
-`npm run preview:field` 自动启动不同端口的本地验证站点、设置精确 frame-ancestors 与预约系统的 frame-src，停止预览时一并关闭。正式发布不使用本地地址。
+`npm run preview:local` 自动启动不同端口的本地验证站点、设置精确 frame-ancestors 与预约系统的 frame-src，停止预览时一并关闭。正式发布不使用本地地址。
 
 元件使用官方 SDK 直接验证，没有自动解题、默认通过或降级绕过。人工验证成功不代表保修数据解析已经通过真机比对，须以组织有权查询的设备继续验证。

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { track } from '../../shared/telemetry-client.js';
-import { AGREEMENT_VERSION } from '../../shared/student-booking.js';
+import { track } from '../../shared/telemetry-client.ts';
+import { AGREEMENT_VERSION } from '../../shared/student-booking.ts';
 import { failureFrom, studentJson, type Failure } from './api';
 import { saveAppointment } from './credentials';
 import { useBookingNotices } from './BookingNotices';

@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.browser.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "ES2024.Promise", "DOM", "DOM.Iterable"],
+    "types": ["node", "vite/client"],
+    "paths": {
+      "/shared/api.js": ["./shared/api.ts"],
+      "/shared/image-compress.js": ["./shared/image-compress.ts"],
+      "/shared/zxing.js": ["./shared/zxing.ts"],
+      "/vendor/signature-pad.js": ["./node_modules/signature_pad"],
+      "/vendor/zxing-reader.js": ["./node_modules/zxing-wasm/dist/es/reader/index.d.ts"],
+      "/vendor/zxing-writer.js": ["./node_modules/zxing-wasm/dist/es/writer/index.d.ts"],
+      "/assets/posthog.js": ["./frontend/staff-react/posthog-sdk.ts"]
+    }
+  },
+  "include": ["tests/**/*.ts"]
+}

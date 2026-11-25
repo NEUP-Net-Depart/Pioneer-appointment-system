@@ -1,6 +1,7 @@
+import type { AppointmentStatus, StoredRepairOutcome } from '../../../shared/appointment-types.ts';
 import { useQuery } from '@tanstack/react-query';
-import React, { useEffect, useId, useRef, useState } from 'react';
-import { parseAppointmentSearch } from '../../../shared/appointment-search.js';
+import { useEffect, useId, useRef, useState } from 'react';
+import { parseAppointmentSearch } from '../../../shared/appointment-search.ts';
 import { api, Status } from './ui';
 import type { Home } from './types';
 
@@ -9,8 +10,8 @@ type Candidate = {
   campus: string;
   date: string;
   timeSlot: string;
-  status: string;
-  outcome?: string;
+  status: AppointmentStatus;
+  outcome?: StoredRepairOutcome | null;
   name?: string;
   studentId?: string;
 };

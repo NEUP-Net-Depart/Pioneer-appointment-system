@@ -1,14 +1,14 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { MotionMeter } from './MotionMeter';
 import { DataValue } from './DataValue';
-import React, { useContext, useState } from 'react';
+import { useContext, useState } from 'react';
 import { ActivityContext, Notice } from './field/ui';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { AnimatedValue } from './AnimatedValue';
-import { Select, DatePicker } from './SelectionControls.jsx';
-import { RefreshButton } from './WorkspaceToolbar.jsx';
-import { dateKey } from '../../shared/time.js';
-import { positionLabels } from '../../shared/staff-organization.js';
+import { Select, DatePicker } from './SelectionControls.tsx';
+import { RefreshButton } from './WorkspaceToolbar.tsx';
+import { dateKey } from '../../shared/time.ts';
+import { positionLabels } from '../../shared/staff-organization.ts';
 import { HelpHint } from './HelpHint';
 import { StaffIdentity, type Identity } from './StaffIdentity';
 

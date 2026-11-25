@@ -4,7 +4,7 @@ import {
   COLLEGES,
   FAULT_TYPES,
   STUDENT_DEVICE_TYPES
-} from '../../shared/student-booking.js';
+} from '../../shared/student-booking.ts';
 import { PhotoCollection } from './PhotoCollection';
 import { TimeSummary } from './presentation';
 import type { BookingForm } from './use-booking-form';

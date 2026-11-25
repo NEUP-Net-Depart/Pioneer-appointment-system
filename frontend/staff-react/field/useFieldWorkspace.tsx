@@ -1,29 +1,23 @@
-import { recentlyActive } from '../../../shared/telemetry-client.js';
+import { recentlyActive } from '../../../shared/telemetry-client.ts';
 import { useEffect, useRef, useState } from 'react';
 import { api } from './ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Home } from './types';
 import { canSelfCheckIn } from './attendance-state';
-import { readFieldCampus, writeFieldCampus } from '../field-campus.js';
+import { readFieldCampus, writeFieldCampus } from '../field-campus.ts';
 
 export function useFieldWorkspace({
   initial,
-  onNavigate,
-  workspaceLinks = [],
   requestedScene,
   onSceneChange,
   onContextChange,
-  active = true,
-  onLogout
+  active = true
 }: {
   initial: Home;
-  workspaceLinks?: { id: string; label: string; group?: string }[];
   requestedScene?: string | null;
   onSceneChange?: (scene: string) => void;
   onContextChange?: (resource: string, campusId: string) => void;
   active?: boolean;
-  onLogout: () => void;
-  onNavigate: (view: string) => void;
 }) {
   const client = useQueryClient();
   const key = `field-scene:${initial.actor.memberId}`;
@@ -163,12 +157,13 @@ export function useFieldWorkspace({
     });
   }
   async function showAttendance() {
+    if (!data) return;
     await execute(async () => {
       const event = await api<{ id: string; revision: number }>('/api/attendance/events', {
         method: 'POST',
         body: {
           campusId: campus,
-          businessDate: data!.businessDate,
+          businessDate: data.businessDate,
           type: 'duty',
           requestId: crypto.randomUUID()
         }

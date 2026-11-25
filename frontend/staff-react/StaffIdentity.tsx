@@ -1,6 +1,6 @@
-import React from 'react';
+import type { IdentityLabel } from '../../shared/staff-types.ts';
 
-export type Identity = { code: string; label: string };
+export type Identity = IdentityLabel;
 export function StaffIdentity({ identities = [] }: { identities?: Identity[] }) {
   return identities.length ? (
     <span className="staff-identities">
