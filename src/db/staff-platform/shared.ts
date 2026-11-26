@@ -49,7 +49,9 @@ export type StaffDutyAssignment = DutyShift & {
 
 import { specialIdentitiesSql } from '../staff-access.ts';
 
-const memberColumns = `m.id,m.name,m.student_id,m.home_campus_id,m.college,m.major,m.status,m.revision,m.created_at,m.updated_at,${specialIdentitiesSql('m.id')} AS special_identities`;
+const memberColumns = `m.id,m.name,m.student_id,m.home_campus_id,m.college,m.major,m.status,m.revision,m.created_at,m.updated_at,${specialIdentitiesSql('m.id')} AS special_identities,
+  (SELECT effective_to FROM member_special_identities WHERE member_id=m.id AND code='retired_elder') AS retired_effective_to,
+  (SELECT date(granted_at,'+8 hours') FROM member_special_identities WHERE member_id=m.id AND code='retired_elder') AS retired_effective_from`;
 
 function rows<T>(result?: { results: T[] } | null): T[] {
   return result?.results || [];

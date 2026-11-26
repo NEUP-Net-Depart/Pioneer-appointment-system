@@ -1,6 +1,5 @@
 import type { AttendanceIdentitySnapshot, AttendanceReportSettings, Membership } from '../../../shared/staff-types.ts';
 import type { AttendanceFact, ServicePause } from './fact-context.ts';
-import { campusId as normalizeCampusId } from '../authorization/scopes.ts';
 
 type ReportRecord = {
   memberId: string; campusId: string | null; businessDate: string; memberName: string;
@@ -28,10 +27,8 @@ interface VolunteerEntry {
   dates: Set<string>; leader: boolean; canManageProfile?: boolean;
 }
 
-import { leadershipPositions } from '../../../shared/staff-organization.ts';
 import { addDays, weekRange } from '../../platform/time.ts';
-import { attendanceFactContext } from './fact-context.ts';
-import { staffIdentities } from '../../../shared/staff-identities.ts';
+import { volunteerCampus, volunteerLeaderOn } from './fact-context.ts';
 import { dutyCampusNames as campusNames, dutyCampusName } from '../../../shared/duty.ts';
 
 export function calculateVolunteerReport({
@@ -75,64 +72,31 @@ export function calculateVolunteerReport({
   };
   for (const record of data.records) {
     const week = weekRange(record.businessDate).start;
+    const campusId = volunteerCampus(members.get(record.memberId)?.homeCampusId, record.campusId);
     if (
       !byWeek.has(week) ||
       record.businessDate > today ||
       record.businessDate > addDays(week, 3) ||
       pausedKeys.has(`${record.businessDate}:${record.campusId}`) ||
-      !canRead(record.campusId, record.memberId, record.primaryDepartmentIdSnapshot, query.campusId)
+      !canRead(campusId, record.memberId, record.primaryDepartmentIdSnapshot, query.campusId)
     )
       continue;
-    const row = ensure(week, record.campusId, record.memberId, record);
+    const row = ensure(week, campusId, record.memberId, record);
     row.dates.add(record.businessDate);
   }
   if (settings.mergeLeaders)
     for (const week of weeks) {
       for (const fact of facts) {
-        if (!fact.active) continue;
-        const eligible = [];
-        for (const campus of fact.campuses || []) {
-          const campusId = normalizeCampusId(campus);
-          if (!dutyCampusName(campusId)) continue;
-          for (let day = 0; day < 4; day++) {
-            const date = addDays(week, day);
-            if (date > today || pausedKeys.has(`${date}:${campusId}`)) continue;
-            const identityContext = attendanceFactContext(fact, date);
-            const department = identityContext.memberships.find((item) => item.isPrimary);
-            if (
-              !canRead(campusId, fact.memberId, department?.departmentId, query.campusId) ||
-              !staffIdentities(identityContext).some((item) => leadershipPositions.some(position => position === item.code))
-            )
-              continue;
-            eligible.push({ campusId, department });
-            break;
-          }
+        const campusId = volunteerCampus(members.get(fact.memberId)?.homeCampusId);
+        if (!campusId) continue;
+        for (let offset = 0; offset < 4; offset++) {
+          const date = addDays(week, offset);
+          if (date > today || pausedKeys.has(`${date}:${campusId}`)) continue;
+          const department = volunteerLeaderOn(fact, date, campusId);
+          if (!department || !canRead(campusId, fact.memberId, department.departmentId, query.campusId)) continue;
+          ensure(week, campusId, fact.memberId, null, department).leader = true;
+          break;
         }
-        if (!eligible.length) continue;
-        const assignmentCampus = fact.assignments
-          ?.filter(
-            (item) =>
-              item.businessDate >= week &&
-              item.businessDate <= addDays(week, 3) &&
-              !pausedKeys.has(`${item.businessDate}:${item.campusId}`)
-          )
-          .sort((a, b) => a.businessDate.localeCompare(b.businessDate))[0]?.campusId;
-        const attendanceCampus = data.records.find(
-          (item) =>
-            item.memberId === fact.memberId &&
-            weekRange(item.businessDate).start === week &&
-            item.businessDate <= addDays(week, 3) &&
-            !pausedKeys.has(`${item.businessDate}:${item.campusId}`)
-        )?.campusId;
-        const homeCampus = members.get(fact.memberId)?.homeCampusId;
-        const chosen =
-          eligible.find((item) => item.campusId === assignmentCampus) ||
-          eligible.find((item) => item.campusId === attendanceCampus) ||
-          eligible.find((item) => item.campusId === homeCampus) ||
-          eligible.sort((a, b) => a.campusId.localeCompare(b.campusId))[0];
-        for (const campusId of Object.keys(campusNames))
-          byWeek.get(week)?.delete(`${campusId}:${fact.memberId}`);
-        ensure(week, chosen.campusId, fact.memberId, null, chosen.department).leader = true;
       }
     }
   return {

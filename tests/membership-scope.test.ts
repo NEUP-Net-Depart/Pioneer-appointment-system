@@ -102,9 +102,11 @@ test('correction uses the same campus scope and stores actual recording time sep
 });
 
 test('weekly counting remains actual / first-only / leader-once using real posts, without inventing attendance',()=>{
- const base: Parameters<typeof weeklyAttendanceRows>[0]={week:'2026-11-02',paused:[],canExport:()=>true,facts:[{memberId:'leader',name:'负责人',campuses:['南湖'],memberships:[{assignmentType:'primary',isPrimary:true,departmentCode:'network',departmentName:'网络部',positionCode:'head',effectiveFrom:'2026-01-01'}]}],records:[1,2].map(i=>({memberId:'worker',memberName:'维修员',campusId:'campus-nanhu',businessDate:`2026-11-0${i+1}`,identitySnapshot:{},id:String(i)}))};
+ const base: Parameters<typeof weeklyAttendanceRows>[0]={week:'2026-11-02',paused:[],homeCampuses:new Map([['leader','campus-nanhu'],['worker','campus-nanhu']]),canExport:()=>true,facts:[{memberId:'leader',name:'负责人',campuses:['南湖','浑南'],memberships:[{assignmentType:'primary',isPrimary:true,departmentCode:'network',departmentName:'网络部',positionCode:'head',effectiveFrom:'2026-01-01'}]}],records:[1,2].map(i=>({memberId:'worker',memberName:'维修员',campusId:i===1?'campus-nanhu':'campus-hunnan',businessDate:`2026-11-0${i+1}`,identitySnapshot:{},id:String(i)}))};
  assert.equal(weeklyAttendanceRows(base)[0].creditedCount,2);
  assert.equal(weeklyAttendanceRows({...base,firstOnly:true})[0].creditedCount,1);
  const leader=weeklyAttendanceRows({...base,leadersOnce:true}).find(row=>row.memberId==='leader');
  assert.equal(present(leader).creditedCount,1);assert.equal(present(leader).actualCount,0);
+ assert.equal(present(leader).campuses, '南湖');
+ assert.deepEqual(weeklyAttendanceRows({...base, canExport: target => target.campusId === 'campus-hunnan'}), []);
 });

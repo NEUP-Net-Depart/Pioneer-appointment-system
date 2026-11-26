@@ -737,8 +737,7 @@ function HumanWarrantyWidget({
     window.addEventListener('message', receive);
     return () => window.removeEventListener('message', receive);
   }, [widget, onProof, onError, isolated]);
-  if (!isolated)
-    return <Notice>华为验证组件必须使用与预约系统不同的独立来源，请联系管理员配置。</Notice>;
+  if (!isolated) return <Notice>华为验证需要独立站点，请联系系统管理员配置。</Notice>;
   return (
     <>
       <iframe

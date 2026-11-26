@@ -409,7 +409,7 @@ export function membersDomain({
 
   async function setRetiredElder(
     memberId: string,
-    enabled: boolean,
+    period: { grantedAt: string; effectiveTo: string; active: boolean } | null,
     revision: number,
     auditRecord: AuditRecordInput
   ) {
@@ -421,12 +421,15 @@ export function membersDomain({
         AND EXISTS(SELECT 1 FROM staff_accounts WHERE account=? AND role='superadmin')`
         )
         .bind(nowIso(), memberId, revision, ...authorization.args, auditRecord.actorAccount),
-      enabled
+      period
         ? db
             .prepare(
-              "INSERT INTO member_special_identities(member_id,code,granted_at) SELECT ?,'retired_elder',? WHERE changes()>0"
+              `INSERT INTO member_special_identities(member_id,code,granted_at,effective_to)
+               SELECT ?,'retired_elder',?,? WHERE changes()>0
+               ON CONFLICT(member_id,code) DO UPDATE SET effective_to=excluded.effective_to,
+               granted_at=CASE WHEN ? THEN member_special_identities.granted_at ELSE excluded.granted_at END`
             )
-            .bind(memberId, nowIso())
+            .bind(memberId, period.grantedAt, period.effectiveTo, Number(period.active))
         : db
             .prepare(
               "DELETE FROM member_special_identities WHERE member_id=? AND code='retired_elder' AND changes()>0"

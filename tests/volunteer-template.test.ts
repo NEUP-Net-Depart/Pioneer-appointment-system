@@ -28,7 +28,7 @@ for (const count of [0, 1, 40, 601]) test(`new volunteer template exports ${coun
 test('volunteer automatic credit includes all six leadership positions, not independent roles or admin alone', () => {
   const positions = ['head', 'deputy_head', 'director', 'deputy_director', 'president', 'vice_president', 'member', 'maintenance_affairs', 'exchange', 'superadmin'];
   const facts = positions.map(code => ({ memberId: code, name: code, active: true, role: code === 'superadmin' ? 'superadmin' as const : 'technician' as const, campuses: ['南湖'], memberships: [{ positionCode: code, assignmentType: code === 'maintenance_affairs' || code === 'exchange' ? code : 'primary', isPrimary: true, effectiveFrom: '2026-01-01' } as Membership] }));
-  const report = calculateVolunteerReport({ month: '2026-11', weeks: ['2026-11-02'], settings: { mergeLeaders: true, countMode: 'weekly', hoursPerCount: 4, revision: 0 }, today: '2026-11-14', data: { members: positions.map(memberId => ({ memberId, name: memberId, studentId: null, college: null, major: null, homeCampusId: null })), records: [] }, facts, paused: [], canRead: () => true });
+  const report = calculateVolunteerReport({ month: '2026-11', weeks: ['2026-11-02'], settings: { mergeLeaders: true, countMode: 'weekly', hoursPerCount: 4, revision: 0 }, today: '2026-11-14', data: { members: positions.map(memberId => ({ memberId, name: memberId, studentId: null, college: null, major: null, homeCampusId: 'campus-nanhu' })), records: [] }, facts, paused: [], canRead: () => true });
   const rows = report.weeks[0].campuses.flatMap(campus => campus.rows);
   assert.deepEqual(rows.map(row => row.memberId).sort(), positions.slice(0, 6).sort());
   assert.ok(rows.every(row => row.hours === 4 && row.dates.length === 0));

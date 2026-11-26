@@ -188,9 +188,9 @@ export function activationService(
         (whitelist.expectedName && whitelist.expectedName !== name) ||
         (await users.find(studentId))
       )
-        fail(400, '当前资料无法提交激活申请，请联系管理员核实');
+        fail(400, '当前资料无法提交激活申请，请联系站点核实');
       if (!whitelist.activationMemberId)
-        fail(409, '激活资格尚未关联人员，请联系负责人核对任职和校区');
+        fail(409, '激活资格尚未关联人员，请联系站点核对任职和校区');
       const receipt = issueAccessToken(),
         id = crypto.randomUUID();
       if (
@@ -207,7 +207,7 @@ export function activationService(
           whitelist.revision
         ))
       )
-        fail(409, '资格已更新，请联系管理员');
+        fail(409, '激活资格已更新，请联系站点核实');
       return { id, receipt: receipt.token, status: 'pending' };
     },
     async status(id: string, receipt: string | null) {
@@ -261,13 +261,11 @@ export function activationService(
       } catch (error) {
         if (/integer overflow|ACTIVATION_CONFLICT/.test(String(isObject(error) ? error.message : undefined)))
           fail(409, '申请、成员或授权已变化，请刷新后重试');
-        if (String(isObject(error) ? error.message : undefined).includes('ACTIVATION_ADMIN_AUTHORIZATION_REQUIRED'))
-          fail(409, '管理员资格尚未配置角色和校区，请先通过成员管理导入并显式授权，再审核激活');
         if (String(isObject(error) ? error.message : undefined).includes('ACTIVATION_QUALIFICATION_CHANGED'))
           fail(409, '成员资格或授权已变化，请先在成员管理中核实，再审核激活');
         throw error;
       }
-      if (!result.applied.length) fail(409, '申请已被其他管理员处理，请刷新');
+      if (!result.applied.length) fail(409, '申请已处理，请刷新');
       return result;
     }
   };

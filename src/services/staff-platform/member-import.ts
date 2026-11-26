@@ -17,7 +17,13 @@ import type { StaffDomainDependencies } from './context.ts';
 import { fail, HttpError } from '../../lib/http.ts';
 import { validDate } from '../../platform/time.ts';
 import { publicResourceRef, stableJson } from '../../platform/contracts.ts';
-import { memberPublic, activeAt, businessIdentityEligible } from '../../modules/identity/public.ts';
+import {
+  memberPublic,
+  activeAt,
+  businessIdentityEligible,
+  periodsOverlap
+} from '../../modules/identity/public.ts';
+import { nextYearDate } from '../../../shared/time.ts';
 import { campusId } from '../../modules/authorization/scopes.ts';
 import {
   positionsFor,
@@ -86,8 +92,11 @@ function normalizeMember(
   )
     fail(400, '学号或所属校区不正确');
   if (!validDate(item.effectiveFrom)) fail(400, '生效日期不正确');
+  const effectiveTo = value('effectiveTo') || nextYearDate(item.effectiveFrom);
+  if (!validDate(effectiveTo) || effectiveTo <= item.effectiveFrom)
+    fail(400, '结束日期必须晚于生效日期');
   if (item.authorizedCampuses.some((id) => !isDutyCampusId(id))) fail(400, '授权校区不正确');
-  return { ...item, effectiveFrom: item.effectiveFrom };
+  return { ...item, effectiveFrom: item.effectiveFrom, effectiveTo };
 }
 
 function parseImport(input: ImportInput, businessDate: string) {
@@ -110,6 +119,7 @@ function parseImport(input: ImportInput, businessDate: string) {
     'maintenanceParticipation',
     'configureActivation',
     'effectiveFrom',
+    'effectiveTo',
     'authorizedCampuses'
   ];
   if (new Set(headers).size !== headers.length || headers.some((header) => !known.includes(header)))
@@ -302,7 +312,30 @@ export function memberImportDomain({
             (!old.effective_to || item.effectiveFrom < old.effective_to)
         );
         if (exact) continue;
-        if (matches.some((old) => !old.effective_to || item.effectiveFrom < old.effective_to)) {
+        if (
+          post.assignmentType === 'primary' &&
+          existing?.retired_effective_from &&
+          existing.retired_effective_to &&
+          periodsOverlap(
+            item.effectiveFrom,
+            item.effectiveTo,
+            existing.retired_effective_from,
+            existing.retired_effective_to
+          )
+        ) {
+          plan.conflicts.push('有效期与退休老登身份重叠，请先撤销退休身份或调整日期');
+          continue;
+        }
+        if (
+          matches.some((old) =>
+            periodsOverlap(
+              item.effectiveFrom,
+              item.effectiveTo,
+              old.effective_from,
+              old.effective_to
+            )
+          )
+        ) {
           plan.conflicts.push('正式部门、职位或独立身份与现有记录冲突，请在人员详情中核对');
           continue;
         }
@@ -312,7 +345,7 @@ export function memberImportDomain({
             (campusId) => evaluate(context, 'members.manage', { campusId }).allowed
           )
         )
-          fail(403, '跨校区管理任职须由具有全部校区管理范围的负责人设置');
+          fail(403, '设置跨校区管理任职需要两个校区的人员管理权限');
         plan.memberships.push(post);
         change(
           'membership',
@@ -322,7 +355,7 @@ export function memberImportDomain({
               ? '维修事务'
               : '组织任职',
           '',
-          `${post.assignmentType === 'primary' ? `${byDepartment.get(post.departmentId ?? '')?.name} · ${positionLabels[post.positionCode]} · ` : ''}${item.effectiveFrom} 起`
+          `${post.assignmentType === 'primary' ? `${byDepartment.get(post.departmentId ?? '')?.name} · ${positionLabels[post.positionCode]} · ` : ''}${item.effectiveFrom} 至 ${item.effectiveTo}`
         );
       }
       const campuses = item.authorizedCampuses.map(campusName).sort();

@@ -202,7 +202,7 @@ export function StaffActivation() {
   const result = resultQuery.data;
   const [busy, setBusy] = useState(false);
   const labels = {
-    pending: '申请已提交，等待管理员核验身份',
+    pending: '申请已提交，等待身份审核',
     approved: '审核已通过，可以使用学号和自行设置的密码登录',
     rejected: '申请未通过，可核实资料后重新申请'
   };
@@ -231,7 +231,7 @@ export function StaffActivation() {
       try {
         sessionStorage.setItem(receiptKey, JSON.stringify(next));
       } catch {
-        showToast('申请已提交，浏览器无法保存回执，请联系管理员了解审核进度');
+        showToast('申请已提交，浏览器无法保存回执，请联系站点查询审核进度');
       }
       form.reset();
     } catch (errorValue) {

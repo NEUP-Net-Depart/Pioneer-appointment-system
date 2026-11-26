@@ -405,7 +405,8 @@ for (const campusId of campuses)
     assert.equal(home.directAttendance.allowed, true);
     assert.equal(home.rosterParticipant, false);
     assert.deepEqual(home.todayDuties, []);
-    assert.equal(home.capability['attendance.token.issue'], false);
+    assert.equal(home.capability['attendance.token.issue'], true);
+    assert.equal((await staff.attendanceDay(elder, { campusId })).canShowCode, false);
 
     await staff.directCheckIn(root, { campusId });
     const event = await repository.dutyEvent(day, campusId);
@@ -414,13 +415,16 @@ for (const campusId of campuses)
     assert.equal(checked.status, 200);
     assert.equal(checked.body.campusId, campusId);
     assert.equal(checked.body.nonScheduled, true);
+    assert.equal((await staff.attendanceDay(elder, { campusId })).canShowCode, true);
+    assert.ok((await staff.issueAttendanceToken(elder, present(event).id)).token);
     const duplicate = await api<Awaited<ReturnType<typeof staff.directCheckIn>>>('20261002', 'attendance/self-check-in', { campusId }, 'POST');
     assert.equal(duplicate.status, 200);
     assert.equal(duplicate.body.id, checked.body.id);
     assert.equal((await staff.volunteerSummary(elder)).monthHours, 3);
 
     t.mock.timers.setTime(new Date('2026-11-10T11:10:00Z').getTime());
-    const direct = await api<Awaited<ReturnType<typeof staff.directCheckIn>>>('20261002', 'attendance/self-check-in', { campusId }, 'POST');
+    const otherCampus = campuses.find((candidate) => candidate !== campusId);
+    const direct = await api<Awaited<ReturnType<typeof staff.directCheckIn>>>('20261002', 'attendance/self-check-in', { campusId: otherCampus }, 'POST');
     assert.equal(direct.status, 200);
     assert.notEqual(direct.body.id, checked.body.id);
     assert.equal(direct.body.nonScheduled, true);
@@ -437,6 +441,7 @@ for (const campusId of campuses)
         .find((row) => row.memberId === elderId);
       assert.equal(present(row).leader, false);
       assert.equal(present(row).hours, expected);
+      assert.equal(present(row).campusId, 'campus-nanhu');
     }
     const report = await staff.attendanceExport(root, { weekStart, memberId: elderId, leadersOnce: '1' });
     assert.ok('weekStart' in report);
@@ -444,7 +449,34 @@ for (const campusId of campuses)
     assert.equal(weekly.leaderCredit, false);
     assert.equal(weekly.actualCount, 2);
     assert.equal(weekly.creditedCount, 2);
+    assert.equal(weekly.campuses, '南湖');
   });
+
+test('retirement rejects overlapping primary posts and allows manual correction and renewal', async (t) => {
+  const { db, staff, root, users, repository, change } = await setup(t);
+  const revision = async () => present(await repository.memberRow(elderId)).revision;
+  const addPost = async (assignmentType: 'primary' | 'exchange' | 'maintenance_affairs', effectiveFrom = day) =>
+    staff.addMembership(root, elderId, { assignmentType, departmentId: 'dept-hardware', effectiveFrom, revision: await revision() });
+  const future = await addPost('primary', '2026-11-12');
+  assert.ok('id' in future);
+  await assert.rejects(change(true), { status: 409 });
+  await staff.endMembership(root, elderId, future.id, { revision: future.revision, effectiveTo: '2026-11-12' });
+  await change(true);
+  assert.equal(present(await repository.memberRow(elderId)).retired_effective_to, '2027-11-09');
+  await addPost('exchange');
+  await addPost('maintenance_affairs');
+  await assert.rejects(addPost('primary'), { status: 409 });
+  const incoming = await addPost('primary', '2027-11-09');
+  assert.ok('id' in incoming);
+  await assert.rejects(staff.setRetiredElder(root, elderId, { enabled: true, revision: await revision(), effectiveTo: '2028-11-09' }), { status: 409 });
+  await staff.endMembership(root, elderId, incoming.id, { revision: incoming.revision, effectiveTo: '2027-11-09' });
+  await staff.setRetiredElder(root, elderId, { enabled: true, revision: await revision(), effectiveTo: '2028-11-09' });
+  assert.equal(present(await repository.memberRow(elderId)).retired_effective_to, '2028-11-09');
+  db.sqlite.exec("UPDATE member_special_identities SET effective_to=date('now','+8 hours')");
+  const expired = present(await users.find('20261002'));
+  assert.deepEqual(expired.authorizedCampuses, ['南湖']);
+  assert.deepEqual((await staff.contextFor(expired)).specialIdentities, []);
+});
 
 test('grant and revoke preserve historical appointments, check-ins and calculated volunteer hours without adding current leader credit', async (t) => {
   const { db, staff, users, root, elder, change } = await setup(t);

@@ -79,7 +79,7 @@ test('recent statistics include both date boundaries, exclude future dates, and 
     const afterMidnight = await service.summary({ range: '7' }, actor);
     assert.deepEqual(Object.keys(afterMidnight.daily), ['2026-10-31', '2026-11-05', '2026-11-06']);
     db.sqlite.prepare("UPDATE member_department_memberships SET effective_to=? WHERE id='current'").run(today);
-    db.sqlite.prepare("INSERT INTO member_special_identities VALUES ('member-20260001','retired_elder',?)").run(instant.toISOString());
+    db.sqlite.prepare("INSERT INTO member_special_identities VALUES ('member-20260001','retired_elder',?,date('now','+8 hours','+1 year'))").run(instant.toISOString());
     const afterRetirement = await service.summary({ range: '7' }, actor);
     assert.deepEqual(afterRetirement.technicians['20260001'].identity, {
       code: 'retired_elder',

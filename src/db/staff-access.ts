@@ -1,5 +1,10 @@
 // Keep each UNION branch scoped to the account. Filtering the combined view
 // from a correlated subquery scans every account before applying the filter.
+export function activeRetiredElderSql(memberId: string) {
+  return `EXISTS(SELECT 1 FROM member_special_identities si WHERE si.member_id=${memberId}
+    AND si.code='retired_elder' AND si.effective_to>date('now','+8 hours'))`;
+}
+
 export function campusArraySql(alias: string, value = 'campus') {
   return `(SELECT json_group_array(${value}) FROM (
     SELECT campus FROM staff_campus_grants WHERE account=${alias}.account
@@ -12,10 +17,11 @@ export function campusArraySql(alias: string, value = 'campus') {
         AND mm.effective_from<=date('now','+8 hours')
         AND (mm.effective_to IS NULL OR mm.effective_to>date('now','+8 hours'))
     )
-    OR EXISTS(SELECT 1 FROM member_special_identities si WHERE si.member_id=${alias}.member_id AND si.code='retired_elder')
+    OR ${activeRetiredElderSql(`${alias}.member_id`)}
   ))`;
 }
 
 export function specialIdentitiesSql(memberId: string) {
-  return `(SELECT json_group_array(code) FROM member_special_identities WHERE member_id=${memberId})`;
+  return `(SELECT json_group_array(code) FROM member_special_identities
+    WHERE member_id=${memberId} AND effective_to>date('now','+8 hours'))`;
 }

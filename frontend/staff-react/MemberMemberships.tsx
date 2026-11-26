@@ -19,7 +19,7 @@ import {
   DepartmentAppointmentFields
 } from './MemberAppointmentFields.tsx';
 import { request } from './request.ts';
-import { dateKey, addDays } from '../../shared/time.ts';
+import { dateKey, addDays, nextYearDate, validDate } from '../../shared/time.ts';
 import { useUnsavedChanges } from './useUnsavedChanges.ts';
 
 const empty = () => ({
@@ -29,7 +29,7 @@ const empty = () => ({
   positionCode: 'member' as import('../../shared/staff-types.ts').PositionCode,
   replacesMembershipId: '',
   effectiveFrom: dateKey(),
-  effectiveTo: ''
+  effectiveTo: nextYearDate(dateKey())
 });
 export function MemberMemberships({
   detail,
@@ -249,15 +249,27 @@ export function MemberMemberships({
                       data-track="staff.membermemberships.input.6"
                       required
                       value={draft.effectiveFrom}
-                      onChange={(event) =>
-                        setDraft({ ...draft, effectiveFrom: event.target.value })
-                      }
+                      onChange={(event) => {
+                        const effectiveFrom = event.target.value;
+                        const defaultEnd =
+                          validDate(draft.effectiveFrom) &&
+                          draft.effectiveTo === nextYearDate(draft.effectiveFrom);
+                        setDraft({
+                          ...draft,
+                          effectiveFrom,
+                          effectiveTo:
+                            validDate(effectiveFrom) && (defaultEnd || !draft.effectiveTo)
+                              ? nextYearDate(effectiveFrom)
+                              : draft.effectiveTo
+                        });
+                      }}
                     />
                   </label>
                   <label>
-                    结束日期（可选）
+                    结束日期
                     <DatePicker
                       data-track="staff.membermemberships.input.7"
+                      required
                       min={draft.effectiveFrom ? addDays(draft.effectiveFrom, 1) : undefined}
                       value={draft.effectiveTo}
                       onChange={(event) => setDraft({ ...draft, effectiveTo: event.target.value })}

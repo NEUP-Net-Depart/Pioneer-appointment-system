@@ -69,7 +69,7 @@ export function attendanceReportingDomain({
         (campusId) => evaluate(context, 'settings.manage', { campusId }).allowed
       )
     )
-      fail(403, '只有具备全部校区设置权限的管理员可以修改全局考勤规则');
+      fail(403, '修改全局考勤规则需要两个校区的设置权限');
     if (
       (input.countMode !== 'weekly' && input.countMode !== 'actual') ||
       typeof input.hoursPerCount !== 'number' ||

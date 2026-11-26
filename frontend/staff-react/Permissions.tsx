@@ -227,7 +227,7 @@ export function Permissions() {
           {(selected || loading) && (
             <>
               {protectedRole && (
-                <p className="react-muted">最高管理员权限包受保护，请选择其他角色配置。</p>
+                <p className="react-muted">系统管理员权限受保护，请选择其他角色配置。</p>
               )}
               {readOnly && !protectedRole && (
                 <p className="react-muted">

@@ -33,6 +33,13 @@ export function addDays(key: string, days: number) {
   date.setUTCDate(date.getUTCDate() + days);
   return calendarKey(date);
 }
+export function nextYearDate(key: string) {
+  const date = calendar(key);
+  const month = date.getUTCMonth();
+  date.setUTCFullYear(date.getUTCFullYear() + 1);
+  if (date.getUTCMonth() !== month) date.setUTCDate(0);
+  return calendarKey(date);
+}
 export function weekRange(key = dateKey()) {
   const start = addDays(key, -((calendar(key).getUTCDay() + 6) % 7));
   return { start, end: addDays(start, 6) };

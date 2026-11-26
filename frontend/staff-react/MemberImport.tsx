@@ -28,7 +28,7 @@ import { MemberSetup, newMemberSetup, memberDefaults } from './MemberSetup.tsx';
 
 const basicHeader = 'studentId,name,college';
 const advancedHeader =
-  'studentId,name,homeCampusId,college,major,departmentId,positionCode,exchangeParticipation,maintenanceParticipation,authorizedCampuses,effectiveFrom';
+  'studentId,name,homeCampusId,college,major,departmentId,positionCode,exchangeParticipation,maintenanceParticipation,authorizedCampuses,effectiveFrom,effectiveTo';
 const statusLabels = { created: '新增', updated: '更新', skipped: '跳过', conflict: '冲突' };
 const display = (value?: string) => dutyCampusName(value) || value || '未设置';
 

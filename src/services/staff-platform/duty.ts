@@ -45,14 +45,28 @@ export function dutyDomain({ repository, contextFor, evaluate }: StaffDomainDepe
       canSeeMissing ? repository.dutyDay(day, campus) : Promise.resolve({ assignments: [] }),
       repository.serviceDay(day, campus)
     ]);
-    const posts = await repository.membershipsForMembers(
-      people.map((person) => person.memberId),
-      day
+    const signedPeople = new Map(
+      attendance.records.map((record) => [
+        record.memberId,
+        {
+          memberId: record.memberId,
+          name: record.identitySnapshot?.name || record.memberName
+        }
+      ])
     );
-    const signed = new Set(
-      attendance.records
-        .filter((record) => record.campusId === campus)
-        .map((record) => record.memberId)
+    const rosterIds = new Set(people.map((person) => person.memberId));
+    const supportIds = [...signedPeople.keys()].filter((memberId) => !rosterIds.has(memberId));
+    const [posts, support] = await Promise.all([
+      repository.membershipsForMembers([...signedPeople.keys()], day),
+      supportIds.length ? repository.rosterMemberFacts(supportIds, day, day) : []
+    ]);
+    const activeSupport = new Set(
+      support
+        .filter(
+          (person) =>
+            person.active && person.campuses.some((value) => normalizeCampus(value) === campus)
+        )
+        .map((person) => person.memberId)
     );
     const occupied = new Set(busy.map((person) => person.memberId));
     const eligible = new Set(
@@ -76,10 +90,10 @@ export function dutyDomain({ repository, contextFor, evaluate }: StaffDomainDepe
       businessDate: day,
       idle: service?.paused
         ? []
-        : unique
+        : [...signedPeople.values()]
             .filter(
               (person) =>
-                signed.has(person.memberId) &&
+                (rosterIds.has(person.memberId) || activeSupport.has(person.memberId)) &&
                 eligible.has(person.memberId) &&
                 !occupied.has(person.memberId)
             )
@@ -88,7 +102,9 @@ export function dutyDomain({ repository, contextFor, evaluate }: StaffDomainDepe
         ? service?.paused
           ? []
           : unique
-              .filter((person) => expected.has(person.memberId) && !signed.has(person.memberId))
+              .filter(
+                (person) => expected.has(person.memberId) && !signedPeople.has(person.memberId)
+              )
               .map(project)
         : null
     };
@@ -276,6 +292,11 @@ export function dutyDomain({ repository, contextFor, evaluate }: StaffDomainDepe
     });
     return {
       canManage,
+      canShowCode:
+        day === dateKey() &&
+        !service?.paused &&
+        attendance.records.some((record) => record.memberId === context.actor.memberId) &&
+        evaluate(context, 'attendance.token.issue', { campusId: campus }).allowed,
       businessDate: day,
       campusId: campus,
       paused: !!service?.paused,

@@ -1,10 +1,10 @@
 import type { AppointmentStatus, AppointmentTime, StoredRepairOutcome } from './appointment-types.ts';
 
 export const TIME_SLOTS = ['19:00–19:30', '19:30–20:00', '20:00–20:30', '20:30–21:00'] as const;
-export const roleLevel = { technician: 1, admin: 2, superadmin: 3 };
+export const roleLevel = { technician: 1, superadmin: 3 };
 export const CAMPUSES = ['南湖', '浑南'] as const;
 export const DEFAULT_SERVICE_LOCATIONS = Object.freeze({ '南湖':'大学生活动中心202室', '浑南':'大学生活动中心308室' });
-export const roleLabels = {technician:'工作人员',admin:'工作人员',superadmin:'系统管理员'};
+export const roleLabels = {technician:'工作人员',superadmin:'系统管理员'};
 export const appointmentTransitions = {
   booked: ['in_progress', 'cancelled', 'expired'], in_progress: ['completed']
 } as const;

@@ -61,6 +61,7 @@ export interface MemberImportWrite {
     positionCode: PositionCode;
   }[];
   effectiveFrom: string;
+  effectiveTo: string;
   account?: string | null;
   accountRole?: StaffRole;
   authorizedCampuses: string[];
@@ -90,7 +91,7 @@ const records = (table: string, columns: string[], condition: string) =>
 // One database round trip for the complete import state. The same expression is
 // checked inside the write transaction, including relations and invitations.
 const snapshotSql = `SELECT json_object(
-  'members',${records('members', ['id', 'name', 'student_id', 'home_campus_id', 'college', 'major', 'status', 'revision'], `student_id IN (${students})`)},
+  'members',${records(`(SELECT ${memberColumns} FROM members m)`, ['id', 'name', 'student_id', 'home_campus_id', 'college', 'major', 'status', 'revision', 'retired_effective_from', 'retired_effective_to'], `student_id IN (${students})`)},
   'accounts',${records(
     `(SELECT a.account,a.member_id,a.name,a.home_campus,a.role,a.protected,a.status,a.auth_version,a.revision,
     CAST((SELECT json_group_array(campus) FROM (SELECT campus FROM staff_campus_grants WHERE account=a.account ORDER BY campus)) AS TEXT) AS campuses FROM staff_accounts a)`,
@@ -203,8 +204,8 @@ export function memberImportDomain({
         statements.push(
           db
             .prepare(
-              `INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,position_code,effective_from,created_at)
-          VALUES(?,?,?,?,?,?,?,?)`
+              `INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,position_code,effective_from,effective_to,created_at)
+          VALUES(?,?,?,?,?,?,?,?,?)`
             )
             .bind(
               crypto.randomUUID(),
@@ -214,6 +215,7 @@ export function memberImportDomain({
               post.assignmentType === 'primary' ? 1 : 0,
               post.positionCode,
               item.effectiveFrom,
+              item.effectiveTo,
               at
             )
         );
