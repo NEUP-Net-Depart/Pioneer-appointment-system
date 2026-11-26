@@ -16,6 +16,7 @@ async function snapshot(current: boolean) {
     ))
       sqlite.prepare('INSERT INTO d1_migrations(name) VALUES(?)').run(name);
     seedStaff(db, '20260001');
+    if (!current) sqlite.exec("UPDATE staff_accounts SET role='admin' WHERE account='20260001'");
     for (const status of ['booked', 'in_progress', 'completed', 'expired'] as const)
       seedAppointment(db, {
         id: status,

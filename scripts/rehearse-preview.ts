@@ -73,6 +73,7 @@ export async function rehearseSnapshot(dump: string, directory = resolve(root, '
     const ledger = new Set(sqlite.prepare('SELECT name FROM d1_migrations').all().map(row => String(row.name)));
     const upgradingExpirations = !ledger.has('0036_appointment_expiration_time.sql');
     const convertingSignatures = !ledger.has('0053_signature_documents.sql');
+    const retiringAdminRole = !ledger.has('0058_staff_identity_lifecycle.sql');
     const extendingDay = !ledger.has('0044_appointment_day.sql'), replacingRepairs=!ledger.has('0045_direct_repairs.sql'), linkingRepairs=!ledger.has('0046_repair_links.sql');
     if (sqlite.prepare('PRAGMA table_info(staff_accounts)').all().some(row => row.name === 'member_id')) {
       const conflicts = sqlite.prepare('SELECT COUNT(*) AS count FROM (SELECT member_id FROM staff_accounts GROUP BY member_id HAVING COUNT(*)>1)').get()?.count;
@@ -127,6 +128,10 @@ export async function rehearseSnapshot(dump: string, directory = resolve(root, '
       // The expiration migration changes only pending defaults and revisions.
       const normalize = (rows: string[], advanceExpiration = false) => rows.map(value => {
         const row = JSON.parse(value); delete row.token_version; delete row.auth_version;
+        if (advanceExpiration && retiringAdminRole && original.table === 'staff_accounts' && row.role === 'admin') {
+          row.role = 'technician';
+          row.revision++;
+        }
         if (advanceExpiration && upgradingExpirations && original.table === 'appointments' && row.status === 'booked' && row.started_at === null && row.expires_at === `${row.date}T13:30:00.000Z`) {
           row.expires_at = `${row.date}T12:45:00.000Z`; row.revision++;
         }

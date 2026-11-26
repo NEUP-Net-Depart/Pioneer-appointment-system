@@ -34,3 +34,5 @@ CREATE VIEW staff_access_campuses AS
  AND mm.effective_from<=date('now','+8 hours') AND (mm.effective_to IS NULL OR mm.effective_to>date('now','+8 hours')))
  OR EXISTS(SELECT 1 FROM member_special_identities si WHERE si.member_id=s.member_id AND si.code='retired_elder'
  AND si.effective_to>date('now','+8 hours'));
+
+INSERT INTO staff_release_markers VALUES('staff-identity-lifecycle-0058',strftime('%Y-%m-%dT%H:%M:%fZ','now'));

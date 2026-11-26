@@ -58,7 +58,7 @@
     "0055_repair_induced_link.sql": "5da104fdedd29a9ef182ba345f6905dbacdd5da520496fb63236a8019b5d6fdb",
     "0056_remove_roster_leave.sql": "1ed55f7058e24541173349f3d2f9d54074d57f9137782f483edb7b9c87f2fabf",
     "0057_duty_assignment_source.sql": "df949d537015536c50570e9b646e0292fda81f5a2b5d0c9aa4804d76562492a9",
-    "0058_staff_identity_lifecycle.sql": "6288e108834aff10c0b6247dcdea183c69556ad7c98fe262bb5adf91bbb864ba"
+    "0058_staff_identity_lifecycle.sql": "e369aa720b8090f11b3dc1ab0a0007ea19ddfe1bae1e01df22af1aa369f24358"
   },
   "database/staff-migrations": {
     "0001_initial.sql": "6f2b0cce7f26f98d82aff4cc2e2c4a213e3b58be436b0950906a53dc14f971dd",
@@ -116,6 +116,6 @@
     "0055_repair_induced_link.sql": "5da104fdedd29a9ef182ba345f6905dbacdd5da520496fb63236a8019b5d6fdb",
     "0056_remove_roster_leave.sql": "1ed55f7058e24541173349f3d2f9d54074d57f9137782f483edb7b9c87f2fabf",
     "0057_duty_assignment_source.sql": "df949d537015536c50570e9b646e0292fda81f5a2b5d0c9aa4804d76562492a9",
-    "0058_staff_identity_lifecycle.sql": "6288e108834aff10c0b6247dcdea183c69556ad7c98fe262bb5adf91bbb864ba"
+    "0058_staff_identity_lifecycle.sql": "e369aa720b8090f11b3dc1ab0a0007ea19ddfe1bae1e01df22af1aa369f24358"
   }
 }
