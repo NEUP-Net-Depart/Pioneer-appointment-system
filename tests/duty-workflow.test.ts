@@ -998,8 +998,13 @@ test('personal volunteer hours match the shared report calculation and do not ex
   assert.ok(leaderSummary.totalHours > leaderSummary.monthHours);
 });
 
-test('missing volunteer profiles expose shortcuts only inside current member management scope', async (t) => {
+test('volunteer rows and profile shortcuts follow the member after a campus transfer', async (t) => {
   const { db, staff, head, worker } = await setup(t);
+  seedStaff(db, '20261004', '浑南');
+  db.sqlite.exec(`INSERT INTO member_department_memberships
+    (id,member_id,department_id,position_code,assignment_type,is_primary,effective_from,created_at)
+    VALUES('head-hunnan','member-20261004','dept-hardware','head','primary',1,'2026-10-01','2026-10-01')`);
+  const hunnanHead = present(await userRepository(db).find('20261004'));
   await staff.correctAttendance(head, {
     memberId: worker.memberId,
     campusId,
@@ -1009,12 +1014,16 @@ test('missing volunteer profiles expose shortcuts only inside current member man
     requestId: requestId()
   });
   db.sqlite.prepare("UPDATE members SET college='' WHERE id=?").run(worker.memberId);
-  const rows = async () => (await staff.volunteerReport(head, { month: '2026-11' })).weeks
+  const rows = async (actor: typeof head) => (await staff.volunteerReport(actor, { month: '2026-11' })).weeks
     .flatMap((week) => week.campuses.flatMap((campus) => campus.rows))
     .filter((row) => row.memberId === worker.memberId);
-  assert.equal((await rows())[0].canManageProfile, true);
+  assert.equal(present((await rows(head))[0]).canManageProfile, true);
+  assert.deepEqual(await rows(hunnanHead), []);
   db.sqlite.prepare("UPDATE members SET home_campus_id='campus-hunnan' WHERE id=?").run(worker.memberId);
-  assert.equal((await rows())[0].canManageProfile, false);
+  assert.deepEqual(await rows(head), []);
+  const transferred = present((await rows(hunnanHead))[0]);
+  assert.equal(transferred.campusId, 'campus-hunnan');
+  assert.equal(transferred.canManageProfile, true);
 });
 
 test('office and repair shifts share one attendance fact and unique summary while retaining separate statuses', async (t) => {
