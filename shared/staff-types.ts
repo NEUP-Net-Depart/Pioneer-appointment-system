@@ -151,6 +151,7 @@ export interface MemberDto {
   account?: string;
   accountStatus?: string;
   specialIdentities?: string[];
+  retiredEffectiveTo?: string | null;
 }
 
 export interface GrantScope {

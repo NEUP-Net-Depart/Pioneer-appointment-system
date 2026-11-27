@@ -86,7 +86,7 @@ export function rolesDomain({
   }
 
   async function assertEditableRole(context: StaffContext, role: RoleDto) {
-    if (role.code === 'superadmin') fail(403, '最高管理员权限包受保护');
+    if (role.code === 'superadmin') fail(403, '系统管理员权限受保护');
     if (context.actor.role === 'superadmin') {
       for (const member of await repository.roleMembers(role.id, context.businessDate)) {
         const account = await repository.accountForMember(member.id);

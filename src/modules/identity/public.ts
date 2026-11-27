@@ -19,6 +19,7 @@ export function memberPublic(row: MemberFields | null | undefined, options: { me
     revision: row.revision,
     memberships,
     specialIdentities: JSON.parse(row.special_identities || '[]') as string[],
+    retiredEffectiveTo: row.retired_effective_to ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -30,6 +31,11 @@ export function accountIdentity(row: Pick<StaffAccountRow, 'account' | 'member_i
 
 export function activeAt(from: string, to: string | null | undefined, date: string) {
   return from <= date && (!to || date < to);
+}
+
+export function periodsOverlap(from: string, to: string | null | undefined, otherFrom: string, otherTo: string | null | undefined) {
+  return (!to || from < to) && (!otherTo || otherFrom < otherTo) &&
+    (!to || otherFrom < to) && (!otherTo || from < otherTo);
 }
 
 export function businessIdentityEligible({ status, campuses }: { status: string; campuses: readonly string[] }) {

@@ -308,7 +308,7 @@ export function AttendanceReports({
                         </span>
                       </button>
                     ) : (
-                      <span key={person.memberId}>{person.name} · 请联系人员管理员补全资料</span>
+                      <span key={person.memberId}>{person.name} · 请在人员管理补全资料</span>
                     )
                   )}
                 </div>

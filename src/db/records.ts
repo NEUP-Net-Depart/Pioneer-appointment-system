@@ -244,6 +244,8 @@ export interface MemberRow {
   created_at: string;
   updated_at: string;
   special_identities?: string | null;
+  retired_effective_from?: string | null;
+  retired_effective_to?: string | null;
 }
 
 export interface MemberAccountRow extends StaffAccountRow {

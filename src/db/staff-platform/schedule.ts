@@ -9,6 +9,7 @@ import { dutyWindow } from '../../../shared/duty.ts';
 import { leadershipPositions } from '../../../shared/staff-organization.ts';
 import { rows, assignment, membership } from './shared.ts';
 import { parseJson } from '../../platform/contracts.ts';
+import { activeRetiredElderSql } from '../staff-access.ts';
 
 interface RosterWeekRow {
   id: string;
@@ -114,7 +115,7 @@ function coverRecipientGuard({
       AND (mm.effective_to IS NULL OR mm.effective_to>${day})`;
   return `EXISTS(SELECT 1 FROM members m JOIN staff_accounts s ON s.member_id=m.id JOIN staff_access_campuses g ON g.account=s.account
     WHERE m.id=${member} AND m.home_campus_id=${campus} AND m.status='active' AND s.status='enabled'
-      AND NOT EXISTS(SELECT 1 FROM member_special_identities si WHERE si.member_id=m.id AND si.code='retired_elder')
+      AND NOT ${activeRetiredElderSql('m.id')}
       AND g.campus=(SELECT name FROM campuses WHERE id=m.home_campus_id)
       AND NOT EXISTS(${effectivePosts} AND mm.position_code IN (SELECT value FROM json_each(?)))
       AND EXISTS(${effectivePosts} AND mm.position_code='member' AND (
@@ -189,7 +190,7 @@ export function scheduleRepository({
   async function schedulePeople(campus: string | null) {
     return list<SchedulePerson>(
       `SELECT m.id AS memberId,m.name,m.student_id AS studentId,m.home_campus_id AS homeCampusId,s.account,s.auth_version AS authVersion FROM members m JOIN staff_accounts s ON s.member_id=m.id
-      WHERE m.status='active' AND s.status='enabled' AND NOT EXISTS(SELECT 1 FROM member_special_identities si WHERE si.member_id=m.id AND si.code='retired_elder')
+      WHERE m.status='active' AND s.status='enabled' AND NOT ${activeRetiredElderSql('m.id')}
       AND m.home_campus_id=? AND EXISTS(SELECT 1 FROM staff_access_campuses g JOIN campuses c ON c.name=g.campus WHERE g.account=s.account AND c.id=m.home_campus_id) ORDER BY m.name,m.id`,
       campus
     );
@@ -300,7 +301,7 @@ export function scheduleRepository({
       weekIds = JSON.stringify(weeks.map((row) => row.before.id));
     const guard = `NOT EXISTS(SELECT 1 FROM json_each(?) n WHERE COALESCE((SELECT revision FROM roster_weeks WHERE id=json_extract(n.value,'$.id')),-1)<>json_extract(n.value,'$.revision'))
       AND NOT EXISTS(SELECT 1 FROM json_each(?) n WHERE NOT EXISTS(SELECT 1 FROM members m JOIN staff_accounts s ON s.member_id=m.id JOIN staff_access_campuses g ON g.account=s.account
-        WHERE m.id=json_extract(n.value,'$.memberId') AND m.home_campus_id=json_extract(n.value,'$.campusId') AND m.status='active' AND s.status='enabled' AND NOT EXISTS(SELECT 1 FROM member_special_identities si WHERE si.member_id=m.id AND si.code='retired_elder') AND g.campus=(SELECT name FROM campuses WHERE id=m.home_campus_id)))
+        WHERE m.id=json_extract(n.value,'$.memberId') AND m.home_campus_id=json_extract(n.value,'$.campusId') AND m.status='active' AND s.status='enabled' AND NOT ${activeRetiredElderSql('m.id')} AND g.campus=(SELECT name FROM campuses WHERE id=m.home_campus_id)))
       AND NOT EXISTS(SELECT 1 FROM json_each(?) n JOIN duty_assignments a ON a.member_id=json_extract(n.value,'$.memberId') AND a.active=1 AND NOT ${pausedShift('a')} AND a.week_id NOT IN (SELECT value FROM json_each(?))
         AND a.business_date=json_extract(n.value,'$.businessDate') AND a.start_at<json_extract(n.value,'$.endAt') AND json_extract(n.value,'$.startAt')<a.end_at)
       ${snapshotGuard ? `AND (${snapshotGuard.sql})` : ''}`;

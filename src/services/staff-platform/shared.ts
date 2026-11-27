@@ -79,7 +79,8 @@ function validateGrant(
     fail(400, '权限范围不正确');
   const scope = grant.scope || {};
   validateScope(scope);
-  if (scope.all === true && actor.role !== 'superadmin') fail(403, '普通管理员不能授予全局权限');
+  if (scope.all === true && actor.role !== 'superadmin')
+    fail(403, '只有系统管理员可以授予全局权限');
   const allowed = new Set(definition.scopeKinds || []);
   if ((scope.campusIds !== undefined || scope.campuses !== undefined) && !allowed.has('campus'))
     fail(400, '该权限不支持校区范围');

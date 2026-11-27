@@ -71,7 +71,7 @@ function MemberActivation({
       <p>授权校区：{value.authorizedCampuses.join('、') || '未设置'}</p>
       <p>额外系统授权：{value.roleNames.join('、') || '无'}</p>
       {!value.canConfigure && <p role="alert">请先确认成员状态正常且已设置授权校区。</p>}
-      <p>成员可从登录页提交激活申请，由部长及以上负责人审核。</p>
+      <p>成员可从登录页提交激活申请，审核通过后即可登录。</p>
       {error && (
         <button
           data-track="staff.memberaccount.button.1"

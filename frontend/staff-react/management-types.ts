@@ -195,6 +195,7 @@ export interface AttendanceDayDto {
   businessDate: string;
   paused: boolean;
   canManage: boolean;
+  canShowCode?: boolean;
   summary: { expected: number; arrived: number; absent: number };
   items: AttendancePerson[];
   temporary: AttendancePerson[];

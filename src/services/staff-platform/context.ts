@@ -33,8 +33,8 @@ export function contextDomain({
       (context.member?.status && context.member.status !== 'active') ||
       context.actor?.status === 'disabled'
     )
-      fail(401, '成员已停用，请联系管理员');
-    if (!context.actor.memberId) fail(401, '成员已停用，请联系管理员');
+      fail(401, '成员已停用，请联系站点核实');
+    if (!context.actor.memberId) fail(401, '账号未关联人员，请联系站点核实');
     const effective = {
       ...context,
       businessDate,

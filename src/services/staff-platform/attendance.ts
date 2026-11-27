@@ -625,7 +625,9 @@ export function attendanceDomain({
       fail(400, '校区不正确');
     const data = await repository.weeklyAttendanceData(start, addDays(end, 6)),
       paused = await repository.serviceDays(start, addDays(end, 6));
-    const members = new Map(data.members.map((member) => [member.memberId, member])),
+    const homeCampuses = new Map(
+        data.members.map((member) => [member.memberId, member.homeCampusId])
+      ),
       rows = [];
     const canExport = (target: PolicyResource) =>
       (!query.memberId || query.memberId === target.memberId) &&
@@ -635,10 +637,7 @@ export function attendanceDomain({
     for (let week = start; week <= end; week = addDays(week, 7)) {
       const facts =
         query.leadersOnce === '1'
-          ? (await repository.rosterMemberFacts([...members.keys()], week)).map((fact) => ({
-              ...fact,
-              campuses: members.get(fact.memberId)?.campuses
-            }))
+          ? await repository.rosterMemberFacts([...homeCampuses.keys()], week)
           : [];
       rows.push(
         ...weeklyAttendanceRows({
@@ -648,6 +647,7 @@ export function attendanceDomain({
           ),
           facts,
           paused,
+          homeCampuses,
           canExport,
           firstOnly: query.firstOnly === '1',
           leadersOnce: query.leadersOnce === '1'
@@ -660,7 +660,7 @@ export function attendanceDomain({
       '学号',
       '部门',
       '身份',
-      '校区',
+      '所属校区',
       '实际有效签到次数',
       '暂停日排除次数',
       '核算次数',
@@ -717,7 +717,7 @@ export function attendanceDomain({
           (person) => person.memberId === input.memberId
         )
       )
-        fail(409, '成员已停用或无该校区访问权限');
+        fail(409, '该成员不符合本校区的值班考勤补记条件');
       const existing = await repository.dutyEvent(input.businessDate, campusId);
       const window = existing || dutyWindow(input.businessDate);
       if (
@@ -838,7 +838,7 @@ export function attendanceDomain({
         (person) => person.memberId === memberId
       )
     )
-      fail(409, '成员已停用或无该校区访问权限');
+      fail(409, '该成员不符合本校区的值班考勤补记条件');
     const receipt = {
       action: 'attendance.correct',
       id: requestId(input.requestId) || crypto.randomUUID(),

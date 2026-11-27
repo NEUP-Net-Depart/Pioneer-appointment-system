@@ -368,7 +368,7 @@ export function AttendanceManagement({
             label="刷新值班"
             compactOnMobile
           />
-          {day === dateKey() && (
+          {data?.canShowCode && (
             <button
               data-track="staff.attendancemanagement.button.7"
               className="attendance-code-action"

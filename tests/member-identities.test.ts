@@ -142,7 +142,7 @@ test('combined appointments validate together and advance the member revision on
           assert.equal(
             present((await repository.listMemberships(member.memberId)).find((item) => item.isPrimary))
               .effectiveTo,
-            null
+            '2027-01-01'
           );
         }
       }
@@ -155,7 +155,7 @@ test('account lists and member identities describe appointments rather than lega
   t.after(() => db.sqlite.close());
   seedStaff(db, '20261001');
   db.sqlite.exec(
-    "UPDATE staff_accounts SET role='admin'; INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,position_code,effective_from,created_at) VALUES('hardware','member-20261001','dept-hardware','primary',1,'member','2026-01-01','2026-01-01'),('exchange','member-20261001','dept-hardware','exchange',0,'member','2026-01-01','2026-01-01'),('affairs','member-20261001','dept-office','maintenance_affairs',0,'member','2026-01-01','2026-01-01'),('expired','member-20261001','dept-network','maintenance_affairs',0,'member','2025-01-01','2025-01-01'); UPDATE member_department_memberships SET effective_to='2026-01-01' WHERE id='expired';"
+    "INSERT INTO member_department_memberships(id,member_id,department_id,assignment_type,is_primary,position_code,effective_from,created_at) VALUES('hardware','member-20261001','dept-hardware','primary',1,'member','2026-01-01','2026-01-01'),('exchange','member-20261001','dept-hardware','exchange',0,'member','2026-01-01','2026-01-01'),('affairs','member-20261001','dept-office','maintenance_affairs',0,'member','2026-01-01','2026-01-01'),('expired','member-20261001','dept-network','maintenance_affairs',0,'member','2025-01-01','2025-01-01'); UPDATE member_department_memberships SET effective_to='2026-01-01' WHERE id='expired';"
   );
   const users = userRepository(db);
   const list = await users.list(['南湖']);
@@ -193,6 +193,7 @@ test('independent identities work without selecting a department and cannot over
       ...extra
     });
   await add('maintenance_affairs');
+  assert.deepEqual((await repository.listMemberships(member.memberId)).map(post => post.effectiveTo), ['2027-01-01', '2027-01-01']);
   await assert.rejects(add('exchange'), { status: 409 });
   await assert.rejects(add('maintenance_affairs', { departmentId: 'dept-office' }), {
     status: 409

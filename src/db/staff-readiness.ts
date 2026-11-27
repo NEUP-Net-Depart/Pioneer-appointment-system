@@ -1,5 +1,5 @@
 import type { Database } from '../platform/environment.ts';
-export const STAFF_RELEASE = 'roster-cover-only-0056';
+export const STAFF_RELEASE = 'staff-identity-lifecycle-0058';
 
 // Prepare real projections, including empty tables. A database with only the
 // old staff schema must fail readiness before CI accepts a deployment.
@@ -9,7 +9,7 @@ export async function verifyStaffSchema(db: Database) {
     appointments: 'parent_appointment_id,link_kind,access_token_hash,front_photo_id,back_photo_id,booking_notices,received_at,received_by,photo_deferred_by',
     members: 'id,status,college,major',
     member_department_memberships: 'member_id,position_code',
-    member_special_identities: 'member_id,code,granted_at',
+    member_special_identities: 'member_id,code,granted_at,effective_to',
     staff_access_campuses: 'account,campus',
     member_roles: 'member_id,role_id,scope_bindings,reason',
     role_grants: 'permission_code,scope_spec,condition_spec',

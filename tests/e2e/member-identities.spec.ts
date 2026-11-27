@@ -66,6 +66,7 @@ test('superadmins manually grant and revoke the retired badge across member and 
   const badge = editor.locator('[data-identity="retired_elder"]');
   await expect(badge).toHaveCount(0);
   await editor.getByRole('button', { name: '授予退休老登身份', exact: true }).click();
+  await editor.getByRole('region', { name: '特殊身份' }).getByRole('button', { name: '保存', exact: true }).click();
   await expect(badge).toBeVisible();
   await expect(badge).toHaveText('退休老登');
   const isAnimating = () =>

@@ -23,10 +23,11 @@ type MembershipInput = MemberInput & {
 import type { StaffContext } from './context.ts';
 import type { StaffDomainDependencies } from './context.ts';
 import { fail, HttpError } from '../../lib/http.ts';
-import { dateKey, validDate } from '../../platform/time.ts';
+import { dateKey, nowIso, validDate } from '../../platform/time.ts';
+import { nextYearDate } from '../../../shared/time.ts';
 import { publicResourceRef, SCHEMA_VERSION } from '../../platform/contracts.ts';
-import { memberPublic } from '../../modules/identity/public.ts';
-import { staffIdentities, isRetiredElder } from '../../../shared/staff-identities.ts';
+import { memberPublic, periodsOverlap } from '../../modules/identity/public.ts';
+import { staffIdentities } from '../../../shared/staff-identities.ts';
 import { inputString, csvRows, tokenDigest } from './shared.ts';
 import { editableMember, delegableRole, memberReference } from './delegation.ts';
 import { memberImportDomain } from './member-import.ts';
@@ -373,7 +374,7 @@ export function membersDomain({ repository, contextFor, evaluate }: StaffDomainD
     const before = await repository.memberRow(memberId);
     if (!before) fail(404, '成员不存在');
     const { context } = await requireMemberPermission(actor, before);
-    if (context.actor.role !== 'superadmin') fail(403, '只有超级管理员可以授予或撤销退休老登身份');
+    if (context.actor.role !== 'superadmin') fail(403, '只有系统管理员可以管理退休老登身份');
     const targetState = await editableMember(repository, context, before, evaluate);
     if (typeof input?.enabled !== 'boolean') fail(400, '身份状态不正确');
     if (
@@ -383,20 +384,40 @@ export function membersDomain({ repository, contextFor, evaluate }: StaffDomainD
     )
       fail(400, '成员版本不正确');
     if (before.revision !== input.revision) fail(409, '成员已被其他操作修改，请刷新');
-    const previous = isRetiredElder(memberPublic(before));
-    if (previous === input.enabled) return { member: memberPublic(before) };
-    const after = await repository.setRetiredElder(memberId, input.enabled, input.revision, {
+    const today = context.businessDate;
+    const previousEnd = before.retired_effective_to;
+    const active = !!previousEnd && previousEnd > today;
+    if (
+      (!input.enabled && !previousEnd) ||
+      (input.enabled && active && input.effectiveTo === undefined)
+    )
+      return { member: memberPublic(before) };
+    const effectiveTo = input.enabled ? (input.effectiveTo ?? nextYearDate(today)) : null;
+    if (effectiveTo !== null) {
+      if (!validDate(effectiveTo) || effectiveTo <= today) fail(400, '请选择晚于今天的结束日期');
+      const posts = await repository.listMemberships(memberId);
+      if (
+        posts.some(
+          (post) =>
+            post.isPrimary &&
+            periodsOverlap(today, effectiveTo, post.effectiveFrom, post.effectiveTo)
+        )
+      )
+        fail(409, '有效期内已有正式任职，请先结束任职或调整日期');
+    }
+    const period = effectiveTo ? { grantedAt: nowIso(), effectiveTo, active } : null;
+    const after = await repository.setRetiredElder(memberId, period, input.revision, {
       actorMemberId: context.actor.memberId,
       actorAccount: context.actor.account,
       authVersion: context.authVersion,
       action: input.enabled ? 'identity.retired_elder.granted' : 'identity.retired_elder.revoked',
       targetAccountVersion: targetState.account,
       sourceRef: publicResourceRef('identity', 'member', memberId),
-      before: { retiredElder: previous },
-      after: { retiredElder: input.enabled },
+      before: { retiredElder: active, effectiveTo: previousEnd },
+      after: { retiredElder: input.enabled, effectiveTo },
       requestId: input.requestId
     });
-    if (!after) fail(409, '成员或管理员权限已变化，请刷新后重试');
+    if (!after) fail(409, '成员资料或当前权限已变化，请刷新后重试');
     return { member: memberPublic(after), authVersionChanged: true };
   }
 
@@ -466,6 +487,7 @@ export function membersDomain({ repository, contextFor, evaluate }: StaffDomainD
     const departments = await repository.listDepartments();
     const assignmentType = input.assignmentType || 'primary';
     const effectiveFrom = input.effectiveFrom;
+    const effectiveTo = input.effectiveTo || nextYearDate(effectiveFrom);
     if (assignmentType !== 'primary') {
       input = { ...input, departmentId: departments.find((item) => item.code === 'hardware')?.id };
     }
@@ -490,6 +512,7 @@ export function membersDomain({ repository, contextFor, evaluate }: StaffDomainD
       ...input,
       departmentId: unit.id,
       effectiveFrom,
+      effectiveTo,
       assignmentType,
       positionCode: input.positionCode || 'member',
       isPrimary: (input.assignmentType || 'primary') === 'primary'
@@ -498,16 +521,26 @@ export function membersDomain({ repository, contextFor, evaluate }: StaffDomainD
       globalLeadershipPositions.includes(membership.positionCode) &&
       !canManageGlobalAppointments(context)
     )
-      fail(403, '跨校区管理任职须由具有全部校区管理范围的负责人设置');
+      fail(403, '设置跨校区管理任职需要两个校区的人员管理权限');
     const existing = await repository.listMemberships(memberId);
+    if (
+      membership.isPrimary &&
+      member.retired_effective_from &&
+      member.retired_effective_to &&
+      periodsOverlap(
+        effectiveFrom,
+        effectiveTo,
+        member.retired_effective_from,
+        member.retired_effective_to
+      )
+    )
+      fail(409, '有效期与退休老登身份重叠，请先撤销退休身份或调整日期');
     if (
       !membership.isPrimary &&
       existing.some(
         (item) =>
           item.assignmentType === input.assignmentType &&
-          (!item.effectiveTo || item.effectiveFrom < item.effectiveTo) &&
-          item.effectiveFrom < (input.effectiveTo || '9999-12-31') &&
-          (!item.effectiveTo || effectiveFrom < item.effectiveTo)
+          periodsOverlap(effectiveFrom, effectiveTo, item.effectiveFrom, item.effectiveTo)
       )
     ) {
       fail(409, '该独立身份已存在重叠有效期，请在现有记录中管理');
@@ -529,9 +562,7 @@ export function membersDomain({ repository, contextFor, evaluate }: StaffDomainD
         (item) =>
           item.id !== input.replacesMembershipId &&
           item.isPrimary &&
-          (!item.effectiveTo || item.effectiveFrom < item.effectiveTo) &&
-          item.effectiveFrom < (input.effectiveTo || '9999-12-31') &&
-          (!item.effectiveTo || effectiveFrom < item.effectiveTo)
+          periodsOverlap(effectiveFrom, effectiveTo, item.effectiveFrom, item.effectiveTo)
       )
     )
       fail(409, '主部门任职重叠，请先结束原任职后再调岗');

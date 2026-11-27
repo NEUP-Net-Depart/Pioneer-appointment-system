@@ -12,7 +12,7 @@ import { Select, DatePicker } from './SelectionControls.tsx';
 import { RefreshButton } from './WorkspaceToolbar.tsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useContext, useEffect, useRef, useState } from 'react';
-import { dateKey } from '../../shared/time.ts';
+import { addDays, dateKey, nextYearDate } from '../../shared/time.ts';
 import { request } from './request.ts';
 import { withCampusScope, roleBindingsPayload } from './authorization-drafts.ts';
 import { ActivityContext, Modal } from './field/ui';
@@ -109,6 +109,7 @@ export function MemberEditor({
     [confirmClose, setConfirmClose] = useState(false);
   const [membershipDirty, setMembershipDirty] = useState(false);
   const [accountDirty, setAccountDirty] = useState(false);
+  const [retiredEndDraft, setRetiredEndDraft] = useState<string | null>(null);
   const profileDirty =
     detail &&
     (['name', 'college', 'major', 'homeCampusId', 'status'] as const).some(
@@ -116,7 +117,8 @@ export function MemberEditor({
     );
   const bindingsDirty =
     detail && JSON.stringify(bindings) !== JSON.stringify(detail.bindings || []);
-  const dirty = profileDirty || bindingsDirty || membershipDirty || accountDirty;
+  const otherDirty = profileDirty || bindingsDirty || membershipDirty || accountDirty;
+  const dirty = otherDirty || retiredEndDraft !== null;
   const profileForm = useUnsavedChanges({
     dirty: !!profileDirty,
     active,
@@ -141,6 +143,16 @@ export function MemberEditor({
     save: saveBindings,
     discard: () => {
       setBindings(structuredClone(detail?.bindings || []));
+      setConfirmClose(false);
+    }
+  });
+  const retiredForm = useUnsavedChanges({
+    dirty: retiredEndDraft !== null,
+    active,
+    busy,
+    save: () => changeRetiredElder(true),
+    discard: () => {
+      setRetiredEndDraft(null);
       setConfirmClose(false);
     }
   });
@@ -224,27 +236,33 @@ export function MemberEditor({
       setBusy(false);
     }
   }
-  async function changeRetiredElder() {
-    if (lock.current || !detail || dirty) return;
+  async function changeRetiredElder(enabled: boolean) {
+    if (lock.current || !detail || (enabled ? !retiredEndDraft : dirty)) return;
     lock.current = true;
     setBusy(true);
     setError('');
     setMessage('');
-    const enabled = !detail.member.specialIdentities?.includes('retired_elder');
     try {
       await request(`/api/members/${encodeURIComponent(member.memberId)}/retired-elder`, {
         method: 'PUT',
-        body: { enabled, revision: detail.member.revision, requestId: crypto.randomUUID() }
+        body: {
+          enabled,
+          effectiveTo: enabled ? retiredEndDraft : undefined,
+          revision: detail.member.revision,
+          requestId: crypto.randomUUID()
+        }
       });
       await reload();
+      setRetiredEndDraft(null);
       await client.invalidateQueries({
         queryKey: [`/api/members/${encodeURIComponent(member.memberId)}/audit`]
       });
       setMessage(
         enabled
-          ? '已授予退休老登身份，相关账号需重新登录'
+          ? '已保存退休老登身份，相关账号需重新登录'
           : '已撤销退休老登身份，相关账号需重新登录'
       );
+      return true;
     } catch (err) {
       setError(failureFrom(err).message);
     } finally {
@@ -470,20 +488,87 @@ export function MemberEditor({
                   />
                   {detail.actions?.editSpecialIdentities && (
                     <section className="member-special-identities" aria-label="特殊身份">
-                      <h3>特殊身份</h3>
-                      <p>
-                        退休老登拥有双校区业务管理权限，可在授权校区扫码或自行签到，仅按有效签到累计志愿时长，未签到不计时长，不享受负责人自动计入。不参与排班、空闲填报或换班，保留原有任职及考勤历史。
-                      </p>
-                      <button
-                        type="button"
-                        data-track="staff.membereditor.retired-elder"
-                        disabled={busy || !!dirty}
-                        onClick={changeRetiredElder}
-                      >
-                        {detail.member.specialIdentities?.includes('retired_elder')
-                          ? '撤销退休老登身份'
-                          : '授予退休老登身份'}
-                      </button>
+                      <h3>退休老登</h3>
+                      {detail.member.retiredEffectiveTo && (
+                        <p>
+                          {detail.member.specialIdentities?.includes('retired_elder')
+                            ? '有效至'
+                            : '已到期 ·'}{' '}
+                          {detail.member.retiredEffectiveTo}
+                        </p>
+                      )}
+                      {retiredEndDraft === null ? (
+                        <div className="field-actions">
+                          <button
+                            type="button"
+                            data-track="staff.membereditor.retired-elder"
+                            disabled={busy || !!dirty}
+                            onClick={() =>
+                              setRetiredEndDraft(
+                                nextYearDate(
+                                  detail.member.retiredEffectiveTo &&
+                                    detail.member.retiredEffectiveTo > dateKey()
+                                    ? detail.member.retiredEffectiveTo
+                                    : dateKey()
+                                )
+                              )
+                            }
+                          >
+                            {detail.member.specialIdentities?.includes('retired_elder')
+                              ? '续期'
+                              : '授予退休老登身份'}
+                          </button>
+                          {detail.member.specialIdentities?.includes('retired_elder') && (
+                            <button
+                              type="button"
+                              data-track="staff.membereditor.retired-elder"
+                              disabled={busy || !!dirty}
+                              onClick={() => void changeRetiredElder(false)}
+                            >
+                              撤销退休老登身份
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <form
+                          ref={retiredForm}
+                          data-track="staff.membereditor.retired-elder"
+                          className="workspace-form"
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            void changeRetiredElder(true);
+                          }}
+                        >
+                          <label>
+                            结束日期
+                            <DatePicker
+                              data-track="staff.membereditor.retired-elder"
+                              required
+                              min={addDays(dateKey(), 1)}
+                              value={retiredEndDraft}
+                              onChange={(event) => setRetiredEndDraft(event.target.value)}
+                            />
+                          </label>
+                          <div className="field-actions">
+                            <button
+                              type="button"
+                              data-track="staff.membereditor.retired-elder"
+                              disabled={busy}
+                              onClick={() => setRetiredEndDraft(null)}
+                            >
+                              取消
+                            </button>
+                            <button
+                              type="submit"
+                              data-track="staff.membereditor.retired-elder"
+                              className="react-primary"
+                              disabled={busy || !!otherDirty}
+                            >
+                              保存
+                            </button>
+                          </div>
+                        </form>
+                      )}
                     </section>
                   )}
                 </div>

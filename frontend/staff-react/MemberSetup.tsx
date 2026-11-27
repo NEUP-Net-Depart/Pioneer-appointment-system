@@ -9,12 +9,13 @@ export interface MemberSetupDraft {
   departmentId: string;
   positionCode: PositionCode;
   effectiveFrom: string;
+  effectiveTo: string;
   authorizedCampuses: string[];
   exchangeParticipation: boolean;
   maintenanceParticipation: boolean;
 }
 import { Select, DatePicker } from './SelectionControls.tsx';
-import { dateKey } from '../../shared/time.ts';
+import { addDays, dateKey, nextYearDate, validDate } from '../../shared/time.ts';
 import {
   DepartmentAppointmentFields,
   AdditionalMembershipFields
@@ -25,6 +26,7 @@ export const newMemberSetup = (user: Pick<StaffProfileDto, 'homeCampus'>): Membe
   departmentId: '',
   positionCode: 'member',
   effectiveFrom: dateKey(),
+  effectiveTo: '',
   authorizedCampuses: [],
   exchangeParticipation: false,
   maintenanceParticipation: false
@@ -60,16 +62,32 @@ export function MemberSetup({
             <option value="campus-hunnan">浑南</option>
           </Select>
         </label>
-        <label>
-          生效日期
-          <DatePicker
-            data-track="staff.membersetup.input.2"
-            required
-            value={value.effectiveFrom}
-            onChange={(event) => change({ effectiveFrom: event.target.value })}
-          />
-        </label>
       </div>
+      {(value.departmentId || value.exchangeParticipation || value.maintenanceParticipation) && (
+        <div className="react-form-grid">
+          <label>
+            生效日期
+            <DatePicker
+              data-track="staff.membersetup.input.2"
+              required
+              value={value.effectiveFrom}
+              onChange={(event) => change({ effectiveFrom: event.target.value })}
+            />
+          </label>
+          <label>
+            结束日期
+            <DatePicker
+              data-track="staff.membersetup.effective-to"
+              min={validDate(value.effectiveFrom) ? addDays(value.effectiveFrom, 1) : undefined}
+              value={
+                value.effectiveTo ||
+                (validDate(value.effectiveFrom) ? nextYearDate(value.effectiveFrom) : '')
+              }
+              onChange={(event) => change({ effectiveTo: event.target.value })}
+            />
+          </label>
+        </div>
+      )}
       {canAuthorize && (
         <fieldset className="workspace-campus-options">
           <legend>授权校区（新增人员默认所属校区）</legend>

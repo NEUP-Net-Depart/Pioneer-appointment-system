@@ -99,7 +99,7 @@ export function createAuthorizer({ providers = conditionProviders() } = {}) {
         if(receptionOperations.includes(permissionCode))eligible=repairs || affairs;
         if(managementPermissions.includes(permissionCode))eligible=actor?.role==='superadmin' || isLeader(context) || retired;
         if(permissionCode==='attendance.self')eligible=retired || actor?.role==='superadmin' || isLeader(context) || participationCodes(context,target).length>0;
-        if(permissionCode==='attendance.token.issue')eligible=actor?.role==='superadmin' || isLeader(context) || affairs;
+        if(permissionCode==='attendance.token.issue')eligible=actor?.role==='superadmin' || isLeader(context) || retired || affairs;
         const allowed=scoped && eligible;
         return {allowed,matchedGrantIds:[],reasonCode:allowed?'IDENTITY_SCOPE':'IDENTITY_SCOPE_DENIED',scope:allowed?[{campusIds:campuses}]:[],explanations:[]};
       }
