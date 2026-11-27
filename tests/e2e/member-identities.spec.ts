@@ -37,6 +37,38 @@ test('member editing only offers manageable campuses and appointments @smoke', a
   await expect(admin.getByRole('option', { name: '站长', exact: true })).toBeVisible();
 });
 
+test('member details close without waiting for animation and still guard edits @smoke', async ({
+  page
+}) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await loginStaff(page);
+  const people = await staffPage(page, '人员管理');
+  const detailButton = people
+    .locator('.react-row')
+    .filter({ hasText: '周宁' })
+    .getByRole('button', { name: '人员详情', exact: true });
+  await detailButton.click();
+  const editor = page.getByRole('dialog', { name: '周宁', exact: true });
+  await editor.evaluate((dialog) => {
+    const animate = dialog.animate.bind(dialog);
+    dialog.animate = (frames, options) => {
+      const animation = animate(frames, options);
+      animation.pause();
+      return animation;
+    };
+  });
+  await editor.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  await expect(detailButton).toBeFocused();
+
+  await detailButton.click();
+  await editor.getByRole('textbox', { name: '姓名', exact: true }).fill('临时修改');
+  await page.keyboard.press('Escape');
+  await expect(editor.getByRole('heading', { name: '放弃未保存的修改？' })).toBeVisible();
+  await editor.getByRole('button', { name: '放弃修改并关闭', exact: true }).click();
+  await expect(editor).toHaveCount(0);
+});
+
 test('superadmins manually grant and revoke the retired badge across member and personal views', async ({
   page,
   context

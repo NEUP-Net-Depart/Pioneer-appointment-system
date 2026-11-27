@@ -76,6 +76,7 @@ export function Modal({
   sidePanel = false,
   initialFocus,
   dismissible = true,
+  animateDismiss = true,
   compact = false,
   footer,
   showCloseButton = true,
@@ -88,6 +89,7 @@ export function Modal({
   sidePanel?: boolean;
   initialFocus?: string;
   dismissible?: boolean;
+  animateDismiss?: boolean;
   compact?: boolean;
   footer?: ReactNode;
   showCloseButton?: boolean;
@@ -104,6 +106,7 @@ export function Modal({
     const dialog = ref.current;
     if (
       !dialog ||
+      !animateDismiss ||
       document.hidden ||
       matchMedia('(prefers-reduced-motion: reduce)').matches ||
       dialog.querySelector('video,canvas')
