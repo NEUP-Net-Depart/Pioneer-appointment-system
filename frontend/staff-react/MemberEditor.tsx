@@ -306,7 +306,7 @@ export function MemberEditor({
     onSaved();
   }
   return (
-    <Modal title={member.name} sidePanel dismissible={!busy} animateDismiss={false} onClose={close}>
+    <Modal title={member.name} sidePanel dismissible={!busy} onClose={close}>
       <div className="member-detail-editor">
         {confirmClose && (
           <>

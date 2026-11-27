@@ -37,7 +37,7 @@ test('member editing only offers manageable campuses and appointments @smoke', a
   await expect(admin.getByRole('option', { name: '站长', exact: true })).toBeVisible();
 });
 
-test('member details close without waiting for animation and still guard edits @smoke', async ({
+test('member details animate out and close before removal, while guarding edits @smoke', async ({
   page
 }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -49,16 +49,29 @@ test('member details close without waiting for animation and still guard edits @
     .getByRole('button', { name: '人员详情', exact: true });
   await detailButton.click();
   const editor = page.getByRole('dialog', { name: '周宁', exact: true });
-  await editor.evaluate((dialog) => {
+  const exit = await editor.evaluateHandle((dialog: HTMLDialogElement) => {
+    const observed = { animation: null as Animation | null, closedWhileConnected: false };
     const animate = dialog.animate.bind(dialog);
+    const close = dialog.close.bind(dialog);
     dialog.animate = (frames, options) => {
       const animation = animate(frames, options);
       animation.pause();
+      observed.animation = animation;
       return animation;
     };
+    dialog.close = () => {
+      observed.closedWhileConnected = dialog.open && dialog.isConnected;
+      close();
+    };
+    return observed;
   });
   await editor.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(editor).toBeVisible();
+  await expect.poll(() => exit.evaluate(({ animation }) => animation?.playState)).toBe('paused');
+  await exit.evaluate(({ animation }) => animation?.finish());
   await expect(editor).toHaveCount(0);
+  expect(await exit.evaluate(({ closedWhileConnected }) => closedWhileConnected)).toBe(true);
+  await exit.dispose();
   await expect(detailButton).toBeFocused();
 
   await detailButton.click();
